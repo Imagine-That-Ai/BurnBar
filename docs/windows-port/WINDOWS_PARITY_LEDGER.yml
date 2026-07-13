@@ -444,6 +444,7 @@ rows:
   evidence:
   - docs/windows-port/evidence/f1-cu/desktop-loop.md
   - docs/windows-port/evidence/f2/computer-use-audit-export.md
+  - docs/windows-port/evidence/f2/mercury-media-settings.md
   tests:
   - windows/tests/computeruse/DesktopLoopTests.cs
   - windows/tests/computeruse

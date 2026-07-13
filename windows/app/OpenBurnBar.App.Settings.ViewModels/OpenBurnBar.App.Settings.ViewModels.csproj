@@ -60,6 +60,7 @@
     <ProjectReference Include="..\OpenBurnBar.App.ManagedAgentRuntime\OpenBurnBar.App.ManagedAgentRuntime.csproj" />
     <ProjectReference Include="..\OpenBurnBar.App.CursorConnector\OpenBurnBar.App.CursorConnector.csproj" />
     <ProjectReference Include="..\..\computeruse\OpenBurnBar.ComputerUse.Core\OpenBurnBar.ComputerUse.Core.csproj" />
+    <ProjectReference Include="..\..\integrations\mercury\OpenBurnBar.Integrations.Mercury\OpenBurnBar.Integrations.Mercury.csproj" />
   </ItemGroup>
 
 </Project>

@@ -30,6 +30,7 @@
   <ItemGroup>
     <ProjectReference Include="../../../app/OpenBurnBar.App.Settings.ViewModels/OpenBurnBar.App.Settings.ViewModels.csproj" />
     <ProjectReference Include="../../../app/OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj" />
+    <ProjectReference Include="../../../integrations/mercury/OpenBurnBar.Integrations.Mercury/OpenBurnBar.Integrations.Mercury.csproj" />
   </ItemGroup>
 
 </Project>

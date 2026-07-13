@@ -4,8 +4,8 @@
 //
 // The macOS app has 16 settings tabs. On Windows, General / Updates / Data & Privacy
 // (+ Appearance) already resolved to real leaf pages. This wave adds portable view-models
-// for the placeholder tabs whose feature cores exist on main. Media stays a placeholder
-// (its Mercury core is deferred). The WinUI XAML leaf pages that x:Bind these view-models
+// for the placeholder tabs whose feature cores exist on main. Mercury now has a
+// fail-closed capability projection; live capture remains host/account gated. The WinUI XAML leaf pages that x:Bind these view-models
 // are bucket-B / dev-host-deferred; this catalog + the view-models + the manifest search
 // coverage are the real, tested deliverable.
 
@@ -62,6 +62,8 @@ public static class SettingsTabViewModelCatalog
             nameof(CloudSettingsViewModel), "CloudStoreSettingsView.swift"),
         new SettingsTabViewModelDescriptor(SettingsTab.DevicesAndSync, SettingsTabViewModelGating.DataGated,
             nameof(DevicesAndSyncSettingsViewModel), "DevicesAndSyncSettingsView.swift"),
+        new SettingsTabViewModelDescriptor(SettingsTab.Media, SettingsTabViewModelGating.DataGated,
+            nameof(MercuryMediaSettingsViewModel), "Mercury media capability gate + MediaSettingsView.swift"),
     };
 
     /// <summary>Every tab this wave gives a portable view-model, in a stable order.</summary>
@@ -104,6 +106,7 @@ public static class SettingsTabViewModelCatalog
         SettingsTab.Account => new AccountSettingsViewModel(),
         SettingsTab.Cloud => new CloudSettingsViewModel(),
         SettingsTab.DevicesAndSync => new DevicesAndSyncSettingsViewModel(),
+        SettingsTab.Media => new MercuryMediaSettingsViewModel(),
         _ => throw new ArgumentOutOfRangeException(nameof(tab), tab, "No portable view-model for this tab."),
     };
 }

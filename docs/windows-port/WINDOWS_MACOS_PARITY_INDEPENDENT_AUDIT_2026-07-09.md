@@ -195,6 +195,12 @@ unproven host behavior to certification:
   Missing archives, malformed JSON, tampered chains, path traversal, and
   reparse-point paths fail closed. OpenTimestamps notarization remains an
   explicit authenticated-account gate.
+- The Media & Sharing settings route now composes a real Mercury capability
+  projection. It evaluates the shared entitlement, budget, quota, concurrent
+  session, requested-duration, kill-switch, and host-capture signals instead
+  of presenting a placeholder. Missing account/host inputs remain visibly
+  data-gated; this does not claim live capture, cross-device transport, or
+  physical safety certification.
 - Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
   without writing prompts or tool output to disk. The companion CLI now exposes
   a bounded `fusion.run` command that composes this loop with the configured

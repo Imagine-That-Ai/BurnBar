@@ -133,7 +133,8 @@ internal static class WindowsSettingsComposition
         SettingsTab.DevicesAndSync => new DevicesAndSyncSettingsViewModel(
             store: new DevicesSyncStore(Persistence),
             session: new OAuthAccountSessionGate(OAuth.Value)),
-        SettingsTab.Media => new MediaSettingsSurfaceModel(),
+        SettingsTab.Media => new MercuryMediaSettingsViewModel(
+            new StaticMercuryMediaCapabilitySource(captureRuntimeSupported: OperatingSystem.IsWindows())),
         _ => null,
     };
 
