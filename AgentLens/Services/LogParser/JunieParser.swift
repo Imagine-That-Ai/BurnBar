@@ -82,6 +82,12 @@ final class JunieParser: LogParser, Sendable {
             activePaths.insert(cacheKey)
 
             let signature = compositeSignature(eventsFile: eventsFile, stateFile: stateFile)
+            if let minimumFileModificationDate = options.minimumFileModificationDate,
+               signature == nil
+                || Date(timeIntervalSince1970: signature?.primary.modifiedAt ?? 0) < minimumFileModificationDate {
+                continue
+            }
+
             if let signature, let cached = parseCache.fileEntries[cacheKey], cached.signature == signature {
                 let cached = updateCacheEntry(
                     cached,

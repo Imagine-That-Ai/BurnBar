@@ -69,6 +69,10 @@ final class MercuryConsentStore: ObservableObject {
             }
         }
         defaultsObserver = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            // UserDefaults notifications can be posted from arbitrary threads;
+            // this store is @MainActor-isolated, so marshal the Combine delivery
+            // before touching the ledger or its published properties.
+            .receive(on: DispatchQueue.main)
             .sink { [weak self, weak defaults] notification in
                 if let changedDefaults = notification.object as? UserDefaults,
                    let defaults,

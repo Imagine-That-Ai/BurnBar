@@ -44,21 +44,33 @@ struct UsageRefreshPipeline: Sendable {
         return result
     }
 
-    func parse(from discovery: DiscoverResult) async throws -> ParsedBatch {
+    /// Parses provider usage, optionally including full conversation bodies.
+    ///
+    /// The normal refresh passes `false` so token usage can be persisted before
+    /// the much more expensive optional conversation-indexing pass begins.
+    func parse(
+        from discovery: DiscoverResult,
+        includeConversationBodies: Bool? = nil,
+        minimumFileModificationDate: Date? = nil
+    ) async throws -> ParsedBatch {
         var result = ParsedBatch()
         let startedAt = Date()
+        let includeConversationBodies = includeConversationBodies ?? settings.conversationIndexingEnabled
 
         for (provider, parser) in discovery.parserEntries {
             do {
                 let parseResult = try await parser.parse(
-                    options: OpenBurnBarCore.LogParseOptions(includeConversationBodies: settings.conversationIndexingEnabled)
+                    options: OpenBurnBarCore.LogParseOptions(
+                        includeConversationBodies: includeConversationBodies,
+                        minimumFileModificationDate: minimumFileModificationDate
+                    )
                 )
                 let usages = parseResult.usages
                 let providerHealth: ParserHealth = usages.isEmpty
                     ? .empty
                     : .healthy(sessionCount: usages.count)
                 result.allUsages.append(contentsOf: usages)
-                if settings.conversationIndexingEnabled {
+                if includeConversationBodies {
                     result.allConversations.append(contentsOf: parseResult.conversations)
                 }
                 result.parserHealth[provider] = providerHealth

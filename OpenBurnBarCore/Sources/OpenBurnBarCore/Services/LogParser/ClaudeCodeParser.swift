@@ -75,8 +75,26 @@ public final class ClaudeCodeParser: LogParser, Sendable {
                 let sessionId = jsonlFile.deletingPathExtension().lastPathComponent
                 let cacheKey = cachePath(for: jsonlFile)
                 activePaths.insert(cacheKey)
+                let signature = FileSignature(for: jsonlFile)
 
-                if let signature = FileSignature(for: jsonlFile),
+                if shouldDeferHistoricalFile(
+                    signature: signature,
+                    minimumFileModificationDate: options.minimumFileModificationDate
+                ) {
+                    if let signature,
+                       let cached = parseCache.fileEntries[cacheKey],
+                       cached.signature == signature {
+                        appendCached(
+                            cached,
+                            includeConversation: options.includeConversationBodies,
+                            usages: &usages,
+                            conversations: &conversations
+                        )
+                    }
+                    continue
+                }
+
+                if let signature,
                    let cached = parseCache.fileEntries[cacheKey],
                    cached.signature == signature {
                     let cached = updateCacheEntry(
@@ -135,8 +153,26 @@ public final class ClaudeCodeParser: LogParser, Sendable {
                         let subSessionId = "\(sessionId)/\(agentId)"
                         let subagentCacheKey = cachePath(for: agentFile)
                         activePaths.insert(subagentCacheKey)
+                        let signature = FileSignature(for: agentFile)
 
-                        if let signature = FileSignature(for: agentFile),
+                        if shouldDeferHistoricalFile(
+                            signature: signature,
+                            minimumFileModificationDate: options.minimumFileModificationDate
+                        ) {
+                            if let signature,
+                               let cached = parseCache.fileEntries[subagentCacheKey],
+                               cached.signature == signature {
+                                appendCached(
+                                    cached,
+                                    includeConversation: false,
+                                    usages: &usages,
+                                    conversations: &conversations
+                                )
+                            }
+                            continue
+                        }
+
+                        if let signature,
                            let cached = parseCache.fileEntries[subagentCacheKey],
                            cached.signature == signature {
                             let cached = stripCachedConversationIfNeeded(
@@ -344,6 +380,15 @@ public final class ClaudeCodeParser: LogParser, Sendable {
 
     private func cachePath(for file: URL) -> String {
         file.standardizedFileURL.path
+    }
+
+    private func shouldDeferHistoricalFile(
+        signature: FileSignature?,
+        minimumFileModificationDate: Date?
+    ) -> Bool {
+        guard let minimumFileModificationDate else { return false }
+        guard let signature else { return true }
+        return Date(timeIntervalSince1970: signature.modifiedAt) < minimumFileModificationDate
     }
 
     private func appendCached(

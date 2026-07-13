@@ -50,6 +50,10 @@ public final class WindsurfParser: LogParser, Sendable {
     // MARK: - Parse
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
@@ -71,6 +75,9 @@ public final class WindsurfParser: LogParser, Sendable {
                 let fileSize = (attrs?[.size] as? Int) ?? 0
 
                 guard fileSize > 100 else { continue }
+                if let cutoff = options.minimumFileModificationDate, modified < cutoff {
+                    continue
+                }
 
                 let model = extractModelFromStateDB(sessionId: sessionId) ?? "unknown"
 
@@ -104,27 +111,29 @@ public final class WindsurfParser: LogParser, Sendable {
                 )
                 usages.append(usage)
 
-                let conversation = ConversationRecord(
-                    id: ConversationRecord.stableId(provider: provider, sessionId: sessionId),
-                    provider: provider,
-                    sessionId: sessionId,
-                    projectName: usage.projectName,
-                    startTime: created,
-                    endTime: modified,
-                    messageCount: 0,
-                    userWordCount: 0,
-                    assistantWordCount: 0,
-                    keyFiles: [],
-                    keyCommands: [],
-                    keyTools: [],
-                    inferredTaskTitle: extractSessionTitle(sessionId: sessionId) ?? "Windsurf Cascade Session",
-                    lastAssistantMessage: "",
-                    fullText: "",
-                    indexedAt: Date(),
-                    fileModifiedAt: modified,
-                    summary: nil
-                )
-                conversations.append(conversation)
+                if options.includeConversationBodies {
+                    let conversation = ConversationRecord(
+                        id: ConversationRecord.stableId(provider: provider, sessionId: sessionId),
+                        provider: provider,
+                        sessionId: sessionId,
+                        projectName: usage.projectName,
+                        startTime: created,
+                        endTime: modified,
+                        messageCount: 0,
+                        userWordCount: 0,
+                        assistantWordCount: 0,
+                        keyFiles: [],
+                        keyCommands: [],
+                        keyTools: [],
+                        inferredTaskTitle: extractSessionTitle(sessionId: sessionId) ?? "Windsurf Cascade Session",
+                        lastAssistantMessage: "",
+                        fullText: "",
+                        indexedAt: Date(),
+                        fileModifiedAt: modified,
+                        summary: nil
+                    )
+                    conversations.append(conversation)
+                }
             }
         }
 

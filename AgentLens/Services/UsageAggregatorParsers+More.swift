@@ -73,12 +73,19 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
                 let metadataFile = projectDir.appendingPathComponent("\(baseName).metadata.json")
                 let cacheKey = cachePath(for: jsonlFile)
                 activePaths.insert(cacheKey)
-
-                if let signature = compositeSignature(
+                let signature = compositeSignature(
                     jsonlFile: jsonlFile,
                     settingsFile: settingsFile,
                     metadataFile: metadataFile
-                ),
+                )
+
+                if let minimumFileModificationDate = options.minimumFileModificationDate,
+                   signature == nil
+                    || Date(timeIntervalSince1970: signature?.primary.modifiedAt ?? 0) < minimumFileModificationDate {
+                    continue
+                }
+
+                if let signature,
                    let cached = parseCache.fileEntries[cacheKey],
                    cached.signature == signature {
                     appendCached(
@@ -105,11 +112,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
                         conversations: &conversations
                     )
 
-                    if let signature = compositeSignature(
-                        jsonlFile: jsonlFile,
-                        settingsFile: settingsFile,
-                        metadataFile: metadataFile
-                    ) {
+                    if let signature {
                         parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,

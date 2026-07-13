@@ -58,14 +58,16 @@ public final class CodexParser: LogParser, Sendable {
 
         let parsed = try parseCodexDatabase(
             dbPath: dbPath,
-            includeConversationBodies: options.includeConversationBodies
+            includeConversationBodies: options.includeConversationBodies,
+            minimumFileModificationDate: options.minimumFileModificationDate
         )
         return ParseResult(usages: parsed.usages, conversations: parsed.conversations)
     }
 
     private func parseCodexDatabase(
         dbPath: String,
-        includeConversationBodies: Bool
+        includeConversationBodies: Bool,
+        minimumFileModificationDate: Date?
     ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
@@ -81,6 +83,13 @@ public final class CodexParser: LogParser, Sendable {
         let columnNames = Set(try reader.columnNames(ofTable: "threads"))
         let hasRolloutPath = columnNames.contains("rollout_path")
 
+        let createdAtFilter: String
+        if let minimumFileModificationDate {
+            createdAtFilter = " AND created_at >= \(Int64(minimumFileModificationDate.timeIntervalSince1970))"
+        } else {
+            createdAtFilter = ""
+        }
+
         let sql: String
         if hasRolloutPath {
             sql = """
@@ -88,7 +97,7 @@ public final class CodexParser: LogParser, Sendable {
                     id, title, model, model_provider, tokens_used,
                     created_at, updated_at, cwd, rollout_path
                 FROM threads
-                WHERE archived = 0
+                WHERE archived = 0\(createdAtFilter)
                 ORDER BY created_at DESC
                 LIMIT 500
             """
@@ -98,7 +107,7 @@ public final class CodexParser: LogParser, Sendable {
                     id, title, model, model_provider, tokens_used,
                     created_at, updated_at, cwd
                 FROM threads
-                WHERE archived = 0
+                WHERE archived = 0\(createdAtFilter)
                 ORDER BY created_at DESC
                 LIMIT 500
             """
