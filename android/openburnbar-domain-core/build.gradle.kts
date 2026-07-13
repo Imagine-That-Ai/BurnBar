@@ -32,6 +32,7 @@ dependencies {
     api("net.java.dev.jna:jna:5.19.0@aar")
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.1")
     // The production app attaches the native-only AAR directly. Attach it to
     // the test APK as well so the instrumentation smoke exercises Android ELF,
     // not a host substitute.
