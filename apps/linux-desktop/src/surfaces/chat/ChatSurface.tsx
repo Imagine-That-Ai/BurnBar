@@ -51,7 +51,7 @@ export function ChatSurface() {
   }, [streamPhase]);
 
   const offline = !fixtureMode && !bridge;
-  const provenance = fixtureMode ? 'fixture transcript' : 'live daemon session index';
+  const provenance = fixtureMode ? 'fixture transcript' : 'live daemon chat history';
   const visibleThreads = threads.slice(0, visibleThreadCount);
   const hasMoreThreads = threads.length > visibleThreadCount;
   const selectedThread = threads.find((t) => t.id === selectedThreadId) ?? null;

@@ -51,6 +51,46 @@ export type SessionEntry = {
 };
 export type SessionListResult = { sessions: SessionEntry[]; nextCursor: string | null };
 
+// ──────────────────────────── Exact-thread chat ────────────────────────────
+
+export type ChatThreadSummary = {
+  id: string;
+  title: string;
+  preview: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt?: string;
+  backendID?: string;
+};
+
+export type PersistedChatMessageRole = 'user' | 'assistant' | 'system';
+
+export type PersistedChatMessage = {
+  id: string;
+  threadID: string;
+  role: PersistedChatMessageRole;
+  content: string;
+  timestamp: string;
+  backendID?: string;
+};
+
+export type ChatThreadListResult = { threads: ChatThreadSummary[] };
+export type ChatThreadGetResult = {
+  thread?: ChatThreadSummary;
+  messages: PersistedChatMessage[];
+  hasMoreBefore: boolean;
+};
+export type ChatMessageAppendRequest = {
+  threadID: string;
+  messageID: string;
+  role: PersistedChatMessageRole;
+  content: string;
+  timestamp: string;
+  backendID?: string;
+};
+export type ChatMessageAppendResult = { message: PersistedChatMessage; inserted: boolean };
+
 // ─────────────────────────── P05: insights ────────────────────────────────
 
 export type WeeklyPoint = { label: string; tokens: number; costUsd: number };
@@ -747,6 +787,9 @@ export interface LinuxShellBridge {
   providerCatalog(): Promise<ProviderCatalog>;
   sessionList(): Promise<SessionListResult>;
   sessionSearch(query: string): Promise<SessionListResult>;
+  chatThreadList(query?: string, limit?: number): Promise<ChatThreadListResult>;
+  chatThreadGet(threadID: string, maxMessages?: number): Promise<ChatThreadGetResult>;
+  chatMessageAppend(request: ChatMessageAppendRequest): Promise<ChatMessageAppendResult>;
   usageInsights(): Promise<UsageInsights>;
   missionList(): Promise<MissionListResult>;
   missionApprovalDecision(id: string, decision: ApprovalDecision): Promise<void>;
@@ -1087,6 +1130,147 @@ function mapSessionList(raw: RawJsonValue): SessionListResult {
     })
   );
   return { sessions, nextCursor: str(pick(raw, 'nextCursor', 'cursor')) || null };
+}
+
+const CHAT_THREAD_RESULT_LIMIT = 100;
+const CHAT_MESSAGE_RESULT_LIMIT = 500;
+const CHAT_ID_LIMIT = 256;
+const CHAT_TITLE_LIMIT = 512;
+const CHAT_PREVIEW_LIMIT = 4_096;
+const CHAT_CONTENT_LIMIT = 262_144;
+const CHAT_BACKEND_ID_LIMIT = 64;
+
+function requireBoundedString(
+  value: RawJsonValue,
+  label: string,
+  maxBytes: number,
+  options: { allowEmpty?: boolean } = {}
+): string {
+  if (typeof value !== 'string' || (!options.allowEmpty && value.length === 0)) {
+    throw new Error(`${label} must be ${options.allowEmpty ? 'a' : 'a non-empty'} string.`);
+  }
+  if (new TextEncoder().encode(value).length > maxBytes) {
+    throw new Error(`${label} exceeds ${maxBytes} UTF-8 bytes.`);
+  }
+  return value;
+}
+
+function optionalBoundedString(value: RawJsonValue, label: string, maxBytes: number): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return requireBoundedString(value, label, maxBytes);
+}
+
+function requireTimestamp(value: RawJsonValue, label: string): string {
+  const timestamp = requireBoundedString(value, label, 64);
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(timestamp) ||
+    !Number.isFinite(Date.parse(timestamp))
+  ) {
+    throw new Error(`${label} must be a canonical ISO-8601 timestamp.`);
+  }
+  return timestamp;
+}
+
+function requireCount(value: RawJsonValue, label: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative safe integer.`);
+  }
+  return value;
+}
+
+function decodePersistedChatRole(value: RawJsonValue, label: string): PersistedChatMessageRole {
+  if (value === 'user' || value === 'assistant' || value === 'system') return value;
+  throw new Error(`${label} is unsupported.`);
+}
+
+function decodeChatThreadSummary(raw: RawJsonValue, label: string): ChatThreadSummary {
+  const source = requireObject(raw, label);
+  return {
+    id: requireBoundedString(source.id, `${label}.id`, CHAT_ID_LIMIT),
+    title: requireBoundedString(source.title, `${label}.title`, CHAT_TITLE_LIMIT),
+    preview: requireBoundedString(source.preview, `${label}.preview`, CHAT_PREVIEW_LIMIT, { allowEmpty: true }),
+    messageCount: requireCount(source.messageCount, `${label}.messageCount`),
+    createdAt: requireTimestamp(source.createdAt, `${label}.createdAt`),
+    updatedAt: requireTimestamp(source.updatedAt, `${label}.updatedAt`),
+    lastMessageAt:
+      source.lastMessageAt === undefined || source.lastMessageAt === null
+        ? undefined
+        : requireTimestamp(source.lastMessageAt, `${label}.lastMessageAt`),
+    backendID: optionalBoundedString(source.backendID, `${label}.backendID`, CHAT_BACKEND_ID_LIMIT)
+  };
+}
+
+function decodePersistedChatMessage(raw: RawJsonValue, label: string): PersistedChatMessage {
+  const source = requireObject(raw, label);
+  return {
+    id: requireBoundedString(source.id, `${label}.id`, CHAT_ID_LIMIT),
+    threadID: requireBoundedString(source.threadID, `${label}.threadID`, CHAT_ID_LIMIT),
+    role: decodePersistedChatRole(source.role, `${label}.role`),
+    content: requireBoundedString(source.content, `${label}.content`, CHAT_CONTENT_LIMIT, { allowEmpty: true }),
+    timestamp: requireTimestamp(source.timestamp, `${label}.timestamp`),
+    backendID: optionalBoundedString(source.backendID, `${label}.backendID`, CHAT_BACKEND_ID_LIMIT)
+  };
+}
+
+export function decodeChatThreadList(raw: RawJsonValue): ChatThreadListResult {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'chat thread list');
+  if (!Array.isArray(source.threads)) throw new Error('chat thread list.threads must be an array.');
+  if (source.threads.length > CHAT_THREAD_RESULT_LIMIT) {
+    throw new Error(`chat thread list.threads exceeds ${CHAT_THREAD_RESULT_LIMIT} entries.`);
+  }
+  return {
+    threads: source.threads.map((thread, index) =>
+      decodeChatThreadSummary(thread, `chat thread list.threads[${index}]`)
+    )
+  };
+}
+
+export function decodeChatThreadGet(raw: RawJsonValue): ChatThreadGetResult {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'chat thread get');
+  if (!Array.isArray(source.messages)) throw new Error('chat thread get.messages must be an array.');
+  if (source.messages.length > CHAT_MESSAGE_RESULT_LIMIT) {
+    throw new Error(`chat thread get.messages exceeds ${CHAT_MESSAGE_RESULT_LIMIT} entries.`);
+  }
+  const thread = source.thread === undefined || source.thread === null
+    ? undefined
+    : decodeChatThreadSummary(source.thread, 'chat thread get.thread');
+  const messages = source.messages.map((message, index) =>
+    decodePersistedChatMessage(message, `chat thread get.messages[${index}]`)
+  );
+  if (!thread && messages.length > 0) {
+    throw new Error('chat thread get cannot contain messages when the thread is missing.');
+  }
+  if (thread && messages.some((message) => message.threadID !== thread.id)) {
+    throw new Error('chat thread get contains a message for a different thread.');
+  }
+  return {
+    thread,
+    messages,
+    hasMoreBefore: requireBoolean(source.hasMoreBefore, 'chat thread get.hasMoreBefore')
+  };
+}
+
+export function decodeChatMessageAppend(raw: RawJsonValue): ChatMessageAppendResult {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'chat message append');
+  return {
+    message: decodePersistedChatMessage(source.message, 'chat message append.message'),
+    inserted: requireBoolean(source.inserted, 'chat message append.inserted')
+  };
+}
+
+function assertAppendEcho(request: ChatMessageAppendRequest, result: ChatMessageAppendResult): void {
+  const message = result.message;
+  const timestampsMatch = Math.abs(Date.parse(message.timestamp) - Date.parse(request.timestamp)) < 1;
+  if (
+    message.id !== request.messageID ||
+    message.threadID !== request.threadID ||
+    message.role !== request.role ||
+    message.content !== request.content ||
+    message.backendID !== request.backendID ||
+    !timestampsMatch
+  ) {
+    throw new Error('chat message append response does not match the requested idempotency identity.');
+  }
 }
 
 function mapUsageInsights(raw: RawJsonValue): UsageInsights {
@@ -2264,6 +2448,21 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     sessionSearch: async (query) => {
       const raw = await invoke<RawJsonValue>('session_search', { query });
       return mapSessionList(raw);
+    },
+    // Exact persisted chat authority; unlike P03, these never derive chat from usage rows.
+    chatThreadList: async (query, limit = 100) => {
+      const raw = await invoke<RawJsonValue>('chat_thread_list', { query: query || null, limit });
+      return decodeChatThreadList(raw);
+    },
+    chatThreadGet: async (threadID, maxMessages = 500) => {
+      const raw = await invoke<RawJsonValue>('chat_thread_get', { threadId: threadID, maxMessages });
+      return decodeChatThreadGet(raw);
+    },
+    chatMessageAppend: async (request) => {
+      const raw = await invoke<RawJsonValue>('chat_message_append', { request });
+      const result = decodeChatMessageAppend(raw);
+      assertAppendEcho(request, result);
+      return result;
     },
     // P05 — daemon.usage.recent → insights aggregation
     usageInsights: async () => {

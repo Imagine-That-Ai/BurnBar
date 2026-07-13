@@ -137,4 +137,21 @@ describe('VAL-RPC bridge contract', () => {
     );
     expect(accountTypes).not.toMatch(/\b(refreshToken|idToken|appCheckToken|sessionGeneration|deviceID)\b/);
   });
+
+  it('wires exact-thread chat only to canonical daemon RPC methods', () => {
+    for (const method of [
+      'daemon.chat.thread.list',
+      'daemon.chat.thread.get',
+      'daemon.chat.message.append'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(rustBridge).toContain('fn chat_thread_list');
+    expect(rustBridge).toContain('fn chat_thread_get');
+    expect(rustBridge).toContain('fn chat_message_append');
+    expect(tsBridge).toContain('chat_thread_list');
+    expect(tsBridge).toContain('chat_thread_get');
+    expect(tsBridge).toContain('chat_message_append');
+  });
 });

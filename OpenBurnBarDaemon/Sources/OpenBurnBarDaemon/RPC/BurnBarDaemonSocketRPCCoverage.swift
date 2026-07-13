@@ -41,6 +41,12 @@ enum BurnBarDaemonSocketRPCCoverage {
         .usageRecent
     ]
 
+    static let chat: Set<BurnBarRPCMethod> = [
+        .chatThreadList,
+        .chatThreadGet,
+        .chatMessageAppend
+    ]
+
     static let observability: Set<BurnBarRPCMethod> = [
         .proxyRouteLogRecent,
         .proxyRouteLogClear,
@@ -178,6 +184,7 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(lifecycle)
             .union(config)
             .union(usage)
+            .union(chat)
             .union(observability)
             .union(membership)
             .union(tooling)
@@ -196,6 +203,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if lifecycle.contains(method) { return "lifecycle" }
         if config.contains(method) { return "config" }
         if usage.contains(method) { return "usage" }
+        if chat.contains(method) { return "chat" }
         if observability.contains(method) { return "observability" }
         if membership.contains(method) { return "membership" }
         if tooling.contains(method) { return "tooling" }
