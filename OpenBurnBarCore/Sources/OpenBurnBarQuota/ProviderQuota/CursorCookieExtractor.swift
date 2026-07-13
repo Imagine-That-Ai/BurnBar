@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarSQLiteReader
 
 // MARK: - Cursor Session Token Extractor
 

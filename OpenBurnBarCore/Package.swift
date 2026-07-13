@@ -786,6 +786,16 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarKernel",
                 "OpenBurnBarSQLiteReader",
+                // P-13 (integrator-authorized manifest edit, docs/CORE_DECOMPOSITION_PROGRAM.md
+                // AE-IMPORT STOP override): `AiderQuotaAdapter` parses Aider session logs via
+                // `FileHandle.readAllUTF8Lines()` → `BufferedLineSequence`, both defined in
+                // `OpenBurnBarLogParsers` (LogParser/{LogParserProtocol,BufferedLineSequence}.swift).
+                // The DRAFT card's "NO LogParsers edge" invariant was FALSE (its grep matched only
+                // the literal `LogParser`, missing the method-name reference). This edge is acyclic:
+                // `OpenBurnBarLogParsers` depends only on [Kernel, SQLiteReader], so Quota→LogParsers
+                // introduces no cycle. The moved `AiderQuotaAdapter.swift` gains `import
+                // OpenBurnBarLogParsers` (AE-IMPORT); no other Quota file references LogParsers.
+                "OpenBurnBarLogParsers",
                 swiftCryptoNonAppleDependency
             ],
             exclude: openBurnBarQuotaExcludes
@@ -1007,7 +1017,13 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarCore",
                 "OpenBurnBarFirestoreModels",
-                "OpenBurnBarLinuxSecurity"
+                "OpenBurnBarLinuxSecurity",
+                // P-13 AE-TESTABLE: `ZAIQuotaAdapterTests` reaches the INTERNAL
+                // `ZAIQuotaAdapter.zaiUsageQueryItems(now:)`, which moved with the
+                // ProviderQuota adapters into `OpenBurnBarQuota`. `@testable import
+                // OpenBurnBarQuota` (added in that test) needs the module as a test-target
+                // dependency; the test file otherwise stays put with its logic unchanged.
+                "OpenBurnBarQuota"
             ] + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
