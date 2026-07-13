@@ -2,7 +2,7 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-12 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-13 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
