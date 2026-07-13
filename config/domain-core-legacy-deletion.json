@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 1,
+  "sourceRoots": {
+    "swift-quota": "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota",
+    "swift-cloudvault": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels",
+    "swift-pricing": "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser",
+    "swift-hermes-kernel": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels",
+    "windows-quota": "windows/app/OpenBurnBar.App.Presentation/Quota",
+    "windows-cloudvault": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto",
+    "android-cloudvault": "android/app/src/main/java/com/openburnbar/data/cloud",
+    "android-hermes": "android/app/src/main/java/com/openburnbar/data/hermes/relay",
+    "android-build": "android/app",
+    "console-cloudvault": "apps/console/lib",
+    "functions-pricing": "functions/src"
+  },
+  "rows": [
+    {
+      "id": "quota.claude_statusline",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaDomainCoreAdapter.swift", "symbol": "legacyBuckets" },
+        { "kind": "path", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs", "symbol": "ParseLegacy" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs", "symbol": "ParseWindows" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs", "symbol": "ParseWindowMap" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs", "symbol": "BuildBuckets" }
+      ]
+    },
+    {
+      "id": "quota.codex_usage",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/CodexQuotaAdapter.swift", "symbol": "legacyUsageSnapshot" },
+        { "kind": "source_symbol", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/CodexQuotaAdapter.swift", "symbol": "rateLimitBuckets" },
+        { "kind": "path", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs", "symbol": "ParseLegacy" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs", "symbol": "RateLimitBuckets" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs", "symbol": "Bucket" }
+      ]
+    },
+    {
+      "id": "quota.cursor_usage",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/CursorQuotaAdapter.swift", "symbol": "buildExactSnapshot" },
+        { "kind": "path", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs", "symbol": "ParseLegacy" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs", "symbol": "PercentBucket" }
+      ]
+    },
+    {
+      "id": "quota.anthropic_headers",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaAdapter.swift", "symbol": "legacyHeaderProbeSnapshot" },
+        { "kind": "path", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs", "symbol": "ParseHeaders" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs", "symbol": "BuildSnapshot" },
+        { "kind": "source_symbol", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs", "symbol": "AddStandardBucket" }
+      ]
+    },
+    {
+      "id": "cloudvault.portable_primitives",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift", "symbol": "legacyRecoveryWrappingKey" },
+        { "kind": "mode_literal", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultDomainCoreAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt", "symbol": "legacyAesSealDetached" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt", "symbol": "legacyAesOpenCombined" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt", "symbol": "legacyAadV1" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt", "symbol": "legacyAadV2" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt", "symbol": "legacyVaultKeyId" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt", "symbol": "legacyExpectedSessionBodyHash" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt", "symbol": "legacyKeyedHashHex" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt", "symbol": "legacySha256Hex" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt", "symbol": "legacyDeriveRecoveryWrappingKey" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt", "symbol": "legacySplitEscrowWire" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt", "symbol": "legacyEscrowSeal" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt", "symbol": "legacyEscrowOpen" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt", "symbol": "legacyRecoveryWrapVaultKey" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt", "symbol": "legacyRecoveryOpenVaultKey" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt", "symbol": "legacyAesSealCombined" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt", "symbol": "legacyAesOpenCombined" },
+        { "kind": "mode_literal", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt", "literal": "CLOUDVAULT_DOMAIN_CORE_MODE" },
+        { "kind": "mode_literal", "root": "android-build", "path": "android/app/build.gradle.kts", "literal": "CLOUDVAULT_DOMAIN_CORE_MODE" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultAadContext.cs", "symbol": "LegacyV1" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultAadContext.cs", "symbol": "LegacyV2" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacyAadData" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacyVaultKeyId" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacySha256Hex" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacyEscrowSeal" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacyEscrowSplitWire" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacyEscrowOpen" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacyDeriveRecoveryWrappingKey" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacyRecoveryWrapVaultKey" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacyRecoveryOpenVaultKey" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacyRecoveryVerificationHash" },
+        { "kind": "source_symbol", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs", "symbol": "LegacyDecodeBase64" },
+        { "kind": "mode_literal", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/DomainCoreCloudVaultBridge.cs", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE" },
+        { "kind": "source_symbol", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacyBytesToBase64" },
+        { "kind": "source_symbol", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacyBase64ToBytes" },
+        { "kind": "source_symbol", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacySha256Hex" },
+        { "kind": "source_symbol", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacyCloudVaultAADContext" },
+        { "kind": "source_symbol", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacyKeyedHmacHex" },
+        { "kind": "source_symbol", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacySplitEscrowWire" },
+        { "kind": "mode_literal", "root": "console-cloudvault", "path": "apps/console/lib/domainCoreCloudVault.ts", "literal": "NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE" }
+      ]
+    },
+    {
+      "id": "cloudvault.document_rewrap",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift", "symbol": "rewrapCloudVaultDocumentLegacy" },
+        { "kind": "source_symbol", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultDocumentRewrapDomainCoreAdapter.swift", "symbol": "makeLegacyNoncePlan" },
+        { "kind": "mode_literal", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultDocumentRewrapDomainCoreAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt", "symbol": "rewrapCloudVaultDocumentLegacy" },
+        { "kind": "mode_literal", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDocumentRewrapDomainCore.kt", "literal": "CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE" },
+        { "kind": "mode_literal", "root": "android-build", "path": "android/app/build.gradle.kts", "literal": "CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE" }
+      ]
+    },
+    {
+      "id": "cloudvault.search",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift", "symbol": "legacyTokenHashes" },
+        { "kind": "source_symbol", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift", "symbol": "legacySearchIndexTokenHashes" },
+        { "kind": "source_symbol", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift", "symbol": "legacySearchQueryTokenHashes" },
+        { "kind": "source_symbol", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift", "symbol": "legacySemanticHashes" },
+        { "kind": "mode_literal", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultSearchDomainCoreAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "tokenHashes" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "searchIndexTokenHashes" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "searchQueryTokenHashes" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "semanticHashes" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "normalizedTokens" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "exactPhraseTokens" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "searchIndexPrefixTerms" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "searchQueryPrefixTerm" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "semanticFeatures" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "semanticConcepts" },
+        { "kind": "source_symbol", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCryptoSearch.kt", "symbol": "simpleSemanticStem" },
+        { "kind": "mode_literal", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultSearchDomainCore.kt", "literal": "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE" },
+        { "kind": "mode_literal", "root": "android-build", "path": "android/app/build.gradle.kts", "literal": "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE" }
+      ]
+    },
+    {
+      "id": "hermes.relay_crypto",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "swift-hermes-kernel", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift", "symbol": "keyWrapSharedInfo" },
+        { "kind": "source_symbol", "root": "swift-hermes-kernel", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift", "symbol": "deriveWrappingKey" },
+        { "kind": "source_symbol", "root": "swift-hermes-kernel", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift", "symbol": "hpkeV3Info" },
+        { "kind": "source_symbol", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayCryptoSupport.kt", "symbol": "keyWrapSharedInfo" },
+        { "kind": "source_symbol", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayCryptoSupport.kt", "symbol": "keyWrapSharedInfoV2" },
+        { "kind": "source_symbol", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayCryptoHkdf.kt", "symbol": "hkdfExtractLegacy" },
+        { "kind": "source_symbol", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayCryptoHkdf.kt", "symbol": "hkdfExpandLegacy" }
+      ]
+    },
+    {
+      "id": "hermes.ratchet_transforms",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift", "symbol": "rootKDF" },
+        { "kind": "source_symbol", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift", "symbol": "chainKDF" },
+        { "kind": "source_symbol", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift", "symbol": "envelopeAAD" },
+        { "kind": "source_symbol", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetCrypto.kt", "symbol": "rootKDF" },
+        { "kind": "source_symbol", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetCrypto.kt", "symbol": "chainKDF" },
+        { "kind": "source_symbol", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetCrypto.kt", "symbol": "hmacSha256" },
+        { "kind": "source_symbol", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetCrypto.kt", "symbol": "envelopeAAD" }
+      ]
+    },
+    {
+      "id": "pricing.token_cost",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "swift-pricing", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift", "symbol": "cost" },
+        { "kind": "mode_literal", "root": "swift-pricing", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_PRICING_MODE" },
+        { "kind": "source_symbol", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "legacyTokenCost" }
+      ]
+    },
+    {
+      "id": "pricing.kimi_historical",
+      "state": "rollout",
+      "receipts": {},
+      "targets": [
+        { "kind": "source_symbol", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "priceLegacyKimiEvent" },
+        { "kind": "source_symbol", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "LEGACY_KIMI_WIRE_PRICING" },
+        { "kind": "source_symbol", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "LEGACY_KIMI_WIRE_MODEL" }
+      ]
+    }
+  ],
+  "sharedTargets": [
+    {
+      "rowIds": ["quota.claude_statusline", "quota.codex_usage", "quota.cursor_usage", "quota.anthropic_headers"],
+      "target": { "kind": "mode_literal", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaDomainCoreAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE" }
+    },
+    {
+      "rowIds": ["quota.claude_statusline", "quota.codex_usage", "quota.cursor_usage", "quota.anthropic_headers"],
+      "target": { "kind": "mode_literal", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaDomainCore.cs", "literal": "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE" }
+    },
+    {
+      "rowIds": ["quota.claude_statusline", "quota.codex_usage", "quota.cursor_usage", "quota.anthropic_headers"],
+      "target": { "kind": "mode_literal", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/DomainCoreQuotaBridge.cs", "literal": "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE" }
+    },
+    {
+      "rowIds": ["hermes.relay_crypto", "hermes.ratchet_transforms"],
+      "target": { "kind": "mode_literal", "root": "swift-hermes-kernel", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE" }
+    },
+    {
+      "rowIds": ["hermes.relay_crypto", "hermes.ratchet_transforms"],
+      "target": { "kind": "mode_literal", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE" }
+    },
+    {
+      "rowIds": ["hermes.relay_crypto", "hermes.ratchet_transforms"],
+      "target": { "kind": "mode_literal", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesDomainCoreAdapter.kt", "literal": "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE" }
+    },
+    {
+      "rowIds": ["pricing.token_cost", "pricing.kimi_historical"],
+      "target": { "kind": "mode_literal", "root": "functions-pricing", "path": "functions/src/domainCorePricing.ts", "literal": "OPENBURNBAR_DOMAIN_CORE_PRICING_MODE" }
+    }
+  ]
+}
