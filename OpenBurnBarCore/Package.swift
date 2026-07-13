@@ -432,7 +432,13 @@ let swiftCryptoNonAppleDependency: Target.Dependency = .product(
 // so the production `OpenBurnBarCore` target is pruned identically on both
 // non-Apple hosts. Host-evaluated, so `os(Windows)` is true only on a Windows host.
 #if os(Linux) || os(Windows)
-let openBurnBarCoreExcludes = [
+// P-16f (S14/K4 complete): this array now holds ZERO real entries — every UI file that
+// used to be excluded off-Apple has moved into targets pruned WHOLE off-Apple, so the
+// literal is comment-only. An empty `[...]` literal has no inferable element type, so it
+// MUST carry an explicit `[String]` annotation or SwiftPM rejects the off-Apple manifest
+// with "empty collection literal requires an explicit type" (the Apple `#else` branch is
+// already annotated the same way). Keep the annotation for as long as the array is empty.
+let openBurnBarCoreExcludes: [String] = [
     // P-16f (S14 UI, FINAL UI sub-packet): the last 15 Views/ root files moved to the
     // Apple-only OpenBurnBarUI target, emptying Core's Views/ directory entirely. The
     // wholesale "Views" exclude that P-16a–e rode is therefore DELETED — the directory no
