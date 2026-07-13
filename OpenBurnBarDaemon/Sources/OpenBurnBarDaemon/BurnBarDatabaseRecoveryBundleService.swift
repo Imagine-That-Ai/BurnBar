@@ -33,15 +33,15 @@ enum BurnBarDatabaseRecoveryBundleServiceError: Error, CustomStringConvertible, 
         case .parentUnavailable: return "The recovery bundle destination directory is unavailable or unsafe."
         case .destinationExists: return "The recovery bundle destination already exists. Choose a new file."
         case .unsafeDirectoryPermissions: return "The recovery bundle destination directory is writable by another user."
-        case let .bundleTooLarge(bytes): return "Recovery bundle exceeds the 64 KiB limit ((bytes) bytes)."
+        case let .bundleTooLarge(bytes): return "Recovery bundle exceeds the 64 KiB limit (\(bytes) bytes)."
         case .databaseUnavailable: return "The daemon database path is not configured or does not exist."
         case .databaseNotEncrypted: return "The daemon database is not an encrypted SQLCipher database."
         case .cipherUnavailable: return "SQLCipher is not available in this daemon build."
         case .keyUnavailable: return "The daemon database key is unavailable from approved native secret storage."
         case .candidateKeyRejected: return "The recovery bundle key could not open the encrypted database."
         case .keyStorageUnavailable: return "No approved writable native secret store is available."
-        case let .crypto(error): return "Recovery bundle authentication failed or the bundle is malformed: (error)."
-        case let .io(detail): return "Recovery bundle file operation failed: (detail)"
+        case let .crypto(error): return "Recovery bundle authentication failed or the bundle is malformed: \(error)."
+        case let .io(detail): return "Recovery bundle file operation failed: \(detail)"
         }
     }
 }
@@ -100,7 +100,7 @@ final class BurnBarDatabaseRecoveryBundleService: Sendable {
         try writeBundle(bundle, to: destination)
         logger.notice(
             "database_recovery_bundle_exported",
-            metadata: ["bytes": "(bundle.count)", "path": destination.path]
+            metadata: ["bytes": "\(bundle.count)", "path": destination.path]
         )
         return BurnBarDatabaseRecoveryBundleExportResponse(
             destinationPath: destination.path,
@@ -254,7 +254,7 @@ final class BurnBarDatabaseRecoveryBundleService: Sendable {
 
     private func writeBundle(_ data: Data, to destination: URL) throws {
         let parent = destination.deletingLastPathComponent()
-        let temporary = parent.appendingPathComponent(".(destination.lastPathComponent).tmp.(UUID().uuidString)")
+        let temporary = parent.appendingPathComponent(".\(destination.lastPathComponent).tmp.\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: temporary) }
         do {
             try data.write(to: temporary, options: .atomic)
