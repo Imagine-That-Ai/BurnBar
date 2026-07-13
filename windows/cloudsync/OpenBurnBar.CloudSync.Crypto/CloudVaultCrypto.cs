@@ -88,7 +88,11 @@ namespace OpenBurnBar.CloudSync.Crypto
             var ciphertext = DecodeBase64(envelope.Ciphertext);
             var tag = DecodeBase64(envelope.Tag);
             var schemaVersion = envelope.SchemaVersion ?? 1;
-            if (schemaVersion >= CurrentSealedTextSchemaVersion)
+            if (schemaVersion != 1 && schemaVersion != CurrentSealedTextSchemaVersion)
+            {
+                throw CloudVaultCryptoException.InvalidEnvelope();
+            }
+            if (schemaVersion == CurrentSealedTextSchemaVersion)
             {
                 if (aadContext == null)
                 {
