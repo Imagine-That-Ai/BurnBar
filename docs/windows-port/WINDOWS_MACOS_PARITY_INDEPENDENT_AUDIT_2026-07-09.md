@@ -188,6 +188,13 @@ unproven host behavior to certification:
 - The companion TCP plane now requires the same bearer token as the local
   gateway when composed by the app; missing or incorrect credentials fail closed
   and the token is stripped before command handlers receive the request.
+- The Computer Use settings host now composes a real file-backed audit service
+  instead of an unavailable placeholder. It validates the canonical manifest,
+  parent-linked chain, and terminal head anchor; verifies an optional signed
+  head; and atomically exports bounded ZIP evidence with optional screenshots.
+  Missing archives, malformed JSON, tampered chains, path traversal, and
+  reparse-point paths fail closed. OpenTimestamps notarization remains an
+  explicit authenticated-account gate.
 - Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
   without writing prompts or tool output to disk. The companion CLI now exposes
   a bounded `fusion.run` command that composes this loop with the configured

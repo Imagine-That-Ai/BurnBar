@@ -120,7 +120,7 @@ internal static class WindowsSettingsComposition
             WindowsAccessibilityProbe.Instance),
         SettingsTab.ComputerUse => new ComputerUseSettingsViewModel(
             WindowsAccessibilityProbe.Instance,
-            UnavailableComputerUseAuditService.Instance,
+            new FileComputerUseAuditService(ComputerUseAuditRoot()),
             new ComputerUsePermissionsStore(Persistence)),
         SettingsTab.Pets => new PetsSettingsViewModel(store: new PetStore(Persistence)),
         SettingsTab.Account => new AccountSettingsViewModel(
@@ -350,11 +350,14 @@ internal static class WindowsSettingsComposition
         public bool TriggerBackup() => false;
     }
 
-    private sealed class UnavailableComputerUseAuditService : IComputerUseAuditService
+    private static string ComputerUseAuditRoot()
     {
-        public static readonly UnavailableComputerUseAuditService Instance = new();
-        public AuditActionResult ValidateChain(string sessionId) => AuditActionResult.Fail("No audit archive is open for this session.");
-        public AuditActionResult ExportArchive(string sessionId, bool includeScreenshots) => AuditActionResult.Fail("No audit archive is open for this session.");
-        public AuditActionResult Notarize(string sessionId) => AuditActionResult.Fail("Audit notarization requires an authenticated production account.");
+        string? configured = Environment.GetEnvironmentVariable(FileComputerUseAuditService.RootEnvironmentVariable);
+        return string.IsNullOrWhiteSpace(configured)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenBurnBar",
+                "computer-use-audit")
+            : configured;
     }
 }
