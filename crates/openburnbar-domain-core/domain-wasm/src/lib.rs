@@ -2,6 +2,7 @@ use openburnbar_domain_core::cloudvault::{
     self, CloudVaultAadContext, CloudVaultError, CloudVaultHashPurpose as CoreHashPurpose,
 };
 use wasm_bindgen::prelude::*;
+use zeroize::Zeroize;
 
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -20,6 +21,44 @@ impl From<CloudVaultHashPurpose> for CoreHashPurpose {
             CloudVaultHashPurpose::SessionChunk => Self::SessionChunk,
             CloudVaultHashPurpose::ProjectMemoryContent => Self::ProjectMemoryContent,
         }
+    }
+}
+
+#[wasm_bindgen]
+pub struct CloudVaultRecoveryWrappedVaultKey {
+    combined: Vec<u8>,
+    verification_hash: String,
+}
+
+#[wasm_bindgen]
+impl CloudVaultRecoveryWrappedVaultKey {
+    #[wasm_bindgen(getter)]
+    pub fn combined(&self) -> Vec<u8> {
+        self.combined.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = verificationHash)]
+    pub fn verification_hash(&self) -> String {
+        self.verification_hash.clone()
+    }
+}
+
+#[wasm_bindgen]
+pub struct CloudVaultEscrowWireParts {
+    ephemeral_public_key: Vec<u8>,
+    aes_gcm_combined: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl CloudVaultEscrowWireParts {
+    #[wasm_bindgen(getter, js_name = ephemeralPublicKey)]
+    pub fn ephemeral_public_key(&self) -> Vec<u8> {
+        self.ephemeral_public_key.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = aesGcmCombined)]
+    pub fn aes_gcm_combined(&self) -> Vec<u8> {
+        self.aes_gcm_combined.clone()
     }
 }
 
@@ -104,6 +143,98 @@ pub fn cloud_vault_base64_decode_strict(value: &str) -> Result<Vec<u8>, JsError>
     cloudvault::base64_decode_strict(value).map_err(js_error)
 }
 
+#[wasm_bindgen(js_name = cloudVaultNormalizeRecoveryKey)]
+pub fn cloud_vault_normalize_recovery_key(recovery_key: &str) -> Result<String, JsError> {
+    cloudvault::normalize_recovery_key(recovery_key).map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultRecoveryWrappingKey)]
+pub fn cloud_vault_recovery_wrapping_key(recovery_key: &str) -> Result<Vec<u8>, JsError> {
+    cloudvault::recovery_wrapping_key(recovery_key)
+        .map(|mut key| {
+            let output = key.to_vec();
+            key.zeroize();
+            output
+        })
+        .map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultRecoveryVerificationHash)]
+pub fn cloud_vault_recovery_verification_hash(recovery_key: &str) -> Result<String, JsError> {
+    cloudvault::recovery_verification_hash(recovery_key).map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultRecoveryWrapVaultKey)]
+pub fn cloud_vault_recovery_wrap_vault_key(
+    vault_key: &[u8],
+    recovery_key: &str,
+    nonce: &[u8],
+) -> Result<CloudVaultRecoveryWrappedVaultKey, JsError> {
+    cloudvault::recovery_wrap_vault_key(vault_key, recovery_key, nonce)
+        .map(|wrapped| CloudVaultRecoveryWrappedVaultKey {
+            combined: wrapped.combined,
+            verification_hash: wrapped.verification_hash,
+        })
+        .map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultRecoveryOpenVaultKey)]
+pub fn cloud_vault_recovery_open_vault_key(
+    combined: &[u8],
+    recovery_key: &str,
+) -> Result<Vec<u8>, JsError> {
+    cloudvault::recovery_open_vault_key(combined, recovery_key).map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultValidateP256X963PublicKey)]
+pub fn cloud_vault_validate_p256_x963_public_key(public_key: &[u8]) -> Result<(), JsError> {
+    cloudvault::validate_p256_x963_public_key(public_key).map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultEscrowWrappingKey)]
+pub fn cloud_vault_escrow_wrapping_key(shared_secret: &[u8]) -> Result<Vec<u8>, JsError> {
+    cloudvault::escrow_wrapping_key(shared_secret)
+        .map(|mut key| {
+            let output = key.to_vec();
+            key.zeroize();
+            output
+        })
+        .map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultEscrowAssembleWire)]
+pub fn cloud_vault_escrow_assemble_wire(
+    ephemeral_public_key: &[u8],
+    aes_gcm_combined: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    cloudvault::escrow_assemble_wire(ephemeral_public_key, aes_gcm_combined).map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultEscrowSplitWire)]
+pub fn cloud_vault_escrow_split_wire(wire: &[u8]) -> Result<CloudVaultEscrowWireParts, JsError> {
+    cloudvault::escrow_split_wire(wire)
+        .map(|parts| CloudVaultEscrowWireParts {
+            ephemeral_public_key: parts.ephemeral_public_key,
+            aes_gcm_combined: parts.aes_gcm_combined,
+        })
+        .map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultEscrowSeal)]
+pub fn cloud_vault_escrow_seal(
+    plaintext: &[u8],
+    ephemeral_public_key: &[u8],
+    shared_secret: &[u8],
+    nonce: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    cloudvault::escrow_seal(plaintext, ephemeral_public_key, shared_secret, nonce).map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultEscrowOpen)]
+pub fn cloud_vault_escrow_open(wire: &[u8], shared_secret: &[u8]) -> Result<Vec<u8>, JsError> {
+    cloudvault::escrow_open(wire, shared_secret).map_err(js_error)
+}
+
 fn context(
     uid: &str,
     collection: &str,
@@ -137,6 +268,10 @@ fn js_error(error: CloudVaultError) -> JsError {
         CloudVaultError::AuthenticationFailed => "authentication_failed",
         CloudVaultError::InvalidUtf8 => "invalid_utf8",
         CloudVaultError::InvalidBase64 => "invalid_base64",
+        CloudVaultError::InvalidRecoveryKey => "invalid_recovery_key",
+        CloudVaultError::InvalidSharedSecretLength => "invalid_shared_secret_length",
+        CloudVaultError::InvalidP256PublicKey => "invalid_p256_public_key",
+        CloudVaultError::InvalidEscrowWireLength => "invalid_escrow_wire_length",
     };
     JsError::new(&format!("{code}: {error}"))
 }
