@@ -284,6 +284,7 @@ mod linux {
         }
     }
 
+    // reason: the capability probe is compiled on macOS for shared typed tests but has no native urgency sink.
     #[allow(dead_code)]
     pub(super) fn urgency(_value: NativeNotificationUrgency) {}
 }
