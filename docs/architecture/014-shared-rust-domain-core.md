@@ -44,6 +44,13 @@ contract to ABI 2 and adds Android and Wasm packaging. Consumers must verify the
 expected ABI before invoking Rust; release artifacts must prove native loading
 on their supported architectures rather than relying on binding compilation.
 
+Hermes C2 extends ABI 2 without transferring P-256 private-key custody. Rust
+owns deterministic relay/ratchet wire bytes, KDFs, safety codes, and payload
+AEAD. CryptoKit and JCA still generate/store private keys, perform ECDH/HPKE,
+generate nonces, and commit ratchet state. The rollout flag is
+`OPENBURNBAR_DOMAIN_CORE_HERMES_MODE`; authentication failures never fall back
+to legacy code.
+
 ## Consequences
 
 - Quota parsing is the pilot because it removes real duplication with a small,
