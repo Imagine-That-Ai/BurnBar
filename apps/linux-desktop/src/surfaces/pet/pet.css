@@ -11,7 +11,9 @@
   border: 1px dashed var(--color-glass-line);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  transition: border-color var(--motion-ease-standard), box-shadow var(--motion-ease-standard);
+  transition:
+    border-color var(--motion-ease-standard),
+    box-shadow var(--motion-ease-standard);
 }
 
 .pet-stage[data-pet-runtime='loaded'] {
@@ -48,7 +50,8 @@ body.reduced-motion .pet-stage--react-wave-pulse {
   align-items: center;
 }
 
-.pet-wave-button {
+.pet-wave-button,
+.pet-action-button {
   font-family: var(--font-body);
   font-size: 0.9rem;
   padding: var(--space-2) var(--space-4);
@@ -57,18 +60,31 @@ body.reduced-motion .pet-stage--react-wave-pulse {
   background: var(--glass-panel, color-mix(in srgb, var(--color-glass-bg) 62%, transparent));
   backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
   -webkit-backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
-  box-shadow: var(--glass-panel-shadow, 0 8px 24px rgba(0,0,0,0.22), inset 0 1px 0 var(--color-frost-line));
+  box-shadow: var(--glass-panel-shadow, 0 8px 24px rgba(0, 0, 0, 0.22), inset 0 1px 0 var(--color-frost-line));
   color: var(--color-text-base);
   cursor: pointer;
 }
 
-.pet-wave-button:hover {
+.pet-wave-button:hover,
+.pet-action-button:hover:not(:disabled) {
   border-color: var(--color-mercury-core);
 }
 
-.pet-wave-button:focus-visible {
+.pet-wave-button:focus-visible,
+.pet-action-button:focus-visible {
   outline: 2px solid var(--color-mercury-bright);
   outline-offset: 2px;
+}
+
+.pet-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.pet-action-status {
+  margin: 0;
+  color: var(--color-text-base);
+  font-size: 0.85rem;
 }
 
 .pet-preview-note {

@@ -22,6 +22,9 @@ export function PetSurface() {
   const [runtimeState, setRuntimeState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [capability, setCapability] = useState<PetCapabilityProbe>(() => probePetCapability(null));
   const [reactWaveActive, setReactWaveActive] = useState(false);
+  const [containedPetSummoned, setContainedPetSummoned] = useState(false);
+  const [containedPetSelected, setContainedPetSelected] = useState(false);
+  const [containedActionStatus, setContainedActionStatus] = useState<string | null>(null);
   const graph = buildPetBehaviorGraph(capability.tier);
 
   useEffect(() => {
@@ -55,6 +58,32 @@ export function PetSurface() {
     window.setTimeout(() => setReactWaveActive(false), prefersReducedMotion() ? 1200 : 2000);
   }, []);
 
+  const summonContainedPet = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage || !capability.containedActions.summon.supported) return;
+    setContainedPetSummoned(true);
+    stage.scrollIntoView?.({
+      block: 'center',
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth'
+    });
+    stage.focus({ preventScroll: true });
+    setContainedActionStatus('Contained preview summoned in this window. Native overlay behavior remains unavailable.');
+  }, [capability.containedActions.summon.supported]);
+
+  const selectContainedPet = useCallback(() => {
+    if (!capability.containedActions.selection.supported) return;
+    setContainedPetSelected((selected) => {
+      const next = !selected;
+      setContainedActionStatus(
+        next
+          ? 'Contained pet selected in this window. Native desktop selection remains unavailable.'
+          : 'Contained pet selection cleared.'
+      );
+      return next;
+    });
+    stageRef.current?.focus({ preventScroll: true });
+  }, [capability.containedActions.selection.supported]);
+
   const stageClasses = [
     'pet-stage',
     reactWaveActive ? 'pet-stage--react-wave' : '',
@@ -69,11 +98,14 @@ export function PetSurface() {
         ref={stageRef}
         className={stageClasses}
         role="img"
-        aria-label="Pet companion contained preview"
+        aria-label={`Pet companion contained preview${containedPetSelected ? ', selected' : ''}`}
+        tabIndex={-1}
         data-overlay-tier={capability.tier}
         data-capability-state={capability.state}
         data-input-passthrough={capability.actions['click-through'].supported ? 'true' : 'false'}
         data-pet-runtime={runtimeState}
+        data-pet-summoned={containedPetSummoned ? 'true' : 'false'}
+        data-pet-selected={containedPetSelected ? 'true' : 'false'}
         {...(!capability.actions.overlay.supported
           ? {
               draggable: true,
@@ -88,7 +120,29 @@ export function PetSurface() {
         <button type="button" className="pet-wave-button" onClick={waveAtPet}>
           Wave at preview
         </button>
+        <button
+          type="button"
+          className="pet-action-button"
+          onClick={summonContainedPet}
+          disabled={!capability.containedActions.summon.supported}
+        >
+          Summon contained preview
+        </button>
+        <button
+          type="button"
+          className="pet-action-button"
+          onClick={selectContainedPet}
+          disabled={!capability.containedActions.selection.supported}
+          aria-pressed={containedPetSelected}
+        >
+          {containedPetSelected ? 'Pet selected' : 'Select contained pet'}
+        </button>
       </div>
+      {containedActionStatus ? (
+        <p className="pet-action-status" role="status" aria-live="polite">
+          {containedActionStatus}
+        </p>
+      ) : null}
       {runtimeError ? (
         <p className="muted" role="alert">
           {runtimeError}

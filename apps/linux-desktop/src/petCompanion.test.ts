@@ -11,6 +11,9 @@ describe('probePetCapability', () => {
     expect(probe.actions.overlay.supported).toBe(false);
     expect(probe.actions['click-through'].supported).toBe(false);
     expect(probe.actions.summon.reason).toContain('No canonical Linux summon');
+    expect(probe.containedActions.summon.supported).toBe(true);
+    expect(probe.containedActions.selection.supported).toBe(true);
+    expect(probe.containedActions.summon.reason).toContain('contained pet preview');
   });
 
   it('does not turn an X11 manifest into a UI claim without a native window contract', () => {
@@ -22,6 +25,7 @@ describe('probePetCapability', () => {
     expect(probe.actions['click-through'].supported).toBe(false);
     expect(probe.message).toContain('companion-window contract is not wired');
     expect(probe.actions.selection.supported).toBe(false);
+    expect(probe.containedActions.selection.supported).toBe(true);
     expect(probe.compositor).toBe('test/x11');
   });
 
