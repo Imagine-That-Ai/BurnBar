@@ -32,15 +32,18 @@ source slices add P07 typed Browser Computer Use actions (#1681), P14 exact
 persisted chat threads plus safe loaded-message export (#1684), P22 bounded
 database inspection (#1680), P27 native startup/deep-link handoff (#1679), P31
 accessibility preference contracts (#1683), and P39 differential evidence
-comparison (#1682). The
+comparison (#1682). P19 project lifecycle is now extended by PR #1688 with
+typed delete/reassign RPCs, canonical identity validation, durable reference
+migration, and deleted-slug tombstones. The
 authoritative promotion ledger remains 0/40 ready and 0/7 environment receipts;
 no PR in this checkpoint may be treated as full parity or as evidence that the
 Linux release candidate is shippable.
 
 Recommended landing order for this wave is P26, then P23 and P12, followed by
-P13, P17, P21, P24, P28, P29, P35, and P16; P07, P14, P22, P27, P31, and P39
-can land as independently reviewable source slices because each preserves an
-explicit installed-proof boundary. After the code stack is review-clean, rerun
+P13, P17, P19, P21, P24, P28, P29, P35, and P16; P07, P14, P22, P27, P31, and
+P39, plus the P19 lifecycle extension, can land as independently reviewable
+source slices because each preserves an explicit installed-proof boundary.
+After the code stack is review-clean, rerun
 the strict ledger on the exact candidate and collect the installed GNOME
 X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
 update/rollback, and physical-device receipts listed below.
@@ -68,6 +71,27 @@ update/rollback, and physical-device receipts listed below.
 > installed Linux plus physical-iPad Browser Computer Use proof -> full
 > desktop/compositor and update/rollback certification. The independent audit is
 > the current status source: `LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`.
+
+### Integration verification checkpoint - 2026-07-13
+
+The clean integration worktree replayed the current Linux source stack through
+the P26 tray/deep-link base and the P19 project-lifecycle extension. The
+following checks passed:
+
+- Linux frontend: 70 Vitest files / 568 tests.
+- TypeScript: `npx tsc --noEmit --pretty false`.
+- Production bundle: `npm run build` plus the production bundle verifier.
+- Tauri Rust: 70/70 library tests.
+- Platform differential oracle: 6/6 tests.
+- Supported SQLCipher-backed daemon chat selector: 9/9 tests.
+- P19 daemon project lifecycle selector: 4/4 tests, covering delete,
+  reassignment, durable nested/reference migration, collision rejection, and
+  deleted-slug protection.
+
+This is current source/integration evidence only. It does not satisfy the
+installed Linux, public release, compositor matrix, Secret Service/KWallet,
+physical-iPad, or same-commit macOS/Linux evidence gates. Linux-only native
+notification tests still require a Linux host.
 
 Linux has a real desktop shell, a broad set of route surfaces, a Swift daemon
 path, AF_UNIX RPC, a provider gateway, package metadata, Linux-specific
@@ -1114,8 +1138,10 @@ The original foundation sequence is substantially implemented. From the
 
 8. **Remaining product-parity PRs**
    - Complete chat/provider, account/cloud, activity/session logs, insights,
-     projects, memory review, system Computer Use, Mercury, text expansion,
-     companion, SmartHub, and every other still-open audit row.
+     memory review, system Computer Use, Mercury, text expansion, companion,
+     SmartHub, and every other still-open audit row. Project lifecycle source
+     parity is covered by PR #1688; installed/release evidence and the
+     10k-session migration acceptance suite remain open.
 
 9. **Promotion and public truth-sync PR**
    - Require zero Critical/High gaps, strict evidence closure, valid signed public
