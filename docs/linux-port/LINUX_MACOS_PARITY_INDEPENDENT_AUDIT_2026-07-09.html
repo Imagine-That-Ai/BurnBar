@@ -488,7 +488,7 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Core product workflows</td>
-<td>Six dashboard layouts, XDG/provider paths, daemon-authoritative memory decisions, exact persisted chat thread storage/pagination plus safe loaded-message export (PR #1684), and bounded database inspection (PR #1680) are implemented; several routes remain partial/read-only</td>
+<td>Six dashboard layouts, XDG/provider paths, daemon-authoritative memory decisions, exact persisted chat thread storage/pagination plus safe loaded-message export (PR #1684), bounded loaded-activity JSON/Markdown export (PR #1685), and bounded database inspection (PR #1680) are implemented; several routes remain partial/read-only</td>
 <td>Complete onboarding, chat attachments/citations/approvals/options/unloaded-history export/resume/pop-out and remaining backends, sessions, account/cloud, and workspace depth</td>
 </tr>
 <tr>
@@ -899,7 +899,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-17</td>
 <td>Activity/session logs</td>
 <td>Indexed transcript, search, body, replay, resume, export, source resolution</td>
-<td>Recent usage is wrapped as session metadata; no real body/resume/export</td>
+<td>Loaded activity rows now have an explicit, allowlisted JSON/Markdown export with filename/download guards in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1685">PR #1685</a>; session bodies, exact replay/resume, unloaded-history export, source resolution, and full session-depth parity remain open</td>
 <td>Substitute</td>
 <td>High</td>
 </tr>
