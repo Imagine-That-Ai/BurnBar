@@ -56,6 +56,32 @@ describe('P28 SmartHub command decoder', () => {
     ).toThrow(/must be a string/);
   });
 
+  it('rejects oversized and control-character payloads before renderer display', () => {
+    expect(() => decodeSmartHubCommandResponse({
+      operation: 'status',
+      payload: { adapter: 'smart_hub_bridge', status: 'ok', detail: 'x'.repeat(32_769) }
+    })).toThrow(/payload limit/);
+    expect(() => decodeSmartHubCommandResponse({
+      operation: 'status',
+      payload: { adapter: 'smart_hub_bridge', status: 'ok', detail: 'safe\u0000text' }
+    })).toThrow(/control character/);
+    expect(() => decodeSmartHubCommandResponse({
+      operation: 'discover',
+      payload: Array.from({ length: 129 }, () => ({
+        adapter: 'smart_hub_bridge', serviceType: '_openburnbar-peer._tcp', instances: [], rawTranscript: ''
+      }))
+    })).toThrow(/item limit/);
+  });
+
+  it('accepts typed test, cast, and device operations without opening an argument escape hatch', () => {
+    for (const operation of ['test', 'cast', 'device'] as const) {
+      expect(decodeSmartHubCommandResponse({
+        operation,
+        payload: { adapter: 'smart_hub_bridge', status: 'blocked', detail: '' }
+      })).toMatchObject({ operation, payload: { status: 'blocked' } });
+    }
+  });
+
   it('requires a complete command response rather than defaulting malformed payloads', () => {
     expect(() => decodeSmartHubCommandResponse({ operation: 'discover' })).toThrow(/payload is missing/);
     expect(() => decodeSmartHubCommandResponse({ operation: 'discover', payload: {} })).toThrow(

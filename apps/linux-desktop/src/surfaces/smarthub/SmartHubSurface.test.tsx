@@ -56,7 +56,7 @@ describe('P28 SmartHub surface', () => {
     const command = vi.fn(async (operation: SmartHubOperation) => statusResult(operation));
     useShellStore.setState({ bridge: bridgeWithCommand(command) });
     render(<SmartHubSurface />);
-    await waitFor(() => expect(command).toHaveBeenCalledWith('status'));
+    await waitFor(() => expect(command).toHaveBeenCalledWith('status', expect.objectContaining({ requestId: expect.stringMatching(/^smarthub-/) })));
     expect(screen.getAllByText('blocked_bridge_not_reachable').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Start the bridge before retrying.').length).toBeGreaterThan(0);
   });
@@ -65,10 +65,10 @@ describe('P28 SmartHub surface', () => {
     const command = vi.fn(async (operation: SmartHubOperation) => statusResult(operation));
     useShellStore.setState({ bridge: bridgeWithCommand(command) });
     render(<SmartHubSurface />);
-    await waitFor(() => expect(command).toHaveBeenCalledWith('status'));
+    await waitFor(() => expect(command).toHaveBeenCalledWith('status', expect.objectContaining({ requestId: expect.stringMatching(/^smarthub-/) })));
     command.mockClear();
     fireEvent.change(screen.getByLabelText('Operation'), { target: { value: 'discover' } });
-    await waitFor(() => expect(command).toHaveBeenCalledWith('discover'));
+    await waitFor(() => expect(command).toHaveBeenCalledWith('discover', expect.objectContaining({ requestId: expect.stringMatching(/^smarthub-/) })));
     expect(screen.getByText('Discovery')).toBeTruthy();
   });
 
@@ -99,5 +99,21 @@ describe('P28 SmartHub surface', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Run operation' }));
     });
     await waitFor(() => expect(screen.getAllByText('blocked_bridge_not_reachable').length).toBeGreaterThan(0));
+  });
+
+  it('cancels an in-flight packaged operation and does not render its late result', async () => {
+    let resolveCommand: ((result: SmartHubCommandResult) => void) | undefined;
+    const command = vi.fn(() => new Promise<SmartHubCommandResult>((resolve) => {
+      resolveCommand = resolve;
+    }));
+    const cancel = vi.fn(async () => undefined);
+    useShellStore.setState({ bridge: { ...bridgeWithCommand(command), smartHubCancel: cancel } });
+    render(<SmartHubSurface />);
+    await waitFor(() => expect(command).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(cancel).toHaveBeenCalledWith(expect.stringMatching(/^smarthub-/));
+    expect(screen.getByRole('alert').textContent).toMatch(/cancelled/i);
+    resolveCommand?.(statusResult());
+    await waitFor(() => expect(screen.queryByText('blocked_bridge_not_reachable')).toBeNull());
   });
 });

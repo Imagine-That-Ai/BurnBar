@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fixtureIntegrationsStatus } from '../../daemonFixture.js';
 import { useShellStore } from '../../state/shellStore.js';
 import type {
@@ -12,8 +12,11 @@ import './smarthub.css';
 const OPERATIONS: ReadonlyArray<{ value: SmartHubOperation; label: string }> = [
   { value: 'discover', label: 'Discover SmartHub bridge' },
   { value: 'status', label: 'SmartHub status and control probe' },
+  { value: 'test', label: 'Test SmartHub bridge' },
+  { value: 'cast', label: 'Google Cast probe' },
   { value: 'cast_status', label: 'Google Cast status' },
   { value: 'homeassistant_status', label: 'Home Assistant status' },
+  { value: 'device', label: 'PixelClock device probe' },
   { value: 'parity', label: 'All integration status' }
 ];
 
@@ -34,9 +37,11 @@ function fixtureCommand(operation: SmartHubOperation): SmartHubCommandResult {
       ]
     };
   }
-  const adapter = operation === 'cast_status'
+  const adapter = operation === 'cast' || operation === 'cast_status'
     ? 'google_cast'
-    : operation === 'homeassistant_status'
+    : operation === 'device' || operation === 'pixel_clock_control'
+      ? 'pixel_clock'
+      : operation === 'homeassistant_status'
       ? 'home_assistant'
       : 'smart_hub_bridge';
   const payload: SmartHubStatusResult = {
@@ -105,36 +110,72 @@ export function SmartHubSurface() {
   const [result, setResult] = useState<SmartHubCommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const activeRequestID = useRef<string | null>(null);
+
+  const newRequestID = () => {
+    const suffix = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return `smarthub-${suffix}`;
+  };
 
   const run = useCallback(async () => {
+    const requestID = newRequestID();
+    activeRequestID.current = requestID;
     setBusy(true);
     setError(null);
     try {
       if (fixtureMode) {
-        setResult(fixtureCommand(operation));
+        if (activeRequestID.current === requestID) setResult(fixtureCommand(operation));
         return;
       }
       if (!bridge) {
         throw new Error('Packaged shell and trusted openburnbar-cli are required for SmartHub status.');
       }
       if (bridge.smartHubCommand) {
-        setResult(await bridge.smartHubCommand(operation));
+        const next = await bridge.smartHubCommand(operation, { requestId: requestID });
+        if (activeRequestID.current === requestID) setResult(next);
         return;
       }
       // Older packaged shells can still render the all-integration status;
       // they must not silently fall back to arbitrary CLI execution.
       if (operation === 'parity') {
-        setResult({ operation, payload: await bridge.integrationsStatus() });
+        const next = await bridge.integrationsStatus();
+        if (activeRequestID.current === requestID) setResult({ operation, payload: next });
         return;
       }
       throw new Error('This packaged shell does not expose the typed SmartHub command contract.');
     } catch (err) {
-      setResult(null);
-      setError(err instanceof Error ? err.message : String(err));
+      if (activeRequestID.current === requestID) {
+        setResult(null);
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setBusy(false);
+      if (activeRequestID.current === requestID) {
+        activeRequestID.current = null;
+        setBusy(false);
+      }
     }
   }, [bridge, fixtureMode, operation]);
+
+  const cancel = useCallback(() => {
+    const requestID = activeRequestID.current;
+    if (!requestID) return;
+    activeRequestID.current = null;
+    setBusy(false);
+    setResult(null);
+    setError('SmartHub operation cancelled.');
+    if (bridge?.smartHubCancel) {
+      void bridge.smartHubCancel(requestID).catch(() => {
+        setError('SmartHub cancellation could not be delivered to the packaged shell.');
+      });
+    }
+  }, [bridge]);
+
+  useEffect(() => () => {
+    const requestID = activeRequestID.current;
+    if (requestID && bridge?.smartHubCancel) void bridge.smartHubCancel(requestID);
+  }, [bridge]);
 
   useEffect(() => {
     if (bridgeReady) void run();
@@ -166,6 +207,9 @@ export function SmartHubSurface() {
         <button type="button" onClick={() => void run()} disabled={busy || !bridgeReady}>
           {busy ? 'Checking…' : 'Run operation'}
         </button>
+        {busy && bridge?.smartHubCancel ? (
+          <button type="button" onClick={cancel}>Cancel</button>
+        ) : null}
       </div>
       {busy ? <p role="status" aria-busy="true">Checking Linux device capability…</p> : null}
       {error ? <p role="alert">{error}</p> : null}

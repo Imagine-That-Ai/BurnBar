@@ -997,9 +997,16 @@ export type IntegrationsStatus = { integrations: IntegrationStatus[] };
 export type SmartHubOperation =
   | 'discover'
   | 'status'
+  | 'test'
+  | 'cast'
   | 'cast_status'
   | 'homeassistant_status'
+  | 'device'
+  | 'pixel_clock_control'
   | 'parity';
+export type SmartHubCommandOptions = {
+  requestId?: string;
+};
 export type SmartHubDiscoveryResult = {
   adapter: string;
   serviceType: string;
@@ -1015,7 +1022,7 @@ export type SmartHubStatusResult = {
 export type SmartHubCommandResult =
   | { operation: 'discover'; payload: SmartHubDiscoveryResult[] }
   | {
-      operation: 'status' | 'cast_status' | 'homeassistant_status';
+      operation: 'status' | 'test' | 'cast' | 'cast_status' | 'homeassistant_status' | 'device' | 'pixel_clock_control';
       payload: SmartHubStatusResult;
     }
   | { operation: 'parity'; payload: IntegrationsStatus };
@@ -1243,7 +1250,8 @@ export interface LinuxShellBridge {
     source?: ComputerUsePanicSource;
   }): Promise<ComputerUsePanicHaltResult>;
   integrationsStatus(): Promise<IntegrationsStatus>;
-  smartHubCommand?(operation: SmartHubOperation): Promise<SmartHubCommandResult>;
+  smartHubCommand?(operation: SmartHubOperation, options?: SmartHubCommandOptions): Promise<SmartHubCommandResult>;
+  smartHubCancel?(requestId: string): Promise<void>;
 }
 
 // ──────────────────── Raw-daemon → typed-shape mappers ────────────────────
@@ -2819,8 +2827,12 @@ function normalizeSmartHubOperation(value: RawJsonValue): SmartHubOperation {
   if (
     value === 'discover' ||
     value === 'status' ||
+    value === 'test' ||
+    value === 'cast' ||
     value === 'cast_status' ||
     value === 'homeassistant_status' ||
+    value === 'device' ||
+    value === 'pixel_clock_control' ||
     value === 'parity'
   ) {
     return value;
@@ -2828,21 +2840,80 @@ function normalizeSmartHubOperation(value: RawJsonValue): SmartHubOperation {
   throw new Error('SmartHub operation is not allowlisted.');
 }
 
+const SMART_HUB_MAX_ITEMS = 128;
+const SMART_HUB_MAX_FIELDS = 128;
+const SMART_HUB_MAX_TEXT_CHARS = 32_768;
+const SMART_HUB_MAX_INSTANCE_CHARS = 256;
+const SMART_HUB_MAX_RAW_TRANSCRIPT_CHARS = 32_768;
+
+function boundedSmartHubText(
+  raw: RawJsonValue,
+  label: string,
+  max = SMART_HUB_MAX_TEXT_CHARS,
+  allowEmpty = false
+): string {
+  if (typeof raw !== 'string' || (!allowEmpty && raw.length === 0)) {
+    throw new Error(`${label} must be a${allowEmpty ? 'n' : ' non-empty'} string.`);
+  }
+  const value = raw;
+  if (value.length > max) throw new Error(`${label} exceeds the SmartHub payload limit.`);
+  if ([...value].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d;
+  })) {
+    throw new Error(`${label} contains an unsupported control character.`);
+  }
+  return value;
+}
+
+function boundedSmartHubArray(raw: RawJsonValue, label: string): RawJsonValue[] {
+  if (!Array.isArray(raw)) throw new Error(`${label} must be an array.`);
+  if (raw.length > SMART_HUB_MAX_ITEMS) throw new Error(`${label} exceeds the item limit.`);
+  return raw;
+}
+
+function validateSmartHubFieldKeys(source: Record<string, RawJsonValue>, label: string): void {
+  const entries = Object.entries(source);
+  if (entries.length > SMART_HUB_MAX_FIELDS) throw new Error(`${label} has too many fields.`);
+  for (const [key, value] of entries) {
+    boundedSmartHubText(key, `${label} field name`, 256);
+    if (typeof value === 'string') boundedSmartHubText(value, `${label} field ${key}`, SMART_HUB_MAX_TEXT_CHARS, true);
+  }
+}
+
 function mapSmartHubStatus(raw: RawJsonValue): SmartHubStatusResult {
   const source = requireObject(raw, 'SmartHub status payload');
+  validateSmartHubFieldKeys(source, 'SmartHub status payload');
   const details: Record<string, string> = {};
   for (const [key, value] of Object.entries(source)) {
     if (typeof value !== 'string') {
       throw new Error(`SmartHub status field ${key} must be a string.`);
     }
-    details[key] = value;
+    details[key] = boundedSmartHubText(value, `SmartHub status field ${key}`, SMART_HUB_MAX_TEXT_CHARS, true);
   }
   return {
-    adapter: requireString(source.adapter, 'SmartHub status adapter'),
-    status: requireString(source.status, 'SmartHub status state'),
-    blocker: typeof source.blocker === 'string' && source.blocker.length > 0 ? source.blocker : undefined,
+    adapter: boundedSmartHubText(source.adapter, 'SmartHub status adapter'),
+    status: boundedSmartHubText(source.status, 'SmartHub status state'),
+    blocker: typeof source.blocker === 'string' && source.blocker.length > 0
+      ? boundedSmartHubText(source.blocker, 'SmartHub status blocker')
+      : undefined,
     details
   };
+}
+
+function mapSmartHubParity(raw: RawJsonValue): IntegrationsStatus {
+  const rows = boundedSmartHubArray(raw, 'SmartHub parity payload');
+  rows.forEach((item, index) => {
+    const row = requireObject(item, `SmartHub parity result ${index}`);
+    validateSmartHubFieldKeys(row, `SmartHub parity result ${index}`);
+    for (const [key, value] of Object.entries(row)) {
+      if (value !== null && typeof value !== 'string') {
+        throw new Error(`SmartHub parity result ${index} field ${key} must be a string.`);
+      }
+      if (typeof value === 'string') boundedSmartHubText(value, `SmartHub parity result ${index} field ${key}`, SMART_HUB_MAX_TEXT_CHARS, true);
+    }
+  });
+  return mapIntegrationsStatus({ integrations: rows });
 }
 
 function mapSmartHubCommand(raw: RawJsonValue): SmartHubCommandResult {
@@ -2851,27 +2922,23 @@ function mapSmartHubCommand(raw: RawJsonValue): SmartHubCommandResult {
   const payload = source.payload;
   if (payload === undefined) throw new Error('SmartHub command payload is missing.');
   if (operation === 'discover') {
-    if (!Array.isArray(payload)) throw new Error('SmartHub discovery payload must be an array.');
-    const rows = payload.map((item, index): SmartHubDiscoveryResult => {
+    const rows = boundedSmartHubArray(payload, 'SmartHub discovery payload').map((item, index): SmartHubDiscoveryResult => {
       const row = requireObject(item, `SmartHub discovery result ${index}`);
-      const instances = arr(row.instances).map((instance, instanceIndex) =>
-        requireString(instance, `SmartHub discovery result ${index} instance ${instanceIndex}`)
+      validateSmartHubFieldKeys(row, `SmartHub discovery result ${index}`);
+      const instances = boundedSmartHubArray(row.instances, `SmartHub discovery result ${index} instances`).map((instance, instanceIndex) =>
+        boundedSmartHubText(instance, `SmartHub discovery result ${index} instance ${instanceIndex}`, SMART_HUB_MAX_INSTANCE_CHARS)
       );
-      if (typeof row.rawTranscript !== 'string') {
-        throw new Error(`SmartHub discovery result ${index} rawTranscript must be a string.`);
-      }
       return {
-        adapter: requireString(row.adapter, `SmartHub discovery result ${index} adapter`),
-        serviceType: requireString(row.serviceType, `SmartHub discovery result ${index} serviceType`),
+        adapter: boundedSmartHubText(row.adapter, `SmartHub discovery result ${index} adapter`),
+        serviceType: boundedSmartHubText(row.serviceType, `SmartHub discovery result ${index} serviceType`, 256),
         instances,
-        rawTranscript: row.rawTranscript
+        rawTranscript: boundedSmartHubText(row.rawTranscript, `SmartHub discovery result ${index} rawTranscript`, SMART_HUB_MAX_RAW_TRANSCRIPT_CHARS, true)
       };
     });
     return { operation, payload: rows };
   }
   if (operation === 'parity') {
-    if (!Array.isArray(payload)) throw new Error('SmartHub parity payload must be an array.');
-    return { operation, payload: mapIntegrationsStatus({ integrations: payload }) };
+    return { operation, payload: mapSmartHubParity(payload) };
   }
   return { operation, payload: mapSmartHubStatus(payload) };
 }
@@ -3927,9 +3994,13 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       return mapIntegrationsStatus(raw);
     },
     // P28 — fixed-argv SmartHub/device CLI operations; never a generic shell.
-    smartHubCommand: async (operation) => {
-      const raw = await invoke<RawJsonValue>('smarthub_command', { operation });
+    smartHubCommand: async (operation, options) => {
+      const payload = options?.requestId ? { operation, requestId: options.requestId } : { operation };
+      const raw = await invoke<RawJsonValue>('smarthub_command', payload);
       return decodeSmartHubCommandResponse(raw);
+    },
+    smartHubCancel: async (requestId) => {
+      await invoke<void>('smarthub_cancel', { requestId });
     }
   };
 }
