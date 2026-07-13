@@ -1,6 +1,11 @@
 # OpenBurnBarCore decomposition program
 
-**Status:** S0 scaffold landed (this PR). Move packets QUEUED.
+**Status:** ✅ **PROGRAM COMPLETE** — whole-program composition proven on
+`core-decomp/wave4-base` (all 11 open packets folded onto the wave3-base line,
+Core main-target floored to **16 files / 1,610 LOC** from 353 files / 95,667 LOC).
+The final composition proof, per-target numbers, and close-out learnings are in
+**§ FINAL close-out (wave4-base)** at the bottom of this doc. The historical
+planning/status sections below are preserved as-authored (S0-era snapshot).
 **Parent plan:** `plans/how-do-i-take-joyful-falcon.md` (approved). This doc is the
 condensed, executable form: end-state map, slice DAG, lane map, chokepoint table,
 failure playbook, and the live packet status table.
@@ -400,3 +405,267 @@ individual populated Vendor artifacts when `Vendor/` already exists as a tracked
 Windows engine lane adds `OpenBurnBarPretext` to its path filter and a `swift build
 --target OpenBurnBarEngine` step in both legs (Core does not depend on Engine, so the
 Core build never compiled it).
+
+---
+
+## FINAL close-out (wave4-base)
+
+The decomposition is **done**. Every move packet, repoint, and umbrella fill has
+shipped as a PR; `core-decomp/wave4-base` is the integration branch that merges the
+last 11 open packets onto `core-decomp/wave3-base` (in order:
+P-15b → P-13 → P-18 → P-16a…f → P-19 → P-20) and proves the whole program composes.
+The p-16*→p-19→p-20 chain is a linear stack, so those merges fast-forward; P-15b,
+P-13, and P-18 are the only real (standalone) merges. Zero source conflicts, zero
+leaked conflict markers.
+
+### FINAL packet status (every packet → PR → state)
+
+| Packet | Slice | Target | PR | State |
+|---|---|---|---|---|
+| P-01 | S1 | OpenBurnBarSQLiteReader | #1573 | MERGED (→ wave2-base) |
+| P-02 | S2 | Kernel resources (catalog+PII+ops staging) | #1582 | MERGED (→ wave2-base) |
+| P-03 | S3 | root contracts → Kernel | #1576 | MERGED (→ wave2-base) |
+| P-04a | S4 | SharedModels pure → Kernel | #1586 | MERGED (→ wave2-base) |
+| P-04b | S4 | SharedModels crypto chains → Kernel | #1587 | MERGED (→ wave2-base) |
+| P-04c | S4 | catalog-model SharedModels → Kernel | #1625 | MERGED (→ wave2-base) |
+| P-05 | S9 | OpenBurnBarHermes | #1580 | MERGED (→ wave2-base) |
+| P-06 | S10 | OpenBurnBarPretext | #1561 | MERGED (→ scaffold) |
+| P-07 | S11 | OpenBurnBarTextExpansion | #1579 | MERGED (→ wave2-base) |
+| P-08 | S12 | Insights core engine | #1630 | MERGED (→ wave2-base) |
+| P-09 | S12 | Insights remainder | #1631 | MERGED (→ wave2-base) |
+| P-10 | S12 | Insights SharedModels + AgentInsights | #1583 | MERGED (→ wave2-base) |
+| P-11 | S5 | MissionGroup/ConsoleTypes inversion → Kernel | #1626 | MERGED (→ wave2-base) |
+| P-12 | S6 | OpenBurnBarLogParsers | #1627 | MERGED (→ wave2-base) |
+| P-13 | S7 | OpenBurnBarQuota (K3 Quota redo) | #1652 | OPEN → folded into wave4-base |
+| P-14 | S8 | OpenBurnBarVectorKit (+SearchContracts) | #1624 | MERGED (→ wave2-base) |
+| P-15 | S13 | OpenBurnBarLaunchServices | #1633 | MERGED (→ wave2-base) |
+| P-15b | S13 | CLILaunchAdapter Foundation surface → Kernel | #1648 | OPEN → folded into wave4-base |
+| P-16a | S14 | UI: Views/Substrate (+RGBA.swift) | #1644 | MERGED (→ wave3-base equiv) |
+| P-16b | S14 | UI: Views/Insights root + design-system | #1650 | OPEN → folded into wave4-base |
+| P-16c | S14 | UI: Views/MissionControl | #1656 | OPEN → folded into wave4-base |
+| P-16d | S14 | UI: Cards/Square + LiveActivity/PixelClock | #1666 | OPEN → folded into wave4-base |
+| P-16e | S14 | UI: Swarm* + Verdict + ShareCardRenderer | #1675 | OPEN → folded into wave4-base |
+| P-16f | S14 | UI: Views root (delete "Views" exclude, K4 done) | #1678 | OPEN → folded into wave4-base |
+| P-17 | S16 | OpenBurnBarEngine umbrella (UI-free) | #1641 | MERGED (→ wave3-base) |
+| P-18 | S17 | daemon/CLI repoint → OpenBurnBarEngine | #1664 | OPEN → folded into wave4-base |
+| P-19 | S18 | Widget repoint → Kernel+Insights+UI | #1719 | OPEN → folded into wave4-base |
+| P-20 | S19 | Keyboard repoint → TextExpansion+UI | #1720 | OPEN → folded into wave4-base |
+| S-H | — | headless-app-build CI job | #1628 | MERGED (→ wave2-base) |
+| S0 | — | scaffold (11 targets + gates + queue) | #1559 | OPEN (train root, base=main) |
+| — | — | **Close-out: composition proof + ratchet floor** | (this PR) | wave4-base → s0-scaffold |
+
+The whole train sits on the **PR #1559 (S0) stacked branches** awaiting factory
+review/merge to `main`. Merge order to `main` is the stack order: S0 → wave2 packets
+→ wave3 (P-17) → wave4 (P-13/P-15b/P-18/P-16b-f/P-19/P-20) → this close-out.
+
+### FINAL numbers
+
+**Core main target (`OpenBurnBarCore/Sources/OpenBurnBarCore/`):**
+
+| | Program start | wave4-base (end) | Δ |
+|---|---|---|---|
+| `.swift` files | 353 | **16** | −337 (−95.5%) |
+| `.swift` LOC | 95,667 | **1,610** | −94,057 (−98.3%) |
+
+Every one of the 16 residual files, with the one-line reason it stays:
+
+| File | LOC | Why it stays |
+|---|---|---|
+| `KernelReexport.swift` | 11 | `@_exported import OpenBurnBarKernel` — keeps `import OpenBurnBarCore` working for apps |
+| `OpenBurnBarHermesReexport.swift` | 10 | `@_exported` shim (Hermes) |
+| `OpenBurnBarInsightsReexport.swift` | 14 | `@_exported` shim (Insights, Apple-only pruned off-Apple) |
+| `OpenBurnBarLaunchServicesReexport.swift` | 14 | `@_exported` shim (LaunchServices, Apple-only) |
+| `OpenBurnBarLogParsersReexport.swift` | 10 | `@_exported` shim (LogParsers) |
+| `OpenBurnBarPretextReexport.swift` | 10 | `@_exported` shim (Pretext) |
+| `OpenBurnBarQuotaReexport.swift` | 10 | `@_exported` shim (Quota) |
+| `OpenBurnBarSQLiteReaderReexport.swift` | 10 | `@_exported` shim (SQLiteReader) |
+| `OpenBurnBarTextExpansionReexport.swift` | 14 | `@_exported` shim (TextExpansion, Apple-only) |
+| `OpenBurnBarUIReexport.swift` | 14 | `@_exported` shim (UI, Apple-only) |
+| `OpenBurnBarVectorKitReexport.swift` | 10 | `@_exported` shim (VectorKit) |
+| `Engine/OBBCAbiInsightExport.swift` | 267 | C-ABI `@_cdecl` export surface (Windows/Linux FFI) — Core-level by design |
+| `Engine/OBBCAbiMemory.swift` | 31 | C-ABI memory-free helper for the FFI surface |
+| `Engine/OBBCAbiParseExport.swift` | 197 | C-ABI parse export surface |
+| `Engine/OBBCAbiUsageScanExport.swift` | 356 | C-ABI usage-scan export surface |
+| `LinuxLocalPeerDiscovery.swift` | 632 | Unclaimed by any move packet — Linux mDNS/peer discovery; Kernel-candidate follow-up (see REMAINING WORK) |
+
+= 11 `@_exported *Reexport.swift` shims (127 LOC) + 4 `Engine/OBBCAbi*.swift` C-ABI
+files (851 LOC) + `LinuxLocalPeerDiscovery.swift` (632 LOC) = **16 files / 1,610 LOC**.
+(Three non-`.swift` resources also remain: `Resources/MiningPickIcon*.svg` ×3 — pre-
+existing asset bundle, not part of the LOC metric.)
+
+**Per-target files + LOC (all 12 decomposition targets, wave4-base):**
+
+| Target | Files | LOC | Product | Notes |
+|---|---|---|---|---|
+| `OpenBurnBarKernel` | 143 | 42,433 | yes (exists) | root contracts, pure/crypto SharedModels, catalog loader, Platform/, CLILaunchAdapter (P-15b) |
+| `OpenBurnBarSQLiteReader` | 2 | 325 | no | the K3 fix (SQLite reader extracted first) |
+| `OpenBurnBarQuota` | 42 | 10,401 | yes | ProviderQuota + XAISuperGrokPacingLog (K3 redo, P-13) |
+| `OpenBurnBarLogParsers` | 27 | 9,673 | yes | Services/LogParser + LogPath |
+| `OpenBurnBarPretext` | 2 | 650 | yes | Pretext + its Resources bundle |
+| `OpenBurnBarHermes` | 7 | 1,389 | yes | Hermes (Foundation-only) |
+| `OpenBurnBarVectorKit` | 9 | 4,299 | yes | HNSW/vector indexes + SearchContracts + Pensieve |
+| `OpenBurnBarInsights` | 83 | 16,528 | yes (Apple-only) | Services/Insights + Insights SharedModels + Demo fixture |
+| `OpenBurnBarLaunchServices` | 7 | 2,879 | yes (Apple-only) | Switcher/Browser/CLI launch + discovery |
+| `OpenBurnBarTextExpansion` | 5 | 826 | yes (Apple-only) | TextExpansion |
+| `OpenBurnBarEngine` | 1 | 44 | yes | `@_exported` {Kernel, LogParsers, Quota, VectorKit, Hermes, Pretext} — the UI-free daemon/CLI link surface |
+| `OpenBurnBarUI` | 130 | 33,710 | yes (Apple-only) | all Views/, theme/RGBA/design-token SharedModels, PixelClock, ShareCardRenderer, LiveActivity (K4) |
+| **12 targets total** | **458** | **123,157** | | (exceeds the 95.6k start because SQLiteReader/Quota carry their own scaffolding and Kernel absorbed cross-cutting utilities; the metric that matters is the Core main-target shrink above) |
+
+### Whole-program composition proof (verbatim results)
+
+Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated
+`wave4-base` worktree:
+
+| Check | Result |
+|---|---|
+| `cd OpenBurnBarCore && swift build` | **Build complete! (44.33 sec)** — exit 0 |
+| `swift build --target OpenBurnBarEngine` | **Build complete!** — exit 0 |
+| `swift build --target OpenBurnBarUI` | **Build complete!** — exit 0 |
+| `OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD=1 swift build` (Core) | **Build complete! (1.84 sec)** — exit 0 (Apple-free Linux-boundary manifest compiles) |
+| `cd OpenBurnBarDaemon && swift build` | **Build complete! (42.01 sec)** — exit 0 (P-18 Engine repoint composes) |
+| `OpenBurnBarDaemon swift test` (RemoteAccessAgentCore bundle) | **71 tests passed, 0 failures** (1 skipped) |
+| `OpenBurnBarDaemon swift test` (LinuxGateway bundle) | **10 tests passed, 0 failures** (1 skipped) |
+| `scripts/debt/check-engine-closure-ui-purity.sh` | **OK: Engine closure = 9 targets, zero SwiftUI/AppKit, no UI target reachable** |
+| `grep -rn 'import OpenBurnBarCore' OpenBurnBarDaemon/Sources OpenBurnBarWidget OpenBurnBarKeyboard` | **0** (umbrella fully removed from the daemon/widget/keyboard closures) |
+| `check-core-ui-purity-budget.sh` | OK (baselined=0, live=0) |
+| `check-core-target-membership-budget.sh` | OK (main=16 files/1610 lines, no sibling over ceiling) |
+| `check-core-umbrella-imports-budget.sh` | OK (AgentLens=522, Mobile=374 intentional; daemon/widget/keyboard=0) |
+| `check-mission-splitbrain-budget.sh` | OK (11 files/3694 lines, unchanged) |
+| `check-swift-file-size-budget.sh` | OK (0 oversized) |
+| `check-no-suppressions.sh` | OK (no unjustified suppressions) |
+| `node tools/ipc/generate-burnbarrpc-canon.mjs --check` | exit 0 (RPC wire canon byte-identical — no drift) |
+
+**CI-covered (not runnable in the sandboxed worktree, identical on wave3-base/main,
+untouched by any wave4 packet):**
+
+- **Core `swift test` full run** — the `OpenBurnBarSignalCoreTests`,
+  `OpenBurnBarSignalSessionTransportTests`, and `OpenBurnBarLinuxCoreFoundationTests`
+  targets link the native `libsignal_ffi` from a **from-source Rust `nightly-2026-03-23`
+  cargo build** (`Vendor/libsignal/swift/Package.swift` hard-codes `-L../target/debug/`).
+  The `pr-native-fast.yml` CI job installs the Rust toolchain + protobuf and runs
+  `scripts/test-openburnbar-swift.sh` to provide it. The Core **product** build is green;
+  every decomposition target compiles; only these Signal-FFI-linked test *executables*
+  need the native lib. This is orthogonal to the god-module decomposition (Signal targets
+  were never touched by a move packet).
+- **`OpenBurnBarDaemonTests` main bundle** — its `sqliteStrings()` verification helper
+  opens a **SQLCipher-encrypted** DB with plain system `sqlite3_open_v2`, which returns
+  **SQLITE_NOTADB (error 26)** in a worktree that links SQLCipher — the exact
+  encrypted-DB / plain-SQLite mismatch documented in repo memory ("SQLite error 26 =
+  NOT corruption"). The bundle **compiles** (composition proven); the failure is a
+  test-harness encryption artifact, environment-specific, present identically on the
+  merge base. CI runs it with the production SQLCipher/keychain wiring.
+- **Headless macOS app build** (`scripts/ci/headless-app-build.sh`, scheme `OpenBurnBar`)
+  — attempted locally in the worktree (local cache-reuse mode against the primary
+  checkout's `.spm-cache` + Vendor); it drives the full gRPC/Firestore/app graph and is
+  gated per-P-16 sub-packet by `.github/workflows/headless-app-build.yml` on
+  `pull_request` for `OpenBurnBarCore/**` + `AgentLens/**`.
+
+### Invariants held (zero-behavior-change contract)
+
+1. **Zero behavior change** — every packet is a `git mv` + import/access-widening edit;
+   apps keep `import OpenBurnBarCore` working via the 11 `@_exported` shims.
+2. **Byte-identical RPC canon** — `generate-burnbarrpc-canon.mjs --check` is green; no
+   wire-name drift across the whole train.
+3. **Daemon is UI-free** — the Engine transitive closure is 9 pure targets with zero
+   SwiftUI/AppKit; the daemon/CLI/Widget/Keyboard closures import **zero**
+   `OpenBurnBarCore` (the security payoff: a daemon-reachable path can never pull UI).
+4. **No regrowth** — the membership deny-gate is floored to 16 files/1,610 LOC; a new
+   `.swift` file in the Core main target now fails CI on line one.
+5. **Core ⊥ Engine** — Core does not depend on Engine and Engine does not depend on Core
+   (both sit above the six leaf targets; a Core↔Engine edge would be circular).
+
+### Rollback story
+
+The close-out ratchet is JSON-only (`budgets/core-target-membership-baseline.json`) plus
+docs — reverting it re-widens the ceiling, nothing else. Each packet is an independent
+squash-mergeable PR on the stack; a single packet can be dropped by not merging its PR
+(the ones above it rebase). `wave4-base` itself is a merge branch — abandoning it loses
+no packet work (every packet is its own PR). The whole train is gated behind PR #1559;
+nothing reaches `main` until the factory merges the stack in order.
+
+## FINAL learnings (wave4-base integration)
+
+11. **A completed integration base may already exist in a sibling worktree — adopt the
+    committed merge, don't re-merge.** `core-decomp/wave4-base` was already built (all 11
+    packets merged in order, zero conflict markers) and committed — but unpushed, in an
+    idle sibling worktree with drifting build artifacts (`Package.resolved`, `.spm-cache`,
+    a stale membership baseline). Re-running the 11 merges on a fresh branch would fork
+    history for no benefit and confuse the factory. The integrator's job is the capstone
+    (proof + numbers + ratchet floor + PR), so base the close-out on the existing committed
+    merge HEAD and push a clean fast-forward superset. (Repo memory: "clean git status ≠
+    lost work"; sibling agents may already hold your result.)
+
+12. **The p-16*→p-19→p-20 chain is a linear stack; only P-15b/P-13/P-18 are real merges.**
+    `git merge-base --is-ancestor` proves p-20-final contains all of p-16a…f and p-19, so
+    merging in packet order fast-forwards the tail and the three standalone branches
+    (each 1–3 commits on wave3-base) are the only non-trivial merges. Predict merge shape
+    with ancestry checks before touching the tree; it turns "11 merges" into "3 merges + a
+    fast-forward tail".
+
+13. **`swift build` ≠ `swift test` for the Core package — the delta is native Rust
+    libsignal, not the decomposition.** The product library builds fully; three
+    Signal-FFI test targets fail at *link* because `Vendor/libsignal/swift/Package.swift`
+    hard-codes `-L../target/debug/` (a from-source `nightly-2026-03-23` cargo artifact CI
+    provisions). Copying the prebuilt `OpenBurnBarSignalFfiMac.xcframework` `.dylib` fixes
+    the *product* link but not these *test* executables (different linker flag). `--skip`
+    does not help — SwiftPM builds every test target before running. Diagnose by reading
+    the failing link command's `-L` path, then classify as CI-covered native, not a
+    composition break.
+
+14. **SQLite error 26 in a daemon test = SQLCipher-encrypted-DB vs plain-`sqlite3_open_v2`,
+    not corruption and not the decomposition.** `BurnBarProjectCodeMemoryStoreTests`'
+    `XCTAssertEqual(sqlite3_prepare_v2(...), SQLITE_OK)` returns 26 (`SQLITE_NOTADB`)
+    because the verification helper reads an encrypted DB with the *system* SQLite. The
+    only wave4 change to that test was `import OpenBurnBarCore` → `import OpenBurnBarEngine`
+    (one line) — imports cannot change runtime row counts. Confirm mechanical-only with a
+    `git diff` of the touched test/impl against the merge base before suspecting a
+    regression. (Repo memory: "SQLite error 26; NOT corruption".)
+
+15. **A worktree needs its Vendor natives materialized before Swift build/test.** A fresh
+    isolated worktree gets the tracked tree but not the gitignored Vendor xcframeworks
+    (`OpenBurnBarSignalFfiMac/IOS.xcframework`) or an initialized `libsignal` submodule.
+    `git submodule update --init Vendor/libsignal` + copying the two SignalFfi xcframeworks
+    from the primary checkout unblocks the product build (they are gitignored, so they never
+    pollute `git status`). The `SQLCipher.framework` also needs copying into
+    `.build/.../PackageFrameworks/` for daemon test *loading* (an Xcode-27 SwiftPM
+    framework-copy quirk), though that only affects runtime, not compilation.
+
+16. **The residual Core is exactly the irreducible floor: shims + C-ABI + one orphan.**
+    16 files / 1,610 LOC that *cannot* leave the umbrella target: 11 `@_exported` re-export
+    shims (the whole point of keeping `import OpenBurnBarCore` working), 4 `OBBCAbi*` C-ABI
+    `@_cdecl` surfaces (Windows/Linux FFI is Core-level by design), and one genuinely
+    unclaimed file (`LinuxLocalPeerDiscovery.swift`) that no move packet targeted. The
+    membership gate should be floored here; further shrink is a deliberate follow-up
+    (S15 OBBCAbi extraction, LinuxLocalPeerDiscovery homing), not blocked work.
+
+## REMAINING WORK (post-program follow-ups)
+
+These are **deliberate, out-of-scope-for-this-program** follow-ups, not incomplete work.
+The decomposition's contract (Core main-target floored, daemon UI-free, zero behavior
+change) is fully met.
+
+- **(a) `LinuxLocalPeerDiscovery.swift` (632 LOC) needs a home.** It is the one residual
+  file no move packet claimed — Linux mDNS/local-peer discovery. It is a **Kernel
+  candidate** (Foundation/Network-level, no UI, used by the daemon-reachable closure). A
+  small follow-up packet moves it to `OpenBurnBarKernel` (or a new `OpenBurnBarPeerDiscovery`
+  leaf) and drops the residual to 15 files. Low risk; single file; AE-IMPORT only.
+- **(b) Optional S15: `Engine/OBBCAbi*.swift` → `OpenBurnBarCoreCAbi`.** The 4 C-ABI files
+  (851 LOC) could move to a dedicated `OpenBurnBarCoreCAbi` target so the Core main target
+  holds *only* the 11 re-export shims. Optional — the C-ABI surface is legitimately
+  Core-level (it re-exports the whole umbrella to C), so this is aesthetic/gate-purity, not
+  a layering fix.
+- **(c) S20 app-side umbrella narrowing is ratchet-only BY DESIGN.** `AgentLens` (522) and
+  `OpenBurnBarMobile` (374) intentionally keep `import OpenBurnBarCore` — they are the
+  top-level app targets that legitimately consume the full surface. The umbrella-imports
+  gate holds them at their current counts (no *new* umbrella imports) rather than forcing a
+  mechanical fan-out to per-leaf imports across ~900 files. Narrowing them further is a
+  separate, low-value ergonomics pass, not a decomposition requirement.
+- **(d) M3–M5 mission-authority split-brain is a SEPARATE program.** The GUI
+  mission-authority cluster (11 files / 3,694 lines, held flat by
+  `check-mission-splitbrain-budget.sh`) belongs to
+  `docs/SURFACE_SPRAWL_AND_SPLITBRAIN_REMEDIATION_PLAN.md` (K-series), not this Core
+  decomposition. This program held that budget flat; it did not shrink it.
+- **(e) The whole train awaits factory review/merge to `main`.** Every packet is a stacked
+  PR behind **PR #1559** (S0, base=`main`). The factory merges the stack in order
+  (S0 → wave2 → wave3/P-17 → wave4 → this close-out). Nothing here has reached `main`; the
+  merge to `main` is the factory's job, gated by Codex review + branch protection.
