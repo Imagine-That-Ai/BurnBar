@@ -12,6 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 openburnbar-domain-core = { path = "../domain-core", version = "0.1.0" }
 wasm-bindgen = "=0.2.105"
+zeroize = "1"
 
 [lints]
 workspace = true

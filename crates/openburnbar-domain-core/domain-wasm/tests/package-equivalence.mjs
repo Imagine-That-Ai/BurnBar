@@ -33,6 +33,13 @@ assert.deepEqual(
 
 const key = Uint8Array.from({ length: 32 }, (_, index) => index);
 const data = new TextEncoder().encode("OpenBurnBar domain-core equivalence");
+const recoveryKey = "abc-defg-hjkm-npq-rst-vwxyz-23456789";
+const publicKey = Buffer.from(
+  "046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296" +
+  "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+  "hex",
+);
+const sharedSecret = Uint8Array.from({ length: 32 }, (_, index) => 0xa0 + index);
 const calls = [
   (api) => api.cloudVaultSha256Hex(data),
   (api) => api.cloudVaultKeyId(key),
@@ -40,6 +47,13 @@ const calls = [
   (api) => api.cloudVaultExpectedSessionBodyHash(data, key, 2),
   (api) => api.cloudVaultAadV1("uid", "sessions", "doc", "body", 2),
   (api) => api.cloudVaultAadV2("uid", "sessions", "doc", "body", 2, "sync"),
+  (api) => api.cloudVaultBase64Encode(data),
+  (api) => api.cloudVaultAesGcmSealCombined(data, key, new Uint8Array(12), data),
+  (api) => api.cloudVaultNormalizeRecoveryKey(recoveryKey),
+  (api) => api.cloudVaultRecoveryWrappingKey(recoveryKey),
+  (api) => api.cloudVaultRecoveryVerificationHash(recoveryKey),
+  (api) => api.cloudVaultEscrowWrappingKey(sharedSecret),
+  (api) => api.cloudVaultEscrowSeal(data, publicKey, sharedSecret, new Uint8Array(12)),
 ];
 for (const call of calls) {
   assert.deepEqual(call(committed.module), call(generated.module));

@@ -89,5 +89,46 @@
       "kind": "session-body-hmac",
       "hex": "24c3844a66a803df5cfaf2b64eec2e841d88cc71cfeb07d2fa1be1435ca551ea"
     }
-  ]
+  ],
+  "aesGcm": [
+    {
+      "keyHex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "nonceHex": "000000000000000000000000",
+      "plaintextHex": "",
+      "aadHex": "",
+      "ciphertextHex": "",
+      "tagHex": "530f8afbc74536b9a963b4f1c4cb738b",
+      "combinedBase64": "AAAAAAAAAAAAAAAAUw+K+8dFNrmpY7TxxMtziw=="
+    },
+    {
+      "keyHex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "nonceHex": "000000000000000000000000",
+      "plaintextHex": "4f70656e4275726e426172",
+      "aadHex": "4f70656e4275726e4261722d436c6f75645661756c742d6161642d76327c757365727c73657373696f6e737c646f637c626f64797c327c626f6479",
+      "ciphertextHex": "81d725530f151900452fb7",
+      "tagHex": "e9e30933fbcf60439ddc46e286803403",
+      "combinedBase64": "AAAAAAAAAAAAAAAAgdclUw8VGQBFL7fp4wkz+89gQ53cRuKGgDQD"
+    }
+  ],
+  "recovery": {
+    "formattedKey": "abc-defg-hjkm-npq-rst-vwxyz-23456789",
+    "normalizedKey": "ABCDEFGHJKMNPQRSTVWXYZ23456789",
+    "wrappingKeyHex": "b70e328c18731f5395433e560bb91dc5eb72b85d1f563a0abd5325d6c5d40bc3",
+    "verificationHash": "3d3722923f9209d63093b1212a55b5fb5de462c00137ba6d6b46228404873166",
+    "unicodeFormattedKey": "𐐨-𐐨-𐐨-𐐨-𐐨-𐐨-𐐨-𐐨-𐐨-𐐨",
+    "unicodeNormalizedKey": "𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀",
+    "unicodeWrappingKeyHex": "2df23511b98bca8e4b1e599374e322e07f89e5249d23e3b8e6a37a52453677fc",
+    "vaultKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "nonceHex": "000102030405060708090a0b",
+    "combinedHex": "000102030405060708090a0bb04fcf4916d8b21a2f3b321e500c5d3321c6217cda78fa3b5b5d6e2cbed81ebbad130fee78bb25c0eb9c881f682d6ec5"
+  },
+  "p256Escrow": {
+    "ephemeralPublicKeyHex": "046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+    "sharedSecretHex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+    "wrappingKeyHex": "ccbb0a69f2e81d6f89c87722c5a50ab79d89fa046a12a6c3116ce62c01790450",
+    "nonceHex": "000102030405060708090a0b",
+    "plaintextHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "wireHex": "046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5000102030405060708090a0b5553869ca7d37010e5dbcc7dd43e353b2ebfdc217f7e1c73b42c880d1b2df65299d89207f9cb8fef05482e372a16c6ca",
+    "emptyWireHex": "046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5000102030405060708090a0b070ed1cf6c4429bef83e0f82a712cae7"
+  }
 }
