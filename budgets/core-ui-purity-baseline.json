@@ -1,29 +1,11 @@
 {
   "note": "Files in OpenBurnBarCore/Sources/OpenBurnBarCore importing SwiftUI/AppKit. Shrink-only: entries may only be removed (audit 2026-06-30 finding #4, kernel extraction). Regenerate via scripts/debt/check-core-ui-purity-budget.sh --update.",
-  "total": 79,
+  "total": 41,
   "files": [
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/Insights/Share/InsightShareCardRenderer.swift",
       "frameworks": [
         "AppKit"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProvider+LogoBackdrop.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ThemePrimitives.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/UIModeTheme.swift",
-      "frameworks": [
-        "SwiftUI"
       ]
     },
     {
@@ -59,198 +41,6 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/HouseCrestPrimitives.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/AgentInsightsCanvasGridView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/AgentInsightsEmptyStateView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/AgentInsightsHeaderView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/AgentInsightsKPIStripView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/AgentInsightsMissionRailView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/AgentInsightsRosterView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/AgentInsightsView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightAnomalyTableView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightASCIIView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightCohortView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightDistributionView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightDrilldownListView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightFocusMatrixView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightForecastView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightFormatting.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightFunnelView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightHeatmapView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightKPITileView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightNarrativeView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightQuotaPulseView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightRadarView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightRankingView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightRecommendationView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightSankeyView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightScatterView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightTimeSeriesView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightUseCaseClusterView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightWidgetChrome.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/InsightWidgetRenderer.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/IntelligenceBriefView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/IntelligenceBriefView+Components.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/IntelligenceBriefView+Mission.swift",
       "frameworks": [
         "SwiftUI"
       ]
@@ -436,25 +226,7 @@
       ]
     },
     {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/UnifiedDesignSystem.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/UnifiedGlassCard.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/UnifiedMiniStat.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/UnifiedProviderLogoView.swift",
       "frameworks": [
         "SwiftUI"
       ]
