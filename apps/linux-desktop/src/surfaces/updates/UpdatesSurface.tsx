@@ -90,7 +90,15 @@ export function UpdatesSurface() {
       />
       <div className="p09-channel-card">
         <h3>Package channel</h3>
-        <p>{CHANNEL_CARD_COPY[versionInfo.packageChannel]}</p>
+        <p>{updateStatus?.channelInfo?.explanation ?? CHANNEL_CARD_COPY[versionInfo.packageChannel]}</p>
+        {updateStatus?.channelInfo ? (
+          <dl className="p09-channel-facts">
+            <div><dt>Owner</dt><dd>{updateStatus.channelInfo.owner}</dd></div>
+            <div><dt>Install</dt><dd>{updateStatus.channelInfo.installMode}</dd></div>
+            <div><dt>Rollback</dt><dd>{updateStatus.channelInfo.rollbackMode}</dd></div>
+            <div><dt>Automatic install</dt><dd>{updateStatus.channelInfo.automaticInstall ? 'Supported' : 'Not supported'}</dd></div>
+          </dl>
+        ) : null}
       </div>
       <div className="p09-restart-guidance">
         <h3>Restart guidance</h3>

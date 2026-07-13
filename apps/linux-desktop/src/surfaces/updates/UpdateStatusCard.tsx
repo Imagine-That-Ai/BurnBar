@@ -2,6 +2,17 @@ import { useState } from 'react';
 import type { LinuxUpdateStatus } from '../../tauriBridge.js';
 import { useShellStore } from '../../state/shellStore.js';
 
+function formatAge(seconds: number | undefined): string {
+  if (seconds === undefined) return 'age unavailable';
+  if (seconds < 60) return 'less than a minute ago';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
 export function UpdateStatusCard({
   status,
   loading,
@@ -15,6 +26,11 @@ export function UpdateStatusCard({
 }) {
   const bridge = useShellStore((state) => state.bridge);
   const [copiedAction, setCopiedAction] = useState<string | null>(null);
+  const hasVerifiedFreshFeed = status?.signatureState === undefined
+    || (status.signatureState === 'verified' && status.feedFreshness === 'fresh');
+  const daemonAllowsPackageChange = status?.compatibility === undefined
+    || status.compatibility.state === 'aligned';
+  const packageActionsBlocked = !hasVerifiedFreshFeed || !daemonAllowsPackageChange;
   const openArtifact = async () => {
     if (!status?.artifact?.url || !bridge?.openUpdateUrl) return;
     await bridge.openUpdateUrl(status.artifact.url);
@@ -48,7 +64,7 @@ export function UpdateStatusCard({
         : 'The signed update channel has not returned a usable result.');
   const verificationLabel = loading
     ? 'Verifying signed feed'
-    : status?.state === 'available' || status?.state === 'current'
+    : status?.signatureState === 'verified'
       ? 'Ed25519 verified feed'
       : status?.state === 'invalid'
         ? 'Signature or schema rejected'
@@ -66,6 +82,29 @@ export function UpdateStatusCard({
         <h3 id="p09-update-status-title">{heading}</h3>
         <p>{detail}</p>
         {status?.notes ? <p className="muted">{status.notes}</p> : null}
+        {status?.feedFreshness === 'stale' ? (
+          <p className="p09-update-freshness p09-update-freshness--stale" role="alert">
+            Signed metadata is older than seven days ({formatAge(status.feedAgeSeconds)}). Check again before
+            changing packages.
+          </p>
+        ) : status?.feedFreshness === 'future' ? (
+          <p className="p09-update-freshness p09-update-freshness--stale" role="alert">
+            Signed metadata is dated in the future; the native verifier will not treat it as fresh.
+          </p>
+        ) : status?.feedFreshness === 'fresh' ? (
+          <p className="p09-update-freshness" aria-label="Feed freshness">
+            Feed published {formatAge(status.feedAgeSeconds)} · signature verified
+          </p>
+        ) : null}
+        {status?.compatibility?.state === 'mismatch' ? (
+          <p className="p09-update-freshness p09-update-freshness--stale" role="alert">
+            {status.compatibility.reason}
+          </p>
+        ) : status?.compatibility?.state === 'unknown' ? (
+          <p className="p09-update-freshness" role="status">
+            Daemon version is unavailable; install guidance remains read-only until the daemon reconnects.
+          </p>
+        ) : null}
         {status?.artifact ? (
           <dl className="p09-update-artifact">
             <div><dt>Package</dt><dd>{status.artifact.type} · {status.artifact.architecture}</dd></div>
@@ -89,15 +128,26 @@ export function UpdateStatusCard({
                     <button
                       type="button"
                       className="ghost"
+                      disabled={action.id !== 'restart' && (!action.available || packageActionsBlocked)}
                       onClick={() => void copyCommand(action.id, action.command!)}
                       aria-label={`Copy ${action.id} command`}
                     >
-                      {copiedAction === action.id ? 'Copied' : 'Copy command'}
+                      {copiedAction === action.id
+                        ? 'Copied'
+                        : action.id !== 'restart' && (!action.available || packageActionsBlocked)
+                          ? 'Unavailable'
+                          : 'Copy command'}
                     </button>
                   ) : null}
                 </div>
               ))}
             </div>
+            {packageActionsBlocked && status.state === 'available' ? (
+              <p className="muted p09-update-instructions__note" role="status">
+                Install and rollback guidance is disabled until a fresh verified feed and aligned daemon are
+                available. Restart guidance remains available for recovery.
+              </p>
+            ) : null}
             <p className="muted p09-update-instructions__note" aria-live="polite">
               The shell never runs package-manager commands or replaces distro-owned files.
             </p>
@@ -109,8 +159,12 @@ export function UpdateStatusCard({
           {loading ? 'Checking…' : 'Check again'}
         </button>
         {status?.state === 'available' && status.artifact ? (
-          <button type="button" onClick={() => void openArtifact()} disabled={!bridge?.openUpdateUrl}>
-            Open signed download
+          <button
+            type="button"
+            onClick={() => void openArtifact()}
+            disabled={!bridge?.openUpdateUrl || packageActionsBlocked}
+          >
+            {packageActionsBlocked ? 'Download unavailable' : 'Open signed download'}
           </button>
         ) : null}
       </div>

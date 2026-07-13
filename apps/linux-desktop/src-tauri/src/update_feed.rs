@@ -3,11 +3,12 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_FEED_URL: &str = "https://downloads.burnbar.ai/latest-linux.json";
 const MAX_FEED_BYTES: usize = 1024 * 1024;
 const MAX_SIGNATURE_BYTES: usize = 1024;
+const MAX_FEED_AGE_SECONDS: u64 = 7 * 24 * 60 * 60;
 const PINNED_PUBLIC_KEY_PEM: &str =
     include_str!("../../../../packaging/linux/openburnbar-linux-ed25519.pub.pem");
 const PINNED_PUBLIC_KEY_SPKI_SHA256: &str =
@@ -59,6 +60,34 @@ pub struct LinuxUpdateStatus {
     pub notes: Option<String>,
     pub artifact: Option<LinuxUpdateArtifact>,
     pub instructions: Option<LinuxUpdateInstructions>,
+    pub package_channel: Option<String>,
+    pub channel_info: Option<LinuxUpdateChannelInfo>,
+    pub signature_state: String,
+    pub feed_freshness: String,
+    pub feed_age_seconds: Option<u64>,
+    pub checked_at_unix_seconds: u64,
+    pub compatibility: Option<LinuxUpdateCompatibility>,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinuxUpdateChannelInfo {
+    pub id: String,
+    pub label: String,
+    pub owner: String,
+    pub install_mode: String,
+    pub automatic_install: bool,
+    pub rollback_mode: String,
+    pub explanation: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinuxUpdateCompatibility {
+    pub state: String,
+    pub shell_version: String,
+    pub daemon_version: Option<String>,
     pub reason: Option<String>,
 }
 
@@ -97,6 +126,13 @@ impl LinuxUpdateStatus {
             notes: None,
             artifact: None,
             instructions: None,
+            package_channel: None,
+            channel_info: None,
+            signature_state: "unknown".into(),
+            feed_freshness: "unknown".into(),
+            feed_age_seconds: None,
+            checked_at_unix_seconds: now_unix_seconds(),
+            compatibility: None,
             reason: Some(reason.into()),
         }
     }
@@ -111,6 +147,13 @@ impl LinuxUpdateStatus {
             notes: None,
             artifact: None,
             instructions: None,
+            package_channel: None,
+            channel_info: None,
+            signature_state: "rejected".into(),
+            feed_freshness: "unknown".into(),
+            feed_age_seconds: None,
+            checked_at_unix_seconds: now_unix_seconds(),
+            compatibility: None,
             reason: Some(reason.into()),
         }
     }
@@ -238,15 +281,26 @@ pub async fn check_linux_update(current_version: &str, package_channel: &str) ->
         Ok(state) => state,
         Err(error) => return LinuxUpdateStatus::invalid(current_version, error),
     };
+    let feed_version = feed.version.clone();
+    let feed_channel = feed.channel.clone();
+    let feed_published_at = feed.published_at.clone();
+    let feed_notes = feed.notes.clone();
     let mut status = LinuxUpdateStatus {
         state: state.into(),
         current_version: current_version.into(),
-        latest_version: Some(feed.version),
-        channel: Some(feed.channel),
-        published_at: Some(feed.published_at),
-        notes: feed.notes,
+        latest_version: Some(feed_version),
+        channel: Some(feed_channel),
+        published_at: Some(feed_published_at.clone()),
+        notes: feed_notes,
         artifact: Some(artifact),
         instructions: None,
+        package_channel: Some(package_channel.to_string()),
+        channel_info: Some(channel_info(package_channel)),
+        signature_state: "verified".into(),
+        feed_freshness: feed_freshness(&feed_published_at),
+        feed_age_seconds: feed_age_seconds(&feed_published_at),
+        checked_at_unix_seconds: now_unix_seconds(),
+        compatibility: None,
         reason: None,
     };
     status.instructions = Some(build_update_instructions(
@@ -264,6 +318,8 @@ pub fn attach_update_instructions(
     mut status: LinuxUpdateStatus,
     package_channel: &str,
 ) -> LinuxUpdateStatus {
+    status.package_channel = Some(package_channel.to_string());
+    status.channel_info = Some(channel_info(package_channel));
     if status.instructions.is_none() {
         status.instructions = Some(build_update_instructions(
             package_channel,
@@ -272,6 +328,142 @@ pub fn attach_update_instructions(
         ));
     }
     status
+}
+
+/// Add daemon compatibility facts after the signed feed check. The daemon
+/// version is optional because an offline daemon must remain a typed,
+/// recoverable state rather than being represented as a fake match.
+pub fn attach_compatibility(
+    mut status: LinuxUpdateStatus,
+    shell_version: &str,
+    daemon_version: Option<&str>,
+) -> LinuxUpdateStatus {
+    let (state, reason) = match daemon_version {
+        None => (
+            "unknown",
+            Some("Daemon version is unavailable; reconnect before installing an update.".into()),
+        ),
+        Some(version) if version == shell_version => ("aligned", None),
+        Some(version) => (
+            "mismatch",
+            Some(format!(
+                "Shell {shell_version} and daemon {version} differ; restart after the package manager finishes."
+            )),
+        ),
+    };
+    status.compatibility = Some(LinuxUpdateCompatibility {
+        state: state.into(),
+        shell_version: shell_version.into(),
+        daemon_version: daemon_version.map(str::to_string),
+        reason,
+    });
+    let package_actions_allowed = status.signature_state == "verified"
+        && status.feed_freshness == "fresh"
+        && status
+            .compatibility
+            .as_ref()
+            .is_some_and(|compatibility| compatibility.state == "aligned");
+    if !package_actions_allowed {
+        if let Some(instructions) = status.instructions.as_mut() {
+            instructions.install.available = false;
+            instructions.rollback.available = false;
+        }
+    }
+    status
+}
+
+fn channel_info(package_channel: &str) -> LinuxUpdateChannelInfo {
+    match package_channel {
+        "deb" => LinuxUpdateChannelInfo {
+            id: "deb".into(),
+            label: "Debian package (.deb)".into(),
+            owner: "apt/dpkg".into(),
+            install_mode: "package-manager-guided".into(),
+            automatic_install: false,
+            rollback_mode: "apt-version-selection".into(),
+            explanation: "The distro package manager owns files and upgrades; OpenBurnBar only verifies release metadata and shows safe guidance.".into(),
+        },
+        "rpm" => LinuxUpdateChannelInfo {
+            id: "rpm".into(),
+            label: "RPM package (.rpm)".into(),
+            owner: "dnf/rpm".into(),
+            install_mode: "package-manager-guided".into(),
+            automatic_install: false,
+            rollback_mode: "dnf-history".into(),
+            explanation: "The distro package manager owns files and upgrades; OpenBurnBar never replaces RPM-owned files from the shell.".into(),
+        },
+        "appimage" => LinuxUpdateChannelInfo {
+            id: "appimage".into(),
+            label: "AppImage".into(),
+            owner: "user-managed artifact".into(),
+            install_mode: "artifact-replacement-guided".into(),
+            automatic_install: false,
+            rollback_mode: "previous-artifact".into(),
+            explanation: "AppImage replacement is user-managed; keep a signed previous image and preserve its executable bit before relaunching.".into(),
+        },
+        _ => LinuxUpdateChannelInfo {
+            id: "unknown".into(),
+            label: "Unknown package channel".into(),
+            owner: "unresolved".into(),
+            install_mode: "unavailable".into(),
+            automatic_install: false,
+            rollback_mode: "unavailable".into(),
+            explanation: "The owning package channel is not known, so install and rollback actions stay unavailable until it is identified.".into(),
+        },
+    }
+}
+
+fn now_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn feed_freshness(published_at: &str) -> String {
+    let Some(published) = timestamp_to_unix_seconds(published_at) else {
+        return "unknown".into();
+    };
+    let now = now_unix_seconds() as i64;
+    if published > now.saturating_add(300) {
+        "future".into()
+    } else if now.saturating_sub(published) as u64 > MAX_FEED_AGE_SECONDS {
+        "stale".into()
+    } else {
+        "fresh".into()
+    }
+}
+
+fn feed_age_seconds(published_at: &str) -> Option<u64> {
+    let published = timestamp_to_unix_seconds(published_at)?;
+    let now = now_unix_seconds() as i64;
+    if published > now {
+        return None;
+    }
+    Some(now.saturating_sub(published) as u64)
+}
+
+/// Convert the already-validated UTC timestamp shape to Unix seconds without
+/// pulling a date/time dependency into the native shell.
+fn timestamp_to_unix_seconds(value: &str) -> Option<i64> {
+    let (date, time) = value.split_once('T')?;
+    let year = date.get(0..4)?.parse::<i64>().ok()?;
+    let month = date.get(5..7)?.parse::<i64>().ok()?;
+    let day = date.get(8..10)?.parse::<i64>().ok()?;
+    let clock = time.strip_suffix('Z')?;
+    let mut parts = clock.split(':');
+    let hour = parts.next()?.parse::<i64>().ok()?;
+    let minute = parts.next()?.parse::<i64>().ok()?;
+    let second_part = parts.next()?;
+    let second = second_part.get(0..2)?.parse::<i64>().ok()?;
+    let y = year - if month <= 2 { 1 } else { 0 };
+    let era = (if y >= 0 { y } else { y - 399 }) / 400;
+    let year_of_era = y - era * 400;
+    let month_prime = month + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153 * month_prime + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = era * 146_097 + day_of_era - 719_468;
+    Some(days * 86_400 + hour * 3_600 + minute * 60 + second)
 }
 
 fn build_update_instructions(
@@ -366,7 +558,8 @@ fn build_update_instructions(
         instruction: if channel == "appimage" || channel == "unknown" {
             "Quit OpenBurnBar from the tray, replace or restore the signed artifact, then launch it again.".into()
         } else {
-            "Quit OpenBurnBar from the tray, let the package manager finish, then launch it again.".into()
+            "Quit OpenBurnBar from the tray, let the package manager finish, then launch it again."
+                .into()
         },
         command: if channel == "appimage" || channel == "unknown" {
             None
@@ -755,6 +948,62 @@ mod tests {
         assert!(!unknown.install.available);
         assert!(!unknown.rollback.available);
         assert!(unknown.install.command.is_none());
+    }
+
+    #[test]
+    fn status_exposes_channel_ownership_and_signature_freshness_contract() {
+        let status = attach_update_instructions(
+            LinuxUpdateStatus::unavailable("1.0.0", "network unavailable"),
+            "deb",
+        );
+        let channel = status.channel_info.expect("channel metadata");
+        assert_eq!(channel.id, "deb");
+        assert_eq!(channel.owner, "apt/dpkg");
+        assert_eq!(channel.install_mode, "package-manager-guided");
+        assert!(!channel.automatic_install);
+        assert_eq!(status.package_channel.as_deref(), Some("deb"));
+        assert_eq!(status.signature_state, "unknown");
+        assert_eq!(status.feed_freshness, "unknown");
+        assert!(status.checked_at_unix_seconds > 0);
+    }
+
+    #[test]
+    fn compatibility_is_typed_and_never_assumes_an_offline_daemon_matches() {
+        let status = LinuxUpdateStatus::unavailable("1.0.0", "network unavailable");
+        let unknown = attach_compatibility(status, "1.0.0", None);
+        let compatibility = unknown.compatibility.expect("compatibility metadata");
+        assert_eq!(compatibility.state, "unknown");
+        assert!(compatibility.daemon_version.is_none());
+
+        let status = LinuxUpdateStatus::unavailable("1.0.0", "network unavailable");
+        let mismatch = attach_compatibility(status, "1.0.0", Some("0.9.0"));
+        let compatibility = mismatch.compatibility.expect("compatibility metadata");
+        assert_eq!(compatibility.state, "mismatch");
+        assert!(compatibility.reason.unwrap().contains("differ"));
+    }
+
+    #[test]
+    fn package_mutation_actions_are_disabled_when_feed_is_not_fresh() {
+        let mut status = LinuxUpdateStatus::unavailable("1.0.0", "stale feed");
+        status.state = "available".into();
+        status.signature_state = "verified".into();
+        status.feed_freshness = "stale".into();
+        status.instructions = Some(build_update_instructions("deb", "1.0.0", Some("1.1.0")));
+        let status = attach_compatibility(status, "1.0.0", Some("1.0.0"));
+        let instructions = status.instructions.expect("instructions");
+        assert!(!instructions.install.available);
+        assert!(!instructions.rollback.available);
+        assert!(instructions.restart.available);
+    }
+
+    #[test]
+    fn timestamp_conversion_handles_epoch_and_fractional_utc_values() {
+        assert_eq!(timestamp_to_unix_seconds("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(
+            timestamp_to_unix_seconds("2000-01-01T00:00:00.123Z"),
+            Some(946684800)
+        );
+        assert!(timestamp_to_unix_seconds("not-a-timestamp").is_none());
     }
 
     #[test]
