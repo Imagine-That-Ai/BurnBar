@@ -97,6 +97,41 @@
   color: var(--color-text-base);
 }
 
+.activity-export-control {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.activity-export-control select {
+  min-height: 2rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-elevated);
+  color: var(--color-text-base);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.activity-export-button {
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: var(--space-1) var(--space-2);
+}
+
+.activity-export-status {
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+}
+
+.activity-export-scope {
+  margin: calc(var(--space-3) * -1) 0 var(--space-2);
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+}
+
 .activity-groups {
   display: grid;
   gap: var(--space-4);
