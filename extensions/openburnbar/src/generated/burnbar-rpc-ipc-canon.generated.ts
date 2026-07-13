@@ -442,6 +442,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.controller.project.delete",
+    "caseName": "controllerProjectDelete",
+    "domain": "mission_control",
+    "capability": "mission_control",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.controller.project.delete",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.controller.project.get",
     "caseName": "controllerProjectGet",
     "domain": "mission_control",
@@ -459,6 +469,16 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.controller.project",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.controller.project.reassign",
+    "caseName": "controllerProjectReassign",
+    "domain": "mission_control",
+    "capability": "mission_control",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.controller.project.reassign",
     "error": "BurnBarRPCError"
   },
   {

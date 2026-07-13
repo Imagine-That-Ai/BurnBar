@@ -2166,15 +2166,45 @@ fn project_list() -> Result<serde_json::Value, String> {
     )
 }
 
-// ───────────────── P19: project detail/upsert ─────────────────
-// Wire: daemon.controller.project.get / daemon.controller.project.upsert
-// (BurnBarRPCMethod.controllerProjectGet / controllerProjectUpsert).
+// ───────────────── P19: project lifecycle ─────────────────
+// Wire: daemon.controller.project.get / daemon.controller.project.upsert /
+// daemon.controller.project.delete / daemon.controller.project.reassign.
+// (BurnBarRPCMethod.controllerProjectGet / controllerProjectUpsert /
+// controllerProjectDelete / controllerProjectReassign).
+fn validate_project_identifier(value: &str, field: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 160 || value != value.trim() {
+        return Err(format!("{field} must be a canonical non-empty identifier"));
+    }
+    if !value.is_ascii()
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+    {
+        return Err(format!(
+            "{field} must contain only ASCII letters, digits, '-', '_', '.', or ':'"
+        ));
+    }
+    Ok(value.to_owned())
+}
+
+fn validate_project_slug(value: &str, field: &str) -> Result<String, String> {
+    let slug = validate_project_identifier(value, field)?;
+    if slug.len() > 96
+        || slug != slug.to_ascii_lowercase()
+        || !slug.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+        || !slug.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
+    {
+        return Err(format!(
+            "{field} must be a lowercase canonical project slug"
+        ));
+    }
+    Ok(slug)
+}
+
 #[tauri::command]
 fn project_get(project_slug: String) -> Result<serde_json::Value, String> {
-    let project_slug = project_slug.trim();
-    if project_slug.is_empty() {
-        return Err("projectSlug must be a non-empty string".to_string());
-    }
+    let project_slug = validate_project_slug(&project_slug, "projectSlug")?;
     call_daemon_method(
         "daemon.controller.project.get",
         Some(serde_json::json!({ "projectSlug": project_slug })),
@@ -2185,7 +2215,7 @@ fn validate_project_upsert_payload(project: &serde_json::Value) -> Result<(), St
     let object = project
         .as_object()
         .ok_or_else(|| "project must be a JSON object".to_string())?;
-    for field in ["projectSlug", "displayName", "summary"] {
+    for field in ["projectSlug", "displayName", "summary", "id"] {
         let value = object
             .get(field)
             .and_then(serde_json::Value::as_str)
@@ -2195,6 +2225,16 @@ fn validate_project_upsert_payload(project: &serde_json::Value) -> Result<(), St
             return Err(format!("project.{field} must be a non-empty string"));
         }
     }
+    let project_slug = object
+        .get("projectSlug")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "project.projectSlug must be a non-empty string".to_string())?;
+    validate_project_slug(project_slug, "project.projectSlug")?;
+    let project_id = object
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "project.id must be a non-empty string".to_string())?;
+    validate_project_identifier(project_id, "project.id")?;
     Ok(())
 }
 
@@ -2204,6 +2244,34 @@ fn project_upsert(project: serde_json::Value) -> Result<serde_json::Value, Strin
     call_daemon_method(
         "daemon.controller.project.upsert",
         Some(serde_json::json!({ "project": project })),
+    )
+}
+
+#[tauri::command]
+fn project_delete(project_slug: String) -> Result<serde_json::Value, String> {
+    let project_slug = validate_project_slug(&project_slug, "projectSlug")?;
+    call_daemon_method(
+        "daemon.controller.project.delete",
+        Some(serde_json::json!({ "projectSlug": project_slug })),
+    )
+}
+
+#[tauri::command]
+fn project_reassign(
+    source_project_slug: String,
+    target_project_slug: String,
+) -> Result<serde_json::Value, String> {
+    let source_project_slug = validate_project_slug(&source_project_slug, "sourceProjectSlug")?;
+    let target_project_slug = validate_project_slug(&target_project_slug, "targetProjectSlug")?;
+    if source_project_slug == target_project_slug {
+        return Err("sourceProjectSlug and targetProjectSlug must differ".to_string());
+    }
+    call_daemon_method(
+        "daemon.controller.project.reassign",
+        Some(serde_json::json!({
+            "sourceProjectSlug": source_project_slug,
+            "targetProjectSlug": target_project_slug
+        })),
     )
 }
 
@@ -4961,6 +5029,8 @@ pub fn run() {
             project_list,
             project_get,
             project_upsert,
+            project_delete,
+            project_reassign,
             memory_boundaries,
             memory_review_inbox,
             memory_forget,
@@ -5059,7 +5129,8 @@ mod tests {
     fn project_upsert_validation_requires_canonical_identity_fields() {
         let error = validate_project_upsert_payload(&serde_json::json!({
             "projectSlug": "apollo",
-            "displayName": "Apollo"
+            "displayName": "Apollo",
+            "id": "project-apollo"
         }))
         .expect_err("summary is required by BurnBarReviewProjectSnapshot");
         assert_eq!(error, "project.summary must be a non-empty string");
@@ -5067,7 +5138,8 @@ mod tests {
         validate_project_upsert_payload(&serde_json::json!({
             "projectSlug": "apollo",
             "displayName": "Apollo",
-            "summary": "Controller project"
+            "summary": "Controller project",
+            "id": "project-apollo"
         }))
         .expect("canonical identity fields should validate");
     }
@@ -5077,6 +5149,15 @@ mod tests {
         let error = validate_project_upsert_payload(&serde_json::json!("apollo"))
             .expect_err("project payload must be an object");
         assert_eq!(error, "project must be a JSON object");
+    }
+
+    #[test]
+    fn project_lifecycle_validation_rejects_noncanonical_identifiers() {
+        assert!(validate_project_slug("Apollo", "projectSlug").is_err());
+        assert!(validate_project_slug("apollo/child", "projectSlug").is_err());
+        assert!(validate_project_identifier("project apollo", "project.id").is_err());
+        assert!(validate_project_identifier("project-apollo", "project.id").is_ok());
+        assert!(project_reassign("apollo".to_string(), "apollo".to_string()).is_err());
     }
 
     #[test]

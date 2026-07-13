@@ -129,4 +129,78 @@ describe('ProjectsSurface', () => {
       automationMode: 'manual'
     });
   });
+
+  it('requires confirmation and refreshes only after project deletion succeeds', async () => {
+    const projectDelete = vi.fn().mockResolvedValue({ projectSlug: 'apollo', deleted: true });
+    const loadProjects = vi.spyOn(useSystemStore.getState(), 'loadProjects').mockImplementation(async () => {});
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    useShellStore.setState({
+      bridge: { projectGet: vi.fn().mockResolvedValue(project), projectDelete } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      projects: [{ id: project.id, name: project.displayName, path: '', scope: 'controller', projectSlug: project.projectSlug, record: project }],
+      loading: false,
+      error: null
+    });
+    render(<ProjectsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /open details/i }));
+    await vi.waitFor(() => expect(screen.getByRole('heading', { name: 'Apollo' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /delete project/i }));
+    await vi.waitFor(() => expect(projectDelete).toHaveBeenCalledWith('apollo'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Delete project'));
+    expect(loadProjects).toHaveBeenCalled();
+  });
+
+  it('keeps project detail visible and surfaces a deletion error without optimistic removal', async () => {
+    const projectDelete = vi.fn().mockRejectedValue(new Error('daemon refused deletion'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    useShellStore.setState({
+      bridge: { projectGet: vi.fn().mockResolvedValue(project), projectDelete } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      projects: [{ id: project.id, name: project.displayName, path: '', scope: 'controller', projectSlug: project.projectSlug, record: project }],
+      loading: false,
+      error: null
+    });
+    render(<ProjectsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /open details/i }));
+    await vi.waitFor(() => expect(screen.getByRole('heading', { name: 'Apollo' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /delete project/i }));
+    await vi.waitFor(() => expect(screen.getByRole('alert').textContent).toContain('daemon refused deletion'));
+    expect(screen.getByRole('heading', { name: 'Apollo' })).toBeTruthy();
+  });
+
+  it('requires confirmation before reassigning durable references', async () => {
+    const target: ProjectRecord = { ...project, id: 'project-orion', projectSlug: 'orion', displayName: 'Orion' };
+    const projectReassign = vi.fn().mockResolvedValue({
+      sourceProjectSlug: 'apollo',
+      targetProjectSlug: 'orion',
+      updatedReferenceCount: 3
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    useShellStore.setState({
+      bridge: { projectGet: vi.fn().mockResolvedValue(project), projectReassign } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      projects: [
+        { id: project.id, name: project.displayName, path: '', scope: 'controller', projectSlug: project.projectSlug, record: project },
+        { id: target.id, name: target.displayName, path: '', scope: 'controller', projectSlug: target.projectSlug, record: target }
+      ],
+      loading: false,
+      error: null
+    });
+    render(<ProjectsSurface />);
+    fireEvent.click(screen.getAllByRole('button', { name: /open details/i })[0]);
+    await vi.waitFor(() => expect(screen.getByRole('heading', { name: 'Apollo' })).toBeTruthy());
+    fireEvent.change(screen.getByRole('combobox', { name: /reassign references to/i }), { target: { value: 'orion' } });
+    fireEvent.click(screen.getByRole('button', { name: /reassign references/i }));
+    await vi.waitFor(() => expect(projectReassign).toHaveBeenCalledWith('apollo', 'orion'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Reassign all durable references'));
+  });
 });

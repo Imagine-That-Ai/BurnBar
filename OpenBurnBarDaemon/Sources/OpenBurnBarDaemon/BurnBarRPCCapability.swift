@@ -103,7 +103,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .media
         case .controllerSummary, .controllerRuntimeSnapshot,
              .controllerProjectsList, .controllerProjectGet,
-             .controllerProjectUpsert, .reviewRunRecord,
+             .controllerProjectUpsert, .controllerProjectDelete,
+             .controllerProjectReassign, .reviewRunRecord,
              .questionCreate, .questionGet, .questionsList, .questionAnswer,
              .followupCreate, .followupsList, .followupDone, .followupSnooze, .followupCalendar,
              .missionCreate, .missionsList, .missionGet, .missionApprove, .missionCancel,

@@ -193,6 +193,22 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(3, 'project_upsert', { project: canonical });
   });
 
+  it('uses typed delete and reassign project lifecycle commands', async () => {
+    invoke
+      .mockResolvedValueOnce({ projectSlug: 'apollo', deleted: true })
+      .mockResolvedValueOnce({ sourceProjectSlug: 'apollo', targetProjectSlug: 'orion', updatedReferenceCount: 3 });
+    const b = await bridge();
+
+    await expect(b.projectDelete?.('apollo')).resolves.toEqual({ projectSlug: 'apollo', deleted: true });
+    await expect(b.projectReassign?.('apollo', 'orion')).resolves.toEqual({
+      sourceProjectSlug: 'apollo',
+      targetProjectSlug: 'orion',
+      updatedReferenceCount: 3
+    });
+    expect(invoke).toHaveBeenNthCalledWith(1, 'project_delete', { projectSlug: 'apollo' });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'project_reassign', { sourceProjectSlug: 'apollo', targetProjectSlug: 'orion' });
+  });
+
   it('does not synthesize a project from a title-only daemon row', async () => {
     invoke.mockResolvedValueOnce({ projects: [{ title: 'Apollo', path: '/tmp/Apollo' }] });
     const b = await bridge();

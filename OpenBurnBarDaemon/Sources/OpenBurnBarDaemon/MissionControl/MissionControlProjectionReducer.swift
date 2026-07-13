@@ -1,6 +1,15 @@
 import OpenBurnBarCore
 import Foundation
 
+struct BurnBarProjectDeletionPayload: Codable, Sendable {
+    let projectSlug: String
+}
+
+struct BurnBarProjectReassignmentPayload: Codable, Sendable {
+    let sourceProjectSlug: String
+    let targetProjectSlug: String
+}
+
 enum MissionControlProjectionReducer {
     static func decodePayload<Value: Decodable>(_ type: Value.Type, from event: BurnBarControllerEvent) throws -> Value {
         guard let payload = event.metadata["payload"] else {
@@ -71,6 +80,140 @@ enum MissionControlProjectionReducer {
         case (.controller, "project_upserted"):
             let project = try decodePayload(BurnBarReviewProjectSnapshot.self, from: event)
             state.projects[project.projectSlug] = project
+        case (.controller, "project_deleted"):
+            let payload = try decodePayload(BurnBarProjectDeletionPayload.self, from: event)
+            state.projects.removeValue(forKey: payload.projectSlug)
+        case (.controller, "project_reassigned"):
+            let payload = try decodePayload(BurnBarProjectReassignmentPayload.self, from: event)
+            state.reviewRuns = Dictionary(uniqueKeysWithValues: state.reviewRuns.map { id, run in
+                guard run.projectSlug == payload.sourceProjectSlug else { return (id, run) }
+                return (
+                    id,
+                    BurnBarReviewRunSnapshot(
+                        id: run.id,
+                        projectSlug: payload.targetProjectSlug,
+                        cadence: run.cadence,
+                        recordedAt: run.recordedAt,
+                        summary: run.summary,
+                        questionCount: run.questionCount,
+                        followupCount: run.followupCount,
+                        missionCount: run.missionCount,
+                        origin: run.origin,
+                        triggeredBy: run.triggeredBy,
+                        launchedRunID: run.launchedRunID,
+                        metadata: run.metadata
+                    )
+                )
+            })
+            state.questions = Dictionary(uniqueKeysWithValues: state.questions.map { id, question in
+                guard question.projectSlug == payload.sourceProjectSlug else { return (id, question) }
+                return (
+                    id,
+                    BurnBarPendingQuestionSnapshot(
+                        id: question.id,
+                        projectSlug: payload.targetProjectSlug,
+                        sessionID: question.sessionID,
+                        title: question.title,
+                        prompt: question.prompt,
+                        stageLabel: question.stageLabel,
+                        status: question.status,
+                        priority: question.priority,
+                        askedAt: question.askedAt,
+                        dueAt: question.dueAt,
+                        latestAnswer: question.latestAnswer,
+                        answerPlaceholder: question.answerPlaceholder,
+                        contextSummary: question.contextSummary,
+                        evidenceRefs: question.evidenceRefs,
+                        suggestedOptions: question.suggestedOptions,
+                        deepLink: question.deepLink,
+                        tracker: question.tracker,
+                        metadata: question.metadata
+                    )
+                )
+            })
+            state.followups = Dictionary(uniqueKeysWithValues: state.followups.map { id, followup in
+                guard followup.projectSlug == payload.sourceProjectSlug else { return (id, followup) }
+                return (
+                    id,
+                    BurnBarFollowupSnapshot(
+                        id: followup.id,
+                        projectSlug: payload.targetProjectSlug,
+                        questionID: followup.questionID,
+                        title: followup.title,
+                        summary: followup.summary,
+                        stageLabel: followup.stageLabel,
+                        status: followup.status,
+                        kind: followup.kind,
+                        createdAt: followup.createdAt,
+                        nextNudgeAt: followup.nextNudgeAt,
+                        snoozeUntil: followup.snoozeUntil,
+                        calendarEntry: followup.calendarEntry,
+                        deepLink: followup.deepLink,
+                        metadata: followup.metadata
+                    )
+                )
+            })
+            state.missions = Dictionary(uniqueKeysWithValues: state.missions.map { id, mission in
+                let reassignedTakeoverHistory = mission.takeoverHistory?.map { takeover in
+                    guard takeover.projectSlug == payload.sourceProjectSlug else { return takeover }
+                    return BurnBarAutoTakeoverRecord(
+                        id: takeover.id,
+                        projectSlug: payload.targetProjectSlug,
+                        missionID: takeover.missionID,
+                        sourceRunID: takeover.sourceRunID,
+                        takeoverRunID: takeover.takeoverRunID,
+                        status: takeover.status,
+                        reason: takeover.reason,
+                        createdAt: takeover.createdAt,
+                        updatedAt: takeover.updatedAt,
+                        metadata: takeover.metadata
+                    )
+                }
+                guard mission.projectSlug == payload.sourceProjectSlug
+                    || mission.takeoverHistory?.contains(where: { $0.projectSlug == payload.sourceProjectSlug }) == true else {
+                    return (id, mission)
+                }
+                return (
+                    id,
+                    BurnBarMissionSnapshot(
+                        id: mission.id,
+                        projectSlug: mission.projectSlug == payload.sourceProjectSlug
+                            ? payload.targetProjectSlug
+                            : mission.projectSlug,
+                        title: mission.title,
+                        summary: mission.summary,
+                        status: mission.status,
+                        recommendation: mission.recommendation,
+                        createdAt: mission.createdAt,
+                        updatedAt: mission.updatedAt,
+                        approval: mission.approval,
+                        packets: mission.packets,
+                        results: mission.results,
+                        burnRecords: mission.burnRecords,
+                        takeoverHistory: reassignedTakeoverHistory,
+                        prLinkage: mission.prLinkage,
+                        metadata: mission.metadata
+                    )
+                )
+            })
+            state.simulatorRuns = Dictionary(uniqueKeysWithValues: state.simulatorRuns.map { id, run in
+                guard run.projectSlug == payload.sourceProjectSlug else { return (id, run) }
+                return (
+                    id,
+                    BurnBarSimulatorRunSnapshot(
+                        id: run.id,
+                        projectSlug: payload.targetProjectSlug,
+                        scenarioName: run.scenarioName,
+                        status: run.status,
+                        seed: run.seed,
+                        startedAt: run.startedAt,
+                        completedAt: run.completedAt,
+                        emittedEvents: run.emittedEvents,
+                        projectionStatus: run.projectionStatus,
+                        summary: run.summary
+                    )
+                )
+            })
         case (.controller, "review_run_recorded"):
             let run = try decodePayload(BurnBarReviewRunSnapshot.self, from: event)
             state.reviewRuns[run.id] = run

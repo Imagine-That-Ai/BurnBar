@@ -50,8 +50,9 @@ public actor BurnBarMissionControlStore {
 
     public func project(slug: String) throws -> BurnBarReviewProjectSnapshot? {
         try ensureLoaded()
+        let canonicalSlug = try canonicalProjectSlug(slug)
         return summaryEnricher.enrichedProjects()
-            .first(where: { $0.projectSlug == slug })
+            .first(where: { $0.projectSlug == canonicalSlug })
     }
 
     public func projects(_ request: BurnBarControllerProjectsListRequest) throws -> [BurnBarReviewProjectSnapshot] {
@@ -62,6 +63,10 @@ public actor BurnBarMissionControlStore {
     }
 
     public func upsertProject(_ project: BurnBarReviewProjectSnapshot) throws -> (BurnBarReviewProjectSnapshot, BurnBarControllerEvent) {
+        try validateProjectIdentity(project)
+        if try projectSlugWasDeleted(project.projectSlug) {
+            throw BurnBarMissionControlError.projectDeleted(project.projectSlug)
+        }
         let event = try appendEvent(
             family: .controller,
             eventType: "project_upserted",
@@ -71,6 +76,57 @@ public actor BurnBarMissionControlStore {
             payload: try BurnBarJSONValue.fromEncodable(project)
         )
         return (try projectValue(project.projectSlug), event)
+    }
+
+    public func deleteProject(
+        _ request: BurnBarControllerProjectDeleteRequest
+    ) throws -> (BurnBarControllerProjectDeleteResponse, BurnBarControllerEvent) {
+        let sourceSlug = try resolveProjectSlug(request.projectSlug)
+        guard projection?.projects[sourceSlug] != nil else {
+            throw BurnBarMissionControlError.projectNotFound(sourceSlug)
+        }
+        let payload = BurnBarProjectDeletionPayload(projectSlug: sourceSlug)
+        let event = try appendEvent(
+            family: .controller,
+            eventType: "project_deleted",
+            projectSlug: sourceSlug,
+            summary: "Deleted project \(sourceSlug)",
+            detail: "Project registry entry removed; associated history retained.",
+            payload: try BurnBarJSONValue.fromEncodable(payload)
+        )
+        return (BurnBarControllerProjectDeleteResponse(projectSlug: sourceSlug), event)
+    }
+
+    public func reassignProject(
+        _ request: BurnBarControllerProjectReassignRequest
+    ) throws -> (BurnBarControllerProjectReassignResponse, BurnBarControllerEvent) {
+        let sourceSlug = try resolveProjectSlug(request.sourceProjectSlug, allowDeletedSource: true)
+        let targetSlug = try resolveProjectSlug(request.targetProjectSlug)
+        guard sourceSlug != targetSlug else {
+            throw BurnBarMissionControlError.invalidProjectIdentifier(request.targetProjectSlug)
+        }
+
+        let updatedReferenceCount = referenceCount(for: sourceSlug)
+        let payload = BurnBarProjectReassignmentPayload(
+            sourceProjectSlug: sourceSlug,
+            targetProjectSlug: targetSlug
+        )
+        let event = try appendEvent(
+            family: .controller,
+            eventType: "project_reassigned",
+            projectSlug: sourceSlug,
+            summary: "Reassigned project references",
+            detail: "\(sourceSlug) → \(targetSlug)",
+            payload: try BurnBarJSONValue.fromEncodable(payload)
+        )
+        return (
+            BurnBarControllerProjectReassignResponse(
+                sourceProjectSlug: sourceSlug,
+                targetProjectSlug: targetSlug,
+                updatedReferenceCount: updatedReferenceCount
+            ),
+            event
+        )
     }
 
     public func recordReviewRun(_ run: BurnBarReviewRunSnapshot) throws -> (BurnBarReviewRunSnapshot, BurnBarControllerEvent) {
@@ -1238,6 +1294,107 @@ public actor BurnBarMissionControlStore {
             throw BurnBarMissionControlError.projectNotFound(slug)
         }
         return project
+    }
+
+    private func validateProjectIdentity(_ project: BurnBarReviewProjectSnapshot) throws {
+        let projectSlug = try canonicalProjectSlug(project.projectSlug)
+        guard let projectID = canonicalProjectIdentifier(project.id) else {
+            throw BurnBarMissionControlError.invalidProjectIdentifier(project.id)
+        }
+        var identities = Set([projectSlug, projectID])
+        for alias in project.aliases {
+            guard let canonicalAlias = canonicalProjectIdentifier(alias), identities.insert(canonicalAlias).inserted else {
+                throw BurnBarMissionControlError.projectIdentityConflict(alias)
+            }
+        }
+
+        try ensureLoaded()
+        let existingProjects = projection.map { Array($0.projects.values) } ?? []
+        for existing in existingProjects where existing.projectSlug != projectSlug {
+            let existingIdentities = Set([existing.projectSlug, existing.id] + existing.aliases)
+            if let conflict = identities.first(where: { existingIdentities.contains($0) }) {
+                throw BurnBarMissionControlError.projectIdentityConflict(conflict)
+            }
+        }
+    }
+
+    private func canonicalProjectSlug(_ raw: String) throws -> String {
+        let slug = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard slug == raw,
+              slug.count <= 96,
+              slug.isEmpty == false,
+              slug == slug.lowercased(),
+              slug.first.map({ $0.isLetter || $0.isNumber }) == true,
+              slug.last.map({ $0.isLetter || $0.isNumber }) == true,
+              slug.unicodeScalars.allSatisfy({ scalar in
+                  scalar.isASCII && (scalar.value == 45 || scalar.value == 46 || scalar.value == 95 ||
+                      (scalar.value >= 48 && scalar.value <= 57) ||
+                      (scalar.value >= 97 && scalar.value <= 122))
+              }) else {
+            throw BurnBarMissionControlError.invalidProjectIdentifier(raw)
+        }
+        return slug
+    }
+
+    private func canonicalProjectIdentifier(_ raw: String) -> String? {
+        let identifier = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard identifier == raw,
+              identifier.count <= 160,
+              identifier.isEmpty == false,
+              identifier.unicodeScalars.allSatisfy({ scalar in
+                  scalar.isASCII && (scalar.value == 45 || scalar.value == 46 || scalar.value == 58 || scalar.value == 95 ||
+                      (scalar.value >= 48 && scalar.value <= 57) ||
+                      (scalar.value >= 65 && scalar.value <= 90) ||
+                      (scalar.value >= 97 && scalar.value <= 122))
+              }) else {
+            return nil
+        }
+        return identifier
+    }
+
+    private func resolveProjectSlug(_ raw: String, allowDeletedSource: Bool = false) throws -> String {
+        guard let identifier = canonicalProjectIdentifier(raw) else {
+            throw BurnBarMissionControlError.invalidProjectIdentifier(raw)
+        }
+        try ensureLoaded()
+        let projects = projection.map { Array($0.projects.values) } ?? []
+        let matches = projects.filter { project in
+            project.projectSlug == identifier || project.id == identifier || project.aliases.contains(identifier)
+        }
+        let matchingSlugs = Set(matches.map(\.projectSlug))
+        let deletedSource = allowDeletedSource && matchingSlugs.isEmpty
+            ? try projectSlugWasDeleted(identifier)
+            : false
+        switch matches.count {
+        case 0 where deletedSource:
+            return try canonicalProjectSlug(identifier)
+        case 0:
+            throw BurnBarMissionControlError.projectNotFound(raw)
+        case 1 where matchingSlugs.count == 1:
+            return matches[0].projectSlug
+        default:
+            throw BurnBarMissionControlError.ambiguousProjectIdentifier(raw)
+        }
+    }
+
+    private func projectSlugWasDeleted(_ slug: String) throws -> Bool {
+        try loadEvents().contains { event in
+            event.family == .controller && event.eventType == "project_deleted" && event.projectSlug == slug
+        }
+    }
+
+    private func referenceCount(for sourceSlug: String) -> Int {
+        let reviewRuns = projection?.reviewRuns.values.filter { $0.projectSlug == sourceSlug }.count ?? 0
+        let questions = projection?.questions.values.filter { $0.projectSlug == sourceSlug }.count ?? 0
+        let followups = projection?.followups.values.filter { $0.projectSlug == sourceSlug }.count ?? 0
+        let missions = projection?.missions.values.reduce(into: 0) { count, mission in
+            if mission.projectSlug == sourceSlug {
+                count += 1
+            }
+            count += mission.takeoverHistory?.filter { $0.projectSlug == sourceSlug }.count ?? 0
+        } ?? 0
+        let simulatorRuns = projection?.simulatorRuns.values.filter { $0.projectSlug == sourceSlug }.count ?? 0
+        return reviewRuns + questions + followups + missions + simulatorRuns
     }
 
     private func reviewRunValue(_ id: String) throws -> BurnBarReviewRunSnapshot {
