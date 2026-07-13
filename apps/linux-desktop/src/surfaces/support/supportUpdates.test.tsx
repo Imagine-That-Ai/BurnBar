@@ -6,7 +6,7 @@ import { clearPerfSamples, recordPerfSample } from '../../perfMarks.js';
 import { useMediaStore } from '../../state/mediaStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSupportStore } from '../../state/supportStore.js';
-import type { LinuxShellBridge } from '../../tauriBridge.js';
+import { isSafeDiagnosticsPath, type LinuxShellBridge } from '../../tauriBridge.js';
 import { UpdatesSurface } from '../updates/UpdatesSurface.js';
 import { SupportSurface } from './SupportSurface.js';
 
@@ -34,7 +34,10 @@ function resetStores(): void {
     updateError: null,
     exportState: 'idle',
     exportPath: null,
-    exportError: null
+    exportPreview: null,
+    exportError: null,
+    copyState: 'idle',
+    copyError: null
   });
   useMediaStore.setState({
     status: null,
@@ -67,6 +70,14 @@ function mockBridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge
       shellVersion: '1.0.0',
       daemonVersion: '1.0.0',
       packageChannel: 'deb',
+      package: { channel: 'deb', manager: 'dpkg', evidence: 'test' },
+      runtime: {
+        os: 'linux',
+        architecture: 'x86_64',
+        kernel: '6.8.0',
+        desktop: 'GNOME',
+        displayServer: 'wayland'
+      },
       updateCheck: 'unavailable-in-shell'
     }),
     updateStatus: vi.fn().mockResolvedValue({
@@ -76,7 +87,16 @@ function mockBridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge
       channel: 'stable',
       publishedAt: '2026-07-09T00:00:00Z'
     }),
-    exportDiagnostics: vi.fn().mockResolvedValue({ path: '/home/user/diagnostics.json' }),
+    exportDiagnostics: vi.fn().mockResolvedValue({
+      path: '/home/user/diagnostics-1720512345.json',
+      preview: {
+        schemaVersion: 1,
+        byteCount: 512,
+        fileMode: '0600',
+        included: ['package channel and runtime facts'],
+        excluded: ['provider API keys and credentials']
+      }
+    }),
     sessionEnv: vi.fn(),
     mediaStatus: vi.fn().mockResolvedValue({ capabilityAvailable: false, pairedDevices: [] }),
     ...overrides
@@ -86,6 +106,13 @@ function mockBridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge
 describe('P09 updates and support', () => {
   beforeEach(resetStores);
   afterEach(cleanup);
+
+  it('accepts native diagnostics paths but rejects traversal and control input', () => {
+    expect(isSafeDiagnosticsPath('/tmp/openburnbar-diagnostics-fixture.json')).toBe(true);
+    expect(isSafeDiagnosticsPath('/home/user/diagnostics-1720512345.json')).toBe(true);
+    expect(isSafeDiagnosticsPath('/tmp/../../secrets.json')).toBe(false);
+    expect(isSafeDiagnosticsPath('/tmp/diagnostics-\n.json')).toBe(false);
+  });
 
   it('shows offline notice on updates without bridge or fixture', async () => {
     const { container } = render(<UpdatesSurface />);
@@ -105,6 +132,7 @@ describe('P09 updates and support', () => {
     expect(container.querySelector('[data-failure-state="channel-unavailable"]')).not.toBeNull();
     expect(container.querySelector('[data-failure-state="restart-required"]')).not.toBeNull();
     expect(screen.getAllByText('0.1.0-fixture').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('fixture-only')).toBeTruthy();
   });
 
   it('shows version-mismatch degraded banner on updates', async () => {
@@ -192,8 +220,56 @@ describe('P09 updates and support', () => {
       await useSupportStore.getState().exportDiagnostics();
     });
     expect(screen.getByText(/Export written:/)).toBeTruthy();
-    expect(screen.getByText('/home/user/diagnostics.json')).toBeTruthy();
+    expect(screen.getByText('/home/user/diagnostics-1720512345.json')).toBeTruthy();
+    expect(screen.getByText('Native export metadata')).toBeTruthy();
     expect(bridge.exportDiagnostics).toHaveBeenCalled();
+  });
+
+  it('copies only the validated native export path', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const bridge = mockBridge();
+    useShellStore.setState({ bridge });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+      await useSupportStore.getState().copyDiagnosticsPath();
+    });
+    expect(writeText).toHaveBeenCalledWith('/home/user/diagnostics-1720512345.json');
+    expect(screen.getByText('Diagnostics path copied.')).toBeTruthy();
+  });
+
+  it('fails closed when a bridge returns a path outside the diagnostics contract', async () => {
+    const bridge = mockBridge({
+      exportDiagnostics: vi.fn().mockResolvedValue({ path: '/tmp/../../secrets.json' })
+    });
+    useShellStore.setState({ bridge });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+    });
+    expect(screen.getByText('Native diagnostics export returned an unsafe path.')).toBeTruthy();
+  });
+
+  it('fails closed when preview privacy metadata is malformed', async () => {
+    const bridge = mockBridge({
+      exportDiagnostics: vi.fn().mockResolvedValue({
+        path: '/tmp/diagnostics-1720512345.json',
+        preview: {
+          schemaVersion: 1,
+          byteCount: 512,
+          fileMode: '0644',
+          included: ['shell version'],
+          excluded: ['provider API keys and credentials']
+        }
+      })
+    });
+    useShellStore.setState({ bridge });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+    });
+    expect(screen.getByText('Native diagnostics export returned unsafe preview metadata.')).toBeTruthy();
   });
 
   it('shows export failure with raw error from bridge', async () => {
