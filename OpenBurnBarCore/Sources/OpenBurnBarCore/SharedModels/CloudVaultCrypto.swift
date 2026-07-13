@@ -948,57 +948,78 @@ public enum CloudVaultCrypto {
 
     public static func wrapVaultKey(_ keyData: Data, recipientPublicKey: Data) throws -> Data {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return try sealEscrowPayload(keyData, recipientPublicKey: recipientPublicKey)
+    }
+
+    public static func sealEscrowPayload(
+        _ plaintext: Data,
+        recipientPublicKey: Data,
+        authenticating aad: Data = Data()
+    ) throws -> Data {
+        try validateEscrowPublicKey(recipientPublicKey)
         guard let recipientKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: recipientPublicKey) else {
             throw CloudVaultCryptoError.invalidPublicKey
         }
         let ephemeralKey = PlatformCrypto.p256KeyAgreementPrivateKey()
         let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: ephemeralKey, publicKey: recipientKey)
-        let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
-            sharedSecret: sharedSecret,
-            salt: Data(),
-            info: Data("OpenBurnBar-Escrow-v1".utf8),
-            outputByteCount: 32
-        )
+        let wrappingKeyData = try escrowWrappingKey(sharedSecret.withUnsafeBytes { Data($0) })
         let combined = try sealAESGCMThroughDomainCore(
-            plaintext: keyData,
-            keyData: PlatformCrypto.symmetricKeyData(wrappingKey),
-            authenticating: Data()
+            plaintext: plaintext,
+            keyData: wrappingKeyData,
+            authenticating: aad
         )
-        return ephemeralKey.publicKey.x963Representation + combined
+        let ephemeralPublicKey = ephemeralKey.publicKey.x963Representation
+        return try runDomainCoreC1c(invalidError: .invalidEnvelope) {
+            try CloudVaultDomainCoreAdapter.escrowAssembleWire(
+                ephemeralPublicKey: ephemeralPublicKey,
+                aesGCMCombined: combined
+            ) { ephemeralPublicKey + combined }
+        }
     }
 
     public static func unwrapVaultKey(_ ciphertext: Data, privateKey: PlatformP256KeyAgreementPrivateKey) throws -> Data {
-        guard ciphertext.count > 65 else { throw CloudVaultCryptoError.invalidEnvelope }
-        let publicKeyData = ciphertext.prefix(65)
-        let sealedBoxData = ciphertext.suffix(from: 65)
-        guard let publicKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: Data(publicKeyData)) else {
-            throw CloudVaultCryptoError.invalidPublicKey
-        }
-        let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey, publicKey: publicKey)
-        let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
-            sharedSecret: sharedSecret,
-            salt: Data(),
-            info: Data("OpenBurnBar-Escrow-v1".utf8),
-            outputByteCount: 32
-        )
-        let keyData = try openAESGCMThroughDomainCore(
-            combined: Data(sealedBoxData),
-            keyData: PlatformCrypto.symmetricKeyData(wrappingKey),
-            authenticating: Data()
-        )
+        let keyData = try openEscrowPayload(ciphertext, privateKey: privateKey)
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         return keyData
     }
 
-    public static func deriveRecoveryWrappingKey(from recoveryKey: String) throws -> PlatformSymmetricKey {
-        let normalized = normalizedRecoveryKey(recoveryKey)
-        guard normalized.count >= 20 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: Data(normalized.utf8),
-            salt: recoverySalt,
-            info: recoveryWrapInfo,
-            outputByteCount: 32
+    public static func openEscrowPayload(
+        _ ciphertext: Data,
+        privateKey: PlatformP256KeyAgreementPrivateKey,
+        authenticating aad: Data = Data()
+    ) throws -> Data {
+        let parts = try runDomainCoreC1c(invalidError: .invalidEnvelope) {
+            try CloudVaultDomainCoreAdapter.escrowSplitWire(ciphertext) {
+                guard ciphertext.count >= 65 + 12 + 16 else { throw CloudVaultCryptoError.invalidEnvelope }
+                let publicKeyData = Data(ciphertext.prefix(65))
+                guard (try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: publicKeyData)) != nil else {
+                    throw CloudVaultCryptoError.invalidPublicKey
+                }
+                return .init(
+                    ephemeralPublicKey: publicKeyData,
+                    aesGCMCombined: Data(ciphertext.dropFirst(65))
+                )
+            }
+        }
+        guard let publicKey = try? PlatformCrypto.p256KeyAgreementPublicKey(
+            x963Representation: parts.ephemeralPublicKey
+        ) else { throw CloudVaultCryptoError.invalidPublicKey }
+        let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey, publicKey: publicKey)
+        let wrappingKeyData = try escrowWrappingKey(sharedSecret.withUnsafeBytes { Data($0) })
+        return try openAESGCMThroughDomainCore(
+            combined: parts.aesGCMCombined,
+            keyData: wrappingKeyData,
+            authenticating: aad
         )
+    }
+
+    public static func deriveRecoveryWrappingKey(from recoveryKey: String) throws -> PlatformSymmetricKey {
+        let keyData = try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.recoveryWrappingKey(recoveryKey: recoveryKey) {
+                PlatformCrypto.symmetricKeyData(try legacyRecoveryWrappingKey(from: recoveryKey))
+            }
+        }
+        return try PlatformCrypto.symmetricKey(data: keyData)
     }
 
     public static func wrapVaultKeyWithRecovery(
@@ -1006,15 +1027,29 @@ public enum CloudVaultCrypto {
         recoveryKey: String
     ) throws -> (wrappedVaultKeyBase64: String, verificationHash: String) {
         guard vaultKey.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        let wrappingKey = try deriveRecoveryWrappingKey(from: recoveryKey)
-        let combined = try sealAESGCMThroughDomainCore(
-            plaintext: vaultKey,
-            keyData: PlatformCrypto.symmetricKeyData(wrappingKey),
-            authenticating: Data()
-        )
+        let nonce = Data(try randomBytes(count: 12))
+        let wrapped = try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.recoveryWrapVaultKey(
+                vaultKey: vaultKey,
+                recoveryKey: recoveryKey,
+                nonce: nonce
+            ) {
+                let wrappingKey = try legacyRecoveryWrappingKey(from: recoveryKey)
+                let combined = try PlatformCrypto.sealAESGCMDetached(
+                    plaintext: vaultKey,
+                    keyData: PlatformCrypto.symmetricKeyData(wrappingKey),
+                    nonce: nonce,
+                    authenticating: Data()
+                ).combined
+                return .init(
+                    combined: combined,
+                    verificationHash: recoveryVerificationHash(forDerivedKey: wrappingKey)
+                )
+            }
+        }
         return (
-            wrappedVaultKeyBase64: try base64EncodeThroughDomainCore(combined),
-            verificationHash: recoveryVerificationHash(forDerivedKey: wrappingKey)
+            wrappedVaultKeyBase64: try base64EncodeThroughDomainCore(wrapped.combined),
+            verificationHash: wrapped.verificationHash
         )
     }
 
@@ -1023,17 +1058,25 @@ public enum CloudVaultCrypto {
         recoveryKey: String
     ) throws -> Data {
         let combined = try base64DecodeThroughDomainCore(wrappedVaultKeyBase64)
-        let keyData = try openAESGCMThroughDomainCore(
-            combined: combined,
-            keyData: PlatformCrypto.symmetricKeyData(try deriveRecoveryWrappingKey(from: recoveryKey)),
-            authenticating: Data()
-        )
-        guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return keyData
+        return try runDomainCoreC1c(invalidError: .invalidEnvelope) {
+            try CloudVaultDomainCoreAdapter.recoveryOpenVaultKey(combined: combined, recoveryKey: recoveryKey) {
+                let keyData = try PlatformCrypto.openAESGCM(
+                    combined: combined,
+                    key: try legacyRecoveryWrappingKey(from: recoveryKey),
+                    authenticating: Data()
+                )
+                guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+                return keyData
+            }
+        }
     }
 
     public static func recoveryVerificationHash(for recoveryKey: String) throws -> String {
-        try recoveryVerificationHash(forDerivedKey: deriveRecoveryWrappingKey(from: recoveryKey))
+        try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.recoveryVerificationHash(recoveryKey: recoveryKey) {
+                recoveryVerificationHash(forDerivedKey: try legacyRecoveryWrappingKey(from: recoveryKey))
+            }
+        }
     }
 
     public static func sha256Hex(_ data: Data) -> String {
@@ -1056,10 +1099,58 @@ public enum CloudVaultCrypto {
         }
     }
 
+    private static func legacyRecoveryWrappingKey(from recoveryKey: String) throws -> PlatformSymmetricKey {
+        let normalized = normalizedRecoveryKey(recoveryKey)
+        guard normalized.count >= 20 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return try PlatformCrypto.deriveHKDFSHA256Key(
+            inputKeyMaterial: Data(normalized.utf8),
+            salt: recoverySalt,
+            info: recoveryWrapInfo,
+            outputByteCount: 32
+        )
+    }
+
+    private static func validateEscrowPublicKey(_ publicKey: Data) throws {
+        try runDomainCoreC1c(invalidError: .invalidPublicKey) {
+            try CloudVaultDomainCoreAdapter.validateP256X963PublicKey(publicKey) {
+                guard (try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: publicKey)) != nil else {
+                    throw CloudVaultCryptoError.invalidPublicKey
+                }
+                return true
+            }
+        }
+    }
+
+    private static func escrowWrappingKey(_ sharedSecret: Data) throws -> Data {
+        try runDomainCoreC1c(invalidError: .invalidEnvelope) {
+            try CloudVaultDomainCoreAdapter.escrowWrappingKey(sharedSecret: sharedSecret) {
+                try PlatformCrypto.deriveHKDFSHA256KeyData(
+                    inputKeyMaterial: sharedSecret,
+                    salt: Data(),
+                    info: Data("OpenBurnBar-Escrow-v1".utf8),
+                    outputByteCount: 32
+                )
+            }
+        }
+    }
+
     private static func normalizedRecoveryKey(_ recoveryKey: String) -> String {
         recoveryKey
             .uppercased()
             .filter { $0.isLetter || $0.isNumber }
+    }
+
+    private static func runDomainCoreC1c<T>(
+        invalidError: CloudVaultCryptoError,
+        _ operation: () throws -> T
+    ) throws -> T {
+        do {
+            return try operation()
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch is CloudVaultDomainCoreAdapterError {
+            throw invalidError
+        }
     }
 
     private static func symmetricKey(from data: Data) throws -> PlatformSymmetricKey {

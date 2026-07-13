@@ -132,6 +132,141 @@ final class CloudVaultDomainCoreAdapterTests: XCTestCase {
         }
     }
 
+    func testNativeRustModeMatchesRecoveryAndP256EscrowKAT() throws {
+        let fixture = try loadFixture()
+        let recovery = fixture.recovery
+        let vaultKey = try Data(hex: recovery.vaultKeyHex)
+        let nonce = try Data(hex: recovery.nonceHex)
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.normalizeRecoveryKey(
+                recovery.formattedKey,
+                environment: rustEnvironment,
+                legacy: { XCTFail("Rust mode evaluated recovery normalization legacy closure"); return "" }
+            ),
+            recovery.normalizedKey
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.recoveryWrappingKey(
+                recoveryKey: recovery.formattedKey,
+                environment: rustEnvironment,
+                legacy: { XCTFail("Rust mode evaluated recovery KDF legacy closure"); return Data() }
+            ),
+            try Data(hex: recovery.wrappingKeyHex)
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.normalizeRecoveryKey(
+                recovery.unicodeFormattedKey,
+                environment: rustEnvironment,
+                legacy: { XCTFail("Rust mode evaluated Unicode normalization legacy closure"); return "" }
+            ),
+            recovery.unicodeNormalizedKey
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.recoveryWrappingKey(
+                recoveryKey: recovery.unicodeFormattedKey,
+                environment: rustEnvironment,
+                legacy: { XCTFail("Rust mode evaluated Unicode recovery KDF legacy closure"); return Data() }
+            ),
+            try Data(hex: recovery.unicodeWrappingKeyHex)
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.recoveryVerificationHash(
+                recoveryKey: recovery.formattedKey,
+                environment: rustEnvironment,
+                legacy: { XCTFail("Rust mode evaluated recovery verification legacy closure"); return "" }
+            ),
+            recovery.verificationHash
+        )
+        let wrapped = try CloudVaultDomainCoreAdapter.recoveryWrapVaultKey(
+            vaultKey: vaultKey,
+            recoveryKey: recovery.formattedKey,
+            nonce: nonce,
+            environment: rustEnvironment,
+            legacy: { XCTFail("Rust mode evaluated recovery wrap legacy closure"); throw FixtureError.unexpectedLegacy }
+        )
+        XCTAssertEqual(wrapped.combined, try Data(hex: recovery.combinedHex))
+        XCTAssertEqual(wrapped.verificationHash, recovery.verificationHash)
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.recoveryOpenVaultKey(
+                combined: wrapped.combined,
+                recoveryKey: recovery.formattedKey,
+                environment: rustEnvironment,
+                legacy: { XCTFail("Rust mode evaluated recovery open legacy closure"); return Data() }
+            ),
+            vaultKey
+        )
+
+        let escrow = fixture.p256Escrow
+        let publicKey = try Data(hex: escrow.ephemeralPublicKeyHex)
+        let sharedSecret = try Data(hex: escrow.sharedSecretHex)
+        let plaintext = try Data(hex: escrow.plaintextHex)
+        let escrowNonce = try Data(hex: escrow.nonceHex)
+        try CloudVaultDomainCoreAdapter.validateP256X963PublicKey(
+            publicKey,
+            environment: rustEnvironment,
+            legacy: { XCTFail("Rust mode evaluated P-256 validation legacy closure"); return false }
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.escrowWrappingKey(
+                sharedSecret: sharedSecret,
+                environment: rustEnvironment,
+                legacy: { XCTFail("Rust mode evaluated escrow KDF legacy closure"); return Data() }
+            ),
+            try Data(hex: escrow.wrappingKeyHex)
+        )
+        let wire = try CloudVaultDomainCoreAdapter.escrowSeal(
+            plaintext: plaintext,
+            ephemeralPublicKey: publicKey,
+            sharedSecret: sharedSecret,
+            nonce: escrowNonce,
+            environment: rustEnvironment,
+            legacy: { XCTFail("Rust mode evaluated escrow seal legacy closure"); return Data() }
+        )
+        XCTAssertEqual(wire, try Data(hex: escrow.wireHex))
+        let parts = try CloudVaultDomainCoreAdapter.escrowSplitWire(
+            wire,
+            environment: rustEnvironment,
+            legacy: { XCTFail("Rust mode evaluated escrow split legacy closure"); throw FixtureError.unexpectedLegacy }
+        )
+        XCTAssertEqual(parts.ephemeralPublicKey, publicKey)
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.escrowAssembleWire(
+                ephemeralPublicKey: parts.ephemeralPublicKey,
+                aesGCMCombined: parts.aesGCMCombined,
+                environment: rustEnvironment,
+                legacy: { XCTFail("Rust mode evaluated escrow assemble legacy closure"); return Data() }
+            ),
+            wire
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.escrowOpen(
+                wire: wire,
+                sharedSecret: sharedSecret,
+                environment: rustEnvironment,
+                legacy: { XCTFail("Rust mode evaluated escrow open legacy closure"); return Data() }
+            ),
+            plaintext
+        )
+    }
+
+    func testC1cShadowDiagnosticsAreSecretFreeAndLegacyAuthoritative() throws {
+        let logger = RecordingCloudVaultDomainCoreLogger()
+        let recoveryKey = "abc-defg-hjkm-npq-rst-vwxyz-23456789"
+        let result = try CloudVaultDomainCoreAdapter.recoveryVerificationHash(
+            recoveryKey: recoveryKey,
+            environment: ["OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE": "shadow"],
+            logger: logger,
+            legacy: { "legacy-verification" }
+        )
+        XCTAssertEqual(result, "legacy-verification")
+        let diagnostic = try XCTUnwrap(logger.messages.first)
+        XCTAssertTrue(diagnostic.contains("operation=recovery_verification_hash"))
+        XCTAssertTrue(diagnostic.contains("category=value_mismatch"))
+        XCTAssertFalse(diagnostic.contains(recoveryKey))
+        XCTAssertFalse(diagnostic.contains("legacy-verification"))
+        XCTAssertFalse(diagnostic.contains("3d3722923f9209d63093b1212a55b5fb5de462c00137ba6d6b46228404873166"))
+    }
+
     func testShadowReturnsLegacyAndDiagnosticsNeverContainSecretsOrHashes() throws {
         let logger = RecordingCloudVaultDomainCoreLogger()
         let secret = "private-session-body"
@@ -357,6 +492,8 @@ private struct Fixture: Decodable {
     let keyedHashes: [KeyedHash]
     let expectedSessionBodyHash: [ExpectedSessionBodyHash]
     let aesGcm: [AESGCM]
+    let recovery: Recovery
+    let p256Escrow: P256Escrow
 
     struct AAD: Decodable {
         let uid: String
@@ -399,6 +536,28 @@ private struct Fixture: Decodable {
         let ciphertextHex: String
         let tagHex: String
         let combinedBase64: String
+    }
+
+    struct Recovery: Decodable {
+        let formattedKey: String
+        let normalizedKey: String
+        let wrappingKeyHex: String
+        let verificationHash: String
+        let unicodeFormattedKey: String
+        let unicodeNormalizedKey: String
+        let unicodeWrappingKeyHex: String
+        let vaultKeyHex: String
+        let nonceHex: String
+        let combinedHex: String
+    }
+
+    struct P256Escrow: Decodable {
+        let ephemeralPublicKeyHex: String
+        let sharedSecretHex: String
+        let wrappingKeyHex: String
+        let nonceHex: String
+        let plaintextHex: String
+        let wireHex: String
     }
 }
 

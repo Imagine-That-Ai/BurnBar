@@ -711,6 +711,49 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(unwrapped, vaultKey)
     }
 
+    func test_escrowPayloadRoundTrip_preservesAssociatedDataAndVariableLengthPayloads() throws {
+        let recipient = P256.KeyAgreement.PrivateKey()
+        let plaintext = Data("provider-secret-with-variable-length".utf8)
+        let aad = Data("grant-id|device-id|provider-id".utf8)
+        let wire = try CloudVaultCrypto.sealEscrowPayload(
+            plaintext,
+            recipientPublicKey: recipient.publicKey.x963Representation,
+            authenticating: aad
+        )
+        XCTAssertEqual(
+            try CloudVaultCrypto.openEscrowPayload(wire, privateKey: recipient, authenticating: aad),
+            plaintext
+        )
+        XCTAssertThrowsError(
+            try CloudVaultCrypto.openEscrowPayload(
+                wire,
+                privateKey: recipient,
+                authenticating: Data("wrong-context".utf8)
+            )
+        )
+    }
+
+    func test_escrowPayloadRejectsMalformedP256KeysAndWire() throws {
+        XCTAssertThrowsError(
+            try CloudVaultCrypto.sealEscrowPayload(
+                Data("secret".utf8),
+                recipientPublicKey: Data(repeating: 0, count: 65)
+            )
+        ) { error in
+            guard case CloudVaultCryptoError.invalidPublicKey = error else {
+                return XCTFail("Expected invalidPublicKey, got \(error)")
+            }
+        }
+        let recipient = P256.KeyAgreement.PrivateKey()
+        XCTAssertThrowsError(
+            try CloudVaultCrypto.openEscrowPayload(Data(repeating: 0, count: 92), privateKey: recipient)
+        ) { error in
+            guard case CloudVaultCryptoError.invalidEnvelope = error else {
+                return XCTFail("Expected invalidEnvelope, got \(error)")
+            }
+        }
+    }
+
     func test_recoveryWrappedVaultKeyRoundTrip_usesSymmetricRecoveryEnvelope() throws {
         let vaultKey = Data((0..<32).map(UInt8.init))
         let recoveryKey = try CloudVaultCrypto.generateRecoveryKey()

@@ -46,6 +46,16 @@ enum CloudVaultDomainCoreAdapter {
         var combined: Data { nonce + ciphertext + tag }
     }
 
+    struct RecoveryWrappedVaultKey: Equatable, Sendable {
+        let combined: Data
+        let verificationHash: String
+    }
+
+    struct EscrowWireParts: Equatable, Sendable {
+        let ephemeralPublicKey: Data
+        let aesGCMCombined: Data
+    }
+
     static var isNativeAvailable: Bool {
         #if canImport(OpenBurnBarDomainCoreFFI)
         true
@@ -425,6 +435,194 @@ enum CloudVaultDomainCoreAdapter {
         ) {
             #if canImport(OpenBurnBarDomainCoreFFI)
             try OpenBurnBarDomainCoreFFI.cloudVaultBase64DecodeStrict(value: value)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func normalizeRecoveryKey(
+        _ recoveryKey: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(operation: "recovery_normalize", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultNormalizeRecoveryKey(recoveryKey: recoveryKey)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func recoveryWrappingKey(
+        recoveryKey: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Data
+    ) throws -> Data {
+        try select(operation: "recovery_wrapping_key", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultRecoveryWrappingKey(recoveryKey: recoveryKey)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func recoveryVerificationHash(
+        recoveryKey: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(operation: "recovery_verification_hash", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultRecoveryVerificationHash(recoveryKey: recoveryKey)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func recoveryWrapVaultKey(
+        vaultKey: Data,
+        recoveryKey: String,
+        nonce: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> RecoveryWrappedVaultKey
+    ) throws -> RecoveryWrappedVaultKey {
+        try select(operation: "recovery_wrap_vault_key", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            let wrapped = try OpenBurnBarDomainCoreFFI.cloudVaultRecoveryWrapVaultKey(
+                vaultKey: vaultKey,
+                recoveryKey: recoveryKey,
+                nonce: nonce
+            )
+            return .init(combined: wrapped.combined, verificationHash: wrapped.verificationHash)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func recoveryOpenVaultKey(
+        combined: Data,
+        recoveryKey: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Data
+    ) throws -> Data {
+        try select(operation: "recovery_open_vault_key", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultRecoveryOpenVaultKey(combined: combined, recoveryKey: recoveryKey)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func validateP256X963PublicKey(
+        _ publicKey: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Bool
+    ) throws {
+        _ = try select(operation: "p256_validate_public_key", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultValidateP256X963PublicKey(publicKey: publicKey)
+            return true
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func escrowWrappingKey(
+        sharedSecret: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Data
+    ) throws -> Data {
+        try select(operation: "escrow_wrapping_key", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultEscrowWrappingKey(sharedSecret: sharedSecret)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func escrowAssembleWire(
+        ephemeralPublicKey: Data,
+        aesGCMCombined: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Data
+    ) throws -> Data {
+        try select(operation: "escrow_assemble_wire", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultEscrowAssembleWire(
+                ephemeralPublicKey: ephemeralPublicKey,
+                aesGcmCombined: aesGCMCombined
+            )
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func escrowSplitWire(
+        _ wire: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> EscrowWireParts
+    ) throws -> EscrowWireParts {
+        try select(operation: "escrow_split_wire", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            let parts = try OpenBurnBarDomainCoreFFI.cloudVaultEscrowSplitWire(wire: wire)
+            return .init(ephemeralPublicKey: parts.ephemeralPublicKey, aesGCMCombined: parts.aesGcmCombined)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func escrowSeal(
+        plaintext: Data,
+        ephemeralPublicKey: Data,
+        sharedSecret: Data,
+        nonce: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Data
+    ) throws -> Data {
+        try select(operation: "escrow_seal", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultEscrowSeal(
+                plaintext: plaintext,
+                ephemeralPublicKey: ephemeralPublicKey,
+                sharedSecret: sharedSecret,
+                nonce: nonce
+            )
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func escrowOpen(
+        wire: Data,
+        sharedSecret: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Data
+    ) throws -> Data {
+        try select(operation: "escrow_open", environment: environment, logger: logger, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultEscrowOpen(wire: wire, sharedSecret: sharedSecret)
             #else
             throw CloudVaultDomainCoreAdapterError.nativeUnavailable
             #endif
