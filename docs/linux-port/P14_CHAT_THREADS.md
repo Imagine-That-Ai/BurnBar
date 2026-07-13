@@ -12,10 +12,12 @@ Before this slice, Linux production chat history was derived from usage/session
 rows and could show synthetic transcript content. macOS owns durable
 `chat_threads` and `chat_messages` records, preserves caller-generated thread
 and message identity, and restores exact history after restart. Linux now reads
-the same schema and supports exact-thread search, chronological history, and
-older-page retrieval. The remaining macOS chat surface is still broader: Linux
-does not yet provide the complete provider/model catalog, attachment storage,
-citations, approval controls, export/resume depth, or a secondary chat window.
+the same schema and supports exact-thread search, chronological history,
+older-page retrieval, and JSON/Markdown export of the messages currently
+loaded in the selected thread. The remaining macOS chat surface is still
+broader: Linux does not yet provide the complete provider/model catalog,
+attachment storage, citations, approval controls, export of unloaded history,
+resume depth, or a secondary chat window.
 
 ## Why It Matters
 
@@ -41,7 +43,8 @@ WebView and gives the same failure boundary as the macOS app.
    must leave no durable assistant completion.
 5. Finish the remaining chat capabilities in follow-up packets: shared
    provider/model breadth, attachments, citations, approvals, options,
-   export/resume, reconnect reconciliation, and a Linux-native pop-out pane.
+   export of unloaded history and resume depth, reconnect reconciliation, and a
+   Linux-native pop-out pane.
 
 **Priority:** High. Exact history is a prerequisite for a trustworthy chat
 experience, but the feature is not by itself a full-parity release gate.
@@ -61,8 +64,13 @@ experience, but the feature is not by itself a full-parity release gate.
   an explicit unavailable/corrupt error.
 - Fixture transcripts remain available only in explicit fixture mode. They are
   never used to mask a missing live daemon/database.
-- No transcript body export RPC exists yet; the Linux UI must keep export
-  disabled rather than fabricate an export from snippets.
+- The toolbar exports the currently loaded durable messages as deterministic
+  JSON or Markdown through the WebView download handoff. The allowlist includes
+  only message IDs, persisted roles, timestamps, and text; provider IDs,
+  tool arguments, citations, gateway state, and internal reasoning are never
+  serialized. Filenames normalize Unicode and strip controls/path separators.
+  Export remains disabled until a selected thread has at least one loaded
+  durable message; older pages are not fetched implicitly.
 
 ## QA Verification
 
@@ -73,7 +81,8 @@ swift test --package-path OpenBurnBarCore --filter BurnBarChatThreadContractsTes
 swift test --package-path OpenBurnBarDaemon --filter BurnBarChatThreadServiceTests
 cd apps/linux-desktop
 npx vitest run src/state/chatStore.test.ts src/bridgeRpcBehavior.test.ts \
-  src/tauriBridge.test.ts src/surfaces/chat/ChatSurface.test.tsx --reporter=dot
+  src/tauriBridge.test.ts src/surfaces/chat/ChatSurface.test.tsx \
+  src/surfaces/chat/chatExport.test.ts --reporter=dot
 npx tsc --noEmit
 npm run build
 cd src-tauri
@@ -92,7 +101,10 @@ ordering, and no assistant append on abort/error.
 Against a packaged daemon and WebView, verify: create a thread, restart the
 app, search and select an existing thread, load older pages repeatedly, retry a
 message after a transport failure, cancel a stream, recover after daemon
-restart, and exercise keyboard navigation plus Orca/AT-SPI announcements.
+restart, export a loaded thread as JSON and Markdown (including safe filename
+handling and absence of provider/tool/citation metadata), and exercise keyboard
+navigation plus Orca/AT-SPI announcements. Confirm export stays disabled for
+an empty or still-loading thread and does not silently fetch older pages.
 Confirm that missing/locked databases show an explicit unavailable state and
 never display usage-derived or synthetic transcript rows. Record the package,
 architecture, compositor, keyring, and daemon build receipt for each supported
