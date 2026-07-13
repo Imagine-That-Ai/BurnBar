@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-linux-p39-differential-contract-v1",
+  "corpusSchemaVersion": 1,
+  "outputSchemaVersion": 1,
+  "requiredCaseIds": [
+    "provider-parser",
+    "quota-reconciliation",
+    "route-inventory",
+    "settings-contract",
+    "chat-session-events",
+    "memory-decisions",
+    "daemon-rpc",
+    "user-visible-outcomes"
+  ],
+  "requiredFeatures": [
+    "provider-parser",
+    "quota-reconciliation",
+    "route-inventory",
+    "settings-contract",
+    "chat-session-events",
+    "memory-decisions",
+    "daemon-rpc",
+    "user-visible-outcomes"
+  ],
+  "normalization": {
+    "algorithm": "sorted-json-v1",
+    "platformOnlyMetadata": [
+      "architecture",
+      "desktop",
+      "kernel",
+      "os",
+      "runtime",
+      "session",
+      "timezone"
+    ],
+    "expectedDivergencePaths": []
+  }
+}

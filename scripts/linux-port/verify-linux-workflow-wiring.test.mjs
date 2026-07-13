@@ -32,6 +32,7 @@ function valid() {
       'p38-release-automation-proof.test.mjs',
       'p31-accessibility-proof.test.mjs',
       'p34-credential-security-proof.test.mjs',
+      'p39-differential-proof.test.mjs',
       'parity-certification-preflight.test.mjs',
       'run-linux-matrix-harness.test.mjs',
       'run-product-requirement-validator.test.mjs',
@@ -59,8 +60,10 @@ function valid() {
       'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
       'capture-parity-certification-preflight.mjs',
       'capture-p34-credential-security-proof.mjs',
+      'capture-p39-differential.mjs',
       "if: inputs.requirement == 'P-02'",
       "if: inputs.requirement == 'P-34'",
+      "if: inputs.requirement == 'P-39'",
       "if: always() && inputs.requirement == 'P-02'",
       'linux-product-parity-diagnostic-',
       'id: p02_capture',
@@ -100,6 +103,16 @@ function valid() {
       'Preserve non-promotable P-02 diagnostic evidence',
       'Capture P-31 installed accessibility matrix evidence',
       'Capture P-34 credential security proof',
+      [
+        '      - name: Capture P-39 cross-platform differential proof',
+        "        if: inputs.requirement == 'P-39'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          node scripts/linux-port/capture-p39-differential.mjs',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ].join('\n'),
+      'Capture P-39 cross-platform differential proof',
       'Finalize registered feature proof closure',
       'Materialize the requirement-owned release closure',
       'Run the registered requirement validator'
@@ -311,6 +324,30 @@ test('P-38 workflow step cannot be removed or weakened', () => {
     const result = verifyLinuxWorkflowWiring(input);
     assert.equal(result.passed, false, name);
     assert.ok(result.failures.some((failure) => /P-38 release automation verification/u.test(failure)), name);
+  }
+});
+
+test('P-39 differential workflow step cannot be removed or weakened', () => {
+  for (const marker of [
+    'capture-p39-differential.mjs',
+    "if: inputs.requirement == 'P-39'",
+    'Capture P-39 cross-platform differential proof'
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replaceAll(marker, 'removed-p39-capture-marker');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(result.failures.some((failure) => /P-39 cross-platform differential proof/u.test(failure)), marker);
+  }
+  for (const [name, from, to] of [
+    ['commented producer', '          node scripts/linux-port/capture-p39-differential.mjs', '          # node scripts/linux-port/capture-p39-differential.mjs'],
+    ['swallowed producer failure', '          set -euo pipefail', '          set -euo pipefail\n          continue-on-error: true'],
+    ['disabled fail-fast shell', '          set -euo pipefail', '          set +e']
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replace(from, to);
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, name);
   }
 });
 
