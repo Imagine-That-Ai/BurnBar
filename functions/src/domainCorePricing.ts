@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import type * as DomainCore from "@openburnbar/domain-core-wasm";
 
 import { logWarn } from "./logging.js";
+import { resolveDomainCoreRuntimeMode } from "./domainCoreBuildProfile.js";
 
 export type DomainCorePricingMode = "legacy" | "shadow" | "rust";
 
@@ -44,8 +45,7 @@ let rustVersion = "unknown";
 let rustLegacyKimiModel = "";
 
 export function resolveDomainCorePricingMode(environment: NodeJS.ProcessEnv = process.env): DomainCorePricingMode {
-  const value = (environment.OPENBURNBAR_DOMAIN_CORE_PRICING_MODE ?? "").toLowerCase();
-  return value === "shadow" || value === "rust" ? value : "legacy";
+  return resolveDomainCoreRuntimeMode("pricing", environment);
 }
 
 export function calculateTokenCost(

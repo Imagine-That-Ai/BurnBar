@@ -72,12 +72,23 @@ describe("domain-core shadow evidence contract", () => {
 
   it("binds every submitted channel to the server-issued enrollment claim", () => {
     expect(() =>
-      enforceDomainCoreShadowChannelClaim({ domainCoreShadowChannel: "internal" }, [sample()]),
+      enforceDomainCoreShadowChannelClaim(
+        { domainCoreShadowChannel: "internal", domainCoreShadowConsumers: ["apple"] },
+        [sample()],
+      ),
     ).not.toThrow();
     expect(() => enforceDomainCoreShadowChannelClaim({}, [sample()])).toThrow("not enrolled");
-    expect(() => enforceDomainCoreShadowChannelClaim({ domainCoreShadowChannel: "beta" }, [sample()])).toThrow(
-      "not enrolled",
-    );
+    expect(() =>
+      enforceDomainCoreShadowChannelClaim({ domainCoreShadowChannel: "beta", domainCoreShadowConsumers: ["apple"] }, [
+        sample(),
+      ]),
+    ).toThrow("not enrolled");
+    expect(() =>
+      enforceDomainCoreShadowChannelClaim(
+        { domainCoreShadowChannel: "internal", domainCoreShadowConsumers: ["windows"] },
+        [sample()],
+      ),
+    ).toThrow("not enrolled");
   });
 
   it("stores no uid or raw parser material and stamps the declared TTL", () => {

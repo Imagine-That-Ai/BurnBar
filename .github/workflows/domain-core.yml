@@ -9,6 +9,13 @@ on:
     paths:
       - "crates/openburnbar-domain-core/**"
       - "OpenBurnBarCore/Package.swift"
+      - "project.yml"
+      - "AgentLens/Resources/OpenBurnBar-Info.plist"
+      - "OpenBurnBarMobile/Info.plist"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/openburnbar-release-windows.yml"
+      - ".github/workflows/deploy-hosting.yml"
+      - ".github/workflows/deploy-production.yml"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
@@ -21,6 +28,7 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/DomainCoreBuildProfile.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
       - "AgentLens/Services/ProviderQuota/DomainCoreShadowEvidenceSpool.swift"
@@ -34,6 +42,9 @@ on:
       - "windows/app/OpenBurnBar.App.CloudSync/DomainCoreShadowEvidenceUploader.cs"
       - "windows/app/OpenBurnBar.App.CloudSync/WinAppCloudSyncHost.cs"
       - "windows/tests/quota/**"
+      - "windows/Directory.Build.*"
+      - "windows/app/OpenBurnBar.App.Configuration/DomainCoreBuildProfileResolver.cs"
+      - "windows/tests/configuration/DomainCoreBuildProfileResolverTests.cs"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVault*Tests.swift"
       - "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/**"
@@ -42,15 +53,21 @@ on:
       - "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto*.kt"
       - "android/app/src/test/java/com/openburnbar/data/cloud/CloudVault*Test.kt"
       - "android/app/src/main/java/com/openburnbar/data/hermes/**"
+      - "android/app/src/main/java/com/openburnbar/data/DomainCoreBuildProfile.kt"
+      - "android/app/src/test/java/com/openburnbar/data/DomainCoreBuildProfileTest.kt"
       - "android/app/src/test/java/com/openburnbar/data/hermes/**"
       - "android/app/build.gradle.kts"
       - "android/settings.gradle.kts"
       - "apps/console/lib/escrow.ts"
       - "apps/console/lib/domainCoreCloudVault.ts"
+      - "apps/console/lib/domainCoreBuildProfile.ts"
+      - "apps/console/test/domainCoreBuildProfile.test.ts"
       - "apps/console/test/escrow.test.ts"
       - "apps/console/test/domainCoreCloudVault*.test.ts"
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
       - "functions/src/domainCorePricing.ts"
+      - "functions/src/domainCoreBuildProfile.ts"
+      - "functions/src/__tests__/domainCoreBuildProfile.test.ts"
       - "functions/src/pricing.ts"
       - "functions/src/rollupCounters.ts"
       - "functions/src/insightsHostedAnswer.ts"
@@ -78,10 +95,16 @@ on:
       - "scripts/lib/domain-core-promotion-evidence.mjs"
       - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
+      - "scripts/ci/*domain-core-build-profile*"
+      - "scripts/lib/domain-core-build-profile.mjs"
+      - "scripts/lib/domain-core-shadow-enrollment*.mjs"
+      - "scripts/ops/manage-domain-core-shadow-enrollment.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - "config/domain-core-promotion-policy.json"
+      - "config/domain-core-build-profiles.json"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
+      - "docs/runbooks/shared-rust-build-profiles.md"
       - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
@@ -89,6 +112,13 @@ on:
     paths:
       - "crates/openburnbar-domain-core/**"
       - "OpenBurnBarCore/Package.swift"
+      - "project.yml"
+      - "AgentLens/Resources/OpenBurnBar-Info.plist"
+      - "OpenBurnBarMobile/Info.plist"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/openburnbar-release-windows.yml"
+      - ".github/workflows/deploy-hosting.yml"
+      - ".github/workflows/deploy-production.yml"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
@@ -101,6 +131,7 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/DomainCoreBuildProfile.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
       - "AgentLens/Services/ProviderQuota/DomainCoreShadowEvidenceSpool.swift"
@@ -114,6 +145,9 @@ on:
       - "windows/app/OpenBurnBar.App.CloudSync/DomainCoreShadowEvidenceUploader.cs"
       - "windows/app/OpenBurnBar.App.CloudSync/WinAppCloudSyncHost.cs"
       - "windows/tests/quota/**"
+      - "windows/Directory.Build.*"
+      - "windows/app/OpenBurnBar.App.Configuration/DomainCoreBuildProfileResolver.cs"
+      - "windows/tests/configuration/DomainCoreBuildProfileResolverTests.cs"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVault*Tests.swift"
       - "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/**"
@@ -122,15 +156,21 @@ on:
       - "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto*.kt"
       - "android/app/src/test/java/com/openburnbar/data/cloud/CloudVault*Test.kt"
       - "android/app/src/main/java/com/openburnbar/data/hermes/**"
+      - "android/app/src/main/java/com/openburnbar/data/DomainCoreBuildProfile.kt"
+      - "android/app/src/test/java/com/openburnbar/data/DomainCoreBuildProfileTest.kt"
       - "android/app/src/test/java/com/openburnbar/data/hermes/**"
       - "android/app/build.gradle.kts"
       - "android/settings.gradle.kts"
       - "apps/console/lib/escrow.ts"
       - "apps/console/lib/domainCoreCloudVault.ts"
+      - "apps/console/lib/domainCoreBuildProfile.ts"
+      - "apps/console/test/domainCoreBuildProfile.test.ts"
       - "apps/console/test/escrow.test.ts"
       - "apps/console/test/domainCoreCloudVault*.test.ts"
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
       - "functions/src/domainCorePricing.ts"
+      - "functions/src/domainCoreBuildProfile.ts"
+      - "functions/src/__tests__/domainCoreBuildProfile.test.ts"
       - "functions/src/pricing.ts"
       - "functions/src/rollupCounters.ts"
       - "functions/src/insightsHostedAnswer.ts"
@@ -158,10 +198,16 @@ on:
       - "scripts/lib/domain-core-promotion-evidence.mjs"
       - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
+      - "scripts/ci/*domain-core-build-profile*"
+      - "scripts/lib/domain-core-build-profile.mjs"
+      - "scripts/lib/domain-core-shadow-enrollment*.mjs"
+      - "scripts/ops/manage-domain-core-shadow-enrollment.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - "config/domain-core-promotion-policy.json"
+      - "config/domain-core-build-profiles.json"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
+      - "docs/runbooks/shared-rust-build-profiles.md"
       - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
@@ -186,6 +232,8 @@ jobs:
           node --test
           scripts/ci/evaluate-domain-core-promotion.test.mjs
           scripts/lib/export-domain-core-promotion-evidence.test.mjs
+          scripts/ci/resolve-domain-core-build-profile.test.mjs
+          scripts/lib/domain-core-shadow-enrollment.test.mjs
 
       - name: Verify shadow evidence retention declaration
         run: bash scripts/ci/check-firestore-ttl-declared.sh
@@ -268,6 +316,9 @@ jobs:
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/tests/cloudsync/OpenBurnBar.CloudSync.Crypto.Tests.csproj --nologo
+
+      - name: Run C# signed profile contracts
+        run: dotnet test windows/tests/configuration/OpenBurnBar.App.Configuration.Tests.csproj --nologo
 
   windows-native:
     strategy:
@@ -387,6 +438,7 @@ jobs:
         run: >-
           npx vitest run
           src/__tests__/pricing.test.ts
+          src/__tests__/domainCoreBuildProfile.test.ts
           src/__tests__/domainCoreShadowEvidence.test.ts
 
       - name: Typecheck and lint Functions

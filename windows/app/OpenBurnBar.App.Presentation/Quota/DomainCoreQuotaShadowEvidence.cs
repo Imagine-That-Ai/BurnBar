@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenBurnBar.App.Configuration;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -334,7 +335,7 @@ public static class DomainCoreQuotaShadowEvidence
         long legacyMicros,
         long rustMicros)
     {
-        string? channel = Environment.GetEnvironmentVariable("OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL")?.Trim().ToLowerInvariant();
+        string? channel = DomainCoreBuildProfileResolver.EvidenceChannel();
         if (channel is not ("internal" or "beta")
             || !Operations.Contains(operation)
             || coreVersion.Length > 64

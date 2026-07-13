@@ -23,6 +23,7 @@ describe("BOLA - domain-core shadow evidence", () => {
     const run = (request: unknown) => {
       const authenticated = request as { auth: { token: Record<string, unknown> } };
       authenticated.auth.token.domainCoreShadowChannel = "internal";
+      authenticated.auth.token.domainCoreShadowConsumers = ["apple"];
       return rawRun(authenticated);
     };
 

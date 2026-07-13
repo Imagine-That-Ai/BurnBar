@@ -318,9 +318,7 @@ final class MacDomainCoreShadowEvidenceRecorder: @unchecked Sendable {
     private let coordinator: DomainCoreShadowEvidenceUploadCoordinator?
 
     init(environment: [String: String] = ProcessInfo.processInfo.environment) {
-        let configured = environment["OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL"]
-            ?? Bundle.main.object(forInfoDictionaryKey: "OpenBurnBarDomainCoreRolloutChannel") as? String
-        self.channel = configured == "internal" || configured == "beta" ? configured : nil
+        self.channel = DomainCoreBuildProfileResolver.evidenceChannel(environment: environment)
         let directory = (try? FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
