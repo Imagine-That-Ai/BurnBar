@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// What an Insights surface is currently looking at.
 ///
