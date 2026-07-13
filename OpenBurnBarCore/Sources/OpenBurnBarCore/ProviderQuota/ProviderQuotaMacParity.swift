@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - macOS adapter conveniences (lifted with WS-C2)
 
