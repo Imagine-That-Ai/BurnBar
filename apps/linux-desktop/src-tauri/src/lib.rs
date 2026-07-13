@@ -252,6 +252,7 @@ const DAEMON_ONBOARDING_RESET_METHOD: &str = "daemon.onboarding.reset";
 const DAEMON_SUBSCRIPTION_START_METHOD: &str = "subscription.start";
 const DAEMON_SUBSCRIPTION_RESUME_METHOD: &str = "subscription.resume";
 const DAEMON_SUBSCRIPTION_STOP_METHOD: &str = "subscription.stop";
+const DAEMON_RUN_RESUME_METHOD: &str = "run.resume";
 
 static INITIAL_DEEP_LINK_ROUTE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static FORWARDED_ROUTE_QUEUE: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
@@ -1779,6 +1780,50 @@ fn session_search(query: String) -> Result<serde_json::Value, String> {
         "daemon.search.query",
         Some(serde_json::json!({"query": query})),
     )
+}
+
+// ───────────────── P03: persisted session body / resume ─────────────────
+// BurnBarResumeService reads the indexed conversations table and returns either
+// a bounded historical briefing (print) or an explicit native/fallback launch
+// result (spawn). The shell never fabricates transcript content.
+fn validated_session_id(session_id: String) -> Result<String, String> {
+    let trimmed = session_id.trim();
+    if trimmed.is_empty() {
+        return Err("session_id_must_not_be_empty".to_string());
+    }
+    if trimmed.len() > 512 || trimmed.chars().any(|character| character.is_control()) {
+        return Err("session_id_invalid".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn session_resume_params(
+    session_id: String,
+    mode: &'static str,
+) -> Result<serde_json::Value, String> {
+    let session_id = validated_session_id(session_id)?;
+    Ok(serde_json::json!({
+        "sessionID": session_id,
+        "mode": mode,
+    }))
+}
+
+fn session_resume_wire(
+    session_id: String,
+    mode: &'static str,
+) -> Result<serde_json::Value, String> {
+    let params = session_resume_params(session_id, mode)?;
+    call_daemon_method(DAEMON_RUN_RESUME_METHOD, Some(params))
+}
+
+#[tauri::command]
+fn session_replay(session_id: String) -> Result<serde_json::Value, String> {
+    session_resume_wire(session_id, "print")
+}
+
+#[tauri::command]
+fn session_resume(session_id: String) -> Result<serde_json::Value, String> {
+    session_resume_wire(session_id, "spawn")
 }
 
 // ───────────── Exact persisted chat threads ─────────────
@@ -4998,6 +5043,8 @@ pub fn run() {
             provider_catalog,
             session_list,
             session_search,
+            session_replay,
+            session_resume,
             chat_thread_list,
             chat_thread_get,
             chat_message_append,
@@ -6346,6 +6393,27 @@ mod tests {
         assert_eq!(DAEMON_SUBSCRIPTION_START_METHOD, "subscription.start");
         assert_eq!(DAEMON_SUBSCRIPTION_RESUME_METHOD, "subscription.resume");
         assert_eq!(DAEMON_SUBSCRIPTION_STOP_METHOD, "subscription.stop");
+    }
+
+    #[test]
+    fn activity_session_replay_and_resume_use_the_canonical_run_rpc() {
+        assert_eq!(DAEMON_RUN_RESUME_METHOD, "run.resume");
+        assert_eq!(
+            session_resume_params("Codex:session-1".to_string(), "print").unwrap(),
+            serde_json::json!({"sessionID": "Codex:session-1", "mode": "print"})
+        );
+        assert_eq!(
+            validated_session_id(" session-1 ".to_string()).unwrap(),
+            "session-1"
+        );
+        assert_eq!(
+            validated_session_id("\n".to_string()).unwrap_err(),
+            "session_id_must_not_be_empty"
+        );
+        assert_eq!(
+            validated_session_id("bad\u{0000}id".to_string()).unwrap_err(),
+            "session_id_invalid"
+        );
     }
 
     #[test]

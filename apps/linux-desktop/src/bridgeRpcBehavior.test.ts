@@ -209,6 +209,75 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'project_reassign', { sourceProjectSlug: 'apollo', targetProjectSlug: 'orion' });
   });
 
+  it('uses the canonical run.resume RPC for persisted activity body and resume actions', async () => {
+    invoke
+      .mockResolvedValueOnce({
+        kind: 'ported',
+        briefing_md: '# Stored transcript',
+        briefing_truncated: false
+      })
+      .mockResolvedValueOnce({ kind: 'spawned', pid: 42 });
+    const b = await bridge();
+
+    await expect(b.sessionReplay?.('Codex:session-1')).resolves.toMatchObject({
+      kind: 'ported',
+      briefingMD: '# Stored transcript',
+      briefingTruncated: false
+    });
+    await expect(b.sessionResume?.('Codex:session-1')).resolves.toMatchObject({
+      kind: 'spawned',
+      pid: 42
+    });
+    expect(invoke).toHaveBeenNthCalledWith(1, 'session_replay', { sessionId: 'Codex:session-1' });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'session_resume', { sessionId: 'Codex:session-1' });
+  });
+
+  it('fails closed when the persisted briefing exceeds the renderer bound', async () => {
+    invoke.mockResolvedValueOnce({
+      kind: 'ported',
+      briefing_md: 'x'.repeat(65_537)
+    });
+    const b = await bridge();
+    await expect(b.sessionReplay?.('Codex:oversize')).rejects.toThrow(/exceeds 65536/);
+  });
+
+  it('fails closed when the daemon sends a malformed briefing truncation flag', async () => {
+    invoke.mockResolvedValueOnce({
+      kind: 'ported',
+      briefing_md: 'stored body',
+      briefing_truncated: 'false'
+    });
+    const b = await bridge();
+    await expect(b.sessionReplay?.('Codex:malformed')).rejects.toThrow(/briefingTruncated must be a boolean/);
+  });
+
+  it('maps canonical usage-event identity fields so Activity can resolve persisted sessions', async () => {
+    invoke.mockResolvedValueOnce({
+      usage: [{
+        sessionID: 'Codex:session-2',
+        providerID: 'codex',
+        modelID: 'gpt-5',
+        recordedAt: '2026-07-13T12:00:00Z',
+        inputTokens: 12,
+        outputTokens: 8,
+        cost: 0.12,
+        projectName: 'BurnBar'
+      }]
+    });
+    const b = await bridge();
+    await expect(b.sessionList()).resolves.toMatchObject({
+      sessions: [{
+        id: 'Codex:session-2',
+        provider: 'codex',
+        model: 'gpt-5',
+        startedAt: '2026-07-13T12:00:00Z',
+        tokens: 20,
+        costUsd: 0.12,
+        title: 'BurnBar'
+      }]
+    });
+  });
+
   it('does not synthesize a project from a title-only daemon row', async () => {
     invoke.mockResolvedValueOnce({ projects: [{ title: 'Apollo', path: '/tmp/Apollo' }] });
     const b = await bridge();

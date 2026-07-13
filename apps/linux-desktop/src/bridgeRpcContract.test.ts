@@ -182,6 +182,15 @@ describe('VAL-RPC bridge contract', () => {
     expect(tsBridge).toContain('projectReassign');
   });
 
+  it('wires Activity persisted body and resume actions through the existing run.resume contract', () => {
+    expect(rustBridge).toContain('run.resume');
+    expect(rustBridge).toContain('fn session_replay');
+    expect(rustBridge).toContain('fn session_resume');
+    expect(tsBridge).toContain("'session_replay'");
+    expect(tsBridge).toContain("'session_resume'");
+    expect(canonicalRpc).toContain('id: "run.resume"');
+  });
+
   it('wires mission detail and explicit cancellation only to canonical RPCs', () => {
     for (const method of ['daemon.mission.list', 'daemon.mission.get', 'daemon.mission.create', 'daemon.mission.approve', 'daemon.mission.cancel']) {
       expect(rustBridge).toContain(method);
