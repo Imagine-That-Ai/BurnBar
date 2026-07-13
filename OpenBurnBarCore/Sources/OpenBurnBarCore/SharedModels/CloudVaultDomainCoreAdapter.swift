@@ -176,7 +176,7 @@ enum CloudVaultDomainCoreAdapter {
             legacy: legacy
         ) {
             #if canImport(OpenBurnBarDomainCoreFFI)
-            OpenBurnBarDomainCoreFFI.cloudVaultSha256Hex(data: data)
+            try OpenBurnBarDomainCoreFFI.cloudVaultSha256Hex(data: data)
             #else
             throw CloudVaultDomainCoreAdapterError.nativeUnavailable
             #endif
@@ -414,7 +414,7 @@ enum CloudVaultDomainCoreAdapter {
             legacy: legacy
         ) {
             #if canImport(OpenBurnBarDomainCoreFFI)
-            OpenBurnBarDomainCoreFFI.cloudVaultBase64Encode(data: data)
+            try OpenBurnBarDomainCoreFFI.cloudVaultBase64Encode(data: data)
             #else
             throw CloudVaultDomainCoreAdapterError.nativeUnavailable
             #endif
@@ -667,8 +667,8 @@ enum CloudVaultDomainCoreAdapter {
         guard mode != .legacy else { return try legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
-            logger.log("domain_core.cloudvault operation=\(operation) version=2 category=abi_mismatch")
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
+            logger.log("domain_core.cloudvault operation=\(operation) version=3 category=abi_mismatch")
             if requiresNative(environment) { throw CloudVaultDomainCoreAdapterError.nativeUnavailable }
             return try legacy()
         }
@@ -677,7 +677,7 @@ enum CloudVaultDomainCoreAdapter {
         do {
             rustValue = try rust()
         } catch {
-            logger.log("domain_core.cloudvault operation=\(operation) version=2 category=rust_error")
+            logger.log("domain_core.cloudvault operation=\(operation) version=3 category=rust_error")
             if mode == .shadow { return try legacy() }
             throw map(error)
         }
@@ -686,12 +686,12 @@ enum CloudVaultDomainCoreAdapter {
         let legacyValue = try legacy()
         if legacyValue != rustValue {
             logger.log(
-                "domain_core.cloudvault operation=\(operation) version=2 category=value_mismatch legacy_count=1 rust_count=1"
+                "domain_core.cloudvault operation=\(operation) version=3 category=value_mismatch legacy_count=1 rust_count=1"
             )
         }
         return legacyValue
         #else
-        logger.log("domain_core.cloudvault operation=\(operation) version=2 category=native_unavailable")
+        logger.log("domain_core.cloudvault operation=\(operation) version=3 category=native_unavailable")
         if requiresNative(environment) { throw CloudVaultDomainCoreAdapterError.nativeUnavailable }
         return try legacy()
         #endif
