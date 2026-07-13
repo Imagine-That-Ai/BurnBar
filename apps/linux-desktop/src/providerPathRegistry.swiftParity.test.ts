@@ -2,49 +2,107 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LINUX_PROVIDER_PATH_REGISTRY } from './providerPathRegistry';
+import { LINUX_PROVIDER_PATH_REGISTRY } from './providerPathRegistry.js';
 
 /**
- * VAL-PARSER-001 ratchet: the TS provider-path registry claims to stay "in sync with
- * OpenBurnBarCore AgentProviderLogDiscovery.swift". Enforce that claim by reading the
- * Swift source directly — the same pattern bridgeRpcContract.test.ts uses against lib.rs.
- * If Swift renames a path, changes a glob, or drops a provider, this fails instead of
- * letting the displayed Linux paths silently diverge from what Core actually discovers.
+ * VAL-PARSER-001/002 ratchet.
+ *
+ * The Linux catalog is intentionally checked against the committed Swift
+ * sources rather than a second hand-maintained list. This catches both sides
+ * of drift: a new AgentProvider case without a Linux row and a stale Linux
+ * row whose discovery path, pattern, or parser registration was removed.
  */
 const here = path.dirname(fileURLToPath(import.meta.url));
-const swiftPath = path.resolve(
-  here,
-  '../../../OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProviderLogDiscovery.swift'
+const coreRoot = path.resolve(here, '../../../OpenBurnBarCore/Sources');
+const swiftDiscoveryPath = path.join(
+  coreRoot,
+  'OpenBurnBarCore/SharedModels/AgentProviderLogDiscovery.swift'
 );
-const swift = fs.readFileSync(swiftPath, 'utf8');
+const swiftProviderPath = path.join(
+  coreRoot,
+  'OpenBurnBarKernel/SharedModels/AgentProvider.swift'
+);
+const parserRegistryPath = path.resolve(
+  here,
+  '../../../AgentLens/Services/UsageAggregation/ParserRegistry.swift'
+);
+const swiftDiscovery = fs.readFileSync(swiftDiscoveryPath, 'utf8');
+const swiftProvider = fs.readFileSync(swiftProviderPath, 'utf8');
+const parserRegistry = fs.readFileSync(parserRegistryPath, 'utf8');
 
-describe('provider path registry ↔ AgentProviderLogDiscovery.swift parity', () => {
-  it('reads the real Swift discovery source (guards against a moved file)', () => {
-    expect(swift).toContain('enum AgentProviderLogDiscovery');
-    expect(swift).toContain('func filePattern(');
+function canonicalProviderCases(source: string): string[] {
+  return Array.from(source.matchAll(/^    case ([A-Za-z0-9]+)\s*=/gm), (match) => match[1]!);
+}
+
+function parserRegistrations(source: string): string[] {
+  return Array.from(source.matchAll(/parsers\[\.([A-Za-z0-9]+)\]\s*=/g), (match) => match[1]!);
+}
+
+function functionSection(source: string, functionName: string): string {
+  const start = source.indexOf(`func ${functionName}`);
+  if (start < 0) throw new Error(`Missing Swift function ${functionName}`);
+  const next = source.indexOf('\n    public static func ', start + 5);
+  return source.slice(start, next < 0 ? source.length : next);
+}
+
+function caseSection(source: string, providerCase: string): string {
+  const escapedCase = providerCase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Swift groups cases that share one path/pattern (for example
+  // `case .factory, .claudeCode, ...`). Capture the whole case line so the
+  // returned section includes the shared return value.
+  const match = source.match(new RegExp(`^[ \\t]*case [^\\n]*\\.${escapedCase}(?=,|:)`, 'm'));
+  const start = match?.index ?? -1;
+  if (start < 0) throw new Error(`Missing Swift discovery case .${providerCase}`);
+  const next = source.indexOf('\n        case .', start + 6);
+  return source.slice(start, next < 0 ? source.length : next);
+}
+
+const canonicalCases = canonicalProviderCases(swiftProvider);
+const registeredParsers = parserRegistrations(parserRegistry);
+const logicalPathSection = functionSection(swiftDiscovery, 'logicalLogDirectory');
+const filePatternSection = functionSection(swiftDiscovery, 'filePattern');
+
+describe('provider path and usage catalog ↔ canonical Swift sources', () => {
+  it('reads the real canonical sources', () => {
+    expect(swiftDiscovery).toContain('enum AgentProviderLogDiscovery');
+    expect(swiftProvider).toContain('public enum AgentProvider:');
+    expect(parserRegistry).toContain('enum ParserRegistry');
   });
 
-  it.each(LINUX_PROVIDER_PATH_REGISTRY.map((row) => [row.providerId, row]))(
-    'row %s matches Swift path, pattern, and provider case',
-    (_id, row) => {
-      // Logical path fragment (drop the leading ~/) must appear verbatim in Swift discovery.
-      const pathFragment = row.logicalPath.replace(/^~\/?/, '');
-      expect(
-        swift.includes(pathFragment),
-        `Swift discovery must contain path fragment "${pathFragment}" for ${row.providerId}`
-      ).toBe(true);
+  it('contains every canonical AgentProvider case exactly once', () => {
+    const sourceCases = [...new Set(canonicalCases)].sort();
+    const catalogCases = LINUX_PROVIDER_PATH_REGISTRY.map((row) => row.parserSourceId).sort();
+    expect(canonicalCases).toHaveLength(33);
+    expect(new Set(canonicalCases).size).toBe(canonicalCases.length);
+    expect(catalogCases).toEqual(sourceCases);
+    expect(new Set(LINUX_PROVIDER_PATH_REGISTRY.map((row) => row.providerId)).size).toBe(33);
+  });
 
-      // The watched glob/file the registry advertises must be a real Swift filePattern return.
-      expect(
-        swift.includes(`"${row.filePattern}"`),
-        `Swift filePattern(for:) must return "${row.filePattern}" (row ${row.providerId})`
-      ).toBe(true);
-
-      // The parserSourceId must be a real AgentProvider case token in Swift.
-      expect(
-        new RegExp(`\\b${row.parserSourceId}\\b`).test(swift),
-        `Swift must define an AgentProvider case "${row.parserSourceId}" (row ${row.providerId})`
-      ).toBe(true);
+  it('matches every Linux logical path and file pattern in AgentProviderLogDiscovery', () => {
+    for (const row of LINUX_PROVIDER_PATH_REGISTRY) {
+      const pathCase = caseSection(logicalPathSection, row.parserSourceId);
+      const patternCase = caseSection(filePatternSection, row.parserSourceId);
+      expect(pathCase, `Linux discovery path for .${row.parserSourceId}`).toContain(row.logicalPath);
+      expect(patternCase, `filePattern(for: .${row.parserSourceId})`).toContain(`"${row.filePattern}"`);
     }
-  );
+  });
+
+  it('matches the 27 registered local parsers and exposes the six missing sources', () => {
+    const parserCases = [...new Set(registeredParsers)].sort();
+    const localCatalogCases = LINUX_PROVIDER_PATH_REGISTRY
+      .filter((row) => row.coverage === 'local-parser')
+      .map((row) => row.parserSourceId)
+      .sort();
+    const nonParserCases = LINUX_PROVIDER_PATH_REGISTRY
+      .filter((row) => row.coverage !== 'local-parser')
+      .map((row) => row.parserSourceId)
+      .sort();
+
+    expect(registeredParsers).toHaveLength(27);
+    expect(parserCases).toEqual(localCatalogCases);
+    expect(nonParserCases).toEqual(['deepSeek', 'mimo', 'omp', 'openAI', 'openBurnBar', 'openClaude']);
+    for (const row of LINUX_PROVIDER_PATH_REGISTRY.filter((candidate) => candidate.coverage !== 'local-parser')) {
+      expect(row.coverageNote).toMatch(/No local parser|No ParserRegistry entry/);
+    }
+  });
 });

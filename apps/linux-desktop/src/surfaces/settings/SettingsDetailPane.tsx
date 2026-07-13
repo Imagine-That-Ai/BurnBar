@@ -6,6 +6,7 @@ import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import {
   LINUX_PROVIDER_PATH_REGISTRY,
+  providerCoverageSummary,
   resolveProviderLogicalPath
 } from '../../providerPathRegistry.js';
 import { useSupportStore } from '../../state/supportStore.js';
@@ -140,6 +141,17 @@ function firstWritableModel(provider: ProviderSettings): string {
 
 function providerDisplay(provider: ProviderSettings): string {
   return provider.providerID.charAt(0).toUpperCase() + provider.providerID.slice(1);
+}
+
+function providerCoverageLabel(coverage: 'local-parser' | 'api-backed' | 'unavailable'): string {
+  switch (coverage) {
+    case 'local-parser':
+      return 'Local parser registered';
+    case 'api-backed':
+      return 'API-backed; no local parser';
+    case 'unavailable':
+      return 'Local usage unavailable';
+  }
 }
 
 function AgentsDetail({ config }: { config: ConfigSnapshot }) {
@@ -755,17 +767,27 @@ export function SettingsDetailPane({
             <p className="system-path-row">
               <code>{config.paths.configDir}</code>
             </p>
-            {/* VAL-PARSER-002: registry is the source of truth for display paths. */}
+            <SettingRow
+              iconGlyph="∑"
+              label="Usage ingestion coverage"
+              description="The catalog mirrors all canonical providers and labels local parser, API-backed, and unavailable sources separately."
+              control={<span className="muted" role="status">{providerCoverageSummary()}</span>}
+            />
+            {/* VAL-PARSER-002: the catalog is the source of truth for display paths and coverage. */}
             {providerRegistryRows.map((row) => (
               <div key={row.providerId}>
                 <SettingRow
                   iconGlyph="📄"
                   label={`${row.displayLabel} log path`}
-                  description={`Parser source ${row.parserSourceId} · pattern ${row.filePattern}`}
+                  description={`${providerCoverageLabel(row.coverage)} · ${row.coverageNote} · pattern ${row.filePattern}`}
                   control={<CopyPathButton path={row.logicalPath} label="Copy log path" />}
                 />
                 <p className="system-path-row">
                   <code>{row.logicalPath}</code>
+                  {' '}
+                  <span className={`provider-coverage provider-coverage--${row.coverage}`} data-provider-coverage={row.coverage}>
+                    {providerCoverageLabel(row.coverage)}
+                  </span>
                   {row.resolvedHint ? (
                     <>
                       {' '}
