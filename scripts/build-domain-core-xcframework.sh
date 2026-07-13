@@ -24,6 +24,7 @@ VENDOR_DIR="${ROOT_DIR}/Vendor"
 XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarDomainCore.xcframework"
 SWIFT_PKG_DIR="${ROOT_DIR}/OpenBurnBarCore/Sources/OpenBurnBarDomainCore"
 GENERATED_DIR="${SWIFT_PKG_DIR}/Generated"
+SAFE_QUOTA_SHIM="${ROOT_DIR}/scripts/domain-core/safe-quota-ffi.swift.inc"
 HEADERS_DIR="${ROOT_DIR}/build/domain-core-xcframework-headers"
 UNIFFI_HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-swift-helper"
 PROVENANCE_DIR="${CRATE_DIR}/artifact-provenance"
@@ -167,6 +168,21 @@ mkdir -p "${GENERATED_DIR}"
 if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
   perl -0pi -e 's/framework module /module /g' "${GENERATED_DIR}/"*.modulemap
 fi
+SWIFT_BINDING="${GENERATED_DIR}/openburnbar_domain_ffi.swift"
+python3 - "${SWIFT_BINDING}" "${SAFE_QUOTA_SHIM}" <<'PY'
+from pathlib import Path
+import sys
+
+binding_path = Path(sys.argv[1])
+shim_path = Path(sys.argv[2])
+marker = "// swiftlint:enable all"
+binding = binding_path.read_text()
+if binding.count(marker) != 1:
+    raise SystemExit(f"expected exactly one {marker!r} in {binding_path}")
+shim = shim_path.read_text().rstrip() + "\n\n"
+injected = binding.replace(marker, shim + marker)
+binding_path.write_text(injected.rstrip() + "\n")
+PY
 find "${GENERATED_DIR}" -maxdepth 1 -type f -exec \
   perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' {} +
 mkdir -p "${PROVENANCE_DIR}"

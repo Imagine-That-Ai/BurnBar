@@ -15,7 +15,12 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
+      - "AgentLens/Services/ProviderQuota/DomainCoreShadowEvidenceSpool.swift"
+      - "AgentLens/Services/ProviderQuota/ProviderQuotaMacBridge.swift"
+      - "AgentLensTests/Active/DomainCoreShadowEvidenceSpoolTests.swift"
       - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
+      - "windows/app/OpenBurnBar.App.CloudSync/DomainCoreShadowEvidenceUploader.cs"
+      - "windows/app/OpenBurnBar.App.CloudSync/WinAppCloudSyncHost.cs"
       - "windows/tests/quota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVault*Tests.swift"
@@ -34,21 +39,34 @@ on:
       - "functions/src/rollupCounters.ts"
       - "functions/src/insightsHostedAnswer.ts"
       - "functions/src/__tests__/pricing.test.ts"
+      - "functions/src/domainCoreShadowEvidence.ts"
+      - "functions/src/callables/domainCoreShadowEvidence.ts"
+      - "functions/src/__tests__/domainCoreShadowEvidence.test.ts"
+      - "functions/src/index.ts"
+      - "functions/src/security/endpointAuthorizationCatalog.generated.ts"
+      - "functions/scripts/generate-endpoint-catalog.mjs"
+      - "firestore.indexes.json"
+      - "firestore.rules"
+      - "ops/firestore-ttl-policies.json"
       - "functions/vendor/openburnbar/domain-core-wasm/**"
       - "functions/package*.json"
       - "Vendor/openburnbar-domain-core.aar"
       - "tests/fixtures/domain-core/**"
       - "scripts/build-domain-core-xcframework.sh"
+      - "scripts/domain-core/safe-quota-ffi.swift.inc"
       - "scripts/build-domain-core-android-aar.sh"
       - "scripts/build-domain-core-wasm.sh"
       - "scripts/ci/domain-core-union-gate.py"
       - "scripts/ci/evaluate-domain-core-promotion.mjs"
       - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
       - "scripts/lib/domain-core-promotion-evidence.mjs"
+      - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
+      - "scripts/ops/export-domain-core-promotion-evidence.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - "config/domain-core-promotion-policy.json"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
+      - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
   pull_request:
@@ -61,7 +79,12 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
+      - "AgentLens/Services/ProviderQuota/DomainCoreShadowEvidenceSpool.swift"
+      - "AgentLens/Services/ProviderQuota/ProviderQuotaMacBridge.swift"
+      - "AgentLensTests/Active/DomainCoreShadowEvidenceSpoolTests.swift"
       - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
+      - "windows/app/OpenBurnBar.App.CloudSync/DomainCoreShadowEvidenceUploader.cs"
+      - "windows/app/OpenBurnBar.App.CloudSync/WinAppCloudSyncHost.cs"
       - "windows/tests/quota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVault*Tests.swift"
@@ -80,21 +103,34 @@ on:
       - "functions/src/rollupCounters.ts"
       - "functions/src/insightsHostedAnswer.ts"
       - "functions/src/__tests__/pricing.test.ts"
+      - "functions/src/domainCoreShadowEvidence.ts"
+      - "functions/src/callables/domainCoreShadowEvidence.ts"
+      - "functions/src/__tests__/domainCoreShadowEvidence.test.ts"
+      - "functions/src/index.ts"
+      - "functions/src/security/endpointAuthorizationCatalog.generated.ts"
+      - "functions/scripts/generate-endpoint-catalog.mjs"
+      - "firestore.indexes.json"
+      - "firestore.rules"
+      - "ops/firestore-ttl-policies.json"
       - "functions/vendor/openburnbar/domain-core-wasm/**"
       - "functions/package*.json"
       - "Vendor/openburnbar-domain-core.aar"
       - "tests/fixtures/domain-core/**"
       - "scripts/build-domain-core-xcframework.sh"
+      - "scripts/domain-core/safe-quota-ffi.swift.inc"
       - "scripts/build-domain-core-android-aar.sh"
       - "scripts/build-domain-core-wasm.sh"
       - "scripts/ci/domain-core-union-gate.py"
       - "scripts/ci/evaluate-domain-core-promotion.mjs"
       - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
       - "scripts/lib/domain-core-promotion-evidence.mjs"
+      - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
+      - "scripts/ops/export-domain-core-promotion-evidence.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - "config/domain-core-promotion-policy.json"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
+      - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
   workflow_dispatch:
@@ -114,7 +150,13 @@ jobs:
           persist-credentials: false
 
       - name: Test fail-closed promotion evidence evaluation
-        run: node --test scripts/ci/evaluate-domain-core-promotion.test.mjs
+        run: >-
+          node --test
+          scripts/ci/evaluate-domain-core-promotion.test.mjs
+          scripts/lib/export-domain-core-promotion-evidence.test.mjs
+
+      - name: Verify shadow evidence retention declaration
+        run: bash scripts/ci/check-firestore-ttl-declared.sh
 
   rust-and-csharp:
     runs-on: ubuntu-latest
@@ -303,9 +345,12 @@ jobs:
         working-directory: functions
         run: npm ci
 
-      - name: Run Functions pricing contracts
+      - name: Run Functions domain-core contracts
         working-directory: functions
-        run: npx vitest run src/__tests__/pricing.test.ts
+        run: >-
+          npx vitest run
+          src/__tests__/pricing.test.ts
+          src/__tests__/domainCoreShadowEvidence.test.ts
 
       - name: Typecheck and lint Functions
         working-directory: functions
@@ -488,3 +533,8 @@ jobs:
           OPENBURNBAR_CORE_SWIFT_FILTER: DomainCore
           OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS: "1"
         run: ./scripts/test-openburnbar-swift.sh
+
+      - name: Run Apple shadow evidence spool contracts
+        run: >-
+          ./scripts/test-openburnbar-app.sh
+          -only-testing:OpenBurnBarTests/DomainCoreShadowEvidenceSpoolTests

@@ -69,6 +69,14 @@ final class DomainCoreQuotaConsumerTests: XCTestCase {
         }
     }
 
+    func testSafeQuotaFFIShimReadsLinkedCoreVersion() throws {
+        try XCTSkipUnless(DomainCoreQuotaConsumerSupport.isNativeAvailable)
+        XCTAssertNotEqual(
+            DomainCoreQuotaConsumerSupport.safeCoreVersion(),
+            "0.0.0-unavailable"
+        )
+    }
+
     func testRustModeDoesNotEvaluateLegacyParsersWhenNativeCoreIsLinked() throws {
         try XCTSkipUnless(DomainCoreQuotaConsumerSupport.isNativeAvailable)
         var codexLegacyCalls = 0
@@ -114,7 +122,7 @@ final class DomainCoreQuotaConsumerTests: XCTestCase {
         try XCTSkipUnless(DomainCoreQuotaConsumerSupport.isNativeAvailable)
         let logger = ConsumerRecordingQuotaLogger()
         let sentinel = "private-provider-payload-sentinel"
-        let malformed = Data(#"{"secret":"private-provider-payload-sentinel"}"#.utf8)
+        let malformed = Data("private-provider-payload-sentinel".utf8)
         let legacy = canonicalFallbackSnapshot(provider: .codex)
 
         let result = try CodexQuotaDomainCoreAdapter.snapshot(
@@ -127,9 +135,12 @@ final class DomainCoreQuotaConsumerTests: XCTestCase {
 
         XCTAssertEqual(result, legacy)
         XCTAssertEqual(logger.messages.count, 1)
-        XCTAssertFalse(logger.messages[0].contains(sentinel))
-        XCTAssertTrue(logger.messages[0].contains("legacy_count="))
-        XCTAssertTrue(logger.messages[0].contains("rust_count="))
+        let message = try XCTUnwrap(logger.messages.first)
+        XCTAssertFalse(message.contains(sentinel))
+        XCTAssertTrue(message.contains("legacy_count="))
+        XCTAssertTrue(message.contains("rust_count="))
+        XCTAssertEqual(logger.comparisons.count, 1)
+        XCTAssertEqual(logger.comparisons.first?.mismatchCategory, .invalidResult)
     }
 
     private var migrationModes: [DomainCoreQuotaMigrationMode] {
@@ -146,6 +157,14 @@ final class DomainCoreQuotaConsumerTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        let expectedComparisonCount = mode == .shadow && DomainCoreQuotaConsumerSupport.isNativeAvailable ? 1 : 0
+        XCTAssertEqual(logger.comparisons.count, expectedComparisonCount, file: file, line: line)
+        if let comparison = logger.comparisons.single {
+            XCTAssertEqual(comparison.outcome, .match, file: file, line: line)
+            XCTAssertNil(comparison.mismatchCategory, file: file, line: line)
+            XCTAssertGreaterThanOrEqual(comparison.legacyMicros, 0, file: file, line: line)
+            XCTAssertGreaterThanOrEqual(comparison.rustMicros, 0, file: file, line: line)
+        }
         if mode == .shadow, !DomainCoreQuotaConsumerSupport.isNativeAvailable {
             XCTAssertEqual(logger.messages.count, 1, file: file, line: line)
             XCTAssertTrue(logger.messages[0].contains("native_unavailable"), file: file, line: line)
@@ -289,10 +308,20 @@ private struct ConsumerExpectedBucket: Decodable {
 private final class ConsumerRecordingQuotaLogger: QuotaLogger, @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String] = []
+    private var comparisonStorage: [DomainCoreQuotaShadowComparison] = []
 
     var messages: [String] { lock.withLock { storage } }
+    var comparisons: [DomainCoreQuotaShadowComparison] { lock.withLock { comparisonStorage } }
 
     func log(_ message: String) {
         lock.withLock { storage.append(message) }
     }
+
+    func recordDomainCoreShadowComparison(_ comparison: DomainCoreQuotaShadowComparison) {
+        lock.withLock { comparisonStorage.append(comparison) }
+    }
+}
+
+private extension Array {
+    var single: Element? { count == 1 ? first : nil }
 }

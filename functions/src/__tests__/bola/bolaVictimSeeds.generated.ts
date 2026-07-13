@@ -2324,6 +2324,16 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  submitDomainCoreShadowSamples: [
+    {
+      path: "users/__BOB_UID__/bola_victim/sampleId/bob-sampleId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   triggerVoIPCall: [
     {
       path: "users/__BOB_UID__/devices/bob-paired",

@@ -37,15 +37,55 @@ enum ClaudeQuotaDomainCoreAdapter {
     static func buckets(
         from rateLimits: ClaudeRateLimits,
         environment: [String: String],
-        quotaLogger: any QuotaLogger
+        quotaLogger: any QuotaLogger,
+        shadowLegacyProbe: (() -> [ProviderQuotaBucket])? = nil,
+        shadowRustProbe: (() throws -> ([ProviderQuotaBucket], Bool))? = nil
     ) -> [ProviderQuotaBucket] {
         let mode = DomainCoreQuotaMigrationMode.resolve(environment: environment)
         guard mode != .legacy else { return legacyBuckets(from: rateLimits) }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
+        if mode == .shadow {
+            let legacyMeasurement = DomainCoreQuotaShadowTiming.measure {
+                shadowLegacyProbe?() ?? legacyBuckets(from: rateLimits)
+            }
+            let rustMeasurement = DomainCoreQuotaShadowTiming.measureResult {
+                if let shadowRustProbe { return try shadowRustProbe() }
+                let payload = try JSONSerialization.data(withJSONObject: rateLimits.rawDictionary)
+                guard try SafeQuotaFFI.domainCoreAbiVersion() == 3 else {
+                    throw DomainCoreQuotaShadowProbeError.nativeUnavailable
+                }
+                let result = try SafeQuotaFFI.parseClaudeStatuslineQuota(payload: payload)
+                let buckets = result.status == .parsed
+                    ? result.snapshot.buckets.map(mapBucket)
+                    : []
+                return (buckets, result.status == .malformed)
+            }
+            var rustCount = 0
+            let category = DomainCoreQuotaShadowCategory.classify(rustMeasurement.result) {
+                (rustBuckets: [ProviderQuotaBucket]) in
+                rustCount = rustBuckets.count
+                return equivalent(legacyMeasurement.value, rustBuckets)
+            }
+            if category != nil {
+                quotaLogger.log(
+                    "domain_core.claude_quota.shadow_mismatch core=\(DomainCoreQuotaConsumerSupport.safeCoreVersion()) legacy_count=\(legacyMeasurement.value.count) rust_count=\(rustCount)"
+                )
+            }
+            quotaLogger.recordDomainCoreShadowComparison(DomainCoreQuotaShadowComparison(
+                operation: "claude_quota",
+                coreVersion: DomainCoreQuotaConsumerSupport.safeCoreVersion(),
+                observedAt: Date(),
+                outcome: category == nil ? .match : .mismatch,
+                mismatchCategory: category,
+                legacyMicros: legacyMeasurement.micros,
+                rustMicros: rustMeasurement.micros
+            ))
+            return legacyMeasurement.value
+        }
         guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             quotaLogger.log("domain_core.claude_quota.abi_mismatch")
-            return mode == .shadow ? legacyBuckets(from: rateLimits) : []
+            return []
         }
         guard let payload = try? JSONSerialization.data(withJSONObject: rateLimits.rawDictionary) else {
             quotaLogger.log("domain_core.claude_quota.payload_encode_failed")
@@ -53,23 +93,23 @@ enum ClaudeQuotaDomainCoreAdapter {
         }
 
         let result = OpenBurnBarDomainCoreFFI.parseClaudeStatuslineQuota(payload: payload)
-        let rust = result.status == .parsed
-            ? result.snapshot.buckets.map(mapBucket)
-            : []
-
-        if mode == .shadow {
-            let legacy = legacyBuckets(from: rateLimits)
-            if !equivalent(legacy, rust) {
-                quotaLogger.log(
-                    "domain_core.claude_quota.shadow_mismatch core=\(OpenBurnBarDomainCoreFFI.domainCoreVersion()) legacy_count=\(legacy.count) rust_count=\(rust.count)"
-                )
-            }
-            return legacy
-        }
-        return rust
+        return result.status == .parsed ? result.snapshot.buckets.map(mapBucket) : []
         #else
         quotaLogger.log("domain_core.claude_quota.native_unavailable mode=\(mode.rawValue)")
-        return mode == .shadow ? legacyBuckets(from: rateLimits) : []
+        if mode == .shadow {
+            let legacyMeasurement = DomainCoreQuotaShadowTiming.measure { legacyBuckets(from: rateLimits) }
+            quotaLogger.recordDomainCoreShadowComparison(DomainCoreQuotaShadowComparison(
+                operation: "claude_quota",
+                coreVersion: "0.0.0-unavailable",
+                observedAt: Date(),
+                outcome: .mismatch,
+                mismatchCategory: .nativeUnavailable,
+                legacyMicros: legacyMeasurement.micros,
+                rustMicros: 0
+            ))
+            return legacyMeasurement.value
+        }
+        return []
         #endif
     }
 

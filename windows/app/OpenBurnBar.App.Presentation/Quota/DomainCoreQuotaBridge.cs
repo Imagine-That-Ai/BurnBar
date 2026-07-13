@@ -18,7 +18,8 @@ internal static class DomainCoreQuotaBridge
         string managementUrl,
         bool mapMalformedSnapshot,
         DomainCoreQuotaMigrationMode? requestedMode = null,
-        bool? requireNative = null)
+        bool? requireNative = null,
+        Action<string, string, bool, string?, long, long>? comparisonSink = null)
     {
         var mode = requestedMode ?? ClaudeStatuslineQuotaDomainCore.ResolveMode(
             Environment.GetEnvironmentVariable("OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE"));
@@ -27,6 +28,19 @@ internal static class DomainCoreQuotaBridge
             return legacy();
         }
 
+        if (mode == DomainCoreQuotaMigrationMode.Shadow)
+        {
+            return ApplyShadow(
+                operation,
+                rust,
+                legacy,
+                fetchedAt,
+                managementUrl,
+                mapMalformedSnapshot,
+                comparisonSink ?? DomainCoreQuotaShadowEvidence.RecordComparison);
+        }
+
+        var rustStarted = Stopwatch.GetTimestamp();
         if (!TryInvoke(rust, out var result))
         {
             _ = requireNative; // Compatibility-only parameter; Rust mode is always strict.
@@ -41,22 +55,72 @@ internal static class DomainCoreQuotaBridge
         }
 
         var rustSnapshot = MapResult(result!, fetchedAt, managementUrl, mapMalformedSnapshot);
-        if (mode == DomainCoreQuotaMigrationMode.Rust)
-        {
-            return rustSnapshot;
-        }
+        var rustMicros = ElapsedMicros(rustStarted);
+        _ = rustMicros;
+        return rustSnapshot;
+    }
 
+    private static ProviderQuotaSnapshot? ApplyShadow(
+        string operation,
+        Func<DomainQuotaParseResult> rust,
+        Func<ProviderQuotaSnapshot?> legacy,
+        DateTimeOffset fetchedAt,
+        string managementUrl,
+        bool mapMalformedSnapshot,
+        Action<string, string, bool, string?, long, long> comparisonSink)
+    {
+        var legacyStarted = Stopwatch.GetTimestamp();
         var legacySnapshot = legacy();
-        if (!Equivalent(legacySnapshot, rustSnapshot))
+        var legacyMicros = ElapsedMicros(legacyStarted);
+        var rustStarted = Stopwatch.GetTimestamp();
+        ProviderQuotaSnapshot? rustSnapshot = null;
+        string? mismatchCategory = null;
+        try
+        {
+            if (DomainCore.DomainCoreAbiVersion() != 3)
+            {
+                mismatchCategory = "native_unavailable";
+            }
+            else
+            {
+                var result = rust();
+                if (result.status == DomainQuotaParseStatus.Malformed)
+                {
+                    mismatchCategory = "invalid_result";
+                }
+                else
+                {
+                    rustSnapshot = MapResult(result, fetchedAt, managementUrl, mapMalformedSnapshot);
+                    if (!Equivalent(legacySnapshot, rustSnapshot)) mismatchCategory = "result_mismatch";
+                }
+            }
+        }
+        catch (Exception error) when (IsNativeUnavailable(error))
+        {
+            mismatchCategory = "native_unavailable";
+        }
+        catch
+        {
+            mismatchCategory = "native_error";
+        }
+        var rustMicros = ElapsedMicros(rustStarted);
+        if (mismatchCategory is not null)
         {
             Trace.TraceWarning(
-                "domain_core.{0}.shadow_mismatch core={1} legacy_count={2} rust_count={3}",
+                "domain_core.{0}.shadow_mismatch core={1} category={2} legacy_count={3} rust_count={4}",
                 operation,
-                DomainCore.DomainCoreVersion(),
+                SafeCoreVersion(),
+                mismatchCategory,
                 legacySnapshot?.Buckets.Count ?? 0,
                 rustSnapshot?.Buckets.Count ?? 0);
         }
-
+        comparisonSink(
+            operation,
+            SafeCoreVersion(),
+            mismatchCategory is null,
+            mismatchCategory,
+            legacyMicros,
+            rustMicros);
         return legacySnapshot;
     }
 
@@ -81,6 +145,18 @@ internal static class DomainCoreQuotaBridge
         {
             return false;
         }
+    }
+
+    private static bool IsNativeUnavailable(Exception error) =>
+        error is DllNotFoundException
+            or EntryPointNotFoundException
+            or BadImageFormatException
+            or TypeInitializationException;
+
+    private static string SafeCoreVersion()
+    {
+        try { return DomainCore.DomainCoreVersion(); }
+        catch { return "0.0.0-unavailable"; }
     }
 
     private static ProviderQuotaSnapshot? MapResult(
@@ -205,4 +281,7 @@ internal static class DomainCoreQuotaBridge
     private static bool Close(long? left, long? right) =>
         left is null && right is null
         || left is long l && right is long r && Math.Abs(l - r) <= 1;
+
+    private static long ElapsedMicros(long started) =>
+        Math.Clamp((long)Stopwatch.GetElapsedTime(started).TotalMicroseconds, 0, 600_000_000);
 }

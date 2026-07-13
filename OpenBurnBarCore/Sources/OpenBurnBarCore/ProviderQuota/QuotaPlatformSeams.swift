@@ -19,11 +19,60 @@ public protocol CLIExecutor: Sendable {
 /// Logging for quota fetch paths (replaces AppLogger / os.Logger).
 public protocol QuotaLogger: Sendable {
     func log(_ message: String)
+    func recordDomainCoreShadowComparison(_ comparison: DomainCoreQuotaShadowComparison)
+}
+
+public extension QuotaLogger {
+    func recordDomainCoreShadowComparison(_ comparison: DomainCoreQuotaShadowComparison) {}
 }
 
 public struct NoOpQuotaLogger: QuotaLogger {
     public init() {}
     public func log(_ message: String) {}
+}
+
+public enum DomainCoreQuotaShadowOutcome: String, Codable, Sendable {
+    case match
+    case mismatch
+}
+
+public enum DomainCoreQuotaShadowMismatchCategory: String, Codable, Sendable {
+    case resultMismatch = "result_mismatch"
+    case nativeUnavailable = "native_unavailable"
+    case nativeError = "native_error"
+    case invalidResult = "invalid_result"
+}
+
+/// Privacy-safe receipt for one complete legacy/Rust quota comparison.
+/// Payloads, parsed values, credentials, user identifiers, and hashes are
+/// deliberately absent. Platform adapters add consumer/channel/sample identity
+/// before durably spooling this receipt.
+public struct DomainCoreQuotaShadowComparison: Equatable, Sendable {
+    public let operation: String
+    public let coreVersion: String
+    public let observedAt: Date
+    public let outcome: DomainCoreQuotaShadowOutcome
+    public let mismatchCategory: DomainCoreQuotaShadowMismatchCategory?
+    public let legacyMicros: UInt64
+    public let rustMicros: UInt64
+
+    public init(
+        operation: String,
+        coreVersion: String,
+        observedAt: Date,
+        outcome: DomainCoreQuotaShadowOutcome,
+        mismatchCategory: DomainCoreQuotaShadowMismatchCategory? = nil,
+        legacyMicros: UInt64,
+        rustMicros: UInt64
+    ) {
+        self.operation = operation
+        self.coreVersion = coreVersion
+        self.observedAt = observedAt
+        self.outcome = outcome
+        self.mismatchCategory = mismatchCategory
+        self.legacyMicros = legacyMicros
+        self.rustMicros = rustMicros
+    }
 }
 
 /// Persisted quota snapshots and scratch keys (AgentLens `ProviderQuotaSnapshotStore`).

@@ -4895,5 +4895,10 @@ service cloud.firestore {
     match /hermes_gateway_token_index/{tokenHash} {
       allow read, write: if false;
     }
+
+    // --- Shared Rust shadow evidence (callable/admin SDK only) ---
+    match /domain_core_shadow_samples/{sampleId} {
+      allow read, write: if false;
+    }
   }
 }

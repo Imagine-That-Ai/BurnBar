@@ -19,6 +19,10 @@ enum DomainCoreQuotaConsumerSupport {
     }
 
     #if canImport(OpenBurnBarDomainCoreFFI)
+    static func safeCoreVersion() -> String {
+        (try? SafeQuotaFFI.domainCoreVersion()) ?? "0.0.0-unavailable"
+    }
+
     static func snapshot(
         from snapshot: OpenBurnBarDomainCoreFFI.QuotaSnapshot,
         fetchedAt: Date,
@@ -50,7 +54,7 @@ enum DomainCoreQuotaConsumerSupport {
         legacy: ProviderQuotaSnapshot,
         rust: ProviderQuotaSnapshot?
     ) -> String {
-        "domain_core.\(domain).shadow_mismatch core=\(OpenBurnBarDomainCoreFFI.domainCoreVersion()) legacy_count=\(legacy.buckets.count) rust_count=\(rust?.buckets.count ?? 0)"
+        "domain_core.\(domain).shadow_mismatch core=\(safeCoreVersion()) legacy_count=\(legacy.buckets.count) rust_count=\(rust?.buckets.count ?? 0)"
     }
 
     private static func provider(_ value: String) -> AgentProvider? {
@@ -174,9 +178,55 @@ enum CodexQuotaDomainCoreAdapter {
         guard mode != .legacy else { return try legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
+        if mode == .shadow {
+            let legacyMeasurement = try DomainCoreQuotaShadowTiming.measure(legacy)
+            let rustMeasurement = DomainCoreQuotaShadowTiming.measureResult {
+                guard try SafeQuotaFFI.domainCoreAbiVersion() == 3 else {
+                    throw DomainCoreQuotaShadowProbeError.nativeUnavailable
+                }
+                let parsed = try SafeQuotaFFI.parseCodexUsageQuota(
+                    payload: payload,
+                    nowUnix: Int64(now.timeIntervalSince1970)
+                )
+                let snapshot = parsed.status == .parsed
+                    ? DomainCoreQuotaConsumerSupport.snapshot(
+                        from: parsed.snapshot,
+                        fetchedAt: now,
+                        managementURL: "https://chatgpt.com/codex/settings/usage"
+                    )
+                    : nil
+                return (snapshot, parsed.status == .malformed)
+            }
+            var diagnostic: String?
+            let category = DomainCoreQuotaShadowCategory.classify(rustMeasurement.result) { rust in
+                diagnostic = DomainCoreQuotaConsumerSupport.shadowMismatch(
+                    domain: "codex_quota",
+                    legacy: legacyMeasurement.value,
+                    rust: rust
+                )
+                return diagnostic == nil
+            }
+            if category != nil, diagnostic == nil {
+                diagnostic = DomainCoreQuotaConsumerSupport.shadowMismatch(
+                    domain: "codex_quota",
+                    legacy: legacyMeasurement.value,
+                    rust: nil
+                )
+            }
+            if let diagnostic { quotaLogger.log(diagnostic) }
+            quotaLogger.recordDomainCoreShadowComparison(DomainCoreQuotaShadowComparison(
+                operation: "codex_quota",
+                coreVersion: DomainCoreQuotaConsumerSupport.safeCoreVersion(),
+                observedAt: Date(),
+                outcome: category == nil ? .match : .mismatch,
+                mismatchCategory: category,
+                legacyMicros: legacyMeasurement.micros,
+                rustMicros: rustMeasurement.micros
+            ))
+            return legacyMeasurement.value
+        }
         guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             quotaLogger.log("domain_core.codex_quota.abi_mismatch")
-            if mode == .shadow { return try legacy() }
             throw DomainCoreQuotaConsumerError.nativeUnavailable
         }
         let parsed = OpenBurnBarDomainCoreFFI.parseCodexUsageQuota(
@@ -190,22 +240,23 @@ enum CodexQuotaDomainCoreAdapter {
                 managementURL: "https://chatgpt.com/codex/settings/usage"
             )
             : nil
-        if mode == .shadow {
-            let legacySnapshot = try legacy()
-            if let diagnostic = DomainCoreQuotaConsumerSupport.shadowMismatch(
-                domain: "codex_quota",
-                legacy: legacySnapshot,
-                rust: rust
-            ) {
-                quotaLogger.log(diagnostic)
-            }
-            return legacySnapshot
-        }
         guard let rust else { throw DomainCoreQuotaConsumerError.invalidPayload }
         return rust
         #else
         quotaLogger.log("domain_core.codex_quota.native_unavailable mode=\(mode.rawValue)")
-        if mode == .shadow { return try legacy() }
+        if mode == .shadow {
+            let legacyMeasurement = try DomainCoreQuotaShadowTiming.measure(legacy)
+            quotaLogger.recordDomainCoreShadowComparison(DomainCoreQuotaShadowComparison(
+                operation: "codex_quota",
+                coreVersion: "0.0.0-unavailable",
+                observedAt: Date(),
+                outcome: .mismatch,
+                mismatchCategory: .nativeUnavailable,
+                legacyMicros: legacyMeasurement.micros,
+                rustMicros: 0
+            ))
+            return legacyMeasurement.value
+        }
         throw DomainCoreQuotaConsumerError.nativeUnavailable
         #endif
     }
@@ -224,9 +275,52 @@ enum CursorQuotaDomainCoreAdapter {
         guard mode != .legacy else { return try legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
+        if mode == .shadow {
+            let legacyMeasurement = try DomainCoreQuotaShadowTiming.measure(legacy)
+            let rustMeasurement = DomainCoreQuotaShadowTiming.measureResult {
+                guard try SafeQuotaFFI.domainCoreAbiVersion() == 3 else {
+                    throw DomainCoreQuotaShadowProbeError.nativeUnavailable
+                }
+                let parsed = try SafeQuotaFFI.parseCursorUsageQuota(payload: payload, userEmail: userEmail)
+                let snapshot = parsed.status == .parsed
+                    ? DomainCoreQuotaConsumerSupport.snapshot(
+                        from: parsed.snapshot,
+                        fetchedAt: now,
+                        managementURL: "https://cursor.com/dashboard"
+                    )
+                    : nil
+                return (snapshot, parsed.status == .malformed)
+            }
+            var diagnostic: String?
+            let category = DomainCoreQuotaShadowCategory.classify(rustMeasurement.result) { rust in
+                diagnostic = DomainCoreQuotaConsumerSupport.shadowMismatch(
+                    domain: "cursor_quota",
+                    legacy: legacyMeasurement.value,
+                    rust: rust
+                )
+                return diagnostic == nil
+            }
+            if category != nil, diagnostic == nil {
+                diagnostic = DomainCoreQuotaConsumerSupport.shadowMismatch(
+                    domain: "cursor_quota",
+                    legacy: legacyMeasurement.value,
+                    rust: nil
+                )
+            }
+            if let diagnostic { quotaLogger.log(diagnostic) }
+            quotaLogger.recordDomainCoreShadowComparison(DomainCoreQuotaShadowComparison(
+                operation: "cursor_quota",
+                coreVersion: DomainCoreQuotaConsumerSupport.safeCoreVersion(),
+                observedAt: Date(),
+                outcome: category == nil ? .match : .mismatch,
+                mismatchCategory: category,
+                legacyMicros: legacyMeasurement.micros,
+                rustMicros: rustMeasurement.micros
+            ))
+            return legacyMeasurement.value
+        }
         guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             quotaLogger.log("domain_core.cursor_quota.abi_mismatch")
-            if mode == .shadow { return try legacy() }
             throw DomainCoreQuotaConsumerError.nativeUnavailable
         }
         let parsed = OpenBurnBarDomainCoreFFI.parseCursorUsageQuota(payload: payload, userEmail: userEmail)
@@ -237,22 +331,23 @@ enum CursorQuotaDomainCoreAdapter {
                 managementURL: "https://cursor.com/dashboard"
             )
             : nil
-        if mode == .shadow {
-            let legacySnapshot = try legacy()
-            if let diagnostic = DomainCoreQuotaConsumerSupport.shadowMismatch(
-                domain: "cursor_quota",
-                legacy: legacySnapshot,
-                rust: rust
-            ) {
-                quotaLogger.log(diagnostic)
-            }
-            return legacySnapshot
-        }
         guard let rust else { throw DomainCoreQuotaConsumerError.invalidPayload }
         return rust
         #else
         quotaLogger.log("domain_core.cursor_quota.native_unavailable mode=\(mode.rawValue)")
-        if mode == .shadow { return try legacy() }
+        if mode == .shadow {
+            let legacyMeasurement = try DomainCoreQuotaShadowTiming.measure(legacy)
+            quotaLogger.recordDomainCoreShadowComparison(DomainCoreQuotaShadowComparison(
+                operation: "cursor_quota",
+                coreVersion: "0.0.0-unavailable",
+                observedAt: Date(),
+                outcome: .mismatch,
+                mismatchCategory: .nativeUnavailable,
+                legacyMicros: legacyMeasurement.micros,
+                rustMicros: 0
+            ))
+            return legacyMeasurement.value
+        }
         throw DomainCoreQuotaConsumerError.nativeUnavailable
         #endif
     }
@@ -271,46 +366,96 @@ enum AnthropicRateLimitDomainCoreAdapter {
         guard mode != .legacy else { return legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
-            quotaLogger.log("domain_core.anthropic_ratelimit.abi_mismatch")
-            return mode == .shadow ? legacy() : nil
-        }
         let ffiShape: OpenBurnBarDomainCoreFFI.AnthropicCredentialShape = switch shape {
         case .consoleAPIKey: .consoleApiKey
         case .oauthBearer: .oauthBearer
+        }
+        if mode == .shadow {
+            let legacyMeasurement = DomainCoreQuotaShadowTiming.measure(legacy)
+            let rustMeasurement = DomainCoreQuotaShadowTiming.measureResult {
+                guard try SafeQuotaFFI.domainCoreAbiVersion() == 3 else {
+                    throw DomainCoreQuotaShadowProbeError.nativeUnavailable
+                }
+                let parsed = try SafeQuotaFFI.parseAnthropicRateLimitHeaders(
+                    payload: payload,
+                    nowUnix: Int64(now.timeIntervalSince1970),
+                    shape: ffiShape
+                )
+                let snapshot = parsed.status == .parsed
+                    ? DomainCoreQuotaConsumerSupport.snapshot(
+                        from: parsed.snapshot,
+                        fetchedAt: now,
+                        managementURL: "https://claude.ai/settings/usage"
+                    )
+                    : nil
+                return (snapshot, parsed.status == .malformed)
+            }
+            var diagnostic: String?
+            let category = DomainCoreQuotaShadowCategory.classify(rustMeasurement.result) { rust in
+                diagnostic = legacyMeasurement.value.map {
+                    DomainCoreQuotaConsumerSupport.shadowMismatch(
+                        domain: "anthropic_ratelimit",
+                        legacy: $0,
+                        rust: rust
+                    )
+                } ?? rust.map {
+                    "domain_core.anthropic_ratelimit.shadow_mismatch core=\(DomainCoreQuotaConsumerSupport.safeCoreVersion()) legacy_count=0 rust_count=\($0.buckets.count)"
+                }
+                return diagnostic == nil
+            }
+            if category != nil, diagnostic == nil {
+                diagnostic = legacyMeasurement.value.map {
+                    DomainCoreQuotaConsumerSupport.shadowMismatch(
+                        domain: "anthropic_ratelimit",
+                        legacy: $0,
+                        rust: nil
+                    )
+                } ?? "domain_core.anthropic_ratelimit.shadow_mismatch core=\(DomainCoreQuotaConsumerSupport.safeCoreVersion()) legacy_count=0 rust_count=0"
+            }
+            if let diagnostic { quotaLogger.log(diagnostic) }
+            quotaLogger.recordDomainCoreShadowComparison(DomainCoreQuotaShadowComparison(
+                operation: "anthropic_quota",
+                coreVersion: DomainCoreQuotaConsumerSupport.safeCoreVersion(),
+                observedAt: Date(),
+                outcome: category == nil ? .match : .mismatch,
+                mismatchCategory: category,
+                legacyMicros: legacyMeasurement.micros,
+                rustMicros: rustMeasurement.micros
+            ))
+            return legacyMeasurement.value
+        }
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
+            quotaLogger.log("domain_core.anthropic_ratelimit.abi_mismatch")
+            return nil
         }
         let parsed = OpenBurnBarDomainCoreFFI.parseAnthropicRateLimitHeaders(
             payload: payload,
             nowUnix: Int64(now.timeIntervalSince1970),
             shape: ffiShape
         )
-        let rust = parsed.status == .parsed
+        return parsed.status == .parsed
             ? DomainCoreQuotaConsumerSupport.snapshot(
                 from: parsed.snapshot,
                 fetchedAt: now,
                 managementURL: "https://claude.ai/settings/usage"
             )
             : nil
-        if mode == .shadow {
-            let legacySnapshot = legacy()
-            if let legacySnapshot,
-               let diagnostic = DomainCoreQuotaConsumerSupport.shadowMismatch(
-                domain: "anthropic_ratelimit",
-                legacy: legacySnapshot,
-                rust: rust
-               ) {
-                quotaLogger.log(diagnostic)
-            } else if legacySnapshot == nil, rust != nil {
-                quotaLogger.log(
-                    "domain_core.anthropic_ratelimit.shadow_mismatch core=\(OpenBurnBarDomainCoreFFI.domainCoreVersion()) legacy_count=0 rust_count=\(rust?.buckets.count ?? 0)"
-                )
-            }
-            return legacySnapshot
-        }
-        return rust
         #else
         quotaLogger.log("domain_core.anthropic_ratelimit.native_unavailable mode=\(mode.rawValue)")
-        return mode == .shadow ? legacy() : nil
+        if mode == .shadow {
+            let legacyMeasurement = DomainCoreQuotaShadowTiming.measure(legacy)
+            quotaLogger.recordDomainCoreShadowComparison(DomainCoreQuotaShadowComparison(
+                operation: "anthropic_quota",
+                coreVersion: "0.0.0-unavailable",
+                observedAt: Date(),
+                outcome: .mismatch,
+                mismatchCategory: .nativeUnavailable,
+                legacyMicros: legacyMeasurement.micros,
+                rustMicros: 0
+            ))
+            return legacyMeasurement.value
+        }
+        return nil
         #endif
     }
 }

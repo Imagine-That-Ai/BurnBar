@@ -24,6 +24,68 @@ Policy changes require normal code review and must not be supplied by a rollout
 job. The CLI intentionally has no policy override; proposed policy changes are
 exercised by the evaluator's unit tests before merge.
 
+## Collect quota shadow samples
+
+Quota consumers emit schema-v1 samples only when the rollout channel is
+`internal` or `beta`. Set `OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL` to one of
+those values in the signed build environment and enroll the signed-in account
+with the matching Firebase Auth custom claim
+`domainCoreShadowChannel: "internal" | "beta"`. The callable rejects absent or
+mismatched claims; the request body cannot self-assert enrollment. An absent,
+unknown, or `production` build value disables collection. Parser payloads and
+parsed quota values never cross the evidence boundary.
+
+Apple spools bounded JSONL batches under
+`Application Support/OpenBurnBar/DomainCoreShadow`; Windows uses
+`LocalApplicationData/OpenBurnBar/DomainCoreShadow`. Each platform retains at
+most eight ready files with at most 100 samples per file and acknowledges a
+batch only after the callable accepts every sample as new or idempotently
+duplicate. The callable requires Firebase Auth and App Check and is the only
+write path to `domain_core_shadow_samples`; Firestore rules deny direct client
+access. Documents do not persist the authenticated uid and expire after 60
+days via `expireAt`.
+
+Before collecting beta evidence, enable and verify the live Firestore TTL
+policy declared in [`ops/firestore-ttl-policies.json`](../../ops/firestore-ttl-policies.json):
+
+```bash
+gcloud firestore fields ttls update expireAt \
+  --collection-group=domain_core_shadow_samples \
+  --enable-ttl \
+  --project=burnbar
+node scripts/ci/verify-firestore-ttl-state.mjs --project burnbar
+```
+
+The exact ingress DTO is
+[`docs/contracts/domain-core-shadow-sample-v1.schema.json`](../contracts/domain-core-shadow-sample-v1.schema.json).
+It contains only platform, rollout, outcome, version, operation, timestamp, and
+whole-call latency metadata. Do not add uid, device identity, file paths,
+payloads, parsed results, credentials, or stable hashes.
+
+## Export collected evidence
+
+Use the reviewed exporter to produce evaluator input directly from the retained
+collection. Each consumer's coverage is derived from its actual earliest and
+latest matching sample, never from the operator's query bounds. The export
+fails if either required consumer has no matching samples or only one observed
+timestamp. The exporter rejects unexpected stored fields, mixed schema data,
+invalid timings, duplicate sample IDs, and credential-bearing source URLs.
+
+```bash
+node scripts/ops/export-domain-core-promotion-evidence.mjs \
+  --project burnbar \
+  --start 2026-06-29T00:00:00Z \
+  --end 2026-07-13T00:00:00Z \
+  --channel beta \
+  --core-version 0.3.0 \
+  --source-uri https://console.cloud.google.com/firestore/databases/-default-/data/panel/domain_core_shadow_samples \
+  --output /absolute/path/to/collected-evidence.json
+```
+
+The command uses Application Default Credentials and writes the output with
+owner-only permissions. Treat its `source-uri` as provenance, not a credential;
+queries, fragments, usernames, and passwords are rejected.
+
 ## Evidence contract
 
 Evidence is aggregated metadata. It must not contain payloads, parsed values,
