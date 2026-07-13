@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { KernelId } from '@openburnbar/gl-engine/engine/types';
+import { decodeNativeNotificationActionEvent } from '../tauriBridge.js';
 import { CommandPalette } from '../components/CommandPalette.js';
 import { KernelBackdrop } from '../components/KernelBackdrop.js';
 import { TopChrome } from '../components/TopChrome.js';
@@ -49,6 +50,35 @@ export function App() {
       .catch(() => {
         // Browser preview has no Tauri event bus; the normal URL/hash shell
         // remains the fallback there.
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [setRoute]);
+
+  // Native freedesktop actions carry a closed route/action pair. Decode again
+  // at the renderer boundary so a malformed or stale host event cannot steer
+  // navigation to an unregistered route.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void import('@tauri-apps/api/event')
+      .then(async ({ listen }) => {
+        const stop = await listen<unknown>('notification-action', (event) => {
+          if (cancelled) return;
+          try {
+            const action = decodeNativeNotificationActionEvent(event.payload);
+            setRoute(action.route);
+          } catch (error) {
+            console.warn('linux_notification_action_rejected', error);
+          }
+        });
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => {
+        // Browser preview has no Tauri event bus.
       });
     return () => {
       cancelled = true;

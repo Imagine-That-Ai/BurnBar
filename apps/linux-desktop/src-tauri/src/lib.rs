@@ -19,7 +19,10 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use tauri_plugin_shell::ShellExt;
 
+use native_notifications::{native_notification_capabilities, native_notification_show};
+
 mod media;
+mod native_notifications;
 mod single_instance;
 mod update_feed;
 
@@ -1574,6 +1577,46 @@ fn quit_app(app: AppHandle) {
 
 static TRAY_INIT_FAILED: AtomicBool = AtomicBool::new(false);
 const COMPUTER_USE_PANIC_SHORTCUTS: [&str; 2] = ["Ctrl+Alt+Super+Period", "Ctrl+Alt+Shift+Period"];
+const OPEN_DASHBOARD_SHORTCUT: &str = "Ctrl+Alt+Super+O";
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeShortcutStatus {
+    available: bool,
+    registered: bool,
+    shortcuts: Vec<String>,
+    degraded_reason: Option<String>,
+}
+
+static NATIVE_SHORTCUT_STATUS: OnceLock<Mutex<NativeShortcutStatus>> = OnceLock::new();
+
+fn native_shortcut_status_store() -> &'static Mutex<NativeShortcutStatus> {
+    NATIVE_SHORTCUT_STATUS.get_or_init(|| {
+        Mutex::new(NativeShortcutStatus {
+            available: false,
+            registered: false,
+            shortcuts: vec![
+                COMPUTER_USE_PANIC_SHORTCUTS[0].to_string(),
+                COMPUTER_USE_PANIC_SHORTCUTS[1].to_string(),
+                OPEN_DASHBOARD_SHORTCUT.to_string(),
+            ],
+            degraded_reason: Some("native_shortcuts_not_initialized".to_string()),
+        })
+    })
+}
+
+#[tauri::command]
+fn native_shortcut_status() -> NativeShortcutStatus {
+    native_shortcut_status_store()
+        .lock()
+        .map(|status| status.clone())
+        .unwrap_or(NativeShortcutStatus {
+            available: false,
+            registered: false,
+            shortcuts: Vec::new(),
+            degraded_reason: Some("native_shortcuts_state_unavailable".to_string()),
+        })
+}
 
 #[tauri::command]
 fn tray_degraded() -> bool {
@@ -1652,24 +1695,34 @@ fn trigger_computer_use_panic_hotkey() {
 }
 
 fn register_computer_use_panic_shortcuts(app: &AppHandle) {
+    let shortcuts = [
+        COMPUTER_USE_PANIC_SHORTCUTS[0],
+        COMPUTER_USE_PANIC_SHORTCUTS[1],
+        OPEN_DASHBOARD_SHORTCUT,
+    ];
     let builder = match tauri_plugin_global_shortcut::Builder::new()
-        .with_shortcuts(COMPUTER_USE_PANIC_SHORTCUTS)
+        .with_shortcuts(shortcuts)
     {
         Ok(builder) => builder,
         Err(error) => {
             eprintln!("computer_use_global_panic_hotkey_degraded: {error}");
+            if let Ok(mut status) = native_shortcut_status_store().lock() {
+                status.degraded_reason = Some(format!("native_shortcuts_parse_failed:{error}"));
+            }
             return;
         }
     };
     let plugin = builder
-        .with_handler(|_app, shortcut, event| {
+        .with_handler(|app, shortcut, event| {
             if event.state != ShortcutState::Pressed {
                 return;
             }
             let base = Modifiers::CONTROL | Modifiers::ALT;
             let meta_chord = base | Modifiers::SUPER;
             let shift_chord = base | Modifiers::SHIFT;
-            if shortcut.matches(meta_chord, Code::Period)
+            if shortcut.matches(meta_chord, Code::KeyO) {
+                emit_tray_route(app, "overview");
+            } else if shortcut.matches(meta_chord, Code::Period)
                 || shortcut.matches(shift_chord, Code::Period)
             {
                 trigger_computer_use_panic_hotkey();
@@ -1678,6 +1731,13 @@ fn register_computer_use_panic_shortcuts(app: &AppHandle) {
         .build();
     if let Err(error) = app.plugin(plugin) {
         eprintln!("computer_use_global_panic_hotkey_degraded: {error}");
+        if let Ok(mut status) = native_shortcut_status_store().lock() {
+            status.degraded_reason = Some(format!("native_shortcuts_registration_failed:{error}"));
+        }
+    } else if let Ok(mut status) = native_shortcut_status_store().lock() {
+        status.available = true;
+        status.registered = true;
+        status.degraded_reason = None;
     }
 }
 
@@ -5107,6 +5167,9 @@ pub fn run() {
             notification_config_update,
             notification_health,
             notification_command,
+            native_notification_capabilities,
+            native_notification_show,
+            native_shortcut_status,
             db_status,
             project_list,
             project_get,
@@ -5806,6 +5869,9 @@ mod tests {
     fn computer_use_panic_shortcuts_parse() {
         assert!(tauri_plugin_global_shortcut::Builder::<tauri::Wry>::new()
             .with_shortcuts(COMPUTER_USE_PANIC_SHORTCUTS)
+            .is_ok());
+        assert!(tauri_plugin_global_shortcut::Builder::<tauri::Wry>::new()
+            .with_shortcut(OPEN_DASHBOARD_SHORTCUT)
             .is_ok());
     }
 

@@ -492,6 +492,8 @@ function NotificationsDetail({ mode }: { mode: 'alerts' | 'notifications' }) {
   const config = useSettingsWiringStore((s) => s.notificationConfig);
   const health = useSettingsWiringStore((s) => s.notificationHealth);
   const result = useSettingsWiringStore((s) => s.notificationCommandResult);
+  const nativeCapabilities = useSettingsWiringStore((s) => s.nativeNotificationCapabilities);
+  const shortcutStatus = useSettingsWiringStore((s) => s.nativeShortcutStatus);
   const loading = useSettingsWiringStore((s) => s.loadingNotifications);
   const busy = useSettingsWiringStore((s) => s.busy);
   const error = useSettingsWiringStore((s) => s.error);
@@ -614,6 +616,28 @@ function NotificationsDetail({ mode }: { mode: 'alerts' | 'notifications' }) {
             </button>
           ))}
         </div>
+      </SettingGroup>
+      <SettingGroup title="Native delivery" sectionHeader hideTitle>
+        <SettingRow
+          iconGlyph="◌"
+          label="Desktop action transport"
+          description={nativeCapabilities
+            ? nativeCapabilities.actions
+              ? `Freedesktop actions available · ${nativeCapabilities.serverCapabilities.join(', ') || 'server did not list capabilities'}`
+              : nativeCapabilities.degradedReason ?? 'Desktop notification actions are unavailable on this host.'
+            : 'Packaged shell did not expose native notification capabilities.'}
+          control={<span className={`status-pill ${nativeCapabilities?.actions ? 'ok' : 'warn'}`}>{nativeCapabilities?.actions ? 'Available' : 'Degraded'}</span>}
+        />
+        <SettingRow
+          iconGlyph="⌘"
+          label="Global shortcuts"
+          description={shortcutStatus
+            ? shortcutStatus.registered
+              ? shortcutStatus.shortcuts.join(' · ')
+              : shortcutStatus.degradedReason ?? 'Global shortcut registration is unavailable on this host.'
+            : 'Packaged shell did not expose global shortcut status.'}
+          control={<span className={`status-pill ${shortcutStatus?.registered ? 'ok' : 'warn'}`}>{shortcutStatus?.registered ? 'Registered' : 'Degraded'}</span>}
+        />
       </SettingGroup>
     </>
   );

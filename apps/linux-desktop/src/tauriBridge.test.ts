@@ -9,7 +9,11 @@ import {
   decodeDaemonSubscriptionStopResponse,
   mapMissionDetail,
   mapMissionList,
-  decodeLinuxUpdateStatus
+  decodeLinuxUpdateStatus,
+  decodeNativeNotificationCapabilities,
+  decodeNativeNotificationResult,
+  decodeNativeNotificationActionEvent,
+  decodeNativeShortcutStatus
 } from './tauriBridge';
 
 const ACCOUNT_UPDATED_AT = '2026-07-10T12:00:00Z';
@@ -228,6 +232,43 @@ describe('native Linux update status decoding', () => {
         install: { id: 'install', label: 'Install', instruction: 'x', command: 'sudo apt; touch /tmp/pwned', available: true, requiresConfirmation: true }
       }
     })).toThrow('package action metadata');
+  });
+});
+
+describe('native Linux notification and shortcut decoding', () => {
+  it('keeps freedesktop capability and degraded action state explicit', () => {
+    expect(decodeNativeNotificationCapabilities({
+      available: true,
+      actions: false,
+      persistence: true,
+      body: true,
+      bodyMarkup: false,
+      serverCapabilities: ['body', 'persistence'],
+      degradedReason: 'native_notification_actions_unavailable'
+    })).toMatchObject({ available: true, actions: false, degradedReason: 'native_notification_actions_unavailable' });
+    expect(decodeNativeNotificationResult({
+      notificationId: 'linux-native-1',
+      delivered: true,
+      actionsAttached: false,
+      degradedReason: 'native_notification_actions_unavailable'
+    })).toMatchObject({ delivered: true, actionsAttached: false });
+  });
+
+  it('rejects unknown notification routes/actions and malformed shortcut status', () => {
+    expect(() => decodeNativeNotificationActionEvent({
+      notificationId: 'n-1', route: 'admin', action: 'open'
+    })).toThrow('unsupported');
+    expect(() => decodeNativeNotificationActionEvent({
+      notificationId: 'n-1', route: 'chat', action: 'dismiss'
+    })).toThrow('unsupported');
+    expect(decodeNativeShortcutStatus({
+      available: false,
+      registered: false,
+      shortcuts: ['Ctrl+Alt+Super+O'],
+      degradedReason: 'native_shortcuts_not_initialized'
+    })).toMatchObject({ registered: false, degradedReason: 'native_shortcuts_not_initialized' });
+    expect(() => decodeNativeShortcutStatus({ available: true, registered: 'yes', shortcuts: [] }))
+      .toThrow('registration');
   });
 });
 
