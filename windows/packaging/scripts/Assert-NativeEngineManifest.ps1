@@ -21,7 +21,7 @@ function Assert-OpenBurnBarNativeEngineManifest {
     }
 
     if ([int]$manifest.schemaVersion -ne 1) {
-        throw "Unsupported native-engine manifest schema in $manifestPath: $($manifest.schemaVersion)"
+        throw "Unsupported native-engine manifest schema in ${manifestPath}: $($manifest.schemaVersion)"
     }
     $engineName = [string]$manifest.engine
     if ([string]::IsNullOrWhiteSpace($engineName)) {
@@ -56,11 +56,11 @@ function Assert-OpenBurnBarNativeEngineManifest {
         }
         $actualSize = (Get-Item -LiteralPath $candidate).Length
         if ([int64]$entry.sizeBytes -ne $actualSize) {
-            throw "Native-engine manifest size mismatch for $relative: expected $($entry.sizeBytes), got $actualSize"
+            throw "Native-engine manifest size mismatch for ${relative}: expected $($entry.sizeBytes), got $actualSize"
         }
         $actualHash = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($actualHash -cne ([string]$entry.sha256).ToLowerInvariant()) {
-            throw "Native-engine manifest SHA-256 mismatch for $relative: expected $($entry.sha256), got $actualHash"
+            throw "Native-engine manifest SHA-256 mismatch for ${relative}: expected $($entry.sha256), got $actualHash"
         }
     }
 
