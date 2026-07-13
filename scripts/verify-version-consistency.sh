@@ -47,8 +47,10 @@ homebrew_version="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$homebrew
 homebrew_sha="$(sed -nE 's/^[[:space:]]*sha256 "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
 placeholder_sha="0000000000000000000000000000000000000000000000000000000000000000"
 require_current_homebrew="${OPENBURNBAR_REQUIRE_CURRENT_HOMEBREW_CASK:-0}"
-tag_name="${GITHUB_REF_NAME:-}"
-if [[ -z "$tag_name" && "${GITHUB_REF:-}" =~ ^refs/tags/(.+)$ ]]; then
+tag_name=""
+if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+  tag_name="${GITHUB_REF_NAME:-}"
+elif [[ "${GITHUB_REF:-}" =~ ^refs/tags/(.+)$ ]]; then
   tag_name="${BASH_REMATCH[1]}"
 fi
 # A Windows release tag must not block on the macOS-only Homebrew cask. The
