@@ -71,6 +71,15 @@ randomness, and platform key handles remain outside Rust. An already-new
 payload is authenticated under the new key before it is reported as skipped;
 malformed or tampered skip candidates fail closed.
 
+The CloudVault search slice owns the complete v1 analysis and hash operation:
+Unicode tokenization, stopwords, index/query prefixes, phrase terms, semantic
+features, and ordered keyed hashes. UniFFI and Wasm each take one complete
+text/query rather than crossing the boundary per token. Inputs fail closed over
+1 MiB of UTF-8, 4,096 extracted tokens, or a positive requested limit over
+1,024. Nonpositive limits remain a successful empty result because that is part
+of the versioned legacy contract. Platform search services and Firestore I/O
+remain outside Rust until their dedicated shadow-mode consumer changes land.
+
 ## Consequences
 
 - Quota parsing is the pilot because it removes real duplication with a small,

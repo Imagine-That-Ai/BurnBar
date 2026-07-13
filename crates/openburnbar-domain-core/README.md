@@ -15,6 +15,13 @@ AAD and hashing, AES wire framing, recovery wrapping, P-256 escrow framing, and
 typed whole-document envelope rewrap.
 Their contracts live in `tests/fixtures/domain-core` at the repository root.
 
+The CloudVault search core owns the complete deterministic v1 transform for
+Unicode token analysis and token, index, query, and semantic trapdoor hashes.
+Callers cross UniFFI or Wasm once per complete text/query. The core accepts at
+most 1 MiB of UTF-8 text, 4,096 extracted tokens, and a requested limit of
+1,024; zero and negative limits return an empty result as required by the v1
+contract. Production consumer routing remains a separate shadow-mode change.
+
 CloudVault C1c never receives a platform private key. Native and browser
 adapters perform P-256 ECDH with their existing non-exportable key handles, then
 pass only the resulting 32-byte shared secret, public X9.63 bytes, a
@@ -29,6 +36,7 @@ reseals with caller nonces, and returns typed field/update intents.
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo deny check
 ```
 
 See `docs/architecture/014-shared-rust-domain-core.md` for the ownership rule and

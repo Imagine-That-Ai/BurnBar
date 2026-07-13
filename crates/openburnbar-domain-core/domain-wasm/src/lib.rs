@@ -4,6 +4,9 @@ use openburnbar_domain_core::cloudvault::{
 use openburnbar_domain_core::cloudvault_rewrap::{
     self, CloudVaultDocumentRewrapError, CloudVaultDocumentRewrapRequest,
 };
+use openburnbar_domain_core::cloudvault_search::{
+    self, CloudVaultSearchError, CloudVaultSearchOperation as CoreSearchOperation,
+};
 use openburnbar_domain_core::pricing::{self, TokenBuckets, TokenRates};
 use wasm_bindgen::prelude::*;
 use zeroize::{Zeroize, Zeroizing};
@@ -124,6 +127,98 @@ impl CloudVaultEscrowWireParts {
     #[wasm_bindgen(getter, js_name = aesGcmCombined)]
     pub fn aes_gcm_combined(&self) -> Vec<u8> {
         self.aes_gcm_combined.clone()
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CloudVaultSearchOperation {
+    Token,
+    Index,
+    Query,
+    Semantic,
+}
+
+impl From<CloudVaultSearchOperation> for CoreSearchOperation {
+    fn from(value: CloudVaultSearchOperation) -> Self {
+        match value {
+            CloudVaultSearchOperation::Token => Self::Token,
+            CloudVaultSearchOperation::Index => Self::Index,
+            CloudVaultSearchOperation::Query => Self::Query,
+            CloudVaultSearchOperation::Semantic => Self::Semantic,
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub struct CloudVaultSearchAnalysis {
+    normalized_tokens: Vec<String>,
+    exact_phrase_tokens: Vec<String>,
+    semantic_features: Vec<String>,
+}
+
+impl Drop for CloudVaultSearchAnalysis {
+    fn drop(&mut self) {
+        self.normalized_tokens.zeroize();
+        self.exact_phrase_tokens.zeroize();
+        self.semantic_features.zeroize();
+    }
+}
+
+#[wasm_bindgen]
+impl CloudVaultSearchAnalysis {
+    #[wasm_bindgen(getter, js_name = normalizedTokenCount)]
+    pub fn normalized_token_count(&self) -> usize {
+        self.normalized_tokens.len()
+    }
+
+    #[wasm_bindgen(js_name = normalizedTokenAt)]
+    pub fn normalized_token_at(&self, index: usize) -> Option<String> {
+        self.normalized_tokens.get(index).cloned()
+    }
+
+    #[wasm_bindgen(getter, js_name = exactPhraseTokenCount)]
+    pub fn exact_phrase_token_count(&self) -> usize {
+        self.exact_phrase_tokens.len()
+    }
+
+    #[wasm_bindgen(js_name = exactPhraseTokenAt)]
+    pub fn exact_phrase_token_at(&self, index: usize) -> Option<String> {
+        self.exact_phrase_tokens.get(index).cloned()
+    }
+
+    #[wasm_bindgen(getter, js_name = semanticFeatureCount)]
+    pub fn semantic_feature_count(&self) -> usize {
+        self.semantic_features.len()
+    }
+
+    #[wasm_bindgen(js_name = semanticFeatureAt)]
+    pub fn semantic_feature_at(&self, index: usize) -> Option<String> {
+        self.semantic_features.get(index).cloned()
+    }
+}
+
+#[wasm_bindgen]
+pub struct CloudVaultSearchResult {
+    operation: CloudVaultSearchOperation,
+    hashes: Vec<String>,
+}
+
+#[wasm_bindgen]
+impl CloudVaultSearchResult {
+    #[wasm_bindgen(getter)]
+    pub fn operation(&self) -> CloudVaultSearchOperation {
+        self.operation
+    }
+
+    #[wasm_bindgen(getter, js_name = hashCount)]
+    pub fn hash_count(&self) -> usize {
+        self.hashes.len()
+    }
+
+    #[wasm_bindgen(js_name = hashAt)]
+    pub fn hash_at(&self, index: usize) -> Option<String> {
+        self.hashes.get(index).cloned()
     }
 }
 
@@ -322,6 +417,34 @@ pub fn cloud_vault_rewrap_document_json(
         })
 }
 
+#[wasm_bindgen(js_name = cloudVaultSearchAnalyze)]
+pub fn cloud_vault_search_analyze(text: &str) -> Result<CloudVaultSearchAnalysis, JsError> {
+    cloudvault_search::analyze(text)
+        .map(|analysis| CloudVaultSearchAnalysis {
+            normalized_tokens: analysis.normalized_tokens,
+            exact_phrase_tokens: analysis.exact_phrase_tokens,
+            semantic_features: analysis.semantic_features,
+        })
+        .map_err(search_js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultSearch)]
+pub fn cloud_vault_search(
+    operation: CloudVaultSearchOperation,
+    text: &str,
+    mut vault_key: Vec<u8>,
+    limit: i32,
+) -> Result<CloudVaultSearchResult, JsError> {
+    let result = cloudvault_search::search(operation.into(), text, &vault_key, limit)
+        .map(|result| CloudVaultSearchResult {
+            operation,
+            hashes: result.hashes,
+        })
+        .map_err(search_js_error);
+    vault_key.zeroize();
+    result
+}
+
 fn context(
     uid: &str,
     collection: &str,
@@ -375,6 +498,17 @@ fn js_rewrap_error(error: CloudVaultDocumentRewrapError) -> JsError {
         CloudVaultDocumentRewrapError::InvalidNoncePlan => "invalid_rewrap_nonce_plan",
         CloudVaultDocumentRewrapError::InvalidText => "invalid_rewrap_text",
         CloudVaultDocumentRewrapError::IntegrityMismatch => "rewrap_integrity_mismatch",
+    };
+    JsError::new(&format!("{code}: {error}"))
+}
+
+fn search_js_error(error: CloudVaultSearchError) -> JsError {
+    let code = match error {
+        CloudVaultSearchError::InvalidKeyLength => "invalid_key_length",
+        CloudVaultSearchError::TextTooLarge => "search_text_too_large",
+        CloudVaultSearchError::LimitTooLarge => "search_limit_too_large",
+        CloudVaultSearchError::TooManyTokens => "search_too_many_tokens",
+        CloudVaultSearchError::DerivationFailure => "derivation_failure",
     };
     JsError::new(&format!("{code}: {error}"))
 }
