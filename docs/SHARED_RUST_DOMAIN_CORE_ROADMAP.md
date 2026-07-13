@@ -5,7 +5,7 @@
 **Source inventory:** [Shared Rust Domain Inventory](SHARED_RUST_DOMAIN_INVENTORY.md)
 **First contract:** [`tests/fixtures/domain-core/quota/v1/`](../tests/fixtures/domain-core/quota/v1/)
 **CloudVault contract:** [`tests/fixtures/domain-core/cloudvault/v1/`](../tests/fixtures/domain-core/cloudvault/v1/)
-**Pricing contract:** [`tests/fixtures/domain-core/pricing/v1/`](../tests/fixtures/domain-core/pricing/v1/)
+**Pricing contract:** [`tests/fixtures/domain-core/pricing/v2/`](../tests/fixtures/domain-core/pricing/v2/)
 
 The pilot is implemented behind `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE`. Its
 accepted values are `legacy` (default), `shadow`, and `rust`.
@@ -45,13 +45,17 @@ Wasm package. C1b adds AES text/blob/payload cross-open; C1c adds recovery and
 P-256 escrow; search normalization and document rewrap remain last. Browser
 device private keys stay non-extractable WebCrypto handles throughout.
 
-Pricing P1 preserves the existing IEEE-754 operation order so historical costs
-remain numerically identical. The shared core owns per-million-token arithmetic,
-cache-creation fallback, and the era-pinned Kimi wire-event alias/rates. Swift
-catalog loading, Swift-only model normalization, and Functions environment-rate
-parsing stay platform-owned. The audit found no duplicated pricing rounding
-rule: six-decimal rollup presentation remains a Functions aggregation concern
-rather than being invented as a cross-platform contract. Consumers use
+Pricing P1 uses a checked fixed-point contract: nonnegative `u64` token counts,
+`u64` nano-USD-per-million-token rates, checked `u128` products/accumulation,
+and one final round-half-up division to `u64` nano-USD. Platform adapters reject
+negative, non-finite, non-nano-encodable, or overflowing inputs in `rust` mode;
+`shadow` remains legacy-authoritative and compares within the 0.500001
+nano-USD observation tolerance around the mathematical 0.5 nano-USD bound.
+USD floating-point conversion occurs only at the existing API boundary. The
+shared core also owns cache-creation fallback and the era-pinned Kimi wire-event
+alias/rates. Swift catalog loading, Swift-only model normalization, and Functions
+environment-rate parsing stay platform-owned. Six-decimal rollup presentation
+remains a Functions aggregation concern. Consumers use
 `OPENBURNBAR_DOMAIN_CORE_PRICING_MODE`; Functions loads its checked-in WASM
 package lazily and makes one domain call per event or complete token breakdown.
 

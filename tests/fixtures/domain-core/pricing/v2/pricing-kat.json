@@ -1,12 +1,12 @@
 {
-  "schema": "openburnbar.domain-core.pricing.v1",
+  "schema": "openburnbar.domain-core.pricing.v2",
   "costVectors": [
     {
       "rates": {
-        "inputPerMToken": 3.0,
-        "outputPerMToken": 15.0,
-        "cacheCreationPerMToken": null,
-        "cacheReadPerMToken": 0.5
+        "inputNanoUsdPerMToken": 3000000000,
+        "outputNanoUsdPerMToken": 15000000000,
+        "cacheCreationNanoUsdPerMToken": null,
+        "cacheReadNanoUsdPerMToken": 500000000
       },
       "buckets": {
         "inputTokens": 1000000,
@@ -14,14 +14,14 @@
         "cacheCreationTokens": 500000,
         "cacheReadTokens": 250000
       },
-      "expectedCostUsd": 34.625
+      "expectedCostNanoUsd": 34625000000
     },
     {
       "rates": {
-        "inputPerMToken": 0.6,
-        "outputPerMToken": 2.5,
-        "cacheCreationPerMToken": 0.6,
-        "cacheReadPerMToken": 0.15
+        "inputNanoUsdPerMToken": 600000000,
+        "outputNanoUsdPerMToken": 2500000000,
+        "cacheCreationNanoUsdPerMToken": 600000000,
+        "cacheReadNanoUsdPerMToken": 150000000
       },
       "buckets": {
         "inputTokens": 700,
@@ -29,14 +29,14 @@
         "cacheCreationTokens": 200,
         "cacheReadTokens": 100
       },
-      "expectedCostUsd": 0.001305
+      "expectedCostNanoUsd": 1305000
     },
     {
       "rates": {
-        "inputPerMToken": 0.255,
-        "outputPerMToken": 1.0,
-        "cacheCreationPerMToken": null,
-        "cacheReadPerMToken": 0.0
+        "inputNanoUsdPerMToken": 255000000,
+        "outputNanoUsdPerMToken": 1000000000,
+        "cacheCreationNanoUsdPerMToken": null,
+        "cacheReadNanoUsdPerMToken": 0
       },
       "buckets": {
         "inputTokens": 1234,
@@ -44,7 +44,22 @@
         "cacheCreationTokens": 0,
         "cacheReadTokens": 0
       },
-      "expectedCostUsd": 0.00088167
+      "expectedCostNanoUsd": 881670
+    },
+    {
+      "rates": {
+        "inputNanoUsdPerMToken": 1,
+        "outputNanoUsdPerMToken": 1,
+        "cacheCreationNanoUsdPerMToken": null,
+        "cacheReadNanoUsdPerMToken": 1
+      },
+      "buckets": {
+        "inputTokens": 250000,
+        "outputTokens": 250000,
+        "cacheCreationTokens": 0,
+        "cacheReadTokens": 0
+      },
+      "expectedCostNanoUsd": 1
     }
   ],
   "legacyKimiVectors": [
@@ -61,7 +76,7 @@
       "expected": {
         "model": "kimi-for-coding",
         "totalTokens": 1300,
-        "costUsd": 0.001305
+        "costNanoUsd": 1305000
       }
     },
     {

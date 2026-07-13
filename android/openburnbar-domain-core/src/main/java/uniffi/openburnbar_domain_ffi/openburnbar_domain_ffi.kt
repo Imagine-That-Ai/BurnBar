@@ -756,8 +756,8 @@ internal interface UniffiLib : Library {
 
     }
 
-    fun uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost(`rates`: RustBuffer.ByValue,`buckets`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
-    ): Double
+    fun uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost_nano_usd(`rates`: RustBuffer.ByValue,`buckets`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v1(`uid`: RustBuffer.ByValue,`collection`: RustBuffer.ByValue,`docId`: RustBuffer.ByValue,`field`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2(`uid`: RustBuffer.ByValue,`collection`: RustBuffer.ByValue,`docId`: RustBuffer.ByValue,`field`: RustBuffer.ByValue,`schemaVersion`: Int,`purpose`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -900,7 +900,7 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_domain_ffi_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
-    fun uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost(
+    fun uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost_nano_usd(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v1(
     ): Short
@@ -948,7 +948,7 @@ private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
 }
 
 private fun uniffiCheckApiChecksums(lib: UniffiLib) {
-    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost() != 20590.toShort()) {
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost_nano_usd() != 37316.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v1() != 43983.toShort()) {
@@ -993,7 +993,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota() != 39634.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event() != 31427.toShort()) {
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event() != 28560.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1063,6 +1063,29 @@ public object FfiConverterUInt: FfiConverter<UInt, Int> {
 
     override fun write(value: UInt, buf: ByteBuffer) {
         buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterULong: FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong {
+        return value.toULong()
+    }
+
+    override fun read(buf: ByteBuffer): ULong {
+        return lift(buf.getLong())
+    }
+
+    override fun lower(value: ULong): Long {
+        return value.toLong()
+    }
+
+    override fun allocationSize(value: ULong) = 8UL
+
+    override fun write(value: ULong, buf: ByteBuffer) {
+        buf.putLong(value.toLong())
     }
 }
 
@@ -1263,8 +1286,8 @@ public object FfiConverterTypeCloudVaultAadContextInput: FfiConverterRustBuffer<
 
 data class LegacyKimiPricingResult (
     var `model`: kotlin.String,
-    var `totalTokens`: kotlin.Double,
-    var `costUsd`: kotlin.Double
+    var `totalTokens`: kotlin.ULong,
+    var `costNanoUsd`: kotlin.ULong
 ) {
 
     companion object
@@ -1277,21 +1300,21 @@ public object FfiConverterTypeLegacyKimiPricingResult: FfiConverterRustBuffer<Le
     override fun read(buf: ByteBuffer): LegacyKimiPricingResult {
         return LegacyKimiPricingResult(
             FfiConverterString.read(buf),
-            FfiConverterDouble.read(buf),
-            FfiConverterDouble.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
         )
     }
 
     override fun allocationSize(value: LegacyKimiPricingResult) = (
             FfiConverterString.allocationSize(value.`model`) +
-            FfiConverterDouble.allocationSize(value.`totalTokens`) +
-            FfiConverterDouble.allocationSize(value.`costUsd`)
+            FfiConverterULong.allocationSize(value.`totalTokens`) +
+            FfiConverterULong.allocationSize(value.`costNanoUsd`)
     )
 
     override fun write(value: LegacyKimiPricingResult, buf: ByteBuffer) {
             FfiConverterString.write(value.`model`, buf)
-            FfiConverterDouble.write(value.`totalTokens`, buf)
-            FfiConverterDouble.write(value.`costUsd`, buf)
+            FfiConverterULong.write(value.`totalTokens`, buf)
+            FfiConverterULong.write(value.`costNanoUsd`, buf)
     }
 }
 
@@ -1442,10 +1465,10 @@ public object FfiConverterTypeQuotaSnapshot: FfiConverterRustBuffer<QuotaSnapsho
 
 
 data class TokenPricingBuckets (
-    var `inputTokens`: kotlin.Double,
-    var `outputTokens`: kotlin.Double,
-    var `cacheCreationTokens`: kotlin.Double,
-    var `cacheReadTokens`: kotlin.Double
+    var `inputTokens`: kotlin.ULong,
+    var `outputTokens`: kotlin.ULong,
+    var `cacheCreationTokens`: kotlin.ULong,
+    var `cacheReadTokens`: kotlin.ULong
 ) {
 
     companion object
@@ -1457,35 +1480,35 @@ data class TokenPricingBuckets (
 public object FfiConverterTypeTokenPricingBuckets: FfiConverterRustBuffer<TokenPricingBuckets> {
     override fun read(buf: ByteBuffer): TokenPricingBuckets {
         return TokenPricingBuckets(
-            FfiConverterDouble.read(buf),
-            FfiConverterDouble.read(buf),
-            FfiConverterDouble.read(buf),
-            FfiConverterDouble.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
         )
     }
 
     override fun allocationSize(value: TokenPricingBuckets) = (
-            FfiConverterDouble.allocationSize(value.`inputTokens`) +
-            FfiConverterDouble.allocationSize(value.`outputTokens`) +
-            FfiConverterDouble.allocationSize(value.`cacheCreationTokens`) +
-            FfiConverterDouble.allocationSize(value.`cacheReadTokens`)
+            FfiConverterULong.allocationSize(value.`inputTokens`) +
+            FfiConverterULong.allocationSize(value.`outputTokens`) +
+            FfiConverterULong.allocationSize(value.`cacheCreationTokens`) +
+            FfiConverterULong.allocationSize(value.`cacheReadTokens`)
     )
 
     override fun write(value: TokenPricingBuckets, buf: ByteBuffer) {
-            FfiConverterDouble.write(value.`inputTokens`, buf)
-            FfiConverterDouble.write(value.`outputTokens`, buf)
-            FfiConverterDouble.write(value.`cacheCreationTokens`, buf)
-            FfiConverterDouble.write(value.`cacheReadTokens`, buf)
+            FfiConverterULong.write(value.`inputTokens`, buf)
+            FfiConverterULong.write(value.`outputTokens`, buf)
+            FfiConverterULong.write(value.`cacheCreationTokens`, buf)
+            FfiConverterULong.write(value.`cacheReadTokens`, buf)
     }
 }
 
 
 
 data class TokenPricingRates (
-    var `inputPerMToken`: kotlin.Double,
-    var `outputPerMToken`: kotlin.Double,
-    var `cacheCreationPerMToken`: kotlin.Double?,
-    var `cacheReadPerMToken`: kotlin.Double
+    var `inputNanoUsdPerMToken`: kotlin.ULong,
+    var `outputNanoUsdPerMToken`: kotlin.ULong,
+    var `cacheCreationNanoUsdPerMToken`: kotlin.ULong?,
+    var `cacheReadNanoUsdPerMToken`: kotlin.ULong
 ) {
 
     companion object
@@ -1497,25 +1520,25 @@ data class TokenPricingRates (
 public object FfiConverterTypeTokenPricingRates: FfiConverterRustBuffer<TokenPricingRates> {
     override fun read(buf: ByteBuffer): TokenPricingRates {
         return TokenPricingRates(
-            FfiConverterDouble.read(buf),
-            FfiConverterDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterDouble.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterOptionalULong.read(buf),
+            FfiConverterULong.read(buf),
         )
     }
 
     override fun allocationSize(value: TokenPricingRates) = (
-            FfiConverterDouble.allocationSize(value.`inputPerMToken`) +
-            FfiConverterDouble.allocationSize(value.`outputPerMToken`) +
-            FfiConverterOptionalDouble.allocationSize(value.`cacheCreationPerMToken`) +
-            FfiConverterDouble.allocationSize(value.`cacheReadPerMToken`)
+            FfiConverterULong.allocationSize(value.`inputNanoUsdPerMToken`) +
+            FfiConverterULong.allocationSize(value.`outputNanoUsdPerMToken`) +
+            FfiConverterOptionalULong.allocationSize(value.`cacheCreationNanoUsdPerMToken`) +
+            FfiConverterULong.allocationSize(value.`cacheReadNanoUsdPerMToken`)
     )
 
     override fun write(value: TokenPricingRates, buf: ByteBuffer) {
-            FfiConverterDouble.write(value.`inputPerMToken`, buf)
-            FfiConverterDouble.write(value.`outputPerMToken`, buf)
-            FfiConverterOptionalDouble.write(value.`cacheCreationPerMToken`, buf)
-            FfiConverterDouble.write(value.`cacheReadPerMToken`, buf)
+            FfiConverterULong.write(value.`inputNanoUsdPerMToken`, buf)
+            FfiConverterULong.write(value.`outputNanoUsdPerMToken`, buf)
+            FfiConverterOptionalULong.write(value.`cacheCreationNanoUsdPerMToken`, buf)
+            FfiConverterULong.write(value.`cacheReadNanoUsdPerMToken`, buf)
     }
 }
 
@@ -1727,6 +1750,59 @@ public object FfiConverterTypeCloudVaultHashPurpose: FfiConverterRustBuffer<Clou
 
 
 
+
+sealed class PricingFfiException: kotlin.Exception() {
+
+    class ArithmeticOverflow(
+        ) : PricingFfiException() {
+        override val message
+            get() = ""
+    }
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<PricingFfiException> {
+        override fun lift(error_buf: RustBuffer.ByValue): PricingFfiException = FfiConverterTypePricingFfiError.lift(error_buf)
+    }
+
+
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePricingFfiError : FfiConverterRustBuffer<PricingFfiException> {
+    override fun read(buf: ByteBuffer): PricingFfiException {
+
+
+        return when(buf.getInt()) {
+            1 -> PricingFfiException.ArithmeticOverflow()
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: PricingFfiException): ULong {
+        return when(value) {
+            is PricingFfiException.ArithmeticOverflow -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: PricingFfiException, buf: ByteBuffer) {
+        when(value) {
+            is PricingFfiException.ArithmeticOverflow -> {
+                buf.putInt(1)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+
+
+
+
 enum class QuotaConfidence {
 
     EXACT,
@@ -1896,6 +1972,38 @@ public object FfiConverterTypeQuotaWindowKind: FfiConverterRustBuffer<QuotaWindo
 /**
  * @suppress
  */
+public object FfiConverterOptionalULong: FfiConverterRustBuffer<kotlin.ULong?> {
+    override fun read(buf: ByteBuffer): kotlin.ULong? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterULong.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.ULong?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterULong.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.ULong?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterULong.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalLong: FfiConverterRustBuffer<kotlin.Long?> {
     override fun read(buf: ByteBuffer): kotlin.Long? {
         if (buf.get().toInt() == 0) {
@@ -2012,10 +2120,11 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
             FfiConverterTypeQuotaBucket.write(it, buf)
         }
     }
-} fun `calculateTokenCost`(`rates`: TokenPricingRates, `buckets`: TokenPricingBuckets): kotlin.Double {
-            return FfiConverterDouble.lift(
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost(
+}
+    @Throws(PricingFfiException::class) fun `calculateTokenCostNanoUsd`(`rates`: TokenPricingRates, `buckets`: TokenPricingBuckets): kotlin.ULong {
+            return FfiConverterULong.lift(
+    uniffiRustCallWithError(PricingFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost_nano_usd(
         FfiConverterTypeTokenPricingRates.lower(`rates`),FfiConverterTypeTokenPricingBuckets.lower(`buckets`),_status)
 }
     )
@@ -2153,9 +2262,10 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     )
     }
 
- fun `priceLegacyKimiWireEvent`(`buckets`: TokenPricingBuckets): LegacyKimiPricingResult {
+
+    @Throws(PricingFfiException::class) fun `priceLegacyKimiWireEvent`(`buckets`: TokenPricingBuckets): LegacyKimiPricingResult {
             return FfiConverterTypeLegacyKimiPricingResult.lift(
-    uniffiRustCall() { _status ->
+    uniffiRustCallWithError(PricingFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_price_legacy_kimi_wire_event(
         FfiConverterTypeTokenPricingBuckets.lower(`buckets`),_status)
 }

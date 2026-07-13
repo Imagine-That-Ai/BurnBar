@@ -1,5 +1,5 @@
 export const memory: WebAssembly.Memory;
-export const calculateTokenCost: (a: number, b: number, c: number, d: number, e: number) => void;
+export const calculateTokenCostNanoUsd: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
 export const cloudVaultAadV1: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
 export const cloudVaultAadV2: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
 export const cloudVaultExpectedSessionBodyHash: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
@@ -9,7 +9,7 @@ export const cloudVaultSha256Hex: (a: number, b: number, c: number) => void;
 export const domainCoreVersion: (a: number) => void;
 export const isLegacyKimiWireEvent: (a: number, b: number, c: number, d: number) => number;
 export const legacyKimiWireModel: (a: number) => void;
-export const priceLegacyKimiWireEvent: (a: number, b: number, c: number, d: number, e: number) => void;
+export const priceLegacyKimiWireEvent: (a: number, b: bigint, c: bigint, d: bigint, e: bigint) => void;
 export const __wbindgen_add_to_stack_pointer: (a: number) => number;
 export const __wbindgen_export: (a: number, b: number, c: number) => void;
 export const __wbindgen_export2: (a: number, b: number) => number;

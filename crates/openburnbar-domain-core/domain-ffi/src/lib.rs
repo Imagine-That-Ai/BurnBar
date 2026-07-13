@@ -24,25 +24,31 @@ pub struct CloudVaultAadContextInput {
 
 #[derive(Clone, Copy, Debug, uniffi::Record)]
 pub struct TokenPricingRates {
-    pub input_per_m_token: f64,
-    pub output_per_m_token: f64,
-    pub cache_creation_per_m_token: Option<f64>,
-    pub cache_read_per_m_token: f64,
+    pub input_nano_usd_per_m_token: u64,
+    pub output_nano_usd_per_m_token: u64,
+    pub cache_creation_nano_usd_per_m_token: Option<u64>,
+    pub cache_read_nano_usd_per_m_token: u64,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Record)]
 pub struct TokenPricingBuckets {
-    pub input_tokens: f64,
-    pub output_tokens: f64,
-    pub cache_creation_tokens: f64,
-    pub cache_read_tokens: f64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_creation_tokens: u64,
+    pub cache_read_tokens: u64,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct LegacyKimiPricingResult {
     pub model: String,
-    pub total_tokens: f64,
-    pub cost_usd: f64,
+    pub total_tokens: u64,
+    pub cost_nano_usd: u64,
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum PricingFfiError {
+    #[error("pricing arithmetic overflow")]
+    ArithmeticOverflow,
 }
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -156,8 +162,11 @@ pub fn domain_core_version() -> String {
 }
 
 #[uniffi::export]
-pub fn calculate_token_cost(rates: TokenPricingRates, buckets: TokenPricingBuckets) -> f64 {
-    pricing::token_cost(rates.into(), buckets.into())
+pub fn calculate_token_cost_nano_usd(
+    rates: TokenPricingRates,
+    buckets: TokenPricingBuckets,
+) -> Result<u64, PricingFfiError> {
+    Ok(pricing::token_cost_nano_usd(rates.into(), buckets.into())?)
 }
 
 #[uniffi::export]
@@ -166,8 +175,10 @@ pub fn is_legacy_kimi_wire_event(provider: String, model: String) -> bool {
 }
 
 #[uniffi::export]
-pub fn price_legacy_kimi_wire_event(buckets: TokenPricingBuckets) -> LegacyKimiPricingResult {
-    pricing::legacy_kimi_metrics(buckets.into()).into()
+pub fn price_legacy_kimi_wire_event(
+    buckets: TokenPricingBuckets,
+) -> Result<LegacyKimiPricingResult, PricingFfiError> {
+    Ok(pricing::legacy_kimi_metrics(buckets.into())?.into())
 }
 
 #[uniffi::export]
@@ -284,10 +295,10 @@ impl From<CloudVaultHashPurpose> for cloudvault::CloudVaultHashPurpose {
 impl From<TokenPricingRates> for pricing::TokenRates {
     fn from(value: TokenPricingRates) -> Self {
         Self {
-            input_per_m_token: value.input_per_m_token,
-            output_per_m_token: value.output_per_m_token,
-            cache_creation_per_m_token: value.cache_creation_per_m_token,
-            cache_read_per_m_token: value.cache_read_per_m_token,
+            input_nano_usd_per_m_token: value.input_nano_usd_per_m_token,
+            output_nano_usd_per_m_token: value.output_nano_usd_per_m_token,
+            cache_creation_nano_usd_per_m_token: value.cache_creation_nano_usd_per_m_token,
+            cache_read_nano_usd_per_m_token: value.cache_read_nano_usd_per_m_token,
         }
     }
 }
@@ -308,7 +319,15 @@ impl From<pricing::LegacyKimiMetrics> for LegacyKimiPricingResult {
         Self {
             model: value.model,
             total_tokens: value.total_tokens,
-            cost_usd: value.cost_usd,
+            cost_nano_usd: value.cost_nano_usd,
+        }
+    }
+}
+
+impl From<pricing::PricingError> for PricingFfiError {
+    fn from(value: pricing::PricingError) -> Self {
+        match value {
+            pricing::PricingError::ArithmeticOverflow => Self::ArithmeticOverflow,
         }
     }
 }

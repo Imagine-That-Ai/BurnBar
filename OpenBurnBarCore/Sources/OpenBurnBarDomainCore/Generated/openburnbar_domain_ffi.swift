@@ -415,6 +415,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
     typealias FfiType = Int64
     typealias SwiftType = Int64
@@ -628,15 +644,15 @@ public func FfiConverterTypeCloudVaultAadContextInput_lower(_ value: CloudVaultA
 
 public struct LegacyKimiPricingResult {
     public var model: String
-    public var totalTokens: Double
-    public var costUsd: Double
+    public var totalTokens: UInt64
+    public var costNanoUsd: UInt64
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(model: String, totalTokens: Double, costUsd: Double) {
+    public init(model: String, totalTokens: UInt64, costNanoUsd: UInt64) {
         self.model = model
         self.totalTokens = totalTokens
-        self.costUsd = costUsd
+        self.costNanoUsd = costNanoUsd
     }
 }
 
@@ -650,7 +666,7 @@ extension LegacyKimiPricingResult: Equatable, Hashable {
         if lhs.totalTokens != rhs.totalTokens {
             return false
         }
-        if lhs.costUsd != rhs.costUsd {
+        if lhs.costNanoUsd != rhs.costNanoUsd {
             return false
         }
         return true
@@ -659,7 +675,7 @@ extension LegacyKimiPricingResult: Equatable, Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(model)
         hasher.combine(totalTokens)
-        hasher.combine(costUsd)
+        hasher.combine(costNanoUsd)
     }
 }
 
@@ -672,15 +688,15 @@ public struct FfiConverterTypeLegacyKimiPricingResult: FfiConverterRustBuffer {
         return
             try LegacyKimiPricingResult(
                 model: FfiConverterString.read(from: &buf),
-                totalTokens: FfiConverterDouble.read(from: &buf),
-                costUsd: FfiConverterDouble.read(from: &buf)
+                totalTokens: FfiConverterUInt64.read(from: &buf),
+                costNanoUsd: FfiConverterUInt64.read(from: &buf)
         )
     }
 
     public static func write(_ value: LegacyKimiPricingResult, into buf: inout [UInt8]) {
         FfiConverterString.write(value.model, into: &buf)
-        FfiConverterDouble.write(value.totalTokens, into: &buf)
-        FfiConverterDouble.write(value.costUsd, into: &buf)
+        FfiConverterUInt64.write(value.totalTokens, into: &buf)
+        FfiConverterUInt64.write(value.costNanoUsd, into: &buf)
     }
 }
 
@@ -995,14 +1011,14 @@ public func FfiConverterTypeQuotaSnapshot_lower(_ value: QuotaSnapshot) -> RustB
 
 
 public struct TokenPricingBuckets {
-    public var inputTokens: Double
-    public var outputTokens: Double
-    public var cacheCreationTokens: Double
-    public var cacheReadTokens: Double
+    public var inputTokens: UInt64
+    public var outputTokens: UInt64
+    public var cacheCreationTokens: UInt64
+    public var cacheReadTokens: UInt64
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(inputTokens: Double, outputTokens: Double, cacheCreationTokens: Double, cacheReadTokens: Double) {
+    public init(inputTokens: UInt64, outputTokens: UInt64, cacheCreationTokens: UInt64, cacheReadTokens: UInt64) {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.cacheCreationTokens = cacheCreationTokens
@@ -1045,18 +1061,18 @@ public struct FfiConverterTypeTokenPricingBuckets: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TokenPricingBuckets {
         return
             try TokenPricingBuckets(
-                inputTokens: FfiConverterDouble.read(from: &buf),
-                outputTokens: FfiConverterDouble.read(from: &buf),
-                cacheCreationTokens: FfiConverterDouble.read(from: &buf),
-                cacheReadTokens: FfiConverterDouble.read(from: &buf)
+                inputTokens: FfiConverterUInt64.read(from: &buf),
+                outputTokens: FfiConverterUInt64.read(from: &buf),
+                cacheCreationTokens: FfiConverterUInt64.read(from: &buf),
+                cacheReadTokens: FfiConverterUInt64.read(from: &buf)
         )
     }
 
     public static func write(_ value: TokenPricingBuckets, into buf: inout [UInt8]) {
-        FfiConverterDouble.write(value.inputTokens, into: &buf)
-        FfiConverterDouble.write(value.outputTokens, into: &buf)
-        FfiConverterDouble.write(value.cacheCreationTokens, into: &buf)
-        FfiConverterDouble.write(value.cacheReadTokens, into: &buf)
+        FfiConverterUInt64.write(value.inputTokens, into: &buf)
+        FfiConverterUInt64.write(value.outputTokens, into: &buf)
+        FfiConverterUInt64.write(value.cacheCreationTokens, into: &buf)
+        FfiConverterUInt64.write(value.cacheReadTokens, into: &buf)
     }
 }
 
@@ -1077,18 +1093,18 @@ public func FfiConverterTypeTokenPricingBuckets_lower(_ value: TokenPricingBucke
 
 
 public struct TokenPricingRates {
-    public var inputPerMToken: Double
-    public var outputPerMToken: Double
-    public var cacheCreationPerMToken: Double?
-    public var cacheReadPerMToken: Double
+    public var inputNanoUsdPerMToken: UInt64
+    public var outputNanoUsdPerMToken: UInt64
+    public var cacheCreationNanoUsdPerMToken: UInt64?
+    public var cacheReadNanoUsdPerMToken: UInt64
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(inputPerMToken: Double, outputPerMToken: Double, cacheCreationPerMToken: Double?, cacheReadPerMToken: Double) {
-        self.inputPerMToken = inputPerMToken
-        self.outputPerMToken = outputPerMToken
-        self.cacheCreationPerMToken = cacheCreationPerMToken
-        self.cacheReadPerMToken = cacheReadPerMToken
+    public init(inputNanoUsdPerMToken: UInt64, outputNanoUsdPerMToken: UInt64, cacheCreationNanoUsdPerMToken: UInt64?, cacheReadNanoUsdPerMToken: UInt64) {
+        self.inputNanoUsdPerMToken = inputNanoUsdPerMToken
+        self.outputNanoUsdPerMToken = outputNanoUsdPerMToken
+        self.cacheCreationNanoUsdPerMToken = cacheCreationNanoUsdPerMToken
+        self.cacheReadNanoUsdPerMToken = cacheReadNanoUsdPerMToken
     }
 }
 
@@ -1096,26 +1112,26 @@ public struct TokenPricingRates {
 
 extension TokenPricingRates: Equatable, Hashable {
     public static func ==(lhs: TokenPricingRates, rhs: TokenPricingRates) -> Bool {
-        if lhs.inputPerMToken != rhs.inputPerMToken {
+        if lhs.inputNanoUsdPerMToken != rhs.inputNanoUsdPerMToken {
             return false
         }
-        if lhs.outputPerMToken != rhs.outputPerMToken {
+        if lhs.outputNanoUsdPerMToken != rhs.outputNanoUsdPerMToken {
             return false
         }
-        if lhs.cacheCreationPerMToken != rhs.cacheCreationPerMToken {
+        if lhs.cacheCreationNanoUsdPerMToken != rhs.cacheCreationNanoUsdPerMToken {
             return false
         }
-        if lhs.cacheReadPerMToken != rhs.cacheReadPerMToken {
+        if lhs.cacheReadNanoUsdPerMToken != rhs.cacheReadNanoUsdPerMToken {
             return false
         }
         return true
     }
 
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(inputPerMToken)
-        hasher.combine(outputPerMToken)
-        hasher.combine(cacheCreationPerMToken)
-        hasher.combine(cacheReadPerMToken)
+        hasher.combine(inputNanoUsdPerMToken)
+        hasher.combine(outputNanoUsdPerMToken)
+        hasher.combine(cacheCreationNanoUsdPerMToken)
+        hasher.combine(cacheReadNanoUsdPerMToken)
     }
 }
 
@@ -1127,18 +1143,18 @@ public struct FfiConverterTypeTokenPricingRates: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TokenPricingRates {
         return
             try TokenPricingRates(
-                inputPerMToken: FfiConverterDouble.read(from: &buf),
-                outputPerMToken: FfiConverterDouble.read(from: &buf),
-                cacheCreationPerMToken: FfiConverterOptionDouble.read(from: &buf),
-                cacheReadPerMToken: FfiConverterDouble.read(from: &buf)
+                inputNanoUsdPerMToken: FfiConverterUInt64.read(from: &buf),
+                outputNanoUsdPerMToken: FfiConverterUInt64.read(from: &buf),
+                cacheCreationNanoUsdPerMToken: FfiConverterOptionUInt64.read(from: &buf),
+                cacheReadNanoUsdPerMToken: FfiConverterUInt64.read(from: &buf)
         )
     }
 
     public static func write(_ value: TokenPricingRates, into buf: inout [UInt8]) {
-        FfiConverterDouble.write(value.inputPerMToken, into: &buf)
-        FfiConverterDouble.write(value.outputPerMToken, into: &buf)
-        FfiConverterOptionDouble.write(value.cacheCreationPerMToken, into: &buf)
-        FfiConverterDouble.write(value.cacheReadPerMToken, into: &buf)
+        FfiConverterUInt64.write(value.inputNanoUsdPerMToken, into: &buf)
+        FfiConverterUInt64.write(value.outputNanoUsdPerMToken, into: &buf)
+        FfiConverterOptionUInt64.write(value.cacheCreationNanoUsdPerMToken, into: &buf)
+        FfiConverterUInt64.write(value.cacheReadNanoUsdPerMToken, into: &buf)
     }
 }
 
@@ -1385,6 +1401,57 @@ public func FfiConverterTypeCloudVaultHashPurpose_lower(_ value: CloudVaultHashP
 extension CloudVaultHashPurpose: Equatable, Hashable {}
 
 
+
+
+public enum PricingFfiError {
+
+
+
+    case ArithmeticOverflow
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePricingFfiError: FfiConverterRustBuffer {
+    typealias SwiftType = PricingFfiError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PricingFfiError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+
+
+
+        case 1: return .ArithmeticOverflow
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PricingFfiError, into buf: inout [UInt8]) {
+        switch value {
+
+
+
+
+
+        case .ArithmeticOverflow:
+            writeInt(&buf, Int32(1))
+
+        }
+    }
+}
+
+
+extension PricingFfiError: Equatable, Hashable {}
+
+extension PricingFfiError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
@@ -1821,6 +1888,30 @@ extension QuotaWindowKind: Equatable, Hashable {}
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
+    typealias SwiftType = UInt64?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt64.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt64.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
     typealias SwiftType = Int64?
 
@@ -1914,9 +2005,9 @@ fileprivate struct FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer {
         return seq
     }
 }
-public func calculateTokenCost(rates: TokenPricingRates, buckets: TokenPricingBuckets) -> Double {
-    return try!  FfiConverterDouble.lift(try! rustCall() {
-    uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost(
+public func calculateTokenCostNanoUsd(rates: TokenPricingRates, buckets: TokenPricingBuckets)throws  -> UInt64 {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypePricingFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost_nano_usd(
         FfiConverterTypeTokenPricingRates.lower(rates),
         FfiConverterTypeTokenPricingBuckets.lower(buckets),$0
     )
@@ -2037,8 +2128,8 @@ public func parseCursorUsageQuota(payload: Data, userEmail: String?) -> QuotaPar
     )
 })
 }
-public func priceLegacyKimiWireEvent(buckets: TokenPricingBuckets) -> LegacyKimiPricingResult {
-    return try!  FfiConverterTypeLegacyKimiPricingResult.lift(try! rustCall() {
+public func priceLegacyKimiWireEvent(buckets: TokenPricingBuckets)throws  -> LegacyKimiPricingResult {
+    return try  FfiConverterTypeLegacyKimiPricingResult.lift(try rustCallWithError(FfiConverterTypePricingFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_price_legacy_kimi_wire_event(
         FfiConverterTypeTokenPricingBuckets.lower(buckets),$0
     )
@@ -2060,7 +2151,7 @@ private var initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost() != 20590) {
+    if (uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost_nano_usd() != 37316) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v1() != 43983) {
@@ -2105,7 +2196,7 @@ private var initializationResult: InitializationResult = {
     if (uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota() != 39634) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event() != 31427) {
+    if (uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event() != 28560) {
         return InitializationResult.apiChecksumMismatch
     }
 

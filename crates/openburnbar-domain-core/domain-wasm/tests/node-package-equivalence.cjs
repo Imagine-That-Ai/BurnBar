@@ -13,8 +13,12 @@ assert.deepEqual(Object.keys(committed).sort(), Object.keys(generated).sort());
 const calls = [
   (api) => api.domainCoreVersion(),
   (api) => api.isLegacyKimiWireEvent("KIMI", "chatcmpl-123"),
-  (api) => api.calculateTokenCost(new Float64Array([3, 15, Number.NaN, 0.5]), new Float64Array([500, 200, 100, 300])),
-  (api) => Array.from(api.priceLegacyKimiWireEvent(1000, 300, 200, 100)),
+  (api) => api.calculateTokenCostNanoUsd(
+    new BigUint64Array([3_000_000_000n, 15_000_000_000n, 0n, 500_000_000n]),
+    new BigUint64Array([500n, 200n, 100n, 300n]),
+    false,
+  ),
+  (api) => Array.from(api.priceLegacyKimiWireEvent(1000n, 300n, 200n, 100n)),
 ];
 for (const call of calls) assert.deepEqual(call(committed), call(generated));
 

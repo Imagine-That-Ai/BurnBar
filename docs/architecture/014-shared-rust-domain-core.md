@@ -52,6 +52,14 @@ synchronous lazy initialization on the first shadow/Rust operation. This keeps
 default cold starts unchanged and avoids an unavailable path outside the
 Firebase Functions deployment root.
 
+Pricing crosses FFI/WASM only as integers: nonnegative token counts and rates in
+nano-USD per million tokens. Rust checks products and accumulation in `u128`,
+rounds the combined numerator once to `u64` nano-USD using half-up ties, and
+rejects overflow. Adapters convert the result to the existing USD `Double` or
+`number` only after a successful core call. Rust mode rejects invalid input
+without executing legacy arithmetic; shadow mode logs a sanitized category and
+returns the legacy result.
+
 ## Consequences
 
 - Quota parsing is the pilot because it removes real duplication with a small,

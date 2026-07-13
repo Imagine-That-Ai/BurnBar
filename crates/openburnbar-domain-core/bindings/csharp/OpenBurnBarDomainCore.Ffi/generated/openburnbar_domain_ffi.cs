@@ -778,7 +778,7 @@ static class _UniFFILib {
         }
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern double uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost(RustBuffer @rates,RustBuffer @buckets,ref UniffiRustCallStatus _uniffi_out_err
+    public static extern ulong uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost_nano_usd(RustBuffer @rates,RustBuffer @buckets,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1066,7 +1066,7 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost(
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost_nano_usd(
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1144,9 +1144,9 @@ static class _UniFFILib {
 
     static void uniffiCheckApiChecksums() {
         {
-            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost();
-            if (checksum != 20590) {
-                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost` checksum `20590`, library returned `{checksum}`");
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost_nano_usd();
+            if (checksum != 37316) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost_nano_usd` checksum `37316`, library returned `{checksum}`");
             }
         }
         {
@@ -1235,8 +1235,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event();
-            if (checksum != 31427) {
-                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event` checksum `31427`, library returned `{checksum}`");
+            if (checksum != 28560) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event` checksum `28560`, library returned `{checksum}`");
             }
         }
     }
@@ -1270,6 +1270,32 @@ class FfiConverterUInt32: FfiConverter<uint, uint> {
 
     public override void Write(uint value, BigEndianStream stream) {
         stream.WriteUInt(value);
+    }
+}
+
+
+
+class FfiConverterUInt64: FfiConverter<ulong, ulong> {
+    public static FfiConverterUInt64 INSTANCE = new FfiConverterUInt64();
+
+    public override ulong Lift(ulong value) {
+        return value;
+    }
+
+    public override ulong Read(BigEndianStream stream) {
+        return stream.ReadULong();
+    }
+
+    public override ulong Lower(ulong value) {
+        return value;
+    }
+
+    public override int AllocationSize(ulong value) {
+        return 8;
+    }
+
+    public override void Write(ulong value, BigEndianStream stream) {
+        stream.WriteULong(value);
     }
 }
 
@@ -1469,8 +1495,8 @@ class FfiConverterTypeCloudVaultAadContextInput: FfiConverterRustBuffer<CloudVau
 
 public record LegacyKimiPricingResult (
     string @model,
-    double @totalTokens,
-    double @costUsd
+    ulong @totalTokens,
+    ulong @costNanoUsd
 ) {
 }
 
@@ -1480,22 +1506,22 @@ class FfiConverterTypeLegacyKimiPricingResult: FfiConverterRustBuffer<LegacyKimi
     public override LegacyKimiPricingResult Read(BigEndianStream stream) {
         return new LegacyKimiPricingResult(
             @model: FfiConverterString.INSTANCE.Read(stream),
-            @totalTokens: FfiConverterDouble.INSTANCE.Read(stream),
-            @costUsd: FfiConverterDouble.INSTANCE.Read(stream)
+            @totalTokens: FfiConverterUInt64.INSTANCE.Read(stream),
+            @costNanoUsd: FfiConverterUInt64.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(LegacyKimiPricingResult value) {
         return 0
             + FfiConverterString.INSTANCE.AllocationSize(value.@model)
-            + FfiConverterDouble.INSTANCE.AllocationSize(value.@totalTokens)
-            + FfiConverterDouble.INSTANCE.AllocationSize(value.@costUsd);
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.@totalTokens)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.@costNanoUsd);
     }
 
     public override void Write(LegacyKimiPricingResult value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.@model, stream);
-            FfiConverterDouble.INSTANCE.Write(value.@totalTokens, stream);
-            FfiConverterDouble.INSTANCE.Write(value.@costUsd, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.@totalTokens, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.@costNanoUsd, stream);
     }
 }
 
@@ -1640,10 +1666,10 @@ class FfiConverterTypeQuotaSnapshot: FfiConverterRustBuffer<QuotaSnapshot> {
 
 
 public record TokenPricingBuckets (
-    double @inputTokens,
-    double @outputTokens,
-    double @cacheCreationTokens,
-    double @cacheReadTokens
+    ulong @inputTokens,
+    ulong @outputTokens,
+    ulong @cacheCreationTokens,
+    ulong @cacheReadTokens
 ) {
 }
 
@@ -1652,36 +1678,36 @@ class FfiConverterTypeTokenPricingBuckets: FfiConverterRustBuffer<TokenPricingBu
 
     public override TokenPricingBuckets Read(BigEndianStream stream) {
         return new TokenPricingBuckets(
-            @inputTokens: FfiConverterDouble.INSTANCE.Read(stream),
-            @outputTokens: FfiConverterDouble.INSTANCE.Read(stream),
-            @cacheCreationTokens: FfiConverterDouble.INSTANCE.Read(stream),
-            @cacheReadTokens: FfiConverterDouble.INSTANCE.Read(stream)
+            @inputTokens: FfiConverterUInt64.INSTANCE.Read(stream),
+            @outputTokens: FfiConverterUInt64.INSTANCE.Read(stream),
+            @cacheCreationTokens: FfiConverterUInt64.INSTANCE.Read(stream),
+            @cacheReadTokens: FfiConverterUInt64.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(TokenPricingBuckets value) {
         return 0
-            + FfiConverterDouble.INSTANCE.AllocationSize(value.@inputTokens)
-            + FfiConverterDouble.INSTANCE.AllocationSize(value.@outputTokens)
-            + FfiConverterDouble.INSTANCE.AllocationSize(value.@cacheCreationTokens)
-            + FfiConverterDouble.INSTANCE.AllocationSize(value.@cacheReadTokens);
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.@inputTokens)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.@outputTokens)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.@cacheCreationTokens)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.@cacheReadTokens);
     }
 
     public override void Write(TokenPricingBuckets value, BigEndianStream stream) {
-            FfiConverterDouble.INSTANCE.Write(value.@inputTokens, stream);
-            FfiConverterDouble.INSTANCE.Write(value.@outputTokens, stream);
-            FfiConverterDouble.INSTANCE.Write(value.@cacheCreationTokens, stream);
-            FfiConverterDouble.INSTANCE.Write(value.@cacheReadTokens, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.@inputTokens, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.@outputTokens, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.@cacheCreationTokens, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.@cacheReadTokens, stream);
     }
 }
 
 
 
 public record TokenPricingRates (
-    double @inputPerMToken,
-    double @outputPerMToken,
-    double? @cacheCreationPerMToken,
-    double @cacheReadPerMToken
+    ulong @inputNanoUsdPerMToken,
+    ulong @outputNanoUsdPerMToken,
+    ulong? @cacheCreationNanoUsdPerMToken,
+    ulong @cacheReadNanoUsdPerMToken
 ) {
 }
 
@@ -1690,26 +1716,26 @@ class FfiConverterTypeTokenPricingRates: FfiConverterRustBuffer<TokenPricingRate
 
     public override TokenPricingRates Read(BigEndianStream stream) {
         return new TokenPricingRates(
-            @inputPerMToken: FfiConverterDouble.INSTANCE.Read(stream),
-            @outputPerMToken: FfiConverterDouble.INSTANCE.Read(stream),
-            @cacheCreationPerMToken: FfiConverterOptionalDouble.INSTANCE.Read(stream),
-            @cacheReadPerMToken: FfiConverterDouble.INSTANCE.Read(stream)
+            @inputNanoUsdPerMToken: FfiConverterUInt64.INSTANCE.Read(stream),
+            @outputNanoUsdPerMToken: FfiConverterUInt64.INSTANCE.Read(stream),
+            @cacheCreationNanoUsdPerMToken: FfiConverterOptionalUInt64.INSTANCE.Read(stream),
+            @cacheReadNanoUsdPerMToken: FfiConverterUInt64.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(TokenPricingRates value) {
         return 0
-            + FfiConverterDouble.INSTANCE.AllocationSize(value.@inputPerMToken)
-            + FfiConverterDouble.INSTANCE.AllocationSize(value.@outputPerMToken)
-            + FfiConverterOptionalDouble.INSTANCE.AllocationSize(value.@cacheCreationPerMToken)
-            + FfiConverterDouble.INSTANCE.AllocationSize(value.@cacheReadPerMToken);
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.@inputNanoUsdPerMToken)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.@outputNanoUsdPerMToken)
+            + FfiConverterOptionalUInt64.INSTANCE.AllocationSize(value.@cacheCreationNanoUsdPerMToken)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.@cacheReadNanoUsdPerMToken);
     }
 
     public override void Write(TokenPricingRates value, BigEndianStream stream) {
-            FfiConverterDouble.INSTANCE.Write(value.@inputPerMToken, stream);
-            FfiConverterDouble.INSTANCE.Write(value.@outputPerMToken, stream);
-            FfiConverterOptionalDouble.INSTANCE.Write(value.@cacheCreationPerMToken, stream);
-            FfiConverterDouble.INSTANCE.Write(value.@cacheReadPerMToken, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.@inputNanoUsdPerMToken, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.@outputNanoUsdPerMToken, stream);
+            FfiConverterOptionalUInt64.INSTANCE.Write(value.@cacheCreationNanoUsdPerMToken, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.@cacheReadNanoUsdPerMToken, stream);
     }
 }
 
@@ -1916,6 +1942,59 @@ class FfiConverterTypeCloudVaultHashPurpose: FfiConverterRustBuffer<CloudVaultHa
 
 
 
+public class PricingFfiException: UniffiException {
+    PricingFfiException() : base() {}
+    PricingFfiException(String @Message) : base(@Message) {}
+
+    // Each variant is a nested class
+
+    public class ArithmeticOverflow : PricingFfiException {
+        public ArithmeticOverflow() : base() {}
+    }
+
+
+
+
+}
+
+class FfiConverterTypePricingFfiError : FfiConverterRustBuffer<PricingFfiException>, CallStatusErrorHandler<PricingFfiException> {
+    public static FfiConverterTypePricingFfiError INSTANCE = new FfiConverterTypePricingFfiError();
+
+    public override PricingFfiException Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new PricingFfiException.ArithmeticOverflow();
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypePricingFfiError.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(PricingFfiException value) {
+        switch (value) {
+
+            case PricingFfiException.ArithmeticOverflow variant_value:
+                return 4;
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypePricingFfiError.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(PricingFfiException value, BigEndianStream stream) {
+        switch (value) {
+            case PricingFfiException.ArithmeticOverflow variant_value:
+                stream.WriteInt(1);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypePricingFfiError.Write()", value));
+        }
+    }
+}
+
+
+
+
+
 public enum QuotaConfidence: int {
 
     Exact,
@@ -2096,6 +2175,37 @@ class FfiConverterTypeQuotaWindowKind: FfiConverterRustBuffer<QuotaWindowKind> {
 
 
 
+class FfiConverterOptionalUInt64: FfiConverterRustBuffer<ulong?> {
+    public static FfiConverterOptionalUInt64 INSTANCE = new FfiConverterOptionalUInt64();
+
+    public override ulong? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterUInt64.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(ulong? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterUInt64.INSTANCE.AllocationSize((ulong)value);
+        }
+    }
+
+    public override void Write(ulong? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterUInt64.INSTANCE.Write((ulong)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalInt64: FfiConverterRustBuffer<long?> {
     public static FfiConverterOptionalInt64 INSTANCE = new FfiConverterOptionalInt64();
 
@@ -2229,10 +2339,11 @@ class FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<QuotaBuck
 }
 #pragma warning restore 8625
 public static class OpenburnbarDomainFfiMethods {
-    public static double CalculateTokenCost(TokenPricingRates @rates, TokenPricingBuckets @buckets) {
-        return FfiConverterDouble.INSTANCE.Lift(
-    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
-    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost(FfiConverterTypeTokenPricingRates.INSTANCE.Lower(@rates), FfiConverterTypeTokenPricingBuckets.INSTANCE.Lower(@buckets), ref _status)
+    /// <exception cref="PricingFfiException"></exception>
+    public static ulong CalculateTokenCostNanoUsd(TokenPricingRates @rates, TokenPricingBuckets @buckets) {
+        return FfiConverterUInt64.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypePricingFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost_nano_usd(FfiConverterTypeTokenPricingRates.INSTANCE.Lower(@rates), FfiConverterTypeTokenPricingBuckets.INSTANCE.Lower(@buckets), ref _status)
 ));
     }
 
@@ -2355,9 +2466,10 @@ public static class OpenburnbarDomainFfiMethods {
     }
 
 
+    /// <exception cref="PricingFfiException"></exception>
     public static LegacyKimiPricingResult PriceLegacyKimiWireEvent(TokenPricingBuckets @buckets) {
         return FfiConverterTypeLegacyKimiPricingResult.INSTANCE.Lift(
-    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniffiHelpers.RustCallWithError(FfiConverterTypePricingFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_price_legacy_kimi_wire_event(FfiConverterTypeTokenPricingBuckets.INSTANCE.Lower(@buckets), ref _status)
 ));
     }

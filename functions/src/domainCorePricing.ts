@@ -26,8 +26,19 @@ export type LegacyKimiPricing = {
   costUsd?: number;
 };
 
+export class DomainCorePricingError extends Error {
+  constructor() {
+    super("domain-core pricing rejected invalid or overflowing input");
+    this.name = "DomainCorePricingError";
+  }
+}
+
+const NANO_USD_PER_USD = 1_000_000_000;
+const SHADOW_MAX_DELTA_NANO_USD = 0.500_001;
+
 let wasmInitialized = false;
 let wasmUnavailable = false;
+let unavailableLogged = false;
 let domainCore: typeof DomainCore | undefined;
 let rustVersion = "unknown";
 let rustLegacyKimiModel = "";
@@ -46,25 +57,29 @@ export function calculateTokenCost(
   const mode = resolveDomainCorePricingMode(environment);
   if (mode === "legacy") return legacy();
 
-  const rust = withDomainCore(() =>
-    requireDomainCore().calculateTokenCost(
-      new Float64Array([
-        rates.inputPerMToken,
-        rates.outputPerMToken,
-        rates.cacheCreationPerMToken ?? Number.NaN,
-        rates.cacheReadPerMToken,
-      ]),
-      bucketVector(buckets),
-    ),
-  );
-  if (rust === undefined) return legacy();
-  if (mode === "rust") return rust;
+  try {
+    const encodedRates = encodeRates(rates);
+    const encodedBuckets = encodeBuckets(buckets);
+    const rustNanoUsd = requireDomainCore().calculateTokenCostNanoUsd(
+      encodedRates.values,
+      encodedBuckets,
+      encodedRates.hasCacheCreationRate,
+    );
+    const rustUsd = nanoUsdToUsd(rustNanoUsd);
+    if (mode === "rust") return rustUsd;
 
-  const typescript = legacy();
-  if (!approximatelyEqual(typescript, rust)) {
-    logWarn({ event: "domain_core.pricing.shadow_mismatch", core_version: rustVersion });
+    const typescript = legacy();
+    if (!withinShadowBound(typescript, rustNanoUsd)) {
+      logWarn({ event: "domain_core.pricing.shadow_mismatch", core_version: rustVersion });
+    }
+    return typescript;
+  } catch {
+    if (mode === "shadow") {
+      logWarn({ event: "domain_core.pricing.shadow_rejected", core_version: rustVersion });
+      return legacy();
+    }
+    throw new DomainCorePricingError();
   }
-  return typescript;
 }
 
 export function priceLegacyKimiUsage(
@@ -77,78 +92,112 @@ export function priceLegacyKimiUsage(
   const mode = resolveDomainCorePricingMode(environment);
   if (mode === "legacy") return legacy();
 
-  const rust = withDomainCore((): LegacyKimiPricing => {
+  try {
     const core = requireDomainCore();
-    if (!core.isLegacyKimiWireEvent(provider, model)) return { isLegacy: false };
-    const result = core.priceLegacyKimiWireEvent(
-      buckets.inputTokens,
-      buckets.outputTokens,
-      buckets.cacheCreationTokens,
-      buckets.cacheReadTokens,
-    );
-    return {
-      isLegacy: true,
-      model: rustLegacyKimiModel,
-      totalTokens: result[0],
-      costUsd: result[1],
-    };
-  });
-  if (rust === undefined) return legacy();
-  if (mode === "rust") return rust;
+    let rust: LegacyKimiPricing = { isLegacy: false };
+    if (core.isLegacyKimiWireEvent(provider, model)) {
+      const encoded = encodeBuckets(buckets);
+      const result = core.priceLegacyKimiWireEvent(encoded[0], encoded[1], encoded[2], encoded[3]);
+      rust = {
+        isLegacy: true,
+        model: rustLegacyKimiModel,
+        totalTokens: bigintToSafeNumber(result[0]),
+        costUsd: nanoUsdToUsd(result[1]),
+      };
+    }
+    if (mode === "rust") return rust;
 
-  const typescript = legacy();
-  if (!equivalentKimi(typescript, rust)) {
-    logWarn({ event: "domain_core.pricing.kimi_shadow_mismatch", core_version: rustVersion });
+    const typescript = legacy();
+    if (!equivalentKimi(typescript, rust)) {
+      logWarn({ event: "domain_core.pricing.kimi_shadow_mismatch", core_version: rustVersion });
+    }
+    return typescript;
+  } catch {
+    if (mode === "shadow") {
+      logWarn({ event: "domain_core.pricing.kimi_shadow_rejected", core_version: rustVersion });
+      return legacy();
+    }
+    throw new DomainCorePricingError();
   }
-  return typescript;
 }
 
 function initializeDomainCore(): void {
   if (wasmInitialized) return;
-  const require = createRequire(__filename);
-  domainCore = require("@openburnbar/domain-core-wasm") as typeof DomainCore;
-  rustVersion = domainCore.domainCoreVersion();
-  rustLegacyKimiModel = domainCore.legacyKimiWireModel();
-  wasmInitialized = true;
-}
-
-function requireDomainCore(): typeof DomainCore {
-  if (!domainCore) throw new Error("domain core is not initialized");
-  return domainCore;
-}
-
-function withDomainCore<T>(operation: () => T): T | undefined {
-  if (wasmUnavailable) return undefined;
+  if (wasmUnavailable) throw new DomainCorePricingError();
   try {
-    initializeDomainCore();
-    return operation();
+    const require = createRequire(__filename);
+    domainCore = require("@openburnbar/domain-core-wasm") as typeof DomainCore;
+    rustVersion = domainCore.domainCoreVersion();
+    rustLegacyKimiModel = domainCore.legacyKimiWireModel();
+    wasmInitialized = true;
   } catch {
     wasmUnavailable = true;
-    logWarn({ event: "domain_core.pricing.wasm_unavailable" });
-    return undefined;
+    if (!unavailableLogged) {
+      unavailableLogged = true;
+      logWarn({ event: "domain_core.pricing.wasm_unavailable" });
+    }
+    throw new DomainCorePricingError();
   }
 }
 
-function bucketVector(buckets: TokenPricingBuckets): Float64Array {
-  return new Float64Array([
-    buckets.inputTokens,
-    buckets.outputTokens,
-    buckets.cacheCreationTokens,
-    buckets.cacheReadTokens,
+function requireDomainCore(): typeof DomainCore {
+  initializeDomainCore();
+  if (!domainCore) throw new DomainCorePricingError();
+  return domainCore;
+}
+
+function encodeRates(rates: TokenPricingRates): { values: BigUint64Array; hasCacheCreationRate: boolean } {
+  const hasCacheCreationRate = rates.cacheCreationPerMToken !== undefined;
+  return {
+    values: new BigUint64Array([
+      encodeRate(rates.inputPerMToken),
+      encodeRate(rates.outputPerMToken),
+      hasCacheCreationRate ? encodeRate(rates.cacheCreationPerMToken) : 0n,
+      encodeRate(rates.cacheReadPerMToken),
+    ]),
+    hasCacheCreationRate,
+  };
+}
+
+function encodeRate(value: number | undefined): bigint {
+  if (value === undefined || !Number.isFinite(value) || value < 0) throw new DomainCorePricingError();
+  const nanoUsd = value * NANO_USD_PER_USD;
+  if (!Number.isSafeInteger(nanoUsd)) throw new DomainCorePricingError();
+  return BigInt(nanoUsd);
+}
+
+function encodeBuckets(buckets: TokenPricingBuckets): BigUint64Array {
+  return new BigUint64Array([
+    encodeTokenCount(buckets.inputTokens),
+    encodeTokenCount(buckets.outputTokens),
+    encodeTokenCount(buckets.cacheCreationTokens),
+    encodeTokenCount(buckets.cacheReadTokens),
   ]);
 }
 
-function approximatelyEqual(left: number | undefined, right: number | undefined): boolean {
-  if (left === undefined || right === undefined) return left === right;
-  const tolerance = Math.max(1e-12, Math.abs(left) * 1e-12);
-  return Math.abs(left - right) <= tolerance;
+function encodeTokenCount(value: number): bigint {
+  if (!Number.isSafeInteger(value) || value < 0) throw new DomainCorePricingError();
+  return BigInt(value);
+}
+
+function nanoUsdToUsd(value: bigint): number {
+  return Number(value) / NANO_USD_PER_USD;
+}
+
+function bigintToSafeNumber(value: bigint): number {
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new DomainCorePricingError();
+  return Number(value);
+}
+
+function withinShadowBound(legacyUsd: number, rustNanoUsd: bigint): boolean {
+  if (!Number.isFinite(legacyUsd)) return false;
+  return Math.abs(legacyUsd * NANO_USD_PER_USD - Number(rustNanoUsd)) <= SHADOW_MAX_DELTA_NANO_USD;
 }
 
 function equivalentKimi(left: LegacyKimiPricing, right: LegacyKimiPricing): boolean {
-  return (
-    left.isLegacy === right.isLegacy &&
-    left.model === right.model &&
-    approximatelyEqual(left.totalTokens, right.totalTokens) &&
-    approximatelyEqual(left.costUsd, right.costUsd)
-  );
+  if (left.isLegacy !== right.isLegacy || left.model !== right.model || left.totalTokens !== right.totalTokens) {
+    return false;
+  }
+  if (left.costUsd === undefined || right.costUsd === undefined) return left.costUsd === right.costUsd;
+  return Math.abs(left.costUsd - right.costUsd) * NANO_USD_PER_USD <= SHADOW_MAX_DELTA_NANO_USD;
 }

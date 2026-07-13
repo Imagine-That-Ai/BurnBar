@@ -268,26 +268,26 @@ export function cloudVaultSha256Hex(data) {
     }
 }
 
-let cachedFloat64ArrayMemory0 = null;
+let cachedBigUint64ArrayMemory0 = null;
 
-function getFloat64ArrayMemory0() {
-    if (cachedFloat64ArrayMemory0 === null || cachedFloat64ArrayMemory0.byteLength === 0) {
-        cachedFloat64ArrayMemory0 = new Float64Array(wasm.memory.buffer);
+function getBigUint64ArrayMemory0() {
+    if (cachedBigUint64ArrayMemory0 === null || cachedBigUint64ArrayMemory0.byteLength === 0) {
+        cachedBigUint64ArrayMemory0 = new BigUint64Array(wasm.memory.buffer);
     }
-    return cachedFloat64ArrayMemory0;
+    return cachedBigUint64ArrayMemory0;
 }
 
-function getArrayF64FromWasm0(ptr, len) {
+function getArrayU64FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
-    return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
+    return getBigUint64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
 }
 /**
- * Returns `[total_tokens, cost_usd]`; the canonical model is exported separately.
- * @param {number} input_tokens
- * @param {number} output_tokens
- * @param {number} cache_creation_tokens
- * @param {number} cache_read_tokens
- * @returns {Float64Array}
+ * Returns `[total_tokens, cost_nano_usd]`; the canonical model is exported separately.
+ * @param {bigint} input_tokens
+ * @param {bigint} output_tokens
+ * @param {bigint} cache_creation_tokens
+ * @param {bigint} cache_read_tokens
+ * @returns {BigUint64Array}
  */
 export function priceLegacyKimiWireEvent(input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens) {
     try {
@@ -295,7 +295,12 @@ export function priceLegacyKimiWireEvent(input_tokens, output_tokens, cache_crea
         wasm.priceLegacyKimiWireEvent(retptr, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var v1 = getArrayF64FromWasm0(r0, r1).slice();
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        var v1 = getArrayU64FromWasm0(r0, r1).slice();
         wasm.__wbindgen_export(r0, r1 * 8, 8);
         return v1;
     } finally {
@@ -431,32 +436,33 @@ export function cloudVaultAadV2(uid, collection, doc_id, field, schema_version, 
     }
 }
 
-function passArrayF64ToWasm0(arg, malloc) {
+function passArray64ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 8, 8) >>> 0;
-    getFloat64ArrayMemory0().set(arg, ptr / 8);
+    getBigUint64ArrayMemory0().set(arg, ptr / 8);
     WASM_VECTOR_LEN = arg.length;
     return ptr;
 }
 /**
- * @param {Float64Array} rates
- * @param {Float64Array} buckets
- * @returns {number}
+ * @param {BigUint64Array} rates
+ * @param {BigUint64Array} buckets
+ * @param {boolean} has_cache_creation_rate
+ * @returns {bigint}
  */
-export function calculateTokenCost(rates, buckets) {
+export function calculateTokenCostNanoUsd(rates, buckets, has_cache_creation_rate) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArrayF64ToWasm0(rates, wasm.__wbindgen_export2);
+        const ptr0 = passArray64ToWasm0(rates, wasm.__wbindgen_export2);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayF64ToWasm0(buckets, wasm.__wbindgen_export2);
+        const ptr1 = passArray64ToWasm0(buckets, wasm.__wbindgen_export2);
         const len1 = WASM_VECTOR_LEN;
-        wasm.calculateTokenCost(retptr, ptr0, len0, ptr1, len1);
-        var r0 = getDataViewMemory0().getFloat64(retptr + 8 * 0, true);
+        wasm.calculateTokenCostNanoUsd(retptr, ptr0, len0, ptr1, len1, has_cache_creation_rate);
+        var r0 = getDataViewMemory0().getBigInt64(retptr + 8 * 0, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
         if (r3) {
             throw takeObject(r2);
         }
-        return r0;
+        return BigInt.asUintN(64, r0);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -524,8 +530,8 @@ function __wbg_get_imports() {
 function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     __wbg_init.__wbindgen_wasm_module = module;
+    cachedBigUint64ArrayMemory0 = null;
     cachedDataViewMemory0 = null;
-    cachedFloat64ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
 
 

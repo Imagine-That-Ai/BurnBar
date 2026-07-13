@@ -105,42 +105,43 @@ assert.throws(
 
 const pricingFixturePath = path.resolve(
   testDirectory,
-  "../../../../tests/fixtures/domain-core/pricing/v1/pricing-kat.json",
+  "../../../../tests/fixtures/domain-core/pricing/v2/pricing-kat.json",
 );
 const pricingFixture = JSON.parse(await readFile(pricingFixturePath, "utf8"));
-assert.equal(pricingFixture.schema, "openburnbar.domain-core.pricing.v1");
+assert.equal(pricingFixture.schema, "openburnbar.domain-core.pricing.v2");
 for (const vector of pricingFixture.costVectors) {
   const rates = vector.rates;
   const buckets = vector.buckets;
   assert.equal(
-    domainCore.calculateTokenCost(
-      new Float64Array([
-        rates.inputPerMToken,
-        rates.outputPerMToken,
-        rates.cacheCreationPerMToken ?? Number.NaN,
-        rates.cacheReadPerMToken,
+    domainCore.calculateTokenCostNanoUsd(
+      new BigUint64Array([
+        BigInt(rates.inputNanoUsdPerMToken),
+        BigInt(rates.outputNanoUsdPerMToken),
+        BigInt(rates.cacheCreationNanoUsdPerMToken ?? 0),
+        BigInt(rates.cacheReadNanoUsdPerMToken),
       ]),
-      new Float64Array([
-        buckets.inputTokens,
-        buckets.outputTokens,
-        buckets.cacheCreationTokens,
-        buckets.cacheReadTokens,
+      new BigUint64Array([
+        BigInt(buckets.inputTokens),
+        BigInt(buckets.outputTokens),
+        BigInt(buckets.cacheCreationTokens),
+        BigInt(buckets.cacheReadTokens),
       ]),
+      rates.cacheCreationNanoUsdPerMToken !== null,
     ),
-    vector.expectedCostUsd,
+    BigInt(vector.expectedCostNanoUsd),
   );
 }
 for (const vector of pricingFixture.legacyKimiVectors) {
   assert.equal(domainCore.isLegacyKimiWireEvent(vector.provider, vector.model), vector.isLegacy);
   if (vector.expected) {
     const result = domainCore.priceLegacyKimiWireEvent(
-      vector.buckets.inputTokens,
-      vector.buckets.outputTokens,
-      vector.buckets.cacheCreationTokens,
-      vector.buckets.cacheReadTokens,
+      BigInt(vector.buckets.inputTokens),
+      BigInt(vector.buckets.outputTokens),
+      BigInt(vector.buckets.cacheCreationTokens),
+      BigInt(vector.buckets.cacheReadTokens),
     );
     assert.equal(domainCore.legacyKimiWireModel(), vector.expected.model);
-    assert.deepEqual(Array.from(result), [vector.expected.totalTokens, vector.expected.costUsd]);
+    assert.deepEqual(Array.from(result), [BigInt(vector.expected.totalTokens), BigInt(vector.expected.costNanoUsd)]);
   }
 }
 

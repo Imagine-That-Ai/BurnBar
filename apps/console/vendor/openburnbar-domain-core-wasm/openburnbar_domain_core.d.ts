@@ -4,14 +4,14 @@ export function cloudVaultKeyId(key: Uint8Array): string;
 export function legacyKimiWireModel(): string;
 export function cloudVaultSha256Hex(data: Uint8Array): string;
 /**
- * Returns `[total_tokens, cost_usd]`; the canonical model is exported separately.
+ * Returns `[total_tokens, cost_nano_usd]`; the canonical model is exported separately.
  */
-export function priceLegacyKimiWireEvent(input_tokens: number, output_tokens: number, cache_creation_tokens: number, cache_read_tokens: number): Float64Array;
+export function priceLegacyKimiWireEvent(input_tokens: bigint, output_tokens: bigint, cache_creation_tokens: bigint, cache_read_tokens: bigint): BigUint64Array;
 export function isLegacyKimiWireEvent(provider: string, model: string): boolean;
 export function cloudVaultExpectedSessionBodyHash(data: Uint8Array, key: Uint8Array, body_hash_version: number): string;
 export function cloudVaultKeyedHashHex(data: Uint8Array, key: Uint8Array, purpose: CloudVaultHashPurpose): string;
 export function cloudVaultAadV2(uid: string, collection: string, doc_id: string, field: string, schema_version: number, purpose?: string | null): string;
-export function calculateTokenCost(rates: Float64Array, buckets: Float64Array): number;
+export function calculateTokenCostNanoUsd(rates: BigUint64Array, buckets: BigUint64Array, has_cache_creation_rate: boolean): bigint;
 export enum CloudVaultHashPurpose {
   BlobIntegrity = 0,
   SessionBody = 1,
@@ -23,7 +23,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
-  readonly calculateTokenCost: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly calculateTokenCostNanoUsd: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly cloudVaultAadV1: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
   readonly cloudVaultAadV2: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
   readonly cloudVaultExpectedSessionBodyHash: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
@@ -33,7 +33,7 @@ export interface InitOutput {
   readonly domainCoreVersion: (a: number) => void;
   readonly isLegacyKimiWireEvent: (a: number, b: number, c: number, d: number) => number;
   readonly legacyKimiWireModel: (a: number) => void;
-  readonly priceLegacyKimiWireEvent: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly priceLegacyKimiWireEvent: (a: number, b: bigint, c: bigint, d: bigint, e: bigint) => void;
   readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
   readonly __wbindgen_export: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export2: (a: number, b: number) => number;

@@ -13,6 +13,8 @@ Executable contracts live under `tests/fixtures/domain-core` at the repository
 root. The current pure domains are provider quota transforms, CloudVault
 deterministic primitives, and pricing/model compatibility rules. Native clients
 use UniFFI; browser and Functions TypeScript use the generated WASM package.
+Pricing uses checked integer nano-USD arithmetic; floating-point USD values are
+accepted and returned only by platform adapters outside this workspace.
 
 ```bash
 cargo fmt --all --check

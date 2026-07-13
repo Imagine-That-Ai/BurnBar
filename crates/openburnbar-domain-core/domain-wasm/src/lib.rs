@@ -9,19 +9,23 @@ pub fn domain_core_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
 }
 
-#[wasm_bindgen(js_name = calculateTokenCost)]
-pub fn calculate_token_cost(rates: &[f64], buckets: &[f64]) -> Result<f64, JsError> {
+#[wasm_bindgen(js_name = calculateTokenCostNanoUsd)]
+pub fn calculate_token_cost_nano_usd(
+    rates: &[u64],
+    buckets: &[u64],
+    has_cache_creation_rate: bool,
+) -> Result<u64, JsError> {
     if rates.len() != 4 || buckets.len() != 4 {
         return Err(JsError::new(
             "invalid_pricing_vector: expected four rates and four token buckets",
         ));
     }
-    Ok(pricing::token_cost(
+    pricing::token_cost_nano_usd(
         TokenRates {
-            input_per_m_token: rates[0],
-            output_per_m_token: rates[1],
-            cache_creation_per_m_token: (!rates[2].is_nan()).then_some(rates[2]),
-            cache_read_per_m_token: rates[3],
+            input_nano_usd_per_m_token: rates[0],
+            output_nano_usd_per_m_token: rates[1],
+            cache_creation_nano_usd_per_m_token: has_cache_creation_rate.then_some(rates[2]),
+            cache_read_nano_usd_per_m_token: rates[3],
         },
         TokenBuckets {
             input_tokens: buckets[0],
@@ -29,7 +33,8 @@ pub fn calculate_token_cost(rates: &[f64], buckets: &[f64]) -> Result<f64, JsErr
             cache_creation_tokens: buckets[2],
             cache_read_tokens: buckets[3],
         },
-    ))
+    )
+    .map_err(|error| JsError::new(&error.to_string()))
 }
 
 #[wasm_bindgen(js_name = isLegacyKimiWireEvent)]
@@ -37,21 +42,22 @@ pub fn is_legacy_kimi_wire_event(provider: &str, model: &str) -> bool {
     pricing::is_legacy_kimi_wire_event(provider, model)
 }
 
-/// Returns `[total_tokens, cost_usd]`; the canonical model is exported separately.
+/// Returns `[total_tokens, cost_nano_usd]`; the canonical model is exported separately.
 #[wasm_bindgen(js_name = priceLegacyKimiWireEvent)]
 pub fn price_legacy_kimi_wire_event(
-    input_tokens: f64,
-    output_tokens: f64,
-    cache_creation_tokens: f64,
-    cache_read_tokens: f64,
-) -> Vec<f64> {
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_creation_tokens: u64,
+    cache_read_tokens: u64,
+) -> Result<Vec<u64>, JsError> {
     let result = pricing::legacy_kimi_metrics(TokenBuckets {
         input_tokens,
         output_tokens,
         cache_creation_tokens,
         cache_read_tokens,
-    });
-    vec![result.total_tokens, result.cost_usd]
+    })
+    .map_err(|error| JsError::new(&error.to_string()))?;
+    Ok(vec![result.total_tokens, result.cost_nano_usd])
 }
 
 #[wasm_bindgen(js_name = legacyKimiWireModel)]
