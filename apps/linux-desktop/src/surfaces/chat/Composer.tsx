@@ -1,4 +1,6 @@
 import { useId, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { readTextExpansionConsent } from '../../textExpansionConsent.js';
+import { expandInAppBuffer } from '../../textExpansionStore.js';
 import { composerPlaceholder, type ChatBackendId } from './chatTypes.js';
 
 export const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -27,6 +29,8 @@ type ComposerProps = {
    * streaming starts. Blocks submits so an Enter in that window cannot clear
    * the draft while the store's composing guard silently drops the text. */
   busy: boolean;
+  /** Secure/password-like fields must never run text expansion. */
+  secureField?: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
 };
@@ -37,6 +41,7 @@ export function Composer({
   disabledReason,
   streaming,
   busy,
+  secureField = false,
   onSend,
   onStop
 }: ComposerProps) {
@@ -82,6 +87,14 @@ export function Composer({
     setAttachmentError(null);
   };
 
+  const handleDraftChange = (value: string) => {
+    if (!secureField && readTextExpansionConsent()?.inAppOnly) {
+      setDraft(expandInAppBuffer(value).output);
+      return;
+    }
+    setDraft(value);
+  };
+
   const submit = (ev?: FormEvent) => {
     ev?.preventDefault();
     const message = draft.trim();
@@ -124,7 +137,7 @@ export function Composer({
             placeholder={placeholder}
             rows={1}
             value={draft}
-            onChange={(ev) => setDraft(ev.currentTarget.value)}
+            onChange={(ev) => handleDraftChange(ev.currentTarget.value)}
             onKeyDown={(ev: KeyboardEvent<HTMLTextAreaElement>) => {
               if (ev.key === 'Enter' && !ev.shiftKey) {
                 ev.preventDefault();

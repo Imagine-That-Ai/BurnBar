@@ -1027,6 +1027,43 @@ export type SmartHubCommandResult =
     }
   | { operation: 'parity'; payload: IntegrationsStatus };
 
+// ─────────────────────────── P29: text expansion ──────────────────────────
+// These wire types mirror OpenBurnBarCore's daemon-owned snapshot contracts.
+// Linux only accepts the in-app surface; no global keyboard hook is installed.
+export type TextExpansionMode = 'static' | 'llm_rewrite';
+export type TextExpansionSurface = 'in_app_thread' | 'mac_global' | 'ios_keyboard' | 'android_ime';
+export type TextExpansionScope = {
+  surfaces: TextExpansionSurface[];
+  bundleIdentifiers: string[];
+  threadIDs: string[];
+};
+export type TextExpansionWireSnippet = {
+  id: string;
+  title: string;
+  trigger: string;
+  body: string;
+  mode: TextExpansionMode;
+  isEnabled: boolean;
+  scope: TextExpansionScope;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  syncedAt?: string | null;
+  sourceDeviceID?: string | null;
+};
+export type TextExpansionSnapshot = {
+  schemaVersion: number;
+  exportedAt: string;
+  snippets: TextExpansionWireSnippet[];
+  consent?: TextExpansionConsent | null;
+};
+export type TextExpansionConsent = {
+  inAppOnly: boolean;
+  acknowledgedAt: string;
+  declinedGlobalCapture: boolean;
+};
+
 export type GatewayProxyMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
@@ -1215,6 +1252,10 @@ export interface LinuxShellBridge {
   nativeNotificationCapabilities?(): Promise<NativeNotificationCapabilities>;
   nativeNotificationShow?(request: NativeNotificationRequest): Promise<NativeNotificationResult>;
   nativeShortcutStatus?(): Promise<NativeShortcutStatus>;
+  textExpansionList?(): Promise<TextExpansionSnapshot>;
+  textExpansionUpsert?(snippet: TextExpansionWireSnippet): Promise<TextExpansionWireSnippet>;
+  textExpansionDelete?(id: string): Promise<TextExpansionSnapshot>;
+  textExpansionConsentUpdate?(consent: Omit<TextExpansionConsent, 'acknowledgedAt'>): Promise<TextExpansionConsent>;
   toolApprovalRespond?(
     approvalId: string,
     decision: 'approve' | 'reject' | 'cancel',
@@ -2966,6 +3007,91 @@ function mapIntegrationsStatus(raw: RawJsonValue): IntegrationsStatus {
   };
 }
 
+const TEXT_EXPANSION_SURFACES = new Set<TextExpansionSurface>([
+  'in_app_thread',
+  'mac_global',
+  'ios_keyboard',
+  'android_ime'
+]);
+
+function mapTextExpansionScope(raw: RawJsonValue): TextExpansionScope {
+  const scope = obj(raw);
+  const surfaces = arr(pick(scope, 'surfaces'))
+    .map((value) => str(value))
+    .filter((value): value is TextExpansionSurface => TEXT_EXPANSION_SURFACES.has(value as TextExpansionSurface));
+  return {
+    surfaces,
+    bundleIdentifiers: arr(pick(scope, 'bundleIdentifiers', 'bundle_identifiers')).map((value) => str(value)).filter(Boolean),
+    threadIDs: arr(pick(scope, 'threadIDs', 'thread_ids')).map((value) => str(value)).filter(Boolean)
+  };
+}
+
+function mapTextExpansionSnippet(raw: RawJsonValue): TextExpansionWireSnippet {
+  const value = obj(raw);
+  const mode = str(pick(value, 'mode'), 'static');
+  if (!['static', 'llm_rewrite'].includes(mode)) {
+    throw new Error('Native text expansion returned an unsupported mode.');
+  }
+  const id = str(pick(value, 'id'));
+  const title = str(pick(value, 'title'));
+  const trigger = str(pick(value, 'trigger'));
+  const body = str(pick(value, 'body'));
+  const createdAt = str(pick(value, 'createdAt', 'created_at'));
+  const updatedAt = str(pick(value, 'updatedAt', 'updated_at'));
+  const scope = mapTextExpansionScope(pick(value, 'scope'));
+  if (!id || !title || !trigger || !createdAt || !updatedAt || scope.surfaces.length !== 1 || scope.surfaces[0] !== 'in_app_thread') {
+    throw new Error('Native text expansion returned an invalid snippet.');
+  }
+  return {
+    id,
+    title,
+    trigger,
+    body,
+    mode: mode as TextExpansionMode,
+    isEnabled: Boolean(pick(value, 'isEnabled', 'is_enabled')),
+    scope: { surfaces: ['in_app_thread'], bundleIdentifiers: [], threadIDs: [] },
+    revision: Math.max(1, Math.trunc(num(pick(value, 'revision'), 1))),
+    createdAt,
+    updatedAt,
+    deletedAt: str(pick(value, 'deletedAt', 'deleted_at')) || null,
+    syncedAt: str(pick(value, 'syncedAt', 'synced_at')) || null,
+    sourceDeviceID: str(pick(value, 'sourceDeviceID', 'source_device_id')) || null
+  };
+}
+
+function mapTextExpansionSnapshot(raw: RawJsonValue): TextExpansionSnapshot {
+  const value = obj(pick(raw, 'snapshot') ?? raw);
+  const schemaVersion = Math.trunc(num(pick(value, 'schemaVersion', 'schema_version')));
+  if (schemaVersion !== 1) {
+    throw new Error('Native text expansion returned an unsupported schema.');
+  }
+  const snippets = arr(pick(value, 'snippets')).map(mapTextExpansionSnippet);
+  const rawConsent = pick(value, 'consent');
+  const consentValue = rawConsent === undefined || rawConsent === null ? null : obj(rawConsent);
+  const consent = consentValue
+    ? {
+        inAppOnly: Boolean(pick(consentValue, 'inAppOnly', 'in_app_only')),
+        acknowledgedAt: requireTimestamp(pick(consentValue, 'acknowledgedAt', 'acknowledged_at'), 'text expansion consent.acknowledgedAt'),
+        declinedGlobalCapture: Boolean(pick(consentValue, 'declinedGlobalCapture', 'declined_global_capture'))
+      }
+    : null;
+  return {
+    schemaVersion,
+    exportedAt: str(pick(value, 'exportedAt', 'exported_at'), new Date().toISOString()),
+    snippets,
+    consent
+  };
+}
+
+function mapTextExpansionConsent(raw: RawJsonValue): TextExpansionConsent {
+  const value = obj(pick(raw, 'consent') ?? raw);
+  return {
+    inAppOnly: Boolean(pick(value, 'inAppOnly', 'in_app_only')),
+    acknowledgedAt: requireTimestamp(pick(value, 'acknowledgedAt', 'acknowledged_at'), 'text expansion consent.acknowledgedAt'),
+    declinedGlobalCapture: Boolean(pick(value, 'declinedGlobalCapture', 'declined_global_capture'))
+  };
+}
+
 function snapshotFromMutation(raw: RawJsonValue): ConfigSnapshot {
   return mapConfigSnapshot(pick(raw, 'snapshot') ? raw : { snapshot: pick(raw, 'snapshot') ?? raw });
 }
@@ -3643,6 +3769,23 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       decodeNativeNotificationResult(await invoke<RawJsonValue>('native_notification_show', { request })),
     nativeShortcutStatus: async () =>
       decodeNativeShortcutStatus(await invoke<RawJsonValue>('native_shortcut_status')),
+    // P29 — authenticated daemon-owned encrypted text-expansion storage.
+    textExpansionList: async () => {
+      const raw = await invoke<RawJsonValue>('text_expansion_list');
+      return mapTextExpansionSnapshot(raw);
+    },
+    textExpansionUpsert: async (snippet) => {
+      const raw = await invoke<RawJsonValue>('text_expansion_upsert', { snippet });
+      return mapTextExpansionSnippet(raw);
+    },
+    textExpansionDelete: async (id) => {
+      const raw = await invoke<RawJsonValue>('text_expansion_delete', { id });
+      return mapTextExpansionSnapshot(raw);
+    },
+    textExpansionConsentUpdate: async (consent) => {
+      const raw = await invoke<RawJsonValue>('text_expansion_consent_update', { consent });
+      return mapTextExpansionConsent(raw);
+    },
     // P07 — derived from daemon.config.get + daemon.health
     dbStatus: async () => {
       const raw = await invoke<RawJsonValue>('db_status');

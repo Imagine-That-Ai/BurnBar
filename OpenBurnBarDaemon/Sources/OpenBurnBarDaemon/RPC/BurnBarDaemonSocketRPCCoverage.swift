@@ -22,6 +22,10 @@ enum BurnBarDaemonSocketRPCCoverage {
     static let config: Set<BurnBarRPCMethod> = [
         .configGet,
         .configUpdate,
+        .textExpansionGet,
+        .textExpansionUpsert,
+        .textExpansionDelete,
+        .textExpansionConsentUpdate,
         .linuxOnboardingAction,
         .linuxOnboardingReset,
         .providerCredentialSlotUpsert,

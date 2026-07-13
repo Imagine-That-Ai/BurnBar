@@ -1,14 +1,24 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Banner } from '../components/Banner.js';
 import { PARITY_LEDGER } from '../parityLedger.js';
-import { readTextExpansionConsent, writeTextExpansionConsent } from '../textExpansionConsent.js';
 import {
-  deleteSnippet,
+  configureTextExpansionConsentStorage,
+  hydrateTextExpansionConsentStorage,
+  readTextExpansionConsent,
+  textExpansionConsentError,
+  writeTextExpansionConsent
+} from '../textExpansionConsent.js';
+import {
   expandInAppBuffer,
   findTriggerConflict,
   listSnippets,
-  upsertSnippet
+  hydrateTextExpansionStorage,
+  configureTextExpansionStorageWithPolicy,
+  textExpansionStorageError,
+  upsertSnippetPersisted,
+  deleteSnippetPersisted
 } from '../textExpansionStore.js';
+import { useShellStore } from '../state/shellStore.js';
 import { PreviewPane } from './textExpansion/PreviewPane.js';
 import { SnippetImportExport } from './textExpansion/SnippetImportExport.js';
 import './textExpansion/textExpansion.css';
@@ -23,9 +33,51 @@ export function TextExpansionSurface() {
   const [version, setVersion] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [triggerDraft, setTriggerDraft] = useState('');
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const bridge = useShellStore((state) => state.bridge);
+  const bridgeReady = useShellStore((state) => state.bridgeReady);
+  const fixtureMode = useShellStore((state) => state.fixtureMode);
+  const textExpansionList = bridge?.textExpansionList;
+  const textExpansionUpsert = bridge?.textExpansionUpsert;
+  const textExpansionDelete = bridge?.textExpansionDelete;
+  const textExpansionConsentUpdate = bridge?.textExpansionConsentUpdate;
+  const nativeStorageAvailable = Boolean(
+    textExpansionList && textExpansionUpsert && textExpansionDelete && textExpansionConsentUpdate
+  );
+  const nativeUnavailable = bridgeReady && !fixtureMode && !nativeStorageAvailable;
   const consent = readTextExpansionConsent();
   const snippets = useMemo(() => listSnippets(), [version]);
   const editing = editingId ? snippets.find((s) => s.id === editingId) : undefined;
+  useEffect(() => {
+    const storage = bridge && textExpansionList && textExpansionUpsert && textExpansionDelete && textExpansionConsentUpdate
+      ? {
+          textExpansionList: textExpansionList.bind(bridge),
+          textExpansionUpsert: textExpansionUpsert.bind(bridge),
+          textExpansionDelete: textExpansionDelete.bind(bridge),
+          textExpansionConsentUpdate: textExpansionConsentUpdate.bind(bridge)
+        }
+      : null;
+    // Fixture mode intentionally keeps its in-memory fixtures across the
+    // hydration effect; test/runtime callers seed them before rendering.
+    if (storage || !fixtureMode) {
+      configureTextExpansionStorageWithPolicy(storage, !bridgeReady || fixtureMode);
+      configureTextExpansionConsentStorage(storage, !bridgeReady || fixtureMode);
+    }
+    if (!bridgeReady) return;
+    let cancelled = false;
+    void Promise.all([
+      hydrateTextExpansionStorage(storage),
+      hydrateTextExpansionConsentStorage(storage)
+    ]).then(() => {
+      if (!cancelled) {
+        setStorageError(textExpansionStorageError() ?? textExpansionConsentError());
+        setVersion((value) => value + 1);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, bridgeReady, fixtureMode, textExpansionList, textExpansionUpsert, textExpansionDelete, textExpansionConsentUpdate]);
   useEffect(() => {
     setTriggerDraft(editing?.trigger ?? '');
   }, [editing?.id, editing?.trigger]);
@@ -72,17 +124,21 @@ export function TextExpansionSurface() {
     if (exactDuplicate) return;
     const form = ev.currentTarget;
     const data = new FormData(form);
-    upsertSnippet({
+    void upsertSnippetPersisted({
       id: editing?.id,
       title: String(data.get('title') ?? ''),
       trigger: String(data.get('trigger') ?? ''),
       body: String(data.get('body') ?? ''),
       enabled: data.get('enabled') === 'on'
+    }).then(() => {
+      setStorageError(null);
+      setEditingId(null);
+      setTriggerDraft('');
+      setVersion((v) => v + 1);
+      form.reset();
+    }).catch((error) => {
+      setStorageError(error instanceof Error ? error.message : textExpansionStorageError() ?? 'Could not save snippet.');
     });
-    setEditingId(null);
-    setTriggerDraft('');
-    setVersion((v) => v + 1);
-    form.reset();
   };
 
   const probe = expandInAppBuffer(';;probe');
@@ -91,9 +147,15 @@ export function TextExpansionSurface() {
 
   return (
     <>
+      {nativeUnavailable ? (
+        <Banner tone="degraded" role="alert">
+          Native text expansion storage is unavailable. In-app snippets are disabled until the packaged shell is repaired.
+        </Banner>
+      ) : storageError ? <Banner tone="degraded" role="alert">{storageError}</Banner> : null}
       {consentRow}
-      <SnippetImportExport onImported={() => setVersion((v) => v + 1)} />
+      <SnippetImportExport disabled={nativeUnavailable} onImported={() => setVersion((v) => v + 1)} />
       <form className="snippet-form" onSubmit={onSubmit} key={editing?.id ?? 'new'}>
+        <fieldset disabled={nativeUnavailable}>
         <label>
           Title
           <input type="text" name="title" placeholder="Title" required defaultValue={editing?.title ?? ''} />
@@ -137,6 +199,7 @@ export function TextExpansionSurface() {
         <button className="primary" type="submit" disabled={exactDuplicate}>
           {editing ? 'Update snippet' : 'Add snippet'}
         </button>
+        </fieldset>
       </form>
       {snippets.length === 0 ? (
         <p className="muted te-empty-list">No snippets yet. Add one above or import JSON.</p>
@@ -150,6 +213,7 @@ export function TextExpansionSurface() {
               <button
                 type="button"
                 className="ghost"
+                disabled={nativeUnavailable}
                 onClick={() => {
                   setEditingId(s.id);
                   setTriggerDraft(s.trigger);
@@ -161,12 +225,16 @@ export function TextExpansionSurface() {
                 type="button"
                 className="ghost"
                 onClick={() => {
-                  deleteSnippet(s.id);
-                  if (editingId === s.id) {
-                    setEditingId(null);
-                    setTriggerDraft('');
-                  }
-                  setVersion((v) => v + 1);
+                  void deleteSnippetPersisted(s.id).then(() => {
+                    if (editingId === s.id) {
+                      setEditingId(null);
+                      setTriggerDraft('');
+                    }
+                    setStorageError(null);
+                    setVersion((v) => v + 1);
+                  }).catch((error) => {
+                    setStorageError(error instanceof Error ? error.message : textExpansionStorageError() ?? 'Could not delete snippet.');
+                  });
                 }}
               >
                 Delete

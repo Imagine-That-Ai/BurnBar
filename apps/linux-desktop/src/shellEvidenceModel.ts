@@ -389,7 +389,7 @@ export function petTierMatrix(): Record<string, string>[] {
 export function textExpansionSafetyProof(): Record<string, unknown> {
   return {
     declaredBehavior: 'in-app-only',
-    storage: 'localStorage openburnbar.linux.textExpansion.v1 in this Tauri shell; daemon DB integration is a later sync boundary.',
+    storage: 'daemon-owned AES-GCM sealed snapshot; encryption key is held by Linux Secret Service/KWallet; fixture mode is memory-only.',
     consentRequired: true,
     globalCapture: false,
     unsafePathsRejected: ['evdev', 'uinput', 'global keyboard hook', 'Wayland compositor snooping'],

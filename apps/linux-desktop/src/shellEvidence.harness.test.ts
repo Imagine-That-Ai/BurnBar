@@ -27,8 +27,13 @@ import { buildPetBehaviorGraph } from './petBehaviorGraph.js';
 import { detectPetTierFromEnv } from './petCompanion.js';
 import { parseGlb } from './petGltfRuntime.js';
 import { PROVIDER_GLYPHS } from './providerGlyphs.js';
-import { readTextExpansionConsent, writeTextExpansionConsent } from './textExpansionConsent.js';
 import {
+  configureTextExpansionConsentStorage,
+  readTextExpansionConsent,
+  writeTextExpansionConsent
+} from './textExpansionConsent.js';
+import {
+  configureTextExpansionStorage,
   deleteSnippet,
   expandInAppBuffer,
   listSnippets,
@@ -567,6 +572,8 @@ describe('shell evidence harness', () => {
 
   it('emits text expansion CRUD persistence, enable disable, denied, parity, and keylogger safety evidence', () => {
     localStorage.clear();
+    configureTextExpansionStorage(null);
+    configureTextExpansionConsentStorage(null, true);
     const beforeConsent = readTextExpansionConsent();
     writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
     const consent = readTextExpansionConsent();
@@ -600,7 +607,7 @@ describe('shell evidence harness', () => {
     expect(scan.every((row) => row.forbiddenMatches.length === 0 && row.keydownListeners === 0)).toBe(true);
     writeEvidence('text-expansion-crud-safety-evidence.json', {
       generatedAt: new Date().toISOString(),
-      method: 'localStorage-store-execution-plus-runtime-source-scan',
+      method: 'memory-fixture-execution-plus-runtime-source-scan',
       deniedBeforeConsent: beforeConsent === null,
       consent,
       crud: {

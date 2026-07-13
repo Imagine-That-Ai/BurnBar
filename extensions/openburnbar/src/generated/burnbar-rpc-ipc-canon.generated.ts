@@ -1192,6 +1192,46 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.text_expansion.consent.update",
+    "caseName": "textExpansionConsentUpdate",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarTextExpansionConsentUpdateRequest",
+    "result": "BurnBarTextExpansionConsentResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.delete",
+    "caseName": "textExpansionDelete",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarTextExpansionDeleteRequest",
+    "result": "BurnBarTextExpansionSnapshot",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.get",
+    "caseName": "textExpansionGet",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarTextExpansionSnapshot",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.upsert",
+    "caseName": "textExpansionUpsert",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarTextExpansionUpsertRequest",
+    "result": "BurnBarTextExpansionWireSnippet",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.usage.recent",
     "caseName": "usageRecent",
     "domain": "usage",
