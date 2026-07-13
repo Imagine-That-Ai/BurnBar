@@ -9,6 +9,8 @@ import {
   importVaultKey,
   openBlob,
   sealBlob,
+  unwrapVaultKeyBytes,
+  wrapVaultKey,
 } from "../lib/escrow";
 import {
   configureCloudVaultDomainCoreForTests,
@@ -40,6 +42,13 @@ interface DeterministicKat {
     tagHex: string;
     combinedBase64: string;
   }>;
+  p256Escrow: {
+    ephemeralPublicKeyHex: string;
+    sharedSecretHex: string;
+    nonceHex: string;
+    plaintextHex: string;
+    wireHex: string;
+  };
 }
 
 function fromHex(value: string): Uint8Array {
@@ -150,5 +159,48 @@ describe("CloudVault domain-core browser adapter", () => {
     await expect(
       sealBlob(new TextEncoder().encode("misbound"), vaultKey, { rawVaultKey: wrongRawKey }),
     ).rejects.toMatchObject({ code: "invalid_key_length" });
+  });
+
+  it("keeps P-256 custody in WebCrypto while Rust owns escrow wire crypto", async () => {
+    configureCloudVaultDomainCoreForTests("rust", true);
+    const recipient = (await globalThis.crypto.subtle.generateKey(
+      { name: "ECDH", namedCurve: "P-256" },
+      false,
+      ["deriveBits"],
+    )) as CryptoKeyPair;
+    const recipientPublic = new Uint8Array(
+      await globalThis.crypto.subtle.exportKey("raw", recipient.publicKey),
+    );
+    const vaultKey = fromHex(fixture.p256Escrow.plaintextHex);
+    const webEncrypt = vi.spyOn(globalThis.crypto.subtle, "encrypt");
+    const webDecrypt = vi.spyOn(globalThis.crypto.subtle, "decrypt");
+    const deriveBits = vi.spyOn(globalThis.crypto.subtle, "deriveBits");
+
+    const wrapped = await wrapVaultKey(vaultKey, recipientPublic);
+    const unwrapped = await unwrapVaultKeyBytes(wrapped, recipient.privateKey);
+
+    expect(unwrapped).toEqual(vaultKey);
+    expect(deriveBits).toHaveBeenCalledTimes(2);
+    expect(webEncrypt).not.toHaveBeenCalled();
+    expect(webDecrypt).not.toHaveBeenCalled();
+    expect(recipient.privateKey.extractable).toBe(false);
+  });
+
+  it("keeps legacy escrow authoritative without mismatch telemetry in shadow mode", async () => {
+    configureCloudVaultDomainCoreForTests("shadow", true);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const recipient = (await globalThis.crypto.subtle.generateKey(
+      { name: "ECDH", namedCurve: "P-256" },
+      true,
+      ["deriveBits"],
+    )) as CryptoKeyPair;
+    const recipientPublic = new Uint8Array(
+      await globalThis.crypto.subtle.exportKey("raw", recipient.publicKey),
+    );
+    const vaultKey = fromHex(fixture.p256Escrow.plaintextHex);
+
+    const wrapped = await wrapVaultKey(vaultKey, recipientPublic);
+    await expect(unwrapVaultKeyBytes(wrapped, recipient.privateKey)).resolves.toEqual(vaultKey);
+    expect(warning).not.toHaveBeenCalled();
   });
 });

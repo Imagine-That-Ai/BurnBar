@@ -568,6 +568,30 @@ async function importPeerPublicX963(x963: Uint8Array): Promise<CryptoKey> {
   return subtle().importKey("raw", bufferOf(x963), { name: "ECDH", namedCurve: "P-256" }, false, []);
 }
 
+interface EscrowWireParts {
+  ephemeralPublicKey: Uint8Array;
+  aesGcmCombined: Uint8Array;
+}
+
+function legacySplitEscrowWire(wrapped: Uint8Array): EscrowWireParts {
+  if (wrapped.length <= P256_X963_PUBKEY_LEN) {
+    throw new EscrowError("invalid_envelope", "Wrapped vault key is too short.");
+  }
+  const ephemeralPublicKey = wrapped.subarray(0, P256_X963_PUBKEY_LEN);
+  const aesGcmCombined = wrapped.subarray(P256_X963_PUBKEY_LEN);
+  if (aesGcmCombined.length <= GCM_NONCE_LEN + GCM_TAG_LEN) {
+    throw new EscrowError("invalid_envelope", "Wrapped sealed box is too short.");
+  }
+  return { ephemeralPublicKey, aesGcmCombined };
+}
+
+function equalEscrowWireParts(left: EscrowWireParts, right: EscrowWireParts): boolean {
+  return (
+    equalBytes(left.ephemeralPublicKey, right.ephemeralPublicKey) &&
+    equalBytes(left.aesGcmCombined, right.aesGcmCombined)
+  );
+}
+
 /**
  * Wrap a 32-byte vault key for a recipient's X9.63 public key. Output bytes match
  * Swift wrapVaultKey exactly: ephemeralPub.x963 (65) ‖ AES-GCM combined.
@@ -586,20 +610,29 @@ export async function wrapVaultKey(
     ["deriveBits"],
   );
   const shared = await deriveSharedSecret(ephemeral.privateKey, recipient);
-  const wrappingKey = await hkdfEscrowKey(shared);
-
   const nonce = globalThis.crypto.getRandomValues(new Uint8Array(GCM_NONCE_LEN));
-  const sealed = new Uint8Array(
-    await subtle().encrypt(
-      { name: "AES-GCM", iv: ivOf(nonce), tagLength: GCM_TAG_LEN * 8 },
-      wrappingKey,
-      bufferOf(vaultKey),
-    ),
-  );
-  // WebCrypto returns ciphertext‖tag; CryptoKit `.combined` is nonce‖ciphertext‖tag.
-  const combined = concat(nonce, sealed);
   const ephemeralPub = new Uint8Array(await subtle().exportKey("raw", ephemeral.publicKey));
-  return concat(ephemeralPub, combined);
+  const sharedBytes = new Uint8Array(shared);
+  try {
+    return await applyCloudVaultDomainCore(
+      "escrow_seal",
+      async () => {
+        const wrappingKey = await hkdfEscrowKey(shared);
+        const sealed = new Uint8Array(
+          await subtle().encrypt(
+            { name: "AES-GCM", iv: ivOf(nonce), tagLength: GCM_TAG_LEN * 8 },
+            wrappingKey,
+            bufferOf(vaultKey),
+          ),
+        );
+        return concat(ephemeralPub, nonce, sealed);
+      },
+      () => domainCoreCloudVault.escrowSeal(vaultKey, ephemeralPub, sharedBytes, nonce),
+      equalBytes,
+    );
+  } finally {
+    sharedBytes.fill(0);
+  }
 }
 
 /**
@@ -612,31 +645,38 @@ export async function unwrapVaultKeyBytes(
   wrapped: Uint8Array,
   devicePrivateKey: CryptoKey,
 ): Promise<Uint8Array> {
-  if (wrapped.length <= P256_X963_PUBKEY_LEN) {
-    throw new EscrowError("invalid_envelope", "Wrapped vault key is too short.");
-  }
-  const ephemeralPub = wrapped.subarray(0, P256_X963_PUBKEY_LEN);
-  const combined = wrapped.subarray(P256_X963_PUBKEY_LEN);
-  if (combined.length <= GCM_NONCE_LEN + GCM_TAG_LEN) {
-    throw new EscrowError("invalid_envelope", "Wrapped sealed box is too short.");
-  }
-  const peer = await importPeerPublicX963(ephemeralPub);
+  const parts = await applyCloudVaultDomainCore(
+    "escrow_split_wire",
+    () => legacySplitEscrowWire(wrapped),
+    () => domainCoreCloudVault.escrowSplitWire(wrapped),
+    equalEscrowWireParts,
+  );
+  const peer = await importPeerPublicX963(parts.ephemeralPublicKey);
   const shared = await deriveSharedSecret(devicePrivateKey, peer);
-  const wrappingKey = await hkdfEscrowKey(shared);
-
-  const nonce = combined.subarray(0, GCM_NONCE_LEN);
-  const ctAndTag = combined.subarray(GCM_NONCE_LEN);
+  const sharedBytes = new Uint8Array(shared);
   let raw: Uint8Array;
   try {
-    raw = new Uint8Array(
-      await subtle().decrypt(
-        { name: "AES-GCM", iv: ivOf(nonce), tagLength: GCM_TAG_LEN * 8 },
-        wrappingKey,
-        bufferOf(ctAndTag),
-      ),
+    raw = await applyCloudVaultDomainCore(
+      "escrow_open",
+      async () => {
+        const wrappingKey = await hkdfEscrowKey(shared);
+        const nonce = parts.aesGcmCombined.subarray(0, GCM_NONCE_LEN);
+        const ctAndTag = parts.aesGcmCombined.subarray(GCM_NONCE_LEN);
+        return new Uint8Array(
+          await subtle().decrypt(
+            { name: "AES-GCM", iv: ivOf(nonce), tagLength: GCM_TAG_LEN * 8 },
+            wrappingKey,
+            bufferOf(ctAndTag),
+          ),
+        );
+      },
+      () => domainCoreCloudVault.escrowOpen(wrapped, sharedBytes),
+      equalBytes,
     );
   } catch {
     throw new EscrowError("invalid_envelope", "Failed to unwrap vault key (auth tag mismatch).");
+  } finally {
+    sharedBytes.fill(0);
   }
   if (raw.length !== 32) {
     throw new EscrowError("invalid_key_length", "Unwrapped vault key must be 32 bytes.");

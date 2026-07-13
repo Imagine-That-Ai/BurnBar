@@ -5,6 +5,9 @@ import initDomainCore, {
   cloudVaultAesGcmSealCombined,
   cloudVaultBase64DecodeStrict,
   cloudVaultBase64Encode,
+  cloudVaultEscrowOpen,
+  cloudVaultEscrowSeal,
+  cloudVaultEscrowSplitWire,
   cloudVaultKeyedHashHex,
   cloudVaultSha256Hex,
   initSync,
@@ -107,6 +110,22 @@ export const domainCoreCloudVault = {
   aesSealCombined: cloudVaultAesGcmSealCombined,
   base64DecodeStrict: cloudVaultBase64DecodeStrict,
   base64Encode: cloudVaultBase64Encode,
+  escrowOpen: cloudVaultEscrowOpen,
+  escrowSeal: cloudVaultEscrowSeal,
+  escrowSplitWire(wire: Uint8Array): {
+    ephemeralPublicKey: Uint8Array;
+    aesGcmCombined: Uint8Array;
+  } {
+    const parts = cloudVaultEscrowSplitWire(wire);
+    try {
+      return {
+        ephemeralPublicKey: parts.ephemeralPublicKey.slice(),
+        aesGcmCombined: parts.aesGcmCombined.slice(),
+      };
+    } finally {
+      parts.free();
+    }
+  },
   sha256Hex: cloudVaultSha256Hex,
   keyedHashHex: cloudVaultKeyedHashHex,
   hashPurpose: CloudVaultHashPurpose,
