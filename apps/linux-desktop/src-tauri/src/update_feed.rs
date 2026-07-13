@@ -480,6 +480,22 @@ fn is_utc_timestamp(value: &str) -> bool {
     {
         return false;
     }
+    let year = date[..4].parse::<u32>().ok();
+    let month = date[5..7].parse::<u8>().ok();
+    let day = date[8..10].parse::<u8>().ok();
+    let (Some(year), Some(month), Some(day)) = (year, month, day) else {
+        return false;
+    };
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 400 == 0 || (year % 4 == 0 && year % 100 != 0) => 29,
+        2 => 28,
+        _ => 0,
+    };
+    if day == 0 || day > days_in_month {
+        return false;
+    }
     let clock = &time[..time.len() - 1];
     let clock_parts = clock.split(':').collect::<Vec<_>>();
     if clock_parts.len() != 3 {
@@ -708,6 +724,10 @@ mod tests {
         invalid.published_at = "2026-07-09T00:60:00Z".into();
         assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
         invalid.published_at = "2026-07-09T00:00:60Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-02-30T00:00:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-13-01T00:00:00Z".into();
         assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
         invalid.published_at = "2026-07-09T00:00:00.123Z".into();
         assert!(validate_feed(&invalid).is_ok());
