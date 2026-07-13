@@ -713,6 +713,21 @@ body.reduced-motion .chat-tool-card.is-running {
   margin-top: 0.55rem;
 }
 
+.chat-tool-card-availability {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.chat-tool-card-capability {
+  margin: 0;
+  color: var(--chat-text-secondary);
+  font-size: var(--chat-tiny);
+  line-height: 1.4;
+}
+
 .chat-tool-card-actions .primary {
   border: none;
   border-radius: 8px;

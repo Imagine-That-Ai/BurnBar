@@ -448,8 +448,12 @@ describe('ChatSurface', () => {
     // delta, so it must be awaited too or the assertion races the stream.
     await waitFor(() => {
       expect(screen.getByText(/workspace.read/i)).toBeTruthy();
-      expect(screen.getAllByTitle(/Approval flows ride agent runs/i).length).toBeGreaterThan(0);
+      expect(screen.getByText(/does not expose the daemon run approval identity/i)).toBeTruthy();
+      expect(screen.getByRole('button', { name: /Open Mission Control/i })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /^Approve$/i })).toBeNull();
     });
+    fireEvent.click(screen.getByRole('button', { name: /Open Mission Control/i }));
+    expect(useShellStore.getState().route).toBe('missions');
   });
 
   it('disables composer when gateway health is unreachable', async () => {
