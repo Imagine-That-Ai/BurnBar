@@ -771,7 +771,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
 
         foreach (string path in files)
         {
-            if (!IsCodeFile(path))
+            if (!ProjectCodeLexicalScanner.IsCodeFile(path))
             {
                 continue;
             }
@@ -783,10 +783,6 @@ public sealed class ProjectCodeMemoryStore : IDisposable
             }
         }
     }
-
-    private static bool IsCodeFile(string path) =>
-        new[] { ".cs", ".swift", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".kt", ".java", ".go" }
-            .Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
     private static FileReadResult ReadFile(string path)
     {

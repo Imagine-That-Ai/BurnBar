@@ -187,11 +187,13 @@ unproven host behavior to certification:
   files. Java/Kotlin/Go grammar coverage is now implemented, and a dedicated
   Windows x64/ARM64 MSVC workflow includes native x64 smoke coverage; its first
   green Windows run and a live Windows LSP host remain separate evidence gates,
-  so this does not yet promote the parser row to F2 completion.
+  so this does not yet promote the full parser row to F2 completion. The
+  inventory now includes the macOS C/C++/Objective-C, JSON, Markdown, and YAML
+  extension set; unsupported grammar formats use bounded lexical fallback.
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 97/97 managed-agent-runtime tests), CloudSync (60/60), connector
-(99/99), presentation (757/757), Computer Use, bridge-policy, and
+(99/99), presentation (758/758), Computer Use, bridge-policy, and
 provider-boundary tests. They are an
 implementation increment, not a claim that
 the F2 workstreams are all complete: semantic project-code chunk/embedding

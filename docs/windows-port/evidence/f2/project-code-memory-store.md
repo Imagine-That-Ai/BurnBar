@@ -28,6 +28,10 @@ source text.
   companion plane exposes bounded `code.call_graph` traversal (depth 1-3).
 - Only metadata and hashes are persisted. Source is read transiently during
   reference extraction and is never inserted into the SQLite database.
+- The inventory includes the macOS extension set (`m/mm/h/hpp/c/cc/cpp`, JSON,
+  Markdown, YAML, and the managed-language families). Tree-sitter-backed files
+  use the parser; formats without a bundled grammar use bounded lexical
+  fallback rather than disappearing from the index.
 - The app composes the store by default at
   `%LOCALAPPDATA%\\OpenBurnBar\\project-code-memory.sqlite`; deployments can
   override it with `OPENBURNBAR_PROJECT_MEMORY_PATH`.
@@ -38,7 +42,7 @@ source text.
 dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj --no-restore
 ```
 
-Result: **757 passed, 0 failed, 0 skipped**.
+Result: **758 passed, 0 failed, 0 skipped**.
 
 The durable-store test proves two-file artifact/index persistence, lexical
 reference and call-edge persistence, bounded call-graph traversal, checkpoint

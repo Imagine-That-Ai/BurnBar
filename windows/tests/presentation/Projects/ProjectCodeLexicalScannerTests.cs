@@ -28,9 +28,10 @@ public sealed class ProjectCodeLexicalScannerTests
             File.WriteAllText(Path.Combine(root, "readme.md"), "# hi");
 
             ProjectCodeInventory inv = ProjectCodeLexicalScanner.Scan(root);
-            Assert.Equal(2, inv.FileCount);
+            Assert.Equal(3, inv.FileCount);
             Assert.Contains(inv.ByExtension, e => e.Extension == ".cs" && e.Count == 1);
             Assert.Contains(inv.ByExtension, e => e.Extension == ".swift" && e.Count == 1);
+            Assert.Contains(inv.ByExtension, e => e.Extension == ".md" && e.Count == 1);
         }
         finally
         {
@@ -95,6 +96,30 @@ public sealed class ProjectCodeLexicalScannerTests
             Assert.Equal("tree-sitter", snapshot.ParserMode);
             Assert.Contains(index.Symbols, symbol =>
                 symbol.Name == "Runner" && symbol.ConfidenceTier == "static_tree_sitter");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SymbolIndex_UsesLexicalFallbackForInventoryFormatsWithoutGrammar()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-parser-fallback-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "notes.md"), "class Notes\n");
+            var parser = new DelegateProjectCodeStaticParserClient((_, _) =>
+                throw new Xunit.Sdk.XunitException("The markdown fallback must not invoke Tree-sitter."));
+
+            using var index = new ProjectCodeSymbolIndex(root);
+            ProjectCodeIndexSnapshot snapshot = await index.RefreshWithParserAsync(parser);
+
+            Assert.Equal("tree-sitter", snapshot.ParserMode);
+            Assert.Contains(index.Symbols, symbol =>
+                symbol.Name == "Notes" && symbol.Parser == "lexical");
         }
         finally
         {

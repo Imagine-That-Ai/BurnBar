@@ -184,6 +184,18 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
             }
 
             string language = Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
+            if (!ProjectCodeLexicalScanner.SupportsTreeSitter(path))
+            {
+                AppendLexicalSymbols(path, symbols, _maxSymbols);
+                if (symbols.Count >= _maxSymbols)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                continue;
+            }
+
             ProjectCodeParseResponse response;
             try
             {
@@ -335,18 +347,34 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         }
     }
 
-    private static bool IsCodeFile(string path) =>
-        path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".swift", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".ts", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".tsx", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".jsx", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".py", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".rs", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".kt", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".java", StringComparison.OrdinalIgnoreCase)
-        || path.EndsWith(".go", StringComparison.OrdinalIgnoreCase);
+    private static bool IsCodeFile(string path) => ProjectCodeLexicalScanner.IsCodeFile(path);
+
+    private static void AppendLexicalSymbols(string path, List<ProjectCodeSymbol> symbols, int maxSymbols)
+    {
+        try
+        {
+            string[] lines = File.ReadAllLines(path);
+            for (int i = 0; i < lines.Length && symbols.Count < maxSymbols; i++)
+            {
+                foreach (Match match in Declaration.Matches(lines[i]))
+                {
+                    string name = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+                    string kind = match.Groups[1].Success
+                        ? lines[i][Math.Max(0, match.Index)..].Split(' ', StringSplitOptions.RemoveEmptyEntries)[0]
+                        : "method";
+                    symbols.Add(new ProjectCodeSymbol(name, kind.ToLowerInvariant(), path, i + 1));
+                }
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // An unreadable file is omitted from the honest index.
+        }
+        catch (IOException)
+        {
+            // A file can disappear while a parser-backed refresh runs.
+        }
+    }
 
     private void OnChanged(object sender, FileSystemEventArgs args) => ScheduleRefresh();
 
