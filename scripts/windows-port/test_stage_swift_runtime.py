@@ -52,6 +52,8 @@ class StageSwiftRuntimeTests(unittest.TestCase):
             directory = Path(root)
             engine = directory / "OpenBurnBarCoreCAbi.dll"
             engine.write_bytes(b"engine")
+            extra = directory / "openburnbar_domain_ffi.dll"
+            extra.write_bytes(b"domain-core")
             bundle = directory / "OpenBurnBarCore_OpenBurnBarCore.resources"
             bundle.mkdir()
             resource = bundle / "catalog.json"
@@ -63,7 +65,7 @@ class StageSwiftRuntimeTests(unittest.TestCase):
                 "run",
                 return_value=type("Completed", (), {"stdout": "", "stderr": ""})(),
             ):
-                manifest = MODULE.stage(engine, destination, [directory], "dumpbin")
+                manifest = MODULE.stage(engine, [extra], destination, [directory], "dumpbin")
 
             staged_resource = destination / bundle.name / resource.name
             self.assertTrue(staged_resource.is_file())
@@ -74,6 +76,8 @@ class StageSwiftRuntimeTests(unittest.TestCase):
                 manifest_entry["sha256"],
                 hashlib.sha256(resource.read_bytes()).hexdigest(),
             )
+            self.assertEqual(manifest["extras"], [extra.name])
+            self.assertTrue((destination / extra.name).is_file())
             persisted = json.loads((destination / "native-engine-manifest.json").read_text())
             self.assertEqual(persisted, manifest)
 
@@ -88,7 +92,7 @@ class StageSwiftRuntimeTests(unittest.TestCase):
                 return_value=type("Completed", (), {"stdout": "", "stderr": ""})(),
             ):
                 with self.assertRaisesRegex(ValueError, "required Swift resource bundle"):
-                    MODULE.stage(engine, directory / "stage", [directory], "dumpbin")
+                    MODULE.stage(engine, [], directory / "stage", [directory], "dumpbin")
 
 
 if __name__ == "__main__":

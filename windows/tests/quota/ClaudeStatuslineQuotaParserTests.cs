@@ -1,5 +1,6 @@
 using System;
 using OpenBurnBar.App.Presentation.Quota;
+using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
 using Xunit;
 
 namespace OpenBurnBar.App.Quota.Tests;
@@ -19,6 +20,44 @@ public sealed class ClaudeStatuslineQuotaParserTests
         var expected = QuotaFixtures.ReadExpected("claude-statusline-expected.json");
 
         var snapshot = ClaudeStatuslineQuotaParser.Parse(input, FetchedAt);
+
+        QuotaFixtures.AssertMatches(snapshot, expected);
+    }
+
+    [Fact]
+    public void RustMode_RecordedStatuslineSnapshot_MatchesExpectedValueForValue()
+    {
+        if (Environment.GetEnvironmentVariable("OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE") != "1")
+        {
+            return;
+        }
+
+        uint abiVersion;
+        try
+        {
+            abiVersion = DomainCore.DomainCoreAbiVersion();
+        }
+        catch (DllNotFoundException)
+        {
+            // The full Windows solution intentionally does not build the optional
+            // Rust DLL. Keep the legacy-path suite green on a clean checkout.
+            return;
+        }
+        catch (BadImageFormatException)
+        {
+            // A native binary for another architecture is unavailable here too.
+            return;
+        }
+
+        Assert.Equal(1u, abiVersion);
+        var input = QuotaFixtures.ReadInput("claude-statusline-input.json");
+        var expected = QuotaFixtures.ReadExpected("claude-statusline-expected.json");
+        var legacy = ClaudeStatuslineQuotaParser.ParseLegacy(input, FetchedAt);
+
+        var snapshot = ClaudeStatuslineQuotaDomainCore.Apply(
+            input,
+            legacy,
+            DomainCoreQuotaMigrationMode.Rust);
 
         QuotaFixtures.AssertMatches(snapshot, expected);
     }

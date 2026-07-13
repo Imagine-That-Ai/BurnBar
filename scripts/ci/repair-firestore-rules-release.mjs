@@ -86,7 +86,9 @@ async function rulesApi(path, { method = "GET", body, token, project, fetchImpl 
  * source matches the content that the deploy just uploaded. The Firebase Rules
  * API returns rulesets sorted by createTime descending, but we sort defensively
  * and inspect each candidate so a newer storage or unrelated ruleset cannot be
- * accidentally released.
+ * accidentally released. The matching source files are carried along because
+ * firebase-tools can upload firestore.rules with an absolute runner path, and
+ * the release API rejects that path when the ruleset is attached.
  */
 async function getLatestMatchingRuleset({
   project,
@@ -125,12 +127,47 @@ async function getLatestMatchingRuleset({
         file?.name?.endsWith("/firestore.rules"),
     );
     if (typeof rulesFile?.content === "string" && rulesFile.content.trimEnd() === expected) {
-      return candidate;
+      return { ...candidate, sourceFiles: files };
     }
   }
   throw new Error(
     `No ruleset found for project ${project} matching the deployed firestore.rules source`,
   );
+}
+
+/**
+ * Firebase CLI uploads can use an absolute runner path for firestore.rules.
+ * Create an unattached copy with the canonical source filename before release
+ * attachment. This keeps the live release PATCH pointed at a releasable
+ * ruleset while preserving the exact uploaded source content.
+ */
+async function ensureReleaseCompatibleRuleset({
+  project,
+  token,
+  fetchImpl,
+  ruleset,
+}) {
+  const sourceFiles = Array.isArray(ruleset.sourceFiles) ? ruleset.sourceFiles : [];
+  const needsNormalization = sourceFiles.some(
+    (file) => typeof file?.name === "string" && file.name.endsWith("/firestore.rules"),
+  );
+  if (!needsNormalization) return ruleset.name;
+
+  const files = sourceFiles.map((file) => ({
+    name: file.name.endsWith("/firestore.rules") ? "firestore.rules" : file.name,
+    content: file.content,
+  }));
+  const created = await rulesApi(`projects/${project}/rulesets`, {
+    method: "POST",
+    body: { source: { files } },
+    token,
+    project,
+    fetchImpl,
+  });
+  if (typeof created.name !== "string") {
+    throw new Error("Firebase Rules API returned no name for normalized firestore.rules ruleset");
+  }
+  return created.name;
 }
 
 /**
@@ -146,8 +183,8 @@ async function getFirestoreRelease({ project, token, fetchImpl }) {
 
 /**
  * PATCH the cloud.firestore release to point to a new ruleset.
- * Matches firebase-tools' production PATCH shape: the Release resource is
- * nested under `release` and there is no updateMask.
+ * Matches the Firebase Rules API PATCH contract: the Release resource is
+ * nested under `release`, and rulesetName is selected by updateMask.
  */
 async function patchFirestoreRelease({ project, token, fetchImpl, rulesetName }) {
   const releaseName = `projects/${project}/releases/${FIRESTORE_RELEASE}`;
@@ -160,6 +197,7 @@ async function patchFirestoreRelease({ project, token, fetchImpl, rulesetName })
           name: releaseName,
           rulesetName,
         },
+        updateMask: "rulesetName",
       },
       token,
       project,
@@ -199,7 +237,7 @@ export async function repairFirestoreRelease({
     fetchImpl: fetch,
     expectedRulesContent,
   });
-  const newRulesetName = latestRuleset.name;
+  let newRulesetName = latestRuleset.name;
 
   // 2. Get the current release to find the old ruleset.
   const release = await getFirestoreRelease({ project, token, fetchImpl: fetch });
@@ -213,6 +251,15 @@ export async function repairFirestoreRelease({
       newRuleset: newRulesetName,
     };
   }
+
+  // Firebase CLI may have uploaded an absolute source filename. Normalize it
+  // before the release PATCH; the release API rejects that attached source.
+  newRulesetName = await ensureReleaseCompatibleRuleset({
+    project,
+    token,
+    fetchImpl: fetch,
+    ruleset: latestRuleset,
+  });
 
   // 4. PATCH the release to point to the new ruleset.
   await patchFirestoreRelease({
