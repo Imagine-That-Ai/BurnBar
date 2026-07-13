@@ -1,6 +1,7 @@
-# Packet P-13 (DRAFT): move ProviderQuota + XAISuperGrokPacingLog → OpenBurnBarQuota
-STATE: QUEUED
-LANE: C          DEPENDS-ON: S0, P-01 (SQLiteReader)
+# Packet P-13: move ProviderQuota + XAISuperGrokPacingLog → OpenBurnBarQuota
+STATE: PR_OPEN (#1652, base core-decomp/p-15b) — see "EXECUTED" section below
+LANE: C          DEPENDS-ON: S0, P-01 (SQLiteReader), P-12 (Kernel Identity/AppPaths +
+FileManager Sendable shim), P-15b (Kernel CLILaunchAdapter surface + SwitcherProfile)
 BASELINE-TOUCHING: none
 
 `ProviderQuota/` (41 files) + root `XAISuperGrokPacingLog.swift` (which
@@ -109,3 +110,56 @@ Quota marker target builds clean).
 
 Evidence is preserved in the wave-3 lane stash (`P-13-w3 BLOCKED(re-slice): …`). No PR
 opened (red tree). Card stays `QUEUED` pending an architect re-slice of edges 2 and 3.
+
+## EXECUTED — third attempt, PR #1652 (2026-07-13, base core-decomp/p-15b)
+
+All three BLOCKED edges resolved upstream/by architect authorization; shipped as PR
+**#1652** (stacks on P-15b PR #1648). Branch `core-decomp/p-13-final`.
+
+**Edge resolutions:**
+1. **FileManager Sendable shim (was "mechanical, fixed in-attempt").** ALREADY resolved
+   before this attempt: a P-12 follow-up homed `extension FileManager: @retroactive
+   @unchecked Sendable {}` in `OpenBurnBarKernel/Platform/PlatformSupport.swift` (its
+   comment names "the future `OpenBurnBarQuota` target"). Quota deps → Kernel, so `import
+   OpenBurnBarKernel` carries the conformance. The card's proposed new
+   `QuotaFoundationSendableShims.swift` was **obsolete — not created**.
+2. **CLILaunchAdapter + SwitcherCLIProfileType (edge 2).** Resolved by **P-15b**: both are
+   now `public` in Kernel (`Platform/CLILaunchAdapter.swift`, `SharedModels/
+   SwitcherProfile.swift`) and gone from Core. `CodexQuotaAdapter`/`OMPQuotaAdapter`
+   resolve them via `import OpenBurnBarKernel`. **No file-leaves-slice** — both moved and
+   compile clean in Quota.
+3. **LogParsers edge (edge 3) — INTEGRATOR-AUTHORIZED MANIFEST EDIT.** Added
+   `OpenBurnBarLogParsers` to `OpenBurnBarQuota` dependencies. The DRAFT "NO LogParsers
+   edge" invariant was FALSE. Compile-closure found **TWO** consumers (card knew one):
+   `AiderQuotaAdapter` (`FileHandle.readAllUTF8Lines()`→`BufferedLineSequence`) **and**
+   `WarpQuotaAdapter` (`WarpParser`, `TimestampNormalizationUtility`). Acyclic (LogParsers
+   deps = `[Kernel, SQLiteReader]`).
+
+**Moved:** whole `ProviderQuota/` (41 files) + root `XAISuperGrokPacingLog.swift` →
+`OpenBurnBarQuota/`; deleted `OpenBurnBarQuota/ModuleMarker.swift`. **42 `.swift` in the
+target.** `ProviderQuotaMacParity.swift` is an in-target `ProviderQuotaAdapterContext`
+convenience extension (NOT an external harness — grep confirmed no CI/runner) and moved
+with the target.
+
+**AE-IMPORT (compile-driven, exhausted):** `import OpenBurnBarKernel` ×25;
+`import OpenBurnBarSQLiteReader` ×3 (`OpenBurnBarQuotaAdapters`, `CursorCookieExtractor`,
+`ForgeQuotaAdapter`); `import OpenBurnBarLogParsers` ×2 (`AiderQuotaAdapter`,
+`WarpQuotaAdapter`). Zero `import OpenBurnBarCore`. Prior card predicted 27 Kernel;
+compile truth is **25** (P-15b extraction + real symbol closure).
+**AE-TESTABLE:** only `ZAIQuotaAdapterTests` broke (internal `zaiUsageQueryItems(now:)`)
+→ `@testable import OpenBurnBarQuota` + `OpenBurnBarQuota` on the `OpenBurnBarCoreTests`
+target.
+
+**Zero call-site changes for umbrella consumers** (AgentLens, Mobile, daemon): Core's
+`OpenBurnBarQuotaReexport.swift` `@_exported import`s Quota and propagates transitively
+across the package boundary — proven by a clean daemon build with NO daemon edit. The
+Engine `@_exported import OpenBurnBarQuota` line is now real (P-17 #1641 documented Quota
+marker-only).
+
+**V-list (macOS Swift 6.4, sandboxed offline):** `swift build --target OpenBurnBarQuota`
+clean; full default `swift build` clean; Linux-boundary `swift build` (Engine+Core,
+separate scratch) clean; whole-package `swift test` 0 failures (11 xctest + 42
+swift-testing); daemon `swift build --target OpenBurnBarDaemon` clean (856 modules); the
+3 SPM parity/skeleton execs clean; regrowth gates green (membership shrink non-fatal,
+umbrella-imports OK, ui-purity OK — Quota in pureTargets). Membership-baseline
+ratchet-down remains a separate integrator JSON-only PR (non-fatal shrink).
