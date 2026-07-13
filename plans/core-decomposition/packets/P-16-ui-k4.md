@@ -1,5 +1,5 @@
 # Packet P-16a…f: move Views/ + UI SharedModels → OpenBurnBarUI (K4)
-STATE: P-16a MERGED (base); P-16b PR #1650; P-16c PR #1656 (Views/MissionControl); P-16d PR #1666 (Cards/Square + straggler cluster); P-16b2+P-16e+Swarm-half-of-P-16f CONSOLIDATED → PR #1675; P-16f remainder → PR #1678. **K4 COMPLETE: Core ui-purity baseline → 0** (see the P-16e/f consolidation note)
+STATE: P-16a MERGED (base); P-16b PR #1650; P-16c PR #1656 (Views/MissionControl); P-16d PR #1666 (Cards/Square + straggler cluster); P-16b2+P-16e+Swarm-half-of-P-16f CONSOLIDATED → PR #1675; P-16f remainder → PR #1678 (+ follow-up commit `9f963f0c8d`: annotate the now-empty off-Apple `openBurnBarCoreExcludes` as `[String]` — unbreaks the Windows/Linux manifest; see the P-16f off-Apple manifest fix note). **K4 COMPLETE: Core ui-purity baseline → 0** (see the P-16e/f consolidation note)
 LANE: A (serial-within-lane; owns core-ui-purity-baseline.json)
 DEPENDS-ON: S0, S-H (headless-app-build CI job green), P-04a/b, P-11, P-13, P-05, P-06, P-08/09/10
 BASELINE-TOUCHING: core-ui-purity (this is where the baseline ratchets toward zero)
@@ -215,6 +215,30 @@ them onto the canonical P-16b2/P-16e/P-16f rows:
 - **PR #1675** (base p-16d) — `Views/Swarm*` (11) + `Views/Insights/Verdict/` (6) + `Services/Insights/Share/InsightShareCardRenderer.swift` (1) = **18 files / 5,417 LOC**. Consolidates card **P-16b2 + P-16e + the Swarm-cluster half of P-16f** (the Swarm cluster is a self-contained leaf; nothing outside it references in except `BurnBarLogoFormationView`, which ships in #1678). AE-IMPORT: `import OpenBurnBarKernel` ×8 (Swarm files → `AgentProvider`/`UIMode`/`RGBA`), `import OpenBurnBarInsights` ×6 (Verdict files → `InsightCitation`/`InsightVerdict`/`InsightModelTag`/`VerdictDelta`/`VerdictRing`/`VerdictTraceStrip`/`ProviderTint`). AE-TESTABLE ×1: `SwarmLogoShapeTests.swift` (`@testable import OpenBurnBarUI` for the internal `SwarmLogoShape`/`Point`/`generatePoints()`). Package.swift: drop the `"Services/Insights/Share"` exclude; `"Views"` unchanged (15 root files remain). ui-purity `--update` 29→15.
 - **PR #1678** (base p-16e) — the remaining **15 non-Swarm `Views/` root files** = **5,075 LOC** (the non-Swarm half of card P-16f). Deletes `"Views"` from `openBurnBarCoreExcludes` entirely (dir emptied → the array now has ZERO real entries; all UI pruned WHOLE off-Apple). AE-IMPORT: `import OpenBurnBarKernel` ×7 (`BurnBarLogoFormationView`, `HouseCrestPrimitives`→Castle*/CloudTier, `NestHubMiniPreview`→SmartHubDisplayConfig/Palette, `PixelClockPreviewView`→PixelClock*, `UnifiedCacheHitRateBadge`/`UnifiedProviderTheme`→AgentProvider, `UnifiedQuotaSignalView`→AgentProvider/ProviderQuotaBucket). AE-TESTABLE ×1: `UnifiedQuotaSignalCurrencyTests.swift` (`@testable import OpenBurnBarUI` for internal `fullRemainingText`); both it + `UnifiedToolCallAccordionTests.swift` added to `openBurnBarCoreTestExcludes` (off-Apple; they reach UI-only types). **ui-purity `--update` 15→0 — Core is now UI-free; K4 COMPLETE.**
 - Both PRs: V1 UI / V2 Core / V5a Engine / V5b daemon builds ✔; whole-package `swift test` = 11 suites, 0 failures ✔; membership + umbrella gates ✔; off-Apple manifests parse-clean (all excludes resolve). Zero behavior change. Next: integrator P-17 Engine fill, P-18 daemon repoint (drops the Core→UI transitive link entirely).
+
+### P-16f off-Apple manifest fix (executed 2026-07-13, PR #1678 follow-up commit) — empty excludes need `[String]`
+The #1678 base commit deleted the LAST real entry from `openBurnBarCoreExcludes` in the
+`#if os(Linux) || os(Windows)` branch (K4: all UI pruned WHOLE off-Apple), leaving a
+**comment-only `[...]` literal**. The Apple `#else` branch was fine (`= []` there already
+carries a `: [String]` annotation), so macOS builds/tests + `swift package dump-package`
+were green and the break was invisible on an Apple host — but the two
+`swift build --target OpenBurnBarCore (*-windows-msvc)` CI jobs on #1678 failed the manifest
+evaluation with `Package.swift:435:31: error: empty collection literal requires an explicit
+type` and `:909:22: error: cannot convert value of type '[Any]' to expected argument type
+'[String]'` (the `exclude:` consumer). This is the "off-Apple Core build sees no dangling
+refs / off-Apple manifest clean" gate (learning 9) firing correctly.
+- **Fix (follow-up commit `9f963f0c8d`):** annotate the off-Apple declaration
+  `let openBurnBarCoreExcludes: [String] = [ …only comments… ]`, matching the Apple branch.
+  Pure type-inference resolution, host-independent, **zero behavior change**; the array stays
+  empty (K4 payoff intact). Kept a comment: re-add-drop the annotation only while the array is empty.
+- **Compiler evidence:** a minimal reproduction of the comment-only literal + `[String]`
+  consumer reproduces BOTH CI errors verbatim at the same column positions; adding `: [String]`
+  type-checks clean (`swiftc -typecheck`). On the Apple host (borrowed main `.spm-cache`,
+  `--disable-automatic-resolution`): `swift package resolve` ✔, `swift build --target`
+  OpenBurnBarUI ✔ (27.9s) / OpenBurnBarCore ✔ (6.5s) / OpenBurnBarEngine ✔ (2.1s), daemon
+  package `swift build` ✔ (56.8s, against the edited `../OpenBurnBarCore` manifest), ui-purity
+  `--check` baseline=0 live=0 ✔, membership + umbrella gates ✔, `swift package dump-package` ✔.
+  Off-Apple full build is CI-covered by the two Windows jobs on #1678 (no Linux SDK on the Apple host).
 
 ## Per-sub-packet rules
 - Deps: `OpenBurnBarUI` already depends on Kernel/Quota/Insights/Hermes/Pretext/LogParsers
