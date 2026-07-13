@@ -50,6 +50,14 @@ wire shape. Native callers cross the boundary once per complete payload. The
 browser adapter exposes byte-array KAT helpers, but production WebCrypto handles
 remain non-extractable and are never exported merely to call Wasm.
 
+CloudVault C1c owns recovery-key normalization, recovery HKDF and verification
+hashes, recovery AES wrapping, P-256 X9.63 public-point validation, escrow HKDF,
+and the exact `ephemeralPublic(65) || nonce(12) || ciphertext || tag(16)` wire.
+It does not generate randomness or perform ECDH. Platforms retain private-key
+handles in CryptoKit, Android Keystore/JCA, Windows CNG, or non-extractable
+WebCrypto and pass only the 32-byte ECDH result to Rust. No C1c FFI or Wasm API
+accepts a private scalar, private-key encoding, or `CryptoKey` export.
+
 ## Consequences
 
 - Quota parsing is the pilot because it removes real duplication with a small,
