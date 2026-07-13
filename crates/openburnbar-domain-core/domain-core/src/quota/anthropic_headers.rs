@@ -209,19 +209,23 @@ mod tests {
             1_783_036_800,
             AnthropicCredentialShape::OauthBearer,
         );
-        let unified = actual
+        let Some(unified) = actual
             .snapshot
             .buckets
             .iter()
             .find(|bucket| bucket.key == "claude-unified-header-probe")
-            .expect("unified bucket");
+        else {
+            panic!("unified bucket");
+        };
         assert_eq!(unified.resets_at_unix, Some(1_783_040_400.0));
-        let combined = actual
+        let Some(combined) = actual
             .snapshot
             .buckets
             .iter()
             .find(|bucket| bucket.key == "claude-rate-limit-tokens")
-            .expect("combined token bucket");
+        else {
+            panic!("combined token bucket");
+        };
         assert_eq!(combined.limit_value, Some(500.0));
         assert_eq!(combined.resets_at_unix, Some(1_783_040_460.0));
     }

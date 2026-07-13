@@ -274,12 +274,14 @@ mod tests {
             }"#,
             None,
         );
-        let bucket = actual
+        let Some(bucket) = actual
             .snapshot
             .buckets
             .iter()
             .find(|bucket| bucket.key == "cursor-team-ondemand")
-            .expect("team on-demand bucket");
+        else {
+            panic!("team on-demand bucket");
+        };
         assert_eq!(bucket.used_value, Some(5.0));
         assert_eq!(bucket.limit_value, Some(10.0));
         assert_eq!(bucket.remaining_value, Some(5.0));
