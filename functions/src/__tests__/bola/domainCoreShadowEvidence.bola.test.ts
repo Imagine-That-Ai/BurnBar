@@ -26,6 +26,7 @@ describe("BOLA - domain-core shadow evidence", () => {
         throw new Error("BOLA harness did not provide an authenticated request.");
       }
       request.auth.token.domainCoreShadowChannel = "internal";
+      request.auth.token.domainCoreShadowConsumers = ["apple"];
       return rawRun(request);
     };
 

@@ -41,6 +41,28 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>OpenBurnBarDomainCoreBuildProfile</key>
+	<string>$(DOMAIN_CORE_BUILD_PROFILE)</string>
+	<key>OpenBurnBarDomainCoreBuildAuthority</key>
+	<string>$(DOMAIN_CORE_BUILD_AUTHORITY)</string>
+	<key>OpenBurnBarDomainCoreDistribution</key>
+	<string>$(DOMAIN_CORE_DISTRIBUTION)</string>
+	<key>OpenBurnBarDomainCoreRolloutChannel</key>
+	<string>$(DOMAIN_CORE_ROLLOUT_CHANNEL)</string>
+	<key>OpenBurnBarDomainCoreEvidenceEnabled</key>
+	<string>$(DOMAIN_CORE_EVIDENCE_ENABLED)</string>
+	<key>OpenBurnBarDomainCoreModeQuota</key>
+	<string>$(DOMAIN_CORE_QUOTA_MODE)</string>
+	<key>OpenBurnBarDomainCoreModeCloudVault</key>
+	<string>$(DOMAIN_CORE_CLOUDVAULT_MODE)</string>
+	<key>OpenBurnBarDomainCoreModeCloudVaultRewrap</key>
+	<string>$(DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE)</string>
+	<key>OpenBurnBarDomainCoreModeCloudVaultSearch</key>
+	<string>$(DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE)</string>
+	<key>OpenBurnBarDomainCoreModeHermes</key>
+	<string>$(DOMAIN_CORE_HERMES_MODE)</string>
+	<key>OpenBurnBarDomainCoreModePricing</key>
+	<string>$(DOMAIN_CORE_PRICING_MODE)</string>
 	<key>GIDClientID</key>
 	<string>246956661961-h48alif674cr67ojj4li9og8gbcjinbv.apps.googleusercontent.com</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

@@ -9,6 +9,7 @@ export const DOMAIN_CORE_SHADOW_RETENTION_MS = 60 * 24 * 60 * 60 * 1000;
 const DOMAIN_CORE_SHADOW_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1000;
 const DOMAIN_CORE_SHADOW_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const DOMAIN_CORE_SHADOW_COLLECTION = "domain_core_shadow_samples";
+const DOMAIN_CORE_SHADOW_CLAIM_CONSUMERS = new Set(["apple", "windows", "android", "console", "functions"]);
 
 const SAMPLE_KEYS = [
   "channel",
@@ -195,13 +196,18 @@ export function enforceDomainCoreShadowChannelClaim(
   samples: DomainCoreShadowSampleV1[],
 ): void {
   const claimedChannel = token.domainCoreShadowChannel;
+  const claimedConsumers = token.domainCoreShadowConsumers;
   if (
     (claimedChannel !== "internal" && claimedChannel !== "beta") ||
-    samples.some((sample) => sample.channel !== claimedChannel)
+    !Array.isArray(claimedConsumers) ||
+    claimedConsumers.some(
+      (consumer) => typeof consumer !== "string" || !DOMAIN_CORE_SHADOW_CLAIM_CONSUMERS.has(consumer),
+    ) ||
+    samples.some((sample) => sample.channel !== claimedChannel || !claimedConsumers.includes(sample.consumer))
   ) {
     throw new HttpsError(
       "permission-denied",
-      "This account is not enrolled for the submitted shadow-evidence channel.",
+      "This account is not enrolled for the submitted shadow-evidence channel and consumer.",
     );
   }
 }
