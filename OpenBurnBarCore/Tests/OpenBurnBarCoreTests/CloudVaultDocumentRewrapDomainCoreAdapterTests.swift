@@ -43,6 +43,36 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
         XCTAssertTrue(recorder.diagnostics.isEmpty)
     }
 
+    func testUnknownEnvironmentModePreservesPermissiveLegacyPath() throws {
+        let recorder = RewrapRecorder()
+        let malformedForStrictLowering: [String: Any] = ["field": ["nonce": "AA=="]]
+        let expected = CloudVaultDocumentRewrapResult(data: malformedForStrictLowering, changedFields: [])
+        let result = try CloudVaultDocumentRewrapDomainCoreAdapter.rewrap(
+            data: malformedForStrictLowering,
+            uid: "userA",
+            collection: "collectionA",
+            docID: "docA",
+            oldKeyData: oldKey,
+            newKeyData: newKey,
+            newVaultKeyID: try CloudVaultCrypto.vaultKeyID(for: newKey),
+            vaultGeneration: nil,
+            rotationJobID: nil,
+            environment: [CloudVaultDocumentRewrapMigrationMode.environmentKey: "future"],
+            logger: recorder,
+            backend: recorder.backend(result: .empty),
+            nonceGenerator: { XCTFail("Malformed legacy field requested a nonce"); return Data() },
+            legacy: { plan in
+                recorder.legacyCalls += 1
+                XCTAssertTrue(plan.isEmpty)
+                return expected
+            }
+        )
+
+        XCTAssertEqual(result.changedFields, expected.changedFields)
+        XCTAssertEqual(recorder.legacyCalls, 1)
+        XCTAssertEqual(recorder.nativeCalls, 0)
+    }
+
     func testRustModeLowersOneLexicographicDocumentCallAndAppliesEveryIntent() throws {
         let recorder = RewrapRecorder()
         let createdAt = TimestampSentinel()
@@ -169,6 +199,10 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
 
     func testAmbiguousPartialUnknownAndReservedEnvelopeMapsRejectBeforeExecution() throws {
         let validPayload = try payloadMap(key: oldKey)
+        let reservedFields = [
+            "vaultKeyID", "sealedStateVaultKeyID", "vaultGeneration",
+            "rewrapJobId", "rewrapJobID", "rotationJobId", "rotationJobID"
+        ]
         let invalidMaps: [[String: Any]] = [
             [
                 "field": validPayload.merging([
@@ -176,9 +210,8 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
                 ]) { left, _ in left }
             ],
             ["field": ["nonce": "AA=="]],
-            ["field": validPayload.merging(["futureMember": 1]) { left, _ in left }],
-            ["vaultGeneration": validPayload]
-        ]
+            ["field": validPayload.merging(["futureMember": 1]) { left, _ in left }]
+        ] + reservedFields.map { [$0: validPayload] }
         for source in invalidMaps {
             let recorder = RewrapRecorder()
             XCTAssertThrowsError(
@@ -305,6 +338,57 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
         }
     }
 
+    func testShadowABIMismatchDoesNotQueryCoreVersionOrNative() throws {
+        let recorder = RewrapRecorder()
+        var coreVersionCalls = 0
+        var nativeCalls = 0
+        let backend = CloudVaultDocumentRewrapDomainCoreAdapter.NativeBackend(
+            abiVersion: { 99 },
+            coreVersion: { coreVersionCalls += 1; return "must-not-load" },
+            rewrap: { _, _, _, _ in nativeCalls += 1; return .empty }
+        )
+
+        _ = try invoke(
+            try mixedSource(),
+            mode: .shadow,
+            recorder: recorder,
+            backend: backend,
+            nonceGenerator: sequentialNonceGenerator(),
+            legacy: { _ in
+                recorder.legacyCalls += 1
+                return .init(data: ["legacy": true], changedFields: [])
+            }
+        )
+
+        XCTAssertEqual(recorder.legacyCalls, 1)
+        XCTAssertEqual(nativeCalls, 0)
+        XCTAssertEqual(coreVersionCalls, 0)
+        XCTAssertEqual(recorder.diagnostics.map(\.category), ["abi_mismatch"])
+        XCTAssertEqual(recorder.diagnostics.map(\.coreVersion), ["incompatible"])
+    }
+
+    func testRustRejectsOutputThatDoesNotUseNamedNoncePlan() throws {
+        let recorder = RewrapRecorder()
+        XCTAssertThrowsError(
+            try invoke(
+                try mixedSource(),
+                mode: .rust,
+                recorder: recorder,
+                backend: recorder.backend { request, _, _, keyID in
+                    self.successResult(
+                        request: request,
+                        newVaultKeyID: keyID,
+                        nonceOverrides: ["sealedTextZ": Data(repeating: 0xff, count: 12)]
+                    )
+                },
+                nonceGenerator: sequentialNonceGenerator(),
+                legacy: { _ in recorder.legacyCalls += 1; throw TestError.legacy }
+            )
+        )
+        XCTAssertEqual(recorder.nativeCalls, 1)
+        XCTAssertEqual(recorder.legacyCalls, 0)
+    }
+
     func testDuplicateNoncePlanRejectsBeforeLegacyOrNative() throws {
         let recorder = RewrapRecorder()
         XCTAssertThrowsError(
@@ -327,13 +411,15 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
         let oldKey = try Self.data(hex: fixture.oldKeyHex)
         let newKey = try Self.data(hex: fixture.newKeyHex)
         let createdAt = TimestampSentinel()
-        var document = Dictionary(uniqueKeysWithValues: fixture.request.documentFieldNames.map { ($0, "plain") })
+        var document: [String: Any] = Dictionary(
+            uniqueKeysWithValues: fixture.request.documentFieldNames.map { ($0, "plain" as Any) }
+        )
         for envelope in fixture.request.envelopes {
             document[envelope.fieldName] = envelope.map(createdAt: createdAt)
         }
         document["plainStatus"] = "queued"
         document["vaultKeyID"] = try CloudVaultCrypto.vaultKeyID(for: oldKey)
-        var nonces = fixture.request.resealNonces.map(Data.init)
+        var nonces = fixture.request.resealNoncePlan.map { Data($0.nonce) }
 
         let result = try CloudVaultDocumentRewrapDomainCoreAdapter.rewrap(
             data: document,
@@ -353,7 +439,10 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
         )
 
         XCTAssertEqual(result.changedFields, fixture.expected.changedFields)
-        XCTAssertEqual((result.data["sealedBlobA"] as? [String: Any])?["createdAt"] as AnyObject?, createdAt)
+        let blobField = try XCTUnwrap(fixture.request.envelopes.first { $0.kind == "blob" }?.fieldName)
+        XCTAssertTrue(
+            (result.data[blobField] as? [String: Any])?["createdAt"] as AnyObject? === createdAt
+        )
     }
     #endif
 
@@ -422,10 +511,16 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
 
     private func successResult(
         request: CloudVaultDocumentRewrapDomainCoreAdapter.Request,
-        newVaultKeyID: String
+        newVaultKeyID: String,
+        nonceOverrides: [String: Data] = [:]
     ) -> CloudVaultDocumentRewrapDomainCoreAdapter.NativeResult {
         let outputs = request.envelopes.map { envelope in
-            outputEnvelope(envelope, request: request, newVaultKeyID: newVaultKeyID)
+            outputEnvelope(
+                envelope,
+                request: request,
+                newVaultKeyID: newVaultKeyID,
+                nonceOverride: nonceOverrides[envelope.fieldName]
+            )
         }
         return .init(
             changedFields: outputs.map(\.fieldName),
@@ -445,9 +540,13 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
     private func outputEnvelope(
         _ source: CloudVaultDocumentRewrapDomainCoreAdapter.Envelope,
         request: CloudVaultDocumentRewrapDomainCoreAdapter.Request,
-        newVaultKeyID: String
+        newVaultKeyID: String,
+        nonceOverride: Data? = nil
     ) -> CloudVaultDocumentRewrapDomainCoreAdapter.Envelope {
         let aad = "OpenBurnBar-CloudVault-aad-v2|\(request.uid)|\(request.collection)|\(request.docID)|\(source.fieldName)|2|\(source.fieldName)"
+        let plannedNonce = request.noncePlan.first { $0.fieldName == source.fieldName }!.bytes
+        let outputNonce = nonceOverride ?? plannedNonce
+        let combined = outputNonce + Data(repeating: 0x23, count: 17)
         return .init(
             kind: source.kind,
             fieldName: source.fieldName,
@@ -455,10 +554,10 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
             algorithm: CloudVaultCrypto.aesGCMAlgorithm,
             keyVersion: 1,
             vaultKeyID: source.kind == .sealedPayload ? newVaultKeyID : nil,
-            nonce: source.kind == .sealedText ? "ISEhISEhISEhISEh" : nil,
+            nonce: source.kind == .sealedText ? outputNonce.base64EncodedString() : nil,
             ciphertext: source.kind == .sealedText ? "bmV3" : nil,
             tag: source.kind == .sealedText ? "IiIiIiIiIiIiIiIiIiIiIg==" : nil,
-            sealedBoxBase64: source.kind == .sealedText ? nil : "IyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIw==",
+            sealedBoxBase64: source.kind == .sealedText ? nil : combined.base64EncodedString(),
             plaintextSHA256: nil,
             plaintextHMAC: source.kind == .blob ? String(repeating: "a", count: 64) : nil,
             integrityHashVersion: source.kind == .blob ? 1 : nil,
@@ -636,15 +735,20 @@ private struct FixtureRequest: Decodable {
     let docID: String
     let documentFieldNames: [String]
     let envelopes: [FixtureEnvelope]
-    let resealNonces: [[UInt8]]
+    let resealNoncePlan: [FixtureNonce]
     let vaultGeneration: Int?
     let rotationJobID: String?
 
     enum CodingKeys: String, CodingKey {
-        case uid, collection, documentFieldNames, envelopes, resealNonces, vaultGeneration
+        case uid, collection, documentFieldNames, envelopes, resealNoncePlan, vaultGeneration
         case docID = "docId"
         case rotationJobID = "rotationJobId"
     }
+}
+
+private struct FixtureNonce: Decodable {
+    let fieldName: String
+    let nonce: [UInt8]
 }
 
 private struct FixtureExpected: Decodable {

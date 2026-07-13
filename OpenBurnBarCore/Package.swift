@@ -814,7 +814,7 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarCore",
                 "OpenBurnBarFirestoreModels",
                 "OpenBurnBarLinuxSecurity"
-            ] + swiftTestingAppleDependencies,
+            ] + swiftTestingAppleDependencies + domainCoreDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
                 + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),

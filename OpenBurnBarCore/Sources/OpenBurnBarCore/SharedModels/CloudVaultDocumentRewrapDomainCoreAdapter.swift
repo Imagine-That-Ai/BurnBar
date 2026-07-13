@@ -56,7 +56,7 @@ enum CloudVaultDocumentRewrapAdapterError: Error, Equatable {
 }
 
 enum CloudVaultDocumentRewrapDomainCoreAdapter {
-    static let requiredABIVersion: UInt32 = 2
+    static let requiredABIVersion: UInt32 = 3
     static let operation = "document_rewrap"
 
     struct Envelope: Equatable, Sendable {
@@ -134,7 +134,9 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
                         docId: request.docID,
                         documentFieldNames: request.documentFieldNames,
                         envelopes: request.envelopes.map(ffiEnvelope),
-                        resealNonces: request.noncePlan.map(\.bytes),
+                        resealNoncePlan: request.noncePlan.map {
+                            CloudVaultResealNonce(fieldName: $0.fieldName, nonce: $0.bytes)
+                        },
                         vaultGeneration: request.vaultGeneration,
                         rotationJobId: request.rotationJobID
                     ),
@@ -485,6 +487,14 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
         }
 
         let sourceByField = Dictionary(uniqueKeysWithValues: request.envelopes.map { ($0.fieldName, $0) })
+        let noncePairs = request.noncePlan.map { ($0.fieldName, $0.bytes) }
+        guard Dictionary(grouping: noncePairs, by: \.0).values.allSatisfy({ $0.count == 1 }) else {
+            throw CloudVaultDocumentRewrapAdapterError.invalidResult
+        }
+        let nonceByField = Dictionary(uniqueKeysWithValues: noncePairs)
+        guard Set(nonceByField.keys) == Set(changed) else {
+            throw CloudVaultDocumentRewrapAdapterError.invalidResult
+        }
         let outputPairs = result.rewrappedEnvelopes.map { ($0.fieldName, $0) }
         guard Dictionary(grouping: outputPairs, by: \.0).values.allSatisfy({ $0.count == 1 }) else {
             throw CloudVaultDocumentRewrapAdapterError.invalidResult
@@ -496,10 +506,17 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
         for field in changed {
             guard let source = sourceByField[field],
                   let output = outputByField[field],
-                  source.kind == output.kind else {
+                  let expectedNonce = nonceByField[field],
+                  source.kind == output.kind,
+                  source.hasCreatedAt == output.hasCreatedAt else {
                 throw CloudVaultDocumentRewrapAdapterError.invalidResult
             }
-            try validateOutput(output, request: request, newVaultKeyID: newVaultKeyID)
+            try validateOutput(
+                output,
+                request: request,
+                newVaultKeyID: newVaultKeyID,
+                expectedNonce: expectedNonce
+            )
         }
         for field in skipped {
             guard let source = sourceByField[field],
@@ -529,7 +546,8 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
             )
         }
         let expectedCompanions = Set(expectedCompanionByTarget.values)
-        guard Set(result.companionIntents) == expectedCompanions else {
+        guard Set(result.companionIntents).count == result.companionIntents.count,
+              Set(result.companionIntents) == expectedCompanions else {
             throw CloudVaultDocumentRewrapAdapterError.invalidResult
         }
 
@@ -538,7 +556,8 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
                   sourceByField[field]?.hasCreatedAt == true else { return nil }
             return PreservedMemberIntent(sourceFieldName: field, memberName: "createdAt")
         })
-        guard Set(result.preservedMemberIntents) == expectedPreserved else {
+        guard Set(result.preservedMemberIntents).count == result.preservedMemberIntents.count,
+              Set(result.preservedMemberIntents) == expectedPreserved else {
             throw CloudVaultDocumentRewrapAdapterError.invalidResult
         }
 
@@ -583,7 +602,8 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
     private static func validateOutput(
         _ envelope: Envelope,
         request: Request,
-        newVaultKeyID: String
+        newVaultKeyID: String,
+        expectedNonce: Data
     ) throws {
         let expectedAAD = try CloudVaultAADContext(
             uid: request.uid,
@@ -600,7 +620,10 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
         switch envelope.kind {
         case .sealedPayload:
             guard envelope.vaultKeyID == newVaultKeyID,
-                  envelope.sealedBoxBase64 != nil,
+                  let sealedBoxBase64 = envelope.sealedBoxBase64,
+                  let sealedBox = canonicalBase64Data(sealedBoxBase64),
+                  sealedBox.count >= 28,
+                  sealedBox.prefix(12) == expectedNonce,
                   envelope.nonce == nil,
                   envelope.ciphertext == nil,
                   envelope.tag == nil,
@@ -612,9 +635,10 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
             }
         case .sealedText:
             guard envelope.vaultKeyID == nil,
-                  envelope.nonce != nil,
-                  envelope.ciphertext != nil,
-                  envelope.tag != nil,
+                  let nonce = envelope.nonce.flatMap(canonicalBase64Data),
+                  nonce == expectedNonce,
+                  envelope.ciphertext.flatMap(canonicalBase64Data) != nil,
+                  envelope.tag.flatMap(canonicalBase64Data)?.count == 16,
                   envelope.sealedBoxBase64 == nil,
                   envelope.plaintextSHA256 == nil,
                   envelope.plaintextHMAC == nil,
@@ -627,13 +651,23 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
                   envelope.nonce == nil,
                   envelope.ciphertext == nil,
                   envelope.tag == nil,
-                  envelope.sealedBoxBase64 != nil,
+                  let sealedBoxBase64 = envelope.sealedBoxBase64,
+                  let sealedBox = canonicalBase64Data(sealedBoxBase64),
+                  sealedBox.count >= 28,
+                  sealedBox.prefix(12) == expectedNonce,
                   envelope.plaintextSHA256 == nil,
                   envelope.plaintextHMAC != nil,
                   envelope.integrityHashVersion == 1 else {
                 throw CloudVaultDocumentRewrapAdapterError.invalidResult
             }
         }
+    }
+
+    private static func canonicalBase64Data(_ value: String) -> Data? {
+        guard let data = Data(base64Encoded: value), data.base64EncodedString() == value else {
+            return nil
+        }
+        return data
     }
 
     private static func envelopeMap(_ envelope: Envelope) -> [String: Any] {
