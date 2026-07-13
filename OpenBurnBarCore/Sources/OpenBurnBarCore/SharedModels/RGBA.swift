@@ -4,37 +4,17 @@ import Foundation
 import SwiftUI
 #endif
 
-// MARK: - RGBA (lightweight, Canvas-friendly)
+// MARK: - RGBA color math + SwiftUI Color bridge
+//
+// The `RGBA` value type itself is a Foundation-only primitive that lives in
+// `OpenBurnBarKernel/SharedModels/RGBA.swift` so the pure engine and every Kernel
+// consumer can use it on all platforms (including off-Apple). The richer color
+// math and the SwiftUI bridge stay in the SwiftUI-carrying layer (Core today,
+// `OpenBurnBarUI` after the K4 split) — the bridge behind `#if canImport(SwiftUI)`
+// — keeping the Kernel SwiftUI/AppKit-free while macOS/iOS see the exact same API
+// (`.bucketKey`, `.mix`, `.lightened`, `.darkened`, `.color`) as before the extraction.
 
-/// Raw RGBA components for use in Canvas drawing contexts where SwiftUI `Color`
-/// cannot be used directly. Components are in `[0, 1]`.
-///
-/// This is a Foundation-only primitive so it stays available to the pure engine
-/// on non-Apple platforms. The SwiftUI `color` bridge is compiled in only where
-/// SwiftUI is available (`#if canImport(SwiftUI)`), which is every Apple
-/// platform — so macOS/iOS see the exact same symbol as before this extraction.
-public struct RGBA: Hashable, Sendable {
-    public let r: Double
-    public let g: Double
-    public let b: Double
-    public let a: Double
-
-    public init(r: Double, g: Double, b: Double, a: Double = 1.0) {
-        self.r = r
-        self.g = g
-        self.b = b
-        self.a = a
-    }
-
-    #if canImport(SwiftUI)
-    public var color: Color {
-        // Single-initializer form: `Color(...).opacity(a)` layers an extra
-        // wrapper Color per call, and substrates convert thousands of RGBA
-        // values per frame on the main thread. Rendering is identical.
-        Color(red: r, green: g, blue: b, opacity: a)
-    }
-    #endif
-
+extension RGBA {
     /// Quantized 8-bit-per-channel bucket key. Two RGBA values that round to the
     /// same byte triple share a bucket, which makes Canvas fill batching stable
     /// across micro-jitter in floating-point math and keeps draw counts bounded
@@ -46,6 +26,15 @@ public struct RGBA: Hashable, Sendable {
         let a8 = UInt32((a.clamped(to: 0...1) * 255.0).rounded()) & 0xFF
         return (r8 << 24) | (g8 << 16) | (b8 << 8) | a8
     }
+
+    #if canImport(SwiftUI)
+    public var color: Color {
+        // Single-initializer form: `Color(...).opacity(a)` layers an extra
+        // wrapper Color per call, and substrates convert thousands of RGBA
+        // values per frame on the main thread. Rendering is identical.
+        Color(red: r, green: g, blue: b, opacity: a)
+    }
+    #endif
 }
 
 // MARK: - Color math helpers
