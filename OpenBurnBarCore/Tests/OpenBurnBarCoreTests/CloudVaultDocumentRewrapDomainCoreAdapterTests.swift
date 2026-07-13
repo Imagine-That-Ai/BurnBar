@@ -73,6 +73,43 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
         XCTAssertEqual(recorder.nativeCalls, 0)
     }
 
+    func testShadowStrictLoweringFailureReturnsPermissiveLegacyResult() throws {
+        let recorder = RewrapRecorder()
+        let malformedForStrictLowering: [String: Any] = ["field": ["nonce": "AA=="]]
+        let expected = CloudVaultDocumentRewrapResult(data: malformedForStrictLowering, changedFields: [])
+
+        let result = try CloudVaultDocumentRewrapDomainCoreAdapter.rewrap(
+            data: malformedForStrictLowering,
+            uid: "secret-user",
+            collection: "secret-collection",
+            docID: "secret-document",
+            oldKeyData: oldKey,
+            newKeyData: newKey,
+            newVaultKeyID: try CloudVaultCrypto.vaultKeyID(for: newKey),
+            vaultGeneration: nil,
+            rotationJobID: nil,
+            environment: [CloudVaultDocumentRewrapMigrationMode.environmentKey: "shadow"],
+            logger: recorder,
+            backend: recorder.backend(result: .empty),
+            nonceGenerator: { XCTFail("Malformed legacy field requested a nonce"); return Data() },
+            legacy: { plan in
+                recorder.legacyCalls += 1
+                XCTAssertTrue(plan.isEmpty)
+                return expected
+            }
+        )
+
+        XCTAssertEqual(result.changedFields, expected.changedFields)
+        XCTAssertEqual(result.data.keys.sorted(), expected.data.keys.sorted())
+        XCTAssertEqual(recorder.legacyCalls, 1)
+        XCTAssertEqual(recorder.nativeCalls, 0)
+        XCTAssertEqual(recorder.diagnostics.map(\.category), ["invalid_input"])
+        let diagnostic = String(describing: recorder.diagnostics)
+        XCTAssertFalse(diagnostic.contains("secret-user"))
+        XCTAssertFalse(diagnostic.contains("secret-collection"))
+        XCTAssertFalse(diagnostic.contains("secret-document"))
+    }
+
     func testRustModeLowersOneLexicographicDocumentCallAndAppliesEveryIntent() throws {
         let recorder = RewrapRecorder()
         let createdAt = TimestampSentinel()
