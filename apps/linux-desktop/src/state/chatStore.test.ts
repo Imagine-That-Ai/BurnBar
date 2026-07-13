@@ -7,7 +7,11 @@ import type {
   PersistedChatMessage
 } from '../tauriBridge.js';
 import { useShellStore } from './shellStore.js';
-import { applyChatStreamEvent, useChatStore } from './chatStore.js';
+import {
+  applyChatStreamEvent,
+  CHAT_ACTIVE_THREAD_STORAGE_KEY,
+  useChatStore
+} from './chatStore.js';
 
 const NOW = '2026-07-10T12:00:00.000Z';
 
@@ -90,10 +94,49 @@ function reset() {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  window.localStorage.removeItem(CHAT_ACTIVE_THREAD_STORAGE_KEY);
   reset();
 });
 
 describe('exact-thread chat store', () => {
+  it('resumes the last daemon-backed thread after a shell restart', async () => {
+    window.localStorage.setItem(CHAT_ACTIVE_THREAD_STORAGE_KEY, 'B');
+    const get = vi.fn(async (threadID: string) => ({
+      thread: thread(threadID),
+      messages: [persisted(`${threadID}-resumed`, threadID, 'assistant', 'Durable after restart')],
+      hasMoreBefore: false
+    }));
+    useShellStore.setState({ bridge: bridgeWith({ chatThreadGet: get }), fixtureMode: false });
+
+    await useChatStore.getState().load();
+
+    expect(useChatStore.getState().selectedThreadId).toBe('B');
+    expect(get).toHaveBeenCalledWith('B', 500);
+    expect(useChatStore.getState().messages[0]).toMatchObject({
+      id: 'B-resumed',
+      threadID: 'B',
+      text: 'Durable after restart'
+    });
+  });
+
+  it('does not accept unsafe stored thread identifiers as a resume target', async () => {
+    window.localStorage.setItem(CHAT_ACTIVE_THREAD_STORAGE_KEY, `${'x'.repeat(257)}`);
+    const get = vi.fn(async (threadID: string) => ({
+      thread: thread(threadID),
+      messages: [],
+      hasMoreBefore: false
+    }));
+    useShellStore.setState({ bridge: bridgeWith({ chatThreadGet: get }), fixtureMode: false });
+
+    await useChatStore.getState().load();
+
+    expect(useChatStore.getState().selectedThreadId).toBe('A');
+    expect(get).toHaveBeenCalledWith('A', 500);
+    // The unsafe hint is ignored; successful daemon selection replaces it
+    // with the verified thread ID.
+    expect(window.localStorage.getItem(CHAT_ACTIVE_THREAD_STORAGE_KEY)).toBe('A');
+  });
+
   it('marks gateway tool calls as approval-unavailable without inventing a run identity', () => {
     const messages = applyChatStreamEvent([], 'assistant-1', {
       type: 'tool_call',

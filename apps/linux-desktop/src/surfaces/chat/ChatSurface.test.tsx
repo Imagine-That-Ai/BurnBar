@@ -6,6 +6,7 @@ import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import type {
   ChatThreadGetResult,
   ChatThreadListResult,
+  ChatMessageCursor,
   GatewayProxyRequest,
   LinuxShellBridge,
   SessionListResult
@@ -17,7 +18,7 @@ import { ChatSurface } from './ChatSurface.js';
 
 function mockBridge(handlers: {
   chatThreadList?: (query?: string, limit?: number) => Promise<ChatThreadListResult>;
-  chatThreadGet?: (threadID: string, maxMessages?: number) => Promise<ChatThreadGetResult>;
+  chatThreadGet?: (threadID: string, maxMessages?: number, before?: ChatMessageCursor) => Promise<ChatThreadGetResult>;
   chatAttachmentUpload?: LinuxShellBridge['chatAttachmentUpload'];
   gatewayProbe?: () => Promise<boolean>;
   gatewayChatStream?: (request: GatewayProxyRequest, onChunk: (chunk: string) => void) => Promise<void>;
@@ -293,6 +294,87 @@ describe('ChatSurface', () => {
     }
   });
 
+  it('exports unloaded older transcript pages from the daemon', async () => {
+    const summary = {
+      id: 'thread-export-paged-ui',
+      title: 'Paged export thread',
+      preview: 'A long durable transcript',
+      messageCount: 3,
+      createdAt: '2026-07-10T12:00:00Z',
+      updatedAt: '2026-07-10T12:04:00Z'
+    };
+    const calls: Array<ChatMessageCursor | undefined> = [];
+    const chatThreadGet = vi.fn(async (_threadID: string, _maxMessages = 500, before?: ChatMessageCursor) => {
+      calls.push(before);
+      if (!before) {
+        return {
+          thread: summary,
+          messages: [
+            {
+              id: 'page-new',
+              threadID: summary.id,
+              role: 'assistant' as const,
+              content: 'Newest page',
+              timestamp: '2026-07-10T12:04:00Z'
+            }
+          ],
+          hasMoreBefore: true
+        };
+      }
+      return {
+        thread: summary,
+        messages: [
+          {
+            id: 'page-old',
+            threadID: summary.id,
+            role: 'user' as const,
+            content: 'Older page',
+            timestamp: '2026-07-10T12:00:00Z'
+          }
+        ],
+        hasMoreBefore: false
+      };
+    });
+    useShellStore.setState({
+      bridge: mockBridge({ chatThreadList: async () => ({ threads: [summary] }), chatThreadGet }),
+      fixtureMode: false,
+      bridgeReady: true
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+
+    const url = globalThis.URL;
+    const originalCreateObjectURL = url.createObjectURL;
+    const originalRevokeObjectURL = url.revokeObjectURL;
+    const createObjectURL = vi.fn(() => 'blob:chat-export-paged');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(url, 'createObjectURL', { configurable: true, writable: true, value: createObjectURL });
+    Object.defineProperty(url, 'revokeObjectURL', { configurable: true, writable: true, value: revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Export chat as JSON' }));
+      await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/Exported openburnbar-chat-Paged-export-thread\.json/));
+      expect(chatThreadGet).toHaveBeenCalledTimes(3); // initial selection plus complete export pages
+      expect(calls).toEqual([undefined, undefined, {
+        timestamp: '2026-07-10T12:04:00Z',
+        messageID: 'page-new'
+      }]);
+      expect(createObjectURL).toHaveBeenCalledOnce();
+      expect(click).toHaveBeenCalled();
+    } finally {
+      if (originalCreateObjectURL) {
+        Object.defineProperty(url, 'createObjectURL', { configurable: true, writable: true, value: originalCreateObjectURL });
+      } else {
+        delete (url as { createObjectURL?: unknown }).createObjectURL;
+      }
+      if (originalRevokeObjectURL) {
+        Object.defineProperty(url, 'revokeObjectURL', { configurable: true, writable: true, value: originalRevokeObjectURL });
+      } else {
+        delete (url as { revokeObjectURL?: unknown }).revokeObjectURL;
+      }
+    }
+  });
+
   it('uploads an attachment before sending an opaque reference to the gateway', async () => {
     const summary = {
       id: 'thread-attachment-ui',
@@ -357,6 +439,8 @@ describe('ChatSurface', () => {
     await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
     fireEvent.click(screen.getAllByLabelText('Chat options')[0]!);
     expect(screen.getByRole('menu', { name: 'Chat options' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Resume thread from daemon' }));
+    await waitFor(() => expect(screen.getByText('Thread resumed from the daemon.')).toBeTruthy());
     fireEvent.click(screen.getByRole('menuitem', { name: 'Pop out chat' }));
     await waitFor(() => expect(open).toHaveBeenCalledOnce());
     expect(screen.getByText('Chat opened in a separate window.')).toBeTruthy();

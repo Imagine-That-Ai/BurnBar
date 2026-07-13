@@ -16,6 +16,9 @@ type ChatToolbarProps = {
   onModelOptionChange: (id: string) => void;
   onThinkingLevelChange: (level: ChatThinkingSelection) => void;
   onReconnect: () => void;
+  onResume: () => void;
+  resumeDisabled: boolean;
+  resumeStatus?: string | null;
   onPopOut?: () => void;
   onClosePopOut?: () => void;
   popoutWindow: boolean;
@@ -25,6 +28,7 @@ type ChatToolbarProps = {
   onExportFormatChange: (format: ChatExportFormat) => void;
   onExport: () => void;
   exportDisabled: boolean;
+  exportBusy: boolean;
   exportStatus: string | null;
   compact?: boolean;
 };
@@ -41,6 +45,9 @@ export function ChatToolbar({
   onModelOptionChange,
   onThinkingLevelChange,
   onReconnect,
+  onResume,
+  resumeDisabled,
+  resumeStatus,
   onPopOut,
   onClosePopOut,
   popoutWindow,
@@ -50,6 +57,7 @@ export function ChatToolbar({
   onExportFormatChange,
   onExport,
   exportDisabled,
+  exportBusy,
   exportStatus,
   compact: _compact = false
 }: ChatToolbarProps) {
@@ -76,7 +84,7 @@ export function ChatToolbar({
             value={exportFormat}
             onChange={(event) => onExportFormatChange(event.target.value as ChatExportFormat)}
             aria-label="Chat export format"
-            disabled={exportDisabled}
+            disabled={exportDisabled || exportBusy}
           >
             <option value="json">JSON</option>
             <option value="markdown">Markdown</option>
@@ -85,8 +93,8 @@ export function ChatToolbar({
             type="button"
             className="ghost chat-toolbar-icon"
             onClick={onExport}
-            disabled={exportDisabled}
-            title={exportDisabled ? 'Select a loaded thread to export' : `Export chat as ${exportFormat === 'json' ? 'JSON' : 'Markdown'}`}
+            disabled={exportDisabled || exportBusy}
+            title={exportDisabled ? 'Select a thread with durable messages to export' : exportBusy ? 'Loading the complete transcript from the daemon' : `Export chat as ${exportFormat === 'json' ? 'JSON' : 'Markdown'}`}
             aria-label={`Export chat as ${exportFormat === 'json' ? 'JSON' : 'Markdown'}`}
           >
             <span aria-hidden="true">⇩</span>
@@ -114,6 +122,9 @@ export function ChatToolbar({
             <button type="button" role="menuitem" onClick={onReconnect}>
               Reconnect gateway
             </button>
+            <button type="button" role="menuitem" onClick={onResume} disabled={resumeDisabled}>
+              Resume thread from daemon
+            </button>
             {onPopOut ? (
               <button type="button" role="menuitem" onClick={onPopOut}>
                 Pop out chat
@@ -125,6 +136,7 @@ export function ChatToolbar({
               </button>
             ) : null}
             {popoutStatus ? <span className="chat-options-status" role="status">{popoutStatus}</span> : null}
+            {resumeStatus ? <span className="chat-options-status" role="status">{resumeStatus}</span> : null}
           </div>
         </details>
       </div>

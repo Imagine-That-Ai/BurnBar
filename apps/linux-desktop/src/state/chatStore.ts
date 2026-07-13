@@ -31,6 +31,9 @@ import {
 import { useShellStore } from './shellStore.js';
 
 export const CHAT_THREAD_PAGE_SIZE = 40;
+/** Only an opaque thread identifier is retained across shell restarts. */
+export const CHAT_ACTIVE_THREAD_STORAGE_KEY = 'openburnbar.chat.active-thread.v1';
+const CHAT_THREAD_ID_MAX_BYTES = 256;
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system' | 'tool' | 'thinking';
 
@@ -84,6 +87,8 @@ export type ChatState = {
   reconnectGateway(): Promise<void>;
   search(query: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
+  /** Re-reads the selected durable thread after a daemon/shell restart. */
+  resumeThread(): Promise<boolean>;
   loadOlderMessages(): Promise<void>;
   loadMoreThreads(): void;
   setBackend(id: ChatBackendId): void;
@@ -101,6 +106,30 @@ export type ChatState = {
   retryToolApproval(messageID: string): Promise<void>;
   stopStreaming(): void;
 };
+
+function validStoredThreadID(raw: string | null): string | null {
+  if (raw === null || raw.trim() !== raw || raw.length === 0) return null;
+  if (raw.includes('\u0000') || /[\u0000-\u001f\u007f]/.test(raw)) return null;
+  if (new TextEncoder().encode(raw).length > CHAT_THREAD_ID_MAX_BYTES) return null;
+  return raw;
+}
+
+function readActiveThreadID(): string | null {
+  try {
+    return validStoredThreadID(globalThis.localStorage?.getItem(CHAT_ACTIVE_THREAD_STORAGE_KEY) ?? null);
+  } catch {
+    return null;
+  }
+}
+
+function persistActiveThreadID(threadID: string | null): void {
+  try {
+    if (threadID) globalThis.localStorage?.setItem(CHAT_ACTIVE_THREAD_STORAGE_KEY, threadID);
+    else globalThis.localStorage?.removeItem(CHAT_ACTIVE_THREAD_STORAGE_KEY);
+  } catch {
+    // Browser storage is only a resume hint; the daemon remains authoritative.
+  }
+}
 
 function fixtureThreads(): ChatThreadSummary[] {
   return fixtureSessionList().sessions.map((session) => ({
@@ -497,7 +526,16 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       const gateway = await resolveGatewayStatus(fixtureMode);
       const prevSelected = get().selectedThreadId;
       const stillThere = prevSelected && threads.some((t) => t.id === prevSelected);
-      const selectedThreadId = stillThere ? prevSelected : threads[0]?.id ?? null;
+      const remembered = readActiveThreadID();
+      const rememberedStillThere = remembered && threads.some((t) => t.id === remembered);
+      const selectedThreadId = stillThere
+        ? prevSelected
+        : rememberedStillThere
+          ? remembered
+          : threads[0]?.id ?? null;
+      if (!query.trim() && remembered && !rememberedStillThere && !stillThere) {
+        persistActiveThreadID(null);
+      }
       const selected = threads.find((t) => t.id === selectedThreadId) ?? null;
       const selectedBackend = backendFromThread(selected, get().backend);
       set({
@@ -559,6 +597,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     if (get().streaming || get().streamPhase === 'composing') return;
     const { fixtureMode, bridge } = useShellStore.getState();
     if (!id) {
+      persistActiveThreadID(null);
       set({
         selectedThreadId: null,
         messages: [],
@@ -596,6 +635,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           : []
         : result?.messages.map(messageFromPersisted) ?? [];
       if (get().selectedThreadId === id) {
+        persistActiveThreadID(id);
         set({
           messages,
           messagesLoading: false,
@@ -614,6 +654,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         });
       }
     }
+  },
+
+  async resumeThread() {
+    const target = get().selectedThreadId ?? readActiveThreadID();
+    if (!target) return false;
+    await get().selectThread(target);
+    const state = get();
+    return state.selectedThreadId === target && state.messagesLoading === false && state.streamPhase !== 'error';
   },
 
   async loadOlderMessages() {
@@ -719,6 +767,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       streamError: null,
       ...defaultSelectionForBackend(get().config, get().backend)
     });
+    persistActiveThreadID(null);
   },
 
   async sendToThread(input) {

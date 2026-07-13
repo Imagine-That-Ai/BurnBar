@@ -1,7 +1,24 @@
 import type { ChatMessage, ChatMessageRole } from '../../state/chatStore.js';
-import type { ChatThreadSummary } from '../../tauriBridge.js';
+import type {
+  ChatMessageCursor,
+  ChatThreadGetResult,
+  ChatThreadSummary,
+  PersistedChatMessage
+} from '../../tauriBridge.js';
 
 export type ChatExportFormat = 'json' | 'markdown';
+
+/** Keep export/replay bounded even when a corrupted or runaway database reports an enormous count. */
+export const CHAT_HISTORY_PAGE_SIZE = 500;
+export const CHAT_HISTORY_MAX_MESSAGES = 10_000;
+export const CHAT_HISTORY_MAX_CONTENT_BYTES = 16 * 1024 * 1024;
+export const CHAT_HISTORY_MAX_PAGES = Math.ceil(CHAT_HISTORY_MAX_MESSAGES / CHAT_HISTORY_PAGE_SIZE);
+
+export type ChatThreadPageFetcher = (
+  threadID: string,
+  maxMessages: number,
+  before?: ChatMessageCursor
+) => Promise<ChatThreadGetResult>;
 
 type ExportMessage = {
   id: string;
@@ -107,6 +124,106 @@ export type ChatExportDownload = {
   content: string;
   mimeType: 'application/json' | 'text/markdown';
 };
+
+function messageCursor(message: PersistedChatMessage): ChatMessageCursor {
+  return { timestamp: message.timestamp, messageID: message.id };
+}
+
+function historyMessageSize(message: PersistedChatMessage): number {
+  return new TextEncoder().encode(message.content).length;
+}
+
+/**
+ * Read the complete durable transcript from the daemon's stable cursor API.
+ *
+ * The renderer never assumes the currently visible page is the export. Pages
+ * are fetched newest-first and prepended in chronological order. Bounds and
+ * progress checks fail closed on malformed/corrupt daemon responses rather
+ * than silently producing a partial file that looks complete.
+ */
+export async function loadCompleteChatHistory(
+  thread: ChatThreadSummary,
+  fetchPage: ChatThreadPageFetcher,
+  options: {
+    maxMessages?: number;
+    maxContentBytes?: number;
+    pageSize?: number;
+  } = {}
+): Promise<PersistedChatMessage[]> {
+  const maxMessages = options.maxMessages ?? CHAT_HISTORY_MAX_MESSAGES;
+  const maxContentBytes = options.maxContentBytes ?? CHAT_HISTORY_MAX_CONTENT_BYTES;
+  const pageSize = options.pageSize ?? CHAT_HISTORY_PAGE_SIZE;
+  if (
+    !Number.isSafeInteger(maxMessages) ||
+    maxMessages < 1 ||
+    maxMessages > CHAT_HISTORY_MAX_MESSAGES ||
+    !Number.isSafeInteger(maxContentBytes) ||
+    maxContentBytes < 1 ||
+    maxContentBytes > CHAT_HISTORY_MAX_CONTENT_BYTES ||
+    !Number.isSafeInteger(pageSize) ||
+    pageSize < 1 ||
+    pageSize > CHAT_HISTORY_PAGE_SIZE
+  ) {
+    throw new Error('Chat history export bounds are invalid.');
+  }
+
+  const all: PersistedChatMessage[] = [];
+  const seenIDs = new Set<string>();
+  let contentBytes = 0;
+  let before: ChatMessageCursor | undefined;
+
+  for (let page = 0; page < CHAT_HISTORY_MAX_PAGES; page += 1) {
+    const result = await fetchPage(thread.id, pageSize, before);
+    if (!result.thread || result.thread.id !== thread.id) {
+      throw new Error('Chat history response is missing its thread identity.');
+    }
+    if (result.messages.length === 0) {
+      if (result.hasMoreBefore) {
+        throw new Error('Chat history pagination made no progress.');
+      }
+      return all;
+    }
+
+    for (const message of result.messages) {
+      if (message.threadID !== thread.id) {
+        throw new Error('Chat history response contains a different thread.');
+      }
+      if (seenIDs.has(message.id)) {
+        throw new Error('Chat history pagination returned a duplicate message.');
+      }
+      seenIDs.add(message.id);
+      contentBytes += historyMessageSize(message);
+      if (all.length >= maxMessages || contentBytes > maxContentBytes) {
+        throw new Error('Chat history exceeds the safe export limit.');
+      }
+    }
+    // The daemon returns each page oldest-to-newest; prepend the whole page so
+    // ordering within a page remains stable.
+    all.unshift(...result.messages);
+
+    if (!result.hasMoreBefore) return all;
+    const oldest = result.messages[0];
+    const next = messageCursor(oldest);
+    if (before && before.timestamp === next.timestamp && before.messageID === next.messageID) {
+      throw new Error('Chat history pagination cursor did not advance.');
+    }
+    before = next;
+  }
+
+  throw new Error('Chat history exceeds the safe page limit.');
+}
+
+/** Convert daemon rows into the renderer-only shape used by the export serializer. */
+export function chatMessagesForExport(messages: readonly PersistedChatMessage[]): ChatMessage[] {
+  return messages.map((message) => ({
+    id: message.id,
+    threadID: message.threadID,
+    role: message.role,
+    text: message.content,
+    timestamp: message.timestamp,
+    attachments: message.attachments
+  }));
+}
 
 /** Trigger the WebView's native download handoff without writing through renderer filesystem APIs. */
 export function downloadChatExport(

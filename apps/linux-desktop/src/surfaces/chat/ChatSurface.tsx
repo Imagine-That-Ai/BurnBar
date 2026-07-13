@@ -15,7 +15,9 @@ import { closeChatPopoutWindow, isChatPopoutWindow, openChatPopoutWindow } from 
 import type { PendingChatAttachment } from './Composer.js';
 import {
   buildChatExportDocument,
+  chatMessagesForExport,
   downloadChatExport,
+  loadCompleteChatHistory,
   sanitizeChatExportFilename,
   serializeChatExport,
   type ChatExportFormat
@@ -54,6 +56,7 @@ export function ChatSurface() {
   const reconnectGateway = useChatStore((s) => s.reconnectGateway);
   const search = useChatStore((s) => s.search);
   const selectThread = useChatStore((s) => s.selectThread);
+  const resumeThread = useChatStore((s) => s.resumeThread);
   const loadOlderMessages = useChatStore((s) => s.loadOlderMessages);
   const loadMoreThreads = useChatStore((s) => s.loadMoreThreads);
   const setBackend = useChatStore((s) => s.setBackend);
@@ -66,7 +69,9 @@ export function ChatSurface() {
   const stopStreaming = useChatStore((s) => s.stopStreaming);
   const [streamAnnouncement, setStreamAnnouncement] = useState({ text: '', count: 0 });
   const [exportFormat, setExportFormat] = useState<ChatExportFormat>('json');
+  const [exportBusy, setExportBusy] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [resumeStatus, setResumeStatus] = useState<string | null>(null);
   const [citationStatus, setCitationStatus] = useState<string | null>(null);
   const [popoutStatus, setPopoutStatus] = useState<string | null>(null);
   const popoutWindow = isChatPopoutWindow();
@@ -83,6 +88,7 @@ export function ChatSurface() {
 
   useEffect(() => {
     setExportStatus(null);
+    setResumeStatus(null);
   }, [selectedThreadId]);
 
   useEffect(() => {
@@ -122,15 +128,19 @@ export function ChatSurface() {
     setPopoutStatus(opened ? 'Chat opened in a separate window.' : 'A separate chat window is unavailable.');
   };
 
+  const resumeChat = async () => {
+    if (!selectedThreadId) return;
+    setResumeStatus('Reloading the durable thread from the daemon…');
+    const resumed = await resumeThread();
+    setResumeStatus(resumed ? 'Thread resumed from the daemon.' : 'Thread resume is unavailable.');
+  };
+
   const offline = !fixtureMode && !bridge;
   const provenance = fixtureMode ? 'fixture transcript' : 'live daemon chat history';
   const visibleThreads = threads.slice(0, visibleThreadCount);
   const hasMoreThreads = threads.length > visibleThreadCount;
   const selectedThread = threads.find((t) => t.id === selectedThreadId) ?? null;
-  const exportableMessageCount = selectedThread
-    ? buildChatExportDocument(selectedThread, messages).messages.length
-    : 0;
-  const exportDisabled = !selectedThread || exportableMessageCount === 0;
+  const exportDisabled = !selectedThread || selectedThread.messageCount === 0;
   const gatewayHint = gatewayBaseURL ? `gateway ${gatewayBaseURL}` : null;
   const liveComposerDisabled = !fixtureMode && gatewayStatus !== 'reachable';
   const liveComposerDisabledReason =
@@ -142,10 +152,21 @@ export function ChatSurface() {
           ? 'Checking gateway health…'
           : '';
 
-  const exportChat = () => {
-    if (!selectedThread || exportDisabled) return;
+  const exportChat = async () => {
+    if (!selectedThread || exportDisabled || exportBusy) return;
+    setExportBusy(true);
+    setExportStatus('Loading complete transcript from the daemon…');
     try {
-      const document = buildChatExportDocument(selectedThread, messages);
+      // Export is daemon-authoritative. The visible WebView page may be only
+      // the newest bounded slice, so walk older pages before creating a file.
+      const exportMessages = fixtureMode || !bridge
+        ? messages
+        : chatMessagesForExport(
+            await loadCompleteChatHistory(selectedThread, (threadID, maxMessages, before) =>
+              bridge.chatThreadGet(threadID, maxMessages, before)
+            )
+          );
+      const document = buildChatExportDocument(selectedThread, exportMessages);
       const filename = sanitizeChatExportFilename(selectedThread.title, selectedThread.id, exportFormat);
       const content = serializeChatExport(document, exportFormat);
       downloadChatExport({
@@ -156,6 +177,8 @@ export function ChatSurface() {
       setExportStatus(`Exported ${filename}`);
     } catch (error) {
       setExportStatus(error instanceof Error ? error.message : 'Chat export failed.');
+    } finally {
+      setExportBusy(false);
     }
   };
 
@@ -212,6 +235,9 @@ export function ChatSurface() {
     onModelOptionChange: setModelOption,
     onThinkingLevelChange: setThinkingLevel,
     onReconnect: () => void reconnectGateway(),
+    onResume: () => void resumeChat(),
+    resumeDisabled: !selectedThreadId || messagesLoading || streaming,
+    resumeStatus,
     onPopOut: popoutWindow ? undefined : () => void openPopout(),
     onClosePopOut: popoutWindow ? () => void closeChatPopoutWindow() : undefined,
     popoutWindow,
@@ -220,6 +246,7 @@ export function ChatSurface() {
     onExportFormatChange: setExportFormat,
     onExport: exportChat,
     exportDisabled,
+    exportBusy,
     exportStatus,
     messages,
     messagesLoading,
