@@ -152,7 +152,7 @@ function registry(complete) {
           : `scripts/linux-port/capture-${requirementId.toLowerCase()}.mjs`;
       const materializerProducerPath = RELEASE_ONLY.has(requirementId)
         ? 'scripts/linux-port/prepare-product-requirement-input.mjs'
-        : requirementId === 'P-02'
+        : ['P-02', 'P-31', 'P-34'].includes(requirementId)
           ? 'scripts/linux-port/finalize-product-feature-proof-closure.mjs'
           : `scripts/linux-port/materialize-${requirementId.toLowerCase()}.mjs`;
       return {
@@ -177,7 +177,7 @@ function registry(complete) {
         materializer: {
           producerPath: materializerProducerPath,
           entrypoint: 'requirement',
-          workflowPath: RELEASE_ONLY.has(requirementId) || requirementId === 'P-02'
+          workflowPath: RELEASE_ONLY.has(requirementId) || ['P-02', 'P-31', 'P-34'].includes(requirementId)
             ? '.github/workflows/linux-product-parity.yml'
             : `.github/workflows/${requirementId.toLowerCase()}-materialize.yml`,
           testPath,
