@@ -5,6 +5,21 @@ namespace OpenBurnBar.App.Settings.ViewModels.Tests;
 
 public sealed class GeneralSettingsViewModelTests
 {
+    [Theory]
+    [InlineData("today", GeneralTimeRange.Today)]
+    [InlineData("week", GeneralTimeRange.Last7Days)]
+    [InlineData("month", GeneralTimeRange.Last30Days)]
+    [InlineData("this month", GeneralTimeRange.ThisMonth)]
+    [InlineData("alltime", GeneralTimeRange.AllTime)]
+    public void TimeRangeSerialization_MigratesLegacyValues(
+        string raw,
+        GeneralTimeRange expected)
+    {
+        Assert.Equal(expected, GeneralSettingsSerialization.ParseTimeRange(raw));
+        Assert.Equal(expected, GeneralSettingsSerialization.ParseTimeRange(
+            GeneralSettingsSerialization.TimeRangeKey(expected)));
+    }
+
     [Fact]
     public void Defaults_MatchMacBehaviorSettings()
     {
@@ -46,7 +61,7 @@ public sealed class GeneralSettingsViewModelTests
         var store = new InMemoryGeneralSettingsStore();
         var vm = new GeneralSettingsViewModel(store)
         {
-            TimeRange = GeneralTimeRange.Month,
+            TimeRange = GeneralTimeRange.AllTime,
             UsageDisplayMode = GeneralUsageDisplayMode.Tokens,
             RefreshIntervalSeconds = 900,
             IndexingEnabled = true,
@@ -56,7 +71,7 @@ public sealed class GeneralSettingsViewModelTests
         };
 
         var reloaded = new GeneralSettingsViewModel(store);
-        Assert.Equal(GeneralTimeRange.Month, reloaded.TimeRange);
+        Assert.Equal(GeneralTimeRange.AllTime, reloaded.TimeRange);
         Assert.Equal(GeneralUsageDisplayMode.Tokens, reloaded.UsageDisplayMode);
         Assert.Equal(900, reloaded.RefreshIntervalSeconds);
         Assert.True(reloaded.IndexingEnabled);
@@ -64,7 +79,7 @@ public sealed class GeneralSettingsViewModelTests
         Assert.Equal(GeneralEmbeddingProvider.OpenAI, reloaded.EmbeddingProvider);
         Assert.Equal("text-embedding-ada-002", reloaded.OpenAIEmbeddingModel);
         Assert.Equal(new GeneralSettingsSnapshot(
-            GeneralTimeRange.Month,
+            GeneralTimeRange.AllTime,
             GeneralUsageDisplayMode.Tokens,
             900,
             true,

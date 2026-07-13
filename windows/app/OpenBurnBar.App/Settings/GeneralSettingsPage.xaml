@@ -31,7 +31,7 @@
                 <tk:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8B7;" />
                 </tk:SettingsCard.HeaderIcon>
-                <Button Content="Run wizard" />
+                <Button Content="Run wizard" Click="RunWizard_Click" />
             </tk:SettingsCard>
 
             <tk:SettingsCard x:Name="AppearanceCard" Header="Appearance"
@@ -50,9 +50,11 @@
 
             <tk:SettingsCard x:Name="TimeRangeCard" Header="Default Time Range" Description="Window used by charts and totals">
                 <ComboBox x:Name="TimeRangePicker" SelectionChanged="TimeRangePicker_SelectionChanged">
-                    <ComboBoxItem Content="Day" />
-                    <ComboBoxItem Content="Week" />
-                    <ComboBoxItem Content="Month" />
+                    <ComboBoxItem Content="Today" />
+                    <ComboBoxItem Content="Last 7 Days" />
+                    <ComboBoxItem Content="Last 30 Days" />
+                    <ComboBoxItem Content="This Month" />
+                    <ComboBoxItem Content="All Time" />
                 </ComboBox>
             </tk:SettingsCard>
 

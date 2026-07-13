@@ -27,8 +27,10 @@ public sealed record GeneralSettingsSnapshot(
 public enum GeneralTimeRange
 {
     Today,
-    Week,
-    Month,
+    Last7Days,
+    Last30Days,
+    ThisMonth,
+    AllTime,
 }
 
 public enum GeneralUsageDisplayMode

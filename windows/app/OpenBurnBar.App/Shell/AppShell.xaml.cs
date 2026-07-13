@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.SessionLogs;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.App.UsageRuntime;
 
 namespace OpenBurnBar.App.Shell;
 
@@ -33,6 +34,9 @@ public sealed partial class AppShell : UserControl
     /// Provide the shell theme service. The Appearance picker binds lazily on first flyout open.
     /// </summary>
     public void BindTheme(ThemeService theme) => _theme = theme;
+
+    /// <summary>Connects the header telemetry capsule to the live usage runtime.</summary>
+    public void BindUsageRuntime(IUsageRuntime? runtime) => BurnHero.Bind(runtime);
 
     private void AppearanceFlyout_Opening(object sender, object e)
     {

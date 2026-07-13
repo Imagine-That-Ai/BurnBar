@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.App.UsageRuntime;
 
 namespace OpenBurnBar.App;
 
@@ -17,7 +18,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly ThemeService _theme;
 
-    public MainWindow(ThemeService theme)
+    public MainWindow(ThemeService theme, IUsageRuntime? usageRuntime = null)
     {
         _theme = theme;
         InitializeComponent();
@@ -36,6 +37,7 @@ public sealed partial class MainWindow : Window
         // Wire the shell's Appearance flyout to the shared theme service, then let the theme
         // service own this window's element theme + backdrop (Mica vs solid).
         ShellControl.BindTheme(theme);
+        ShellControl.BindUsageRuntime(usageRuntime);
         theme.Register(this);
 
         Closed += OnClosed;

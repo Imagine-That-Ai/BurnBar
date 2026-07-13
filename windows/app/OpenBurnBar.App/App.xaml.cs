@@ -148,7 +148,7 @@ public partial class App : Application
 
     private void StartRouteSmoke(RouteSmokeOptions smoke)
     {
-        _mainWindow = new MainWindow(_theme!);
+        _mainWindow = new MainWindow(_theme!, _usageRuntime);
         _mainWindow.Shell.CommandPaletteRequested += (_, _) => OpenCommandPalette();
         _mainWindow.Activate();
         _mainWindow.Shell.Navigate(smoke.RouteKey);
@@ -210,7 +210,7 @@ public partial class App : Application
     {
         if (_mainWindow is null)
         {
-            _mainWindow = new MainWindow(_theme!);
+            _mainWindow = new MainWindow(_theme!, _usageRuntime);
             _mainWindow.Shell.CommandPaletteRequested += (_, _) => OpenCommandPalette();
             // Null the field when the user closes the window so a later open re-creates it.
             _mainWindow.Closed += (_, _) => _mainWindow = null;

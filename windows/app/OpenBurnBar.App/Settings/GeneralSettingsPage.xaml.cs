@@ -51,8 +51,10 @@ public sealed partial class GeneralSettingsPage : Page, ISettingsAnchorTarget
         TimeRangePicker.SelectedIndex = _settings.TimeRange switch
         {
             GeneralTimeRange.Today => 0,
-            GeneralTimeRange.Week => 1,
-            GeneralTimeRange.Month => 2,
+            GeneralTimeRange.Last7Days => 1,
+            GeneralTimeRange.Last30Days => 2,
+            GeneralTimeRange.ThisMonth => 3,
+            GeneralTimeRange.AllTime => 4,
             _ => 0,
         };
         UsageModePicker.SelectedIndex = _settings.UsageDisplayMode == GeneralUsageDisplayMode.Currency ? 0 : 1;
@@ -72,8 +74,10 @@ public sealed partial class GeneralSettingsPage : Page, ISettingsAnchorTarget
         {
             _settings.TimeRange = TimeRangePicker.SelectedIndex switch
             {
-                1 => GeneralTimeRange.Week,
-                2 => GeneralTimeRange.Month,
+                1 => GeneralTimeRange.Last7Days,
+                2 => GeneralTimeRange.Last30Days,
+                3 => GeneralTimeRange.ThisMonth,
+                4 => GeneralTimeRange.AllTime,
                 _ => GeneralTimeRange.Today,
             };
         }
@@ -207,6 +211,9 @@ public sealed partial class GeneralSettingsPage : Page, ISettingsAnchorTarget
     }
 
     public void ScrollToAnchor(string anchorId, string? focusId) => _scroller.ScrollTo(anchorId, focusId);
+
+    private void RunWizard_Click(object sender, RoutedEventArgs e) =>
+        App.Current.MainWindowShell?.Navigate("onboarding");
 
     private void Appearance_Click(object sender, RoutedEventArgs e)
     {

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Presentation.Dashboard;
 using OpenBurnBar.App.Storage;
 using OpenBurnBar.Storage;
 using Xunit;
@@ -102,6 +103,21 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
                 EndTime = "2026-07-09 12:00:01.000",
                 CreatedAt = "2026-07-09 12:00:01.000",
             });
+            TokenUsageWriteSeam.WriteTokenUsage(connection, new TokenUsageRecord
+            {
+                Id = "usage-old",
+                Provider = "claude",
+                SessionId = "session-old",
+                ProjectName = "Archive",
+                Model = "claude-sonnet-4",
+                InputTokens = 4,
+                OutputTokens = 6,
+                TotalTokens = 10,
+                Cost = 0.50,
+                StartTime = "2026-05-01 12:00:00.000",
+                EndTime = "2026-05-01 12:00:01.000",
+                CreatedAt = "2026-05-01 12:00:01.000",
+            });
 
             BudgetRuleWriteSeam.UpsertRule(connection, new BudgetRuleRow(
                 Id: "budget-1",
@@ -142,13 +158,23 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
             Assert.Single(BudgetRuleWriteSeam.FetchAllRules(connection, includeDisabled: true));
             Assert.Single(SwitcherProfileWriteSeam.FetchAllProfiles(connection));
             Assert.Equal("[]", ElderWandPresetWriteSeam.ReadString(connection, "elderWand.presets.v1"));
-            Assert.Equal(30, TokenUsageReadSeam.SumTotalTokens(connection));
+            Assert.Equal(40, TokenUsageReadSeam.SumTotalTokens(connection));
         }
 
-        var summary = WindowsStorageDevHost.LoadDashboardUsageSummary();
+        var summary = WindowsStorageDevHost.LoadDashboardUsageSummary(
+            DashboardUsageWindow.ThisMonth,
+            new DateTimeOffset(2026, 7, 15, 12, 0, 0, TimeSpan.Zero));
         Assert.True(summary.HasData);
         Assert.Equal(30, summary.TotalTokens);
         Assert.Equal(1, summary.SessionCount);
+        Assert.Equal(0.12, summary.TotalCostUsd, 3);
+
+        var allTime = WindowsStorageDevHost.LoadDashboardUsageSummary(
+            DashboardUsageWindow.AllTime,
+            new DateTimeOffset(2026, 7, 15, 12, 0, 0, TimeSpan.Zero));
+        Assert.Equal(40, allTime.TotalTokens);
+        Assert.Equal(2, allTime.SessionCount);
+        Assert.Equal(0.62, allTime.TotalCostUsd, 3);
         WriteEvidence("generated-db-write-seams", profile.DatabasePath, WindowsStorageDevHost.Status.Report, null);
     }
 

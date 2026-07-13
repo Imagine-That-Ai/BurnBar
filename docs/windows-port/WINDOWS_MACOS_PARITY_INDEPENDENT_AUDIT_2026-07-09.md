@@ -273,7 +273,13 @@ unproven host behavior to certification:
   restarts. The app now also consumes the normalized snapshot: usage-runtime
   periodic refresh uses the saved cadence, and companion/Projects code indexing
   honors the saved indexing toggle. Native scan requests suppress conversation
-  bodies when indexing is off, preserving the macOS privacy boundary.
+  bodies when indexing is off, preserving the macOS privacy boundary. The
+  General page now exposes the exact five macOS windows, migrates legacy values,
+  and routes its wizard action to onboarding. Local SQLCipher summaries, the
+  bounded cloud fallback, the live dashboard/flyout projection, provider/model
+  ranking, sparklines, and the shell BURN capsule all consume the same selected
+  range and Dollars/Tokens mode. Bounded windows no longer mix current-period
+  cost with all-time tokens/sessions or silently fall back to all-time rows.
 - Native Swift engine staging now requires the SwiftPM
   `OpenBurnBarCore_OpenBurnBarCore.resources` bundle, copies it beside the C ABI
   DLL into every RID's publish output, and records SHA-256/size entries for its
@@ -285,9 +291,9 @@ unproven host behavior to certification:
   signed or zipped.
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
-tests plus 41/41 managed-agent-runtime tests), CloudSync (60/60), connector
-(99/99), presentation (765/765), Computer Use, bridge-policy, and
-provider-boundary tests. They are an
+tests plus 41/41 managed-agent-runtime tests), CloudSync (61/61), connector
+(99/99), presentation (770/770), General settings (146/146), storage (18/18),
+Computer Use, bridge-policy, and provider-boundary tests. They are an
 implementation increment, not a claim that
 the F2 workstreams are all complete: full macOS semantic/provider embedding
 quality evidence, live LSP host evidence, production composition of every F2 service,
