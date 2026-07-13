@@ -38,7 +38,7 @@ class CloudVaultDocumentRewrapDomainCoreTest {
         var loweredOldKey: ByteArray? = null
         var loweredNewKey: ByteArray? = null
         CloudVaultDocumentRewrapDomainCore.modeOverride = CloudVaultDocumentRewrapMode.RUST
-        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 2u }
+        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
         CloudVaultDocumentRewrapDomainCore.nonceOverride = {
             nextNonceByte += 1
             ByteArray(12) { nextNonceByte.toByte() }
@@ -49,7 +49,8 @@ class CloudVaultDocumentRewrapDomainCoreTest {
             loweredNewKey = nativeNewKey
             assertEquals(newVaultKeyID, nativeKeyID)
             assertEquals(listOf("sealedBlobA", "sealedPayloadM", "sealedTextZ"), request.envelopes.map { it.fieldName })
-            assertEquals(listOf(0x21, 0x22, 0x23), request.resealNonces.map { it.first().toInt() and 0xff })
+            assertEquals(listOf("sealedBlobA", "sealedPayloadM", "sealedTextZ"), request.resealNoncePlan.map { it.fieldName })
+            assertEquals(listOf(0x21, 0x22, 0x23), request.resealNoncePlan.map { it.nonce.first().toInt() and 0xff })
             observedNonceFields += request.envelopes.map { it.fieldName }
             FfiResult(
                 changedFields = listOf("sealedBlobA", "sealedPayloadM", "sealedTextZ"),
@@ -100,7 +101,7 @@ class CloudVaultDocumentRewrapDomainCoreTest {
         var legacyCalls = 0
         var nativeCalls = 0
         CloudVaultDocumentRewrapDomainCore.modeOverride = CloudVaultDocumentRewrapMode.RUST
-        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 2u }
+        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
         CloudVaultDocumentRewrapDomainCore.nativeRewrapOverride = { _, _, _, _ ->
             nativeCalls += 1
             error("must not execute")
@@ -141,7 +142,7 @@ class CloudVaultDocumentRewrapDomainCoreTest {
     fun repeatedPlatformNonceFailsBeforeCrossingTheNativeBoundary() {
         var nativeCalls = 0
         CloudVaultDocumentRewrapDomainCore.modeOverride = CloudVaultDocumentRewrapMode.RUST
-        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 2u }
+        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
         CloudVaultDocumentRewrapDomainCore.nonceOverride = { ByteArray(12) { 4.toByte() } }
         CloudVaultDocumentRewrapDomainCore.nativeRewrapOverride = { _, _, _, _ ->
             nativeCalls += 1
@@ -170,7 +171,7 @@ class CloudVaultDocumentRewrapDomainCoreTest {
         val newKey = ByteArray(32) { 2.toByte() }
         var legacyCalls = 0
         CloudVaultDocumentRewrapDomainCore.modeOverride = CloudVaultDocumentRewrapMode.RUST
-        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
+        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 4u }
 
         assertThrows(IllegalStateException::class.java) {
             CloudVaultDocumentRewrapDomainCore.rewrap(
@@ -192,7 +193,7 @@ class CloudVaultDocumentRewrapDomainCoreTest {
 
         CloudVaultDocumentRewrapDomainCore.resetTestOverrides()
         CloudVaultDocumentRewrapDomainCore.modeOverride = CloudVaultDocumentRewrapMode.RUST
-        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 2u }
+        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
         CloudVaultDocumentRewrapDomainCore.nativeRewrapOverride = { _, _, _, _ -> throw SecurityException("auth failed") }
         assertThrows(SecurityException::class.java) {
             CloudVaultDocumentRewrapDomainCore.rewrap(
@@ -219,7 +220,7 @@ class CloudVaultDocumentRewrapDomainCoreTest {
         val diagnostics = mutableListOf<CloudVaultDocumentRewrapDiagnostic>()
         var legacyCalls = 0
         var nativeCalls = 0
-        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 2u }
+        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
         CloudVaultDocumentRewrapDomainCore.coreVersionOverride = { "0.1.0" }
         CloudVaultDocumentRewrapDomainCore.diagnosticOverride = diagnostics::add
         CloudVaultDocumentRewrapDomainCore.nativeRewrapOverride = { _, _, _, _ ->
@@ -284,12 +285,13 @@ class CloudVaultDocumentRewrapDomainCoreTest {
         CloudVaultDocumentRewrapDomainCore.resetTestOverrides()
         val diagnostics = mutableListOf<CloudVaultDocumentRewrapDiagnostic>()
         CloudVaultDocumentRewrapDomainCore.modeOverride = CloudVaultDocumentRewrapMode.SHADOW
-        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 2u }
+        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
         CloudVaultDocumentRewrapDomainCore.coreVersionOverride = { "0.1.0" }
         CloudVaultDocumentRewrapDomainCore.nonceOverride = { ByteArray(12) { 0x55.toByte() } }
         CloudVaultDocumentRewrapDomainCore.diagnosticOverride = diagnostics::add
         CloudVaultDocumentRewrapDomainCore.nativeRewrapOverride = { request, _, _, _ ->
-            assertEquals(0x55, request.resealNonces.single().first().toInt() and 0xff)
+            assertEquals("sealedLabel", request.resealNoncePlan.single().fieldName)
+            assertEquals(0x55, request.resealNoncePlan.single().nonce.first().toInt() and 0xff)
             FfiResult(
                 changedFields = listOf("sealedLabel"),
                 skippedFields = emptyList(),

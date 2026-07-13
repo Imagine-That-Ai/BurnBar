@@ -24,9 +24,9 @@ class CloudVaultDomainCoreInstrumentedTest {
     }
 
     @Test
-    fun abiTwoRustModeMatchesCanonicalC1aKnownAnswersOnDevice() {
+    fun abiThreeRustModeMatchesCanonicalC1aKnownAnswersOnDevice() {
         CloudVaultDomainCore.modeOverride = CloudVaultDomainCoreMode.RUST
-        assertEquals(2u, domainCoreAbiVersion())
+        assertEquals(3u, domainCoreAbiVersion())
         val context = InstrumentationRegistry.getInstrumentation().context
         val fixture = context.assets.open("cloudvault-deterministic-kat.json").bufferedReader().use {
             Json.parseToJsonElement(it.readText()).jsonObject

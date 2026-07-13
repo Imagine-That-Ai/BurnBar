@@ -9,6 +9,7 @@ import uniffi.openburnbar_domain_ffi.CloudVaultDocumentEnvelope as FfiEnvelope
 import uniffi.openburnbar_domain_ffi.CloudVaultDocumentEnvelopeKind as FfiEnvelopeKind
 import uniffi.openburnbar_domain_ffi.CloudVaultDocumentRewrapRequest as FfiRequest
 import uniffi.openburnbar_domain_ffi.CloudVaultDocumentRewrapResult as FfiResult
+import uniffi.openburnbar_domain_ffi.CloudVaultResealNonce as FfiResealNonce
 import uniffi.openburnbar_domain_ffi.cloudVaultRewrapDocument
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
@@ -41,7 +42,7 @@ internal data class CloudVaultDocumentRewrapNonce(
  * persistence remain on Android; Rust receives one complete operation and returns update intents.
  */
 internal object CloudVaultDocumentRewrapDomainCore {
-    private const val REQUIRED_ABI_VERSION = 2
+    private const val REQUIRED_ABI_VERSION = 3
     private const val GCM_NONCE_BYTES = 12
     private const val OPERATION = "document_rewrap"
     private const val LOG_TAG = "CloudVaultRewrapCore"
@@ -164,7 +165,9 @@ internal object CloudVaultDocumentRewrapDomainCore {
                 docId = docID,
                 documentFieldNames = data.keys.toList(),
                 envelopes = envelopes,
-                resealNonces = noncePlan.map(CloudVaultDocumentRewrapNonce::bytes),
+                resealNoncePlan = noncePlan.map { planned ->
+                    FfiResealNonce(fieldName = planned.fieldName, nonce = planned.bytes)
+                },
                 vaultGeneration = vaultGeneration?.toLong(),
                 rotationJobId = rotationJobId,
             )

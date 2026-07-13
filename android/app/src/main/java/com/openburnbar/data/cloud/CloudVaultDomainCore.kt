@@ -29,6 +29,7 @@ import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryVerificationHash
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrapVaultKey
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrappingKey
 import uniffi.openburnbar_domain_ffi.cloudVaultSha256Hex
+import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 
 internal enum class CloudVaultDomainCoreMode(val wireValue: String) {
     LEGACY("legacy"),
@@ -73,7 +74,7 @@ internal data class CloudVaultEscrowParts(
 )
 
 internal object CloudVaultDomainCore {
-    private const val ABI_VERSION = 2
+    private const val ABI_VERSION = 3
     private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_NONCE_BYTES = 12
     private const val GCM_TAG_BYTES = 16
@@ -85,10 +86,16 @@ internal object CloudVaultDomainCore {
     private val diagnosticCounts = ConcurrentHashMap<String, AtomicLong>()
 
     @Volatile
+    private var cachedAbiVersion: UInt? = null
+
+    @Volatile
     internal var modeOverride: CloudVaultDomainCoreMode? = null
 
     @Volatile
     internal var diagnosticOverride: ((CloudVaultDomainCoreDiagnostic) -> Unit)? = null
+
+    @Volatile
+    internal var abiVersionOverride: (() -> UInt)? = null
 
     private val mode: CloudVaultDomainCoreMode
         get() = modeOverride ?: CloudVaultDomainCoreMode.parse(BuildConfig.CLOUDVAULT_DOMAIN_CORE_MODE)
@@ -260,11 +267,21 @@ internal object CloudVaultDomainCore {
     internal fun resetTestOverrides() {
         modeOverride = null
         diagnosticOverride = null
+        abiVersionOverride = null
+        cachedAbiVersion = null
         diagnosticCounts.clear()
     }
 
-    private fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean = { left, right -> left == right }): T =
-        dispatch(mode, operation, legacy, rust, equivalent)
+    private fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean = { left, right -> left == right }): T = dispatch(
+        mode,
+        operation,
+        legacy,
+        rust = {
+            requireCompatibleAbi()
+            rust()
+        },
+        equivalent = equivalent,
+    )
 
     private fun <T> dispatch(
         selectedMode: CloudVaultDomainCoreMode,
@@ -317,6 +334,11 @@ internal object CloudVaultDomainCore {
     private fun requireAesInputs(key: ByteArray, nonce: ByteArray) {
         require(key.size == KEY_BYTES) { "Invalid vault key length" }
         require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
+    }
+
+    private fun requireCompatibleAbi() {
+        val abi = cachedAbiVersion ?: (abiVersionOverride?.invoke() ?: domainCoreAbiVersion()).also { cachedAbiVersion = it }
+        check(abi == ABI_VERSION.toUInt()) { "CloudVault domain-core ABI mismatch" }
     }
 
     private fun record(operation: String, category: String) {

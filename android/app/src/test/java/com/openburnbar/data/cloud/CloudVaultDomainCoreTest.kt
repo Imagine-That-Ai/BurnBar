@@ -133,9 +133,19 @@ class CloudVaultDomainCoreTest {
         assertEquals(1, legacyCalls)
         assertEquals(1, rustCalls)
         assertEquals(
-            listOf(CloudVaultDomainCoreDiagnostic("session_body", 2, "mismatch", 1)),
+            listOf(CloudVaultDomainCoreDiagnostic("session_body", 3, "mismatch", 1)),
             diagnostics,
         )
+    }
+
+    @Test
+    fun productionRustModeFailsClosedBeforeCallingAnAbiMismatch() {
+        CloudVaultDomainCore.modeOverride = CloudVaultDomainCoreMode.RUST
+        CloudVaultDomainCore.abiVersionOverride = { 4u }
+
+        assertThrows(IllegalStateException::class.java) {
+            CloudVaultCrypto.vaultKeyID(ByteArray(32))
+        }
     }
 
     @Test
