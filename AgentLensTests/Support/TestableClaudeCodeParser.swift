@@ -172,7 +172,7 @@ final class TestableClaudeCodeParser: LogParser, @unchecked Sendable {
 
         let model = models.first ?? "claude"
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: totalInput,
             outputTokens: totalOutput,
             cacheCreationTokens: cacheCreation,

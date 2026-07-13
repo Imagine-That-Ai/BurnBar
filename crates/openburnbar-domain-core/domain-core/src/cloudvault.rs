@@ -20,6 +20,12 @@ pub const AES_GCM_TAG_LENGTH: usize = 16;
 pub const P256_X963_PUBLIC_KEY_LENGTH: usize = 65;
 pub const P256_ECDH_SHARED_SECRET_LENGTH: usize = 32;
 pub const SESSION_BODY_HASH_VERSION: u32 = 2;
+const MAX_DATA_BYTES: usize = 16 * 1024 * 1024;
+const MAX_AAD_BYTES: usize = 64 * 1024;
+const MAX_AAD_PART_BYTES: usize = 4 * 1024;
+const MAX_RECOVERY_KEY_BYTES: usize = 4 * 1024;
+const MAX_BASE64_INPUT_BYTES: usize =
+    (MAX_DATA_BYTES + AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH).div_ceil(3) * 4;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CloudVaultHashPurpose {
@@ -74,6 +80,8 @@ pub enum CloudVaultError {
     InvalidP256PublicKey,
     #[error("the P-256 escrow wire must contain a public key and AES-GCM combined box")]
     InvalidEscrowWireLength,
+    #[error("the CloudVault input exceeds its bounded contract")]
+    InputTooLarge,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -182,13 +190,14 @@ impl CloudVaultAadContext {
     }
 }
 
-pub fn sha256_hex(data: &[u8]) -> String {
-    hex_lower(&Sha256::digest(data))
+pub fn sha256_hex(data: &[u8]) -> Result<String, CloudVaultError> {
+    require_data_bound(data)?;
+    Ok(hex_lower(&Sha256::digest(data)))
 }
 
 pub fn vault_key_id(key: &[u8]) -> Result<String, CloudVaultError> {
     require_vault_key(key)?;
-    Ok(format!("v1_{}", &sha256_hex(key)[..32]))
+    Ok(format!("v1_{}", &sha256_hex(key)?[..32]))
 }
 
 pub fn keyed_hash_hex(
@@ -197,6 +206,7 @@ pub fn keyed_hash_hex(
     purpose: CloudVaultHashPurpose,
 ) -> Result<String, CloudVaultError> {
     require_vault_key(key)?;
+    require_data_bound(data)?;
     let hkdf = Hkdf::<Sha256>::new(Some(HMAC_SALT), key);
     let mut derived_key = [0_u8; 32];
     let info = format!("{HMAC_INFO_PREFIX}|{}", purpose.label());
@@ -224,7 +234,7 @@ pub fn expected_session_body_hash(
 ) -> Result<String, CloudVaultError> {
     match body_hash_version {
         SESSION_BODY_HASH_VERSION => keyed_hash_hex(data, key, CloudVaultHashPurpose::SessionBody),
-        0 | 1 => Ok(sha256_hex(data)),
+        0 | 1 => sha256_hex(data),
         _ => Err(CloudVaultError::UnsupportedHashVersion),
     }
 }
@@ -237,6 +247,8 @@ pub fn aes_gcm_seal_detached(
 ) -> Result<AesGcmDetachedBox, CloudVaultError> {
     require_vault_key(key)?;
     require_nonce(nonce)?;
+    require_data_bound(plaintext)?;
+    require_aad_bound(aad)?;
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| CloudVaultError::InvalidKeyLength)?;
     let mut ciphertext_and_tag = cipher
         .encrypt(
@@ -273,6 +285,8 @@ pub fn aes_gcm_open_detached(
 ) -> Result<Vec<u8>, CloudVaultError> {
     require_vault_key(key)?;
     require_nonce(nonce)?;
+    require_data_bound(ciphertext)?;
+    require_aad_bound(aad)?;
     if tag.len() != AES_GCM_TAG_LENGTH {
         return Err(CloudVaultError::InvalidCombinedLength);
     }
@@ -296,6 +310,9 @@ pub fn aes_gcm_open_combined(
     key: &[u8],
     aad: &[u8],
 ) -> Result<Vec<u8>, CloudVaultError> {
+    if combined.len() > MAX_DATA_BYTES + AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH {
+        return Err(CloudVaultError::InputTooLarge);
+    }
     if combined.len() < AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH {
         return Err(CloudVaultError::InvalidCombinedLength);
     }
@@ -316,15 +333,29 @@ pub fn aes_gcm_open_text_detached(
     key: &[u8],
     aad: &[u8],
 ) -> Result<String, CloudVaultError> {
-    String::from_utf8(aes_gcm_open_detached(nonce, ciphertext, tag, key, aad)?)
-        .map_err(|_| CloudVaultError::InvalidUtf8)
+    match String::from_utf8(aes_gcm_open_detached(nonce, ciphertext, tag, key, aad)?) {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            let mut plaintext = error.into_bytes();
+            plaintext.zeroize();
+            Err(CloudVaultError::InvalidUtf8)
+        }
+    }
 }
 
 pub fn base64_encode(data: &[u8]) -> String {
     BASE64_STANDARD.encode(data)
 }
 
+pub fn base64_encode_checked(data: &[u8]) -> Result<String, CloudVaultError> {
+    require_data_bound(data)?;
+    Ok(BASE64_STANDARD.encode(data))
+}
+
 pub fn base64_decode_strict(value: &str) -> Result<Vec<u8>, CloudVaultError> {
+    if value.len() > MAX_BASE64_INPUT_BYTES {
+        return Err(CloudVaultError::InvalidBase64);
+    }
     let decoded = BASE64_STANDARD
         .decode(value)
         .map_err(|_| CloudVaultError::InvalidBase64)?;
@@ -335,6 +366,9 @@ pub fn base64_decode_strict(value: &str) -> Result<Vec<u8>, CloudVaultError> {
 }
 
 pub fn normalize_recovery_key(recovery_key: &str) -> Result<String, CloudVaultError> {
+    if recovery_key.len() > MAX_RECOVERY_KEY_BYTES {
+        return Err(CloudVaultError::InputTooLarge);
+    }
     let mut normalized: String = recovery_key
         .chars()
         .flat_map(char::to_uppercase)
@@ -361,7 +395,7 @@ pub fn recovery_verification_hash(recovery_key: &str) -> Result<String, CloudVau
     let mut key = recovery_wrapping_key(recovery_key)?;
     let result = sha256_hex(&key);
     key.zeroize();
-    Ok(result)
+    result
 }
 
 pub fn recovery_wrap_vault_key(
@@ -376,7 +410,7 @@ pub fn recovery_wrap_vault_key(
     wrapping_key.zeroize();
     Ok(RecoveryWrappedVaultKey {
         combined: combined?,
-        verification_hash,
+        verification_hash: verification_hash?,
     })
 }
 
@@ -413,6 +447,7 @@ pub fn escrow_assemble_wire(
     aes_gcm_combined: &[u8],
 ) -> Result<Vec<u8>, CloudVaultError> {
     validate_p256_x963_public_key(ephemeral_public_key)?;
+    require_data_bound(aes_gcm_combined)?;
     if aes_gcm_combined.len() < AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH {
         return Err(CloudVaultError::InvalidEscrowWireLength);
     }
@@ -423,6 +458,11 @@ pub fn escrow_assemble_wire(
 }
 
 pub fn escrow_split_wire(wire: &[u8]) -> Result<EscrowWireParts, CloudVaultError> {
+    if wire.len()
+        > MAX_DATA_BYTES + P256_X963_PUBLIC_KEY_LENGTH + AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH
+    {
+        return Err(CloudVaultError::InputTooLarge);
+    }
     if wire.len() < P256_X963_PUBLIC_KEY_LENGTH + AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH {
         return Err(CloudVaultError::InvalidEscrowWireLength);
     }
@@ -483,8 +523,25 @@ fn require_nonce(nonce: &[u8]) -> Result<(), CloudVaultError> {
     }
 }
 
+fn require_data_bound(data: &[u8]) -> Result<(), CloudVaultError> {
+    if data.len() <= MAX_DATA_BYTES {
+        Ok(())
+    } else {
+        Err(CloudVaultError::InputTooLarge)
+    }
+}
+
+fn require_aad_bound(aad: &[u8]) -> Result<(), CloudVaultError> {
+    if aad.len() <= MAX_AAD_BYTES {
+        Ok(())
+    } else {
+        Err(CloudVaultError::InputTooLarge)
+    }
+}
+
 fn validate_aad_part(value: &str) -> Result<(), CloudVaultError> {
     if value.is_empty()
+        || value.len() > MAX_AAD_PART_BYTES
         || value
             .chars()
             .any(|character| character <= '\u{1f}' || character == '\u{7f}' || character == '|')
@@ -597,7 +654,7 @@ mod tests {
     #[test]
     fn hashes_match_committed_windows_kats() -> Result<(), CloudVaultError> {
         assert_eq!(
-            sha256_hex(b""),
+            sha256_hex(b"")?,
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
         assert_eq!(vault_key_id(&KEY_0)?, "v1_630dcd2966c4336691125448bbb25b4f");
@@ -626,7 +683,7 @@ mod tests {
         for version in [0, 1] {
             assert_eq!(
                 expected_session_body_hash(DATA, &KEY_0, version)?,
-                sha256_hex(DATA)
+                sha256_hex(DATA)?
             );
         }
         assert_eq!(
@@ -697,6 +754,10 @@ mod tests {
                 Err(CloudVaultError::InvalidBase64)
             );
         }
+        assert_eq!(
+            base64_decode_strict(&"A".repeat(MAX_BASE64_INPUT_BYTES + 1)),
+            Err(CloudVaultError::InvalidBase64)
+        );
         let invalid_utf8 = aes_gcm_seal_detached(&[0xff], &key, &nonce, b"")?;
         assert_eq!(
             aes_gcm_open_text_detached(
@@ -867,6 +928,36 @@ mod tests {
     }
 
     #[test]
+    fn aes_roundtrip_and_tamper_properties_hold_for_generated_inputs() -> Result<(), CloudVaultError>
+    {
+        let key = [0x5a; 32];
+        for length in 0..512_usize {
+            let plaintext = (0..length)
+                .map(|index| (index.wrapping_mul(31).wrapping_add(length)) as u8)
+                .collect::<Vec<_>>();
+            let mut nonce = [0_u8; 12];
+            nonce[4..].copy_from_slice(&(length as u64).to_be_bytes());
+            let aad = format!("property|{length}");
+            let sealed = aes_gcm_seal_combined(&plaintext, &key, &nonce, aad.as_bytes())?;
+            assert_eq!(
+                aes_gcm_open_combined(&sealed, &key, aad.as_bytes())?,
+                plaintext
+            );
+            let mut tampered = sealed;
+            let last = tampered
+                .len()
+                .checked_sub(1)
+                .ok_or(CloudVaultError::InvalidCombinedLength)?;
+            tampered[last] ^= 1;
+            assert_eq!(
+                aes_gcm_open_combined(&tampered, &key, aad.as_bytes()),
+                Err(CloudVaultError::AuthenticationFailed)
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn canonical_fixture_is_executable_contract() -> Result<(), Box<dyn std::error::Error>> {
         let fixture = fixture()?;
         assert_eq!(
@@ -899,7 +990,7 @@ mod tests {
             .ok_or_else(|| io::Error::other("sha256 vectors must be an array"))?
         {
             let data = decode_hex(required_string(vector, "dataHex")?)?;
-            assert_eq!(sha256_hex(&data), required_string(vector, "hex")?);
+            assert_eq!(sha256_hex(&data)?, required_string(vector, "hex")?);
         }
 
         for vector in fixture["vaultKeyID"]

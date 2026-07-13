@@ -28,8 +28,14 @@ func data(hex: String) -> Data {
     return Data(bytes)
 }
 
-require(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2, "unexpected ABI version")
+require(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3, "unexpected ABI version")
 require(!OpenBurnBarDomainCoreFFI.domainCoreVersion().isEmpty, "empty crate version")
+
+let safetyCode = try OpenBurnBarDomainCoreFFI.hermesGatewayRelaySafetyCode(
+    agentPublicKey: Data(base64Encoded: "BGsX0fLhLEJH+Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT+NC4v4af5uO5+tKfA+eFivOM1drMV7Oy7ZAaDe/UfU=")!,
+    phonePublicKey: Data(base64Encoded: "BHzyexiNA09+ilI4AwS1GsPAiWnid/IbNaYLSPxHZpl4B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E=")!
+)
+require(safetyCode == "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7", "Hermes safety-code mismatch")
 
 let fixtureURL = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()
@@ -147,7 +153,12 @@ do {
         docId: "requestA",
         documentFieldNames: ["vaultKeyID", "plainStatus", "sealedPayload"],
         envelopes: [envelope],
-        resealNonces: [Data(repeating: 0x22, count: 12)],
+        resealNoncePlan: [
+            CloudVaultResealNonce(
+                fieldName: "sealedPayload",
+                nonce: Data(repeating: 0x22, count: 12)
+            ),
+        ],
         vaultGeneration: 7,
         rotationJobId: "job-7"
     )

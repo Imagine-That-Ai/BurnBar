@@ -2,10 +2,13 @@ use serde_json::Value;
 
 use super::{
     QuotaBucket, QuotaConfidence, QuotaParseResult, QuotaParseStatus, QuotaSnapshot,
-    QuotaSourceKind, QuotaUnit, QuotaWindowKind,
+    QuotaSourceKind, QuotaUnit, QuotaWindowKind, MAX_QUOTA_PAYLOAD_BYTES,
 };
 
 pub fn parse_codex_usage_quota(payload: &[u8], now_unix: i64) -> QuotaParseResult {
+    if payload.len() > MAX_QUOTA_PAYLOAD_BYTES {
+        return result(QuotaParseStatus::Malformed, now_unix, Vec::new(), "Codex");
+    }
     let Ok(Value::Object(root)) = serde_json::from_slice::<Value>(payload) else {
         return result(QuotaParseStatus::Malformed, now_unix, Vec::new(), "Codex");
     };
@@ -82,6 +85,9 @@ fn append_windows(
         let Some(raw_used) = window.get("used_percent").and_then(Value::as_f64) else {
             continue;
         };
+        if !raw_used.is_finite() {
+            continue;
+        }
         let used = raw_used.clamp(0.0, 100.0);
         let window_kind = window
             .get("limit_window_seconds")
@@ -104,7 +110,8 @@ fn append_windows(
                     .get("reset_after_seconds")
                     .and_then(Value::as_i64)
                     .filter(|value| *value >= 0)
-                    .map(|value| (now_unix + value) as f64)
+                    .and_then(|value| now_unix.checked_add(value))
+                    .map(|value| value as f64)
             });
         buckets.push(QuotaBucket {
             key: format!("{prefix}-{suffix}"),
@@ -201,15 +208,25 @@ mod tests {
     }
 
     #[test]
-    fn empty_and_clamped_inputs_are_distinguished() {
+    fn empty_and_invalid_inputs_are_distinguished() {
         assert_eq!(
             parse_codex_usage_quota(br#"{"plan_type":"pro"}"#, 0).status,
             QuotaParseStatus::Empty
         );
-        let parsed = parse_codex_usage_quota(
-            br#"{"rate_limit":{"primary_window":{"used_percent":137.5}}}"#,
-            0,
+        for (raw, expected) in [("137.5", 100.0), ("-1", 0.0)] {
+            let payload =
+                format!(r#"{{"rate_limit":{{"primary_window":{{"used_percent":{raw}}}}}}}"#);
+            let parsed = parse_codex_usage_quota(payload.as_bytes(), 0);
+            assert_eq!(parsed.snapshot.buckets[0].used_percent, Some(expected));
+            assert_eq!(
+                parsed.snapshot.buckets[0].remaining_value,
+                Some(100.0 - expected)
+            );
+        }
+        let extreme = parse_codex_usage_quota(
+            br#"{"rate_limit":{"primary_window":{"used_percent":10,"reset_after_seconds":9223372036854775807}}}"#,
+            i64::MAX,
         );
-        assert_eq!(parsed.snapshot.buckets[0].used_percent, Some(100.0));
+        assert_eq!(extreme.snapshot.buckets[0].resets_at_unix, None);
     }
 }

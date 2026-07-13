@@ -276,6 +276,12 @@ object CloudVaultCrypto {
 
     fun tokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> = CloudVaultCryptoSearch.tokenHashes(text, vaultKey, limit)
 
+    fun searchIndexTokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
+        CloudVaultCryptoSearch.searchIndexTokenHashes(text, vaultKey, limit)
+
+    fun searchQueryTokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
+        CloudVaultCryptoSearch.searchQueryTokenHashes(text, vaultKey, limit)
+
     fun semanticHashes(text: String, vaultKey: ByteArray, limit: Int = 24): List<String> = CloudVaultCryptoSearch.semanticHashes(text, vaultKey, limit)
 
     fun openBlob(envelope: CloudVaultBlobEnvelope, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): ByteArray {

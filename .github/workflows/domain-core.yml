@@ -10,6 +10,8 @@ on:
       - "crates/openburnbar-domain-core/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
@@ -27,17 +29,29 @@ on:
       - "apps/console/lib/escrow.ts"
       - "apps/console/test/escrow.test.ts"
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
+      - "functions/src/domainCorePricing.ts"
+      - "functions/src/pricing.ts"
+      - "functions/src/rollupCounters.ts"
+      - "functions/src/insightsHostedAnswer.ts"
+      - "functions/src/__tests__/pricing.test.ts"
+      - "functions/vendor/openburnbar/domain-core-wasm/**"
+      - "functions/package*.json"
       - "Vendor/openburnbar-domain-core.aar"
       - "tests/fixtures/domain-core/**"
       - "scripts/build-domain-core-xcframework.sh"
       - "scripts/build-domain-core-android-aar.sh"
       - "scripts/build-domain-core-wasm.sh"
+      - "scripts/ci/domain-core-union-gate.py"
+      - "scripts/windows-port/check-csharp-binding-drift.sh"
+      - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
   pull_request:
     paths:
       - "crates/openburnbar-domain-core/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
@@ -55,11 +69,21 @@ on:
       - "apps/console/lib/escrow.ts"
       - "apps/console/test/escrow.test.ts"
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
+      - "functions/src/domainCorePricing.ts"
+      - "functions/src/pricing.ts"
+      - "functions/src/rollupCounters.ts"
+      - "functions/src/insightsHostedAnswer.ts"
+      - "functions/src/__tests__/pricing.test.ts"
+      - "functions/vendor/openburnbar/domain-core-wasm/**"
+      - "functions/package*.json"
       - "Vendor/openburnbar-domain-core.aar"
       - "tests/fixtures/domain-core/**"
       - "scripts/build-domain-core-xcframework.sh"
       - "scripts/build-domain-core-android-aar.sh"
       - "scripts/build-domain-core-wasm.sh"
+      - "scripts/ci/domain-core-union-gate.py"
+      - "scripts/windows-port/check-csharp-binding-drift.sh"
+      - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
   workflow_dispatch:
 
@@ -70,7 +94,7 @@ concurrency:
 jobs:
   rust-and-csharp:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -97,6 +121,45 @@ jobs:
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
           cargo build -p openburnbar-domain-ffi
+
+      - name: Run deterministic domain fuzz smoke
+        working-directory: crates/openburnbar-domain-core
+        run: >-
+          cargo test -p openburnbar-domain-ffi --test fuzz_smoke --
+          --test-threads=1
+
+      - name: Guard complete-payload FFI performance
+        working-directory: crates/openburnbar-domain-core
+        run: >-
+          cargo test --release -p openburnbar-domain-ffi
+          --test performance_smoke -- --ignored --nocapture --test-threads=1
+
+      - name: Test and verify union ABI manifest
+        run: |
+          python3 tests/test_domain_core_union_gate.py
+          python3 scripts/ci/domain-core-union-gate.py --check-abi
+
+      - name: Cache pinned uniffi-bindgen-cs
+        id: domain-bindgen-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cargo/bin/uniffi-bindgen-cs
+          key: domain-core-uniffi-bindgen-cs-${{ runner.os }}-v0.9.2+v0.28.3
+
+      - name: Install pinned uniffi-bindgen-cs
+        if: steps.domain-bindgen-cache.outputs.cache-hit != 'true'
+        run: >-
+          cargo install uniffi-bindgen-cs
+          --git https://github.com/NordSecurity/uniffi-bindgen-cs
+          --tag v0.9.2+v0.28.3
+
+      - name: Reject C# domain-core binding drift
+        run: scripts/windows-port/check-csharp-binding-drift.sh domain-core
+
+      - name: Verify C# generated-source provenance
+        run: >-
+          python3 scripts/ci/domain-core-union-gate.py
+          --check-provenance csharp
 
       - name: Run C# quota contracts through the native library
         env:
@@ -186,10 +249,45 @@ jobs:
       - name: Verify generated Wasm package drift
         run: ./scripts/build-domain-core-wasm.sh --check
 
+      - name: Verify browser and Node Wasm provenance
+        run: >-
+          python3 scripts/ci/domain-core-union-gate.py
+          --check-provenance browser-wasm node-wasm
+
       - name: Run generated package against the canonical KAT
         run: >-
           node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs
           apps/console/vendor/openburnbar-domain-core-wasm
+
+  functions-pricing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Run Functions pricing contracts
+        working-directory: functions
+        run: npx vitest run src/__tests__/pricing.test.ts
+
+      - name: Typecheck and lint Functions
+        working-directory: functions
+        run: |
+          npm run build
+          npm run lint
 
   android:
     runs-on: ubuntu-24.04
@@ -231,16 +329,20 @@ jobs:
           toolchain: "1.96.0"
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
-      - name: Verify committed AAR source fingerprint
-        run: ./scripts/build-domain-core-android-aar.sh --check-source
+      - name: Rebuild and byte-compare four-ABI Android AAR
+        run: ./scripts/build-domain-core-android-aar.sh --check-artifact
 
-      - name: Build four-ABI Android AAR
-        run: ./scripts/build-domain-core-android-aar.sh
-
-      - name: Reject Android binding drift
+      - name: Reject Android binding and provenance drift
         run: |
-          git diff --exit-code -- \
-            android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi
+          status="$(git status --porcelain -- \
+            android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi \
+            crates/openburnbar-domain-core/artifact-provenance/kotlin.sha256)"
+          if [[ -n "${status}" ]]; then
+            printf '%s\n' "${status}" >&2
+            exit 1
+          fi
+          python3 scripts/ci/domain-core-union-gate.py \
+            --check-provenance aar kotlin
 
       - name: Compile Android native-load test
         working-directory: android
@@ -276,8 +378,17 @@ jobs:
       - name: Build Apple XCFramework and regenerate Swift bindings
         run: ./scripts/build-domain-core-xcframework.sh
 
-      - name: Reject Swift binding drift
-        run: git diff --exit-code -- OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated
+      - name: Reject Swift binding and provenance drift
+        run: |
+          status="$(git status --porcelain -- \
+            OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated \
+            crates/openburnbar-domain-core/artifact-provenance/swift.sha256)"
+          if [[ -n "${status}" ]]; then
+            printf '%s\n' "${status}" >&2
+            exit 1
+          fi
+          python3 scripts/ci/domain-core-union-gate.py \
+            --check-provenance swift xcframework
 
       - name: Upload XCFramework
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
@@ -348,8 +459,8 @@ jobs:
           fi
           ./scripts/build-domain-core-xcframework.sh
 
-      - name: Run Swift quota consumer contracts
+      - name: Run Swift domain-core consumer contracts
         env:
-          OPENBURNBAR_CORE_SWIFT_FILTER: DomainCoreQuotaConsumerTests
+          OPENBURNBAR_CORE_SWIFT_FILTER: DomainCore
           OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS: "1"
         run: ./scripts/test-openburnbar-swift.sh

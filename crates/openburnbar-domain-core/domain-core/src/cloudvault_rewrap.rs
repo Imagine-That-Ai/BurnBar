@@ -11,7 +11,7 @@ use crate::cloudvault::{
     CloudVaultAadContext, CloudVaultError, CloudVaultHashPurpose, AES_GCM_NONCE_LENGTH,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use zeroize::Zeroizing;
 
 const AES_GCM_ALGORITHM: &str = "AES-256-GCM";
@@ -25,6 +25,12 @@ pub const MAX_DOCUMENT_FIELDS: usize = 256;
 pub const MAX_FIELD_NAME_BYTES: usize = 256;
 pub const MAX_DOCUMENT_CIPHERTEXT_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_REWRAP_JOB_ID_BYTES: usize = 256;
+pub const MAX_REWRAP_JSON_BYTES: usize = 24 * 1024 * 1024;
+const MAX_PATH_COMPONENT_BYTES: usize = 512;
+const MAX_ALGORITHM_BYTES: usize = 64;
+const MAX_AAD_METADATA_BYTES: usize = 2 * 1024;
+const MAX_HASH_METADATA_BYTES: usize = 128;
+const MAX_ID_METADATA_BYTES: usize = 256;
 // The decoded cap expanded to canonical Base64 plus worst-case component padding.
 const MAX_DOCUMENT_CIPHERTEXT_ENCODED_BYTES: usize = 22_372_694;
 
@@ -37,10 +43,17 @@ pub struct CloudVaultDocumentRewrapRequest {
     /// Every top-level field in the source document, including non-envelope fields.
     pub document_field_names: Vec<String>,
     pub envelopes: Vec<CloudVaultDocumentEnvelope>,
-    /// Exactly one 12-byte nonce per envelope that is not skipped.
-    pub reseal_nonces: Vec<Vec<u8>>,
+    /// Exactly one named 12-byte nonce per envelope that is not skipped.
+    pub reseal_nonce_plan: Vec<CloudVaultResealNonce>,
     pub vault_generation: Option<i64>,
     pub rotation_job_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloudVaultResealNonce {
+    pub field_name: String,
+    pub nonce: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -140,6 +153,8 @@ pub enum CloudVaultDocumentRewrapError {
     InvalidText,
     #[error("the source envelope integrity hash did not verify")]
     IntegrityMismatch,
+    #[error("rewrap requires distinct old and new vault keys when any envelope changes")]
+    InvalidKeyRotation,
 }
 
 pub fn rewrap_document(
@@ -148,6 +163,9 @@ pub fn rewrap_document(
     new_key: &[u8],
     new_vault_key_id: &str,
 ) -> Result<CloudVaultDocumentRewrapResult, CloudVaultDocumentRewrapError> {
+    if new_vault_key_id.len() > MAX_ID_METADATA_BYTES {
+        return Err(CloudVaultDocumentRewrapError::BoundsExceeded);
+    }
     if vault_key_id(new_key)? != new_vault_key_id {
         return Err(CloudVaultDocumentRewrapError::NewVaultKeyIdMismatch);
     }
@@ -160,12 +178,28 @@ pub fn rewrap_document(
         .iter()
         .filter(|envelope| !should_skip(envelope, new_vault_key_id))
         .count();
-    if request.reseal_nonces.len() != expected_nonce_count {
+    if expected_nonce_count > 0 && old_key == new_key {
+        return Err(CloudVaultDocumentRewrapError::InvalidKeyRotation);
+    }
+    if request.reseal_nonce_plan.len() != expected_nonce_count {
         return Err(CloudVaultDocumentRewrapError::InvalidNoncePlan);
     }
+    let expected_nonce_fields = envelopes
+        .iter()
+        .filter(|envelope| !should_skip(envelope, new_vault_key_id))
+        .map(|envelope| envelope.field_name())
+        .collect::<BTreeSet<_>>();
     let mut seen_nonces = BTreeSet::new();
-    for nonce in &request.reseal_nonces {
-        if nonce.len() != AES_GCM_NONCE_LENGTH || !seen_nonces.insert(nonce.as_slice()) {
+    let mut nonce_by_field = BTreeMap::new();
+    for planned in &request.reseal_nonce_plan {
+        validate_field_name(&planned.field_name)?;
+        if !expected_nonce_fields.contains(planned.field_name.as_str())
+            || planned.nonce.len() != AES_GCM_NONCE_LENGTH
+            || !seen_nonces.insert(planned.nonce.as_slice())
+            || nonce_by_field
+                .insert(planned.field_name.as_str(), planned.nonce.as_slice())
+                .is_some()
+        {
             return Err(CloudVaultDocumentRewrapError::InvalidNoncePlan);
         }
     }
@@ -175,11 +209,11 @@ pub fn rewrap_document(
         .iter()
         .map(String::as_str)
         .collect();
-    let mut nonce_index = 0;
     let mut changed_fields = Vec::with_capacity(expected_nonce_count);
     let mut skipped_fields = Vec::new();
     let mut rewrapped_envelopes = Vec::with_capacity(expected_nonce_count);
     let mut companion_update_intents = Vec::new();
+    let mut seen_companion_targets = BTreeSet::new();
     let mut preserved_member_intents = Vec::new();
 
     for envelope in envelopes {
@@ -197,8 +231,9 @@ pub fn rewrap_document(
             skipped_fields.push(field_name.to_owned());
             continue;
         }
-        let nonce = &request.reseal_nonces[nonce_index];
-        nonce_index += 1;
+        let nonce = nonce_by_field
+            .get(field_name)
+            .ok_or(CloudVaultDocumentRewrapError::InvalidNoncePlan)?;
         let rewrapped = rewrap_envelope(
             envelope,
             old_key,
@@ -233,16 +268,18 @@ pub fn rewrap_document(
             _ => None,
         };
         if let Some(companion_field_name) = companion {
-            companion_update_intents.push(CloudVaultCompanionUpdateIntent {
-                source_field_name: field_name.to_owned(),
-                companion_field_name: companion_field_name.to_owned(),
-                vault_key_id: new_vault_key_id.to_owned(),
-            });
+            if seen_companion_targets.insert(companion_field_name) {
+                companion_update_intents.push(CloudVaultCompanionUpdateIntent {
+                    source_field_name: field_name.to_owned(),
+                    companion_field_name: companion_field_name.to_owned(),
+                    vault_key_id: new_vault_key_id.to_owned(),
+                });
+            }
         }
     }
 
     let changed = !changed_fields.is_empty();
-    Ok(CloudVaultDocumentRewrapResult {
+    let result = CloudVaultDocumentRewrapResult {
         changed_fields,
         skipped_fields,
         rewrapped_envelopes,
@@ -250,7 +287,9 @@ pub fn rewrap_document(
         preserved_member_intents,
         vault_generation_update: changed.then_some(request.vault_generation).flatten(),
         rotation_job_id_update: changed.then(|| request.rotation_job_id.clone()).flatten(),
-    })
+    };
+    validate_result_intents(&result)?;
+    Ok(result)
 }
 
 fn validate_request(
@@ -258,6 +297,10 @@ fn validate_request(
 ) -> Result<(), CloudVaultDocumentRewrapError> {
     if request.document_field_names.len() > MAX_DOCUMENT_FIELDS
         || request.envelopes.len() > MAX_DOCUMENT_FIELDS
+        || request.reseal_nonce_plan.len() > MAX_DOCUMENT_FIELDS
+        || request.uid.len() > MAX_PATH_COMPONENT_BYTES
+        || request.collection.len() > MAX_PATH_COMPONENT_BYTES
+        || request.doc_id.len() > MAX_PATH_COMPONENT_BYTES
         || request
             .rotation_job_id
             .as_ref()
@@ -290,9 +333,13 @@ fn validate_request(
     for envelope in &request.envelopes {
         let field = envelope.field_name();
         validate_field_name(field)?;
-        if !document_fields.contains(field) || !envelope_fields.insert(field) {
+        if reserved_envelope_field(field)
+            || !document_fields.contains(field)
+            || !envelope_fields.insert(field)
+        {
             return Err(CloudVaultDocumentRewrapError::InvalidFieldSet);
         }
+        validate_envelope_metadata(envelope)?;
         encoded_ciphertext_bytes = encoded_ciphertext_bytes
             .checked_add(encoded_ciphertext_len(envelope))
             .ok_or(CloudVaultDocumentRewrapError::BoundsExceeded)?;
@@ -305,6 +352,111 @@ fn validate_request(
         if ciphertext_bytes > MAX_DOCUMENT_CIPHERTEXT_BYTES {
             return Err(CloudVaultDocumentRewrapError::BoundsExceeded);
         }
+    }
+    Ok(())
+}
+
+fn validate_envelope_metadata(
+    envelope: &CloudVaultDocumentEnvelope,
+) -> Result<(), CloudVaultDocumentRewrapError> {
+    let (algorithm, aad) = match envelope {
+        CloudVaultDocumentEnvelope::SealedPayload {
+            algorithm,
+            vault_key_id,
+            aad,
+            ..
+        } => {
+            validate_metadata(vault_key_id, MAX_ID_METADATA_BYTES)?;
+            (algorithm, aad.as_deref())
+        }
+        CloudVaultDocumentEnvelope::SealedText { algorithm, aad, .. } => {
+            (algorithm, aad.as_deref())
+        }
+        CloudVaultDocumentEnvelope::Blob {
+            algorithm,
+            plaintext_sha256,
+            plaintext_hmac,
+            aad,
+            ..
+        } => {
+            if let Some(value) = plaintext_sha256 {
+                validate_metadata(value, MAX_HASH_METADATA_BYTES)?;
+            }
+            if let Some(value) = plaintext_hmac {
+                validate_metadata(value, MAX_HASH_METADATA_BYTES)?;
+            }
+            (algorithm, aad.as_deref())
+        }
+    };
+    validate_metadata(algorithm, MAX_ALGORITHM_BYTES)?;
+    if let Some(aad) = aad {
+        validate_metadata(aad, MAX_AAD_METADATA_BYTES)?;
+    }
+    Ok(())
+}
+
+fn validate_metadata(value: &str, max_bytes: usize) -> Result<(), CloudVaultDocumentRewrapError> {
+    if value.len() > max_bytes || value.bytes().any(|byte| byte <= 0x1f || byte == 0x7f) {
+        Err(CloudVaultDocumentRewrapError::BoundsExceeded)
+    } else {
+        Ok(())
+    }
+}
+
+fn reserved_envelope_field(field: &str) -> bool {
+    matches!(
+        field,
+        "vaultKeyID"
+            | "sealedStateVaultKeyID"
+            | "vaultGeneration"
+            | "rotationJobID"
+            | "rotationJobId"
+            | "rewrapJobID"
+            | "rewrapJobId"
+    )
+}
+
+fn validate_result_intents(
+    result: &CloudVaultDocumentRewrapResult,
+) -> Result<(), CloudVaultDocumentRewrapError> {
+    let changed = result
+        .changed_fields
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let skipped = result
+        .skipped_fields
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let rewrapped = result
+        .rewrapped_envelopes
+        .iter()
+        .map(CloudVaultDocumentEnvelope::field_name)
+        .collect::<BTreeSet<_>>();
+    let companions = result
+        .companion_update_intents
+        .iter()
+        .map(|intent| intent.companion_field_name.as_str())
+        .collect::<BTreeSet<_>>();
+    let preserved = result
+        .preserved_member_intents
+        .iter()
+        .map(|intent| {
+            (
+                intent.source_field_name.as_str(),
+                intent.member_name.as_str(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    if !changed.is_disjoint(&skipped)
+        || changed != rewrapped
+        || !changed.is_disjoint(&companions)
+        || !skipped.is_disjoint(&companions)
+        || companions.len() != result.companion_update_intents.len()
+        || preserved.len() != result.preserved_member_intents.len()
+    {
+        return Err(CloudVaultDocumentRewrapError::InvalidFieldSet);
     }
     Ok(())
 }
@@ -504,9 +656,9 @@ fn rewrap_envelope(
             let combined = base64_decode_strict(sealed_box_base64)?;
             let plaintext = Zeroizing::new(aes_gcm_open_combined(&combined, old_key, &source_aad)?);
             let integrity_matches = match *schema_version {
-                1 => plaintext_sha256
-                    .as_ref()
-                    .is_some_and(|expected| sha256_hex(&plaintext) == *expected),
+                1 => plaintext_sha256.as_ref().is_some_and(|expected| {
+                    sha256_hex(&plaintext).is_ok_and(|hash| hash == *expected)
+                }),
                 CURRENT_SCHEMA_VERSION => {
                     *integrity_hash_version == Some(BLOB_INTEGRITY_HASH_VERSION)
                         && plaintext_hmac.as_ref().is_some_and(|expected| {
@@ -637,6 +789,13 @@ mod tests {
     const OLD_KEY: [u8; 32] = [0x71; 32];
     const NEW_KEY: [u8; 32] = [0x72; 32];
 
+    fn planned(field_name: &str, byte: u8) -> CloudVaultResealNonce {
+        CloudVaultResealNonce {
+            field_name: field_name.to_owned(),
+            nonce: vec![byte; 12],
+        }
+    }
+
     fn payload(
         field: &str,
         key: &[u8],
@@ -669,7 +828,7 @@ mod tests {
                 "sealedPayload".to_owned(),
             ],
             envelopes,
-            reseal_nonces: vec![vec![0x22; 12]],
+            reseal_nonce_plan: vec![planned("sealedPayload", 0x22)],
             vault_generation: Some(7),
             rotation_job_id: Some("job-7".to_owned()),
         }
@@ -726,7 +885,7 @@ mod tests {
             &[0x11; 12],
             b"new",
         )?]);
-        input.reseal_nonces.clear();
+        input.reseal_nonce_plan.clear();
         let new_id = vault_key_id(&NEW_KEY)?;
         let result = rewrap_document(&input, &OLD_KEY, &NEW_KEY, &new_id)?;
         assert!(result.changed_fields.is_empty());
@@ -743,14 +902,18 @@ mod tests {
         let new_id = vault_key_id(&NEW_KEY)?;
 
         let mut duplicate = request(vec![envelope.clone(), envelope.clone()]);
-        duplicate.reseal_nonces.push(vec![0x23; 12]);
+        duplicate
+            .reseal_nonce_plan
+            .push(planned("sealedPayload", 0x23));
         assert_eq!(
             rewrap_document(&duplicate, &OLD_KEY, &NEW_KEY, &new_id),
             Err(CloudVaultDocumentRewrapError::InvalidFieldSet)
         );
 
         let mut reused_nonce = request(vec![envelope.clone()]);
-        reused_nonce.reseal_nonces.push(vec![0x22; 12]);
+        reused_nonce
+            .reseal_nonce_plan
+            .push(planned("sealedPayload", 0x22));
         assert_eq!(
             rewrap_document(&reused_nonce, &OLD_KEY, &NEW_KEY, &new_id),
             Err(CloudVaultDocumentRewrapError::InvalidNoncePlan)
@@ -763,7 +926,7 @@ mod tests {
                 &NEW_KEY,
                 &new_id
             ),
-            Err(CloudVaultDocumentRewrapError::InvalidEnvelope)
+            Err(CloudVaultDocumentRewrapError::InvalidKeyRotation)
         );
 
         let mut tampered = envelope;
@@ -811,7 +974,7 @@ mod tests {
         oversized.document_field_names = (0..=MAX_DOCUMENT_FIELDS)
             .map(|index| format!("f{index}"))
             .collect();
-        oversized.reseal_nonces.clear();
+        oversized.reseal_nonce_plan.clear();
         assert_eq!(
             rewrap_document(&oversized, &OLD_KEY, &NEW_KEY, &new_id),
             Err(CloudVaultDocumentRewrapError::BoundsExceeded)
@@ -829,7 +992,7 @@ mod tests {
             *schema_version = 3;
         }
         let mut future_request = request(vec![future]);
-        future_request.reseal_nonces.clear();
+        future_request.reseal_nonce_plan.clear();
         assert_eq!(
             rewrap_document(&future_request, &OLD_KEY, &NEW_KEY, &new_id),
             Err(CloudVaultDocumentRewrapError::InvalidEnvelope)
@@ -842,7 +1005,7 @@ mod tests {
             *key_version = 2;
         }
         let mut future_key_request = request(vec![future_key_version]);
-        future_key_request.reseal_nonces.clear();
+        future_key_request.reseal_nonce_plan.clear();
         assert_eq!(
             rewrap_document(&future_key_request, &OLD_KEY, &NEW_KEY, &new_id),
             Err(CloudVaultDocumentRewrapError::InvalidEnvelope)
@@ -858,7 +1021,7 @@ mod tests {
             *sealed_box_base64 = base64_encode(&bytes);
         }
         let mut tampered_request = request(vec![tampered]);
-        tampered_request.reseal_nonces.clear();
+        tampered_request.reseal_nonce_plan.clear();
         assert_eq!(
             rewrap_document(&tampered_request, &OLD_KEY, &NEW_KEY, &new_id),
             Err(CloudVaultDocumentRewrapError::Crypto(
@@ -973,14 +1136,17 @@ mod tests {
         reused_nonce
             .document_field_names
             .push("sealedStatePayload".to_owned());
-        reused_nonce.reseal_nonces = vec![vec![0x22; 12], vec![0x22; 12]];
+        reused_nonce.reseal_nonce_plan = vec![
+            planned("sealedPayload", 0x22),
+            planned("sealedStatePayload", 0x22),
+        ];
         assert_eq!(
             rewrap_document(&reused_nonce, &OLD_KEY, &NEW_KEY, &new_id),
             Err(CloudVaultDocumentRewrapError::InvalidNoncePlan)
         );
 
         let mut short_plan = request(vec![base.clone()]);
-        short_plan.reseal_nonces.clear();
+        short_plan.reseal_nonce_plan.clear();
         assert_eq!(
             rewrap_document(&short_plan, &OLD_KEY, &NEW_KEY, &new_id),
             Err(CloudVaultDocumentRewrapError::InvalidNoncePlan)
@@ -1010,10 +1176,51 @@ mod tests {
         };
         let mut blob_request = request(vec![bad_blob]);
         blob_request.document_field_names = vec!["sealedSnapshot".to_owned()];
+        blob_request.reseal_nonce_plan = vec![planned("sealedSnapshot", 0x22)];
         assert_eq!(
             rewrap_document(&blob_request, &OLD_KEY, &NEW_KEY, &new_id),
             Err(CloudVaultDocumentRewrapError::IntegrityMismatch)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn reserved_metadata_fields_are_not_envelopes_and_companion_targets_are_unique(
+    ) -> Result<(), Box<dyn Error>> {
+        let new_id = vault_key_id(&NEW_KEY)?;
+        let reserved = payload("rewrapJobId", &OLD_KEY, &[0x11; 12], b"secret")?;
+        let mut reserved_request = request(vec![reserved]);
+        reserved_request.document_field_names = vec!["rewrapJobId".to_owned()];
+        reserved_request.reseal_nonce_plan = vec![planned("rewrapJobId", 0x22)];
+        assert_eq!(
+            rewrap_document(&reserved_request, &OLD_KEY, &NEW_KEY, &new_id),
+            Err(CloudVaultDocumentRewrapError::InvalidFieldSet)
+        );
+
+        let mut dual = request(vec![
+            payload("sealedPayload", &OLD_KEY, &[0x11; 12], b"one")?,
+            payload("sealedReplyPayload", &OLD_KEY, &[0x12; 12], b"two")?,
+        ]);
+        dual.document_field_names
+            .push("sealedReplyPayload".to_owned());
+        dual.reseal_nonce_plan = vec![
+            planned("sealedPayload", 0x22),
+            planned("sealedReplyPayload", 0x23),
+        ];
+        let result = rewrap_document(&dual, &OLD_KEY, &NEW_KEY, &new_id)?;
+        assert_eq!(result.companion_update_intents.len(), 1);
+        assert_eq!(
+            result.companion_update_intents[0].companion_field_name,
+            "vaultKeyID"
+        );
+        assert!(result
+            .changed_fields
+            .iter()
+            .all(|field| field != "vaultKeyID"));
+        assert!(result
+            .skipped_fields
+            .iter()
+            .all(|field| field != "vaultKeyID"));
         Ok(())
     }
 
@@ -1060,7 +1267,7 @@ mod tests {
                     schema_version: 1,
                     algorithm: AES_GCM_ALGORITHM.to_owned(),
                     key_version: 1,
-                    plaintext_sha256: Some(sha256_hex(blob_plaintext)),
+                    plaintext_sha256: Some(sha256_hex(blob_plaintext)?),
                     plaintext_hmac: None,
                     integrity_hash_version: None,
                     sealed_box_base64: base64_encode(&blob_combined),
@@ -1068,7 +1275,11 @@ mod tests {
                     has_created_at: false,
                 },
             ],
-            reseal_nonces: vec![vec![0x21; 12], vec![0x22; 12], vec![0x23; 12]],
+            reseal_nonce_plan: vec![
+                planned("sealedDisplayLabel", 0x21),
+                planned("sealedPayload", 0x22),
+                planned("sealedSnapshot", 0x23),
+            ],
             vault_generation: None,
             rotation_job_id: None,
         };

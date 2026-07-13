@@ -74,7 +74,7 @@ public final class GooseParser: LogParser, Sendable {
 
             for file in jsonlFiles {
                 let sessionId = file.deletingPathExtension().lastPathComponent
-                if let pair = parseJsonlSession(file: file, sessionId: sessionId),
+                if let pair = try parseJsonlSession(file: file, sessionId: sessionId),
                    let usage = pair.usage {
                     usages.append(usage)
                     if let conv = pair.conversation {
@@ -189,7 +189,7 @@ public final class GooseParser: LogParser, Sendable {
             let endTime = timestamp(from: row, column: "updated_at") ?? startTime
 
             let pricing = ModelPricing.lookup(model: model)
-            let cost = pricing.cost(
+            let cost = try pricing.cost(
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
                 cacheCreationTokens: cacheWriteTokens,
@@ -462,7 +462,7 @@ public final class GooseParser: LogParser, Sendable {
     private func parseJsonlSession(
         file: URL,
         sessionId: String
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(file open, guard nil)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
@@ -558,7 +558,7 @@ public final class GooseParser: LogParser, Sendable {
         guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
 
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,

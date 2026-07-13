@@ -206,7 +206,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
 
                 if inputTokens > 0 || outputTokens > 0 {
                     let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-                    let cost = pricing.cost(
+                    let cost = try pricing.cost(
                         inputTokens: inputTokens,
                         outputTokens: outputTokens,
                         cacheReadTokens: cacheReadTokens
@@ -601,7 +601,7 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
             outputTokens: outputTokens,
             cacheCreationTokens: 0,
             cacheReadTokens: cacheReadTokens,
-            costUSD: OpenBurnBarCore.ModelPricing.lookup(model: model).cost(inputTokens: inputTokens, outputTokens: outputTokens, cacheReadTokens: cacheReadTokens),
+            costUSD: try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(inputTokens: inputTokens, outputTokens: outputTokens, cacheReadTokens: cacheReadTokens),
             startTime: effectiveStart,
             endTime: effectiveEnd,
             provenanceMethod: cacheReadTokens > 0 ? .providerLog : .heuristicEstimate,

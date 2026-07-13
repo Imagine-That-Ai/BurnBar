@@ -3,10 +3,23 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use super::{
     QuotaBucket, QuotaConfidence, QuotaParseResult, QuotaParseStatus, QuotaSnapshot,
-    QuotaSourceKind, QuotaUnit, QuotaWindowKind,
+    QuotaSourceKind, QuotaUnit, QuotaWindowKind, MAX_QUOTA_PAYLOAD_BYTES,
 };
 
+const MAX_USER_EMAIL_BYTES: usize = 320;
+
 pub fn parse_cursor_usage_quota(payload: &[u8], user_email: Option<&str>) -> QuotaParseResult {
+    if payload.len() > MAX_QUOTA_PAYLOAD_BYTES {
+        return QuotaParseResult {
+            status: QuotaParseStatus::Malformed,
+            snapshot: snapshot(
+                QuotaSourceKind::Unavailable,
+                QuotaConfidence::Unavailable,
+                "Cursor usage-summary payload exceeded the bounded contract.".to_owned(),
+                Vec::new(),
+            ),
+        };
+    }
     let Ok(Value::Object(root)) = serde_json::from_slice::<Value>(payload) else {
         return QuotaParseResult {
             status: QuotaParseStatus::Malformed,
@@ -28,11 +41,11 @@ pub fn parse_cursor_usage_quota(payload: &[u8], user_email: Option<&str>) -> Quo
         .and_then(|value| value.get("plan"))
         .and_then(Value::as_object)
     {
-        let used = number(plan, "used", "used").unwrap_or(0.0) / 100.0;
-        let limit = number(plan, "limit", "limit").unwrap_or(0.0) / 100.0;
-        let auto = number(plan, "auto_percent_used", "autoPercentUsed");
-        let api = number(plan, "api_percent_used", "apiPercentUsed");
-        let total = number(plan, "total_percent_used", "totalPercentUsed")
+        let used = non_negative_number(plan, "used", "used").unwrap_or(0.0) / 100.0;
+        let limit = non_negative_number(plan, "limit", "limit").unwrap_or(0.0) / 100.0;
+        let auto = percentage(plan, "auto_percent_used", "autoPercentUsed");
+        let api = percentage(plan, "api_percent_used", "apiPercentUsed");
+        let total = percentage(plan, "total_percent_used", "totalPercentUsed")
             .or_else(|| auto.map(|a| api.map_or(a, |b| (a + b) / 2.0)));
         if limit > 0.0 || used > 0.0 {
             buckets.push(bucket(
@@ -67,8 +80,8 @@ pub fn parse_cursor_usage_quota(payload: &[u8], user_email: Option<&str>) -> Quo
     }
 
     if let Some(on_demand) = individual.and_then(|value| object(value, "on_demand", "onDemand")) {
-        let used = number(on_demand, "used", "used").unwrap_or(0.0) / 100.0;
-        let limit = number(on_demand, "limit", "limit").unwrap_or(0.0) / 100.0;
+        let used = non_negative_number(on_demand, "used", "used").unwrap_or(0.0) / 100.0;
+        let limit = non_negative_number(on_demand, "limit", "limit").unwrap_or(0.0) / 100.0;
         if used > 0.0 || limit > 0.0 {
             buckets.push(bucket(
                 "cursor-ondemand",
@@ -94,7 +107,11 @@ pub fn parse_cursor_usage_quota(payload: &[u8], user_email: Option<&str>) -> Quo
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "Cursor".to_owned());
     let suffix = user_email
-        .filter(|value| !value.is_empty())
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= MAX_USER_EMAIL_BYTES
+                && !value.chars().any(char::is_control)
+        })
         .map_or_else(String::new, |value| format!(" ({value})"));
     let unlimited = boolean(&root, "is_unlimited", "isUnlimited").unwrap_or(false);
     QuotaParseResult {
@@ -188,6 +205,13 @@ fn number(value: &Map<String, Value>, snake: &str, camel: &str) -> Option<f64> {
         .get(snake)
         .or_else(|| value.get(camel))
         .and_then(Value::as_f64)
+        .filter(|number| number.is_finite())
+}
+fn non_negative_number(value: &Map<String, Value>, snake: &str, camel: &str) -> Option<f64> {
+    number(value, snake, camel).filter(|number| *number >= 0.0)
+}
+fn percentage(value: &Map<String, Value>, snake: &str, camel: &str) -> Option<f64> {
+    number(value, snake, camel).filter(|number| (0.0..=100.0).contains(number))
 }
 fn boolean(value: &Map<String, Value>, snake: &str, camel: &str) -> Option<bool> {
     value
@@ -232,5 +256,21 @@ mod tests {
         let actual = parse_cursor_usage_quota(b"not json", None);
         assert_eq!(actual.status, QuotaParseStatus::Malformed);
         assert_eq!(actual.snapshot.confidence, QuotaConfidence::Unavailable);
+    }
+
+    #[test]
+    fn invalid_user_email_is_omitted_from_status() {
+        for invalid in [
+            "a".repeat(MAX_USER_EMAIL_BYTES + 1),
+            "user\n@example.com".to_owned(),
+        ] {
+            let actual = parse_cursor_usage_quota(b"{}", Some(&invalid));
+            assert_eq!(actual.snapshot.status_message, "Cursor — Capped plan.");
+        }
+        let valid = parse_cursor_usage_quota(b"{}", Some("user@example.com"));
+        assert_eq!(
+            valid.snapshot.status_message,
+            "Cursor (user@example.com) — Capped plan."
+        );
     }
 }
