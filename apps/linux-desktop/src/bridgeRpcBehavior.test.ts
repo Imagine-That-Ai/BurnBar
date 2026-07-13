@@ -139,6 +139,26 @@ describe('VAL-RPC-002 bridge behavior', () => {
     });
   });
 
+  it.each(['refreshing', 'locked', 'configuration_required', 'error', 'future_state'])(
+    'keeps daemon auth phase %s unavailable instead of misreporting signed out',
+    async (phase) => {
+      invoke.mockResolvedValueOnce({
+        state: phase,
+        signedIn: true,
+        trustClass: 'linux-lower-trust',
+        syncState: 'local-only',
+        detail: phase
+      });
+      const b = await bridge();
+
+      await expect(b.accountStatus()).resolves.toMatchObject({
+        state: 'unavailable',
+        signedIn: true,
+        detail: phase
+      });
+    }
+  );
+
   it('toolApprovalRespond success path invokes tool_approval_respond', async () => {
     invoke.mockResolvedValueOnce({ ok: true });
     const b = await bridge();

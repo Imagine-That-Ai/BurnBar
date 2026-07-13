@@ -1341,16 +1341,24 @@ function mapDatabaseIndexAction(raw: RawJsonValue): DatabaseIndexActionResult {
 function mapAccountStatus(raw: RawJsonValue): AccountStatus {
   const status = pick(raw, 'status') ?? raw;
   const signedIn = Boolean(pick(status, 'signedIn', 'signed_in', 'authenticated'));
-  const rawState = str(pick(status, 'state'), signedIn ? 'active' : 'signed_out');
+  // The daemon's Linux auth authority deliberately collapses refreshing,
+  // locked, configuration-required, and error phases into an unavailable
+  // public state. Keep those failures visible instead of silently treating an
+  // unknown/new phase as signed out (which could offer the wrong destructive
+  // controls or hide a recoverable cloud session).
+  const rawState = str(pick(status, 'state'), signedIn ? 'active' : 'signed_out')
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, '_');
   const state: NonNullable<AccountStatus['state']> = rawState === 'authorizing'
     ? 'authorizing'
-    : rawState === 'awaiting_device_approval'
+    : rawState === 'awaiting_device_approval' || rawState === 'awaitingdeviceapproval'
       ? 'awaiting-device-approval'
-      : rawState === 'active'
+      : rawState === 'active' || rawState === 'ready'
         ? 'active'
-        : rawState === 'unavailable'
-          ? 'unavailable'
-          : 'signed-out';
+        : rawState === 'signed_out' || rawState === 'signedout'
+          ? 'signed-out'
+          : 'unavailable';
   const syncStateRaw = str(pick(status, 'syncState', 'sync_state'), signedIn ? 'active' : 'local-only');
   const syncState: AccountStatus['syncState'] = syncStateRaw === 'active' || syncStateRaw === 'cloud-ready'
     ? 'active'

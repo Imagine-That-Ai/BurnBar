@@ -224,4 +224,26 @@ describe('accountStore daemon-owned auth actions', () => {
     expect(accountBeginSignIn).toHaveBeenCalledOnce();
     expect(useAccountStore.getState().data?.authorizationOperationID).toBe('op-1');
   });
+
+  it('does not dispatch auth mutations from fixture mode', async () => {
+    const accountSignOut = vi.fn(async () => signedOut);
+    const accountRotateIdentity = vi.fn(async () => signedOut);
+    const accountCancelSignIn = vi.fn(async () => signedOut);
+    useShellStore.setState({
+      fixtureMode: true,
+      bridge: { accountSignOut, accountRotateIdentity, accountCancelSignIn } as never
+    });
+    useAccountStore.setState({
+      data: { ...signedOut, state: 'authorizing', authorizationOperationID: 'fixture-op' }
+    });
+
+    await useAccountStore.getState().cancelSignIn();
+    await useAccountStore.getState().rotateIdentity();
+    await useAccountStore.getState().signOut();
+
+    expect(accountCancelSignIn).not.toHaveBeenCalled();
+    expect(accountRotateIdentity).not.toHaveBeenCalled();
+    expect(accountSignOut).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().error).toMatch(/fixture mode/i);
+  });
 });

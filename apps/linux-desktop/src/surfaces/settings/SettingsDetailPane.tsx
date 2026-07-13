@@ -701,7 +701,12 @@ function DevicesAndSyncDetail({
             iconGlyph="⌘"
             label="Linux installation identity"
             description={awaitingApproval ? 'Approval is required on a trusted OpenBurnBar device.' : 'Daemon-owned identity used for cloud enrollment.'}
-            control={<code className="mono">{account.installationDeviceID}</code>}
+            control={
+              <span className="settings-verification-value">
+                <code className="mono">{account.installationDeviceID}</code>
+                <CopyPathButton path={account.installationDeviceID} label="Copy device ID" />
+              </span>
+            }
           />
         ) : null}
         {account?.installationSafetyFingerprint ? (
@@ -709,7 +714,12 @@ function DevicesAndSyncDetail({
             iconGlyph="#"
             label="Safety fingerprint"
             description="Compare this value on the approving device before trusting the installation."
-            control={<code className="mono">{account.installationSafetyFingerprint}</code>}
+            control={
+              <span className="settings-verification-value">
+                <code className="mono">{account.installationSafetyFingerprint}</code>
+                <CopyPathButton path={account.installationSafetyFingerprint} label="Copy fingerprint" />
+              </span>
+            }
           />
         ) : null}
         <div className="actions">
