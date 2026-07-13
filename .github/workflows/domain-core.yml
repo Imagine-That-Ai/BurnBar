@@ -239,6 +239,10 @@ jobs:
           api-level: 34
           target: google_apis
           arch: arm64-v8a
+          disable-animations: true
+          emulator-options: >-
+            -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim -accel off
           script: cd android && ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon
 
   apple:
