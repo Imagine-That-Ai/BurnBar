@@ -5,6 +5,7 @@
 **Source inventory:** [Shared Rust Domain Inventory](SHARED_RUST_DOMAIN_INVENTORY.md)
 **First contract:** [`tests/fixtures/domain-core/quota/v1/`](../tests/fixtures/domain-core/quota/v1/)
 **CloudVault contract:** [`tests/fixtures/domain-core/cloudvault/v1/`](../tests/fixtures/domain-core/cloudvault/v1/)
+**CloudVault search contract:** [`cloudvault-search-contract.json`](../tests/fixtures/domain-core/cloudvault/v1/cloudvault-search-contract.json)
 
 The pilot is implemented behind `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE`. Its
 accepted values are `legacy` (default), `shadow`, and `rust`.
@@ -46,6 +47,13 @@ FFI calls. Apple, Android, Windows, and Wasm execute the same AES KAT, including
 valid empty plaintext. C1c adds recovery and
 P-256 escrow; search normalization and document rewrap remain last. Browser
 device private keys stay non-extractable WebCrypto handles throughout.
+
+The search slice starts from the versioned Swift/Kotlin contract fixture before
+adding any Rust export. The fixture pins Unicode normalization, stopwords,
+deduplication order, index/query prefixes, exact phrases, semantic
+concept/stem/features, non-positive limits, key isolation, and adversarial
+bounds. Passing the fixture is implementation evidence only; it is not rollout
+evidence and does not satisfy the crypto deletion gate by itself.
 
 ## Rollout and deletion gates
 
