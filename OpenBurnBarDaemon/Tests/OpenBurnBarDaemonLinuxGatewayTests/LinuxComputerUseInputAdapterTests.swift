@@ -6,6 +6,16 @@ import OpenBurnBarCore
 import XCTest
 
 final class LinuxComputerUseInputAdapterTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        LinuxPrivilegedInputKillFlag._resetForTesting()
+    }
+
+    override func tearDown() {
+        LinuxPrivilegedInputKillFlag._resetForTesting()
+        super.tearDown()
+    }
+
     func testAtspiClickPlanUsesPythonWhenSessionBusIsAvailable() throws {
         let adapter = LinuxComputerUseInputAdapter(
             environment: { name in
@@ -24,6 +34,29 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
         XCTAssertEqual(plan.adapter, .atspi2)
         XCTAssertEqual(plan.executableName, "python3")
         XCTAssertEqual(Array(plan.arguments.suffix(2)), ["220", "160"])
+    }
+
+    func testAtspiOnlyAdapterIsDegradedAndDoesNotAdmitFullSystemSession() {
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                ["DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"][name]
+            },
+            resolveExecutable: { name in
+                name == "python3" ? "/usr/bin/python3" : nil
+            },
+            runCommand: { _, _ in LinuxComputerUseInputAdapter.CommandResult(exitCode: 0) }
+        )
+
+        XCTAssertTrue(adapter.isAvailableForSystemInput())
+        XCTAssertFalse(adapter.hasFullSystemInputCoverage())
+        let atspiRow = adapter.capabilityRows().first { row in
+            guard case .object(let object) = row else { return false }
+            return object["id"] == .string(LinuxComputerUseInputAdapter.AdapterID.atspi2.rawValue)
+        }
+        guard let atspiRow, case .object(let object) = atspiRow else {
+            return XCTFail("expected AT-SPI2 capability row")
+        }
+        XCTAssertEqual(object["status"], .string("available"))
     }
 
     func testX11FallbackDispatchDoesNotEchoTypedSecretInResult() async throws {
@@ -246,6 +279,36 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? LinuxComputerUseInputAdapter.AdapterError, .killSwitchActive(flagPath))
             XCTAssertNil(recorder.lastExecutable)
+        }
+    }
+
+    func testPanicLatchBlocksInputWhenKillFlagCannotBePersisted() async throws {
+        let persisted = LinuxPrivilegedInputKillFlag.activate(
+            reason: "panic",
+            path: "/dev/null/openburnbar/privileged-input-kill"
+        )
+        XCTAssertFalse(persisted)
+
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                ["DISPLAY": ":99"][name]
+            },
+            resolveExecutable: { name in
+                name == "xdotool" ? "/usr/bin/xdotool" : nil
+            },
+            runCommand: { _, _ in
+                XCTFail("the process-local panic latch must block input before dispatch")
+                return LinuxComputerUseInputAdapter.CommandResult(exitCode: 0)
+            }
+        )
+
+        do {
+            _ = try await adapter.dispatch(MacInputAction(kind: .click, displayX: 10, displayY: 20))
+            XCTFail("dispatch must fail while the process-local panic latch is active")
+        } catch {
+            guard case .killSwitchActive = error as? LinuxComputerUseInputAdapter.AdapterError else {
+                return XCTFail("expected kill switch error, got \(error)")
+            }
         }
     }
 }

@@ -19,6 +19,22 @@ final class LinuxSystemComputerUseRuntimeTests: XCTestCase {
         XCTAssertEqual(capability.reason, "desktop_portal_session_bus_unavailable")
     }
 
+    func testAtspiOnlyInputIsDegradedAndDoesNotAdvertiseSystemSession() async {
+        let capture = TestLinuxSystemCaptureAdapter(emitsFrame: true)
+        let runtime = makeRuntime(
+            capture: capture,
+            resolveExecutable: { name in
+                name == "python3" ? "/usr/bin/python3" : nil
+            }
+        )
+
+        let capability = await runtime.capability()
+
+        XCTAssertFalse(capability.available)
+        XCTAssertFalse(capability.inputReady)
+        XCTAssertEqual(capability.reason, "linux_input_adapter_action_coverage_incomplete")
+    }
+
     func testStartWaitsForLiveFrameThenAllowsInputAndStopRevokesBoth() async throws {
         let capture = TestLinuxSystemCaptureAdapter(emitsFrame: true)
         let runtime = makeRuntime(capture: capture)
@@ -122,7 +138,10 @@ final class LinuxSystemComputerUseRuntimeTests: XCTestCase {
     private func makeRuntime(
         capture: any MercuryLinuxCaptureAdapterProtocol,
         portalReady: Bool = true,
-        firstFrameTimeout: Duration = .seconds(1)
+        firstFrameTimeout: Duration = .seconds(1),
+        resolveExecutable: @escaping LinuxComputerUseInputAdapter.ExecutableResolver = {
+            $0 == "xdotool" ? "/usr/bin/xdotool" : nil
+        }
     ) -> LinuxSystemComputerUseRuntime {
         let input = LinuxComputerUseInputAdapter(
             environment: { name in
@@ -132,7 +151,7 @@ final class LinuxSystemComputerUseRuntimeTests: XCTestCase {
                 default: nil
                 }
             },
-            resolveExecutable: { $0 == "xdotool" ? "/usr/bin/xdotool" : nil },
+            resolveExecutable: resolveExecutable,
             runCommand: { _, _ in LinuxComputerUseInputAdapter.CommandResult(exitCode: 0) }
         )
         return LinuxSystemComputerUseRuntime(

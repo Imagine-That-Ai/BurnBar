@@ -544,7 +544,10 @@ was enabled.
 Linux System mode is daemon-owned and uses the same managed-run, approval,
 scope, panic, budget, and audit authority as Browser mode. The desktop offers
 System only when the daemon reports both PipeWire/portal capture readiness and
-a live Linux input adapter. Session start does not succeed until the capture
+a full Linux input adapter. X11/XTEST is the complete action adapter in this
+release; AT-SPI2 remains a degraded click/inspection capability and is not
+enough to admit a System session by itself. Session start does not succeed
+until the capture
 pipeline produces its first encoded VP9 frame. Input and Accessibility inspect
 actions remain bound to the exact run, call, generation, client, and active
 capture session.
@@ -556,6 +559,13 @@ fails the start rather than returning a dead session. Agent Watch is not yet
 implemented on Linux, and System mode remains uncertified as an installed
 parity outcome until the exact candidate passes the GNOME, KDE, and wlroots
 Wayland/X11 matrix.
+
+The Linux panic path persists the privileged-input kill flag under
+`$XDG_RUNTIME_DIR/openburnbar/` (with a legacy `/var/run` fallback) and also
+latches the current daemon process before attempting the file write. A
+read-only or unavailable runtime directory therefore cannot silently re-enable
+input; recovery requires a fresh daemon process after the panic state has been
+addressed.
 
 Desktop export behavior is intentionally explicit. `desktop_export_file` copies
 a workspace file to `~/Desktop/OpenBurnBar Agent Drops/{threadId}/` and never

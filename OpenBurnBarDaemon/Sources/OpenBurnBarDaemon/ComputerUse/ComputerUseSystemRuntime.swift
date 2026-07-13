@@ -127,11 +127,12 @@ actor LinuxSystemComputerUseRuntime: ComputerUseSystemRuntime {
         let portalReady = portalProbe()
         let killSwitchActive = killSwitchProbe()
         let inputAdapterReady = inputAdapter.isAvailableForSystemInput()
+        let inputCoverageReady = inputAdapter.hasFullSystemInputCoverage()
         let captureReady = portalReady
             && media.capabilitiesKnown
             && media.pipeWireSource
             && media.vp9Encode
-        let inputReady = inputAdapterReady && !killSwitchActive
+        let inputReady = inputAdapterReady && inputCoverageReady && !killSwitchActive
         let available = captureReady && inputReady
         let activeNow = available && active?.captureLive == true
         let reason: String
@@ -143,6 +144,8 @@ actor LinuxSystemComputerUseRuntime: ComputerUseSystemRuntime {
             reason = "pipewire_vp9_capture_unavailable"
         } else if !inputAdapterReady {
             reason = "linux_input_adapter_unavailable"
+        } else if !inputCoverageReady {
+            reason = "linux_input_adapter_action_coverage_incomplete"
         } else if activeNow {
             reason = "capture_and_input_live"
         } else {
@@ -285,7 +288,8 @@ actor LinuxSystemComputerUseRuntime: ComputerUseSystemRuntime {
               active.sessionID == sessionID,
               active.captureLive,
               !killSwitchProbe(),
-              inputAdapter.isAvailableForSystemInput() else {
+              inputAdapter.isAvailableForSystemInput(),
+              inputAdapter.hasFullSystemInputCoverage() else {
             throw RuntimeError.sessionNotActive
         }
     }

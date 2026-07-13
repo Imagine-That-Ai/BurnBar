@@ -6,6 +6,12 @@ import OpenBurnBarCore
 enum LinuxPrivilegedInputKillFlag {
     static let legacyProductionFlagPath = "/var/run/openburnbar-privileged-input-kill"
     private static let flagFilename = "privileged-input-kill"
+    /// The file flag is the cross-process kill switch, but it is not a safe
+    /// single point of failure: an unprivileged daemon may be unable to create
+    /// either the XDG runtime file or the legacy `/var/run` fallback. Keep a
+    /// process-lifetime latch as soon as a panic is requested so input cannot
+    /// resume merely because persistence failed.
+    private static let processKillSwitch = Locked(false)
 
     static var flagPath: String {
         resolvedFlagPath(environment: { ProcessInfo.processInfo.environment[$0] })
@@ -34,16 +40,24 @@ enum LinuxPrivilegedInputKillFlag {
     }
 
     static func activate(reason: String) {
+        _ = activate(reason: reason, path: flagPath)
+    }
+
+    @discardableResult
+    static func activate(reason: String, path: String) -> Bool {
+        processKillSwitch.write(true)
         do {
-            let flagURL = URL(fileURLWithPath: flagPath)
+            let flagURL = URL(fileURLWithPath: path)
             try FileManager.default.createDirectory(
                 at: flagURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
             try reason.write(to: flagURL, atomically: true, encoding: .utf8)
+            return true
         } catch {
             let message = "LinuxPrivilegedInputKillFlag.activate failed: \(error)\n"
             FileHandle.standardError.write(Data(message.utf8))
+            return false
         }
     }
 
@@ -51,7 +65,13 @@ enum LinuxPrivilegedInputKillFlag {
         environment: (String) -> String? = { ProcessInfo.processInfo.environment[$0] },
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> Bool {
-        activeFlagPaths(environment: environment).contains(where: fileExists)
+        processKillSwitch.read() || activeFlagPaths(environment: environment).contains(where: fileExists)
+    }
+
+    /// Test-only reset for the process-local latch. Production never clears a
+    /// panic latch; a fresh daemon process is the recovery boundary.
+    static func _resetForTesting() {
+        processKillSwitch.write(false)
     }
 
     static func environmentKillSwitchActive(
@@ -182,6 +202,16 @@ public struct LinuxComputerUseInputAdapter: Sendable {
 
     public func isAvailableForSystemInput() -> Bool {
         atspi2Available() || x11XTestAvailable()
+    }
+
+    /// System sessions may receive every `MacInputAction.Kind`, not only a
+    /// coordinate click. AT-SPI2 is intentionally limited to activating an
+    /// accessible click target; it cannot safely synthesize keyboard, pointer,
+    /// drag, or scroll events. Keep that degraded capability visible in the
+    /// rows below, but do not admit a session that would later revoke itself on
+    /// its first non-click action.
+    public func hasFullSystemInputCoverage() -> Bool {
+        x11XTestAvailable()
     }
 
     public func dispatch(_ action: MacInputAction) async throws -> BurnBarJSONValue {
