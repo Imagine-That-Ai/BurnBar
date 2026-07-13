@@ -45,8 +45,12 @@ Wasm package. C1b owns AES-256-GCM detached/combined framing, strict UTF-8 and
 canonical RFC 4648 Base64, with caller-generated 12-byte nonces and payload-sized
 FFI calls. Apple, Android, Windows, and Wasm execute the same AES KAT, including
 valid empty plaintext. C1c adds recovery and
-P-256 escrow; search normalization and document rewrap remain last. Browser
-device private keys stay non-extractable WebCrypto handles throughout.
+P-256 escrow: canonical recovery normalization, recovery HKDF and verification,
+strict on-curve 65-byte X9.63 validation, escrow HKDF from caller-provided ECDH
+output, and exact public-key-plus-AES wire assembly. Random nonces and P-256
+private-key operations remain platform-owned; no private key crosses UniFFI or
+Wasm. Search normalization and document rewrap remain last. Browser device
+private keys stay non-extractable WebCrypto handles throughout.
 
 The search slice starts from the versioned Swift/Kotlin contract fixture before
 adding any Rust export. The fixture pins Unicode normalization, stopwords,

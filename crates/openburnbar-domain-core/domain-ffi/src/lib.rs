@@ -29,6 +29,18 @@ pub struct CloudVaultAesGcmDetachedBox {
     pub tag: Vec<u8>,
 }
 
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultRecoveryWrappedVaultKey {
+    pub combined: Vec<u8>,
+    pub verification_hash: String,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultEscrowWireParts {
+    pub ephemeral_public_key: Vec<u8>,
+    pub aes_gcm_combined: Vec<u8>,
+}
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CloudVaultFfiError {
     #[error("cloud vault keys must be exactly 32 bytes")]
@@ -55,6 +67,14 @@ pub enum CloudVaultFfiError {
     InvalidUtf8,
     #[error("CloudVault Base64 must be canonical RFC 4648 standard encoding")]
     InvalidBase64,
+    #[error("recovery keys must contain at least 20 normalized letters or numbers")]
+    InvalidRecoveryKey,
+    #[error("P-256 ECDH shared secrets must be exactly 32 bytes")]
+    InvalidSharedSecretLength,
+    #[error("P-256 public keys must be valid 65-byte uncompressed X9.63 points")]
+    InvalidP256PublicKey,
+    #[error("the P-256 escrow wire must contain a public key and AES-GCM combined box")]
+    InvalidEscrowWireLength,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -308,6 +328,126 @@ pub fn cloud_vault_base64_decode_strict(value: String) -> Result<Vec<u8>, CloudV
     cloudvault::base64_decode_strict(&value).map_err(Into::into)
 }
 
+#[uniffi::export]
+pub fn cloud_vault_normalize_recovery_key(
+    mut recovery_key: String,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::normalize_recovery_key(&recovery_key).map_err(Into::into);
+    recovery_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_recovery_wrapping_key(
+    mut recovery_key: String,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::recovery_wrapping_key(&recovery_key)
+        .map(|mut key| {
+            let output = key.to_vec();
+            key.zeroize();
+            output
+        })
+        .map_err(Into::into);
+    recovery_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_recovery_verification_hash(
+    mut recovery_key: String,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::recovery_verification_hash(&recovery_key).map_err(Into::into);
+    recovery_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_recovery_wrap_vault_key(
+    mut vault_key: Vec<u8>,
+    mut recovery_key: String,
+    nonce: Vec<u8>,
+) -> Result<CloudVaultRecoveryWrappedVaultKey, CloudVaultFfiError> {
+    let result = cloudvault::recovery_wrap_vault_key(&vault_key, &recovery_key, &nonce)
+        .map(Into::into)
+        .map_err(Into::into);
+    vault_key.zeroize();
+    recovery_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_recovery_open_vault_key(
+    combined: Vec<u8>,
+    mut recovery_key: String,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::recovery_open_vault_key(&combined, &recovery_key).map_err(Into::into);
+    recovery_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_validate_p256_x963_public_key(
+    public_key: Vec<u8>,
+) -> Result<(), CloudVaultFfiError> {
+    cloudvault::validate_p256_x963_public_key(&public_key).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn cloud_vault_escrow_wrapping_key(
+    mut shared_secret: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::escrow_wrapping_key(&shared_secret)
+        .map(|mut key| {
+            let output = key.to_vec();
+            key.zeroize();
+            output
+        })
+        .map_err(Into::into);
+    shared_secret.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_escrow_assemble_wire(
+    ephemeral_public_key: Vec<u8>,
+    aes_gcm_combined: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    cloudvault::escrow_assemble_wire(&ephemeral_public_key, &aes_gcm_combined).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn cloud_vault_escrow_split_wire(
+    wire: Vec<u8>,
+) -> Result<CloudVaultEscrowWireParts, CloudVaultFfiError> {
+    cloudvault::escrow_split_wire(&wire)
+        .map(Into::into)
+        .map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn cloud_vault_escrow_seal(
+    mut plaintext: Vec<u8>,
+    ephemeral_public_key: Vec<u8>,
+    mut shared_secret: Vec<u8>,
+    nonce: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::escrow_seal(&plaintext, &ephemeral_public_key, &shared_secret, &nonce)
+        .map_err(Into::into);
+    plaintext.zeroize();
+    shared_secret.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_escrow_open(
+    wire: Vec<u8>,
+    mut shared_secret: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::escrow_open(&wire, &shared_secret).map_err(Into::into);
+    shared_secret.zeroize();
+    result
+}
+
 fn cloud_vault_aad_context(
     uid: &str,
     collection: &str,
@@ -351,6 +491,12 @@ impl From<cloudvault::CloudVaultError> for CloudVaultFfiError {
             cloudvault::CloudVaultError::AuthenticationFailed => Self::AuthenticationFailed,
             cloudvault::CloudVaultError::InvalidUtf8 => Self::InvalidUtf8,
             cloudvault::CloudVaultError::InvalidBase64 => Self::InvalidBase64,
+            cloudvault::CloudVaultError::InvalidRecoveryKey => Self::InvalidRecoveryKey,
+            cloudvault::CloudVaultError::InvalidSharedSecretLength => {
+                Self::InvalidSharedSecretLength
+            }
+            cloudvault::CloudVaultError::InvalidP256PublicKey => Self::InvalidP256PublicKey,
+            cloudvault::CloudVaultError::InvalidEscrowWireLength => Self::InvalidEscrowWireLength,
         }
     }
 }
@@ -361,6 +507,24 @@ impl From<cloudvault::AesGcmDetachedBox> for CloudVaultAesGcmDetachedBox {
             nonce: value.nonce,
             ciphertext: value.ciphertext,
             tag: value.tag,
+        }
+    }
+}
+
+impl From<cloudvault::RecoveryWrappedVaultKey> for CloudVaultRecoveryWrappedVaultKey {
+    fn from(value: cloudvault::RecoveryWrappedVaultKey) -> Self {
+        Self {
+            combined: value.combined,
+            verification_hash: value.verification_hash,
+        }
+    }
+}
+
+impl From<cloudvault::EscrowWireParts> for CloudVaultEscrowWireParts {
+    fn from(value: cloudvault::EscrowWireParts) -> Self {
+        Self {
+            ephemeral_public_key: value.ephemeral_public_key,
+            aes_gcm_combined: value.aes_gcm_combined,
         }
     }
 }
@@ -566,6 +730,44 @@ mod tests {
             cloud_vault_base64_decode_strict("AA==\n".into()),
             Err(CloudVaultFfiError::InvalidBase64)
         ));
+        let recovery_key = "abc-defg-hjkm-npq-rst-vwxyz-23456789".to_owned();
+        let recovery_wrapped = cloud_vault_recovery_wrap_vault_key(
+            (0_u8..32).collect(),
+            recovery_key.clone(),
+            (0_u8..12).collect(),
+        )?;
+        assert_eq!(
+            cloud_vault_recovery_open_vault_key(recovery_wrapped.combined, recovery_key)?,
+            (0_u8..32).collect::<Vec<_>>()
+        );
+
+        let public_key = decode_hex(
+            "046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296\
+             4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+        );
+        cloud_vault_validate_p256_x963_public_key(public_key.clone())?;
+        let shared_secret: Vec<u8> = (0xa0_u8..=0xbf).collect();
+        let wire = cloud_vault_escrow_seal(
+            vec![],
+            public_key,
+            shared_secret.clone(),
+            (0_u8..12).collect(),
+        )?;
+        assert_eq!(
+            cloud_vault_escrow_open(wire, shared_secret)?,
+            Vec::<u8>::new()
+        );
         Ok(())
+    }
+
+    fn decode_hex(value: &str) -> Vec<u8> {
+        value
+            .split_ascii_whitespace()
+            .collect::<String>()
+            .as_bytes()
+            .chunks_exact(2)
+            .filter_map(|pair| std::str::from_utf8(pair).ok())
+            .filter_map(|pair| u8::from_str_radix(pair, 16).ok())
+            .collect()
     }
 }

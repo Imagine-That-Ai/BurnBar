@@ -700,6 +700,138 @@ public func FfiConverterTypeCloudVaultAesGcmDetachedBox_lower(_ value: CloudVaul
 }
 
 
+public struct CloudVaultEscrowWireParts {
+    public var ephemeralPublicKey: Data
+    public var aesGcmCombined: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(ephemeralPublicKey: Data, aesGcmCombined: Data) {
+        self.ephemeralPublicKey = ephemeralPublicKey
+        self.aesGcmCombined = aesGcmCombined
+    }
+}
+
+
+
+extension CloudVaultEscrowWireParts: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultEscrowWireParts, rhs: CloudVaultEscrowWireParts) -> Bool {
+        if lhs.ephemeralPublicKey != rhs.ephemeralPublicKey {
+            return false
+        }
+        if lhs.aesGcmCombined != rhs.aesGcmCombined {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(ephemeralPublicKey)
+        hasher.combine(aesGcmCombined)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultEscrowWireParts: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultEscrowWireParts {
+        return
+            try CloudVaultEscrowWireParts(
+                ephemeralPublicKey: FfiConverterData.read(from: &buf),
+                aesGcmCombined: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultEscrowWireParts, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.ephemeralPublicKey, into: &buf)
+        FfiConverterData.write(value.aesGcmCombined, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultEscrowWireParts_lift(_ buf: RustBuffer) throws -> CloudVaultEscrowWireParts {
+    return try FfiConverterTypeCloudVaultEscrowWireParts.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultEscrowWireParts_lower(_ value: CloudVaultEscrowWireParts) -> RustBuffer {
+    return FfiConverterTypeCloudVaultEscrowWireParts.lower(value)
+}
+
+
+public struct CloudVaultRecoveryWrappedVaultKey {
+    public var combined: Data
+    public var verificationHash: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(combined: Data, verificationHash: String) {
+        self.combined = combined
+        self.verificationHash = verificationHash
+    }
+}
+
+
+
+extension CloudVaultRecoveryWrappedVaultKey: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultRecoveryWrappedVaultKey, rhs: CloudVaultRecoveryWrappedVaultKey) -> Bool {
+        if lhs.combined != rhs.combined {
+            return false
+        }
+        if lhs.verificationHash != rhs.verificationHash {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(combined)
+        hasher.combine(verificationHash)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultRecoveryWrappedVaultKey: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultRecoveryWrappedVaultKey {
+        return
+            try CloudVaultRecoveryWrappedVaultKey(
+                combined: FfiConverterData.read(from: &buf),
+                verificationHash: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultRecoveryWrappedVaultKey, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.combined, into: &buf)
+        FfiConverterString.write(value.verificationHash, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultRecoveryWrappedVaultKey_lift(_ buf: RustBuffer) throws -> CloudVaultRecoveryWrappedVaultKey {
+    return try FfiConverterTypeCloudVaultRecoveryWrappedVaultKey.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultRecoveryWrappedVaultKey_lower(_ value: CloudVaultRecoveryWrappedVaultKey) -> RustBuffer {
+    return FfiConverterTypeCloudVaultRecoveryWrappedVaultKey.lower(value)
+}
+
+
 public struct QuotaBucket {
     public var key: String
     public var label: String
@@ -1074,6 +1206,10 @@ public enum CloudVaultFfiError {
     case AuthenticationFailed
     case InvalidUtf8
     case InvalidBase64
+    case InvalidRecoveryKey
+    case InvalidSharedSecretLength
+    case InvalidP256PublicKey
+    case InvalidEscrowWireLength
 }
 
 
@@ -1102,6 +1238,10 @@ public struct FfiConverterTypeCloudVaultFfiError: FfiConverterRustBuffer {
         case 10: return .AuthenticationFailed
         case 11: return .InvalidUtf8
         case 12: return .InvalidBase64
+        case 13: return .InvalidRecoveryKey
+        case 14: return .InvalidSharedSecretLength
+        case 15: return .InvalidP256PublicKey
+        case 16: return .InvalidEscrowWireLength
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -1160,6 +1300,22 @@ public struct FfiConverterTypeCloudVaultFfiError: FfiConverterRustBuffer {
 
         case .InvalidBase64:
             writeInt(&buf, Int32(12))
+
+
+        case .InvalidRecoveryKey:
+            writeInt(&buf, Int32(13))
+
+
+        case .InvalidSharedSecretLength:
+            writeInt(&buf, Int32(14))
+
+
+        case .InvalidP256PublicKey:
+            writeInt(&buf, Int32(15))
+
+
+        case .InvalidEscrowWireLength:
+            writeInt(&buf, Int32(16))
 
         }
     }
@@ -1867,6 +2023,46 @@ public func cloudVaultBase64Encode(data: Data) -> String {
     )
 })
 }
+public func cloudVaultEscrowAssembleWire(ephemeralPublicKey: Data, aesGcmCombined: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_assemble_wire(
+        FfiConverterData.lower(ephemeralPublicKey),
+        FfiConverterData.lower(aesGcmCombined),$0
+    )
+})
+}
+public func cloudVaultEscrowOpen(wire: Data, sharedSecret: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_open(
+        FfiConverterData.lower(wire),
+        FfiConverterData.lower(sharedSecret),$0
+    )
+})
+}
+public func cloudVaultEscrowSeal(plaintext: Data, ephemeralPublicKey: Data, sharedSecret: Data, nonce: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_seal(
+        FfiConverterData.lower(plaintext),
+        FfiConverterData.lower(ephemeralPublicKey),
+        FfiConverterData.lower(sharedSecret),
+        FfiConverterData.lower(nonce),$0
+    )
+})
+}
+public func cloudVaultEscrowSplitWire(wire: Data)throws  -> CloudVaultEscrowWireParts {
+    return try  FfiConverterTypeCloudVaultEscrowWireParts.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_split_wire(
+        FfiConverterData.lower(wire),$0
+    )
+})
+}
+public func cloudVaultEscrowWrappingKey(sharedSecret: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_wrapping_key(
+        FfiConverterData.lower(sharedSecret),$0
+    )
+})
+}
 public func cloudVaultExpectedSessionBodyHash(data: Data, key: Data, bodyHashVersion: UInt32)throws  -> String {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_expected_session_body_hash(
@@ -1892,6 +2088,44 @@ public func cloudVaultKeyedHashHex(data: Data, key: Data, purpose: CloudVaultHas
     )
 })
 }
+public func cloudVaultNormalizeRecoveryKey(recoveryKey: String)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_normalize_recovery_key(
+        FfiConverterString.lower(recoveryKey),$0
+    )
+})
+}
+public func cloudVaultRecoveryOpenVaultKey(combined: Data, recoveryKey: String)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_open_vault_key(
+        FfiConverterData.lower(combined),
+        FfiConverterString.lower(recoveryKey),$0
+    )
+})
+}
+public func cloudVaultRecoveryVerificationHash(recoveryKey: String)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_verification_hash(
+        FfiConverterString.lower(recoveryKey),$0
+    )
+})
+}
+public func cloudVaultRecoveryWrapVaultKey(vaultKey: Data, recoveryKey: String, nonce: Data)throws  -> CloudVaultRecoveryWrappedVaultKey {
+    return try  FfiConverterTypeCloudVaultRecoveryWrappedVaultKey.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_wrap_vault_key(
+        FfiConverterData.lower(vaultKey),
+        FfiConverterString.lower(recoveryKey),
+        FfiConverterData.lower(nonce),$0
+    )
+})
+}
+public func cloudVaultRecoveryWrappingKey(recoveryKey: String)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_wrapping_key(
+        FfiConverterString.lower(recoveryKey),$0
+    )
+})
+}
 public func cloudVaultResolveAad(envelopeAad: String, context: CloudVaultAadContextInput, rejectLegacy: Bool)throws  -> Data {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(
@@ -1907,6 +2141,12 @@ public func cloudVaultSha256Hex(data: Data) -> String {
         FfiConverterData.lower(data),$0
     )
 })
+}
+public func cloudVaultValidateP256X963PublicKey(publicKey: Data)throws  {try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_validate_p256_x963_public_key(
+        FfiConverterData.lower(publicKey),$0
+    )
+}
 }
 public func domainCoreAbiVersion() -> UInt32 {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
@@ -1995,6 +2235,21 @@ private var initializationResult: InitializationResult = {
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_encode() != 55479) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_assemble_wire() != 18166) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_open() != 34048) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_seal() != 45093) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_split_wire() != 25734) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_wrapping_key() != 13494) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_expected_session_body_hash() != 32041) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2004,10 +2259,28 @@ private var initializationResult: InitializationResult = {
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_keyed_hash_hex() != 27492) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_normalize_recovery_key() != 12469) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_open_vault_key() != 36431) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_verification_hash() != 19307) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_wrap_vault_key() != 9766) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_wrapping_key() != 39433) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad() != 62830) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex() != 55638) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key() != 27873) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version() != 60924) {
