@@ -568,3 +568,55 @@ commits = [
 paths = [
   '''AgentLensTests/Active/CredentialExposureScanTests\.swift''',
 ]
+
+[[allowlists]]
+description = "Shared domain-core CloudVault tests use one fixed synthetic recovery phrase across language bindings"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''abc-defg-hjkm-npq-rst-vwxyz-23456789''',
+]
+paths = [
+  '''OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main\.swift''',
+  '''OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVaultDomainCoreAdapterTests\.swift''',
+  '''android/openburnbar-domain-core/src/androidTest/java/com/openburnbar/domaincore/DomainCoreNativeLoadTest\.kt''',
+  '''crates/openburnbar-domain-core/domain-ffi/src/lib\.rs''',
+  '''crates/openburnbar-domain-core/domain-wasm/tests/package-equivalence\.mjs''',
+  '''tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat\.json''',
+  '''windows/tests/cloudsync/DomainCoreCloudVaultBridgeTests\.cs''',
+  '''windows/tests/quota/DomainCoreCloudVaultRecoveryEscrowTests\.cs''',
+]
+
+[[allowlists]]
+description = "Shared domain-core CloudVault fixture contains deterministic recovery and escrow KAT outputs"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''"normalizedKey"\s*:\s*"ABCDEFGHJKMNPQRSTVWXYZ23456789"''',
+  '''"(unicodeWrappingKeyHex|wrappingKeyHex)"\s*:\s*"[a-f0-9]{64}"''',
+]
+paths = [
+  '''tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat\.json''',
+]
+
+[[allowlists]]
+description = "Shared domain-core Hermes fixture contains deterministic ratchet KAT outputs"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''"(nextChainKeyHex|messageKeyHex)"\s*:\s*"[a-f0-9]{64}"''',
+]
+paths = [
+  '''tests/fixtures/domain-core/hermes/v1/hermes-crypto-kat\.json''',
+]
+
+[[allowlists]]
+description = "Hermes relay HKDF input expression passes variable bytes and contains no credential literal"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''inputKeyMaterial:\s*dh1\.withUnsafeBytes\s*\{\s*Data\(\$0\)\s*\}''',
+]
+paths = [
+  '''OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto\.swift''',
+]
