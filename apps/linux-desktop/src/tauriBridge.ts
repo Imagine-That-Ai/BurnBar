@@ -210,7 +210,57 @@ export type DbStatus = {
   sizeBytes: number;
   walMode: boolean;
 };
-export type ProjectEntry = { id: string; name: string; path: string; scope: string };
+export type ProjectStatus = 'healthy' | 'needs_attention' | 'stale' | 'onboarding' | 'paused' | 'unknown';
+export type ProjectCadence = 'daily' | 'weekly' | 'ad_hoc' | 'unknown';
+export type ProjectAutomationMode = 'manual' | 'suggested' | 'scheduled' | 'unknown';
+export type ProjectFreshness = 'fresh' | 'aging' | 'stale' | 'provisional' | 'missing' | 'unknown';
+export type ProjectIngestionSource = 'manual' | 'app_activity' | 'unknown';
+
+/**
+ * The daemon-owned controller project snapshot. Unlike the legacy ProjectEntry
+ * shape, this never treats a display title or filesystem path as identity.
+ */
+export type ProjectRecord = {
+  id: string;
+  projectSlug: string;
+  displayName: string;
+  summary: string;
+  status: ProjectStatus;
+  preferredCadence: ProjectCadence;
+  aliases: string[];
+  automationMode: ProjectAutomationMode;
+  reviewModelID?: string;
+  scheduleHourLocal?: number;
+  scheduleWeekdayLocal?: number;
+  freshness: ProjectFreshness;
+  latestDailyReviewAt?: string;
+  latestWeeklyReviewAt?: string;
+  nextScheduledReviewAt?: string;
+  pendingQuestionCount: number;
+  openFollowupCount: number;
+  activeMissionCount: number;
+  activeMissionID?: string;
+  needsOperatorAttention: boolean;
+  ingestionSource: ProjectIngestionSource;
+  metadata: Record<string, unknown>;
+};
+
+/** Full snapshot required by daemon.controller.project.upsert. */
+export type ProjectUpsertInput = ProjectRecord;
+
+/**
+ * Compatibility envelope for existing mission filters. Live controller rows
+ * carry the canonical record; path is intentionally empty because the
+ * controller contract does not claim a filesystem path.
+ */
+export type ProjectEntry = {
+  id: string;
+  name: string;
+  path: string;
+  scope: string;
+  projectSlug?: string;
+  record?: ProjectRecord;
+};
 export type MemoryBoundary = { id: string; scope: string; label: string; detail: string };
 export type MemoryReviewStatus = 'pending' | 'approved' | 'rejected';
 export type MemoryReviewItem = {
@@ -805,6 +855,8 @@ export interface LinuxShellBridge {
   configSnapshot(): Promise<ConfigSnapshot>;
   dbStatus(): Promise<DbStatus>;
   projectList(): Promise<ProjectEntry[]>;
+  projectGet?(projectSlug: string): Promise<ProjectRecord | null>;
+  projectUpsert?(project: ProjectUpsertInput): Promise<ProjectRecord | null>;
   memoryBoundaries(): Promise<MemoryBoundary[]>;
   memoryReviewInbox(): Promise<MemoryReviewInbox>;
   memoryReviewDecision(id: string, decision: Exclude<MemoryReviewStatus, 'pending'>): Promise<void>;
@@ -1498,16 +1550,84 @@ function mapDbStatus(raw: RawJsonValue): DbStatus {
   };
 }
 
+function projectEnum<T extends string>(
+  raw: RawJsonValue,
+  allowed: readonly T[],
+  fallback: T | 'unknown'
+): T | 'unknown' {
+  const value = str(raw);
+  return (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
+function optionalProjectNumber(raw: RawJsonValue): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const value = num(raw, Number.NaN);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function unwrapProjectResponse(raw: RawJsonValue): RawJsonValue {
+  return pick(raw, 'result') ?? raw;
+}
+
+function mapProjectRecord(raw: RawJsonValue, index = 0): ProjectRecord | null {
+  const response = unwrapProjectResponse(raw);
+  const project = pick(response, 'project');
+  const source = project === null || project === undefined ? response : project;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return null;
+
+  // The slug is the daemon's stable association key. If an older daemon omits
+  // the separate id, using the slug remains deterministic; display names and
+  // paths are deliberately never used as identity fallbacks.
+  const projectSlug = str(pick(source, 'projectSlug', 'project_slug', 'slug'));
+  const displayName = str(pick(source, 'displayName', 'display_name', 'name', 'title'));
+  if (!projectSlug || !displayName) return null;
+
+  return {
+    id: str(pick(source, 'id', 'projectID', 'projectId'), projectSlug || `project-${index}`),
+    projectSlug,
+    displayName,
+    summary: str(pick(source, 'summary', 'description')),
+    status: projectEnum(
+      pick(source, 'status'),
+      ['healthy', 'needs_attention', 'stale', 'onboarding', 'paused'] as const,
+      'unknown'
+    ),
+    preferredCadence: projectEnum(pick(source, 'preferredCadence', 'preferred_cadence'), ['daily', 'weekly', 'ad_hoc'] as const, 'unknown'),
+    aliases: arr(pick(source, 'aliases')).map((alias) => str(alias)).filter(Boolean),
+    automationMode: projectEnum(pick(source, 'automationMode', 'automation_mode'), ['manual', 'suggested', 'scheduled'] as const, 'unknown'),
+    reviewModelID: str(pick(source, 'reviewModelID', 'reviewModelId', 'review_model_id')) || undefined,
+    scheduleHourLocal: optionalProjectNumber(pick(source, 'scheduleHourLocal', 'schedule_hour_local')),
+    scheduleWeekdayLocal: optionalProjectNumber(pick(source, 'scheduleWeekdayLocal', 'schedule_weekday_local')),
+    freshness: projectEnum(pick(source, 'freshness'), ['fresh', 'aging', 'stale', 'provisional', 'missing'] as const, 'unknown'),
+    latestDailyReviewAt: str(pick(source, 'latestDailyReviewAt', 'latest_daily_review_at')) || undefined,
+    latestWeeklyReviewAt: str(pick(source, 'latestWeeklyReviewAt', 'latest_weekly_review_at')) || undefined,
+    nextScheduledReviewAt: str(pick(source, 'nextScheduledReviewAt', 'next_scheduled_review_at')) || undefined,
+    pendingQuestionCount: num(pick(source, 'pendingQuestionCount', 'pending_question_count')),
+    openFollowupCount: num(pick(source, 'openFollowupCount', 'open_followup_count')),
+    activeMissionCount: num(pick(source, 'activeMissionCount', 'active_mission_count')),
+    activeMissionID: str(pick(source, 'activeMissionID', 'activeMissionId', 'active_mission_id')) || undefined,
+    needsOperatorAttention: Boolean(pick(source, 'needsOperatorAttention', 'needs_operator_attention')),
+    ingestionSource: projectEnum(pick(source, 'ingestionSource', 'ingestion_source'), ['manual', 'app_activity'] as const, 'unknown'),
+    metadata: obj(pick(source, 'metadata'))
+  };
+}
+
 function mapProjectList(raw: RawJsonValue): ProjectEntry[] {
-  const projects = arr(pick(raw, 'projects', 'items'));
-  return projects.map(
-    (p, i): ProjectEntry => ({
-      id: str(pick(p, 'id', 'slug'), `project-${i}`),
-      name: str(pick(p, 'name', 'title', 'displayName'), `Project ${i + 1}`),
-      path: str(pick(p, 'path', 'rootPath', 'workingDirectory'), ''),
-      scope: str(pick(p, 'scope', 'codeMemoryScope'), 'workspace')
-    })
-  );
+  const response = unwrapProjectResponse(raw);
+  const projects = Array.isArray(response) ? response : arr(pick(response, 'projects', 'items'));
+  return projects
+    .map((project, index) => mapProjectRecord(project, index))
+    .filter((project): project is ProjectRecord => project !== null)
+    .map((record): ProjectEntry => ({
+      id: record.id,
+      name: record.displayName,
+      // The controller project contract has no filesystem path. Do not infer
+      // one from a display name or session title.
+      path: '',
+      scope: 'controller',
+      projectSlug: record.projectSlug,
+      record
+    }));
 }
 
 function mapMemoryBoundaries(raw: RawJsonValue): MemoryBoundary[] {
@@ -2590,7 +2710,17 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     // P07 — daemon.controller.project.list
     projectList: async () => {
       const raw = await invoke<RawJsonValue>('project_list');
-      return mapProjectList(pick(raw, 'result', 'projects') ?? raw);
+      return mapProjectList(raw);
+    },
+    // P19 — daemon.controller.project.get
+    projectGet: async (projectSlug) => {
+      const raw = await invoke<RawJsonValue>('project_get', { projectSlug });
+      return mapProjectRecord(raw);
+    },
+    // P19 — daemon.controller.project.upsert
+    projectUpsert: async (project) => {
+      const raw = await invoke<RawJsonValue>('project_upsert', { project });
+      return mapProjectRecord(raw);
     },
     // P07 — daemon.memory.analytics
     memoryBoundaries: async () => {
