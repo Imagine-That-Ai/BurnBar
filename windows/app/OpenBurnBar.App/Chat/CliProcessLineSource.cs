@@ -99,8 +99,8 @@ public static class CliProcessLineSource
         IReadOnlyList<ChatMessageRecord> history,
         CancellationToken cancellationToken)
     {
-        _ = history;
-        return ReadLinesAsync(ResolveProcessSpec(userText), cancellationToken);
+        string prompt = ChatPromptComposer.Compose(userText, history);
+        return ReadLinesAsync(ResolveProcessSpec(prompt), cancellationToken);
     }
 
     internal static ProcessStartInfo CreateStartInfo(ChildProcessSpec spec)
