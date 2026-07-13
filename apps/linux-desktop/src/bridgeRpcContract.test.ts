@@ -108,6 +108,16 @@ describe('VAL-RPC bridge contract', () => {
     }
   });
 
+  it('keeps SmartHub execution on the fixed Linux CLI allowlist', () => {
+    expect(rustBridge).toContain('fn smarthub_command');
+    for (const operation of ['discover', 'status', 'cast_status', 'homeassistant_status', 'parity']) {
+      expect(rustBridge).toContain(`"${operation}"`);
+    }
+    expect(rustBridge).toContain('smarthub_operation_not_allowlisted');
+    expect(tsBridge).toContain("invoke<RawJsonValue>('smarthub_command'");
+    expect(tsBridge).not.toContain('runCli');
+  });
+
   it('wires daemon-owned Linux auth without renderer credential material', () => {
     for (const method of [
       'daemon.auth.status',

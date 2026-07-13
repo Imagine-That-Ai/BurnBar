@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::menu::{MenuBuilder, MenuItem, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -94,6 +94,27 @@ struct IntegrationStatusRow {
 #[serde(rename_all = "camelCase")]
 struct IntegrationsStatusPayload {
     integrations: Vec<IntegrationStatusRow>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SmartHubCommandPayload {
+    operation: String,
+    payload: serde_json::Value,
+}
+
+/// The Linux CLI is the existing SmartHub contract. Keep this operation map
+/// intentionally closed: the renderer can request a known operation, never an
+/// arbitrary executable or argument vector.
+fn smart_hub_cli_args(operation: &str) -> Result<&'static [&'static str], String> {
+    match operation {
+        "discover" => Ok(&["devices", "discover", "smarthub", "--json"]),
+        "status" => Ok(&["devices", "iot", "smarthub", "status", "--json"]),
+        "cast_status" => Ok(&["devices", "iot", "cast", "status", "--json"]),
+        "homeassistant_status" => Ok(&["devices", "iot", "homeassistant", "status", "--json"]),
+        "parity" => Ok(&["devices", "parity", "--json"]),
+        _ => Err("smarthub_operation_not_allowlisted".to_string()),
+    }
 }
 
 /// First non-empty trimmed env value among the given keys (VAL-PATH-001 parity with TS/Swift).
@@ -1299,6 +1320,53 @@ fn integrations_status() -> Result<IntegrationsStatusPayload, String> {
     Ok(IntegrationsStatusPayload {
         integrations: rows.into_iter().filter_map(map_parity_row).collect(),
     })
+}
+
+/// Execute one of the existing Linux SmartHub/device CLI contracts.
+///
+/// This intentionally does not become a generic CLI bridge. Every operation
+/// has a fixed argv, the executable must be the root-owned packaged binary,
+/// and the response must be bounded JSON before it reaches the renderer.
+#[tauri::command]
+fn smarthub_command(operation: String) -> Result<SmartHubCommandPayload, String> {
+    let args = smart_hub_cli_args(operation.as_str())?;
+    let cli = trusted_openburnbar_cli()?;
+    let mut child = Command::new(cli)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| "openburnbar_cli_smarthub_launch_failed".to_string())?;
+    let deadline = Instant::now() + Duration::from_secs(8);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("openburnbar_cli_smarthub_timeout".to_string());
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(25)),
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("openburnbar_cli_smarthub_wait_failed".to_string());
+            }
+        }
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|_| "openburnbar_cli_smarthub_output_failed".to_string())?;
+    if !output.status.success() {
+        return Err("openburnbar_cli_smarthub_command_failed".to_string());
+    }
+    const MAX_SMARTHUB_OUTPUT_BYTES: usize = 1_048_576;
+    if output.stdout.len() > MAX_SMARTHUB_OUTPUT_BYTES {
+        return Err("openburnbar_cli_smarthub_output_too_large".to_string());
+    }
+    let payload = serde_json::from_slice::<serde_json::Value>(&output.stdout)
+        .map_err(|_| "openburnbar_cli_smarthub_invalid_json".to_string())?;
+    Ok(SmartHubCommandPayload { operation, payload })
 }
 
 fn validate_external_url(raw_url: &str) -> Result<String, String> {
@@ -4489,7 +4557,8 @@ pub fn run() {
             computer_use_approval_respond,
             computer_use_panic_halt,
             computer_use_audit_export,
-            integrations_status
+            integrations_status,
+            smarthub_command
         ])
         .setup(|app| {
             start_packaged_daemon_lifecycle(app.handle().clone());
@@ -4960,6 +5029,43 @@ mod tests {
         assert!(source.contains("/usr/local/bin/openburnbar-cli"));
         assert!(source.contains("/opt/openburnbar/bin/openburnbar-cli"));
         assert!(!source.contains("Command::new(\"openburnbar-cli\")"));
+    }
+
+    #[test]
+    fn smarthub_cli_operations_are_fixed_and_allowlisted() {
+        assert_eq!(
+            smart_hub_cli_args("discover").unwrap(),
+            &["devices", "discover", "smarthub", "--json"]
+        );
+        assert_eq!(
+            smart_hub_cli_args("status").unwrap(),
+            &["devices", "iot", "smarthub", "status", "--json"]
+        );
+        assert_eq!(
+            smart_hub_cli_args("cast_status").unwrap(),
+            &["devices", "iot", "cast", "status", "--json"]
+        );
+        assert_eq!(
+            smart_hub_cli_args("homeassistant_status").unwrap(),
+            &["devices", "iot", "homeassistant", "status", "--json"]
+        );
+        assert_eq!(
+            smart_hub_cli_args("parity").unwrap(),
+            &["devices", "parity", "--json"]
+        );
+        for rejected in [
+            "",
+            "list",
+            "status --json",
+            "../../bin/evil",
+            "status\n--json",
+        ] {
+            assert_eq!(
+                smart_hub_cli_args(rejected).unwrap_err(),
+                "smarthub_operation_not_allowlisted",
+                "unexpectedly accepted {rejected:?}"
+            );
+        }
     }
 
     #[test]
