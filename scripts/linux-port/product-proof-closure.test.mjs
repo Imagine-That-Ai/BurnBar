@@ -890,6 +890,34 @@ test('P-38 rejects missing architecture, signing, lifecycle, and current workflo
     subject.closure.proofs.splice(index, 1);
     await assert.rejects(() => validateP38(subject.context), /must cover every release format and architecture/u);
   });
+  await t.test('same-cardinality detached signature substitution', async () => {
+    const subject = prepareP38Fixture();
+    t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));
+    const proof = subject.closure.proofs.find((row) => row.role === 'package-signature');
+    assert.ok(proof, 'missing package-signature proof fixture');
+    const file = path.join(subject.fixture.root, proof.path);
+    write(file, Buffer.alloc(64, 9));
+    proof.sha256 = sha256(file);
+    proof.size = fs.statSync(file).size;
+    await assert.rejects(
+      () => validateP38(subject.context),
+      /does not match authoritative aggregate signing evidence/u
+    );
+  });
+  await t.test('same-cardinality Sigstore substitution', async () => {
+    const subject = prepareP38Fixture();
+    t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));
+    const proof = subject.closure.proofs.find((row) => row.role === 'package-sigstore');
+    assert.ok(proof, 'missing package-sigstore proof fixture');
+    const file = path.join(subject.fixture.root, proof.path);
+    writeJson(file, { substituted: true });
+    proof.sha256 = sha256(file);
+    proof.size = fs.statSync(file).size;
+    await assert.rejects(
+      () => validateP38(subject.context),
+      /does not match authoritative aggregate signing evidence/u
+    );
+  });
   await t.test('blocked package lifecycle', async () => {
     const subject = prepareP38Fixture();
     t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));

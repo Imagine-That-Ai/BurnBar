@@ -4,6 +4,7 @@ import {
   validateArchitectureSessionSet
 } from '../lib/linux-package-session.mjs';
 import { validateP38ReleaseAutomationProof } from '../lib/p38-release-automation-proof.mjs';
+import { validateAggregateDocument } from '../lib/product-proof-closure.mjs';
 import { requirePassedJsonProof, result, validateRequirementContext } from './lib.mjs';
 
 const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u;
@@ -14,6 +15,56 @@ function exactMatrix(rows, role, architectures, formats) {
   if (rows.length !== expected.length || new Set(keys).size !== expected.length
       || expected.some((key) => !keys.includes(key))) {
     throw new Error(`${role} proof must cover every release format and architecture exactly once`);
+  }
+}
+
+function parseAggregateProof(rows, closure, targetHead) {
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new Error('aggregate-product-proof-closure proof must occur exactly once');
+  }
+  let aggregate;
+  try {
+    aggregate = validateAggregateDocument(JSON.parse(rows[0].snapshot.bytes.toString('utf8')));
+  } catch (error) {
+    throw new Error(`aggregate-product-proof-closure proof is invalid: ${error.message}`);
+  }
+  if (rows[0].snapshot.sha256 !== closure.candidate.productProofClosureSha256
+      || aggregate.targetHead !== targetHead || aggregate.sourceCommit !== targetHead
+      || aggregate.version !== closure.version) {
+    throw new Error('aggregate-product-proof-closure proof is not bound to the selected release candidate');
+  }
+  return aggregate;
+}
+
+function signingKey(row) {
+  return `${row.format}:${row.architecture}`;
+}
+
+function validateSigningBindings(materializedRows, aggregate, role, recordField) {
+  const aggregateRows = aggregate.proofs.filter((row) => row.role === role);
+  const aggregateByKey = new Map(aggregateRows.map((row) => [signingKey(row), row]));
+  const releaseByKey = new Map(aggregate.releaseArtifacts.map((row) => [
+    `${row.type}:${row.architecture}`,
+    row[recordField]
+  ]));
+  if (aggregateRows.length !== materializedRows.length
+      || aggregateByKey.size !== materializedRows.length
+      || releaseByKey.size !== materializedRows.length) {
+    throw new Error(`${role} aggregate proof does not cover the exact release artifact matrix`);
+  }
+  for (const row of materializedRows) {
+    const key = signingKey(row);
+    const aggregateProof = aggregateByKey.get(key);
+    const releaseRecord = releaseByKey.get(key);
+    if (!aggregateProof || !releaseRecord
+        || aggregateProof.path !== releaseRecord.path
+        || aggregateProof.sha256 !== releaseRecord.sha256
+        || (aggregateProof.size !== undefined && aggregateProof.size !== releaseRecord.size)
+        || row.sha256 !== releaseRecord.sha256
+        || row.snapshot.sha256 !== releaseRecord.sha256
+        || (releaseRecord.size !== undefined && row.snapshot.size !== releaseRecord.size)) {
+      throw new Error(`${role} proof does not match authoritative aggregate signing evidence: ${key}`);
+    }
   }
 }
 
@@ -110,6 +161,18 @@ export async function validateProductRequirement(context) {
   exactMatrix(validated.proofs.get('package-sigstore'), 'package-sigstore', architectures, [
     'appimage', 'arch', 'daemon', 'deb', 'rpm'
   ]);
+  const aggregate = parseAggregateProof(
+    validated.proofs.get('aggregate-product-proof-closure'),
+    validated.closure,
+    context.targetHead
+  );
+  validateSigningBindings(
+    validated.proofs.get('package-signature'),
+    aggregate,
+    'package-signature',
+    'detachedSignature'
+  );
+  validateSigningBindings(validated.proofs.get('package-sigstore'), aggregate, 'package-sigstore', 'sigstore');
   if (validated.proofs.get('package-signature').some((row) => row.snapshot.size !== 64)
       || validated.proofs.get('package-sigstore').some((row) => row.snapshot.size <= 0)) {
     throw new Error('release signing proof is missing or malformed');

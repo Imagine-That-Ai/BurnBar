@@ -23,7 +23,7 @@ const SOURCE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const ENVIRONMENT = SUPPORT_ENVIRONMENTS[0];
 const RUN_ID = '12345';
 const DIGEST = `sha256:${'b'.repeat(64)}`;
-const RELEASE_ONLY = new Set(['P-01', 'P-03', 'P-04', 'P-37']);
+const RELEASE_ONLY = new Set(['P-01', 'P-03', 'P-04', 'P-37', 'P-38']);
 
 function write(root, relativePath, bytes) {
   const absolute = path.join(root, relativePath);
@@ -38,6 +38,31 @@ function writeJson(root, relativePath, value) {
 
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function aggregateAttestationSubjects(releaseArtifacts, packages) {
+  const row = (role, format = null, architecture = null) => {
+    const suffix = [role, format, architecture].filter(Boolean).join('-');
+    const subjectPath = `attestations/${suffix}`;
+    return {
+      role,
+      ...(format ? { format } : {}),
+      ...(architecture ? { architecture } : {}),
+      subject: { path: subjectPath, sha256: '1'.repeat(64), size: 1 },
+      bundle: { path: `${subjectPath}.sigstore.json`, sha256: '2'.repeat(64), size: 1 }
+    };
+  };
+  return [
+    ...releaseArtifacts.map((artifact) => row('release-artifact', artifact.type, artifact.architecture)),
+    ...packages.flatMap((entry) => [
+      row('installed-manifest', entry.format, entry.architecture),
+      row('installed-manifest-signature', entry.format, entry.architecture)
+    ]),
+    ...[
+      'checksums', 'sbom', 'vex', 'provenance', 'source-archive',
+      'arch-pkgbuild', 'arch-release-metadata', 'update-feed'
+    ].map((role) => row(role))
+  ];
 }
 
 function git(root, args) {
@@ -105,8 +130,8 @@ function registry(complete) {
     ? ['P-02', 'P-05', 'P-06']
     : ['P-02'];
   const certificationIds = complete
-    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-37']
-    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-37'];
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-37', 'P-38']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-37', 'P-38'];
   return {
     schemaVersion: 1,
     id: 'openburnbar-linux-product-feature-proof-registry-v1',
@@ -178,8 +203,8 @@ function createRepository({ complete = true } = {}) {
     'schemas/linux-product-feature-proof-registry.schema.json'
   ]) write(root, schema, fs.readFileSync(path.join(SOURCE_ROOT, schema)));
   const validatorIds = complete
-    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-37']
-    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-37'];
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-37', 'P-38']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-37', 'P-38'];
   for (const requirementId of validatorIds) {
     write(root, `scripts/linux-port/product-validators/${requirementId}.mjs`,
       `export async function validateProductRequirement(context) {\n`
@@ -222,6 +247,24 @@ function createRepository({ complete = true } = {}) {
   const head = git(root, ['rev-parse', 'HEAD']);
   const inputRelative = `docs/linux-port/evidence/product-parity-inputs/P-02/${ENVIRONMENT}`;
   const inputRoot = path.join(root, inputRelative);
+  const releaseArtifacts = ['appimage', 'arch', 'daemon', 'deb', 'rpm'].flatMap((type) =>
+    ['aarch64', 'x86_64'].map((architecture) => ({
+      type,
+      architecture,
+      artifact: { path: 'unused', sha256: 'a'.repeat(64) },
+      detachedSignature: { path: 'unused', sha256: 'a'.repeat(64) },
+      sigstore: { path: 'unused', sha256: 'a'.repeat(64) }
+    }))
+  );
+  const packages = ['arch', 'deb', 'rpm'].flatMap((format) =>
+    ['aarch64', 'x86_64'].map((architecture) => ({
+      format,
+      architecture,
+      artifact: { path: 'unused', sha256: 'a'.repeat(64) },
+      installedManifest: { path: 'unused', sha256: 'a'.repeat(64) },
+      installedManifestSignature: { path: 'unused', sha256: 'a'.repeat(64) }
+    }))
+  );
   const aggregate = {
     schemaVersion: 2,
     stage: 'candidate',
@@ -232,22 +275,9 @@ function createRepository({ complete = true } = {}) {
     git: { dirty: false },
     architectures: ['aarch64', 'x86_64'],
     supportEnvironments: [...SUPPORT_ENVIRONMENTS],
-    releaseArtifacts: ['appimage', 'daemon', 'deb', 'rpm'].flatMap((type) =>
-      ['aarch64', 'x86_64'].map((architecture) => ({
-        type,
-        architecture,
-        artifact: { path: 'unused', sha256: 'a'.repeat(64) },
-        detachedSignature: { path: 'unused', sha256: 'a'.repeat(64) },
-        sigstore: { path: 'unused', sha256: 'a'.repeat(64) }
-      }))
-    ),
-    packages: ['deb', 'rpm'].flatMap((format) => ['aarch64', 'x86_64'].map((architecture) => ({
-      format,
-      architecture,
-      artifact: { path: 'unused', sha256: 'a'.repeat(64) },
-      installedManifest: { path: 'unused', sha256: 'a'.repeat(64) },
-      installedManifestSignature: { path: 'unused', sha256: 'a'.repeat(64) }
-    }))),
+    releaseArtifacts,
+    packages,
+    attestationSubjects: aggregateAttestationSubjects(releaseArtifacts, packages),
     featureProofRegistry: null,
     proofs: [{ role: 'inventory' }],
     blockers: []
@@ -462,20 +492,20 @@ function validatorContext(subject, captureResult) {
   };
 }
 
-test('current implementation inventory truthfully blocks exactly the 35 unimplemented requirement lanes', async (t) => {
+test('current implementation inventory truthfully blocks exactly the 34 unimplemented requirement lanes', async (t) => {
   const subject = createRepository({ complete: false });
   t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
   const captured = capture(subject, {
     testExecutions: collectCertificationTestExecutions(subject.root, subject.head)
   });
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.validatorCount, 5);
-  assert.equal(captured.document.summary.captureCount, 5);
-  assert.equal(captured.document.summary.materializerCount, 5);
-  assert.equal(captured.document.summary.readyCount, 5);
+  assert.equal(captured.document.summary.validatorCount, 6);
+  assert.equal(captured.document.summary.captureCount, 6);
+  assert.equal(captured.document.summary.materializerCount, 6);
+  assert.equal(captured.document.summary.readyCount, 6);
   assert.deepEqual(
     captured.document.requirements.filter((row) => !row.ready).map((row) => row.requirementId),
-    REQUIREMENT_IDS.filter((id) => !['P-01', 'P-02', 'P-03', 'P-04', 'P-37'].includes(id))
+    REQUIREMENT_IDS.filter((id) => !['P-01', 'P-02', 'P-03', 'P-04', 'P-37', 'P-38'].includes(id))
   );
   await assert.rejects(
     () => validateProductRequirement(validatorContext(subject, captured)),
@@ -533,7 +563,7 @@ test('P-02 capture emits a blocked candidate-bound diagnostic inventory', (t) =>
   assert.equal(captured.document.candidate.runId, RUN_ID);
   assert.equal(captured.document.candidate.artifactDigest, DIGEST);
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.readyCount, 5);
+  assert.equal(captured.document.summary.readyCount, 6);
   assert.equal(fs.existsSync(captured.output), true);
 });
 

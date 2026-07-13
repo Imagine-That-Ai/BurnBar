@@ -41,6 +41,31 @@ function record(root, file) {
   };
 }
 
+function aggregateAttestationSubjects(releaseArtifacts, packages) {
+  const row = (role, format = null, architecture = null) => {
+    const suffix = [role, format, architecture].filter(Boolean).join('-');
+    const subjectPath = `attestations/${suffix}`;
+    return {
+      role,
+      ...(format ? { format } : {}),
+      ...(architecture ? { architecture } : {}),
+      subject: { path: subjectPath, sha256: '1'.repeat(64), size: 1 },
+      bundle: { path: `${subjectPath}.sigstore.json`, sha256: '2'.repeat(64), size: 1 }
+    };
+  };
+  return [
+    ...releaseArtifacts.map((artifact) => row('release-artifact', artifact.type, artifact.architecture)),
+    ...packages.flatMap((entry) => [
+      row('installed-manifest', entry.format, entry.architecture),
+      row('installed-manifest-signature', entry.format, entry.architecture)
+    ]),
+    ...[
+      'checksums', 'sbom', 'vex', 'provenance', 'source-archive',
+      'arch-pkgbuild', 'arch-release-metadata', 'update-feed'
+    ].map((role) => row(role))
+  ];
+}
+
 function fixture({ registered = true, maxBytes = 4096 } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-feature-proof-'));
   for (const relative of [
@@ -86,26 +111,6 @@ function fixture({ registered = true, maxBytes = 4096 } = {}) {
     installedManifest: { path: `${format}-${architecture}.json`, sha256: 'd'.repeat(64) },
     installedManifestSignature: { path: `${format}-${architecture}.json.sig`, sha256: 'e'.repeat(64) }
   })));
-  const attestationSubjects = [];
-  const addAttestation = (role, subjectPath, format = null, architecture = null) => {
-    const subject = { path: subjectPath, sha256: 'a'.repeat(64), size: 1 };
-    const bundle = { path: `${subjectPath}.sigstore.json`, sha256: 'b'.repeat(64), size: 1 };
-    attestationSubjects.push({
-      role,
-      ...(format ? { format } : {}),
-      ...(architecture ? { architecture } : {}),
-      subject,
-      bundle
-    });
-  };
-  for (const row of releaseArtifacts) addAttestation('release-artifact', row.artifact.path, row.type, row.architecture);
-  for (const row of packages) {
-    addAttestation('installed-manifest', row.installedManifest.path, row.format, row.architecture);
-    addAttestation('installed-manifest-signature', row.installedManifestSignature.path, row.format, row.architecture);
-  }
-  for (const role of ['checksums', 'sbom', 'vex', 'provenance', 'source-archive', 'arch-pkgbuild', 'arch-release-metadata', 'update-feed']) {
-    addAttestation(role, `sidecars/${role}.json`);
-  }
   const aggregate = {
     schemaVersion: 2,
     generatedAt: new Date(0).toISOString(),
@@ -127,7 +132,7 @@ function fixture({ registered = true, maxBytes = 4096 } = {}) {
     ],
     releaseArtifacts,
     packages,
-    attestationSubjects,
+    attestationSubjects: aggregateAttestationSubjects(releaseArtifacts, packages),
     featureProofRegistry: record(releaseRoot, registryFile),
     proofs: [{ role: 'release-placeholder' }],
     blockers: []
