@@ -97,4 +97,3 @@ Confirm that missing/locked databases show an explicit unavailable state and
 never display usage-derived or synthetic transcript rows. Record the package,
 architecture, compositor, keyring, and daemon build receipt for each supported
 Linux environment.
-
