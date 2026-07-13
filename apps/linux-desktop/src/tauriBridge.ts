@@ -71,17 +71,99 @@ export type PendingApproval = {
   requestedAt: string;
   risk: 'standard' | 'high';
 };
+
+/**
+ * Mission-control snapshots are intentionally richer than the original P06
+ * list projection. These fields mirror BurnBarMissionSnapshot in
+ * OpenBurnBarCore; optional fields remain optional because older daemons may
+ * return a projection without packets/results yet.
+ */
+export type MissionApprovalSnapshot = {
+  approved: boolean;
+  approvedAt?: string;
+  approvedBy?: string;
+  note?: string;
+};
+export type MissionPacketSnapshot = {
+  id: string;
+  missionId?: string;
+  workerName: string;
+  objective: string;
+  status: string;
+  runId?: string;
+  dispatchedAt?: string;
+  completedAt?: string;
+  metadata: Record<string, unknown>;
+};
+export type MissionResultSnapshot = {
+  id: string;
+  missionId?: string;
+  packetId?: string;
+  runId?: string;
+  status: string;
+  summary: string;
+  detail?: string;
+  burnDelta: number;
+  createdAt: string;
+  evidenceRefs: string[];
+  prLinkage?: MissionPRLinkageSnapshot;
+  metadata: Record<string, unknown>;
+};
+export type MissionBurnRecord = {
+  id: string;
+  label: string;
+  amount: number;
+  unit: string;
+  recordedAt: string;
+};
+export type MissionTakeoverRecord = {
+  id: string;
+  projectSlug: string;
+  missionId?: string;
+  sourceRunId?: string;
+  takeoverRunId?: string;
+  status: string;
+  reason: string;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown>;
+};
+export type MissionPRLinkageSnapshot = {
+  schemaVersion?: number;
+  repository: string;
+  prNumberOrId: string;
+  url: string;
+  state: string;
+  mergeCommitSha?: string;
+  mergedAt?: string;
+  closedAt?: string;
+};
+export type MissionFreshness = 'fresh' | 'stale' | 'unknown';
+export type MissionRecord = {
+  id: string;
+  title: string;
+  state: string;
+  updatedAt: string;
+  laneCount: number;
+  projectSlug?: string;
+  summary?: string;
+  recommendation?: string;
+  createdAt?: string;
+  approval?: MissionApprovalSnapshot;
+  packets?: MissionPacketSnapshot[];
+  results?: MissionResultSnapshot[];
+  burnRecords?: MissionBurnRecord[];
+  takeoverHistory?: MissionTakeoverRecord[];
+  prLinkage?: MissionPRLinkageSnapshot;
+  metadata?: Record<string, unknown>;
+  /** Derived locally from updatedAt; the daemon does not expose a health RPC. */
+  freshness?: MissionFreshness;
+};
 export type MissionListResult = {
-  missions: {
-    id: string;
-    title: string;
-    state: string;
-    updatedAt: string;
-    laneCount: number;
-    projectSlug?: string;
-  }[];
+  missions: MissionRecord[];
   pendingApprovals: PendingApproval[];
 };
+export type MissionDetail = MissionRecord;
 export type ApprovalDecision = 'approve' | 'deny';
 export type MissionCreateInput = {
   projectSlug: string;
@@ -621,7 +703,9 @@ export interface LinuxShellBridge {
   sessionSearch(query: string): Promise<SessionListResult>;
   usageInsights(): Promise<UsageInsights>;
   missionList(): Promise<MissionListResult>;
+  missionGet(id: string): Promise<MissionDetail | null>;
   missionApprovalDecision(id: string, decision: ApprovalDecision): Promise<void>;
+  missionCancel(id: string, note?: string): Promise<MissionDetail | null>;
   missionCreate(input: MissionCreateInput): Promise<MissionListResult['missions'][number] | null>;
   configSnapshot(): Promise<ConfigSnapshot>;
   dbStatus(): Promise<DbStatus>;
@@ -1036,40 +1120,156 @@ function buildMix(
     .sort((a, b) => b.pct - a.pct);
 }
 
-function mapMissionList(raw: RawJsonValue): MissionListResult {
-  const missions = arr(pick(raw, 'missions')).map(
-    (m, i): MissionListResult['missions'][number] => ({
-      id: str(pick(m, 'id', 'missionId'), `mission-${i}`),
-      title: str(pick(m, 'title', 'name', 'summary'), 'Untitled mission'),
-      state: str(pick(m, 'state', 'status'), 'active'),
-      updatedAt: str(pick(m, 'updatedAt', 'updated_at', 'modifiedAt'), new Date().toISOString()),
-      laneCount: num(pick(m, 'laneCount', 'lane_count', 'packetCount')),
-      projectSlug: str(pick(m, 'projectSlug', 'project_slug', 'projectName', 'project'), '') || undefined
-    })
-  );
-  const pendingApprovals = arr(pick(raw, 'pendingApprovals', 'approvals', 'questions')).map(
+function missionFreshness(updatedAt: string): MissionFreshness {
+  const timestamp = Date.parse(updatedAt);
+  if (!updatedAt || Number.isNaN(timestamp)) return 'unknown';
+  const ageMs = Math.max(0, Date.now() - timestamp);
+  return ageMs <= 5 * 60_000 ? 'fresh' : 'stale';
+}
+
+function mapMissionApproval(raw: RawJsonValue): MissionApprovalSnapshot | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  return {
+    approved: pick(raw, 'approved') === true,
+    approvedAt: str(pick(raw, 'approvedAt', 'approved_at')) || undefined,
+    approvedBy: str(pick(raw, 'approvedBy', 'approved_by')) || undefined,
+    note: str(pick(raw, 'note')) || undefined
+  };
+}
+
+function mapMissionPacket(raw: RawJsonValue, index: number): MissionPacketSnapshot {
+  return {
+    id: str(pick(raw, 'id', 'packetId', 'packetID'), `packet-${index}`),
+    missionId: str(pick(raw, 'missionId', 'missionID', 'mission_id')) || undefined,
+    workerName: str(pick(raw, 'workerName', 'worker_name'), 'Unknown worker'),
+    objective: str(pick(raw, 'objective', 'summary', 'title'), 'Objective unavailable'),
+    status: str(pick(raw, 'status', 'state'), 'unknown'),
+    runId: str(pick(raw, 'runId', 'runID', 'run_id')) || undefined,
+    dispatchedAt: str(pick(raw, 'dispatchedAt', 'dispatched_at')) || undefined,
+    completedAt: str(pick(raw, 'completedAt', 'completed_at')) || undefined,
+    metadata: obj(pick(raw, 'metadata'))
+  };
+}
+
+function mapMissionPRLinkage(raw: RawJsonValue): MissionPRLinkageSnapshot | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const repository = str(pick(raw, 'repository', 'repo'));
+  const prNumberOrId = str(pick(raw, 'prNumberOrID', 'prNumberOrId', 'pr_number_or_id', 'number'));
+  const url = str(pick(raw, 'url', 'prUrl', 'pr_url'));
+  if (!repository && !prNumberOrId && !url) return undefined;
+  return {
+    schemaVersion: num(pick(raw, 'schemaVersion', 'schema_version')) || undefined,
+    repository,
+    prNumberOrId,
+    url,
+    state: str(pick(raw, 'state'), 'unknown'),
+    mergeCommitSha: str(pick(raw, 'mergeCommitSHA', 'mergeCommitSha', 'merge_commit_sha')) || undefined,
+    mergedAt: str(pick(raw, 'mergedAt', 'merged_at')) || undefined,
+    closedAt: str(pick(raw, 'closedAt', 'closed_at')) || undefined
+  };
+}
+
+function mapMissionResult(raw: RawJsonValue, index: number): MissionResultSnapshot {
+  return {
+    id: str(pick(raw, 'id', 'resultId', 'resultID'), `result-${index}`),
+    missionId: str(pick(raw, 'missionId', 'missionID', 'mission_id')) || undefined,
+    packetId: str(pick(raw, 'packetId', 'packetID', 'packet_id')) || undefined,
+    runId: str(pick(raw, 'runId', 'runID', 'run_id')) || undefined,
+    status: str(pick(raw, 'status', 'state'), 'unknown'),
+    summary: str(pick(raw, 'summary', 'title'), 'Result summary unavailable'),
+    detail: str(pick(raw, 'detail', 'description')) || undefined,
+    burnDelta: num(pick(raw, 'burnDelta', 'burn_delta')),
+    createdAt: str(pick(raw, 'createdAt', 'created_at'), ''),
+    evidenceRefs: arr(pick(raw, 'evidenceRefs', 'evidence_refs', 'evidence')).map((value) => str(value)).filter(Boolean),
+    prLinkage: mapMissionPRLinkage(pick(raw, 'prLinkage', 'pr_linkage')),
+    metadata: obj(pick(raw, 'metadata'))
+  };
+}
+
+function mapMissionBurnRecord(raw: RawJsonValue, index: number): MissionBurnRecord {
+  return {
+    id: str(pick(raw, 'id', 'recordId', 'recordID'), `burn-${index}`),
+    label: str(pick(raw, 'label', 'name'), 'Burn record'),
+    amount: num(pick(raw, 'amount')),
+    unit: str(pick(raw, 'unit'), 'unknown'),
+    recordedAt: str(pick(raw, 'recordedAt', 'recorded_at'), '')
+  };
+}
+
+function mapMissionTakeover(raw: RawJsonValue, index: number): MissionTakeoverRecord {
+  return {
+    id: str(pick(raw, 'id', 'takeoverId', 'takeoverID'), `takeover-${index}`),
+    projectSlug: str(pick(raw, 'projectSlug', 'project_slug'), ''),
+    missionId: str(pick(raw, 'missionId', 'missionID', 'mission_id')) || undefined,
+    sourceRunId: str(pick(raw, 'sourceRunId', 'sourceRunID', 'source_run_id')) || undefined,
+    takeoverRunId: str(pick(raw, 'takeoverRunId', 'takeoverRunID', 'takeover_run_id')) || undefined,
+    status: str(pick(raw, 'status', 'state'), 'unknown'),
+    reason: str(pick(raw, 'reason'), 'Reason unavailable'),
+    createdAt: str(pick(raw, 'createdAt', 'created_at'), ''),
+    updatedAt: str(pick(raw, 'updatedAt', 'updated_at'), ''),
+    metadata: obj(pick(raw, 'metadata'))
+  };
+}
+
+export function mapMissionSnapshot(raw: RawJsonValue, index = 0): MissionRecord {
+  const packets = arr(pick(raw, 'packets')).map(mapMissionPacket);
+  const results = arr(pick(raw, 'results')).map(mapMissionResult);
+  const updatedAt = str(pick(raw, 'updatedAt', 'updated_at', 'modifiedAt'), '');
+  const approval = mapMissionApproval(pick(raw, 'approval'));
+  return {
+    id: str(pick(raw, 'id', 'missionId', 'missionID'), `mission-${index}`),
+    title: str(pick(raw, 'title', 'name', 'summary'), 'Untitled mission'),
+    state: str(pick(raw, 'state', 'status'), 'active'),
+    updatedAt,
+    laneCount: packets.length || num(pick(raw, 'laneCount', 'lane_count', 'packetCount')),
+    projectSlug: str(pick(raw, 'projectSlug', 'project_slug', 'projectName', 'project'), '') || undefined,
+    summary: str(pick(raw, 'summary', 'description')) || undefined,
+    recommendation: str(pick(raw, 'recommendation')) || undefined,
+    createdAt: str(pick(raw, 'createdAt', 'created_at')) || undefined,
+    approval,
+    packets,
+    results,
+    burnRecords: arr(pick(raw, 'burnRecords', 'burn_records')).map(mapMissionBurnRecord),
+    takeoverHistory: arr(pick(raw, 'takeoverHistory', 'takeover_history')).map(mapMissionTakeover),
+    prLinkage: mapMissionPRLinkage(pick(raw, 'prLinkage', 'pr_linkage')),
+    metadata: obj(pick(raw, 'metadata')),
+    freshness: missionFreshness(updatedAt)
+  };
+}
+
+export function mapMissionList(raw: RawJsonValue): MissionListResult {
+  const missions = arr(pick(raw, 'missions')).map((mission, index) => mapMissionSnapshot(mission, index));
+  const explicitApprovals = arr(pick(raw, 'pendingApprovals', 'approvals', 'questions')).map(
     (a, i): PendingApproval => ({
       id: str(pick(a, 'id', 'approvalId'), `approval-${i}`),
-      missionId: str(pick(a, 'missionId', 'mission_id'), 'unknown'),
+      missionId: str(pick(a, 'missionId', 'missionID', 'mission_id'), 'unknown'),
       summary: str(pick(a, 'summary', 'question', 'prompt', 'body'), 'Approval requested'),
       requestedAt: str(pick(a, 'requestedAt', 'created_at', 'createdAt'), new Date().toISOString()),
       risk: str(pick(a, 'risk', 'severity'), '').toLowerCase().includes('high') ? 'high' : 'standard'
     })
   );
+  const pendingApprovals = explicitApprovals.length > 0
+    ? explicitApprovals
+    : missions
+        .filter((mission) => mission.approval?.approved === false && ['draft', 'awaiting_approval'].includes(mission.state))
+        .map((mission): PendingApproval => ({
+          id: `approval-${mission.id}`,
+          missionId: mission.id,
+          summary: mission.summary || mission.title,
+          requestedAt: mission.createdAt || mission.updatedAt,
+          risk: 'standard'
+        }));
   return { missions, pendingApprovals };
 }
 
-function mapMissionMutation(raw: RawJsonValue): MissionListResult['missions'][number] | null {
+export function mapMissionDetail(raw: RawJsonValue): MissionDetail | null {
   const mission = pick(raw, 'mission') ?? raw;
-  if (!mission || typeof mission !== 'object') return null;
-  return {
-    id: str(pick(mission, 'id', 'missionId'), ''),
-    title: str(pick(mission, 'title', 'name', 'summary'), 'Untitled mission'),
-    state: str(pick(mission, 'state', 'status'), 'active'),
-    updatedAt: str(pick(mission, 'updatedAt', 'updated_at', 'modifiedAt'), new Date().toISOString()),
-    laneCount: arr(pick(mission, 'packets')).length || num(pick(mission, 'laneCount', 'lane_count', 'packetCount')),
-    projectSlug: str(pick(mission, 'projectSlug', 'project_slug', 'projectName', 'project'), '') || undefined
-  };
+  if (!mission || typeof mission !== 'object' || Array.isArray(mission)) return null;
+  return mapMissionSnapshot(mission);
+}
+
+function mapMissionMutation(raw: RawJsonValue): MissionListResult['missions'][number] | null {
+  return mapMissionDetail(raw);
 }
 
 function mapConfigSnapshot(raw: RawJsonValue): ConfigSnapshot {
@@ -1994,9 +2194,20 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('mission_list');
       return mapMissionList(raw);
     },
+    // Canonical daemon.mission.get — detail fields are returned by the
+    // snapshot itself; there is no separate history/evidence RPC to invent.
+    missionGet: async (id) => {
+      const raw = await invoke<RawJsonValue>('mission_get', { missionId: id });
+      return mapMissionDetail(raw);
+    },
     // P06 — daemon.mission.approve / daemon.mission.cancel
     missionApprovalDecision: async (id, decision) => {
       await invoke<void>('mission_approval_decision', { id, decision });
+    },
+    // Canonical daemon.mission.cancel for an explicit cancellation action.
+    missionCancel: async (id, note) => {
+      const raw = await invoke<RawJsonValue>('mission_cancel', { missionId: id, note });
+      return mapMissionDetail(raw);
     },
     // P06 — daemon.mission.create
     missionCreate: async (input) => {

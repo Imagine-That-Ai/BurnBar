@@ -47,6 +47,35 @@ describe('VAL-RPC-002 bridge behavior', () => {
     await expect(b.runtimeCapabilities()).rejects.toThrow(/missing_ids/);
   });
 
+  it('mission detail and cancellation use canonical get/cancel wire commands', async () => {
+    invoke
+      .mockResolvedValueOnce({
+        mission: {
+          id: 'm-1',
+          title: 'Mission',
+          status: 'in_progress',
+          updatedAt: '2026-07-13T10:00:00Z',
+          packets: [],
+          results: []
+        }
+      })
+      .mockResolvedValueOnce({
+        mission: {
+          id: 'm-1',
+          title: 'Mission',
+          status: 'cancelled',
+          updatedAt: '2026-07-13T10:01:00Z',
+          packets: [],
+          results: []
+        }
+      });
+    const b = await bridge();
+    await expect(b.missionGet('m-1')).resolves.toMatchObject({ id: 'm-1', state: 'in_progress' });
+    await expect(b.missionCancel('m-1', 'stop')).resolves.toMatchObject({ id: 'm-1', state: 'cancelled' });
+    expect(invoke).toHaveBeenNthCalledWith(1, 'mission_get', { missionId: 'm-1' });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'mission_cancel', { missionId: 'm-1', note: 'stop' });
+  });
+
   it('account auth methods use native commands and return only redacted state', async () => {
     invoke
       .mockResolvedValueOnce({

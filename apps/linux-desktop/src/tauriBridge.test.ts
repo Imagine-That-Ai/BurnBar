@@ -3,8 +3,69 @@ import { bridgeStubDefaults } from './testing/bridgeStubs';
 import {
   computeCacheHitRatePct,
   decodeDaemonSubscriptionResponse,
-  decodeDaemonSubscriptionStopResponse
+  decodeDaemonSubscriptionStopResponse,
+  mapMissionDetail,
+  mapMissionList
 } from './tauriBridge';
+
+describe('mission snapshot mapping', () => {
+  it('maps canonical packet, result, evidence, approval and takeover fields', () => {
+    const detail = mapMissionDetail({
+      mission: {
+        id: 'm-1',
+        projectSlug: 'burnbar',
+        title: 'Ship parity',
+        summary: 'Close the Linux mission gap.',
+        status: 'in_progress',
+        recommendation: 'review',
+        createdAt: '2026-07-13T10:00:00Z',
+        updatedAt: new Date().toISOString(),
+        approval: { approved: true, approvedAt: '2026-07-13T10:01:00Z', approvedBy: 'alberto', note: 'go' },
+        packets: [{
+          id: 'p-1', missionID: 'm-1', workerName: 'worker-a', objective: 'Implement UI', status: 'completed',
+          runID: 'run-1', dispatchedAt: '2026-07-13T10:02:00Z', completedAt: '2026-07-13T10:03:00Z', metadata: { source: 'daemon' }
+        }],
+        results: [{
+          id: 'r-1', missionID: 'm-1', packetID: 'p-1', runID: 'run-1', status: 'succeeded',
+          summary: 'UI landed', detail: 'Verified', burnDelta: 1.5, createdAt: '2026-07-13T10:04:00Z',
+          evidenceRefs: ['evidence/mission.json'], metadata: {}
+        }],
+        burnRecords: [{ id: 'b-1', label: 'Tokens', amount: 12, unit: 'tokens', recordedAt: '2026-07-13T10:04:00Z' }],
+        takeoverHistory: [{
+          id: 't-1', projectSlug: 'burnbar', missionID: 'm-1', status: 'completed', reason: 'recovered',
+          createdAt: '2026-07-13T10:05:00Z', updatedAt: '2026-07-13T10:06:00Z', metadata: {}
+        }],
+        metadata: { source: 'test' }
+      }
+    });
+    expect(detail).toMatchObject({
+      id: 'm-1', state: 'in_progress', laneCount: 1, recommendation: 'review', freshness: 'fresh',
+      approval: { approved: true, approvedBy: 'alberto' },
+      packets: [{ id: 'p-1', missionId: 'm-1', runId: 'run-1' }],
+      results: [{ id: 'r-1', evidenceRefs: ['evidence/mission.json'] }],
+      takeoverHistory: [{ id: 't-1', missionId: 'm-1' }]
+    });
+  });
+
+  it('derives pending approval only from canonical awaiting-approval snapshots', () => {
+    const list = mapMissionList({
+      missions: [{
+        id: 'm-awaiting', title: 'Needs review', summary: 'Ask for approval', status: 'awaiting_approval',
+        createdAt: '2026-07-13T09:00:00Z', updatedAt: '2026-07-13T09:00:00Z', approval: { approved: false }, packets: []
+      }, {
+        id: 'm-approved', title: 'Approved', status: 'approved', updatedAt: '2026-07-13T09:00:00Z',
+        approval: { approved: true }, packets: []
+      }]
+    });
+    expect(list.pendingApprovals).toEqual([expect.objectContaining({ missionId: 'm-awaiting', risk: 'standard' })]);
+  });
+
+  it('keeps empty and degraded snapshots honest', () => {
+    expect(mapMissionList({ missions: [] })).toEqual({ missions: [], pendingApprovals: [] });
+    const degraded = mapMissionDetail({ mission: { id: 'm-degraded', title: 'Unknown', status: 'failed', packets: [] } });
+    expect(degraded).toMatchObject({ id: 'm-degraded', freshness: 'unknown', packets: [], results: [], takeoverHistory: [] });
+  });
+});
 
 describe('computeCacheHitRatePct', () => {
   it('matches the macOS CacheEfficiency formula (prompt-side basis)', () => {

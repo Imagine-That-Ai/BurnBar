@@ -282,4 +282,66 @@ describe('MissionsSurface', () => {
     });
     expect(loadImpl.mock.calls.length).toBe(afterUnmount);
   });
+
+  it('expands canonical packet/result/evidence detail and states health is unavailable', async () => {
+    const mission: MissionListResult['missions'][number] = {
+      id: 'm-detail',
+      title: 'Inspect mission',
+      state: 'in_progress',
+      updatedAt: new Date().toISOString(),
+      laneCount: 1,
+      summary: 'Mission summary',
+      packets: [{
+        id: 'packet-1', workerName: 'worker-a', objective: 'Run task', status: 'completed', metadata: {}
+      }],
+      results: [{
+        id: 'result-1', status: 'succeeded', summary: 'Task complete', burnDelta: 0,
+        createdAt: new Date().toISOString(), evidenceRefs: ['evidence.json'], metadata: {}
+      }]
+    };
+    const list: MissionListResult = { missions: [mission], pendingApprovals: [] };
+    const missionGet = vi.fn().mockResolvedValue(mission);
+    const bridge = { missionList: vi.fn().mockResolvedValue(list), missionGet } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: list, loading: false, error: null }));
+    useMissionsStore.setState({ data: list, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(missionGet).toHaveBeenCalledWith('m-detail');
+    expect(screen.getByText('Packets / tasks')).toBeTruthy();
+    expect(screen.getByText('Task complete')).toBeTruthy();
+    expect(screen.getByText(/Evidence: evidence\.json/)).toBeTruthy();
+    expect(screen.getByText(/Unavailable from the mission contract/)).toBeTruthy();
+  });
+
+  it('requires confirmation and calls canonical mission.cancel', async () => {
+    const mission: MissionListResult['missions'][number] = {
+      id: 'm-cancel',
+      title: 'Cancelable mission',
+      state: 'in_progress',
+      updatedAt: new Date().toISOString(),
+      laneCount: 0
+    };
+    const list: MissionListResult = { missions: [mission], pendingApprovals: [] };
+    const missionCancel = vi.fn().mockResolvedValue({ ...mission, state: 'cancelled' });
+    const bridge = { missionList: vi.fn().mockResolvedValue(list), missionCancel } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: list, loading: false, error: null }));
+    useMissionsStore.setState({ data: list, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel mission' }));
+    expect(screen.getByRole('button', { name: 'Confirm cancel' })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm cancel' }));
+      await Promise.resolve();
+    });
+    expect(missionCancel).toHaveBeenCalledWith('m-cancel', 'Cancelled from Linux mission control.');
+  });
 });

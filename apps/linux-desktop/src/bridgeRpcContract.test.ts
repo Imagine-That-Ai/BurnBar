@@ -126,4 +126,13 @@ describe('VAL-RPC bridge contract', () => {
     );
     expect(accountTypes).not.toMatch(/\b(refreshToken|idToken|appCheckToken|sessionGeneration|deviceID)\b/);
   });
+
+  it('wires mission detail and explicit cancellation only to canonical RPCs', () => {
+    for (const method of ['daemon.mission.list', 'daemon.mission.get', 'daemon.mission.create', 'daemon.mission.approve', 'daemon.mission.cancel']) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(tsBridge).toContain('mission_get');
+    expect(tsBridge).toContain('mission_cancel');
+  });
 });
