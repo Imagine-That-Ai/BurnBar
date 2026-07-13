@@ -50,6 +50,15 @@ attachment transport, notifications/shortcut status, encrypted snapshot/
 restore, and recovery bundles can land as
 independently reviewable source slices because each preserves an explicit
 installed-proof boundary.
+
+The 2026-07-13 integration checkpoint adds three bounded source slices to PR
+[#1691](https://github.com/Imagine-That-Ai/BurnBar/pull/1691): chat citations and
+daemon-issued tool approvals (`55e2e2ac23`), SmartHub typed allowlisting with
+bounds/timeout/cancellation (`2dcd7e3abc`), and daemon-owned text expansion with
+AES-GCM sealed storage, native Secret Service/KWallet custody, consent RPC, and
+in-app-only Composer expansion (`227d7e3c49`, `46aa7f3c91`, `6cc09bc2c0`,
+`930125a53e`, `83ef8e8edf`, `09860849c7`). These improve source parity without
+changing the 0/40 product or 0/7 environment certification state.
 After the code stack is review-clean, rerun
 the strict ledger on the exact candidate and collect the installed GNOME
 X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
@@ -87,10 +96,11 @@ integrated chat model/attachment state, persisted activity replay/resume, and
 SQLCipher-gated encrypted database snapshot/restore. The
 following checks passed:
 
-- Linux frontend: 72 Vitest files / 592 tests.
+- Linux frontend: 73 Vitest files / 607 tests.
 - TypeScript: `npx tsc --noEmit --pretty false`.
 - Production bundle: `npm run build` plus the production bundle verifier.
-- Tauri Rust: 78/78 library tests.
+- Tauri Rust: 80/80 library tests.
+- RPC canon, Rust formatting, and suppression-policy checks.
 - Platform differential oracle: 6/6 tests.
 - Supported SQLCipher-backed daemon chat selector: 9/9 tests.
 - P19 daemon project lifecycle selector: 4/4 tests, covering delete,
@@ -113,18 +123,21 @@ notification tests still require a Linux host.
 
 ### Source-slice implementation addendum - 2026-07-13
 
-These six slices are now integrated in [PR #1691](https://github.com/Imagine-That-Ai/BurnBar/pull/1691) and should land as a
+These nine slices are now integrated in [PR #1691](https://github.com/Imagine-That-Ai/BurnBar/pull/1691) and should land as a
 reviewable unit before the installed-certification wave; the individual feature
 commits remain separately inspectable in the branch history:
 
 | Order | Slice | Dependencies | Acceptance criteria | Remaining boundary |
 |---|---|---|---|---|
-| 1 | Chat model/options and attachment transport | Existing encrypted thread RPCs, gateway model catalog, Composer/ChatSurface stores, daemon private data root | Selected model and thinking level survive the active composer lifecycle and reach the gateway as the exact model ID; daemon-owned attachment refs enforce 10 MiB/file/send caps, 80 MiB registry, 0700/0600 storage, single-use UUIDs, allowlisted text/Markdown/CSV/JSON/PDF policy, text-only gateway payloads, and explicit PDF unsupported behavior; no renderer secret, raw path, or fake upload path | Image/binary provider handling, citations, approvals, pop-out, unloaded-history export/resume, and remaining backend catalog still require real daemon/provider contracts |
+| 1 | Chat model/options, attachment transport, citations, and approvals | Existing encrypted thread RPCs, gateway model catalog, Composer/ChatSurface stores, daemon private data root | Selected model and thinking level survive the active composer lifecycle and reach the gateway as the exact model ID; daemon-owned attachment refs enforce 10 MiB/file/send caps, 80 MiB registry, 0700/0600 storage, single-use UUIDs, allowlisted text/Markdown/CSV/JSON/PDF policy, text-only gateway payloads, explicit PDF unsupported behavior, bounded citation source handling, and daemon-issued approve/reject/cancel IDs; no renderer secret, raw path, or fake upload path | Image/binary provider handling, unloaded-history export/resume, pop-out, and remaining backend catalog still require real daemon/provider contracts |
 | 2 | Activity body replay and resume | Existing indexed activity search/detail RPCs, canonical `run.resume`, bounded transcript decoder | Body replay is daemon-backed, size-bounded, untrusted-rendered, and honest on missing/offline/error; native resume carries the persisted briefing without launching a process; providers without validated native resume use the same-harness handoff; plaintext legacy SQLite remains readable under SQLCipher builds; Swift 4/4 and frontend/Rust contracts pass | Full-history export, source resolution, resume-from-export, and installed provider/runtime proof remain open |
 | 3 | Encrypted project database snapshot/restore | Project-code SQLite store, SQLCipher codec/key custody, watcher lifecycle, canonical RPC generator | Snapshot rejects traversal/symlinks/unsafe ownership, active-db overwrite, and >512 MiB; checkpoints WAL, writes owner-only temporary files, hashes content, atomically installs; restore validates integrity, stops/reopens watchers, and rolls back on failure; bridge/Rust contract suites pass | This is same-key encrypted snapshot recovery only. Key-loss/device-transfer recovery and installed proof remain open |
 | 4 | macOS-compatible database recovery bundle | Existing SQLCipher key custody, Swift Crypto, daemon RPC/canon, Database surface | v1 bundle uses exact salt16/PBKDF2-HMAC-SHA256 100k/AES-GCM combined format; parser bounds bundle/version/iterations/key length; export/import uses owner-only 0600 atomic files, candidate-key verification, and native Secret Service/KWallet custody hooks; passphrases never enter renderer persistence; source/build tests pass | Live Linux keyring round-trip, key-loss/device transfer, recovery UX for missing stores, and installed proof remain open |
 | 5 | Native notification actions and shortcut status | Tauri shell, freedesktop notify-rust capability probe, tray event bridge, existing shortcut registry | Typed notification IDs/actions/routes are bounded and validated; unsupported hosts report degraded state; action opens only allowlisted routes; global shortcut status is visible and additive to existing chords; Rust/TS tests pass | Live GNOME/KDE/wlroots D-Bus receipts, desktop persistence, and accessibility/manual proof remain open |
 | 6 | Activity replay/resume hardening | Existing indexed activity RPCs, canonical run.resume, bounded transcript decoder | Body replay is daemon-backed, size-bounded, untrusted-rendered, and honest on missing/offline/error; native resume carries persisted briefing without launching a process; provider-safe fallback and plaintext legacy SQLite readability are tested | Full-history export, source resolution, resume-from-export, and installed provider/runtime proof remain open |
+| 7 | Chat citations and tool approvals | Existing chat thread/gateway contracts, approval.respond, citation source identity | Bounded citation metadata is normalized with thread/message validation and source-unavailable fail-closed behavior; daemon-issued approval IDs route approve/reject/cancel with single-flight terminal state; focused chat tests pass | Unloaded-history export/resume, pop-out, remaining backends, and installed reconnect/offline evidence remain open |
+| 8 | SmartHub command safety | Existing typed CLI bridge and capability probe | Allowlisted discovery/status/test/cast/device/parity operations validate request IDs and bounded JSON, drain output concurrently, time out at 8 seconds, support cancellation, and expose degraded renderer state; focused TS/Rust tests pass | Real devices, Avahi/DBus, auth, offline/reconnect, and desktop matrix remain open |
+| 9 | Daemon-owned text expansion | Existing text expansion surface/Composer, daemon RPC canon, native secret custodian | AES-GCM sealed snapshot with native Secret Service/KWallet key custody, owner-only permissions, consent RPC, in-app-only expansion, no renderer localStorage/global capture, and corruption/missing-key fail-closed tests | Linux keyring runtime, IBus/Fcitx external integration, secure-field exclusions, sync/conflict policy, and Wayland/X11 evidence remain open |
 
 Recommended engineering order after these source slices is: (a) land and
 rebase the integration PR; (b) run Linux SQLCipher, Secret Service/KWallet,
@@ -1178,13 +1191,13 @@ The original foundation sequence is substantially implemented. From the
      accessibility, performance, update/rollback, and package lifecycle proof.
 
 8. **Remaining product-parity PRs**
-   - Complete binary chat attachments/citations/approvals/full-history export,
-     provider/account/cloud, activity source resolution and full-history
-     export, passphrase-wrapped recovery bundles, insights, memory review,
-     system Computer Use, Mercury, text expansion, companion, SmartHub, and
-     every other still-open audit row. Project lifecycle source parity is
-     covered by PR #1688; installed/release evidence and the 10k-session
-     migration acceptance suite remain open.
+   - Complete chat unloaded-history export/resume, pop-out, remaining backends,
+     provider/account/cloud, activity source resolution and full-history export,
+     passphrase-wrapped recovery bundles, insights, memory review, system
+     Computer Use, Mercury, external IBus/Fcitx text expansion, companion,
+     SmartHub live-device actions, and every other still-open audit row. Project
+     lifecycle source parity is covered by PR #1688; installed/release evidence
+     and the 10k-session migration acceptance suite remain open.
 
 9. **Promotion and public truth-sync PR**
    - Require zero Critical/High gaps, strict evidence closure, valid signed public
