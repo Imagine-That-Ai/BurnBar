@@ -55,10 +55,11 @@ S12 adapter/registry re-slice: `InsightProviderGatewayRegistry.swift` rides P-09
 | Lane | Packet | Card | DEPENDS-ON |
 |---|---|---|---|
 | B | P-12 LogParsers | draft | P-01, P-02 |
-| C | P-13 Quota | draft | P-01 |
+| C | P-13 Quota | draft | P-01, **P-15b** (CodexQuotaAdapter/OMPQuotaAdapter call CLILaunchAdapter — must resolve via Kernel, not Apple-only LaunchServices) |
 | D | P-14 VectorKit (+ OpenBurnBarSearchContracts, re-sliced from P-03) | draft | P-03 |
 | A | P-11 MissionGroupContracts inversion | draft | P-04a/b |
 | A | P-15 LaunchServices | draft | P-04a/b (SwitcherProfile/CLIAuthDiscovery → Kernel) |
+| A | P-15b CLILaunchAdapter → Kernel (+P-12 FileManager Sendable follow-up) | full | P-15 — NEW predecessor to P-13 (Quota adapters) + P-18 (daemon repoint); extracts the Foundation-pure resolution/env surface DOWN so both consumers reach it without AppKit-adjacent LaunchServices; PR #1648 |
 | Integrator | S-H headless app build CI | draft | S0 (anytime before P-16) |
 | Integrator | per-wave ratchet-down PR (membership JSON) | — | after each wave merges |
 
@@ -83,7 +84,9 @@ S12 adapter/registry re-slice: `InsightProviderGatewayRegistry.swift` rides P-09
   daemon/widget/keyboard umbrella-imports = 0; wire canon byte-identical throughout.
 
 ## Lane ownership recap
-- **A** (serial): owns `core-ui-purity-baseline.json`. P-07 → P-11 → P-15 → P-16a…f.
+- **A** (serial): owns `core-ui-purity-baseline.json`. P-07 → P-11 → P-15 → P-15b → P-16a…f.
+  (P-15b touches no baseline — Kernel is UI-purity assert-zero — so it does not contend
+  for the `--update` lock, but it is scoped to lane A because it splits P-15's file.)
 - **B**: P-01 → P-12.
 - **C**: P-10 → P-08 → P-09 → P-13.
 - **D**: P-03 → P-04a → P-04b → P-04c (WAVE1F, after P-02 #1582) → P-14; P-05; P-06.

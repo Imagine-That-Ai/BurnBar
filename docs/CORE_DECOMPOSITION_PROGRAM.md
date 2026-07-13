@@ -222,7 +222,8 @@ also converged the Insights adapter/registry re-slice inside S12 (see the P-08 c
 | P-12 | S6 | OpenBurnBarLogParsers | B | draft | QUEUED |
 | P-13 | S7 | OpenBurnBarQuota | C | draft | QUEUED |
 | P-14 | S8 | OpenBurnBarVectorKit (now also OpenBurnBarSearchContracts — FIX 4) | D | draft | QUEUED |
-| P-15 | S13 | OpenBurnBarLaunchServices | A | draft | QUEUED |
+| P-15 | S13 | OpenBurnBarLaunchServices | A | draft | MERGED into wave3-base |
+| P-15b | S13→S4 | CLILaunchAdapter+CLILaunchError → Kernel (Foundation-pure resolution/env surface, split from P-15's SwitcherCLILAunchService.swift) + P-12 FileManager-Sendable follow-up | A | full | PR_OPEN #1648 (base wave3-base; NEW predecessor to P-13 + P-18; AE-IMPORT Kernel×1 on ParserDiskCache, AE-TESTABLE Kernel×2; Kernel stays UI-purity assert-zero) |
 | P-16a…f | S14 | OpenBurnBarUI (K4) — by Views subdirectory | A | draft | QUEUED |
 | P-17 | S16 | OpenBurnBarEngine umbrella (fill) | Integrator | draft | QUEUED |
 | P-18 | S17 | daemon/CLI repoint → OpenBurnBarEngine | Integrator | draft | QUEUED |
@@ -375,3 +376,53 @@ individual populated Vendor artifacts when `Vendor/` already exists as a tracked
 Windows engine lane adds `OpenBurnBarPretext` to its path filter and a `swift build
 --target OpenBurnBarEngine` step in both legs (Core does not depend on Engine, so the
 Core build never compiled it).
+
+## Wave-2 learnings
+
+10. **A slice can be a partial-file SPLIT, not a whole-file `git mv` — and the split's
+    symbol closure can pull a SHARED type DOWN with the extracted half; a `@retroactive`
+    SDK-`Sendable` shim belongs at the lowest common-ancestor target, never on a sibling
+    leaf a consumer merely re-exports.** P-15b (NEW predecessor to P-13 + P-18, PR #1648)
+    carved the Foundation-pure `CLILaunchAdapter` (executable resolution + allowlisted-env
+    building) OUT of `OpenBurnBarLaunchServices/SwitcherCLILAunchService.swift` (1803 LOC,
+    Apple-only, AppKit-adjacent) into `OpenBurnBarKernel/Platform/CLILaunchAdapter.swift`,
+    leaving the launch-coordinator / process-invoker / profile-store-coupled half in place.
+    Two consumers need the pure surface WITHOUT the Apple-only target: the daemon repoint
+    (P-18) calls `CLILaunchAdapter.buildCLILaunch` UNGUARDED in `OpenBurnBarSwitcherShell`
+    (the macOS switcher shell is Linux-excluded via `daemonExcludes`, so it is macOS-only at
+    build time, not `#if`-gated), and P-13's `CodexQuotaAdapter`/`OMPQuotaAdapter` call the
+    resolution/env methods (each `#if os(macOS)`-gated) but move into `OpenBurnBarQuota`,
+    which does not and cannot depend on LaunchServices. Lessons: (a) a file split is a NEW
+    destination file + a shrink of the origin, not a `git mv` — Package.swift needs no edit
+    when the destination target globs its `Sources/` dir; (b) the extracted half's symbol
+    closure (learning 4) can require moving a type the STAYING half also uses — here
+    `CLILaunchError`, returned by the adapter's `validate*`/`buildCLILaunch` surface, HAD to
+    move to Kernel too, because a type cannot sit ABOVE the Kernel while a Kernel-resident
+    type references it; the staying half re-reaches both via LaunchServices' Kernel dep; (c)
+    preserve the origin `#if os(macOS)` guard verbatim so the moved type stays byte-identical
+    off-Apple (Kernel is cross-platform, but a macOS-guarded public enum in it simply does
+    not exist off-Apple — matching every consumer's own `#if os(macOS)` gating); (d) a
+    vestigial `import AppKit` a prior `git mv` dragged along is NOT proof of UI taint —
+    machine-verify actual symbol usage (`NSHomeDirectory`/`NSTemporaryDirectory` are
+    cross-platform Foundation), and the UI-purity gate confirms Kernel stays assert-zero.
+
+    The bundled **P-12 follow-up** is the general form of the shim-placement rule: P-12 moved
+    the `FileManager: @retroactive @unchecked Sendable` shim from Core into a LogParsers leaf
+    (`ParserDiskCache.swift`), but Core's `ProviderQuotaAdapterContext` (a `Sendable` struct
+    with a `FileManager` stored property) then saw the conformance only through Core's
+    `@_exported import OpenBurnBarLogParsers` — a split-brain that fails Swift-6 Sendable
+    checking in modes that do not propagate a re-exported retroactive conformance, and breaks
+    outright once P-13 moves the adapters into `OpenBurnBarQuota` (no LogParsers dep). A
+    retroactive SDK-type conformance required by types in multiple targets belongs at the
+    LOWEST COMMON ANCESTOR (Kernel), declared ONCE — homing `FileManager: Sendable` in
+    `Platform/PlatformSupport.swift` (unguarded; `FileManager` is not `Sendable` on any
+    platform, unlike the `#if os(Linux) || os(Windows)` crypto shims beside it) and removing
+    it from the leaf (which then inherits it via `import OpenBurnBarKernel`) fixes Core,
+    LogParsers, and the future Quota target with a single declaration and no redundant
+    conformance. Any executor moving a `@retroactive @unchecked Sendable` shim must ask which
+    targets host types that DEPEND on that conformance and home it at their common ancestor,
+    not wherever the moved file happened to carry it. AgentLens app-test targets reach
+    leaf-target internals through `@testable import OpenBurnBarCore`/`OpenBurnBar` regardless
+    of which package target hosts a type, so a whole-file move between package targets needs
+    NO AgentLens-test edit (P-15 set the precedent; P-15b confirmed it) — the AE-TESTABLE
+    set is the Core-package tests the compiler actually rejects, nothing more.
