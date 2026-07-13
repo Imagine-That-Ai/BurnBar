@@ -277,11 +277,11 @@ unproven host behavior to certification:
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 41/41 managed-agent-runtime tests), CloudSync (60/60), connector
-(99/99), presentation (761/761), Computer Use, bridge-policy, and
+(99/99), presentation (765/765), Computer Use, bridge-policy, and
 provider-boundary tests. They are an
 implementation increment, not a claim that
 the F2 workstreams are all complete: full macOS semantic/provider embedding
-parity, live LSP host evidence, production composition of every F2 service,
+quality evidence, live LSP host evidence, production composition of every F2 service,
 physical Computer Use/media safety, and host evidence still remain. The
 ledger's 48/48 `Real` result is the scoped F1 source/product gate; WPD-0009
 continues to define F2 True 1:1 as the actual 100% parity endpoint.
