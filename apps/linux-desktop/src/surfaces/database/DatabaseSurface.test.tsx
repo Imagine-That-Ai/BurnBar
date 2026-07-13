@@ -253,9 +253,10 @@ describe('DatabaseSurface', () => {
     await waitFor(() => expect(screen.getByText(/No encrypted database is present/i)).toBeTruthy());
     expect((screen.getByRole('button', { name: /export bundle/i }) as HTMLButtonElement).disabled).toBe(true);
     const importButton = screen.getByRole('button', { name: /import bundle/i });
-    expect((importButton as HTMLButtonElement).disabled).toBe(false);
+    expect((importButton as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/Import path/i), { target: { value: '/tmp/recovery.obb' } });
     fireEvent.change(screen.getByLabelText(/Import passphrase/i), { target: { value: 'passphrase' } });
+    expect((importButton as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(importButton);
     await waitFor(() => expect(screen.getByText(/no encrypted database was present to verify/i)).toBeTruthy());
     expect(databaseRecoveryBundleImport).toHaveBeenCalledWith({
@@ -263,6 +264,42 @@ describe('DatabaseSurface', () => {
       passphrase: 'passphrase'
     });
     expect(databaseRecoveryBundleExport).not.toHaveBeenCalled();
+  });
+
+  it('renders key-loss recovery guidance without exposing daemon paths', async () => {
+    vi.spyOn(useSystemStore.getState(), 'loadDb').mockImplementation(async () => {});
+    vi.spyOn(useDatabaseStore.getState(), 'loadWorkspace').mockImplementation(async () => {});
+    const databaseRecoveryBundleStatus = vi.fn(async () => ({
+      phase: 'key_unavailable' as const,
+      code: 'key_unavailable',
+      message: 'secret store path=/home/user/.local/private/key',
+      recommendedAction: 'unlock_secret_store' as const,
+      canExport: false,
+      canImport: true,
+      databasePresent: true,
+      databaseIntegrityVerified: false,
+      restartRequired: false
+    }));
+    useShellStore.setState({
+      bridge: {
+        databaseRecoveryBundleStatus,
+        databaseRecoveryBundleImport: vi.fn()
+      } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      db: { sqlcipherOk: true, migrationVersion: 54, sizeBytes: 4096, walMode: true },
+      loading: false,
+      error: null
+    });
+    render(<DatabaseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /system/i }));
+    await waitFor(() => expect(screen.getByText(/Key unavailable/i)).toBeTruthy());
+    expect(screen.getByText(/Unlock the native key store/i)).toBeTruthy();
+    expect(screen.getAllByText(/native secret storage/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/\.local\/private\/key/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /refresh recovery status/i }));
+    await waitFor(() => expect(databaseRecoveryBundleStatus).toHaveBeenCalledTimes(2));
   });
 
   it('searches bounded code snippets, warns about untrusted source, and paginates results', async () => {

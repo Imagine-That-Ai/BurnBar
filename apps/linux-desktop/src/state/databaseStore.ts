@@ -11,10 +11,24 @@ import {
   DATABASE_CODE_MAX_RESULTS,
   type DatabaseCodeContextPackResult,
   type DatabaseCodeSearchResult,
+  type DatabaseRecoveryBundleExportResult,
+  type DatabaseRecoveryBundleImportResult,
+  type DatabaseRecoveryStatusResult,
   type DatabaseIndexActionResult,
   type DatabaseSnapshotResult,
   type DatabaseWorkspaceStatus
 } from '../tauriBridge.js';
+import {
+  RECOVERY_EXPORT_UNAVAILABLE,
+  RECOVERY_IMPORT_UNAVAILABLE,
+  RECOVERY_OPERATION_FAILED,
+  RECOVERY_PASSPHRASE_REQUIRED,
+  RECOVERY_PATH_REQUIRED,
+  RECOVERY_STATUS_UNAVAILABLE,
+  redactRecoveryExportResult,
+  redactRecoveryImportResult,
+  redactRecoveryStatus
+} from '../surfaces/database/recoveryCopy.js';
 import { useShellStore } from './shellStore.js';
 
 const OFFLINE_ERROR = 'Packaged shell required for live database workspace RPCs.';
@@ -38,6 +52,24 @@ export type DatabaseSnapshotActionState = {
   result: DatabaseSnapshotResult | null;
 };
 
+export type DatabaseRecoveryStatusActionState = {
+  pending: boolean;
+  error: string | null;
+  result: DatabaseRecoveryStatusResult | null;
+};
+
+export type DatabaseRecoveryExportActionState = {
+  pending: boolean;
+  error: string | null;
+  result: DatabaseRecoveryBundleExportResult | null;
+};
+
+export type DatabaseRecoveryImportActionState = {
+  pending: boolean;
+  error: string | null;
+  result: DatabaseRecoveryBundleImportResult | null;
+};
+
 export type DatabaseState = {
   workspace: DatabaseWorkspaceStatus | null;
   loading: boolean;
@@ -46,6 +78,9 @@ export type DatabaseState = {
   watchAction: DatabaseActionState;
   snapshotAction: DatabaseSnapshotActionState;
   restoreAction: DatabaseSnapshotActionState;
+  recoveryStatusAction: DatabaseRecoveryStatusActionState;
+  recoveryExportAction: DatabaseRecoveryExportActionState;
+  recoveryImportAction: DatabaseRecoveryImportActionState;
   codeSearch: DatabaseCodeSearchResult | null;
   codeSearchLoading: boolean;
   codeSearchError: string | null;
@@ -57,6 +92,10 @@ export type DatabaseState = {
   watchProject(projectPath?: string): Promise<void>;
   exportSnapshot(destinationPath: string, maxBytes?: number): Promise<void>;
   restoreSnapshot(snapshotPath: string, maxBytes?: number): Promise<void>;
+  loadRecoveryStatus(): Promise<void>;
+  exportRecoveryBundle(destinationPath: string, passphrase: string): Promise<void>;
+  importRecoveryBundle(sourcePath: string, passphrase: string): Promise<void>;
+  clearRecoveryActions(): void;
   searchCode(query: string, projectPath?: string, limit?: number): Promise<void>;
   buildCodeContextPack(query: string, projectPath?: string, limit?: number): Promise<void>;
   clearCodeRetrieval(): void;
@@ -72,6 +111,21 @@ const idleSnapshotAction: DatabaseSnapshotActionState = {
   error: null,
   result: null
 };
+const idleRecoveryStatusAction: DatabaseRecoveryStatusActionState = {
+  pending: false,
+  error: null,
+  result: null
+};
+const idleRecoveryExportAction: DatabaseRecoveryExportActionState = {
+  pending: false,
+  error: null,
+  result: null
+};
+const idleRecoveryImportAction: DatabaseRecoveryImportActionState = {
+  pending: false,
+  error: null,
+  result: null
+};
 
 export const useDatabaseStore = create<DatabaseState>()((set, get) => ({
   workspace: null,
@@ -81,6 +135,9 @@ export const useDatabaseStore = create<DatabaseState>()((set, get) => ({
   watchAction: idleAction,
   snapshotAction: idleSnapshotAction,
   restoreAction: idleSnapshotAction,
+  recoveryStatusAction: idleRecoveryStatusAction,
+  recoveryExportAction: idleRecoveryExportAction,
+  recoveryImportAction: idleRecoveryImportAction,
   codeSearch: null,
   codeSearchLoading: false,
   codeSearchError: null,
@@ -194,6 +251,91 @@ export const useDatabaseStore = create<DatabaseState>()((set, get) => ({
     } catch (e) {
       set({ restoreAction: { pending: false, error: e instanceof Error ? e.message : 'Database snapshot restore failed.', result: null } });
     }
+  },
+
+  async loadRecoveryStatus() {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (fixtureMode || !bridge?.databaseRecoveryBundleStatus) {
+      set({
+        recoveryStatusAction: {
+          pending: false,
+          error: RECOVERY_STATUS_UNAVAILABLE,
+          result: null
+        }
+      });
+      return;
+    }
+    set({ recoveryStatusAction: { pending: true, error: null, result: null } });
+    try {
+      const result = await bridge.databaseRecoveryBundleStatus();
+      set({ recoveryStatusAction: { pending: false, error: null, result: redactRecoveryStatus(result) } });
+    } catch {
+      set({
+        recoveryStatusAction: {
+          pending: false,
+          error: RECOVERY_STATUS_UNAVAILABLE,
+          result: null
+        }
+      });
+    }
+  },
+
+  async exportRecoveryBundle(destinationPath, passphrase) {
+    const path = destinationPath.trim();
+    if (!path) {
+      set({ recoveryExportAction: { pending: false, error: RECOVERY_PATH_REQUIRED, result: null } });
+      return;
+    }
+    if (!passphrase) {
+      set({ recoveryExportAction: { pending: false, error: RECOVERY_PASSPHRASE_REQUIRED, result: null } });
+      return;
+    }
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (fixtureMode || !bridge?.databaseRecoveryBundleExport) {
+      set({ recoveryExportAction: { pending: false, error: RECOVERY_EXPORT_UNAVAILABLE, result: null } });
+      return;
+    }
+    set({ recoveryExportAction: { pending: true, error: null, result: null } });
+    try {
+      const result = await bridge.databaseRecoveryBundleExport({ destinationPath: path, passphrase });
+      set({ recoveryExportAction: { pending: false, error: null, result: redactRecoveryExportResult(result) } });
+      await get().loadRecoveryStatus();
+    } catch {
+      set({ recoveryExportAction: { pending: false, error: RECOVERY_OPERATION_FAILED, result: null } });
+    }
+  },
+
+  async importRecoveryBundle(sourcePath, passphrase) {
+    const path = sourcePath.trim();
+    if (!path) {
+      set({ recoveryImportAction: { pending: false, error: RECOVERY_PATH_REQUIRED, result: null } });
+      return;
+    }
+    if (!passphrase) {
+      set({ recoveryImportAction: { pending: false, error: RECOVERY_PASSPHRASE_REQUIRED, result: null } });
+      return;
+    }
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (fixtureMode || !bridge?.databaseRecoveryBundleImport) {
+      set({ recoveryImportAction: { pending: false, error: RECOVERY_IMPORT_UNAVAILABLE, result: null } });
+      return;
+    }
+    set({ recoveryImportAction: { pending: true, error: null, result: null } });
+    try {
+      const result = await bridge.databaseRecoveryBundleImport({ sourcePath: path, passphrase });
+      set({ recoveryImportAction: { pending: false, error: null, result: redactRecoveryImportResult(result) } });
+      await get().loadRecoveryStatus();
+    } catch {
+      set({ recoveryImportAction: { pending: false, error: RECOVERY_OPERATION_FAILED, result: null } });
+    }
+  },
+
+  clearRecoveryActions() {
+    set({
+      recoveryStatusAction: idleRecoveryStatusAction,
+      recoveryExportAction: idleRecoveryExportAction,
+      recoveryImportAction: idleRecoveryImportAction
+    });
   },
 
   async searchCode(query, projectPath, limit) {

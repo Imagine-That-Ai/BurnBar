@@ -7,7 +7,12 @@ import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
 import { formatBytes } from '../system/systemFormat.js';
 import { CodeRetrievalPanel } from './CodeRetrievalPanel.js';
-import type { DatabaseRecoveryStatusResult } from '../../tauriBridge.js';
+import {
+  recoveryActionLabel,
+  recoveryImportMessage,
+  recoveryPhaseLabel,
+  recoveryStatusMessage
+} from './recoveryCopy.js';
 import '../system/system.css';
 
 type DatabaseWorkspaceMode = 'story' | 'atlas' | 'system';
@@ -64,84 +69,30 @@ function DatabaseRecoveryBundleControls({
   const [importPath, setImportPath] = useState('');
   const [exportPassphrase, setExportPassphrase] = useState('');
   const [importPassphrase, setImportPassphrase] = useState('');
-  const [busy, setBusy] = useState<'export' | 'import' | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const statusAction = useDatabaseStore((state) => state.recoveryStatusAction);
+  const exportAction = useDatabaseStore((state) => state.recoveryExportAction);
+  const importAction = useDatabaseStore((state) => state.recoveryImportAction);
+  const loadRecoveryStatus = useDatabaseStore((state) => state.loadRecoveryStatus);
+  const exportRecoveryBundle = useDatabaseStore((state) => state.exportRecoveryBundle);
+  const importRecoveryBundle = useDatabaseStore((state) => state.importRecoveryBundle);
   const statusAvailable = !fixtureMode && typeof bridge?.databaseRecoveryBundleStatus === 'function';
   const available = !fixtureMode && typeof bridge?.databaseRecoveryBundleExport === 'function'
     && typeof bridge?.databaseRecoveryBundleImport === 'function';
-  const [recoveryStatus, setRecoveryStatus] = useState<DatabaseRecoveryStatusResult | null>(null);
-  const [statusLoading, setStatusLoading] = useState(false);
-  const [statusError, setStatusError] = useState<string | null>(null);
+  const recoveryStatus = statusAction.result;
+  const busy = exportAction.pending ? 'export' : importAction.pending ? 'import' : null;
 
   useEffect(() => {
-    let cancelled = false;
-    if (!statusAvailable || !bridge?.databaseRecoveryBundleStatus) {
-      setRecoveryStatus(null);
-      setStatusError(null);
-      setStatusLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setStatusLoading(true);
-    setStatusError(null);
-    void bridge.databaseRecoveryBundleStatus()
-      .then((status) => {
-        if (!cancelled) setRecoveryStatus(status);
-      })
-      .catch((caught) => {
-        if (!cancelled) {
-          setRecoveryStatus(null);
-          setStatusError(caught instanceof Error ? caught.message : 'Recovery status is unavailable.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setStatusLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [bridge, statusAvailable]);
+    void loadRecoveryStatus();
+  }, [loadRecoveryStatus]);
 
   const exportBundle = async () => {
-    if (!bridge?.databaseRecoveryBundleExport) return;
-    setBusy('export');
-    setMessage(null);
-    setError(null);
-    try {
-      const result = await bridge.databaseRecoveryBundleExport({
-        destinationPath: exportPath,
-        passphrase: exportPassphrase
-      });
-      setMessage(`Recovery bundle exported (${result.byteCount} bytes).`);
-      setExportPassphrase('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Recovery bundle export failed.');
-    } finally {
-      setBusy(null);
-    }
+    await exportRecoveryBundle(exportPath, exportPassphrase);
+    if (!useDatabaseStore.getState().recoveryExportAction.error) setExportPassphrase('');
   };
 
   const importBundle = async () => {
-    if (!bridge?.databaseRecoveryBundleImport) return;
-    setBusy('import');
-    setMessage(null);
-    setError(null);
-    try {
-      const result = await bridge.databaseRecoveryBundleImport({
-        sourcePath: importPath,
-        passphrase: importPassphrase
-      });
-      setMessage(result.message);
-      setImportPassphrase('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Recovery bundle import failed.');
-    } finally {
-      setBusy(null);
-    }
+    await importRecoveryBundle(importPath, importPassphrase);
+    if (!useDatabaseStore.getState().recoveryImportAction.error) setImportPassphrase('');
   };
 
   return (
@@ -153,15 +104,25 @@ function DatabaseRecoveryBundleControls({
         Export or restore only the SQLCipher key. The daemon performs PBKDF2/AES-GCM and native secret-store writes;
         this view never persists a passphrase.
       </p>
-      {statusLoading ? <p className="muted" role="status">Checking encrypted-store recovery state...</p> : null}
-      {statusError ? <p className="muted" role="alert">{statusError}</p> : null}
+      {statusAction.pending ? <p className="muted" role="status" aria-live="polite">Checking encrypted-store recovery state...</p> : null}
+      {statusAction.error ? <p className="muted" role="alert">{statusAction.error}</p> : null}
       {recoveryStatus ? (
-        <div className="database-recovery-status" role="status" aria-live="polite">
-          <strong>{`Recovery state: ${recoveryStatus.phase.replaceAll('_', ' ')}`}</strong>
-          <p className="muted">{recoveryStatus.message}</p>
+        <div className="database-recovery-status" role="status" aria-live="polite" data-recovery-phase={recoveryStatus.phase}>
+          <strong>{`Recovery state: ${recoveryPhaseLabel(recoveryStatus.phase)}`}</strong>
+          <p className="muted">{recoveryStatusMessage(recoveryStatus)}</p>
           {recoveryStatus.recommendedAction !== 'none' ? (
-            <p className="muted">{`Next action: ${recoveryStatus.recommendedAction.replaceAll('_', ' ')}`}</p>
+            <p className="muted">{`Next action: ${recoveryActionLabel(recoveryStatus.recommendedAction)}`}</p>
           ) : null}
+          {recoveryStatus.restartRequired ? <p className="muted">Restart the daemon after the recovery step completes.</p> : null}
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => void loadRecoveryStatus()}
+            disabled={statusAction.pending || busy !== null}
+            aria-busy={statusAction.pending}
+          >
+            {statusAction.pending ? 'Refreshing...' : 'Refresh recovery status'}
+          </button>
         </div>
       ) : null}
       {!available ? (
@@ -192,7 +153,7 @@ function DatabaseRecoveryBundleControls({
               type="button"
               className="ghost"
               onClick={() => void exportBundle()}
-              disabled={busy !== null || recoveryStatus?.canExport !== true}
+              disabled={busy !== null || recoveryStatus?.canExport !== true || exportPath.trim().length === 0 || exportPassphrase.length === 0}
             >
               {busy === 'export' ? 'Exporting...' : 'Export bundle'}
             </button>
@@ -221,13 +182,19 @@ function DatabaseRecoveryBundleControls({
               type="button"
               className="ghost"
               onClick={() => void importBundle()}
-              disabled={busy !== null || recoveryStatus?.canImport !== true}
+              disabled={busy !== null || recoveryStatus?.canImport !== true || importPath.trim().length === 0 || importPassphrase.length === 0}
             >
               {busy === 'import' ? 'Importing...' : 'Import bundle'}
             </button>
           </div>
-          {message ? <p className="muted" role="status">{message}</p> : null}
-          {error ? <p className="muted" role="alert">{error}</p> : null}
+          {exportAction.result ? (
+            <p className="muted" role="status">
+              Recovery bundle exported successfully ({formatBytes(exportAction.result.byteCount)}). The destination path is kept private.
+            </p>
+          ) : null}
+          {importAction.result ? <p className="muted" role="status">{recoveryImportMessage(importAction.result)}</p> : null}
+          {exportAction.error ? <p className="muted" role="alert">{exportAction.error}</p> : null}
+          {importAction.error ? <p className="muted" role="alert">{importAction.error}</p> : null}
         </>
       )}
     </section>
@@ -632,7 +599,7 @@ export function DatabaseSurface() {
               {snapshotAction.error ? <p className="muted" role="alert">{snapshotAction.error}</p> : null}
               {snapshotAction.result ? (
                 <p className="muted" role="status">
-                  Snapshot written to {snapshotAction.result.snapshotPath} ({formatBytes(snapshotAction.result.byteCount)}).
+                  Encrypted snapshot exported successfully ({formatBytes(snapshotAction.result.byteCount)}). The destination path is kept private.
                 </p>
               ) : null}
               <label className="system-field-label" htmlFor="database-restore-path">Snapshot to restore</label>
