@@ -9,6 +9,14 @@ export type PetTier = 'overlay-pass-through' | 'draggable-contained';
 
 export type PetAction = 'overlay' | 'click-through' | 'summon' | 'selection';
 
+/**
+ * Actions the Linux route can perform without a desktop-level companion
+ * window. These are deliberately separate from the native actions above so
+ * the UI cannot accidentally turn a contained interaction into an overlay
+ * claim.
+ */
+export type PetContainedAction = 'summon' | 'selection';
+
 export type PetActionCapability = {
   supported: boolean;
   state: RuntimeCapabilityState;
@@ -25,6 +33,7 @@ export type PetCapabilityProbe = {
   source: string;
   previewOnly: boolean;
   actions: Record<PetAction, PetActionCapability>;
+  containedActions: Record<PetContainedAction, PetActionCapability>;
 };
 
 /**
@@ -57,6 +66,29 @@ const UNSUPPORTED_ACTIONS: Record<Exclude<PetAction, 'overlay' | 'click-through'
   }
 };
 
+const CONTAINED_ACTIONS: Record<PetContainedAction, PetActionCapability> = {
+  summon: {
+    supported: true,
+    state: 'available',
+    reason: 'Focuses the contained pet preview in the OpenBurnBar window; it never opens a desktop overlay.',
+    source: 'linux-contained-surface'
+  },
+  selection: {
+    supported: true,
+    state: 'available',
+    reason:
+      'Selects the contained pet preview in the OpenBurnBar window; native desktop selection remains unavailable.',
+    source: 'linux-contained-surface'
+  }
+};
+
+function containedActions(): Record<PetContainedAction, PetActionCapability> {
+  return {
+    summon: { ...CONTAINED_ACTIONS.summon },
+    selection: { ...CONTAINED_ACTIONS.selection }
+  };
+}
+
 function unavailableProbe(message: string, source: string): PetCapabilityProbe {
   const unavailableAction = (reason: string): PetActionCapability => ({
     supported: false,
@@ -79,7 +111,8 @@ function unavailableProbe(message: string, source: string): PetCapabilityProbe {
         'Input pass-through is disabled because the runtime capability probe is unavailable.'
       ),
       ...UNSUPPORTED_ACTIONS
-    }
+    },
+    containedActions: containedActions()
   };
 }
 
@@ -160,7 +193,8 @@ export function probePetCapability(
     actions: {
       ...actions,
       ...UNSUPPORTED_ACTIONS
-    }
+    },
+    containedActions: containedActions()
   };
 }
 

@@ -130,6 +130,51 @@ describe('PetSurface', () => {
     expect(stage.className).not.toContain('pet-stage--react-wave');
   });
 
+  it('summons the contained preview without claiming a native overlay', async () => {
+    render(<PetSurface />);
+    const stage = await screen.findByRole('img', {
+      name: /pet companion contained preview/i
+    });
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(stage, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /summon contained preview/i }));
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: 'center',
+      behavior: 'smooth'
+    });
+    expect(stage.getAttribute('data-pet-summoned')).toBe('true');
+    expect(stage.getAttribute('data-overlay-tier')).toBe('draggable-contained');
+    const status = document.querySelector('.pet-action-status');
+    expect(status?.textContent).toMatch(/native overlay behavior remains unavailable/i);
+  });
+
+  it('selects and clears the contained pet in-app', async () => {
+    render(<PetSurface />);
+    const stage = await screen.findByRole('img', {
+      name: /pet companion contained preview/i
+    });
+    const select = screen.getByRole('button', {
+      name: /select contained pet/i
+    });
+
+    fireEvent.click(select);
+    expect(select.getAttribute('aria-pressed')).toBe('true');
+    expect(stage.getAttribute('data-pet-selected')).toBe('true');
+    expect(document.querySelector('.pet-action-status')?.textContent).toMatch(
+      /native desktop selection remains unavailable/i
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /pet selected/i }));
+    expect(screen.getByRole('button', { name: /select contained pet/i }).getAttribute('aria-pressed')).toBe('false');
+    expect(stage.getAttribute('data-pet-selected')).toBe('false');
+    expect(document.querySelector('.pet-action-status')?.textContent).toMatch(/selection cleared/i);
+  });
+
   it('shows role=alert when runtime mount fails', async () => {
     mountMock.mockRejectedValueOnce(new Error('asset fetch failed'));
     render(<PetSurface />);
