@@ -68,6 +68,8 @@ function reset() {
     visibleThreadCount: 40,
     backend: 'hermes',
     modelLabel: 'hermes',
+    modelOptionID: 'hermes',
+    thinkingLevel: 'default',
     streaming: false,
     streamPhase: 'idle',
     streamError: null,
@@ -179,6 +181,58 @@ describe('exact-thread chat store', () => {
 
     expect(useChatStore.getState().backend).toBe('pi-agent');
     expect(useChatStore.getState().modelLabel).toBe('pi-agent');
+  });
+
+  it('passes the selected configured model variant through the native gateway request', async () => {
+    const gatewayRequests: GatewayProxyRequest[] = [];
+    const bridge = bridgeWith({
+      configSnapshot: async () => ({
+        paths: { supportDir: '/tmp', socketPath: '/tmp/sock', configDir: '/tmp/cfg', providerLogPaths: [] },
+        secretServiceStatus: 'ready',
+        telemetryEnabled: false,
+        privacyOptIn: false,
+        providers: [
+          {
+            providerID: 'openai',
+            isEnabled: true,
+            baseURL: 'https://api.openai.com/v1',
+            preferredModelIDs: ['gpt-5'],
+            disabledAdvertisedModelIDs: [],
+            credentialSlots: [],
+            modelVariants: [
+              { variantID: 'gpt-5-high', label: 'High', baseModelID: 'gpt-5', thinkingLevel: 'high' }
+            ],
+            modelAliases: [],
+            modelDisplayOverrides: [],
+            customModels: []
+          }
+        ]
+      }),
+      gatewayChatStream: async (request, onChunk) => {
+        gatewayRequests.push(request);
+        onChunk('data: {"choices":[{"delta":{"content":"Done"}}]}\n\n');
+        onChunk('data: [DONE]\n\n');
+      }
+    });
+    useShellStore.setState({
+      bridge,
+      fixtureMode: false,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    useChatStore.setState({
+      threads: [thread('A')],
+      selectedThreadId: 'A',
+      messages: [],
+      config: await bridge.configSnapshot(),
+      backend: 'codex',
+      modelLabel: 'gpt-5-high',
+      modelOptionID: 'gpt-5',
+      thinkingLevel: 'high'
+    });
+
+    await useChatStore.getState().sendMessage('Use high reasoning');
+
+    expect(gatewayRequests[0]?.model).toBe('gpt-5-high');
   });
 
   it('loads older durable pages before the current oldest message', async () => {

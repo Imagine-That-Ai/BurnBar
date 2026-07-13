@@ -1,14 +1,20 @@
 import { BackendStrip } from './BackendStrip.js';
-import type { ChatThreadSummary } from '../../tauriBridge.js';
+import type { ChatThreadSummary, ConfigSnapshot } from '../../tauriBridge.js';
 import type { ChatBackendId } from './chatTypes.js';
 import type { ChatExportFormat } from './chatExport.js';
+import type { ChatThinkingSelection } from './chatOptions.js';
 
 type ChatToolbarProps = {
   thread: ChatThreadSummary | null;
   gatewayHint: string | null;
   backend: ChatBackendId;
   modelLabel: string;
+  modelOptionID: string;
+  thinkingLevel: ChatThinkingSelection;
+  config: ConfigSnapshot | null;
   onBackendChange: (id: ChatBackendId) => void;
+  onModelOptionChange: (id: string) => void;
+  onThinkingLevelChange: (level: ChatThinkingSelection) => void;
   onNewChat: () => void;
   exportFormat: ChatExportFormat;
   onExportFormatChange: (format: ChatExportFormat) => void;
@@ -23,7 +29,12 @@ export function ChatToolbar({
   gatewayHint,
   backend,
   modelLabel,
+  modelOptionID,
+  thinkingLevel,
+  config,
   onBackendChange,
+  onModelOptionChange,
+  onThinkingLevelChange,
   onNewChat,
   exportFormat,
   onExportFormatChange,
@@ -38,9 +49,14 @@ export function ChatToolbar({
         <BackendStrip
           backend={backend}
           modelLabel={modelLabel}
+          modelOptionID={modelOptionID}
+          thinkingLevel={thinkingLevel}
+          config={config}
           thread={thread}
           gatewayHint={gatewayHint}
           onBackendChange={onBackendChange}
+          onModelOptionChange={onModelOptionChange}
+          onThinkingLevelChange={onThinkingLevelChange}
         />
       </div>
       <div className="chat-toolbar-actions">

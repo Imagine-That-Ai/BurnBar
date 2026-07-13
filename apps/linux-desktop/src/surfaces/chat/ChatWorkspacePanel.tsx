@@ -8,6 +8,8 @@ import { ThreadRail } from './ThreadRail.js';
 import type { ChatWarningBanner } from './chatTypes.js';
 import type { ChatMessage } from '../../state/chatStore.js';
 import type { ChatExportFormat } from './chatExport.js';
+import type { ConfigSnapshot } from '../../tauriBridge.js';
+import type { ChatThinkingSelection } from './chatOptions.js';
 
 export type ChatWorkspacePanelProps = {
   threads: ChatThreadSummary[];
@@ -23,7 +25,12 @@ export type ChatWorkspacePanelProps = {
   gatewayHint: string | null;
   backend: ChatBackendId;
   modelLabel: string;
+  modelOptionID: string;
+  thinkingLevel: ChatThinkingSelection;
+  config: ConfigSnapshot | null;
   onBackendChange: (id: ChatBackendId) => void;
+  onModelOptionChange: (id: string) => void;
+  onThinkingLevelChange: (level: ChatThinkingSelection) => void;
   exportFormat: ChatExportFormat;
   onExportFormatChange: (format: ChatExportFormat) => void;
   onExport: () => void;
@@ -62,7 +69,12 @@ export function ChatWorkspacePanel({
   gatewayHint,
   backend,
   modelLabel,
+  modelOptionID,
+  thinkingLevel,
+  config,
   onBackendChange,
+  onModelOptionChange,
+  onThinkingLevelChange,
   exportFormat,
   onExportFormatChange,
   onExport,
@@ -94,7 +106,12 @@ export function ChatWorkspacePanel({
         gatewayHint={gatewayHint}
         backend={backend}
         modelLabel={modelLabel}
+        modelOptionID={modelOptionID}
+        thinkingLevel={thinkingLevel}
+        config={config}
         onBackendChange={onBackendChange}
+        onModelOptionChange={onModelOptionChange}
+        onThinkingLevelChange={onThinkingLevelChange}
         onNewChat={onNewChat}
         exportFormat={exportFormat}
         onExportFormatChange={onExportFormatChange}

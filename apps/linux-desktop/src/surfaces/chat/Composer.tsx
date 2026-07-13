@@ -1,5 +1,22 @@
-import { useId, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useId, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { composerPlaceholder, type ChatBackendId } from './chatTypes.js';
+
+export const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const CHAT_ATTACHMENT_ACCEPT = [
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+  'application/json',
+  'application/pdf'
+] as const;
+const CHAT_ATTACHMENT_EXTENSIONS = new Set(['.txt', '.md', '.markdown', '.csv', '.json', '.pdf']);
+
+export type PendingChatAttachment = {
+  name: string;
+  size: number;
+  type: string;
+  lastModified: number;
+};
 
 type ComposerProps = {
   backend: ChatBackendId;
@@ -24,14 +41,51 @@ export function Composer({
   onStop
 }: ComposerProps) {
   const areaId = useId();
+  const fileInputId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState('');
+  const [pendingAttachment, setPendingAttachment] = useState<PendingChatAttachment | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const placeholder = composerPlaceholder(backend);
-  const sendDisabled = disabled || streaming || busy || draft.trim().length === 0;
+  const sendDisabled =
+    disabled || streaming || busy || draft.trim().length === 0 || pendingAttachment !== null;
+
+  const inspectAttachment = (file: File): PendingChatAttachment | null => {
+    if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+      setAttachmentError('Attachment exceeds the 10 MB limit.');
+      return null;
+    }
+    const type = file.type.trim().toLowerCase();
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+    if (!CHAT_ATTACHMENT_ACCEPT.includes(type as (typeof CHAT_ATTACHMENT_ACCEPT)[number]) && !CHAT_ATTACHMENT_EXTENSIONS.has(extension)) {
+      setAttachmentError('Unsupported attachment type. Choose text, JSON, CSV, Markdown, or PDF.');
+      return null;
+    }
+    setAttachmentError(null);
+    return {
+      name: file.name,
+      size: file.size,
+      type: type || 'application/octet-stream',
+      lastModified: file.lastModified
+    };
+  };
+
+  const handleAttachmentChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    setPendingAttachment(inspectAttachment(file));
+  };
+
+  const removeAttachment = () => {
+    setPendingAttachment(null);
+    setAttachmentError(null);
+  };
 
   const submit = (ev?: FormEvent) => {
     ev?.preventDefault();
     const message = draft.trim();
-    if (!message || disabled || streaming || busy) return;
+    if (!message || disabled || streaming || busy || pendingAttachment) return;
     setDraft('');
     onSend(message);
   };
@@ -44,11 +98,22 @@ export function Composer({
             type="button"
             className="ghost chat-composer-attach"
             disabled={disabled}
-            title="Attach files (live dispatch)"
+            title="Attach file metadata (sending is unavailable)"
             aria-label="Attach files"
+            onClick={() => fileInputRef.current?.click()}
           >
             <span aria-hidden="true">+</span>
           </button>
+          <input
+            ref={fileInputRef}
+            id={fileInputId}
+            className="chat-composer-file-input"
+            type="file"
+            accept={CHAT_ATTACHMENT_ACCEPT.join(',')}
+            disabled={disabled}
+            aria-label="Attachment file"
+            onChange={handleAttachmentChange}
+          />
           <label className="sr-only" htmlFor={areaId}>
             Message composer
           </label>
@@ -85,7 +150,12 @@ export function Composer({
               aria-label="Send message"
               title={
                 sendDisabled
-                  ? disabledReason || (busy ? 'Sending…' : 'Enter a message before sending')
+                  ? disabledReason ||
+                    (pendingAttachment
+                      ? 'Remove the attachment; attachment transport is unavailable.'
+                      : busy
+                        ? 'Sending…'
+                        : 'Enter a message before sending')
                   : 'Send message'
               }
               onClick={() => submit()}
@@ -94,8 +164,34 @@ export function Composer({
             </button>
           </div>
         </div>
+        {pendingAttachment ? (
+          <div className="chat-pending-attachment" data-testid="pending-attachment">
+            <span className="chat-pending-attachment-meta">
+              <strong>{pendingAttachment.name}</strong>
+              <span>
+                {(pendingAttachment.size / 1024).toFixed(1)} KB · {pendingAttachment.type}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="ghost chat-pending-attachment-remove"
+              onClick={removeAttachment}
+              aria-label={`Remove attachment ${pendingAttachment.name}`}
+              title="Remove attachment"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
+        {attachmentError ? (
+          <p className="chat-composer-attachment-error" role="alert">
+            {attachmentError}
+          </p>
+        ) : null}
         <p className="chat-composer-hint muted">
-          {disabled && disabledReason
+          {pendingAttachment
+            ? 'Attachment is staged as metadata only. Remove it to send; transport is unavailable.'
+            : disabled && disabledReason
             ? disabledReason
             : streaming
               ? 'Streaming in progress — Stop cancels the active turn.'

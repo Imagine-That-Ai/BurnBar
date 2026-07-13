@@ -18,6 +18,13 @@ import type {
   ChatWarningBanner,
   MemoryCitation
 } from '../surfaces/chat/chatTypes.js';
+import {
+  chatModelOptions,
+  defaultChatModelSelection,
+  selectionForModelOption,
+  selectionForThinkingLevel,
+  type ChatThinkingSelection
+} from '../surfaces/chat/chatOptions.js';
 import { useShellStore } from './shellStore.js';
 
 export const CHAT_THREAD_PAGE_SIZE = 40;
@@ -58,6 +65,8 @@ export type ChatState = {
   visibleThreadCount: number;
   backend: ChatBackendId;
   modelLabel: string;
+  modelOptionID: string;
+  thinkingLevel: ChatThinkingSelection;
   streaming: boolean;
   streamPhase: ChatStreamPhase;
   streamError: string | null;
@@ -72,6 +81,8 @@ export type ChatState = {
   loadOlderMessages(): Promise<void>;
   loadMoreThreads(): void;
   setBackend(id: ChatBackendId): void;
+  setModelOption(id: string): void;
+  setThinkingLevel(level: ChatThinkingSelection): void;
   startNewChat(): void;
   sendToThread(input: { threadID?: string; backend: ChatBackendId; text: string }): Promise<void>;
   sendMessage(text: string): Promise<void>;
@@ -217,6 +228,18 @@ function modelLabelForThread(_thread: ChatThreadSummary | null, backend: ChatBac
     default:
       return 'hermes';
   }
+}
+
+function defaultSelectionForBackend(
+  config: ConfigSnapshot | null,
+  backend: ChatBackendId
+) {
+  const selection = defaultChatModelSelection(config, backend, modelLabelForThread(null, backend));
+  return {
+    modelLabel: selection.modelID,
+    modelOptionID: selection.modelOptionID,
+    thinkingLevel: selection.thinkingLevel
+  };
 }
 
 function messageFromPersisted(message: PersistedChatMessage): ChatMessage {
@@ -390,6 +413,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   visibleThreadCount: CHAT_THREAD_PAGE_SIZE,
   backend: 'hermes',
   modelLabel: 'hermes',
+  modelOptionID: 'hermes',
+  thinkingLevel: 'default',
   streaming: false,
   streamPhase: 'idle',
   streamError: null,
@@ -440,7 +465,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         backend: selectedBackend,
         warnings: fixtureMode ? fixtureWarnings() : [],
         sharedFeaturesAvailable: fixtureMode ? false : true,
-        modelLabel: modelLabelForThread(selected, selectedBackend),
+        ...defaultSelectionForBackend(config, selectedBackend),
         streaming: false,
         streamPhase: 'idle',
         streamError: null,
@@ -484,7 +509,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         messagesLoading: false,
         loadingOlderMessages: false,
         hasMoreMessages: false,
-        modelLabel: modelLabelForThread(null, get().backend),
+        ...defaultSelectionForBackend(get().config, get().backend),
         streaming: false,
         streamPhase: 'idle',
         streamError: null
@@ -500,7 +525,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       loadingOlderMessages: false,
       hasMoreMessages: false,
       backend: selectedBackend,
-      modelLabel: modelLabelForThread(thread, selectedBackend),
+      ...defaultSelectionForBackend(get().config, selectedBackend),
       streaming: false,
       streamPhase: 'idle',
       streamError: null
@@ -520,7 +545,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           messagesLoading: false,
           hasMoreMessages: result?.hasMoreBefore ?? false,
           backend: resolvedBackend,
-          modelLabel: modelLabelForThread(resolvedThread, resolvedBackend)
+          ...defaultSelectionForBackend(get().config, resolvedBackend)
         });
       }
     } catch (error) {
@@ -593,8 +618,38 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   setBackend(id: ChatBackendId) {
     if (get().streaming || get().streamPhase === 'composing') return;
-    const thread = get().threads.find((t) => t.id === get().selectedThreadId) ?? null;
-    set({ backend: id, modelLabel: modelLabelForThread(thread, id) });
+    set({ backend: id, ...defaultSelectionForBackend(get().config, id) });
+  },
+
+  setModelOption(id: string) {
+    if (get().streaming || get().streamPhase === 'composing') return;
+    const fallback = modelLabelForThread(null, get().backend);
+    const options = chatModelOptions(get().config, get().backend, fallback);
+    const selection = selectionForModelOption(options, id);
+    if (!selection) return;
+    set({
+      modelLabel: selection.modelID,
+      modelOptionID: selection.modelOptionID,
+      thinkingLevel: selection.thinkingLevel
+    });
+  },
+
+  setThinkingLevel(level: ChatThinkingSelection) {
+    if (get().streaming || get().streamPhase === 'composing') return;
+    const fallback = modelLabelForThread(null, get().backend);
+    const options = chatModelOptions(get().config, get().backend, fallback);
+    const selection = selectionForThinkingLevel(
+      options,
+      get().modelOptionID,
+      get().modelLabel,
+      level
+    );
+    if (!selection) return;
+    set({
+      modelLabel: selection.modelID,
+      modelOptionID: selection.modelOptionID,
+      thinkingLevel: selection.thinkingLevel
+    });
   },
 
   startNewChat() {
@@ -606,7 +661,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       streaming: false,
       streamPhase: 'idle',
       streamError: null,
-      modelLabel: modelLabelForThread(null, get().backend)
+      ...defaultSelectionForBackend(get().config, get().backend)
     });
   },
 
@@ -677,6 +732,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       provider: backend === 'cli' ? undefined : backend
     };
     const controller = new AbortController();
+    const selectionState =
+      current.selectedThreadId === threadID && current.backend === backend
+        ? {
+            modelLabel: current.modelLabel,
+            modelOptionID: current.modelOptionID,
+            thinkingLevel: current.thinkingLevel
+          }
+        : defaultSelectionForBackend(get().config, backend);
     const hasMoreForTarget = current.selectedThreadId === threadID ? current.hasMoreMessages : false;
     const outboundHistory = [
       ...history
@@ -698,7 +761,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       streamPhase: 'composing',
       streamError: null,
       activeAbortController: controller,
-      modelLabel: modelLabelForThread(get().threads.find((thread) => thread.id === threadID) ?? null, backend)
+      ...selectionState
     });
 
     // Message IDs the daemon has durably acknowledged. On failure, anything

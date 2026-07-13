@@ -428,13 +428,20 @@
 }
 
 .chat-toolbar-model-button {
+  min-height: 1.75rem;
   border: 1px solid color-mix(in srgb, var(--chat-text-muted) 30%, transparent);
   background: color-mix(in srgb, var(--chat-surface-elevated) 70%, transparent);
   border-radius: 8px;
   padding: 0.2rem 0.55rem;
   font-size: var(--chat-caption);
   color: var(--chat-text);
+  font: inherit;
   backdrop-filter: blur(10px);
+}
+
+.chat-toolbar-model-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .chat-toolbar-engine-extras {
@@ -856,6 +863,70 @@ body.reduced-motion .chat-tool-card.is-running {
 .chat-composer-attach:hover:not(:disabled) {
   color: var(--chat-text);
   border-color: color-mix(in srgb, var(--chat-aureate) 40%, transparent);
+}
+
+.chat-composer-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.chat-pending-attachment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-left: 2.5rem;
+  max-width: min(var(--chat-column), 100%);
+  padding: 0.45rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--chat-aureate) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--chat-surface-elevated) 62%, transparent);
+  color: var(--chat-text-secondary);
+  font-size: var(--chat-tiny);
+}
+
+.chat-pending-attachment-meta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+  overflow: hidden;
+}
+
+.chat-pending-attachment-meta strong {
+  overflow: hidden;
+  color: var(--chat-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-pending-attachment-remove {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--chat-text-secondary);
+  cursor: pointer;
+}
+
+.chat-pending-attachment-remove:hover {
+  background: color-mix(in srgb, var(--chat-text) 10%, transparent);
+  color: var(--chat-text);
+}
+
+.chat-composer-attachment-error {
+  margin: 0 0 0 2.5rem;
+  color: #fa8b8d;
+  font-size: var(--chat-tiny);
 }
 
 .chat-composer-field,

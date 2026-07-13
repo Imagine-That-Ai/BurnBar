@@ -145,6 +145,8 @@ const resetChatStore = () => {
     visibleThreadCount: 40,
     backend: 'hermes',
     modelLabel: 'hermes',
+    modelOptionID: 'hermes',
+    thinkingLevel: 'default',
     streaming: false,
     streamPhase: 'idle',
     streamError: null,
