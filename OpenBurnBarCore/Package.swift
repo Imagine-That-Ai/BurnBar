@@ -15,6 +15,23 @@ let buildOnWindows = true
 #else
 let buildOnWindows = false
 #endif
+// Core-decomposition S0: Apple-only presentation/insights targets (OpenBurnBarUI,
+// OpenBurnBarInsights, OpenBurnBarTextExpansion, OpenBurnBarLaunchServices) and
+// their products are pruned from the non-Apple build graph exactly as
+// `OpenBurnBarData` is pruned from the Linux-boundary build: host-evaluated, so on
+// a Linux/Windows host the target/product is absent and Core does not depend on
+// it. On Apple hosts they are present and Core links them. This mirrors the
+// existing `buildForLinuxBoundary`/`OpenBurnBarData` pruning idiom rather than
+// inventing a new seam. MUST be declared here (with the other host flags) so the
+// `packageProductsBase` product list below reads an initialized value — a later
+// declaration is a forward reference that silently evaluates to `false`, dropping
+// the Apple-only PRODUCTS from the package graph even on Apple (P-19: the widget
+// repoint needs these products emitted, not just the targets).
+#if os(Linux) || os(Windows)
+let buildApplePrunedDecompositionTargets = false
+#else
+let buildApplePrunedDecompositionTargets = true
+#endif
 // Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-3): this manifest is
 // host-evaluated, and this marker is an *Apple-vs-non-Apple* switch (Vendor
 // `.xcframework`s only exist for Apple). Windows joins Linux on the non-Apple
@@ -726,11 +743,12 @@ let sqliteReaderSQLiteDependencies: [Target.Dependency] = coreSQLiteDependencies
 // and Core does not depend on it. On Apple hosts they are present and Core links
 // them. This mirrors the existing `buildForLinuxBoundary`/`OpenBurnBarData`
 // pruning idiom rather than inventing a new seam.
-#if os(Linux) || os(Windows)
-let buildApplePrunedDecompositionTargets = false
-#else
-let buildApplePrunedDecompositionTargets = true
-#endif
+//
+// NOTE: `buildApplePrunedDecompositionTargets` is declared near the top of this
+// manifest (with the other host-evaluated flags), NOT here, so `packageProductsBase`
+// reads an initialized value. Declaring it at this point was a forward reference
+// that evaluated to `false` on every host, emitting the Apple-only TARGETS but
+// dropping their PRODUCTS from the package graph.
 
 // Core-decomposition S0: OpenBurnBarCore depends on every decomposition target so
 // its `@_exported import` re-export shims resolve and the umbrella keeps every

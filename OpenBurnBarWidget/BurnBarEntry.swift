@@ -1,6 +1,6 @@
 import Foundation
 import WidgetKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct BurnBarEntry: TimelineEntry {
     let date: Date
