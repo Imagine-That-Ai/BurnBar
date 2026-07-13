@@ -52,6 +52,11 @@ The focused presentation suite is now **761/761** after AST-range chunking
 coverage; the earlier 760/760 figure in the long implementation paragraph is
 superseded by this run.
 
+Correction to the long summary above: parser-backed AST symbol-range chunking
+is implemented and tested in this revision. The remaining semantic limitation
+is learned macOS NaturalLanguage/provider embedding quality, not chunk-boundary
+selection.
+
 The persisted-session restoration path and platform-producer injection seam are
 covered by the CloudSync app suite (60/60). When
 `OPENBURNBAR_APPCHECK_APP_ID` is explicitly configured, the WinUI app registers
