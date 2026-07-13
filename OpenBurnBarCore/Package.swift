@@ -483,8 +483,14 @@ let openBurnBarCoreExcludes = [
     // exclude on a moved-out file makes SwiftPM reject the off-Apple manifest). The
     // "Views" wholesale exclude below still resolves (Views/ root + Views/Insights/Verdict/
     // + Views/MissionControl/Cards/Square remain in Core until later P-16 sub-packets).
-    "SharedModels/AgentWatchLiveActivityAttributes.swift",
-    "SharedModels/BurnBarLiveActivityAttributes.swift",
+    // P-16d (S14 UI): SharedModels/AgentWatchLiveActivityAttributes.swift +
+    // SharedModels/BurnBarLiveActivityAttributes.swift moved to the Apple-only
+    // OpenBurnBarUI target (with the LiveActivity/PixelClock straggler cluster). They
+    // rode explicit off-Apple exclude entries here (ActivityKit/WidgetKit LiveActivity
+    // attributes are Apple-only); OpenBurnBarUI is pruned WHOLE off-Apple, so the files
+    // no longer exist in the off-Apple Core source tree and their stale exclude entries
+    // are removed here (a stale exclude on a moved-out file makes SwiftPM reject the
+    // off-Apple manifest). They have ZERO off-Apple-live Core consumers.
     // P-04b: the crypto-chain SharedModels below moved to OpenBurnBarKernel (they now
     // compile off-Apple in the Kernel, which links swiftCryptoNonAppleDependency), so
     // their Core off-Apple exclude entries were removed: CLIAgentSessionRecord,
@@ -499,8 +505,13 @@ let openBurnBarCoreExcludes = [
     // on Apple, swift-crypto off-Apple), so they compile off-Apple in VectorKit
     // through the Kernel dep — no VectorKit off-Apple exclude and no unguarded
     // CryptoKit. Their Core off-Apple exclude entries are therefore removed.
-    "SharedModels/PixelClockSettingsModel.swift",
-    "SharedModels/SmartHubDisplaySettingsModel.swift",
+    // P-16d (S14 UI): SharedModels/PixelClockSettingsModel.swift +
+    // SharedModels/SmartHubDisplaySettingsModel.swift moved to the Apple-only
+    // OpenBurnBarUI target (with the LiveActivity/PixelClock straggler cluster). They
+    // rode explicit off-Apple exclude entries here; OpenBurnBarUI is pruned WHOLE
+    // off-Apple, so the files no longer exist in the off-Apple Core source tree and
+    // their stale exclude entries are removed here. They have ZERO off-Apple-live Core
+    // consumers (their only build-time consumers are the PixelClock/SmartHub views).
     // P-16b (S14 UI): SharedModels/ThemePrimitives.swift moved to the Apple-only
     // OpenBurnBarUI target (pulled forward with Views/Insights/ — it defines the
     // `Color(editorial:light:dark:)` bridge + AppSkin/DashboardLayout that
@@ -512,7 +523,25 @@ let openBurnBarCoreExcludes = [
     // excluded (SwarmColorDriver explicit; SwarmCanvasView+Color / MissionFanOutGroup /
     // CardEnvelopeView under the "Views" wholesale exclude), so no off-Apple-live Core
     // file dangles on the moved color cluster.
-    "SharedModels/SwarmColorDriver.swift"
+    // P-16d (S14 UI): SharedModels/SwarmColorDriver.swift moved to the Apple-only
+    // OpenBurnBarUI target (the color-cluster hub — it consumes DesignSystemColors +
+    // the RGBA color-math extensions, both already in UI, so it resolves same-module in
+    // UI and is fully `public`, so its remaining Core consumers SwarmCanvasView.swift /
+    // SwarmCanvasView+Color.swift (Views/ root, P-16f) reach it cross-module via Core's
+    // @_exported import OpenBurnBarUI on Apple). It rode an explicit off-Apple exclude
+    // here; OpenBurnBarUI is pruned WHOLE off-Apple, so it no longer exists in the
+    // off-Apple Core tree and its stale exclude is removed. Its two remaining Core
+    // consumers are BOTH already off-Apple-excluded (under the "Views" wholesale
+    // exclude), so no off-Apple-live Core file dangles.
+    // Also moved to OpenBurnBarUI in P-16d (never off-Apple-excluded — Foundation-only
+    // in Core, so they compiled off-Apple; their sole build-time consumers are the UI
+    // views, so they follow the views into the Apple-only target, which is pruned WHOLE
+    // off-Apple; ZERO off-Apple-live Core consumers, so no exclude entry is needed):
+    // PixelClockQuotaRenderer.swift, PixelClockProviderLogoAssets.generated.swift,
+    // SharedModels/AgentWatchLiveActivityIntents.swift (#if os(iOS) AppIntents, empty
+    // off-Apple), Views/Cards/CardEnvelopeView.swift + Views/Square/UnifiedSearchIndex.swift
+    // (rode the "Views" wholesale exclude, which STILL resolves — Views/ root +
+    // Views/Insights/Verdict/ remain in Core until P-16e/f).
 ]
 // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): per-sibling-target
 // off-Apple exclude seams for the new decomposition targets. They are EMPTY at

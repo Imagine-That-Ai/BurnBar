@@ -1,10 +1,16 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Pixel Clock Provider Logo
 
-struct PixelClockProviderLogo: Equatable {
+// P-16d access widening (learning 10): PixelClockQuotaRenderer moved Core→OpenBurnBarUI,
+// but its still-in-Core consumer Views/PixelClockPreviewView.swift (P-16f) reaches
+// PixelClockProviderLogo's `pixels`/`colorHex(row:column:)` cross-module via Core's
+// @_exported import OpenBurnBarUI, so the type + those two members bump module-`internal`
+// → `public`. Access widening only — single definition graph-wide, zero behavior change.
+public struct PixelClockProviderLogo: Equatable, Sendable {
     let sourceName: String
-    let pixels: [[String?]]
+    public let pixels: [[String?]]
 
     init(sourceName: String, pixels: [[String?]]) {
         self.sourceName = sourceName
@@ -27,7 +33,7 @@ struct PixelClockProviderLogo: Equatable {
         }
     }
 
-    func colorHex(row: Int, column: Int) -> String? {
+    public func colorHex(row: Int, column: Int) -> String? {
         guard row >= 0, row < pixels.count,
               column >= 0, column < pixels[row].count else {
             return nil
@@ -766,7 +772,9 @@ public enum PixelClockQuotaRenderer {
         providerLogo(for: item).rows
     }
 
-    static func providerLogo(for item: PixelClockQuotaItem) -> PixelClockProviderLogo {
+    // P-16d access widening (learning 10): still-in-Core Views/PixelClockPreviewView.swift
+    // (P-16f) calls this cross-module via Core's @_exported import OpenBurnBarUI.
+    public static func providerLogo(for item: PixelClockQuotaItem) -> PixelClockProviderLogo {
         let token = "\(item.providerID) \(item.providerName)".lowercased()
         if token.contains("claude") {
             return PixelClockProviderLogoAssets.claudeCode
