@@ -105,7 +105,10 @@ const steps = [];
 runRequired('pacman', ['-Syu', '--noconfirm', '--needed', ...dependencyPackages]);
 runRequired('pacman', ['-T', ...dependencies]);
 
-const workRoot = path.join(outDir, 'session/arch-update-runtime');
+// The workflow grants write access to the isolated arch-lifecycle mount, not
+// the general session evidence tree. Keep mutable preservation probes inside
+// that authenticated, writable boundary.
+const workRoot = path.join(outDir, 'arch-lifecycle/arch-update-runtime');
 fs.rmSync(workRoot, { recursive: true, force: true });
 for (const directory of ['home/.local/share/openburnbar', 'config', 'run']) {
   fs.mkdirSync(path.join(workRoot, directory), { recursive: true });

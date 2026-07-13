@@ -25,6 +25,7 @@ function optionalJson(name) {
 const desktop = optionalJson('linux-desktop-session-report.json');
 const daemonOracle = optionalJson('daemon-session-oracle.json');
 const daemonHealth = optionalJson('daemon-health-readback.json');
+const debUpdateRollback = optionalJson('package-update-rollback.json');
 const archUpdateRollback = (() => {
   const file = path.join(outDir, 'arch-lifecycle/arch-package-update-rollback.json');
   if (!fs.existsSync(file)) return null;
@@ -94,6 +95,11 @@ if (archPackageSmoke?.passed !== true
 if (archLifecycle === null) {
   blockers.push(`Arch pacman update/rollback proof is missing, failed, or release-unbound: ${archLifecycleFailure}`);
 }
+for (const step of requiredLifecycleSteps) {
+  if (debUpdateRollback?.lifecycle?.[step]?.status !== 'passed') {
+    blockers.push(`Deb ${step} proof is missing or blocked; both package managers are required.`);
+  }
+}
 if (desktop?.accessibility?.keyboardFocus?.pass !== true) blockers.push('Installed keyboard focus evidence is not green.');
 if (desktop?.accessibility?.zoom?.pass !== true) blockers.push('Installed 200% zoom evidence is not green.');
 for (const step of requiredLifecycleSteps) {
@@ -110,6 +116,7 @@ const report = {
   evidence: {
     desktopSession: relative(path.join(sessionDir, 'linux-desktop-session-report.json')),
     daemonHealth: relative(path.join(sessionDir, 'daemon-health-readback.json')),
+    updateRollback: relative(path.join(sessionDir, 'package-update-rollback.json')),
     updateRollback: relative(path.join(sessionDir, 'package-update-rollback.json')),
     archUpdateRollback: relative(path.join(outDir, 'arch-lifecycle/arch-package-update-rollback.json')),
     archPackageSmoke: relative(path.join(outDir, 'smoke/arch-package-smoke.json'))
