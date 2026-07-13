@@ -363,7 +363,9 @@ fn build_update_instructions(
     let restart = LinuxUpdateAction {
         id: "restart".into(),
         label: "Restart OpenBurnBar".into(),
-        instruction: "Quit OpenBurnBar from the tray, let the package manager finish, then launch it again.".into(),
+        instruction:
+            "Quit OpenBurnBar from the tray, let the package manager finish, then launch it again."
+                .into(),
         command: Some("systemctl --user restart openburnbar-daemon.service".into()),
         available: true,
         requires_confirmation: false,
@@ -737,8 +739,14 @@ mod tests {
     fn package_actions_are_channel_native_and_fail_closed_for_unknown_channels() {
         let deb = build_update_instructions("deb", "1.0.0", Some("1.1.0"));
         assert_eq!(deb.package_manager, "apt");
-        assert_eq!(deb.install.command.as_deref(), Some("sudo apt-get install --only-upgrade open-burn-bar"));
-        assert_eq!(deb.rollback.command.as_deref(), Some("sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION"));
+        assert_eq!(
+            deb.install.command.as_deref(),
+            Some("sudo apt-get install --only-upgrade open-burn-bar")
+        );
+        assert_eq!(
+            deb.rollback.command.as_deref(),
+            Some("sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION")
+        );
         let unknown = build_update_instructions("unknown", "1.0.0", None);
         assert!(!unknown.install.available);
         assert!(!unknown.rollback.available);
@@ -753,7 +761,10 @@ mod tests {
         );
         let instructions = status.instructions.expect("recovery instructions");
         assert_eq!(instructions.package_manager, "dnf");
-        assert_eq!(instructions.install.command.as_deref(), Some("sudo dnf upgrade --refresh open-burn-bar"));
+        assert_eq!(
+            instructions.install.command.as_deref(),
+            Some("sudo dnf upgrade --refresh open-burn-bar")
+        );
         assert!(status.latest_version.is_none());
     }
 
