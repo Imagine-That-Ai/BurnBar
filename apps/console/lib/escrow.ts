@@ -19,6 +19,12 @@
  *  sealed text v2             = { schemaVersion:2, algorithm, keyVersion, nonce, ciphertext, tag, aad }
  */
 
+import {
+  applyCloudVaultDomainCore,
+  applyCloudVaultDomainCoreSync,
+  domainCoreCloudVault,
+} from "./domainCoreCloudVault";
+
 export const AESGCM_ALGORITHM = "AES-256-GCM";
 export const CURRENT_KEY_VERSION = 1;
 export const CLOUD_VAULT_AAD_CONTEXT_PREFIX = "OpenBurnBar-CloudVault-aad-v2";
@@ -138,9 +144,17 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   }
   return out;
 }
-async function sha256Hex(data: Uint8Array): Promise<string> {
+async function legacySha256Hex(data: Uint8Array): Promise<string> {
   const digest = await subtle().digest("SHA-256", bufferOf(data));
   return bytesToHex(new Uint8Array(digest));
+}
+
+async function sha256Hex(data: Uint8Array): Promise<string> {
+  return applyCloudVaultDomainCore(
+    "sha256",
+    () => legacySha256Hex(data),
+    () => domainCoreCloudVault.sha256Hex(data),
+  );
 }
 
 /**
@@ -199,7 +213,7 @@ function assertCloudVaultAADString(value: string): string {
   return value;
 }
 
-export function cloudVaultAADContext(context: CloudVaultAADContext): string {
+function legacyCloudVaultAADContext(context: CloudVaultAADContext): string {
   const uid = assertCloudVaultAADPart("uid", context.uid);
   const collection = assertCloudVaultAADPart("collection", context.collection);
   const docID = assertCloudVaultAADPart("docID", context.docID);
@@ -212,10 +226,37 @@ export function cloudVaultAADContext(context: CloudVaultAADContext): string {
   return `${CLOUD_VAULT_AAD_CONTEXT_PREFIX}|${uid}|${collection}|${docID}|${field}|${schemaVersion}|${purpose}`;
 }
 
-function aadString(input: CloudVaultAADInput | undefined): string | undefined {
+function rustCloudVaultAADContext(context: CloudVaultAADContext): string {
+  return domainCoreCloudVault.aadV2(
+    context.uid,
+    context.collection,
+    context.docID,
+    context.field,
+    context.schemaVersion ?? 2,
+    context.purpose,
+  );
+}
+
+export function cloudVaultAADContext(context: CloudVaultAADContext): string {
+  return applyCloudVaultDomainCoreSync(
+    "aad_v2",
+    () => legacyCloudVaultAADContext(context),
+    () => rustCloudVaultAADContext(context),
+  );
+}
+
+async function cloudVaultAADContextAsync(context: CloudVaultAADContext): Promise<string> {
+  return applyCloudVaultDomainCore(
+    "aad_v2",
+    () => legacyCloudVaultAADContext(context),
+    () => rustCloudVaultAADContext(context),
+  );
+}
+
+async function aadString(input: CloudVaultAADInput | undefined): Promise<string | undefined> {
   if (!input) return undefined;
   if (typeof input === "string") return assertCloudVaultAADString(input);
-  return cloudVaultAADContext(input);
+  return cloudVaultAADContextAsync(input);
 }
 
 function vaultKeyBytes(raw: Uint8Array | undefined): Uint8Array {
@@ -225,35 +266,37 @@ function vaultKeyBytes(raw: Uint8Array | undefined): Uint8Array {
   return raw;
 }
 
-function normalizeSealBlobOptions(input: number | SealBlobOptions | undefined): {
+async function normalizeSealBlobOptions(input: number | SealBlobOptions | undefined): Promise<{
   keyVersion: number;
   aad?: string;
   rawVaultKey?: Uint8Array;
-} {
+}> {
   if (typeof input === "number") return { keyVersion: input };
   return {
     keyVersion: input?.keyVersion ?? CURRENT_KEY_VERSION,
-    aad: aadString(input?.aadContext),
+    aad: await aadString(input?.aadContext),
     rawVaultKey: input?.rawVaultKey,
   };
 }
 
-function normalizeSealTextOptions(input: number | SealTextOptions | undefined): {
+async function normalizeSealTextOptions(input: number | SealTextOptions | undefined): Promise<{
   keyVersion: number;
   aad?: string;
-} {
+}> {
   if (typeof input === "number") return { keyVersion: input };
   return {
     keyVersion: input?.keyVersion ?? CURRENT_KEY_VERSION,
-    aad: aadString(input?.aadContext),
+    aad: await aadString(input?.aadContext),
   };
 }
 
-function aadFromOpenOptions(input: CloudVaultAADInput | OpenBlobOptions | OpenTextOptions | undefined): string | undefined {
+async function aadFromOpenOptions(
+  input: CloudVaultAADInput | OpenBlobOptions | OpenTextOptions | undefined,
+): Promise<string | undefined> {
   if (!input) return undefined;
-  if (typeof input === "string") return aadString(input);
-  if ("uid" in input) return aadString(input);
-  return aadString(input.aadContext);
+  if (typeof input === "string") return await aadString(input);
+  if ("uid" in input) return await aadString(input);
+  return await aadString(input.aadContext);
 }
 
 // ── HKDF-SHA256 matching CryptoKit's hkdfDerivedSymmetricKey ────────────────
@@ -291,7 +334,7 @@ async function hkdfCloudVaultHmacKey(rawVaultKey: Uint8Array, purpose: string): 
   );
 }
 
-async function keyedHmacHex(data: Uint8Array, rawVaultKey: Uint8Array, purpose: string): Promise<string> {
+async function legacyKeyedHmacHex(data: Uint8Array, rawVaultKey: Uint8Array, purpose: string): Promise<string> {
   const key = await hkdfCloudVaultHmacKey(rawVaultKey, purpose);
   const signature = await subtle().sign("HMAC", key, bufferOf(data));
   return bytesToHex(new Uint8Array(signature));
@@ -302,7 +345,16 @@ export function cloudVaultBlobAADContext(): string {
 }
 
 export async function blobPlaintextHMAC(data: Uint8Array, rawVaultKey: Uint8Array): Promise<string> {
-  return keyedHmacHex(data, rawVaultKey, "blob-integrity");
+  return applyCloudVaultDomainCore(
+    "keyed_hash_blob_integrity",
+    () => legacyKeyedHmacHex(data, rawVaultKey, "blob-integrity"),
+    () =>
+      domainCoreCloudVault.keyedHashHex(
+        data,
+        vaultKeyBytes(rawVaultKey),
+        domainCoreCloudVault.hashPurpose.BlobIntegrity,
+      ),
+  );
 }
 
 // ── Device key pair (P-256, non-extractable, IndexedDB-persisted) ───────────
@@ -500,7 +552,7 @@ export async function sealBlob(
   vaultKey: CryptoKey,
   options?: number | SealBlobOptions,
 ): Promise<CloudVaultBlobEnvelope> {
-  const { keyVersion, aad, rawVaultKey } = normalizeSealBlobOptions(options);
+  const { keyVersion, aad, rawVaultKey } = await normalizeSealBlobOptions(options);
   if (aad && !rawVaultKey) {
     throw new EscrowError(
       "invalid_key_length",
@@ -560,7 +612,7 @@ export async function openBlob(
     if (envelope.aad === LEGACY_BLOB_AAD_CONTEXT) {
       additionalData = undefined;
     } else {
-      const expectedAAD = aadFromOpenOptions(options);
+      const expectedAAD = await aadFromOpenOptions(options);
       if (!expectedAAD || envelope.aad !== expectedAAD) {
         throw new EscrowError("invalid_envelope", "Invalid CloudVault blob AAD context.");
       }
@@ -602,7 +654,7 @@ export async function sealText(
   vaultKey: CryptoKey,
   options?: number | SealTextOptions,
 ): Promise<CloudVaultSealedText> {
-  const { keyVersion, aad } = normalizeSealTextOptions(options);
+  const { keyVersion, aad } = await normalizeSealTextOptions(options);
   const data = new TextEncoder().encode(text);
   const nonce = globalThis.crypto.getRandomValues(new Uint8Array(GCM_NONCE_LEN));
   const sealed = new Uint8Array(
@@ -641,7 +693,7 @@ export async function openText(
   const ctAndTag = concat(base64ToBytes(envelope.ciphertext), base64ToBytes(envelope.tag));
   let additionalData: string | undefined;
   if ((envelope.schemaVersion ?? 1) >= CURRENT_SEALED_TEXT_SCHEMA_VERSION) {
-    const expectedAAD = aadFromOpenOptions(options);
+    const expectedAAD = await aadFromOpenOptions(options);
     if (!expectedAAD || envelope.aad !== expectedAAD) {
       throw new EscrowError("invalid_envelope", "Invalid CloudVault sealed-text AAD context.");
     }
