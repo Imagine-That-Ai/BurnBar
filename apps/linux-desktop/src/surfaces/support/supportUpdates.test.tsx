@@ -160,6 +160,57 @@ describe('P09 updates and support', () => {
     );
   });
 
+  it('renders package-native install and rollback actions without executing them', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const bridge = mockBridge({
+      updateStatus: vi.fn().mockResolvedValue({
+        state: 'available',
+        currentVersion: '1.0.0',
+        latestVersion: '1.1.0',
+        channel: 'stable',
+        artifact: undefined,
+        instructions: {
+          packageManager: 'apt',
+          install: {
+            id: 'install',
+            label: 'Update with apt',
+            instruction: 'Use apt after reviewing the signed artifact.',
+            command: 'sudo apt-get install --only-upgrade open-burn-bar',
+            available: true,
+            requiresConfirmation: true
+          },
+          rollback: {
+            id: 'rollback',
+            label: 'Roll back with apt',
+            instruction: 'Choose a previously signed version first.',
+            command: 'sudo apt-get install --allow-downgrades open-burn-bar=<previous-version>',
+            available: true,
+            requiresConfirmation: true
+          },
+          restart: {
+            id: 'restart',
+            label: 'Restart OpenBurnBar',
+            instruction: 'Quit and relaunch after apt finishes.',
+            command: 'systemctl --user restart openburnbar-daemon.service',
+            available: true,
+            requiresConfirmation: false
+          }
+        }
+      })
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<UpdatesSurface />);
+    await act(async () => {
+      await useSupportStore.getState().loadVersion();
+    });
+    expect(screen.getByText('Linux-native apt actions')).toBeTruthy();
+    expect(screen.getByText('sudo apt-get install --only-upgrade open-burn-bar')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy rollback command' }));
+    expect(writeText).toHaveBeenCalledWith('sudo apt-get install --allow-downgrades open-burn-bar=<previous-version>');
+    expect(bridge.updateStatus).toHaveBeenCalled();
+  });
+
   it('renders rejected update metadata as an alert with the native reason', async () => {
     const bridge = mockBridge({
       updateStatus: vi.fn().mockResolvedValue({

@@ -3,8 +3,46 @@ import { bridgeStubDefaults } from './testing/bridgeStubs';
 import {
   computeCacheHitRatePct,
   decodeDaemonSubscriptionResponse,
-  decodeDaemonSubscriptionStopResponse
+  decodeDaemonSubscriptionStopResponse,
+  decodeLinuxUpdateStatus
 } from './tauriBridge';
+
+describe('native Linux update status decoding', () => {
+  it('accepts package-native actions emitted by Rust, including rollback placeholder', () => {
+    const decoded = decodeLinuxUpdateStatus({
+      state: 'unavailable',
+      currentVersion: '0.1.0',
+      instructions: {
+        packageManager: 'apt',
+        install: {
+          id: 'install', label: 'Update with apt', instruction: 'Use apt.',
+          command: 'sudo apt-get install --only-upgrade open-burn-bar', available: true, requiresConfirmation: true
+        },
+        rollback: {
+          id: 'rollback', label: 'Roll back with apt', instruction: 'Choose a prior version.',
+          command: 'sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION', available: true, requiresConfirmation: true
+        },
+        restart: {
+          id: 'restart', label: 'Restart OpenBurnBar', instruction: 'Restart after replacement.',
+          command: 'systemctl --user restart openburnbar-daemon.service', available: true, requiresConfirmation: false
+        }
+      },
+      reason: 'feed unavailable'
+    });
+    expect(decoded.instructions?.rollback.command).toBe('sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION');
+  });
+
+  it('rejects unsafe or incomplete native package actions', () => {
+    expect(() => decodeLinuxUpdateStatus({
+      state: 'current',
+      currentVersion: '0.1.0',
+      instructions: {
+        packageManager: 'apt',
+        install: { id: 'install', label: 'Install', instruction: 'x', command: 'sudo apt; touch /tmp/pwned', available: true, requiresConfirmation: true }
+      }
+    })).toThrow('package action metadata');
+  });
+});
 
 describe('computeCacheHitRatePct', () => {
   it('matches the macOS CacheEfficiency formula (prompt-side basis)', () => {
