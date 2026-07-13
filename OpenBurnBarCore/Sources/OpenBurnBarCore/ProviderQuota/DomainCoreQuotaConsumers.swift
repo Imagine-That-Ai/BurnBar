@@ -6,6 +6,7 @@ import OpenBurnBarDomainCoreFFI
 
 enum DomainCoreQuotaConsumerError: Error {
     case invalidPayload
+    case nativeUnavailable
 }
 
 enum DomainCoreQuotaConsumerSupport {
@@ -173,9 +174,10 @@ enum CodexQuotaDomainCoreAdapter {
         guard mode != .legacy else { return try legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             quotaLogger.log("domain_core.codex_quota.abi_mismatch")
-            return try legacy()
+            if mode == .shadow { return try legacy() }
+            throw DomainCoreQuotaConsumerError.nativeUnavailable
         }
         let parsed = OpenBurnBarDomainCoreFFI.parseCodexUsageQuota(
             payload: payload,
@@ -203,7 +205,8 @@ enum CodexQuotaDomainCoreAdapter {
         return rust
         #else
         quotaLogger.log("domain_core.codex_quota.native_unavailable mode=\(mode.rawValue)")
-        return try legacy()
+        if mode == .shadow { return try legacy() }
+        throw DomainCoreQuotaConsumerError.nativeUnavailable
         #endif
     }
 }
@@ -221,9 +224,10 @@ enum CursorQuotaDomainCoreAdapter {
         guard mode != .legacy else { return try legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             quotaLogger.log("domain_core.cursor_quota.abi_mismatch")
-            return try legacy()
+            if mode == .shadow { return try legacy() }
+            throw DomainCoreQuotaConsumerError.nativeUnavailable
         }
         let parsed = OpenBurnBarDomainCoreFFI.parseCursorUsageQuota(payload: payload, userEmail: userEmail)
         let rust = parsed.status == .parsed
@@ -248,7 +252,8 @@ enum CursorQuotaDomainCoreAdapter {
         return rust
         #else
         quotaLogger.log("domain_core.cursor_quota.native_unavailable mode=\(mode.rawValue)")
-        return try legacy()
+        if mode == .shadow { return try legacy() }
+        throw DomainCoreQuotaConsumerError.nativeUnavailable
         #endif
     }
 }
@@ -266,9 +271,9 @@ enum AnthropicRateLimitDomainCoreAdapter {
         guard mode != .legacy else { return legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             quotaLogger.log("domain_core.anthropic_ratelimit.abi_mismatch")
-            return legacy()
+            return mode == .shadow ? legacy() : nil
         }
         let ffiShape: OpenBurnBarDomainCoreFFI.AnthropicCredentialShape = switch shape {
         case .consoleAPIKey: .consoleApiKey
@@ -305,7 +310,7 @@ enum AnthropicRateLimitDomainCoreAdapter {
         return rust
         #else
         quotaLogger.log("domain_core.anthropic_ratelimit.native_unavailable mode=\(mode.rawValue)")
-        return legacy()
+        return mode == .shadow ? legacy() : nil
         #endif
     }
 }

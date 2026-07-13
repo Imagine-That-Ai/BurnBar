@@ -43,13 +43,13 @@ enum ClaudeQuotaDomainCoreAdapter {
         guard mode != .legacy else { return legacyBuckets(from: rateLimits) }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             quotaLogger.log("domain_core.claude_quota.abi_mismatch")
-            return legacyBuckets(from: rateLimits)
+            return mode == .shadow ? legacyBuckets(from: rateLimits) : []
         }
         guard let payload = try? JSONSerialization.data(withJSONObject: rateLimits.rawDictionary) else {
             quotaLogger.log("domain_core.claude_quota.payload_encode_failed")
-            return legacyBuckets(from: rateLimits)
+            return mode == .shadow ? legacyBuckets(from: rateLimits) : []
         }
 
         let result = OpenBurnBarDomainCoreFFI.parseClaudeStatuslineQuota(payload: payload)
@@ -69,7 +69,7 @@ enum ClaudeQuotaDomainCoreAdapter {
         return rust
         #else
         quotaLogger.log("domain_core.claude_quota.native_unavailable mode=\(mode.rawValue)")
-        return legacyBuckets(from: rateLimits)
+        return mode == .shadow ? legacyBuckets(from: rateLimits) : []
         #endif
     }
 

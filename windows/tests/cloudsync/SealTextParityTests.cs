@@ -66,5 +66,22 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
                 Assert.Equal(expectedAeadHex, actual);
             }
         }
+
+        [Fact]
+        public void OpenText_FutureSchema_FailsClosed()
+        {
+            var vectors = KatVectors.Section("sealText").EnumerateArray();
+            Assert.True(vectors.MoveNext());
+            var vector = vectors.Current;
+            var envelope = KatVectors.SealedText(vector.GetProperty("envelope")) with
+            {
+                SchemaVersion = CloudVaultCrypto.CurrentSealedTextSchemaVersion + 1,
+            };
+
+            Assert.Throws<CloudVaultCryptoException>(() =>
+            {
+                CloudVaultCrypto.OpenText(envelope, vector.Hex("keyHex"));
+            });
+        }
     }
 }

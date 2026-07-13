@@ -630,7 +630,7 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
-            ]
+            ] + domainCoreDependencies
         ),
         .target(
             name: "OpenBurnBarCore",

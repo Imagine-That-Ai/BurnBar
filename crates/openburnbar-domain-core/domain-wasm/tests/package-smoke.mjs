@@ -22,6 +22,11 @@ const fixturePath = path.resolve(
 );
 const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
 assert.equal(fixture.schema, "openburnbar.domain-core.cloudvault.deterministic.v1");
+const rewrapFixturePath = path.resolve(
+  testDirectory,
+  "../../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-document-rewrap-contract.json",
+);
+const rewrapFixture = JSON.parse(await readFile(rewrapFixturePath, "utf8"));
 
 for (const vector of fixture.aad) {
   assert.equal(
@@ -205,5 +210,67 @@ assert.throws(
   () => domainCore.cloudVaultValidateP256X963PublicKey(new Uint8Array(65)),
   /invalid_p256_public_key/,
 );
+
+const rewrapResult = JSON.parse(
+  domainCore.cloudVaultRewrapDocumentJson(
+    JSON.stringify(rewrapFixture.request),
+    Buffer.from(rewrapFixture.oldKeyHex, "hex"),
+    Buffer.from(rewrapFixture.newKeyHex, "hex"),
+    rewrapFixture.newVaultKeyID,
+  ),
+);
+assert.deepEqual(rewrapResult, rewrapFixture.expected);
+assert.throws(
+  () =>
+    domainCore.cloudVaultRewrapDocumentJson(
+      JSON.stringify({ ...rewrapFixture.request, unexpected: true }),
+      Buffer.from(rewrapFixture.oldKeyHex, "hex"),
+      Buffer.from(rewrapFixture.newKeyHex, "hex"),
+      rewrapFixture.newVaultKeyID,
+    ),
+  /invalid_rewrap_request/,
+);
+
+const pricingFixturePath = path.resolve(
+  testDirectory,
+  "../../../../tests/fixtures/domain-core/pricing/v2/pricing-kat.json",
+);
+const pricingFixture = JSON.parse(await readFile(pricingFixturePath, "utf8"));
+assert.equal(pricingFixture.schema, "openburnbar.domain-core.pricing.v2");
+for (const vector of pricingFixture.costVectors) {
+  const rates = vector.rates;
+  const buckets = vector.buckets;
+  assert.equal(
+    domainCore.calculateTokenCostNanoUsd(
+      new BigUint64Array([
+        BigInt(rates.inputNanoUsdPerMToken),
+        BigInt(rates.outputNanoUsdPerMToken),
+        BigInt(rates.cacheCreationNanoUsdPerMToken ?? 0),
+        BigInt(rates.cacheReadNanoUsdPerMToken),
+      ]),
+      new BigUint64Array([
+        BigInt(buckets.inputTokens),
+        BigInt(buckets.outputTokens),
+        BigInt(buckets.cacheCreationTokens),
+        BigInt(buckets.cacheReadTokens),
+      ]),
+      rates.cacheCreationNanoUsdPerMToken !== null,
+    ),
+    BigInt(vector.expectedCostNanoUsd),
+  );
+}
+for (const vector of pricingFixture.legacyKimiVectors) {
+  assert.equal(domainCore.isLegacyKimiWireEvent(vector.provider, vector.model), vector.isLegacy);
+  if (vector.expected) {
+    const result = domainCore.priceLegacyKimiWireEvent(
+      BigInt(vector.buckets.inputTokens),
+      BigInt(vector.buckets.outputTokens),
+      BigInt(vector.buckets.cacheCreationTokens),
+      BigInt(vector.buckets.cacheReadTokens),
+    );
+    assert.equal(domainCore.legacyKimiWireModel(), vector.expected.model);
+    assert.deepEqual(Array.from(result), [BigInt(vector.expected.totalTokens), BigInt(vector.expected.costNanoUsd)]);
+  }
+}
 
 console.log("domain-core Wasm generated-package smoke test passed");

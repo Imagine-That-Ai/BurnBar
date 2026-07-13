@@ -9,7 +9,7 @@ final class IrohRelayCryptoSpotCheckTests: XCTestCase {
     func testWrapUnwrapRoundTrip() throws {
         let priv = HermesRelayCrypto.generatePrivateKey()
         let symmetric = try HermesRelayCrypto.generateSymmetricKeyData()
-        let aad = HermesRelayCrypto.keyAAD(uid: "u-1", connectionID: "c-1", requestID: "r-1")
+        let aad = try HermesRelayCrypto.keyAAD(uid: "u-1", connectionID: "c-1", requestID: "r-1")
         let wrapped = try HermesRelayCrypto.wrapSymmetricKey(
             symmetric,
             recipientPublicKeyBase64: priv.publicKeyBase64,
@@ -26,7 +26,7 @@ final class IrohRelayCryptoSpotCheckTests: XCTestCase {
     func testFrameRoundTripWithPayload() throws {
         let priv = HermesRelayCrypto.generatePrivateKey()
         let symmetric = try HermesRelayCrypto.generateSymmetricKeyData()
-        let requestAAD = HermesRelayCrypto.requestAAD(uid: "u", connectionID: "c", requestID: "r")
+        let requestAAD = try HermesRelayCrypto.requestAAD(uid: "u", connectionID: "c", requestID: "r")
         let ciphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: Data("hello".utf8),
             keyData: symmetric,

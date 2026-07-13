@@ -1,0 +1,15 @@
+{
+  "name": "@openburnbar/domain-core-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "sideEffects": false,
+  "files": [
+    "openburnbar-domain-core-source.sha256",
+    "openburnbar_domain_core.js",
+    "openburnbar_domain_core.d.ts",
+    "openburnbar_domain_core_bg.wasm",
+    "openburnbar_domain_core_bg.wasm.d.ts"
+  ],
+  "main": "openburnbar_domain_core.js",
+  "types": "openburnbar_domain_core.d.ts"
+}
