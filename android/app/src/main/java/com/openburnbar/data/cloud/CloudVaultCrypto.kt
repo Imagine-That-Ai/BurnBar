@@ -11,7 +11,6 @@ import com.openburnbar.BurnBarApplication
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
-import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.interfaces.ECPrivateKey
@@ -44,16 +43,13 @@ data class CloudVaultAADContext(
     val schemaVersion: Int = 2,
     val purpose: String = field,
 ) {
-    val stringValue: String = "${CloudVaultCrypto.AAD_CONTEXT_PREFIX}|$uid|$collection|$docID|$field|$schemaVersion|$purpose"
-    val legacyV1StringValue: String = "${CloudVaultCrypto.LEGACY_AAD_CONTEXT_PREFIX}|$uid|$collection|$docID|$field"
+    private val validated: Unit = require(schemaVersion >= 2 && listOf(uid, collection, docID, field, purpose).all { isValidPart(it) }) {
+        "Invalid CloudVault AAD context"
+    }
+    val stringValue: String = CloudVaultDomainCore.aadV2(uid, collection, docID, field, schemaVersion, purpose)
+    val legacyV1StringValue: String = CloudVaultDomainCore.aadV1(uid, collection, docID, field)
     val bytes: ByteArray get() = stringValue.toByteArray(Charsets.UTF_8)
     val legacyV1Bytes: ByteArray get() = legacyV1StringValue.toByteArray(Charsets.UTF_8)
-
-    init {
-        require(schemaVersion >= 2 && listOf(uid, collection, docID, field, purpose).all { isValidPart(it) }) {
-            "Invalid CloudVault AAD context"
-        }
-    }
 
     private fun isValidPart(value: String): Boolean = value.isNotEmpty() && value.none { it == '|' || it.code < 0x20 || it.code == 0x7f }
 }
@@ -326,19 +322,19 @@ object CloudVaultCrypto {
         return plaintext
     }
 
-    fun blobPlaintextHmac(data: ByteArray, vaultKey: ByteArray): String = keyedHmacHex(data, vaultKey, "blob-integrity")
+    fun blobPlaintextHmac(data: ByteArray, vaultKey: ByteArray): String =
+        CloudVaultDomainCore.keyedHashHex(data, vaultKey, CloudVaultHashPurpose.BLOB_INTEGRITY)
 
-    fun sessionBodyHash(data: ByteArray, vaultKey: ByteArray): String = keyedHmacHex(data, vaultKey, "session-body")
+    fun sessionBodyHash(data: ByteArray, vaultKey: ByteArray): String = CloudVaultDomainCore.keyedHashHex(data, vaultKey, CloudVaultHashPurpose.SESSION_BODY)
 
-    fun expectedSessionBodyHash(data: ByteArray, vaultKey: ByteArray, bodyHashVersion: Int): String = when (bodyHashVersion) {
-        SESSION_BODY_HASH_VERSION -> sessionBodyHash(data, vaultKey)
-        0, 1 -> sha256Hex(data)
-        else -> error("Unsupported session body hash version")
-    }
+    fun expectedSessionBodyHash(data: ByteArray, vaultKey: ByteArray, bodyHashVersion: Int): String =
+        CloudVaultDomainCore.expectedSessionBodyHash(data, vaultKey, bodyHashVersion)
 
-    fun sessionChunkHash(text: String, vaultKey: ByteArray): String = keyedHmacHex(text.toByteArray(Charsets.UTF_8), vaultKey, "session-chunk")
+    fun sessionChunkHash(text: String, vaultKey: ByteArray): String =
+        CloudVaultDomainCore.keyedHashHex(text.toByteArray(Charsets.UTF_8), vaultKey, CloudVaultHashPurpose.SESSION_CHUNK)
 
-    fun projectMemoryContentHash(data: ByteArray, vaultKey: ByteArray): String = keyedHmacHex(data, vaultKey, "project-memory-content")
+    fun projectMemoryContentHash(data: ByteArray, vaultKey: ByteArray): String =
+        CloudVaultDomainCore.keyedHashHex(data, vaultKey, CloudVaultHashPurpose.PROJECT_MEMORY_CONTENT)
 
     fun expectedBlobIntegrityHash(data: ByteArray, envelope: CloudVaultBlobEnvelope, vaultKey: ByteArray): String =
         if (envelope.schemaVersion >= CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION) {
@@ -347,7 +343,7 @@ object CloudVaultCrypto {
             sha256Hex(data)
         }
 
-    fun vaultKeyID(vaultKey: ByteArray): String = "v1_${sha256Hex(vaultKey).take(32)}"
+    fun vaultKeyID(vaultKey: ByteArray): String = CloudVaultDomainCore.vaultKeyId(vaultKey)
 
     fun sealBlob(plaintext: ByteArray, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): CloudVaultBlobEnvelope {
         val nonce =
@@ -890,20 +886,6 @@ object CloudVaultCrypto {
         }
     }
 
-    private fun keyedHmacHex(data: ByteArray, vaultKey: ByteArray, purpose: String): String {
-        require(vaultKey.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
-        val key =
-            CloudVaultCryptoSearch.hkdfSha256(
-                vaultKey,
-                "OpenBurnBar-CloudVault-HMAC-Salt-v1".toByteArray(Charsets.UTF_8),
-                "OpenBurnBar-CloudVault-HMAC-v1|$purpose".toByteArray(Charsets.UTF_8),
-                SHA256_DIGEST_BYTES,
-            )
-        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(key, "HmacSHA256"))
-        return mac.doFinal(data).joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
-    }
-
     fun unwrapVaultKey(ciphertext: ByteArray, privateKey: PrivateKey): ByteArray {
         require(ciphertext.size > WRAPPED_KEY_EPHEMERAL_BYTES) { "Invalid wrapped vault key" }
         val ecPrivateKey =
@@ -1030,9 +1012,11 @@ object CloudVaultCrypto {
         return byteArrayOf(UNCOMPRESSED_POINT_PREFIX.toByte()) + cloudVaultFixed32(ec.w.affineX) + cloudVaultFixed32(ec.w.affineY)
     }
 
-    fun sha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
+    fun sha256Hex(data: ByteArray): String = CloudVaultDomainCore.sha256Hex(data)
 
-    fun sha256Base64(data: ByteArray): String = CloudVaultCryptoSupport.encodeBase64(MessageDigest.getInstance("SHA-256").digest(data))
+    fun sha256Base64(data: ByteArray): String = CloudVaultCryptoSupport.encodeBase64(
+        sha256Hex(data).chunked(2).map { it.toInt(16).toByte() }.toByteArray(),
+    )
 
     private fun validateSignalRecipients(recipients: List<CloudVaultSignalRecipient>) {
         require(recipients.isNotEmpty()) { "Signal envelopes require at least one recipient" }
