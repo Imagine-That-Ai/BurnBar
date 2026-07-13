@@ -35,9 +35,10 @@ accessibility preference contracts (#1683), and P39 differential evidence
 comparison (#1682). P19 project lifecycle is now extended by PR #1688 with
 typed delete/reassign RPCs, canonical identity validation, durable reference
 migration, and deleted-slug tombstones. Local integration slices now add
-typed chat model/thinking-level selection and bounded attachment state,
-persisted activity body replay/native resume, and SQLCipher-gated encrypted
-snapshot/atomic restore. The
+typed chat model/thinking-level selection, bounded daemon-owned attachment
+refs, persisted activity body replay/native resume, actionable native
+notifications/shortcut status, SQLCipher-gated encrypted snapshot/atomic
+restore, and macOS-compatible passphrase recovery bundles. The
 authoritative promotion ledger remains 0/40 ready and 0/7 environment receipts;
 no PR in this checkpoint may be treated as full parity or as evidence that the
 Linux release candidate is shippable.
@@ -45,7 +46,8 @@ Linux release candidate is shippable.
 Recommended landing order for this wave is P26, then P23 and P12, followed by
 P13, P14, P17, P19, P21, P24, P28, P29, P35, and P16; P07, P22, P27, P31, and
 P39, plus the P19 lifecycle extension, activity replay/resume, chat model and
-attachment state, and encrypted snapshot/atomic restore can land as
+attachment transport, notifications/shortcut status, encrypted snapshot/
+restore, and recovery bundles can land as
 independently reviewable source slices because each preserves an explicit
 installed-proof boundary.
 After the code stack is review-clean, rerun
@@ -85,10 +87,10 @@ integrated chat model/attachment state, persisted activity replay/resume, and
 SQLCipher-gated encrypted database snapshot/restore. The
 following checks passed:
 
-- Linux frontend: 72 Vitest files / 583 tests.
+- Linux frontend: 72 Vitest files / 592 tests.
 - TypeScript: `npx tsc --noEmit --pretty false`.
 - Production bundle: `npm run build` plus the production bundle verifier.
-- Tauri Rust: 71/71 library tests.
+- Tauri Rust: 78/78 library tests.
 - Platform differential oracle: 6/6 tests.
 - Supported SQLCipher-backed daemon chat selector: 9/9 tests.
 - P19 daemon project lifecycle selector: 4/4 tests, covering delete,
@@ -99,7 +101,10 @@ following checks passed:
 - Database snapshot/recovery selector: 3/3 Swift tests covering traversal,
   size, and insecure-permission rejection. The Linux codec round-trip remains
   conditional on a configured Linux SQLCipher secret and was not claimable on
-  this macOS host.
+  this macOS host. Recovery crypto source compiles; the macOS test-bundle
+  runtime is blocked by the existing missing SQLCipher.framework packaging.
+  Linux Secret Service/KWallet capability and round-trip receipts require a
+  Linux host.
 
 This is current source/integration evidence only. It does not satisfy the
 installed Linux, public release, compositor matrix, Secret Service/KWallet,
@@ -108,21 +113,26 @@ notification tests still require a Linux host.
 
 ### Source-slice implementation addendum - 2026-07-13
 
-These three slices are now integrated in [PR #1691](https://github.com/Imagine-That-Ai/BurnBar/pull/1691) and should land as a
+These six slices are now integrated in [PR #1691](https://github.com/Imagine-That-Ai/BurnBar/pull/1691) and should land as a
 reviewable unit before the installed-certification wave; the individual feature
 commits remain separately inspectable in the branch history:
 
 | Order | Slice | Dependencies | Acceptance criteria | Remaining boundary |
 |---|---|---|---|---|
-| 1 | Chat model/options and attachment state | Existing encrypted thread RPCs, gateway model catalog, Composer/ChatSurface stores | Selected model and thinking level survive the active composer lifecycle and reach the gateway as the exact model ID; reset occurs on backend/thread/new-chat changes; attachment metadata enforces the 10 MiB and allowlisted text/Markdown/CSV/JSON/PDF contract with visible error/remove states; no renderer secret or fake upload path | Binary upload transport, citations, approvals, pop-out, unloaded-history export/resume, and remaining backend catalog still require real daemon/provider contracts |
+| 1 | Chat model/options and attachment transport | Existing encrypted thread RPCs, gateway model catalog, Composer/ChatSurface stores, daemon private data root | Selected model and thinking level survive the active composer lifecycle and reach the gateway as the exact model ID; daemon-owned attachment refs enforce 10 MiB/file/send caps, 80 MiB registry, 0700/0600 storage, single-use UUIDs, allowlisted text/Markdown/CSV/JSON/PDF policy, text-only gateway payloads, and explicit PDF unsupported behavior; no renderer secret, raw path, or fake upload path | Image/binary provider handling, citations, approvals, pop-out, unloaded-history export/resume, and remaining backend catalog still require real daemon/provider contracts |
 | 2 | Activity body replay and resume | Existing indexed activity search/detail RPCs, canonical `run.resume`, bounded transcript decoder | Body replay is daemon-backed, size-bounded, untrusted-rendered, and honest on missing/offline/error; native resume carries the persisted briefing without launching a process; providers without validated native resume use the same-harness handoff; plaintext legacy SQLite remains readable under SQLCipher builds; Swift 4/4 and frontend/Rust contracts pass | Full-history export, source resolution, resume-from-export, and installed provider/runtime proof remain open |
-| 3 | Encrypted project database snapshot/restore | Project-code SQLite store, SQLCipher codec/key custody, watcher lifecycle, canonical RPC generator | Snapshot rejects traversal/symlinks/unsafe ownership, active-db overwrite, and >512 MiB; checkpoints WAL, writes owner-only temporary files, hashes content, atomically installs; restore validates integrity, stops/reopens watchers, and rolls back on failure; Swift rejection suite 3/3 and bridge/Rust contract suites pass | This is same-key encrypted snapshot recovery only. Port passphrase-wrapped recovery-bundle import/export and key-loss/device-transfer recovery before calling P-22 complete |
+| 3 | Encrypted project database snapshot/restore | Project-code SQLite store, SQLCipher codec/key custody, watcher lifecycle, canonical RPC generator | Snapshot rejects traversal/symlinks/unsafe ownership, active-db overwrite, and >512 MiB; checkpoints WAL, writes owner-only temporary files, hashes content, atomically installs; restore validates integrity, stops/reopens watchers, and rolls back on failure; bridge/Rust contract suites pass | This is same-key encrypted snapshot recovery only. Key-loss/device-transfer recovery and installed proof remain open |
+| 4 | macOS-compatible database recovery bundle | Existing SQLCipher key custody, Swift Crypto, daemon RPC/canon, Database surface | v1 bundle uses exact salt16/PBKDF2-HMAC-SHA256 100k/AES-GCM combined format; parser bounds bundle/version/iterations/key length; export/import uses owner-only 0600 atomic files, candidate-key verification, and native Secret Service/KWallet custody hooks; passphrases never enter renderer persistence; source/build tests pass | Live Linux keyring round-trip, key-loss/device transfer, recovery UX for missing stores, and installed proof remain open |
+| 5 | Native notification actions and shortcut status | Tauri shell, freedesktop notify-rust capability probe, tray event bridge, existing shortcut registry | Typed notification IDs/actions/routes are bounded and validated; unsupported hosts report degraded state; action opens only allowlisted routes; global shortcut status is visible and additive to existing chords; Rust/TS tests pass | Live GNOME/KDE/wlroots D-Bus receipts, desktop persistence, and accessibility/manual proof remain open |
+| 6 | Activity replay/resume hardening | Existing indexed activity RPCs, canonical run.resume, bounded transcript decoder | Body replay is daemon-backed, size-bounded, untrusted-rendered, and honest on missing/offline/error; native resume carries persisted briefing without launching a process; provider-safe fallback and plaintext legacy SQLite readability are tested | Full-history export, source resolution, resume-from-export, and installed provider/runtime proof remain open |
 
 Recommended engineering order after these source slices is: (a) land and
-rebase the three bounded PRs; (b) run the Linux SQLCipher round-trip on a host
-with the production daemon secret; (c) implement recovery-bundle key custody;
-(d) certify full chat/activity/database flows in installed packages; and (e)
-only then close the P-14/P-17/P-22 ledger rows with exact-candidate receipts.
+rebase the integration PR; (b) run Linux SQLCipher, Secret Service/KWallet,
+notification, and attachment round-trips on a real host; (c) implement
+recovery key-loss/device-transfer and remaining chat provider contracts; (d)
+certify full chat/activity/database/notification flows in installed packages;
+and (e) only then close the P-14/P-17/P-22/P-27 ledger rows with exact-candidate
+receipts.
 
 Linux has a real desktop shell, a broad set of route surfaces, a Swift daemon
 path, AF_UNIX RPC, a provider gateway, package metadata, Linux-specific
