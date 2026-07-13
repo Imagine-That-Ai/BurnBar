@@ -60,6 +60,9 @@ export type ProviderCatalogEntry = {
   label: string;
   accountLabel: string;
   quotaBuckets: QuotaBucket[];
+  /** Redacted account metadata only; secret material never crosses this boundary. */
+  credentialSlots?: ProviderCredentialSlot[];
+  preferredCredentialSlotID?: string;
   models: ProviderCatalogModel[];
   capabilities: string[];
   health: ProviderHealthState;
@@ -678,6 +681,8 @@ export interface LinuxShellBridge {
   updateStatus?(): Promise<LinuxUpdateStatus>;
   exportDiagnostics(): Promise<DiagnosticsExport>;
   configUpdate?(snapshot: ConfigSnapshot): Promise<ConfigSnapshot>;
+  /** Pins the daemon router to an existing, redacted credential slot. */
+  providerCredentialSlotSelect?(providerID: string, slotID: string | null): Promise<ConfigSnapshot>;
   providerCredentialSlotUpsert?(params: {
     providerID: string;
     slotID?: string;
@@ -1176,6 +1181,10 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
       label,
       accountLabel,
       quotaBuckets,
+      credentialSlots: arr(pick(provider, 'credentialSlots')).map(mapCredentialSlot),
+      preferredCredentialSlotID: str(
+        pick(provider, 'preferredCredentialSlotID', 'preferredCredentialSlotId')
+      ) || undefined,
       models,
       capabilities,
       health,
@@ -2266,6 +2275,28 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     },
     configUpdate: async (snapshot) => {
       const raw = await invoke<RawJsonValue>('config_update', { snapshot });
+      return snapshotFromMutation(raw);
+    },
+    providerCredentialSlotSelect: async (providerID, slotID) => {
+      const normalizedProviderID = providerID.trim().toLowerCase();
+      if (!normalizedProviderID) throw new Error('Provider ID is required.');
+      const normalizedSlotID = slotID?.trim() || null;
+      const current = mapConfigSnapshot(await invoke<RawJsonValue>('config_snapshot'));
+      const providers = current.providers ?? [];
+      const provider = providers.find((candidate) => candidate.providerID.toLowerCase() === normalizedProviderID);
+      if (!provider) throw new Error(`Provider '${providerID}' is not available in daemon config.`);
+      if (normalizedSlotID && !provider.credentialSlots.some((slot) => slot.slotID === normalizedSlotID)) {
+        throw new Error(`Credential slot '${normalizedSlotID}' is not available for ${provider.providerID}.`);
+      }
+      const next: ConfigSnapshot = {
+        ...current,
+        providers: providers.map((candidate) =>
+          candidate.providerID.toLowerCase() === normalizedProviderID
+            ? { ...candidate, preferredCredentialSlotID: normalizedSlotID ?? undefined }
+            : candidate
+        )
+      };
+      const raw = await invoke<RawJsonValue>('config_update', { snapshot: next });
       return snapshotFromMutation(raw);
     },
     providerCredentialSlotUpsert: async (params) => {

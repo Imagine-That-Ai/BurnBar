@@ -334,6 +334,23 @@ export function fixtureProviderCatalog(): ProviderCatalog {
       id: 'anthropic',
       label: 'Anthropic',
       accountLabel: 'Team workspace',
+      preferredCredentialSlotID: 'anthropic-team',
+      credentialSlots: [
+        {
+          slotID: 'anthropic-team',
+          label: 'Team workspace',
+          isEnabled: true,
+          status: 'ready',
+          lastQuotaRemainingPercent: 58
+        },
+        {
+          slotID: 'anthropic-personal',
+          label: 'Personal fallback',
+          isEnabled: true,
+          status: 'ready',
+          lastQuotaRemainingPercent: 31
+        }
+      ],
       quotaSourceKind: 'officialAPI',
       quotaConfidence: 'high',
       planTierBadge: 'TEAM',

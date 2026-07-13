@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { PROVIDER_GLYPHS } from '../../providerGlyphs.js';
 import type {
   ProviderCatalog,
@@ -64,7 +65,73 @@ function ModelRow({ model }: { model: ProviderCatalogModel }) {
   );
 }
 
-function ProviderModelCard({ provider }: { provider: ProviderCatalogEntry }) {
+function ProviderAccountSelector({
+  provider,
+  loading,
+  onSelect
+}: {
+  provider: ProviderCatalogEntry;
+  loading: boolean;
+  onSelect?: (providerID: string, slotID: string | null) => Promise<void>;
+}) {
+  const slots = provider.credentialSlots ?? [];
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (slots.length === 0) return null;
+
+  const selected = provider.preferredCredentialSlotID ?? '';
+  const disabled = loading || busy || !onSelect;
+  const handleChange = async (slotID: string) => {
+    if (!onSelect || slotID === selected) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onSelect(provider.id, slotID || null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Account switch failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="provider-account-selector">
+      <label htmlFor={`provider-account-${provider.id}`}>Active account</label>
+      <select
+        id={`provider-account-${provider.id}`}
+        value={selected}
+        disabled={disabled}
+        onChange={(event) => void handleChange(event.currentTarget.value)}
+        aria-describedby={error ? `provider-account-error-${provider.id}` : undefined}
+      >
+        <option value="">Automatic routing</option>
+        {slots.map((slot) => (
+          <option key={slot.slotID} value={slot.slotID} disabled={!slot.isEnabled}>
+            {slot.label} · {slot.status}
+          </option>
+        ))}
+      </select>
+      <span className="provider-account-selector-note" role="status">
+        {busy ? 'Saving account…' : selected ? `Pinned to ${slots.find((slot) => slot.slotID === selected)?.label ?? selected}` : 'Router chooses an eligible account'}
+      </span>
+      {error ? (
+        <span id={`provider-account-error-${provider.id}`} className="provider-account-selector-error" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ProviderModelCard({
+  provider,
+  loading,
+  onSelectAccount
+}: {
+  provider: ProviderCatalogEntry;
+  loading: boolean;
+  onSelectAccount?: (providerID: string, slotID: string | null) => Promise<void>;
+}) {
   const glyph = providerGlyph(provider.id);
   return (
     <article className="provider-model-card" data-provider={provider.id}>
@@ -107,6 +174,8 @@ function ProviderModelCard({ provider }: { provider: ProviderCatalogEntry }) {
         {provider.failover.detail}
       </p>
 
+      <ProviderAccountSelector provider={provider} loading={loading} onSelect={onSelectAccount} />
+
       {provider.models.length > 0 ? (
         <ul className="provider-model-list" aria-label={`${provider.label} model catalog`}>
           {provider.models.map((model) => (
@@ -125,11 +194,13 @@ function ProviderModelCard({ provider }: { provider: ProviderCatalogEntry }) {
 export function ProviderModelWorkspace({
   providers,
   loading,
-  onRefresh
+  onRefresh,
+  onSelectAccount
 }: {
   providers: ProviderCatalog;
   loading: boolean;
   onRefresh: () => void;
+  onSelectAccount?: (providerID: string, slotID: string | null) => Promise<void>;
 }) {
   const modelCount = providers.reduce((count, provider) => count + provider.models.length, 0);
   const catalogUnavailable = providers.some((provider) => !provider.catalogAvailable);
@@ -180,7 +251,12 @@ export function ProviderModelWorkspace({
 
       <div className="provider-model-grid">
         {providers.map((provider) => (
-          <ProviderModelCard key={provider.id} provider={provider} />
+          <ProviderModelCard
+            key={provider.id}
+            provider={provider}
+            loading={loading}
+            onSelectAccount={onSelectAccount}
+          />
         ))}
       </div>
     </section>

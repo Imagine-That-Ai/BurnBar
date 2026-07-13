@@ -31,6 +31,7 @@ export function QuotaWorkspaceSurface() {
   const loading = useProvidersStore((s) => s.loading);
   const error = useProvidersStore((s) => s.error);
   const load = useProvidersStore((s) => s.load);
+  const selectCredentialSlot = useProvidersStore((s) => s.selectCredentialSlot);
 
   const [prefs, setPrefs] = useState(loadQuotaPrefs);
   const [focusProviderId, setFocusProviderId] = useState<string | null>(null);
@@ -173,7 +174,12 @@ export function QuotaWorkspaceSurface() {
           )}
 
           <QuotaResetAtlas entries={displayedEntries} />
-          <ProviderModelWorkspace providers={catalog} loading={loading} onRefresh={() => void load()} />
+          <ProviderModelWorkspace
+            providers={catalog}
+            loading={loading}
+            onRefresh={() => void load()}
+            onSelectAccount={(providerID, slotID) => selectCredentialSlot(providerID, slotID)}
+          />
         </>
       ) : null}
     </div>
