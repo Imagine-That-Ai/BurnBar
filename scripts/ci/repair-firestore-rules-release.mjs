@@ -146,7 +146,8 @@ async function getFirestoreRelease({ project, token, fetchImpl }) {
 
 /**
  * PATCH the cloud.firestore release to point to a new ruleset.
- * Matches firebase-tools' production PATCH shape (no updateMask).
+ * Matches firebase-tools' production PATCH shape: the Release resource is
+ * nested under `release` and there is no updateMask.
  */
 async function patchFirestoreRelease({ project, token, fetchImpl, rulesetName }) {
   const releaseName = `projects/${project}/releases/${FIRESTORE_RELEASE}`;
@@ -155,8 +156,10 @@ async function patchFirestoreRelease({ project, token, fetchImpl, rulesetName })
     {
       method: "PATCH",
       body: {
-        name: releaseName,
-        rulesetName,
+        release: {
+          name: releaseName,
+          rulesetName,
+        },
       },
       token,
       project,
