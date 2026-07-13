@@ -170,13 +170,37 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
                 "maxMessages must be between 1 and \(Self.maxGetMessages)"
             )
         }
+        let cursor: (timestamp: String, messageID: String)?
+        switch (request.beforeTimestamp, request.beforeMessageID) {
+        case (nil, nil):
+            cursor = nil
+        case let (timestamp?, messageID?):
+            let parsedTimestamp = try Self.parseRequestTimestamp(timestamp)
+            cursor = (
+                timestamp: Self.grdbStorageTimestamp(parsedTimestamp),
+                messageID: try Self.validatedIdentifier(messageID, field: "beforeMessageID")
+            )
+        default:
+            throw BurnBarChatThreadServiceError.invalidRequest(
+                "beforeTimestamp and beforeMessageID must be supplied together"
+            )
+        }
         guard let thread = try fetchSummary(threadID: threadID) else {
             return BurnBarChatThreadGetResponse(thread: nil, messages: [], hasMoreBefore: false)
         }
 
+        let pagePredicate: String
+        var pageBindings: [BindValue] = [.text(threadID)]
+        if let cursor {
+            pagePredicate = "threadId = ? AND (timestamp < ? OR (timestamp = ? AND id < ?))"
+            pageBindings += [.text(cursor.timestamp), .text(cursor.timestamp), .text(cursor.messageID)]
+        } else {
+            pagePredicate = "threadId = ?"
+        }
+
         let countStatement = try prepare(
-            "SELECT COUNT(1) FROM chat_messages WHERE threadId = ?",
-            bindings: [.text(threadID)]
+            "SELECT COUNT(1) FROM chat_messages WHERE \(pagePredicate)",
+            bindings: pageBindings
         )
         defer { sqlite3_finalize(countStatement) }
         guard sqlite3_step(countStatement) == SQLITE_ROW else {
@@ -190,13 +214,13 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             FROM (
                 SELECT id, threadId, role, content, timestamp, cliUsed
                 FROM chat_messages
-                WHERE threadId = ?
+                WHERE \(pagePredicate)
                 ORDER BY timestamp DESC, id DESC
                 LIMIT ?
             )
             ORDER BY timestamp ASC, id ASC
             """,
-            bindings: [.text(threadID), .integer(Int64(request.maxMessages))]
+            bindings: pageBindings + [.integer(Int64(request.maxMessages))]
         )
         defer { sqlite3_finalize(statement) }
 

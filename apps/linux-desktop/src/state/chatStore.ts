@@ -43,6 +43,8 @@ export type ChatState = {
   selectedThreadId: string | null;
   messages: ChatMessage[];
   messagesLoading: boolean;
+  loadingOlderMessages: boolean;
+  hasMoreMessages: boolean;
   config: ConfigSnapshot | null;
   loading: boolean;
   error: string | null;
@@ -61,6 +63,7 @@ export type ChatState = {
   load(): Promise<void>;
   search(query: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
+  loadOlderMessages(): Promise<void>;
   loadMoreThreads(): void;
   setBackend(id: ChatBackendId): void;
   startNewChat(): void;
@@ -360,6 +363,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   selectedThreadId: null,
   messages: [],
   messagesLoading: false,
+  loadingOlderMessages: false,
+  hasMoreMessages: false,
   config: null,
   loading: false,
   error: null,
@@ -389,6 +394,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         visibleThreadCount: CHAT_THREAD_PAGE_SIZE,
         messages: [],
         selectedThreadId: null,
+        loadingOlderMessages: false,
+        hasMoreMessages: false,
         warnings: [],
         sharedFeaturesAvailable: true,
         streaming: false
@@ -433,6 +440,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         error: e instanceof Error ? e.message : 'Request failed',
         messages: [],
         selectedThreadId: null,
+        loadingOlderMessages: false,
+        hasMoreMessages: false,
         warnings: [],
         streaming: false,
         streamPhase: 'error',
@@ -455,6 +464,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         selectedThreadId: null,
         messages: [],
         messagesLoading: false,
+        loadingOlderMessages: false,
+        hasMoreMessages: false,
         modelLabel: modelLabelForThread(null, get().backend),
         streaming: false,
         streamPhase: 'idle',
@@ -468,6 +479,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       selectedThreadId: id,
       messages: [],
       messagesLoading: true,
+      loadingOlderMessages: false,
+      hasMoreMessages: false,
       backend: selectedBackend,
       modelLabel: modelLabelForThread(thread, selectedBackend),
       streaming: false,
@@ -487,6 +500,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         set({
           messages,
           messagesLoading: false,
+          hasMoreMessages: result?.hasMoreBefore ?? false,
           backend: resolvedBackend,
           modelLabel: modelLabelForThread(resolvedThread, resolvedBackend)
         });
@@ -498,6 +512,58 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           messagesLoading: false,
           streamPhase: 'error',
           streamError: error instanceof Error ? error.message : 'Unable to load this thread.'
+        });
+      }
+    }
+  },
+
+  async loadOlderMessages() {
+    const state = get();
+    const threadID = state.selectedThreadId;
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (
+      fixtureMode ||
+      !bridge ||
+      !threadID ||
+      !state.hasMoreMessages ||
+      state.loadingOlderMessages ||
+      state.streaming ||
+      state.streamPhase === 'composing'
+    ) {
+      return;
+    }
+
+    // Thinking/tool rows are ephemeral; the first timestamped row is the
+    // stable cursor for the oldest durable message currently loaded.
+    const oldest = state.messages.find((message) => message.timestamp && message.threadID === threadID);
+    if (!oldest?.timestamp) {
+      set({ hasMoreMessages: false });
+      return;
+    }
+
+    set({ loadingOlderMessages: true, streamError: null });
+    try {
+      const result = await bridge.chatThreadGet(threadID, 500, {
+        timestamp: oldest.timestamp,
+        messageID: oldest.id
+      });
+      if (get().selectedThreadId !== threadID) return;
+      set((current) => {
+        const existingIDs = new Set(current.messages.map((message) => message.id));
+        const older = result.messages
+          .filter((message) => !existingIDs.has(message.id))
+          .map(messageFromPersisted);
+        return {
+          messages: [...older, ...current.messages],
+          hasMoreMessages: result.hasMoreBefore,
+          loadingOlderMessages: false
+        };
+      });
+    } catch (error) {
+      if (get().selectedThreadId === threadID) {
+        set({
+          loadingOlderMessages: false,
+          streamError: error instanceof Error ? error.message : 'Unable to load older messages.'
         });
       }
     }
@@ -593,6 +659,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       provider: backend === 'cli' ? undefined : backend
     };
     const controller = new AbortController();
+    const hasMoreForTarget = current.selectedThreadId === threadID ? current.hasMoreMessages : false;
     const outboundHistory = [
       ...history
         .filter((message) => message.role === 'user' || (message.role === 'assistant' && message.text.trim()))
@@ -607,6 +674,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       selectedThreadId: threadID,
       messages: [...history, user],
       messagesLoading: false,
+      hasMoreMessages: hasMoreForTarget,
       backend,
       streaming: false,
       streamPhase: 'composing',

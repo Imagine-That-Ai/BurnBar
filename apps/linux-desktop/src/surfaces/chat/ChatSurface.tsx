@@ -20,6 +20,8 @@ export function ChatSurface() {
   const selectedThreadId = useChatStore((s) => s.selectedThreadId);
   const messages = useChatStore((s) => s.messages);
   const messagesLoading = useChatStore((s) => s.messagesLoading);
+  const hasMoreMessages = useChatStore((s) => s.hasMoreMessages);
+  const loadingOlderMessages = useChatStore((s) => s.loadingOlderMessages);
   const config = useChatStore((s) => s.config);
   const backend = useChatStore((s) => s.backend);
   const modelLabel = useChatStore((s) => s.modelLabel);
@@ -33,6 +35,7 @@ export function ChatSurface() {
   const load = useChatStore((s) => s.load);
   const search = useChatStore((s) => s.search);
   const selectThread = useChatStore((s) => s.selectThread);
+  const loadOlderMessages = useChatStore((s) => s.loadOlderMessages);
   const loadMoreThreads = useChatStore((s) => s.loadMoreThreads);
   const setBackend = useChatStore((s) => s.setBackend);
   const startNewChat = useChatStore((s) => s.startNewChat);
@@ -83,6 +86,9 @@ export function ChatSurface() {
     onBackendChange: setBackend,
     messages,
     messagesLoading,
+    hasMoreMessages,
+    loadingOlderMessages,
+    onLoadOlderMessages: () => void loadOlderMessages(),
     warnings,
     sharedFeaturesAvailable,
     streaming,
