@@ -50,8 +50,15 @@ function MemoryCitations({ citations }: { citations: { id: string; label: string
   );
 }
 
-function ToolCard({ message }: { message: ChatMessage }) {
+function ToolCard({
+  message,
+  onOpenMissionControl
+}: {
+  message: ChatMessage;
+  onOpenMissionControl?: () => void;
+}) {
   const state = message.toolState ?? 'proposed';
+  const gatewayApprovalUnavailable = message.toolApproval?.state === 'unavailable';
   return (
     <div
       className={state === 'running' ? 'chat-tool-card is-running' : 'chat-tool-card'}
@@ -63,7 +70,18 @@ function ToolCard({ message }: { message: ChatMessage }) {
         <span className="chat-tool-card-badge">{state}</span>
       </div>
       <p className="muted chat-tool-card-body">{message.text}</p>
-      {state === 'proposed' ? (
+      {gatewayApprovalUnavailable ? (
+        <div className="chat-tool-card-availability" aria-label="Tool approval availability">
+          <p className="chat-tool-card-capability" role="status">
+            Gateway chat does not expose the daemon run approval identity required to approve this tool call.
+          </p>
+          {onOpenMissionControl ? (
+            <button type="button" className="ghost" onClick={onOpenMissionControl}>
+              Open Mission Control
+            </button>
+          ) : null}
+        </div>
+      ) : state === 'proposed' ? (
         <div className="chat-tool-card-actions">
           <button
             type="button"
@@ -141,6 +159,7 @@ type MessageStreamProps = {
   sharedFeaturesAvailable: boolean;
   streamError: string | null;
   streaming?: boolean;
+  onOpenMissionControl?: () => void;
 };
 
 export function MessageStream({
@@ -152,7 +171,8 @@ export function MessageStream({
   warnings,
   sharedFeaturesAvailable,
   streamError,
-  streaming = false
+  streaming = false,
+  onOpenMissionControl
 }: MessageStreamProps) {
   if (loading) {
     return (
@@ -196,7 +216,9 @@ export function MessageStream({
           </div>
         ) : null}
         {messages.map((m) => {
-          if (m.role === 'tool') return <ToolCard key={m.id} message={m} />;
+          if (m.role === 'tool') {
+            return <ToolCard key={m.id} message={m} onOpenMissionControl={onOpenMissionControl} />;
+          }
           if (m.role === 'thinking') return <ThinkingBlock key={m.id} message={m} />;
 
           if (m.role === 'system') {

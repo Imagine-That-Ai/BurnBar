@@ -41,6 +41,22 @@ invalid dates, oversized rows, schema drift, and corrupt data fail closed.
    with the oldest loaded row as a deterministic cursor; no history is silently
    discarded at the per-response bound.
 
+## Gateway tool-approval boundary
+
+The OpenAI-compatible gateway stream can emit a `tool_call` frame containing a
+gateway call id, tool name, and arguments. That frame does **not** carry a
+daemon run ID or a `BurnBarApprovalID`. The canonical Linux `approval.respond`
+RPC is therefore not a valid gateway-chat command: its typed request requires a
+`BurnBarApprovalResponse` with `approvalID`, `clientID`, `decision`, and
+`respondedAt`, and the daemon resolves that approval against a pending run.
+
+Linux chat marks gateway tool cards with the typed
+`gateway-tool-call-missing-run-approval-identity` capability state. The card
+does not expose approve/deny controls or synthesize an approval ID. It offers a
+real route to Mission Control, where run-scoped approvals can be reviewed with
+the canonical daemon contract. This is an honest capability boundary, not
+gateway tool execution or approval parity.
+
 The renderer validates all daemon results again at the WebView boundary,
 including bounded UTF-8 sizes, exact roles, canonical timestamps, same-thread
 membership, and append-response identity.
@@ -59,10 +75,12 @@ membership, and append-response identity.
 ## Remaining parity work
 
 `LNX-CHAT-001` remains open for the shared provider/model catalog, full backend
-breadth, attachment persistence and content policy, citations, tool approvals,
-options, resume/export, reconnect reconciliation, and a Linux-native secondary
-window/pop-out. `LNX-SESS-001` also remains open: activity/session transcripts
-are a separate domain and must not be synthesized from chat or usage data.
+breadth, attachment persistence and content policy, citations, gateway tool
+execution/approval state, options, resume/export, reconnect reconciliation, and
+a Linux-native secondary window/pop-out. Run-scoped approvals remain available
+through Mission Control; they are not interchangeable with gateway tool-call
+frames. `LNX-SESS-001` also remains open: activity/session transcripts are a
+separate domain and must not be synthesized from chat or usage data.
 
 ## Verification
 

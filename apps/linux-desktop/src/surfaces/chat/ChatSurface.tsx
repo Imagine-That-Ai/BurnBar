@@ -10,6 +10,7 @@ import './chat.css';
 export function ChatSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
+  const setRoute = useShellStore((s) => s.setRoute);
   const status = useDaemonStatusCopy();
 
   const threads = useChatStore((s) => s.threads);
@@ -98,7 +99,8 @@ export function ChatSurface() {
     // so an Enter in that window cannot silently drop the user's text.
     composerBusy: streamPhase === 'composing',
     onSendMessage: (text: string) => void sendMessage(text),
-    onStopStreaming: stopStreaming
+    onStopStreaming: stopStreaming,
+    onOpenMissionControl: () => setRoute('missions')
   };
 
   let body: ReactNode;
