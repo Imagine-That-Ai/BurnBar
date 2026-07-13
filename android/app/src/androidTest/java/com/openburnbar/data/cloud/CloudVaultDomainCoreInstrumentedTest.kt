@@ -85,6 +85,44 @@ class CloudVaultDomainCoreInstrumentedTest {
             assertEquals(vector.string("combinedBase64"), CloudVaultDomainCore.base64Encode(combined))
             assertArrayEquals(plaintext, CloudVaultDomainCore.aesOpenCombined(combined, key, aad))
         }
+
+        val recovery = fixture.getValue("recovery").jsonObject
+        val recoveryKey = recovery.string("formattedKey")
+        val recoveryNonce = recovery.hex("nonceHex")
+        val recoveryVaultKey = recovery.hex("vaultKeyHex")
+        assertArrayEquals(
+            recovery.hex("wrappingKeyHex"),
+            CloudVaultDomainCore.recoveryWrappingKey(recoveryKey) { error("legacy must remain lazy") },
+        )
+        assertEquals(
+            recovery.string("verificationHash"),
+            CloudVaultDomainCore.recoveryVerificationHash(recoveryKey) { error("legacy must remain lazy") },
+        )
+        val recoveryWrapped = CloudVaultDomainCore.recoveryWrapVaultKey(recoveryVaultKey, recoveryKey, recoveryNonce) {
+            error("legacy must remain lazy")
+        }
+        assertArrayEquals(recovery.hex("combinedHex"), recoveryWrapped.combined)
+        assertArrayEquals(
+            recoveryVaultKey,
+            CloudVaultDomainCore.recoveryOpenVaultKey(recoveryWrapped.combined, recoveryKey) {
+                error("legacy must remain lazy")
+            },
+        )
+
+        val escrow = fixture.getValue("p256Escrow").jsonObject
+        val escrowWire = CloudVaultDomainCore.escrowSeal(
+            escrow.hex("plaintextHex"),
+            escrow.hex("ephemeralPublicKeyHex"),
+            escrow.hex("sharedSecretHex"),
+            escrow.hex("nonceHex"),
+        ) { error("legacy must remain lazy") }
+        assertArrayEquals(escrow.hex("wireHex"), escrowWire)
+        assertArrayEquals(
+            escrow.hex("plaintextHex"),
+            CloudVaultDomainCore.escrowOpen(escrowWire, escrow.hex("sharedSecretHex")) {
+                error("legacy must remain lazy")
+            },
+        )
     }
 
     @Test

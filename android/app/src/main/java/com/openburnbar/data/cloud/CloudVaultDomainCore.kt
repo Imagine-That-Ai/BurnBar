@@ -18,9 +18,16 @@ import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmSealCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmSealDetached
 import uniffi.openburnbar_domain_ffi.cloudVaultBase64DecodeStrict
 import uniffi.openburnbar_domain_ffi.cloudVaultBase64Encode
+import uniffi.openburnbar_domain_ffi.cloudVaultEscrowOpen
+import uniffi.openburnbar_domain_ffi.cloudVaultEscrowSeal
+import uniffi.openburnbar_domain_ffi.cloudVaultEscrowSplitWire
 import uniffi.openburnbar_domain_ffi.cloudVaultExpectedSessionBodyHash
 import uniffi.openburnbar_domain_ffi.cloudVaultKeyId
 import uniffi.openburnbar_domain_ffi.cloudVaultKeyedHashHex
+import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryOpenVaultKey
+import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryVerificationHash
+import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrapVaultKey
+import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrappingKey
 import uniffi.openburnbar_domain_ffi.cloudVaultSha256Hex
 
 internal enum class CloudVaultDomainCoreMode(val wireValue: String) {
@@ -53,6 +60,16 @@ internal data class CloudVaultAesDetachedBox(
     val nonce: ByteArray,
     val ciphertext: ByteArray,
     val tag: ByteArray,
+)
+
+internal data class CloudVaultRecoveryBox(
+    val combined: ByteArray,
+    val verificationHash: String,
+)
+
+internal data class CloudVaultEscrowParts(
+    val ephemeralPublicKey: ByteArray,
+    val aesGcmCombined: ByteArray,
 )
 
 internal object CloudVaultDomainCore {
@@ -179,6 +196,62 @@ internal object CloudVaultDomainCore {
         operation = "base64_decode",
         legacy = { java.util.Base64.getMimeDecoder().decode(value) },
         rust = { cloudVaultBase64DecodeStrict(value) },
+    )
+
+    fun recoveryWrappingKey(recoveryKey: String, legacy: () -> ByteArray): ByteArray = dispatchBytes(
+        operation = "recovery_wrapping_key",
+        legacy = legacy,
+        rust = { cloudVaultRecoveryWrappingKey(recoveryKey) },
+    )
+
+    fun recoveryVerificationHash(recoveryKey: String, legacy: () -> String): String = dispatch(
+        operation = "recovery_verification_hash",
+        legacy = legacy,
+        rust = { cloudVaultRecoveryVerificationHash(recoveryKey) },
+    )
+
+    fun recoveryWrapVaultKey(vaultKey: ByteArray, recoveryKey: String, nonce: ByteArray, legacy: () -> CloudVaultRecoveryBox): CloudVaultRecoveryBox = dispatch(
+        operation = "recovery_wrap_vault_key",
+        legacy = legacy,
+        rust = {
+            val wrapped = cloudVaultRecoveryWrapVaultKey(vaultKey, recoveryKey, nonce)
+            CloudVaultRecoveryBox(wrapped.combined, wrapped.verificationHash)
+        },
+        equivalent = { left, right ->
+            left.combined.contentEquals(right.combined) && left.verificationHash == right.verificationHash
+        },
+    )
+
+    fun recoveryOpenVaultKey(combined: ByteArray, recoveryKey: String, legacy: () -> ByteArray): ByteArray = dispatchBytes(
+        operation = "recovery_open_vault_key",
+        legacy = legacy,
+        rust = { cloudVaultRecoveryOpenVaultKey(combined, recoveryKey) },
+    )
+
+    fun escrowSplitWire(wire: ByteArray, legacy: () -> CloudVaultEscrowParts): CloudVaultEscrowParts = dispatch(
+        operation = "escrow_split_wire",
+        legacy = legacy,
+        rust = {
+            val parts = cloudVaultEscrowSplitWire(wire)
+            CloudVaultEscrowParts(parts.ephemeralPublicKey, parts.aesGcmCombined)
+        },
+        equivalent = { left, right ->
+            left.ephemeralPublicKey.contentEquals(right.ephemeralPublicKey) &&
+                left.aesGcmCombined.contentEquals(right.aesGcmCombined)
+        },
+    )
+
+    fun escrowSeal(plaintext: ByteArray, ephemeralPublicKey: ByteArray, sharedSecret: ByteArray, nonce: ByteArray, legacy: () -> ByteArray): ByteArray =
+        dispatchBytes(
+            operation = "escrow_seal",
+            legacy = legacy,
+            rust = { cloudVaultEscrowSeal(plaintext, ephemeralPublicKey, sharedSecret, nonce) },
+        )
+
+    fun escrowOpen(wire: ByteArray, sharedSecret: ByteArray, legacy: () -> ByteArray): ByteArray = dispatchBytes(
+        operation = "escrow_open",
+        legacy = legacy,
+        rust = { cloudVaultEscrowOpen(wire, sharedSecret) },
     )
 
     internal fun <T> dispatchForTest(selectedMode: CloudVaultDomainCoreMode, operation: String, legacy: () -> T, rust: () -> T): T =

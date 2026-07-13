@@ -885,26 +885,27 @@ object CloudVaultCrypto {
     }
 
     fun unwrapVaultKey(ciphertext: ByteArray, privateKey: PrivateKey): ByteArray {
-        require(ciphertext.size > WRAPPED_KEY_EPHEMERAL_BYTES) { "Invalid wrapped vault key" }
         val ecPrivateKey =
             privateKey as? ECPrivateKey
                 ?: error("Vault key unwrap requires an EC private key")
+        val parts = CloudVaultDomainCore.escrowSplitWire(ciphertext) {
+            legacySplitEscrowWire(ciphertext, ecPrivateKey)
+        }
         val ephemeralPublic =
-            CloudVaultCryptoSupport.publicKeyFromX963(ciphertext.copyOfRange(0, WRAPPED_KEY_EPHEMERAL_BYTES), ecPrivateKey.params)
+            CloudVaultCryptoSupport.publicKeyFromX963(parts.ephemeralPublicKey, ecPrivateKey.params)
         val sharedSecret =
             KeyAgreement.getInstance("ECDH").run {
                 init(privateKey)
                 doPhase(ephemeralPublic, true)
                 generateSecret()
             }
-        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(sharedSecret, ByteArray(0), WRAP_INFO.toByteArray(), SHA256_DIGEST_BYTES)
-        val combined = ciphertext.copyOfRange(WRAPPED_KEY_EPHEMERAL_BYTES, ciphertext.size)
-        val plaintext =
-            CloudVaultCryptoSupport.openAesGcm(
-                wrappingKey,
-                combined.copyOfRange(0, GCM_NONCE_BYTES),
-                combined.copyOfRange(GCM_NONCE_BYTES, combined.size),
-            )
+        val plaintext = try {
+            CloudVaultDomainCore.escrowOpen(ciphertext, sharedSecret) {
+                legacyEscrowOpen(parts.aesGcmCombined, sharedSecret)
+            }
+        } finally {
+            sharedSecret.fill(0)
+        }
         require(plaintext.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
         return plaintext
     }
@@ -927,6 +928,12 @@ object CloudVaultCrypto {
     )
 
     fun deriveRecoveryWrappingKey(recoveryKey: String): ByteArray {
+        return CloudVaultDomainCore.recoveryWrappingKey(recoveryKey) {
+            legacyDeriveRecoveryWrappingKey(recoveryKey)
+        }
+    }
+
+    private fun legacyDeriveRecoveryWrappingKey(recoveryKey: String): ByteArray {
         val normalized = normalizedRecoveryKey(recoveryKey)
         require(normalized.length >= 20) { "Recovery key is too short" }
         return CloudVaultCryptoSearch.hkdfSha256(
@@ -939,30 +946,33 @@ object CloudVaultCrypto {
 
     fun wrapVaultKeyWithRecovery(vaultKey: ByteArray, recoveryKey: String): RecoveryWrappedVaultKey {
         require(vaultKey.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
-        val wrappingKey = deriveRecoveryWrappingKey(recoveryKey)
         val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
-        val combined = CloudVaultDomainCore.aesSealCombined(vaultKey, wrappingKey, nonce, ByteArray(0))
+        val wrapped = CloudVaultDomainCore.recoveryWrapVaultKey(vaultKey, recoveryKey, nonce) {
+            legacyRecoveryWrapVaultKey(vaultKey, recoveryKey, nonce)
+        }
         return RecoveryWrappedVaultKey(
-            wrappedVaultKeyBase64 = CloudVaultCryptoSupport.encodeBase64(combined),
-            verificationHash = sha256Hex(wrappingKey),
+            wrappedVaultKeyBase64 = CloudVaultCryptoSupport.encodeBase64(wrapped.combined),
+            verificationHash = wrapped.verificationHash,
         )
     }
 
     fun unwrapVaultKeyWithRecovery(wrappedVaultKeyBase64: String, recoveryKey: String): ByteArray {
-        val wrappingKey = deriveRecoveryWrappingKey(recoveryKey)
         val combined = CloudVaultCryptoSupport.decodeBase64(wrappedVaultKeyBase64)
-        require(combined.size > GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid wrapped vault key" }
-        val plaintext =
-            CloudVaultCryptoSupport.openAesGcm(
-                wrappingKey,
-                combined.copyOfRange(0, GCM_NONCE_BYTES),
-                combined.copyOfRange(GCM_NONCE_BYTES, combined.size),
-            )
+        val plaintext = CloudVaultDomainCore.recoveryOpenVaultKey(combined, recoveryKey) {
+            legacyRecoveryOpenVaultKey(combined, recoveryKey)
+        }
         require(plaintext.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
         return plaintext
     }
 
-    fun recoveryVerificationHash(recoveryKey: String): String = sha256Hex(deriveRecoveryWrappingKey(recoveryKey))
+    fun recoveryVerificationHash(recoveryKey: String): String = CloudVaultDomainCore.recoveryVerificationHash(recoveryKey) {
+        val wrappingKey = legacyDeriveRecoveryWrappingKey(recoveryKey)
+        try {
+            sha256Hex(wrappingKey)
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
 
     private fun normalizedRecoveryKey(recoveryKey: String): String {
         return recoveryKey
@@ -993,10 +1003,92 @@ object CloudVaultCrypto {
                 doPhase(recipientKey, true)
                 generateSecret()
             }
-        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(sharedSecret, ByteArray(0), WRAP_INFO.toByteArray(), SHA256_DIGEST_BYTES)
         val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
-        val combined = CloudVaultDomainCore.aesSealCombined(keyData, wrappingKey, nonce, ByteArray(0))
-        return publicKeyX963(ephemeral.public) + combined
+        val ephemeralPublicX963 = publicKeyX963(ephemeral.public)
+        return try {
+            CloudVaultDomainCore.escrowSeal(keyData, ephemeralPublicX963, sharedSecret, nonce) {
+                legacyEscrowSeal(keyData, ephemeralPublicX963, sharedSecret, nonce)
+            }
+        } finally {
+            sharedSecret.fill(0)
+        }
+    }
+
+    private fun legacySplitEscrowWire(ciphertext: ByteArray, privateKey: ECPrivateKey): CloudVaultEscrowParts {
+        require(ciphertext.size > WRAPPED_KEY_EPHEMERAL_BYTES) { "Invalid wrapped vault key" }
+        val publicKey = ciphertext.copyOfRange(0, WRAPPED_KEY_EPHEMERAL_BYTES)
+        CloudVaultCryptoSupport.publicKeyFromX963(publicKey, privateKey.params)
+        return CloudVaultEscrowParts(publicKey, ciphertext.copyOfRange(WRAPPED_KEY_EPHEMERAL_BYTES, ciphertext.size))
+    }
+
+    private fun legacyEscrowSeal(plaintext: ByteArray, ephemeralPublicKey: ByteArray, sharedSecret: ByteArray, nonce: ByteArray): ByteArray {
+        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(
+            sharedSecret,
+            ByteArray(0),
+            WRAP_INFO.toByteArray(),
+            SHA256_DIGEST_BYTES,
+        )
+        return try {
+            ephemeralPublicKey + legacyAesSealCombined(plaintext, wrappingKey, nonce)
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
+    private fun legacyEscrowOpen(combined: ByteArray, sharedSecret: ByteArray): ByteArray {
+        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(
+            sharedSecret,
+            ByteArray(0),
+            WRAP_INFO.toByteArray(),
+            SHA256_DIGEST_BYTES,
+        )
+        return try {
+            legacyAesOpenCombined(combined, wrappingKey)
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
+    private fun legacyRecoveryWrapVaultKey(vaultKey: ByteArray, recoveryKey: String, nonce: ByteArray): CloudVaultRecoveryBox {
+        val wrappingKey = legacyDeriveRecoveryWrappingKey(recoveryKey)
+        return try {
+            CloudVaultRecoveryBox(
+                combined = legacyAesSealCombined(vaultKey, wrappingKey, nonce),
+                verificationHash = sha256Hex(wrappingKey),
+            )
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
+    private fun legacyRecoveryOpenVaultKey(combined: ByteArray, recoveryKey: String): ByteArray {
+        val wrappingKey = legacyDeriveRecoveryWrappingKey(recoveryKey)
+        return try {
+            legacyAesOpenCombined(combined, wrappingKey)
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
+    private fun legacyAesSealCombined(plaintext: ByteArray, key: ByteArray, nonce: ByteArray): ByteArray {
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            javax.crypto.Cipher.ENCRYPT_MODE,
+            javax.crypto.spec.SecretKeySpec(key, "AES"),
+            javax.crypto.spec.GCMParameterSpec(GCM_TAG_BYTES * 8, nonce),
+        )
+        return nonce + cipher.doFinal(plaintext)
+    }
+
+    private fun legacyAesOpenCombined(combined: ByteArray, key: ByteArray): ByteArray {
+        require(combined.size > GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid wrapped vault key" }
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            javax.crypto.Cipher.DECRYPT_MODE,
+            javax.crypto.spec.SecretKeySpec(key, "AES"),
+            javax.crypto.spec.GCMParameterSpec(GCM_TAG_BYTES * 8, combined.copyOfRange(0, GCM_NONCE_BYTES)),
+        )
+        return cipher.doFinal(combined.copyOfRange(GCM_NONCE_BYTES, combined.size))
     }
 
     fun publicKeyX963(publicKey: PublicKey): ByteArray {
