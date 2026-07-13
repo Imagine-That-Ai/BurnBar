@@ -105,6 +105,60 @@ export type ConfigSnapshot = {
   providers?: ProviderSettings[];
   routerMode?: string;
 };
+
+export type LinuxDeepLinkHandoff = {
+  kind: 'membership' | 'oauth';
+  route: 'account';
+  outcome: 'success' | 'cancel' | 'callback';
+  parameters: Record<string, string>;
+};
+
+export function decodeLinuxDeepLinkHandoff(raw: unknown): LinuxDeepLinkHandoff | null {
+  if (raw === null || raw === undefined) return null;
+  if (!raw || typeof raw !== 'object') throw new Error('Invalid Linux deep-link handoff.');
+  const value = raw as Record<string, unknown>;
+  const kind = value.kind;
+  const route = value.route;
+  const outcome = value.outcome;
+  const parameters = value.parameters;
+  if (
+    (kind !== 'membership' && kind !== 'oauth') ||
+    route !== 'account' ||
+    (outcome !== 'success' && outcome !== 'cancel' && outcome !== 'callback') ||
+    !parameters ||
+    typeof parameters !== 'object' ||
+    Array.isArray(parameters)
+  ) {
+    throw new Error('Invalid Linux deep-link handoff.');
+  }
+  if (kind === 'membership' && (outcome === 'callback' || Object.keys(parameters).length > 0)) {
+    throw new Error('Invalid Linux membership deep-link handoff.');
+  }
+  if (kind === 'oauth' && outcome !== 'callback') {
+    throw new Error('Invalid Linux OAuth deep-link handoff.');
+  }
+  const normalized: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(parameters)) {
+    if (
+      !['code', 'state', 'error', 'error_description'].includes(key) ||
+      typeof entry !== 'string' ||
+      entry.length === 0 ||
+      entry.length > 512 ||
+      [...entry].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)
+    ) {
+      throw new Error('Invalid Linux deep-link handoff.');
+    }
+    normalized[key] = entry;
+  }
+  if (kind === 'oauth') {
+    const hasCode = Object.hasOwn(normalized, 'code');
+    const hasError = Object.hasOwn(normalized, 'error');
+    if (!Object.hasOwn(normalized, 'state') || hasCode === hasError || (Object.hasOwn(normalized, 'error_description') && !hasError)) {
+      throw new Error('Invalid Linux OAuth deep-link handoff.');
+    }
+  }
+  return { kind, route, outcome, parameters: normalized };
+}
 export type ProviderCredentialSlot = {
   slotID: string;
   label: string;
@@ -609,6 +663,7 @@ export interface LinuxShellBridge {
   onboardingSnapshot(): Promise<LinuxOnboardingSnapshot>;
   onboardingAction(request: LinuxOnboardingActionRequest): Promise<LinuxOnboardingSnapshot>;
   onboardingReset(): Promise<LinuxOnboardingSnapshot>;
+  startupDeepLink?(): Promise<LinuxDeepLinkHandoff | null>;
   subscriptionStart(request: DaemonSubscriptionStartRequest): Promise<DaemonSubscriptionResponse>;
   subscriptionResume(request: DaemonSubscriptionResumeRequest): Promise<DaemonSubscriptionResponse>;
   subscriptionStop(request: DaemonSubscriptionStopRequest): Promise<DaemonSubscriptionStopResponse>;
@@ -1949,6 +2004,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       ),
     onboardingReset: async () =>
       decodeLinuxOnboardingSnapshot(await invoke<RawJsonValue>('onboarding_reset')),
+    startupDeepLink: async () =>
+      decodeLinuxDeepLinkHandoff(await invoke<RawJsonValue | null>('startup_deep_link')),
     subscriptionStart: async (request) =>
       decodeDaemonSubscriptionResponse(
         await invoke<RawJsonValue>('subscription_start', { request })

@@ -249,6 +249,139 @@ static GATEWAY_CANCELLATIONS: OnceLock<
     Mutex<HashMap<String, tokio_util::sync::CancellationToken>>,
 > = OnceLock::new();
 
+/// A startup deep link is captured before Tauri creates the webview and read
+/// once by the renderer through `startup_deep_link`. Keeping the value in the
+/// native process avoids trusting `window.location` (which is always the
+/// `tauri://` document URL) and avoids putting OAuth credentials in logs.
+static STARTUP_DEEP_LINK: OnceLock<Mutex<Option<DeepLinkHandoff>>> = OnceLock::new();
+static BACKGROUND_LAUNCH: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeepLinkHandoff {
+    /// Stable event kind consumed by the shell. Unknown kinds are never
+    /// emitted because native parsing is allowlisted below.
+    kind: String,
+    /// Existing shell route that should receive the handoff.
+    route: String,
+    /// Membership outcome or OAuth callback marker.
+    outcome: String,
+    /// Bounded, allowlisted query values for an OAuth callback. Membership
+    /// links intentionally have no query payload.
+    parameters: BTreeMap<String, String>,
+}
+
+fn startup_deep_link_store() -> &'static Mutex<Option<DeepLinkHandoff>> {
+    STARTUP_DEEP_LINK.get_or_init(|| Mutex::new(None))
+}
+
+fn parse_openburnbar_deep_link(raw: &str) -> Result<DeepLinkHandoff, String> {
+    if raw.is_empty() || raw.len() > 2_048 {
+        return Err("deep_link_length_refused".to_string());
+    }
+    if raw.bytes().any(|byte| byte.is_ascii_control()) {
+        return Err("deep_link_control_character_refused".to_string());
+    }
+    let url = reqwest::Url::parse(raw).map_err(|_| "deep_link_invalid".to_string())?;
+    if url.scheme() != "openburnbar"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("deep_link_origin_refused".to_string());
+    }
+
+    let host = url
+        .host_str()
+        .ok_or_else(|| "deep_link_host_required".to_string())?;
+    let path = url.path();
+    let mut parameters = BTreeMap::new();
+    for (name, value) in url.query_pairs() {
+        let name = name.into_owned();
+        let value = value.into_owned();
+        if !matches!(
+            name.as_str(),
+            "code" | "state" | "error" | "error_description"
+        ) {
+            return Err("deep_link_parameter_refused".to_string());
+        }
+        if value.is_empty()
+            || value.len() > 512
+            || value.bytes().any(|byte| byte.is_ascii_control())
+        {
+            return Err("deep_link_parameter_refused".to_string());
+        }
+        if parameters.insert(name, value).is_some() {
+            return Err("deep_link_duplicate_parameter".to_string());
+        }
+    }
+
+    match (host, path) {
+        ("membership", "/success") if parameters.is_empty() => Ok(DeepLinkHandoff {
+            kind: "membership".to_string(),
+            route: "account".to_string(),
+            outcome: "success".to_string(),
+            parameters,
+        }),
+        ("membership", "/cancel") if parameters.is_empty() => Ok(DeepLinkHandoff {
+            kind: "membership".to_string(),
+            route: "account".to_string(),
+            outcome: "cancel".to_string(),
+            parameters,
+        }),
+        ("oauth" | "auth", "/callback") => {
+            let has_code = parameters.contains_key("code");
+            let has_error = parameters.contains_key("error");
+            if parameters.get("state").is_none() || has_code == has_error {
+                return Err("deep_link_oauth_parameters_refused".to_string());
+            }
+            if has_error && parameters.contains_key("error_description") {
+                // The description is meaningful only alongside an OAuth error.
+            } else if parameters.contains_key("error_description") {
+                return Err("deep_link_oauth_parameters_refused".to_string());
+            }
+            Ok(DeepLinkHandoff {
+                kind: "oauth".to_string(),
+                route: "account".to_string(),
+                outcome: "callback".to_string(),
+                parameters,
+            })
+        }
+        _ => Err("deep_link_route_refused".to_string()),
+    }
+}
+
+fn capture_process_launch_args(args: &[String]) {
+    let mut startup_deep_link = None;
+    let mut background = false;
+    for arg in args.iter().skip(1) {
+        if arg == "--background" {
+            background = true;
+            continue;
+        }
+        if arg.starts_with("openburnbar://") {
+            match parse_openburnbar_deep_link(arg) {
+                Ok(link) => {
+                    if startup_deep_link.is_none() {
+                        startup_deep_link = Some(link);
+                    }
+                }
+                Err(error) => tracing::warn!(error = %error, "rejected startup deep link"),
+            }
+        }
+    }
+    BACKGROUND_LAUNCH.store(background, Ordering::Relaxed);
+    if let Ok(mut pending) = startup_deep_link_store().lock() {
+        *pending = startup_deep_link;
+    }
+}
+
+#[tauri::command]
+fn startup_deep_link() -> Option<DeepLinkHandoff> {
+    startup_deep_link_store().lock().ok()?.take()
+}
+
 fn gateway_cancellations() -> &'static Mutex<HashMap<String, tokio_util::sync::CancellationToken>> {
     GATEWAY_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -4284,13 +4417,22 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 fn init_tracing() {
     use tracing_subscriber::{fmt, EnvFilter};
 
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let default_filter = if BACKGROUND_LAUNCH.load(Ordering::Relaxed) {
+        "warn"
+    } else {
+        "info"
+    };
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
     // Discard the result: an existing subscriber (double-init) is not an error.
     let _ = fmt().with_env_filter(filter).with_target(true).try_init();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let args = std::env::args().collect::<Vec<_>>();
+    capture_process_launch_args(&args);
+
     // Fast-exit CLI flags before booting the GUI: a GTK/WebKit app launched
     // headless (packaging smoke, CI) would otherwise spin forever on `--version`.
     for arg in std::env::args().skip(1) {
@@ -4311,7 +4453,7 @@ pub fn run() {
             }
             "--help" | "-h" => {
                 println!(
-                    "OpenBurnBar Linux desktop shell\n\nUsage: openburnbar-linux-desktop [--version] [--daemon-health] [--help]"
+                    "OpenBurnBar Linux desktop shell\n\nUsage: openburnbar-linux-desktop [--background] [openburnbar://...] [--version] [--daemon-health] [--help]"
                 );
                 std::process::exit(0);
             }
@@ -4345,6 +4487,7 @@ pub fn run() {
             onboarding_snapshot,
             onboarding_action,
             onboarding_reset,
+            startup_deep_link,
             subscription_start,
             subscription_resume,
             subscription_stop,
@@ -4416,6 +4559,11 @@ pub fn run() {
             integrations_status
         ])
         .setup(|app| {
+            if BACKGROUND_LAUNCH.load(Ordering::Relaxed) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
             start_packaged_daemon_lifecycle(app.handle().clone());
             if let Err(e) = build_tray(app.handle()) {
                 TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
@@ -4795,6 +4943,62 @@ mod tests {
                 "missing {required}"
             );
         }
+    }
+
+    #[test]
+    fn deep_link_parser_allowlists_membership_and_oauth_routes() {
+        let success = parse_openburnbar_deep_link("openburnbar://membership/success").unwrap();
+        assert_eq!(success.kind, "membership");
+        assert_eq!(success.route, "account");
+        assert_eq!(success.outcome, "success");
+        assert!(success.parameters.is_empty());
+
+        let callback =
+            parse_openburnbar_deep_link("openburnbar://oauth/callback?code=code-1&state=state-1")
+                .unwrap();
+        assert_eq!(callback.kind, "oauth");
+        assert_eq!(callback.outcome, "callback");
+        assert_eq!(callback.parameters.get("code"), Some(&"code-1".to_string()));
+        assert_eq!(
+            callback.parameters.get("state"),
+            Some(&"state-1".to_string())
+        );
+    }
+
+    #[test]
+    fn deep_link_parser_rejects_hostile_origins_routes_and_query_payloads() {
+        for refused in [
+            "https://membership/success",
+            "openburnbar://membership/success?next=https%3A%2F%2Fevil.example",
+            "openburnbar://membership/success#fragment",
+            "openburnbar://evil.example/success",
+            "openburnbar://oauth/callback?code=only",
+            "openburnbar://oauth/callback?code=c&state=s&state=duplicate",
+            "openburnbar://oauth/callback?code=c&state=s&redirect=evil",
+            "openburnbar://oauth/callback?error=denied&state=s&error_description=ok&code=c",
+            "openburnbar://oauth/callback?code=%0A&state=s",
+        ] {
+            assert!(parse_openburnbar_deep_link(refused).is_err(), "{refused}");
+        }
+    }
+
+    #[test]
+    fn process_launch_args_capture_background_and_first_valid_deep_link() {
+        capture_process_launch_args(&[
+            "openburnbar-linux-desktop".to_string(),
+            "--background".to_string(),
+            "openburnbar://evil.example/success".to_string(),
+            "openburnbar://membership/cancel".to_string(),
+            "openburnbar://membership/success".to_string(),
+        ]);
+        assert!(BACKGROUND_LAUNCH.load(Ordering::Relaxed));
+        assert_eq!(
+            startup_deep_link().map(|link| link.outcome),
+            Some("cancel".to_string())
+        );
+        // A second read must not replay a startup URL.
+        assert!(startup_deep_link().is_none());
+        BACKGROUND_LAUNCH.store(false, Ordering::Relaxed);
     }
 
     #[test]

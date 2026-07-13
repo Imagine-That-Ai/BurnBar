@@ -22,6 +22,10 @@ const pairs = [
   {
     canonical: 'packaging/linux/openburnbar.desktop',
     copy: 'packaging/linux/aur/openburnbar.desktop'
+  },
+  {
+    canonical: 'packaging/linux/autostart/openburnbar.desktop',
+    copy: 'packaging/linux/aur/openburnbar-autostart.desktop'
   }
 ];
 

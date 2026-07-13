@@ -70,6 +70,7 @@ test('AUR package staging installs canonical Browser Computer Use resources with
   const localAssets = [
     'openburnbar.desktop',
     'openburnbar-safe-mode.desktop',
+    'openburnbar-autostart.desktop',
     'openburnbar-daemon.service',
     'openburnbar-daemon-launch'
   ];
@@ -125,6 +126,9 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     const iroh = path.join(pkgdir, 'usr/lib/openburnbar/native/libopenburnbar_iroh.so');
     assert.equal(fs.readFileSync(iroh, 'utf8'), 'iroh');
     assert.equal(fs.statSync(iroh).mode & 0o777, 0o644);
+    const autostart = path.join(pkgdir, 'etc/xdg/autostart/openburnbar.desktop');
+    assert.deepEqual(fs.readFileSync(autostart), fs.readFileSync(path.join(srcdir, 'openburnbar-autostart.desktop')));
+    assert.equal(fs.statSync(autostart).mode & 0o777, 0o644);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
