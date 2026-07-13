@@ -17,11 +17,12 @@ node scripts/test-playwright-bridge-guard.mjs
 
 The continuation commits are `9219ee737e` (browser bridge protocol),
 `0394a9fe03` (Elder Wand fusion command), `47b8db89b5` (provider response
-bound), and the current project-memory composition commit (project-code
-watcher/index plus companion `code.*` operations). Their focused tests are
-included in the current local validation run. A macOS-hosted app build reaches
-all managed projects but cannot execute WinUI's Windows-only `XamlCompiler.exe`;
-the Windows CI/host build remains the authoritative XAML validation surface.
+bound), `1e82b11e6f` (project-code watcher/index plus companion `code.*`
+operations), and `bcaeb38b9e` (mission planner, payload bounds, and rate
+limiter). Their focused tests are included in the current local validation
+run. A macOS-hosted app build reaches all managed projects but cannot execute
+WinUI's Windows-only `XamlCompiler.exe`; the Windows CI/host build remains the
+authoritative XAML validation surface.
 
 The F1 parity ledger remains the machine-scanned 46-row source/product gate.
 WPD-0009 still defines F2 True 1:1 as the full parity finish line and requires
