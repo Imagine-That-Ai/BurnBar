@@ -1021,9 +1021,8 @@ export type SmartHubCommandResult =
   | { operation: 'parity'; payload: IntegrationsStatus };
 
 // ─────────────────────────── P29: text expansion ──────────────────────────
-// These wire types mirror OpenBurnBarCore's TextExpansionSnapshot and
-// TextExpansionSnippet. Linux only accepts the in-app surface; the native
-// commands are local Tauri storage commands, not invented daemon RPC methods.
+// These wire types mirror OpenBurnBarCore's daemon-owned snapshot contracts.
+// Linux only accepts the in-app surface; no global keyboard hook is installed.
 export type TextExpansionMode = 'static' | 'llm_rewrite';
 export type TextExpansionSurface = 'in_app_thread' | 'mac_global' | 'ios_keyboard' | 'android_ime';
 export type TextExpansionScope = {
@@ -1050,6 +1049,12 @@ export type TextExpansionSnapshot = {
   schemaVersion: number;
   exportedAt: string;
   snippets: TextExpansionWireSnippet[];
+  consent?: TextExpansionConsent | null;
+};
+export type TextExpansionConsent = {
+  inAppOnly: boolean;
+  acknowledgedAt: string;
+  declinedGlobalCapture: boolean;
 };
 
 export type GatewayProxyMessage = {
@@ -1243,6 +1248,7 @@ export interface LinuxShellBridge {
   textExpansionList?(): Promise<TextExpansionSnapshot>;
   textExpansionUpsert?(snippet: TextExpansionWireSnippet): Promise<TextExpansionWireSnippet>;
   textExpansionDelete?(id: string): Promise<TextExpansionSnapshot>;
+  textExpansionConsentUpdate?(consent: Omit<TextExpansionConsent, 'acknowledgedAt'>): Promise<TextExpansionConsent>;
   toolApprovalRespond?(
     approvalId: string,
     decision: 'approve' | 'reject' | 'cancel',
@@ -2993,10 +2999,29 @@ function mapTextExpansionSnapshot(raw: RawJsonValue): TextExpansionSnapshot {
     throw new Error('Native text expansion returned an unsupported schema.');
   }
   const snippets = arr(pick(value, 'snippets')).map(mapTextExpansionSnippet);
+  const rawConsent = pick(value, 'consent');
+  const consentValue = rawConsent === undefined || rawConsent === null ? null : obj(rawConsent);
+  const consent = consentValue
+    ? {
+        inAppOnly: Boolean(pick(consentValue, 'inAppOnly', 'in_app_only')),
+        acknowledgedAt: requireTimestamp(pick(consentValue, 'acknowledgedAt', 'acknowledged_at'), 'text expansion consent.acknowledgedAt'),
+        declinedGlobalCapture: Boolean(pick(consentValue, 'declinedGlobalCapture', 'declined_global_capture'))
+      }
+    : null;
   return {
     schemaVersion,
     exportedAt: str(pick(value, 'exportedAt', 'exported_at'), new Date().toISOString()),
-    snippets
+    snippets,
+    consent
+  };
+}
+
+function mapTextExpansionConsent(raw: RawJsonValue): TextExpansionConsent {
+  const value = obj(pick(raw, 'consent') ?? raw);
+  return {
+    inAppOnly: Boolean(pick(value, 'inAppOnly', 'in_app_only')),
+    acknowledgedAt: requireTimestamp(pick(value, 'acknowledgedAt', 'acknowledged_at'), 'text expansion consent.acknowledgedAt'),
+    declinedGlobalCapture: Boolean(pick(value, 'declinedGlobalCapture', 'declined_global_capture'))
   };
 }
 
@@ -3677,8 +3702,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       decodeNativeNotificationResult(await invoke<RawJsonValue>('native_notification_show', { request })),
     nativeShortcutStatus: async () =>
       decodeNativeShortcutStatus(await invoke<RawJsonValue>('native_shortcut_status')),
-    // P29 — local owner-only TextExpansionSnapshot storage. These commands do
-    // not claim a daemon RPC; older shells can fall back to the in-app store.
+    // P29 — authenticated daemon-owned encrypted text-expansion storage.
     textExpansionList: async () => {
       const raw = await invoke<RawJsonValue>('text_expansion_list');
       return mapTextExpansionSnapshot(raw);
@@ -3690,6 +3714,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     textExpansionDelete: async (id) => {
       const raw = await invoke<RawJsonValue>('text_expansion_delete', { id });
       return mapTextExpansionSnapshot(raw);
+    },
+    textExpansionConsentUpdate: async (consent) => {
+      const raw = await invoke<RawJsonValue>('text_expansion_consent_update', { consent });
+      return mapTextExpansionConsent(raw);
     },
     // P07 — derived from daemon.config.get + daemon.health
     dbStatus: async () => {

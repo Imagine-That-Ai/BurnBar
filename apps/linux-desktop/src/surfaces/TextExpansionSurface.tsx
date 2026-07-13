@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Banner } from '../components/Banner.js';
 import { PARITY_LEDGER } from '../parityLedger.js';
-import { readTextExpansionConsent, writeTextExpansionConsent } from '../textExpansionConsent.js';
+import {
+  configureTextExpansionConsentStorage,
+  hydrateTextExpansionConsentStorage,
+  readTextExpansionConsent,
+  textExpansionConsentError,
+  writeTextExpansionConsent
+} from '../textExpansionConsent.js';
 import {
   expandInAppBuffer,
   findTriggerConflict,
@@ -34,32 +40,40 @@ export function TextExpansionSurface() {
   const textExpansionList = bridge?.textExpansionList;
   const textExpansionUpsert = bridge?.textExpansionUpsert;
   const textExpansionDelete = bridge?.textExpansionDelete;
-  const nativeStorageAvailable = Boolean(textExpansionList && textExpansionUpsert && textExpansionDelete);
+  const textExpansionConsentUpdate = bridge?.textExpansionConsentUpdate;
+  const nativeStorageAvailable = Boolean(
+    textExpansionList && textExpansionUpsert && textExpansionDelete && textExpansionConsentUpdate
+  );
   const nativeUnavailable = bridgeReady && !fixtureMode && !nativeStorageAvailable;
   const consent = readTextExpansionConsent();
   const snippets = useMemo(() => listSnippets(), [version]);
   const editing = editingId ? snippets.find((s) => s.id === editingId) : undefined;
   useEffect(() => {
-    const storage = bridge && textExpansionList && textExpansionUpsert && textExpansionDelete
+    const storage = bridge && textExpansionList && textExpansionUpsert && textExpansionDelete && textExpansionConsentUpdate
       ? {
           textExpansionList: textExpansionList.bind(bridge),
           textExpansionUpsert: textExpansionUpsert.bind(bridge),
-          textExpansionDelete: textExpansionDelete.bind(bridge)
+          textExpansionDelete: textExpansionDelete.bind(bridge),
+          textExpansionConsentUpdate: textExpansionConsentUpdate.bind(bridge)
         }
       : null;
     configureTextExpansionStorageWithPolicy(storage, !bridgeReady || fixtureMode);
+    configureTextExpansionConsentStorage(storage, !bridgeReady || fixtureMode);
     if (!bridgeReady) return;
     let cancelled = false;
-    void hydrateTextExpansionStorage(storage).then(() => {
+    void Promise.all([
+      hydrateTextExpansionStorage(storage),
+      hydrateTextExpansionConsentStorage(storage)
+    ]).then(() => {
       if (!cancelled) {
-        setStorageError(textExpansionStorageError());
+        setStorageError(textExpansionStorageError() ?? textExpansionConsentError());
         setVersion((value) => value + 1);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [bridge, bridgeReady, fixtureMode, textExpansionList, textExpansionUpsert, textExpansionDelete]);
+  }, [bridge, bridgeReady, fixtureMode, textExpansionList, textExpansionUpsert, textExpansionDelete, textExpansionConsentUpdate]);
   useEffect(() => {
     setTriggerDraft(editing?.trigger ?? '');
   }, [editing?.id, editing?.trigger]);

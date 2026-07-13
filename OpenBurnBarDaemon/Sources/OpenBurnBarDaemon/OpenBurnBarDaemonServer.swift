@@ -100,6 +100,7 @@ public actor BurnBarDaemonServer {
     let indexedSearch: BurnBarIndexedSearchService?
     let projectCodeMemory: BurnBarProjectCodeMemoryStore?
     let databaseRecoveryService: BurnBarDatabaseRecoveryBundleService?
+    let textExpansionService: BurnBarTextExpansionService?
     let resumeService: BurnBarResumeService?
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
@@ -570,6 +571,14 @@ public actor BurnBarDaemonServer {
             self.databaseRecoveryService = nil
             self.resumeService = nil
         }
+
+        #if os(Linux)
+        self.textExpansionService = BurnBarTextExpansionService(
+            logger: BurnBarDaemonLogger(category: "text-expansion")
+        )
+        #else
+        self.textExpansionService = nil
+        #endif
 
         // HTTP gateway — only initialized if enabled.
         if configuration.gateway.isEnabled {
@@ -1172,6 +1181,7 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
+                 .textExpansionGet, .textExpansionUpsert, .textExpansionDelete, .textExpansionConsentUpdate,
                  .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
                  .providerModelVariantUpsert, .providerModelVariantRemove,
                  .providerModelAliasUpsert, .providerModelAliasRemove,

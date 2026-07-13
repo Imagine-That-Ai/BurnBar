@@ -1,12 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { writeTextExpansionConsent } from '../../textExpansionConsent.js';
-import { upsertSnippet } from '../../textExpansionStore.js';
+import { configureTextExpansionConsentStorage, writeTextExpansionConsent } from '../../textExpansionConsent.js';
+import { configureTextExpansionStorage, upsertSnippet } from '../../textExpansionStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { TextExpansionSurface } from '../TextExpansionSurface.js';
 
 beforeEach(() => {
   localStorage.clear();
+  configureTextExpansionStorage(null);
+  configureTextExpansionConsentStorage(null, true);
   useShellStore.setState({ bridge: null, bridgeReady: true, fixtureMode: true });
   writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
 });

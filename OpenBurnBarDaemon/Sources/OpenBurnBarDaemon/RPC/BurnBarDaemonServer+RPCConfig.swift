@@ -29,6 +29,75 @@ extension BurnBarDaemonServer {
                 result: BurnBarConfigResponse(snapshot: snapshot)
             )
             return encode(response)
+        case .textExpansionGet:
+            let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+            guard let textExpansionService else {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: "Native text expansion storage is unavailable."
+                )
+            }
+            return encode(
+                BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    result: try textExpansionService.snapshot()
+                )
+            )
+        case .textExpansionUpsert:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarTextExpansionUpsertRequest>.self,
+                from: requestData
+            )
+            guard let textExpansionService else {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: "Native text expansion storage is unavailable."
+                )
+            }
+            return encode(
+                BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    result: try textExpansionService.upsert(typedRequest.params)
+                )
+            )
+        case .textExpansionDelete:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarTextExpansionDeleteRequest>.self,
+                from: requestData
+            )
+            guard let textExpansionService else {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: "Native text expansion storage is unavailable."
+                )
+            }
+            return encode(
+                BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    result: try textExpansionService.delete(typedRequest.params)
+                )
+            )
+        case .textExpansionConsentUpdate:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarTextExpansionConsentUpdateRequest>.self,
+                from: requestData
+            )
+            guard let textExpansionService else {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: "Native text expansion storage is unavailable."
+                )
+            }
+            return encode(
+                BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    result: try textExpansionService.updateConsent(typedRequest.params)
+                )
+            )
         case .linuxOnboardingAction:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarLinuxOnboardingActionRequest>.self,

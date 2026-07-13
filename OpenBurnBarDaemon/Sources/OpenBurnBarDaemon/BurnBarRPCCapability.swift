@@ -66,6 +66,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .lifecycle
         case .linuxAuthBegin, .linuxAuthCancel, .linuxAuthRotateIdentity, .linuxAuthSignOut,
              .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
+             .textExpansionGet, .textExpansionUpsert, .textExpansionDelete, .textExpansionConsentUpdate,
              .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
              .providerModelVariantUpsert, .providerModelVariantRemove,
              .providerModelAliasUpsert, .providerModelAliasRemove,

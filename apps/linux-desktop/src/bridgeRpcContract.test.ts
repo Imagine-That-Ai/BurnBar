@@ -149,15 +149,25 @@ describe('VAL-RPC bridge contract', () => {
     expect(rustBridge).toContain('smarthub_operation_not_allowlisted');
     expect(tsBridge).toContain("invoke<RawJsonValue>('smarthub_command'");
     expect(tsBridge).not.toContain('runCli');
+  });
 
-  it('keeps text expansion storage local to typed Tauri commands', () => {
+  it('routes text expansion through typed daemon RPC methods', () => {
     expect(rustBridge).toContain('fn text_expansion_list');
     expect(rustBridge).toContain('fn text_expansion_upsert');
     expect(rustBridge).toContain('fn text_expansion_delete');
     expect(tsBridge).toContain("'text_expansion_list'");
     expect(tsBridge).toContain("'text_expansion_upsert'");
     expect(tsBridge).toContain("'text_expansion_delete'");
-    expect(canonicalRpc).not.toContain('daemon.textexpansion.');
+    expect(tsBridge).toContain("'text_expansion_consent_update'");
+    for (const method of [
+      'daemon.text_expansion.get',
+      'daemon.text_expansion.upsert',
+      'daemon.text_expansion.delete',
+      'daemon.text_expansion.consent.update'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc).toContain(`id: "${method}"`);
+    }
   });
 
   it('wires daemon-owned Linux auth without renderer credential material', () => {

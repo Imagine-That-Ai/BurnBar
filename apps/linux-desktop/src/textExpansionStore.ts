@@ -24,29 +24,16 @@ export type TextExpansionStorageBackend = {
   textExpansionDelete(id: string): Promise<TextExpansionSnapshot>;
 };
 
-const KEY = 'openburnbar.linux.textExpansion.v1';
 const IN_APP_SURFACE = 'in_app_thread' as const;
+const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
+const MAX_SNIPPETS = 500;
 
 let backend: TextExpansionStorageBackend | null = null;
 let backendReady = false;
 let nativeItems: TextExpansionSnippet[] = [];
+let memoryItems: TextExpansionSnippet[] = [];
 let backendError: string | null = null;
 let allowLocalFallback = true;
-
-function loadLocal(): TextExpansionSnippet[] {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as TextExpansionSnippet[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveLocal(items: TextExpansionSnippet[]): void {
-  localStorage.setItem(KEY, JSON.stringify(items));
-}
 
 function now(): string {
   return new Date().toISOString();
@@ -106,7 +93,7 @@ function fromSnapshot(snapshot: TextExpansionSnapshot): TextExpansionSnippet[] {
 }
 
 function activeItems(): TextExpansionSnippet[] {
-  return backendReady ? nativeItems : loadLocal();
+  return backendReady ? nativeItems : memoryItems;
 }
 
 function sortSnippets(items: TextExpansionSnippet[]): TextExpansionSnippet[] {
@@ -151,10 +138,11 @@ export function configureTextExpansionStorageWithPolicy(
   next: TextExpansionStorageBackend | null,
   allowFallback: boolean
 ): void {
-  if (backend === next && allowLocalFallback === allowFallback && (next === null || backendReady)) return;
+  if (backend === next && allowLocalFallback === allowFallback && next !== null && backendReady) return;
   backend = next;
   backendReady = false;
   nativeItems = [];
+  memoryItems = [];
   allowLocalFallback = allowFallback;
   backendError = next || allowFallback ? null : 'Native text expansion storage is unavailable.';
 }
@@ -163,7 +151,7 @@ export function textExpansionStorageError(): string | null {
   return backendError;
 }
 
-/** Hydrate native storage and migrate the old localStorage representation once. */
+/** Hydrate daemon-owned storage. Fixture mode uses memory only and never localStorage. */
 export async function hydrateTextExpansionStorage(
   next: TextExpansionStorageBackend | null = backend
 ): Promise<TextExpansionSnippet[]> {
@@ -174,22 +162,7 @@ export async function hydrateTextExpansionStorage(
     return allowLocalFallback ? listSnippets() : [];
   }
   try {
-    let snapshot = await backend.textExpansionList();
-    let items = fromSnapshot(snapshot);
-    const localItems = loadLocal();
-    if (items.length === 0 && localItems.length > 0) {
-      for (const item of localItems) {
-        await backend.textExpansionUpsert(toWireSnippet(item));
-      }
-      snapshot = await backend.textExpansionList();
-      items = fromSnapshot(snapshot);
-      try {
-        localStorage.removeItem(KEY);
-      } catch {
-        // Native persistence succeeded; retaining a failed cleanup is harmless.
-      }
-    }
-    nativeItems = items;
+    nativeItems = fromSnapshot(await backend.textExpansionList());
     backendReady = true;
     backendError = null;
     return listSnippets();
@@ -214,7 +187,7 @@ export function upsertSnippet(
       backendError = error instanceof Error ? error.message : 'Native text expansion save failed.';
     });
   } else if (allowLocalFallback) {
-    saveLocal(replaceItem(loadLocal(), next));
+    memoryItems = replaceItem(memoryItems, next);
   } else {
     backendError = 'Native text expansion storage is unavailable.';
   }
@@ -227,7 +200,7 @@ export async function upsertSnippetPersisted(
   const next = buildSnippet(input);
   if (!backendReady || !backend) {
     if (!allowLocalFallback) throw new Error('Native text expansion storage is unavailable.');
-    saveLocal(replaceItem(loadLocal(), next));
+    memoryItems = replaceItem(memoryItems, next);
     return next;
   }
   const previous = nativeItems;
@@ -252,7 +225,7 @@ export function deleteSnippet(id: string): void {
       backendError = error instanceof Error ? error.message : 'Native text expansion delete failed.';
     });
   } else if (allowLocalFallback) {
-    saveLocal(loadLocal().filter((snippet) => snippet.id !== id));
+    memoryItems = memoryItems.filter((snippet) => snippet.id !== id);
   } else {
     backendError = 'Native text expansion storage is unavailable.';
   }
@@ -261,7 +234,7 @@ export function deleteSnippet(id: string): void {
 export async function deleteSnippetPersisted(id: string): Promise<void> {
   if (!backendReady || !backend) {
     if (!allowLocalFallback) throw new Error('Native text expansion storage is unavailable.');
-    saveLocal(loadLocal().filter((snippet) => snippet.id !== id));
+    memoryItems = memoryItems.filter((snippet) => snippet.id !== id);
     return;
   }
   const previous = nativeItems;
@@ -308,6 +281,9 @@ function isSnippetShape(value: unknown): value is Omit<TextExpansionSnippet, 'id
 type ImportResult = { result: { added: number; skipped: number }; addedItems: TextExpansionSnippet[] };
 
 function applyImport(json: string): ImportResult {
+  if (new TextEncoder().encode(json).byteLength > MAX_IMPORT_BYTES) {
+    throw new Error('Import exceeds the 4 MiB size limit.');
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
@@ -316,6 +292,9 @@ function applyImport(json: string): ImportResult {
   }
   if (!Array.isArray(parsed)) {
     throw new Error('Import must be a JSON array of snippets.');
+  }
+  if (parsed.length > MAX_SNIPPETS) {
+    throw new Error('Import exceeds the 500-snippet limit.');
   }
   const items = activeItems();
   const byId = new Map(items.map((snippet) => [snippet.id, snippet]));
@@ -355,7 +334,7 @@ function applyImport(json: string): ImportResult {
     added += 1;
   }
   if (backendReady) nativeItems = items;
-  else if (allowLocalFallback) saveLocal(items);
+  else if (allowLocalFallback) memoryItems = items;
   return { result: { added, skipped }, addedItems };
 }
 

@@ -147,12 +147,12 @@ describe('native snapshot storage boundary', () => {
     };
   }
 
-  it('hydrates the canonical snapshot and migrates the old local fallback', async () => {
+  it('hydrates daemon storage without migrating renderer state', async () => {
     upsertSnippet({ title: 'Local', trigger: ';;local', body: 'LOCAL', enabled: true });
     const fake = backend();
     await hydrateTextExpansionStorage(fake);
-    expect(fake.state().snippets[0]?.trigger).toBe('local');
-    expect(listSnippets()[0]?.trigger).toBe(';;local');
+    expect(fake.state().snippets).toHaveLength(0);
+    expect(listSnippets()).toHaveLength(0);
     expect(localStorage.getItem('openburnbar.linux.textExpansion.v1')).toBeNull();
   });
 

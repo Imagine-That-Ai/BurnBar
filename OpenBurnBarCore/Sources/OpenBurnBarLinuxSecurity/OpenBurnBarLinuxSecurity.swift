@@ -21,6 +21,9 @@ public enum LinuxSecretTrustLevel: String, Codable, CaseIterable, Sendable {
 
 public enum LinuxHighValueSecretClass: String, Codable, CaseIterable, Sendable {
     case databaseKey = "database_key"
+    /// AES-GCM key for daemon-owned text expansion persistence. The snippets
+    /// themselves never enter the renderer's durable storage.
+    case textExpansionKey = "text_expansion_key"
     case signalIdentityKey = "signal_identity_key"
     case cloudVaultKey = "cloud_vault_key"
     case refreshToken = "refresh_token"

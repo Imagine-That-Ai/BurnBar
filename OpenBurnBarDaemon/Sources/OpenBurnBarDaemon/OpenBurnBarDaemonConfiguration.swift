@@ -116,6 +116,12 @@ public enum BurnBarDaemonPaths {
     public static var defaultLinuxOnboardingStateURL: URL {
         supportDirectoryURL.appendingPathComponent("linux-onboarding-state.json", isDirectory: false)
     }
+
+    /// AES-GCM sealed Linux text-expansion snapshot. The key lives in the
+    /// native Secret Service/KWallet custodian; this path is never renderer-owned.
+    public static var defaultTextExpansionURL: URL {
+        supportDirectoryURL.appendingPathComponent("text-expansion-v1.obbsealed", isDirectory: false)
+    }
 }
 
 public enum BurnBarDaemonVersion {
