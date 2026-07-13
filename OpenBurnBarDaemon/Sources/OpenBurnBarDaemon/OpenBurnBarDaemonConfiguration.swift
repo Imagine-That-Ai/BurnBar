@@ -276,7 +276,8 @@ public struct BurnBarDaemonConfiguration: Sendable {
     public let socketAuthToken: String?
     public let daemonVersion: String
     public let catalog: BurnBarCatalog
-    /// Read-only path to the OpenBurnBar app SQLite database (`openburnbar.sqlite`) for indexed search RPC.
+    /// Path to the canonical local OpenBurnBar SQLite database (`openburnbar.sqlite`).
+    /// Search opens it read-only; daemon chat authority performs bounded transactional writes.
     public let indexDatabasePath: String?
     /// HTTP gateway configuration for OpenBurnBar Hydrant client access.
     public let gateway: BurnBarGatewayConfiguration

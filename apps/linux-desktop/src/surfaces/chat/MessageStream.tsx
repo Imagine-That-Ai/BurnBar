@@ -180,6 +180,14 @@ export function MessageStream({
           if (m.role === 'tool') return <ToolCard key={m.id} message={m} />;
           if (m.role === 'thinking') return <ThinkingBlock key={m.id} message={m} />;
 
+          if (m.role === 'system') {
+            return (
+              <div key={m.id} className="chat-system-message" role="note" aria-label="System message">
+                {m.text}
+              </div>
+            );
+          }
+
           if (m.role === 'user') {
             return (
               <div key={m.id} className="chat-bubble-row chat-bubble-row--user">

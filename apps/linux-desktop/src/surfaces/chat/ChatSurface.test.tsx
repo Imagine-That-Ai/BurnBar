@@ -3,15 +3,21 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fixtureSessionList } from '../../daemonFixture.js';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
-import type { GatewayProxyRequest, LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
+import type {
+  ChatThreadGetResult,
+  ChatThreadListResult,
+  GatewayProxyRequest,
+  LinuxShellBridge,
+  SessionListResult
+} from '../../tauriBridge.js';
 import { useChatStore } from '../../state/chatStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
 import { ChatSurface } from './ChatSurface.js';
 
 function mockBridge(handlers: {
-  sessionList?: () => Promise<SessionListResult>;
-  sessionSearch?: (query: string) => Promise<SessionListResult>;
+  chatThreadList?: (query?: string, limit?: number) => Promise<ChatThreadListResult>;
+  chatThreadGet?: (threadID: string, maxMessages?: number) => Promise<ChatThreadGetResult>;
   gatewayProbe?: () => Promise<boolean>;
   gatewayChatStream?: (request: GatewayProxyRequest, onChunk: (chunk: string) => void) => Promise<void>;
 }): LinuxShellBridge {
@@ -31,8 +37,20 @@ function mockBridge(handlers: {
       recentEvents: []
     }),
     providerCatalog: async () => [],
-    sessionList: handlers.sessionList ?? emptyList,
-    sessionSearch: handlers.sessionSearch ?? emptyList,
+    sessionList: emptyList,
+    sessionSearch: emptyList,
+    chatThreadList: handlers.chatThreadList ?? (async () => ({ threads: [] })),
+    chatThreadGet: handlers.chatThreadGet ?? (async (threadID) => ({
+      messages: [{
+        id: `${threadID}-message`,
+        threadID,
+        role: 'assistant',
+        content: `Persisted message for ${threadID}`,
+        timestamp: '2026-07-10T12:00:00Z'
+      }],
+      hasMoreBefore: false
+    })),
+    chatMessageAppend: bridgeStubDefaults.chatMessageAppend,
     usageInsights: async () => ({ weekly: [], providerMix: [], modelMix: [], cacheHitRatePct: 0 }),
     missionList: async () => ({ missions: [], pendingApprovals: [] }),
     missionApprovalDecision: async () => {},
@@ -96,6 +114,21 @@ function mockBridge(handlers: {
   return bridge;
 }
 
+function chatThreadsFromSessions(result: SessionListResult): ChatThreadListResult {
+  return {
+    threads: result.sessions.map((session) => ({
+      id: session.id,
+      title: session.title,
+      preview: `${session.provider} / ${session.model}`,
+      messageCount: 1,
+      createdAt: session.startedAt,
+      updatedAt: session.startedAt,
+      lastMessageAt: session.startedAt,
+      backendID: session.provider
+    }))
+  };
+}
+
 const resetChatStore = () => {
   useChatStore.setState({
     threads: [],
@@ -137,7 +170,7 @@ describe('ChatSurface', () => {
 
   it('shows empty state when no threads', async () => {
     useShellStore.setState({
-      bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }) }),
+      bridge: mockBridge({ chatThreadList: async () => ({ threads: [] }) }),
       fixtureMode: false,
       bridgeReady: true
     });
@@ -147,10 +180,10 @@ describe('ChatSurface', () => {
     });
   });
 
-  it('renders thread rail and messages from fixture sessions', async () => {
+  it('renders persisted thread summaries and messages', async () => {
     const list = fixtureSessionList();
     useShellStore.setState({
-      bridge: mockBridge({ sessionList: async () => list }),
+      bridge: mockBridge({ chatThreadList: async () => chatThreadsFromSessions(list) }),
       fixtureMode: false,
       bridgeReady: true
     });
@@ -161,10 +194,42 @@ describe('ChatSurface', () => {
     expect(screen.getAllByText(list.sessions[0].title).length).toBeGreaterThan(0);
   });
 
+  it('renders persisted system messages with an accessible system label', async () => {
+    const summary = {
+      id: 'thread-system',
+      title: 'Policy thread',
+      preview: 'Pinned policy',
+      messageCount: 1,
+      createdAt: '2026-07-10T12:00:00Z',
+      updatedAt: '2026-07-10T12:00:00Z'
+    };
+    useShellStore.setState({
+      bridge: mockBridge({
+        chatThreadList: async () => ({ threads: [summary] }),
+        chatThreadGet: async () => ({
+          thread: summary,
+          messages: [{
+            id: 'system-1',
+            threadID: summary.id,
+            role: 'system',
+            content: 'Pinned policy context',
+            timestamp: '2026-07-10T12:00:00Z'
+          }],
+          hasMoreBefore: false
+        })
+      }),
+      fixtureMode: false,
+      bridgeReady: true
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('note', { name: /System message/i })).toBeTruthy());
+    expect(screen.getByText(/live daemon chat history/i)).toBeTruthy();
+  });
+
   it('shows error banner on fetch failure', async () => {
     useShellStore.setState({
       bridge: mockBridge({
-        sessionList: async () => {
+        chatThreadList: async () => {
           throw new Error('daemon down');
         }
       }),
@@ -191,7 +256,7 @@ describe('ChatSurface', () => {
   it('shows streaming stop control when streaming flag is set', async () => {
     const list = fixtureSessionList();
     useShellStore.setState({
-      bridge: mockBridge({ sessionList: async () => list }),
+      bridge: mockBridge({ chatThreadList: async () => chatThreadsFromSessions(list) }),
       fixtureMode: true,
       bridgeReady: true
     });
@@ -236,7 +301,7 @@ describe('ChatSurface', () => {
   it('uses backend-specific composer placeholder for Codex', async () => {
     const list = fixtureSessionList();
     useShellStore.setState({
-      bridge: mockBridge({ sessionList: async () => list }),
+      bridge: mockBridge({ chatThreadList: async () => chatThreadsFromSessions(list) }),
       fixtureMode: true,
       bridgeReady: true
     });
@@ -276,7 +341,7 @@ describe('ChatSurface', () => {
       })
     );
     useShellStore.setState({
-      bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }) }),
+      bridge: mockBridge({ chatThreadList: async () => ({ threads: [] }) }),
       fixtureMode: false,
       bridgeReady: true,
       health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
@@ -289,7 +354,7 @@ describe('ChatSurface', () => {
   it('renders an unimplemented response from the native gateway proxy honestly', async () => {
     useShellStore.setState({
       bridge: mockBridge({
-        sessionList: async () => ({ sessions: [], nextCursor: null }),
+        chatThreadList: async () => ({ threads: [] }),
         gatewayProbe: async () => true,
         gatewayChatStream: async () => {
           throw new Error('gateway_http:503:chat completions unimplemented');

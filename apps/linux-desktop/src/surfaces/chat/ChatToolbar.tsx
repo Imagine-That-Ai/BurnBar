@@ -1,9 +1,9 @@
 import { BackendStrip } from './BackendStrip.js';
-import type { SessionEntry } from '../../tauriBridge.js';
+import type { ChatThreadSummary } from '../../tauriBridge.js';
 import type { ChatBackendId } from './chatTypes.js';
 
 type ChatToolbarProps = {
-  thread: SessionEntry | null;
+  thread: ChatThreadSummary | null;
   gatewayHint: string | null;
   backend: ChatBackendId;
   modelLabel: string;
