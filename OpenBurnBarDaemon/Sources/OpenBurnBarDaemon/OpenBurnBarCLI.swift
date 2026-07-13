@@ -538,11 +538,28 @@ public struct BurnBarSystemdUserServiceController: BurnBarCLIServiceControlling,
         guard serviceName == "openburnbar-daemon.service" else {
             throw BurnBarCLIServiceControlError.invalidServiceName
         }
+        if let bundledUnit = bundledAppImageUnitURL() {
+            try runSystemctl(arguments: ["--user", "link", bundledUnit.path], linkBundledUnit: false)
+        }
+        try runSystemctl(arguments: arguments, linkBundledUnit: false)
+        #else
+        throw BurnBarCLIServiceControlError.systemdUnavailable
+        #endif
+    }
+
+    private func runSystemctl(arguments: [String], linkBundledUnit: Bool) throws {
+        #if os(Linux)
+        guard serviceName == "openburnbar-daemon.service" else {
+            throw BurnBarCLIServiceControlError.invalidServiceName
+        }
         let executable = ["/usr/bin/systemctl", "/bin/systemctl"].first {
             FileManager.default.isExecutableFile(atPath: $0)
         }
         guard let executable else {
             throw BurnBarCLIServiceControlError.systemdUnavailable
+        }
+        if linkBundledUnit, let bundledUnit = bundledAppImageUnitURL() {
+            try runSystemctl(arguments: ["--user", "link", bundledUnit.path], linkBundledUnit: false)
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
@@ -560,8 +577,17 @@ public struct BurnBarSystemdUserServiceController: BurnBarCLIServiceControlling,
                 detail ?? "systemctl exited \(process.terminationStatus)"
             )
         }
+        #endif
+    }
+
+    private func bundledAppImageUnitURL() -> URL? {
+        #if os(Linux)
+        guard let appDir = ProcessInfo.processInfo.environment["APPDIR"], !appDir.isEmpty else { return nil }
+        let unit = URL(fileURLWithPath: appDir, isDirectory: true)
+            .appendingPathComponent("usr/lib/systemd/user/openburnbar-daemon.service")
+        return FileManager.default.isReadableFile(atPath: unit.path) ? unit : nil
         #else
-        throw BurnBarCLIServiceControlError.systemdUnavailable
+        return nil
         #endif
     }
 }
@@ -570,6 +596,7 @@ public enum BurnBarCLIServiceControlError: Error, LocalizedError, Sendable {
     case invalidServiceName
     case systemdUnavailable
     case commandFailed(String)
+    case customSocketUnsupported
 
     public var errorDescription: String? {
         switch self {
@@ -579,6 +606,8 @@ public enum BurnBarCLIServiceControlError: Error, LocalizedError, Sendable {
             return "The Linux systemd user service is unavailable on this platform."
         case .commandFailed(let detail):
             return "OpenBurnBar systemd service command failed: \(detail)"
+        case .customSocketUnsupported:
+            return "Service control cannot validate a daemon on an overridden socket path."
         }
     }
 }
@@ -765,8 +794,7 @@ public struct BurnBarCLIRunner {
                     output: try run(arguments: effectiveArguments),
                     exitCode: EXIT_SUCCESS
                 )
-            } catch BurnBarCLIServiceControlError.systemdUnavailable,
-                    BurnBarCLIServiceControlError.commandFailed {
+            } catch BurnBarCLIServiceControlError.systemdUnavailable {
                 return BurnBarCLIInvocationResult(
                     output: "service_restart=unsupported foreground_daemon=true",
                     exitCode: 69
@@ -870,6 +898,11 @@ public struct BurnBarCLIRunner {
                 return formatServiceStatus(health, service: "foreground", detail: "started=true")
             }
         case "restart":
+            if ProcessInfo.processInfo.environment["OPENBURNBAR_SOCKET_PATH"] != nil
+                || ProcessInfo.processInfo.environment["OPENBURNBAR_DAEMON_SOCKET_PATH"] != nil
+                || ProcessInfo.processInfo.environment["BURNBAR_DAEMON_SOCKET_PATH"] != nil {
+                throw BurnBarCLIServiceControlError.customSocketUnsupported
+            }
             try serviceController.restart()
             let health = try waitForServiceHealth()
             return formatServiceStatus(health, service: "restarted", detail: "restart_requested=true")
