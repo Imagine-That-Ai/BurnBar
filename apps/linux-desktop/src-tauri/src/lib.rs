@@ -2448,6 +2448,57 @@ fn database_code_context_pack(
     )
 }
 
+fn bounded_recovery_path(path: String) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() || trimmed.len() > 4096 || !trimmed.starts_with('/') {
+        return Err("Recovery bundle path must be an absolute local path under 4096 bytes.".to_string());
+    }
+    if trimmed.chars().any(|character| character == '\0' || character == '\n' || character == '\r') {
+        return Err("Recovery bundle path contains a prohibited control character.".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn bounded_recovery_passphrase(passphrase: String) -> Result<String, String> {
+    if passphrase.trim().is_empty() || passphrase.len() > 4096 {
+        return Err("Recovery bundle passphrase must be between 1 and 4096 bytes.".to_string());
+    }
+    if passphrase.contains('\0') {
+        return Err("Recovery bundle passphrase contains a prohibited NUL character.".to_string());
+    }
+    // Preserve intentional leading/trailing spaces: they are part of the
+    // macOS passphrase input and therefore part of the PBKDF2 password.
+    Ok(passphrase)
+}
+
+#[tauri::command]
+fn database_recovery_bundle_export(
+    destination_path: String,
+    passphrase: String,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.database.recovery_bundle.export",
+        Some(serde_json::json!({
+            "destinationPath": bounded_recovery_path(destination_path)?,
+            "passphrase": bounded_recovery_passphrase(passphrase)?
+        })),
+    )
+}
+
+#[tauri::command]
+fn database_recovery_bundle_import(
+    source_path: String,
+    passphrase: String,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.database.recovery_bundle.import",
+        Some(serde_json::json!({
+            "sourcePath": bounded_recovery_path(source_path)?,
+            "passphrase": bounded_recovery_passphrase(passphrase)?
+        })),
+    )
+}
+
 // ───────────────── P08: daemon-owned account authority ─────────────────
 #[tauri::command]
 fn account_status() -> Result<serde_json::Value, String> {
@@ -5039,6 +5090,8 @@ pub fn run() {
             database_watch_project,
             database_code_search,
             database_code_context_pack,
+            database_recovery_bundle_export,
+            database_recovery_bundle_import,
             account_status,
             account_begin_sign_in,
             account_cancel_sign_in,
@@ -6614,5 +6667,16 @@ mod tests {
         assert_eq!(bounded_code_limit(None, 10), 10);
         assert_eq!(bounded_context_bytes(Some(999_999)), 24_000);
         assert_eq!(bounded_context_bytes(Some(1)), 1_024);
+    }
+
+    #[test]
+    fn database_recovery_bundle_inputs_are_bounded_and_native_only() {
+        assert_eq!(bounded_recovery_path("/tmp/recovery.obb".to_string()).unwrap(), "/tmp/recovery.obb");
+        assert!(bounded_recovery_path("relative.obb".to_string()).is_err());
+        assert!(bounded_recovery_path("/tmp/recovery\n.obb".to_string()).is_err());
+        assert!(bounded_recovery_passphrase("correct horse battery staple".to_string()).is_ok());
+        assert!(bounded_recovery_passphrase("   ".to_string()).is_err());
+        assert!(bounded_recovery_passphrase("a\0b".to_string()).is_err());
+        assert!(bounded_recovery_passphrase("x".repeat(4_097)).is_err());
     }
 }

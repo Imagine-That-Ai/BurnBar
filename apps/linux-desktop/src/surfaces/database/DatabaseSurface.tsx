@@ -52,6 +52,130 @@ function DatabaseModeSwitcher({
   );
 }
 
+function DatabaseRecoveryBundleControls({
+  bridge,
+  fixtureMode
+}: {
+  bridge: ReturnType<typeof useShellStore.getState>['bridge'];
+  fixtureMode: boolean;
+}) {
+  const [exportPath, setExportPath] = useState('');
+  const [importPath, setImportPath] = useState('');
+  const [exportPassphrase, setExportPassphrase] = useState('');
+  const [importPassphrase, setImportPassphrase] = useState('');
+  const [busy, setBusy] = useState<'export' | 'import' | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const available = !fixtureMode && typeof bridge?.databaseRecoveryBundleExport === 'function'
+    && typeof bridge?.databaseRecoveryBundleImport === 'function';
+
+  const exportBundle = async () => {
+    if (!bridge?.databaseRecoveryBundleExport) return;
+    setBusy('export');
+    setMessage(null);
+    setError(null);
+    try {
+      const result = await bridge.databaseRecoveryBundleExport({
+        destinationPath: exportPath,
+        passphrase: exportPassphrase
+      });
+      setMessage(`Recovery bundle exported (${result.byteCount} bytes).`);
+      setExportPassphrase('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Recovery bundle export failed.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const importBundle = async () => {
+    if (!bridge?.databaseRecoveryBundleImport) return;
+    setBusy('import');
+    setMessage(null);
+    setError(null);
+    try {
+      const result = await bridge.databaseRecoveryBundleImport({
+        sourcePath: importPath,
+        passphrase: importPassphrase
+      });
+      setMessage(result.restartRequired ? 'Database key restored. Restart the daemon to reopen the store.' : 'Database key restored.');
+      setImportPassphrase('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Recovery bundle import failed.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="database-system-band" aria-labelledby="database-recovery-heading">
+      <h4 id="database-recovery-heading" className="database-system-band-title">
+        Encrypted recovery bundle
+      </h4>
+      <p className="muted">
+        Export or restore only the SQLCipher key. The daemon performs PBKDF2/AES-GCM and native secret-store writes;
+        this view never persists a passphrase.
+      </p>
+      {!available ? (
+        <p className="muted" role="status">Recovery bundle controls require a packaged Linux daemon with SQLCipher and native secret storage.</p>
+      ) : (
+        <>
+          <div className="actions">
+            <label>
+              Export path
+              <input
+                type="text"
+                value={exportPath}
+                onChange={(event) => setExportPath(event.target.value)}
+                placeholder="/home/user/openburnbar-recovery.obb"
+                autoComplete="off"
+              />
+            </label>
+            <label>
+              Export passphrase
+              <input
+                type="password"
+                value={exportPassphrase}
+                onChange={(event) => setExportPassphrase(event.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+            <button type="button" className="ghost" onClick={() => void exportBundle()} disabled={busy !== null}>
+              {busy === 'export' ? 'Exporting...' : 'Export bundle'}
+            </button>
+          </div>
+          <div className="actions">
+            <label>
+              Import path
+              <input
+                type="text"
+                value={importPath}
+                onChange={(event) => setImportPath(event.target.value)}
+                placeholder="/home/user/openburnbar-recovery.obb"
+                autoComplete="off"
+              />
+            </label>
+            <label>
+              Import passphrase
+              <input
+                type="password"
+                value={importPassphrase}
+                onChange={(event) => setImportPassphrase(event.target.value)}
+                autoComplete="current-password"
+              />
+            </label>
+            <button type="button" className="ghost" onClick={() => void importBundle()} disabled={busy !== null}>
+              {busy === 'import' ? 'Importing...' : 'Import bundle'}
+            </button>
+          </div>
+          {message ? <p className="muted" role="status">{message}</p> : null}
+          {error ? <p className="muted" role="alert">{error}</p> : null}
+        </>
+      )}
+    </section>
+  );
+}
+
 export function DatabaseSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
@@ -413,6 +537,7 @@ export function DatabaseSurface() {
                 </ul>
               ) : null}
             </section>
+            <DatabaseRecoveryBundleControls bridge={bridge} fixtureMode={fixtureMode} />
           </div>
           <CodeRetrievalPanel projectPath={workspace?.projectRoot} compact />
         </section>

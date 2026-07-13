@@ -145,7 +145,9 @@ const explicitTypes = {
   "approval.respond": ["BurnBarApprovalRespondRequest", "BurnBarRunDetailResponse"],
   "subscription.start": ["BurnBarSubscriptionStartRequest", "BurnBarSubscriptionResponse"],
   "subscription.resume": ["BurnBarSubscriptionResumeRequest", "BurnBarSubscriptionResponse"],
-  "subscription.stop": ["BurnBarSubscriptionStopRequest", "BurnBarSubscriptionStopResponse"]
+  "subscription.stop": ["BurnBarSubscriptionStopRequest", "BurnBarSubscriptionStopResponse"],
+  "daemon.database.recovery_bundle.export": ["BurnBarDatabaseRecoveryBundleExportRequest", "BurnBarDatabaseRecoveryBundleExportResponse"],
+  "daemon.database.recovery_bundle.import": ["BurnBarDatabaseRecoveryBundleImportRequest", "BurnBarDatabaseRecoveryBundleImportResponse"]
 };
 
 function inferTypes(method) {

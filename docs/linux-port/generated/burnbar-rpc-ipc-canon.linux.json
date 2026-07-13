@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 129,
+  "methodCount": 131,
   "methods": [
     {
       "id": "approval.respond",
@@ -510,6 +510,26 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
       "result": "Codable response for daemon.controller.summary",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.database.recovery_bundle.export",
+      "caseName": "databaseRecoveryBundleExport",
+      "domain": "database_recovery",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarDatabaseRecoveryBundleExportRequest",
+      "result": "BurnBarDatabaseRecoveryBundleExportResponse",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.database.recovery_bundle.import",
+      "caseName": "databaseRecoveryBundleImport",
+      "domain": "database_recovery",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarDatabaseRecoveryBundleImportRequest",
+      "result": "BurnBarDatabaseRecoveryBundleImportResponse",
       "error": "BurnBarRPCError"
     },
     {

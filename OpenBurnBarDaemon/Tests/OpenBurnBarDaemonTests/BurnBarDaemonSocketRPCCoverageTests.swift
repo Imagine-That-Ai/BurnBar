@@ -42,7 +42,8 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
             BurnBarDaemonSocketRPCCoverage.runWorkspaceApproval,
             BurnBarDaemonSocketRPCCoverage.search,
             BurnBarDaemonSocketRPCCoverage.memory,
-            BurnBarDaemonSocketRPCCoverage.code
+            BurnBarDaemonSocketRPCCoverage.code,
+            BurnBarDaemonSocketRPCCoverage.databaseRecovery
         ]
 
         for (index, left) in domains.enumerated() {

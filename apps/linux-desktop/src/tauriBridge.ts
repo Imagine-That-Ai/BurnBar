@@ -429,6 +429,25 @@ export type DatabaseIndexActionResult = {
   auditHash?: string;
 };
 
+export type DatabaseRecoveryBundleExportRequest = {
+  destinationPath: string;
+  passphrase: string;
+};
+export type DatabaseRecoveryBundleExportResult = {
+  destinationPath: string;
+  byteCount: number;
+  formatVersion: number;
+};
+export type DatabaseRecoveryBundleImportRequest = {
+  sourcePath: string;
+  passphrase: string;
+};
+export type DatabaseRecoveryBundleImportResult = {
+  sourcePath: string;
+  stored: boolean;
+  restartRequired: boolean;
+};
+
 export type DatabaseCodeDegradation = {
   code: string;
   message: string;
@@ -1044,6 +1063,12 @@ export interface LinuxShellBridge {
   databaseWorkspaceStatus(projectPath?: string): Promise<DatabaseWorkspaceStatus>;
   databaseIndexProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   databaseWatchProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
+  databaseRecoveryBundleExport?(
+    request: DatabaseRecoveryBundleExportRequest
+  ): Promise<DatabaseRecoveryBundleExportResult>;
+  databaseRecoveryBundleImport?(
+    request: DatabaseRecoveryBundleImportRequest
+  ): Promise<DatabaseRecoveryBundleImportResult>;
   /** Optional on older packaged shells; callers must fail closed when absent. */
   databaseCodeSearch?(request: DatabaseCodeSearchRequest): Promise<DatabaseCodeSearchResult>;
   /** Optional on older packaged shells; callers must fail closed when absent. */
@@ -2101,6 +2126,24 @@ function mapDatabaseIndexAction(raw: RawJsonValue): DatabaseIndexActionResult {
     watching: typeof pick(raw, 'watching') === 'boolean' ? Boolean(pick(raw, 'watching')) : undefined,
     pollIntervalSeconds: num(pick(raw, 'pollIntervalSeconds')),
     auditHash: str(pick(raw, 'auditHash')) || undefined
+  };
+}
+
+function mapDatabaseRecoveryBundleExport(raw: RawJsonValue): DatabaseRecoveryBundleExportResult {
+  return {
+    destinationPath: str(pick(raw, 'destinationPath', 'destination_path'), ''),
+    byteCount: Math.max(0, num(pick(raw, 'byteCount', 'byte_count'))),
+    formatVersion: Math.max(0, num(pick(raw, 'formatVersion', 'format_version'), 1))
+  };
+}
+
+function mapDatabaseRecoveryBundleImport(raw: RawJsonValue): DatabaseRecoveryBundleImportResult {
+  return {
+    sourcePath: str(pick(raw, 'sourcePath', 'source_path'), ''),
+    stored: Boolean(pick(raw, 'stored')),
+    restartRequired: pick(raw, 'restartRequired', 'restart_required') === undefined
+      ? true
+      : Boolean(pick(raw, 'restartRequired', 'restart_required'))
   };
 }
 
@@ -3354,6 +3397,22 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     databaseWatchProject: async (projectPath) => {
       const raw = await invoke<RawJsonValue>('database_watch_project', { projectPath });
       return mapDatabaseIndexAction(raw);
+    },
+    // P22 — daemon-owned passphrase recovery bundle. Passphrases stay in the
+    // native invoke/RPC call and are never persisted in Zustand or web storage.
+    databaseRecoveryBundleExport: async (request) => {
+      const raw = await invoke<RawJsonValue>('database_recovery_bundle_export', {
+        destinationPath: request.destinationPath,
+        passphrase: request.passphrase
+      });
+      return mapDatabaseRecoveryBundleExport(raw);
+    },
+    databaseRecoveryBundleImport: async (request) => {
+      const raw = await invoke<RawJsonValue>('database_recovery_bundle_import', {
+        sourcePath: request.sourcePath,
+        passphrase: request.passphrase
+      });
+      return mapDatabaseRecoveryBundleImport(raw);
     },
     // P22 — daemon.code.search / daemon.code.context_pack. The daemon owns
     // index availability and trust wrapping; the shell only clamps bounded
