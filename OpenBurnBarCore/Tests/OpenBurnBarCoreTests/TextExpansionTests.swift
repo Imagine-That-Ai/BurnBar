@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarTextExpansion
 
 final class TextExpansionTests: XCTestCase {
     func testTriggerNormalizationAndValidation() {
