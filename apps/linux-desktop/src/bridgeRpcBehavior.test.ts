@@ -772,6 +772,33 @@ describe('VAL-RPC-002 bridge behavior', () => {
       reason: undefined
     });
   });
+
+  it('SmartHub commands invoke the typed Tauri operation and decode status', async () => {
+    invoke.mockResolvedValueOnce({
+      operation: 'status',
+      payload: {
+        adapter: 'smart_hub_bridge',
+        status: 'blocked_bridge_not_reachable',
+        blocker: 'Start the bridge.',
+        bridge_listen: '127.0.0.1:8787'
+      }
+    });
+    const b = await bridge();
+    await expect(b.smartHubCommand?.('status')).resolves.toMatchObject({
+      operation: 'status',
+      payload: { adapter: 'smart_hub_bridge', status: 'blocked_bridge_not_reachable' }
+    });
+    expect(invoke).toHaveBeenCalledWith('smarthub_command', { operation: 'status' });
+  });
+
+  it('SmartHub commands reject malformed native status payloads', async () => {
+    invoke.mockResolvedValueOnce({
+      operation: 'status',
+      payload: { adapter: 'smart_hub_bridge', status: 'ok', online: true }
+    });
+    const b = await bridge();
+    await expect(b.smartHubCommand?.('status')).rejects.toThrow(/must be a string/);
+  });
 });
 
 /**
