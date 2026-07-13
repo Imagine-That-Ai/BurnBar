@@ -456,17 +456,11 @@ let openBurnBarCoreExcludes = [
     "SharedModels/AgentProvider+LogoBackdrop.swift",
     "SharedModels/AgentWatchLiveActivityAttributes.swift",
     "SharedModels/BurnBarLiveActivityAttributes.swift",
-    // Uses CloudVaultCrypto (excluded) for sealed-payload encryption.
-    "SharedModels/CLIAgentSessionRecord.swift",
-    // References CLIAgentRuntime + CLIAgentSessionRecord (excluded above).
-    "SharedModels/CLIAgentResumePresentation.swift",
-    // Uses PiAgentRelayCrypto (defined in the excluded HermesRelayCrypto).
-    "SharedModels/PiConnectionTypes.swift",
-    "SharedModels/CloudVaultDeviceKeypair.swift",
-    "SharedModels/EscrowDeviceSafetyCode.swift",
-    "SharedModels/HermesRatchetCrypto.swift",
-    // Uses HermesRelayCrypto plus authenticated-request trust/runtime types outside the Engine subset.
-    "SharedModels/HermesRelayAuthenticatedRequest.swift",
+    // P-04b: the crypto-chain SharedModels below moved to OpenBurnBarKernel (they now
+    // compile off-Apple in the Kernel, which links swiftCryptoNonAppleDependency), so
+    // their Core off-Apple exclude entries were removed: CLIAgentSessionRecord,
+    // CLIAgentResumePresentation, PiConnectionTypes, CloudVaultDeviceKeypair,
+    // EscrowDeviceSafetyCode, HermesRatchetCrypto, HermesRelayAuthenticatedRequest.
     "SharedModels/Insights",
     "SharedModels/InsightVerdictWidgetSnapshot.swift",
     "SharedModels/PensieveKnowledgeChunker.swift",
