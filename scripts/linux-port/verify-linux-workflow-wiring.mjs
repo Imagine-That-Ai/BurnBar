@@ -160,6 +160,7 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
   requireText(input.pr, 'linux-aggregate-installed-attestation.test.mjs', 'PR aggregate installed-attestation mutation suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
+  requireText(input.pr, 'arch-lifecycle-authentication.test.mjs', 'PR authenticated Arch lifecycle suite');
   requireText(input.pr, 'linux-installed-manifest.test.mjs', 'PR installed manifest mutation suite');
   requireText(input.pr, 'linux-appimage-peer-manifest.test.mjs', 'PR AppImage peer manifest suite');
   requireText(input.pr, 'linux-native-package-real-tools.test.mjs', 'PR real native package suite');

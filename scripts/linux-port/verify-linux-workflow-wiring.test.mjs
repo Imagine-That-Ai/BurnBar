@@ -10,6 +10,7 @@ function valid() {
       'assemble-linux-release.test.mjs',
       'linux-aggregate-installed-attestation.test.mjs',
       'linux-package-session.test.mjs',
+      'arch-lifecycle-authentication.test.mjs',
       'linux-installed-manifest.test.mjs',
       'linux-appimage-peer-manifest.test.mjs',
       'linux-native-package-real-tools.test.mjs',

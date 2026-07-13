@@ -124,6 +124,7 @@ jobs:
           scripts/linux-port/linux-appimage-peer-manifest.test.mjs
           scripts/linux-port/linux-native-package-real-tools.test.mjs
           scripts/linux-port/linux-package-session.test.mjs
+          scripts/linux-port/arch-lifecycle-authentication.test.mjs
           scripts/linux-port/prepare-linux-package-payload.test.mjs
           scripts/linux-port/sign-linux-release-requests.test.mjs
           scripts/linux-port/sign-product-proof-closure.test.mjs

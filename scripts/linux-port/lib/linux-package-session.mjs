@@ -140,10 +140,11 @@ export function authenticateArchLifecycleReport({
   const root = fs.realpathSync(releaseRoot);
   const publicKey = fs.readFileSync(publicKeyFile);
   const candidate = readBoundFile(root, report.candidate, 'Arch candidate package');
+  const candidateSignatureAbsolute = fs.realpathSync(candidateSignatureFile);
   const candidateSignature = readBoundFile(root, {
-    file: path.relative(root, candidateSignatureFile).split(path.sep).join('/'),
-    size: fs.statSync(candidateSignatureFile).size,
-    sha256: crypto.createHash('sha256').update(fs.readFileSync(candidateSignatureFile)).digest('hex')
+    file: path.relative(root, candidateSignatureAbsolute).split(path.sep).join('/'),
+    size: fs.statSync(candidateSignatureAbsolute).size,
+    sha256: crypto.createHash('sha256').update(fs.readFileSync(candidateSignatureAbsolute)).digest('hex')
   }, 'Arch candidate package signature');
   verifyDetachedEd25519(candidate.bytes, candidateSignature.bytes, publicKey, 'Arch candidate package');
 
