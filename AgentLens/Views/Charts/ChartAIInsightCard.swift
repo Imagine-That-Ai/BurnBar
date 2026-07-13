@@ -24,25 +24,7 @@ struct ChartAIInsightCard: View {
         }
         .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            let shape = RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-            if #available(macOS 26, *) {
-                shape
-                    .fill(DesignSystem.Colors.whimsy.opacity(0.08))
-                    .liquidGlassEffect(.regular, in: shape)
-            } else {
-                ZStack {
-                    shape.fill(.ultraThinMaterial)
-                    shape.fill(DesignSystem.Colors.surface.opacity(0.5))
-                    shape.fill(DesignSystem.Colors.whimsy.opacity(0.08))
-                }
-            }
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                .stroke(DesignSystem.Colors.whimsy.opacity(0.3), lineWidth: 0.75)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+        .chartGlassCard()
     }
 
     // MARK: Loading
@@ -51,7 +33,7 @@ struct ChartAIInsightCard: View {
         HStack(spacing: 10) {
             Image(systemName: "sparkles")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(DesignSystem.Colors.whimsy)
+                .foregroundStyle(DesignSystem.Colors.ember)
             Text("Reading your usage…")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -68,7 +50,7 @@ struct ChartAIInsightCard: View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(DesignSystem.Colors.whimsy)
+                .foregroundStyle(DesignSystem.Colors.ember)
             Text("AI INSIGHTS")
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .tracking(1.2)
@@ -116,7 +98,7 @@ struct ChartAIInsightCard: View {
                         .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(DesignSystem.Colors.whimsy)
+                    .foregroundStyle(DesignSystem.Colors.ember)
                     .liquidGlassInteractive(in: Capsule())
                     .help(suggestion.reason)
                 }
@@ -149,7 +131,7 @@ struct ChartAIInsightCard: View {
 
     private func color(for severity: ChartInsight.Severity) -> Color {
         switch severity {
-        case .info: return DesignSystem.Colors.whimsy
+        case .info: return DesignSystem.Colors.textSecondary
         case .win: return DesignSystem.Colors.success
         case .warning: return DesignSystem.Colors.amber
         }

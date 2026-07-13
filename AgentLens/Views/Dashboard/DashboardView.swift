@@ -272,6 +272,7 @@ struct DashboardView: View {
         }
         .background {
             DashboardBackdrop(moodBand: dataStore.moodBand)
+            DashboardSidebarToolbarItemRemover()
             GeometryReader { geo in
                 Color.clear
                     .onAppear {

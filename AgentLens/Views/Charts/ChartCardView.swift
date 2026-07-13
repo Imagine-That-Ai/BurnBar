@@ -3,20 +3,19 @@ import OpenBurnBarCore
 
 // MARK: - Chart Card
 //
-// One liquid-glass gallery card: header (symbol · title · headline stat),
-// the chart body, and a "why it matters" footer. All data arrives prepared
-// inside `ChartsSnapshot`; the card performs zero aggregation.
+// One gallery card on the uniform glass plate. Header (symbol · label ·
+// headline stat + optional delta), the chart body, and a whisper of "why it
+// matters". All data arrives prepared in `ChartsSnapshot`; the card performs
+// zero aggregation. Colour follows the ChartInk rule — cool silver by
+// default, ember only for the burn/spend hero series, brand hues only in the
+// provider mix, greens/ambers only on directional deltas.
 
 extension ChartKind {
-    var accent: Color {
+    /// The series ink for this chart's primary line/area (see ChartInk).
+    var seriesInk: Color {
         switch self {
-        case .burnOverTime, .burnForecast: return DesignSystem.Colors.ember
-        case .providerMix, .modelMix, .modelConcentration: return DesignSystem.Colors.whimsy
-        case .cacheROI, .provenanceQuality: return DesignSystem.Colors.success
-        case .reasoningShare: return DesignSystem.Colors.blaze
-        case .hourOfDayHeatmap, .weekOverWeekDelta: return DesignSystem.Colors.amber
-        case .costPerSessionDistribution, .sessionOutliers: return DesignSystem.Colors.ember
-        case .projectFocus, .remoteVsLocal: return DesignSystem.Colors.whimsy
+        case .burnOverTime, .burnForecast: return ChartInk.signature
+        default: return ChartInk.neutral
         }
     }
 }
@@ -27,50 +26,29 @@ struct ChartCardView: View {
     let onHide: () -> Void
     let onToggleSpan: () -> Void
 
-    @Environment(\.colorScheme) private var colorScheme
-
     private var kind: ChartKind { config.kind }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             header
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 150)
+                .frame(height: 156)
             Text(kind.whyItMatters)
-                .font(.system(size: 10, design: .rounded))
+                .font(.system(size: 10.5, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            // Same recipe as DashboardLiveCostCurve: real glass with a faint
-            // accent wash. The wash tints the light, it never paints a slab.
-            let shape = RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-            if #available(macOS 26, *) {
-                shape
-                    .fill(kind.accent.opacity(colorScheme == .dark ? 0.08 : 0.04))
-                    .liquidGlassEffect(.regular, in: shape)
-            } else {
-                ZStack {
-                    shape.fill(.ultraThinMaterial)
-                    shape.fill(DesignSystem.Colors.surface.opacity(colorScheme == .dark ? 0.45 : 0.55))
-                    shape.fill(kind.accent.opacity(colorScheme == .dark ? 0.08 : 0.04))
-                }
-            }
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                .stroke(kind.accent.opacity(0.22), lineWidth: 0.75)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+        .chartGlassCard()
         .contextMenu {
             Button(config.span == 2 ? "Make Half Width" : "Make Full Width", action: onToggleSpan)
             Button("Hide Chart", action: onHide)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(kind.title). \(headline). \(kind.whyItMatters)")
+        .accessibilityLabel("\(kind.title). \(headlineValue)\(headlineDelta.map { ", \($0.text)" } ?? ""). \(kind.whyItMatters)")
     }
 
     // MARK: Header
@@ -78,30 +56,47 @@ struct ChartCardView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: kind.systemImage)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(kind.accent)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
             Text(kind.title.uppercased())
                 .font(.system(size: 10, weight: .bold, design: .rounded))
-                .tracking(1.1)
+                .tracking(1.2)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
             Spacer(minLength: 8)
-            Text(headline)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+            if let delta = headlineDelta {
+                deltaBadge(delta)
+            }
+            Text(headlineValue)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .lineLimit(1)
         }
     }
 
-    // MARK: Headline stat
+    private func deltaBadge(_ delta: DeltaBadge) -> some View {
+        let color = delta.good ? ChartInk.down : ChartInk.up
+        return Text(delta.text)
+            .font(.system(size: 10.5, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(color.opacity(0.14)))
+    }
 
-    private var headline: String {
+    private struct DeltaBadge {
+        let text: String
+        /// Spend fell → good (green); spend rose → caution (amber).
+        let good: Bool
+    }
+
+    // MARK: Headline
+
+    private var headlineValue: String {
         switch kind {
         case .burnOverTime:
-            let trend = snapshot.burnTrendPercent.map {
-                " · " + $0.formatted(.number.precision(.fractionLength(0)).sign(strategy: .always())) + "%"
-            } ?? ""
-            return snapshot.totalCost.formatAsCost() + trend
+            return snapshot.totalCost.formatAsCost()
         case .providerMix:
             guard let top = snapshot.providerShares.first, snapshot.totalCost > 0 else { return "—" }
             return "\(top.provider.displayName) \(Int((top.cost / snapshot.totalCost * 100).rounded()))%"
@@ -115,8 +110,7 @@ struct ChartCardView: View {
             guard let weekday = snapshot.peakWeekdayIndex, let hour = snapshot.peakHour else { return "—" }
             return "Peak \(Self.weekdayNames[weekday]) \(hourText(hour))"
         case .weekOverWeekDelta:
-            guard let percent = snapshot.weekOverWeekPercent else { return "—" }
-            return percent.formatted(.number.precision(.fractionLength(0)).sign(strategy: .always())) + "%"
+            return snapshot.thisWeekDaily.reduce(0, +).formatAsCost()
         case .costPerSessionDistribution:
             return snapshot.medianSessionCost.map { "median " + $0.formatAsCost() } ?? "—"
         case .sessionOutliers:
@@ -134,16 +128,33 @@ struct ChartCardView: View {
         }
     }
 
+    private var headlineDelta: DeltaBadge? {
+        switch kind {
+        case .burnOverTime:
+            guard let trend = snapshot.burnTrendPercent else { return nil }
+            return DeltaBadge(text: signed(trend), good: trend <= 0)
+        case .weekOverWeekDelta:
+            guard let percent = snapshot.weekOverWeekPercent else { return nil }
+            return DeltaBadge(text: signed(percent), good: percent <= 0)
+        default:
+            return nil
+        }
+    }
+
+    private func signed(_ percent: Double) -> String {
+        percent.formatted(.number.precision(.fractionLength(0)).sign(strategy: .always())) + "%"
+    }
+
     // MARK: Content
 
     @ViewBuilder
     private var content: some View {
         if isKindEmpty {
-            ChartCardEmptyContent(accent: kind.accent)
+            ChartCardEmptyContent()
         } else {
             switch kind {
             case .burnOverTime:
-                ChartKitLine(values: snapshot.burnSeries.map(\.value), accent: kind.accent)
+                ChartKitLine(values: snapshot.burnSeries.map(\.value), accent: kind.seriesInk)
             case .providerMix:
                 ChartKitDonut(
                     segments: snapshot.providerShares.map {
@@ -162,44 +173,52 @@ struct ChartCardView: View {
                 )
             case .modelMix:
                 ChartKitRankedBars(
-                    rows: snapshot.modelCosts.prefix(5).map {
-                        .init(id: $0.label, label: shortModelName($0.label), detail: nil,
-                              value: $0.value, color: kind.accent)
+                    rows: snapshot.modelCosts.prefix(5).enumerated().map { index, model in
+                        .init(id: model.label, label: shortModelName(model.label), detail: nil,
+                              value: model.value, color: neutralRank(index))
                     }
                 )
             case .cacheROI:
-                ChartKitLine(values: snapshot.cacheHitRateSeries.map(\.value), accent: kind.accent, yMax: 1)
+                ChartKitLine(values: snapshot.cacheHitRateSeries.map(\.value), accent: ChartInk.neutral, yMax: 1)
             case .reasoningShare:
-                ChartKitLine(values: snapshot.reasoningShareSeries.map(\.value), accent: kind.accent)
+                ChartKitLine(values: snapshot.reasoningShareSeries.map(\.value), accent: ChartInk.neutral)
             case .hourOfDayHeatmap:
-                ChartKitHeatmap(matrix: snapshot.hourWeekdayCost, accent: kind.accent)
+                // The heat map earns its ember: it is literally a map of when
+                // you burn, so warmth = intensity is meaningful here.
+                ChartKitHeatmap(matrix: snapshot.hourWeekdayCost, accent: ChartInk.signature)
             case .weekOverWeekDelta:
-                ChartKitPairedBars(primary: snapshot.thisWeekDaily, secondary: snapshot.lastWeekDaily,
-                                   primaryAccent: kind.accent)
+                ChartKitPairedBars(
+                    primary: snapshot.thisWeekDaily,
+                    secondary: snapshot.lastWeekDaily,
+                    primaryAccent: ChartInk.neutral,
+                    secondaryAccent: DesignSystem.Colors.textMuted
+                )
             case .costPerSessionDistribution:
-                ChartKitBars(values: snapshot.sessionCostBins.map { Double($0.count) }, accent: kind.accent)
+                ChartKitBars(values: snapshot.sessionCostBins.map { Double($0.count) }, accent: ChartInk.neutral)
             case .sessionOutliers:
                 ChartKitRankedBars(
                     rows: snapshot.outlierSessions.map {
+                        // Provider brand hue is meaningful here — it tells you
+                        // which agent ran the expensive session at a glance.
                         .init(id: $0.sessionId,
                               label: $0.projectName.isEmpty ? "Unassigned" : $0.projectName,
                               detail: shortModelName($0.model),
                               value: $0.cost,
-                              color: DesignSystem.Colors.primary(for: $0.provider))
+                              color: DesignSystem.Colors.primary(for: $0.provider).opacity(0.85))
                     }
                 )
             case .projectFocus:
                 ChartKitStackedBars(
                     series: snapshot.projectSeries.enumerated().map { index, series in
                         .init(id: series.projectName, values: series.dailyCosts,
-                              color: Self.projectPalette[index % Self.projectPalette.count])
+                              color: ChartInk.neutralRamp[index % ChartInk.neutralRamp.count])
                     }
                 )
             case .burnForecast:
                 if let forecast = snapshot.forecast {
                     ChartKitLine(
                         values: forecast.dailyCosts + forecast.projectedDaily,
-                        accent: kind.accent,
+                        accent: kind.seriesInk,
                         projectionStartIndex: max(0, forecast.dailyCosts.count - 1)
                     )
                 }
@@ -207,16 +226,16 @@ struct ChartCardView: View {
                 ChartKitRankedBars(
                     rows: snapshot.provenanceShares.map {
                         .init(id: $0.label, label: $0.label, detail: nil, value: $0.value,
-                              color: $0.label.hasPrefix("Exact") || $0.label.hasPrefix("Derived")
-                                  ? DesignSystem.Colors.success
-                                  : DesignSystem.Colors.amber)
+                              color: ($0.label.hasPrefix("Exact") || $0.label.hasPrefix("Derived"))
+                                  ? ChartInk.down.opacity(0.85)
+                                  : ChartInk.up.opacity(0.7))
                     }
                 )
             case .modelConcentration:
                 ChartKitDonut(
-                    segments: snapshot.modelCosts.map {
-                        .init(id: $0.label, label: shortModelName($0.label), value: $0.value,
-                              color: kind.accent)
+                    segments: snapshot.modelCosts.enumerated().map { index, model in
+                        .init(id: model.label, label: shortModelName(model.label), value: model.value,
+                              color: ChartInk.signature.opacity(max(0.3, 0.9 - Double(index) * 0.13)))
                     },
                     centerText: snapshot.modelConcentrationIndex.formatted(.number.precision(.fractionLength(2)))
                 )
@@ -224,9 +243,9 @@ struct ChartCardView: View {
                 ChartKitDonut(
                     segments: [
                         .init(id: "local", label: "This device", value: snapshot.localCost,
-                              color: DesignSystem.Colors.whimsy),
+                              color: ChartInk.neutral.opacity(0.85)),
                         .init(id: "remote", label: "Remote devices", value: snapshot.remoteCost,
-                              color: DesignSystem.Colors.amber)
+                              color: ChartInk.signature)
                     ],
                     centerText: nil
                 )
@@ -259,13 +278,10 @@ struct ChartCardView: View {
 
     private static let weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
-    private static let projectPalette: [Color] = [
-        DesignSystem.Colors.ember,
-        DesignSystem.Colors.whimsy,
-        DesignSystem.Colors.amber,
-        DesignSystem.Colors.blaze,
-        DesignSystem.Colors.success
-    ]
+    /// A rank-descending shade of the neutral ink for ranked bars.
+    private func neutralRank(_ index: Int) -> Color {
+        DesignSystem.Colors.textPrimary.opacity(max(0.4, 0.92 - Double(index) * 0.14))
+    }
 
     private func percentText(_ fraction: Double) -> String {
         (fraction * 100).formatted(.number.precision(.fractionLength(fraction < 0.1 ? 1 : 0))) + "%"
@@ -289,8 +305,6 @@ struct ChartCardView: View {
     }
 
     private func shortModelName(_ raw: String) -> String {
-        // Model ids read like "claude-opus-4-8" or "gpt-5.6-sol"; strip
-        // vendor date suffixes for card labels.
         let trimmed = raw.split(separator: "/").last.map(String.init) ?? raw
         if let range = trimmed.range(of: #"-\d{8}$"#, options: .regularExpression) {
             return String(trimmed[..<range.lowerBound])
@@ -302,13 +316,11 @@ struct ChartCardView: View {
 // MARK: - Empty content
 
 private struct ChartCardEmptyContent: View {
-    let accent: Color
-
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: "waveform.path")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(accent.opacity(0.5))
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.6))
             Text("Nothing in this window yet")
                 .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -316,7 +328,7 @@ private struct ChartCardEmptyContent: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                .stroke(accent.opacity(0.2), style: StrokeStyle(lineWidth: 1, dash: [4, 6]))
+                .stroke(DesignSystem.Colors.border.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 6]))
         )
     }
 }

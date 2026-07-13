@@ -20,7 +20,7 @@ struct ChartKitBars: View {
             HStack(alignment: .bottom, spacing: gap) {
                 ForEach(Array(values.enumerated()), id: \.offset) { _, value in
                     RoundedRectangle(cornerRadius: min(3, barWidth / 3), style: .continuous)
-                        .fill(accent.opacity(value > 0 ? 0.85 : 0.15))
+                        .fill(accent.opacity(value > 0 ? 0.78 : 0.12))
                         .frame(
                             width: barWidth,
                             height: max(2, CGFloat(value / peak) * size.height)
@@ -104,7 +104,7 @@ struct ChartKitStackedBars: View {
                                 let value = index < s.values.count ? s.values[index] : 0
                                 if value > 0 {
                                     Rectangle()
-                                        .fill(s.color.opacity(0.88))
+                                        .fill(s.color)
                                         .frame(height: max(1, CGFloat(value / peak) * size.height))
                                 }
                             }
@@ -159,9 +159,9 @@ struct ChartKitRankedBars: View {
                     GeometryReader { proxy in
                         ZStack(alignment: .leading) {
                             Capsule()
-                                .fill(DesignSystem.Colors.surface.opacity(0.6))
+                                .fill(DesignSystem.Colors.textPrimary.opacity(0.07))
                             Capsule()
-                                .fill(row.color.opacity(0.85))
+                                .fill(row.color)
                                 .frame(width: max(3, CGFloat(row.value / peak) * proxy.size.width))
                         }
                     }

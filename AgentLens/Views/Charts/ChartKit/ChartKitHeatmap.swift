@@ -48,11 +48,13 @@ struct ChartKitHeatmap: View {
     }
 
     private func fill(for value: Double, peak: Double) -> Color {
-        guard value > 0 else { return DesignSystem.Colors.surface.opacity(0.55) }
+        // Empty cells are a faint neutral lattice, so the ember heat reads as
+        // signal against a calm grid rather than fighting a grey slab.
+        guard value > 0 else { return DesignSystem.Colors.textPrimary.opacity(0.05) }
         // Sqrt keeps mid-range activity visible instead of letting one
         // monster hour wash everything else out.
         let intensity = (value / peak).squareRoot()
-        return accent.opacity(0.14 + 0.78 * intensity)
+        return accent.opacity(0.16 + 0.74 * intensity)
     }
 
     private func hourLabel(_ hour: Int) -> String {
