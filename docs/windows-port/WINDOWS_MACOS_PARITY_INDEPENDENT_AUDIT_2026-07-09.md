@@ -96,8 +96,9 @@ unproven host behavior to certification:
   healthy route is available. It also has a bounded Anthropic Messages adapter
   for non-streaming text and tool requests, including system-message conversion,
   API-key/OAuth header selection, required version headers, tool-definition and
-  tool-result conversion, tool-choice mapping, and normalized `tool_calls`
-  response output. Unsupported streaming/multimodal shapes fail closed before
+  tool-result conversion, tool-choice mapping, normalized `tool_calls` response
+  output, and bounded Anthropic SSE-to-OpenAI event conversion. Truncated SSE,
+  malformed tool data, and unsupported multimodal shapes fail closed before
   transport.
 - The desktop gateway composition now preserves a configured bearer token or
   generates and persists a URL-safe 256-bit token through the Windows secret
@@ -155,7 +156,7 @@ unproven host behavior to certification:
   Empty provider/model configurations fail closed; API-key presence remains in
   the injected platform secret-store validation step.
 
-These changes are covered by focused managed-runtime (39/39 mission/runtime
+These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 97/97 managed-agent-runtime tests), CloudSync (60/60), connector
 (99/99), presentation (750/750), Computer Use, bridge-policy, and
 provider-boundary tests. They are an

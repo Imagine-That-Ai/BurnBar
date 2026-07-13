@@ -62,9 +62,14 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
         }
 
         bool anthropic = AnthropicProviderAdapter.IsAnthropic(route);
+        bool anthropicStreaming = false;
         byte[] outboundBody;
         try
         {
+            if (anthropic)
+            {
+                anthropicStreaming = AnthropicProviderAdapter.IsStreamingRequest(requestBody);
+            }
             outboundBody = anthropic
                 ? AnthropicProviderAdapter.ToMessagesRequest(requestBody, route.Model)
                 : requestBody;
@@ -117,8 +122,21 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
             {
                 try
                 {
-                    body = AnthropicProviderAdapter.ToOpenAiResponse(body, route.Model);
-                    contentType = "application/json";
+                    if (anthropicStreaming)
+                    {
+                        if (!contentType.StartsWith("text/event-stream", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return new ModelCompletionResult(502, Array.Empty<byte>(), "application/json", false);
+                        }
+
+                        body = AnthropicProviderAdapter.ToOpenAiEventStream(body, route.Model);
+                        contentType = "text/event-stream";
+                    }
+                    else
+                    {
+                        body = AnthropicProviderAdapter.ToOpenAiResponse(body, route.Model);
+                        contentType = "application/json";
+                    }
                 }
                 catch (ProviderWireFormatException)
                 {

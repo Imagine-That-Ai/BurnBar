@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text;
 
 namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 
@@ -21,10 +22,7 @@ public static class AnthropicProviderAdapter
     public static byte[] ToMessagesRequest(byte[] openAiBody, string model)
     {
         JsonObject source = ParseObject(openAiBody, "anthropic_request_invalid_json");
-        if (ReadBool(source["stream"], "anthropic_stream_invalid"))
-        {
-            throw new ProviderWireFormatException(501, "anthropic_streaming_not_supported");
-        }
+        bool streaming = ReadBool(source["stream"], "anthropic_stream_invalid");
 
         JsonArray? sourceMessages = source["messages"] as JsonArray;
         if (sourceMessages is null || sourceMessages.Count == 0)
@@ -86,6 +84,11 @@ public static class AnthropicProviderAdapter
             target["system"] = string.Join("\n\n", systemParts);
         }
 
+        if (streaming)
+        {
+            target["stream"] = true;
+        }
+
         CopyTools(source, target);
         CopyToolChoice(source, target);
 
@@ -93,6 +96,12 @@ public static class AnthropicProviderAdapter
         CopyIfPresent(source, target, "top_p");
         CopyIfPresent(source, target, "stop", "stop_sequences");
         return JsonSerializer.SerializeToUtf8Bytes(target);
+    }
+
+    public static bool IsStreamingRequest(byte[] openAiBody)
+    {
+        JsonObject source = ParseObject(openAiBody, "anthropic_request_invalid_json");
+        return ReadBool(source["stream"], "anthropic_stream_invalid");
     }
 
     public static byte[] ToOpenAiResponse(byte[] anthropicBody, string fallbackModel)
@@ -144,6 +153,247 @@ public static class AnthropicProviderAdapter
         };
         return JsonSerializer.SerializeToUtf8Bytes(response);
     }
+
+    /// <summary>
+    /// Convert a bounded Anthropic SSE response into OpenAI chat-completion
+    /// chunks. The executor intentionally buffers the bounded body, but keeps
+    /// the event framing and terminal <c>[DONE]</c> marker for downstream
+    /// consumers. A missing terminal message_stop fails closed.
+    /// </summary>
+    public static byte[] ToOpenAiEventStream(byte[] anthropicBody, string fallbackModel)
+    {
+        string payload = Encoding.UTF8.GetString(anthropicBody);
+        var events = ParseEvents(payload);
+        var output = new StringBuilder(payload.Length);
+        string id = "anthropic-stream";
+        string model = fallbackModel;
+        long created = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        bool sawStop = false;
+        bool emittedRole = false;
+
+        foreach ((string Name, string Data) item in events)
+        {
+            if (string.Equals(item.Data, "[DONE]", StringComparison.Ordinal))
+            {
+                sawStop = true;
+                continue;
+            }
+
+            JsonObject data = ParseObject(Encoding.UTF8.GetBytes(item.Data), "anthropic_sse_invalid_json");
+            string type = ReadString(data["type"], "anthropic_sse_type_invalid") ?? item.Name;
+            switch (type)
+            {
+                case "message_start":
+                {
+                    if (data["message"] is not JsonObject message)
+                    {
+                        throw new ProviderWireFormatException(502, "anthropic_sse_message_invalid");
+                    }
+
+                    id = ReadString(message["id"], "anthropic_sse_id_invalid") ?? id;
+                    model = ReadString(message["model"], "anthropic_sse_model_invalid") ?? model;
+                    if (!emittedRole)
+                    {
+                        output.Append(EncodeChunk(id, model, created, new JsonObject
+                        {
+                            ["role"] = "assistant",
+                        }, finishReason: null));
+                        emittedRole = true;
+                    }
+                    break;
+                }
+                case "content_block_start":
+                {
+                    if (data["content_block"] is not JsonObject block)
+                    {
+                        throw new ProviderWireFormatException(502, "anthropic_sse_content_block_invalid");
+                    }
+
+                    string blockType = ReadString(block["type"], "anthropic_sse_content_type_invalid") ?? string.Empty;
+                    if (string.Equals(blockType, "tool_use", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int index = ReadNonNegativeInt(data["index"], "anthropic_sse_index_invalid");
+                        string toolId = RequiredString(block["id"], "anthropic_sse_tool_id_required");
+                        string name = RequiredString(block["name"], "anthropic_sse_tool_name_required");
+                        output.Append(EncodeChunk(id, model, created, new JsonObject
+                        {
+                            ["tool_calls"] = new JsonArray
+                            {
+                                new JsonObject
+                                {
+                                    ["index"] = index,
+                                    ["id"] = toolId,
+                                    ["type"] = "function",
+                                    ["function"] = new JsonObject
+                                    {
+                                        ["name"] = name,
+                                        ["arguments"] = string.Empty,
+                                    },
+                                },
+                            },
+                        }, finishReason: null));
+                    }
+                    break;
+                }
+                case "content_block_delta":
+                {
+                    if (data["delta"] is not JsonObject delta)
+                    {
+                        throw new ProviderWireFormatException(502, "anthropic_sse_delta_invalid");
+                    }
+
+                    string deltaType = ReadString(delta["type"], "anthropic_sse_delta_type_invalid") ?? string.Empty;
+                    if (string.Equals(deltaType, "text_delta", StringComparison.OrdinalIgnoreCase))
+                    {
+                        output.Append(EncodeChunk(id, model, created, new JsonObject
+                        {
+                            ["content"] = RequiredString(delta["text"], "anthropic_sse_text_invalid"),
+                        }, finishReason: null));
+                    }
+                    else if (string.Equals(deltaType, "input_json_delta", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int index = ReadNonNegativeInt(data["index"], "anthropic_sse_index_invalid");
+                        output.Append(EncodeChunk(id, model, created, new JsonObject
+                        {
+                            ["tool_calls"] = new JsonArray
+                            {
+                                new JsonObject
+                                {
+                                    ["index"] = index,
+                                    ["function"] = new JsonObject
+                                    {
+                                        ["arguments"] = RequiredString(delta["partial_json"], "anthropic_sse_partial_json_invalid"),
+                                    },
+                                },
+                            },
+                        }, finishReason: null));
+                    }
+                    else
+                    {
+                        throw new ProviderWireFormatException(501, "anthropic_sse_delta_unsupported");
+                    }
+                    break;
+                }
+                case "message_delta":
+                {
+                    if (data["delta"] is not JsonObject delta)
+                    {
+                        throw new ProviderWireFormatException(502, "anthropic_sse_message_delta_invalid");
+                    }
+
+                    string finish = MapFinishReason(ReadString(delta["stop_reason"], "anthropic_sse_stop_reason_invalid"));
+                    output.Append(EncodeChunk(id, model, created, new JsonObject(), finish));
+                    break;
+                }
+                case "message_stop":
+                    output.Append("data: [DONE]\n\n");
+                    sawStop = true;
+                    break;
+                case "ping":
+                case "content_block_stop":
+                    break;
+                case "error":
+                    throw new ProviderWireFormatException(502, "anthropic_sse_provider_error");
+                default:
+                    throw new ProviderWireFormatException(501, "anthropic_sse_event_unsupported");
+            }
+        }
+
+        if (!sawStop)
+        {
+            throw new ProviderWireFormatException(502, "anthropic_sse_missing_message_stop");
+        }
+
+        return Encoding.UTF8.GetBytes(output.ToString());
+    }
+
+    private static IReadOnlyList<(string Name, string Data)> ParseEvents(string payload)
+    {
+        var events = new List<(string Name, string Data)>();
+        string? name = null;
+        var data = new StringBuilder();
+
+        void Flush()
+        {
+            if (data.Length == 0)
+            {
+                name = null;
+                return;
+            }
+
+            events.Add((name ?? string.Empty, data.ToString()));
+            name = null;
+            data.Clear();
+        }
+
+        foreach (string line in payload.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            if (line.Length == 0)
+            {
+                Flush();
+            }
+            else if (line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                name = line[6..].Trim();
+            }
+            else if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                if (data.Length > 0)
+                {
+                    data.Append('\n');
+                }
+                data.Append(line[5..].TrimStart());
+            }
+            else if (line[0] != ':')
+            {
+                throw new ProviderWireFormatException(502, "anthropic_sse_line_invalid");
+            }
+        }
+
+        Flush();
+        return events;
+    }
+
+    private static string EncodeChunk(
+        string id,
+        string model,
+        long created,
+        JsonObject delta,
+        string? finishReason)
+    {
+        var choice = new JsonObject
+        {
+            ["index"] = 0,
+            ["delta"] = delta,
+            ["finish_reason"] = finishReason,
+        };
+        var chunk = new JsonObject
+        {
+            ["id"] = id,
+            ["object"] = "chat.completion.chunk",
+            ["created"] = created,
+            ["model"] = model,
+            ["choices"] = new JsonArray { choice },
+        };
+        return $"data: {chunk.ToJsonString()}\n\n";
+    }
+
+    private static int ReadNonNegativeInt(JsonNode? node, string error)
+    {
+        if (node is JsonValue value && value.TryGetValue<int>(out int result) && result >= 0)
+        {
+            return result;
+        }
+
+        throw new ProviderWireFormatException(502, error);
+    }
+
+    private static string MapFinishReason(string? reason) => reason switch
+    {
+        "max_tokens" => "length",
+        "tool_use" => "tool_calls",
+        _ => "stop",
+    };
 
     private static JsonArray BuildMessageContent(JsonObject message, string role)
     {
