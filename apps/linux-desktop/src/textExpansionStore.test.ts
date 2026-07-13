@@ -75,6 +75,7 @@ describe('import/export snippets', () => {
     upsertSnippet({ title: 'Two', trigger: ';;two', body: 'TWO', enabled: false });
     const json = exportSnippets();
     localStorage.clear();
+    configureTextExpansionStorage(null);
     expect(importSnippets(json)).toEqual({ added: 2, skipped: 0 });
     expect(listSnippets()).toHaveLength(2);
   });

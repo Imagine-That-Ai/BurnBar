@@ -57,8 +57,12 @@ export function TextExpansionSurface() {
           textExpansionConsentUpdate: textExpansionConsentUpdate.bind(bridge)
         }
       : null;
-    configureTextExpansionStorageWithPolicy(storage, !bridgeReady || fixtureMode);
-    configureTextExpansionConsentStorage(storage, !bridgeReady || fixtureMode);
+    // Fixture mode intentionally keeps its in-memory fixtures across the
+    // hydration effect; test/runtime callers seed them before rendering.
+    if (storage || !fixtureMode) {
+      configureTextExpansionStorageWithPolicy(storage, !bridgeReady || fixtureMode);
+      configureTextExpansionConsentStorage(storage, !bridgeReady || fixtureMode);
+    }
     if (!bridgeReady) return;
     let cancelled = false;
     void Promise.all([
