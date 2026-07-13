@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyFeedResponse, finalizeFeedReport, looksLikeHtml, validateFeedDocument } from './lib/linux-update-feed.mjs';
+import { classifyFeedResponse, finalizeFeedReport, isStrictUtcTimestamp, looksLikeHtml, validateFeedDocument } from './lib/linux-update-feed.mjs';
 
 function validFeed() {
   const artifact = (type, architecture) => ({
@@ -40,6 +40,16 @@ test('strict valid JSON feed passes schema classification', () => {
   const result = classifyFeedResponse({ status: 200, contentType: 'application/json; charset=utf-8', text: JSON.stringify(feed) });
   assert.equal(result.passed, true);
   assert.deepEqual(result.document, feed);
+});
+
+test('publication timestamps require an explicit UTC RFC3339 shape', () => {
+  assert.equal(isStrictUtcTimestamp('2026-07-09T00:00:00Z'), true);
+  assert.equal(isStrictUtcTimestamp('2026-07-09T00:00:00.123Z'), true);
+  assert.equal(isStrictUtcTimestamp('2026-07-09 00:00:00Z'), false);
+  assert.equal(isStrictUtcTimestamp('2026-07-09T25:00:00Z'), false);
+  const feed = validFeed();
+  feed.publishedAt = '2026-07-09 00:00:00Z';
+  assert.ok(validateFeedDocument(feed).some((failure) => /strict UTC RFC3339/u.test(failure)));
 });
 
 test('wrong MIME fails even when body is valid JSON', () => {

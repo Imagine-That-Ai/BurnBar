@@ -20,7 +20,34 @@ function fixtureUpdateStatus(): LinuxUpdateStatus {
     latestVersion: '0.1.0-fixture',
     channel: 'prerelease',
     publishedAt: '2026-07-09T00:00:00Z',
-    notes: 'Fixture status. Live builds verify the detached feed signature in native Rust.'
+    notes: 'Fixture status. Live builds verify the detached feed signature in native Rust.',
+    instructions: {
+      packageManager: 'apt',
+      install: {
+        id: 'install',
+        label: 'Update with apt',
+        instruction: 'Fixture package action.',
+        command: 'sudo apt-get install --only-upgrade open-burn-bar',
+        available: true,
+        requiresConfirmation: true
+      },
+      rollback: {
+        id: 'rollback',
+        label: 'Roll back with apt',
+        instruction: 'Fixture rollback action.',
+        command: 'sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION',
+        available: true,
+        requiresConfirmation: true
+      },
+      restart: {
+        id: 'restart',
+        label: 'Restart OpenBurnBar',
+        instruction: 'Fixture restart action.',
+        command: 'systemctl --user restart openburnbar-daemon.service',
+        available: true,
+        requiresConfirmation: false
+      }
+    }
   };
 }
 

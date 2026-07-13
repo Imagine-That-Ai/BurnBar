@@ -292,6 +292,20 @@ export type LinuxUpdateArtifact = {
   size: number;
   signatureUrl: string;
 };
+export type LinuxUpdateAction = {
+  id: 'install' | 'rollback' | 'restart';
+  label: string;
+  instruction: string;
+  command?: string;
+  available: boolean;
+  requiresConfirmation: boolean;
+};
+export type LinuxUpdateInstructions = {
+  packageManager: 'apt' | 'dnf' | 'appimage' | 'unknown';
+  install: LinuxUpdateAction;
+  rollback: LinuxUpdateAction;
+  restart: LinuxUpdateAction;
+};
 export type LinuxUpdateStatus = {
   state: 'current' | 'available' | 'unavailable' | 'invalid';
   currentVersion: string;
@@ -300,6 +314,7 @@ export type LinuxUpdateStatus = {
   publishedAt?: string;
   notes?: string;
   artifact?: LinuxUpdateArtifact;
+  instructions?: LinuxUpdateInstructions;
   reason?: string;
 };
 export type DiagnosticsExport = { path: string };
@@ -1460,7 +1475,7 @@ function mapAppVersionInfo(raw: RawJsonValue): AppVersionInfo {
   };
 }
 
-function mapUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
+export function decodeLinuxUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
   const state = str(pick(raw, 'state'));
   if (!['current', 'available', 'unavailable', 'invalid'].includes(state)) {
     throw new Error('Native update check returned an invalid state.');
@@ -1489,6 +1504,42 @@ function mapUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
   ) {
     throw new Error('Native update check returned invalid artifact metadata.');
   }
+  const instructionsRaw = obj(pick(raw, 'instructions'));
+  const packageManager = str(pick(instructionsRaw, 'packageManager', 'package_manager'));
+  const parseAction = (key: 'install' | 'rollback' | 'restart'): LinuxUpdateAction | undefined => {
+    const actionRaw = obj(pick(instructionsRaw, key));
+    if (Object.keys(actionRaw).length === 0) return undefined;
+    const id = str(pick(actionRaw, 'id'));
+    const action: LinuxUpdateAction = {
+      id: id as LinuxUpdateAction['id'],
+      label: str(pick(actionRaw, 'label')),
+      instruction: str(pick(actionRaw, 'instruction')),
+      command: str(pick(actionRaw, 'command')) || undefined,
+      available: Boolean(pick(actionRaw, 'available')),
+      requiresConfirmation: Boolean(pick(actionRaw, 'requiresConfirmation', 'requires_confirmation'))
+    };
+    if (!['install', 'rollback', 'restart'].includes(action.id)
+      || action.id !== key || !action.label || !action.instruction) {
+      throw new Error('Native update check returned invalid package action metadata.');
+    }
+    if (action.command && /(?:[;&|`$<>\n\r]|\$\()/u.test(action.command)) {
+      throw new Error('Native update check returned unsafe package action metadata.');
+    }
+    return action;
+  };
+  const parsedInstructions = {
+    packageManager: packageManager as LinuxUpdateInstructions['packageManager'],
+    install: parseAction('install'),
+    rollback: parseAction('rollback'),
+    restart: parseAction('restart')
+  };
+  const hasInstructions = ['apt', 'dnf', 'appimage', 'unknown'].includes(packageManager)
+    && parsedInstructions.install
+    && parsedInstructions.rollback
+    && parsedInstructions.restart;
+  if (Object.keys(instructionsRaw).length > 0 && !hasInstructions) {
+    throw new Error('Native update check returned incomplete package instructions.');
+  }
   const channel = str(pick(raw, 'channel'));
   return {
     state: state as LinuxUpdateStatus['state'],
@@ -1500,6 +1551,9 @@ function mapUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
     publishedAt: str(pick(raw, 'publishedAt', 'published_at')) || undefined,
     notes: str(pick(raw, 'notes')) || undefined,
     artifact,
+    instructions: hasInstructions
+      ? parsedInstructions as LinuxUpdateInstructions
+      : undefined,
     reason: str(pick(raw, 'reason')) || undefined
   };
 }
@@ -2169,7 +2223,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     },
     updateStatus: async () => {
       const raw = await invoke<RawJsonValue>('update_status');
-      return mapUpdateStatus(raw);
+      return decodeLinuxUpdateStatus(raw);
     },
     // P09 — redacted diagnostics export → file path
     exportDiagnostics: async () => {

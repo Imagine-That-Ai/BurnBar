@@ -58,7 +58,32 @@ pub struct LinuxUpdateStatus {
     pub published_at: Option<String>,
     pub notes: Option<String>,
     pub artifact: Option<LinuxUpdateArtifact>,
+    pub instructions: Option<LinuxUpdateInstructions>,
     pub reason: Option<String>,
+}
+
+/// Package-manager-owned actions exposed to the renderer as fixed, audited
+/// instructions. The desktop shell never executes these strings; users run
+/// them through their distro's terminal/package UI after reviewing the signed
+/// feed result.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinuxUpdateAction {
+    pub id: String,
+    pub label: String,
+    pub instruction: String,
+    pub command: Option<String>,
+    pub available: bool,
+    pub requires_confirmation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinuxUpdateInstructions {
+    pub package_manager: String,
+    pub install: LinuxUpdateAction,
+    pub rollback: LinuxUpdateAction,
+    pub restart: LinuxUpdateAction,
 }
 
 impl LinuxUpdateStatus {
@@ -71,6 +96,7 @@ impl LinuxUpdateStatus {
             published_at: None,
             notes: None,
             artifact: None,
+            instructions: None,
             reason: Some(reason.into()),
         }
     }
@@ -84,6 +110,7 @@ impl LinuxUpdateStatus {
             published_at: None,
             notes: None,
             artifact: None,
+            instructions: None,
             reason: Some(reason.into()),
         }
     }
@@ -211,7 +238,7 @@ pub async fn check_linux_update(current_version: &str, package_channel: &str) ->
         Ok(state) => state,
         Err(error) => return LinuxUpdateStatus::invalid(current_version, error),
     };
-    LinuxUpdateStatus {
+    let mut status = LinuxUpdateStatus {
         state: state.into(),
         current_version: current_version.into(),
         latest_version: Some(feed.version),
@@ -219,7 +246,141 @@ pub async fn check_linux_update(current_version: &str, package_channel: &str) ->
         published_at: Some(feed.published_at),
         notes: feed.notes,
         artifact: Some(artifact),
+        instructions: None,
         reason: None,
+    };
+    status.instructions = Some(build_update_instructions(
+        package_channel,
+        current_version,
+        status.latest_version.as_deref(),
+    ));
+    status
+}
+
+/// Attach deterministic package-manager instructions to a status that may
+/// have failed before the signed feed was available. This keeps recovery UX
+/// useful during outages without inventing release metadata or a download URL.
+pub fn attach_update_instructions(
+    mut status: LinuxUpdateStatus,
+    package_channel: &str,
+) -> LinuxUpdateStatus {
+    if status.instructions.is_none() {
+        status.instructions = Some(build_update_instructions(
+            package_channel,
+            &status.current_version,
+            status.latest_version.as_deref(),
+        ));
+    }
+    status
+}
+
+fn build_update_instructions(
+    package_channel: &str,
+    current_version: &str,
+    latest_version: Option<&str>,
+) -> LinuxUpdateInstructions {
+    let channel = match package_channel {
+        "deb" => "apt",
+        "rpm" => "dnf",
+        "appimage" => "appimage",
+        _ => "unknown",
+    };
+    let version = latest_version
+        .filter(|value| compare_semver(value, "0.0.0").is_some())
+        .unwrap_or(current_version);
+    let install = match channel {
+        "apt" => LinuxUpdateAction {
+            id: "install".into(),
+            label: "Update with apt".into(),
+            instruction: "A signed direct-download artifact is available, but no apt repository channel is configured; install that artifact manually after verifying its digest.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        "dnf" => LinuxUpdateAction {
+            id: "install".into(),
+            label: "Update with dnf".into(),
+            instruction: "A signed direct-download artifact is available, but no dnf repository channel is configured; install that artifact manually after verifying its digest.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        "appimage" => LinuxUpdateAction {
+            id: "install".into(),
+            label: "Replace the AppImage".into(),
+            instruction: "Download the signed artifact, replace the current AppImage atomically, and keep its executable bit.".into(),
+            command: None,
+            available: true,
+            requires_confirmation: true,
+        },
+        _ => LinuxUpdateAction {
+            id: "install".into(),
+            label: "Use your package manager".into(),
+            instruction: "Identify the owning package channel before replacing OpenBurnBar.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+    };
+    let rollback = match channel {
+        "apt" => LinuxUpdateAction {
+            id: "rollback".into(),
+            label: "Roll back with apt".into(),
+            instruction: format!(
+                "Choose a previously signed version, verify its digest, then ask apt to install that exact version (current: {current_version}, feed: {version})."
+            ),
+            command: Some("sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION".into()),
+            available: true,
+            requires_confirmation: true,
+        },
+        "dnf" => LinuxUpdateAction {
+            id: "rollback".into(),
+            label: "Roll back with dnf".into(),
+            instruction: format!(
+                "Choose a previously signed version, verify its digest, then downgrade the package (current: {current_version}, feed: {version})."
+            ),
+            command: Some("sudo dnf downgrade open-burn-bar".into()),
+            available: true,
+            requires_confirmation: true,
+        },
+        "appimage" => LinuxUpdateAction {
+            id: "rollback".into(),
+            label: "Restore the previous AppImage".into(),
+            instruction: "Restore a previously signed AppImage backup, verify its digest, and relaunch OpenBurnBar.".into(),
+            command: None,
+            available: true,
+            requires_confirmation: true,
+        },
+        _ => LinuxUpdateAction {
+            id: "rollback".into(),
+            label: "Rollback guidance unavailable".into(),
+            instruction: "The owning package channel is unknown; do not replace binaries until it is identified.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+    };
+    let restart = LinuxUpdateAction {
+        id: "restart".into(),
+        label: "Restart OpenBurnBar".into(),
+        instruction: if channel == "appimage" || channel == "unknown" {
+            "Quit OpenBurnBar from the tray, replace or restore the signed artifact, then launch it again.".into()
+        } else {
+            "Quit OpenBurnBar from the tray, let the package manager finish, then launch it again.".into()
+        },
+        command: if channel == "appimage" || channel == "unknown" {
+            None
+        } else {
+            Some("systemctl --user restart openburnbar-daemon.service".into())
+        },
+        available: true,
+        requires_confirmation: false,
+    };
+    LinuxUpdateInstructions {
+        package_manager: channel.into(),
+        install,
+        rollback,
+        restart,
     }
 }
 
@@ -256,7 +417,7 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
     if !matches!(feed.channel.as_str(), "stable" | "prerelease" | "nightly") {
         return Err("Update feed channel is invalid.".into());
     }
-    if feed.published_at.len() < 20 || !feed.published_at.ends_with('Z') {
+    if !is_utc_timestamp(&feed.published_at) {
         return Err("Update feed publication timestamp is invalid.".into());
     }
     if feed.signature.algorithm != "Ed25519"
@@ -306,6 +467,73 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn is_utc_timestamp(value: &str) -> bool {
+    // Keep the release contract dependency-free while rejecting ambiguous
+    // local timestamps and date-like strings. Fractional seconds are allowed
+    // because the release assembler uses RFC3339 output from Date::toISOString.
+    let Some((date, time)) = value.split_once('T') else {
+        return false;
+    };
+    if date.len() != 10
+        || !date.bytes().enumerate().all(|(index, byte)| {
+            if matches!(index, 4 | 7) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_digit()
+            }
+        })
+        || !time.ends_with('Z')
+    {
+        return false;
+    }
+    let year = date[..4].parse::<u32>().ok();
+    let month = date[5..7].parse::<u8>().ok();
+    let day = date[8..10].parse::<u8>().ok();
+    let (Some(year), Some(month), Some(day)) = (year, month, day) else {
+        return false;
+    };
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 400 == 0 || (year % 4 == 0 && year % 100 != 0) => 29,
+        2 => 28,
+        _ => 0,
+    };
+    if day == 0 || day > days_in_month {
+        return false;
+    }
+    let clock = &time[..time.len() - 1];
+    let clock_parts = clock.split(':').collect::<Vec<_>>();
+    if clock_parts.len() != 3 {
+        return false;
+    }
+    let hours = clock_parts[0];
+    let minutes = clock_parts[1];
+    let seconds = clock_parts[2];
+    if hours.len() != 2 || minutes.len() != 2 || seconds.len() < 2 || !seconds.is_char_boundary(2) {
+        return false;
+    }
+    if !hours.bytes().all(|byte| byte.is_ascii_digit())
+        || !minutes.bytes().all(|byte| byte.is_ascii_digit())
+        || !seconds[..2].bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return false;
+    }
+    let fractional = &seconds[2..];
+    if !fractional.is_empty() {
+        if !fractional.starts_with('.') {
+            return false;
+        }
+        let digits = &fractional[1..];
+        if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+            return false;
+        }
+    }
+    hours.parse::<u8>().is_ok_and(|value| value < 24)
+        && minutes.parse::<u8>().is_ok_and(|value| value < 60)
+        && seconds[..2].parse::<u8>().is_ok_and(|value| value < 60)
 }
 
 async fn verify_feed_signature(
@@ -492,6 +720,54 @@ mod tests {
         let mut missing = feed();
         missing.artifacts.pop();
         assert!(validate_feed(&missing).unwrap_err().contains("x86_64"));
+    }
+
+    #[test]
+    fn rejects_ambiguous_publication_timestamps() {
+        let mut invalid = feed();
+        invalid.published_at = "2026-07-09 00:00:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-07-09T25:00:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-07-09T00:60:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-07-09T00:00:60Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-02-30T00:00:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-13-01T00:00:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-07-09T00:00:00.123Z".into();
+        assert!(validate_feed(&invalid).is_ok());
+    }
+
+    #[test]
+    fn package_actions_are_channel_native_and_fail_closed_for_unknown_channels() {
+        let deb = build_update_instructions("deb", "1.0.0", Some("1.1.0"));
+        assert_eq!(deb.package_manager, "apt");
+        assert!(deb.install.command.is_none());
+        assert!(!deb.install.available);
+        assert_eq!(
+            deb.rollback.command.as_deref(),
+            Some("sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION")
+        );
+        let unknown = build_update_instructions("unknown", "1.0.0", None);
+        assert!(!unknown.install.available);
+        assert!(!unknown.rollback.available);
+        assert!(unknown.install.command.is_none());
+    }
+
+    #[test]
+    fn failed_feed_status_keeps_recovery_instructions_without_feed_metadata() {
+        let status = attach_update_instructions(
+            LinuxUpdateStatus::unavailable("1.0.0", "network unavailable"),
+            "rpm",
+        );
+        let instructions = status.instructions.expect("recovery instructions");
+        assert_eq!(instructions.package_manager, "dnf");
+        assert!(instructions.install.command.is_none());
+        assert!(!instructions.install.available);
+        assert!(status.latest_version.is_none());
     }
 
     #[test]
