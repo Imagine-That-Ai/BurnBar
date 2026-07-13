@@ -305,6 +305,9 @@ describe('native Linux notification and shortcut decoding', () => {
     expect(() => decodeNativeNotificationActionEvent({
       notificationId: 'n-1', route: 'chat', action: 'dismiss'
     })).toThrow('unsupported');
+    expect(decodeNativeNotificationActionEvent({
+      notificationId: 'n-1', route: 'chat', action: 'reply'
+    })).toMatchObject({ notificationId: 'n-1', route: 'chat', action: 'reply' });
     expect(decodeNativeShortcutStatus({
       available: false,
       registered: false,

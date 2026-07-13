@@ -459,14 +459,15 @@ fn notification_action_event(
         .filter(|value| valid_single_instance_notification_id(value))
         .map(str::to_string)
         .unwrap_or_else(|| format!("single-instance-{route}"));
+    let event_action = if action == "reply" { "reply" } else { "open" };
 
     Some(serde_json::json!({
         "notificationId": notification_id,
         "route": route,
-        // Linux currently supports an actionable Open button. Aliases such as
-        // `reply` intentionally degrade to opening the owning surface rather
-        // than pretending an inline text action exists.
-        "action": "open",
+        // Linux's Reply action opens the owning chat surface. It preserves
+        // intent for the renderer without pretending to provide macOS-style
+        // inline text input.
+        "action": event_action,
         "payload": payload,
     }))
 }
@@ -7671,7 +7672,7 @@ mod tests {
             Some(serde_json::json!({
                 "notificationId": "agent-reply-42",
                 "route": "chat",
-                "action": "open",
+                "action": "reply",
                 "payload": payload,
             }))
         );

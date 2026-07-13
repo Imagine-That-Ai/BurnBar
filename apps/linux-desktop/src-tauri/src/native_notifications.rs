@@ -47,12 +47,22 @@ impl NativeNotificationRoute {
 #[serde(rename_all = "kebab-case")]
 pub enum NativeNotificationAction {
     Open,
+    Reply,
 }
 
 impl NativeNotificationAction {
     fn as_str(self) -> &'static str {
         match self {
             Self::Open => "open",
+            Self::Reply => "reply",
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn label(self) -> &'static str {
+        match self {
+            Self::Open => "Open",
+            Self::Reply => "Reply",
         }
     }
 }
@@ -166,7 +176,9 @@ fn validate_request(
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use super::{NativeNotificationCapabilities, NativeNotificationUrgency};
+    use super::{
+        NativeNotificationAction, NativeNotificationCapabilities, NativeNotificationUrgency,
+    };
     use notify_rust::{
         get_capabilities, Notification, NotificationHandle, NotificationResponse, Timeout, Urgency,
     };
@@ -212,6 +224,7 @@ mod linux {
         id: u32,
         urgency_level: NativeNotificationUrgency,
         actions: bool,
+        action: NativeNotificationAction,
     ) -> Result<NotificationHandle, String> {
         let mut notification = Notification::new();
         notification
@@ -222,9 +235,10 @@ mod linux {
             .timeout(Timeout::Default)
             .urgency(urgency(urgency_level));
         if actions {
-            // `open` is a stable action identifier; the visible label is kept
-            // separate so desktop themes may localize or style it.
-            notification.action("open", "Open");
+            // Action identifiers stay stable for the renderer contract; the
+            // visible label is kept separate so desktop themes may localize
+            // or style it.
+            notification.action(action.as_str(), action.label());
         }
         notification
             .show()
@@ -300,7 +314,9 @@ fn native_notification_id(id: &str) -> u32 {
 fn should_route_response(response: &linux::NativeNotificationResponse) -> bool {
     match response {
         linux::NativeNotificationResponse::Default => true,
-        linux::NativeNotificationResponse::Action(action) => action == "open",
+        linux::NativeNotificationResponse::Action(action) => {
+            matches!(action.as_str(), "open" | "reply")
+        }
         linux::NativeNotificationResponse::Closed => false,
     }
 }
@@ -335,6 +351,7 @@ pub fn native_notification_show(
             native_notification_id(&request.id),
             request.urgency,
             actions_attached,
+            request.action,
         )?;
         if actions_attached {
             let app_for_response = app.clone();
@@ -409,6 +426,11 @@ mod tests {
         assert_eq!(validated.id, "agent-reply-1");
         assert_eq!(validated.route.as_str(), "chat");
         assert_eq!(validated.action.as_str(), "open");
+
+        let mut reply = request(NativeNotificationRoute::Chat);
+        reply.action = NativeNotificationAction::Reply;
+        let reply = validate_request(reply).unwrap();
+        assert_eq!(reply.action.as_str(), "reply");
     }
 
     #[test]
@@ -429,12 +451,15 @@ mod tests {
     }
 
     #[test]
-    fn notification_response_mapping_only_routes_open_actions() {
+    fn notification_response_mapping_routes_open_and_reply_actions() {
         assert!(should_route_response(
             &linux::NativeNotificationResponse::Default
         ));
         assert!(should_route_response(
             &linux::NativeNotificationResponse::Action("open".into())
+        ));
+        assert!(should_route_response(
+            &linux::NativeNotificationResponse::Action("reply".into())
         ));
         assert!(!should_route_response(
             &linux::NativeNotificationResponse::Action("dismiss".into())
