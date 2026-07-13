@@ -434,6 +434,14 @@ let swiftCryptoNonAppleDependency: Target.Dependency = .product(
 #if os(Linux) || os(Windows)
 let openBurnBarCoreExcludes = [
     "Views",
+    // P-16c (S14 UI): the 11 Views/MissionControl/*.swift files moved to the
+    // Apple-only OpenBurnBarUI target (pulled forward as OpenBurnBarUI/Views/
+    // MissionControl/; they reference the Kernel's MissionConsole*/MissionGroupDocument
+    // types via `import OpenBurnBarKernel`). MissionControl was never a distinct exclude
+    // entry — it rode the wholesale "Views" exclude above, which STILL resolves
+    // (Views/ root + Views/Insights/Verdict/ + Views/Cards/Square remain in Core until
+    // the later P-16 sub-packets). OpenBurnBarUI is pruned WHOLE off-Apple, so no
+    // off-Apple Core file references the moved views; no exclude line changes here.
     // P-15: CLITerminalSessionSupervisor.swift, BrowserLaunchAdapter.swift,
     // ChromeProfileDiscovery.swift, AppCheckDebugTokenEnvironment.swift, and
     // SwitcherBrowserLaunchService.swift moved to the Apple-only
