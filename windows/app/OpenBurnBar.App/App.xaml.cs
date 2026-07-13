@@ -264,7 +264,8 @@ public partial class App : Application
         return new WindowsUsageRuntime(
             engine,
             store,
-            WindowsUsagePaths.ForCurrentUser(),
+            WindowsUsagePaths.ForCurrentUser(
+                includeConversationBodies: generalSettings.IndexingEnabled),
             periodicInterval: TimeSpan.FromSeconds(generalSettings.RefreshIntervalSeconds),
             errorSink: ex => AppDiagnostics.LogException("usage-runtime", ex));
     }

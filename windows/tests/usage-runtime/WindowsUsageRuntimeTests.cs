@@ -40,6 +40,15 @@ public sealed class WindowsUsageRuntimeTests
     }
 
     [Fact]
+    public void ForCurrentUser_IndexingGateControlsConversationBodyCollection()
+    {
+        Assert.False(WindowsUsagePaths.ForCurrentUser(includeConversationBodies: false)
+            .ScanRequest.IncludeConversationBodies);
+        Assert.True(WindowsUsagePaths.ForCurrentUser(includeConversationBodies: true)
+            .ScanRequest.IncludeConversationBodies);
+    }
+
+    [Fact]
     public async Task ManualScan_WithProviderFailure_PublishesDegradedStateAndKeepsGoodRows()
     {
         var engine = new FakeUsageEngine(

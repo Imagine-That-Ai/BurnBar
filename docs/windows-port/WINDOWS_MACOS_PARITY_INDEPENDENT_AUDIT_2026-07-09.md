@@ -272,7 +272,8 @@ unproven host behavior to certification:
   selected provider is consumed by the project-code store after indexing
   restarts. The app now also consumes the normalized snapshot: usage-runtime
   periodic refresh uses the saved cadence, and companion/Projects code indexing
-  honors the saved indexing toggle.
+  honors the saved indexing toggle. Native scan requests suppress conversation
+  bodies when indexing is off, preserving the macOS privacy boundary.
 - Native Swift engine staging now requires the SwiftPM
   `OpenBurnBarCore_OpenBurnBarCore.resources` bundle, copies it beside the C ABI
   DLL into every RID's publish output, and records SHA-256/size entries for its

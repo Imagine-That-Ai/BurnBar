@@ -23,6 +23,8 @@ off, auto summaries on, deterministic embeddings, and
 The app composition root now consumes the same normalized snapshot: the usage
 runtime receives the persisted refresh cadence at startup, and both the
 companion project-memory service and Projects page honor the indexing toggle.
+The usage scan request also suppresses conversation bodies whenever indexing is
+off, matching the macOS privacy boundary rather than merely hiding the index UI.
 Changing the cadence applies on the next app launch; changing indexing applies
 when the project-memory surface is recreated.
 
