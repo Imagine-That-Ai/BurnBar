@@ -180,10 +180,14 @@ where
                     .get(index)
                     .ok_or_else(|| "single_instance_notification_payload_missing".to_string())?
             } else {
-                next.strip_prefix("--notification-payload=")
-                    .unwrap_or_default()
+                match next.strip_prefix("--notification-payload=") {
+                    Some(raw) => raw,
+                    None => "",
+                }
             };
-            if !raw.is_empty() {
+            let has_payload_argument =
+                next == "--notification-payload" || next.starts_with("--notification-payload=");
+            if has_payload_argument {
                 payload = serde_json::from_str(raw)
                     .map_err(|_| "single_instance_notification_payload_invalid".to_string())?;
                 index += 1;
@@ -249,9 +253,12 @@ fn prepare_socket_path(socket_path: &Path) -> Result<(), String> {
     }
     match fs::symlink_metadata(socket_path) {
         Ok(metadata) => {
-            use std::os::unix::fs::FileTypeExt;
+            use std::os::unix::fs::{FileTypeExt, MetadataExt};
             if !metadata.file_type().is_socket() {
                 return Err("single_instance_socket_path_not_socket".to_string());
+            }
+            if metadata.uid() != unsafe { libc::geteuid() } {
+                return Err("single_instance_socket_owner_invalid".to_string());
             }
             fs::remove_file(socket_path)
                 .map_err(|_| "single_instance_socket_path_stale".to_string())?;
@@ -363,8 +370,8 @@ impl Drop for Guard {
         self.stop.store(false, Ordering::Relaxed);
         let is_socket = fs::symlink_metadata(&self.socket_path)
             .map(|metadata| {
-                use std::os::unix::fs::FileTypeExt;
-                metadata.file_type().is_socket()
+                use std::os::unix::fs::{FileTypeExt, MetadataExt};
+                metadata.file_type().is_socket() && metadata.uid() == unsafe { libc::geteuid() }
             })
             .unwrap_or(false);
         if is_socket {
@@ -482,6 +489,14 @@ mod tests {
             vec![
                 "--notification-action=chat".to_string(),
                 "--notification-payload=\"secret\"".to_string()
+            ],
+            deep_link
+        )
+        .is_err());
+        assert!(startup_messages_from_args(
+            vec![
+                "--notification-action=chat".to_string(),
+                "--notification-payload=".to_string()
             ],
             deep_link
         )
