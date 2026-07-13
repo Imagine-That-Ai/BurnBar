@@ -19,8 +19,8 @@ The continuation commits are `9219ee737e` (browser bridge protocol),
 `0394a9fe03` (Elder Wand fusion command), `47b8db89b5` (provider response
 bound), `1e82b11e6f` (project-code watcher/index plus companion `code.*`
 operations), `bcaeb38b9e` (mission planner, payload bounds, and rate limiter),
-and `3b0a7581f5` (bounded, redacted project context packs), plus the current
-Anthropic provider-adapter commit. Their focused tests are included in the
+and `3b0a7581f5` (bounded, redacted project context packs), plus `f82926fd7d`
+(bounded Anthropic provider adapter). Their focused tests are included in the
 current local validation run. A macOS-hosted app build
 reaches all managed projects but cannot execute
 WinUI's Windows-only `XamlCompiler.exe`; the Windows CI/host build remains the
