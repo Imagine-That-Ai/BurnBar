@@ -71,7 +71,10 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const inbox = await bridge.memoryReviewInbox();
-      set({ inbox: applyStoredStatuses(inbox), loading: false, error: null });
+      // The daemon owns live review status. Renderer storage is intentionally
+      // ignored here so a stale local decision cannot resurrect or hide an
+      // item after another device or daemon process changes it.
+      set({ inbox, loading: false, error: null });
     } catch (e) {
       set({
         inbox: null,
@@ -125,7 +128,6 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
             Boolean(item?.auditHash) ||
             /recall/i.test(item?.sourceLabel ?? '');
           if (alreadyDurable) {
-            writeStoredStatus(id, 'approved');
             set((state) => ({
               inbox: state.inbox
                 ? {
@@ -156,7 +158,6 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
               entry.id !== id && entry.status === 'approved' && entry.body.trim() === text
           );
           if (duplicate) {
-            writeStoredStatus(id, 'approved');
             set((state) => ({
               inbox: state.inbox
                 ? {
@@ -188,7 +189,8 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
       } else {
         throw new Error('No memory decision bridge method available.');
       }
-      writeStoredStatus(id, status);
+      // Live decisions are persisted and reconciled by the daemon. Only the
+      // fixture branch above uses renderer-local status storage.
       await get().loadInbox();
       set((state) => ({
         decisionById: {
