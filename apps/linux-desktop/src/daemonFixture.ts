@@ -2,6 +2,7 @@ import type { DaemonHealth } from './daemonClient.js';
 import type {
   UsageSummary,
   ProviderCatalog,
+  ProviderCatalogModel,
   SessionListResult,
   UsageInsights,
   MissionListResult,
@@ -264,7 +265,70 @@ export function fixtureUsageSummary(): UsageSummary {
 // ─────────────────────────── P02: provider catalog fixture ────────────────────────
 
 export function fixtureProviderCatalog(): ProviderCatalog {
-  const ext = (row: ProviderCatalog[number] & Record<string, unknown>) => row;
+  const fixtureModels: Record<string, ProviderCatalogModel[]> = {
+    anthropic: [
+      {
+        id: 'claude-opus-4-8',
+        label: 'Claude Opus 4.8',
+        aliases: ['claude-opus-4-8-family'],
+        canonicalModelID: 'claude-opus-4-8',
+        capabilities: ['reasoning', 'long context'],
+        enabled: true,
+        health: 'healthy',
+        provenance: 'fixture'
+      },
+      {
+        id: 'claude-sonnet-4-6',
+        label: 'Claude Sonnet 4.6',
+        aliases: [],
+        capabilities: ['reasoning', 'fast'],
+        enabled: true,
+        health: 'healthy',
+        provenance: 'fixture'
+      }
+    ],
+    openai: [
+      {
+        id: 'gpt-5.5',
+        label: 'GPT-5.5',
+        aliases: [],
+        capabilities: ['reasoning', 'tools'],
+        enabled: false,
+        health: 'unavailable',
+        provenance: 'fixture',
+        detail: 'Quota exhausted; exact-model failover is unavailable.'
+      }
+    ],
+    google: [
+      {
+        id: 'gemini-2.5-pro',
+        label: 'Gemini 2.5 Pro',
+        aliases: [],
+        capabilities: ['multimodal'],
+        enabled: false,
+        health: 'unavailable',
+        provenance: 'fixture',
+        detail: 'Credential is missing.'
+      }
+    ]
+  };
+  const ext = (
+    row: Omit<ProviderCatalog[number], 'models' | 'capabilities' | 'health' | 'provenance' | 'failover' | 'catalogAvailable'>
+      & Partial<Pick<ProviderCatalog[number], 'models' | 'capabilities' | 'health' | 'provenance' | 'failover' | 'catalogAvailable'>>
+      & Record<string, unknown>
+  ): ProviderCatalog[number] & Record<string, unknown> => ({
+    models: fixtureModels[row.id] ?? [],
+    capabilities: ['routing', 'accounting'],
+    health: 'healthy',
+    provenance: 'fixture transcript',
+    failover: {
+      mode: 'providerFamilyFailover',
+      eligible: true,
+      detail: 'Fixture provider-family failover state.'
+    },
+    catalogAvailable: true,
+    ...row
+  });
   return [
     ext({
       id: 'anthropic',

@@ -8,6 +8,7 @@ import { useProvidersStore } from '../../state/providersStore.js';
 import { QuotaFilterRail } from './QuotaFilterRail.js';
 import { QuotaResetAtlas } from './QuotaResetAtlas.js';
 import { SubscriptionConstellationHero } from './SubscriptionConstellationHero.js';
+import { ProviderModelWorkspace } from '../providers/ProviderModelWorkspace.js';
 import {
   aggregateSummary,
   buildInactiveSlots,
@@ -172,6 +173,7 @@ export function QuotaWorkspaceSurface() {
           )}
 
           <QuotaResetAtlas entries={displayedEntries} />
+          <ProviderModelWorkspace providers={catalog} loading={loading} onRefresh={() => void load()} />
         </>
       ) : null}
     </div>

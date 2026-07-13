@@ -126,4 +126,14 @@ describe('VAL-RPC bridge contract', () => {
     );
     expect(accountTypes).not.toMatch(/\b(refreshToken|idToken|appCheckToken|sessionGeneration|deviceID)\b/);
   });
+
+  it('builds provider/model workspace data only from canonical catalog and config RPCs', () => {
+    expect(rustBridge).toContain('fn provider_catalog');
+    expect(rustBridge).toContain('daemon.config.get');
+    expect(rustBridge).toContain('daemon.catalog');
+    expect(canonicalRpc).toContain('id: "daemon.config.get"');
+    expect(canonicalRpc).toContain('id: "daemon.catalog"');
+    expect(rustBridge).not.toContain('daemon.provider.models');
+    expect(rustBridge).not.toContain('daemon.provider.health');
+  });
 });

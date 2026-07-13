@@ -1632,10 +1632,30 @@ fn usage_summary() -> Result<serde_json::Value, String> {
 }
 
 // ───────────────── P02: provider catalog ─────────────────
-// Wire: daemon.config.get (BurnBarRPCMethod.configGet)
+// Wire: daemon.config.get + daemon.catalog (BurnBarRPCMethod.configGet/catalog).
+// The config response carries account/quota/routing state while the canonical
+// catalog response carries provider/model capabilities. Keep the merge in the
+// shell command so older daemons can still render config-only rows when the
+// catalog RPC is unavailable.
 #[tauri::command]
 fn provider_catalog() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.config.get", None)
+    let config = call_daemon_method("daemon.config.get", None);
+    let catalog = call_daemon_method("daemon.catalog", None);
+    if config.is_err() && catalog.is_err() {
+        return Err("Provider data unavailable; reconnect the daemon and retry.".to_string());
+    }
+    let catalog_available = catalog.is_ok();
+    let catalog_error = if catalog_available {
+        None
+    } else {
+        Some("The daemon model catalog is unavailable; retry to refresh.")
+    };
+    Ok(serde_json::json!({
+        "config": config.ok(),
+        "catalog": catalog.ok(),
+        "catalogAvailable": catalog_available,
+        "catalogError": catalog_error
+    }))
 }
 
 // ───────────────── P03: session list ─────────────────
