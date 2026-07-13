@@ -2394,6 +2394,41 @@ fn database_watch_project(project_path: Option<String>) -> Result<serde_json::Va
     )
 }
 
+fn bounded_database_snapshot_bytes(max_bytes: Option<u64>) -> Result<u64, String> {
+    const MAX: u64 = 512 * 1024 * 1024;
+    match max_bytes {
+        Some(value) if value > 0 && value <= MAX => Ok(value),
+        Some(_) => Err("database snapshot byte limit must be between 1 and 536870912".to_string()),
+        None => Ok(MAX),
+    }
+}
+
+#[tauri::command]
+fn database_snapshot(destination_path: String, max_bytes: Option<u64>) -> Result<serde_json::Value, String> {
+    let limit = bounded_database_snapshot_bytes(max_bytes)?;
+    call_daemon_method_with_timeout(
+        "daemon.code.database_snapshot",
+        Some(serde_json::json!({
+            "destinationPath": destination_path,
+            "maxBytes": limit
+        })),
+        Duration::from_secs(120),
+    )
+}
+
+#[tauri::command]
+fn database_restore(snapshot_path: String, max_bytes: Option<u64>) -> Result<serde_json::Value, String> {
+    let limit = bounded_database_snapshot_bytes(max_bytes)?;
+    call_daemon_method_with_timeout(
+        "daemon.code.database_restore",
+        Some(serde_json::json!({
+            "snapshotPath": snapshot_path,
+            "maxBytes": limit
+        })),
+        Duration::from_secs(120),
+    )
+}
+
 // ───────────────── P22: bounded code retrieval ─────────────────
 // Wire: daemon.code.search / daemon.code.context_pack.
 // Keep the shell read-only and bounded; index ownership and trust wrapping
@@ -5037,6 +5072,8 @@ pub fn run() {
             database_workspace_status,
             database_index_project,
             database_watch_project,
+            database_snapshot,
+            database_restore,
             database_code_search,
             database_code_context_pack,
             account_status,

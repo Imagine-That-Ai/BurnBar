@@ -6,6 +6,91 @@ import SQLite3
 import XCTest
 
 final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
+    func testDatabaseSnapshotRejectsTraversalBeforeCodecProbe() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-test")
+        )
+        XCTAssertThrowsError(try store.databaseSnapshot(
+            BurnBarProjectCodeDatabaseSnapshotRequest(
+                destinationPath: fixture.database.deletingLastPathComponent()
+                    .appendingPathComponent("..", isDirectory: true)
+                    .appendingPathComponent("escape.snapshot").path
+            )
+        )) { error in
+            guard case .databaseSnapshotInvalidPath = error as? BurnBarProjectCodeMemoryStoreError else {
+                return XCTFail("expected path validation failure, got \(error)")
+            }
+        }
+    }
+
+    func testDatabaseSnapshotRejectsOversizedLimit() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-test")
+        )
+        XCTAssertThrowsError(try store.databaseSnapshot(
+            BurnBarProjectCodeDatabaseSnapshotRequest(
+                destinationPath: fixture.database.deletingLastPathComponent()
+                    .appendingPathComponent("store.snapshot").path,
+                maxBytes: BurnBarProjectCodeMemoryStore.maximumDatabaseSnapshotBytes + 1
+            )
+        )) { error in
+            guard case .databaseSnapshotTooLarge = error as? BurnBarProjectCodeMemoryStoreError else {
+                return XCTFail("expected size validation failure, got \(error)")
+            }
+        }
+    }
+
+    func testDatabaseRestoreRejectsInsecureSnapshotPermissions() throws {
+        let fixture = try makeFixture()
+        let snapshot = fixture.database.deletingLastPathComponent().appendingPathComponent("unsafe.snapshot")
+        try Data("not-a-database".utf8).write(to: snapshot)
+        try FileManager.default.setAttributes([.posixPermissions: NSNumber(value: 0o644)], ofItemAtPath: snapshot.path)
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-test")
+        )
+        XCTAssertThrowsError(try store.restoreDatabaseSnapshot(
+            BurnBarProjectCodeDatabaseRestoreRequest(snapshotPath: snapshot.path)
+        )) { error in
+            guard case .databaseSnapshotPermissions = error as? BurnBarProjectCodeMemoryStoreError else {
+                return XCTFail("expected permission validation failure, got \(error)")
+            }
+        }
+    }
+
+#if os(Linux)
+    func testEncryptedDatabaseSnapshotRoundTripsWhenCodecAndSecretAreAvailable() throws {
+        guard BurnBarDaemonDatabaseCipher.isCipherAvailable(),
+              BurnBarDaemonDatabaseCipher.resolveKey() != nil else {
+            throw XCTSkip("Linux SQLCipher test requires the configured daemon database secret")
+        }
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-test")
+        )
+        XCTAssertTrue(BurnBarDaemonDatabaseCipher.isEncryptedDatabaseFile(at: fixture.database.path))
+        let snapshot = fixture.root.appendingPathComponent("code-memory.snapshot")
+        let exported = try store.databaseSnapshot(
+            BurnBarProjectCodeDatabaseSnapshotRequest(destinationPath: snapshot.path)
+        )
+        XCTAssertEqual(exported.integrityCheck, "ok")
+        XCTAssertTrue(exported.databaseEncrypted)
+        XCTAssertEqual(exported.byteCount, try Data(contentsOf: snapshot).count)
+
+        let restored = try store.restoreDatabaseSnapshot(
+            BurnBarProjectCodeDatabaseRestoreRequest(snapshotPath: snapshot.path)
+        )
+        XCTAssertEqual(restored.sha256, exported.sha256)
+        XCTAssertEqual(restored.integrityCheck, "ok")
+        XCTAssertTrue(BurnBarDaemonDatabaseCipher.isEncryptedDatabaseFile(at: fixture.database.path))
+    }
+#endif
+
     func testIndexSearchSymbolsReferencesCallGraphAndStatus() throws {
         let fixture = try makeFixture()
         let fakeIndexedOpenAIKey = "sk-" + "abcdefghijklmnopqrstuvwxyz123456"

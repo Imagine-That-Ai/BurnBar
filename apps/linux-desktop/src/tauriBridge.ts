@@ -429,6 +429,18 @@ export type DatabaseIndexActionResult = {
   auditHash?: string;
 };
 
+export type DatabaseSnapshotResult = {
+  traceID: string;
+  snapshotPath: string;
+  byteCount: number;
+  sha256: string;
+  schemaVersion: number;
+  databaseEncrypted: boolean;
+  integrityCheck: string;
+  createdAt?: string;
+  restoredAt?: string;
+};
+
 export type DatabaseCodeDegradation = {
   code: string;
   message: string;
@@ -1044,6 +1056,10 @@ export interface LinuxShellBridge {
   databaseWorkspaceStatus(projectPath?: string): Promise<DatabaseWorkspaceStatus>;
   databaseIndexProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   databaseWatchProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
+  /** Optional on older packaged shells; callers must surface unavailable state. */
+  databaseSnapshot?(destinationPath: string, maxBytes?: number): Promise<DatabaseSnapshotResult>;
+  /** Optional on older packaged shells; restores only validated encrypted snapshots. */
+  databaseRestore?(snapshotPath: string, maxBytes?: number): Promise<DatabaseSnapshotResult>;
   /** Optional on older packaged shells; callers must fail closed when absent. */
   databaseCodeSearch?(request: DatabaseCodeSearchRequest): Promise<DatabaseCodeSearchResult>;
   /** Optional on older packaged shells; callers must fail closed when absent. */
@@ -2101,6 +2117,21 @@ function mapDatabaseIndexAction(raw: RawJsonValue): DatabaseIndexActionResult {
     watching: typeof pick(raw, 'watching') === 'boolean' ? Boolean(pick(raw, 'watching')) : undefined,
     pollIntervalSeconds: num(pick(raw, 'pollIntervalSeconds')),
     auditHash: str(pick(raw, 'auditHash')) || undefined
+  };
+}
+
+function mapDatabaseSnapshot(raw: RawJsonValue, restored: boolean): DatabaseSnapshotResult {
+  const source = pick(raw, 'result') ?? raw;
+  return {
+    traceID: str(pick(source, 'traceID', 'traceId', 'trace_id')),
+    snapshotPath: str(pick(source, restored ? 'restoredPath' : 'snapshotPath', 'path')),
+    byteCount: num(pick(source, 'byteCount', 'bytes')),
+    sha256: str(pick(source, 'sha256', 'sha256Hex')),
+    schemaVersion: num(pick(source, 'schemaVersion')),
+    databaseEncrypted: Boolean(pick(source, 'databaseEncrypted', 'encrypted')),
+    integrityCheck: str(pick(source, 'integrityCheck'), 'unavailable'),
+    createdAt: str(pick(source, 'createdAt')) || undefined,
+    restoredAt: str(pick(source, 'restoredAt')) || undefined
   };
 }
 
@@ -3354,6 +3385,21 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     databaseWatchProject: async (projectPath) => {
       const raw = await invoke<RawJsonValue>('database_watch_project', { projectPath });
       return mapDatabaseIndexAction(raw);
+    },
+    // P07 — bounded encrypted project-code database snapshot/recovery.
+    databaseSnapshot: async (destinationPath, maxBytes) => {
+      const raw = await invoke<RawJsonValue>('database_snapshot', {
+        destinationPath,
+        maxBytes: maxBytes == null ? undefined : Math.max(1, Math.min(512 * 1_024 * 1_024, Math.trunc(maxBytes)))
+      });
+      return mapDatabaseSnapshot(raw, false);
+    },
+    databaseRestore: async (snapshotPath, maxBytes) => {
+      const raw = await invoke<RawJsonValue>('database_restore', {
+        snapshotPath,
+        maxBytes: maxBytes == null ? undefined : Math.max(1, Math.min(512 * 1_024 * 1_024, Math.trunc(maxBytes)))
+      });
+      return mapDatabaseSnapshot(raw, true);
     },
     // P22 — daemon.code.search / daemon.code.context_pack. The daemon owns
     // index availability and trust wrapping; the shell only clamps bounded

@@ -202,6 +202,26 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.code.database_restore",
+    "caseName": "codeDatabaseRestore",
+    "domain": "code",
+    "capability": "code_operator",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.code.database_restore",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.code.database_snapshot",
+    "caseName": "codeDatabaseSnapshot",
+    "domain": "code",
+    "capability": "code_operator",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.code.database_snapshot",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.code.diagnostics",
     "caseName": "codeDiagnostics",
     "domain": "code",

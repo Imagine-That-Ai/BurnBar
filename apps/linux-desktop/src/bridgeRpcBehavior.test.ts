@@ -458,6 +458,48 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('maps bounded encrypted database snapshot and restore actions', async () => {
+    invoke
+      .mockResolvedValueOnce({
+        traceID: 'trace-snapshot',
+        snapshotPath: '/tmp/store.snapshot',
+        byteCount: 1024,
+        sha256: 'a'.repeat(64),
+        schemaVersion: 2,
+        databaseEncrypted: true,
+        integrityCheck: 'ok',
+        createdAt: '2026-07-13T00:00:00Z'
+      })
+      .mockResolvedValueOnce({
+        traceID: 'trace-restore',
+        restoredPath: '/tmp/store.sqlite',
+        byteCount: 1024,
+        sha256: 'a'.repeat(64),
+        schemaVersion: 2,
+        databaseEncrypted: true,
+        integrityCheck: 'ok',
+        restoredAt: '2026-07-13T00:01:00Z'
+      });
+    const b = await bridge();
+    await expect(b.databaseSnapshot?.('/tmp/store.snapshot', 999_999_999)).resolves.toMatchObject({
+      snapshotPath: '/tmp/store.snapshot',
+      databaseEncrypted: true,
+      integrityCheck: 'ok'
+    });
+    await expect(b.databaseRestore?.('/tmp/store.snapshot', 0)).resolves.toMatchObject({
+      snapshotPath: '/tmp/store.sqlite',
+      restoredAt: '2026-07-13T00:01:00Z'
+    });
+    expect(invoke).toHaveBeenNthCalledWith(1, 'database_snapshot', {
+      destinationPath: '/tmp/store.snapshot',
+      maxBytes: 512 * 1_024 * 1_024
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'database_restore', {
+      snapshotPath: '/tmp/store.snapshot',
+      maxBytes: 1
+    });
+  });
+
   it('computerUseSessionStart maps contract fields including the bound agent run', async () => {
     invoke.mockResolvedValueOnce({ state: 'authorized', sessionId: 's1' });
     const b = await bridge();

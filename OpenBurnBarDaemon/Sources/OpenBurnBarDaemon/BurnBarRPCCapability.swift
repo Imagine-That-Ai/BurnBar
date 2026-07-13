@@ -129,7 +129,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .codeSearch, .codeContextPack, .codeGetSymbol, .codeFindReferences,
              .codeCallGraph, .codeDiagnostics, .codeIndexStatus, .codeExplore:
             return .codeRead
-        case .codeOpsDiagnostics:
+        case .codeOpsDiagnostics, .codeDatabaseSnapshot, .codeDatabaseRestore:
             return .codeOperator
         }
     }

@@ -28,6 +28,11 @@ enum BurnBarProjectCodeMemoryStoreError: Error, LocalizedError {
     case emptyQuery
     case projectPathUnavailable(String)
     case secretRejected(labels: [String])
+    case databaseSnapshotUnavailable(String)
+    case databaseSnapshotInvalidPath(String)
+    case databaseSnapshotTooLarge(Int)
+    case databaseSnapshotPermissions(String)
+    case databaseSnapshotFailed(String)
     case sqlite(String)
 
     var errorDescription: String? {
@@ -40,10 +45,21 @@ enum BurnBarProjectCodeMemoryStoreError: Error, LocalizedError {
             return "Project path is not readable: \(path)"
         case .secretRejected(let labels):
             return "Rejected before persistence by the project memory secret scanner: \(labels.joined(separator: ", "))."
+        case .databaseSnapshotUnavailable(let reason):
+            return "Encrypted database snapshots are unavailable: \(reason)"
+        case .databaseSnapshotInvalidPath(let path):
+            return "Database snapshot path is not allowed: \(path)"
+        case .databaseSnapshotTooLarge(let bytes):
+            return "Database snapshot exceeds the configured byte limit (\(bytes) bytes)."
+        case .databaseSnapshotPermissions(let path):
+            return "Database snapshot permissions are unsafe: \(path)"
+        case .databaseSnapshotFailed(let reason):
+            return "Database snapshot operation failed: \(reason)"
         case .sqlite(let message):
             return message
         }
     }
+
 }
 
 // AUDIT(@unchecked Sendable): raw SQLite access is serialized through `dbQueue`.
@@ -207,7 +223,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     /// operator can confirm which schema generation a daemon's index DB is running.
     static let schemaVersion = 2
 
-    let db: OpaquePointer?
+    var db: OpaquePointer?
     let dbQueue = DispatchQueue(label: "com.openburnbar.daemon.project-code-memory.sqlite")
     let dbQueueID = UUID()
     let logger: BurnBarDaemonLogger
@@ -246,6 +262,13 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         try databaseSync {
             try bootstrapSchema()
         }
+        // The code-memory store contains indexed source text and memory
+        // references. Tighten the primary file on every open so snapshot export
+        // never has to copy a group/world-readable database.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: databasePath
+        )
     }
 
     deinit {
@@ -1877,5 +1900,13 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 rank: nil
             )
         }
+    }
+
+    func stopProjectWatchersForSnapshot() {
+        for watcher in projectWatchers.values {
+            watcher.timer.cancel()
+            watcher.teardownEventStream()
+        }
+        projectWatchers.removeAll()
     }
 }
