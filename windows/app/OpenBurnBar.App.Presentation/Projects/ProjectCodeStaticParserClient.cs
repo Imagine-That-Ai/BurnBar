@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenBurnBar.App.Configuration;
 
 namespace OpenBurnBar.App.Presentation.Projects;
 
@@ -155,22 +156,16 @@ public sealed class JsonLinesProjectCodeStaticParserClient : IProjectCodeStaticP
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_timeout);
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = _executablePath,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardInputEncoding = Encoding.UTF8,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-        foreach (string argument in _arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
+        ProcessStartInfo startInfo = ChildProcessLaunchPolicy.CreateStartInfo(
+            ChildProcessProfile.ProjectTool,
+            _executablePath,
+            _arguments,
+            redirectStandardInput: true,
+            redirectStandardOutput: true,
+            redirectStandardError: true,
+            standardInputEncoding: Encoding.UTF8,
+            standardOutputEncoding: Encoding.UTF8,
+            standardErrorEncoding: Encoding.UTF8);
 
         using Process process = StartProcess(startInfo);
         Task<string> stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
@@ -250,8 +245,7 @@ public sealed class JsonLinesProjectCodeStaticParserClient : IProjectCodeStaticP
     {
         try
         {
-            return Process.Start(startInfo)
-                ?? throw new ProjectCodeParserException("parser_start_failed");
+            return ChildProcessLaunchPolicy.Start(startInfo, ChildProcessProfile.ProjectTool);
         }
         catch (ProjectCodeParserException)
         {

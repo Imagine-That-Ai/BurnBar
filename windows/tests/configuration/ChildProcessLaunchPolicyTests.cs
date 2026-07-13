@@ -20,6 +20,8 @@ public sealed class ChildProcessLaunchPolicyTests
             "chat.direct-cli",
             "cloud.oauth-browser",
             "data.swift-engine-interim",
+            "project-code.language-server",
+            "project-code.static-parser",
             "quota.claude-statusline-forwarder",
         }, ids);
     }

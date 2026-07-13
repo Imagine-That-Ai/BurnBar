@@ -17,6 +17,10 @@ started without command-line interpolation; the client performs bounded
 `exact_lsp` symbols/references with current-source Git-blob evidence. Paths are
 confined to the project root, Location and LocationLink forms are supported,
 and timeout/cancellation/crash paths kill the child process.
+Both the language-server adapter and Tree-sitter process client now use the
+reviewed `ProjectTool` child-process policy, which preserves the explicit
+argument vector and redirected UTF-8 streams while replacing inherited process
+environment state with the secret-scrubbed profile allowlist.
 
 ## Validation
 
@@ -25,11 +29,14 @@ dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj
 dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj --no-restore
 ```
 
-Results: **3 protocol/composition tests passed** and the full presentation suite
-passed (764 tests). The tests launch the checked-in fake language-server executable,
+Results: **3 protocol/composition tests passed**, the full presentation suite
+passed (774 tests), and the full configuration suite passed (37 tests). The
+tests launch the checked-in fake language-server executable,
 verify symbol and reference responses, validate `exact_lsp` and SHA evidence,
 prove missing-language/path-traversal fail-closed behavior, and prove LSP
-failure falls back to the bundled parser. App startup now composes the same
+failure falls back to the bundled parser. Configuration tests prove the two
+parser launches are present in the reviewed inventory and that no raw process
+launch bypass remains under `windows/app`. App startup now composes the same
 selection from `OPENBURNBAR_CODE_LSP_COMMANDS` when configured.
 
 ## Boundary

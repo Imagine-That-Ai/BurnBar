@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenBurnBar.App.Configuration;
 
 namespace OpenBurnBar.App.Presentation.Projects;
 
@@ -588,27 +589,20 @@ public sealed class LanguageServerProjectCodeParserClient : IProjectCodeStaticPa
 
     private static Process StartProcess(IReadOnlyList<string> command)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = command[0],
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardInputEncoding = Encoding.UTF8,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-        for (int index = 1; index < command.Count; index++)
-        {
-            startInfo.ArgumentList.Add(command[index]);
-        }
+        ProcessStartInfo startInfo = ChildProcessLaunchPolicy.CreateStartInfo(
+            ChildProcessProfile.ProjectTool,
+            command[0],
+            command.Skip(1),
+            redirectStandardInput: true,
+            redirectStandardOutput: true,
+            redirectStandardError: true,
+            standardInputEncoding: Encoding.UTF8,
+            standardOutputEncoding: Encoding.UTF8,
+            standardErrorEncoding: Encoding.UTF8);
 
         try
         {
-            return Process.Start(startInfo)
-                ?? throw new ProjectCodeParserException("lsp_start_failed");
+            return ChildProcessLaunchPolicy.Start(startInfo, ChildProcessProfile.ProjectTool);
         }
         catch (ProjectCodeParserException)
         {
