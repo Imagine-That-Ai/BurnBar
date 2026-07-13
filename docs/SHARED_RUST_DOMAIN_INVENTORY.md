@@ -90,10 +90,10 @@ does not claim rollout evidence or make Rust authoritative.
 
 | Slice | Current owners | Contract/deletion boundary |
 |---|---|---|
-| Request/response/control/media AAD | Swift `HermesRelayCrypto`; Android `HermesRelayCrypto*` | Canonicalize relay and signal-envelope fixtures; delete serializers only after byte-for-byte vectors pass |
-| AES payload seal/open and v1/v2 key wrap | Swift/Kotlin | Cross-open and rejection vectors through Rust; transport remains in iroh/platform code |
-| Authenticated HPKE v3 | Swift/Kotlin | Preserve pinned sender authentication and existing v3 vectors; no auth fallback |
-| Ratchet transitions, skipped keys, replay, restore | Swift/Kotlin | Use an opaque UniFFI session or versioned state-in/state-out API with atomic transitions and thread-safety tests |
+| Request/response/control/media AAD | Rust plus Swift/Kotlin during rollout | `tests/fixtures/domain-core/hermes/v1`; delete serializers after rollout evidence |
+| AES payload seal/open and v1/v2 key-wrap KDF/info | Rust plus Swift/Kotlin during rollout | Rust owns framing/KDF; CryptoKit/JCA retain P-256 ECDH and secure nonce generation |
+| Authenticated HPKE v3 info | Rust plus Swift/Kotlin during rollout | Pinned sender authentication and platform private-key custody remain unchanged; no auth fallback |
+| Ratchet KDF, envelope AAD, and payload AEAD | Rust plus Swift/Kotlin during rollout | Platform code retains atomic state transitions, skipped-key maps, replay policy, P-256 ratchets, and persistence |
 
 Functions validate schemas and proof-of-possession but do not decrypt relay
 payloads, so they are not a native relay-crypto implementation.

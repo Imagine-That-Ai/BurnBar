@@ -415,6 +415,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
     typealias FfiType = Int64
     typealias SwiftType = Int64
@@ -1411,6 +1427,241 @@ extension CloudVaultHashPurpose: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
+public enum HermesAadKind {
+
+    case request
+    case key
+    case authenticatedRequest
+    case authenticatedKey
+    case chunk
+    case mediaSealKey
+    case controlSealKey
+    case gatewayEvent
+    case gatewayEventKey
+    case gatewayMessage
+    case gatewayMessageKey
+    case gatewayAttachmentKey
+    case gatewayAttachmentManifest
+    case gatewayAttachmentBody
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHermesAadKind: FfiConverterRustBuffer {
+    typealias SwiftType = HermesAadKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HermesAadKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .request
+
+        case 2: return .key
+
+        case 3: return .authenticatedRequest
+
+        case 4: return .authenticatedKey
+
+        case 5: return .chunk
+
+        case 6: return .mediaSealKey
+
+        case 7: return .controlSealKey
+
+        case 8: return .gatewayEvent
+
+        case 9: return .gatewayEventKey
+
+        case 10: return .gatewayMessage
+
+        case 11: return .gatewayMessageKey
+
+        case 12: return .gatewayAttachmentKey
+
+        case 13: return .gatewayAttachmentManifest
+
+        case 14: return .gatewayAttachmentBody
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HermesAadKind, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .request:
+            writeInt(&buf, Int32(1))
+
+
+        case .key:
+            writeInt(&buf, Int32(2))
+
+
+        case .authenticatedRequest:
+            writeInt(&buf, Int32(3))
+
+
+        case .authenticatedKey:
+            writeInt(&buf, Int32(4))
+
+
+        case .chunk:
+            writeInt(&buf, Int32(5))
+
+
+        case .mediaSealKey:
+            writeInt(&buf, Int32(6))
+
+
+        case .controlSealKey:
+            writeInt(&buf, Int32(7))
+
+
+        case .gatewayEvent:
+            writeInt(&buf, Int32(8))
+
+
+        case .gatewayEventKey:
+            writeInt(&buf, Int32(9))
+
+
+        case .gatewayMessage:
+            writeInt(&buf, Int32(10))
+
+
+        case .gatewayMessageKey:
+            writeInt(&buf, Int32(11))
+
+
+        case .gatewayAttachmentKey:
+            writeInt(&buf, Int32(12))
+
+
+        case .gatewayAttachmentManifest:
+            writeInt(&buf, Int32(13))
+
+
+        case .gatewayAttachmentBody:
+            writeInt(&buf, Int32(14))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHermesAadKind_lift(_ buf: RustBuffer) throws -> HermesAadKind {
+    return try FfiConverterTypeHermesAadKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHermesAadKind_lower(_ value: HermesAadKind) -> RustBuffer {
+    return FfiConverterTypeHermesAadKind.lower(value)
+}
+
+
+
+extension HermesAadKind: Equatable, Hashable {}
+
+
+
+
+public enum HermesFfiError {
+
+
+
+    case InvalidAadArguments
+    case InvalidKeyLength
+    case InvalidNonceLength
+    case InvalidCiphertext
+    case AuthenticationFailed
+    case InvalidHkdfLength
+    case HmacFailure
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHermesFfiError: FfiConverterRustBuffer {
+    typealias SwiftType = HermesFfiError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HermesFfiError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+
+
+
+        case 1: return .InvalidAadArguments
+        case 2: return .InvalidKeyLength
+        case 3: return .InvalidNonceLength
+        case 4: return .InvalidCiphertext
+        case 5: return .AuthenticationFailed
+        case 6: return .InvalidHkdfLength
+        case 7: return .HmacFailure
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HermesFfiError, into buf: inout [UInt8]) {
+        switch value {
+
+
+
+
+
+        case .InvalidAadArguments:
+            writeInt(&buf, Int32(1))
+
+
+        case .InvalidKeyLength:
+            writeInt(&buf, Int32(2))
+
+
+        case .InvalidNonceLength:
+            writeInt(&buf, Int32(3))
+
+
+        case .InvalidCiphertext:
+            writeInt(&buf, Int32(4))
+
+
+        case .AuthenticationFailed:
+            writeInt(&buf, Int32(5))
+
+
+        case .InvalidHkdfLength:
+            writeInt(&buf, Int32(6))
+
+
+        case .HmacFailure:
+            writeInt(&buf, Int32(7))
+
+        }
+    }
+}
+
+
+extension HermesFfiError: Equatable, Hashable {}
+
+extension HermesFfiError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 public enum QuotaConfidence {
 
     case exact
@@ -1915,6 +2166,31 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer {
     typealias SwiftType = [QuotaBucket]
 
@@ -2160,6 +2436,125 @@ public func domainCoreVersion() -> String {
     )
 })
 }
+public func hermesGatewayRelaySafetyCode(agentPublicKey: Data, phonePublicKey: Data) -> String {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_gateway_relay_safety_code(
+        FfiConverterData.lower(agentPublicKey),
+        FfiConverterData.lower(phonePublicKey),$0
+    )
+})
+}
+public func hermesHkdfSha256(inputKeyMaterial: Data, salt: Data, info: Data, outputByteCount: UInt32)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_hkdf_sha256(
+        FfiConverterData.lower(inputKeyMaterial),
+        FfiConverterData.lower(salt),
+        FfiConverterData.lower(info),
+        FfiConverterUInt32.lower(outputByteCount),$0
+    )
+})
+}
+public func hermesHmacSha256(key: Data, data: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_hmac_sha256(
+        FfiConverterData.lower(key),
+        FfiConverterData.lower(data),$0
+    )
+})
+}
+public func hermesHpkeV3Info(aad: Data) -> Data {
+    return try!  FfiConverterData.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_hpke_v3_info(
+        FfiConverterData.lower(aad),$0
+    )
+})
+}
+public func hermesKeyWrapInfoV1(aad: Data) -> Data {
+    return try!  FfiConverterData.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_key_wrap_info_v1(
+        FfiConverterData.lower(aad),$0
+    )
+})
+}
+public func hermesKeyWrapInfoV2(aad: Data, enc: Data, recipientPublicKey: Data, senderPublicKey: Data) -> Data {
+    return try!  FfiConverterData.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_key_wrap_info_v2(
+        FfiConverterData.lower(aad),
+        FfiConverterData.lower(enc),
+        FfiConverterData.lower(recipientPublicKey),
+        FfiConverterData.lower(senderPublicKey),$0
+    )
+})
+}
+public func hermesOpenBase64(ciphertext: String, key: Data, aad: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_open_base64(
+        FfiConverterString.lower(ciphertext),
+        FfiConverterData.lower(key),
+        FfiConverterData.lower(aad),$0
+    )
+})
+}
+public func hermesOpenCombined(combined: Data, key: Data, aad: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_open_combined(
+        FfiConverterData.lower(combined),
+        FfiConverterData.lower(key),
+        FfiConverterData.lower(aad),$0
+    )
+})
+}
+public func hermesRatchetEnvelopeAad(associatedData: Data, algorithm: String, sessionId: String, senderDeviceId: String, receiverDeviceId: String, ratchetPublicKeyBase64: String, version: UInt64, previousChainLength: UInt64, messageNumber: UInt64, epoch: UInt64) -> Data {
+    return try!  FfiConverterData.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_envelope_aad(
+        FfiConverterData.lower(associatedData),
+        FfiConverterString.lower(algorithm),
+        FfiConverterString.lower(sessionId),
+        FfiConverterString.lower(senderDeviceId),
+        FfiConverterString.lower(receiverDeviceId),
+        FfiConverterString.lower(ratchetPublicKeyBase64),
+        FfiConverterUInt64.lower(version),
+        FfiConverterUInt64.lower(previousChainLength),
+        FfiConverterUInt64.lower(messageNumber),
+        FfiConverterUInt64.lower(epoch),$0
+    )
+})
+}
+public func hermesRelayAad(kind: HermesAadKind, arguments: [String])throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad(
+        FfiConverterTypeHermesAadKind.lower(kind),
+        FfiConverterSequenceString.lower(arguments),$0
+    )
+})
+}
+public func hermesSealBase64(plaintext: Data, key: Data, aad: Data, nonce: Data)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_base64(
+        FfiConverterData.lower(plaintext),
+        FfiConverterData.lower(key),
+        FfiConverterData.lower(aad),
+        FfiConverterData.lower(nonce),$0
+    )
+})
+}
+public func hermesSealCombined(plaintext: Data, key: Data, aad: Data, nonce: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_combined(
+        FfiConverterData.lower(plaintext),
+        FfiConverterData.lower(key),
+        FfiConverterData.lower(aad),
+        FfiConverterData.lower(nonce),$0
+    )
+})
+}
+public func hermesSha256(bytes: Data) -> Data {
+    return try!  FfiConverterData.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_sha256(
+        FfiConverterData.lower(bytes),$0
+    )
+})
+}
 public func parseAnthropicRateLimitHeaders(payload: Data, nowUnix: Int64, shape: AnthropicCredentialShape) -> QuotaParseResult {
     return try!  FfiConverterTypeQuotaParseResult.lift(try! rustCall() {
     uniffi_openburnbar_domain_ffi_fn_func_parse_anthropic_rate_limit_headers(
@@ -2287,6 +2682,45 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version() != 28819) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_gateway_relay_safety_code() != 63787) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_hkdf_sha256() != 32039) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_hmac_sha256() != 26509) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_hpke_v3_info() != 47793) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v1() != 60449) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v2() != 32217) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_base64() != 43968) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_combined() != 5935) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad() != 49577) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad() != 34735) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_base64() != 24382) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_combined() != 1816) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_sha256() != 58338) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers() != 49269) {

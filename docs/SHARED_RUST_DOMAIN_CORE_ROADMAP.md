@@ -5,10 +5,12 @@
 **Source inventory:** [Shared Rust Domain Inventory](SHARED_RUST_DOMAIN_INVENTORY.md)
 **First contract:** [`tests/fixtures/domain-core/quota/v1/`](../tests/fixtures/domain-core/quota/v1/)
 **CloudVault contract:** [`tests/fixtures/domain-core/cloudvault/v1/`](../tests/fixtures/domain-core/cloudvault/v1/)
-**CloudVault search contract:** [`cloudvault-search-contract.json`](../tests/fixtures/domain-core/cloudvault/v1/cloudvault-search-contract.json)
+**Hermes contract:** [`tests/fixtures/domain-core/hermes/v1/`](../tests/fixtures/domain-core/hermes/v1/)
 
 The pilot is implemented behind `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE`. Its
 accepted values are `legacy` (default), `shadow`, and `rust`.
+Hermes relay and ratchet byte transforms use
+`OPENBURNBAR_DOMAIN_CORE_HERMES_MODE` with the same values.
 
 ## Invariants
 
@@ -31,7 +33,7 @@ accepted values are `legacy` (default), `shadow`, and `rust`.
 | Q1 | Claude statusline quota | Swift + C# | Rust enforced on Apple/Windows; legacy parsers deleted |
 | Q2 | Codex, Cursor, Anthropic quota | Swift + C# | Four quota mechanisms share Rust parsing |
 | C1 | CloudVault primitives and envelopes | Swift + Kotlin + C# + browser TypeScript | KAT/cross-open clean; duplicated portable crypto copies deleted without exporting browser non-extractable keys |
-| C2 | Hermes relay HPKE/AAD/ratchet | Swift + Kotlin | Existing wire vectors pass through Rust sessions |
+| C2 | Hermes relay crypto and ratchet byte transforms | Swift + Kotlin | Existing wire vectors pass through Rust; P-256 custody and state mutation remain platform-owned |
 | P1 | Model pricing and cost arithmetic | Swift + TypeScript | Integer nano-USD Rust/WASM path enforced |
 
 Provider log parsing remains in Swift until a second real implementation exists,
@@ -41,23 +43,14 @@ justifies replacement.
 CloudVault C1 is split by security boundary. C1a owns deterministic AAD
 canonicalization, SHA-256, 32-byte vault-key IDs, and fixed-purpose HKDF/HMAC.
 It ships through UniFFI ABI 2, a four-ABI Android AAR, and a deterministic browser
-Wasm package. C1b owns AES-256-GCM detached/combined framing, strict UTF-8 and
-canonical RFC 4648 Base64, with caller-generated 12-byte nonces and payload-sized
-FFI calls. Apple, Android, Windows, and Wasm execute the same AES KAT, including
-valid empty plaintext. C1c adds recovery and
-P-256 escrow: canonical recovery normalization, recovery HKDF and verification,
-strict on-curve 65-byte X9.63 validation, escrow HKDF from caller-provided ECDH
-output, and exact public-key-plus-AES wire assembly. Random nonces and P-256
-private-key operations remain platform-owned; no private key crosses UniFFI or
-Wasm. Search normalization and document rewrap remain last. Browser device
-private keys stay non-extractable WebCrypto handles throughout.
+Wasm package. C1b adds AES text/blob/payload cross-open; C1c adds recovery and
+P-256 escrow; search normalization and document rewrap remain last. Browser
+device private keys stay non-extractable WebCrypto handles throughout.
 
-The search slice starts from the versioned Swift/Kotlin contract fixture before
-adding any Rust export. The fixture pins Unicode normalization, stopwords,
-deduplication order, index/query prefixes, exact phrases, semantic
-concept/stem/features, non-positive limits, key isolation, and adversarial
-bounds. Passing the fixture is implementation evidence only; it is not rollout
-evidence and does not satisfy the crypto deletion gate by itself.
+Hermes C2 shares relay AAD, v1/v2 wrap-info construction, HPKE v3 info,
+SHA-256/safety codes, HKDF/HMAC, AES-GCM payload framing, and ratchet envelope
+AAD through ABI 2. CryptoKit/JCA continue to own P-256 private keys, ECDH,
+secure random generation, and ratchet state mutation.
 
 ## Rollout and deletion gates
 
@@ -65,6 +58,15 @@ Quota migrations require the complete fixture corpus, native binding load tests,
 at least 14 days and 10,000 internal or beta shadow parses, zero unexplained
 mismatches, and no p95 latency regression above five percent. The legacy mode
 remains available for one stable release after Rust enforcement, then is deleted.
+
+Quantitative shadow evidence is evaluated by the fail-closed
+[`evaluate-domain-core-promotion.mjs`](../scripts/ci/evaluate-domain-core-promotion.mjs)
+gate against committed policy. The machine-readable report and collection
+contract are documented in the
+[promotion evidence runbook](runbooks/shared-rust-promotion-evidence.md).
+Runtime evidence is retained with the rollout review, not committed to the
+repository, and a passing quantitative report does not replace the remaining
+fixture, artifact, security-review, release, or deletion gates.
 
 Crypto migrations additionally require deterministic KATs, bidirectional
 cross-open coverage for every supported envelope version, tamper/wrong-key/AAD

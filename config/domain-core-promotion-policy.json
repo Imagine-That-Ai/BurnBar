@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "domains": {
+    "quota": {
+      "requiredConsumers": ["apple", "windows"],
+      "allowedChannels": ["internal", "beta"],
+      "minimumCoverageSeconds": 1209600,
+      "minimumSamples": 10000,
+      "maximumP95RegressionBasisPoints": 500
+    }
+  }
+}

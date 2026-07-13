@@ -771,6 +771,32 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -839,6 +865,32 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version(uniffi_out_err: UniffiRustCallStatus,
     ): Int
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_version(uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_gateway_relay_safety_code(`agentPublicKey`: RustBuffer.ByValue,`phonePublicKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_hkdf_sha256(`inputKeyMaterial`: RustBuffer.ByValue,`salt`: RustBuffer.ByValue,`info`: RustBuffer.ByValue,`outputByteCount`: Int,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_hmac_sha256(`key`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_hpke_v3_info(`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_key_wrap_info_v1(`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_key_wrap_info_v2(`aad`: RustBuffer.ByValue,`enc`: RustBuffer.ByValue,`recipientPublicKey`: RustBuffer.ByValue,`senderPublicKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_open_base64(`ciphertext`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_open_combined(`combined`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_envelope_aad(`associatedData`: RustBuffer.ByValue,`algorithm`: RustBuffer.ByValue,`sessionId`: RustBuffer.ByValue,`senderDeviceId`: RustBuffer.ByValue,`receiverDeviceId`: RustBuffer.ByValue,`ratchetPublicKeyBase64`: RustBuffer.ByValue,`version`: Long,`previousChainLength`: Long,`messageNumber`: Long,`epoch`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad(`kind`: RustBuffer.ByValue,`arguments`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_base64(`plaintext`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_combined(`plaintext`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_sha256(`bytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_parse_anthropic_rate_limit_headers(`payload`: RustBuffer.ByValue,`nowUnix`: Long,`shape`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -1014,6 +1066,32 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_gateway_relay_safety_code(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_hkdf_sha256(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_hmac_sha256(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_hpke_v3_info(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v1(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v2(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_base64(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_combined(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_base64(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_combined(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_sha256(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_parse_claude_statusline_quota(
@@ -1119,6 +1197,45 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version() != 28819.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_gateway_relay_safety_code() != 63787.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_hkdf_sha256() != 32039.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_hmac_sha256() != 26509.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_hpke_v3_info() != 47793.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v1() != 60449.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v2() != 32217.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_base64() != 43968.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_combined() != 5935.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad() != 49577.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad() != 34735.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_base64() != 24382.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_combined() != 1816.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_sha256() != 58338.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers() != 49269.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1198,6 +1315,29 @@ public object FfiConverterUInt: FfiConverter<UInt, Int> {
 
     override fun write(value: UInt, buf: ByteBuffer) {
         buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterULong: FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong {
+        return value.toULong()
+    }
+
+    override fun read(buf: ByteBuffer): ULong {
+        return lift(buf.getLong())
+    }
+
+    override fun lower(value: ULong): Long {
+        return value.toLong()
+    }
+
+    override fun allocationSize(value: ULong) = 8UL
+
+    override fun write(value: ULong, buf: ByteBuffer) {
+        buf.putLong(value.toLong())
     }
 }
 
@@ -1981,6 +2121,191 @@ public object FfiConverterTypeCloudVaultHashPurpose: FfiConverterRustBuffer<Clou
 
 
 
+enum class HermesAadKind {
+
+    REQUEST,
+    KEY,
+    AUTHENTICATED_REQUEST,
+    AUTHENTICATED_KEY,
+    CHUNK,
+    MEDIA_SEAL_KEY,
+    CONTROL_SEAL_KEY,
+    GATEWAY_EVENT,
+    GATEWAY_EVENT_KEY,
+    GATEWAY_MESSAGE,
+    GATEWAY_MESSAGE_KEY,
+    GATEWAY_ATTACHMENT_KEY,
+    GATEWAY_ATTACHMENT_MANIFEST,
+    GATEWAY_ATTACHMENT_BODY;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHermesAadKind: FfiConverterRustBuffer<HermesAadKind> {
+    override fun read(buf: ByteBuffer) = try {
+        HermesAadKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: HermesAadKind) = 4UL
+
+    override fun write(value: HermesAadKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
+
+sealed class HermesFfiException: kotlin.Exception() {
+
+    class InvalidAadArguments(
+        ) : HermesFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidKeyLength(
+        ) : HermesFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidNonceLength(
+        ) : HermesFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidCiphertext(
+        ) : HermesFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class AuthenticationFailed(
+        ) : HermesFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidHkdfLength(
+        ) : HermesFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class HmacFailure(
+        ) : HermesFfiException() {
+        override val message
+            get() = ""
+    }
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<HermesFfiException> {
+        override fun lift(error_buf: RustBuffer.ByValue): HermesFfiException = FfiConverterTypeHermesFfiError.lift(error_buf)
+    }
+
+
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiException> {
+    override fun read(buf: ByteBuffer): HermesFfiException {
+
+
+        return when(buf.getInt()) {
+            1 -> HermesFfiException.InvalidAadArguments()
+            2 -> HermesFfiException.InvalidKeyLength()
+            3 -> HermesFfiException.InvalidNonceLength()
+            4 -> HermesFfiException.InvalidCiphertext()
+            5 -> HermesFfiException.AuthenticationFailed()
+            6 -> HermesFfiException.InvalidHkdfLength()
+            7 -> HermesFfiException.HmacFailure()
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: HermesFfiException): ULong {
+        return when(value) {
+            is HermesFfiException.InvalidAadArguments -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is HermesFfiException.InvalidKeyLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is HermesFfiException.InvalidNonceLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is HermesFfiException.InvalidCiphertext -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is HermesFfiException.AuthenticationFailed -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is HermesFfiException.InvalidHkdfLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is HermesFfiException.HmacFailure -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: HermesFfiException, buf: ByteBuffer) {
+        when(value) {
+            is HermesFfiException.InvalidAadArguments -> {
+                buf.putInt(1)
+                Unit
+            }
+            is HermesFfiException.InvalidKeyLength -> {
+                buf.putInt(2)
+                Unit
+            }
+            is HermesFfiException.InvalidNonceLength -> {
+                buf.putInt(3)
+                Unit
+            }
+            is HermesFfiException.InvalidCiphertext -> {
+                buf.putInt(4)
+                Unit
+            }
+            is HermesFfiException.AuthenticationFailed -> {
+                buf.putInt(5)
+                Unit
+            }
+            is HermesFfiException.InvalidHkdfLength -> {
+                buf.putInt(6)
+                Unit
+            }
+            is HermesFfiException.HmacFailure -> {
+                buf.putInt(7)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+
+
+
+
 enum class QuotaConfidence {
 
     EXACT,
@@ -2236,6 +2561,34 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
         } else {
             buf.put(1)
             FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
         }
     }
 }
@@ -2527,6 +2880,130 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_domain_core_version(
         _status)
+}
+    )
+    }
+
+ fun `hermesGatewayRelaySafetyCode`(`agentPublicKey`: kotlin.ByteArray, `phonePublicKey`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_gateway_relay_safety_code(
+        FfiConverterByteArray.lower(`agentPublicKey`),FfiConverterByteArray.lower(`phonePublicKey`),_status)
+}
+    )
+    }
+
+
+    @Throws(HermesFfiException::class) fun `hermesHkdfSha256`(`inputKeyMaterial`: kotlin.ByteArray, `salt`: kotlin.ByteArray, `info`: kotlin.ByteArray, `outputByteCount`: kotlin.UInt): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(HermesFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_hkdf_sha256(
+        FfiConverterByteArray.lower(`inputKeyMaterial`),FfiConverterByteArray.lower(`salt`),FfiConverterByteArray.lower(`info`),FfiConverterUInt.lower(`outputByteCount`),_status)
+}
+    )
+    }
+
+
+    @Throws(HermesFfiException::class) fun `hermesHmacSha256`(`key`: kotlin.ByteArray, `data`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(HermesFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_hmac_sha256(
+        FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`data`),_status)
+}
+    )
+    }
+
+ fun `hermesHpkeV3Info`(`aad`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_hpke_v3_info(
+        FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+ fun `hermesKeyWrapInfoV1`(`aad`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_key_wrap_info_v1(
+        FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+ fun `hermesKeyWrapInfoV2`(`aad`: kotlin.ByteArray, `enc`: kotlin.ByteArray, `recipientPublicKey`: kotlin.ByteArray, `senderPublicKey`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_key_wrap_info_v2(
+        FfiConverterByteArray.lower(`aad`),FfiConverterByteArray.lower(`enc`),FfiConverterByteArray.lower(`recipientPublicKey`),FfiConverterByteArray.lower(`senderPublicKey`),_status)
+}
+    )
+    }
+
+
+    @Throws(HermesFfiException::class) fun `hermesOpenBase64`(`ciphertext`: kotlin.String, `key`: kotlin.ByteArray, `aad`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(HermesFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_open_base64(
+        FfiConverterString.lower(`ciphertext`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(HermesFfiException::class) fun `hermesOpenCombined`(`combined`: kotlin.ByteArray, `key`: kotlin.ByteArray, `aad`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(HermesFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_open_combined(
+        FfiConverterByteArray.lower(`combined`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+ fun `hermesRatchetEnvelopeAad`(`associatedData`: kotlin.ByteArray, `algorithm`: kotlin.String, `sessionId`: kotlin.String, `senderDeviceId`: kotlin.String, `receiverDeviceId`: kotlin.String, `ratchetPublicKeyBase64`: kotlin.String, `version`: kotlin.ULong, `previousChainLength`: kotlin.ULong, `messageNumber`: kotlin.ULong, `epoch`: kotlin.ULong): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_envelope_aad(
+        FfiConverterByteArray.lower(`associatedData`),FfiConverterString.lower(`algorithm`),FfiConverterString.lower(`sessionId`),FfiConverterString.lower(`senderDeviceId`),FfiConverterString.lower(`receiverDeviceId`),FfiConverterString.lower(`ratchetPublicKeyBase64`),FfiConverterULong.lower(`version`),FfiConverterULong.lower(`previousChainLength`),FfiConverterULong.lower(`messageNumber`),FfiConverterULong.lower(`epoch`),_status)
+}
+    )
+    }
+
+
+    @Throws(HermesFfiException::class) fun `hermesRelayAad`(`kind`: HermesAadKind, `arguments`: List<kotlin.String>): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(HermesFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad(
+        FfiConverterTypeHermesAadKind.lower(`kind`),FfiConverterSequenceString.lower(`arguments`),_status)
+}
+    )
+    }
+
+
+    @Throws(HermesFfiException::class) fun `hermesSealBase64`(`plaintext`: kotlin.ByteArray, `key`: kotlin.ByteArray, `aad`: kotlin.ByteArray, `nonce`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(HermesFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_base64(
+        FfiConverterByteArray.lower(`plaintext`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`aad`),FfiConverterByteArray.lower(`nonce`),_status)
+}
+    )
+    }
+
+
+    @Throws(HermesFfiException::class) fun `hermesSealCombined`(`plaintext`: kotlin.ByteArray, `key`: kotlin.ByteArray, `aad`: kotlin.ByteArray, `nonce`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(HermesFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_combined(
+        FfiConverterByteArray.lower(`plaintext`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`aad`),FfiConverterByteArray.lower(`nonce`),_status)
+}
+    )
+    }
+
+ fun `hermesSha256`(`bytes`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_sha256(
+        FfiConverterByteArray.lower(`bytes`),_status)
 }
     )
     }
