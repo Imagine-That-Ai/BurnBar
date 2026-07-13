@@ -17,7 +17,7 @@ const FORBIDDEN_RAW = [
   'daemon.mercury.',
   'daemon.smarthub.',
   'daemon.textexpansion.',
-  'daemon.memory.review_'
+  'daemon.memory.review_legacy'
 ];
 
 /** Strip // line comments and /* block comments for RPC string greps. */
@@ -70,12 +70,14 @@ describe('VAL-RPC bridge contract', () => {
     expect(rustBridge).not.toContain('fn iso8601_now');
   });
 
-  it('wires memory set status to remember/forget/audit_trail', () => {
+  it('wires memory quarantine/review status to canonical daemon RPCs', () => {
     expect(rustBridge).toContain('daemon.memory.remember');
+    expect(rustBridge).toContain('daemon.memory.review_status');
     expect(rustBridge).toContain('daemon.memory.forget');
     expect(rustBridge).toContain('daemon.memory.audit_trail');
     expect(rustBridge).toContain('fn memory_set_status');
     expect(tsBridge).toContain('memory_set_status');
+    expect(canonicalRpc).toContain('id: "daemon.memory.review_status"');
   });
 
   it('wires bounded database retrieval only to canonical code RPCs', () => {

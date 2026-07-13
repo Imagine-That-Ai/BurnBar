@@ -812,6 +812,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.memory.review_status",
+    "caseName": "memoryReviewStatus",
+    "domain": "memory",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.memory.review_status",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.mission.approve",
     "caseName": "missionApprove",
     "domain": "mission_control",

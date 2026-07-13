@@ -438,7 +438,7 @@ export type ProjectEntry = {
   record?: ProjectRecord;
 };
 export type MemoryBoundary = { id: string; scope: string; label: string; detail: string };
-export type MemoryReviewStatus = 'pending' | 'approved' | 'rejected';
+export type MemoryReviewStatus = 'pending' | 'approved' | 'rejected' | 'forgotten';
 export type MemoryReviewItem = {
   id: string;
   body: string;
@@ -1311,7 +1311,7 @@ export interface LinuxShellBridge {
   projectReassign?(sourceProjectSlug: string, targetProjectSlug: string): Promise<ProjectReassignResult>;
   memoryBoundaries(): Promise<MemoryBoundary[]>;
   memoryReviewInbox(): Promise<MemoryReviewInbox>;
-  memoryReviewDecision(id: string, decision: Exclude<MemoryReviewStatus, 'pending'>): Promise<void>;
+  memoryReviewDecision(id: string, decision: Exclude<MemoryReviewStatus, 'pending' | 'forgotten'>): Promise<void>;
   databaseWorkspaceStatus(projectPath?: string): Promise<DatabaseWorkspaceStatus>;
   databaseIndexProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   databaseWatchProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
@@ -1382,7 +1382,7 @@ export interface LinuxShellBridge {
     note?: string
   ): Promise<void>;
   memorySetStatus?(
-    action: 'approve' | 'reject' | 'audit' | 'remember' | 'forget',
+    action: 'approve' | 'quarantine' | 'reject' | 'audit' | 'remember' | 'forget',
     payload: Record<string, unknown>
   ): Promise<unknown>;
   computerUseSessionAuthorityStatus?(): Promise<ComputerUseSessionAuthorityStatus>;
@@ -2708,14 +2708,20 @@ function mapMemoryReviewInbox(raw: RawJsonValue): MemoryReviewInbox {
     const id = str(pick(hit, 'memoryID', 'memoryId', 'id'), `memory-${i}`);
     const sourcePath = str(pick(hit, 'sourcePath', 'source_path'));
     const projectID = str(pick(hit, 'projectID', 'projectId'));
+    const daemonStatus = str(pick(hit, 'reviewStatus', 'review_status'));
+    const status: MemoryReviewStatus = daemonStatus === 'quarantined'
+      ? 'pending'
+      : daemonStatus === 'rejected' || daemonStatus === 'forgotten'
+        ? daemonStatus
+        : 'approved';
     return {
       id,
       body: str(pick(hit, 'bodyRedacted', 'snippet', 'text', 'body'), '(Memory contents unavailable)'),
       kind: str(pick(hit, 'kind'), 'memory'),
       confidence: Math.max(0, Math.min(1, num(pick(hit, 'confidence'), 1))),
       sourceLabel: sourcePath || projectID || 'Daemon memory recall',
-      status: 'approved',
-      canApprove: false,
+      status,
+      canApprove: status === 'pending',
       auditHash: lastAuditBySubject.get(id)
     };
   });

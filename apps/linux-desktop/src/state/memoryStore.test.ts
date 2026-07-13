@@ -172,7 +172,7 @@ describe('memoryStore decide (memorySetStatus primary)', () => {
     expect(useMemoryStore.getState().decisionById['mem-1']?.error).toBeNull();
   });
 
-  it('skips remember for recall-origin pending rows (already durable)', async () => {
+  it('approves a quarantined durable row by ID instead of duplicating the body', async () => {
     const memorySetStatus = vi.fn();
     const recallInbox: MemoryReviewInbox = {
       items: [
@@ -194,7 +194,10 @@ describe('memoryStore decide (memorySetStatus primary)', () => {
     });
     useMemoryStore.setState({ inbox: recallInbox });
     await useMemoryStore.getState().decide('mem-recall', 'approved');
-    expect(memorySetStatus).not.toHaveBeenCalled();
+    expect(memorySetStatus).toHaveBeenCalledWith(
+      'approve',
+      expect.objectContaining({ memoryID: 'mem-recall' })
+    );
   });
 
   it('refuses invented approved: placeholder text', async () => {
@@ -222,7 +225,7 @@ describe('memoryStore decide (memorySetStatus primary)', () => {
     expect(useMemoryStore.getState().decisionById['mem-x']?.error).toMatch(/placeholder/i);
   });
 
-  it('dedupes by matching already-approved body', async () => {
+  it('still transitions a duplicate quarantined row through the daemon', async () => {
     const memorySetStatus = vi.fn();
     const inbox: MemoryReviewInbox = {
       items: [
@@ -252,6 +255,24 @@ describe('memoryStore decide (memorySetStatus primary)', () => {
     });
     useMemoryStore.setState({ inbox });
     await useMemoryStore.getState().decide('mem-b', 'approved');
-    expect(memorySetStatus).not.toHaveBeenCalled();
+    expect(memorySetStatus).toHaveBeenCalledWith(
+      'approve',
+      expect.objectContaining({ memoryID: 'mem-b', text: 'same body' })
+    );
+  });
+
+  it('forgets through the daemon and never uses renderer-only status for live state', async () => {
+    const memorySetStatus = vi.fn().mockResolvedValue({});
+    const memoryReviewInbox = vi.fn().mockResolvedValue({
+      items: [{ ...sampleInbox.items[0], status: 'forgotten', body: '' }],
+      auditEvents: []
+    });
+    useShellStore.setState({
+      bridge: { memorySetStatus, memoryReviewInbox } as unknown as LinuxShellBridge
+    });
+    useMemoryStore.setState({ inbox: sampleInbox });
+    await useMemoryStore.getState().forget('mem-1');
+    expect(memorySetStatus).toHaveBeenCalledWith('forget', { memoryID: 'mem-1' });
+    expect(useMemoryStore.getState().inbox?.items[0]?.status).toBe('forgotten');
   });
 });

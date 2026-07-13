@@ -9,13 +9,14 @@ import type { MemoryBoundary, MemoryReviewItem, MemoryReviewStatus } from '../..
 import '../system/system.css';
 import './memory.css';
 
-type InboxFilter = 'all' | 'pending' | 'approved' | 'rejected';
+type InboxFilter = 'all' | 'pending' | 'approved' | 'rejected' | 'forgotten';
 
 const INBOX_FILTERS: { key: InboxFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
   { key: 'approved', label: 'Approved' },
-  { key: 'rejected', label: 'Rejected' }
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'forgotten', label: 'Forgotten' }
 ];
 
 function countForFilter(items: MemoryReviewItem[], filter: InboxFilter): number {
@@ -45,10 +46,15 @@ function emptyInboxCopy(filter: InboxFilter): { title: string; body: string } {
         title: 'No rejected memories',
         body: 'Rejected items stay out of recall. They will not be injected into future chats.'
       };
+    case 'forgotten':
+      return {
+        title: 'No forgotten memories',
+        body: 'Forgotten memories keep an audit tombstone but their sealed body is removed from local recall.'
+      };
     default:
       return {
         title: 'No memory items yet',
-        body: 'Durable memories recalled from the daemon appear here. "Save as memory" uses daemon.memory.remember (requires body text). Reject/forget permanently deletes via daemon.memory.forget — it does not return items to pending.'
+        body: 'Candidates stay quarantined until approval. Reject keeps a durable out-of-recall decision; forget removes the sealed body and leaves only an audit tombstone.'
       };
   }
 }
@@ -65,14 +71,14 @@ function MemoryReviewRow({
   item,
   onApprove,
   onReject,
-  onRevoke,
+  onForget,
   pendingDecision,
   decisionError
 }: {
   item: MemoryReviewItem;
   onApprove: () => void;
   onReject: () => void;
-  onRevoke: () => void;
+  onForget: () => void;
   pendingDecision?: boolean;
   decisionError?: string | null;
 }) {
@@ -88,7 +94,7 @@ function MemoryReviewRow({
     const ok = window.confirm(
       'Permanently forget this memory? It will be deleted from local recall (not returned to pending).'
     );
-    if (ok) onRevoke();
+    if (ok) onForget();
   };
 
   const confidencePct = Math.round(item.confidence * 100);
@@ -141,8 +147,10 @@ function MemoryReviewRow({
               {pendingDecision ? 'Saving…' : 'Save as memory'}
             </button>
           </>
-        ) : (
+        ) : item.status === 'rejected' ? (
           <span className="muted">Rejected</span>
+        ) : (
+          <span className="muted">Forgotten</span>
         )}
       </div>
       {decisionError ? (
@@ -219,6 +227,7 @@ export function MemorySurface() {
   const decisionById = useMemoryStore((s) => s.decisionById);
   const loadInbox = useMemoryStore((s) => s.loadInbox);
   const decideMemory = useMemoryStore((s) => s.decide);
+  const forgetMemory = useMemoryStore((s) => s.forget);
 
   const [inboxFilter, setInboxFilter] = useState<InboxFilter>('pending');
 
@@ -365,7 +374,7 @@ export function MemorySurface() {
               decisionError={decisionById[item.id]?.error}
               onApprove={() => void decideMemory(item.id, 'approved')}
               onReject={() => void decideMemory(item.id, 'rejected')}
-              onRevoke={() => void decideMemory(item.id, 'rejected')}
+              onForget={() => void forgetMemory(item.id)}
             />
           ))}
         </div>

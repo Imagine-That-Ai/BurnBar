@@ -225,10 +225,19 @@ extension BurnBarProjectCodeMemoryStore {
                 valid_from TEXT NOT NULL,
                 valid_to TEXT,
                 superseded_by TEXT,
+                review_status TEXT NOT NULL DEFAULT 'approved',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
             """,
+            []
+        )
+        // Older daemon databases predate the review lifecycle. Existing rows were
+        // already durable memories, so they are approved when upgraded; newly
+        // extracted candidates explicitly opt into quarantined status.
+        try ensureColumn(table: "agent_memories", column: "review_status", definition: "TEXT NOT NULL DEFAULT 'approved'")
+        try execute(
+            "CREATE INDEX IF NOT EXISTS agent_memories_review_status_idx ON agent_memories(project_id, review_status, updated_at)",
             []
         )
         try execute("CREATE INDEX IF NOT EXISTS agent_memories_project_idx ON agent_memories(project_id, scope, updated_at)", [])

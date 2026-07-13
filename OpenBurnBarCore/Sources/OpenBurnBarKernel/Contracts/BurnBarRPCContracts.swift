@@ -139,6 +139,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case searchQuery = "daemon.search.query"
     case memoryRemember = "daemon.memory.remember"
     case memoryRecall = "daemon.memory.recall"
+    case memoryReviewStatus = "daemon.memory.review_status"
     case memoryForget = "daemon.memory.forget"
     case memoryAuditTrail = "daemon.memory.audit_trail"
     case memoryAnalytics = "daemon.memory.analytics"

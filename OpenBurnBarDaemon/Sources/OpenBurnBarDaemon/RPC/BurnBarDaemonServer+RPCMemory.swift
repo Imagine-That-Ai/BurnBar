@@ -36,6 +36,16 @@ extension BurnBarDaemonServer {
             } catch {
                 return encodeErrorResponse(id: typedRequest.id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
             }
+        case .memoryReviewStatus:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarProjectMemoryReviewStatusRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: try projectCodeMemory.setReviewStatus(typedRequest.params)))
+            } catch {
+                return encodeErrorResponse(id: typedRequest.id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
+            }
         case .memoryForget:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarProjectMemoryForgetRequest>.self,

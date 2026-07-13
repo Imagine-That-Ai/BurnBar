@@ -504,6 +504,93 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("snapshot section removed") })
     }
 
+    func testQuarantineLifecycleIsDaemonOwnedAndFailClosedForRecall() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-review-test")
+        )
+        let candidate = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "User prefers a compact parity review inbox.",
+                projectPath: fixture.project.path,
+                kind: "preference",
+                reviewStatus: .quarantined
+            )
+        )
+
+        let normalRecall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "compact parity", projectPath: fixture.project.path)
+        )
+        XCTAssertTrue(normalRecall.hits.isEmpty, "quarantined memories must never enter normal recall")
+
+        let reviewFeed = try store.recall(
+            BurnBarProjectMemoryRecallRequest(
+                query: "memory review",
+                projectPath: fixture.project.path,
+                includeQuarantined: true,
+                includeForgotten: true
+            )
+        )
+        XCTAssertEqual(reviewFeed.hits.first?.memoryID, candidate.memoryID)
+        XCTAssertEqual(reviewFeed.hits.first?.reviewStatus, .quarantined)
+        XCTAssertEqual(reviewFeed.hits.first?.bodyRedacted, "User prefers a compact parity review inbox.")
+
+        let approved = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: candidate.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved
+            )
+        )
+        XCTAssertEqual(approved.status, .approved)
+        XCTAssertFalse(
+            try store.recall(BurnBarProjectMemoryRecallRequest(query: "compact parity", projectPath: fixture.project.path)).hits.isEmpty
+        )
+
+        _ = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: candidate.memoryID,
+                projectPath: fixture.project.path,
+                status: .rejected
+            )
+        )
+        XCTAssertTrue(
+            try store.recall(BurnBarProjectMemoryRecallRequest(query: "compact parity", projectPath: fixture.project.path)).hits.isEmpty
+        )
+        let rejectedFeed = try store.recall(
+            BurnBarProjectMemoryRecallRequest(
+                query: "memory review",
+                projectPath: fixture.project.path,
+                includeQuarantined: true
+            )
+        )
+        XCTAssertEqual(rejectedFeed.hits.first?.reviewStatus, .rejected)
+
+        let forgotten = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: candidate.memoryID, projectPath: fixture.project.path)
+        )
+        XCTAssertTrue(forgotten.localDeleted)
+        XCTAssertTrue(
+            try store.recall(BurnBarProjectMemoryRecallRequest(query: "compact parity", projectPath: fixture.project.path)).hits.isEmpty
+        )
+        let forgottenFeed = try store.recall(
+            BurnBarProjectMemoryRecallRequest(
+                query: "memory review",
+                projectPath: fixture.project.path,
+                includeQuarantined: true,
+                includeForgotten: true
+            )
+        )
+        XCTAssertEqual(forgottenFeed.hits.first?.reviewStatus, .forgotten)
+        XCTAssertEqual(forgottenFeed.hits.first?.bodyRedacted, "")
+
+        let audit = try store.auditTrail(BurnBarProjectMemoryAuditTrailRequest(projectPath: fixture.project.path))
+        XCTAssertTrue(audit.events.contains { $0.action == "memory.review_status" && $0.labels.contains("review_status:approved") })
+        XCTAssertTrue(audit.events.contains { $0.action == "memory.review_status" && $0.labels.contains("review_status:rejected") })
+        XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("review_status:forgotten") })
+    }
+
     func testRememberStoresBodyInProjectMemorySnapshotNotAgentIndex() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))

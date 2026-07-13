@@ -568,6 +568,53 @@ describe('VAL-RPC-002 bridge behavior', () => {
     });
   });
 
+  it('maps daemon quarantine and forgotten statuses without treating them as approved', async () => {
+    invoke.mockResolvedValueOnce({
+      recall: {
+        ok: true,
+        result: {
+          hits: [
+            {
+              memoryID: 'mem-quarantined',
+              projectID: 'project-1',
+              kind: 'preference',
+              scope: 'personal',
+              confidence: 0.8,
+              bodyRedacted: 'User prefers compact cards.',
+              tags: [],
+              sourcePath: null,
+              snippet: 'User prefers compact cards.',
+              rank: null,
+              reviewStatus: 'quarantined'
+            },
+            {
+              memoryID: 'mem-forgotten',
+              projectID: 'project-1',
+              kind: 'fact',
+              scope: 'personal',
+              confidence: 1,
+              bodyRedacted: '',
+              tags: [],
+              sourcePath: null,
+              snippet: '',
+              rank: null,
+              reviewStatus: 'forgotten'
+            }
+          ]
+        }
+      },
+      auditTrail: { ok: true, result: { events: [] } }
+    });
+    const b = await bridge();
+    await expect(b.memoryReviewInbox()).resolves.toMatchObject({
+      items: [
+        { id: 'mem-quarantined', status: 'pending', canApprove: true },
+        { id: 'mem-forgotten', status: 'forgotten', canApprove: false }
+      ]
+    });
+    expect(invoke).toHaveBeenCalledWith('memory_review_inbox');
+  });
+
   it('memoryReviewDecision approve fails closed without inventing text', async () => {
     const b = await bridge();
     await expect(b.memoryReviewDecision('m-1', 'approved')).rejects.toThrow(/without body text/);

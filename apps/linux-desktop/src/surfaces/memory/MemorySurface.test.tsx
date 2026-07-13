@@ -92,7 +92,7 @@ describe('MemorySurface', () => {
     expect(screen.getAllByText('Approved').length).toBeGreaterThan(0);
   });
 
-  it('renders live recalled memories as approved and forgets through memorySetStatus', async () => {
+  it('renders daemon-owned statuses and forgets through memorySetStatus', async () => {
     vi.spyOn(useSystemStore.getState(), 'loadMemory').mockImplementation(async () => {});
     const memorySetStatus = vi.fn().mockResolvedValue({});
     const memoryReviewInbox = vi.fn().mockResolvedValue({
@@ -121,7 +121,41 @@ describe('MemorySurface', () => {
     await waitFor(() => expect(screen.getByText(/Use daemon RPCs/i)).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /forget permanently/i }));
     await waitFor(() =>
-      expect(memorySetStatus).toHaveBeenCalledWith('reject', { memoryID: 'mem-live-1' })
+      expect(memorySetStatus).toHaveBeenCalledWith('forget', { memoryID: 'mem-live-1' })
+    );
+  });
+
+  it('shows pending quarantine rows with approve and reject actions', async () => {
+    vi.spyOn(useSystemStore.getState(), 'loadMemory').mockImplementation(async () => {});
+    const memoryReviewInbox = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'mem-pending',
+          body: 'User prefers compact review cards.',
+          kind: 'preference',
+          confidence: 0.8,
+          sourceLabel: 'Daemon memory quarantine',
+          status: 'pending',
+          canApprove: true
+        }
+      ],
+      auditEvents: []
+    });
+    const memorySetStatus = vi.fn().mockResolvedValue({});
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    useShellStore.setState({
+      bridge: { memoryReviewInbox, memorySetStatus } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    useSystemStore.setState({ memory: [], loading: false, error: null });
+    render(<MemorySurface />);
+    await waitFor(() => expect(screen.getByText(/compact review cards/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /save as memory/i }));
+    await waitFor(() =>
+      expect(memorySetStatus).toHaveBeenCalledWith(
+        'approve',
+        expect.objectContaining({ memoryID: 'mem-pending' })
+      )
     );
   });
 

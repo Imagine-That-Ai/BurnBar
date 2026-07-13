@@ -123,7 +123,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .run
         case .searchQuery:
             return .search
-        case .memoryRemember, .memoryForget:
+        case .memoryRemember, .memoryReviewStatus, .memoryForget:
             return .memoryWrite
         case .memoryRecall, .memoryAuditTrail, .memoryAnalytics:
             return .memoryRead

@@ -3002,9 +3002,8 @@ fn memory_boundaries() -> Result<serde_json::Value, String> {
 
 // ───────────────── P07: memory review inbox ─────────────────
 // Wire: daemon.memory.recall + daemon.memory.audit_trail.
-// There is no Linux/macOS-parity approve/reject review-row RPC yet; this
-// returns durable recalled memories plus audit facts so the UI can show an
-// honest approved-memory inbox and wire revoke to daemon.memory.forget.
+// The review feed opts into the daemon-owned quarantine lifecycle explicitly;
+// normal memory recall remains approved-only in the daemon.
 #[tauri::command]
 fn memory_review_inbox() -> serde_json::Value {
     let recall = call_daemon_method_report(
@@ -3014,7 +3013,9 @@ fn memory_review_inbox() -> serde_json::Value {
             "projectPath": null,
             "limit": 50,
             "scope": "all",
-            "includeCrossProject": true
+            "includeCrossProject": true,
+            "includeQuarantined": true,
+            "includeForgotten": true
         })),
     );
     let audit = call_daemon_method_report(
@@ -3805,9 +3806,10 @@ fn tool_approval_respond(
 }
 
 // ───────────────── Memory set status ─────────────────
-// Wire: remember → daemon.memory.remember, reject/forget → daemon.memory.forget,
-// audit → daemon.memory.audit_trail. "approve" is an alias for remember and
-// requires non-empty text/body (fail-closed; never invent placeholder text).
+// Wire: review transitions → daemon.memory.review_status,
+// remember/quarantine → daemon.memory.remember, forget → daemon.memory.forget,
+// audit → daemon.memory.audit_trail. New-memory approve still requires
+// non-empty text/body (fail-closed; never invent placeholder text).
 #[tauri::command]
 fn memory_set_status(
     action: String,
@@ -3815,6 +3817,22 @@ fn memory_set_status(
 ) -> Result<serde_json::Value, String> {
     match action.as_str() {
         "approve" | "remember" => {
+            if let Some(memory_id) = payload
+                .get("memoryID")
+                .or_else(|| payload.get("memoryId"))
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                return call_daemon_method(
+                    "daemon.memory.review_status",
+                    Some(serde_json::json!({
+                        "memoryID": memory_id,
+                        "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                        "status": "approved"
+                    })),
+                );
+            }
             let text = payload
                 .get("text")
                 .and_then(|v| v.as_str())
@@ -3842,11 +3860,37 @@ fn memory_set_status(
                     "scope": payload.get("scope").and_then(|v| v.as_str()).unwrap_or("personal"),
                     "tags": payload.get("tags").cloned().unwrap_or_else(|| serde_json::json!([])),
                     "confidence": payload.get("confidence").and_then(|v| v.as_f64()).unwrap_or(1.0),
-                    "sourcePath": payload.get("sourcePath").cloned().unwrap_or(serde_json::Value::Null)
+                    "sourcePath": payload.get("sourcePath").cloned().unwrap_or(serde_json::Value::Null),
+                    "reviewStatus": "approved"
                 })),
             )
         }
-        "reject" | "forget" => {
+        "quarantine" => {
+            let text = payload
+                .get("text")
+                .and_then(|v| v.as_str())
+                .or_else(|| payload.get("body").and_then(|v| v.as_str()))
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if text.is_empty() {
+                return Err("memory quarantine requires non-empty text/body".into());
+            }
+            call_daemon_method(
+                "daemon.memory.remember",
+                Some(serde_json::json!({
+                    "text": text,
+                    "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                    "kind": payload.get("kind").and_then(|v| v.as_str()).unwrap_or("note"),
+                    "scope": payload.get("scope").and_then(|v| v.as_str()).unwrap_or("personal"),
+                    "tags": payload.get("tags").cloned().unwrap_or_else(|| serde_json::json!([])),
+                    "confidence": payload.get("confidence").and_then(|v| v.as_f64()).unwrap_or(1.0),
+                    "sourcePath": payload.get("sourcePath").cloned().unwrap_or(serde_json::Value::Null),
+                    "reviewStatus": "quarantined"
+                })),
+            )
+        }
+        "reject" => {
             let memory_id = payload
                 .get("memoryID")
                 .or_else(|| payload.get("memoryId"))
@@ -3856,6 +3900,26 @@ fn memory_set_status(
                 .to_string();
             if memory_id.is_empty() {
                 return Err("memory reject requires memoryID".into());
+            }
+            call_daemon_method(
+                "daemon.memory.review_status",
+                Some(serde_json::json!({
+                    "memoryID": memory_id,
+                    "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                    "status": "rejected"
+                })),
+            )
+        }
+        "forget" => {
+            let memory_id = payload
+                .get("memoryID")
+                .or_else(|| payload.get("memoryId"))
+                .or_else(|| payload.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if memory_id.is_empty() {
+                return Err("memory forget requires memoryID".into());
             }
             call_daemon_method(
                 "daemon.memory.forget",
@@ -3874,7 +3938,7 @@ fn memory_set_status(
             })),
         ),
         other => Err(format!(
-            "memory_set_status action must be approve|reject|audit (or remember|forget), got {other}"
+            "memory_set_status action must be approve|quarantine|reject|forget|audit (or remember), got {other}"
         )),
     }
 }
