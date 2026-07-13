@@ -257,6 +257,34 @@
   flex-shrink: 0;
 }
 
+.chat-export-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.chat-export-control select {
+  min-height: 1.75rem;
+  max-width: 6.5rem;
+  padding: 0 1.35rem 0 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--chat-text-muted) 28%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--chat-surface-elevated) 70%, transparent);
+  color: var(--chat-text-secondary);
+  font: inherit;
+  font-size: var(--chat-tiny);
+}
+
+.chat-export-status {
+  max-width: 14rem;
+  overflow: hidden;
+  color: var(--chat-text-muted);
+  font-size: var(--chat-tiny);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-toolbar-icon,
 .chat-toolbar-text-button {
   min-height: 1.75rem;

@@ -7,6 +7,7 @@ import { MessageStream } from './MessageStream.js';
 import { ThreadRail } from './ThreadRail.js';
 import type { ChatWarningBanner } from './chatTypes.js';
 import type { ChatMessage } from '../../state/chatStore.js';
+import type { ChatExportFormat } from './chatExport.js';
 
 export type ChatWorkspacePanelProps = {
   threads: SessionEntry[];
@@ -23,6 +24,11 @@ export type ChatWorkspacePanelProps = {
   backend: ChatBackendId;
   modelLabel: string;
   onBackendChange: (id: ChatBackendId) => void;
+  exportFormat: ChatExportFormat;
+  onExportFormatChange: (format: ChatExportFormat) => void;
+  onExport: () => void;
+  exportDisabled: boolean;
+  exportStatus: string | null;
   messages: ChatMessage[];
   messagesLoading: boolean;
   warnings: ChatWarningBanner[];
@@ -51,6 +57,11 @@ export function ChatWorkspacePanel({
   backend,
   modelLabel,
   onBackendChange,
+  exportFormat,
+  onExportFormatChange,
+  onExport,
+  exportDisabled,
+  exportStatus,
   messages,
   messagesLoading,
   warnings,
@@ -74,6 +85,11 @@ export function ChatWorkspacePanel({
         modelLabel={modelLabel}
         onBackendChange={onBackendChange}
         onNewChat={onNewChat}
+        exportFormat={exportFormat}
+        onExportFormatChange={onExportFormatChange}
+        onExport={onExport}
+        exportDisabled={exportDisabled}
+        exportStatus={exportStatus}
       />
       <div className="chat-workspace-body">
         <ThreadRail
