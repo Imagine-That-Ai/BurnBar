@@ -335,14 +335,21 @@ pub fn base64_decode_strict(value: &str) -> Result<Vec<u8>, CloudVaultError> {
 }
 
 pub fn normalize_recovery_key(recovery_key: &str) -> Result<String, CloudVaultError> {
+    // Android and Windows still normalize UTF-16 code units, so accepting
+    // supplementary-plane letters here would derive a key those clients cannot
+    // reproduce. Reject them until every shipped platform shares scalar-value
+    // normalization.
+    if recovery_key
+        .chars()
+        .any(|character| character as u32 > 0xFFFF)
+    {
+        return Err(CloudVaultError::InvalidRecoveryKey);
+    }
     let normalized: String = recovery_key
         .chars()
         .flat_map(char::to_uppercase)
         .filter(|character| character.is_alphanumeric())
         .collect();
-    // Kotlin and C# historically measured the normalized key in UTF-16 code
-    // units. Preserve keys those shipped clients already accepted, including
-    // astral Unicode letters, while Rust becomes the canonical implementation.
     if normalized.encode_utf16().count() < 20 {
         return Err(CloudVaultError::InvalidRecoveryKey);
     }
@@ -732,15 +739,12 @@ mod tests {
             required_string(vector, "verificationHash")?
         );
         assert_eq!(
-            normalize_recovery_key(required_string(vector, "unicodeFormattedKey")?)?,
-            required_string(vector, "unicodeNormalizedKey")?
+            normalize_recovery_key(required_string(vector, "unicodeFormattedKey")?),
+            Err(CloudVaultError::InvalidRecoveryKey)
         );
         assert_eq!(
-            hex_lower(&recovery_wrapping_key(required_string(
-                vector,
-                "unicodeFormattedKey"
-            )?)?),
-            required_string(vector, "unicodeWrappingKeyHex")?
+            normalize_recovery_key(&"𐐀".repeat(20)),
+            Err(CloudVaultError::InvalidRecoveryKey)
         );
 
         let wrapped = recovery_wrap_vault_key(&vault_key, formatted_key, &nonce)?;

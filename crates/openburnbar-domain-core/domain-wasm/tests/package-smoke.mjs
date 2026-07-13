@@ -115,13 +115,11 @@ assert.equal(
   domainCore.cloudVaultRecoveryVerificationHash(recovery.formattedKey),
   recovery.verificationHash,
 );
-assert.equal(
-  domainCore.cloudVaultNormalizeRecoveryKey(recovery.unicodeFormattedKey),
-  recovery.unicodeNormalizedKey,
+assert.throws(
+  () => domainCore.cloudVaultNormalizeRecoveryKey(recovery.unicodeFormattedKey),
 );
-assert.equal(
-  Buffer.from(domainCore.cloudVaultRecoveryWrappingKey(recovery.unicodeFormattedKey)).toString("hex"),
-  recovery.unicodeWrappingKeyHex,
+assert.throws(
+  () => domainCore.cloudVaultRecoveryWrappingKey(recovery.unicodeFormattedKey),
 );
 const recoveryWrapped = domainCore.cloudVaultRecoveryWrapVaultKey(
   Buffer.from(recovery.vaultKeyHex, "hex"),
