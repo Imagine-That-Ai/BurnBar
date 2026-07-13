@@ -89,6 +89,22 @@ final class BurnBarDaemonMembershipRPCTests: XCTestCase {
             XCTAssertEqual(error.membershipCode, .unauthenticated)
         }
 
+        // Once a protected auth-token provider is wired, it is the sole token
+        // source: an environment token must be ignored.
+        let providerBackedClient = EnvironmentBurnBarMembershipCloudClient(
+            environment: [
+                "OPENBURNBAR_MEMBERSHIP_CHECKOUT_ENDPOINT": "https://example.com/membership/checkout",
+                "OPENBURNBAR_FIREBASE_ID_TOKEN": "environment-token-must-not-be-used"
+            ],
+            authTokenProvider: { nil }
+        )
+        do {
+            _ = try await providerBackedClient.checkoutURL(BurnBarMembershipCheckoutURLRequest())
+            XCTFail("checkoutURL must not fall back to the environment token when a provider is wired")
+        } catch let error as BurnBarMembershipServiceError {
+            XCTAssertEqual(error.membershipCode, .unauthenticated)
+        }
+
         let service = BurnBarMembershipService(
             cacheURL: try temporaryCacheURL(),
             cloudClient: StubCloudClient(restoreError: .cloudUnavailable("Firebase callable auth is unavailable in this environment."))
