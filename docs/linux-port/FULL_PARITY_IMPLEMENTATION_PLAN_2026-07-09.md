@@ -80,7 +80,7 @@ The integration branch now includes the next bounded source slices:
 - `9a527310f9`: contained pet summon/focus/status and selection/clear controls;
   native overlay and click-through remain explicitly unavailable.
 
-The combined frontend suite is **74 files / 621 tests**, the Tauri Rust suite
+The combined frontend suite is **74 files / 624 tests**, the Tauri Rust suite
 is **87/87**, TypeScript and the production bundle verifier pass, and the
 daemon target builds. These are source gates only. The promotion ledger remains
 0/40 product rows and 0/7 environment receipts until the exact signed
@@ -119,7 +119,7 @@ integrated chat model/attachment state, persisted activity replay/resume, and
 SQLCipher-gated encrypted database snapshot/restore. The
 following checks passed:
 
-- Linux frontend: 74 Vitest files / 621 tests.
+- Linux frontend: 74 Vitest files / 624 tests.
 - TypeScript: `npx tsc --noEmit --pretty false`.
 - Production bundle: `npm run build` plus the production bundle verifier.
 - Tauri Rust: 87/87 library tests.
