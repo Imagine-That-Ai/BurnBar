@@ -100,6 +100,7 @@ async function test409Repair() {
         NEW_RULESET,
         "PATCH body must set rulesetName to the new ruleset",
       );
+      assert.equal(body.updateMask, "rulesetName", "PATCH body must select rulesetName");
       releaseRuleset = body.release.rulesetName;
       return {
         status: 200,
@@ -170,6 +171,7 @@ async function testSkipsNewerUnrelatedRuleset() {
     }
     if (url === RELEASE_URL && method === "PATCH") {
       assert.equal(body.release?.rulesetName, NEW_RULESET);
+      assert.equal(body.updateMask, "rulesetName");
       releaseRuleset = body.release.rulesetName;
       return { status: 200, json: { name: RELEASE_URL.replace(API, ""), rulesetName: releaseRuleset } };
     }
@@ -254,7 +256,7 @@ function testNon409Detection() {
 async function testPatchFails() {
   const label = "PATCH fails: repairFirestoreRelease throws (fail-closed)";
 
-  const fetchMock = makeFetchMock(({ url, method }) => {
+  const fetchMock = makeFetchMock(({ url, method, body }) => {
     if (url === RULESETS_URL && method === "GET") {
       return {
         status: 200,
@@ -271,6 +273,7 @@ async function testPatchFails() {
       };
     }
     if (url === RELEASE_URL && method === "PATCH") {
+      assert.equal(body.updateMask, "rulesetName");
       return {
         status: 403,
         json: { error: { message: "Permission denied on release update", status: "PERMISSION_DENIED" } },
