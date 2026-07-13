@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bridgeStubDefaults } from './testing/bridgeStubs';
 import {
   computeCacheHitRatePct,
+  decodeChatAttachmentUpload,
   decodeChatMessageAppend,
   decodeChatThreadGet,
   decodeChatThreadList,
@@ -77,6 +78,49 @@ describe('exact-thread chat wire decoding', () => {
       messages: [],
       hasMoreBefore: false
     });
+  });
+});
+
+describe('chat attachment upload decoding', () => {
+  it('accepts bounded daemon-owned metadata without exposing a path', () => {
+    expect(decodeChatAttachmentUpload({
+      attachmentId: 'attachment-1',
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 12,
+      sha256: 'a'.repeat(64)
+    })).toEqual({
+      attachmentId: 'attachment-1',
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 12,
+      sha256: 'a'.repeat(64)
+    });
+  });
+
+  it('rejects unsupported types, oversized metadata, and path leakage', () => {
+    expect(() => decodeChatAttachmentUpload({
+      attachmentId: 'attachment-1',
+      fileName: 'notes.exe',
+      mimeType: 'application/x-msdownload',
+      byteSize: 12,
+      sha256: 'a'.repeat(64)
+    })).toThrow('unsupported');
+    expect(() => decodeChatAttachmentUpload({
+      attachmentId: 'attachment-1',
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 10 * 1024 * 1024 + 1,
+      sha256: 'a'.repeat(64)
+    })).toThrow('between');
+    expect(() => decodeChatAttachmentUpload({
+      attachmentId: 'attachment-1',
+      fileName: '/tmp/notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 12,
+      sha256: 'a'.repeat(64),
+      path: '/home/alberto/secret'
+    })).toThrow('path');
   });
 });
 
