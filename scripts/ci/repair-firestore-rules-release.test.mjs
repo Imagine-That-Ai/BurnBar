@@ -96,14 +96,14 @@ async function test409Repair() {
     }
     if (url === RELEASE_URL && method === "PATCH") {
       assert.equal(
-        body.rulesetName,
+        body.release?.rulesetName,
         NEW_RULESET,
         "PATCH body must set rulesetName to the new ruleset",
       );
-      releaseRuleset = body.rulesetName;
+      releaseRuleset = body.release.rulesetName;
       return {
         status: 200,
-        json: { name: `projects/${PROJECT}/releases/cloud.firestore`, rulesetName: body.rulesetName },
+        json: { name: `projects/${PROJECT}/releases/cloud.firestore`, rulesetName: body.release.rulesetName },
       };
     }
     throw new Error(`unexpected ${method} ${url}`);
@@ -169,8 +169,8 @@ async function testSkipsNewerUnrelatedRuleset() {
       };
     }
     if (url === RELEASE_URL && method === "PATCH") {
-      assert.equal(body.rulesetName, NEW_RULESET);
-      releaseRuleset = body.rulesetName;
+      assert.equal(body.release?.rulesetName, NEW_RULESET);
+      releaseRuleset = body.release.rulesetName;
       return { status: 200, json: { name: RELEASE_URL.replace(API, ""), rulesetName: releaseRuleset } };
     }
     throw new Error(`unexpected ${method} ${url}`);
@@ -323,10 +323,10 @@ async function testIdempotent() {
       };
     }
     if (url === RELEASE_URL && method === "PATCH") {
-      releaseRuleset = body.rulesetName;
+      releaseRuleset = body.release.rulesetName;
       return {
         status: 200,
-        json: { name: `projects/${PROJECT}/releases/cloud.firestore`, rulesetName: body.rulesetName },
+        json: { name: `projects/${PROJECT}/releases/cloud.firestore`, rulesetName: body.release.rulesetName },
       };
     }
     throw new Error(`unexpected ${method} ${url}`);
