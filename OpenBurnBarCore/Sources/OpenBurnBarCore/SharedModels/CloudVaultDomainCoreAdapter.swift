@@ -667,7 +667,7 @@ enum CloudVaultDomainCoreAdapter {
         guard mode != .legacy else { return try legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
+        guard DomainCoreNativeProbe.abiVersion() == 3 else {
             logger.log("domain_core.cloudvault operation=\(operation) version=3 category=abi_mismatch")
             if mode == .rust || requiresNative(environment) {
                 throw CloudVaultDomainCoreAdapterError.nativeUnavailable
