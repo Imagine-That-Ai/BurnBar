@@ -25,6 +25,9 @@ export type ChatWorkspacePanelProps = {
   onBackendChange: (id: ChatBackendId) => void;
   messages: ChatMessage[];
   messagesLoading: boolean;
+  hasMoreMessages: boolean;
+  loadingOlderMessages: boolean;
+  onLoadOlderMessages: () => void;
   warnings: ChatWarningBanner[];
   sharedFeaturesAvailable: boolean;
   streaming: boolean;
@@ -55,6 +58,9 @@ export function ChatWorkspacePanel({
   onBackendChange,
   messages,
   messagesLoading,
+  hasMoreMessages,
+  loadingOlderMessages,
+  onLoadOlderMessages,
   warnings,
   sharedFeaturesAvailable,
   streaming,
@@ -95,6 +101,9 @@ export function ChatWorkspacePanel({
             <MessageStream
               messages={messages}
               loading={messagesLoading}
+              hasMoreBefore={hasMoreMessages}
+              loadingOlderMessages={loadingOlderMessages}
+              onLoadOlder={onLoadOlderMessages}
               warnings={warnings}
               sharedFeaturesAvailable={sharedFeaturesAvailable}
               streamError={streamError}

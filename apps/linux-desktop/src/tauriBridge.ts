@@ -76,6 +76,10 @@ export type PersistedChatMessage = {
 };
 
 export type ChatThreadListResult = { threads: ChatThreadSummary[] };
+export type ChatMessageCursor = {
+  timestamp: string;
+  messageID: string;
+};
 export type ChatThreadGetResult = {
   thread?: ChatThreadSummary;
   messages: PersistedChatMessage[];
@@ -660,7 +664,11 @@ export interface LinuxShellBridge {
   sessionList(): Promise<SessionListResult>;
   sessionSearch(query: string): Promise<SessionListResult>;
   chatThreadList(query?: string, limit?: number): Promise<ChatThreadListResult>;
-  chatThreadGet(threadID: string, maxMessages?: number): Promise<ChatThreadGetResult>;
+  chatThreadGet(
+    threadID: string,
+    maxMessages?: number,
+    before?: ChatMessageCursor
+  ): Promise<ChatThreadGetResult>;
   chatMessageAppend(request: ChatMessageAppendRequest): Promise<ChatMessageAppendResult>;
   usageInsights(): Promise<UsageInsights>;
   missionList(): Promise<MissionListResult>;
@@ -2173,8 +2181,18 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('chat_thread_list', { query: query || null, limit });
       return decodeChatThreadList(raw);
     },
-    chatThreadGet: async (threadID, maxMessages = 500) => {
-      const raw = await invoke<RawJsonValue>('chat_thread_get', { threadId: threadID, maxMessages });
+    chatThreadGet: async (threadID, maxMessages = 500, before) => {
+      const args: {
+        threadId: string;
+        maxMessages: number;
+        beforeTimestamp?: string;
+        beforeMessageID?: string;
+      } = { threadId: threadID, maxMessages };
+      if (before) {
+        args.beforeTimestamp = before.timestamp;
+        args.beforeMessageID = before.messageID;
+      }
+      const raw = await invoke<RawJsonValue>('chat_thread_get', args);
       return decodeChatThreadGet(raw);
     },
     chatMessageAppend: async (request) => {

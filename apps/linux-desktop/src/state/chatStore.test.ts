@@ -59,6 +59,8 @@ function reset() {
     selectedThreadId: null,
     messages: [],
     messagesLoading: false,
+    loadingOlderMessages: false,
+    hasMoreMessages: false,
     config: null,
     loading: false,
     error: null,
@@ -151,6 +153,31 @@ describe('exact-thread chat store', () => {
 
     expect(useChatStore.getState().backend).toBe('pi-agent');
     expect(useChatStore.getState().modelLabel).toBe('pi-agent');
+  });
+
+  it('loads older durable pages before the current oldest message', async () => {
+    const oldest = persisted('newest-page-oldest', 'A', 'user', 'Current page');
+    const older = persisted('older-message', 'A', 'assistant', 'Earlier durable reply');
+    const chatThreadGet = vi.fn()
+      .mockResolvedValueOnce({ thread: thread('A'), messages: [oldest], hasMoreBefore: true })
+      .mockResolvedValueOnce({ thread: thread('A'), messages: [older], hasMoreBefore: false });
+    useShellStore.setState({ bridge: bridgeWith({ chatThreadGet }), fixtureMode: false });
+    useChatStore.setState({ threads: [thread('A')], hasMoreMessages: false });
+
+    await useChatStore.getState().selectThread('A');
+    expect(useChatStore.getState().hasMoreMessages).toBe(true);
+
+    await useChatStore.getState().loadOlderMessages();
+
+    expect(chatThreadGet).toHaveBeenNthCalledWith(2, 'A', 500, {
+      timestamp: NOW,
+      messageID: 'newest-page-oldest'
+    });
+    expect(useChatStore.getState().messages.map((message) => message.id)).toEqual([
+      'older-message',
+      'newest-page-oldest'
+    ]);
+    expect(useChatStore.getState().hasMoreMessages).toBe(false);
   });
 
   it('rolls back the user turn when its durable append rejects', async () => {

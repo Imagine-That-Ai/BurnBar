@@ -64,6 +64,16 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
         let bounded = try await service.getThread(.init(threadID: "thread-a", maxMessages: 1))
         XCTAssertEqual(bounded.messages.map(\.id), ["a-assistant"])
         XCTAssertTrue(bounded.hasMoreBefore)
+        let olderPage = try await service.getThread(
+            .init(
+                threadID: "thread-a",
+                maxMessages: 1,
+                beforeTimestamp: bounded.messages[0].timestamp,
+                beforeMessageID: bounded.messages[0].id
+            )
+        )
+        XCTAssertEqual(olderPage.messages.map(\.id), ["a-user"])
+        XCTAssertFalse(olderPage.hasMoreBefore)
         let missing = try await service.getThread(.init(threadID: "thread-missing", maxMessages: 20))
         XCTAssertNil(missing.thread)
         XCTAssertEqual(missing.messages, [])
@@ -107,6 +117,42 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
         XCTAssertNil(threadB.thread)
     }
 
+    func testCursorPaginationUsesMessageIDAsTieBreaker() async throws {
+        let service = try makeService()
+        let timestamp = "2026-07-10T12:00:00.000Z"
+        _ = try await service.appendMessage(
+            append(
+                threadID: "thread-tied",
+                messageID: "message-a",
+                role: .user,
+                content: "First at the same instant",
+                timestamp: timestamp
+            )
+        )
+        _ = try await service.appendMessage(
+            append(
+                threadID: "thread-tied",
+                messageID: "message-b",
+                role: .assistant,
+                content: "Second at the same instant",
+                timestamp: timestamp
+            )
+        )
+
+        let newest = try await service.getThread(.init(threadID: "thread-tied", maxMessages: 1))
+        XCTAssertEqual(newest.messages.map(\.id), ["message-b"])
+        let previous = try await service.getThread(
+            .init(
+                threadID: "thread-tied",
+                maxMessages: 1,
+                beforeTimestamp: timestamp,
+                beforeMessageID: "message-b"
+            )
+        )
+        XCTAssertEqual(previous.messages.map(\.id), ["message-a"])
+        XCTAssertFalse(previous.hasMoreBefore)
+    }
+
     func testValidationRejectsUnboundedOrMalformedInputs() async throws {
         let service = try makeService()
         await assertInvalidRequest {
@@ -114,6 +160,14 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
         }
         await assertInvalidRequest {
             _ = try await service.getThread(.init(threadID: " thread-a"))
+        }
+        await assertInvalidRequest {
+            _ = try await service.getThread(
+                .init(
+                    threadID: "thread-a",
+                    beforeTimestamp: "2026-07-10T12:00:00Z"
+                )
+            )
         }
         await assertInvalidRequest {
             _ = try await service.appendMessage(

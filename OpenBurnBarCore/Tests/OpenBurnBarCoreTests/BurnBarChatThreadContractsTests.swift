@@ -49,4 +49,20 @@ final class BurnBarChatThreadContractsTests: XCTestCase {
         XCTAssertEqual(decoded, request)
         XCTAssertEqual(BurnBarRPCMethod.chatMessageAppend.rawValue, "daemon.chat.message.append")
     }
+
+    func testThreadGetCursorRoundTripsWithStableWireKeys() throws {
+        let request = BurnBarChatThreadGetRequest(
+            threadID: "thread-c",
+            maxMessages: 50,
+            beforeTimestamp: "2026-07-10T12:00:00.000Z",
+            beforeMessageID: "message-c"
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["threadID"] as? String, "thread-c")
+        XCTAssertEqual(object["maxMessages"] as? Int, 50)
+        XCTAssertEqual(object["beforeTimestamp"] as? String, "2026-07-10T12:00:00.000Z")
+        XCTAssertEqual(object["beforeMessageID"] as? String, "message-c")
+        XCTAssertEqual(try JSONDecoder().decode(BurnBarChatThreadGetRequest.self, from: data), request)
+    }
 }
