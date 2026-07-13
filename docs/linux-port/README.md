@@ -64,7 +64,9 @@ Primary files:
   steps.
 - [`accessibility-validation.md`](accessibility-validation.md) - axe route
   matrix, installed-app AT-SPI/Orca harness, evidence contract, and remaining
-  manual GNOME/KDE certification.
+  manual GNOME/KDE certification. P-31 additionally requires exact 200 percent
+  reflow, forced-colors/high-contrast/no-color, reduced-motion, and keyboard plus
+  Linux screen-reader evidence on every support-matrix row.
 - [`performance-reliability-validation.md`](performance-reliability-validation.md) -
   repeated packaged-shell percentiles, matched production-linked macOS/Linux
   workloads, resource soak, supervisor behavior, and fail-closed QA contract.

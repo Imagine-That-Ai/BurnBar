@@ -11,6 +11,31 @@
           "maxBytes": 1048576
         }
       ]
+    },
+    {
+      "requirementId": "P-31",
+      "artifacts": [
+        {
+          "role": "feature.accessibility-assistive-tech",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-contrast",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-motion",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-scale",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
     }
   ],
   "certification": [
@@ -104,6 +129,29 @@
         "workflowPath": ".github/workflows/linux-product-parity.yml",
         "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
         "testName": "P-04 materializer selects two-architecture smoke evidence"
+      }
+    },
+    {
+      "requirementId": "P-31",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-31.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p31-accessibility-proof.test.mjs",
+        "mutationTestName": "P-31 independently rejects an accessibility proof missing exact 200 percent reflow"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p31-accessibility.mjs",
+        "entrypoint": "captureP31Accessibility",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p31-accessibility-proof.test.mjs",
+        "testName": "P-31 capture emits four candidate-bound accessibility proofs"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p31-accessibility-proof.test.mjs",
+        "testName": "P-31 materializer selects accessibility feature proofs"
       }
     },
     {

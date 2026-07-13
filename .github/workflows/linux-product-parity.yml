@@ -176,6 +176,29 @@ jobs:
           include-hidden-files: true
           retention-days: 30
 
+      - name: Capture P-31 installed accessibility matrix evidence
+        id: p31_capture
+        if: inputs.requirement == 'P-31'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          session_report="$input_root/p31-live-session.json"
+          test -f "$session_report"
+          node scripts/linux-port/capture-p31-accessibility.mjs \
+            --input-root "$input_root" \
+            --session-report "$session_report" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
       - name: Finalize registered feature proof closure
         shell: bash
         env:
