@@ -45,3 +45,67 @@ Bundle.module → EMPTY. Not a CANON packet.
 Title: "P-13: move ProviderQuota into OpenBurnBarQuota (the K3 Quota redo)". Invariants:
 depends on SQLiteReader + Kernel + crypto, NO LogParsers edge, zero call-site changes.
 A1–A6.
+
+## BLOCKED(re-slice) — wave-3 attempt (2026-07-13, base core-decomp/p-12-w2)
+
+The prior-blocker (`OpenBurnBarAppPaths`/`OpenBurnBarIdentity` now in Kernel via P-12) is
+resolved. The whole-dir `git mv` (41 `ProviderQuota/` + root `XAISuperGrokPacingLog.swift`,
+marker removed) was executed and full compile-closure (`swift build --target
+OpenBurnBarQuota`, package-default Swift v6) was run to exhaustion. Compile-closure
+resolved the anticipated AE-IMPORT set (27 files `import OpenBurnBarKernel`; 3 files
+`import OpenBurnBarSQLiteReader`: `OpenBurnBarQuotaAdapters`, `CursorCookieExtractor`,
+`ForgeQuotaAdapter`) plus one closure-forced Foundation SDK shim (see below), then
+surfaced **THREE non-import cross-layer edges the DRAFT card's premise missed**. The
+first is mechanical; the other two need architect re-slicing, so the packet is
+`BLOCKED(re-slice)` — reverted to a pristine, green base (`git stash push -u`; base
+Quota marker target builds clean).
+
+1. **FileManager Sendable shim left Core via P-12 (mechanical, fixed in-attempt).**
+   `ProviderQuotaAdapter.ProviderQuotaAdapterContext` is a `Sendable` struct with a stored
+   `FileManager`. The `extension FileManager: @retroactive @unchecked Sendable {}` SDK
+   shim was co-located with ProviderQuota inside Core (`Services/LogParser/
+   ParserDiskCache.swift`) until **P-12** moved it into `OpenBurnBarLogParsers` — a leaf
+   Quota does NOT depend on — so v6 errors `stored property 'fileManager' … has
+   non-Sendable type 'FileManager'`. A `@retroactive @unchecked Sendable` conformance is a
+   per-module SDK shim; the resolution is a new
+   `OpenBurnBarQuota/QuotaFoundationSendableShims.swift` carrying the FileManager shim with
+   the registered `sendable-allowlist: foundation-sdk-shim` token (only FileManager is used
+   in a Sendable context here; UserDefaults/NSDictionary/KeyPath are not). NOTE for the
+   architect: **P-12 already made Core's own `ProviderQuotaAdapter` fail this v6 check on
+   the base branch** (the shim left Core but the adapter did not) — this is a latent P-12
+   regression the parity executables' whole-program link masked.
+
+2. **Core edge — `CLILaunchAdapter` + `SwitcherCLIProfileType` (re-slice needed).**
+   `CodexQuotaAdapter.swift` and `OMPQuotaAdapter.swift` call
+   `CLILaunchAdapter.{resolveExecutable,resolvePinnedExecutable,
+   buildAllowlistedBaselineEnvironment,trustedExecutableEnvironmentPath}` and pass
+   `SwitcherCLIProfileType` cases `.codex`/`.omp`. `CLILaunchAdapter` is defined in
+   `OpenBurnBarCore/SwitcherCLILAunchService.swift` and `SwitcherCLIProfileType` in
+   `OpenBurnBarCore/SwitcherProfile.swift` — both Core-resident. `import OpenBurnBarCore`
+   is FORBIDDEN (inverts layering). The whole `SwitcherCLILAunchService.swift` file cannot
+   move down (it also defines `SwitcherCLILAunchService`/`CLILaunchCoordinator`/
+   `CLILaunchInvoker` referencing `SwitcherProfileRecord`/`SwitcherCLIProfileMetadata`/
+   Switcher store types). Architect options: (a) extract `CLILaunchAdapter`'s pure
+   executable-resolution + env-baseline surface (+ `SwitcherCLIProfileType`, which
+   `CLILaunchAdapter.configEnvironmentKeys`/`trustedExecutablePaths` also need) into a
+   Kernel/Quota-visible layer; or (b) leave `CodexQuotaAdapter`/`OMPQuotaAdapter` in Core
+   (file-leaves-slice) until a successor packet lands the extraction.
+
+3. **LogParsers edge — `FileHandle.readAllUTF8Lines()` / `BufferedLineSequence`
+   (re-slice needed; INVALIDATES the card's "NO LogParsers edge" invariant).**
+   `AiderQuotaAdapter.swift:56` (`for line in handle.readAllUTF8Lines()`) uses the `public
+   extension FileHandle { func readAllUTF8Lines() -> BufferedLineSequence }` defined in
+   `OpenBurnBarLogParsers/LogParser/LogParserProtocol.swift`; the return type
+   `BufferedLineSequence` is also LogParsers-resident
+   (`OpenBurnBarLogParsers/LogParser/BufferedLineSequence.swift`). `OpenBurnBarQuota`
+   declares deps `[Kernel, SQLiteReader, swift-crypto]` — NOT LogParsers — and a move
+   packet must not add a manifest dependency edge (AE-IMPORT STOP rule). The card's
+   central claim "**NO LogParsers edge (verified zero refs)**" is FALSE: the prior grep
+   matched only the literal string `LogParser`, missing the *method-name* reference
+   `.readAllUTF8Lines()`. Architect options: (a) add `OpenBurnBarLogParsers` as a declared
+   Quota dep (would NOT cycle — LogParsers deps are `[Kernel, SQLiteReader]`); or (b)
+   re-slice `AiderQuotaAdapter` to a local line reader; or (c) hoist
+   `BufferedLineSequence`+`readAllUTF8Lines` into a shared lower layer both leaves import.
+
+Evidence is preserved in the wave-3 lane stash (`P-13-w3 BLOCKED(re-slice): …`). No PR
+opened (red tree). Card stays `QUEUED` pending an architect re-slice of edges 2 and 3.
