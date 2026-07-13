@@ -34,15 +34,20 @@ database inspection (#1680), P27 native startup/deep-link handoff (#1679), P31
 accessibility preference contracts (#1683), and P39 differential evidence
 comparison (#1682). P19 project lifecycle is now extended by PR #1688 with
 typed delete/reassign RPCs, canonical identity validation, durable reference
-migration, and deleted-slug tombstones. The
+migration, and deleted-slug tombstones. Local integration slices now add
+typed chat model/thinking-level selection and bounded attachment state,
+persisted activity body replay/native resume, and SQLCipher-gated encrypted
+snapshot/atomic restore. The
 authoritative promotion ledger remains 0/40 ready and 0/7 environment receipts;
 no PR in this checkpoint may be treated as full parity or as evidence that the
 Linux release candidate is shippable.
 
 Recommended landing order for this wave is P26, then P23 and P12, followed by
-P13, P17, P19, P21, P24, P28, P29, P35, and P16; P07, P14, P22, P27, P31, and
-P39, plus the P19 lifecycle extension, can land as independently reviewable
-source slices because each preserves an explicit installed-proof boundary.
+P13, P14, P17, P19, P21, P24, P28, P29, P35, and P16; P07, P22, P27, P31, and
+P39, plus the P19 lifecycle extension, activity replay/resume, chat model and
+attachment state, and encrypted snapshot/atomic restore can land as
+independently reviewable source slices because each preserves an explicit
+installed-proof boundary.
 After the code stack is review-clean, rerun
 the strict ledger on the exact candidate and collect the installed GNOME
 X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
@@ -75,23 +80,48 @@ update/rollback, and physical-device receipts listed below.
 ### Integration verification checkpoint - 2026-07-13
 
 The clean integration worktree replayed the current Linux source stack through
-the P26 tray/deep-link base and the P19 project-lifecycle extension. The
+the P26 tray/deep-link base and the P19 project-lifecycle extension, then
+integrated chat model/attachment state, persisted activity replay/resume, and
+SQLCipher-gated encrypted database snapshot/restore. The
 following checks passed:
 
-- Linux frontend: 70 Vitest files / 568 tests.
+- Linux frontend: 72 Vitest files / 583 tests.
 - TypeScript: `npx tsc --noEmit --pretty false`.
 - Production bundle: `npm run build` plus the production bundle verifier.
-- Tauri Rust: 70/70 library tests.
+- Tauri Rust: 71/71 library tests.
 - Platform differential oracle: 6/6 tests.
 - Supported SQLCipher-backed daemon chat selector: 9/9 tests.
 - P19 daemon project lifecycle selector: 4/4 tests, covering delete,
   reassignment, durable nested/reference migration, collision rejection, and
   deleted-slug protection.
+- Activity replay/resume selector: 4/4 Swift tests, including plaintext
+  database readability and provider-safe native/fallback resume.
+- Database snapshot/recovery selector: 3/3 Swift tests covering traversal,
+  size, and insecure-permission rejection. The Linux codec round-trip remains
+  conditional on a configured Linux SQLCipher secret and was not claimable on
+  this macOS host.
 
 This is current source/integration evidence only. It does not satisfy the
 installed Linux, public release, compositor matrix, Secret Service/KWallet,
 physical-iPad, or same-commit macOS/Linux evidence gates. Linux-only native
 notification tests still require a Linux host.
+
+### Source-slice implementation addendum - 2026-07-13
+
+These three slices are now integrated in the clean parity worktree and should
+land as separate reviewable units before the installed-certification wave:
+
+| Order | Slice | Dependencies | Acceptance criteria | Remaining boundary |
+|---|---|---|---|---|
+| 1 | Chat model/options and attachment state | Existing encrypted thread RPCs, gateway model catalog, Composer/ChatSurface stores | Selected model and thinking level survive the active composer lifecycle and reach the gateway as the exact model ID; reset occurs on backend/thread/new-chat changes; attachment metadata enforces the 10 MiB and allowlisted text/Markdown/CSV/JSON/PDF contract with visible error/remove states; no renderer secret or fake upload path | Binary upload transport, citations, approvals, pop-out, unloaded-history export/resume, and remaining backend catalog still require real daemon/provider contracts |
+| 2 | Activity body replay and resume | Existing indexed activity search/detail RPCs, canonical `run.resume`, bounded transcript decoder | Body replay is daemon-backed, size-bounded, untrusted-rendered, and honest on missing/offline/error; native resume carries the persisted briefing without launching a process; providers without validated native resume use the same-harness handoff; plaintext legacy SQLite remains readable under SQLCipher builds; Swift 4/4 and frontend/Rust contracts pass | Full-history export, source resolution, resume-from-export, and installed provider/runtime proof remain open |
+| 3 | Encrypted project database snapshot/restore | Project-code SQLite store, SQLCipher codec/key custody, watcher lifecycle, canonical RPC generator | Snapshot rejects traversal/symlinks/unsafe ownership, active-db overwrite, and >512 MiB; checkpoints WAL, writes owner-only temporary files, hashes content, atomically installs; restore validates integrity, stops/reopens watchers, and rolls back on failure; Swift rejection suite 3/3 and bridge/Rust contract suites pass | This is same-key encrypted snapshot recovery only. Port passphrase-wrapped recovery-bundle import/export and key-loss/device-transfer recovery before calling P-22 complete |
+
+Recommended engineering order after these source slices is: (a) land and
+rebase the three bounded PRs; (b) run the Linux SQLCipher round-trip on a host
+with the production daemon secret; (c) implement recovery-bundle key custody;
+(d) certify full chat/activity/database flows in installed packages; and (e)
+only then close the P-14/P-17/P-22 ledger rows with exact-candidate receipts.
 
 Linux has a real desktop shell, a broad set of route surfaces, a Swift daemon
 path, AF_UNIX RPC, a provider gateway, package metadata, Linux-specific
@@ -1137,11 +1167,13 @@ The original foundation sequence is substantially implemented. From the
      accessibility, performance, update/rollback, and package lifecycle proof.
 
 8. **Remaining product-parity PRs**
-   - Complete chat/provider, account/cloud, activity/session logs, insights,
-     memory review, system Computer Use, Mercury, text expansion, companion,
-     SmartHub, and every other still-open audit row. Project lifecycle source
-     parity is covered by PR #1688; installed/release evidence and the
-     10k-session migration acceptance suite remain open.
+   - Complete binary chat attachments/citations/approvals/full-history export,
+     provider/account/cloud, activity source resolution and full-history
+     export, passphrase-wrapped recovery bundles, insights, memory review,
+     system Computer Use, Mercury, text expansion, companion, SmartHub, and
+     every other still-open audit row. Project lifecycle source parity is
+     covered by PR #1688; installed/release evidence and the 10k-session
+     migration acceptance suite remain open.
 
 9. **Promotion and public truth-sync PR**
    - Require zero Critical/High gaps, strict evidence closure, valid signed public

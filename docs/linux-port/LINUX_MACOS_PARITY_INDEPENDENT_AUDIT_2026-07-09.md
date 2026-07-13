@@ -27,7 +27,7 @@ percentage. The active remediation stack now contains these reviewable slices:
 | P12 quota account switching | PR #1659, stacked on P23 | Redacted credential-slot selection through canonical config get/update; does not provide cloud account or trusted-device management. |
 | P13 onboarding first-data probe | PR #1667 updated, checks queued | Provider setup now loads the daemon catalog and submits a credential once through native Secret Service storage, clears the web-view field, and keeps completion daemon-authoritative; OAuth-only auth, portal consent, and desktop integration remain open. |
 | P14 chat approval boundary | PR #1662, merge-clean | Gateway tool cards now expose the real missing run-approval identity and route to Mission Control; no unsafe synthetic approve/deny path. |
-| P17 activity/session depth | PR #1661 + PR #1685, review stack | Canonical daemon-backed search/detail/resume with indexed transcript excerpts; loaded activity rows now export as allowlisted JSON/Markdown with explicit loaded-only scope; body replay, full-history export, and resume-from-export remain unavailable. |
+| P17 activity/session depth | PR #1661 + PR #1685 plus local replay/resume slice, source-integrated | Canonical daemon-backed search/detail/resume with indexed transcript excerpts and bounded persisted body replay are integrated. Native resume uses the existing `run.resume` contract with provider-safe handoff fallback; loaded activity rows export as allowlisted JSON/Markdown with explicit loaded-only scope. Full-history export, source resolution, and resume-from-export remain open. |
 | P21 insights brief | PR #1669, checks in progress | Provenance-labeled trend brief and real Providers/Activity follow-ups derived from usage aggregates; citations and qualitative analysis remain open. |
 | P24 settings inventory | PR #1665, merge-clean | Restores Model Proxy, Computer Use, and Pets destinations for a 16-tab searchable inventory with honest capability routing. |
 | P28 SmartHub | PR #1668, checks in progress | Typed root-owned CLI allowlist for discovery/status/parity actions; live device/Avahi evidence remains separate. |
@@ -39,30 +39,34 @@ percentage. The active remediation stack now contains these reviewable slices:
 | P30 pet companion | PR #1674, checks in progress | Native runtime-manifest probe replaces optimistic environment detection; contained fallback and action-level unavailable states are explicit; native overlay/summon/selection remain open. |
 | P40 data/privacy | PR #1672, merge-clean | Daemon-backed telemetry/privacy/cloud-sync writes with pending/error states and explicit unavailable destructive/recovery rows; backend erasure/export/recovery remain open. |
 | P11 usage catalog | PR #1676, checks green | All 33 canonical provider identities and Swift discovery paths/patterns are contract-tested against the exact 27 ParserRegistry entries; four API-backed and two unavailable sources are labeled explicitly in Settings/onboarding; normalized corpus and runtime/install evidence remain open. |
-| P14 exact chat threads | PR #1684, checks in progress | Canonical encrypted thread list/get/search, idempotent append, older-message pagination, strict Tauri decoding, durable send ordering, and loaded-transcript JSON/Markdown export with metadata allowlisting; attachments, citations, approvals, options, unloaded-history export/resume, pop-out, and remaining backends remain open. |
+| P14 exact chat threads | PR #1684 plus local model/attachment slice, source-integrated | Canonical encrypted thread list/get/search, idempotent append, older-message pagination, strict Tauri decoding, durable send ordering, and loaded-transcript JSON/Markdown export with metadata allowlisting are integrated. Typed model selection/thinking-level state now propagates the exact selected model through the gateway, and attachment metadata has bounded type/size/error/remove behavior; binary upload transport, citations, approvals, unloaded-history export/resume, pop-out, and remaining backends remain open. |
 | P07 browser Computer Use panel | PR #1681, merge-clean | Typed navigate/screenshot/click/fill actions are bound to the selected run/call/generation and fail closed when the packaged capability is absent; physical-iPad approval, production credentials, and installed browser/panic/audit/restart evidence remain open. |
-| P22 database inspection | PR #1680, merge-clean | Bounded daemon-owned code search/context packs with pagination and untrusted-source warnings; snapshots, encrypted-store recovery, and installed proof remain open. |
+| P22 database inspection | PR #1680 plus local snapshot/recovery slice, source-integrated | Bounded daemon-owned code search/context packs with pagination and untrusted-source warnings remain integrated. SQLCipher-gated encrypted snapshots now enforce owner-only paths, 512 MiB bounds, integrity hashes, atomic replacement, rollback, and watcher stop/reopen; passphrase-wrapped recovery-bundle import/export, key-loss/device-transfer recovery, deep inspector parity, and installed proof remain open. |
 | P27 native startup/deep links | PR #1679 + PR #1686, merge-clean source stack | Strict membership/OAuth callback parsing, one-shot startup handoff, background tray startup, XDG autostart, package desktop registration, and owner-checked per-user single-instance forwarding; notification actions, global commands, and installed host integration remain open. |
 | P31 accessibility preferences | PR #1683, merge-clean | Shared reduced-motion, prefers-contrast, forced-colors, focus, and status/alert contracts; installed GNOME/KDE/AT-SPI/Orca/high-contrast evidence remains open. |
 | P39 differential oracle | PR #1682, merge-clean | Same-schema normalization, credential redaction, explicit volatile-path handling, path-level diff output, and fail-closed exit codes; a same-commit macOS/Linux artifact run remains required. |
-| Integrated Linux validation | Local integration worktree, current 2026-07-13 | Replayed P07/P11/P13/P14/P16/P17/P19/P20/P21/P22/P23/P24/P25/P27/P28/P30/P31/P35/P39/P40 on the P26 tray/deep-link base: 70 Vitest files / 568 tests, TypeScript, production bundle verification, differential-oracle tests, Tauri Rust 70/70, P19 daemon lifecycle 4/4, and the supported SQLCipher-backed daemon chat selector 9/9 passed. The Linux-only native `notify-send` adapter is source-integrated with bounded tests that require a Linux host. This is engineering evidence only, not installed-product certification. |
+| Integrated Linux validation | Local integration worktree, current 2026-07-13 | Replayed P07/P11/P13/P14/P16/P17/P19/P20/P21/P22/P23/P24/P25/P27/P28/P30/P31/P35/P39/P40 on the P26 tray/deep-link base: 72 Vitest files / 583 tests, TypeScript, production bundle verification, differential-oracle tests 6/6, Tauri Rust 71/71, Activity replay/resume Swift 4/4, database snapshot/recovery Swift 3/3, P19 daemon lifecycle 4/4, and the supported SQLCipher-backed daemon chat selector 9/9 passed. The Linux-only native `notify-send` adapter is source-integrated with bounded tests that require a Linux host. This is engineering evidence only, not installed-product certification. |
 
 These slices reduce concrete gaps, but they do not change the NO-GO verdict:
-transactional provider/auth onboarding, complete chat, cloud/device mutations,
-system Computer Use capture, Mercury two-device proof, live SmartHub device
-evidence, IBus/Fcitx, mission/session depth, packaging/update rollback, and the
-seven-environment installed matrix remain required.
+transactional provider/auth onboarding, binary chat attachment transport,
+citations/approvals/full-history export, cloud/device mutations, passphrase
+recovery-bundle import/export, system Computer Use capture, Mercury two-device
+proof, live SmartHub device evidence, IBus/Fcitx, mission/session depth,
+packaging/update rollback, and the seven-environment installed matrix remain
+required.
 
 ### Windows comparator semantics
 
-Windows parity is a real ship milestone, but its `46/46` result is a
-**ship-peer checklist**, not a claim that Windows is behaviorally identical to
-macOS in every native integration and installed environment. This Linux audit
-uses the stricter macOS gold-standard contract: each requirement also needs
-failure/recovery behavior, accessibility and performance evidence, packaging
-and update proof, and current-head installed-environment receipts. Windows
-remains the comparator for shared product intent; it is not a substitute for
-the macOS-native behavior or for Linux-native integration proof.
+Windows parity is a real ship milestone, and the current ledger is **48/48
+Real for F1 Ship Peer**. That is not a claim that Windows is behaviorally
+identical to macOS in every native integration and installed environment:
+Windows documents a separate **F2 True 1:1** finish line, and `100% parity`
+means F2. This Linux audit uses that stricter macOS gold-standard contract:
+each requirement also needs failure/recovery behavior, accessibility and
+performance evidence, packaging and update proof, and current-head
+installed-environment receipts. Windows remains the comparator for shared
+product intent; its F1 result is not a substitute for macOS-native behavior or
+Linux-native integration proof.
 
 ## Executive Summary
 
@@ -427,15 +431,15 @@ required gates and were not made green by the Ed25519 result.
 | P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | All 33 canonical provider identities and Swift path/pattern cases are cataloged; the exact 27 registered local parsers plus four API-backed and two unavailable sources are labeled and tested. The normalized macOS/Linux corpus, recount/projection parity, and installed runtime evidence remain unproven | Partial | High |
 | P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
 | P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, strict native/WebView RPC decoding, catalog-backed credential setup, and first-data readback are implemented; OAuth-only provider auth, provider scan depth, portal consent, tray, and update completion remain open | Partial | High |
-| P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Exact encrypted thread list/get/search, idempotent user/assistant persistence, older-message pagination, strict Tauri decoding, durable send ordering, and safe JSON/Markdown export of loaded durable messages are implemented in [PR #1684](https://github.com/Imagine-That-Ai/BurnBar/pull/1684); attachments, citations, approvals, options, unloaded-history export/resume, pop-out, and the remaining backend catalog are still open | Partial | High |
+| P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Exact encrypted thread list/get/search, idempotent user/assistant persistence, older-message pagination, strict Tauri decoding, durable send ordering, and safe JSON/Markdown export of loaded durable messages are implemented in [PR #1684](https://github.com/Imagine-That-Ai/BurnBar/pull/1684). Model selection/thinking level now propagates the exact selected model through the gateway, and attachment metadata has bounded type/size/error/remove state; binary upload transport, citations, approvals, unloaded-history export/resume, pop-out, and the remaining backend catalog remain open | Partial | High |
 | P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Daemon-owned Desktop PKCE, redacted account RPC/Tauri state, sign-out, and phase-safe account switching are implemented in source; production OAuth/callable configuration and installed account proof remain absent, while subscription/recovery depth still lags | Partial | High |
 | P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Linux account/enrollment posture is daemon-owned with fail-closed transitional states and copyable device verification values. Trusted-device list/approve/revoke stays on the native mobile/Firebase nonce-bound contract; production deployment, current physical-iPad execution, backup/sync/conflict, and broader remote-device outcomes remain unproven or absent | Partial | High |
-| P-17 | Activity/session logs | Indexed transcript, search, body, replay, resume, export, source resolution | Canonical daemon search/detail/resume and indexed excerpts are wired; loaded activity rows now export through an explicit allowlisted JSON/Markdown path (PR #1685), while session bodies, exact replay/resume, unloaded-history export, and source resolution remain unavailable | Partial | High |
+| P-17 | Activity/session logs | Indexed transcript, search, body, replay, resume, export, source resolution | Canonical daemon search/detail/resume and indexed excerpts are wired; persisted body replay and native resume through `run.resume` with provider-safe handoff fallback are source-integrated, and loaded activity rows export through an explicit allowlisted JSON/Markdown path (PR #1685). Full-history export, source resolution, and resume-from-export remain open | Partial | High |
 | P-18 | Memory review | Quarantined candidates, approve/reject, durable state, audit | Daemon owns live review status and idempotent decisions survive reload; first-class quarantine feed and cross-device review remain unproven | Partial | High |
 | P-19 | Projects | Registered projects, exact associations, detail, management | Canonical list/get/upsert and exact identity are wired with register/edit UI; delete/reassign and installed proof remain open | Partial | Medium |
 | P-20 | Missions | Full run/task state, approvals, questions, evidence, history, health | List/create/approve plus canonical get/cancel and typed packet/result/evidence/burn/takeover/PR snapshot detail are wired; history and runtime health remain explicitly unavailable where the daemon contract does not expose them, and live/installed proof remains open | Partial | Medium |
 | P-21 | Insights | Editorial brief, evidence, citations, follow-ups, comparison, audit | Usage charts and anomaly-like summaries only | Partial | Medium |
-| P-22 | Database | Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX | Index/watch foundation plus bounded daemon-owned code search/context-pack inspection are wired in [PR #1680](https://github.com/Imagine-That-Ai/BurnBar/pull/1680), with pagination, trust warnings, and fail-closed capability handling; snapshots, encrypted-store recovery, and installed proof remain open | Partial | Medium |
+| P-22 | Database | Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX | Index/watch foundation plus bounded daemon-owned code search/context-pack inspection are wired in [PR #1680](https://github.com/Imagine-That-Ai/BurnBar/pull/1680), with pagination, trust warnings, and fail-closed capability handling. SQLCipher-gated encrypted snapshots provide owner-only path validation, bounded atomic copy, SHA-256 integrity, rollback, and watcher reopen; passphrase recovery bundles, key-loss/device-transfer recovery, deep inspector parity, and installed proof remain open | Partial | Medium |
 | P-23 | Provider/model workspace | Provider and model deep dives, health, catalog, failover, routing | Quota-centric provider route; no equivalent model workspace/failover flow | Partial | Medium |
 | P-24 | Settings | 16 searchable tabs with deep links and writable state | 16-tab searchable inventory and deep routes are wired; deeper per-tab backend writes and installed proof remain open | Partial | Medium |
 | P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed freshness, channel ownership, and shell/daemon compatibility gates are wired; valid public feed and installed rollback remain open | Partial | High |
@@ -906,15 +910,18 @@ remains required.
 
 - **Difference:** macOS supports persisted/searchable threads, twelve backends,
   model selection, streaming, attachments, citations, tool approvals, panes,
-  desktop grants, resume/export, and pop-out. Linux uses five backend choices,
-  synthesizes two history rows, and disables model, agent, attachment, option,
-  citation, tool-decision, restore, close, and pop-out controls.
-- **Why it matters:** chat is a primary workflow; synthetic history and inert
-  controls create false confidence and data-loss risk.
-- **Recommended solution:** introduce real session-body and chat-thread RPCs,
-  shared backend/model catalog, attachment store/content policy, streaming event
-  contract, citation navigation, approval state machine, resume/export, and a
-  Linux-native secondary window.
+  desktop grants, resume/export, and pop-out. Linux now has real encrypted
+  thread persistence/search/pagination, exact model/thinking-level selection,
+  and bounded attachment metadata/error/remove state, but binary upload,
+  citations, approvals, unloaded-history export/resume, pop-out, and the full
+  backend catalog remain unavailable.
+- **Why it matters:** chat is a primary workflow; presenting a file or model
+  control without a real transport still creates false confidence and data-loss
+  risk.
+- **Recommended solution:** complete the daemon-owned attachment content store,
+  citation navigation, approval state machine, unloaded transcript/export
+  contract, and Linux-native secondary window; retain the typed model catalog
+  and fail closed until each capability is live.
 - **Priority:** **High**.
 - **Implementation notes:** keep the daemon authoritative for thread state;
   reconcile reconnect/cancel/idempotency; do not expose controls until their
@@ -948,14 +955,16 @@ remains required.
 ### GAP-011 - Replace activity and memory substitutes with true domain state
 
 - **Difference:** macOS exposes indexed session transcripts and a real memory
-  review queue. Linux still wraps recent usage as session entries. Memory
-  approve/reject/forget decisions are now daemon-authoritative and idempotent,
-  but recalled durable memories do not yet prove a first-class quarantine feed.
+  review queue. Linux now replays bounded persisted session bodies and resumes
+  through the canonical `run.resume` contract, with provider-safe handoff
+  fallback and explicit untrusted/error states. Full-history export, source
+  resolution, resume-from-export, and first-class memory quarantine remain
+  incomplete.
 - **Why it matters:** users cannot inspect or resume actual work, and the memory
   UI describes semantics the backend does not provide.
-- **Recommended solution:** add session list/body/search/source/resume/export RPCs
-  and complete the daemon-owned memory quarantine source and cross-device audit
-  model; retain the implemented durable decision path.
+- **Recommended solution:** complete session source/full-history/export RPCs and
+  the daemon-owned memory quarantine source and cross-device audit model; retain
+  the implemented durable decision path and bounded replay/resume.
 - **Priority:** **High**.
 - **Implementation notes:** preserve exact source/session/project IDs; support
   local/cloud conflict and missing-body recovery; make review decisions
@@ -1014,20 +1023,23 @@ remains required.
 
 ### GAP-012D - Complete Database and indexing operations
 
-- **Difference:** Linux has index/watch foundations and now exposes bounded
-  daemon-owned code search/context-pack inspection through [PR #1680](https://github.com/Imagine-That-Ai/BurnBar/pull/1680), but still lacks macOS-equivalent record inspector, snapshot, encrypted-store recovery, and equivalent watch UX.
+- **Difference:** Linux has index/watch foundations and bounded daemon-owned
+  code search/context-pack inspection through [PR #1680](https://github.com/Imagine-That-Ai/BurnBar/pull/1680). It now also has SQLCipher-gated encrypted snapshot/restore with owner-only path checks, size bounds, integrity hashes, atomic replacement, rollback, and watcher reopen. It still lacks the macOS-equivalent record inspector, passphrase-wrapped recovery-bundle import/export, key-loss/device-transfer recovery, deep rebuild UX, and installed proof.
 - **Why it matters:** users cannot diagnose missing sessions, inspect canonical
   records, recover corruption, or trust that updates are current.
-- **Recommended solution:** add daemon-owned inspect/search/snapshot/watch/rebuild/
-  recovery RPCs with pagination, cancellation, query tracing, and clear encryption
-  state.
+- **Recommended solution:** finish daemon-owned inspect/search/snapshot/watch/
+  rebuild/recovery-bundle RPCs with pagination, cancellation, query tracing, and
+  clear encryption/key-custody state; preserve the atomic same-key snapshot path
+  as the rollback primitive.
 - **Priority:** **Medium**.
 - **Implementation notes:** unify inotify ownership rather than layering another
   poller; use `OpenBurnBarQueryTracer`; keep raw sensitive content behind explicit
   reveal/export policy.
 - **QA verification:** search/inspect/snapshot/watch/rebuild/recover; N+1 limits,
   10k/100k rows, corruption, locked key, permission loss, path move, event burst,
-  cancellation, and restart.
+  cancellation, restart, passphrase bundle import/export, key loss, and device
+  transfer. Run the Linux SQLCipher round-trip with the production daemon secret
+  before marking the row ready.
 
 ### GAP-012E - Complete provider and model workspaces
 

@@ -488,8 +488,8 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Core product workflows</td>
-<td>Six dashboard layouts, XDG/provider paths, daemon-authoritative memory decisions, exact persisted chat thread storage/pagination plus safe loaded-message export (PR #1684), bounded loaded-activity JSON/Markdown export (PR #1685), and bounded database inspection (PR #1680) are implemented; several routes remain partial/read-only</td>
-<td>Complete onboarding, chat attachments/citations/approvals/options/unloaded-history export/resume/pop-out and remaining backends, sessions, account/cloud, and workspace depth</td>
+<td>Six dashboard layouts, XDG/provider paths, daemon-authoritative memory decisions, exact persisted chat thread storage/pagination plus safe loaded-message export (PR #1684), typed model/thinking-level selection with bounded attachment metadata, persisted activity body replay/native resume, and bounded database inspection plus encrypted snapshot/atomic restore are source-integrated; several routes remain partial/read-only</td>
+<td>Complete binary chat attachment transport, citations/approvals/options/unloaded-history export/resume/pop-out and remaining backends, full-history activity/source resolution, passphrase recovery bundles, onboarding, account/cloud, and workspace depth</td>
 </tr>
 <tr>
 <td>Advanced platform features</td>
@@ -498,7 +498,7 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Integrated Linux validation</td>
-<td>Local integration replay on 2026-07-13: 70 Vitest files / 568 tests, TypeScript, production bundle verification, differential-oracle tests, Tauri Rust 70/70, P19 daemon lifecycle 4/4, and the supported SQLCipher-backed daemon chat selector 9/9 passed. The Linux-only native <code>notify-send</code> adapter is source-integrated with bounded tests that require a Linux host.</td>
+<td>Local integration replay on 2026-07-13: 72 Vitest files / 583 tests, TypeScript, production bundle verification, differential-oracle tests 6/6, Tauri Rust 71/71, Activity replay/resume Swift 4/4, database snapshot/recovery Swift 3/3, P19 daemon lifecycle 4/4, and the supported SQLCipher-backed daemon chat selector 9/9 passed. The Linux-only native <code>notify-send</code> adapter is source-integrated with bounded tests that require a Linux host.</td>
 <td>Engineering evidence only; installed candidate, desktop matrix, and physical-iPad Browser CU proof remain open</td>
 </tr>
 </tbody>
@@ -880,7 +880,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-14</td>
 <td>Chat</td>
 <td>Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out</td>
-<td>Exact encrypted thread list/get/search, idempotent user/assistant persistence, older-message pagination, strict Tauri decoding, durable send ordering, and safe JSON/Markdown export of loaded durable messages are implemented in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1684">PR #1684</a>; attachments, citations, approvals, options, unloaded-history export/resume, pop-out, and the remaining backend catalog are still open</td>
+<td>Exact encrypted thread list/get/search, idempotent user/assistant persistence, older-message pagination, strict Tauri decoding, durable send ordering, and safe JSON/Markdown export of loaded durable messages are implemented in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1684">PR #1684</a>. Model selection/thinking level now propagates the exact selected model through the gateway, and attachment metadata has bounded type/size/error/remove state; binary upload transport, citations, approvals, unloaded-history export/resume, pop-out, and the remaining backend catalog remain open</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -904,7 +904,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-17</td>
 <td>Activity/session logs</td>
 <td>Indexed transcript, search, body, replay, resume, export, source resolution</td>
-<td>Loaded activity rows now have an explicit, allowlisted JSON/Markdown export with filename/download guards in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1685">PR #1685</a>; session bodies, exact replay/resume, unloaded-history export, source resolution, and full session-depth parity remain open</td>
+<td>Loaded activity rows have an explicit, allowlisted JSON/Markdown export with filename/download guards in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1685">PR #1685</a>; persisted body replay and native <code>run.resume</code> with provider-safe handoff fallback are source-integrated. Full-history export, source resolution, and resume-from-export remain open</td>
 <td>Substitute</td>
 <td>High</td>
 </tr>
@@ -944,7 +944,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-22</td>
 <td>Database</td>
 <td>Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX</td>
-<td>Index/watch foundation exists; inspector, snapshot, and recovery depth lag</td>
+<td>Index/watch foundation plus bounded code inspection exists; SQLCipher-gated owner-only encrypted snapshots provide bounded atomic copy, SHA-256 integrity, rollback, and watcher reopen. Passphrase recovery bundles, key-loss/device-transfer recovery, deep inspector parity, and installed proof remain open</td>
 <td>Partial</td>
 <td>Medium</td>
 </tr>
@@ -1625,15 +1625,17 @@ partial completion, app restart, upgrade migration, screen reader, and keyboard.
 <ul>
 <li><strong>Difference:</strong> macOS supports persisted/searchable threads, twelve backends,
 model selection, streaming, attachments, citations, tool approvals, panes,
-desktop grants, resume/export, and pop-out. Linux uses five backend choices,
-synthesizes two history rows, and disables model, agent, attachment, option,
-citation, tool-decision, restore, close, and pop-out controls.</li>
+desktop grants, resume/export, and pop-out. Linux now has real encrypted
+thread persistence/search/pagination, exact model/thinking-level selection, and
+bounded attachment metadata/error/remove state, but binary upload, citations,
+approvals, unloaded-history export/resume, pop-out, and the full backend catalog
+remain unavailable.</li>
 <li><strong>Why it matters:</strong> chat is a primary workflow; synthetic history and inert
 controls create false confidence and data-loss risk.</li>
-<li><strong>Recommended solution:</strong> introduce real session-body and chat-thread RPCs,
-shared backend/model catalog, attachment store/content policy, streaming event
-contract, citation navigation, approval state machine, resume/export, and a
-Linux-native secondary window.</li>
+<li><strong>Recommended solution:</strong> complete the daemon-owned attachment content
+store, citation navigation, approval state machine, unloaded transcript/export
+contract, and Linux-native secondary window; retain the typed model catalog and
+fail closed until each capability is live.</li>
 <li><strong>Priority:</strong> <strong>High</strong>.</li>
 <li><strong>Implementation notes:</strong> keep the daemon authoritative for thread state;
 reconcile reconnect/cancel/idempotency; do not expose controls until their
@@ -1667,14 +1669,16 @@ clock skew.</li>
 <h3>GAP-011 - Replace activity and memory substitutes with true domain state</h3>
 <ul>
 <li><strong>Difference:</strong> macOS exposes indexed session transcripts and a real memory
-review queue. Linux still wraps recent usage as session entries. Memory
-approve/reject/forget decisions are now daemon-authoritative and idempotent,
-but recalled durable memories do not yet prove a first-class quarantine feed.</li>
+review queue. Linux now replays bounded persisted session bodies and resumes
+through the canonical <code>run.resume</code> contract, with provider-safe handoff
+fallback and explicit untrusted/error states. Full-history export, source
+resolution, resume-from-export, and first-class memory quarantine remain
+incomplete.</li>
 <li><strong>Why it matters:</strong> users cannot inspect or resume actual work, and the memory
 UI describes semantics the backend does not provide.</li>
-<li><strong>Recommended solution:</strong> add session list/body/search/source/resume/export RPCs
-and complete the daemon-owned memory quarantine source and cross-device audit
-model; retain the implemented durable decision path.</li>
+<li><strong>Recommended solution:</strong> complete session source/full-history/export RPCs
+and the daemon-owned memory quarantine source and cross-device audit model;
+retain the implemented durable decision path and bounded replay/resume.</li>
 <li><strong>Priority:</strong> <strong>High</strong>.</li>
 <li><strong>Implementation notes:</strong> preserve exact source/session/project IDs; support
 local/cloud conflict and missing-body recovery; make review decisions
@@ -1733,20 +1737,27 @@ reader, and large-period performance.</li>
 </ul>
 <h3>GAP-012D - Complete Database and indexing operations</h3>
 <ul>
-<li><strong>Difference:</strong> Linux has index/watch foundations but lacks macOS inspector,
-snapshot, deep search, encrypted-store recovery, and equivalent watch UX.</li>
+<li><strong>Difference:</strong> Linux has index/watch foundations and bounded daemon-owned
+code search/context-pack inspection. It now also has SQLCipher-gated encrypted
+snapshot/restore with owner-only path checks, size bounds, integrity hashes,
+atomic replacement, rollback, and watcher reopen. It still lacks the macOS
+record inspector, passphrase-wrapped recovery-bundle import/export, key-loss/
+device-transfer recovery, deep rebuild UX, and installed proof.</li>
 <li><strong>Why it matters:</strong> users cannot diagnose missing sessions, inspect canonical
 records, recover corruption, or trust that updates are current.</li>
-<li><strong>Recommended solution:</strong> add daemon-owned inspect/search/snapshot/watch/rebuild/
-recovery RPCs with pagination, cancellation, query tracing, and clear encryption
-state.</li>
+<li><strong>Recommended solution:</strong> finish daemon-owned inspect/search/snapshot/watch/
+rebuild/recovery-bundle RPCs with pagination, cancellation, query tracing, and
+clear encryption/key-custody state; preserve the atomic same-key snapshot path
+as the rollback primitive.</li>
 <li><strong>Priority:</strong> <strong>Medium</strong>.</li>
 <li><strong>Implementation notes:</strong> unify inotify ownership rather than layering another
 poller; use <code>OpenBurnBarQueryTracer</code>; keep raw sensitive content behind explicit
 reveal/export policy.</li>
 <li><strong>QA verification:</strong> search/inspect/snapshot/watch/rebuild/recover; N+1 limits,
 10k/100k rows, corruption, locked key, permission loss, path move, event burst,
-cancellation, and restart.</li>
+cancellation, restart, passphrase bundle import/export, key loss, and device
+transfer. Run the Linux SQLCipher round-trip with the production daemon secret
+before marking the row ready.</li>
 </ul>
 <h3>GAP-012E - Complete provider and model workspaces</h3>
 <ul>
