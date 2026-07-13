@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Builds the model prompt for the structured Insights intelligence layer.
 ///
@@ -98,7 +99,7 @@ public struct InsightAnalysisModelPrompt: Sendable {
     }
 }
 
-enum InsightAnalysisModelDecoder {
+public enum InsightAnalysisModelDecoder {
     struct Envelope: Decodable {
         var executiveSummary: String
         var findings: [Finding]
@@ -171,7 +172,7 @@ enum InsightAnalysisModelDecoder {
         var label: String
     }
 
-    static func decode(
+    public static func decode(
         from data: Data,
         request: InsightAnalysisRequest,
         platform: InsightAnalysisPlatform,

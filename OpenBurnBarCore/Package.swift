@@ -450,11 +450,11 @@ let openBurnBarCoreExcludes = [
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
     // the prior partial set that left model files referencing excluded types.
     "AgentInsights/AgentInsightsViewModel.swift",
-    // Pure assembler that returns AgentInsightsBundle from the moved Insights
-    // models (now in the Apple-only OpenBurnBarInsights target). Its only Core
-    // caller is AgentInsightsViewModel.swift (excluded above), so it too must be
-    // pruned off-Apple where OpenBurnBarInsights is not linked.
-    "AgentInsights/AgentInsightsBundleAssembler.swift",
+    // P-08: AgentInsightsBundleAssembler.swift moved out of Core into the
+    // Apple-only OpenBurnBarInsights target (FIX-6 re-slice), which is pruned WHOLE
+    // off-Apple, so the file no longer exists in the off-Apple Core source tree and
+    // its exclude entry is removed here (a stale exclude on a moved-out file makes
+    // SwiftPM reject the off-Apple manifest). The mover owns the exclude deletion.
     "Demo/InsightVerdictDemoFixture.swift",
     "Services/Insights",
     "SwitcherBrowserLaunchService.swift",

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Builds the privacy-bounded `InsightDigest` that gets shipped to a model.
 ///
