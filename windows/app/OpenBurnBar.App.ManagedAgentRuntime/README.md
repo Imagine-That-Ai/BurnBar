@@ -42,6 +42,12 @@ The composed companion plane exposes bounded `run.submit`, `run.resume`, and
 records only the recoverable-run count in diagnostics; it never logs step
 payloads or provider credentials.
 
+`GatewayAuthTokenPolicy` applies the same fail-closed local-gateway rule as the
+Mac: an existing bearer token is preserved, an absent token is generated from
+the OS CSPRNG, and only the explicit unauthenticated-loopback opt-out returns
+no token. The desktop composition persists generated tokens through its
+platform secret store.
+
 Timing is injected too: the per-request HTTP timeout (2s, matching the Swift
 `timeoutInterval`) is a constructor parameter on the discovery + probe. The runtime
 controller itself reads no wall clock — neither does the Swift original.

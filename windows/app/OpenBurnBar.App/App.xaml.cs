@@ -12,6 +12,7 @@ using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Settings.Winui;
+using OpenBurnBar.App.Settings.ViewModels;
 using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Tray;
 using OpenBurnBar.App.UsageRuntime;
@@ -276,10 +277,13 @@ public partial class App : Application
                 port = parsedPort;
             }
 
+            string? accessToken = ResolveGatewayAccessToken();
+
             _gateway = new LocalHttpGatewayHost(
                 port,
                 _gatewayComposition.Router,
-                _gatewayComposition.Executor);
+                _gatewayComposition.Executor,
+                accessToken);
             _gateway.Start();
             AppDiagnostics.LogEvent("gateway.started", _gateway.BaseAddress.ToString());
         }
@@ -292,6 +296,31 @@ public partial class App : Application
             _gatewayComposition?.HttpClient.Dispose();
             _gatewayComposition = null;
         }
+    }
+
+    private static string? ResolveGatewayAccessToken()
+    {
+        const string tokenEnvironmentVariable = "OPENBURNBAR_GATEWAY_AUTH_TOKEN";
+        const string allowUnauthenticatedEnvironmentVariable = "OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK";
+        string tokenName = AppSecretNames.ProviderSecret("settings", "model-proxy", "auth-token");
+        string? environmentToken = Environment.GetEnvironmentVariable(tokenEnvironmentVariable);
+        var persistence = WindowsSettingsComposition.SharedPersistence;
+        var settings = persistence.Read("modelProxy", GatewayEndpointSettings.Default);
+        bool allowUnauthenticated = settings.AllowUnauthenticatedLoopback
+            || string.Equals(
+                Environment.GetEnvironmentVariable(allowUnauthenticatedEnvironmentVariable),
+                "1",
+                StringComparison.Ordinal);
+        string configuredToken = environmentToken ?? persistence.ReadSecret(tokenName);
+        string? resolved = GatewayAuthTokenPolicy.Resolve(configuredToken, allowUnauthenticated);
+        if (environmentToken is null
+            && string.IsNullOrWhiteSpace(configuredToken)
+            && !string.IsNullOrWhiteSpace(resolved))
+        {
+            persistence.WriteSecret(tokenName, resolved);
+        }
+
+        return resolved;
     }
 
     private void StartCompanionCli()

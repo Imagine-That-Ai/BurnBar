@@ -97,6 +97,10 @@ unproven host behavior to certification:
   for non-streaming text requests, including system-message conversion,
   API-key/OAuth header selection, required version headers, and normalized
   response output. Unsupported streaming/shapes fail closed before transport.
+- The desktop gateway composition now preserves a configured bearer token or
+  generates and persists a URL-safe 256-bit token through the Windows secret
+  store; unauthenticated loopback is available only through the explicit opt
+  out. The token itself is never logged or placed in route metadata.
 - Headless runs and local Mission Control DAGs now have an append-only,
   write-through JSONL journal, dependency validation, approval policy, bounded
   recovery/resume, cancellation records, deterministic topological planning,
@@ -138,7 +142,7 @@ unproven host behavior to certification:
   Empty provider/model configurations fail closed; API-key presence remains in
   the injected platform secret-store validation step.
 
-These changes are covered by focused managed-runtime (32/32 mission/runtime
+These changes are covered by focused managed-runtime (36/36 mission/runtime
 tests plus 97/97 managed-agent-runtime tests), connector (99/99), presentation
 (750/750), Computer Use, bridge-policy, and provider-boundary tests. They are an
 implementation increment, not a claim that
