@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 /// Cross-platform quota signal view — the battery-bar visualization.
 /// Used identically on macOS and iOS.
