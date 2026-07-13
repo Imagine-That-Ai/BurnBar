@@ -212,7 +212,9 @@ jobs:
           "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --version
 
       - name: Install Android NDK
-        run: sdkmanager "ndk;${DOMAIN_CORE_ANDROID_NDK_VERSION}"
+        run: |
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;${DOMAIN_CORE_ANDROID_NDK_VERSION}"
 
       - name: Enable KVM for the Android emulator
         run: |
