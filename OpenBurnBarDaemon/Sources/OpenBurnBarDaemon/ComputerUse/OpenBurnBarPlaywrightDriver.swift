@@ -308,8 +308,7 @@ public actor OpenBurnBarPlaywrightDriver {
         encoder.outputFormatting = [.sortedKeys]
         var line = try encoder.encode(request)
         line.append(0x0A)
-        guard let stdin = stdinPipe else { throw DriverError.driverStopped }
-        try stdin.fileHandleForWriting.write(contentsOf: line)
+        let requestLine = line
 
         let timeoutMs = (params["timeoutMs"].flatMap { value -> Double? in
             if case let .number(n) = value { return n }
@@ -325,7 +324,15 @@ public actor OpenBurnBarPlaywrightDriver {
                             cont.resume(throwing: DriverError.driverStopped)
                             return
                         }
-                        await self.registerContinuation(id: id, continuation: cont)
+                        // Register before writing. A local bridge can answer
+                        // synchronously; writing first lets stdout resolve the
+                        // response before the continuation is visible and
+                        // turns a successful action into an orphan/timeout.
+                        await self.registerContinuationAndWrite(
+                            id: id,
+                            line: requestLine,
+                            continuation: cont
+                        )
                     }
                 }
             }
@@ -341,11 +348,22 @@ public actor OpenBurnBarPlaywrightDriver {
         }
     }
 
-    private func registerContinuation(
+    private func registerContinuationAndWrite(
         id: Int,
+        line: Data,
         continuation: CheckedContinuation<Response, Error>
     ) {
+        guard let stdin = stdinPipe else {
+            continuation.resume(throwing: DriverError.driverStopped)
+            return
+        }
         pendingContinuations[id] = continuation
+        do {
+            try stdin.fileHandleForWriting.write(contentsOf: line)
+        } catch {
+            pendingContinuations.removeValue(forKey: id)
+            continuation.resume(throwing: error)
+        }
     }
 
     private func resolve(_ response: Response) {

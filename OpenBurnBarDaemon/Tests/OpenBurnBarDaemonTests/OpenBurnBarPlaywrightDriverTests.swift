@@ -102,6 +102,28 @@ final class OpenBurnBarPlaywrightDriverTests: XCTestCase {
         }
     }
 
+    func testDriverAcceptsImmediateBridgeResponsesWithoutOrphaningThem() async throws {
+        let node = try XCTUnwrap(Self.nodeExecutablePath())
+        let bridge = try Self.makeImmediateEchoBridge(responseCount: 32)
+        let driver = OpenBurnBarPlaywrightDriver(
+            configuration: OpenBurnBarPlaywrightDriver.Configuration(
+                nodeExecutablePath: node,
+                bridgeScriptPath: bridge,
+                headless: true,
+                perActionTimeoutMillis: 25
+            ),
+            sessionId: ComputerUseSessionID("driver-immediate-response-\(UUID().uuidString)"),
+            logger: BurnBarDaemonLogger(category: "playwright-driver-tests")
+        )
+        defer { Task { await driver.stop() } }
+
+        try await driver.start()
+        for _ in 0..<32 {
+            let response = try await driver.currentTitle()
+            XCTAssertTrue(response.ok, response.error ?? "bridge response was not successful")
+        }
+    }
+
     private static func assertEcho(
         _ response: OpenBurnBarPlaywrightDriver.Response,
         method expectedMethod: String,
@@ -144,6 +166,32 @@ final class OpenBurnBarPlaywrightDriverTests: XCTestCase {
               if (requestCount >= 8) process.exit(0);
             });
           }, 25);
+        });
+        """
+        try script.write(to: bridge, atomically: true, encoding: .utf8)
+        return bridge
+    }
+
+    private static func makeImmediateEchoBridge(responseCount: Int) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-playwright-driver-immediate-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let bridge = directory.appendingPathComponent("immediate-echo-bridge.js")
+        let script = """
+        const readline = require('readline');
+        let requestCount = 0;
+        const expectedCount = \(responseCount);
+        const rl = readline.createInterface({ input: process.stdin, terminal: false });
+        rl.on('line', (line) => {
+          const req = JSON.parse(line);
+          requestCount += 1;
+          process.stdout.write(JSON.stringify({
+            id: req.id,
+            ok: true,
+            result: { method: req.method, url: 'about:blank' },
+            elapsedMillis: 0
+          }) + '\\n');
+          if (requestCount >= expectedCount) process.exit(0);
         });
         """
         try script.write(to: bridge, atomically: true, encoding: .utf8)
