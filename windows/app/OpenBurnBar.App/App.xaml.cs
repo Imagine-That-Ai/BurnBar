@@ -474,6 +474,12 @@ public partial class App : Application
                         RequiredString(request, "name"),
                         OptionalBoundedInt(request, "limit", 50, 1, 100)),
                 };
+            case "code.references":
+                return await service.FindReferencesAsync(
+                    RequiredString(request, "filePath"),
+                    OptionalBoundedInt(request, "line", 1, 1, 1_000_000),
+                    OptionalBoundedInt(request, "character", 0, 0, 1_000_000),
+                    cancellationToken).ConfigureAwait(false);
             case "code.context_pack":
                 return service.BuildContextPack(
                     RequiredString(request, "query"),

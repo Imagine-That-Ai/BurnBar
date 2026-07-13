@@ -118,6 +118,78 @@ public sealed class ProjectCodeMemoryService : IDisposable
     }
 
     /// <summary>
+    /// Resolves references for a source location through the configured LSP
+    /// parser. The public API uses one-based source lines like the symbol index;
+    /// the parser request remains zero-based. Paths are confined to the project
+    /// root before any source is sent to the helper.
+    /// </summary>
+    public async Task<ProjectCodeReferencesResult> FindReferencesAsync(
+        string filePath,
+        int line,
+        int character,
+        CancellationToken cancellationToken = default)
+    {
+        if (_parser is null)
+        {
+            throw new ProjectCodeParserException("project_code_references_unavailable");
+        }
+
+        if (line is < 1 or > 1_000_000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(line));
+        }
+
+        if (character is < 0 or > 1_000_000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(character));
+        }
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(
+                Path.IsPathRooted(filePath) ? filePath : Path.Combine(Root, filePath));
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException)
+        {
+            throw new ArgumentException("A valid project file path is required.", nameof(filePath), error);
+        }
+
+        string rootPrefix = Root.EndsWith(Path.DirectorySeparatorChar)
+            ? Root
+            : Root + Path.DirectorySeparatorChar;
+        if (!fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
+            || !File.Exists(fullPath))
+        {
+            throw new ArgumentException("The file path must identify a file inside the project root.", nameof(filePath));
+        }
+
+        string text = await File.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false);
+        string relativePath = Path.GetRelativePath(Root, fullPath).Replace('\\', '/');
+        string language = Path.GetExtension(fullPath).TrimStart('.').ToLowerInvariant();
+        ProjectCodeParseResponse response = await _parser.ParseAsync(
+            new ProjectCodeParseRequest(
+                Guid.NewGuid().ToString("N"),
+                relativePath,
+                language,
+                JsonLinesProjectCodeStaticParserClient.ComputeGitBlobSha(text),
+                text,
+                Root,
+                Operation: "references",
+                Position: new ProjectCodeParsePosition(line - 1, character)),
+            cancellationToken).ConfigureAwait(false);
+
+        return new ProjectCodeReferencesResult(
+            relativePath,
+            line,
+            character,
+            response.Ok,
+            response.ShaMatch,
+            response.References ?? Array.Empty<ProjectCodeParsedReference>(),
+            response.Errors);
+    }
+
+    /// <summary>
     /// Builds a transient source context pack for an explicit query. The index
     /// remains metadata-only; snippets are bounded, path-confined, secret
     /// redacted, and marked as untrusted so callers cannot mistake source data
@@ -324,3 +396,12 @@ public sealed record ProjectCodeContextPack(
     bool Truncated,
     bool UntrustedContentWrapped,
     int WrappedCount);
+
+public sealed record ProjectCodeReferencesResult(
+    string FilePath,
+    int Line,
+    int Character,
+    bool Ok,
+    bool ShaMatch,
+    IReadOnlyList<ProjectCodeParsedReference> References,
+    IReadOnlyList<string> Errors);

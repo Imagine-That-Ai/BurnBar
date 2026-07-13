@@ -18,7 +18,11 @@ public sealed record ProjectCodeParseRequest(
     string BlobSha,
     string Text,
     string? RootPath = null,
-    string? Operation = null);
+    string? Operation = null,
+    ProjectCodeParsePosition? Position = null);
+
+/// LSP source coordinates are zero-based, matching the parser wire protocol.
+public sealed record ProjectCodeParsePosition(int Line, int Character);
 
 public sealed record ProjectCodeParsedSymbol(
     string Name,
@@ -29,13 +33,22 @@ public sealed record ProjectCodeParsedSymbol(
     bool ShaMatch,
     string Parser);
 
+public sealed record ProjectCodeParsedReference(
+    string FilePath,
+    int StartLine,
+    int EndLine,
+    int StartCharacter,
+    int EndCharacter,
+    string ConfidenceTier);
+
 public sealed record ProjectCodeParseResponse(
     bool Ok,
     bool HasParseError,
     IReadOnlyList<ProjectCodeParsedSymbol> Symbols,
     IReadOnlyList<string> Errors,
     string Parser,
-    bool ShaMatch);
+    bool ShaMatch,
+    IReadOnlyList<ProjectCodeParsedReference>? References = null);
 
 public interface IProjectCodeStaticParserClient
 {
@@ -247,7 +260,9 @@ public sealed class JsonLinesProjectCodeStaticParserClient : IProjectCodeStaticP
         List<ProjectCodeParserWireSymbol>? Symbols,
         List<string>? Errors,
         string? Language,
-        string? BlobSha)
+        string? BlobSha,
+        bool ShaMatch,
+        List<ProjectCodeParserWireReference>? References)
     {
         public ProjectCodeParseResponse ToResponse()
         {
@@ -264,13 +279,26 @@ public sealed class JsonLinesProjectCodeStaticParserClient : IProjectCodeStaticP
                     symbol.Evidence?.Parser ?? "tree-sitter"));
             }
 
+            var references = (References ?? new List<ProjectCodeParserWireReference>())
+                .ConvertAll(reference => new ProjectCodeParsedReference(
+                    reference.FilePath ?? string.Empty,
+                    reference.StartLine,
+                    reference.EndLine,
+                    reference.StartCharacter,
+                    reference.EndCharacter,
+                    reference.ConfidenceTier ?? "exact_lsp"));
+
             return new ProjectCodeParseResponse(
                 Ok,
                 HasParseError,
                 symbols,
                 Errors ?? new List<string>(),
-                "tree-sitter",
-                symbols.TrueForAll(symbol => symbol.ShaMatch));
+                symbols.Exists(symbol => string.Equals(symbol.Parser, "lsp", StringComparison.OrdinalIgnoreCase))
+                    || references.Count > 0
+                    ? "lsp"
+                    : "tree-sitter",
+                ShaMatch,
+                references);
         }
     }
 
@@ -285,6 +313,14 @@ public sealed class JsonLinesProjectCodeStaticParserClient : IProjectCodeStaticP
     private sealed record ProjectCodeParserWireEvidence(
         string? Parser,
         bool ShaMatch);
+
+    private sealed record ProjectCodeParserWireReference(
+        string? FilePath,
+        int StartLine,
+        int EndLine,
+        int StartCharacter,
+        int EndCharacter,
+        string? ConfidenceTier);
 }
 
 public sealed class ProjectCodeParserException : Exception

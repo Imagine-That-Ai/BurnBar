@@ -99,4 +99,54 @@ public sealed class ProjectCodeMemoryServiceTests
             }
         }
     }
+
+    [Fact]
+    public async Task References_UsesBoundedRelativePathAndZeroBasedParserPosition()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-code-refs-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        try
+        {
+            string sourcePath = Path.Combine(root, "Runner.swift");
+            await File.WriteAllTextAsync(sourcePath, "struct Runner { func start() {} }\n");
+            var parser = new DelegateProjectCodeStaticParserClient((request, _) =>
+            {
+                Assert.Equal("Runner.swift", request.FilePath);
+                Assert.Equal("references", request.Operation);
+                Assert.Equal(new ProjectCodeParsePosition(0, 7), request.Position);
+                return Task.FromResult(new ProjectCodeParseResponse(
+                    Ok: true,
+                    HasParseError: false,
+                    Symbols: System.Array.Empty<ProjectCodeParsedSymbol>(),
+                    Errors: System.Array.Empty<string>(),
+                    Parser: "lsp",
+                    ShaMatch: true,
+                    References: new[]
+                    {
+                        new ProjectCodeParsedReference(
+                            "Runner.swift", 1, 1, 7, 13, "exact_lsp"),
+                    }));
+            });
+
+            using var service = new ProjectCodeMemoryService(
+                new ProjectCodeSymbolIndex(root),
+                parser);
+            ProjectCodeReferencesResult result = await service.FindReferencesAsync(
+                sourcePath,
+                line: 1,
+                character: 7);
+
+            Assert.True(result.Ok);
+            Assert.True(result.ShaMatch);
+            Assert.Equal("Runner.swift", result.FilePath);
+            Assert.Equal("exact_lsp", Assert.Single(result.References).ConfidenceTier);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
 }

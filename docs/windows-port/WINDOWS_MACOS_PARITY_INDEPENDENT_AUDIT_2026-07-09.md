@@ -168,10 +168,17 @@ unproven host behavior to certification:
   marked as untrusted context. The focused chat runtime suite covers ordering,
   duplicate-current-turn suppression, attachment redaction, and prompt-size
   bounds.
+- The project-code parser now preserves explicit blob-integrity state on its
+  JSONL wire response and exposes bounded LSP reference lookups through the
+  Windows presentation service and `code.references` companion operation. The
+  user-facing API accepts one-based project lines, converts to zero-based LSP
+  coordinates, confines files to the configured project root, and returns
+  relative reference paths. This advances parser depth without promoting the
+  still-unproven full static-language matrix to F2 completion.
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 97/97 managed-agent-runtime tests), CloudSync (60/60), connector
-(99/99), presentation (755/755), Computer Use, bridge-policy, and
+(99/99), presentation (756/756), Computer Use, bridge-policy, and
 provider-boundary tests. They are an
 implementation increment, not a claim that
 the F2 workstreams are all promoted to `Real`: full static parsing, live
