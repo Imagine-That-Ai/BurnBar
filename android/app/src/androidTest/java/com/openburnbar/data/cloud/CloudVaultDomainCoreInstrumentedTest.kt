@@ -9,7 +9,9 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
@@ -66,6 +68,47 @@ class CloudVaultDomainCoreInstrumentedTest {
             assertEquals(
                 vector.string("hex"),
                 CloudVaultCrypto.expectedSessionBodyHash(data, key, vector.int("bodyHashVersion")),
+            )
+        }
+
+        fixture.getValue("aesGcm").jsonArray.forEach { element ->
+            val vector = element.jsonObject
+            val key = vector.hex("keyHex")
+            val nonce = vector.hex("nonceHex")
+            val plaintext = vector.hex("plaintextHex")
+            val aad = vector.hex("aadHex")
+            val sealed = CloudVaultDomainCore.aesSealDetached(plaintext, key, nonce, aad)
+            assertArrayEquals(nonce, sealed.nonce)
+            assertArrayEquals(vector.hex("ciphertextHex"), sealed.ciphertext)
+            assertArrayEquals(vector.hex("tagHex"), sealed.tag)
+            val combined = CloudVaultDomainCore.aesSealCombined(plaintext, key, nonce, aad)
+            assertEquals(vector.string("combinedBase64"), CloudVaultDomainCore.base64Encode(combined))
+            assertArrayEquals(plaintext, CloudVaultDomainCore.aesOpenCombined(combined, key, aad))
+        }
+    }
+
+    @Test
+    fun rustModeRejectsNonCanonicalBase64AuthenticationFailureAndInvalidUtf8() {
+        CloudVaultDomainCore.modeOverride = CloudVaultDomainCoreMode.RUST
+        assertThrows(Exception::class.java) { CloudVaultDomainCore.base64Decode("AA==\n") }
+
+        val key = ByteArray(32)
+        val nonce = ByteArray(12)
+        val sealed = CloudVaultDomainCore.aesSealCombined("payload".toByteArray(), key, nonce, ByteArray(0))
+        sealed[sealed.lastIndex] = (sealed.last().toInt() xor 1).toByte()
+        assertThrows(Exception::class.java) {
+            CloudVaultDomainCore.aesOpenCombined(sealed, key, ByteArray(0))
+        }
+
+        val invalidUtf8 = byteArrayOf(0xc3.toByte(), 0x28)
+        val detached = CloudVaultDomainCore.aesSealDetached(invalidUtf8, key, nonce, ByteArray(0))
+        assertThrows(Exception::class.java) {
+            CloudVaultDomainCore.aesOpenTextDetached(
+                detached.nonce,
+                detached.ciphertext,
+                detached.tag,
+                key,
+                ByteArray(0),
             )
         }
     }

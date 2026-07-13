@@ -8,6 +8,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -65,6 +66,26 @@ class CloudVaultDomainCoreTest {
     }
 
     @Test
+    fun canonicalC1bAesKnownAnswersMatchKotlinLegacy() {
+        CloudVaultDomainCore.modeOverride = CloudVaultDomainCoreMode.LEGACY
+        canonicalFixture().array("aesGcm").forEach { element ->
+            val vector = element.jsonObject
+            val key = vector.hex("keyHex")
+            val nonce = vector.hex("nonceHex")
+            val plaintext = vector.hex("plaintextHex")
+            val aad = vector.hex("aadHex")
+            val sealed = CloudVaultDomainCore.aesSealDetached(plaintext, key, nonce, aad)
+
+            assertArrayEquals(nonce, sealed.nonce)
+            assertArrayEquals(vector.hex("ciphertextHex"), sealed.ciphertext)
+            assertArrayEquals(vector.hex("tagHex"), sealed.tag)
+            val combined = CloudVaultDomainCore.aesSealCombined(plaintext, key, nonce, aad)
+            assertEquals(vector.string("combinedBase64"), CloudVaultDomainCore.base64Encode(combined))
+            assertArrayEquals(plaintext, CloudVaultDomainCore.aesOpenCombined(combined, key, aad))
+        }
+    }
+
+    @Test
     fun allVaultKeyOperationsRejectNon32ByteKeys() {
         listOf(ByteArray(0), ByteArray(31), ByteArray(33)).forEach { key ->
             assertThrows(IllegalArgumentException::class.java) { CloudVaultCrypto.vaultKeyID(key) }
@@ -72,6 +93,19 @@ class CloudVaultDomainCoreTest {
             assertThrows(IllegalArgumentException::class.java) { CloudVaultCrypto.sessionBodyHash(byteArrayOf(1), key) }
             assertThrows(IllegalArgumentException::class.java) { CloudVaultCrypto.sessionChunkHash("x", key) }
             assertThrows(IllegalArgumentException::class.java) { CloudVaultCrypto.projectMemoryContentHash(byteArrayOf(1), key) }
+        }
+    }
+
+    @Test
+    fun sealedTextFutureSchemaFailsClosed() {
+        CloudVaultDomainCore.modeOverride = CloudVaultDomainCoreMode.LEGACY
+        val key = ByteArray(32)
+        val envelope = CloudVaultCrypto.sealText("future", key).copy(
+            schemaVersion = CloudVaultCrypto.CURRENT_SEALED_TEXT_SCHEMA_VERSION + 1,
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            CloudVaultCrypto.openText(envelope, key)
         }
     }
 

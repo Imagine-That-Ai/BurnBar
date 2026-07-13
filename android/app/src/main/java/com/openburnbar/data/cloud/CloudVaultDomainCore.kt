@@ -5,11 +5,19 @@ import com.openburnbar.BuildConfig
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import javax.crypto.Cipher
 import javax.crypto.Mac
+import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import uniffi.openburnbar_domain_ffi.CloudVaultHashPurpose as FfiHashPurpose
 import uniffi.openburnbar_domain_ffi.cloudVaultAadV1
 import uniffi.openburnbar_domain_ffi.cloudVaultAadV2
+import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmOpenCombined
+import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmOpenTextDetached
+import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmSealCombined
+import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmSealDetached
+import uniffi.openburnbar_domain_ffi.cloudVaultBase64DecodeStrict
+import uniffi.openburnbar_domain_ffi.cloudVaultBase64Encode
 import uniffi.openburnbar_domain_ffi.cloudVaultExpectedSessionBodyHash
 import uniffi.openburnbar_domain_ffi.cloudVaultKeyId
 import uniffi.openburnbar_domain_ffi.cloudVaultKeyedHashHex
@@ -41,8 +49,17 @@ internal data class CloudVaultDomainCoreDiagnostic(
     val count: Long,
 )
 
+internal data class CloudVaultAesDetachedBox(
+    val nonce: ByteArray,
+    val ciphertext: ByteArray,
+    val tag: ByteArray,
+)
+
 internal object CloudVaultDomainCore {
     private const val ABI_VERSION = 2
+    private const val GCM_AUTH_TAG_BITS = 128
+    private const val GCM_NONCE_BYTES = 12
+    private const val GCM_TAG_BYTES = 16
     private const val KEY_BYTES = 32
     private const val BYTE_MASK = 0xff
     private const val HMAC_SALT = "OpenBurnBar-CloudVault-HMAC-Salt-v1"
@@ -104,6 +121,66 @@ internal object CloudVaultDomainCore {
         },
     )
 
+    fun aesSealDetached(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): CloudVaultAesDetachedBox {
+        requireAesInputs(key, nonce)
+        return dispatch(
+            operation = "aes_seal_detached",
+            legacy = { legacyAesSealDetached(plaintext, key, nonce, aad) },
+            rust = {
+                val sealed = cloudVaultAesGcmSealDetached(plaintext, key, nonce, aad)
+                CloudVaultAesDetachedBox(sealed.nonce, sealed.ciphertext, sealed.tag)
+            },
+            equivalent = { left, right ->
+                left.nonce.contentEquals(right.nonce) &&
+                    left.ciphertext.contentEquals(right.ciphertext) &&
+                    left.tag.contentEquals(right.tag)
+            },
+        )
+    }
+
+    fun aesSealCombined(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): ByteArray {
+        requireAesInputs(key, nonce)
+        return dispatchBytes(
+            operation = "aes_seal_combined",
+            legacy = {
+                val sealed = legacyAesSealDetached(plaintext, key, nonce, aad)
+                sealed.nonce + sealed.ciphertext + sealed.tag
+            },
+            rust = { cloudVaultAesGcmSealCombined(plaintext, key, nonce, aad) },
+        )
+    }
+
+    fun aesOpenCombined(combined: ByteArray, key: ByteArray, aad: ByteArray): ByteArray {
+        require(key.size == KEY_BYTES) { "Invalid vault key length" }
+        return dispatchBytes(
+            operation = "aes_open_combined",
+            legacy = { legacyAesOpenCombined(combined, key, aad) },
+            rust = { cloudVaultAesGcmOpenCombined(combined, key, aad) },
+        )
+    }
+
+    fun aesOpenTextDetached(nonce: ByteArray, ciphertext: ByteArray, tag: ByteArray, key: ByteArray, aad: ByteArray): String {
+        requireAesInputs(key, nonce)
+        require(tag.size == GCM_TAG_BYTES) { "Invalid AES-GCM authentication tag length" }
+        return dispatch(
+            operation = "aes_open_text",
+            legacy = { legacyAesOpenCombined(nonce + ciphertext + tag, key, aad).toString(Charsets.UTF_8) },
+            rust = { cloudVaultAesGcmOpenTextDetached(nonce, ciphertext, tag, key, aad) },
+        )
+    }
+
+    fun base64Encode(data: ByteArray): String = dispatch(
+        operation = "base64_encode",
+        legacy = { java.util.Base64.getEncoder().encodeToString(data) },
+        rust = { cloudVaultBase64Encode(data) },
+    )
+
+    fun base64Decode(value: String): ByteArray = dispatchBytes(
+        operation = "base64_decode",
+        legacy = { java.util.Base64.getMimeDecoder().decode(value) },
+        rust = { cloudVaultBase64DecodeStrict(value) },
+    )
+
     internal fun <T> dispatchForTest(selectedMode: CloudVaultDomainCoreMode, operation: String, legacy: () -> T, rust: () -> T): T =
         dispatch(selectedMode, operation, legacy, rust)
 
@@ -113,9 +190,16 @@ internal object CloudVaultDomainCore {
         diagnosticCounts.clear()
     }
 
-    private fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T): T = dispatch(mode, operation, legacy, rust)
+    private fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean = { left, right -> left == right }): T =
+        dispatch(mode, operation, legacy, rust, equivalent)
 
-    private fun <T> dispatch(selectedMode: CloudVaultDomainCoreMode, operation: String, legacy: () -> T, rust: () -> T): T = when (selectedMode) {
+    private fun <T> dispatch(
+        selectedMode: CloudVaultDomainCoreMode,
+        operation: String,
+        legacy: () -> T,
+        rust: () -> T,
+        equivalent: (T, T) -> Boolean = { left, right -> left == right },
+    ): T = when (selectedMode) {
         CloudVaultDomainCoreMode.LEGACY -> legacy()
         CloudVaultDomainCoreMode.RUST -> rust()
         CloudVaultDomainCoreMode.SHADOW -> {
@@ -123,10 +207,43 @@ internal object CloudVaultDomainCore {
             val rustResult = runCatching(rust)
             when {
                 rustResult.isFailure -> record(operation, "rust_error")
-                rustResult.getOrThrow() != legacyResult -> record(operation, "mismatch")
+                !equivalent(legacyResult, rustResult.getOrThrow()) -> record(operation, "mismatch")
             }
             legacyResult
         }
+    }
+
+    private fun dispatchBytes(operation: String, legacy: () -> ByteArray, rust: () -> ByteArray): ByteArray =
+        dispatch(operation, legacy, rust, ByteArray::contentEquals)
+
+    private fun legacyAesSealDetached(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): CloudVaultAesDetachedBox {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+        if (aad.isNotEmpty()) cipher.updateAAD(aad)
+        val ciphertextAndTag = cipher.doFinal(plaintext)
+        val split = ciphertextAndTag.size - GCM_TAG_BYTES
+        return CloudVaultAesDetachedBox(
+            nonce = nonce.copyOf(),
+            ciphertext = ciphertextAndTag.copyOfRange(0, split),
+            tag = ciphertextAndTag.copyOfRange(split, ciphertextAndTag.size),
+        )
+    }
+
+    private fun legacyAesOpenCombined(combined: ByteArray, key: ByteArray, aad: ByteArray): ByteArray {
+        require(combined.size >= GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid AES-GCM combined envelope length" }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            SecretKeySpec(key, "AES"),
+            GCMParameterSpec(GCM_AUTH_TAG_BITS, combined.copyOfRange(0, GCM_NONCE_BYTES)),
+        )
+        if (aad.isNotEmpty()) cipher.updateAAD(aad)
+        return cipher.doFinal(combined.copyOfRange(GCM_NONCE_BYTES, combined.size))
+    }
+
+    private fun requireAesInputs(key: ByteArray, nonce: ByteArray) {
+        require(key.size == KEY_BYTES) { "Invalid vault key length" }
+        require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
     }
 
     private fun record(operation: String, category: String) {

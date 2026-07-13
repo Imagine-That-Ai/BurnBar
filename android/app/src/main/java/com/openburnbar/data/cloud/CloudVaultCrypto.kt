@@ -22,7 +22,6 @@ import javax.crypto.KeyAgreement
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.tasks.await
 
 data class CloudVaultSealedText(
@@ -192,7 +191,6 @@ data class CloudVaultDocumentRewrapResult(
 @Suppress("LargeClass") // reason: cohesive crypto facade kept whole for Swift byte-parity (see note above); splitting scatters the AAD/constant parity seam.
 object CloudVaultCrypto {
     const val AES_GCM_ALGORITHM: String = "AES-256-GCM"
-    private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_TAG_BYTES = 16
     private const val SHA256_DIGEST_BYTES = 32
     private const val UNCOMPRESSED_POINT_PREFIX = 0x04
@@ -244,20 +242,14 @@ object CloudVaultCrypto {
             ByteArray(GCM_NONCE_BYTES).apply {
                 java.security.SecureRandom().nextBytes(this)
             }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE.let { Cipher.ENCRYPT_MODE }, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        aadContext?.let { cipher.updateAAD(it.bytes) }
-        val ciphertextAndTag = cipher.doFinal(plaintext)
-        val tagSize = GCM_TAG_BYTES
-        val ciphertext = ciphertextAndTag.copyOfRange(0, ciphertextAndTag.size - tagSize)
-        val tag = ciphertextAndTag.copyOfRange(ciphertextAndTag.size - tagSize, ciphertextAndTag.size)
+        val sealed = CloudVaultDomainCore.aesSealDetached(plaintext, vaultKey, nonce, aadContext?.bytes ?: ByteArray(0))
         return CloudVaultSealedText(
             schemaVersion = aadContext?.let { CURRENT_SEALED_TEXT_SCHEMA_VERSION },
             algorithm = "AES-256-GCM",
             keyVersion = 1,
-            nonce = CloudVaultCryptoSupport.encodeBase64(nonce),
-            ciphertext = CloudVaultCryptoSupport.encodeBase64(ciphertext),
-            tag = CloudVaultCryptoSupport.encodeBase64(tag),
+            nonce = CloudVaultCryptoSupport.encodeBase64(sealed.nonce),
+            ciphertext = CloudVaultCryptoSupport.encodeBase64(sealed.ciphertext),
+            tag = CloudVaultCryptoSupport.encodeBase64(sealed.tag),
             aad = aadContext?.stringValue,
         )
     }
@@ -267,15 +259,18 @@ object CloudVaultCrypto {
         val nonce = CloudVaultCryptoSupport.decodeBase64(envelope.nonce)
         val ciphertext = CloudVaultCryptoSupport.decodeBase64(envelope.ciphertext)
         val tag = CloudVaultCryptoSupport.decodeBase64(envelope.tag)
+        val schemaVersion = envelope.schemaVersion ?: 1
+        require(schemaVersion == 1 || schemaVersion == CURRENT_SEALED_TEXT_SCHEMA_VERSION) {
+            "Unsupported sealed text schema"
+        }
         val aad =
-            if ((envelope.schemaVersion ?: 1) >= CURRENT_SEALED_TEXT_SCHEMA_VERSION) {
+            if (schemaVersion == CURRENT_SEALED_TEXT_SCHEMA_VERSION) {
                 require(aadContext != null) { "Invalid sealed text AAD context" }
                 aadBytesFor(envelope.aad, aadContext)
             } else {
                 null
             }
-        val plaintext = CloudVaultCryptoSupport.openAesGcm(vaultKey, nonce, ciphertext + tag, aad)
-        return plaintext.toString(Charsets.UTF_8)
+        return CloudVaultDomainCore.aesOpenTextDetached(nonce, ciphertext, tag, vaultKey, aad ?: ByteArray(0))
     }
 
     fun tokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> = CloudVaultCryptoSearch.tokenHashes(text, vaultKey, limit)
@@ -350,9 +345,7 @@ object CloudVaultCrypto {
             ByteArray(GCM_NONCE_BYTES).apply {
                 java.security.SecureRandom().nextBytes(this)
             }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        aadContext?.let { cipher.updateAAD(it.bytes) }
+        val sealed = CloudVaultDomainCore.aesSealCombined(plaintext, vaultKey, nonce, aadContext?.bytes ?: ByteArray(0))
         return CloudVaultBlobEnvelope(
             schemaVersion = CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION,
             algorithm = "AES-256-GCM",
@@ -360,7 +353,7 @@ object CloudVaultCrypto {
             plaintextSHA256 = null,
             plaintextHMAC = blobPlaintextHmac(plaintext, vaultKey),
             integrityHashVersion = BLOB_INTEGRITY_HASH_VERSION,
-            sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(nonce + cipher.doFinal(plaintext)),
+            sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(sealed),
             aad = aadContext?.stringValue ?: BLOB_AAD_CONTEXT,
         )
     }
@@ -375,15 +368,18 @@ object CloudVaultCrypto {
             ByteArray(GCM_NONCE_BYTES).apply {
                 java.security.SecureRandom().nextBytes(this)
             }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        cipher.updateAAD(sealedPayloadAAD(vaultKeyID = vaultKeyID, keyVersion = 1, aadContext = aadContext))
+        val sealed = CloudVaultDomainCore.aesSealCombined(
+            plaintext,
+            vaultKey,
+            nonce,
+            sealedPayloadAAD(vaultKeyID = vaultKeyID, keyVersion = 1, aadContext = aadContext),
+        )
         return CloudVaultSealedPayload(
             schemaVersion = CURRENT_SEALED_PAYLOAD_SCHEMA_VERSION,
             algorithm = "AES-256-GCM",
             keyVersion = 1,
             vaultKeyID = vaultKeyID,
-            sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(nonce + cipher.doFinal(plaintext)),
+            sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(sealed),
             aad = aadContext?.stringValue ?: SEALED_PAYLOAD_AAD_CONTEXT,
         )
     }
@@ -402,10 +398,12 @@ object CloudVaultCrypto {
         val contentKey = ByteArray(SIGNAL_AT_REST_CONTENT_KEY_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
         val canonicalAAD = CloudVaultCryptoSupport.bindingToAAD(binding.aadBinding)
         val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(contentKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        cipher.updateAAD(canonicalAAD.toByteArray(Charsets.UTF_8))
-        val payloadCiphertext = nonce + cipher.doFinal(plaintext)
+        val payloadCiphertext = CloudVaultDomainCore.aesSealCombined(
+            plaintext,
+            contentKey,
+            nonce,
+            canonicalAAD.toByteArray(Charsets.UTF_8),
+        )
         val payloadCiphertextB64 = CloudVaultCryptoSupport.encodeBase64(payloadCiphertext)
         val wraps =
             recipients.map { recipient ->
@@ -943,9 +941,7 @@ object CloudVaultCrypto {
         require(vaultKey.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
         val wrappingKey = deriveRecoveryWrappingKey(recoveryKey)
         val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(wrappingKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        val combined = nonce + cipher.doFinal(vaultKey)
+        val combined = CloudVaultDomainCore.aesSealCombined(vaultKey, wrappingKey, nonce, ByteArray(0))
         return RecoveryWrappedVaultKey(
             wrappedVaultKeyBase64 = CloudVaultCryptoSupport.encodeBase64(combined),
             verificationHash = sha256Hex(wrappingKey),
@@ -999,9 +995,7 @@ object CloudVaultCrypto {
             }
         val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(sharedSecret, ByteArray(0), WRAP_INFO.toByteArray(), SHA256_DIGEST_BYTES)
         val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(wrappingKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        val combined = nonce + cipher.doFinal(keyData)
+        val combined = CloudVaultDomainCore.aesSealCombined(keyData, wrappingKey, nonce, ByteArray(0))
         return publicKeyX963(ephemeral.public) + combined
     }
 
