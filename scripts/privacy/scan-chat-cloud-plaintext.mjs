@@ -2,6 +2,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertConsolidatedNoClientUpsert,
+  assertConsolidatedServerOnlyCollection,
+} from "../lib/firestore-rules-contract.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
@@ -469,6 +473,18 @@ function assertRulesBlockDeniesClientWrite(matchNeedle, note) {
   const rules = readRel("firestore.rules");
   const start = rules.indexOf(matchNeedle);
   if (start < 0) {
+    const collection = matchNeedle.match(
+      /^match \/users\/\{userId\}\/([A-Za-z0-9_]+)\//,
+    )?.[1];
+    if (collection) {
+      try {
+        assertConsolidatedServerOnlyCollection(rules, collection);
+        return;
+      } catch (error) {
+        fail(`firestore.rules: ${note ?? error.message}`);
+        return;
+      }
+    }
     fail(`firestore.rules: missing ${matchNeedle}`);
     return;
   }
@@ -478,6 +494,38 @@ function assertRulesBlockDeniesClientWrite(matchNeedle, note) {
     fail(
       `firestore.rules: ${note ?? `${matchNeedle} must deny client writes (allow write: if false)`}`,
     );
+  }
+}
+
+function rulesMatchBlock(rules, matchNeedle) {
+  const start = rules.indexOf(matchNeedle);
+  if (start < 0) return null;
+  const open = rules.indexOf("{", start + matchNeedle.length);
+  if (open < 0) return null;
+  let depth = 0;
+  for (let index = open; index < rules.length; index += 1) {
+    if (rules[index] === "{") depth += 1;
+    if (rules[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return rules.slice(start, index + 1);
+    }
+  }
+  return null;
+}
+
+function assertRulesBlockRejectsClientUpsert(matchNeedle, collection, note) {
+  const rules = readRel("firestore.rules");
+  const block = rulesMatchBlock(rules, matchNeedle);
+  if (block) {
+    if (/allow\s+(?:write|create|update|create\s*,\s*update)\s*:/.test(block)) {
+      fail(`firestore.rules: ${note}`);
+    }
+    return;
+  }
+  try {
+    assertConsolidatedNoClientUpsert(rules, collection);
+  } catch (error) {
+    fail(`firestore.rules: ${note}: ${error.message}`);
   }
 }
 
@@ -693,18 +741,14 @@ assertNotIncludes(
   ".all(",
   "unsupported Firestore Rules list predicate in privacy-critical hash validation",
 );
-assertSectionIncludes(
-  "firestore.rules",
-  "match /users/{userId}/session_logs/{logId}",
-  "match /users/{userId}/project_memory_snapshots/{docID}",
-  "allow create, update: if false;",
+assertRulesBlockRejectsClientUpsert(
+  "match /chunks/{chunkId}",
+  "session_logs",
   "legacy session_logs/{id}/chunks client writes must be server-only",
 );
-assertSectionIncludes(
-  "firestore.rules",
+assertRulesBlockRejectsClientUpsert(
   "match /users/{userId}/cloud_search_chunks/{chunkId}",
-  "match /users/{userId}/cloud_search_postings/{postingId}",
-  "allow create, update: if false;",
+  "cloud_search_chunks",
   "cloud_search_chunks client writes must be server-only",
 );
 assertIncludes(
@@ -753,21 +797,17 @@ for (const script of [
     `${script} preserves encrypted search hash capacity`,
   );
 }
-assertRulesAllowlistExcludes(
-  "match /users/{userId}/cloud_search_documents/{documentId}",
-  ["projectName"],
-  "allow delete:",
-);
-assertRulesAllowlistExcludes(
-  "match /users/{userId}/cloud_search_chunks/{chunkId}",
-  ["projectName"],
-  "allow delete:",
-);
-assertRulesAllowlistExcludes(
-  "match /users/{userId}/cloud_search_postings/{postingId}",
-  ["projectName"],
-  "allow delete:",
-);
+for (const collection of [
+  "cloud_search_documents",
+  "cloud_search_chunks",
+  "cloud_search_postings",
+]) {
+  try {
+    assertConsolidatedNoClientUpsert(readRel("firestore.rules"), collection);
+  } catch (error) {
+    fail(`firestore.rules: ${error.message}`);
+  }
+}
 
 assertSectionIncludes(
   "firestore.rules",
@@ -1302,21 +1342,21 @@ assertNotIncludes(
 assertSectionIncludes(
   "firestore.rules",
   "match /users/{userId}/project_memory_snapshots/{docID}",
-  "match /users/{userId}/cloud_search_documents",
+  "match /users/{userId}/memory_facts",
   '!("projectDisplayName" in request.resource.data)',
   "project_memory_snapshots must reject plaintext projectDisplayName",
 );
 assertSectionIncludes(
   "firestore.rules",
   "match /users/{userId}/project_memory_snapshots/{docID}",
-  "match /users/{userId}/cloud_search_documents",
+  "match /users/{userId}/memory_facts",
   '!("projectSlug" in request.resource.data)',
   "project_memory_snapshots must reject name-derived projectSlug",
 );
 assertSectionIncludes(
   "firestore.rules",
   "match /users/{userId}/project_memory_snapshots/{docID}",
-  "match /users/{userId}/cloud_search_documents",
+  "match /users/{userId}/memory_facts",
   "request.resource.data.schemaVersion >= 2",
   "project_memory_snapshots must require the hardened schemaVersion >= 2",
 );
@@ -1325,20 +1365,14 @@ assertSectionIncludes(
 // A connected repo stores only repoMatchToken + sealedRepoFullName; the rules
 // must reject a client-supplied cleartext repoFullName (the cleartext name is
 // observed server-side only transiently for webhook routing, never stored).
-assertSectionRejectsFieldOrDeniesWrite(
-  "firestore.rules",
-  "match /users/{userId}/knowledge_repos/{repoId}",
-  "match /users/{userId}/unified_audit_log",
-  "repoFullName",
-  "knowledge_repos must reject client-supplied cleartext repoFullName",
-);
-assertSectionRejectsFieldOrDeniesWrite(
-  "firestore.rules",
-  "match /users/{userId}/knowledge_repos/{repoId}",
-  "match /users/{userId}/unified_audit_log",
-  "sourceSlug",
-  "knowledge_repos must reject client-supplied cleartext sourceSlug",
-);
+try {
+  assertConsolidatedServerOnlyCollection(
+    readRel("firestore.rules"),
+    "knowledge_repos",
+  );
+} catch (error) {
+  fail(`firestore.rules: knowledge_repos plaintext boundary: ${error.message}`);
+}
 
 // ── memory_facts / memory_forget_receipts: sealed facts + opaque receipts ───
 assertSectionIncludes(
