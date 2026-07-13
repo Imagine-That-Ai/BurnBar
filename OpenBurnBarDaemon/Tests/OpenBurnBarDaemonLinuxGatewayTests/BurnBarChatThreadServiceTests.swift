@@ -421,6 +421,10 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
             throw BurnBarChatThreadServiceError.unavailable("test raw open failed for \(path)")
         }
         defer { sqlite3_close_v2(handle) }
+        // Keep raw fixtures on the same database mode as the service. On the
+        // SQLCipher build this keys the handle before any schema/data access;
+        // stock SQLite deliberately treats this as a no-op.
+        try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: handle)
         return try body(handle)
     }
 
