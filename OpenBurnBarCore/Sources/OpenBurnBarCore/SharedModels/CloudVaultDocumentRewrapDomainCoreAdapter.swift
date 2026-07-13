@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI
