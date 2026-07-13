@@ -89,11 +89,9 @@ log "running generated-package smoke test"
 node "${PACKAGE_DIR}/tests/package-smoke.mjs" "${STAGING_DIR}"
 
 if [[ "${MODE}" == "--check" ]]; then
-  if ! diff -ruN "${VENDOR_DIR}" "${STAGING_DIR}"; then
-    printf 'domain-core Wasm bindings drifted; run ./scripts/build-domain-core-wasm.sh\n' >&2
-    exit 1
-  fi
-  log "checked-in browser package is current"
+  node "${PACKAGE_DIR}/tests/package-equivalence.mjs" \
+    "${VENDOR_DIR}" "${STAGING_DIR}"
+  log "checked-in browser package is API- and behavior-equivalent"
   exit 0
 fi
 
