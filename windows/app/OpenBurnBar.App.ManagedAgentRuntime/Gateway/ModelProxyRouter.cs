@@ -145,7 +145,13 @@ public sealed record ModelRoute(
     int Priority,
     bool Healthy,
     Uri? Endpoint = null,
-    string? BearerToken = null);
+    string? BearerToken = null)
+{
+    /// <summary>Whether this route can accept a completion request now.</summary>
+    public bool IsExecutable => Healthy
+        && Endpoint is not null
+        && (Endpoint.Scheme == Uri.UriSchemeHttp || Endpoint.Scheme == Uri.UriSchemeHttps);
+}
 
 public sealed record ModelRouteDecision(ModelRoute Route, bool Degraded, bool FailedClosed = false);
 

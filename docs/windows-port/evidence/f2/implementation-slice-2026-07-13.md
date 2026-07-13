@@ -106,3 +106,27 @@ the focused chat runtime suite is 24/24; the Rust parser suite is 19/19. The
 F1 parity ledger remains the machine-scanned 48-row source/product gate.
 WPD-0009 still defines F2 True 1:1 as the full parity finish line and requires
 production composition plus host evidence before these rows can be promoted.
+
+## Model Proxy settings and Elder Wand catalog continuation
+
+The persisted Model Proxy enable/host/port/token fields now drive the real app
+listener, with explicit environment overrides retained for automation. Listener
+normalization is portable and tested, and unauthenticated mode is constrained to
+the resolved loopback bind rather than trusting the preference alone. The app
+keeps its internal router composition when the external listener is disabled or
+cannot bind. The settings leaf exposes an explicit shared-runtime restart so
+listener, companion CLI, auth token, fusion, and project-memory consumers rotate
+together instead of silently waiting for a process relaunch.
+
+The gateway model document now carries provider and route-eligibility metadata,
+and the production Elder Wand page projects the active route graph rather than
+an empty catalog. It excludes the synthetic unconfigured route, selects an
+executable duplicate model route when one exists, and preserves disabled catalog
+entries for advertised but unroutable endpoints.
+
+The superseding focused runs are **69/69** for managed runtime, **774/774**
+for presentation, and **151/151** for settings view-models. The macOS
+app-boundary build compiled all 26 referenced
+managed projects before reaching the expected Windows-only XAML compiler
+boundary. Exact scope and residual host/staging claims are recorded in
+`docs/windows-port/evidence/f2/model-proxy-settings-live-catalog.md`.

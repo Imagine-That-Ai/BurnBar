@@ -106,6 +106,9 @@ internal static class WindowsSettingsComposition
 
     public static WindowsSettingsPersistence SharedPersistence => Persistence;
 
+    public static GatewayEndpointSettings LoadGatewayEndpointSettings() =>
+        new GatewayStore(Persistence).Load();
+
     public static object? Create(SettingsTab tab) => tab switch
     {
         SettingsTab.Daemon => new OpenBurnBar.App.Settings.ViewModels.Daemon.DaemonSettingsViewModel(),

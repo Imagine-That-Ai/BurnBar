@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using Xunit;
@@ -9,6 +10,38 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Tests;
 
 public sealed class LocalHttpGatewayHostTests
 {
+    [Fact]
+    public async Task Constructor_UsesValidatedCustomHostForBaseAddress()
+    {
+        await using var host = new LocalHttpGatewayHost(
+            "localhost",
+            8317,
+            new ModelProxyRouter(new[]
+            {
+                new ModelRoute("local", "openburnbar", "local", 0, true),
+            }),
+            new DelegateModelCompletionExecutor((_, _, _) =>
+                Task.FromResult(new ModelCompletionResult(200, Encoding.UTF8.GetBytes("{}"), "application/json", true))));
+
+        Assert.Equal("localhost", host.Host);
+        Assert.Equal(8317, host.Port);
+        Assert.Equal("http://localhost:8317/", host.BaseAddress.AbsoluteUri);
+    }
+
+    [Fact]
+    public void Constructor_RejectsInvalidCustomHost()
+    {
+        Assert.Throws<System.ArgumentException>(() => new LocalHttpGatewayHost(
+            "http://localhost",
+            8317,
+            new ModelProxyRouter(new[]
+            {
+                new ModelRoute("local", "openburnbar", "local", 0, true),
+            }),
+            new DelegateModelCompletionExecutor((_, _, _) =>
+                Task.FromResult(new ModelCompletionResult(200, Encoding.UTF8.GetBytes("{}"), "application/json", true)))));
+    }
+
     [Fact]
     public async Task HealthEndpoint_ReturnsOkJson()
     {
@@ -123,6 +156,46 @@ public sealed class LocalHttpGatewayHostTests
         authorized.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "gateway-secret");
         HttpResponseMessage response = await client.SendAsync(authorized);
         Assert.Equal(200, (int)response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ModelsEndpoint_AdvertisesProviderAndEligibilityMetadata()
+    {
+        int port = 22265 + System.Environment.ProcessId % 1000;
+        var router = new ModelProxyRouter(new[]
+        {
+            new ModelRoute(
+                "claude-route",
+                "anthropic",
+                "claude-sonnet-4",
+                1,
+                true,
+                new System.Uri("https://api.anthropic.com/v1/messages")),
+            new ModelRoute(
+                "offline-route",
+                "openai",
+                "gpt-5",
+                2,
+                false,
+                new System.Uri("https://api.openai.com/v1/chat/completions")),
+        });
+        await using var host = new LocalHttpGatewayHost(
+            port,
+            router,
+            new DelegateModelCompletionExecutor((_, _, _) =>
+                Task.FromResult(new ModelCompletionResult(200, Encoding.UTF8.GetBytes("{}"), "application/json", true))));
+        host.Start();
+        using var client = new HttpClient { BaseAddress = host.BaseAddress };
+
+        using JsonDocument document = JsonDocument.Parse(await client.GetStringAsync("v1/models"));
+        JsonElement models = document.RootElement.GetProperty("data");
+
+        Assert.Equal(2, models.GetArrayLength());
+        JsonElement claude = models[0];
+        Assert.Equal("anthropic", claude.GetProperty("provider_id").GetString());
+        Assert.Equal("anthropic", claude.GetProperty("provider_name").GetString());
+        Assert.True(claude.GetProperty("route_eligible").GetBoolean());
+        Assert.False(models[1].GetProperty("route_eligible").GetBoolean());
     }
 
     [Fact]

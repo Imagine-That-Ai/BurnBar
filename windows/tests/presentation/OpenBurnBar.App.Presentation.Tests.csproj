@@ -41,6 +41,7 @@
 
   <ItemGroup>
     <Compile Remove="Projects/FakeLanguageServer/**/*.cs" />
+    <ProjectReference Include="../../app/OpenBurnBar.App.ManagedAgentRuntime/OpenBurnBar.App.ManagedAgentRuntime.csproj" />
     <ProjectReference Include="../../app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
     <ProjectReference Include="../../app/OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../../storage/OpenBurnBar.Storage.SessionLogs/OpenBurnBar.Storage.SessionLogs.csproj" />

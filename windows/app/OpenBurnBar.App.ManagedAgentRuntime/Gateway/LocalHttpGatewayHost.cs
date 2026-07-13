@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 
 /// <summary>
-/// Loopback OpenAI-compatible gateway for the Windows F2 runtime.
+/// Configurable local OpenAI-compatible gateway for the Windows F2 runtime.
 ///
 /// The host owns transport and request safety; route selection and provider
 /// execution are injected. That keeps the app's multi-client boundary real
@@ -21,7 +21,7 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 public sealed class LocalHttpGatewayHost : IAsyncDisposable
 {
     private readonly HttpListener _listener = new();
-    private readonly int _port;
+    private readonly GatewayListenerOptions _listenerOptions;
     private readonly ModelProxyRouter _router;
     private readonly IModelCompletionExecutor _executor;
     private readonly byte[]? _accessToken;
@@ -36,6 +36,7 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
     /// </summary>
     public LocalHttpGatewayHost(int port = 8642)
         : this(
+            "127.0.0.1",
             port,
             new ModelProxyRouter(new[]
             {
@@ -56,18 +57,27 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         IModelCompletionExecutor executor,
         string? accessToken = null,
         int maxRequestBytes = 4 * 1024 * 1024)
+        : this("127.0.0.1", port, router, executor, accessToken, maxRequestBytes)
     {
-        if (port is <= 0 or > 65535)
-        {
-            throw new ArgumentOutOfRangeException(nameof(port));
-        }
+    }
 
+    public LocalHttpGatewayHost(
+        string host,
+        int port,
+        ModelProxyRouter router,
+        IModelCompletionExecutor executor,
+        string? accessToken = null,
+        int maxRequestBytes = 4 * 1024 * 1024)
+    {
         if (maxRequestBytes <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(maxRequestBytes));
         }
 
-        _port = port;
+        _listenerOptions = GatewayListenerOptions.Resolve(
+            configuredEnabled: true,
+            configuredHost: host,
+            configuredPort: port);
         _router = router ?? throw new ArgumentNullException(nameof(router));
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
         _maxRequestBytes = maxRequestBytes;
@@ -76,9 +86,11 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
             : Encoding.UTF8.GetBytes(accessToken.Trim());
     }
 
-    public int Port => _port;
+    public string Host => _listenerOptions.Host;
 
-    public Uri BaseAddress => new($"http://127.0.0.1:{_port}/");
+    public int Port => _listenerOptions.Port;
+
+    public Uri BaseAddress => _listenerOptions.BaseAddress;
 
     public bool IsRunning => _loop is { IsCompleted: false };
 
@@ -89,7 +101,7 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
             return;
         }
 
-        _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+        _listener.Prefixes.Add(BaseAddress.AbsoluteUri);
         _listener.Start();
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => AcceptLoopAsync(_cts.Token));
@@ -168,6 +180,9 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
                         @object = "model",
                         owned_by = route.Vendor,
                         healthy = route.Healthy,
+                        route_eligible = route.IsExecutable,
+                        provider_id = route.Vendor,
+                        provider_name = route.Vendor,
                     });
                 await WriteJsonAsync(context.Response, 200, new { @object = "list", data = models })
                     .ConfigureAwait(false);

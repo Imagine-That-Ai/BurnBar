@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
@@ -38,6 +39,7 @@ namespace OpenBurnBar.App;
 public partial class App : Application
 {
     private readonly GlobalHotkeyService _hotkey = new();
+    private readonly SemaphoreSlim _localRuntimeRestartGate = new(1, 1);
 
     private AppStatePersistence? _state;
     private ThemeService? _theme;
@@ -66,6 +68,44 @@ public partial class App : Application
 
     /// <summary>The single running app instance (WinUI has no typed Application.Current).</summary>
     public static new App Current => (App)Application.Current;
+
+    internal IReadOnlyList<ElderWandProviderGroup> ElderWandProviderGroups() =>
+        _gatewayComposition is null
+            ? Array.Empty<ElderWandProviderGroup>()
+            : ElderWandGatewayCatalogProjection.Groups(_gatewayComposition.Router.Routes);
+
+    internal async Task RestartLocalGatewayAsync()
+    {
+        await _localRuntimeRestartGate.WaitAsync();
+        try
+        {
+            await StopLocalRuntimeAsync();
+            StartLocalGateway();
+            StartCompanionCli();
+
+            GatewayEndpointSettings settings = WindowsSettingsComposition.LoadGatewayEndpointSettings();
+            GatewayListenerOptions listenerOptions = ResolveGatewayListenerOptions(settings);
+            if (_gatewayComposition is null)
+            {
+                throw new InvalidOperationException("The local model runtime could not be composed.");
+            }
+
+            if (listenerOptions.Enabled && _gateway is null)
+            {
+                throw new InvalidOperationException(
+                    $"The model proxy could not listen on {listenerOptions.BaseAddress}.");
+            }
+
+            if (_companionCli is null)
+            {
+                throw new InvalidOperationException("The companion CLI could not restart.");
+            }
+        }
+        finally
+        {
+            _localRuntimeRestartGate.Release();
+        }
+    }
 
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
@@ -275,18 +315,30 @@ public partial class App : Application
         try
         {
             _gatewayComposition = GatewayCompositionFactory.CreateFromEnvironment();
-            int port = 8642;
-            string? configuredPort = Environment.GetEnvironmentVariable("OPENBURNBAR_GATEWAY_PORT");
-            if (int.TryParse(configuredPort, out int parsedPort) && parsedPort is > 0 and <= 65535)
-            {
-                port = parsedPort;
-            }
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.LogException("gateway.composition", ex);
+            _gatewayComposition = null;
+            return;
+        }
 
-            string? accessToken = ResolveGatewayAccessToken();
+        try
+        {
+            GatewayEndpointSettings settings = WindowsSettingsComposition.LoadGatewayEndpointSettings();
+            GatewayListenerOptions listenerOptions = ResolveGatewayListenerOptions(settings);
+            string? accessToken = ResolveGatewayAccessToken(listenerOptions, settings);
             _localAccessToken = accessToken;
 
+            if (!listenerOptions.Enabled)
+            {
+                AppDiagnostics.LogEvent("gateway.disabled", listenerOptions.BaseAddress.ToString());
+                return;
+            }
+
             _gateway = new LocalHttpGatewayHost(
-                port,
+                listenerOptions.Host,
+                listenerOptions.Port,
                 _gatewayComposition.Router,
                 _gatewayComposition.Executor,
                 accessToken);
@@ -299,25 +351,22 @@ public partial class App : Application
             // the configured port; the gateway's failure is visible in diagnostics.
             AppDiagnostics.LogException("gateway.start", ex);
             _gateway = null;
-            _gatewayComposition?.HttpClient.Dispose();
-            _gatewayComposition = null;
         }
     }
 
-    private static string? ResolveGatewayAccessToken()
+    private static string? ResolveGatewayAccessToken(
+        GatewayListenerOptions listenerOptions,
+        GatewayEndpointSettings settings)
     {
         const string tokenEnvironmentVariable = "OPENBURNBAR_GATEWAY_AUTH_TOKEN";
         const string allowUnauthenticatedEnvironmentVariable = "OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK";
         string tokenName = AppSecretNames.ProviderSecret("settings", "model-proxy", "auth-token");
         string? environmentToken = Environment.GetEnvironmentVariable(tokenEnvironmentVariable);
         var persistence = WindowsSettingsComposition.SharedPersistence;
-        var settings = persistence.Read("modelProxy", GatewayEndpointSettings.Default);
-        bool allowUnauthenticated = settings.AllowUnauthenticatedLoopback
-            || string.Equals(
-                Environment.GetEnvironmentVariable(allowUnauthenticatedEnvironmentVariable),
-                "1",
-                StringComparison.Ordinal);
-        string configuredToken = environmentToken ?? persistence.ReadSecret(tokenName);
+        bool allowUnauthenticated = listenerOptions.AllowsUnauthenticatedAccess(
+            settings.AllowUnauthenticatedLoopback,
+            Environment.GetEnvironmentVariable(allowUnauthenticatedEnvironmentVariable));
+        string configuredToken = environmentToken ?? settings.AuthToken;
         string? resolved = GatewayAuthTokenPolicy.Resolve(configuredToken, allowUnauthenticated);
         if (environmentToken is null
             && string.IsNullOrWhiteSpace(configuredToken)
@@ -328,6 +377,15 @@ public partial class App : Application
 
         return resolved;
     }
+
+    private static GatewayListenerOptions ResolveGatewayListenerOptions(GatewayEndpointSettings settings) =>
+        GatewayListenerOptions.Resolve(
+            configuredEnabled: settings.Enabled,
+            configuredHost: settings.Host,
+            configuredPort: settings.Port,
+            enabledOverride: Environment.GetEnvironmentVariable("OPENBURNBAR_GATEWAY_ENABLED"),
+            hostOverride: Environment.GetEnvironmentVariable("OPENBURNBAR_GATEWAY_HOST"),
+            portOverride: Environment.GetEnvironmentVariable("OPENBURNBAR_GATEWAY_PORT"));
 
     private void StartCompanionCli()
     {
@@ -347,7 +405,13 @@ public partial class App : Application
                     "headless-runs.jsonl");
             var headlessRuns = new HeadlessRunService(new JsonLinesHeadlessRunJournal(journalPath));
             _headlessRuns = headlessRuns;
-            _localAccessToken ??= ResolveGatewayAccessToken();
+            if (_localAccessToken is null)
+            {
+                GatewayEndpointSettings settings = WindowsSettingsComposition.LoadGatewayEndpointSettings();
+                _localAccessToken = ResolveGatewayAccessToken(
+                    new GatewayListenerOptions(true, "127.0.0.1", port),
+                    settings);
+            }
             var runHandler = new CompanionCliHeadlessRunHandler(
                 headlessRuns,
                 BuiltInHeadlessRunSteps.ExecuteAsync);
@@ -827,6 +891,14 @@ public partial class App : Application
             await _usageRuntime.DisposeAsync();
             _usageRuntime = null;
         }
+        await StopLocalRuntimeAsync();
+        _flyout?.Close();
+        _mainWindow?.Close();
+        Exit();
+    }
+
+    private async Task StopLocalRuntimeAsync()
+    {
         if (_gateway is not null)
         {
             await _gateway.DisposeAsync();
@@ -844,9 +916,6 @@ public partial class App : Application
         _gatewayComposition?.HttpClient.Dispose();
         _gatewayComposition = null;
         _localAccessToken = null;
-        _flyout?.Close();
-        _mainWindow?.Close();
-        Exit();
     }
 
     private AppStatePersistence State =>

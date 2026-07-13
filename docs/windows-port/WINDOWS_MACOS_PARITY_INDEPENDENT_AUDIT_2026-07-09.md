@@ -114,7 +114,7 @@ live staging, advanced Computer Use/media safety, or public Store/update gates.
 The current checkout adds a real F2 implementation slice, without promoting
 unproven host behavior to certification:
 
-- The loopback gateway now forwards bounded OpenAI-compatible completion
+- The configurable local gateway now forwards bounded OpenAI-compatible completion
   requests through an explicit model route, exposes model/metric surfaces,
   enforces bearer authentication when configured, and fails closed when no
   healthy route is available. It also has a bounded Anthropic Messages adapter
@@ -128,7 +128,10 @@ unproven host behavior to certification:
 - The desktop gateway composition now preserves a configured bearer token or
   generates and persists a URL-safe 256-bit token through the Windows secret
   store; unauthenticated loopback is available only through the explicit opt
-  out. The token itself is never logged or placed in route metadata.
+  out. Persisted enable/host/port settings now control the real listener, and
+  unauthenticated mode is rejected for every resolved non-loopback bind even
+  when the opt-out was saved or supplied by the environment. The token itself
+  is never logged or placed in route metadata.
 - Cloud startup now restores a non-expired OAuth session from the protected
   session store without opening a browser; only a signed-out or expired session
   falls back to the explicit dev-host path. When
@@ -180,8 +183,11 @@ unproven host behavior to certification:
   follow-on. The Projects page composes the same
   encrypted store, keeping visible symbols and companion operations on one
   durable checkpoint.
-- App startup composes the loopback gateway, companion CLI, and durable run
-  journal together. The CLI exposes health/models plus bounded `run.submit`,
+- App startup always composes the router, companion CLI, and durable run journal,
+  while opening the HTTP listener only when the resolved Model Proxy setting is
+  enabled. The settings leaf restarts the shared local runtime as one operation so
+  endpoint and token changes apply to both planes; listener failure does not
+  discard the internal route graph. The CLI exposes health/models plus bounded `run.submit`,
   `run.resume`, and `run.recover` commands; startup surfaces the count of
   interrupted runs without logging payloads. Only explicitly safe built-in
   steps execute by default, while arbitrary shell/provider work fails closed.
@@ -226,7 +232,11 @@ unproven host behavior to certification:
   without writing prompts or tool output to disk. The companion CLI now exposes
   a bounded `fusion.run` command that composes this loop with the configured
   gateway executor; unconfigured provider routes fail closed. Provider response
-  bodies are bounded before entering the fusion loop.
+  bodies are bounded before entering the fusion loop. The production Elder Wand
+  page now consumes the same router catalog instead of an empty provider array;
+  synthetic no-endpoint placeholders are hidden, executable duplicate routes
+  win, and advertised unavailable routes remain disabled. Detailed evidence is
+  in `docs/windows-port/evidence/f2/model-proxy-settings-live-catalog.md`.
 - The Cursor connector session now runs a portable provider/model preflight
   before invoking any broker, proxy, tunnel, or Cursor-settings runtime step.
   Empty provider/model configurations fail closed; API-key presence remains in

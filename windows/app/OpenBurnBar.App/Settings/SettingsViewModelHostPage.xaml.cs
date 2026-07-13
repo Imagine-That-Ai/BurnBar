@@ -64,9 +64,11 @@ public sealed partial class SettingsViewModelHostPage : Page
         GatingPill.Text = Availability(tab, descriptor);
 
         _viewModel = SettingsViewModelFactory.Create(tab);
-        BodyText.Text = descriptor.Gating == SettingsTabViewModelGating.Live
-            ? "Changes save automatically and take effect for the Windows runtime."
-            : "Account-backed controls remain disabled until the required sign-in or device capability is available.";
+        BodyText.Text = tab == SettingsTab.ModelProxy
+            ? "Changes save automatically. Restart the local runtime to apply endpoint and credential changes."
+            : descriptor.Gating == SettingsTabViewModelGating.Live
+                ? "Changes save automatically and take effect for the Windows runtime."
+                : "Account-backed controls remain disabled until the required sign-in or device capability is available.";
         BuildControls(_viewModel);
     }
 
@@ -104,6 +106,11 @@ public sealed partial class SettingsViewModelHostPage : Page
             {
                 AddCommandButton(viewModel, linkProvider, new object?[] { provider }, $"Sign in with {provider}");
             }
+        }
+
+        if (viewModel is ModelProxySettingsViewModel)
+        {
+            AddModelProxyRestartButton(viewModel);
         }
     }
 
@@ -193,6 +200,34 @@ public sealed partial class SettingsViewModelHostPage : Page
         DynamicControls.Children.Add(button);
     }
 
+    private void AddModelProxyRestartButton(object viewModel)
+    {
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        content.Children.Add(new SymbolIcon(Symbol.Refresh));
+        content.Children.Add(new TextBlock { Text = "Restart local runtime" });
+        var button = new Button { Content = content, HorizontalAlignment = HorizontalAlignment.Left };
+        AutomationProperties.SetName(button, "Restart local runtime");
+        button.Click += async (_, _) =>
+        {
+            button.IsEnabled = false;
+            try
+            {
+                await App.Current.RestartLocalGatewayAsync();
+                BuildControls(viewModel);
+                ShowSuccess("The local model runtime restarted with the saved settings.");
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex.GetBaseException().Message);
+            }
+            finally
+            {
+                button.IsEnabled = true;
+            }
+        };
+        DynamicControls.Children.Add(button);
+    }
+
     private async Task InvokeCommandAsync(object viewModel, MethodInfo method, object?[] arguments, Button button)
     {
         button.IsEnabled = false;
@@ -265,6 +300,14 @@ public sealed partial class SettingsViewModelHostPage : Page
 
     private void ShowError(string message)
     {
+        SaveStatus.Severity = InfoBarSeverity.Error;
+        SaveStatus.Message = message;
+        SaveStatus.IsOpen = true;
+    }
+
+    private void ShowSuccess(string message)
+    {
+        SaveStatus.Severity = InfoBarSeverity.Success;
         SaveStatus.Message = message;
         SaveStatus.IsOpen = true;
     }

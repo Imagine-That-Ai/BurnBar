@@ -7,14 +7,14 @@
 //   gatewayPort    : Int    = 8317
 //   gatewayAuthToken : String = ""      (secret)
 //   gatewayAllowUnauthenticatedLoopback : Bool = false
-// Loopback hosts are {127.0.0.1, localhost, ::1}; the auth token is only optional when
-// the bind is loopback AND unauthenticated-loopback is opted in. Persistence lives
+// The shared listener resolver applies Windows loopback semantics, host validation, and
+// IPv6-safe endpoint formatting; auth is only optional when the resolved bind is loopback
+// AND unauthenticated-loopback is opted in. Persistence lives
 // behind IGatewayEndpointStore (Windows AppConfiguration, WPD-0006 row 23); the "Copy
 // endpoint" clipboard write is an injected seam.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
+using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 
 namespace OpenBurnBar.App.Settings.ViewModels;
 
@@ -63,9 +63,6 @@ public sealed class InMemoryGatewayEndpointStore : IGatewayEndpointStore
 /// <summary>Backs the Model Proxy tab (local OpenAI-compatible gateway endpoint + routing).</summary>
 public sealed class ModelProxySettingsViewModel : ObservableSettingsViewModel
 {
-    /// <summary>Hosts treated as loopback (Swift <c>isLoopback</c> set).</summary>
-    public static readonly IReadOnlyList<string> LoopbackHosts = new[] { "127.0.0.1", "localhost", "::1" };
-
     /// <summary>Lowest / highest legal TCP port.</summary>
     public const int MinPort = 1;
     public const int MaxPort = 65535;
@@ -171,13 +168,16 @@ public sealed class ModelProxySettingsViewModel : ObservableSettingsViewModel
     }
 
     /// <summary>Host:port endpoint (Swift <c>endpoint</c>).</summary>
-    public string Endpoint => $"{_host}:{_port}";
+    public string Endpoint => ResolvedListenerOptions()?.BaseAddress.Authority
+        ?? $"{_host.Trim()}:{_port}";
 
     /// <summary>The full copyable base URL, e.g. <c>http://127.0.0.1:8317/v1</c>.</summary>
-    public string EndpointUrl => $"http://{Endpoint}/v1";
+    public string EndpointUrl => ResolvedListenerOptions() is { } options
+        ? new Uri(options.BaseAddress, "v1").AbsoluteUri
+        : $"http://{Endpoint}/v1";
 
     /// <summary>Whether the bind address is loopback.</summary>
-    public bool IsLoopback => LoopbackHosts.Contains(_host, StringComparer.OrdinalIgnoreCase);
+    public bool IsLoopback => ResolvedListenerOptions()?.IsLoopback == true;
 
     /// <summary>Whether an auth token is required for the current bind.</summary>
     public bool AuthTokenRequired => !(IsLoopback && _allowUnauthenticatedLoopback);
@@ -185,16 +185,18 @@ public sealed class ModelProxySettingsViewModel : ObservableSettingsViewModel
     /// <summary>Whether a token is set.</summary>
     public bool HasAuthToken => !string.IsNullOrEmpty(_authToken);
 
-    /// <summary>Whether the host field is non-empty (bind address validity).</summary>
-    public bool IsHostValid => !string.IsNullOrWhiteSpace(_host);
+    /// <summary>Whether the host can be used as an HTTP listener bind address.</summary>
+    public bool IsHostValid => ResolvedListenerOptions() is not null;
 
     /// <summary>
     /// A soft warning when a token is required but not yet set. Not blocking — the daemon
-    /// auto-generates one on next launch — but the tab surfaces it so the operator knows.
+    /// auto-generates one on the next local-runtime start — but the tab surfaces it so the operator knows.
     /// </summary>
     public string? AuthTokenWarning =>
-        AuthTokenRequired && !HasAuthToken
-            ? "A gateway auth token is required for this bind; one will be generated on next launch."
+        !IsHostValid
+            ? "Enter a valid hostname or IP address without a scheme or path."
+            : AuthTokenRequired && !HasAuthToken
+            ? "A gateway auth token is required for this bind; one will be generated when the local runtime starts."
             : null;
 
     /// <summary>Whether <see cref="AuthTokenWarning"/> is present.</summary>
@@ -210,8 +212,28 @@ public sealed class ModelProxySettingsViewModel : ObservableSettingsViewModel
     /// <summary>Copy the base URL to the clipboard and flip the copied confirmation.</summary>
     public void CopyEndpoint()
     {
+        if (!IsHostValid)
+        {
+            throw new InvalidOperationException("A valid gateway host is required before copying the endpoint.");
+        }
+
         _clipboard.WriteText(EndpointUrl);
         CopiedEndpoint = true;
+    }
+
+    private GatewayListenerOptions? ResolvedListenerOptions()
+    {
+        try
+        {
+            return GatewayListenerOptions.Resolve(
+                configuredEnabled: _enabled,
+                configuredHost: _host,
+                configuredPort: _port);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     private void Persist() =>
