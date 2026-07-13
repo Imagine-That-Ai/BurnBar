@@ -18,6 +18,25 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
+### Execution checkpoint — 2026-07-13
+
+The implementation stack is now split into reviewable, dependency-ordered
+PRs rather than one blended progress number: P26 tray/deep links (#1649), P27
+native notifications (#1651), P35 diagnostics (#1653), P23 provider/model
+workspace (#1655), P16 account/enrollment posture (#1658), and P12 quota account
+switching (#1659, stacked on P23). P17 activity/session depth and P29 secure
+text-expansion storage are active implementation lanes. The authoritative
+promotion ledger remains 0/40 ready and 0/7 environment receipts; no PR in
+this checkpoint may be treated as full parity or as evidence that the Linux
+release candidate is shippable.
+
+Recommended landing order for this wave is P26, then P23 and P12, followed by
+P35 and P16; P17 and P29 may land independently once their focused tests and
+native bridge checks are complete. After the code stack is review-clean, rerun
+the strict ledger on the exact candidate and collect the installed GNOME
+X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
+update/rollback, and physical-device receipts listed below.
+
 > **Execution update through 2026-07-12 UTC:** the implementation wave completed the
 > fail-closed 40-requirement inventory, Linux secret custody/native gateway
 > boundary, runtime capability manifest, installed accessibility harness,

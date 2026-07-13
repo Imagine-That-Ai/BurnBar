@@ -10,6 +10,30 @@
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
+## Execution Status — 2026-07-13
+
+The audit remains the source of truth for the parity claim. The current Linux
+ledger is still **0/40 product requirements ready** and **0/7 environment
+receipts complete**; implementation progress must not be reported as a release
+percentage. The active remediation stack now contains these reviewable slices:
+
+| Slice | Current state | Scope and limit |
+|---|---|---|
+| P26 tray/deep links | PR #1649, merge-clean | Native tray routes, refresh/reconnect actions, and validated deep-link routing; does not certify every desktop host. |
+| P27 notifications | PR #1651, merge-clean | Bounded native `notify-send` adapter with typed failures; actionable notification actions and lifecycle proof remain open. |
+| P35 diagnostics | PR #1653, checks in progress | Metadata-only diagnostics preview/export, redaction and `0600` enforcement; installed support workflow remains open. |
+| P23 provider/model workspace | PR #1655, merge-clean | Canonical daemon catalog/config mapping, model provenance, health and failover state; credential custody and account lifecycle remain separate. |
+| P16 account/enrollment posture | PR #1658, merge-clean | Daemon-owned account status, sign-out and rejected-identity recovery; trusted-device list/approve/revoke and cloud backup remain unavailable. |
+| P12 quota account switching | PR #1659, stacked on P23 | Redacted credential-slot selection through canonical config get/update; does not provide cloud account or trusted-device management. |
+
+P17 session/activity depth and P29 secure local text-expansion persistence are
+being completed in dedicated worktrees and are not counted as landed until
+their PRs and focused validation are complete. These slices reduce concrete
+gaps, but they do not change the NO-GO verdict: transactional onboarding,
+complete chat, cloud/device mutations, system Computer Use capture, Mercury
+two-device proof, SmartHub, IBus/Fcitx, packaging/update rollback, and the
+seven-environment installed matrix remain required.
+
 ## Executive Summary
 
 The Linux app now has a substantial production implementation: a 19-route Tauri
