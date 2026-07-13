@@ -266,7 +266,7 @@
     "@typescript-eslint/parser": "8.60.0",
     "@vitest/coverage-v8": "4.1.8",
     "@vscode/test-electron": "^2.5.2",
-    "dependency-cruiser": "17.4.3",
+    "dependency-cruiser": "18.1.0",
     "eslint": "9.39.4",
     "eslint-config-prettier": "10.1.8",
     "knip": "5.88.1",

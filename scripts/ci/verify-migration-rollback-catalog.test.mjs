@@ -30,6 +30,7 @@ const appFiles = [
   "OpenBurnBarDatabase+MigrationsV21toV40.swift",
   "OpenBurnBarDatabase+MigrationsV41toV51.swift",
   "OpenBurnBarDatabase+MemoryMigrations.swift",
+  "OpenBurnBarDatabase+MigrationV55.swift",
 ];
 const sharedFiles = [
   "OpenBurnBarDatabase.swift",
@@ -37,6 +38,7 @@ const sharedFiles = [
   "OpenBurnBarDatabase+DataMigrationsV21toV40.swift",
   "OpenBurnBarDatabase+DataMigrationsV41toV51.swift",
   "OpenBurnBarDatabase+MemoryMigrations.swift",
+  "OpenBurnBarDatabase+DataMigrationV55.swift",
 ];
 
 function copyFiles(sourceDirectory, destinationDirectory, files) {
@@ -104,7 +106,7 @@ test("extracts only complete migration contracts", () => {
 });
 
 test("current migration surfaces, catalog, and generated documentation agree", () => {
-  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 55);
+  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 56);
 });
 
 test("registration reorder fails closed", (t) => {

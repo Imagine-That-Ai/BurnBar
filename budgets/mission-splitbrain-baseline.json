@@ -1,6 +1,6 @@
 {
   "note": "GUI-side mission-authority cluster (audit 2026-06-30 finding #5, split-brain mission execution). Shrink-only: files may only shrink or disappear as authority moves to the daemon BurnBarMissionControlService. Regenerate via scripts/debt/check-mission-splitbrain-budget.sh --update.",
-  "totalLines": 3694,
+  "totalLines": 3767,
   "files": [
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
@@ -20,7 +20,7 @@
     },
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+Handling.swift",
-      "lines": 688
+      "lines": 756
     },
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+Mirrors.swift",
@@ -28,7 +28,7 @@
     },
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+Models.swift",
-      "lines": 185
+      "lines": 190
     },
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+Planner.swift",

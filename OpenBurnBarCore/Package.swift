@@ -40,6 +40,7 @@ let buildApplePrunedDecompositionTargets = true
 // `#else` branch (which probes `../Vendor/*.xcframework`) stays byte-identical.
 #if os(Linux) || os(Windows)
 let hasIrohXCFramework = false
+let hasDomainCoreXCFramework = false
 let hasSignalFfiIOSXCFramework = false
 let hasSignalFfiMacXCFramework = false
 let hasLegacySignalFfiXCFramework = false
@@ -49,6 +50,12 @@ let hasBurnBarRemoteXCFramework = false
 let hasIrohXCFramework = FileManager.default.fileExists(
     atPath: packageRoot
         .appendingPathComponent("../Vendor/OpenBurnBarIroh.xcframework")
+        .standardizedFileURL
+        .path
+)
+let hasDomainCoreXCFramework = FileManager.default.fileExists(
+    atPath: packageRoot
+        .appendingPathComponent("../Vendor/OpenBurnBarDomainCore.xcframework")
         .standardizedFileURL
         .path
 )
@@ -235,6 +242,11 @@ let packageProductsBase: [Product] = [
         name: "BurnBarRemoteFFI",
         targets: ["BurnBarRemoteFFI"]
     )
+] : []) + (hasDomainCoreXCFramework ? [
+    .executable(
+        name: "OpenBurnBarDomainCoreFFISmoke",
+        targets: ["OpenBurnBarDomainCoreFFISmoke"]
+    )
 ] : [])
 
 let packageProducts: [Product] = buildLinuxSecurityOnly ? [
@@ -272,6 +284,36 @@ let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
         linkerSettings: [
             .linkedFramework("SystemConfiguration", .when(platforms: [.macOS, .iOS]))
         ]
+    )
+] : []
+
+let domainCoreBinaryTargets: [Target] = hasDomainCoreXCFramework ? [
+    .binaryTarget(
+        name: "OpenBurnBarDomainCore",
+        path: "../Vendor/OpenBurnBarDomainCore.xcframework"
+    ),
+    .target(
+        name: "OpenBurnBarDomainCoreFFI",
+        dependencies: ["OpenBurnBarDomainCore"],
+        path: "Sources/OpenBurnBarDomainCore/Generated",
+        exclude: [
+            "openburnbar_domain_ffi.modulemap",
+            "openburnbar_domain_ffiFFI.h"
+        ],
+        swiftSettings: [.swiftLanguageMode(.v5)]
+    )
+] : []
+
+let domainCoreDependencies: [Target.Dependency] = hasDomainCoreXCFramework
+    ? ["OpenBurnBarDomainCoreFFI"]
+    : []
+
+let domainCoreSmokeTargets: [Target] = hasDomainCoreXCFramework ? [
+    .executableTarget(
+        name: "OpenBurnBarDomainCoreFFISmoke",
+        dependencies: ["OpenBurnBarDomainCoreFFI"],
+        path: "Sources/OpenBurnBarDomainCoreFFISmoke",
+        swiftSettings: [.swiftLanguageMode(.v5)]
     )
 ] : []
 
@@ -894,7 +936,12 @@ let firstPartyTargetsBase: [Target] = [
                 // OpenBurnBarLogParsers` (AE-IMPORT); no other Quota file references LogParsers.
                 "OpenBurnBarLogParsers",
                 swiftCryptoNonAppleDependency
-            ],
+            // Merge (train ← origin/main): P-13 moved the ProviderQuota adapters (incl.
+            // main's #1590 `ClaudeQuotaDomainCoreAdapter.swift`) into this target. That file
+            // guards on `#if canImport(OpenBurnBarDomainCoreFFI)`; carry main's conditional
+            // `domainCoreDependencies` here so the module resolves when the DomainCore
+            // xcframework is vendored (empty otherwise — legacy path, byte-identical to main).
+            ] + domainCoreDependencies,
             exclude: openBurnBarQuotaExcludes
         ),
         .target(
@@ -939,7 +986,14 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarKernel",
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
-            ] + coreDecompositionDependencies,
+            // Merge (train ← origin/main): the train dissolved Core's own SQLite edge
+            // (S1 moved Services/SQLite into OpenBurnBarSQLiteReader, which is the first
+            // entry of `coreDecompositionDependencies`), so Core no longer needs
+            // `coreSQLiteDependencies` here. `domainCoreDependencies` is main's #1590
+            // shared-Rust-quota-pilot wiring (empty unless the DomainCore xcframework is
+            // vendored); kept via UNION so `import OpenBurnBarDomainCoreFFI` still resolves
+            // when the framework is present.
+            ] + coreDecompositionDependencies + domainCoreDependencies,
             exclude: openBurnBarCoreExcludes,
             resources: [
                 // SwiftPM's `.process` rule flattens nested resource folders
@@ -1304,7 +1358,7 @@ let linuxSecurityOnlyTargets: [Target] = [
 
 let allTargets: [Target] = buildLinuxSecurityOnly
     ? linuxSecurityOnlyTargets
-    : irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
+    : irohBinaryTargets + domainCoreBinaryTargets + domainCoreSmokeTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
 
 let package = Package(
     name: "OpenBurnBarCore",

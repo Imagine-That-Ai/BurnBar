@@ -1,6 +1,8 @@
 // Release-side Windows appcast generator — the mirror of
-// scripts/generate-macos-appcast.mjs. Signs the artifact BYTES with the pinned
-// Ed25519 PRIVATE seed and emits appcast XML + latest-windows.json.
+// scripts/generate-macos-appcast.mjs. Signs the artifact bytes (Sparkle's
+// sparkle:edSignature semantics, kept WinSparkle-native-compatible) AND a
+// canonical update descriptor (metadata binding) with the pinned Ed25519
+// PRIVATE seed, then emits appcast XML + latest-windows.json.
 //
 // Usage:
 //   dotnet run --project OpenBurnBar.Updater.Generator -- \
@@ -47,7 +49,8 @@ internal static class Program
                 PackageName = options.GetValueOrDefault("package") ?? Path.GetFileName(artifactPath),
                 Length = artifactBytes.LongLength,
                 Sha256 = Sha256Digest.HexOf(artifactBytes),
-                EdSignatureBase64 = keyPair.SignBase64(artifactBytes),
+                EdSignatureBase64 = string.Empty,
+                DescriptorSignatureBase64 = string.Empty,
                 Critical = options.ContainsKey("critical"),
                 MinimumSystemVersion =
                     options.GetValueOrDefault("min-system-version") ?? "10.0.19041",
@@ -59,10 +62,22 @@ internal static class Program
                 CreatedAt = options.GetValueOrDefault("created-at"),
             };
 
+            // Two signatures from the same pinned key:
+            //  - edSignature: over the RAW ARTIFACT BYTES (Sparkle semantics) so
+            //    WinSparkle's native EdDSA gate keeps accepting the appcast;
+            //  - descriptorSignature: over the canonical metadata descriptor so
+            //    feed metadata cannot be rebound to a signed artifact.
+            var signedDescriptor = descriptor with
+            {
+                EdSignatureBase64 = keyPair.SignBase64(artifactBytes),
+                DescriptorSignatureBase64 = keyPair.SignBase64(
+                    UpdateDescriptorCanonicalizer.CanonicalBytes(descriptor)),
+            };
+
             var appcastOut = Require(options, "appcast-out");
             var jsonOut = Require(options, "json-out");
-            File.WriteAllText(appcastOut, AppcastFeedWriter.Write(descriptor));
-            File.WriteAllText(jsonOut, JsonFeedWriter.Write(descriptor));
+            File.WriteAllText(appcastOut, AppcastFeedWriter.Write(signedDescriptor));
+            File.WriteAllText(jsonOut, JsonFeedWriter.Write(signedDescriptor));
             VerifyGeneratedFeed(
                 appcastOut,
                 FeedFormat.Appcast,
@@ -76,8 +91,8 @@ internal static class Program
 
             Console.Error.WriteLine(
                 $"generate-windows-appcast: wrote {appcastOut} + {jsonOut} " +
-                $"(version={descriptor.Version} length={descriptor.Length} " +
-                $"sha256={descriptor.Sha256} pinnedKey={keyPair.PublicKeyBase64} " +
+                $"(version={signedDescriptor.Version} length={signedDescriptor.Length} " +
+                $"sha256={signedDescriptor.Sha256} pinnedKey={keyPair.PublicKeyBase64} " +
                 "verified=appcast,json)");
             return 0;
         }

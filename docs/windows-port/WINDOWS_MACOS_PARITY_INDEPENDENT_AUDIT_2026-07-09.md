@@ -294,3 +294,30 @@ live staging OAuth/App Check/CloudVault, advanced media/Computer Use safety,
 and Store/update lifecycle evidence are each explicitly blocked by named
 external prerequisites. The UTM ARM64 guest is retained for preparation only
 and is not counted as physical ARM64 certification.
+
+## External-certification campaign update - 2026-07-12
+
+The follow-on campaign is recorded under
+[`evidence/external-certification-2026-07-12/README.md`](evidence/external-certification-2026-07-12/README.md).
+It binds the exact signed candidate `7c362298230e14bfd51dcdcbaf9476cd86cefa66`
+to workflow run `29177583506` and retains a validator-clean ARM64 UTM bundle.
+Because the branch was subsequently repaired and rebased (post-#1557), that
+bundle is historical supporting context for its recorded commit only; any
+release decision for a later head requires regenerating the campaign against
+that head's own signed candidate.
+The candidate began from a clean tree and passed restore, serialized Release
+build, and the full Windows solution test run. The service-session UIA probe
+failed to launch WinUI routes and is retained as negative supporting evidence,
+not accessibility certification.
+
+The campaign also provisions the isolated `burnbar-staging` Firebase project,
+GitHub OIDC federation, and least-privilege deploy identity without enabling
+deployment or touching production. Company billing-project quota prevents the
+live staging deploy. A connected physical iPhone passed its focused media and
+Computer Use peer suite (`114/114`), but no physical Windows peer was available.
+
+The physical-release verdict therefore remains **NO-GO**. Physical Windows x64
+and ARM64 performance, signed-in manual accessibility/display, deployed staging
+OAuth/App Check/CloudVault with physical TPM, live cross-device media/Computer
+Use safety, and Partner Center Store/update lifecycle evidence remain external
+requirements. VM, unit, source, and mobile-peer evidence do not satisfy them.

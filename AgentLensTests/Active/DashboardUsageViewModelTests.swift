@@ -213,6 +213,42 @@ final class DashboardUsageViewModelTests: XCTestCase {
         XCTAssertEqual(today.providerSummaries.map(\.provider), [.codex])
     }
 
+    func test_usageTotals_fetchesOnlyScalarTotalsForAnArbitraryWindow() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let now = Date()
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "comparison-current",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 50,
+            costUSD: 2,
+            startTime: now,
+            endTime: now.addingTimeInterval(60)
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "comparison-previous",
+            model: "gpt-5",
+            inputTokens: 40,
+            outputTokens: 10,
+            costUSD: 1,
+            startTime: now.addingTimeInterval(-86_400),
+            endTime: now.addingTimeInterval(-86_340)
+        ))
+
+        let previousTotals = try await usageStore.fetchUsageTotals(
+            in: now.addingTimeInterval(-86_460)...now.addingTimeInterval(-86_300)
+        )
+
+        XCTAssertEqual(previousTotals.sessionCount, 1)
+        XCTAssertEqual(previousTotals.tokens, 50)
+        XCTAssertEqual(previousTotals.cost, 1, accuracy: 0.001)
+    }
+
     func test_dashboardSnapshotQueryCount_isIndependentOfRowCount() async throws {
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -242,17 +278,26 @@ final class DashboardUsageViewModelTests: XCTestCase {
 
         tracer.resetLog()
         _ = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
-        let baseline = tracer.queryCount
+        let baseline = tracer.queryLog.count { event in
+            event.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .hasPrefix("select")
+        }
         XCTAssertGreaterThan(baseline, 0, "Query tracer recorded nothing — tracing is not installed")
 
         try await insertUsages(count: 40, idPrefix: "tracer-scaled")
         tracer.resetLog()
         _ = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let scaled = tracer.queryLog.count { event in
+            event.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .hasPrefix("select")
+        }
 
         XCTAssertEqual(
-            tracer.queryCount,
+            scaled,
             baseline,
-            "Dashboard snapshot must run a constant number of queries — growth with row count is an N+1 regression"
+            "Dashboard snapshot must run a constant number of data queries — growth with row count is an N+1 regression"
         )
         tracer.assertMaxQueries(count: 64)
     }

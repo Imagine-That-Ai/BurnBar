@@ -97,6 +97,10 @@ actor DataStoreActor {
         try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
     }
 
+    func fetchUsageTotals(in dateRange: ClosedRange<Date>?) async throws -> UsageTotals {
+        try await usageStore.fetchUsageTotals(in: dateRange)
+    }
+
     func deleteAllUsageRows() async throws {
         try await usageStore.deleteAll()
     }

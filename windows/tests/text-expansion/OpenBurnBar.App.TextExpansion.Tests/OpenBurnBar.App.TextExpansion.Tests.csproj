@@ -34,7 +34,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
-    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
@@ -50,8 +50,8 @@
       opens. The test copies it to a temp working file before writing, so the
       committed file is never mutated.
     -->
-    <Content Include="../../../../AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v54.sqlcipher">
-      <Link>Fixtures/openburnbar-db-compat-v54.sqlcipher</Link>
+    <Content Include="../../../../AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v55.sqlcipher">
+      <Link>Fixtures/openburnbar-db-compat-v55.sqlcipher</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

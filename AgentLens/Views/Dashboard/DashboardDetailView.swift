@@ -50,6 +50,12 @@ struct DashboardDetailView: View {
                         chatController: chatController
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .charts:
+                    ChartsPageDetailHost(
+                        context: context,
+                        selectedTimeRange: selectedTimeRange
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .database:
                     DatabaseWorkspaceView(
                         dataStore: dataStore,

@@ -56,6 +56,8 @@ public sealed class CommittedSampleFeedTests
         Assert.Equal(fromXml!.Version, fromJson!.Version);
         Assert.Equal(fromXml.Sha256, fromJson.Sha256);
         Assert.Equal(fromXml.EdSignatureBase64, fromJson.EdSignatureBase64);
+        Assert.Equal(fromXml.DescriptorSignatureBase64, fromJson.DescriptorSignatureBase64);
+        Assert.Equal(fromXml.Channel, fromJson.Channel);
         Assert.Equal(fromXml.Length, fromJson.Length);
     }
 

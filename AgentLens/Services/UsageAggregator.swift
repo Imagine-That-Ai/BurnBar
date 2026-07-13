@@ -191,12 +191,11 @@ final class UsageAggregator {
         parserHealth = result.parserHealth
         errors = result.errors
 
-        // Reload from DB so in-memory array is canonical.
-        if let refreshed = result.postPersistence.refreshedRecords {
-            dataStore.replaceUsages(refreshed)
-        } else {
-            await dataStore.refresh()
-        }
+        // Reload from the database worker so the main actor only applies the
+        // bounded dashboard snapshot. Replacing the full refreshed row set here
+        // synchronously sorted and rebuilt every aggregate on the main actor,
+        // which made active users pay an unbounded UI pause after a refresh.
+        await dataStore.refresh()
         lastRefresh = Date()
 
         persistenceErrorMessage = result.persistenceErrorMessage

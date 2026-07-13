@@ -1,0 +1,82 @@
+﻿{
+    "schema":  "openburnbar.windows.release-certification-receipt.v1",
+    "status":  "BLOCKED",
+    "gate":  "accessibility-display",
+    "target":  "Narrator, UIA, keyboard, DPI, themes, motion, transparency, and monitors",
+    "source":  {
+                   "commitSha":  "7c362298230e14bfd51dcdcbaf9476cd86cefa66",
+                   "dirtyTree":  false
+               },
+    "artifact":  {
+                     "name":  "OpenBurnBar-1.0.29-arm64.msix",
+                     "architecture":  "ARM64",
+                     "availability":  "recorded",
+                     "sha256":  "d8cd1423827e54b777a85cf58962b5c18ae6ae1118676b8255749894815c597e",
+                     "workflowRunId":  "29177583506",
+                     "workflowRunUrl":  "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29177583506",
+                     "signature":  {
+                                       "result":  "verified",
+                                       "identity":  "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+                                   }
+                 },
+    "device":  {
+                   "kind":  "windows-vm-or-hosted-runner",
+                   "manufacturer":  "QEMU",
+                   "model":  "QEMU Virtual Machine",
+                   "assetTag":  {
+
+                                },
+                   "architecture":  "ARM64",
+                   "osArchitecture":  "ARM 64-bit Processor",
+                   "osBuild":  "Microsoft Windows 11 Pro 10.0.26200 build 26200",
+                   "tpm":  "unavailable",
+                   "cpu":  "virt-10.0",
+                   "ramBytes":  8580235264,
+                   "gpu":  [
+                               "Red Hat VirtIO GPU DOD controller"
+                           ],
+                   "storage":  [
+                                   {
+                                       "model":  "QEMU NVMe Ctrl",
+                                       "mediaType":  "Fixed hard disk media",
+                                       "sizeBytes":  214745610240
+                                   }
+                               ],
+                   "processorArchitecture":  "AMD64",
+                   "capturedAtUtc":  "2026-07-12T08:16:17.5705241+00:00"
+               },
+    "protocol":  {
+                     "commands":  [
+                                      "scripts/windows-port/run-ui-automation.ps1 -CertificationProfile all"
+                                  ],
+                     "manualSteps":  [
+                                         "Run Narrator and keyboard-only protocol at 100%, 150%, and 200% DPI; high contrast; reduced motion/transparency; mixed-DPI multi-monitor; attach UIA trees and screenshots."
+                                     ]
+                 },
+    "time":  {
+                 "startedAtUtc":  "2026-07-12T08:16:09.5872990+00:00",
+                 "endedAtUtc":  "2026-07-12T08:29:28.3846820+00:00",
+                 "durationSeconds":  799
+             },
+    "expected":  "Physical manual protocol and all required UIA/display scenarios pass.",
+    "observed":  "The required physical/manual accessibility receipt was not supplied by this run.",
+    "exitCode":  null,
+    "evidence":  {
+                     "files":  [
+                                   {
+                                       "path":  "blockers/accessibility-display.md",
+                                       "sha256":  "b7091f6d181cd0aaedf069b1a5ae85d93cfe3eadc2300e5b0fc86d998ef8372d"
+                                   },
+                                   {
+                                       "path":  "logs/ui-automation-accessibility.log",
+                                       "sha256":  "efd020d68b29ee996ccb28c97786849ea842be52190950208e9811ede67bfd39"
+                                   }
+                               ]
+                 },
+    "blocker":  {
+                    "id":  "UIA-HARNESS-FAILED",
+                    "owner":  "Alberto",
+                    "missing":  "The accessibility UIA harness did not produce a passing result.",
+                    "recovery":  "Inspect logs/ui-automation-accessibility.log, fix the host/runtime defect, and rerun."
+                }
+}

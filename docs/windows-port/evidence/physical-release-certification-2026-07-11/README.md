@@ -45,4 +45,4 @@ pwsh scripts/windows-port/run-physical-release-certification.ps1 `
 node scripts/windows-port/validate-release-certification-evidence.mjs <bundle-directory>
 ```
 
-The PowerShell runner requires an explicit hardware attestation and rejects virtualized host fingerprints, missing signed artifact identity, and incomplete supplemental receipts. It invokes the existing Windows UIA profile but keeps the manual Narrator/keyboard protocol as a separate required receipt.
+The PowerShell runner requires an explicit hardware attestation and rejects virtualized host fingerprints, missing signed artifact identity, and incomplete supplemental receipts. When an OEM reports a placeholder `SMBIOSAssetTag`, attest the live `Win32_ComputerSystemProduct.IdentifyingNumber` as the inventory `assetTag`; the runner uses that value as its fallback. It invokes the existing Windows UIA profile but keeps the manual Narrator/keyboard protocol as a separate required receipt.

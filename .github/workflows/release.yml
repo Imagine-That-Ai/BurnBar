@@ -984,6 +984,15 @@ jobs:
           CARGO_BUILD_JOBS: "2"
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
 
+      - name: Prepare shared domain core XCFramework for release app
+        env:
+          DOMAIN_CORE_BUILD_PROFILE: release
+          DOMAIN_CORE_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"
+        run: bash scripts/build-domain-core-xcframework.sh
+
+      - name: Verify shared domain core release artifact
+        run: test -d Vendor/OpenBurnBarDomainCore.xcframework
+
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 

@@ -1147,6 +1147,44 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         }
     }
 
+    func test_missionRuntimePlanner_blocksJunieVisibleTerminalWhenGrantIsNotFullyInteractive() {
+        let backend = CLIAgentMissionBackend(chatBackend: .junie)
+        let baseData: [String: Any] = [
+            "source": "ios",
+            "targetProject": "~/Documents/Windsurf/BurnBar",
+            "clientThreadID": "visible-thread-read-only",
+            "requestedModelID": "frontier-model"
+        ]
+
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Read-only Junie mission",
+            prompt: "Inspect the workspace without edits or commands.",
+            backend: backend,
+            data: baseData.merging([
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]) { _, new in new }
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Junie shell-only mission",
+            prompt: "Run commands but do not edit files.",
+            backend: backend,
+            data: baseData.merging([
+                "commandsAllowed": true,
+                "fileEditsAllowed": false
+            ]) { _, new in new }
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Junie write-only mission",
+            prompt: "Edit files without commands.",
+            backend: backend,
+            data: baseData.merging([
+                "commandsAllowed": false,
+                "fileEditsAllowed": true
+            ]) { _, new in new }
+        ))
+    }
+
     func test_missionRuntimePlanner_returnsNilForUnsupportedDirectAndVisibleRuntimes() {
         let custom = CLIAgentMissionBackend(rawValue: "unknown-runtime", displayName: "Unknown")
         XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
