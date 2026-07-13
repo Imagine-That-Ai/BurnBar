@@ -4,6 +4,9 @@ lib/
 *.js.map
 *.d.ts
 *.d.ts.map
+!vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.js
+!vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.d.ts
+!vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm.d.ts
 
 # Dependencies
 node_modules/

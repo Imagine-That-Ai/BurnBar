@@ -8,10 +8,8 @@ namespace OpenBurnBar.App.Quota.Tests;
 
 public sealed class DomainCoreQuotaBridgeTests
 {
-    [Theory]
-    [InlineData((int)DomainCoreQuotaMigrationMode.Shadow)]
-    [InlineData((int)DomainCoreQuotaMigrationMode.Rust)]
-    public void Apply_NativeUnavailable_FallsBackToLegacy(int rawMode)
+    [Fact]
+    public void Apply_ShadowNativeUnavailable_FallsBackToLegacy()
     {
         var now = DateTimeOffset.FromUnixTimeSeconds(1783036800);
         var expected = CodexUsageQuotaParser.Parse(
@@ -31,11 +29,33 @@ public sealed class DomainCoreQuotaBridgeTests
             now,
             CodexUsageQuotaParser.ManagementUrl,
             mapMalformedSnapshot: false,
-            (DomainCoreQuotaMigrationMode)rawMode,
+            DomainCoreQuotaMigrationMode.Shadow,
             requireNative: false);
 
         Assert.Same(expected, snapshot);
         Assert.Equal(1, legacyEvaluations);
+    }
+
+    [Fact]
+    public void Apply_RustNativeUnavailable_FailsClosedWithoutLegacy()
+    {
+        var now = DateTimeOffset.FromUnixTimeSeconds(1783036800);
+        var legacyEvaluations = 0;
+
+        Assert.Throws<InvalidOperationException>(() => DomainCoreQuotaBridge.Apply(
+            "codex_quota_test",
+            () => throw new DllNotFoundException("simulated missing core"),
+            () =>
+            {
+                legacyEvaluations++;
+                return null;
+            },
+            now,
+            CodexUsageQuotaParser.ManagementUrl,
+            mapMalformedSnapshot: false,
+            DomainCoreQuotaMigrationMode.Rust,
+            requireNative: false));
+        Assert.Equal(0, legacyEvaluations);
     }
 
     [Fact]

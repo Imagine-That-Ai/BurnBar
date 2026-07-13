@@ -22,73 +22,11 @@ const fixturePath = path.resolve(
 );
 const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
 assert.equal(fixture.schema, "openburnbar.domain-core.cloudvault.deterministic.v1");
-const searchFixture = JSON.parse(
-  await readFile(
-    path.resolve(
-      testDirectory,
-      "../../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-search-contract.json",
-    ),
-    "utf8",
-  ),
+const rewrapFixturePath = path.resolve(
+  testDirectory,
+  "../../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-document-rewrap-contract.json",
 );
-assert.equal(searchFixture.schema, "openburnbar.domain-core.cloudvault.search.v1");
-
-function collect(count, at) {
-  return Array.from({ length: count }, (_, index) => at(index));
-}
-
-for (const vector of searchFixture.tokenizationCases) {
-  const analysis = domainCore.cloudVaultSearchAnalyze(vector.text);
-  assert.deepEqual(
-    collect(analysis.normalizedTokenCount, (index) => analysis.normalizedTokenAt(index)),
-    vector.normalizedTokens,
-    vector.id,
-  );
-  assert.deepEqual(
-    collect(analysis.exactPhraseTokenCount, (index) => analysis.exactPhraseTokenAt(index)),
-    vector.exactPhraseTokens,
-    vector.id,
-  );
-  analysis.free();
-}
-
-for (const vector of searchFixture.semanticFeatureCases) {
-  const analysis = domainCore.cloudVaultSearchAnalyze(vector.text);
-  assert.deepEqual(
-    collect(analysis.semanticFeatureCount, (index) => analysis.semanticFeatureAt(index)),
-    vector.features,
-    vector.id,
-  );
-  analysis.free();
-}
-
-const searchOperation = {
-  token: domainCore.CloudVaultSearchOperation.Token,
-  index: domainCore.CloudVaultSearchOperation.Index,
-  query: domainCore.CloudVaultSearchOperation.Query,
-  semantic: domainCore.CloudVaultSearchOperation.Semantic,
-};
-for (const vector of searchFixture.hashCases) {
-  const text = vector.text ?? Array.from(
-    { length: vector.input.count },
-    (_, index) => `${vector.input.prefix}${index}`,
-  ).join(" ");
-  const keyHex = vector.key === "primary"
-    ? searchFixture.primaryKeyHex
-    : searchFixture.alternateKeyHex;
-  const result = domainCore.cloudVaultSearch(
-    searchOperation[vector.operation],
-    text,
-    Buffer.from(keyHex, "hex"),
-    vector.limit,
-  );
-  assert.deepEqual(
-    collect(result.hashCount, (index) => result.hashAt(index)),
-    vector.expected,
-    vector.id,
-  );
-  result.free();
-}
+const rewrapFixture = JSON.parse(await readFile(rewrapFixturePath, "utf8"));
 
 for (const vector of fixture.aad) {
   assert.equal(
@@ -272,14 +210,67 @@ assert.throws(
   () => domainCore.cloudVaultValidateP256X963PublicKey(new Uint8Array(65)),
   /invalid_p256_public_key/,
 );
-assert.throws(
-  () => domainCore.cloudVaultSearch(
-    domainCore.CloudVaultSearchOperation.Token,
-    "bounded",
-    new Uint8Array(32),
-    1025,
+
+const rewrapResult = JSON.parse(
+  domainCore.cloudVaultRewrapDocumentJson(
+    JSON.stringify(rewrapFixture.request),
+    Buffer.from(rewrapFixture.oldKeyHex, "hex"),
+    Buffer.from(rewrapFixture.newKeyHex, "hex"),
+    rewrapFixture.newVaultKeyID,
   ),
-  /search_limit_too_large/,
 );
+assert.deepEqual(rewrapResult, rewrapFixture.expected);
+assert.throws(
+  () =>
+    domainCore.cloudVaultRewrapDocumentJson(
+      JSON.stringify({ ...rewrapFixture.request, unexpected: true }),
+      Buffer.from(rewrapFixture.oldKeyHex, "hex"),
+      Buffer.from(rewrapFixture.newKeyHex, "hex"),
+      rewrapFixture.newVaultKeyID,
+    ),
+  /invalid_rewrap_request/,
+);
+
+const pricingFixturePath = path.resolve(
+  testDirectory,
+  "../../../../tests/fixtures/domain-core/pricing/v2/pricing-kat.json",
+);
+const pricingFixture = JSON.parse(await readFile(pricingFixturePath, "utf8"));
+assert.equal(pricingFixture.schema, "openburnbar.domain-core.pricing.v2");
+for (const vector of pricingFixture.costVectors) {
+  const rates = vector.rates;
+  const buckets = vector.buckets;
+  assert.equal(
+    domainCore.calculateTokenCostNanoUsd(
+      new BigUint64Array([
+        BigInt(rates.inputNanoUsdPerMToken),
+        BigInt(rates.outputNanoUsdPerMToken),
+        BigInt(rates.cacheCreationNanoUsdPerMToken ?? 0),
+        BigInt(rates.cacheReadNanoUsdPerMToken),
+      ]),
+      new BigUint64Array([
+        BigInt(buckets.inputTokens),
+        BigInt(buckets.outputTokens),
+        BigInt(buckets.cacheCreationTokens),
+        BigInt(buckets.cacheReadTokens),
+      ]),
+      rates.cacheCreationNanoUsdPerMToken !== null,
+    ),
+    BigInt(vector.expectedCostNanoUsd),
+  );
+}
+for (const vector of pricingFixture.legacyKimiVectors) {
+  assert.equal(domainCore.isLegacyKimiWireEvent(vector.provider, vector.model), vector.isLegacy);
+  if (vector.expected) {
+    const result = domainCore.priceLegacyKimiWireEvent(
+      BigInt(vector.buckets.inputTokens),
+      BigInt(vector.buckets.outputTokens),
+      BigInt(vector.buckets.cacheCreationTokens),
+      BigInt(vector.buckets.cacheReadTokens),
+    );
+    assert.equal(domainCore.legacyKimiWireModel(), vector.expected.model);
+    assert.deepEqual(Array.from(result), [BigInt(vector.expected.totalTokens), BigInt(vector.expected.costNanoUsd)]);
+  }
+}
 
 console.log("domain-core Wasm generated-package smoke test passed");

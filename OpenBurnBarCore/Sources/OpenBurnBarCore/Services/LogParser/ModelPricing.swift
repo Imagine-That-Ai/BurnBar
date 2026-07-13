@@ -4,6 +4,10 @@ import Foundation
 import OpenBurnBarCore
 #endif
 
+public enum ModelPricingError: Error, Sendable {
+    case domainCoreRejected
+}
+
 public struct ModelPricing: Sendable {
     public let inputPerMToken: Double
     public let outputPerMToken: Double
@@ -66,12 +70,28 @@ public struct ModelPricing: Sendable {
         cacheCreationTokens: Int = 0,
         cacheReadTokens: Int = 0,
         reasoningTokens: Int = 0
-    ) -> Double {
-        let cacheCreationRate = cacheCreationPerMToken ?? inputPerMToken
-        return Double(inputTokens) / 1_000_000 * inputPerMToken
-            + Double(outputTokens) / 1_000_000 * outputPerMToken
-            + Double(cacheCreationTokens) / 1_000_000 * cacheCreationRate
-            + Double(cacheReadTokens) / 1_000_000 * cacheReadPerMToken
+    ) throws -> Double {
+        guard let cost = DomainCorePricingAdapter.cost(
+            inputPerMToken: inputPerMToken,
+            outputPerMToken: outputPerMToken,
+            cacheCreationPerMToken: cacheCreationPerMToken,
+            cacheReadPerMToken: cacheReadPerMToken,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
+            environment: DomainCorePricingAdapter.runtimeEnvironment,
+            legacy: {
+                let cacheCreationRate = cacheCreationPerMToken ?? inputPerMToken
+                return Double(inputTokens) / 1_000_000 * inputPerMToken
+                    + Double(outputTokens) / 1_000_000 * outputPerMToken
+                    + Double(cacheCreationTokens) / 1_000_000 * cacheCreationRate
+                    + Double(cacheReadTokens) / 1_000_000 * cacheReadPerMToken
+            }
+        ) else {
+            throw ModelPricingError.domainCoreRejected
+        }
+        return cost
     }
 }
 

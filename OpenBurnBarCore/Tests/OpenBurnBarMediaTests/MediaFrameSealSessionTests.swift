@@ -109,7 +109,7 @@ final class MediaFrameSealSessionTests: XCTestCase {
             keyData,
             recipientPublicKeyBase64: macKey.publicKeyBase64,
             senderPrivateKey: phoneKey,
-            aad: HermesRelayCrypto.controlSealKeyAAD(
+            aad: try HermesRelayCrypto.controlSealKeyAAD(
                 uid: uid,
                 connectionID: connectionID,
                 peerNodeId: viewerId,

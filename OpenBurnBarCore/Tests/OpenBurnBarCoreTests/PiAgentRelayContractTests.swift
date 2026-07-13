@@ -165,7 +165,7 @@ final class PiAgentRelayContractTests: XCTestCase {
         )
         XCTAssertEqual(try JSONDecoder().decode(PiAgentRelayEncryptedRequestPayload.self, from: opened), payload)
 
-        let hermesAAD = HermesRelayCrypto.requestAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+        let hermesAAD = try HermesRelayCrypto.requestAAD(uid: uid, connectionID: connectionID, requestID: requestID)
         XCTAssertThrowsError(
             try HermesRelayCrypto.openBase64(
                 ciphertext: ciphertext,

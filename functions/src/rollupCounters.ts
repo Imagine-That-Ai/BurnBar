@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { FieldValue, type DocumentData, type Firestore } from "firebase-admin/firestore";
 import type { UsageEventDoc, UsageRollupDoc } from "./types.js";
 import { coerceFirestoreDate, isRecord, recordOrUndefined, stripUndefinedObject } from "./guards.js";
-import { LEGACY_KIMI_WIRE_MODEL, LEGACY_KIMI_WIRE_PRICING } from "./pricing.js";
+import { priceLegacyKimiEvent } from "./pricing.js";
 
 export const ROLLUP_SCHEMA_VERSION = 3;
 export const COUNTER_SCHEMA_VERSION = 1;
@@ -108,45 +108,26 @@ function eventCost(ev: UsageEventDoc): number | undefined {
   return undefined;
 }
 
-function isLegacyKimiWireEvent(ev: UsageEventDoc): boolean {
-  const provider = String(ev.providerID ?? ev.provider ?? "").toLowerCase();
-  const model = String(ev.model ?? "");
-  return provider === "kimi" && model.startsWith("chatcmpl-");
-}
-
-function kimiCost(
-  inputTokens: number,
-  outputTokens: number,
-  cacheCreationTokens: number,
-  cacheReadTokens: number,
-): number {
-  const rates = LEGACY_KIMI_WIRE_PRICING;
-  return (
-    (inputTokens / 1_000_000) * rates.inputPerMToken +
-    (outputTokens / 1_000_000) * rates.outputPerMToken +
-    (cacheCreationTokens / 1_000_000) * rates.cacheCreationPerMToken +
-    (cacheReadTokens / 1_000_000) * rates.cacheReadPerMToken
-  );
-}
-
-function eventModel(ev: UsageEventDoc): string | undefined {
-  return isLegacyKimiWireEvent(ev) ? LEGACY_KIMI_WIRE_MODEL : ev.model;
-}
-
-function eventMetrics(ev: UsageEventDoc): { tokens: number; cost?: number } {
-  if (!isLegacyKimiWireEvent(ev)) {
-    return { tokens: eventTokens(ev), cost: eventCost(ev) };
-  }
-
+function eventMetrics(ev: UsageEventDoc): { tokens: number; cost?: number; model?: string } {
   const rawInput = finiteNumber(ev.inputTokens);
   const output = finiteNumber(ev.outputTokens);
   const cacheCreation = finiteNumber(ev.cacheCreationTokens);
   const cacheRead = finiteNumber(ev.cacheReadTokens);
-  const input = Math.max(rawInput - cacheCreation - cacheRead, 0);
+  const priced = priceLegacyKimiEvent(String(ev.providerID ?? ev.provider ?? ""), String(ev.model ?? ""), {
+    inputTokens: rawInput,
+    outputTokens: output,
+    cacheCreationTokens: cacheCreation,
+    cacheReadTokens: cacheRead,
+  });
+
+  if (!priced.isLegacy) {
+    return { tokens: eventTokens(ev), cost: eventCost(ev), model: ev.model };
+  }
 
   return {
-    tokens: input + output + cacheCreation + cacheRead,
-    cost: kimiCost(input, output, cacheCreation, cacheRead),
+    tokens: priced.totalTokens ?? 0,
+    cost: priced.costUsd,
+    model: priced.model,
   };
 }
 
@@ -291,7 +272,7 @@ export function usageContribution(ev: UsageEventDoc | undefined, candidateKey = 
   const metrics = eventMetrics(ev);
   const providerID = eventProviderID(ev);
   const accountKey = accountSummaryKey(ev);
-  const model = eventModel(ev);
+  const model = metrics.model;
   return {
     logicalKey: logicalUsageKey(ev, date, metrics),
     candidateKey,

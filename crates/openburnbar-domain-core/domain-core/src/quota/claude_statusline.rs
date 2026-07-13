@@ -5,6 +5,7 @@ use super::types::{
     QuotaBucket, QuotaConfidence, QuotaParseResult, QuotaParseStatus, QuotaSnapshot,
     QuotaSourceKind, QuotaUnit, QuotaWindowKind,
 };
+use super::MAX_QUOTA_PAYLOAD_BYTES;
 
 const PROVIDER: &str = "claudeCode";
 const STATUS_MESSAGE: &str = "Quota captured from Claude Code's local status line JSON bridge.";
@@ -54,6 +55,13 @@ pub fn parse_claude_statusline_quota(payload: &[u8]) -> QuotaParseResult {
         now_unix: None,
         buckets: Vec::new(),
     };
+
+    if payload.len() > MAX_QUOTA_PAYLOAD_BYTES {
+        return QuotaParseResult {
+            status: QuotaParseStatus::Malformed,
+            snapshot: empty_snapshot(),
+        };
+    }
 
     let Ok(root) = serde_json::from_slice::<Value>(payload) else {
         return QuotaParseResult {
@@ -122,22 +130,26 @@ fn parse_window(payload: &Map<String, Value>) -> Option<ParsedWindow> {
 }
 
 fn first_number(payload: &Map<String, Value>, keys: &[&str]) -> Option<f64> {
-    keys.iter().find_map(|key| match payload.get(*key) {
-        Some(Value::Number(value)) => value.as_f64(),
-        Some(Value::String(value)) => value.parse::<f64>().ok(),
-        _ => None,
-    })
+    keys.iter()
+        .find_map(|key| match payload.get(*key) {
+            Some(Value::Number(value)) => value.as_f64(),
+            Some(Value::String(value)) => value.parse::<f64>().ok(),
+            _ => None,
+        })
+        .filter(|value| value.is_finite() && (0.0..=100.0).contains(value))
 }
 
 fn first_date(payload: &Map<String, Value>, keys: &[&str]) -> Option<f64> {
-    keys.iter().find_map(|key| match payload.get(*key) {
-        Some(Value::Number(value)) => value.as_f64(),
-        Some(Value::String(value)) => OffsetDateTime::parse(value, &Rfc3339)
-            .map(|date| date.unix_timestamp_nanos() as f64 / 1_000_000_000.0)
-            .ok()
-            .or_else(|| value.parse::<f64>().ok()),
-        _ => None,
-    })
+    keys.iter()
+        .find_map(|key| match payload.get(*key) {
+            Some(Value::Number(value)) => value.as_f64(),
+            Some(Value::String(value)) => OffsetDateTime::parse(value, &Rfc3339)
+                .map(|date| date.unix_timestamp_nanos() as f64 / 1_000_000_000.0)
+                .ok()
+                .or_else(|| value.parse::<f64>().ok()),
+            _ => None,
+        })
+        .filter(|value| value.is_finite() && *value >= 0.0)
 }
 
 #[cfg(test)]

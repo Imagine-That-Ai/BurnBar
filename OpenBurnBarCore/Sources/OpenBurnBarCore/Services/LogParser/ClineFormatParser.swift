@@ -41,7 +41,7 @@ public final class ClineFormatParser: LogParser, Sendable {
                 let historyFile = taskDir.appendingPathComponent("api_conversation_history.json")
                 guard fm.fileExists(atPath: historyFile.path) else { continue }
 
-                if let pair = parseTask(
+                if let pair = try parseTask(
                     taskId: taskId,
                     historyFile: historyFile
                 ), let usage = pair.usage {
@@ -61,7 +61,7 @@ public final class ClineFormatParser: LogParser, Sendable {
     private func parseTask(
         taskId: String,
         historyFile: URL
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let data = try? Data(contentsOf: historyFile), // try?-ok(skip unreadable log)
               let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { // try?-ok(malformed log skip)
             return nil
@@ -159,7 +159,7 @@ public final class ClineFormatParser: LogParser, Sendable {
 
         let model = models.first ?? "unknown"
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,

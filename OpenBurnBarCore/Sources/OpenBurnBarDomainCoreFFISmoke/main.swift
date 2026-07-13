@@ -28,8 +28,14 @@ func data(hex: String) -> Data {
     return Data(bytes)
 }
 
-require(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2, "unexpected ABI version")
+require(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3, "unexpected ABI version")
 require(!OpenBurnBarDomainCoreFFI.domainCoreVersion().isEmpty, "empty crate version")
+
+let safetyCode = try OpenBurnBarDomainCoreFFI.hermesGatewayRelaySafetyCode(
+    agentPublicKey: Data(base64Encoded: "BGsX0fLhLEJH+Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT+NC4v4af5uO5+tKfA+eFivOM1drMV7Oy7ZAaDe/UfU=")!,
+    phonePublicKey: Data(base64Encoded: "BHzyexiNA09+ilI4AwS1GsPAiWnid/IbNaYLSPxHZpl4B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E=")!
+)
+require(safetyCode == "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7", "Hermes safety-code mismatch")
 
 let fixtureURL = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()
@@ -121,27 +127,54 @@ do {
 }
 
 do {
-    let analysis = try OpenBurnBarDomainCoreFFI.cloudVaultSearchAnalyze(
-        text: "The QUICK, quick fox and X."
+    let oldKey = Data(repeating: 0x71, count: 32)
+    let newKey = Data(repeating: 0x72, count: 32)
+    let newKeyID = "v1_515a733d7320b35b2117893952f93a94"
+    let envelope = CloudVaultDocumentEnvelope(
+        kind: .sealedPayload,
+        fieldName: "sealedPayload",
+        schemaVersion: 2,
+        algorithm: "AES-256-GCM",
+        keyVersion: 1,
+        vaultKeyId: "v1_3e441393404b2085e7a3090a47d377ab",
+        nonce: nil,
+        ciphertext: nil,
+        tag: nil,
+        sealedBoxBase64: "ERERERERERERERER/IcMhLA283cnbpRNi2CTKvNBn1ZeDHqbBsvt7oVOgZ2I6DwXeAOM",
+        plaintextSha256: nil,
+        plaintextHmac: nil,
+        integrityHashVersion: nil,
+        aad: "OpenBurnBar-CloudVaultSealedPayload-v2",
+        hasCreatedAt: false
     )
-    require(analysis.normalizedTokens == ["quick", "quick", "fox"], "search token analysis mismatch")
-    let search = try OpenBurnBarDomainCoreFFI.cloudVaultSearch(
-        request: CloudVaultSearchRequest(
-            operation: .token,
-            text: "The QUICK, quick fox and X.",
-            vaultKey: Data((0..<32).map(UInt8.init)),
-            limit: 250
-        )
-    )
-    require(
-        search.hashes == [
-            "e9110d7f0c79afdae6316235800dc41b",
-            "66e59fa04825dc74f5ef7cb57884d4ed"
+    let request = CloudVaultDocumentRewrapRequest(
+        uid: "userA",
+        collection: "cli_agent_mission_requests",
+        docId: "requestA",
+        documentFieldNames: ["vaultKeyID", "plainStatus", "sealedPayload"],
+        envelopes: [envelope],
+        resealNoncePlan: [
+            CloudVaultResealNonce(
+                fieldName: "sealedPayload",
+                nonce: Data(repeating: 0x22, count: 12)
+            ),
         ],
-        "search native fixture mismatch"
+        vaultGeneration: 7,
+        rotationJobId: "job-7"
     )
+    let result = try OpenBurnBarDomainCoreFFI.cloudVaultRewrapDocument(
+        request: request,
+        oldKey: oldKey,
+        newKey: newKey,
+        newVaultKeyId: newKeyID
+    )
+    require(result.changedFields == ["sealedPayload"], "rewrap changed-field mismatch")
+    require(result.companionUpdateIntents.map(\.companionFieldName) == ["vaultKeyID"], "rewrap companion intent mismatch")
+    require(result.vaultGenerationUpdate == 7, "rewrap generation intent mismatch")
+    require(result.rotationJobIdUpdate == "job-7", "rewrap job intent mismatch")
+    require(result.rewrappedEnvelopes.first?.vaultKeyId == newKeyID, "rewrap key id mismatch")
 } catch {
-    FileHandle.standardError.write(Data("domain-core smoke failed: search: \(error)\n".utf8))
+    FileHandle.standardError.write(Data("domain-core smoke failed: document rewrap: \(error)\n".utf8))
     exit(1)
 }
 

@@ -1039,7 +1039,7 @@ final class HermesRelayHostService {
         payload["ciphertext"] = try HermesRelayCrypto.sealToBase64(
             plaintext: Data(plaintext.utf8),
             keyData: context.keyData,
-            aad: HermesRelayCrypto.chunkAAD(
+            aad: try HermesRelayCrypto.chunkAAD(
                 uid: context.uid,
                 connectionID: context.connectionID,
                 requestID: context.requestID,

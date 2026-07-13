@@ -50,7 +50,11 @@ internal static class ClaudeStatuslineQuotaDomainCore
         if (!TryParseBuckets(json, out var rustBuckets))
         {
             Trace.TraceWarning("domain_core.claude_quota.native_unavailable mode={0}", mode);
-            return legacy();
+            if (mode == DomainCoreQuotaMigrationMode.Shadow)
+            {
+                return legacy();
+            }
+            throw new InvalidOperationException("Domain-core Claude quota is unavailable in explicit Rust mode.");
         }
 
         var rust = new ProviderQuotaSnapshot
@@ -96,7 +100,7 @@ internal static class ClaudeStatuslineQuotaDomainCore
         buckets = ProviderQuotaSnapshot.NoBuckets;
         try
         {
-            if (DomainCore.DomainCoreAbiVersion() != 2)
+            if (DomainCore.DomainCoreAbiVersion() != 3)
             {
                 return false;
             }

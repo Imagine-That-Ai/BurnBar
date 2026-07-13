@@ -204,7 +204,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
         let plaintext = try HermesRelayCrypto.openBase64(
             ciphertext: ciphertext,
             keyData: handle.keyData,
-            aad: HermesRelayCrypto.chunkAAD(
+            aad: try HermesRelayCrypto.chunkAAD(
                 uid: uid,
                 connectionID: handle.connectionID,
                 requestID: handle.requestID,
