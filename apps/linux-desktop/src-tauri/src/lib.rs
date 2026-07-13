@@ -2163,11 +2163,7 @@ fn take_next_deep_link_route(
     initial: &Mutex<Option<String>>,
     forwarded: &Mutex<Vec<String>>,
 ) -> Option<String> {
-    if let Some(route) = initial
-        .lock()
-        .ok()
-        .and_then(|mut route| route.take())
-    {
+    if let Some(route) = initial.lock().ok().and_then(|mut route| route.take()) {
         return Some(route);
     }
     forwarded
@@ -6389,9 +6385,18 @@ mod tests {
         let initial = Mutex::new(Some("overview".to_string()));
         let forwarded = Mutex::new(vec!["chat".to_string(), "settings".to_string()]);
 
-        assert_eq!(take_next_deep_link_route(&initial, &forwarded).as_deref(), Some("overview"));
-        assert_eq!(take_next_deep_link_route(&initial, &forwarded).as_deref(), Some("chat"));
-        assert_eq!(take_next_deep_link_route(&initial, &forwarded).as_deref(), Some("settings"));
+        assert_eq!(
+            take_next_deep_link_route(&initial, &forwarded).as_deref(),
+            Some("overview")
+        );
+        assert_eq!(
+            take_next_deep_link_route(&initial, &forwarded).as_deref(),
+            Some("chat")
+        );
+        assert_eq!(
+            take_next_deep_link_route(&initial, &forwarded).as_deref(),
+            Some("settings")
+        );
         assert_eq!(take_next_deep_link_route(&initial, &forwarded), None);
     }
 
