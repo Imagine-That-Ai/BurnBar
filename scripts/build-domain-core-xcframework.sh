@@ -19,12 +19,21 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CRATE_DIR="${ROOT_DIR}/crates/openburnbar-domain-core"
+TARGET_DIR="${CARGO_TARGET_DIR:-${CRATE_DIR}/target}"
 VENDOR_DIR="${ROOT_DIR}/Vendor"
 XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarDomainCore.xcframework"
 SWIFT_PKG_DIR="${ROOT_DIR}/OpenBurnBarCore/Sources/OpenBurnBarDomainCore"
 GENERATED_DIR="${SWIFT_PKG_DIR}/Generated"
 HEADERS_DIR="${ROOT_DIR}/build/domain-core-xcframework-headers"
 UNIFFI_HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-swift-helper"
+PROVENANCE_DIR="${CRATE_DIR}/artifact-provenance"
+FINGERPRINT_NAME="openburnbar-domain-core-source.sha256"
+SOURCE_FINGERPRINT="$(
+  python3 "${ROOT_DIR}/scripts/ci/domain-core-union-gate.py" --source-fingerprint
+)"
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1704067200}"
+export TZ=UTC
+REMAP_FLAGS="--remap-path-prefix=${ROOT_DIR}=. --remap-path-prefix=${HOME}=~"
 
 PROFILE="${DOMAIN_CORE_BUILD_PROFILE:-release}"
 PROFILE_FLAG=""
@@ -120,11 +129,13 @@ build_target() {
   log "cargo build ${PROFILE} ${target}"
   (
     cd "${CRATE_DIR}"
-    MACOSX_DEPLOYMENT_TARGET=14.0 \
-    IPHONEOS_DEPLOYMENT_TARGET=17.0 \
-    IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
+    # Deployment minimums belong to the consuming Xcode targets. Exporting
+    # Apple deployment variables here also affects Cargo's host-built proc
+    # macros and can make their dependencies unresolvable under pinned Rust.
+    RUSTFLAGS="${RUSTFLAGS:-} ${REMAP_FLAGS}" \
     PATH="${HOME}/.cargo/bin:${PATH}" \
-      "${CARGO_BIN}" build ${PROFILE_FLAG} --target "${target}"
+      "${CARGO_BIN}" build ${PROFILE_FLAG} --target "${target}" \
+        -p openburnbar-domain-ffi --lib
   )
 }
 
@@ -139,9 +150,9 @@ done
 # from the iroh-introspection point of view.
 log "generating swift bindings via pinned UniFFI helper"
 ensure_uniffi_bindgen_swift_helper
-HOST_DYLIB="${CRATE_DIR}/target/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_domain_ffi.dylib"
+HOST_DYLIB="${TARGET_DIR}/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_domain_ffi.dylib"
 if [[ ! -f "${HOST_DYLIB}" ]]; then
-  HOST_DYLIB="${CRATE_DIR}/target/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_domain_ffi.a"
+  HOST_DYLIB="${TARGET_DIR}/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_domain_ffi.a"
 fi
 rm -rf "${GENERATED_DIR}"
 mkdir -p "${GENERATED_DIR}"
@@ -158,6 +169,8 @@ if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
 fi
 find "${GENERATED_DIR}" -maxdepth 1 -type f -exec \
   perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' {} +
+mkdir -p "${PROVENANCE_DIR}"
+printf '%s\n' "${SOURCE_FINGERPRINT}" > "${PROVENANCE_DIR}/swift.sha256"
 
 # Tear down any prior xcframework so the recipe is hermetic.
 rm -rf "${XCFRAMEWORK}"
@@ -185,7 +198,7 @@ package_static_for_target() {
   esac
   local out_dir="${ARCHS_DIR}/${platform_id}"
   mkdir -p "${out_dir}/Headers"
-  cp "${CRATE_DIR}/target/${target}/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+  cp "${TARGET_DIR}/${target}/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
      "${out_dir}/libopenburnbar_domain_ffi.a"
   if compgen -G "${GENERATED_DIR}/*.h" >/dev/null; then
     cp "${GENERATED_DIR}/"*.h "${out_dir}/Headers/"
@@ -204,8 +217,8 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-darwin" \
   MAC_DIR="${ARCHS_DIR}/macos"
   mkdir -p "${MAC_DIR}/Headers"
   lipo -create \
-    "${CRATE_DIR}/target/aarch64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
-    "${CRATE_DIR}/target/x86_64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+    "${TARGET_DIR}/aarch64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+    "${TARGET_DIR}/x86_64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     -output "${MAC_DIR}/libopenburnbar_domain_ffi.a"
   cp "${GENERATED_DIR}/"*.h "${MAC_DIR}/Headers/"
   cp "${GENERATED_DIR}/"*.modulemap "${MAC_DIR}/Headers/module.modulemap"
@@ -224,8 +237,8 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-ios-sim" \
   SIM_DIR="${ARCHS_DIR}/ios-simulator"
   mkdir -p "${SIM_DIR}/Headers"
   lipo -create \
-    "${CRATE_DIR}/target/aarch64-apple-ios-sim/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
-    "${CRATE_DIR}/target/x86_64-apple-ios/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+    "${TARGET_DIR}/aarch64-apple-ios-sim/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+    "${TARGET_DIR}/x86_64-apple-ios/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     -output "${SIM_DIR}/libopenburnbar_domain_ffi.a"
   if compgen -G "${GENERATED_DIR}/*.h" >/dev/null; then
     cp "${GENERATED_DIR}/"*.h "${SIM_DIR}/Headers/"
@@ -252,6 +265,7 @@ log "assembling xcframework"
 xcodebuild -create-xcframework \
   "${build_xcframework_args[@]}" \
   -output "${XCFRAMEWORK}"
+printf '%s\n' "${SOURCE_FINGERPRINT}" > "${XCFRAMEWORK}/${FINGERPRINT_NAME}"
 
 log "DONE: ${XCFRAMEWORK}"
 log "swift bindings: ${GENERATED_DIR}"

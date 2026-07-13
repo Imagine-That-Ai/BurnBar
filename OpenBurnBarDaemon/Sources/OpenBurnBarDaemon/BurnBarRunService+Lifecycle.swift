@@ -250,7 +250,7 @@ extension BurnBarRunService {
             outputTokens: plan.outputTokens,
             cacheCreationTokens: plan.cacheCreationTokens,
             cacheReadTokens: plan.cacheReadTokens,
-            cost: run.route.pricing.cost(
+            cost: try run.route.pricing.cost(
                 inputTokens: plan.inputTokens,
                 outputTokens: plan.outputTokens,
                 cacheCreationTokens: plan.cacheCreationTokens,

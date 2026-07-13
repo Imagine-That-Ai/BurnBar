@@ -1204,7 +1204,7 @@ final class ModelPricingTests: XCTestCase {
 
     func test_cost_withAllZeros_returnsZero() throws {
         let pricing = ModelPricing.lookup(model: "test")
-        let cost = pricing.cost(inputTokens: 0, outputTokens: 0)
+        let cost = try pricing.cost(inputTokens: 0, outputTokens: 0)
 
         XCTAssertEqual(cost, 0)
     }
@@ -1212,7 +1212,7 @@ final class ModelPricingTests: XCTestCase {
     func test_cost_withInputTokensOnly() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
-        let cost = pricing.cost(inputTokens: 1_000_000, outputTokens: 0)
+        let cost = try pricing.cost(inputTokens: 1_000_000, outputTokens: 0)
 
         XCTAssertEqual(cost, 3.0, accuracy: 0.001)
     }
@@ -1220,7 +1220,7 @@ final class ModelPricingTests: XCTestCase {
     func test_cost_withOutputTokensOnly() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
-        let cost = pricing.cost(inputTokens: 0, outputTokens: 1_000_000)
+        let cost = try pricing.cost(inputTokens: 0, outputTokens: 1_000_000)
 
         XCTAssertEqual(cost, 15.0, accuracy: 0.001)
     }
@@ -1228,7 +1228,7 @@ final class ModelPricingTests: XCTestCase {
     func test_cost_withAllTokenTypes() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: 1_000_000,
             outputTokens: 500_000,
             cacheCreationTokens: 200_000,
@@ -1243,7 +1243,7 @@ final class ModelPricingTests: XCTestCase {
     func test_cost_withPartialTokens() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
-        let cost = pricing.cost(inputTokens: 500_000, outputTokens: 250_000)
+        let cost = try pricing.cost(inputTokens: 500_000, outputTokens: 250_000)
 
         // Input: 1.5, Output: 3.75
         XCTAssertEqual(cost, 5.25, accuracy: 0.001)
@@ -1252,7 +1252,7 @@ final class ModelPricingTests: XCTestCase {
     func test_cost_cacheCreationBilledAtInputRate() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: 0,
             outputTokens: 0,
             cacheCreationTokens: 1_000_000
@@ -1264,7 +1264,7 @@ final class ModelPricingTests: XCTestCase {
     func test_cost_cacheReadHasSeparateRate() throws {
         let pricing = ModelPricing(inputPerMToken: 3.0, outputPerMToken: 15.0, cacheReadPerMToken: 0.5)
 
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: 0,
             outputTokens: 0,
             cacheReadTokens: 1_000_000

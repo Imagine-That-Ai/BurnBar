@@ -469,12 +469,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let eventEnvelope = try HermesRatchetCrypto.encrypt(
             plaintext: eventPlaintext,
             state: &phoneState,
-            associatedData: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventID)
+            associatedData: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventID)
         )
         let openedEvent = try HermesRatchetCrypto.decrypt(
             eventEnvelope,
             state: &agentState,
-            associatedData: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventID)
+            associatedData: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventID)
         )
         let openedEventJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: openedEvent) as? [String: String])
         XCTAssertEqual(openedEventJSON["text"], "Run the ratchet transport test.")
@@ -488,12 +488,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let replyEnvelope = try HermesRatchetCrypto.encrypt(
             plaintext: replyPlaintext,
             state: &agentState,
-            associatedData: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageID)
+            associatedData: try HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageID)
         )
         let openedReply = try HermesRatchetCrypto.decrypt(
             replyEnvelope,
             state: &phoneState,
-            associatedData: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageID)
+            associatedData: try HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageID)
         )
         let openedReplyJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: openedReply) as? [String: String])
         XCTAssertEqual(openedReplyJSON["text"], "Ratchet transport replied without relay plaintext.")
@@ -633,12 +633,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: payloadJSON,
             keyData: key,
-            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+            aad: try HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             key,
             recipientPublicKeyBase64: phonePublicKey,
-            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            aad: try HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
             senderPrivateKey: agentRelayPriv
         )
 
@@ -690,12 +690,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: payloadJSON,
             keyData: key,
-            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+            aad: try HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             key,
             recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
-            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            aad: try HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
             senderPrivateKey: agentRelayPriv
         )
         let record = HermesGatewayMessageRecord(
@@ -738,12 +738,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: Data("not for this device".utf8),
             keyData: key,
-            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+            aad: try HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             key,
             recipientPublicKeyBase64: otherDevicePublicKey,
-            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            aad: try HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
             senderPrivateKey: agentRelayPriv
         )
 
@@ -910,7 +910,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let sealedBody = try HermesRelayCrypto.sealToBase64(
             plaintext: plaintext,
             keyData: bodyKey,
-            aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: try HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         )
         let manifestData = try JSONSerialization.data(withJSONObject: [
             "fileName": fileName,
@@ -921,12 +921,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let sealedManifest = try HermesRelayCrypto.sealToBase64(
             plaintext: manifestData,
             keyData: bodyKey,
-            aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: try HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             bodyKey,
             recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
-            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
+            aad: try HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
             senderPrivateKey: agentRelayPriv
         )
 
@@ -1431,13 +1431,13 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let agentSymmetricKey = try HermesRelayCrypto.unwrapSymmetricKey(
             sealedWrappedKey,
             privateKey: agentPrivate,
-            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: sealedEventId),
+            aad: try HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: sealedEventId),
             senderPublicKeyBase64: sealedSenderPub
         )
         let agentOpened = try HermesRelayCrypto.openBase64(
             ciphertext: sealedCiphertext,
             keyData: agentSymmetricKey,
-            aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: sealedEventId)
+            aad: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: sealedEventId)
         )
         let agentEvent = try XCTUnwrap(try JSONSerialization.jsonObject(with: agentOpened) as? [String: Any])
         XCTAssertEqual(agentEvent["text"] as? String, "hello hermes")
@@ -1567,13 +1567,13 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let symmetricKey = try HermesRelayCrypto.unwrapSymmetricKey(
             wrappedKey,
             privateKey: agentPrivate,
-            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
+            aad: try HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
             senderPublicKeyBase64: phoneGatewayPub
         )
         let openedData = try HermesRelayCrypto.openBase64(
             ciphertext: payloadCiphertext,
             keyData: symmetricKey,
-            aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId)
+            aad: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId)
         )
         let opened = try XCTUnwrap(try JSONSerialization.jsonObject(with: openedData) as? [String: Any])
         XCTAssertEqual(opened["modelId"] as? String, "anthropic/claude-opus")
@@ -1629,13 +1629,13 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let symmetricKey = try HermesRelayCrypto.unwrapSymmetricKey(
             wrappedKey,
             privateKey: agentPrivate,
-            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
+            aad: try HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
             senderPublicKeyBase64: phoneGatewayPub
         )
         let openedData = try HermesRelayCrypto.openBase64(
             ciphertext: payloadCiphertext,
             keyData: symmetricKey,
-            aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId)
+            aad: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId)
         )
         let opened = try XCTUnwrap(try JSONSerialization.jsonObject(with: openedData) as? [String: Any])
         XCTAssertEqual(opened["kind"] as? String, "approval_decision")
@@ -1688,13 +1688,13 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let symmetricKey = try HermesRelayCrypto.unwrapSymmetricKey(
             wrappedKey,
             privateKey: agentPrivate,
-            aad: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
+            aad: try HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
             senderPublicKeyBase64: phoneGatewayPub
         )
         let openedData = try HermesRelayCrypto.openBase64(
             ciphertext: payloadCiphertext,
             keyData: symmetricKey,
-            aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId)
+            aad: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId)
         )
         let opened = try XCTUnwrap(try JSONSerialization.jsonObject(with: openedData) as? [String: Any])
         XCTAssertEqual(opened["kind"] as? String, "oversight_mode")
@@ -1759,12 +1759,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: payloadJSON,
             keyData: key,
-            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+            aad: try HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             key,
             recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
-            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            aad: try HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
             senderPrivateKey: agentRelayPriv
         )
         let record = HermesGatewayMessageRecord(
@@ -1805,12 +1805,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: Data("secret".utf8),
             keyData: key,
-            aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
+            aad: try HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             key,
             recipientPublicKeyBase64: otherDevice,
-            aad: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            aad: try HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
             senderPrivateKey: agentRelayPriv
         )
         let record = HermesGatewayMessageRecord(
@@ -1991,7 +1991,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let sealedBodyBase64 = try HermesRelayCrypto.sealToBase64(
             plaintext: fileBytes,
             keyData: bodyKey,
-            aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: try HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         )
         // The adapter uploads the ASCII base64 of the sealed body as the blob.
         let downloadedBody = Data(sealedBodyBase64.utf8)
@@ -2001,12 +2001,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let manifestCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: manifestJSON,
             keyData: bodyKey,
-            aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: try HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             bodyKey,
             recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
-            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
+            aad: try HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
             senderPrivateKey: agentRelayPriv
         )
 
@@ -2052,7 +2052,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let manifestCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: manifestJSON,
             keyData: bodyKey,
-            aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: try HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         )
         let record = try XCTUnwrap(HermesGatewayAttachmentRecord(
             documentID: attachmentId,
@@ -2088,12 +2088,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let sealedBodyBase64 = try HermesRelayCrypto.sealToBase64(
             plaintext: Data("file".utf8),
             keyData: bodyKey,
-            aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: try HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             bodyKey,
             recipientPublicKeyBase64: phoneKeypair.relayPublicKeyBase64,
-            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
+            aad: try HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
             senderPrivateKey: agentRelayPriv
         )
         // Put the BODY ciphertext into the manifest (payloadCiphertext) slot.
@@ -2128,19 +2128,19 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let sealedBodyBase64 = try HermesRelayCrypto.sealToBase64(
             plaintext: Data("file".utf8),
             keyData: bodyKey,
-            aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: try HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         )
         let manifestCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: try JSONSerialization.data(withJSONObject: [
                 "fileName": "x.txt", "byteCount": 4, "destinationId": "burnbar:home"
             ]),
             keyData: bodyKey,
-            aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+            aad: try HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         )
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             bodyKey,
             recipientPublicKeyBase64: otherDevice,
-            aad: HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
+            aad: try HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId),
             senderPrivateKey: agentRelayPriv
         )
         let record = try XCTUnwrap(HermesGatewayAttachmentRecord(

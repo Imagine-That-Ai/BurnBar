@@ -1,0 +1,267 @@
+{
+  "schema": "openburnbar.domain-core.cloudvault.search.v1",
+  "primaryKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "alternateKeyHex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+  "tokenizationCases": [
+    {
+      "id": "ascii-case-punctuation-stopwords-duplicates",
+      "text": "The QUICK, quick fox and X.",
+      "normalizedTokens": ["quick", "quick", "fox"],
+      "exactPhraseTokens": ["quick", "quick", "fox", "x"]
+    },
+    {
+      "id": "unicode-letters-and-numbers",
+      "text": "CAFÉ naïve 東京 Straße １２３ X",
+      "normalizedTokens": ["café", "naïve", "東京", "straße", "１２３"],
+      "exactPhraseTokens": ["café", "naïve", "東京", "straße", "１２３", "x"]
+    },
+    {
+      "id": "supplementary-plane-character-count",
+      "text": "𐐀 𐐀𐐁",
+      "normalizedTokens": ["𐐨𐐩"],
+      "exactPhraseTokens": ["𐐨𐐩"]
+    },
+    {
+      "id": "stopwords-only",
+      "text": "the AND for with that this from how what where when why are was were you your have has had into onto can could should would",
+      "normalizedTokens": [],
+      "exactPhraseTokens": []
+    }
+  ],
+  "semanticFeatureCases": [
+    {
+      "id": "concepts-stems-prefixes-and-bigrams",
+      "text": "X ads API campaigns integrations credentials syncing stories",
+      "features": [
+        "concept:x-platform",
+        "concept:social-platform",
+        "concept:advertising",
+        "concept:api-integration",
+        "concept:authentication",
+        "concept:x-ads",
+        "concept:ads-api",
+        "concept:x-api",
+        "token:x",
+        "token:ads",
+        "token:api",
+        "token:campaigns",
+        "stem:campaign",
+        "prefix:campa",
+        "token:integrations",
+        "stem:integr",
+        "prefix:integ",
+        "token:credentials",
+        "stem:credential",
+        "prefix:crede",
+        "token:syncing",
+        "stem:sync",
+        "prefix:synci",
+        "token:stories",
+        "stem:story",
+        "prefix:stori",
+        "bigram:x_ads",
+        "bigram:ads_api",
+        "bigram:api_campaigns",
+        "bigram:campaigns_integrations",
+        "bigram:integrations_credentials",
+        "bigram:credentials_syncing",
+        "bigram:syncing_stories"
+      ]
+    },
+    {
+      "id": "unicode-character-prefix",
+      "text": "𐐨𐐩alpha syncing",
+      "features": [
+        "token:𐐨𐐩alpha",
+        "prefix:𐐨𐐩alp",
+        "token:syncing",
+        "stem:sync",
+        "prefix:synci",
+        "bigram:𐐨𐐩alpha_syncing"
+      ]
+    }
+  ],
+  "hashCases": [
+    {
+      "id": "token-deduplication",
+      "operation": "token",
+      "key": "primary",
+      "text": "The QUICK, quick fox and X.",
+      "limit": 250,
+      "expected": [
+        "e9110d7f0c79afdae6316235800dc41b",
+        "66e59fa04825dc74f5ef7cb57884d4ed"
+      ]
+    },
+    {
+      "id": "index-prefixes-and-phrases",
+      "operation": "index",
+      "key": "primary",
+      "text": "Deploying deploys X ads API",
+      "limit": 40,
+      "expected": [
+        "bef302f5d6b30d0f647b6613828ae3eb",
+        "033c5158543ca2d1893d60568bab3f9a",
+        "4bfd945bb269124cfa5f35d47767b103",
+        "a938fcb7e65a46076a6616014a1e962d",
+        "35c0ee5901657311a02bebb435768bb3",
+        "0fbb9c9226d586ccbb3a49235ed47847",
+        "bcb6bb845194d2ec5a3eb4d95a8983f1",
+        "5c223d47dec5a6423010168a60a6e1e1",
+        "cc0d461ed829b09f0176586a175631e1",
+        "0511cca9db774479a78cf59bb3ef479e",
+        "df35b69a0d2c7aff36495d78f41c634d",
+        "39f8b292896000ba66cb3a1d7c3e1ce6",
+        "609e54100c62ce09df3c7db878a5c793",
+        "e6595fbe4c877f61788dad75919bbc6a",
+        "5e547f79d9db83df558dcbf3c875d804",
+        "e0b2ea6bdb4772bf438485c28033b648",
+        "89a0e4b6ff07bd9f6d3b40f3eb1bdf44"
+      ]
+    },
+    {
+      "id": "query-prefixes-and-phrases",
+      "operation": "query",
+      "key": "primary",
+      "text": "Depl X ads",
+      "limit": 20,
+      "expected": [
+        "b63572c113cb9ddda6dacc5c240c390f",
+        "4bfd945bb269124cfa5f35d47767b103",
+        "0fbb9c9226d586ccbb3a49235ed47847",
+        "41e9eda9d01fef15d3b18d4bcd924f20",
+        "2845e8e8fadf0f00d2535626b33dcf48",
+        "100c03db24b6a39b078b8f987c56fc70",
+        "5e547f79d9db83df558dcbf3c875d804"
+      ]
+    },
+    {
+      "id": "semantic-concepts",
+      "operation": "semantic",
+      "key": "primary",
+      "text": "X ads API campaigns integrations credentials syncing stories",
+      "limit": 24,
+      "expected": [
+        "01e31b9fe005d092f78d0198ee793e52",
+        "1c8923502acc70d727a01e02e1661658",
+        "43d93f0a9681a228b4b47f9b17a72a1c",
+        "b007dc8924738be83988975fb6bc44a2",
+        "4ef5bcfe57895232d8935eca5d8359bf",
+        "ffb30016eb66ce4068fe449b737cc1b2",
+        "815b1e3eefadb2f7619e36e2b217dc75",
+        "00e5c9eddbb47da7c5b8e8b52f2060f8",
+        "db88a3f2bbb1ab1b2bbb4c979be86b22",
+        "c18051da4be66c4572413a6eca960068",
+        "954377c4d7058254970971defc51645f",
+        "95f55249a4dd8e3db6174014eae3a298",
+        "3cdb00e6103d4f992a771093bd16a85b",
+        "14730d440d2041664423133ddd438f52",
+        "210d2e3286d1d7689ea74f4b994c160e",
+        "662ea6e5ee547e533d3039632e291232",
+        "f46bab1d3a9ae1b4873b49f412b0e6a0",
+        "62f5df0095e5b9e9a49e18a75bae95d2",
+        "85e4aeafcf40a8baa9cd39c522015e8c",
+        "4c8901370289f447f677e59ccf5025fa",
+        "07123e556c26bc1404aa80a3057d1fc9",
+        "b6d73d4104bd89541cc314ca49f7ae2a",
+        "d7e76b4b2a0d82593fcc6bae517b276e",
+        "1d1e705ba3eb5fe5c90b146d17f95e9d"
+      ]
+    },
+    {
+      "id": "zero-limit",
+      "operation": "index",
+      "key": "primary",
+      "text": "bounded search",
+      "limit": 0,
+      "expected": []
+    },
+    {
+      "id": "negative-limit",
+      "operation": "token",
+      "key": "primary",
+      "text": "bounded search",
+      "limit": -1,
+      "expected": []
+    },
+    {
+      "id": "key-isolation-primary",
+      "isolationGroup": "vault-isolation",
+      "operation": "token",
+      "key": "primary",
+      "text": "vault isolation",
+      "limit": 10,
+      "expected": [
+        "036d74bea5b27eeb229f4d0e568a3f60",
+        "197b29ae439a587e88c4d9ab6e77211b"
+      ]
+    },
+    {
+      "id": "key-isolation-alternate",
+      "isolationGroup": "vault-isolation",
+      "operation": "token",
+      "key": "alternate",
+      "text": "vault isolation",
+      "limit": 10,
+      "expected": [
+        "5103b7cc2c4668fdc8e191cfd52e4e0c",
+        "2cce49a6e50b83e645ed803478579453"
+      ]
+    },
+    {
+      "id": "adversarial-token-bound",
+      "operation": "token",
+      "key": "primary",
+      "input": {"kind": "numberedTokens", "prefix": "token", "count": 2048},
+      "limit": 3,
+      "expected": [
+        "5ed06327ecf06119b25797ca9f106efc",
+        "f554cdb32b396e176034c2844f9f9cf0",
+        "f956d4d5f0b788a6de2c4c5ad629d3f7"
+      ]
+    },
+    {
+      "id": "adversarial-semantic-bound",
+      "operation": "semantic",
+      "key": "primary",
+      "input": {"kind": "numberedTokens", "prefix": "token", "count": 2048},
+      "limit": 12,
+      "expected": [
+        "56385a7d52f0fe046f540dafe62ecb23",
+        "161fb236ed2ddc1b4aac3aa63f60bf3e",
+        "0df6093262aeab34cf4067194e7d357c",
+        "7e0cc11e8446664ce66c6e296bf83591",
+        "a8fd48fcdbcc75ac3605488fbc938250",
+        "9c031f7cdcae9651c1c88d6e23162e69",
+        "3b8c932174fe3e3af8ef15db4dddaaca",
+        "bdd00d6d1164aad6d5efe6b6e26333c5",
+        "1bb50c33e52cd66c718fbd6d4f22a8bd",
+        "9546a03ed98af8e01754811320260955",
+        "df8c9eb7d8270b01f6c0247d8f0589a2",
+        "ca1452a32b74ed3d217ff6ef0bb8e4d4"
+      ]
+    }
+  ],
+  "resolvedLegacyDivergences": [
+    {
+      "platform": "kotlin",
+      "behavior": "ASCII-only tokenization split Unicode letters and numbers.",
+      "resolution": "Use Unicode letter/number boundaries, matching Swift CharacterSet.alphanumerics."
+    },
+    {
+      "platform": "kotlin",
+      "behavior": "Search indexing and queries omitted prefix and exact-phrase trapdoors.",
+      "resolution": "Add distinct index/query operations and route CloudVault session indexing/search through them."
+    },
+    {
+      "platform": "kotlin",
+      "behavior": "Semantic hashes omitted x, concept aliases, and compound concepts.",
+      "resolution": "Use exact-phrase tokens and the established Swift v1 semantic feature order."
+    },
+    {
+      "platform": "kotlin",
+      "behavior": "A negative token limit threw IllegalArgumentException.",
+      "resolution": "All operations return an empty result for limits less than or equal to zero."
+    }
+  ]
+}

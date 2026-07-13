@@ -5,6 +5,7 @@
   "type": "module",
   "sideEffects": false,
   "files": [
+    "openburnbar-domain-core-source.sha256",
     "openburnbar_domain_core.js",
     "openburnbar_domain_core.d.ts",
     "openburnbar_domain_core_bg.wasm",

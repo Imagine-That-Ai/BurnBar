@@ -962,6 +962,14 @@ public enum CloudVaultCrypto {
             .filter { $0.count >= 2 && searchStopwords.contains($0) == false }
     }
 
+    internal static func exactPhraseTokensForContract(from text: String) -> [String] {
+        exactPhraseTokens(from: text)
+    }
+
+    internal static func semanticFeatureNamesForContract(from text: String) -> [String] {
+        semanticFeatures(from: exactPhraseTokens(from: text)).map(\.name)
+    }
+
     public static func wrapVaultKey(_ keyData: Data, recipientPublicKey: Data) throws -> Data {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         guard let recipientKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: recipientPublicKey) else {

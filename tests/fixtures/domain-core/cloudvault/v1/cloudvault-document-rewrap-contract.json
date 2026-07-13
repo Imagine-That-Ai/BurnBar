@@ -65,10 +65,10 @@
         "vaultKeyId": "v1_3e441393404b2085e7a3090a47d377ab"
       }
     ],
-    "resealNonces": [
-      [33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33],
-      [34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34],
-      [35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35]
+    "resealNoncePlan": [
+      {"fieldName": "sealedDisplayLabel", "nonce": [33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33]},
+      {"fieldName": "sealedPayload", "nonce": [34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34]},
+      {"fieldName": "sealedSnapshot", "nonce": [35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35]}
     ],
     "rotationJobId": "job-7",
     "uid": "userA",
