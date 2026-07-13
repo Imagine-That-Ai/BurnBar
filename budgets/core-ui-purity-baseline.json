@@ -1,19 +1,7 @@
 {
   "note": "Files in OpenBurnBarCore/Sources/OpenBurnBarCore importing SwiftUI/AppKit. Shrink-only: entries may only be removed (audit 2026-06-30 finding #4, kernel extraction). Regenerate via scripts/debt/check-core-ui-purity-budget.sh --update.",
-  "total": 114,
+  "total": 109,
   "files": [
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/BrowserLaunchAdapter.swift",
-      "frameworks": [
-        "AppKit"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/ChromeProfileDiscovery.swift",
-      "frameworks": [
-        "AppKit"
-      ]
-    },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/Insights/Share/InsightShareCardRenderer.swift",
       "frameworks": [
@@ -36,18 +24,6 @@
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ThemePrimitives.swift",
       "frameworks": [
         "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherBrowserLaunchService.swift",
-      "frameworks": [
-        "AppKit"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherCLILAunchService.swift",
-      "frameworks": [
-        "AppKit"
       ]
     },
     {
@@ -353,12 +329,6 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionConsolePreviewHost.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionConsoleTypes.swift",
       "frameworks": [
         "SwiftUI"
       ]

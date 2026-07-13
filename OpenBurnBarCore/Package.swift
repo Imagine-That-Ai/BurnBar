@@ -434,18 +434,13 @@ let swiftCryptoNonAppleDependency: Target.Dependency = .product(
 #if os(Linux) || os(Windows)
 let openBurnBarCoreExcludes = [
     "Views",
-    "CLITerminalSessionSupervisor.swift",
-    "BrowserLaunchAdapter.swift",
-    "ChromeProfileDiscovery.swift",
-    // Firebase App Check debug-token env writer uses POSIX setenv (Windows CRT
-    // uses _putenv_s); App Check is not part of the Engine subset.
-    "AppCheckDebugTokenEnvironment.swift",
-    // MissionGroupContracts -> CloudVaultCrypto + MissionConsoleForecast (Views).
-    // BurnBarRunContracts/BurnBarEventContracts are Foundation-only and compile
-    // off-Apple (their BurnBarAgentLoopState dependency lives in the included
-    // OpenBurnBarAgentContracts.swift); the daemon run service and CLI consume
-    // them on Linux.
-    "Contracts/MissionGroupContracts.swift",
+    // P-15: CLITerminalSessionSupervisor.swift, BrowserLaunchAdapter.swift,
+    // ChromeProfileDiscovery.swift, AppCheckDebugTokenEnvironment.swift, and
+    // SwitcherBrowserLaunchService.swift moved to the Apple-only
+    // OpenBurnBarLaunchServices target (pruned WHOLE off-Apple like
+    // OpenBurnBarData), so their Core off-Apple exclude entries were removed here
+    // (they no longer live under Core; the launch/discovery services + the
+    // App Check debug-token env writer are Apple-only).
     // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
     // the prior partial set that left model files referencing excluded types.
@@ -474,8 +469,12 @@ let openBurnBarCoreExcludes = [
     // P-10: SharedModels/Insights + SharedModels/InsightVerdictWidgetSnapshot.swift
     // moved to the Apple-only OpenBurnBarInsights target, so their Core off-Apple
     // exclude entries were removed here too (they no longer live under Core).
-    "SharedModels/PensieveKnowledgeChunker.swift",
-    "SharedModels/PensieveVectorCloak.swift",
+    // P-14: PensieveKnowledgeChunker + PensieveVectorCloak moved to
+    // OpenBurnBarVectorKit. They reference `PlatformCrypto` (sha256/sha256Hex/
+    // hmacSHA256) from OpenBurnBarKernel, which is fully cross-platform (CryptoKit
+    // on Apple, swift-crypto off-Apple), so they compile off-Apple in VectorKit
+    // through the Kernel dep — no VectorKit off-Apple exclude and no unguarded
+    // CryptoKit. Their Core off-Apple exclude entries are therefore removed.
     "SharedModels/PixelClockSettingsModel.swift",
     "SharedModels/SmartHubDisplaySettingsModel.swift",
     "SharedModels/SwarmColorDriver.swift",
