@@ -249,6 +249,12 @@ unproven host behavior to certification:
   live Windows LSP host remain separate evidence gates, so this does not yet
   promote the full parser row to F2 completion. The inventory still uses bounded
   lexical fallback only when a parser is unavailable.
+- The project-code presentation layer now has a bounded shell-free JSON-RPC
+  language-server client. It performs initialize/open/document-symbol or
+  references/shutdown lifecycle exchange, correlates framed responses, confines
+  returned paths, and emits `exact_lsp` evidence only for the current source
+  blob. The configured production language-server inventory and per-language
+  host coverage remain external deployment/evidence gates.
 - Native Swift engine staging now requires the SwiftPM
   `OpenBurnBarCore_OpenBurnBarCore.resources` bundle, copies it beside the C ABI
   DLL into every RID's publish output, and records SHA-256/size entries for its

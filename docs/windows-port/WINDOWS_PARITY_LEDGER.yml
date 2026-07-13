@@ -478,10 +478,13 @@ rows:
   status: Real
   evidence:
   - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
+  - docs/windows-port/evidence/f2/live-lsp-parser-client.md
   tests:
   - windows/tests/presentation/Projects/ProjectCodeLexicalScannerTests.cs
+  - windows/tests/presentation/Projects/LanguageServerProjectCodeParserClientTests.cs
   blocking_paths:
   - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeLexicalScanner.cs
+  - windows/app/OpenBurnBar.App.Presentation/Projects/LanguageServerProjectCodeParserClient.cs
   owner_lane: wave-0-architecture
   notes: Tree-sitter inventory and symbol-range extraction Real; live LSP host evidence remains separate.
 - id: f2-project-code-memory-store
@@ -493,6 +496,7 @@ rows:
   evidence:
   - docs/windows-port/evidence/f2/project-code-memory-store.md
   - docs/windows-port/evidence/f2/openai-embedding-provider.md
+  - docs/windows-port/evidence/f2/live-lsp-parser-client.md
   tests:
   - windows/tests/presentation/Projects/ProjectCodeMemoryServiceTests.cs
   - windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests
