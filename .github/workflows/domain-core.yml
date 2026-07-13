@@ -11,6 +11,7 @@ on:
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
       - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
       - "windows/tests/quota/**"
@@ -31,6 +32,12 @@ on:
       - "scripts/build-domain-core-xcframework.sh"
       - "scripts/build-domain-core-android-aar.sh"
       - "scripts/build-domain-core-wasm.sh"
+      - "scripts/ci/evaluate-domain-core-promotion.mjs"
+      - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
+      - "scripts/lib/domain-core-promotion-evidence.mjs"
+      - "config/domain-core-promotion-policy.json"
+      - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
+      - "docs/runbooks/shared-rust-promotion-evidence.md"
       - ".github/workflows/domain-core.yml"
   pull_request:
     paths:
@@ -38,6 +45,7 @@ on:
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
       - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
       - "windows/tests/quota/**"
@@ -58,6 +66,12 @@ on:
       - "scripts/build-domain-core-xcframework.sh"
       - "scripts/build-domain-core-android-aar.sh"
       - "scripts/build-domain-core-wasm.sh"
+      - "scripts/ci/evaluate-domain-core-promotion.mjs"
+      - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
+      - "scripts/lib/domain-core-promotion-evidence.mjs"
+      - "config/domain-core-promotion-policy.json"
+      - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
+      - "docs/runbooks/shared-rust-promotion-evidence.md"
       - ".github/workflows/domain-core.yml"
   workflow_dispatch:
 
@@ -66,6 +80,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  promotion-evidence-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test fail-closed promotion evidence evaluation
+        run: node --test scripts/ci/evaluate-domain-core-promotion.test.mjs
+
   rust-and-csharp:
     runs-on: ubuntu-latest
     timeout-minutes: 30
