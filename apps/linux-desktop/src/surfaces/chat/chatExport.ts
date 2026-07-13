@@ -1,5 +1,6 @@
 import type { ChatMessage, ChatMessageRole } from '../../state/chatStore.js';
 import type {
+  ChatAttachmentUploadResult,
   ChatMessageCursor,
   ChatThreadGetResult,
   ChatThreadSummary,
@@ -25,7 +26,14 @@ type ExportMessage = {
   role: Extract<ChatMessageRole, 'user' | 'assistant' | 'system'>;
   content: string;
   timestamp?: string;
+  attachments?: ExportAttachment[];
 };
+
+/** Durable attachment metadata only. Raw bytes and filesystem paths never enter an export. */
+export type ExportAttachment = Pick<
+  ChatAttachmentUploadResult,
+  'attachmentId' | 'fileName' | 'mimeType' | 'byteSize' | 'sha256'
+>;
 
 export type ChatExportDocument = {
   version: 1;
@@ -42,6 +50,42 @@ function isExportableRole(role: ChatMessageRole): role is ExportMessage['role'] 
   return PERSISTED_ROLES.has(role);
 }
 
+function exportAttachmentMetadata(
+  attachments: readonly ChatAttachmentUploadResult[] | undefined
+): ExportAttachment[] | undefined {
+  if (!attachments?.length) return undefined;
+  return attachments.map((attachment, index) => {
+    const attachmentID = attachment.attachmentId.trim();
+    const fileName = attachment.fileName.trim();
+    const mimeType = attachment.mimeType.trim().toLowerCase();
+    if (
+      !/^[A-Za-z0-9_-]{1,128}$/.test(attachmentID) ||
+      !fileName ||
+      fileName.length > 240 ||
+      fileName === '.' ||
+      fileName === '..' ||
+      fileName.includes('/') ||
+      fileName.includes('\\') ||
+      /[\u0000-\u001f\u007f]/.test(fileName) ||
+      !mimeType ||
+      mimeType.length > 128 ||
+      !Number.isSafeInteger(attachment.byteSize) ||
+      attachment.byteSize < 1 ||
+      attachment.byteSize > 10 * 1024 * 1024 ||
+      !/^[0-9a-f]{64}$/i.test(attachment.sha256)
+    ) {
+      throw new Error(`Chat export attachment metadata is invalid at index ${index}.`);
+    }
+    return {
+      attachmentId: attachmentID,
+      fileName,
+      mimeType,
+      byteSize: attachment.byteSize,
+      sha256: attachment.sha256.toLowerCase()
+    };
+  });
+}
+
 /** Keep only durable transcript fields; never serialize provider/tool/citation/gateway state. */
 export function persistedMessagesForExport(threadID: string, messages: ChatMessage[]): ExportMessage[] {
   return messages.flatMap((message) => {
@@ -52,11 +96,13 @@ export function persistedMessagesForExport(threadID: string, messages: ChatMessa
     ) {
       return [];
     }
+    const attachmentMetadata = exportAttachmentMetadata(message.attachments);
     return [{
       id: message.id,
       role: message.role,
       content: message.text,
-      ...(message.timestamp ? { timestamp: message.timestamp } : {})
+      ...(message.timestamp ? { timestamp: message.timestamp } : {}),
+      ...(attachmentMetadata ? { attachments: attachmentMetadata } : {})
     }];
   });
 }
@@ -105,6 +151,11 @@ function markdownContent(content: string): string {
   return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
 }
 
+function markdownAttachment(attachment: ExportAttachment): string {
+  const sizeKB = (attachment.byteSize / 1024).toFixed(1);
+  return `- ${attachment.fileName} (${attachment.mimeType}, ${sizeKB} KB, sha256 ${attachment.sha256})`;
+}
+
 export function serializeChatExport(document: ChatExportDocument, format: ChatExportFormat): string {
   if (format === 'json') {
     return `${JSON.stringify(document, null, 2)}\n`;
@@ -115,6 +166,9 @@ export function serializeChatExport(document: ChatExportDocument, format: ChatEx
     lines.push(`## ${markdownRole(message.role)}`);
     if (message.timestamp) lines.push(`_${message.timestamp}_`, '');
     lines.push(markdownContent(message.content), '');
+    if (message.attachments?.length) {
+      lines.push('Attachments:', ...message.attachments.map(markdownAttachment), '');
+    }
   }
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }

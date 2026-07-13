@@ -133,6 +133,50 @@ describe('chat export', () => {
     expect(markdown.endsWith('\n')).toBe(true);
   });
 
+  it('preserves safe attachment metadata in JSON and Markdown exports', () => {
+    const attachment = {
+      attachmentId: 'attachment-pdf-1',
+      fileName: 'brief.pdf',
+      mimeType: 'application/pdf',
+      byteSize: 2048,
+      sha256: 'A'.repeat(64)
+    };
+    const document = buildChatExportDocument(thread, [{
+      id: 'user-with-attachment',
+      threadID: thread.id,
+      role: 'user',
+      text: 'Review the brief.',
+      timestamp: '2026-07-10T12:00:00Z',
+      attachments: [attachment]
+    }]);
+
+    expect(document.messages[0]?.attachments).toEqual([{
+      ...attachment,
+      sha256: 'a'.repeat(64)
+    }]);
+    const markdown = serializeChatExport(document, 'markdown');
+    expect(markdown).toContain('Attachments:');
+    expect(markdown).toContain('brief.pdf (application/pdf, 2.0 KB, sha256 ' + 'a'.repeat(64) + ')');
+    expect(markdown).not.toContain('contentBase64');
+    expect(markdown).not.toContain('workspacePath');
+  });
+
+  it('fails closed for malformed attachment metadata instead of exporting a misleading row', () => {
+    expect(() => buildChatExportDocument(thread, [{
+      id: 'user-with-invalid-attachment',
+      threadID: thread.id,
+      role: 'user',
+      text: 'Do not export this as complete.',
+      attachments: [{
+        attachmentId: 'bad/id',
+        fileName: 'brief.pdf',
+        mimeType: 'application/pdf',
+        byteSize: 2,
+        sha256: 'b'.repeat(64)
+      }]
+    }])).toThrow(/attachment metadata is invalid/i);
+  });
+
   it('sanitizes export filenames and chooses the correct extension', () => {
     expect(sanitizeChatExportFilename('Quarterly / spend: audit', '../../thread', 'markdown')).toBe(
       'openburnbar-chat-Quarterly-spend-audit.md'
