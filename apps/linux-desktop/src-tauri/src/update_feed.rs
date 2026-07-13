@@ -292,17 +292,17 @@ fn build_update_instructions(
         "apt" => LinuxUpdateAction {
             id: "install".into(),
             label: "Update with apt".into(),
-            instruction: "Review the signed artifact, then let apt replace the installed package.".into(),
-            command: Some("sudo apt-get install --only-upgrade open-burn-bar".into()),
-            available: true,
+            instruction: "A signed direct-download artifact is available, but no apt repository channel is configured; install that artifact manually after verifying its digest.".into(),
+            command: None,
+            available: false,
             requires_confirmation: true,
         },
         "dnf" => LinuxUpdateAction {
             id: "install".into(),
             label: "Update with dnf".into(),
-            instruction: "Review the signed artifact, then let dnf replace the installed package.".into(),
-            command: Some("sudo dnf upgrade --refresh open-burn-bar".into()),
-            available: true,
+            instruction: "A signed direct-download artifact is available, but no dnf repository channel is configured; install that artifact manually after verifying its digest.".into(),
+            command: None,
+            available: false,
             requires_confirmation: true,
         },
         "appimage" => LinuxUpdateAction {
@@ -363,10 +363,16 @@ fn build_update_instructions(
     let restart = LinuxUpdateAction {
         id: "restart".into(),
         label: "Restart OpenBurnBar".into(),
-        instruction:
-            "Quit OpenBurnBar from the tray, let the package manager finish, then launch it again."
-                .into(),
-        command: Some("systemctl --user restart openburnbar-daemon.service".into()),
+        instruction: if channel == "appimage" || channel == "unknown" {
+            "Quit OpenBurnBar from the tray, replace or restore the signed artifact, then launch it again.".into()
+        } else {
+            "Quit OpenBurnBar from the tray, let the package manager finish, then launch it again.".into()
+        },
+        command: if channel == "appimage" || channel == "unknown" {
+            None
+        } else {
+            Some("systemctl --user restart openburnbar-daemon.service".into())
+        },
         available: true,
         requires_confirmation: false,
     };
@@ -739,10 +745,8 @@ mod tests {
     fn package_actions_are_channel_native_and_fail_closed_for_unknown_channels() {
         let deb = build_update_instructions("deb", "1.0.0", Some("1.1.0"));
         assert_eq!(deb.package_manager, "apt");
-        assert_eq!(
-            deb.install.command.as_deref(),
-            Some("sudo apt-get install --only-upgrade open-burn-bar")
-        );
+        assert!(deb.install.command.is_none());
+        assert!(!deb.install.available);
         assert_eq!(
             deb.rollback.command.as_deref(),
             Some("sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION")
@@ -761,10 +765,8 @@ mod tests {
         );
         let instructions = status.instructions.expect("recovery instructions");
         assert_eq!(instructions.package_manager, "dnf");
-        assert_eq!(
-            instructions.install.command.as_deref(),
-            Some("sudo dnf upgrade --refresh open-burn-bar")
-        );
+        assert!(instructions.install.command.is_none());
+        assert!(!instructions.install.available);
         assert!(status.latest_version.is_none());
     }
 
