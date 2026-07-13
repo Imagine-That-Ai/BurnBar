@@ -716,6 +716,7 @@ body.reduced-motion .chat-tool-card.is-running {
 
 .chat-tool-card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
   margin-top: 0.55rem;
 }
@@ -754,6 +755,31 @@ body.reduced-motion .chat-tool-card.is-running {
   color: var(--chat-text-secondary);
 }
 
+.chat-tool-card.is-error {
+  border-color: color-mix(in srgb, #f45b69 50%, transparent);
+}
+
+.chat-tool-card-approval-error,
+.chat-tool-card-approval-status {
+  margin-top: 0.55rem;
+  color: var(--chat-text-secondary);
+  font-size: var(--chat-tiny);
+  line-height: 1.4;
+}
+
+.chat-tool-card-approval-error p,
+.chat-tool-card-approval-status {
+  margin: 0;
+}
+
+.chat-tool-card-approval-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  color: #ffadb4;
+}
+
 /* Citations — aureate capsules */
 .chat-memory-citations {
   display: flex;
@@ -771,6 +797,25 @@ body.reduced-motion .chat-tool-card.is-running {
   font-size: var(--chat-tiny);
   color: var(--chat-aureate);
   background: color-mix(in srgb, var(--chat-aureate) 10%, transparent);
+  cursor: pointer;
+  font: inherit;
+}
+
+.chat-memory-citation:hover {
+  background: color-mix(in srgb, var(--chat-aureate) 18%, transparent);
+}
+
+.chat-memory-citation:focus-visible,
+.chat-tool-card-actions button:focus-visible,
+.chat-tool-card-approval-error button:focus-visible {
+  outline: 2px solid var(--chat-aureate);
+  outline-offset: 2px;
+}
+
+.chat-memory-citation.is-unavailable {
+  color: var(--chat-text-secondary);
+  border-color: color-mix(in srgb, var(--chat-text-muted) 35%, transparent);
+  background: color-mix(in srgb, var(--chat-text-muted) 8%, transparent);
   cursor: default;
 }
 

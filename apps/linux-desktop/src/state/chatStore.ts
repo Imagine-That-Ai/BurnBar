@@ -14,6 +14,7 @@ import type {
 } from '../tauriBridge.js';
 import type {
   ChatBackendId,
+  ChatApprovalDecision,
   ChatToolApprovalCapability,
   ChatWarningBanner,
   MemoryCitation
@@ -39,7 +40,7 @@ export type ChatMessage = {
   timestamp?: string;
   toolName?: string;
   toolArgsSummary?: string;
-  toolState?: 'proposed' | 'approved' | 'denied' | 'done' | 'running';
+  toolState?: 'proposed' | 'approved' | 'denied' | 'cancelled' | 'error' | 'done' | 'running';
   toolApproval?: ChatToolApprovalCapability;
   viaHermes?: boolean;
   /** Indexed/live session provider id when known (codex, claude-code, hermes, …). */
@@ -86,6 +87,8 @@ export type ChatState = {
   startNewChat(): void;
   sendToThread(input: { threadID?: string; backend: ChatBackendId; text: string }): Promise<void>;
   sendMessage(text: string): Promise<void>;
+  respondToToolApproval(messageID: string, decision: ChatApprovalDecision): Promise<void>;
+  retryToolApproval(messageID: string): Promise<void>;
   stopStreaming(): void;
 };
 
@@ -321,6 +324,34 @@ function summarizeToolArgs(args: string): string {
   return trimmed.slice(0, 160);
 }
 
+const approvalRequestsInFlight = new Map<string, Promise<void>>();
+
+function approvalErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const trimmed = raw.trim();
+  if (!trimmed) return 'The daemon did not resolve this approval.';
+  return trimmed.slice(0, 320);
+}
+
+function approvalStateFor(
+  approvalID: string | undefined,
+  message: ChatMessage
+): ChatToolApprovalCapability | undefined {
+  if (!approvalID) return message.toolApproval;
+  if (
+    message.toolApproval &&
+    message.toolApproval.state !== 'unavailable' &&
+    message.toolApproval.approvalID === approvalID
+  ) {
+    return message.toolApproval;
+  }
+  return {
+    state: 'pending',
+    source: 'daemon-run',
+    approvalID
+  };
+}
+
 export function applyChatStreamEvent(messages: ChatMessage[], assistantId: string, event: GatewayChatStreamEvent): ChatMessage[] {
   switch (event.type) {
     case 'delta':
@@ -337,6 +368,7 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
         }
       ];
     case 'tool_call':
+      const approvalID = event.toolCall.approvalID?.trim() || undefined;
       if (messages.some((message) => message.id === event.toolCall.id && message.role === 'tool')) {
         return messages.map((message) =>
           message.id === event.toolCall.id
@@ -345,12 +377,13 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
                 text: summarizeToolArgs(event.toolCall.arguments),
                 toolName: event.toolCall.name,
                 toolArgsSummary: summarizeToolArgs(event.toolCall.arguments),
-                toolApproval: {
-                  state: 'unavailable',
-                  source: 'gateway',
-                  reason: 'gateway-tool-call-missing-run-approval-identity',
-                  fallbackRoute: 'missions'
-                }
+                toolApproval:
+                  approvalStateFor(approvalID, message) ?? {
+                    state: 'unavailable',
+                    source: 'gateway',
+                    reason: 'gateway-tool-call-missing-run-approval-identity',
+                    fallbackRoute: 'missions'
+                  }
               }
             : message
         );
@@ -364,12 +397,14 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
           toolName: event.toolCall.name,
           toolArgsSummary: summarizeToolArgs(event.toolCall.arguments),
           toolState: 'proposed',
-          toolApproval: {
-            state: 'unavailable',
-            source: 'gateway',
-            reason: 'gateway-tool-call-missing-run-approval-identity',
-            fallbackRoute: 'missions'
-          }
+          toolApproval: approvalID
+            ? { state: 'pending', source: 'daemon-run', approvalID }
+            : {
+                state: 'unavailable',
+                source: 'gateway',
+                reason: 'gateway-tool-call-missing-run-approval-identity',
+                fallbackRoute: 'missions'
+              }
         }
       ];
     case 'usage':
@@ -886,6 +921,112 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       backend: get().backend,
       text
     });
+  },
+
+  async respondToToolApproval(messageID, decision) {
+    const existing = approvalRequestsInFlight.get(messageID);
+    if (existing) return existing;
+
+    const current = get().messages.find((message) => message.id === messageID);
+    const approval = current?.toolApproval;
+    if (!current || current.role !== 'tool' || !approval || approval.state === 'unavailable') return;
+    if (approval.state === 'approved' || approval.state === 'rejected' || approval.state === 'cancelled') return;
+    if (!('approvalID' in approval) || !approval.approvalID.trim()) return;
+
+    const bridge = useShellStore.getState().bridge;
+    if (!bridge?.toolApprovalRespond) {
+      set((state) => ({
+        messages: state.messages.map((message) =>
+          message.id === messageID && message.toolApproval && 'approvalID' in message.toolApproval
+            ? {
+                ...message,
+                toolState: 'error',
+                toolApproval: {
+                  ...message.toolApproval,
+                  state: 'error',
+                  lastDecision: decision,
+                  error: 'Linux daemon approval service is unavailable. Reconnect and retry.'
+                }
+              }
+            : message
+        )
+      }));
+      return;
+    }
+
+    const approvalID = approval.approvalID;
+    set((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === messageID && message.toolApproval && 'approvalID' in message.toolApproval
+          ? {
+              ...message,
+              toolApproval: {
+                ...message.toolApproval,
+                state: 'submitting',
+                lastDecision: decision,
+                error: undefined
+              }
+            }
+          : message
+      )
+    }));
+
+    const request = (async () => {
+      try {
+        await bridge.toolApprovalRespond!(approvalID, decision);
+        const terminalState = decision === 'approve' ? 'approved' : decision === 'reject' ? 'rejected' : 'cancelled';
+        set((state) => ({
+          messages: state.messages.map((message) =>
+            message.id === messageID &&
+            message.toolApproval &&
+            'approvalID' in message.toolApproval &&
+            message.toolApproval.approvalID === approvalID
+              ? {
+                  ...message,
+                  toolState: terminalState === 'approved' ? 'approved' : terminalState === 'rejected' ? 'denied' : 'cancelled',
+                  toolApproval: {
+                    ...message.toolApproval,
+                    state: terminalState,
+                    lastDecision: decision,
+                    error: undefined
+                  }
+                }
+              : message
+          )
+        }));
+      } catch (error) {
+        set((state) => ({
+          messages: state.messages.map((message) =>
+            message.id === messageID &&
+            message.toolApproval &&
+            'approvalID' in message.toolApproval &&
+            message.toolApproval.approvalID === approvalID
+              ? {
+                  ...message,
+                  toolState: 'error',
+                  toolApproval: {
+                    ...message.toolApproval,
+                    state: 'error',
+                    lastDecision: decision,
+                    error: approvalErrorMessage(error)
+                  }
+                }
+              : message
+          )
+        }));
+      } finally {
+        approvalRequestsInFlight.delete(messageID);
+      }
+    })();
+    approvalRequestsInFlight.set(messageID, request);
+    return request;
+  },
+
+  async retryToolApproval(messageID) {
+    const message = get().messages.find((candidate) => candidate.id === messageID);
+    const approval = message?.toolApproval;
+    if (!approval || approval.state !== 'error' || !('lastDecision' in approval) || !approval.lastDecision) return;
+    await get().respondToToolApproval(messageID, approval.lastDecision);
   },
 
   stopStreaming() {
