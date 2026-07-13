@@ -32,6 +32,10 @@ export function cloudVaultDomainCoreMode(): CloudVaultDomainCoreMode {
   return configuredMode();
 }
 
+export function isCloudVaultDomainCoreInitialized(): boolean {
+  return initialized;
+}
+
 async function ensureInitialized(input?: InitInput): Promise<void> {
   if (initialized) return;
   initialization ??= initDomainCore(input).then(() => {

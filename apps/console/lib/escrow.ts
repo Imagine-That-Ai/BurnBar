@@ -24,6 +24,7 @@ import {
   applyCloudVaultDomainCoreSync,
   cloudVaultDomainCoreMode,
   domainCoreCloudVault,
+  isCloudVaultDomainCoreInitialized,
   prepareCloudVaultDomainCore,
 } from "./domainCoreCloudVault";
 
@@ -141,6 +142,12 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
+  // Sync callers (notably escrow approval UI) can run before the async Wasm
+  // bootstrap. Keep this pure helper on the equivalent legacy path until the
+  // native module is ready instead of failing a rust-mode rollout.
+  if (cloudVaultDomainCoreMode() === "rust" && !isCloudVaultDomainCoreInitialized()) {
+    return legacyBytesToBase64(bytes);
+  }
   return applyCloudVaultDomainCoreSync(
     "base64_encode",
     () => legacyBytesToBase64(bytes),
@@ -149,6 +156,9 @@ export function bytesToBase64(bytes: Uint8Array): string {
 }
 
 export function base64ToBytes(b64: string): Uint8Array {
+  if (cloudVaultDomainCoreMode() === "rust" && !isCloudVaultDomainCoreInitialized()) {
+    return legacyBase64ToBytes(b64);
+  }
   return applyCloudVaultDomainCoreSync(
     "base64_decode",
     () => legacyBase64ToBytes(b64),
@@ -227,7 +237,7 @@ async function sealAesGcmCombined(
   };
   if (!rawKey) return legacy();
   const validatedKey = vaultKeyBytes(rawKey);
-  if (cloudVaultDomainCoreMode() !== "legacy") {
+  if (cloudVaultDomainCoreMode() !== "legacy" && isCloudVaultDomainCoreInitialized()) {
     await verifyBrowserKeyAssociation(key, validatedKey);
   }
   return applyCloudVaultDomainCore(
@@ -258,7 +268,7 @@ async function openAesGcmCombined(
     );
   if (!rawKey) return legacy();
   const validatedKey = vaultKeyBytes(rawKey);
-  if (cloudVaultDomainCoreMode() !== "legacy") {
+  if (cloudVaultDomainCoreMode() !== "legacy" && isCloudVaultDomainCoreInitialized()) {
     await verifyBrowserKeyAssociation(key, validatedKey);
   }
   return applyCloudVaultDomainCore(
@@ -344,12 +354,16 @@ function legacyCloudVaultAADContext(context: CloudVaultAADContext): string {
 }
 
 function rustCloudVaultAADContext(context: CloudVaultAADContext): string {
+  const schemaVersion = context.schemaVersion ?? 2;
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 2) {
+    throw new EscrowError("invalid_envelope", "Invalid CloudVault AAD schema version.");
+  }
   return domainCoreCloudVault.aadV2(
     context.uid,
     context.collection,
     context.docID,
     context.field,
-    context.schemaVersion ?? 2,
+    schemaVersion,
     context.purpose,
   );
 }
@@ -645,12 +659,17 @@ export async function unwrapVaultKeyBytes(
   wrapped: Uint8Array,
   devicePrivateKey: CryptoKey,
 ): Promise<Uint8Array> {
-  const parts = await applyCloudVaultDomainCore(
-    "escrow_split_wire",
-    () => legacySplitEscrowWire(wrapped),
-    () => domainCoreCloudVault.escrowSplitWire(wrapped),
-    equalEscrowWireParts,
-  );
+  let parts: { ephemeralPublicKey: Uint8Array; aesGcmCombined: Uint8Array };
+  try {
+    parts = await applyCloudVaultDomainCore(
+      "escrow_split_wire",
+      () => legacySplitEscrowWire(wrapped),
+      () => domainCoreCloudVault.escrowSplitWire(wrapped),
+      equalEscrowWireParts,
+    );
+  } catch {
+    throw new EscrowError("invalid_envelope", "Invalid wrapped vault-key envelope.");
+  }
   const peer = await importPeerPublicX963(parts.ephemeralPublicKey);
   const shared = await deriveSharedSecret(devicePrivateKey, peer);
   const sharedBytes = new Uint8Array(shared);
