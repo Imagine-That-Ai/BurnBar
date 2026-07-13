@@ -5,7 +5,7 @@ Windows TFM, zero P/Invoke, zero UI framework — the SAME managed assembly the 
 is unit-tested on the macOS authoring host today (`dotnet test`). Mirrors the
 proven `OpenBurnBar.App.TextExpansion` / `OpenBurnBar.App.Settings` portable-core pattern.
 
-Tests: `windows/tests/memory-search/` (net10.0 xUnit, 147 tests).
+Tests: `windows/tests/memory-search/` (net10.0 xUnit, 157 tests).
 
 ## What is ported (deterministic, faithful to the Swift oracles)
 
@@ -30,17 +30,17 @@ Tests: `windows/tests/memory-search/` (net10.0 xUnit, 147 tests).
 | `MemoryExtractionParser.cs` | `Memory/MemoryExtractionParser.swift` | clean-JSON-first + brace-slice fallback, field-level leniency, kind fallback, confidence clamp |
 | `MemoryExtractionSettingsSnapshot.cs` | `Memory/MemoryExtractionSettingsSnapshot.swift` | local-first provider filter + clamp derivations |
 | `MemoryExtractionDeadline.cs` | `Memory/MemoryExtractionDeadline.swift` | the throwing wall-clock deadline race |
-| `MemoryExtractionLlmClient.cs` | `Memory/MemoryExtractionLLMClient.swift` | the injectable LLM boundary (seam only) |
+| `MemoryExtractionLlmClient.cs` | `Memory/MemoryExtractionLLMClient.swift` | bounded OpenAI-compatible/Ollama transport seam |
 | `MemorySecretPIIGate*.cs` | `OpenBurnBarCore/.../Memory/MemorySecretPIIGate.swift` | the fail-closed secret/PII gate over the committed corpus (linked, single source of truth) |
 
 ## The injectable seams
 
-The OpenAI embedding network call is implemented behind a fakeable `HttpClient` boundary;
-memory-extraction LLM transport remains an injected seam. Everything here rides fakeable seams:
+The OpenAI embedding and memory-extraction network calls are implemented behind fakeable
+`HttpClient` boundaries. Everything here rides fakeable seams:
 
 - `IEmbeddingProvider` (chunk + query) — text → `float[]`; deterministic fallback and bounded OpenAI provider ship here.
 - `ICrossEncoderCompletionClient` — (system, user) → completion text; fake returns canned JSON.
-- `IMemoryExtractionLlmClient` — OpenAI-compatible / Ollama completion; interface only here.
+- `IMemoryExtractionLlmClient` — OpenAI-compatible / Ollama completion; bounded HTTP implementation ships here.
 - `Func<DateTimeOffset>` clock for recency; `Stopwatch` for latency.
 - `MemoryGateCorpus` is injectable so the fail-closed and custom-corpus branches are testable.
 

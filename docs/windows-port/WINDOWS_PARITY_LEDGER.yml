@@ -88,8 +88,10 @@ rows:
   status: Real
   evidence:
   - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  - docs/windows-port/evidence/f2/memory-extraction-http-client.md
   tests:
   - windows/tests/presentation
+  - windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests
   blocking_paths:
   - windows/app/OpenBurnBar.App.Presentation/SessionLogs/SessionLogEmptySource.cs
   - windows/app/OpenBurnBar.App.Presentation/SessionLogs/StorageSessionLogReadSource.cs

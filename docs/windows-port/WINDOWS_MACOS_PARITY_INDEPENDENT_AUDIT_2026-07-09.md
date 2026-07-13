@@ -214,6 +214,12 @@ unproven host behavior to certification:
   HTTP client. The deterministic provider remains the offline project-code
   fallback; protected-secret/settings selection and NaturalLanguage/BGE quality
   remain separate composition/evidence gates.
+- The memory-extraction network seam now has a bounded OpenAI-compatible and
+  Ollama HTTP implementation. It preserves the macOS request/response contracts,
+  structured content handling, GPT-5.5/OpenRouter hints, status-based cooldowns,
+  cancellation, and fail-closed size/endpoint validation without exposing keys.
+  Production consent/account selection and provider quota behavior remain
+  separate host/staging gates.
 - Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
   without writing prompts or tool output to disk. The companion CLI now exposes
   a bounded `fusion.run` command that composes this loop with the configured
