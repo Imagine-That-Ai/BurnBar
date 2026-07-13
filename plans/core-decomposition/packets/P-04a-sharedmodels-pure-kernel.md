@@ -79,9 +79,11 @@ loader that **P-02** moves into the Kernel (P-02 card mv list: catalog loader +
 `Resources/catalog.json`). Until P-02 lands, moving these two into the Kernel fails
 `cannot find 'BurnBarCatalogLoader' in scope`, and pulling the loader+resource into
 P-04a is a forbidden **resource-bundle STOP** (Failure Playbook #3). These two files
-(+ their tests `CLIRuntimeModelCatalogTests.swift` / `WandModelRouterTests.swift`) must
-ride a **P-04a successor packet that DEPENDS-ON P-02** (architect to home them). The DAG
-had no P-04a→P-02 edge; this is the wave-1c dependency it missed.
+(+ their tests `CLIRuntimeModelCatalogTests.swift` / `WandModelRouterTests.swift`) ride the
+**successor packet `plans/core-decomposition/packets/P-04c-catalog-models-kernel.md`, which
+DEPENDS-ON P-02 (#1582) + P-04a (#1586)** (homed wave-1e, 2026-07-12). The DAG had no
+P-04a→P-02 edge; this is the wave-1c dependency it missed (recorded as Wave-1 learning 9 —
+the `BurnBarCatalogLoader.bundledCatalog` resource-loader hub).
 
 ### Allowed edit files
 - `OpenBurnBarCore/Package.swift` — NONE expected (none of these 12 files is in

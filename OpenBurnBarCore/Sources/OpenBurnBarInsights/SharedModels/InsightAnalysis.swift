@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Cross-platform contract for a generated Insights analysis.
 ///

@@ -1,7 +1,39 @@
 # Packet P-08: move Services/Insights core engine → OpenBurnBarInsights
-STATE: QUEUED
-LANE: C          DEPENDS-ON: S0, P-10 (Insights models must be in the target first)
+STATE: QUEUED-WAVE1F (blocked on #1582 / P-02 merge)
+LANE: C          DEPENDS-ON: S0, P-10 (Insights models must be in the target first), P-02 (#1582 — `BurnBarCatalogLoader.bundledCatalog`, wave-1e compile-closure edge)
 BASELINE-TOUCHING: none
+
+**Wave-1e compile-closure convergence (record faithfully, 2026-07-12).** A
+`swift build --target OpenBurnBarInsights` closure run surfaced two things the S0 cards
+did not carry:
+1. **Undeclared DEPENDS-ON P-02 (resource-loader hub).** `AnthropicInsightAdapter.swift`
+   does a pricing lookup `BurnBarCatalogLoader.bundledCatalog.pricing(forModelName:)`
+   (verified live at `Services/Insights/Adapters/AnthropicInsightAdapter.swift:445`).
+   `BurnBarCatalogLoader` lives in Core until **P-02 (#1582)** moves it (+`catalog.json`)
+   to the Kernel. `OpenBurnBarInsights` is a pure target depending on Kernel, so after
+   P-02 merges the symbol resolves via Kernel; until then a P-08 that carries this adapter
+   fails `cannot find 'BurnBarCatalogLoader' in scope`, and pulling the loader forward is a
+   forbidden resource-bundle STOP. Hence the P-02 edge above and the WAVE1F hold. See
+   docs/CORE_DECOMPOSITION_PROGRAM.md Wave-1 learning (9).
+2. **Insights adapter/registry re-slice inside S12 (P-08 ⇄ P-09).** The adapters live in
+   `Services/Insights/Adapters/` (P-09's subtree) while
+   `InsightProviderGatewayRegistry.swift` is a ROOT file (P-08's set) that constructs every
+   adapter. Compile-closure converged the split by dependency, NOT by directory:
+   - `InsightProviderGatewayRegistry.swift` **rides P-09** (registry follows its adapters —
+     it references `HermesInsightAdapter`/`BurnBarHostedInsightAdapter`/`OpenAIInsightAdapter`/
+     `AnthropicInsightAdapter`/`OpenAICompatibleInsightAdapter`/`OllamaInsightAdapter`, so it
+     lands with the `Adapters/` subtree, not before it).
+   - `AnthropicInsightAdapter.swift` (catalog pricing lookup, :445) **rides P-08** — it is
+     re-sliced OUT of P-09's `Adapters/` into P-08's mv list so P-08 owns the P-02-coupled
+     adapter (both P-08 and P-09 already carry the P-02 edge).
+   - `BurnBarHostedInsightAdapter.swift` **moves into P-08's list** — catalog-free (verified:
+     no `BurnBarCatalogLoader`/`bundledCatalog` ref), so it closes cleanly in P-08.
+   - `OpenAIInsightAdapter.swift` + `OpenAICompatibleInsightAdapter.swift` (both do the
+     `bundledCatalog` pricing lookup, :377 / :187) **stay in P-09**.
+   TO-ENUMERATE-AT-WAVE: add `AnthropicInsightAdapter.swift` + `BurnBarHostedInsightAdapter.swift`
+   `git mv` lines from `Services/Insights/Adapters/` into `OpenBurnBarInsights/Services/Adapters/`
+   in THIS packet, and re-run the closure grep to confirm zero residual cross-half refs (P-08's
+   remaining adapter refs — via the registry — moved to P-09).
 
 Third of three dependency-closed S12 halves by build order, but the FIRST Services
 half. `OpenBurnBarInsights` is Apple-only (pruned off-Apple like OpenBurnBarData). The

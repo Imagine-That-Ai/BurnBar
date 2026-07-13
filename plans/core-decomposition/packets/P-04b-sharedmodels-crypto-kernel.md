@@ -1,17 +1,29 @@
 # Packet P-04b: move crypto-chain SharedModels → OpenBurnBarKernel
-STATE: QUEUED
+STATE: CONVERGED (PR open, stacks on P-04a) — see "Convergence update" below.
 LANE: D          DEPENDS-ON: S0, P-04a (needs CloudVaultCrypto in Kernel first)
 BASELINE-TOUCHING: none
 
 Second dependency-closed S4 half: the crypto chains. All 7 files are in
 `openBurnBarCoreExcludes` today, so this packet DELETES their entries from
 `openBurnBarCoreExcludes` (the off-Apple surface win — they become part of the Kernel
-which already compiles off-Apple with swift-crypto). Two chains must move together and
-are already in this one packet:
-  - `PiConnectionTypes.swift` DEFINES `PiAgentRelayCrypto` (self-contained; verified).
+which already compiles off-Apple with swift-crypto). Dependency edges (all resolve to
+already-Kernel symbols after P-04a):
+  - `PiConnectionTypes.swift` → uses `PiAgentRelayCrypto`, which is DEFINED in
+    `HermesRelayCrypto.swift` — **already in `OpenBurnBarKernel/SharedModels/`** (card
+    previously said PiConnectionTypes "defines" it; the compiler-verified truth is it
+    USES it and the definer is already Kernel-resident). Closure holds either way.
   - `CLIAgentSessionRecord.swift` → uses `CloudVaultCrypto` (moved in P-04a).
   - `CLIAgentResumePresentation.swift` → uses `CLIAgentSessionRecord` (in this packet).
   - `CloudVaultDeviceKeypair.swift` → uses `CloudVaultCrypto` (moved in P-04a).
+  - `HermesRelayAuthenticatedRequest.swift` → uses `HermesRelayCrypto` (already Kernel).
+
+> **Convergence update (integrator, compile-based closure, 2026-07-12).** The Kernel
+> build reports ZERO missing symbols for all 7 files — no AE-IMPORT, no AE-TESTABLE
+> needed (public crypto-chain types resolve via the `@_exported` umbrella; no test
+> reached a moved internal). The card's file/exclude list was exactly right; the only
+> correction is the PiAgentRelayCrypto/HermesRelayCrypto note above. The stale exclude
+> comment "PiAgentRelayCrypto defined in the excluded HermesRelayCrypto" was dropped
+> (HermesRelayCrypto is no longer excluded — it is Kernel-resident).
 
 ## Scope — the ONLY files you may touch
 
@@ -69,12 +81,17 @@ None expected.
    mismatch (a file NOT in excludes, or an exclude you can't find) → STOP.
 4. Not a CANON packet.
 
-## Local validation
-V1 Kernel build · V2 Core build · V3 PURE · V4 test · V5 daemon build ·
-V-linux: `OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD=1 swift build` (these files now
-compile off-Apple in Kernel — this is the key check; if docker/Linux unavailable,
-declare "CI-covered by linux-pr-gate" and note the risk) · V6–V9b ratchets ·
-V11 scope (7 R100 + 1 M Package.swift).
+## Local validation (CONVERGED — all run 2026-07-12, Swift 6.4 / macOS)
+V1 Kernel build OK · V2 Core build OK · V3 PURE OK (Kernel clean; Core baseline
+115=115) · V4 60 tests / 0 failures (EscrowDeviceSafetyCode 18, HermesRatchetCrypto 7,
+HermesRelayAuthenticatedRequestOpener 7, HermesRelayContract 12, PiAgentRelayContract 4,
+CLIAgentSessionCodec 12) · V5 daemon build OK · V6 membership OK (shrink) · V7 umbrella
+OK · **V-linux: could NOT run locally** — `OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD=1
+swift build` fails at `unable to resolve module dependency: 'CSQLite'` (the boundary
+flag's SQLite module-map does not resolve on this macOS host; NONE of the 7 moved crypto
+files are implicated — the failure is upstream of them). Declared **CI-covered by
+linux-pr-gate**; risk noted. · V11 scope: 7 R100 + 1 M (Package.swift: 7 exclude entries
++ 4 comment lines removed, no reorder).
 
 ## PR body / Acceptance
 Title: "P-04b: move crypto-chain SharedModels into OpenBurnBarKernel (off-Apple surface win)".
