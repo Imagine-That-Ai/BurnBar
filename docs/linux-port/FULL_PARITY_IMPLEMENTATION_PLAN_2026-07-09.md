@@ -79,8 +79,14 @@ The integration branch now includes the next bounded source slices:
   and cold-start native-route precedence over onboarding.
 - `9a527310f9`: contained pet summon/focus/status and selection/clear controls;
   native overlay and click-through remain explicitly unavailable.
+- `618c7286b9`: daemon-authoritative full chat-history export with bounded
+  pagination, duplicate/cursor/size checks, and validated daemon re-read
+  resume; uploaded attachment bytes remain process-lived.
+- `b3002ab3f9`: account-scoped persisted Insights selection/density, validated
+  evidence IDs, bounded audit disclosure, and typed qualitative-unavailable
+  state when no Linux RPC exists.
 
-The combined frontend suite is **74 files / 624 tests**, the Tauri Rust suite
+The combined frontend suite is **74 files / 634 tests**, the Tauri Rust suite
 is **87/87**, TypeScript and the production bundle verifier pass, and the
 daemon target builds. These are source gates only. The promotion ledger remains
 0/40 product rows and 0/7 environment receipts until the exact signed
@@ -119,7 +125,7 @@ integrated chat model/attachment state, persisted activity replay/resume, and
 SQLCipher-gated encrypted database snapshot/restore. The
 following checks passed:
 
-- Linux frontend: 74 Vitest files / 624 tests.
+- Linux frontend: 74 Vitest files / 634 tests.
 - TypeScript: `npx tsc --noEmit --pretty false`.
 - Production bundle: `npm run build` plus the production bundle verifier.
 - Tauri Rust: 87/87 library tests.
@@ -1214,9 +1220,10 @@ The original foundation sequence is substantially implemented. From the
      accessibility, performance, update/rollback, and package lifecycle proof.
 
 8. **Remaining product-parity PRs**
-   - Complete chat unloaded-history export/resume, pop-out, remaining backends,
+   - Complete installed chat export/resume, pop-out, remaining backends,
      provider/account/cloud, activity source resolution and full-history export,
-     passphrase-wrapped recovery bundles, insights, memory review, system
+     passphrase-wrapped recovery bundles, live Insights qualitative/citation
+     analysis, memory review, system
      Computer Use, Mercury, external IBus/Fcitx text expansion, companion,
      SmartHub live-device actions, and every other still-open audit row. Project
      lifecycle source parity is covered by PR #1688; installed/release evidence
