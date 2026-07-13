@@ -35,6 +35,9 @@ source text.
 - The app composes the store by default at
   `%LOCALAPPDATA%\\OpenBurnBar\\project-code-memory.sqlite`; deployments can
   override it with `OPENBURNBAR_PROJECT_MEMORY_PATH`.
+- The Projects page uses the same encrypted store when it creates its bounded
+  symbol index, so the visible project surface and companion service share the
+  durable checkpoint rather than maintaining separate JSON-only indexes.
 
 ## Validation
 

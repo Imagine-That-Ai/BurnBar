@@ -47,7 +47,8 @@ public sealed partial class ProjectsPage : Page
                 parser = new JsonLinesProjectCodeStaticParserClient(parserPath);
             }
 
-            _codeIndex = new ProjectCodeSymbolIndex(projectRoot, parser: parser);
+            ProjectCodeMemoryStore? store = TryCreateProjectCodeStore();
+            _codeIndex = new ProjectCodeSymbolIndex(projectRoot, parser: parser, store: store);
             _codeIndex.StartWatching();
         }
 
@@ -64,5 +65,25 @@ public sealed partial class ProjectsPage : Page
         _codeIndex?.Dispose();
         _codeIndex = null;
         base.OnNavigatedFrom(e);
+    }
+
+    private static ProjectCodeMemoryStore? TryCreateProjectCodeStore()
+    {
+        try
+        {
+            string storePath = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_MEMORY_PATH")
+                ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "OpenBurnBar",
+                    "project-code-memory.sqlite");
+            (_, string? passphrase) = WindowsStorageDevHost.ResolveCredentials();
+            return new ProjectCodeMemoryStore(storePath, encryptionPassphrase: passphrase);
+        }
+        catch
+        {
+            // Projects remains usable through the bounded JSON/in-memory fallback
+            // when protected storage is unavailable during navigation.
+            return null;
+        }
     }
 }

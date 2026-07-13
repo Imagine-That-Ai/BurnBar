@@ -36,6 +36,9 @@ restart restores the durable checkpoint before the legacy JSON fallback, and
 bounded `code.call_graph` traversal. Semantic chunk/embedding parity is still
 intentionally unclaimed.
 
+The visible Projects page composes the same encrypted store as the companion
+service, so its symbol list and the CLI share one durable checkpoint.
+
 The bounded inventory now matches the macOS extension set for C/C++/Objective-C,
 JSON, Markdown, and YAML; unsupported grammar formats take lexical fallback
 when a Tree-sitter parser is configured.

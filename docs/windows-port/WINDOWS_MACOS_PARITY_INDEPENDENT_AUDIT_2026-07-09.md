@@ -146,7 +146,9 @@ unproven host behavior to certification:
   text is never inserted into the store, and `code.status` exposes bounded
   storage/index counters; the companion plane exposes bounded
   `code.call_graph` traversal. Semantic chunk/embedding parity remains an explicit
-  follow-on rather than being implied by this metadata-store evidence.
+  follow-on rather than being implied by this metadata-store evidence. The
+  Projects page composes the same encrypted store, keeping visible symbols and
+  companion operations on one durable checkpoint.
 - App startup composes the loopback gateway, companion CLI, and durable run
   journal together. The CLI exposes health/models plus bounded `run.submit`,
   `run.resume`, and `run.recover` commands; startup surfaces the count of
