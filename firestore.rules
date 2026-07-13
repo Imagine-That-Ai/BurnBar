@@ -260,35 +260,6 @@ service cloud.firestore {
         && request.resource.data.schemaVersion <= 100;
     }
 
-    function validComputerUseQuotaUsageDocument(day) {
-      return request.resource.data.keys().hasOnly([
-          "dayKey",
-          "browserActionsExecuted",
-          "browserActionsRejected",
-          "systemActionsExecuted",
-          "systemActionsRejected",
-          "phoneControlIntentsExecuted",
-          "phoneControlIntentsRejected",
-          "sessionsStarted",
-          "sessionsCompleted",
-          "totalSessionSeconds",
-          "visionModelSpendUSD",
-          "updatedAt"
-        ])
-        && request.resource.data.dayKey == day
-        && request.resource.data.browserActionsExecuted is number
-        && request.resource.data.browserActionsRejected is number
-        && request.resource.data.systemActionsExecuted is number
-        && request.resource.data.systemActionsRejected is number
-        && request.resource.data.phoneControlIntentsExecuted is number
-        && request.resource.data.phoneControlIntentsRejected is number
-        && (!("sessionsStarted" in request.resource.data) || request.resource.data.sessionsStarted is number)
-        && (!("sessionsCompleted" in request.resource.data) || request.resource.data.sessionsCompleted is number)
-        && (!("totalSessionSeconds" in request.resource.data) || request.resource.data.totalSessionSeconds is number)
-        && request.resource.data.visionModelSpendUSD is number
-        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
-    }
-
     function validRootUserProfileWrite(userId) {
       return ownerWritableNonSecret(userId)
         && request.resource.data.keys().hasOnly([
