@@ -25,14 +25,19 @@ percentage. The active remediation stack now contains these reviewable slices:
 | P23 provider/model workspace | PR #1655, merge-clean | Canonical daemon catalog/config mapping, model provenance, health and failover state; credential custody and account lifecycle remain separate. |
 | P16 account/enrollment posture | PR #1658, merge-clean | Daemon-owned account status, sign-out and rejected-identity recovery; trusted-device list/approve/revoke and cloud backup remain unavailable. |
 | P12 quota account switching | PR #1659, stacked on P23 | Redacted credential-slot selection through canonical config get/update; does not provide cloud account or trusted-device management. |
+| P13 onboarding first-data probe | PR #1667, checks in progress | Required provider setup now records bundled-catalog readback in addition to writable XDG storage; provider authentication and desktop integration remain open. |
+| P14 chat approval boundary | PR #1662, merge-clean | Gateway tool cards now expose the real missing run-approval identity and route to Mission Control; no unsafe synthetic approve/deny path. |
+| P17 activity/session depth | PR #1661, merge-clean | Canonical daemon-backed search/detail/resume with indexed transcript excerpts; full export and body replay remain unavailable. |
+| P21 insights brief | PR #1669, checks in progress | Provenance-labeled trend brief and real Providers/Activity follow-ups derived from usage aggregates; citations and qualitative analysis remain open. |
+| P24 settings inventory | PR #1665, merge-clean | Restores Model Proxy, Computer Use, and Pets destinations for a 16-tab searchable inventory with honest capability routing. |
+| P28 SmartHub | PR #1668, checks in progress | Typed root-owned CLI allowlist for discovery/status/parity actions; live device/Avahi evidence remains separate. |
+| P29 text expansion | PR #1663, checks in progress | Owner-only native snapshot persistence, migration, awaited CRUD, and fail-closed packaged behavior; global IBus/Fcitx expansion and sync remain open. |
 
-P17 session/activity depth and P29 secure local text-expansion persistence are
-being completed in dedicated worktrees and are not counted as landed until
-their PRs and focused validation are complete. These slices reduce concrete
-gaps, but they do not change the NO-GO verdict: transactional onboarding,
-complete chat, cloud/device mutations, system Computer Use capture, Mercury
-two-device proof, SmartHub, IBus/Fcitx, packaging/update rollback, and the
-seven-environment installed matrix remain required.
+These slices reduce concrete gaps, but they do not change the NO-GO verdict:
+transactional provider/auth onboarding, complete chat, cloud/device mutations,
+system Computer Use capture, Mercury two-device proof, live SmartHub device
+evidence, IBus/Fcitx, packaging/update rollback, and the seven-environment
+installed matrix remain required.
 
 ## Executive Summary
 
