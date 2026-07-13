@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,6 +43,23 @@ public sealed class CompanionCliHeadlessRunHandler
             .ResumeAsync(definition, _stepHandler, cancellationToken)
             .ConfigureAwait(false);
         return ToWireResult(result);
+    }
+
+    /// <summary>Lists interrupted runs without re-executing any step.</summary>
+    public async Task<object?> RecoverAsync(JsonElement request, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<RecoverableHeadlessRun> runs = await _runs
+            .RecoverAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return runs
+            .Select(run => new
+            {
+                runId = run.RunId,
+                completedStepIds = run.CompletedStepIds,
+                failedStepId = run.FailedStepId,
+                error = run.Error,
+            })
+            .ToArray();
     }
 
     private static HeadlessRunDefinition ParseDefinition(JsonElement request)

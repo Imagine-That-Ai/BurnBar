@@ -37,6 +37,11 @@ process seams, kept behind interfaces so the state machine + tests are complete 
   and applies the macOS runner's allowlisted-PATH environment hardening (M-040).
 - `IManagedExecutableResolver` — real PATH / `PATHEXT` / shim-dir walk to resolve `pi`.
 
+The composed companion plane exposes bounded `run.submit`, `run.resume`, and
+`run.recover` operations. Startup inspects the journal for interrupted runs and
+records only the recoverable-run count in diagnostics; it never logs step
+payloads or provider credentials.
+
 Timing is injected too: the per-request HTTP timeout (2s, matching the Swift
 `timeoutInterval`) is a constructor parameter on the discovery + probe. The runtime
 controller itself reads no wall clock — neither does the Swift original.

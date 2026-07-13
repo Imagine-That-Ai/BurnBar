@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
@@ -76,7 +77,8 @@ public sealed class CompanionCliServerTests
             var handler = new CompanionCliHeadlessRunHandler(runs, BuiltInHeadlessRunSteps.ExecuteAsync);
             var router = new CompanionCliCommandRouter(
                 submit: handler.SubmitAsync,
-                resume: handler.ResumeAsync);
+                resume: handler.ResumeAsync,
+                recover: handler.RecoverAsync);
 
             string success = await router.HandleAsync(
                 "{\"op\":\"run.submit\",\"runId\":\"safe-1\",\"steps\":[{\"id\":\"a\",\"kind\":\"noop\"}]}",
@@ -87,6 +89,20 @@ public sealed class CompanionCliServerTests
                 "{\"op\":\"run.submit\",\"runId\":\"safe-2\",\"steps\":[{\"id\":\"a\",\"kind\":\"shell\"}]}",
                 CancellationToken.None);
             Assert.Contains("step_kind_unavailable", failed, System.StringComparison.Ordinal);
+
+            await new JsonLinesHeadlessRunJournal(path).AppendAsync(
+                new HeadlessRunJournalEntry(
+                    "interrupted",
+                    HeadlessRunState.Running,
+                    null,
+                    null,
+                    DateTimeOffset.UtcNow));
+
+            string recoverable = await router.HandleAsync(
+                "{\"op\":\"run.recover\"}",
+                CancellationToken.None);
+            Assert.Contains("result", recoverable, System.StringComparison.Ordinal);
+            Assert.Contains("interrupted", recoverable, System.StringComparison.Ordinal);
         }
         finally
         {

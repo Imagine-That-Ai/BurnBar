@@ -124,9 +124,10 @@ unproven host behavior to certification:
   Context packs are explicit, path-confined, UTF-8 bounded, secret-redacted,
   and wrapped as untrusted source before returning to a caller.
 - App startup composes the loopback gateway, companion CLI, and durable run
-  journal together. The CLI exposes health/models plus bounded `run.submit` and
-  `run.resume` commands; only explicitly safe built-in steps execute by default,
-  while arbitrary shell/provider work fails closed.
+  journal together. The CLI exposes health/models plus bounded `run.submit`,
+  `run.resume`, and `run.recover` commands; startup surfaces the count of
+  interrupted runs without logging payloads. Only explicitly safe built-in
+  steps execute by default, while arbitrary shell/provider work fails closed.
 - Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
   without writing prompts or tool output to disk. The companion CLI now exposes
   a bounded `fusion.run` command that composes this loop with the configured

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
 using Microsoft.UI.Dispatching;
@@ -309,10 +310,12 @@ public partial class App : Application
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "OpenBurnBar",
                     "headless-runs.jsonl");
-            _headlessRuns = new HeadlessRunService(new JsonLinesHeadlessRunJournal(journalPath));
+            var headlessRuns = new HeadlessRunService(new JsonLinesHeadlessRunJournal(journalPath));
+            _headlessRuns = headlessRuns;
             var runHandler = new CompanionCliHeadlessRunHandler(
-                _headlessRuns,
+                headlessRuns,
                 BuiltInHeadlessRunSteps.ExecuteAsync);
+            _ = ReportRecoverableHeadlessRunsAsync(headlessRuns);
             string fusionJournalPath = Environment.GetEnvironmentVariable("OPENBURNBAR_FUSION_JOURNAL_PATH")
                 ?? Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -333,7 +336,8 @@ public partial class App : Application
                 runHandler.SubmitAsync,
                 runHandler.ResumeAsync,
                 HandleFusionRunAsync,
-                HandleProjectCodeAsync);
+                HandleProjectCodeAsync,
+                runHandler.RecoverAsync);
             _companionCli = new CompanionCliServer(port, router);
             _companionCli.Start();
             AppDiagnostics.LogEvent("companion-cli.started", $"127.0.0.1:{port}");
@@ -385,6 +389,24 @@ public partial class App : Application
         catch (Exception ex)
         {
             AppDiagnostics.LogException("project-code-memory.refresh", ex);
+        }
+    }
+
+    private static async Task ReportRecoverableHeadlessRunsAsync(HeadlessRunService service)
+    {
+        try
+        {
+            IReadOnlyList<RecoverableHeadlessRun> runs = await service
+                .RecoverAsync()
+                .ConfigureAwait(false);
+            if (runs.Count > 0)
+            {
+                AppDiagnostics.LogEvent("headless-runs.recoverable", runs.Count.ToString());
+            }
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.LogException("headless-runs.recovery", ex);
         }
     }
 
