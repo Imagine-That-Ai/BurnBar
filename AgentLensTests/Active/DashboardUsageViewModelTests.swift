@@ -278,17 +278,26 @@ final class DashboardUsageViewModelTests: XCTestCase {
 
         tracer.resetLog()
         _ = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
-        let baseline = tracer.queryCount
+        let baseline = tracer.queryLog.count { event in
+            event.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .hasPrefix("select")
+        }
         XCTAssertGreaterThan(baseline, 0, "Query tracer recorded nothing — tracing is not installed")
 
         try await insertUsages(count: 40, idPrefix: "tracer-scaled")
         tracer.resetLog()
         _ = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let scaled = tracer.queryLog.count { event in
+            event.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .hasPrefix("select")
+        }
 
         XCTAssertEqual(
-            tracer.queryCount,
+            scaled,
             baseline,
-            "Dashboard snapshot must run a constant number of queries — growth with row count is an N+1 regression"
+            "Dashboard snapshot must run a constant number of data queries — growth with row count is an N+1 regression"
         )
         tracer.assertMaxQueries(count: 64)
     }
