@@ -41,7 +41,8 @@ function resetStores(): void {
     loadingRouteLog: false,
     loadingNotifications: false,
     busy: null,
-    error: null
+    error: null,
+    privacyMutation: { status: 'idle', message: null }
   });
 }
 
@@ -143,17 +144,19 @@ describe('SettingsSurface', () => {
     expect(screen.getByText('Look & Feel')).toBeTruthy();
     expect(screen.getByText('Account & Sync')).toBeTruthy();
   });
-  it('renders populated fixture config with read-only toggles on Data & Privacy', () => {
+  it('writes fixture privacy choices and exposes honest lifecycle capability states', async () => {
     useShellStore.setState({ fixtureMode: true });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
     render(<SettingsSurface />);
     expect(screen.getByText(/fixture transcript/i)).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: /Data & Privacy/i })[0]!);
-    const toggles = screen.getAllByRole('checkbox');
-    for (const input of toggles) {
-      expect(input.getAttribute('aria-disabled')).toBe('true');
-      expect((input as HTMLInputElement).disabled).toBe(true);
-    }
+    const telemetry = screen.getByRole('checkbox', { name: 'Telemetry' }) as HTMLInputElement;
+    expect(telemetry.disabled).toBe(false);
+    fireEvent.click(telemetry);
+    await waitFor(() => expect(screen.getByText('Privacy choices saved.')).toBeTruthy());
+    expect(useSystemStore.getState().config?.telemetryEnabled).toBe(true);
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThanOrEqual(4);
+    expect(screen.getByText(/No destructive deletion RPC is exposed/i)).toBeTruthy();
   });
 
   it('shows loading skeleton without fixture', () => {
@@ -249,6 +252,36 @@ describe('SettingsSurface', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Disable' }));
     await waitFor(() => expect(configUpdate).toHaveBeenCalled());
     expect(configUpdate.mock.calls[0][0].providers[0].isEnabled).toBe(false);
+  });
+
+  it('fails closed when a packaged bridge cannot update privacy config', async () => {
+    useShellStore.setState({ bridge: null, fixtureMode: false });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    await useSettingsWiringStore.getState().updatePrivacySettings({ telemetryEnabled: true });
+    expect(useSystemStore.getState().config?.telemetryEnabled).toBe(false);
+    expect(useSettingsWiringStore.getState().privacyMutation).toEqual({
+      status: 'error',
+      message: 'Packaged shell required to save privacy choices.'
+    });
+  });
+
+  it('sends only the consent change while preserving daemon config fields', async () => {
+    const config = fixtureConfigSnapshot();
+    const configUpdate = vi.fn(async (snapshot) => ({
+      ...snapshot,
+      paths: config.paths,
+      secretServiceStatus: config.secretServiceStatus
+    }));
+    useShellStore.setState({ bridge: bridge({ configUpdate }), fixtureMode: false });
+    useSystemStore.setState({ config, loading: false, error: null });
+    await useSettingsWiringStore.getState().updatePrivacySettings({ privacyOptIn: true });
+    expect(configUpdate).toHaveBeenCalledTimes(1);
+    const payload = configUpdate.mock.calls[0][0];
+    expect(payload.privacyOptIn).toBe(true);
+    expect(payload.telemetryEnabled).toBe(config.telemetryEnabled);
+    expect(payload.providers).toEqual(config.providers);
+    expect(useSystemStore.getState().config?.privacyOptIn).toBe(true);
+    expect(useSettingsWiringStore.getState().privacyMutation.status).toBe('success');
   });
 
   it('wires Agents credential and model mutation RPCs without rendering secrets', async () => {

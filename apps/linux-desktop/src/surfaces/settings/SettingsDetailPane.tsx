@@ -10,7 +10,10 @@ import {
   resolveProviderLogicalPath
 } from '../../providerPathRegistry.js';
 import { useSupportStore } from '../../state/supportStore.js';
-import { useSettingsWiringStore } from '../../state/settingsWiringStore.js';
+import {
+  useSettingsWiringStore,
+  type PrivacySettingsPatch
+} from '../../state/settingsWiringStore.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { CopyPathButton } from '../system/CopyPathButton.js';
@@ -20,7 +23,6 @@ import { TextExpansionSurface } from '../TextExpansionSurface.js';
 import { UpdateStatusCard } from '../updates/UpdateStatusCard.js';
 import { SettingGroup } from './SettingGroup.js';
 import { SettingRow } from './SettingRow.js';
-import { ReadOnlyToggle } from './ReadOnlyToggle.js';
 import { SettingsHomeView } from './SettingsHomeView.js';
 import { SettingsAppearanceControls } from './SettingsAppearanceControls.js';
 import { SettingsDrillRow } from './SettingsDrillRow.js';
@@ -114,6 +116,34 @@ function ConfigRefreshRow({ onRefresh, busy }: { onRefresh: () => void; busy: bo
         </button>
       }
     />
+  );
+}
+
+function PrivacyToggle({
+  checked,
+  label,
+  disabled,
+  onChange,
+  status
+}: {
+  checked: boolean;
+  label: string;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+  status: string;
+}) {
+  return (
+    <label className="setting-toggle setting-toggle--privacy">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        aria-busy={disabled}
+        aria-label={label}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+      <span className="muted">{status}</span>
+    </label>
   );
 }
 
@@ -802,6 +832,8 @@ export function SettingsDetailPane({
   onSelectTab: (tab: SettingsTabId) => void;
 }) {
   const meta = settingsTabMeta(activeTab);
+  const privacyMutation = useSettingsWiringStore((s) => s.privacyMutation);
+  const updatePrivacySettings = useSettingsWiringStore((s) => s.updatePrivacySettings);
 
   const providerRegistryRows = useMemo(() => {
     // Browser/test env may lack process.env; fall back to logical-only display.
@@ -1085,22 +1117,110 @@ export function SettingsDetailPane({
         );
         break;
       case 'data-privacy':
+        {
+          const privacyPending = privacyMutation.status === 'pending';
+          const privacyStatus = privacyPending
+            ? 'Saving…'
+            : privacyMutation.status === 'success'
+              ? 'Saved'
+              : privacyMutation.status === 'error'
+                ? 'Save failed'
+                : 'Managed by daemon';
+          const savePrivacy = (patch: PrivacySettingsPatch) => {
+            void updatePrivacySettings(patch);
+          };
         content = (
           <>
+            {privacyMutation.status === 'pending' ? (
+              <Banner tone="ok" role="status">
+                {privacyMutation.message ?? 'Saving privacy choices…'}
+              </Banner>
+            ) : null}
+            {privacyMutation.status === 'success' ? (
+              <Banner tone="ok" role="status">
+                {privacyMutation.message ?? 'Privacy choices saved.'}
+              </Banner>
+            ) : null}
+            {privacyMutation.status === 'error' ? (
+              <Banner tone="degraded" role="alert">
+                {privacyMutation.message ?? 'Privacy choices could not be saved.'}
+              </Banner>
+            ) : null}
             <SettingGroup title="Consent flags" sectionHeader hideTitle>
               <SettingRow
                 iconGlyph="📡"
                 label="Telemetry"
                 description="Opt-in only. When enabled, the daemon may emit anonymized stability events — never prompt content."
-                control={<ReadOnlyToggle checked={config.telemetryEnabled} label="Telemetry" />}
-                readOnlyNote="Managed by daemon config"
+                control={
+                  <PrivacyToggle
+                    checked={config.telemetryEnabled}
+                    label="Telemetry"
+                    disabled={privacyPending}
+                    onChange={(checked) => savePrivacy({ telemetryEnabled: checked })}
+                    status={privacyStatus}
+                  />
+                }
               />
               <SettingRow
                 iconGlyph="🛡"
                 label="Privacy opt-in"
                 description="Explicit consent before cloud-adjacent features sync metadata off this machine."
-                control={<ReadOnlyToggle checked={config.privacyOptIn} label="Privacy opt-in" />}
-                readOnlyNote="Managed by daemon config"
+                control={
+                  <PrivacyToggle
+                    checked={config.privacyOptIn}
+                    label="Privacy opt-in"
+                    disabled={privacyPending}
+                    onChange={(checked) => savePrivacy({ privacyOptIn: checked })}
+                    status={privacyStatus}
+                  />
+                }
+              />
+              <SettingRow
+                iconGlyph="☁"
+                label="Cloud sync"
+                description="Allow eligible metadata to leave this machine. Provider prompts and credentials remain local unless separately configured."
+                control={
+                  <PrivacyToggle
+                    checked={Boolean(config.cloudSyncEnabled)}
+                    label="Cloud sync"
+                    disabled={privacyPending}
+                    onChange={(checked) => savePrivacy({ cloudSyncEnabled: checked })}
+                    status={privacyStatus}
+                  />
+                }
+              />
+            </SettingGroup>
+            <SettingGroup title="Data lifecycle" sectionHeader hideTitle>
+              <p className="muted settings-tab-lede">
+                The controls below are intentionally capability-gated. Linux does not claim destructive or recovery workflows until the daemon exposes an audited RPC for each scope.
+              </p>
+              <SettingRow
+                iconGlyph="⇩"
+                label="Full data export"
+                description="Export of transcripts, memories, credentials, and account data is not available from this Linux shell."
+                control={<span className="muted" role="status">Unavailable</span>}
+                readOnlyNote="No canonical daemon export RPC for this scope. Support diagnostics export remains available below."
+              />
+              <SettingRow
+                iconGlyph="⌫"
+                label="Delete local data"
+                description="A destructive local purge requires a daemon-owned scope preview, confirmation, and receipt."
+                control={<span className="muted" role="status">Unavailable</span>}
+                readOnlyNote="No destructive deletion RPC is exposed; nothing is deleted from this pane."
+              />
+              <SettingRow
+                iconGlyph="◎"
+                label="Account erasure"
+                description="Account-level deletion and cloud propagation are not implemented in the Linux desktop contract."
+                control={<span className="muted" role="status">Unavailable</span>}
+                readOnlyNote="Use an audited account workflow when the service exposes one; this shell cannot claim erasure."
+              />
+              <SettingRow
+                iconGlyph="↺"
+                label="Recovery and retention"
+                description="Recovery keys, retention expiry, and restore receipts are not available from the current daemon contract."
+                control={<span className="muted" role="status">Unavailable</span>}
+                readOnlyNote="No renderer-only fallback or local recovery state is stored."
               />
             </SettingGroup>
             <SettingGroup title="Diagnostics" sectionHeader hideTitle>
@@ -1120,6 +1240,7 @@ export function SettingsDetailPane({
           </>
         );
         break;
+        }
       default:
         content = null;
     }
