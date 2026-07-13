@@ -61,16 +61,45 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
             return new ModelCompletionResult(503, Array.Empty<byte>(), "application/json", false);
         }
 
+        bool anthropic = AnthropicProviderAdapter.IsAnthropic(route);
+        byte[] outboundBody;
+        try
+        {
+            outboundBody = anthropic
+                ? AnthropicProviderAdapter.ToMessagesRequest(requestBody, route.Model)
+                : requestBody;
+        }
+        catch (ProviderWireFormatException error)
+        {
+            return new ModelCompletionResult(error.StatusCode, Array.Empty<byte>(), "application/json", false);
+        }
+
         using var timeout = new CancellationTokenSource(_timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             timeout.Token);
         using var request = new HttpRequestMessage(HttpMethod.Post, route.Endpoint)
         {
-            Content = new ByteArrayContent(requestBody),
+            Content = new ByteArrayContent(outboundBody),
         };
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        if (!string.IsNullOrWhiteSpace(route.BearerToken))
+        if (anthropic)
+        {
+            request.Headers.TryAddWithoutValidation("anthropic-version", AnthropicProviderAdapter.ApiVersion);
+            if (!string.IsNullOrWhiteSpace(route.BearerToken))
+            {
+                string token = route.BearerToken.Trim();
+                if (token.StartsWith("sk-ant-", StringComparison.OrdinalIgnoreCase))
+                {
+                    request.Headers.TryAddWithoutValidation("x-api-key", token);
+                }
+                else
+                {
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                }
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(route.BearerToken))
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", route.BearerToken.Trim());
         }
@@ -84,6 +113,19 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
             string contentType = response.Content.Headers.ContentType?.ToString()
                 ?? "application/json";
             int status = (int)response.StatusCode;
+            if (anthropic && status is >= 200 and <= 299)
+            {
+                try
+                {
+                    body = AnthropicProviderAdapter.ToOpenAiResponse(body, route.Model);
+                    contentType = "application/json";
+                }
+                catch (ProviderWireFormatException)
+                {
+                    return new ModelCompletionResult(502, Array.Empty<byte>(), "application/json", false);
+                }
+            }
+
             return new ModelCompletionResult(status, body, contentType, status is >= 200 and <= 299);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
