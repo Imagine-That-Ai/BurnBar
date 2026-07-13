@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarLinuxSecurity
 
 /// Daemon-owned export/import for the macOS-compatible passphrase-wrapped
 /// database key bundle. The webview supplies only a destination/source path and
