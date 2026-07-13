@@ -2456,7 +2456,8 @@ fn app_version_info() -> Result<serde_json::Value, String> {
 #[tauri::command]
 async fn update_status() -> update_feed::LinuxUpdateStatus {
     let package_channel = detect_linux_package_channel();
-    update_feed::check_linux_update(env!("CARGO_PKG_VERSION"), &package_channel).await
+    let status = update_feed::check_linux_update(env!("CARGO_PKG_VERSION"), &package_channel).await;
+    update_feed::attach_update_instructions(status, &package_channel)
 }
 
 // ───────────────── P09: redacted diagnostics export ─────────────────

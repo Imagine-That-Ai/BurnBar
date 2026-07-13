@@ -254,6 +254,15 @@ open only an exact first-party BurnBar download path; it never self-mutates
 distro-owned files. Apt/dnf/AppImage upgrade, restart, and rollback instructions
 remain visible in the Updates and Support surfaces.
 
+The native status payload also carries a fixed package action plan. Debian
+surfaces `apt-get install --only-upgrade`, RPM surfaces `dnf upgrade`, and
+AppImage surfaces atomic replacement guidance. Rollback remains explicit and
+operator-confirmed (`PREVIOUS_VERSION` is a placeholder, not a value inferred
+from the feed); the shell never executes or silently substitutes it. Every
+action is rendered with a copyable command or a reasoned unavailable state, so
+feed outages still leave honest recovery guidance without inventing release
+metadata.
+
 The public endpoint currently does not satisfy this contract, so the installed
 application correctly reports **Update metadata rejected**. That is valid
 fail-closed client evidence, not release/update closure. Promotion still
