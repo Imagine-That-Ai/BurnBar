@@ -48,8 +48,22 @@ export type SessionEntry = {
   tokens: number;
   costUsd: number;
   title: string;
+  /**
+   * Canonical conversation identity when the daemon supplied one. This is
+   * intentionally separate from `id`: usage rows can have a display/fallback
+   * id that is not safe to pass to `run.resume`.
+   */
+  sourceID?: string;
+  providerSessionID?: string;
+  runID?: string;
+  projectName?: string;
 };
-export type SessionListResult = { sessions: SessionEntry[]; nextCursor: string | null };
+export type SessionListResult = {
+  sessions: SessionEntry[];
+  nextCursor: string | null;
+  /** True only when the daemon explicitly says this bounded result is complete. */
+  complete?: boolean;
+};
 export type SessionReplayResult = {
   kind: string;
   briefingMD?: string;
@@ -1588,26 +1602,136 @@ function normalizeQuotaState(s: string): QuotaBucketState {
   return 'ok';
 }
 
-function mapSessionList(raw: RawJsonValue): SessionListResult {
-  const list = arr(pick(raw, 'sessions', 'usage', 'results'));
-  const sessions = list.map(
-    (s, i): SessionEntry => ({
-      id: str(pick(s, 'id', 'sessionID', 'sessionId', 'session_id'), `session-${i}`),
-      provider: str(pick(s, 'provider', 'providerID', 'providerId', 'provider_id'), 'unknown'),
-      model: str(pick(s, 'model', 'modelID', 'modelId', 'model_id'), 'unknown'),
-      startedAt: str(
-        pick(s, 'startedAt', 'recordedAt', 'timestamp', 'createdAt', 'at'),
-        new Date().toISOString()
-      ),
-      tokens: num(
-        pick(s, 'tokens', 'totalTokens', 'tokenCount'),
-        num(pick(s, 'inputTokens')) + num(pick(s, 'outputTokens'))
-      ),
-      costUsd: num(pick(s, 'costUsd', 'cost', 'estimatedCostUsd')),
-      title: str(pick(s, 'title', 'summary', 'name', 'projectName'), 'Untitled session')
-    })
+const SESSION_LIST_RESULT_LIMIT = 500;
+const SESSION_ID_MAX_CHARS = 512;
+
+function safeSessionIdentity(value: RawJsonValue): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  if (
+    normalized.length === 0 ||
+    normalized.length > SESSION_ID_MAX_CHARS ||
+    normalized.split('').some((character) => character.charCodeAt(0) < 0x20 || character === '\u007f')
+  ) {
+    return undefined;
+  }
+  return normalized;
+}
+
+/** Match ConversationRecord.stableId's provider prefix without guessing unknown providers. */
+function stableProviderPrefix(provider: string): string | undefined {
+  const normalized = provider.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const known: Record<string, string> = {
+    factory: 'Factory',
+    claude: 'Claude Code',
+    claude_code: 'Claude Code',
+    copilot: 'Copilot',
+    aider: 'Aider',
+    cursor: 'Cursor',
+    openai: 'OpenAI',
+    open_burn_bar: 'OpenBurnBar',
+    deepseek: 'DeepSeek',
+    codex: 'Codex',
+    opencode: 'OpenCode',
+    open_code: 'OpenCode',
+    zai: 'Zai',
+    minimax: 'MiniMax',
+    kimi: 'Kimi',
+    cline: 'Cline',
+    kilocode: 'Kilo Code',
+    kilo_code: 'Kilo Code',
+    roocode: 'Roo Code',
+    roo_code: 'Roo Code',
+    forge: 'Forge',
+    augment: 'Augment',
+    hermes: 'Hermes',
+    pi_agent: 'Pi Agent',
+    gemini: 'Gemini CLI',
+    gemini_cli: 'Gemini CLI',
+    antigravity: 'Antigravity',
+    goose: 'Goose',
+    openclaw: 'OpenClaw',
+    open_claw: 'OpenClaw',
+    openclaude: 'OpenClaude',
+    open_claude: 'OpenClaude',
+    omp: 'OMP',
+    ollama: 'Ollama',
+    windsurf: 'Windsurf',
+    warp: 'Warp',
+    xai: 'xAI',
+    x_ai: 'xAI',
+    mimo: 'MiMo',
+    cursor_agent: 'Cursor Agent',
+    junie: 'Junie'
+  };
+  return known[normalized];
+}
+
+type ResolvedSessionIdentity = Pick<SessionEntry, 'sourceID' | 'providerSessionID' | 'runID' | 'projectName'>;
+
+function resolveSessionIdentity(raw: RawJsonValue, provider: string): ResolvedSessionIdentity {
+  const sourceID = safeSessionIdentity(
+    pick(raw, 'sourceID', 'sourceId', 'source_id', 'conversationID', 'conversationId', 'conversation_id')
   );
-  return { sessions, nextCursor: str(pick(raw, 'nextCursor', 'cursor')) || null };
+  const rawID = safeSessionIdentity(pick(raw, 'id'));
+  const providerSessionID = safeSessionIdentity(pick(raw, 'sessionID', 'sessionId', 'session_id'));
+  const normalizedProviderSessionID = providerSessionID?.includes(':')
+    ? providerSessionID
+    : stableProviderPrefix(provider) && providerSessionID
+      ? `${stableProviderPrefix(provider)}:${providerSessionID}`
+      : undefined;
+  const resolvedSourceID = sourceID ?? (rawID?.includes(':') ? rawID : normalizedProviderSessionID);
+  return {
+    sourceID: resolvedSourceID,
+    providerSessionID,
+    runID: safeSessionIdentity(pick(raw, 'runID', 'runId', 'run_id')),
+    projectName: safeSessionIdentity(pick(raw, 'projectName', 'project', 'workspaceName', 'workspace'))
+  };
+}
+
+function mapSessionList(raw: RawJsonValue): SessionListResult {
+  const directList = arr(pick(raw, 'sessions', 'usage', 'results'));
+  // `daemon.search.query` returns indexed hits rather than usage rows. Keep the
+  // hit's source identity so a later replay can target the exact conversation;
+  // token/cost fields remain explicit zeroes because the search contract does
+  // not provide usage totals.
+  const list = directList.length > 0 ? directList : arr(pick(raw, 'hits'));
+  const sessions = list.map(
+    (s, i): SessionEntry => {
+      const provider = str(pick(s, 'provider', 'providerID', 'providerId', 'provider_id'), 'unknown');
+      const identity = resolveSessionIdentity(s, provider);
+      const displayID =
+        safeSessionIdentity(pick(s, 'id', 'sessionID', 'sessionId', 'session_id')) ??
+        identity.sourceID ??
+        `session-${i}`;
+      return {
+        id: displayID,
+        provider,
+        model: str(pick(s, 'model', 'modelID', 'modelId', 'model_id'), 'unknown'),
+        startedAt: str(
+          pick(s, 'startedAt', 'recordedAt', 'timestamp', 'createdAt', 'at'),
+          new Date().toISOString()
+        ),
+        tokens: num(
+          pick(s, 'tokens', 'totalTokens', 'tokenCount'),
+          num(pick(s, 'inputTokens')) + num(pick(s, 'outputTokens'))
+        ),
+        costUsd: num(pick(s, 'costUsd', 'cost', 'estimatedCostUsd')),
+        title: str(
+          pick(s, 'title', 'summary', 'name', 'projectName'),
+          identity.projectName ?? 'Untitled session'
+        ),
+        ...identity
+      };
+    }
+  );
+  const nextCursor = str(pick(raw, 'nextCursor', 'cursor')) || null;
+  const explicitComplete = pick(raw, 'complete', 'isComplete');
+  const complete =
+    typeof explicitComplete === 'boolean'
+      ? explicitComplete
+      : nextCursor === null && sessions.length < SESSION_LIST_RESULT_LIMIT;
+  return { sessions, nextCursor, complete };
 }
 
 const SESSION_BRIEFING_MAX_BYTES = 65_536;

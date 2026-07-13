@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { SessionEntry } from '../../tauriBridge.js';
 import {
+  ACTIVITY_HISTORY_EXPORT_MAX_BYTES,
+  ACTIVITY_HISTORY_EXPORT_LIMIT,
+  buildDaemonActivityHistoryExport,
   buildActivityExportDocument,
   downloadActivityExport,
   sanitizeActivityExportFilename,
@@ -81,5 +84,105 @@ describe('activity export', () => {
       content: '{}\n',
       mimeType: 'application/json'
     }, undefined)).toThrow(/unavailable/i);
+  });
+
+  it('exports a complete daemon snapshot only after resolving every source and body', async () => {
+    const replay = vi.fn(async (sourceID: string) => ({
+      kind: 'native',
+      briefingMD: `# ${sourceID}\n\nUntrusted persisted body`,
+      briefingTruncated: false
+    }));
+    const result = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({
+        sessions: [
+          {
+            ...sessions[0]!,
+            sourceID: 'Codex:session-1',
+            providerSessionID: 'session-1',
+            projectName: 'BurnBar'
+          }
+        ],
+        nextCursor: null,
+        complete: true
+      }),
+      sessionReplay: replay
+    }, '2026-07-13T14:00:00Z');
+
+    expect(result.kind).toBe('available');
+    if (result.kind !== 'available') return;
+    expect(result.document).toMatchObject({
+      scope: 'daemon-session-history',
+      source: 'live daemon session index',
+      historyComplete: true,
+      historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT,
+      loadedCount: 1
+    });
+    expect(result.document.sessions[0]).toMatchObject({
+      sourceID: 'Codex:session-1',
+      providerSessionID: 'session-1',
+      bodyMD: '# Codex:session-1\n\nUntrusted persisted body'
+    });
+    expect(replay).toHaveBeenCalledWith('Codex:session-1');
+
+    const markdown = serializeActivityExport(result.document, 'markdown');
+    expect(markdown).toContain('bounded export was read from the daemon');
+    expect(markdown).toContain('Persisted body (untrusted)');
+    expect(markdown).toContain('Untrusted persisted body');
+  });
+
+  it('returns a typed unavailable result for paged history instead of exporting a partial page', async () => {
+    const replay = vi.fn();
+    const result = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({
+        sessions,
+        nextCursor: 'older-page',
+        complete: false
+      }),
+      sessionReplay: replay
+    });
+
+    expect(result).toEqual({
+      kind: 'unavailable',
+      code: 'history_not_complete',
+      message: expect.stringMatching(/paged or incomplete/i)
+    });
+    expect(replay).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when any listed row lacks a verified source identity', async () => {
+    const replay = vi.fn();
+    const result = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({ sessions, nextCursor: null, complete: true }),
+      sessionReplay: replay
+    });
+
+    expect(result).toMatchObject({ kind: 'unavailable', code: 'source_identity_unavailable' });
+    expect(replay).not.toHaveBeenCalled();
+  });
+
+  it('rejects truncated bodies and total history over the byte bound', async () => {
+    const truncated = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({
+        sessions: [{ ...sessions[0]!, sourceID: 'Codex:session-1' }],
+        nextCursor: null,
+        complete: true
+      }),
+      sessionReplay: async () => ({ kind: 'native', briefingMD: 'body', briefingTruncated: true })
+    });
+    expect(truncated).toMatchObject({ kind: 'unavailable', code: 'session_body_truncated' });
+
+    const oversized = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({
+        sessions: [{ ...sessions[0]!, sourceID: 'Codex:session-1' }],
+        nextCursor: null,
+        complete: true
+      }),
+      sessionReplay: async () => ({
+        kind: 'native',
+        briefingMD: 'x'.repeat(ACTIVITY_HISTORY_EXPORT_MAX_BYTES + 1),
+        briefingTruncated: false
+      })
+    });
+    expect(oversized).toMatchObject({ kind: 'unavailable', code: 'history_size_exceeded' });
   });
 });

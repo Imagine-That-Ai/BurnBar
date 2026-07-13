@@ -237,6 +237,33 @@ describe('ActivitySurface', () => {
     }
   });
 
+  it('shows a typed unavailable state instead of exporting a paged activity snapshot', async () => {
+    const sessionList = vi.fn(async () => ({
+      sessions: fixtureSessionList().sessions.slice(0, 1),
+      nextCursor: 'older-page',
+      complete: false
+    }));
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList,
+        sessionReplay: async () => ({ kind: 'native', briefingTruncated: false, briefingMD: 'body' })
+      })
+    });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+
+    const exportButton = screen.getByRole('button', { name: 'Export full history' });
+    expect((exportButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(exportButton);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/Full history export unavailable/i).textContent).toMatch(/paged or incomplete/i);
+    expect(sessionList).toHaveBeenCalled();
+  });
+
   it('shows empty state when daemon returns no sessions', async () => {
     useShellStore.setState({
       bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }) })
@@ -353,6 +380,7 @@ describe('ActivitySurface', () => {
   });
 
   it('loads persisted body and requests daemon-backed resume without synthesizing content', async () => {
+    const indexedSession = { ...fixtureSessionList().sessions[0]!, sourceID: 'Codex:canonical-session' };
     const replay = vi.fn(async (_sessionID: string): Promise<SessionReplayResult> => ({
       kind: 'ported',
       briefingMD: '# Persisted session\n\nOriginal body',
@@ -365,7 +393,7 @@ describe('ActivitySurface', () => {
     }));
     useShellStore.setState({
       bridge: mockBridge({
-        sessionList: async () => ({ sessions: fixtureSessionList().sessions.slice(0, 1), nextCursor: null }),
+        sessionList: async () => ({ sessions: [indexedSession], nextCursor: null }),
         sessionReplay: replay,
         sessionResume: resume
       })
@@ -380,14 +408,14 @@ describe('ActivitySurface', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(replay).toHaveBeenCalledWith(useActivityStore.getState().sessions[0]!.id);
+    expect(replay).toHaveBeenCalledWith('Codex:canonical-session');
     expect(screen.getByLabelText('Persisted session body').textContent).toContain('# Persisted session');
 
     fireEvent.click(screen.getByRole('button', { name: 'Resume session' }));
     await act(async () => {
       await Promise.resolve();
     });
-    expect(resume).toHaveBeenCalledWith(useActivityStore.getState().sessions[0]!.id);
+    expect(resume).toHaveBeenCalledWith('Codex:canonical-session');
     expect(screen.getByRole('status').textContent).toContain('process 42');
   });
 
