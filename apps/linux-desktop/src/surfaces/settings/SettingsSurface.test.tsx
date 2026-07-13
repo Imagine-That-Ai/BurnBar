@@ -143,6 +143,22 @@ describe('SettingsSurface', () => {
     expect(screen.getByText('Look & Feel')).toBeTruthy();
     expect(screen.getByText('Account & Sync')).toBeTruthy();
   });
+
+  it('exposes model proxy, Computer Use, and Pets as searchable settings destinations', () => {
+    useShellStore.setState({ fixtureMode: true });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Model Proxy/i }));
+    expect(screen.getByRole('heading', { name: 'Model Proxy' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Computer Use$/i }));
+    expect(screen.getAllByRole('heading', { name: 'Computer Use' }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Approval-gated automation/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Pets$/i }));
+    expect(screen.getByRole('heading', { name: 'Pets' })).toBeTruthy();
+  });
   it('renders populated fixture config with read-only toggles on Data & Privacy', () => {
     useShellStore.setState({ fixtureMode: true });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
