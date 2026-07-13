@@ -710,15 +710,23 @@ public partial class App : Application
             using JsonDocument document = JsonDocument.Parse(output);
             JsonElement root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
-                || !root.TryGetProperty("terminal", out JsonElement terminalElement)
-                || !terminalElement.TryGetBoolean(out terminal)
-                || !root.TryGetProperty("output", out JsonElement outputElement)
-                || outputElement.ValueKind != JsonValueKind.String)
+                || !root.TryGetProperty("terminal", out JsonElement terminalElement))
             {
-                terminal = false;
                 return false;
             }
 
+            if (terminalElement.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+            {
+                return false;
+            }
+
+            if (!root.TryGetProperty("output", out JsonElement outputElement)
+                || outputElement.ValueKind != JsonValueKind.String)
+            {
+                return false;
+            }
+
+            terminal = terminalElement.GetBoolean();
             envelopeOutput = outputElement.GetString() ?? string.Empty;
             return true;
         }
