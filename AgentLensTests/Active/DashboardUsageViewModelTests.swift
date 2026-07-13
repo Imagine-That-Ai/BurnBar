@@ -213,6 +213,42 @@ final class DashboardUsageViewModelTests: XCTestCase {
         XCTAssertEqual(today.providerSummaries.map(\.provider), [.codex])
     }
 
+    func test_usageTotals_fetchesOnlyScalarTotalsForAnArbitraryWindow() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let now = Date()
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "comparison-current",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 50,
+            costUSD: 2,
+            startTime: now,
+            endTime: now.addingTimeInterval(60)
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "comparison-previous",
+            model: "gpt-5",
+            inputTokens: 40,
+            outputTokens: 10,
+            costUSD: 1,
+            startTime: now.addingTimeInterval(-86_400),
+            endTime: now.addingTimeInterval(-86_340)
+        ))
+
+        let previousTotals = try await usageStore.fetchUsageTotals(
+            in: now.addingTimeInterval(-86_460)...now.addingTimeInterval(-86_300)
+        )
+
+        XCTAssertEqual(previousTotals.sessionCount, 1)
+        XCTAssertEqual(previousTotals.tokens, 50)
+        XCTAssertEqual(previousTotals.cost, 1, accuracy: 0.001)
+    }
+
     func test_dashboardSnapshotQueryCount_isIndependentOfRowCount() async throws {
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)

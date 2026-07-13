@@ -279,7 +279,11 @@ extension DashboardView {
                 }
                 .frame(minWidth: 122, alignment: .leading)
 
-                DashboardIslandSparkline(samples: burnRailSparkline)
+                DashboardIslandSparkline(
+                    samples: burnRailSparkline,
+                    range: burnRailDisplayRange,
+                    timeRange: selectedTimeRange
+                )
                     .frame(minWidth: 220, maxWidth: .infinity)
                     .frame(height: 74)
 
@@ -700,16 +704,39 @@ extension DashboardView {
 
 private struct DashboardIslandSparkline: View {
     let samples: [Double]
+    let range: ClosedRange<Date>
+    let timeRange: TimeRange
+
+    private var points: [DashboardIslandSparklinePoint] {
+        let denominator = max(samples.count - 1, 1)
+        let span = max(range.upperBound.timeIntervalSince(range.lowerBound), 1)
+        return samples.enumerated().map { index, sample in
+            DashboardIslandSparklinePoint(
+                index: index,
+                date: range.lowerBound.addingTimeInterval(span * Double(index) / Double(denominator)),
+                value: clamp(sample)
+            )
+        }
+    }
+
+    private var labelDates: [Date] {
+        let span = range.upperBound.timeIntervalSince(range.lowerBound)
+        return [
+            range.lowerBound,
+            range.lowerBound.addingTimeInterval(span * 0.5),
+            range.upperBound
+        ]
+    }
 
     var body: some View {
         Chart {
             RuleMark(y: .value("Baseline", 0))
                 .foregroundStyle(DesignSystem.Colors.border.opacity(0.32))
 
-            ForEach(Array(samples.enumerated()), id: \.offset) { index, sample in
+            ForEach(points) { point in
                 AreaMark(
-                    x: .value("Time", index),
-                    y: .value("Burn", clamp(sample))
+                    x: .value("Time", point.date),
+                    y: .value("Normalized token spend", point.value)
                 )
                 .interpolationMethod(.monotone)
                 .foregroundStyle(
@@ -725,8 +752,8 @@ private struct DashboardIslandSparkline: View {
                 )
 
                 LineMark(
-                    x: .value("Time", index),
-                    y: .value("Burn", clamp(sample))
+                    x: .value("Time", point.date),
+                    y: .value("Normalized token spend", point.value)
                 )
                 .interpolationMethod(.monotone)
                 .lineStyle(StrokeStyle(lineWidth: 2.1, lineCap: .round, lineJoin: .round))
@@ -739,19 +766,57 @@ private struct DashboardIslandSparkline: View {
                 )
             }
         }
-        .chartXScale(domain: 0...max(samples.count - 1, 1))
+        .chartXScale(domain: range)
         .chartYScale(domain: 0...1.04)
-        .chartXAxis(.hidden)
+        .chartXAxis {
+            AxisMarks(position: .bottom, values: labelDates) { value in
+                if let date = value.as(Date.self) {
+                    AxisValueLabel(anchor: labelAnchor(for: date)) {
+                        Text(label(for: date))
+                            .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.9))
+                            .monospacedDigit()
+                    }
+                }
+            }
+        }
         .chartYAxis(.hidden)
         .chartPlotStyle { plot in
             plot.background(.clear)
         }
-        .accessibilityHidden(true)
+        .accessibilityLabel("Token spend from \(label(for: range.lowerBound)) to \(label(for: range.upperBound))")
     }
 
     private func clamp(_ value: Double) -> Double {
         min(max(value, 0), 1)
     }
+
+    private func labelAnchor(for date: Date) -> UnitPoint {
+        if abs(date.timeIntervalSince(range.lowerBound)) < 1 { return .topLeading }
+        if abs(date.timeIntervalSince(range.upperBound)) < 1 { return .topTrailing }
+        return .top
+    }
+
+    private func label(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        switch timeRange {
+        case .today:
+            formatter.setLocalizedDateFormatFromTemplate("jm")
+        case .last7Days, .last30Days, .thisMonth:
+            formatter.setLocalizedDateFormatFromTemplate("MMM d")
+        case .allTime:
+            formatter.setLocalizedDateFormatFromTemplate("MMM y")
+        }
+        return formatter.string(from: date)
+    }
+}
+
+private struct DashboardIslandSparklinePoint: Identifiable {
+    let index: Int
+    let date: Date
+    let value: Double
+    var id: Int { index }
 }
 
 private struct DashboardAgentRobotGlyph: View {
@@ -954,7 +1019,17 @@ private struct DashboardQuickAccessChip: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if let provider {
-                    ProviderLogoView(provider: provider, size: 20 * scale, useFallbackColor: true)
+                    // The deck rail is always dark glass regardless of app
+                    // appearance, so declare a dark surface: dark brand glyphs
+                    // (Codex, Hermes, xAI…) get their contrast disc instead of
+                    // vanishing black-on-black, and asset-less providers fall
+                    // back to a light symbol rather than a dark brand colour.
+                    ProviderLogoView(
+                        provider: provider,
+                        size: 20 * scale,
+                        useFallbackColor: false,
+                        surfaceScheme: .dark
+                    )
                 } else {
                     Image(systemName: item.systemImage)
                         .font(.system(size: 11 * scale, weight: .semibold))

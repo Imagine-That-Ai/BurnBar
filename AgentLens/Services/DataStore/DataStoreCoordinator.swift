@@ -141,6 +141,13 @@ final class DataStoreCoordinator {
         usageViewModel.windowSummary(for: timeRange)
     }
 
+    /// Fetches scalar totals on the database actor for lightweight dashboard
+    /// comparisons. Callers should prefer this over `usageWindowSummary(in:)`
+    /// when they only need cost or token totals for an arbitrary window.
+    func usageTotals(in dateRange: ClosedRange<Date>?) async -> UsageTotals? {
+        try? await actor.fetchUsageTotals(in: dateRange)
+    }
+
     var totalUsageSessionCount: Int {
         usageViewModel.windowSummary(for: .allTime).sessionCount
     }

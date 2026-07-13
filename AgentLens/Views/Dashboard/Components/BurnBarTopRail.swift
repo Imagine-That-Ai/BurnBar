@@ -967,7 +967,7 @@ struct BurnRailTelemetryHero: View {
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text(telemetry.headlineValue)
-                        .font(.system(size: 17, weight: .bold, design: .monospaced))
+                        .font(.system(size: 20, weight: .bold, design: .monospaced))
                         .monospacedDigit()
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .contentTransition(.numericText())
@@ -985,11 +985,11 @@ struct BurnRailTelemetryHero: View {
             .accessibilityValue(telemetry.headlineValue + (telemetry.headlineSuffix.map { " " + $0 } ?? ""))
 
             BurnRailSparkline(samples: telemetry.sparkline)
-                .frame(width: 64, height: 22)
+                .frame(width: 78, height: 28)
                 .accessibilityHidden(true)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
         .background(heroSurface)
         .overlay(
             Capsule(style: .continuous)
@@ -1076,26 +1076,6 @@ struct BurnRailSettingsButton: View {
             help: "Settings",
             action: onSettings
         )
-        .padding(.horizontal, 4)
-        .padding(.vertical, 4)
-        .background(settingsSurface)
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
-        )
-        .clipShape(Capsule(style: .continuous))
-    }
-
-    @ViewBuilder
-    private var settingsSurface: some View {
-        if #available(macOS 26.0, *) {
-            Capsule(style: .continuous)
-                .liquidGlassEffect(.regular, in: Capsule(style: .continuous))
-                .opacity(0.65)
-        } else {
-            Capsule(style: .continuous)
-                .fill(DesignSystem.Colors.surface.opacity(0.4))
-        }
     }
 }
 
@@ -1108,6 +1088,9 @@ struct BurnRailSettingsButton: View {
 struct BurnRailAppearanceQuickMenu: View {
     @Bindable var settingsManager: SettingsManager
     var onOpenAppearanceSettings: () -> Void
+    var scale: CGFloat = 1
+    @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop = false
+    @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel = KernelCatalog.defaultID
 
     var body: some View {
         Menu {
@@ -1153,6 +1136,29 @@ struct BurnRailAppearanceQuickMenu: View {
                 quickBackgroundOption(.constellation)
             }
 
+            Section("Live Backdrop") {
+                Toggle("Animated kernel", isOn: $useKernelBackdrop)
+
+                Menu("Theme · \(KernelCatalog.label(for: backdropKernel))") {
+                    ForEach(KernelCatalog.all) { kernel in
+                        Button {
+                            backdropKernel = kernel.id
+                            useKernelBackdrop = true
+                            Analytics.shared.track(.settingsChanged, [
+                                "setting_key": "window_backdrop_kernel_quick_menu",
+                                "new_value": .string(kernel.id)
+                            ])
+                        } label: {
+                            if backdropKernel == kernel.id {
+                                Label(kernel.label, systemImage: "checkmark")
+                            } else {
+                                Text(kernel.label)
+                            }
+                        }
+                    }
+                }
+            }
+
             Section {
                 Button("Open Appearance Settings…") {
                     onOpenAppearanceSettings()
@@ -1160,19 +1166,19 @@ struct BurnRailAppearanceQuickMenu: View {
             }
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: backgroundGlyph(for: settingsManager))
-                    .font(.system(size: 9.5, weight: .semibold))
+                Image(systemName: "paintpalette.fill")
+                    .font(.system(size: 10 * scale, weight: .semibold))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
-                Image(systemName: "circle.lefthalf.filled")
-                    .font(.system(size: 11, weight: .semibold))
+                Text(activeVisualLabel)
+                    .font(.system(size: 11 * scale, weight: .semibold, design: .rounded))
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 8 * scale, weight: .bold))
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .padding(.leading, 1)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 10 * scale)
+            .padding(.vertical, 5 * scale)
             .background(
                 Capsule(style: .continuous)
                     .fill(DesignSystem.Colors.surface.opacity(0.4))
@@ -1232,6 +1238,17 @@ struct BurnRailAppearanceQuickMenu: View {
         case .off: return "moon.zzz"
         case .swarm: return "sparkles"
         case .constellation: return "star.circle"
+        }
+    }
+
+    private var activeVisualLabel: String {
+        if useKernelBackdrop {
+            return KernelCatalog.label(for: backdropKernel)
+        }
+        switch currentBackgroundState {
+        case .swarm: return "Swarm"
+        case .constellation: return "Constellation"
+        case .off: return settingsManager.appearanceSkin == .aurora ? "Aurora" : "Editorial"
         }
     }
 }
@@ -1439,18 +1456,24 @@ enum BurnRailSparklineBuilder {
     static func buildSamples(
         from usages: [TokenUsage],
         range: ClosedRange<Date>?,
-        bucketCount: Int = 24
+        bucketCount: Int = 24,
+        now: Date = Date()
     ) -> [Double] {
         guard !usages.isEmpty else { return Array(repeating: 0, count: bucketCount) }
         let lower: Date
         let upper: Date
         if let r = range {
             lower = r.lowerBound
-            upper = r.upperBound
+            // Current ranges such as Today may extend to midnight. The rail is
+            // a live history, so reserve the right edge for this instant—not
+            // hours of future empty buckets that make active work look dead.
+            upper = min(r.upperBound, now)
         } else {
             let times = usages.map(\.startTime)
             lower = times.min() ?? Date()
-            upper = times.max() ?? Date()
+            // All Time still ends at now so the visual grammar stays stable:
+            // oldest work at the left, the present at the right.
+            upper = now
         }
         let span = max(upper.timeIntervalSince(lower), 1)
         var buckets = Array(repeating: 0.0, count: bucketCount)
