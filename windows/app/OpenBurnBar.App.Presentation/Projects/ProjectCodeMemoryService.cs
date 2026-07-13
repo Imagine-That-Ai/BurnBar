@@ -55,6 +55,9 @@ public sealed class ProjectCodeMemoryService : IDisposable
     public ProjectCodeCallGraphResult ReadCallGraph(string name, int limit = 200, int depth = 1) =>
         _index.ReadCallGraph(name, limit, depth);
 
+    public ProjectCodeSemanticSearchResult ReadSemanticSearch(string query, int limit = 20) =>
+        _index.ReadSemanticSearch(query, limit);
+
     public IReadOnlyList<ProjectCodeSymbol> Symbols => _index.Symbols;
 
     public bool TryLoad() => _index.TryLoad();

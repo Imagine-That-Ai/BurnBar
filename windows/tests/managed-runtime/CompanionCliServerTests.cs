@@ -203,5 +203,10 @@ public sealed class CompanionCliServerTests
             "{\"op\":\"code.call_graph\",\"name\":\"Invoke\"}",
             CancellationToken.None);
         Assert.Contains("code.call_graph", graph, System.StringComparison.Ordinal);
+
+        string semantic = await router.HandleAsync(
+            "{\"op\":\"code.semantic_search\",\"query\":\"Widget\"}",
+            CancellationToken.None);
+        Assert.Contains("code.semantic_search", semantic, System.StringComparison.Ordinal);
     }
 }

@@ -504,6 +504,10 @@ public partial class App : Application
                     RequiredString(request, "name"),
                     OptionalBoundedInt(request, "limit", 200, 1, 200),
                     OptionalBoundedInt(request, "depth", 1, 1, 3));
+            case "code.semantic_search":
+                return service.ReadSemanticSearch(
+                    RequiredString(request, "query"),
+                    OptionalBoundedInt(request, "limit", 20, 1, 100));
             case "code.context_pack":
                 return service.BuildContextPack(
                     RequiredString(request, "query"),

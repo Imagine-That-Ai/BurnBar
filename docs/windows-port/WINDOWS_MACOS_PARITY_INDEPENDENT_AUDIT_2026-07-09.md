@@ -135,8 +135,9 @@ unproven host behavior to certification:
 - The app now composes a long-lived `ProjectCodeMemoryService` when a project
   root is configured. It restores and watches the metadata-only index, refreshes
   asynchronously with lexical fallback or Tree-sitter parsing, and exposes
-  bounded `code.index`, `code.search`, `code.symbol`, `code.status`, and
-  `code.context_pack` companion operations without persisting source text.
+  bounded `code.index`, `code.search`, `code.symbol`, `code.status`,
+  `code.semantic_search`, and `code.context_pack` companion operations without
+  persisting source text.
   Context packs are explicit, path-confined, UTF-8 bounded, secret-redacted,
   and wrapped as untrusted source before returning to a caller.
 - The project-code watcher now writes a durable Pensieve-compatible SQLite
@@ -146,10 +147,13 @@ unproven host behavior to certification:
   the durable checkpoint before falling back to the legacy JSON index. Source
   text is never inserted into the store, and `code.status` exposes bounded
   storage/index counters; the companion plane exposes bounded
-  `code.call_graph` traversal. Semantic chunk/embedding parity remains an explicit
-  follow-on rather than being implied by this metadata-store evidence. The
-  Projects page composes the same encrypted store, keeping visible symbols and
-  companion operations on one durable checkpoint.
+  `code.call_graph` traversal and semantic search over versioned deterministic
+  96-dimensional vectors. Chunk offsets and vectors are persisted without source
+  text, and semantic results read source only for an explicit context request.
+  Full macOS NaturalLanguage/provider-backed embedding quality and AST-aware
+  chunking remain explicit follow-ons. The Projects page composes the same
+  encrypted store, keeping visible symbols and companion operations on one
+  durable checkpoint.
 - App startup composes the loopback gateway, companion CLI, and durable run
   journal together. The CLI exposes health/models plus bounded `run.submit`,
   `run.resume`, and `run.recover` commands; startup surfaces the count of
@@ -195,12 +199,12 @@ unproven host behavior to certification:
   extension set; unsupported grammar formats use bounded lexical fallback.
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
-tests plus 97/97 managed-agent-runtime tests), CloudSync (60/60), connector
-(99/99), presentation (758/758), Computer Use, bridge-policy, and
+tests plus 41/41 managed-agent-runtime tests), CloudSync (60/60), connector
+(99/99), presentation (759/759), Computer Use, bridge-policy, and
 provider-boundary tests. They are an
 implementation increment, not a claim that
-the F2 workstreams are all complete: semantic project-code chunk/embedding
-parity, full static parsing, production composition of every F2 service,
+the F2 workstreams are all complete: full macOS semantic/provider embedding
+parity, AST-aware static parsing across every grammar, production composition of every F2 service,
 physical Computer Use/media safety, and host evidence still remain. The
 ledger's 47/47 `Real` result is the scoped F1 source/product gate; WPD-0009
 continues to define F2 True 1:1 as the actual 100% parity endpoint.

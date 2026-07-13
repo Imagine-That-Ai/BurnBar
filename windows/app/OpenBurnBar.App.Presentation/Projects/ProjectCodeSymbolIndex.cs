@@ -80,6 +80,10 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         _store?.ReadCallGraph(name, limit, depth)
         ?? throw new ProjectCodeParserException("project_code_call_graph_unavailable");
 
+    public ProjectCodeSemanticSearchResult ReadSemanticSearch(string query, int limit = 20) =>
+        _store?.ReadSemanticSearch(query, limit)
+        ?? throw new ProjectCodeParserException("project_code_semantic_search_unavailable");
+
     public ProjectCodeIndexSnapshot? Snapshot
     {
         get

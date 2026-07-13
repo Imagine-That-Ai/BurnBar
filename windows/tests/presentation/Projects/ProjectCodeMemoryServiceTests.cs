@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Presentation.Projects;
@@ -179,9 +180,17 @@ public sealed class ProjectCodeMemoryServiceTests
                 Assert.True(stats.SymbolCount >= 4);
                 Assert.True(stats.ReferenceCount >= 1);
                 Assert.True(stats.CallEdgeCount >= 1);
+                Assert.Equal(2, stats.ChunkCount);
+                Assert.Equal(stats.ChunkCount, stats.EmbeddingCount);
+                Assert.Equal(ProjectCodeMemoryStore.CodeEmbeddingDimensions, stats.EmbeddingDimensions);
+                Assert.True(stats.SemanticAvailable);
                 Assert.True(stats.StorageBytes > 0);
                 ProjectCodeCallGraphResult graph = service.ReadCallGraph("Invoke");
                 Assert.Contains(graph.Edges, edge => edge.Callee.Name == "Widget");
+                ProjectCodeSemanticSearchResult semantic = service.ReadSemanticSearch("Widget");
+                Assert.True(semantic.SemanticAvailable);
+                Assert.NotEmpty(semantic.Hits);
+                Assert.Contains(semantic.Hits, hit => hit.FilePath is "Widget.cs" or "Caller.cs");
             }
 
             string databaseText = Encoding.UTF8.GetString(await File.ReadAllBytesAsync(databasePath));
@@ -193,7 +202,42 @@ public sealed class ProjectCodeMemoryServiceTests
             Assert.True(restoredService.TryLoad());
             Assert.Equal("Widget", Assert.Single(restoredService.FindSymbol("Widget")).Name);
             Assert.True(restoredService.DurableStoreStats?.ReferenceCount >= 1);
+            Assert.True(restoredService.DurableStoreStats?.SemanticAvailable);
+            Assert.NotEmpty(restoredService.ReadSemanticSearch("Widget").Hits);
             Assert.Contains(restoredService.ReadCallGraph("Invoke").Edges, edge => edge.Callee.Name == "Widget");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DurableStore_ChunksLongFilesWithBoundedOverlap()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-code-chunking-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        string databasePath = Path.Combine(root, "memory.sqlite");
+        try
+        {
+            string body = string.Join("\n", Enumerable.Repeat("alpha semantic code token", 220));
+            await File.WriteAllTextAsync(Path.Combine(root, "Long.cs"), body);
+            using var store = new ProjectCodeMemoryStore(databasePath, encryptionPassphrase: "obb-project-code-chunk-key-2026");
+            using var service = new ProjectCodeMemoryService(new ProjectCodeSymbolIndex(root, store: store));
+
+            await service.RefreshAsync();
+            ProjectCodeMemoryStoreStats stats = Assert.IsType<ProjectCodeMemoryStoreStats>(service.DurableStoreStats);
+            Assert.True(stats.ChunkCount >= 3);
+            ProjectCodeSemanticSearchResult result = service.ReadSemanticSearch("alpha semantic");
+            Assert.NotEmpty(result.Hits);
+            Assert.All(result.Hits, hit =>
+            {
+                Assert.Equal("Long.cs", hit.FilePath);
+                Assert.InRange(hit.EndOffset - hit.StartOffset, 1, ProjectCodeMemoryStore.CodeChunkMaxCharacters);
+            });
         }
         finally
         {

@@ -14,14 +14,20 @@ namespace OpenBurnBar.App.Presentation.Projects;
 
 /// <summary>
 /// Durable, source-free project-code metadata storage. The schema mirrors the
-/// macOS Pensieve project-code tables, but this store deliberately persists only
-/// paths, hashes, symbols, references, and checkpoints. Source is read while an
-/// index is built and is never inserted into this database.
+/// macOS Pensieve project-code tables, persisting paths, hashes, symbols,
+/// references, checkpoints, chunk offsets, and versioned vectors. Source is read
+/// while an index is built and is never inserted into this database.
 /// </summary>
 public sealed class ProjectCodeMemoryStore : IDisposable
 {
     public const long DefaultStorageBudgetBytes = 512L * 1024 * 1024;
     public const long MaximumStorageBudgetBytes = 10L * 1024 * 1024 * 1024;
+    public const int CodeChunkMaxCharacters = 2_400;
+    public const int CodeChunkOverlapCharacters = 240;
+    public const int CodeEmbeddingDimensions = 96;
+    public const string CodeEmbeddingVersion = "openburnbar-deterministic-code-v1";
+    public const int MaxSemanticCandidates = 100_000;
+    private const string CodeEmbeddingSeed = "openburnbar-deterministic-embedding-seed-v1";
 
     private static readonly Regex Token = new(
         "\\b[A-Za-z_][A-Za-z0-9_]{2,}\\b",
@@ -90,13 +96,104 @@ public sealed class ProjectCodeMemoryStore : IDisposable
             string projectID = ReadScalarString("SELECT project_id FROM code_index_checkpoints ORDER BY indexed_at DESC LIMIT 1") ?? string.Empty;
             return new ProjectCodeMemoryStoreStats(
                 ProjectID: projectID,
-                ArtifactCount: ReadScalarLong("SELECT COUNT(*) FROM code_artifacts"),
-                SymbolCount: ReadScalarLong("SELECT COUNT(*) FROM code_symbols"),
-                ReferenceCount: ReadScalarLong("SELECT COUNT(*) FROM code_references"),
-                CallEdgeCount: ReadScalarLong("SELECT COUNT(*) FROM code_call_edges"),
-                ManifestCount: ReadScalarLong("SELECT COUNT(*) FROM pcm_file_manifest"),
+                ArtifactCount: ReadScalarLong("SELECT COUNT(*) FROM code_artifacts WHERE project_id = $project", ("$project", projectID)),
+                SymbolCount: ReadScalarLong("SELECT COUNT(*) FROM code_symbols WHERE project_id = $project", ("$project", projectID)),
+                ReferenceCount: ReadScalarLong("SELECT COUNT(*) FROM code_references WHERE project_id = $project", ("$project", projectID)),
+                CallEdgeCount: ReadScalarLong("SELECT COUNT(*) FROM code_call_edges WHERE project_id = $project", ("$project", projectID)),
+                ManifestCount: ReadScalarLong("SELECT COUNT(*) FROM pcm_file_manifest WHERE project_id = $project", ("$project", projectID)),
+                ChunkCount: ReadScalarLong("SELECT COUNT(*) FROM code_chunks WHERE project_id = $project", ("$project", projectID)),
+                EmbeddingCount: ReadScalarLong(
+                    "SELECT COUNT(*) FROM code_chunks WHERE project_id = $project AND embedding_version = $version",
+                    ("$project", projectID), ("$version", CodeEmbeddingVersion)),
+                EmbeddingDimensions: ReadScalarLong(
+                    "SELECT COALESCE(MAX(embedding_dimension), 0) FROM code_chunks WHERE project_id = $project AND embedding_version = $version",
+                    ("$project", projectID), ("$version", CodeEmbeddingVersion)),
                 StorageBytes: DatabaseSizeBytes(),
-                StorageBudgetBytes: _storageBudgetBytes);
+                StorageBudgetBytes: _storageBudgetBytes,
+                SemanticAvailable: ReadScalarLong(
+                    "SELECT COUNT(*) FROM code_chunks WHERE project_id = $project AND embedding_version = $version AND embedding_dimension = $dimensions",
+                    ("$project", projectID), ("$version", CodeEmbeddingVersion),
+                    ("$dimensions", CodeEmbeddingDimensions)) > 0,
+                EmbeddingVersion: CodeEmbeddingVersion);
+        }
+    }
+
+    public ProjectCodeSemanticSearchResult ReadSemanticSearch(string query, int limit = 20)
+    {
+        string normalized = (query ?? string.Empty).Trim();
+        if (normalized.Length == 0 || normalized.Length > 256)
+        {
+            throw new ArgumentException("A semantic search query between 1 and 256 characters is required.", nameof(query));
+        }
+
+        if (limit is < 1 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        }
+
+        float[] queryVector = EmbedCode(normalized);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            string projectID = ReadScalarString("SELECT project_id FROM code_index_checkpoints ORDER BY indexed_at DESC LIMIT 1") ?? string.Empty;
+            if (projectID.Length == 0)
+            {
+                return new ProjectCodeSemanticSearchResult(
+                    normalized,
+                    Array.Empty<ProjectCodeSemanticSearchHit>(),
+                    false,
+                    false,
+                    CodeEmbeddingVersion,
+                    CodeEmbeddingDimensions);
+            }
+
+            using var command = _connection.CreateCommand();
+            command.CommandText = """
+                SELECT id, file_path, start_offset, end_offset, content_hash,
+                       embedding_version, embedding_dimension, embedding
+                FROM code_chunks
+                WHERE project_id = $project AND embedding_version = $version AND embedding_dimension = $dimensions
+                ORDER BY file_path COLLATE NOCASE, start_offset, id
+                LIMIT $maxCandidates;
+                """;
+            command.Parameters.AddWithValue("$project", projectID);
+            command.Parameters.AddWithValue("$version", CodeEmbeddingVersion);
+            command.Parameters.AddWithValue("$dimensions", CodeEmbeddingDimensions);
+            command.Parameters.AddWithValue("$maxCandidates", MaxSemanticCandidates);
+            using SqliteDataReader reader = command.ExecuteReader();
+            var ranked = new List<ProjectCodeSemanticSearchHit>();
+            while (reader.Read())
+            {
+                byte[] vectorBytes = (byte[])reader[7];
+                float[] vector = DecodeEmbedding(vectorBytes, reader.GetInt32(6));
+                if (vector.Length == 0)
+                {
+                    continue;
+                }
+
+                ranked.Add(new ProjectCodeSemanticSearchHit(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetInt32(2),
+                    reader.GetInt32(3),
+                    reader.GetString(4),
+                    Cosine(queryVector, vector),
+                    reader.GetString(5)));
+            }
+
+            bool truncated = ranked.Count > limit;
+            return new ProjectCodeSemanticSearchResult(
+                normalized,
+                ranked.OrderByDescending(hit => hit.Score)
+                    .ThenBy(hit => hit.FilePath, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(hit => hit.StartOffset)
+                    .ThenBy(hit => hit.ChunkID, StringComparer.Ordinal)
+                    .Take(limit)
+                    .ToArray(),
+                ranked.Count > 0,
+                truncated || ranked.Count >= MaxSemanticCandidates,
+                CodeEmbeddingVersion,
+                CodeEmbeddingDimensions);
         }
     }
 
@@ -223,6 +320,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
 
                 var artifacts = new List<StoredArtifact>();
                 var rejected = 0;
+                var chunkCount = 0;
                 foreach (string path in EnumerateCodeFiles(canonicalRoot, 500))
                 {
                     FileReadResult file = ReadFile(path);
@@ -238,6 +336,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
                     artifacts.Add(new StoredArtifact(artifactID, relativePath, file.BlobSha!, file.Text!));
                     InsertArtifact(artifactID, projectID, relativePath, file, now, transaction);
                     InsertManifest(projectID, relativePath, artifactID, file.ByteCount, file.Language, null, now, transaction);
+                    chunkCount += InsertCodeChunks(projectID, artifacts[^1], now, transaction);
                 }
 
                 var symbolIDsByName = new Dictionary<string, List<(string ID, string RelativePath, int Line)>>(StringComparer.OrdinalIgnoreCase);
@@ -280,6 +379,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
                     snapshot,
                     artifacts.Count,
                     symbolRows.Count,
+                    chunkCount,
                     rejected,
                     now,
                     transaction);
@@ -407,6 +507,20 @@ public sealed class ProjectCodeMemoryStore : IDisposable
                 truncated INTEGER NOT NULL DEFAULT 0,
                 parser_mode TEXT NOT NULL DEFAULT 'lexical'
             );
+            CREATE TABLE IF NOT EXISTS code_chunks (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                artifact_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                ordinal INTEGER NOT NULL,
+                start_offset INTEGER NOT NULL,
+                end_offset INTEGER NOT NULL,
+                content_hash TEXT NOT NULL,
+                embedding_version TEXT NOT NULL,
+                embedding_dimension INTEGER NOT NULL,
+                embedding BLOB NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS code_chunks_project_idx ON code_chunks(project_id, embedding_version, file_path, start_offset);
             """;
         command.ExecuteNonQuery();
         EnsureColumn("code_index_checkpoints", "truncated", "INTEGER NOT NULL DEFAULT 0");
@@ -489,6 +603,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
             "DELETE FROM code_call_edges WHERE project_id = $project",
             "DELETE FROM code_references WHERE project_id = $project",
             "DELETE FROM code_symbols WHERE project_id = $project",
+            "DELETE FROM code_chunks WHERE project_id = $project",
             "DELETE FROM code_artifacts WHERE project_id = $project",
             "DELETE FROM pcm_file_manifest WHERE project_id = $project",
         })
@@ -539,6 +654,38 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         command.Parameters.AddWithValue("$reason", (object?)reason ?? DBNull.Value);
         command.Parameters.AddWithValue("$now", now);
         command.ExecuteNonQuery();
+    }
+
+    private int InsertCodeChunks(string projectID, StoredArtifact artifact, string now, SqliteTransaction transaction)
+    {
+        IReadOnlyList<CodeChunk> chunks = BuildChunks(artifact.Text);
+        for (int ordinal = 0; ordinal < chunks.Count; ordinal++)
+        {
+            CodeChunk chunk = chunks[ordinal];
+            float[] vector = EmbedCode(chunk.Text);
+            using var command = _connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT INTO code_chunks
+                    (id, project_id, artifact_id, file_path, ordinal, start_offset, end_offset,
+                     content_hash, embedding_version, embedding_dimension, embedding)
+                VALUES ($id, $project, $artifact, $path, $ordinal, $start, $end, $hash, $version, $dimensions, $embedding);
+                """;
+            command.Parameters.AddWithValue("$id", "chunk_" + Hash($"{artifact.ID}:{ordinal}:{chunk.ContentHash}"));
+            command.Parameters.AddWithValue("$project", projectID);
+            command.Parameters.AddWithValue("$artifact", artifact.ID);
+            command.Parameters.AddWithValue("$path", artifact.RelativePath);
+            command.Parameters.AddWithValue("$ordinal", ordinal);
+            command.Parameters.AddWithValue("$start", chunk.StartOffset);
+            command.Parameters.AddWithValue("$end", chunk.EndOffset);
+            command.Parameters.AddWithValue("$hash", chunk.ContentHash);
+            command.Parameters.AddWithValue("$version", CodeEmbeddingVersion);
+            command.Parameters.AddWithValue("$dimensions", CodeEmbeddingDimensions);
+            command.Parameters.AddWithValue("$embedding", EncodeEmbedding(vector));
+            command.ExecuteNonQuery();
+        }
+
+        return chunks.Count;
     }
 
     private void InsertSymbol(string projectID, StoredSymbol stored, string now, SqliteTransaction transaction)
@@ -639,7 +786,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         }
     }
 
-    private void UpsertCheckpoint(string projectID, string root, ProjectCodeIndexSnapshot snapshot, int artifactCount, int symbolCount, int rejectedCount, string now, SqliteTransaction transaction)
+    private void UpsertCheckpoint(string projectID, string root, ProjectCodeIndexSnapshot snapshot, int artifactCount, int symbolCount, int chunkCount, int rejectedCount, string now, SqliteTransaction transaction)
     {
         using var command = _connection.CreateCommand();
         command.Transaction = transaction;
@@ -647,7 +794,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
             INSERT INTO code_index_checkpoints
                 (project_id, project_root, indexed_at, artifact_count, chunk_count, rejected_count,
                  storage_byte_count, storage_budget_bytes, truncated, parser_mode)
-            VALUES ($project, $root, $now, $artifacts, 0, $rejected, 0, $budget, $truncated, $parser)
+            VALUES ($project, $root, $now, $artifacts, $chunks, $rejected, 0, $budget, $truncated, $parser)
             ON CONFLICT(project_id) DO UPDATE SET project_root = excluded.project_root,
                 indexed_at = excluded.indexed_at, artifact_count = excluded.artifact_count,
                 chunk_count = excluded.chunk_count, rejected_count = excluded.rejected_count,
@@ -658,6 +805,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         command.Parameters.AddWithValue("$root", root);
         command.Parameters.AddWithValue("$now", now);
         command.Parameters.AddWithValue("$artifacts", artifactCount);
+        command.Parameters.AddWithValue("$chunks", chunkCount);
         command.Parameters.AddWithValue("$rejected", rejectedCount);
         command.Parameters.AddWithValue("$budget", _storageBudgetBytes);
         command.Parameters.AddWithValue("$truncated", snapshot.Truncated ? 1 : 0);
@@ -683,10 +831,15 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         alter.ExecuteNonQuery();
     }
 
-    private long ReadScalarLong(string sql)
+    private long ReadScalarLong(string sql, params (string Name, object Value)[] parameters)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = sql;
+        foreach ((string name, object value) in parameters)
+        {
+            command.Parameters.AddWithValue(name, value);
+        }
+
         return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
@@ -732,6 +885,146 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         "symbol_" + Hash($"{projectID}:{artifactID}:{symbol.Name}:{symbol.Kind}:{symbol.Line}:{ordinal}");
 
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant()[..32];
+
+    private static string Sha256Hex(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static IReadOnlyList<CodeChunk> BuildChunks(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return Array.Empty<CodeChunk>();
+        }
+
+        var chunks = new List<CodeChunk>();
+        int startOffset = 0;
+        while (startOffset < text.Length)
+        {
+            int endOffset = Math.Min(text.Length, startOffset + CodeChunkMaxCharacters);
+            if (endOffset < text.Length)
+            {
+                int searchStart = Math.Min(text.Length, startOffset + CodeChunkMaxCharacters / 2);
+                int newline = text.LastIndexOf('\n', endOffset - 1, endOffset - searchStart);
+                if (newline > startOffset)
+                {
+                    endOffset = newline + 1;
+                }
+            }
+
+            string slice = text[startOffset..endOffset];
+            chunks.Add(new CodeChunk(startOffset, endOffset, Sha256Hex(slice), slice));
+            if (endOffset >= text.Length)
+            {
+                break;
+            }
+
+            startOffset = Math.Max(0, endOffset - CodeChunkOverlapCharacters);
+        }
+
+        return chunks;
+    }
+
+    private static float[] EmbedCode(string text)
+    {
+        string normalized = (text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Trim().ToLowerInvariant();
+        var vector = new float[CodeEmbeddingDimensions];
+        var tokens = new List<string>();
+        var token = new StringBuilder();
+        foreach (char character in normalized)
+        {
+            if (char.IsWhiteSpace(character) || char.IsPunctuation(character))
+            {
+                if (token.Length > 0)
+                {
+                    tokens.Add(token.ToString());
+                    token.Clear();
+                }
+            }
+            else
+            {
+                token.Append(character);
+            }
+        }
+
+        if (token.Length > 0)
+        {
+            tokens.Add(token.ToString());
+        }
+
+        if (tokens.Count == 0)
+        {
+            tokens.Add(normalized);
+        }
+
+        for (int position = 0; position < tokens.Count; position++)
+        {
+            string digest = Sha256Hex($"{CodeEmbeddingSeed}|{position.ToString(CultureInfo.InvariantCulture)}|{tokens[position]}");
+            byte[] bytes = Encoding.ASCII.GetBytes(digest);
+            float weight = 1f / Math.Max(1, position + 1);
+            int width = Math.Min(16, bytes.Length);
+            for (int lane = 0; lane < width; lane++)
+            {
+                int index = (bytes[lane] + (lane * 131)) % vector.Length;
+                float sign = lane % 2 == 0 ? 1f : -1f;
+                float magnitude = (bytes[lane] % 31) / 30f + 0.15f;
+                vector[index] += sign * magnitude * weight;
+            }
+        }
+
+        double norm = Math.Sqrt(vector.Sum(value => (double)value * value));
+        if (norm <= double.Epsilon)
+        {
+            return vector;
+        }
+
+        for (int index = 0; index < vector.Length; index++)
+        {
+            vector[index] = (float)(vector[index] / norm);
+        }
+
+        return vector;
+    }
+
+    private static byte[] EncodeEmbedding(float[] vector)
+    {
+        byte[] bytes = new byte[vector.Length * sizeof(float)];
+        Buffer.BlockCopy(vector, 0, bytes, 0, bytes.Length);
+        return bytes;
+    }
+
+    private static float[] DecodeEmbedding(byte[] bytes, int dimensions)
+    {
+        if (dimensions <= 0 || bytes.Length != dimensions * sizeof(float))
+        {
+            return Array.Empty<float>();
+        }
+
+        var vector = new float[dimensions];
+        Buffer.BlockCopy(bytes, 0, vector, 0, bytes.Length);
+        return vector;
+    }
+
+    private static double Cosine(float[] lhs, float[] rhs)
+    {
+        if (lhs.Length != rhs.Length || lhs.Length == 0)
+        {
+            return -1;
+        }
+
+        double dot = 0;
+        double leftNorm = 0;
+        double rightNorm = 0;
+        for (int index = 0; index < lhs.Length; index++)
+        {
+            dot += lhs[index] * rhs[index];
+            leftNorm += lhs[index] * lhs[index];
+            rightNorm += rhs[index] * rhs[index];
+        }
+
+        return leftNorm <= double.Epsilon || rightNorm <= double.Epsilon
+            ? -1
+            : dot / Math.Sqrt(leftNorm * rightNorm);
+    }
 
     private static string RelativePath(string root, string path) => TryRelativePath(root, path) ?? throw new ArgumentException("Path is outside the project root.", nameof(path));
 
@@ -839,6 +1132,8 @@ public sealed class ProjectCodeMemoryStore : IDisposable
 
     private sealed record StoredArtifact(string ID, string RelativePath, string BlobSha, string Text);
 
+    private sealed record CodeChunk(int StartOffset, int EndOffset, string ContentHash, string Text);
+
     private sealed record StoredSymbol(string ID, string ArtifactID, string RelativePath, ProjectCodeSymbol Symbol, string BlobSha);
 
     private sealed record SymbolRange(int StartLine, int EndLine, string FilePath);
@@ -865,8 +1160,30 @@ public sealed record ProjectCodeMemoryStoreStats(
     long ReferenceCount,
     long CallEdgeCount,
     long ManifestCount,
+    long ChunkCount,
+    long EmbeddingCount,
+    long EmbeddingDimensions,
     long StorageBytes,
-    long StorageBudgetBytes);
+    long StorageBudgetBytes,
+    bool SemanticAvailable,
+    string EmbeddingVersion);
+
+public sealed record ProjectCodeSemanticSearchHit(
+    string ChunkID,
+    string FilePath,
+    int StartOffset,
+    int EndOffset,
+    string ContentHash,
+    double Score,
+    string EmbeddingVersion);
+
+public sealed record ProjectCodeSemanticSearchResult(
+    string Query,
+    IReadOnlyList<ProjectCodeSemanticSearchHit> Hits,
+    bool SemanticAvailable,
+    bool Truncated,
+    string EmbeddingVersion,
+    int EmbeddingDimensions);
 
 public sealed record ProjectCodeCallGraphSymbol(
     string SymbolID,
