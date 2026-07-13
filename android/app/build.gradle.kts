@@ -525,7 +525,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 
     // Serialization
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     // Official Signal libsignal at-rest HPKE identity seal (v0.94.4 pin).
     implementation("org.signal:libsignal-android:0.94.4")

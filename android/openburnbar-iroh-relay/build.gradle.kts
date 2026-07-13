@@ -50,7 +50,7 @@ android {
 dependencies {
     // Kotlinx-serialization for the HermesRealtimeRelayFrame JSON wire
     // shape. Same data model the iOS side encodes via JSONEncoder.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     // Tink — Ed25519 verifier compatible with iOS Curve25519.Signing on
