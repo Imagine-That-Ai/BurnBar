@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreGraphics
+import OpenBurnBarKernel
 
 // MARK: - Substrate integration for the swarm simulation
 //

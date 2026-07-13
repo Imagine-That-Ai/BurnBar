@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarInsights
 
 /// The always-present verdict hero — the dominant frame on the Insights
 /// tab. Layout:

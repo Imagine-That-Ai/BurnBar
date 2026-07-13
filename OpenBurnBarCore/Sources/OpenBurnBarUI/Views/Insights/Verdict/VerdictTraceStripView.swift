@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarInsights
 
 /// Vercel-style horizontal flame strip rendered under the verdict hero.
 ///

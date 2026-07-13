@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarInsights
 
 /// The three-ring strip rendered immediately under the verdict hero.
 ///

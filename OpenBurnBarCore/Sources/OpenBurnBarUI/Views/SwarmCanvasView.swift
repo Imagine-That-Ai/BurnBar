@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 import CoreGraphics
 import CoreText
+import OpenBurnBarKernel
 #if canImport(AppKit)
 import AppKit
 #endif
