@@ -176,6 +176,47 @@ final class UsageRefreshPipelineTests: XCTestCase {
         XCTAssertTrue(result.errors.isEmpty)
     }
 
+    func test_conversationIndexingDoesNotRepersistUsageRows() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let usage = TokenUsage(
+            provider: .factory,
+            sessionId: "conversation-indexing-usage",
+            projectName: "Indexing regression",
+            model: "test-model",
+            inputTokens: 10,
+            outputTokens: 5,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            costUSD: 0.01,
+            startTime: Date(timeIntervalSince1970: 1_700_000_000),
+            endTime: Date(timeIntervalSince1970: 1_700_000_001),
+            usageSource: .providerLog,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact,
+            estimatorVersion: ""
+        )
+        let orchestrator = RefreshOrchestrator(
+            dataStore: store,
+            settingsManager: SettingsManager.shared,
+            quotaService: ProviderQuotaService(
+                appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                homeDirectoryURL: FileManager.default.temporaryDirectory,
+                refreshProviders: []
+            )
+        )
+
+        _ = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: RecordingParser(recorder: recorder, usages: [usage])],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+
+        let persistedUsages = try await store.fetchAllUsage()
+        XCTAssertTrue(persistedUsages.isEmpty)
+    }
+
     private func makeInMemoryDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -221,6 +262,7 @@ private actor ParseOptionsRecorder {
 private struct RecordingParser: LogParser {
     let provider: AgentProvider = .factory
     let recorder: ParseOptionsRecorder
+    var usages: [TokenUsage] = []
 
     func parse() async throws -> ParseResult {
         ParseResult(usages: [], conversations: [])
@@ -228,6 +270,6 @@ private struct RecordingParser: LogParser {
 
     func parse(options: LogParseOptions) async throws -> ParseResult {
         await recorder.record(options.includeConversationBodies)
-        return ParseResult(usages: [], conversations: [])
+        return ParseResult(usages: usages, conversations: [])
     }
 }

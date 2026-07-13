@@ -76,11 +76,9 @@ enum RefreshBackgroundWork {
         // today's token usage is visible without waiting for historical text
         // reconstruction.
         let discovery = pipeline.discover()
-        let recentUsageSince = Calendar.current.startOfDay(for: Date())
         let parsed = try await pipeline.parse(
             from: discovery,
-            includeConversationBodies: false,
-            minimumFileModificationDate: recentUsageSince
+            includeConversationBodies: false
         )
         let reconciled = await pipeline.reconcile(parsed: parsed)
         let persisted = await pipeline.persist(parsed: parsed)
@@ -133,9 +131,6 @@ enum RefreshBackgroundWork {
                 let parseResult = try await parser.parse(
                     options: OpenBurnBarCore.LogParseOptions(includeConversationBodies: indexingEnabled)
                 )
-                if !parseResult.usages.isEmpty {
-                    try await dataStore.insertChunked(parseResult.usages, chunkSize: 500)
-                }
                 if indexingEnabled {
                     result.indexedConversationChanges += await orchestrator.indexConversationsOffMain(
                         parseResult.conversations,
