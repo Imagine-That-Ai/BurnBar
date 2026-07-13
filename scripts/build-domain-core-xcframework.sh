@@ -129,9 +129,9 @@ build_target() {
   log "cargo build ${PROFILE} ${target}"
   (
     cd "${CRATE_DIR}"
-    MACOSX_DEPLOYMENT_TARGET=14.0 \
-    IPHONEOS_DEPLOYMENT_TARGET=17.0 \
-    IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
+    # Deployment minimums belong to the consuming Xcode targets. Exporting
+    # Apple deployment variables here also affects Cargo's host-built proc
+    # macros and can make their dependencies unresolvable under pinned Rust.
     RUSTFLAGS="${RUSTFLAGS:-} ${REMAP_FLAGS}" \
     PATH="${HOME}/.cargo/bin:${PATH}" \
       "${CARGO_BIN}" build ${PROFILE_FLAG} --target "${target}" \

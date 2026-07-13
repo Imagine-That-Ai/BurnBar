@@ -23,6 +23,7 @@ def materialize_abi_surfaces(root: pathlib.Path, manifest: dict[str, object]) ->
         symbols = []
         for domain_name in surface["requiredDomains"]:
             symbols.extend(domains[domain_name][surface["kind"]])
+        symbols.extend(surface.get("requiredSymbols", []))
         path = root / surface["path"]
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("\n".join(symbols) + "\n", encoding="utf-8")
@@ -56,6 +57,23 @@ class DomainCoreUnionGateTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(GATE.GateError, "CloudVaultResealNonce"):
+                GATE.check_abi(root, manifest)
+
+    def test_missing_canonical_wasm_nonce_plan_error_fails_closed(self) -> None:
+        _, manifest = GATE.load_manifest(ROOT)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            materialize_abi_surfaces(root, manifest)
+            wasm = root / next(
+                surface["path"]
+                for surface in manifest["abiSurfaces"]
+                if surface["name"] == "canonical-wasm"
+            )
+            wasm.write_text(
+                wasm.read_text(encoding="utf-8").replace("invalid_rewrap_nonce_plan", ""),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(GATE.GateError, "invalid_rewrap_nonce_plan"):
                 GATE.check_abi(root, manifest)
 
     def test_omitted_domain_fails_closed(self) -> None:

@@ -1,5 +1,6 @@
 package com.openburnbar.domaincore
 
+import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -8,6 +9,7 @@ import org.junit.runner.RunWith
 import uniffi.openburnbar_domain_ffi.CloudVaultDocumentEnvelope
 import uniffi.openburnbar_domain_ffi.CloudVaultDocumentEnvelopeKind
 import uniffi.openburnbar_domain_ffi.CloudVaultDocumentRewrapRequest
+import uniffi.openburnbar_domain_ffi.CloudVaultResealNonce
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmOpenCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmSealCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultEscrowOpen
@@ -18,6 +20,7 @@ import uniffi.openburnbar_domain_ffi.cloudVaultRewrapDocument
 import uniffi.openburnbar_domain_ffi.cloudVaultValidateP256X963PublicKey
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
+import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
 
 @RunWith(AndroidJUnit4::class)
 class DomainCoreNativeLoadTest {
@@ -25,6 +28,19 @@ class DomainCoreNativeLoadTest {
     fun generatedBindingLoadsAbiVersionThreeNativeLibrary() {
         assertEquals(3u, domainCoreAbiVersion())
         assertTrue(domainCoreVersion().isNotBlank())
+        assertEquals(
+            "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7",
+            hermesGatewayRelaySafetyCode(
+                Base64.decode(
+                    "BGsX0fLhLEJH+Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT+NC4v4af5uO5+tKfA+eFivOM1drMV7Oy7ZAaDe/UfU=",
+                    Base64.DEFAULT,
+                ),
+                Base64.decode(
+                    "BHzyexiNA09+ilI4AwS1GsPAiWnid/IbNaYLSPxHZpl4B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E=",
+                    Base64.DEFAULT,
+                ),
+            ),
+        )
     }
 
     @Test
@@ -87,7 +103,12 @@ class DomainCoreNativeLoadTest {
                 docId = "requestA",
                 documentFieldNames = listOf("vaultKeyID", "plainStatus", "sealedPayload"),
                 envelopes = listOf(envelope),
-                resealNonces = listOf(ByteArray(12) { 0x22 }),
+                resealNoncePlan = listOf(
+                    CloudVaultResealNonce(
+                        fieldName = "sealedPayload",
+                        nonce = ByteArray(12) { 0x22 },
+                    ),
+                ),
                 vaultGeneration = 7L,
                 rotationJobId = "job-7",
             )

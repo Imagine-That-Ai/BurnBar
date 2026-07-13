@@ -14,6 +14,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CRATE_DIR="${ROOT_DIR}/crates/openburnbar-domain-core"
+TARGET_DIR="${CARGO_TARGET_DIR:-${CRATE_DIR}/target}"
 VENDOR_DIR="${ROOT_DIR}/Vendor"
 AAR_PATH="${VENDOR_DIR}/openburnbar-domain-core.aar"
 GENERATED_DIR="${ROOT_DIR}/android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi"
@@ -271,7 +272,7 @@ EOF
 
 BINDGEN_ABI="${ABIS[0]}"
 BINDGEN_TARGET="$(abi_to_target "${BINDGEN_ABI}")"
-BINDGEN_LIBRARY="${CRATE_DIR}/target/${BINDGEN_TARGET}/${PROFILE_DIR}/libopenburnbar_domain_ffi.so"
+BINDGEN_LIBRARY="${TARGET_DIR}/${BINDGEN_TARGET}/${PROFILE_DIR}/libopenburnbar_domain_ffi.so"
 [[ -f "${BINDGEN_LIBRARY}" ]] || BINDGEN_LIBRARY="${JNI_DIR}/${BINDGEN_ABI}/libopenburnbar_domain_ffi.so"
 if [[ "${PROFILE}" != "debug" ]]; then
   # UniFFI metadata is reliably present in the debug cdylib even when release
@@ -283,7 +284,7 @@ if [[ "${PROFILE}" != "debug" ]]; then
       "${CARGO_BIN}" ndk -t "${BINDGEN_ABI}" -o "${BUILD_DIR}/bindgen-jni" \
         build -p openburnbar-domain-ffi --lib
   )
-  BINDGEN_LIBRARY="${CRATE_DIR}/target/${BINDGEN_TARGET}/debug/libopenburnbar_domain_ffi.so"
+  BINDGEN_LIBRARY="${TARGET_DIR}/${BINDGEN_TARGET}/debug/libopenburnbar_domain_ffi.so"
 fi
 [[ -f "${BINDGEN_LIBRARY}" ]] || abort "missing bindgen metadata library: ${BINDGEN_LIBRARY}"
 rm -rf "${BUILD_DIR}/kotlin-out" "${GENERATED_DIR}"

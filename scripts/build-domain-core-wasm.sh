@@ -9,6 +9,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/crates/openburnbar-domain-core"
+TARGET_DIR="${CARGO_TARGET_DIR:-${WORKSPACE_DIR}/target}"
 PACKAGE_DIR="${WORKSPACE_DIR}/domain-wasm"
 VENDOR_DIR="${ROOT_DIR}/apps/console/vendor/openburnbar-domain-core-wasm"
 FUNCTIONS_VENDOR_DIR="${ROOT_DIR}/functions/vendor/openburnbar/domain-core-wasm"
@@ -114,7 +115,7 @@ log "generating browser bindings"
   --typescript \
   --out-dir "${STAGING_DIR}" \
   --out-name openburnbar_domain_core \
-  "${WORKSPACE_DIR}/target/${TARGET}/release/openburnbar_domain_wasm.wasm"
+  "${TARGET_DIR}/${TARGET}/release/openburnbar_domain_wasm.wasm"
 cp "${PACKAGE_DIR}/package.json" "${STAGING_DIR}/package.json"
 printf '%s\n' "${SOURCE_FINGERPRINT}" > "${STAGING_DIR}/${FINGERPRINT_NAME}"
 
@@ -124,7 +125,7 @@ log "generating Node bindings"
   --typescript \
   --out-dir "${NODE_STAGING_DIR}" \
   --out-name openburnbar_domain_core \
-  "${WORKSPACE_DIR}/target/${TARGET}/release/openburnbar_domain_wasm.wasm"
+  "${TARGET_DIR}/${TARGET}/release/openburnbar_domain_wasm.wasm"
 cp "${PACKAGE_DIR}/package.node.json" "${NODE_STAGING_DIR}/package.json"
 printf '%s\n' "${SOURCE_FINGERPRINT}" > "${NODE_STAGING_DIR}/${FINGERPRINT_NAME}"
 

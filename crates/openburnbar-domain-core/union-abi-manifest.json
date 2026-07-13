@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "b428b92bf888ce0d516cf1902c79b10bd6be633118c12e0481be69cad509cf2a",
+  "sourceSha256": "cd3234c5896580a612e9662cb2fff47edca27af9b9302a61fa6a2a8384d6ccaf",
   "sourceRoots": [
     "Cargo.toml",
     "Cargo.lock",
@@ -117,9 +117,7 @@
         "InvalidRewrapNoncePlan"
       ],
       "wasm": [
-        "cloudVaultRewrapDocumentJson",
-        "CloudVaultResealNonce",
-        "invalid_rewrap_nonce_plan"
+        "cloudVaultRewrapDocumentJson"
       ]
     },
     "hermes": {
@@ -267,6 +265,10 @@
         "documentRewrap",
         "pricing",
         "encryptedSearch"
+      ],
+      "requiredSymbols": [
+        "CloudVaultDocumentRewrapRequest",
+        "invalid_rewrap_nonce_plan"
       ]
     },
     {

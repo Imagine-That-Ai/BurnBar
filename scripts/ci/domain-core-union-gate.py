@@ -128,10 +128,15 @@ def check_abi(root: pathlib.Path, manifest: dict[str, object]) -> None:
         kind = surface.get("kind")
         raw_path = surface.get("path")
         required = surface.get("requiredDomains")
+        required_symbols = surface.get("requiredSymbols", [])
         if not all(isinstance(value, str) and value for value in (name, kind, raw_path)):
             raise GateError("each ABI surface requires non-empty name, kind, and path")
         if not isinstance(required, list) or not required:
             raise GateError(f"{name}: requiredDomains must be non-empty")
+        if not isinstance(required_symbols, list) or any(
+            not isinstance(symbol, str) or not symbol for symbol in required_symbols
+        ):
+            raise GateError(f"{name}: requiredSymbols must contain only non-empty strings")
         unknown = set(required) - REQUIRED_DOMAINS
         if unknown:
             raise GateError(f"{name}: unknown domains: {', '.join(sorted(unknown))}")
@@ -154,6 +159,14 @@ def check_abi(root: pathlib.Path, manifest: dict[str, object]) -> None:
                     f"{name}: {domain_name} is absent or incomplete in {raw_path}; "
                     f"missing named symbol(s): {', '.join(str(symbol) for symbol in missing)}"
                 )
+        missing_surface_symbols = [
+            symbol for symbol in required_symbols if symbol not in contents
+        ]
+        if missing_surface_symbols:
+            raise GateError(
+                f"{name}: {raw_path} is missing surface-specific symbol(s): "
+                + ", ".join(missing_surface_symbols)
+            )
         if set(required) == REQUIRED_DOMAINS:
             full_union_surfaces.add(str(name))
 
