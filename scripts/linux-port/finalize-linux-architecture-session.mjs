@@ -43,7 +43,7 @@ const daemonVersion = daemonHealth?.response?.result?.daemonVersion ?? '';
 let archLifecycle = null;
 let archLifecycleFailure = null;
 try {
-  archLifecycle = validateArchUpdateRollbackReport({
+  const validatedLifecycle = validateArchUpdateRollbackReport({
     report: archUpdateRollback,
     architecture: closure.architecture,
     version: closure.version,
@@ -57,9 +57,9 @@ try {
     gitCommit: closure.git?.commit,
     artifact: archArtifact,
     releaseRoot: repoRoot,
-    publicKeyFile: path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem'),
-    candidateSignatureFile: path.join(outDir, 'sidecars', `${path.basename(archArtifact.file)}.ed25519.sig`)
+    publicKeyFile: path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem')
   });
+  archLifecycle = validatedLifecycle;
 } catch (error) {
   archLifecycleFailure = error.message;
 }

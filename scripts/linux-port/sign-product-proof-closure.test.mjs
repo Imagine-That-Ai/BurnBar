@@ -13,7 +13,7 @@ test('product proof closure signing emits a pinned, self-verifying sidecar', (t)
   const closureFile = path.join(root, 'product-proof-closure.json');
   const signatureFile = path.join(root, 'product-proof-closure.json.ed25519.sig');
   const document = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     status: 'passed',
     stage: 'candidate',
     targetHead: 'a'.repeat(40),
@@ -53,7 +53,7 @@ test('product proof closure signing rejects a mismatched key and unpassed closur
       publicKeyPem: publicKey.export({ type: 'spki', format: 'pem' })
     }), /clean, passed/u);
     const valid = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       status: 'passed',
       stage: 'candidate',
       targetHead: 'b'.repeat(40),

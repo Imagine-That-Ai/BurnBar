@@ -130,23 +130,43 @@ export function authenticateArchLifecycleReport({
   gitCommit,
   artifact,
   releaseRoot,
-  publicKeyFile,
-  candidateSignatureFile
+  publicKeyFile
 }) {
   validateArchUpdateRollbackReport({ report, architecture, version, gitCommit, artifact });
-  if (!releaseRoot || !publicKeyFile || !candidateSignatureFile) {
+  if (!releaseRoot || !publicKeyFile) {
     throw new Error('Arch lifecycle authentication context is incomplete');
   }
   const root = fs.realpathSync(releaseRoot);
   const publicKey = fs.readFileSync(publicKeyFile);
   const candidate = readBoundFile(root, report.candidate, 'Arch candidate package');
-  const candidateSignatureAbsolute = fs.realpathSync(candidateSignatureFile);
-  const candidateSignature = readBoundFile(root, {
-    file: path.relative(root, candidateSignatureAbsolute).split(path.sep).join('/'),
-    size: fs.statSync(candidateSignatureAbsolute).size,
-    sha256: crypto.createHash('sha256').update(fs.readFileSync(candidateSignatureAbsolute)).digest('hex')
-  }, 'Arch candidate package signature');
-  verifyDetachedEd25519(candidate.bytes, candidateSignature.bytes, publicKey, 'Arch candidate package');
+  if (!artifact?.installedManifest || !artifact?.installedManifestSignature) {
+    throw new Error('Arch candidate installed manifest subjects are missing from the architecture closure');
+  }
+  const candidateManifest = readBoundFile(root, artifact.installedManifest, 'Arch candidate installed manifest');
+  const candidateManifestSignature = readBoundFile(
+    root,
+    artifact.installedManifestSignature,
+    'Arch candidate installed manifest signature'
+  );
+  verifyDetachedEd25519(
+    candidateManifest.bytes,
+    candidateManifestSignature.bytes,
+    publicKey,
+    'Arch candidate installed manifest'
+  );
+  let candidateManifestDocument;
+  try {
+    candidateManifestDocument = JSON.parse(candidateManifest.bytes.toString('utf8'));
+  } catch (error) {
+    throw new Error(`Arch candidate installed manifest is invalid JSON: ${error.message}`);
+  }
+  if (candidateManifestDocument.packageName !== 'openburnbar'
+      || candidateManifestDocument.packageFormat !== 'arch'
+      || candidateManifestDocument.packageArchitecture !== architecture
+      || candidateManifestDocument.packageVersion !== version
+      || candidateManifestDocument.gitCommit !== gitCommit) {
+    throw new Error('Arch candidate installed manifest identity is not release-bound');
+  }
 
   const previous = readBoundFile(root, report.previous, 'Arch previous package');
   const provenance = report.previousProvenance;

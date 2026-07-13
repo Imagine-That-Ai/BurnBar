@@ -18,7 +18,7 @@ export function signProductProofClosure({
   const signature = path.resolve(signatureFile);
   const bytes = fs.readFileSync(closure);
   const document = JSON.parse(bytes.toString('utf8'));
-  if (document.schemaVersion !== 1 || document.status !== 'passed'
+  if (document.schemaVersion !== 2 || document.status !== 'passed'
       || document.stage !== 'candidate' || document.git?.dirty !== false
       || !/^[a-f0-9]{40,64}$/u.test(document.targetHead ?? '')
       || document.targetHead !== document.sourceCommit || document.git.commit !== document.targetHead) {

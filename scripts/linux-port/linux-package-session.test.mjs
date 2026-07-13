@@ -192,7 +192,7 @@ test('Arch lifecycle proof binds pacman transitions to exact candidate and previ
   }
 });
 
-test('architecture finalizer consumes the architecture smoke report', () => {
+test('architecture finalizer fails closed when Arch lifecycle subjects are unauthenticated', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'openburnbar-linux-session-'));
   const sessionDir = path.join(root, 'session');
   const archLifecycleDir = path.join(root, 'arch-lifecycle');
@@ -256,8 +256,8 @@ test('architecture finalizer consumes the architecture smoke report', () => {
     assert.equal(result.status, 0, result.stderr);
     const report = JSON.parse(readFileSync(path.join(root, 'architecture-session.json'), 'utf8'));
     assert.equal(report.packageSmokePassed, true);
-    assert.equal(report.passed, true);
-    assert.deepEqual(report.blockers, []);
+    assert.equal(report.passed, false);
+    assert.match(report.blockers.join('\n'), /authenticated|release-bound|release-unbound/u);
 
     json(path.join(smokeDir, 'arch-package-smoke.json'), {
       passed: true,

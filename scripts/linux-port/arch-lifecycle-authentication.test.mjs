@@ -52,10 +52,10 @@ function makeFixture() {
   const outDir = path.join(root, '.linux-shard');
   const previousDir = path.join(outDir, 'previous', 'arch');
   const artifactsDir = path.join(outDir, 'artifacts');
-  const sidecarsDir = path.join(outDir, 'sidecars');
+  const manifestsDir = path.join(outDir, 'installed-manifests');
   fs.mkdirSync(previousDir, { recursive: true });
   fs.mkdirSync(artifactsDir, { recursive: true });
-  fs.mkdirSync(sidecarsDir, { recursive: true });
+  fs.mkdirSync(manifestsDir, { recursive: true });
   const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
   const publicKeyFile = path.join(root, 'release.pub.pem');
   fs.writeFileSync(publicKeyFile, publicKey.export({ type: 'spki', format: 'pem' }));
@@ -68,6 +68,22 @@ function makeFixture() {
   const candidateRelative = path.relative(root, candidateFile).split(path.sep).join('/');
   const previousRelative = path.relative(root, previousFile).split(path.sep).join('/');
   const candidate = { ...record(candidateRelative, candidateBytes), version };
+  const reportCandidate = { ...candidate };
+  const candidateManifestBytes = Buffer.from(JSON.stringify({
+    packageName: 'openburnbar', packageFormat: 'arch', packageArchitecture: architecture,
+    packageVersion: version, gitCommit
+  }));
+  const candidateManifestFile = path.join(manifestsDir, `arch-${architecture}.installed-manifest.json`);
+  const candidateManifestSignatureFile = `${candidateManifestFile}.sig`;
+  fs.writeFileSync(candidateManifestFile, candidateManifestBytes);
+  fs.writeFileSync(candidateManifestSignatureFile, signed(candidateManifestBytes, privateKey));
+  candidate.installedManifest = record(
+    path.relative(root, candidateManifestFile).split(path.sep).join('/'), candidateManifestBytes
+  );
+  candidate.installedManifestSignature = record(
+    path.relative(root, candidateManifestSignatureFile).split(path.sep).join('/'),
+    fs.readFileSync(candidateManifestSignatureFile)
+  );
   const previous = { ...record(previousRelative, previousBytes), version: previousVersion };
   const manifestBytes = Buffer.from(JSON.stringify({
     packageName: 'openburnbar', packageFormat: 'arch', packageArchitecture: architecture,
@@ -91,8 +107,6 @@ function makeFixture() {
   const closureSignatureFile = path.join(previousDir, 'product-proof-closure.json.ed25519.sig');
   fs.writeFileSync(closureFile, closureBytes);
   fs.writeFileSync(closureSignatureFile, signed(closureBytes, privateKey));
-  const candidateSignatureFile = path.join(sidecarsDir, `${path.basename(candidateFile)}.ed25519.sig`);
-  fs.writeFileSync(candidateSignatureFile, signed(candidateBytes, privateKey));
   const packageSignatureFile = `${previousFile}.ed25519.sig`;
   fs.writeFileSync(packageSignatureFile, signed(previousBytes, privateKey));
   const provenance = {
@@ -107,9 +121,9 @@ function makeFixture() {
   const sentinel = 'd'.repeat(64);
   const report = {
     schemaVersion: 1, manager: 'pacman', packageName: 'openburnbar', architecture, gitCommit,
-    candidate, previous, previousProvenance: provenance, steps: lifecycleSteps(previous, candidate), passed: true,
+    candidate: reportCandidate, previous, previousProvenance: provenance, steps: lifecycleSteps(previous, reportCandidate), passed: true,
     lifecycle: {
-      update: transition(previous, candidate), rollback: transition(candidate, previous),
+      update: transition(previous, reportCandidate), rollback: transition(reportCandidate, previous),
       dataPreservation: {
         status: 'passed', sentinelSha256: sentinel,
         afterPreviousSha256: sentinel, afterUpdateSha256: sentinel,
@@ -119,7 +133,7 @@ function makeFixture() {
   };
   return {
     root, outDir, report, artifact: candidate,
-    publicKeyFile, candidateSignatureFile,
+    publicKeyFile,
     privateKey, publicKey, closureFile, previousFile
   };
 }
@@ -135,7 +149,6 @@ test('Arch finalizer re-authenticates exact package, manifest, closure, and sign
     artifact: fixture.artifact,
     releaseRoot: fixture.root,
     publicKeyFile: fixture.publicKeyFile,
-    candidateSignatureFile: fixture.candidateSignatureFile
   };
   assert.equal(authenticateArchLifecycleReport(context), true);
 
@@ -152,7 +165,6 @@ test('Arch finalizer re-authenticates exact package, manifest, closure, and sign
     artifact: fresh.artifact,
     releaseRoot: fresh.root,
     publicKeyFile: fresh.publicKeyFile,
-    candidateSignatureFile: fresh.candidateSignatureFile
   };
   fs.appendFileSync(fresh.previousFile, 'post-verification mutation');
   assert.throws(() => authenticateArchLifecycleReport(freshContext), /sealed provenance/u);
