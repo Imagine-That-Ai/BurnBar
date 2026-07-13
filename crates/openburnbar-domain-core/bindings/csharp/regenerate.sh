@@ -4,6 +4,8 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 crate_dir="$(cd "${here}/../.." && pwd)"
 out_dir="${here}/OpenBurnBarDomainCore.Ffi/generated"
+repo_root="$(cd "${crate_dir}/../.." && pwd)"
+provenance_dir="${crate_dir}/artifact-provenance"
 profile="${OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE:-debug}"
 build_flag=()
 [[ "${profile}" == "release" ]] && build_flag=(--release)
@@ -27,5 +29,8 @@ mkdir -p "${out_dir}"
     --config "${crate_dir}/domain-ffi/uniffi.toml" \
     --out-dir "${out_dir}" )
 perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' "${out_dir}/openburnbar_domain_ffi.cs"
+mkdir -p "${provenance_dir}"
+python3 "${repo_root}/scripts/ci/domain-core-union-gate.py" --source-fingerprint > \
+  "${provenance_dir}/csharp.sha256"
 
-echo "==> Done. Review and commit ${out_dir}/openburnbar_domain_ffi.cs"
+echo "==> Done. Review and commit ${out_dir} plus ${provenance_dir}/csharp.sha256"
