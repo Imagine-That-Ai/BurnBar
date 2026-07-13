@@ -14,6 +14,29 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Tests;
 public sealed class ModelCompletionExecutorTests
 {
     [Fact]
+    public async Task ExecuteAsync_RejectsRemoteHttpBeforeTransport()
+    {
+        var handler = new CapturingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK));
+        using var client = new HttpClient(handler);
+        var executor = new HttpModelCompletionExecutor(client);
+
+        ModelCompletionResult result = await executor.ExecuteAsync(
+            new ModelRoute(
+                "unsafe-route",
+                "openai",
+                "model",
+                0,
+                true,
+                new Uri("http://provider.example/v1/chat/completions")),
+            Encoding.UTF8.GetBytes("{}"),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(503, result.StatusCode);
+        Assert.Null(handler.RequestBody);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_RejectsOversizedProviderResponse()
     {
         using var client = new HttpClient(new FixedResponseHandler(

@@ -132,6 +132,15 @@ unproven host behavior to certification:
   unauthenticated mode is rejected for every resolved non-loopback bind even
   when the opt-out was saved or supplied by the environment. The token itself
   is never logged or placed in route metadata.
+- Provider routes now persist as typed, non-secret Windows settings and resolve
+  per-route bearer credentials only from DPAPI-protected storage. The production
+  app, HTTP gateway, Elder Wand catalog, fusion loop, and companion runtime share
+  that catalog instead of relying on an environment JSON manifest. The Model
+  Proxy leaf provides add/edit/delete and enable controls with automatic shared
+  runtime restart. Unsafe remote HTTP endpoints, URI credentials/fragments,
+  duplicate IDs, missing enabled-route credentials, and plaintext gateway-token
+  environment overrides fail closed. Live provider traffic and full macOS
+  provider-plan/quota semantics remain staging/F2 evidence gates.
 - Cloud startup now restores a non-expired OAuth session from the protected
   session store without opening a browser; only a signed-out or expired session
   falls back to the explicit dev-host path. When

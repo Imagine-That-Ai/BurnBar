@@ -79,12 +79,17 @@ public sealed class ModelProxySettingsViewModel : ObservableSettingsViewModel
 
     public ModelProxySettingsViewModel(
         IGatewayEndpointStore? store = null,
-        ISettingsClipboard? clipboard = null)
+        ISettingsClipboard? clipboard = null,
+        IGatewayRouteSettingsStore? routeStore = null)
     {
         _store = store ?? new InMemoryGatewayEndpointStore();
         _clipboard = clipboard ?? new NullSettingsClipboard();
+        ProviderRoutes = new GatewayRouteSettingsViewModel(routeStore);
         Load();
     }
+
+    /// <summary>Durable upstream provider routes and protected credential status.</summary>
+    public GatewayRouteSettingsViewModel ProviderRoutes { get; }
 
     /// <summary>Load persisted settings into the view-model.</summary>
     public void Load()
@@ -96,6 +101,7 @@ public sealed class ModelProxySettingsViewModel : ObservableSettingsViewModel
         _authToken = s.AuthToken;
         _allowUnauthenticatedLoopback = s.AllowUnauthenticatedLoopback;
         _copiedEndpoint = false;
+        ProviderRoutes.Load();
         RaiseAll();
     }
 

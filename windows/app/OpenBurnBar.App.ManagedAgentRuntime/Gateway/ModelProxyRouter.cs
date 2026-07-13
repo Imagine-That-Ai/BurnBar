@@ -150,7 +150,7 @@ public sealed record ModelRoute(
     /// <summary>Whether this route can accept a completion request now.</summary>
     public bool IsExecutable => Healthy
         && Endpoint is not null
-        && (Endpoint.Scheme == Uri.UriSchemeHttp || Endpoint.Scheme == Uri.UriSchemeHttps);
+        && GatewayRouteConfiguration.IsEndpointAllowed(Endpoint);
 }
 
 public sealed record ModelRouteDecision(ModelRoute Route, bool Degraded, bool FailedClosed = false);

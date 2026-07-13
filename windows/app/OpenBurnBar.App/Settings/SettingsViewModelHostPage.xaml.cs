@@ -14,6 +14,7 @@ using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Settings;
 using OpenBurnBar.App.Settings.ViewModels;
 using OpenBurnBar.App.Settings.ViewModels.Daemon;
+using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 
 namespace OpenBurnBar.App.Settings.Winui;
 
@@ -108,8 +109,9 @@ public sealed partial class SettingsViewModelHostPage : Page
             }
         }
 
-        if (viewModel is ModelProxySettingsViewModel)
+        if (viewModel is ModelProxySettingsViewModel modelProxy)
         {
+            AddModelProxyRouteControls(modelProxy);
             AddModelProxyRestartButton(viewModel);
         }
     }
@@ -226,6 +228,277 @@ public sealed partial class SettingsViewModelHostPage : Page
             }
         };
         DynamicControls.Children.Add(button);
+    }
+
+    private void AddModelProxyRouteControls(ModelProxySettingsViewModel viewModel)
+    {
+        var header = new Grid { ColumnSpacing = 12, Margin = new Thickness(0, 12, 0, 2) };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var heading = new StackPanel { Spacing = 2 };
+        heading.Children.Add(new TextBlock
+        {
+            Text = "Provider routes",
+            FontSize = 16,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        });
+        heading.Children.Add(new TextBlock
+        {
+            Text = $"{viewModel.ProviderRoutes.ReadyCount} ready of {viewModel.ProviderRoutes.ConfiguredCount} configured",
+            Opacity = 0.65,
+            FontSize = 12,
+        });
+        var addContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        addContent.Children.Add(new SymbolIcon(Symbol.Add));
+        addContent.Children.Add(new TextBlock { Text = "Add route" });
+        var addButton = new Button { Content = addContent, HorizontalAlignment = HorizontalAlignment.Right };
+        AutomationProperties.SetName(addButton, "Add provider route");
+        addButton.Click += async (_, _) => await ShowGatewayRouteDialogAsync(viewModel, existing: null);
+        Grid.SetColumn(heading, 0);
+        Grid.SetColumn(addButton, 1);
+        header.Children.Add(heading);
+        header.Children.Add(addButton);
+        DynamicControls.Children.Add(header);
+
+        if (!string.IsNullOrWhiteSpace(viewModel.ProviderRoutes.LastError))
+        {
+            AddReadOnlyRow("Provider route error", viewModel.ProviderRoutes.LastError);
+        }
+
+        if (viewModel.ProviderRoutes.Routes.Count == 0)
+        {
+            AddReadOnlyRow("Route status", "No upstream provider routes are configured.");
+            return;
+        }
+
+        foreach (GatewayRouteSettingsRow route in viewModel.ProviderRoutes.Routes)
+        {
+            var row = new Grid
+            {
+                ColumnSpacing = 12,
+                Padding = new Thickness(0, 8, 0, 8),
+            };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var identity = new StackPanel { Spacing = 3 };
+            identity.Children.Add(new TextBlock
+            {
+                Text = $"{route.Vendor} / {route.Model}",
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+            });
+            identity.Children.Add(new TextBlock
+            {
+                Text = route.Endpoint,
+                FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+                FontSize = 11,
+                Opacity = 0.72,
+                TextWrapping = TextWrapping.Wrap,
+            });
+            identity.Children.Add(new TextBlock
+            {
+                Text = $"{route.Status} · priority {route.Priority} · {route.Authentication}",
+                FontSize = 11,
+                Opacity = 0.65,
+            });
+
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var enabled = new ToggleSwitch
+            {
+                IsOn = route.Enabled,
+                OffContent = "Off",
+                OnContent = "On",
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            AutomationProperties.SetName(enabled, $"Enable {route.Vendor} {route.Model} route");
+            enabled.Toggled += async (_, _) =>
+            {
+                enabled.IsEnabled = false;
+                GatewayRouteMutationResult result = viewModel.ProviderRoutes.SetEnabled(route.Id, enabled.IsOn);
+                if (!result.Succeeded)
+                {
+                    ShowError(result.Error ?? "The route could not be updated.");
+                    BuildControls(viewModel);
+                    return;
+                }
+
+                await RestartAfterRouteChangeAsync(viewModel, "Provider route updated.");
+            };
+
+            var edit = new Button { Content = new SymbolIcon(Symbol.Edit) };
+            AutomationProperties.SetName(edit, $"Edit {route.Vendor} {route.Model} route");
+            ToolTipService.SetToolTip(edit, "Edit route");
+            edit.Click += async (_, _) => await ShowGatewayRouteDialogAsync(viewModel, route);
+
+            var delete = new Button { Content = new SymbolIcon(Symbol.Delete) };
+            AutomationProperties.SetName(delete, $"Delete {route.Vendor} {route.Model} route");
+            ToolTipService.SetToolTip(delete, "Delete route");
+            delete.Click += async (_, _) => await DeleteGatewayRouteAsync(viewModel, route);
+
+            actions.Children.Add(enabled);
+            actions.Children.Add(edit);
+            actions.Children.Add(delete);
+            Grid.SetColumn(identity, 0);
+            Grid.SetColumn(actions, 1);
+            row.Children.Add(identity);
+            row.Children.Add(actions);
+            DynamicControls.Children.Add(row);
+            DynamicControls.Children.Add(new Border
+            {
+                Height = 1,
+                Opacity = 0.12,
+                Background = new SolidColorBrush(Microsoft.UI.Colors.White),
+            });
+        }
+    }
+
+    private async Task ShowGatewayRouteDialogAsync(
+        ModelProxySettingsViewModel viewModel,
+        GatewayRouteSettingsRow? existing)
+    {
+        var vendor = new TextBox { Header = "Provider", Text = existing?.Vendor ?? string.Empty };
+        var model = new TextBox { Header = "Model", Text = existing?.Model ?? string.Empty };
+        var endpoint = new TextBox { Header = "Completion endpoint", Text = existing?.Endpoint ?? "https://" };
+        var priority = new NumberBox
+        {
+            Header = "Priority",
+            Value = existing?.Priority ?? viewModel.ProviderRoutes.ConfiguredCount,
+            Minimum = 0,
+            Maximum = GatewayRouteConfiguration.MaximumPriority,
+            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
+        };
+        var authentication = new ComboBox
+        {
+            Header = "Authentication",
+            ItemsSource = Enum.GetValues<GatewayRouteAuthentication>(),
+            SelectedItem = existing?.Authentication ?? GatewayRouteAuthentication.Bearer,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        var credential = new PasswordBox
+        {
+            Header = "Bearer credential",
+            PlaceholderText = existing?.CredentialConfigured == true
+                ? "Protected credential configured; blank keeps it"
+                : "Required when Bearer is selected",
+        };
+        var enabled = new ToggleSwitch
+        {
+            Header = "Route enabled",
+            IsOn = existing?.Enabled ?? true,
+            OffContent = "Off",
+            OnContent = "On",
+        };
+        var error = new InfoBar
+        {
+            Severity = InfoBarSeverity.Error,
+            IsClosable = false,
+            IsOpen = false,
+        };
+        var content = new StackPanel { Spacing = 10, MinWidth = 420 };
+        content.Children.Add(vendor);
+        content.Children.Add(model);
+        content.Children.Add(endpoint);
+        content.Children.Add(priority);
+        content.Children.Add(authentication);
+        content.Children.Add(credential);
+        content.Children.Add(enabled);
+        content.Children.Add(error);
+
+        bool saved = false;
+        var dialog = new ContentDialog
+        {
+            Title = existing is null ? "Add provider route" : "Edit provider route",
+            Content = content,
+            PrimaryButtonText = "Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot,
+        };
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            int parsedPriority = double.IsNaN(priority.Value)
+                ? -1
+                : checked((int)Math.Round(priority.Value));
+            var input = new GatewayRouteInput(
+                existing?.Id,
+                vendor.Text,
+                model.Text,
+                endpoint.Text,
+                parsedPriority,
+                enabled.IsOn,
+                authentication.SelectedItem is GatewayRouteAuthentication selected
+                    ? selected
+                    : GatewayRouteAuthentication.Bearer,
+                credential.Password);
+            GatewayRouteMutationResult result = viewModel.ProviderRoutes.Upsert(input);
+            if (!result.Succeeded)
+            {
+                args.Cancel = true;
+                error.Message = result.Error ?? "The route could not be saved.";
+                error.IsOpen = true;
+                return;
+            }
+
+            saved = true;
+        };
+
+        await dialog.ShowAsync();
+        if (saved)
+        {
+            await RestartAfterRouteChangeAsync(viewModel, "Provider route saved and local runtime restarted.");
+        }
+    }
+
+    private async Task DeleteGatewayRouteAsync(
+        ModelProxySettingsViewModel viewModel,
+        GatewayRouteSettingsRow route)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "Delete provider route",
+            Content = $"Delete {route.Vendor} / {route.Model} and its protected credential from this PC?",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        GatewayRouteMutationResult result = viewModel.ProviderRoutes.Delete(route.Id);
+        if (!result.Succeeded)
+        {
+            ShowError(result.Error ?? "The route could not be deleted.");
+            return;
+        }
+
+        await RestartAfterRouteChangeAsync(viewModel, "Provider route deleted and local runtime restarted.");
+    }
+
+    private async Task RestartAfterRouteChangeAsync(
+        ModelProxySettingsViewModel viewModel,
+        string successMessage)
+    {
+        try
+        {
+            await App.Current.RestartLocalGatewayAsync();
+            BuildControls(viewModel);
+            ShowSuccess(successMessage);
+        }
+        catch (Exception ex)
+        {
+            BuildControls(viewModel);
+            ShowError("The route was saved, but the local runtime could not restart: "
+                + ex.GetBaseException().Message);
+        }
     }
 
     private async Task InvokeCommandAsync(object viewModel, MethodInfo method, object?[] arguments, Button button)

@@ -56,7 +56,7 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(requestBody);
-        if (route.Endpoint is null || !route.Endpoint.IsAbsoluteUri)
+        if (!route.IsExecutable || route.Endpoint is null)
         {
             return new ModelCompletionResult(503, Array.Empty<byte>(), "application/json", false);
         }

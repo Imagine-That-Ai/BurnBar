@@ -314,7 +314,7 @@ public partial class App : Application
     {
         try
         {
-            _gatewayComposition = GatewayCompositionFactory.CreateFromEnvironment();
+            _gatewayComposition = WindowsSettingsComposition.CreateGatewayComposition();
         }
         catch (Exception ex)
         {
@@ -358,18 +358,15 @@ public partial class App : Application
         GatewayListenerOptions listenerOptions,
         GatewayEndpointSettings settings)
     {
-        const string tokenEnvironmentVariable = "OPENBURNBAR_GATEWAY_AUTH_TOKEN";
         const string allowUnauthenticatedEnvironmentVariable = "OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK";
         string tokenName = AppSecretNames.ProviderSecret("settings", "model-proxy", "auth-token");
-        string? environmentToken = Environment.GetEnvironmentVariable(tokenEnvironmentVariable);
         var persistence = WindowsSettingsComposition.SharedPersistence;
         bool allowUnauthenticated = listenerOptions.AllowsUnauthenticatedAccess(
             settings.AllowUnauthenticatedLoopback,
             Environment.GetEnvironmentVariable(allowUnauthenticatedEnvironmentVariable));
-        string configuredToken = environmentToken ?? settings.AuthToken;
+        string configuredToken = settings.AuthToken;
         string? resolved = GatewayAuthTokenPolicy.Resolve(configuredToken, allowUnauthenticated);
-        if (environmentToken is null
-            && string.IsNullOrWhiteSpace(configuredToken)
+        if (string.IsNullOrWhiteSpace(configuredToken)
             && !string.IsNullOrWhiteSpace(resolved))
         {
             persistence.WriteSecret(tokenName, resolved);
@@ -913,7 +910,7 @@ public partial class App : Application
         _fusion = null;
         _projectCodeMemory?.Dispose();
         _projectCodeMemory = null;
-        _gatewayComposition?.HttpClient.Dispose();
+        _gatewayComposition?.Dispose();
         _gatewayComposition = null;
         _localAccessToken = null;
     }
