@@ -82,6 +82,22 @@ random generation, and non-extractable key handles. No FFI or Wasm API accepts a
 private scalar, private-key encoding, or exported browser `CryptoKey` merely to
 centralize an operation.
 
+### Encrypted CloudVault search
+
+Rust owns the complete v1 analysis and hash operation: Unicode tokenization,
+stopwords, index/query prefixes, phrase terms, semantic features, and ordered
+keyed hashes. UniFFI and Wasm each take one complete text/query rather than
+crossing the boundary per token. Inputs fail closed over 1 MiB of UTF-8, 4,096
+extracted tokens, or a positive requested limit over 1,024. Nonpositive limits
+remain a successful empty result because that is part of the versioned legacy
+contract. Platform search services and Firestore I/O remain outside Rust.
+
+Android's dedicated adapter selects legacy, legacy-authoritative shadow, or
+fail-closed Rust execution at the four existing search entry points. It requires
+ABI 3 before native execution, wipes its owned key copy after every native
+attempt, and emits only bounded category/version/count diagnostics. Callers,
+key custody, and persistence mapping do not cross that boundary.
+
 ### Typed CloudVault document rewrap
 
 Swift and Kotlin, not Rust, classify collection-specific dynamic Firestore maps.
@@ -155,6 +171,13 @@ restart the applicable evidence window. Legacy code is removed only in a
 separate reviewed change after one stable Rust-authoritative release, and
 source/compile gates must prove the named legacy implementations and selector
 are absent.
+
+Android owns strict Firestore-map lowering and applies only typed Rust update
+intents. `OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE` controls its dedicated
+`legacy`, legacy-authoritative `shadow`, and fail-closed `rust` lanes. Shadow
+uses the same caller-generated, field-addressed nonce plan for both engines so
+ciphertext can be compared directly; diagnostics contain only operation,
+category, core version, and count.
 
 ## Consequences
 

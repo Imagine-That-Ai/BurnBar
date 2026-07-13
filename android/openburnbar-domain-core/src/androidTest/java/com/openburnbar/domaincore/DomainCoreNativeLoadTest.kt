@@ -3,13 +3,18 @@ package com.openburnbar.domaincore
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import uniffi.openburnbar_domain_ffi.CloudVaultDocumentEnvelope
 import uniffi.openburnbar_domain_ffi.CloudVaultDocumentEnvelopeKind
 import uniffi.openburnbar_domain_ffi.CloudVaultDocumentRewrapRequest
+import uniffi.openburnbar_domain_ffi.CloudVaultFfiException
 import uniffi.openburnbar_domain_ffi.CloudVaultResealNonce
+import uniffi.openburnbar_domain_ffi.CloudVaultSearchOperation
+import uniffi.openburnbar_domain_ffi.CloudVaultSearchRequest
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmOpenCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmSealCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultEscrowOpen
@@ -17,6 +22,8 @@ import uniffi.openburnbar_domain_ffi.cloudVaultEscrowSeal
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryOpenVaultKey
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrapVaultKey
 import uniffi.openburnbar_domain_ffi.cloudVaultRewrapDocument
+import uniffi.openburnbar_domain_ffi.cloudVaultSearch
+import uniffi.openburnbar_domain_ffi.cloudVaultSearchAnalyze
 import uniffi.openburnbar_domain_ffi.cloudVaultValidateP256X963PublicKey
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
@@ -126,6 +133,58 @@ class DomainCoreNativeLoadTest {
         assertEquals("job-7", result.rotationJobIdUpdate)
         assertEquals(newKeyId, result.rewrappedEnvelopes.single().vaultKeyId)
     }
+
+    @Test
+    fun searchNativeContractCoversUnicodeBoundsAndKeyIsolation() {
+        val unicode = cloudVaultSearchAnalyze("CAFÉ naïve 東京 Straße １２３ X")
+        assertEquals(listOf("café", "naïve", "東京", "straße", "１２３"), unicode.normalizedTokens)
+        assertEquals(listOf("café", "naïve", "東京", "straße", "１２３", "x"), unicode.exactPhraseTokens)
+        assertEquals(
+            listOf("𐐨𐐩"),
+            cloudVaultSearchAnalyze("𐐀 𐐀𐐁").normalizedTokens,
+        )
+
+        val primaryKey = ByteArray(32) { it.toByte() }
+        val alternateKey = ByteArray(32) { (0x20 + it).toByte() }
+        val query = search(CloudVaultSearchOperation.QUERY, "Depl X ads", primaryKey, 20)
+        assertEquals(
+            listOf(
+                "b63572c113cb9ddda6dacc5c240c390f",
+                "4bfd945bb269124cfa5f35d47767b103",
+                "0fbb9c9226d586ccbb3a49235ed47847",
+                "41e9eda9d01fef15d3b18d4bcd924f20",
+                "2845e8e8fadf0f00d2535626b33dcf48",
+                "100c03db24b6a39b078b8f987c56fc70",
+                "5e547f79d9db83df558dcbf3c875d804",
+            ),
+            query,
+        )
+        assertTrue(search(CloudVaultSearchOperation.INDEX, "bounded search", primaryKey, 0).isEmpty())
+        assertTrue(search(CloudVaultSearchOperation.TOKEN, "bounded search", primaryKey, -1).isEmpty())
+
+        val primary = search(CloudVaultSearchOperation.TOKEN, "vault isolation", primaryKey, 10)
+        val alternate = search(CloudVaultSearchOperation.TOKEN, "vault isolation", alternateKey, 10)
+        assertFalse(primary.toSet().intersect(alternate.toSet()).isNotEmpty())
+        assertThrows(CloudVaultFfiException.InvalidKeyLength::class.java) {
+            search(CloudVaultSearchOperation.TOKEN, "invalid key", ByteArray(31), 10)
+        }
+        assertThrows(CloudVaultFfiException.SearchLimitTooLarge::class.java) {
+            search(CloudVaultSearchOperation.TOKEN, "oversized limit", primaryKey, 1025)
+        }
+        assertThrows(CloudVaultFfiException.SearchTextTooLarge::class.java) {
+            search(CloudVaultSearchOperation.TOKEN, "x".repeat(1_048_577), primaryKey, 1)
+        }
+        assertThrows(CloudVaultFfiException.SearchTooManyTokens::class.java) {
+            search(CloudVaultSearchOperation.TOKEN, List(4097) { "aa" }.joinToString(" "), primaryKey, 1)
+        }
+    }
+
+    private fun search(
+        operation: CloudVaultSearchOperation,
+        text: String,
+        key: ByteArray,
+        limit: Int,
+    ): List<String> = cloudVaultSearch(CloudVaultSearchRequest(operation, text, key, limit)).hashes
 
     private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 }

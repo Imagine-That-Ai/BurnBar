@@ -34,7 +34,11 @@ internal object CloudVaultCryptoSearch {
     fun tokenHashes(text: String, vaultKey: ByteArray, limit: Int = DEFAULT_TOKEN_HASH_LIMIT): List<String> {
         if (limit <= 0) return emptyList()
         val searchKey = hkdfSha256(vaultKey, SEARCH_SALT.toByteArray(), SEARCH_INFO.toByteArray(), SHA256_DIGEST_BYTES)
-        return tokenHashes(normalizedTokens(text), searchKey, limit)
+        return try {
+            tokenHashes(normalizedTokens(text), searchKey, limit)
+        } finally {
+            searchKey.fill(0)
+        }
     }
 
     fun searchIndexTokenHashes(text: String, vaultKey: ByteArray, limit: Int = DEFAULT_TOKEN_HASH_LIMIT): List<String> {
@@ -42,7 +46,11 @@ internal object CloudVaultCryptoSearch {
         val searchKey = hkdfSha256(vaultKey, SEARCH_SALT.toByteArray(), SEARCH_INFO.toByteArray(), SHA256_DIGEST_BYTES)
         val tokens = normalizedTokens(text).distinct()
         val terms = tokens + searchIndexPrefixTerms(tokens) + exactPhraseTerms(text)
-        return tokenHashes(terms, searchKey, limit)
+        return try {
+            tokenHashes(terms, searchKey, limit)
+        } finally {
+            searchKey.fill(0)
+        }
     }
 
     fun searchQueryTokenHashes(text: String, vaultKey: ByteArray, limit: Int = DEFAULT_TOKEN_HASH_LIMIT): List<String> {
@@ -50,7 +58,11 @@ internal object CloudVaultCryptoSearch {
         val searchKey = hkdfSha256(vaultKey, SEARCH_SALT.toByteArray(), SEARCH_INFO.toByteArray(), SHA256_DIGEST_BYTES)
         val tokens = normalizedTokens(text).distinct()
         val terms = tokens + tokens.mapNotNull(::searchQueryPrefixTerm) + exactPhraseTerms(text)
-        return tokenHashes(terms, searchKey, limit)
+        return try {
+            tokenHashes(terms, searchKey, limit)
+        } finally {
+            searchKey.fill(0)
+        }
     }
 
     fun semanticHashes(text: String, vaultKey: ByteArray, limit: Int = DEFAULT_SEMANTIC_HASH_LIMIT): List<String> {
@@ -66,45 +78,49 @@ internal object CloudVaultCryptoSearch {
         val features = semanticFeatures(tokens)
         if (features.isEmpty()) return emptyList()
 
-        val mac = Mac.getInstance("HmacSHA256")
-        val dimensions = SEMANTIC_VECTOR_DIMENSIONS
-        val accumulator = DoubleArray(dimensions)
-        for (feature in features) {
-            mac.init(SecretKeySpec(searchKey, "HmacSHA256"))
-            val bytes = mac.doFinal(feature.name.toByteArray())
-            val index = (bytes[0].toInt() and BYTE_MASK shl BITS_PER_BYTE or (bytes[1].toInt() and BYTE_MASK)) % dimensions
-            val sign = if (bytes[2].toInt() and 1 == 0) 1.0 else -1.0
-            accumulator[index] += sign * feature.weight
-        }
-
-        val hashes = mutableListOf<String>()
-        val seen = linkedSetOf<String>()
-
-        fun appendBucket(bucket: String) {
-            if (hashes.size >= limit) return
-            mac.init(SecretKeySpec(searchKey, "HmacSHA256"))
-            val hash =
-                mac.doFinal(bucket.toByteArray())
-                    .take(GCM_TAG_BYTES)
-                    .joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
-            if (seen.add(hash)) hashes += hash
-        }
-
-        val bandSize = BITS_PER_BYTE
-        val bandCount = dimensions / bandSize
-        for (band in 0 until bandCount) {
-            var value = 0
-            for (bit in 0 until bandSize) {
-                val index = band * bandSize + bit
-                if (accumulator[index] >= 0) value = value or (1 shl bit)
+        return try {
+            val mac = Mac.getInstance("HmacSHA256")
+            val dimensions = SEMANTIC_VECTOR_DIMENSIONS
+            val accumulator = DoubleArray(dimensions)
+            for (feature in features) {
+                mac.init(SecretKeySpec(searchKey, "HmacSHA256"))
+                val bytes = mac.doFinal(feature.name.toByteArray())
+                val index = (bytes[0].toInt() and BYTE_MASK shl BITS_PER_BYTE or (bytes[1].toInt() and BYTE_MASK)) % dimensions
+                val sign = if (bytes[2].toInt() and 1 == 0) 1.0 else -1.0
+                accumulator[index] += sign * feature.weight
             }
-            appendBucket("simhash:v1:band:$band:%02x".format(value))
-        }
 
-        for (feature in features.take(maxOf(0, limit - hashes.size))) {
-            appendBucket("feature:v1:${feature.name}")
+            val hashes = mutableListOf<String>()
+            val seen = linkedSetOf<String>()
+
+            fun appendBucket(bucket: String) {
+                if (hashes.size >= limit) return
+                mac.init(SecretKeySpec(searchKey, "HmacSHA256"))
+                val hash =
+                    mac.doFinal(bucket.toByteArray())
+                        .take(GCM_TAG_BYTES)
+                        .joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
+                if (seen.add(hash)) hashes += hash
+            }
+
+            val bandSize = BITS_PER_BYTE
+            val bandCount = dimensions / bandSize
+            for (band in 0 until bandCount) {
+                var value = 0
+                for (bit in 0 until bandSize) {
+                    val index = band * bandSize + bit
+                    if (accumulator[index] >= 0) value = value or (1 shl bit)
+                }
+                appendBucket("simhash:v1:band:$band:%02x".format(value))
+            }
+
+            for (feature in features.take(maxOf(0, limit - hashes.size))) {
+                appendBucket("feature:v1:${feature.name}")
+            }
+            hashes
+        } finally {
+            searchKey.fill(0)
         }
-        return hashes
     }
 
     fun normalizedTokens(text: String): List<String> = text.lowercase()

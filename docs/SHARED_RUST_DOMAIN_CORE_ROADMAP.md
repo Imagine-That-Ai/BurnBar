@@ -83,6 +83,31 @@ CloudVault C1 is split by security boundary:
   query orchestration, and browser non-extractable key handles stay outside
   Rust.
 
+Android selects `legacy`, legacy-authoritative `shadow`, or fail-closed `rust`
+for C1d with `OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE`; missing or
+unknown values keep legacy authoritative.
+
+Android routes all four search operations through one UniFFI call per complete
+text/query behind `OPENBURNBAR_CLOUDVAULT_SEARCH_MODE=legacy|shadow|rust`.
+Missing, blank, or unknown values resolve to `legacy`, and shadow remains
+legacy-authoritative. Before its first native search the adapter caches and
+verifies UniFFI ABI 3; a mismatch is a fail-closed Rust error and a sanitized
+shadow rejection, never an automatic Rust-to-legacy fallback.
+
+Search exports are payload-sized and typed. `cloud_vault_search_analyze`
+returns normalized tokens, exact-phrase tokens, and semantic feature names for
+one text. `cloud_vault_search` accepts one typed operation plus the complete
+text, 32-byte vault key, and signed limit, then returns ordered hashes. The core
+rejects text above 1 MiB, more than 4,096 extracted tokens, and limits above
+1,024; nonpositive limits return the contract-required empty array. Owned FFI
+and Wasm key copies and derived search keys are zeroized before return. Android
+additionally wipes its owned lowering copy of the vault key after every native
+attempt. Kotlin `String` is immutable, so Android avoids making an extra mutable
+plaintext copy and relies on the UniFFI/Rust-owned input zeroization. Shadow
+diagnostics contain only a bounded mismatch/error category, core version, and
+counter; Rust mode propagates validation or native-load failures without
+evaluating the legacy implementation.
+
 ## ABI 3 and artifact provenance
 
 The converged union is one breaking **UniFFI ABI 3** cut. C1d replaces the old
