@@ -1178,8 +1178,15 @@ targets:
 
     dependencies:
       - sdk: UIKit.framework
+      # Core-decomposition P-20 (S19): repointed off the OpenBurnBarCore umbrella
+      # onto the narrow products the keyboard's 2 source files import —
+      # OpenBurnBarTextExpansion (matcher/snippet/composer/usage+snapshot stores)
+      # and OpenBurnBarUI (UnifiedDesignSystem.Colors, 7 sites in KeyboardView).
+      # See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarTextExpansion
+      - package: OpenBurnBarCore
+        product: OpenBurnBarUI
       - package: OpenBurnBarCore
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
