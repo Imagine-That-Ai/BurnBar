@@ -202,7 +202,7 @@ implementation increment, not a claim that
 the F2 workstreams are all complete: semantic project-code chunk/embedding
 parity, full static parsing, production composition of every F2 service,
 physical Computer Use/media safety, and host evidence still remain. The
-ledger's 46/46 `Real` result is the scoped F1 source/product gate; WPD-0009
+ledger's 47/47 `Real` result is the scoped F1 source/product gate; WPD-0009
 continues to define F2 True 1:1 as the actual 100% parity endpoint.
 
 ## Implementation Update - 2026-07-10
@@ -273,7 +273,7 @@ dashboard are sample-or-empty; settings are largely diagnostic text;
 updates/activation are declared but not shipped; and several advanced
 capabilities are uncomposed or explicitly deferred.
 
-This audit reviewed current source, current release assets, the 46-row Windows
+This audit reviewed current source, current release assets, the 47-row Windows
 ledger, selected Windows unit suites, and the Windows full-suite CI result.
 The initial audit snapshot found the local Windows VM locked and its guest-exec
 channel unavailable. The later exact-candidate receipt above supersedes that
@@ -319,7 +319,7 @@ treated as end-to-end product parity evidence.
 | Visual polish and responsiveness | Windows has Mica/Acrylic, WebView2/Win2D fallbacks, and semantic styling, but data-backed layouts and performance are unverified; no runtime screenshot/performance release gate exists. See windows/app/OpenBurnBar.App/Dashboard/DashboardPage.xaml.cs:38-82. | Establish shared semantic design tokens and loading/empty/error/offline/partial state components. Tune density, resizing, motion, and GPU fallbacks against macOS intent rather than copying macOS chrome. | High | Screenshot and pixel-diff baselines at 100/150/200% DPI, narrow/wide windows, light/dark/high-contrast, reduced motion/transparency, and disabled WebView2/Win2D. Capture frame/input/memory budgets. |
 | Accessibility and keyboard | macOS has extensive annotations and Cmd shortcuts. Windows currently has limited automation metadata and mostly Ctrl+K; no UIA/Narrator interaction suite proves real accessibility. | Define accessible names/values/help, focus order, live-region announcements, Ctrl/Alt shortcuts, visible focus, high-contrast/reduced-motion behavior, and Windows UI Automation tests. | High | Narrator/manual keyboard protocol plus automated UIA tests for tray, onboarding, dashboard, settings, dialogs, palette, errors, and panic behavior. |
 | Diagnostics and failure UX | macOS has recovery, redaction, archive/reset, reveal/copy diagnostics. Windows diagnostics are mostly local logs while storage failures can look like empty data. See windows/app/OpenBurnBar.App/Diagnostics/AppDiagnostics.cs:85-110. | Add redaction, bounded retention, correlation IDs, consented support bundle, data-source/native capability/updater status, and retry/repair/archive/reset controls. | High | Induce bad storage, expired auth, graphics/runtime absence, updater failure, and parser crash. Validate redaction and a usable support bundle. |
-| Parity reporting and release evidence | The 46-row ledger and green .NET CI prove scoped paths, not a whole-product clean-install experience. The checkout, main CI, and public release are separate states. | Make real-device functional certification a required release artifact: fresh-install proof, screenshots, UIA, package tests, performance, security checks, and explicit residual scope. | High | Do not use a 1:1 parity label until every visible capability is functional or intentionally unavailable with a named, user-visible explanation. |
+| Parity reporting and release evidence | The 47-row ledger and green .NET CI prove scoped paths, not a whole-product clean-install experience. The checkout, main CI, and public release are separate states. | Make real-device functional certification a required release artifact: fresh-install proof, screenshots, UIA, package tests, performance, security checks, and explicit residual scope. | High | Do not use a 1:1 parity label until every visible capability is functional or intentionally unavailable with a named, user-visible explanation. |
 
 ## Windows-Native Adaptation Requirements
 
