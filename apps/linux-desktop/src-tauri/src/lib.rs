@@ -3441,6 +3441,39 @@ fn export_diagnostics() -> Result<serde_json::Value, String> {
     }))
 }
 
+// ───────────────── P29: text expansion storage ─────────────────
+// The renderer reaches the daemon-owned encrypted store through the existing
+// authenticated AF_UNIX bridge. No snippet or consent file is persisted by the
+// Tauri process.
+#[tauri::command]
+fn text_expansion_list() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.text_expansion.get", None)
+}
+
+#[tauri::command]
+fn text_expansion_upsert(snippet: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.text_expansion.upsert",
+        Some(serde_json::json!({ "snippet": snippet })),
+    )
+}
+
+#[tauri::command]
+fn text_expansion_delete(id: String) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.text_expansion.delete",
+        Some(serde_json::json!({ "id": id })),
+    )
+}
+
+#[tauri::command]
+fn text_expansion_consent_update(consent: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.text_expansion.consent.update",
+        Some(consent),
+    )
+}
+
 // ───────────────── P11: session env ─────────────────
 // Reads XDG env vars for real pet-tier detection (not hardcoded).
 #[tauri::command]
@@ -5773,6 +5806,10 @@ pub fn run() {
             app_version_info,
             update_status,
             export_diagnostics,
+            text_expansion_list,
+            text_expansion_upsert,
+            text_expansion_delete,
+            text_expansion_consent_update,
             session_env,
             media_status,
             media_session_state,
