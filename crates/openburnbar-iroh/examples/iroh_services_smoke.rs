@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{io::Write, time::Duration};
 
 use iroh::{endpoint::presets, Endpoint};
 use iroh_services::Client;
@@ -27,5 +27,10 @@ async fn main() -> Result<(), iroh_services::anyhow::Error> {
         endpoint.id()
     );
 
-    Ok(())
+    // iroh's relay shutdown path currently panics when the short-lived smoke
+    // process drops its endpoint after a successful report. Flush the proof
+    // line and exit cleanly instead of turning a successful smoke into exit
+    // 134 during runtime teardown.
+    std::io::stdout().flush()?;
+    std::process::exit(0);
 }
