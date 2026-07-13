@@ -228,6 +228,9 @@ function Get-DeviceIdentity {
     if ($PhysicalHardware -and $processorPlatform -ne $Platform) {
         throw "Physical hardware architecture mismatch: expected $Platform, observed processor architecture $processorPlatform."
     }
+    # Many OEMs expose a placeholder chassis tag. Use the system-product
+    # identifying number as the stable inventory identifier fallback, and
+    # require the attestation to record that same live value.
     $assetTag = @([string]$enclosure.SMBIOSAssetTag, [string]$systemProduct.IdentifyingNumber) |
         Where-Object {
             -not [string]::IsNullOrWhiteSpace($_) -and

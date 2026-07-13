@@ -383,6 +383,15 @@ jobs:
             Write-Host "Portable Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
           }
 
+      - name: Refresh and validate signed native-engine layouts
+        if: steps.config.outputs.codesign == 'true'
+        run: |
+          set -euo pipefail
+          for rid in win-x64 win-arm64; do
+            node scripts/windows-port/refresh-native-engine-manifest.mjs "publish/$rid"
+            node scripts/windows-port/validate-native-engine-layout.mjs "publish/$rid"
+          done
+
       - name: Package zips + checksums
         id: package
         run: |
