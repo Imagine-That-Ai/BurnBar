@@ -237,9 +237,9 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-ios-sim" \
   build_xcframework_args+=(-library "${SIM_DIR}/libopenburnbar_domain_ffi.a" -headers "${SIM_DIR}/Headers")
 
   # Per-arch slices still emitted for archive reproducibility.
-  for t in aarch64-apple-ios; do
-    [[ " ${TARGETS[*]} " == *" ${t} "* ]] && package_static_for_target "${t}"
-  done
+  if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios "* ]]; then
+    package_static_for_target aarch64-apple-ios
+  fi
 else
   for target in "${TARGETS[@]}"; do
     if [[ "${target}" != "aarch64-apple-darwin" && "${target}" != "x86_64-apple-darwin" ]]; then
