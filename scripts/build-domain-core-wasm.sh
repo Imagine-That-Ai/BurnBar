@@ -74,6 +74,17 @@ log "generating browser bindings"
   "${WORKSPACE_DIR}/target/${TARGET}/release/openburnbar_domain_wasm.wasm"
 cp "${PACKAGE_DIR}/package.json" "${STAGING_DIR}/package.json"
 
+# wasm-bindgen emits blanket linter suppressions in declarations. The generated
+# declarations are clean under the repo rules, so remove them instead of
+# weakening the no-new-suppressions gate.
+for declaration in "${STAGING_DIR}"/*.d.ts; do
+  sed -i.bak \
+    -e '/^\/\* tslint:disable \*\/$/d' \
+    -e '/^\/\* eslint-disable \*\/$/d' \
+    "${declaration}"
+  rm -f "${declaration}.bak"
+done
+
 log "running generated-package smoke test"
 node "${PACKAGE_DIR}/tests/package-smoke.mjs" "${STAGING_DIR}"
 

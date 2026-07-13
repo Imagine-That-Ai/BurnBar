@@ -1,5 +1,3 @@
-/* tslint:disable */
-/* eslint-disable */
 export function cloudVaultKeyedHashHex(data: Uint8Array, key: Uint8Array, purpose: CloudVaultHashPurpose): string;
 export function cloudVaultSha256Hex(data: Uint8Array): string;
 export function cloudVaultAadV2(uid: string, collection: string, doc_id: string, field: string, schema_version: number, purpose?: string | null): string;
