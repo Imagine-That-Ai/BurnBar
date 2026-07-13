@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 public struct OMPQuotaAdapter: ProviderQuotaAdapter {
     public init() {}

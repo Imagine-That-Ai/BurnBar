@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 public enum QuotaServiceError: LocalizedError {
     case httpStatus(provider: AgentProvider, code: Int)

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Cursor connector credentials (replaces per-adapter KeychainStore reads)
 

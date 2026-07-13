@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarLogParsers
+import OpenBurnBarKernel
 
 public struct WarpQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
