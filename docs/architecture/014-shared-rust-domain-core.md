@@ -71,6 +71,13 @@ randomness, and platform key handles remain outside Rust. An already-new
 payload is authenticated under the new key before it is reported as skipped;
 malformed or tampered skip candidates fail closed.
 
+Android owns strict Firestore-map lowering and applies only typed Rust update
+intents. `OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE` controls its dedicated
+`legacy`, legacy-authoritative `shadow`, and fail-closed `rust` lanes. Shadow
+uses the same caller-generated, field-addressed nonce plan for both engines so
+ciphertext can be compared directly; diagnostics contain only operation,
+category, core version, and count.
+
 ## Consequences
 
 - Quota parsing is the pilot because it removes real duplication with a small,

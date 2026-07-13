@@ -53,7 +53,10 @@ bounded envelope validation, exact authentication, deterministic field order,
 reseal, and update intents, while callers own dynamic document mapping,
 persistence, timestamps, orchestration, and nonce generation. Its contract is
 `cloudvault-document-rewrap-contract.json`; production Swift/Kotlin flips remain
-separate rollout PRs. Search normalization remains last. Browser device
+separate rollout PRs. Android selects `legacy`, legacy-authoritative `shadow`,
+or fail-closed `rust` with
+`OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE`; missing or unknown values keep
+legacy authoritative. Search normalization remains last. Browser device
 private keys stay non-extractable WebCrypto handles throughout.
 
 ## Rollout and deletion gates

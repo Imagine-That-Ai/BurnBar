@@ -243,11 +243,12 @@ object CloudVaultCrypto {
     const val CURRENT_KEY_VERSION: Int = 1
 
     fun sealText(text: String, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): CloudVaultSealedText {
+        return sealTextWithNonce(text, vaultKey, aadContext, secureNonce())
+    }
+
+    private fun sealTextWithNonce(text: String, vaultKey: ByteArray, aadContext: CloudVaultAADContext?, nonce: ByteArray): CloudVaultSealedText {
         val plaintext = text.toByteArray(Charsets.UTF_8)
-        val nonce =
-            ByteArray(GCM_NONCE_BYTES).apply {
-                java.security.SecureRandom().nextBytes(this)
-            }
+        require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE.let { Cipher.ENCRYPT_MODE }, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
         aadContext?.let { cipher.updateAAD(it.bytes) }
@@ -350,10 +351,11 @@ object CloudVaultCrypto {
     fun vaultKeyID(vaultKey: ByteArray): String = "v1_${sha256Hex(vaultKey).take(32)}"
 
     fun sealBlob(plaintext: ByteArray, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): CloudVaultBlobEnvelope {
-        val nonce =
-            ByteArray(GCM_NONCE_BYTES).apply {
-                java.security.SecureRandom().nextBytes(this)
-            }
+        return sealBlobWithNonce(plaintext, vaultKey, aadContext, secureNonce())
+    }
+
+    private fun sealBlobWithNonce(plaintext: ByteArray, vaultKey: ByteArray, aadContext: CloudVaultAADContext?, nonce: ByteArray): CloudVaultBlobEnvelope {
+        require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
         aadContext?.let { cipher.updateAAD(it.bytes) }
@@ -375,10 +377,17 @@ object CloudVaultCrypto {
         vaultKeyID: String = vaultKeyID(vaultKey),
         aadContext: CloudVaultAADContext? = null,
     ): CloudVaultSealedPayload {
-        val nonce =
-            ByteArray(GCM_NONCE_BYTES).apply {
-                java.security.SecureRandom().nextBytes(this)
-            }
+        return sealPayloadWithNonce(plaintext, vaultKey, vaultKeyID, aadContext, secureNonce())
+    }
+
+    private fun sealPayloadWithNonce(
+        plaintext: ByteArray,
+        vaultKey: ByteArray,
+        vaultKeyID: String,
+        aadContext: CloudVaultAADContext?,
+        nonce: ByteArray,
+    ): CloudVaultSealedPayload {
+        require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
         cipher.updateAAD(sealedPayloadAAD(vaultKeyID = vaultKeyID, keyVersion = 1, aadContext = aadContext))
@@ -664,8 +673,53 @@ object CloudVaultCrypto {
         rotationJobId: String? = null,
     ): CloudVaultDocumentRewrapResult {
         require(vaultKeyID(newKey) == newVaultKeyID) { "New vault key id mismatch" }
+        return CloudVaultDocumentRewrapDomainCore.rewrap(
+            data = data,
+            uid = uid,
+            collection = collection,
+            docID = docID,
+            oldKey = oldKey,
+            newKey = newKey,
+            newVaultKeyID = newVaultKeyID,
+            vaultGeneration = vaultGeneration,
+            rotationJobId = rotationJobId,
+        ) { noncePlan ->
+            rewrapCloudVaultDocumentLegacy(
+                data = data,
+                uid = uid,
+                collection = collection,
+                docID = docID,
+                oldKey = oldKey,
+                newKey = newKey,
+                newVaultKeyID = newVaultKeyID,
+                vaultGeneration = vaultGeneration,
+                rotationJobId = rotationJobId,
+                noncePlan = noncePlan,
+            )
+        }
+    }
+
+    private fun rewrapCloudVaultDocumentLegacy(
+        data: Map<String, Any?>,
+        uid: String,
+        collection: String,
+        docID: String,
+        oldKey: ByteArray,
+        newKey: ByteArray,
+        newVaultKeyID: String,
+        vaultGeneration: Int?,
+        rotationJobId: String?,
+        noncePlan: List<CloudVaultDocumentRewrapNonce>,
+    ): CloudVaultDocumentRewrapResult {
         val updated = data.toMutableMap()
         val changedFields = mutableListOf<String>()
+        var nonceIndex = 0
+
+        fun nextNonce(field: String): ByteArray {
+            val planned = noncePlan.getOrNull(nonceIndex++) ?: error("Invalid CloudVault rewrap nonce plan")
+            check(planned.fieldName == field) { "Invalid CloudVault rewrap nonce field" }
+            return planned.bytes
+        }
 
         for (field in data.keys.sorted()) {
             val raw = data[field] as? Map<*, *> ?: continue
@@ -674,24 +728,26 @@ object CloudVaultCrypto {
             sealedPayloadFromMap(raw)?.let { envelope ->
                 if (envelope.vaultKeyID == newVaultKeyID) return@let
                 val plaintext = openPayloadForRewrap(envelope, oldKey, context)
-                val resealed = sealPayload(plaintext, newKey, newVaultKeyID, context)
+                val resealed = sealPayloadWithNonce(plaintext, newKey, newVaultKeyID, context, nextNonce(field))
                 updated[field] = sealedPayloadMap(resealed)
                 applyVaultKeyCompanionUpdates(updated, field, newVaultKeyID)
                 changedFields += field
                 return@let
             } ?: sealedTextFromMap(raw)?.let { envelope ->
                 val plaintext = openTextForRewrap(envelope, oldKey, context)
-                val resealed = sealText(plaintext, newKey, context)
+                val resealed = sealTextWithNonce(plaintext, newKey, context, nextNonce(field))
                 updated[field] = sealedTextMap(resealed)
                 changedFields += field
                 return@let
             } ?: blobEnvelopeFromMap(raw)?.let { envelope ->
                 val plaintext = openBlobForRewrap(envelope, oldKey, context)
-                val resealed = sealBlob(plaintext, newKey, context)
+                val resealed = sealBlobWithNonce(plaintext, newKey, context, nextNonce(field))
                 updated[field] = blobEnvelopeMap(resealed)
                 changedFields += field
             }
         }
+
+        check(nonceIndex == noncePlan.size) { "Invalid CloudVault rewrap nonce plan" }
 
         if (changedFields.isNotEmpty()) {
             vaultGeneration?.let { updated["vaultGeneration"] = it }
@@ -700,6 +756,8 @@ object CloudVaultCrypto {
 
         return CloudVaultDocumentRewrapResult(updated.toMap(), changedFields)
     }
+
+    private fun secureNonce(): ByteArray = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
 
     fun signalEnvelopeMap(envelope: CloudVaultSignalEnvelope): Map<String, Any> = mapOf(
         "signalEnvelopeFormatVersion" to envelope.signalEnvelopeFormatVersion,
