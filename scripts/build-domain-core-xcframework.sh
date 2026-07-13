@@ -125,7 +125,8 @@ build_target() {
     IPHONEOS_DEPLOYMENT_TARGET=17.0 \
     IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
     PATH="${HOME}/.cargo/bin:${PATH}" \
-      "${CARGO_BIN}" build ${PROFILE_FLAG} --target "${target}"
+      "${CARGO_BIN}" build ${PROFILE_FLAG} --target "${target}" \
+        -p openburnbar-domain-ffi --lib
   )
 }
 
