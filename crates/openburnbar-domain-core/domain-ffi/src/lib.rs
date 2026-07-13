@@ -107,9 +107,15 @@ pub struct CloudVaultDocumentRewrapRequest {
     pub doc_id: String,
     pub document_field_names: Vec<String>,
     pub envelopes: Vec<CloudVaultDocumentEnvelope>,
-    pub reseal_nonces: Vec<Vec<u8>>,
+    pub reseal_nonce_plan: Vec<CloudVaultResealNonce>,
     pub vault_generation: Option<i64>,
     pub rotation_job_id: Option<String>,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultResealNonce {
+    pub field_name: String,
+    pub nonce: Vec<u8>,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -219,6 +225,8 @@ pub enum CloudVaultFfiError {
     InvalidRewrapText,
     #[error("the source envelope integrity hash did not verify")]
     RewrapIntegrityMismatch,
+    #[error("rewrap requires distinct old and new vault keys when any envelope changes")]
+    InvalidRewrapKeyRotation,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -255,6 +263,12 @@ pub enum HermesFfiError {
     InvalidHkdfLength,
     #[error("Hermes HMAC initialization failed")]
     HmacFailure,
+    #[error("Hermes AAD components must not contain pipes or ASCII controls")]
+    InvalidAadComponent,
+    #[error("Hermes input exceeds its bounded contract")]
+    InputTooLarge,
+    #[error("Hermes P-256 keys must be exact on-curve 65-byte X9.63 points")]
+    InvalidP256PublicKey,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -431,23 +445,25 @@ pub fn cloud_vault_key_id(mut key: Vec<u8>) -> Result<String, CloudVaultFfiError
 
 #[uniffi::export]
 pub fn cloud_vault_keyed_hash_hex(
-    data: Vec<u8>,
+    mut data: Vec<u8>,
     mut key: Vec<u8>,
     purpose: CloudVaultHashPurpose,
 ) -> Result<String, CloudVaultFfiError> {
     let result = cloudvault::keyed_hash_hex(&data, &key, purpose.into()).map_err(Into::into);
+    data.zeroize();
     key.zeroize();
     result
 }
 
 #[uniffi::export]
 pub fn cloud_vault_expected_session_body_hash(
-    data: Vec<u8>,
+    mut data: Vec<u8>,
     mut key: Vec<u8>,
     body_hash_version: u32,
 ) -> Result<String, CloudVaultFfiError> {
     let result =
         cloudvault::expected_session_body_hash(&data, &key, body_hash_version).map_err(Into::into);
+    data.zeroize();
     key.zeroize();
     result
 }
@@ -461,8 +477,8 @@ pub fn hermes_relay_aad(
 }
 
 #[uniffi::export]
-pub fn hermes_key_wrap_info_v1(aad: Vec<u8>) -> Vec<u8> {
-    hermes::key_wrap_info_v1(&aad)
+pub fn hermes_key_wrap_info_v1(aad: Vec<u8>) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::key_wrap_info_v1(&aad).map_err(Into::into)
 }
 
 #[uniffi::export]
@@ -471,13 +487,14 @@ pub fn hermes_key_wrap_info_v2(
     enc: Vec<u8>,
     recipient_public_key: Vec<u8>,
     sender_public_key: Vec<u8>,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, HermesFfiError> {
     hermes::key_wrap_info_v2(&aad, &enc, &recipient_public_key, &sender_public_key)
+        .map_err(Into::into)
 }
 
 #[uniffi::export]
-pub fn hermes_hpke_v3_info(aad: Vec<u8>) -> Vec<u8> {
-    hermes::hpke_v3_info(&aad)
+pub fn hermes_hpke_v3_info(aad: Vec<u8>) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::hpke_v3_info(&aad).map_err(Into::into)
 }
 
 #[uniffi::export]
@@ -500,8 +517,8 @@ pub fn hermes_hkdf_sha256(
 }
 
 #[uniffi::export]
-pub fn hermes_sha256(bytes: Vec<u8>) -> Vec<u8> {
-    hermes::sha256(&bytes)
+pub fn hermes_sha256(bytes: Vec<u8>) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::sha256(&bytes).map_err(Into::into)
 }
 
 #[uniffi::export]
@@ -525,7 +542,7 @@ pub fn hermes_ratchet_envelope_aad(
     previous_chain_length: u64,
     message_number: u64,
     epoch: u64,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, HermesFfiError> {
     hermes::ratchet_envelope_aad(
         &associated_data,
         &algorithm,
@@ -538,24 +555,26 @@ pub fn hermes_ratchet_envelope_aad(
         message_number,
         epoch,
     )
+    .map_err(Into::into)
 }
 
 #[uniffi::export]
 pub fn hermes_gateway_relay_safety_code(
     agent_public_key: Vec<u8>,
     phone_public_key: Vec<u8>,
-) -> String {
-    hermes::gateway_relay_safety_code(&agent_public_key, &phone_public_key)
+) -> Result<String, HermesFfiError> {
+    hermes::gateway_relay_safety_code(&agent_public_key, &phone_public_key).map_err(Into::into)
 }
 
 #[uniffi::export]
 pub fn hermes_seal_base64(
-    plaintext: Vec<u8>,
+    mut plaintext: Vec<u8>,
     mut key: Vec<u8>,
     aad: Vec<u8>,
     nonce: Vec<u8>,
 ) -> Result<String, HermesFfiError> {
     let result = hermes::seal_base64(&plaintext, &key, &aad, &nonce).map_err(Into::into);
+    plaintext.zeroize();
     key.zeroize();
     result
 }
@@ -906,6 +925,9 @@ impl From<hermes::HermesError> for HermesFfiError {
             hermes::HermesError::AuthenticationFailed => Self::AuthenticationFailed,
             hermes::HermesError::InvalidHkdfLength => Self::InvalidHkdfLength,
             hermes::HermesError::HmacFailure => Self::HmacFailure,
+            hermes::HermesError::InvalidAadComponent => Self::InvalidAadComponent,
+            hermes::HermesError::InputTooLarge => Self::InputTooLarge,
+            hermes::HermesError::InvalidP256PublicKey => Self::InvalidP256PublicKey,
         }
     }
 }
@@ -1042,6 +1064,9 @@ impl From<cloudvault_rewrap::CloudVaultDocumentRewrapError> for CloudVaultFfiErr
             cloudvault_rewrap::CloudVaultDocumentRewrapError::IntegrityMismatch => {
                 Self::RewrapIntegrityMismatch
             }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::InvalidKeyRotation => {
+                Self::InvalidRewrapKeyRotation
+            }
         }
     }
 }
@@ -1062,10 +1087,23 @@ impl TryFrom<CloudVaultDocumentRewrapRequest>
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<_>, _>>()?,
-            reseal_nonces: value.reseal_nonces,
+            reseal_nonce_plan: value
+                .reseal_nonce_plan
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             vault_generation: value.vault_generation,
             rotation_job_id: value.rotation_job_id,
         })
+    }
+}
+
+impl From<CloudVaultResealNonce> for cloudvault_rewrap::CloudVaultResealNonce {
+    fn from(value: CloudVaultResealNonce) -> Self {
+        Self {
+            field_name: value.field_name,
+            nonce: value.nonce,
+        }
     }
 }
 

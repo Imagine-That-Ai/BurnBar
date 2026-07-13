@@ -49,7 +49,7 @@ internal object HermesDomainCoreAdapter {
     fun seal(plaintext: ByteArray, key: ByteArray, aad: ByteArray, legacy: () -> String): String {
         val mode = HermesDomainCoreMode.resolve()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
-        if (!nativeReady()) return legacyWithDiagnostic("seal", legacy)
+        if (!nativeReady()) return unavailable("seal", mode, legacy)
         if (mode == HermesDomainCoreMode.SHADOW) {
             val old = legacy()
             val opened = runCatching { hermesOpenBase64(old, key, aad) }.getOrNull()
@@ -63,7 +63,7 @@ internal object HermesDomainCoreAdapter {
     fun open(ciphertext: String, key: ByteArray, aad: ByteArray, legacy: () -> ByteArray): ByteArray {
         val mode = HermesDomainCoreMode.resolve()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
-        if (!nativeReady()) return legacyWithDiagnostic("open", legacy)
+        if (!nativeReady()) return unavailable("open", mode, legacy)
         val rust = hermesOpenBase64(ciphertext, key, aad)
         if (mode == HermesDomainCoreMode.SHADOW) {
             val old = legacy()
@@ -75,7 +75,8 @@ internal object HermesDomainCoreAdapter {
 
     fun safetyCode(agent: ByteArray, phone: ByteArray, legacy: () -> String): String {
         val mode = HermesDomainCoreMode.resolve()
-        if (mode == HermesDomainCoreMode.LEGACY || !nativeReady()) return legacy()
+        if (mode == HermesDomainCoreMode.LEGACY) return legacy()
+        if (!nativeReady()) return unavailable("safety_code", mode, legacy)
         val rust = hermesGatewayRelaySafetyCode(agent, phone)
         if (mode == HermesDomainCoreMode.SHADOW) {
             val old = legacy()
@@ -106,7 +107,7 @@ internal object HermesDomainCoreAdapter {
     fun sealCombined(plaintext: ByteArray, key: ByteArray, aad: ByteArray, legacy: () -> ByteArray): ByteArray {
         val mode = HermesDomainCoreMode.resolve()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
-        if (!nativeReady()) return legacyWithDiagnostic("ratchet_seal", legacy)
+        if (!nativeReady()) return unavailable("ratchet_seal", mode, legacy)
         if (mode == HermesDomainCoreMode.SHADOW) {
             val old = legacy()
             val opened = runCatching { hermesOpenCombined(old, key, aad) }.getOrNull()
@@ -122,7 +123,7 @@ internal object HermesDomainCoreAdapter {
     private fun selectBytes(operation: String, legacy: () -> ByteArray, rust: () -> ByteArray): ByteArray {
         val mode = HermesDomainCoreMode.resolve()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
-        if (!nativeReady()) return legacyWithDiagnostic(operation, legacy)
+        if (!nativeReady()) return unavailable(operation, mode, legacy)
         val value = rust()
         if (mode == HermesDomainCoreMode.SHADOW) {
             val old = legacy()
@@ -134,8 +135,15 @@ internal object HermesDomainCoreAdapter {
 
     private fun nativeReady(): Boolean = runCatching { domainCoreAbiVersion() == 2u }.getOrDefault(false)
 
-    private fun <T> legacyWithDiagnostic(operation: String, legacy: () -> T): T {
+    private fun <T> unavailable(
+        operation: String,
+        mode: HermesDomainCoreMode,
+        legacy: () -> T,
+    ): T {
         diagnostic(operation, "native_unavailable")
+        if (mode == HermesDomainCoreMode.RUST) {
+            throw IllegalStateException("Hermes Rust mode requires domain-core ABI v2")
+        }
         return legacy()
     }
 

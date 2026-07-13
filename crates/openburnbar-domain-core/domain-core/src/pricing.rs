@@ -212,4 +212,39 @@ mod tests {
             Err(PricingError::ArithmeticOverflow)
         );
     }
+
+    #[test]
+    fn cost_is_monotonic_for_each_bucket_until_overflow() -> Result<(), PricingError> {
+        let rates = legacy_kimi_rates();
+        for seed in 0_u64..512 {
+            let base = TokenBuckets {
+                input_tokens: seed * 17,
+                output_tokens: seed * 13,
+                cache_creation_tokens: seed * 7,
+                cache_read_tokens: seed * 5,
+            };
+            let base_cost = token_cost_nano_usd(rates, base)?;
+            for increased in [
+                TokenBuckets {
+                    input_tokens: base.input_tokens + 1,
+                    ..base
+                },
+                TokenBuckets {
+                    output_tokens: base.output_tokens + 1,
+                    ..base
+                },
+                TokenBuckets {
+                    cache_creation_tokens: base.cache_creation_tokens + 1,
+                    ..base
+                },
+                TokenBuckets {
+                    cache_read_tokens: base.cache_read_tokens + 1,
+                    ..base
+                },
+            ] {
+                assert!(token_cost_nano_usd(rates, increased)? >= base_cost);
+            }
+        }
+        Ok(())
+    }
 }

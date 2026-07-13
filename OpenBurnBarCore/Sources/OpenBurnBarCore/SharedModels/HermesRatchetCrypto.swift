@@ -218,7 +218,7 @@ public enum HermesRatchetCrypto {
             messageNumber: state.sendMessageNumber,
             epoch: state.epoch
         )
-        let aad = envelopeAAD(header: header, associatedData: associatedData)
+        let aad = try envelopeAAD(header: header, associatedData: associatedData)
         let combined = try seal(plaintext: plaintext, key: derived.messageKey, aad: aad)
         state.sendingChainKeyBase64 = derived.chainKey.base64EncodedString()
         state.sendMessageNumber += 1
@@ -334,7 +334,7 @@ public enum HermesRatchetCrypto {
             throw HermesRatchetError.invalidEnvelope
         }
         do {
-            let aad = envelopeAAD(header: envelope.header, associatedData: associatedData)
+            let aad = try envelopeAAD(header: envelope.header, associatedData: associatedData)
             return try domainCoreBytes(operation: "ratchet_open") {
                 try PlatformCrypto.openAESGCM(
                     combined: combined,
@@ -419,7 +419,7 @@ public enum HermesRatchetCrypto {
         return (next, message)
     }
 
-    private static func envelopeAAD(header: HermesRatchetHeader, associatedData: Data) -> Data {
+    private static func envelopeAAD(header: HermesRatchetHeader, associatedData: Data) throws -> Data {
         let legacy = {
             var data = Data("OpenBurnBar-HermesRatchet-v1-AAD".utf8)
             appendPart(&data, associatedData)
@@ -436,9 +436,12 @@ public enum HermesRatchetCrypto {
         }
         #if canImport(OpenBurnBarDomainCoreFFI)
         guard domainCoreMode != "legacy", OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+            if domainCoreMode == "rust" {
+                throw HermesDomainCoreAdapterError.nativeUnavailable
+            }
             return legacy()
         }
-        let rust = OpenBurnBarDomainCoreFFI.hermesRatchetEnvelopeAad(
+        let rust = try OpenBurnBarDomainCoreFFI.hermesRatchetEnvelopeAad(
             associatedData: associatedData,
             algorithm: header.algorithm,
             sessionId: header.sessionID,
@@ -455,6 +458,9 @@ public enum HermesRatchetCrypto {
         if old != rust { diagnostic("ratchet_aad", "shadow_mismatch") }
         return old
         #else
+        if domainCoreMode == "rust" {
+            throw HermesDomainCoreAdapterError.nativeUnavailable
+        }
         return legacy()
         #endif
     }
@@ -471,7 +477,10 @@ public enum HermesRatchetCrypto {
         #if canImport(OpenBurnBarDomainCoreFFI)
         guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
             diagnostic("ratchet_seal", "abi_mismatch")
-            return try PlatformCrypto.sealAESGCM(plaintext: plaintext, keyData: key, authenticating: aad)
+            if mode == "shadow" {
+                return try PlatformCrypto.sealAESGCM(plaintext: plaintext, keyData: key, authenticating: aad)
+            }
+            throw HermesDomainCoreAdapterError.nativeUnavailable
         }
         if mode == "shadow" {
             let old = try PlatformCrypto.sealAESGCM(plaintext: plaintext, keyData: key, authenticating: aad)
@@ -486,7 +495,10 @@ public enum HermesRatchetCrypto {
             nonce: PlatformCrypto.secureRandomBytes(count: 12)
         )
         #else
-        return try PlatformCrypto.sealAESGCM(plaintext: plaintext, keyData: key, authenticating: aad)
+        if mode == "shadow" {
+            return try PlatformCrypto.sealAESGCM(plaintext: plaintext, keyData: key, authenticating: aad)
+        }
+        throw HermesDomainCoreAdapterError.nativeUnavailable
         #endif
     }
 
@@ -500,7 +512,8 @@ public enum HermesRatchetCrypto {
         #if canImport(OpenBurnBarDomainCoreFFI)
         guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
             diagnostic(operation, "abi_mismatch")
-            return try legacy()
+            if mode == "shadow" { return try legacy() }
+            throw HermesDomainCoreAdapterError.nativeUnavailable
         }
         let value = try rust()
         guard mode == "shadow" else { return value }
@@ -508,7 +521,8 @@ public enum HermesRatchetCrypto {
         if old != value { diagnostic(operation, "shadow_mismatch") }
         return old
         #else
-        return try legacy()
+        if mode == "shadow" { return try legacy() }
+        throw HermesDomainCoreAdapterError.nativeUnavailable
         #endif
     }
 

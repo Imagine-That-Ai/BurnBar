@@ -10,8 +10,6 @@ namespace OpenBurnBar.App.Presentation.Quota;
 
 internal static class DomainCoreQuotaBridge
 {
-    private const string RequireNativeVariable = "OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE";
-
     internal static ProviderQuotaSnapshot? Apply(
         string operation,
         Func<DomainQuotaParseResult> rust,
@@ -31,7 +29,8 @@ internal static class DomainCoreQuotaBridge
 
         if (!TryInvoke(rust, out var result))
         {
-            if (requireNative ?? NativeRequired())
+            _ = requireNative; // Compatibility-only parameter; Rust mode is always strict.
+            if (mode == DomainCoreQuotaMigrationMode.Rust)
             {
                 throw new InvalidOperationException(
                     $"Domain-core native library is required for {operation}, but it could not be loaded.");
@@ -198,9 +197,6 @@ internal static class DomainCoreQuotaBridge
             && pair.First.Unit == pair.Second.Unit
             && pair.First.IsEstimated == pair.Second.IsEstimated);
     }
-
-    private static bool NativeRequired() =>
-        string.Equals(Environment.GetEnvironmentVariable(RequireNativeVariable), "1", StringComparison.Ordinal);
 
     private static bool Close(double? left, double? right) =>
         left is null && right is null

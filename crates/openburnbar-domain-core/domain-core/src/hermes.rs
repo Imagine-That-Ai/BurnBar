@@ -4,6 +4,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
+use p256::PublicKey;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
@@ -14,6 +15,12 @@ const HPKE_V3_PREFIX: &[u8] = b"OpenBurnBar-HermesRelay-HPKE-v3|";
 const AES_KEY_LEN: usize = 32;
 const GCM_NONCE_LEN: usize = 12;
 const GCM_TAG_LEN: usize = 16;
+const P256_X963_PUBLIC_KEY_LEN: usize = 65;
+const MAX_AAD_ARGUMENT_BYTES: usize = 4 * 1024;
+const MAX_AAD_BYTES: usize = 64 * 1024;
+const MAX_CRYPTO_INPUT_BYTES: usize = 16 * 1024 * 1024;
+const MAX_BASE64_INPUT_BYTES: usize =
+    (MAX_CRYPTO_INPUT_BYTES + GCM_NONCE_LEN + GCM_TAG_LEN).div_ceil(3) * 4;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AadKind {
@@ -86,11 +93,33 @@ pub enum HermesError {
     InvalidHkdfLength,
     #[error("Hermes HMAC initialization failed")]
     HmacFailure,
+    #[error("Hermes AAD components must not contain pipes or ASCII controls")]
+    InvalidAadComponent,
+    #[error("Hermes input exceeds its bounded contract")]
+    InputTooLarge,
+    #[error("Hermes P-256 keys must be exact on-curve 65-byte X9.63 points")]
+    InvalidP256PublicKey,
 }
 
 pub fn aad(kind: AadKind, arguments: &[String]) -> Result<Vec<u8>, HermesError> {
     if arguments.len() != kind.argument_count() {
         return Err(HermesError::InvalidAadArguments);
+    }
+    let total_argument_bytes = arguments.iter().try_fold(0_usize, |total, argument| {
+        if argument.is_empty()
+            || argument.len() > MAX_AAD_ARGUMENT_BYTES
+            || argument
+                .bytes()
+                .any(|byte| byte == b'|' || byte <= 0x1f || byte == 0x7f)
+        {
+            return Err(HermesError::InvalidAadComponent);
+        }
+        total
+            .checked_add(argument.len())
+            .ok_or(HermesError::InputTooLarge)
+    })?;
+    if total_argument_bytes > MAX_AAD_BYTES {
+        return Err(HermesError::InputTooLarge);
     }
     let mut value = String::from(AAD_PREFIX);
     value.push('|');
@@ -102,16 +131,27 @@ pub fn aad(kind: AadKind, arguments: &[String]) -> Result<Vec<u8>, HermesError> 
     Ok(value.into_bytes())
 }
 
-pub fn key_wrap_info_v1(aad: &[u8]) -> Vec<u8> {
-    concat(KEY_WRAP_V1_PREFIX, &[aad])
+pub fn key_wrap_info_v1(aad: &[u8]) -> Result<Vec<u8>, HermesError> {
+    require_aad_bound(aad)?;
+    bounded_concat(KEY_WRAP_V1_PREFIX, &[aad])
 }
 
-pub fn key_wrap_info_v2(aad: &[u8], enc: &[u8], recipient: &[u8], sender: &[u8]) -> Vec<u8> {
-    concat(KEY_WRAP_V2_PREFIX, &[aad, enc, recipient, sender])
+pub fn key_wrap_info_v2(
+    aad: &[u8],
+    enc: &[u8],
+    recipient: &[u8],
+    sender: &[u8],
+) -> Result<Vec<u8>, HermesError> {
+    require_aad_bound(aad)?;
+    validate_p256_x963(enc)?;
+    validate_p256_x963(recipient)?;
+    validate_p256_x963(sender)?;
+    bounded_concat(KEY_WRAP_V2_PREFIX, &[aad, enc, recipient, sender])
 }
 
-pub fn hpke_v3_info(aad: &[u8]) -> Vec<u8> {
-    concat(HPKE_V3_PREFIX, &[aad])
+pub fn hpke_v3_info(aad: &[u8]) -> Result<Vec<u8>, HermesError> {
+    require_aad_bound(aad)?;
+    bounded_concat(HPKE_V3_PREFIX, &[aad])
 }
 
 pub fn hkdf_sha256(
@@ -120,6 +160,17 @@ pub fn hkdf_sha256(
     info: &[u8],
     output_len: usize,
 ) -> Result<Zeroizing<Vec<u8>>, HermesError> {
+    let aggregate = ikm
+        .len()
+        .checked_add(salt.len())
+        .and_then(|total| total.checked_add(info.len()))
+        .ok_or(HermesError::InputTooLarge)?;
+    if aggregate > MAX_CRYPTO_INPUT_BYTES
+        || salt.len() > MAX_AAD_BYTES
+        || info.len() > MAX_AAD_BYTES
+    {
+        return Err(HermesError::InputTooLarge);
+    }
     if output_len == 0 || output_len > 255 * 32 {
         return Err(HermesError::InvalidHkdfLength);
     }
@@ -130,11 +181,17 @@ pub fn hkdf_sha256(
     Ok(output)
 }
 
-pub fn sha256(bytes: &[u8]) -> Vec<u8> {
-    Sha256::digest(bytes).to_vec()
+pub fn sha256(bytes: &[u8]) -> Result<Vec<u8>, HermesError> {
+    if bytes.len() > MAX_CRYPTO_INPUT_BYTES {
+        return Err(HermesError::InputTooLarge);
+    }
+    Ok(Sha256::digest(bytes).to_vec())
 }
 
 pub fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>, HermesError> {
+    if key.len() > MAX_AAD_BYTES || data.len() > MAX_CRYPTO_INPUT_BYTES {
+        return Err(HermesError::InputTooLarge);
+    }
     let mut mac =
         <Hmac<Sha256> as Mac>::new_from_slice(key).map_err(|_| HermesError::HmacFailure)?;
     mac.update(data);
@@ -154,7 +211,19 @@ pub fn ratchet_envelope_aad(
     previous_chain_length: u64,
     message_number: u64,
     epoch: u64,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, HermesError> {
+    if associated_data.len() > MAX_AAD_BYTES {
+        return Err(HermesError::InputTooLarge);
+    }
+    for component in [
+        algorithm,
+        session_id,
+        sender_device_id,
+        receiver_device_id,
+        ratchet_public_key_base64,
+    ] {
+        validate_component(component)?;
+    }
     let mut output = b"OpenBurnBar-HermesRatchet-v1-AAD".to_vec();
     for part in [
         associated_data,
@@ -170,10 +239,12 @@ pub fn ratchet_envelope_aad(
     for value in [version, previous_chain_length, message_number, epoch] {
         output.extend_from_slice(&value.to_be_bytes());
     }
-    output
+    Ok(output)
 }
 
-pub fn gateway_relay_safety_code(agent: &[u8], phone: &[u8]) -> String {
+pub fn gateway_relay_safety_code(agent: &[u8], phone: &[u8]) -> Result<String, HermesError> {
+    validate_p256_x963(agent)?;
+    validate_p256_x963(phone)?;
     let (first, second) = if agent <= phone {
         (agent, phone)
     } else {
@@ -183,11 +254,11 @@ pub fn gateway_relay_safety_code(agent: &[u8], phone: &[u8]) -> String {
     hasher.update(first);
     hasher.update(second);
     let digest = hasher.finalize();
-    (0..16)
+    Ok((0..16)
         .step_by(2)
         .map(|index| format!("{:02X}{:02X}", digest[index], digest[index + 1]))
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" "))
 }
 
 pub fn seal_base64(
@@ -205,6 +276,9 @@ pub fn seal_combined(
     aad: &[u8],
     nonce: &[u8],
 ) -> Result<Vec<u8>, HermesError> {
+    if plaintext.len() > MAX_CRYPTO_INPUT_BYTES || aad.len() > MAX_AAD_BYTES {
+        return Err(HermesError::InputTooLarge);
+    }
     let cipher = cipher(key)?;
     if nonce.len() != GCM_NONCE_LEN {
         return Err(HermesError::InvalidNonceLength);
@@ -225,6 +299,9 @@ pub fn seal_combined(
 }
 
 pub fn open_base64(ciphertext: &str, key: &[u8], aad: &[u8]) -> Result<Vec<u8>, HermesError> {
+    if ciphertext.len() > MAX_BASE64_INPUT_BYTES {
+        return Err(HermesError::InputTooLarge);
+    }
     let combined = BASE64
         .decode(ciphertext)
         .map_err(|_| HermesError::InvalidCiphertext)?;
@@ -232,6 +309,11 @@ pub fn open_base64(ciphertext: &str, key: &[u8], aad: &[u8]) -> Result<Vec<u8>, 
 }
 
 pub fn open_combined(combined: &[u8], key: &[u8], aad: &[u8]) -> Result<Vec<u8>, HermesError> {
+    if combined.len() > MAX_CRYPTO_INPUT_BYTES + GCM_NONCE_LEN + GCM_TAG_LEN
+        || aad.len() > MAX_AAD_BYTES
+    {
+        return Err(HermesError::InputTooLarge);
+    }
     if combined.len() < GCM_NONCE_LEN + GCM_TAG_LEN {
         return Err(HermesError::InvalidCiphertext);
     }
@@ -248,14 +330,51 @@ fn cipher(key: &[u8]) -> Result<Aes256Gcm, HermesError> {
     Aes256Gcm::new_from_slice(key).map_err(|_| HermesError::InvalidKeyLength)
 }
 
-fn concat(prefix: &[u8], parts: &[&[u8]]) -> Vec<u8> {
-    let capacity = prefix.len() + parts.iter().map(|part| part.len()).sum::<usize>();
+fn bounded_concat(prefix: &[u8], parts: &[&[u8]]) -> Result<Vec<u8>, HermesError> {
+    let capacity = parts.iter().try_fold(prefix.len(), |total, part| {
+        total
+            .checked_add(part.len())
+            .ok_or(HermesError::InputTooLarge)
+    })?;
+    if capacity > MAX_CRYPTO_INPUT_BYTES {
+        return Err(HermesError::InputTooLarge);
+    }
     let mut output = Vec::with_capacity(capacity);
     output.extend_from_slice(prefix);
     for part in parts {
         output.extend_from_slice(part);
     }
-    output
+    Ok(output)
+}
+
+fn validate_p256_x963(value: &[u8]) -> Result<(), HermesError> {
+    if value.len() != P256_X963_PUBLIC_KEY_LEN || value.first() != Some(&0x04) {
+        return Err(HermesError::InvalidP256PublicKey);
+    }
+    PublicKey::from_sec1_bytes(value)
+        .map(|_| ())
+        .map_err(|_| HermesError::InvalidP256PublicKey)
+}
+
+fn require_aad_bound(value: &[u8]) -> Result<(), HermesError> {
+    if value.is_empty() {
+        Err(HermesError::InvalidAadComponent)
+    } else if value.len() > MAX_AAD_BYTES {
+        Err(HermesError::InputTooLarge)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_component(value: &str) -> Result<(), HermesError> {
+    if value.is_empty()
+        || value.len() > MAX_AAD_ARGUMENT_BYTES
+        || value.bytes().any(|byte| byte <= 0x1f || byte == 0x7f)
+    {
+        Err(HermesError::InvalidAadComponent)
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -296,6 +415,19 @@ mod tests {
             Err(HermesError::InvalidAadArguments)
         );
         assert_eq!(
+            aad(AadKind::Request, &["a|b".into(), "c".into(), "d".into()]),
+            Err(HermesError::InvalidAadComponent)
+        );
+        assert_eq!(
+            aad(AadKind::Request, &["a".into(), "".into(), "d".into()]),
+            Err(HermesError::InvalidAadComponent)
+        );
+        assert_eq!(key_wrap_info_v1(b""), Err(HermesError::InvalidAadComponent));
+        assert_ne!(
+            aad(AadKind::Request, &["a".into(), "b".into(), "c".into()])?,
+            aad(AadKind::Request, &["a".into(), "b".into(), "c2".into()])?
+        );
+        assert_eq!(
             seal_base64(b"x", &[0; 31], b"aad", &[0; 12]),
             Err(HermesError::InvalidKeyLength)
         );
@@ -304,6 +436,82 @@ mod tests {
             open_base64(&sealed, &[0; 32], b"wrong"),
             Err(HermesError::AuthenticationFailed)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn key_wrap_v2_rejects_ambiguous_or_off_curve_points() {
+        let invalid = [0_u8; P256_X963_PUBLIC_KEY_LEN];
+        assert_eq!(
+            key_wrap_info_v2(b"aad", &invalid, &invalid, &invalid),
+            Err(HermesError::InvalidP256PublicKey)
+        );
+    }
+
+    #[test]
+    fn allocation_heavy_transforms_reject_oversized_inputs() {
+        let oversized_aad = vec![0_u8; MAX_AAD_BYTES + 1];
+        assert_eq!(
+            key_wrap_info_v1(&oversized_aad),
+            Err(HermesError::InputTooLarge)
+        );
+        assert_eq!(
+            hpke_v3_info(&oversized_aad),
+            Err(HermesError::InputTooLarge)
+        );
+        assert_eq!(
+            sha256(&vec![0_u8; MAX_CRYPTO_INPUT_BYTES + 1]),
+            Err(HermesError::InputTooLarge)
+        );
+        assert_eq!(
+            hmac_sha256(&[0_u8; 1], &vec![0_u8; MAX_CRYPTO_INPUT_BYTES + 1]),
+            Err(HermesError::InputTooLarge)
+        );
+        assert_eq!(
+            hkdf_sha256(&[0_u8; 1], &oversized_aad, b"info", 32),
+            Err(HermesError::InputTooLarge)
+        );
+        assert_eq!(
+            ratchet_envelope_aad(
+                &oversized_aad,
+                "algorithm",
+                "session",
+                "sender",
+                "receiver",
+                "key",
+                1,
+                0,
+                0,
+                0,
+            ),
+            Err(HermesError::InputTooLarge)
+        );
+        let oversized_base64 = "A".repeat(MAX_BASE64_INPUT_BYTES + 1);
+        assert_eq!(
+            open_base64(&oversized_base64, &[0_u8; AES_KEY_LEN], b"aad"),
+            Err(HermesError::InputTooLarge)
+        );
+        assert_eq!(
+            ratchet_envelope_aad(b"aad", "", "session", "sender", "receiver", "key", 1, 0, 0, 0),
+            Err(HermesError::InvalidAadComponent)
+        );
+    }
+
+    #[test]
+    fn accepted_aad_tuple_encoding_is_injective() -> Result<(), HermesError> {
+        let samples = ["alpha", "beta", "gamma", "delta"];
+        let mut seen = std::collections::BTreeSet::new();
+        for first in samples {
+            for second in samples {
+                for third in samples {
+                    let encoded = aad(
+                        AadKind::Request,
+                        &[first.to_owned(), second.to_owned(), third.to_owned()],
+                    )?;
+                    assert!(seen.insert(encoded));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -324,7 +532,7 @@ mod tests {
             2,
             3,
             4,
-        );
+        )?;
         assert_eq!(
             hex(&aad),
             fixture["ratchet"]["envelopeAadHex"]

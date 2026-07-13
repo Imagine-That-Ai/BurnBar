@@ -20,6 +20,7 @@ pub const AES_GCM_TAG_LENGTH: usize = 16;
 pub const P256_X963_PUBLIC_KEY_LENGTH: usize = 65;
 pub const P256_ECDH_SHARED_SECRET_LENGTH: usize = 32;
 pub const SESSION_BODY_HASH_VERSION: u32 = 2;
+const MAX_BASE64_INPUT_BYTES: usize = 24 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CloudVaultHashPurpose {
@@ -316,8 +317,14 @@ pub fn aes_gcm_open_text_detached(
     key: &[u8],
     aad: &[u8],
 ) -> Result<String, CloudVaultError> {
-    String::from_utf8(aes_gcm_open_detached(nonce, ciphertext, tag, key, aad)?)
-        .map_err(|_| CloudVaultError::InvalidUtf8)
+    match String::from_utf8(aes_gcm_open_detached(nonce, ciphertext, tag, key, aad)?) {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            let mut plaintext = error.into_bytes();
+            plaintext.zeroize();
+            Err(CloudVaultError::InvalidUtf8)
+        }
+    }
 }
 
 pub fn base64_encode(data: &[u8]) -> String {
@@ -325,6 +332,9 @@ pub fn base64_encode(data: &[u8]) -> String {
 }
 
 pub fn base64_decode_strict(value: &str) -> Result<Vec<u8>, CloudVaultError> {
+    if value.len() > MAX_BASE64_INPUT_BYTES {
+        return Err(CloudVaultError::InvalidBase64);
+    }
     let decoded = BASE64_STANDARD
         .decode(value)
         .map_err(|_| CloudVaultError::InvalidBase64)?;
@@ -697,6 +707,10 @@ mod tests {
                 Err(CloudVaultError::InvalidBase64)
             );
         }
+        assert_eq!(
+            base64_decode_strict(&"A".repeat(MAX_BASE64_INPUT_BYTES + 1)),
+            Err(CloudVaultError::InvalidBase64)
+        );
         let invalid_utf8 = aes_gcm_seal_detached(&[0xff], &key, &nonce, b"")?;
         assert_eq!(
             aes_gcm_open_text_detached(
@@ -863,6 +877,36 @@ mod tests {
             escrow_open(&tampered, &shared_secret),
             Err(CloudVaultError::AuthenticationFailed)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn aes_roundtrip_and_tamper_properties_hold_for_generated_inputs() -> Result<(), CloudVaultError>
+    {
+        let key = [0x5a; 32];
+        for length in 0..512_usize {
+            let plaintext = (0..length)
+                .map(|index| (index.wrapping_mul(31).wrapping_add(length)) as u8)
+                .collect::<Vec<_>>();
+            let mut nonce = [0_u8; 12];
+            nonce[4..].copy_from_slice(&(length as u64).to_be_bytes());
+            let aad = format!("property|{length}");
+            let sealed = aes_gcm_seal_combined(&plaintext, &key, &nonce, aad.as_bytes())?;
+            assert_eq!(
+                aes_gcm_open_combined(&sealed, &key, aad.as_bytes())?,
+                plaintext
+            );
+            let mut tampered = sealed;
+            let last = tampered
+                .len()
+                .checked_sub(1)
+                .ok_or(CloudVaultError::InvalidCombinedLength)?;
+            tampered[last] ^= 1;
+            assert_eq!(
+                aes_gcm_open_combined(&tampered, &key, aad.as_bytes()),
+                Err(CloudVaultError::AuthenticationFailed)
+            );
+        }
         Ok(())
     }
 

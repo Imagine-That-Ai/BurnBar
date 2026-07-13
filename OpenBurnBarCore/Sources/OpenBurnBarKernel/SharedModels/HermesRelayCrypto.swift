@@ -373,7 +373,7 @@ public enum HermesRelayCrypto {
             // v1 ephemeral-static (realtime relay) — unchanged byte layout.
             wrappingKey = try deriveWrappingKey(
                 inputKeyMaterial: dh1.withUnsafeBytes { Data($0) },
-                info: keyWrapSharedInfo(aad: aad)
+                info: try keyWrapSharedInfo(aad: aad)
             )
         }
         let combined = try PlatformCrypto.sealAESGCM(plaintext: keyData, key: wrappingKey, authenticating: aad)
@@ -422,7 +422,7 @@ public enum HermesRelayCrypto {
         } else {
             wrappingKey = try deriveWrappingKey(
                 inputKeyMaterial: dh1.withUnsafeBytes { Data($0) },
-                info: keyWrapSharedInfo(aad: aad)
+                info: try keyWrapSharedInfo(aad: aad)
             )
         }
         return try PlatformCrypto.openAESGCM(
@@ -446,7 +446,7 @@ public enum HermesRelayCrypto {
         var ikm = Data()
         dh1.withUnsafeBytes { ikm.append(contentsOf: $0) }
         dh2.withUnsafeBytes { ikm.append(contentsOf: $0) }
-        let info = HermesDomainCoreAdapter.keyWrapInfoV2(
+        let info = try HermesDomainCoreAdapter.keyWrapInfoV2(
             aad: aad,
             enc: enc,
             recipient: recipientPublicKey,
@@ -511,7 +511,7 @@ public enum HermesRelayCrypto {
         let sealed = try PlatformCrypto.hpkeSealP256SHA256AESGCM256(
             plaintext: keyData,
             recipientPublicKey: recipientKey,
-            info: hpkeV3Info(aad: aad),
+            info: try hpkeV3Info(aad: aad),
             aad: aad,
             authenticatedBy: senderPrivateKey.key
         )
@@ -541,7 +541,7 @@ public enum HermesRelayCrypto {
             let opened = try PlatformCrypto.hpkeOpenP256SHA256AESGCM256(
                 ciphertext: wrappedKey,
                 recipientPrivateKey: privateKey.key,
-                info: hpkeV3Info(aad: aad),
+                info: try hpkeV3Info(aad: aad),
                 encapsulatedKey: enc,
                 authenticatedBy: senderKey,
                 aad: aad
@@ -586,8 +586,8 @@ public enum HermesRelayCrypto {
 
     /// HPKE `info` for v3 = `"OpenBurnBar-HermesRelay-HPKE-v3|" ‖ key_aad`.
     /// Mirrors Python `_hpke_info` / `_HPKE_INFO_PREFIX`.
-    private static func hpkeV3Info(aad: Data) -> Data {
-        HermesDomainCoreAdapter.hpkeV3Info(aad: aad) {
+    private static func hpkeV3Info(aad: Data) throws -> Data {
+        try HermesDomainCoreAdapter.hpkeV3Info(aad: aad) {
             var info = Data("OpenBurnBar-HermesRelay-HPKE-v3|".utf8)
             info.append(aad)
             return info
@@ -641,8 +641,8 @@ public enum HermesRelayCrypto {
         }
     }
 
-    private static func keyWrapSharedInfo(aad: Data) -> Data {
-        HermesDomainCoreAdapter.keyWrapInfoV1(aad: aad) {
+    private static func keyWrapSharedInfo(aad: Data) throws -> Data {
+        try HermesDomainCoreAdapter.keyWrapInfoV1(aad: aad) {
             var info = Data("OpenBurnBar-HermesRelay-KeyWrap-v1|".utf8)
             info.append(aad)
             return info
@@ -762,7 +762,7 @@ public enum PiAgentRelayCrypto {
         let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
             sharedSecret: sharedSecret,
             salt: Data(),
-            info: keyWrapSharedInfo(aad: aad),
+            info: try keyWrapSharedInfo(aad: aad),
             outputByteCount: symmetricKeyByteCount
         )
         let combined = try PlatformCrypto.sealAESGCM(plaintext: keyData, key: wrappingKey, authenticating: aad)
@@ -787,7 +787,7 @@ public enum PiAgentRelayCrypto {
         let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
             sharedSecret: sharedSecret,
             salt: Data(),
-            info: keyWrapSharedInfo(aad: aad),
+            info: try keyWrapSharedInfo(aad: aad),
             outputByteCount: symmetricKeyByteCount
         )
         return try PlatformCrypto.openAESGCM(
@@ -801,7 +801,7 @@ public enum PiAgentRelayCrypto {
         "OpenBurnBar-PiAgentRelay-v1|\(parts.joined(separator: "|"))".data(using: .utf8)!
     }
 
-    private static func keyWrapSharedInfo(aad: Data) -> Data {
+    private static func keyWrapSharedInfo(aad: Data) throws -> Data {
         var info = Data("OpenBurnBar-PiAgentRelay-KeyWrap-v1|".utf8)
         info.append(aad)
         return info
