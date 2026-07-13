@@ -13,6 +13,8 @@ struct ProviderDashboardQuotaPanel: View {
 
     @State private var selectedAccountID: String?
 
+    private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
+
     private var snapshot: ProviderQuotaSnapshot? {
         quotaService.snapshot(for: provider)
     }
@@ -46,12 +48,16 @@ struct ProviderDashboardQuotaPanel: View {
 
     var body: some View {
         if ProviderQuotaService.supportedProviders.contains(provider) {
-            GlassCard {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            DetailLiquidGlassSurface(accent: theme.primaryColor) {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
                     headerRow
 
                     if let routingState, routingState.hasMeaningfulRoutingDetail {
-                        ProviderRoutingCockpit(provider: provider, state: routingState)
+                        ProviderRoutingCockpit(
+                            provider: provider,
+                            state: routingState,
+                            compact: true
+                        )
                     }
 
                     if hasMultipleAccounts {
@@ -70,40 +76,38 @@ struct ProviderDashboardQuotaPanel: View {
                             }
                         }
                     } else {
-                        QuotaStatusCallout(
-                            provider: provider,
-                            title: isRefreshing
-                                ? "Gathering live quota"
-                                : (quotaService.errors[provider] != nil ? "Could not refresh quota" : "Quota signal not ready"),
-                            message: quotaService.errors[provider]
-                                ?? activeSnapshot?.statusMessage
-                                ?? snapshot?.statusMessage
-                                ?? "No quota snapshot yet.",
-                            isActive: isRefreshing,
-                            isWarning: quotaService.errors[provider] != nil
-                        )
+                        quotaEmptyState
                     }
 
+                    Divider()
+                        .overlay(Color.white.opacity(0.08))
+
                     HStack(spacing: DesignSystem.Spacing.md) {
-                        Text(snapshotFreshness)
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(
-                                (activeSnapshot?.isStale() ?? snapshot?.isStale() ?? false)
-                                    ? DesignSystem.Colors.warning
-                                    : DesignSystem.Colors.textMuted
-                            )
+                        HStack(spacing: 7) {
+                            Circle()
+                                .fill(freshnessColor)
+                                .frame(width: 6, height: 6)
+
+                            Text(snapshotFreshness)
+                                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                .tracking(0.8)
+                                .foregroundStyle(freshnessColor)
+                        }
+                        .accessibilityElement(children: .combine)
 
                         Spacer()
 
                         if let url = providerQuotaManagementURL(for: provider, snapshot: activeSnapshot ?? snapshot) {
-                            Button("Open official quota") {
+                            Button {
                                 open(url: url)
+                            } label: {
+                                Label("Official quota", systemImage: "arrow.up.right")
                             }
-                            .buttonStyle(.link)
+                            .buttonStyle(DetailGlassActionButtonStyle(accent: theme.primaryColor))
+                            .accessibilityHint("Opens the provider quota page")
                         }
                     }
                 }
-                .padding(DesignSystem.Spacing.lg)
             }
             .task {
                 await quotaService.refreshRoutingState(
@@ -127,32 +131,78 @@ struct ProviderDashboardQuotaPanel: View {
 
     // MARK: - Header
 
-    private var headerRow: some View {
-        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Text("Quota")
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+    private var quotaEmptyState: some View {
+        HStack(spacing: DesignSystem.Spacing.lg) {
+            ZStack {
+                Circle()
+                    .fill((quotaService.errors[provider] == nil
+                        ? theme.primaryColor
+                        : DesignSystem.Colors.warning).opacity(0.12))
+                    .frame(width: 44, height: 44)
 
-                    if hasMultipleAccounts {
-                        Text("\(accountSnapshots.count) accounts")
-                            .font(DesignSystem.Typography.tiny)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(DesignSystem.Colors.surfaceElevated)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .clipShape(Capsule())
-                    }
+                if isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(theme.primaryColor)
+                } else {
+                    Image(systemName: quotaService.errors[provider] == nil
+                        ? "waveform.path.ecg"
+                        : "exclamationmark.triangle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(quotaService.errors[provider] == nil
+                            ? theme.primaryColor
+                            : DesignSystem.Colors.warning)
                 }
-
-                Text(headerSubtitle)
-                    .font(DesignSystem.Typography.body)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer()
+            VStack(alignment: .leading, spacing: 5) {
+                Text(isRefreshing
+                    ? "Gathering live quota"
+                    : (quotaService.errors[provider] != nil
+                        ? "Could not refresh quota"
+                        : "Waiting for quota signal"))
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Text(
+                    quotaService.errors[provider]
+                        ?? activeSnapshot?.statusMessage
+                        ?? snapshot?.statusMessage
+                        ?? "Connect a supported plan or provider key to monitor remaining capacity."
+                )
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
+            }
+
+            Spacer(minLength: DesignSystem.Spacing.lg)
+
+            Text(isRefreshing ? "SYNCING" : "NO SIGNAL")
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .tracking(1.2)
+                .foregroundStyle(isRefreshing ? theme.primaryColor : DesignSystem.Colors.textMuted)
+        }
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var freshnessColor: Color {
+        (activeSnapshot?.isStale() ?? snapshot?.isStale() ?? false)
+            ? DesignSystem.Colors.warning
+            : DesignSystem.Colors.textMuted
+    }
+
+    private var headerRow: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
+            DetailSectionHeader(
+                eyebrow: "Capacity",
+                title: "Quota & routing",
+                subtitle: headerSubtitle,
+                accent: theme.primaryColor
+            )
+
+            Spacer(minLength: DesignSystem.Spacing.md)
 
             VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
                 if isRefreshing {
@@ -161,8 +211,13 @@ struct ProviderDashboardQuotaPanel: View {
 
                 if let active = activeSnapshot ?? snapshot {
                     QuotaSourceBadge(source: active.sourceKind, confidence: active.confidence)
+                } else if hasMultipleAccounts {
+                    Text("\(accountSnapshots.count) accounts")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
             }
+            .padding(.top, 2)
         }
     }
 

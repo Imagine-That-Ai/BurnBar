@@ -148,6 +148,8 @@ struct ModelDashboardView: View {
     @Environment(SettingsManager.self) private var settingsManager
     @State private var selectedSession: TokenUsage?
     @State private var didLogScreenView = false
+    @State private var contentVisible = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var theme: ProviderTheme { ProviderTheme.theme(forModel: modelName) }
 
@@ -156,35 +158,46 @@ struct ModelDashboardView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
-                modelHeader
-
-                if !usages.isEmpty {
-                    analyticsDeck
-                }
-
-                sessionsSection
-            }
-            .padding(UnifiedDesignSystem.Spacing.xl)
-        }
-        .background {
-            LinearGradient(
-                colors: [
-                    theme.primaryColor.opacity(0.06),
-                    Color.clear,
-                    theme.accentColor.opacity(0.05)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+        ZStack {
+            DetailLiquidGlassBackdrop(
+                accent: theme.primaryColor,
+                secondaryAccent: theme.accentColor
             )
-            .ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xl) {
+                    modelHeader
+
+                    if !usages.isEmpty {
+                        analyticsDeck
+                            .opacity(contentVisible ? 1 : 0)
+                            .offset(y: contentVisible ? 0 : (reduceMotion ? 0 : 12))
+                    }
+
+                    sessionsSection
+                        .opacity(contentVisible ? 1 : 0)
+                        .offset(y: contentVisible ? 0 : (reduceMotion ? 0 : 18))
+                }
+                .frame(maxWidth: 1440)
+                .padding(.horizontal, UnifiedDesignSystem.Spacing.xl)
+                .padding(.top, UnifiedDesignSystem.Spacing.lg)
+                .padding(.bottom, 48)
+                .frame(maxWidth: .infinity)
+            }
+            .scrollContentBackground(.hidden)
         }
-        .scrollContentBackground(.hidden)
         .onAppear {
             if !didLogScreenView {
                 didLogScreenView = true
                 Analytics.shared.track(.screenViewed, ["surface": "dashboard_model", "is_first_view": .bool(true)])
+            }
+
+            if reduceMotion {
+                contentVisible = true
+            } else {
+                withAnimation(.easeOut(duration: 0.42).delay(0.12)) {
+                    contentVisible = true
+                }
             }
         }
         .sheet(item: $selectedSession) { session in
@@ -193,150 +206,130 @@ struct ModelDashboardView: View {
     }
 
     private var modelHeader: some View {
-        UnifiedGlassCard {
-            ZStack(alignment: .bottomTrailing) {
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                theme.primaryColor.opacity(0.18),
-                                theme.accentColor.opacity(0.12),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.xl) {
-                    ZStack {
-                        Circle()
-                            .fill(theme.primaryColor.opacity(0.15))
-                            .frame(width: 64, height: 64)
-
-                        ModelProviderLogoView(
-                            modelKey: modelName,
-                            size: 40,
-                            fallbackSymbolColor: theme.primaryColor
-                        )
-                    }
-
-                    VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-                        Text(displayName)
-                            .font(UnifiedDesignSystem.Typography.display)
-                            .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-
-                        Text("\(usages.count) sessions in range")
-                            .font(UnifiedDesignSystem.Typography.body)
-                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-
-                        HStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                            modelMetric(
-                                label: settingsManager.usageDisplayMode == .currency ? "Spend" : "Volume",
-                                value: primaryMetric
-                            )
-                            modelMetric(
-                                label: settingsManager.usageDisplayMode == .currency ? "Avg session" : "Avg tokens",
-                                value: averageSessionMetric
-                            )
-                            modelMetric(label: "Top Agent", value: topAgentName)
-                            modelMetric(
-                                label: "Cache Hit",
-                                value: modelCacheEfficiency.formattedHitRate
-                            )
-                        }
-                    }
-
-                    Spacer()
-                }
-                .padding(UnifiedDesignSystem.Spacing.xl)
-
-                Circle()
-                    .fill(theme.gradient.opacity(0.22))
-                    .frame(width: 180, height: 180)
-                    .blur(radius: 45)
-                    .offset(x: 26, y: 40)
-            }
+        DetailEntityHero(
+            eyebrow: "Model",
+            title: displayName,
+            subtitle: "\(usages.count) sessions in the selected range",
+            accent: theme.primaryColor,
+            secondaryAccent: theme.accentColor,
+            metrics: [
+                DetailHeroMetric(
+                    label: settingsManager.usageDisplayMode == .currency ? "Spend" : "Volume",
+                    value: primaryMetric
+                ),
+                DetailHeroMetric(
+                    label: settingsManager.usageDisplayMode == .currency ? "Avg session" : "Avg tokens",
+                    value: averageSessionMetric
+                ),
+                DetailHeroMetric(label: "Top agent", value: topAgentName),
+                DetailHeroMetric(label: "Cache hit", value: modelCacheEfficiency.formattedHitRate)
+            ]
+        ) {
+            ModelProviderLogoView(
+                modelKey: modelName,
+                size: 48,
+                fallbackSymbolColor: theme.primaryColor
+            )
         }
+        .id(modelName)
     }
 
     private var analyticsDeck: some View {
-        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.lg) {
+        ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.lg) {
                 TokenBreakdownChart(usages: usages, theme: theme)
-                    .frame(minHeight: 260)
+                    .frame(minWidth: 320, minHeight: 290)
 
-                DailyTrendChart(usages: usages, theme: theme, days: 30, displayMode: settingsManager.usageDisplayMode)
-                    .frame(minHeight: 260)
+                DailyTrendChart(
+                    usages: usages,
+                    theme: theme,
+                    days: 30,
+                    displayMode: settingsManager.usageDisplayMode
+                )
+                .frame(minWidth: 380, minHeight: 290)
+
+                agentStackPanel
+                    .frame(minWidth: 260, idealWidth: 290, maxWidth: 330, alignment: .topLeading)
             }
-            .frame(maxWidth: .infinity)
 
-            agentStackPanel
-                .frame(width: 280, alignment: .topLeading)
+            VStack(spacing: UnifiedDesignSystem.Spacing.lg) {
+                DailyTrendChart(
+                    usages: usages,
+                    theme: theme,
+                    days: 30,
+                    displayMode: settingsManager.usageDisplayMode
+                )
+
+                HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.lg) {
+                    TokenBreakdownChart(usages: usages, theme: theme)
+                    agentStackPanel
+                }
+            }
         }
     }
 
     private var agentStackPanel: some View {
-        UnifiedGlassCard {
+        DetailLiquidGlassSurface(accent: theme.primaryColor) {
             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
-                Text("Agent Stack")
-                    .font(UnifiedDesignSystem.Typography.headline)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-
-                Text("Which agents use this model in the selected window.")
-                    .font(UnifiedDesignSystem.Typography.caption)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                DetailSectionHeader(
+                    eyebrow: "Runtime",
+                    title: "Agent mix",
+                    subtitle: "Agents using this model now.",
+                    accent: theme.primaryColor
+                )
 
                 if topAgents.isEmpty {
                     Text("No agent data")
                         .font(UnifiedDesignSystem.Typography.caption)
                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        .frame(maxWidth: .infinity, minHeight: 150)
                 } else {
-                    VStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                        ForEach(Array(topAgents.enumerated()), id: \.element.id) { _, pu in
+                    VStack(spacing: 0) {
+                        ForEach(Array(topAgents.enumerated()), id: \.element.id) { index, usage in
                             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
                                 HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                                    Capsule()
-                                        .fill(UnifiedDesignSystem.Colors.primary(for: pu.provider))
-                                        .frame(width: 16, height: 6)
+                                    Circle()
+                                        .fill(UnifiedDesignSystem.Colors.primary(for: usage.provider))
+                                        .frame(width: 7, height: 7)
 
-                                    Text(pu.provider.displayName)
+                                    Text(usage.provider.displayName)
                                         .font(UnifiedDesignSystem.Typography.body)
                                         .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                                         .lineLimit(1)
 
                                     Spacer()
 
-                                    Text(settingsManager.formatUsageMetric(cost: pu.cost, tokens: pu.totalTokens))
+                                    Text(settingsManager.formatUsageMetric(cost: usage.cost, tokens: usage.totalTokens))
                                         .font(UnifiedDesignSystem.Typography.monoSmall)
                                         .foregroundStyle(theme.primaryColor)
                                 }
 
                                 HStack {
-                                    Text("\(agentSharePercentage(pu), specifier: "%.0f")% of model usage")
+                                    Text("\(agentSharePercentage(usage), specifier: "%.0f")% of model usage")
                                         .font(UnifiedDesignSystem.Typography.tiny)
                                         .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
                                     Spacer()
 
-                                    UnifiedCacheHitRateBadge(efficiency: pu.cacheEfficiency)
-
-                                    Text("\(pu.sessionCount) sessions")
+                                    Text("\(usage.sessionCount) sessions")
                                         .font(UnifiedDesignSystem.Typography.monoTiny)
                                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                                 }
                             }
-                            .padding(.bottom, UnifiedDesignSystem.Spacing.xs)
+                            .padding(.vertical, UnifiedDesignSystem.Spacing.md)
+
+                            if index < topAgents.count - 1 {
+                                Divider().overlay(Color.white.opacity(0.08))
+                            }
                         }
                     }
                 }
             }
-            .padding(UnifiedDesignSystem.Spacing.lg)
         }
     }
 
     private var sessionsSection: some View {
-        UnifiedGlassCard {
+        DetailLiquidGlassSurface(accent: theme.primaryColor) {
             SessionLedgerSection(
                 usages: usages,
                 theme: theme,
@@ -348,14 +341,14 @@ struct ModelDashboardView: View {
                 },
                 displayMode: settingsManager.usageDisplayMode,
                 showsAgentBadge: true,
-                footerCaption: "Search paths, models, and session ids for \(displayName). Groups use session start time within the range above.",
+                footerCaption: "Search paths, models, and session ids for \(displayName). Groups use session start time within the selected range.",
                 emptyLedger: {
                     VStack(spacing: UnifiedDesignSystem.Spacing.md) {
                         Image(systemName: "clock")
-                            .font(.system(size: 32))
-                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                            .font(.system(size: 30, weight: .light))
+                            .foregroundStyle(theme.primaryColor.opacity(0.7))
 
-                        Text("No sessions found for this model in the selected time range.")
+                        Text("No sessions for this model in the selected range.")
                             .font(UnifiedDesignSystem.Typography.body)
                             .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                             .multilineTextAlignment(.center)
@@ -364,7 +357,6 @@ struct ModelDashboardView: View {
                     .padding(.vertical, UnifiedDesignSystem.Spacing.xxl)
                 }
             )
-            .padding(UnifiedDesignSystem.Spacing.lg)
         }
     }
 
