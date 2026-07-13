@@ -196,6 +196,99 @@ describe('ChatSurface', () => {
     expect(screen.getAllByText(list.sessions[0].title).length).toBeGreaterThan(0);
   });
 
+  it('exports the loaded transcript as Markdown through the toolbar', async () => {
+    const summary = {
+      id: 'thread-export-ui',
+      title: 'Exportable thread',
+      preview: 'A durable transcript',
+      messageCount: 2,
+      createdAt: '2026-07-10T12:00:00Z',
+      updatedAt: '2026-07-10T12:04:00Z'
+    };
+    useShellStore.setState({
+      bridge: mockBridge({
+        chatThreadList: async () => ({ threads: [summary] }),
+        chatThreadGet: async () => ({
+          thread: summary,
+          messages: [
+            {
+              id: 'export-user',
+              threadID: summary.id,
+              role: 'user',
+              content: 'Please export this.',
+              timestamp: '2026-07-10T12:00:00Z'
+            },
+            {
+              id: 'export-assistant',
+              threadID: summary.id,
+              role: 'assistant',
+              content: 'Here is the durable answer.',
+              timestamp: '2026-07-10T12:04:00Z'
+            }
+          ],
+          hasMoreBefore: false
+        })
+      }),
+      fixtureMode: false,
+      bridgeReady: true
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+
+    expect((screen.getByRole('button', { name: 'Export chat as JSON' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Chat export format' }), {
+      target: { value: 'markdown' }
+    });
+    const exportButton = screen.getByRole('button', { name: 'Export chat as Markdown' });
+    expect((exportButton as HTMLButtonElement).disabled).toBe(false);
+
+    const url = globalThis.URL;
+    const originalCreateObjectURL = url.createObjectURL;
+    const originalRevokeObjectURL = url.revokeObjectURL;
+    const createObjectURL = vi.fn(() => 'blob:chat-export');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(url, 'createObjectURL', {
+      configurable: true,
+      writable: true,
+      value: createObjectURL
+    });
+    Object.defineProperty(url, 'revokeObjectURL', {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURL
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    try {
+      fireEvent.click(exportButton);
+      await waitFor(() => {
+        expect(screen.getByRole('status').textContent).toContain(
+          'Exported openburnbar-chat-Exportable-thread.md'
+        );
+      });
+      expect(createObjectURL).toHaveBeenCalledOnce();
+      expect(click).toHaveBeenCalled();
+    } finally {
+      if (originalCreateObjectURL) {
+        Object.defineProperty(url, 'createObjectURL', {
+          configurable: true,
+          writable: true,
+          value: originalCreateObjectURL
+        });
+      } else {
+        delete (url as { createObjectURL?: unknown }).createObjectURL;
+      }
+      if (originalRevokeObjectURL) {
+        Object.defineProperty(url, 'revokeObjectURL', {
+          configurable: true,
+          writable: true,
+          value: originalRevokeObjectURL
+        });
+      } else {
+        delete (url as { revokeObjectURL?: unknown }).revokeObjectURL;
+      }
+    }
+  });
+
   it('renders persisted system messages with an accessible system label', async () => {
     const summary = {
       id: 'thread-system',
