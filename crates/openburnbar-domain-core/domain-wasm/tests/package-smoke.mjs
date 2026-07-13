@@ -22,6 +22,73 @@ const fixturePath = path.resolve(
 );
 const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
 assert.equal(fixture.schema, "openburnbar.domain-core.cloudvault.deterministic.v1");
+const searchFixture = JSON.parse(
+  await readFile(
+    path.resolve(
+      testDirectory,
+      "../../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-search-contract.json",
+    ),
+    "utf8",
+  ),
+);
+assert.equal(searchFixture.schema, "openburnbar.domain-core.cloudvault.search.v1");
+
+function collect(count, at) {
+  return Array.from({ length: count }, (_, index) => at(index));
+}
+
+for (const vector of searchFixture.tokenizationCases) {
+  const analysis = domainCore.cloudVaultSearchAnalyze(vector.text);
+  assert.deepEqual(
+    collect(analysis.normalizedTokenCount, (index) => analysis.normalizedTokenAt(index)),
+    vector.normalizedTokens,
+    vector.id,
+  );
+  assert.deepEqual(
+    collect(analysis.exactPhraseTokenCount, (index) => analysis.exactPhraseTokenAt(index)),
+    vector.exactPhraseTokens,
+    vector.id,
+  );
+  analysis.free();
+}
+
+for (const vector of searchFixture.semanticFeatureCases) {
+  const analysis = domainCore.cloudVaultSearchAnalyze(vector.text);
+  assert.deepEqual(
+    collect(analysis.semanticFeatureCount, (index) => analysis.semanticFeatureAt(index)),
+    vector.features,
+    vector.id,
+  );
+  analysis.free();
+}
+
+const searchOperation = {
+  token: domainCore.CloudVaultSearchOperation.Token,
+  index: domainCore.CloudVaultSearchOperation.Index,
+  query: domainCore.CloudVaultSearchOperation.Query,
+  semantic: domainCore.CloudVaultSearchOperation.Semantic,
+};
+for (const vector of searchFixture.hashCases) {
+  const text = vector.text ?? Array.from(
+    { length: vector.input.count },
+    (_, index) => `${vector.input.prefix}${index}`,
+  ).join(" ");
+  const keyHex = vector.key === "primary"
+    ? searchFixture.primaryKeyHex
+    : searchFixture.alternateKeyHex;
+  const result = domainCore.cloudVaultSearch(
+    searchOperation[vector.operation],
+    text,
+    Buffer.from(keyHex, "hex"),
+    vector.limit,
+  );
+  assert.deepEqual(
+    collect(result.hashCount, (index) => result.hashAt(index)),
+    vector.expected,
+    vector.id,
+  );
+  result.free();
+}
 
 for (const vector of fixture.aad) {
   assert.equal(
@@ -204,6 +271,15 @@ assert.throws(
 assert.throws(
   () => domainCore.cloudVaultValidateP256X963PublicKey(new Uint8Array(65)),
   /invalid_p256_public_key/,
+);
+assert.throws(
+  () => domainCore.cloudVaultSearch(
+    domainCore.CloudVaultSearchOperation.Token,
+    "bounded",
+    new Uint8Array(32),
+    1025,
+  ),
+  /search_limit_too_large/,
 );
 
 console.log("domain-core Wasm generated-package smoke test passed");

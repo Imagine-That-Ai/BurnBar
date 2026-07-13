@@ -801,6 +801,10 @@ static class _UniFFILib {
 
 
 
+
+
+
+
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
@@ -897,6 +901,14 @@ static class _UniFFILib {
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(RustBuffer @envelopeAad,RustBuffer @context,sbyte @rejectLegacy,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search(RustBuffer @request,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search_analyze(RustBuffer @text,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1248,6 +1260,14 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search_analyze(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex(
     );
 
@@ -1432,6 +1452,18 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search();
+            if (checksum != 25473) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search` checksum `25473`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search_analyze();
+            if (checksum != 41202) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search_analyze` checksum `41202`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex();
             if (checksum != 55638) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex` checksum `55638`, library returned `{checksum}`");
@@ -1510,6 +1542,32 @@ class FfiConverterUInt32: FfiConverter<uint, uint> {
 
     public override void Write(uint value, BigEndianStream stream) {
         stream.WriteUInt(value);
+    }
+}
+
+
+
+class FfiConverterInt32: FfiConverter<int, int> {
+    public static FfiConverterInt32 INSTANCE = new FfiConverterInt32();
+
+    public override int Lift(int value) {
+        return value;
+    }
+
+    public override int Read(BigEndianStream stream) {
+        return stream.ReadInt();
+    }
+
+    public override int Lower(int value) {
+        return value;
+    }
+
+    public override int AllocationSize(int value) {
+        return 4;
+    }
+
+    public override void Write(int value, BigEndianStream stream) {
+        stream.WriteInt(value);
     }
 }
 
@@ -1801,6 +1859,108 @@ class FfiConverterTypeCloudVaultRecoveryWrappedVaultKey: FfiConverterRustBuffer<
 
 
 
+public record CloudVaultSearchAnalysis (
+    List<string> @normalizedTokens,
+    List<string> @exactPhraseTokens,
+    List<string> @semanticFeatures
+) {
+}
+
+class FfiConverterTypeCloudVaultSearchAnalysis: FfiConverterRustBuffer<CloudVaultSearchAnalysis> {
+    public static FfiConverterTypeCloudVaultSearchAnalysis INSTANCE = new FfiConverterTypeCloudVaultSearchAnalysis();
+
+    public override CloudVaultSearchAnalysis Read(BigEndianStream stream) {
+        return new CloudVaultSearchAnalysis(
+            @normalizedTokens: FfiConverterSequenceString.INSTANCE.Read(stream),
+            @exactPhraseTokens: FfiConverterSequenceString.INSTANCE.Read(stream),
+            @semanticFeatures: FfiConverterSequenceString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudVaultSearchAnalysis value) {
+        return 0
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@normalizedTokens)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@exactPhraseTokens)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@semanticFeatures);
+    }
+
+    public override void Write(CloudVaultSearchAnalysis value, BigEndianStream stream) {
+            FfiConverterSequenceString.INSTANCE.Write(value.@normalizedTokens, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.@exactPhraseTokens, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.@semanticFeatures, stream);
+    }
+}
+
+
+
+public record CloudVaultSearchRequest (
+    CloudVaultSearchOperation @operation,
+    string @text,
+    byte[] @vaultKey,
+    int @limit
+) {
+}
+
+class FfiConverterTypeCloudVaultSearchRequest: FfiConverterRustBuffer<CloudVaultSearchRequest> {
+    public static FfiConverterTypeCloudVaultSearchRequest INSTANCE = new FfiConverterTypeCloudVaultSearchRequest();
+
+    public override CloudVaultSearchRequest Read(BigEndianStream stream) {
+        return new CloudVaultSearchRequest(
+            @operation: FfiConverterTypeCloudVaultSearchOperation.INSTANCE.Read(stream),
+            @text: FfiConverterString.INSTANCE.Read(stream),
+            @vaultKey: FfiConverterByteArray.INSTANCE.Read(stream),
+            @limit: FfiConverterInt32.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudVaultSearchRequest value) {
+        return 0
+            + FfiConverterTypeCloudVaultSearchOperation.INSTANCE.AllocationSize(value.@operation)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@text)
+            + FfiConverterByteArray.INSTANCE.AllocationSize(value.@vaultKey)
+            + FfiConverterInt32.INSTANCE.AllocationSize(value.@limit);
+    }
+
+    public override void Write(CloudVaultSearchRequest value, BigEndianStream stream) {
+            FfiConverterTypeCloudVaultSearchOperation.INSTANCE.Write(value.@operation, stream);
+            FfiConverterString.INSTANCE.Write(value.@text, stream);
+            FfiConverterByteArray.INSTANCE.Write(value.@vaultKey, stream);
+            FfiConverterInt32.INSTANCE.Write(value.@limit, stream);
+    }
+}
+
+
+
+public record CloudVaultSearchResult (
+    CloudVaultSearchOperation @operation,
+    List<string> @hashes
+) {
+}
+
+class FfiConverterTypeCloudVaultSearchResult: FfiConverterRustBuffer<CloudVaultSearchResult> {
+    public static FfiConverterTypeCloudVaultSearchResult INSTANCE = new FfiConverterTypeCloudVaultSearchResult();
+
+    public override CloudVaultSearchResult Read(BigEndianStream stream) {
+        return new CloudVaultSearchResult(
+            @operation: FfiConverterTypeCloudVaultSearchOperation.INSTANCE.Read(stream),
+            @hashes: FfiConverterSequenceString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudVaultSearchResult value) {
+        return 0
+            + FfiConverterTypeCloudVaultSearchOperation.INSTANCE.AllocationSize(value.@operation)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@hashes);
+    }
+
+    public override void Write(CloudVaultSearchResult value, BigEndianStream stream) {
+            FfiConverterTypeCloudVaultSearchOperation.INSTANCE.Write(value.@operation, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.@hashes, stream);
+    }
+}
+
+
+
 public record QuotaBucket (
     string @key,
     string @label,
@@ -2060,6 +2220,21 @@ public class CloudVaultFfiException: UniffiException {
     }
 
 
+    public class SearchTextTooLarge : CloudVaultFfiException {
+        public SearchTextTooLarge() : base() {}
+    }
+
+
+    public class SearchLimitTooLarge : CloudVaultFfiException {
+        public SearchLimitTooLarge() : base() {}
+    }
+
+
+    public class SearchTooManyTokens : CloudVaultFfiException {
+        public SearchTooManyTokens() : base() {}
+    }
+
+
 
 
 }
@@ -2102,6 +2277,12 @@ class FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudVaultFfiE
                 return new CloudVaultFfiException.InvalidP256PublicKey();
             case 16:
                 return new CloudVaultFfiException.InvalidEscrowWireLength();
+            case 17:
+                return new CloudVaultFfiException.SearchTextTooLarge();
+            case 18:
+                return new CloudVaultFfiException.SearchLimitTooLarge();
+            case 19:
+                return new CloudVaultFfiException.SearchTooManyTokens();
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.Read()", value));
         }
@@ -2156,6 +2337,15 @@ class FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudVaultFfiE
                 return 4;
 
             case CloudVaultFfiException.InvalidEscrowWireLength variant_value:
+                return 4;
+
+            case CloudVaultFfiException.SearchTextTooLarge variant_value:
+                return 4;
+
+            case CloudVaultFfiException.SearchLimitTooLarge variant_value:
+                return 4;
+
+            case CloudVaultFfiException.SearchTooManyTokens variant_value:
                 return 4;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.AllocationSize()", value));
@@ -2212,6 +2402,15 @@ class FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudVaultFfiE
             case CloudVaultFfiException.InvalidEscrowWireLength variant_value:
                 stream.WriteInt(16);
                 break;
+            case CloudVaultFfiException.SearchTextTooLarge variant_value:
+                stream.WriteInt(17);
+                break;
+            case CloudVaultFfiException.SearchLimitTooLarge variant_value:
+                stream.WriteInt(18);
+                break;
+            case CloudVaultFfiException.SearchTooManyTokens variant_value:
+                stream.WriteInt(19);
+                break;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.Write()", value));
         }
@@ -2247,6 +2446,41 @@ class FfiConverterTypeCloudVaultHashPurpose: FfiConverterRustBuffer<CloudVaultHa
     }
 
     public override void Write(CloudVaultHashPurpose value, BigEndianStream stream) {
+        stream.WriteInt((int)value + 1);
+    }
+}
+
+
+
+
+
+
+
+public enum CloudVaultSearchOperation: int {
+
+    Token,
+    Index,
+    Query,
+    Semantic
+}
+
+class FfiConverterTypeCloudVaultSearchOperation: FfiConverterRustBuffer<CloudVaultSearchOperation> {
+    public static FfiConverterTypeCloudVaultSearchOperation INSTANCE = new FfiConverterTypeCloudVaultSearchOperation();
+
+    public override CloudVaultSearchOperation Read(BigEndianStream stream) {
+        var value = stream.ReadInt() - 1;
+        if (Enum.IsDefined(typeof(CloudVaultSearchOperation), value)) {
+            return (CloudVaultSearchOperation)value;
+        } else {
+            throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCloudVaultSearchOperation.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CloudVaultSearchOperation value) {
+        return 4;
+    }
+
+    public override void Write(CloudVaultSearchOperation value, BigEndianStream stream) {
         stream.WriteInt((int)value + 1);
     }
 }
@@ -2530,6 +2764,48 @@ class FfiConverterOptionalString: FfiConverterRustBuffer<string?> {
 
 
 
+class FfiConverterSequenceString: FfiConverterRustBuffer<List<string>> {
+    public static FfiConverterSequenceString INSTANCE = new FfiConverterSequenceString();
+
+    public override List<string> Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        var result = new List<string>(length);
+        var readFn = FfiConverterString.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result.Add(readFn(stream));
+        }
+        return result;
+    }
+
+    public override int AllocationSize(List<string> value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterString.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(List<string> value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Count);
+        var writerFn = FfiConverterString.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<QuotaBucket>> {
     public static FfiConverterSequenceTypeQuotaBucket INSTANCE = new FfiConverterSequenceTypeQuotaBucket();
 
@@ -2772,6 +3048,24 @@ public static class OpenburnbarDomainFfiMethods {
         return FfiConverterByteArray.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(FfiConverterString.INSTANCE.Lower(@envelopeAad), FfiConverterTypeCloudVaultAadContextInput.INSTANCE.Lower(@context), FfiConverterBoolean.INSTANCE.Lower(@rejectLegacy), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static CloudVaultSearchResult CloudVaultSearch(CloudVaultSearchRequest @request) {
+        return FfiConverterTypeCloudVaultSearchResult.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search(FfiConverterTypeCloudVaultSearchRequest.INSTANCE.Lower(@request), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static CloudVaultSearchAnalysis CloudVaultSearchAnalyze(string @text) {
+        return FfiConverterTypeCloudVaultSearchAnalysis.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search_analyze(FfiConverterString.INSTANCE.Lower(@text), ref _status)
 ));
     }
 

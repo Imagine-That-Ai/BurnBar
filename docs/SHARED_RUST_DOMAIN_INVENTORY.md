@@ -46,7 +46,8 @@ platform acquisition layer.
 | SHA-256, HMAC, HKDF, vault-key IDs and blob hashes | Same four owners, with unequal subsets | Move deterministic byte transforms first; browser may call WASM because no key handle is required |
 | AES-256-GCM text/blob/payload seal/open | Same four owners | Require bidirectional cross-open plus wrong-key/AAD/tamper rejection; never fall back after authentication failure |
 | Recovery-key wrap and P-256 escrow wrap | Swift/Kotlin/C#/Console subsets | Preserve platform key custody; migrate portable byte/key-material operations only after KAT coverage is shared |
-| Search tokens, semantic hashes and document rewrap | Swift/Kotlin | [`cloudvault-search-contract.json`](../tests/fixtures/domain-core/cloudvault/v1/cloudvault-search-contract.json); migrate after primitives; keep persistence, Firestore mapping, rotation orchestration, and random policy outside Rust |
+| Search tokens and semantic hashes | Rust core/artifacts; Swift/Kotlin legacy consumers | [`cloudvault-search-contract.json`](../tests/fixtures/domain-core/cloudvault/v1/cloudvault-search-contract.json); core is implemented, consumer shadow routing remains; keep persistence and Firestore mapping outside Rust |
+| Document rewrap | Swift/Kotlin | Migrate after search consumers; keep rotation orchestration, Firestore mapping, and random policy outside Rust |
 
 The Console stores non-extractable `CryptoKey` values in IndexedDB. Rust/WASM
 must not require exporting those keys. WebCrypto operations using such handles

@@ -1,5 +1,5 @@
 use openburnbar_domain_core::quota as core;
-use openburnbar_domain_core::{cloudvault, quota};
+use openburnbar_domain_core::{cloudvault, cloudvault_search, quota};
 use zeroize::Zeroize;
 
 pub const DOMAIN_CORE_ABI_VERSION: u32 = 2;
@@ -41,6 +41,35 @@ pub struct CloudVaultEscrowWireParts {
     pub aes_gcm_combined: Vec<u8>,
 }
 
+#[derive(Clone, Copy, Debug, uniffi::Enum)]
+pub enum CloudVaultSearchOperation {
+    Token,
+    Index,
+    Query,
+    Semantic,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultSearchRequest {
+    pub operation: CloudVaultSearchOperation,
+    pub text: String,
+    pub vault_key: Vec<u8>,
+    pub limit: i32,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultSearchAnalysis {
+    pub normalized_tokens: Vec<String>,
+    pub exact_phrase_tokens: Vec<String>,
+    pub semantic_features: Vec<String>,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultSearchResult {
+    pub operation: CloudVaultSearchOperation,
+    pub hashes: Vec<String>,
+}
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CloudVaultFfiError {
     #[error("cloud vault keys must be exactly 32 bytes")]
@@ -75,6 +104,12 @@ pub enum CloudVaultFfiError {
     InvalidP256PublicKey,
     #[error("the P-256 escrow wire must contain a public key and AES-GCM combined box")]
     InvalidEscrowWireLength,
+    #[error("cloud vault search text exceeds 1048576 UTF-8 bytes")]
+    SearchTextTooLarge,
+    #[error("cloud vault search limits must not exceed 1024")]
+    SearchLimitTooLarge,
+    #[error("cloud vault search input exceeds 4096 extracted tokens")]
+    SearchTooManyTokens,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -448,6 +483,34 @@ pub fn cloud_vault_escrow_open(
     result
 }
 
+#[uniffi::export]
+pub fn cloud_vault_search_analyze(
+    mut text: String,
+) -> Result<CloudVaultSearchAnalysis, CloudVaultFfiError> {
+    let result = cloudvault_search::analyze(&text)
+        .map(Into::into)
+        .map_err(Into::into);
+    text.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_search(
+    mut request: CloudVaultSearchRequest,
+) -> Result<CloudVaultSearchResult, CloudVaultFfiError> {
+    let result = cloudvault_search::search(
+        request.operation.into(),
+        &request.text,
+        &request.vault_key,
+        request.limit,
+    )
+    .map(Into::into)
+    .map_err(Into::into);
+    request.vault_key.zeroize();
+    request.text.zeroize();
+    result
+}
+
 fn cloud_vault_aad_context(
     uid: &str,
     collection: &str,
@@ -497,6 +560,59 @@ impl From<cloudvault::CloudVaultError> for CloudVaultFfiError {
             }
             cloudvault::CloudVaultError::InvalidP256PublicKey => Self::InvalidP256PublicKey,
             cloudvault::CloudVaultError::InvalidEscrowWireLength => Self::InvalidEscrowWireLength,
+        }
+    }
+}
+
+impl From<CloudVaultSearchOperation> for cloudvault_search::CloudVaultSearchOperation {
+    fn from(value: CloudVaultSearchOperation) -> Self {
+        match value {
+            CloudVaultSearchOperation::Token => Self::Token,
+            CloudVaultSearchOperation::Index => Self::Index,
+            CloudVaultSearchOperation::Query => Self::Query,
+            CloudVaultSearchOperation::Semantic => Self::Semantic,
+        }
+    }
+}
+
+impl From<cloudvault_search::CloudVaultSearchOperation> for CloudVaultSearchOperation {
+    fn from(value: cloudvault_search::CloudVaultSearchOperation) -> Self {
+        match value {
+            cloudvault_search::CloudVaultSearchOperation::Token => Self::Token,
+            cloudvault_search::CloudVaultSearchOperation::Index => Self::Index,
+            cloudvault_search::CloudVaultSearchOperation::Query => Self::Query,
+            cloudvault_search::CloudVaultSearchOperation::Semantic => Self::Semantic,
+        }
+    }
+}
+
+impl From<cloudvault_search::CloudVaultSearchAnalysis> for CloudVaultSearchAnalysis {
+    fn from(value: cloudvault_search::CloudVaultSearchAnalysis) -> Self {
+        Self {
+            normalized_tokens: value.normalized_tokens,
+            exact_phrase_tokens: value.exact_phrase_tokens,
+            semantic_features: value.semantic_features,
+        }
+    }
+}
+
+impl From<cloudvault_search::CloudVaultSearchResult> for CloudVaultSearchResult {
+    fn from(value: cloudvault_search::CloudVaultSearchResult) -> Self {
+        Self {
+            operation: value.operation.into(),
+            hashes: value.hashes,
+        }
+    }
+}
+
+impl From<cloudvault_search::CloudVaultSearchError> for CloudVaultFfiError {
+    fn from(value: cloudvault_search::CloudVaultSearchError) -> Self {
+        match value {
+            cloudvault_search::CloudVaultSearchError::InvalidKeyLength => Self::InvalidKeyLength,
+            cloudvault_search::CloudVaultSearchError::TextTooLarge => Self::SearchTextTooLarge,
+            cloudvault_search::CloudVaultSearchError::LimitTooLarge => Self::SearchLimitTooLarge,
+            cloudvault_search::CloudVaultSearchError::TooManyTokens => Self::SearchTooManyTokens,
+            cloudvault_search::CloudVaultSearchError::DerivationFailure => Self::DerivationFailure,
         }
     }
 }
@@ -756,6 +872,21 @@ mod tests {
         assert_eq!(
             cloud_vault_escrow_open(wire, shared_secret)?,
             Vec::<u8>::new()
+        );
+        let analysis = cloud_vault_search_analyze("The QUICK, quick fox and X.".into())?;
+        assert_eq!(analysis.normalized_tokens, ["quick", "quick", "fox"]);
+        let search = cloud_vault_search(CloudVaultSearchRequest {
+            operation: CloudVaultSearchOperation::Token,
+            text: "The QUICK, quick fox and X.".into(),
+            vault_key: (0_u8..32).collect(),
+            limit: 250,
+        })?;
+        assert_eq!(
+            search.hashes,
+            [
+                "e9110d7f0c79afdae6316235800dc41b",
+                "66e59fa04825dc74f5ef7cb57884d4ed"
+            ]
         );
         Ok(())
     }

@@ -771,6 +771,10 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -831,6 +835,10 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_wrapping_key(`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(`envelopeAad`: RustBuffer.ByValue,`context`: RustBuffer.ByValue,`rejectLegacy`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search(`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search_analyze(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -1006,6 +1014,10 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search_analyze(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key(
@@ -1107,6 +1119,12 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad() != 62830.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search() != 25473.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search_analyze() != 41202.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex() != 55638.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1198,6 +1216,29 @@ public object FfiConverterUInt: FfiConverter<UInt, Int> {
 
     override fun write(value: UInt, buf: ByteBuffer) {
         buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterInt: FfiConverter<Int, Int> {
+    override fun lift(value: Int): Int {
+        return value
+    }
+
+    override fun read(buf: ByteBuffer): Int {
+        return buf.getInt()
+    }
+
+    override fun lower(value: Int): Int {
+        return value
+    }
+
+    override fun allocationSize(value: Int) = 4UL
+
+    override fun write(value: Int, buf: ByteBuffer) {
+        buf.putInt(value)
     }
 }
 
@@ -1496,6 +1537,114 @@ public object FfiConverterTypeCloudVaultRecoveryWrappedVaultKey: FfiConverterRus
 
 
 
+data class CloudVaultSearchAnalysis (
+    var `normalizedTokens`: List<kotlin.String>,
+    var `exactPhraseTokens`: List<kotlin.String>,
+    var `semanticFeatures`: List<kotlin.String>
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultSearchAnalysis: FfiConverterRustBuffer<CloudVaultSearchAnalysis> {
+    override fun read(buf: ByteBuffer): CloudVaultSearchAnalysis {
+        return CloudVaultSearchAnalysis(
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultSearchAnalysis) = (
+            FfiConverterSequenceString.allocationSize(value.`normalizedTokens`) +
+            FfiConverterSequenceString.allocationSize(value.`exactPhraseTokens`) +
+            FfiConverterSequenceString.allocationSize(value.`semanticFeatures`)
+    )
+
+    override fun write(value: CloudVaultSearchAnalysis, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`normalizedTokens`, buf)
+            FfiConverterSequenceString.write(value.`exactPhraseTokens`, buf)
+            FfiConverterSequenceString.write(value.`semanticFeatures`, buf)
+    }
+}
+
+
+
+data class CloudVaultSearchRequest (
+    var `operation`: CloudVaultSearchOperation,
+    var `text`: kotlin.String,
+    var `vaultKey`: kotlin.ByteArray,
+    var `limit`: kotlin.Int
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultSearchRequest: FfiConverterRustBuffer<CloudVaultSearchRequest> {
+    override fun read(buf: ByteBuffer): CloudVaultSearchRequest {
+        return CloudVaultSearchRequest(
+            FfiConverterTypeCloudVaultSearchOperation.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultSearchRequest) = (
+            FfiConverterTypeCloudVaultSearchOperation.allocationSize(value.`operation`) +
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterByteArray.allocationSize(value.`vaultKey`) +
+            FfiConverterInt.allocationSize(value.`limit`)
+    )
+
+    override fun write(value: CloudVaultSearchRequest, buf: ByteBuffer) {
+            FfiConverterTypeCloudVaultSearchOperation.write(value.`operation`, buf)
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterByteArray.write(value.`vaultKey`, buf)
+            FfiConverterInt.write(value.`limit`, buf)
+    }
+}
+
+
+
+data class CloudVaultSearchResult (
+    var `operation`: CloudVaultSearchOperation,
+    var `hashes`: List<kotlin.String>
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultSearchResult: FfiConverterRustBuffer<CloudVaultSearchResult> {
+    override fun read(buf: ByteBuffer): CloudVaultSearchResult {
+        return CloudVaultSearchResult(
+            FfiConverterTypeCloudVaultSearchOperation.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultSearchResult) = (
+            FfiConverterTypeCloudVaultSearchOperation.allocationSize(value.`operation`) +
+            FfiConverterSequenceString.allocationSize(value.`hashes`)
+    )
+
+    override fun write(value: CloudVaultSearchResult, buf: ByteBuffer) {
+            FfiConverterTypeCloudVaultSearchOperation.write(value.`operation`, buf)
+            FfiConverterSequenceString.write(value.`hashes`, buf)
+    }
+}
+
+
+
 data class QuotaBucket (
     var `key`: kotlin.String,
     var `label`: kotlin.String,
@@ -1770,6 +1919,24 @@ sealed class CloudVaultFfiException: kotlin.Exception() {
             get() = ""
     }
 
+    class SearchTextTooLarge(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class SearchLimitTooLarge(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class SearchTooManyTokens(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<CloudVaultFfiException> {
         override fun lift(error_buf: RustBuffer.ByValue): CloudVaultFfiException = FfiConverterTypeCloudVaultFfiError.lift(error_buf)
@@ -1802,6 +1969,9 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
             14 -> CloudVaultFfiException.InvalidSharedSecretLength()
             15 -> CloudVaultFfiException.InvalidP256PublicKey()
             16 -> CloudVaultFfiException.InvalidEscrowWireLength()
+            17 -> CloudVaultFfiException.SearchTextTooLarge()
+            18 -> CloudVaultFfiException.SearchLimitTooLarge()
+            19 -> CloudVaultFfiException.SearchTooManyTokens()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -1869,6 +2039,18 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
                 4UL
             )
             is CloudVaultFfiException.InvalidEscrowWireLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.SearchTextTooLarge -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.SearchLimitTooLarge -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.SearchTooManyTokens -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
@@ -1941,6 +2123,18 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
                 buf.putInt(16)
                 Unit
             }
+            is CloudVaultFfiException.SearchTextTooLarge -> {
+                buf.putInt(17)
+                Unit
+            }
+            is CloudVaultFfiException.SearchLimitTooLarge -> {
+                buf.putInt(18)
+                Unit
+            }
+            is CloudVaultFfiException.SearchTooManyTokens -> {
+                buf.putInt(19)
+                Unit
+            }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 
@@ -1972,6 +2166,38 @@ public object FfiConverterTypeCloudVaultHashPurpose: FfiConverterRustBuffer<Clou
     override fun allocationSize(value: CloudVaultHashPurpose) = 4UL
 
     override fun write(value: CloudVaultHashPurpose, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
+enum class CloudVaultSearchOperation {
+
+    TOKEN,
+    INDEX,
+    QUERY,
+    SEMANTIC;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultSearchOperation: FfiConverterRustBuffer<CloudVaultSearchOperation> {
+    override fun read(buf: ByteBuffer) = try {
+        CloudVaultSearchOperation.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: CloudVaultSearchOperation) = 4UL
+
+    override fun write(value: CloudVaultSearchOperation, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
@@ -2246,6 +2472,34 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
 /**
  * @suppress
  */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<QuotaBucket>> {
     override fun read(buf: ByteBuffer): List<QuotaBucket> {
         val len = buf.getInt()
@@ -2491,6 +2745,26 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     uniffiRustCallWithError(CloudVaultFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(
         FfiConverterString.lower(`envelopeAad`),FfiConverterTypeCloudVaultAadContextInput.lower(`context`),FfiConverterBoolean.lower(`rejectLegacy`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultSearch`(`request`: CloudVaultSearchRequest): CloudVaultSearchResult {
+            return FfiConverterTypeCloudVaultSearchResult.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search(
+        FfiConverterTypeCloudVaultSearchRequest.lower(`request`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultSearchAnalyze`(`text`: kotlin.String): CloudVaultSearchAnalysis {
+            return FfiConverterTypeCloudVaultSearchAnalysis.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search_analyze(
+        FfiConverterString.lower(`text`),_status)
 }
     )
     }

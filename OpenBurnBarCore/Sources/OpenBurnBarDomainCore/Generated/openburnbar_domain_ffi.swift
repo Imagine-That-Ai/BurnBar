@@ -415,6 +415,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterInt32: FfiConverterPrimitive {
+    typealias FfiType = Int32
+    typealias SwiftType = Int32
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Int32 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Int32, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
     typealias FfiType = Int64
     typealias SwiftType = Int64
@@ -832,6 +848,228 @@ public func FfiConverterTypeCloudVaultRecoveryWrappedVaultKey_lower(_ value: Clo
 }
 
 
+public struct CloudVaultSearchAnalysis {
+    public var normalizedTokens: [String]
+    public var exactPhraseTokens: [String]
+    public var semanticFeatures: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(normalizedTokens: [String], exactPhraseTokens: [String], semanticFeatures: [String]) {
+        self.normalizedTokens = normalizedTokens
+        self.exactPhraseTokens = exactPhraseTokens
+        self.semanticFeatures = semanticFeatures
+    }
+}
+
+
+
+extension CloudVaultSearchAnalysis: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultSearchAnalysis, rhs: CloudVaultSearchAnalysis) -> Bool {
+        if lhs.normalizedTokens != rhs.normalizedTokens {
+            return false
+        }
+        if lhs.exactPhraseTokens != rhs.exactPhraseTokens {
+            return false
+        }
+        if lhs.semanticFeatures != rhs.semanticFeatures {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(normalizedTokens)
+        hasher.combine(exactPhraseTokens)
+        hasher.combine(semanticFeatures)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultSearchAnalysis: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultSearchAnalysis {
+        return
+            try CloudVaultSearchAnalysis(
+                normalizedTokens: FfiConverterSequenceString.read(from: &buf),
+                exactPhraseTokens: FfiConverterSequenceString.read(from: &buf),
+                semanticFeatures: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultSearchAnalysis, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.normalizedTokens, into: &buf)
+        FfiConverterSequenceString.write(value.exactPhraseTokens, into: &buf)
+        FfiConverterSequenceString.write(value.semanticFeatures, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultSearchAnalysis_lift(_ buf: RustBuffer) throws -> CloudVaultSearchAnalysis {
+    return try FfiConverterTypeCloudVaultSearchAnalysis.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultSearchAnalysis_lower(_ value: CloudVaultSearchAnalysis) -> RustBuffer {
+    return FfiConverterTypeCloudVaultSearchAnalysis.lower(value)
+}
+
+
+public struct CloudVaultSearchRequest {
+    public var operation: CloudVaultSearchOperation
+    public var text: String
+    public var vaultKey: Data
+    public var limit: Int32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(operation: CloudVaultSearchOperation, text: String, vaultKey: Data, limit: Int32) {
+        self.operation = operation
+        self.text = text
+        self.vaultKey = vaultKey
+        self.limit = limit
+    }
+}
+
+
+
+extension CloudVaultSearchRequest: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultSearchRequest, rhs: CloudVaultSearchRequest) -> Bool {
+        if lhs.operation != rhs.operation {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        if lhs.vaultKey != rhs.vaultKey {
+            return false
+        }
+        if lhs.limit != rhs.limit {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(operation)
+        hasher.combine(text)
+        hasher.combine(vaultKey)
+        hasher.combine(limit)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultSearchRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultSearchRequest {
+        return
+            try CloudVaultSearchRequest(
+                operation: FfiConverterTypeCloudVaultSearchOperation.read(from: &buf),
+                text: FfiConverterString.read(from: &buf),
+                vaultKey: FfiConverterData.read(from: &buf),
+                limit: FfiConverterInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultSearchRequest, into buf: inout [UInt8]) {
+        FfiConverterTypeCloudVaultSearchOperation.write(value.operation, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterData.write(value.vaultKey, into: &buf)
+        FfiConverterInt32.write(value.limit, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultSearchRequest_lift(_ buf: RustBuffer) throws -> CloudVaultSearchRequest {
+    return try FfiConverterTypeCloudVaultSearchRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultSearchRequest_lower(_ value: CloudVaultSearchRequest) -> RustBuffer {
+    return FfiConverterTypeCloudVaultSearchRequest.lower(value)
+}
+
+
+public struct CloudVaultSearchResult {
+    public var operation: CloudVaultSearchOperation
+    public var hashes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(operation: CloudVaultSearchOperation, hashes: [String]) {
+        self.operation = operation
+        self.hashes = hashes
+    }
+}
+
+
+
+extension CloudVaultSearchResult: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultSearchResult, rhs: CloudVaultSearchResult) -> Bool {
+        if lhs.operation != rhs.operation {
+            return false
+        }
+        if lhs.hashes != rhs.hashes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(operation)
+        hasher.combine(hashes)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultSearchResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultSearchResult {
+        return
+            try CloudVaultSearchResult(
+                operation: FfiConverterTypeCloudVaultSearchOperation.read(from: &buf),
+                hashes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultSearchResult, into buf: inout [UInt8]) {
+        FfiConverterTypeCloudVaultSearchOperation.write(value.operation, into: &buf)
+        FfiConverterSequenceString.write(value.hashes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultSearchResult_lift(_ buf: RustBuffer) throws -> CloudVaultSearchResult {
+    return try FfiConverterTypeCloudVaultSearchResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultSearchResult_lower(_ value: CloudVaultSearchResult) -> RustBuffer {
+    return FfiConverterTypeCloudVaultSearchResult.lower(value)
+}
+
+
 public struct QuotaBucket {
     public var key: String
     public var label: String
@@ -1210,6 +1448,9 @@ public enum CloudVaultFfiError {
     case InvalidSharedSecretLength
     case InvalidP256PublicKey
     case InvalidEscrowWireLength
+    case SearchTextTooLarge
+    case SearchLimitTooLarge
+    case SearchTooManyTokens
 }
 
 
@@ -1242,6 +1483,9 @@ public struct FfiConverterTypeCloudVaultFfiError: FfiConverterRustBuffer {
         case 14: return .InvalidSharedSecretLength
         case 15: return .InvalidP256PublicKey
         case 16: return .InvalidEscrowWireLength
+        case 17: return .SearchTextTooLarge
+        case 18: return .SearchLimitTooLarge
+        case 19: return .SearchTooManyTokens
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -1316,6 +1560,18 @@ public struct FfiConverterTypeCloudVaultFfiError: FfiConverterRustBuffer {
 
         case .InvalidEscrowWireLength:
             writeInt(&buf, Int32(16))
+
+
+        case .SearchTextTooLarge:
+            writeInt(&buf, Int32(17))
+
+
+        case .SearchLimitTooLarge:
+            writeInt(&buf, Int32(18))
+
+
+        case .SearchTooManyTokens:
+            writeInt(&buf, Int32(19))
 
         }
     }
@@ -1405,6 +1661,84 @@ public func FfiConverterTypeCloudVaultHashPurpose_lower(_ value: CloudVaultHashP
 
 
 extension CloudVaultHashPurpose: Equatable, Hashable {}
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum CloudVaultSearchOperation {
+
+    case token
+    case index
+    case query
+    case semantic
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultSearchOperation: FfiConverterRustBuffer {
+    typealias SwiftType = CloudVaultSearchOperation
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultSearchOperation {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .token
+
+        case 2: return .index
+
+        case 3: return .query
+
+        case 4: return .semantic
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: CloudVaultSearchOperation, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .token:
+            writeInt(&buf, Int32(1))
+
+
+        case .index:
+            writeInt(&buf, Int32(2))
+
+
+        case .query:
+            writeInt(&buf, Int32(3))
+
+
+        case .semantic:
+            writeInt(&buf, Int32(4))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultSearchOperation_lift(_ buf: RustBuffer) throws -> CloudVaultSearchOperation {
+    return try FfiConverterTypeCloudVaultSearchOperation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultSearchOperation_lower(_ value: CloudVaultSearchOperation) -> RustBuffer {
+    return FfiConverterTypeCloudVaultSearchOperation.lower(value)
+}
+
+
+
+extension CloudVaultSearchOperation: Equatable, Hashable {}
 
 
 
@@ -1915,6 +2249,31 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer {
     typealias SwiftType = [QuotaBucket]
 
@@ -2135,6 +2494,20 @@ public func cloudVaultResolveAad(envelopeAad: String, context: CloudVaultAadCont
     )
 })
 }
+public func cloudVaultSearch(request: CloudVaultSearchRequest)throws  -> CloudVaultSearchResult {
+    return try  FfiConverterTypeCloudVaultSearchResult.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search(
+        FfiConverterTypeCloudVaultSearchRequest.lower(request),$0
+    )
+})
+}
+public func cloudVaultSearchAnalyze(text: String)throws  -> CloudVaultSearchAnalysis {
+    return try  FfiConverterTypeCloudVaultSearchAnalysis.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search_analyze(
+        FfiConverterString.lower(text),$0
+    )
+})
+}
 public func cloudVaultSha256Hex(data: Data) -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(
@@ -2275,6 +2648,12 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad() != 62830) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search() != 25473) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search_analyze() != 41202) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex() != 55638) {

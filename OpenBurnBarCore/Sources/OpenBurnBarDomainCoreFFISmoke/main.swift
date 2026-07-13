@@ -120,4 +120,29 @@ do {
     exit(1)
 }
 
+do {
+    let analysis = try OpenBurnBarDomainCoreFFI.cloudVaultSearchAnalyze(
+        text: "The QUICK, quick fox and X."
+    )
+    require(analysis.normalizedTokens == ["quick", "quick", "fox"], "search token analysis mismatch")
+    let search = try OpenBurnBarDomainCoreFFI.cloudVaultSearch(
+        request: CloudVaultSearchRequest(
+            operation: .token,
+            text: "The QUICK, quick fox and X.",
+            vaultKey: Data((0..<32).map(UInt8.init)),
+            limit: 250
+        )
+    )
+    require(
+        search.hashes == [
+            "e9110d7f0c79afdae6316235800dc41b",
+            "66e59fa04825dc74f5ef7cb57884d4ed"
+        ],
+        "search native fixture mismatch"
+    )
+} catch {
+    FileHandle.standardError.write(Data("domain-core smoke failed: search: \(error)\n".utf8))
+    exit(1)
+}
+
 print("domain-core native smoke passed")

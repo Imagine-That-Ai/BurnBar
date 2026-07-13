@@ -49,8 +49,10 @@ P-256 escrow: canonical recovery normalization, recovery HKDF and verification,
 strict on-curve 65-byte X9.63 validation, escrow HKDF from caller-provided ECDH
 output, and exact public-key-plus-AES wire assembly. Random nonces and P-256
 private-key operations remain platform-owned; no private key crosses UniFFI or
-Wasm. Search normalization and document rewrap remain last. Browser device
-private keys stay non-extractable WebCrypto handles throughout.
+Wasm. The search core and generated artifacts now own the contract-pinned v1
+analysis and trapdoor transforms; production Swift/Kotlin shadow routing and
+document rewrap remain last. Browser device private keys stay non-extractable
+WebCrypto handles throughout.
 
 The search slice starts from the versioned Swift/Kotlin contract fixture before
 adding any Rust export. The fixture pins Unicode normalization, stopwords,
@@ -58,6 +60,14 @@ deduplication order, index/query prefixes, exact phrases, semantic
 concept/stem/features, non-positive limits, key isolation, and adversarial
 bounds. Passing the fixture is implementation evidence only; it is not rollout
 evidence and does not satisfy the crypto deletion gate by itself.
+
+Search exports are payload-sized and typed. `cloud_vault_search_analyze`
+returns normalized tokens, exact-phrase tokens, and semantic feature names for
+one text. `cloud_vault_search` accepts one typed operation plus the complete
+text, 32-byte vault key, and signed limit, then returns ordered hashes. The core
+rejects text above 1 MiB, more than 4,096 extracted tokens, and limits above
+1,024; nonpositive limits return the contract-required empty array. Owned FFI
+and Wasm key copies and derived search keys are zeroized before return.
 
 ## Rollout and deletion gates
 

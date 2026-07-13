@@ -40,6 +40,17 @@ const publicKey = Buffer.from(
   "hex",
 );
 const sharedSecret = Uint8Array.from({ length: 32 }, (_, index) => 0xa0 + index);
+const searchHashes = (api) => {
+  const result = api.cloudVaultSearch(
+    api.CloudVaultSearchOperation.Semantic,
+    "X ads API campaigns credentials",
+    key,
+    24,
+  );
+  const hashes = Array.from({ length: result.hashCount }, (_, index) => result.hashAt(index));
+  result.free();
+  return hashes;
+};
 const calls = [
   (api) => api.cloudVaultSha256Hex(data),
   (api) => api.cloudVaultKeyId(key),
@@ -54,6 +65,7 @@ const calls = [
   (api) => api.cloudVaultRecoveryVerificationHash(recoveryKey),
   (api) => api.cloudVaultEscrowWrappingKey(sharedSecret),
   (api) => api.cloudVaultEscrowSeal(data, publicKey, sharedSecret, new Uint8Array(12)),
+  searchHashes,
 ];
 for (const call of calls) {
   assert.deepEqual(call(committed.module), call(generated.module));

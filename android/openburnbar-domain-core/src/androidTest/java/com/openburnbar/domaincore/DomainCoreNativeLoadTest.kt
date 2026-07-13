@@ -5,12 +5,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import uniffi.openburnbar_domain_ffi.CloudVaultSearchOperation
+import uniffi.openburnbar_domain_ffi.CloudVaultSearchRequest
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmOpenCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmSealCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultEscrowOpen
 import uniffi.openburnbar_domain_ffi.cloudVaultEscrowSeal
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryOpenVaultKey
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrapVaultKey
+import uniffi.openburnbar_domain_ffi.cloudVaultSearch
+import uniffi.openburnbar_domain_ffi.cloudVaultSearchAnalyze
 import uniffi.openburnbar_domain_ffi.cloudVaultValidateP256X963PublicKey
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
@@ -53,6 +57,26 @@ class DomainCoreNativeLoadTest {
         cloudVaultValidateP256X963PublicKey(publicKey)
         val escrowWire = cloudVaultEscrowSeal(ByteArray(0), publicKey, sharedSecret, nonce)
         assertTrue(cloudVaultEscrowOpen(escrowWire, sharedSecret).isEmpty())
+    }
+
+    @Test
+    fun searchContractExecutesThroughNativeLibrary() {
+        val text = "The QUICK, quick fox and X."
+        assertEquals(listOf("quick", "quick", "fox"), cloudVaultSearchAnalyze(text).normalizedTokens)
+        assertEquals(
+            listOf(
+                "e9110d7f0c79afdae6316235800dc41b",
+                "66e59fa04825dc74f5ef7cb57884d4ed",
+            ),
+            cloudVaultSearch(
+                CloudVaultSearchRequest(
+                    CloudVaultSearchOperation.TOKEN,
+                    text,
+                    ByteArray(32) { it.toByte() },
+                    250,
+                ),
+            ).hashes,
+        )
     }
 
     private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
