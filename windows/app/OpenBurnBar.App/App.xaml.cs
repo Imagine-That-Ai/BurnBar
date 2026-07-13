@@ -91,6 +91,7 @@ public partial class App : Application
 
         WindowsUpdateService.Configure(WindowsSettingsComposition.SharedPersistence);
         _ = WindowsUpdateService.RunAutomaticCheckIfDueAsync(WindowsSettingsComposition.SharedPersistence);
+        WindowsAppCheckComposition.RegisterIfConfigured();
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
         StartLocalGateway();

@@ -1,6 +1,7 @@
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.DataControlCenter;
 using OpenBurnBar.App.Presentation.Memories;
+using OpenBurnBar.CloudSync.AppCheck.Attestation;
 using OpenBurnBar.CloudSync.AppCheck.Mint;
 using OpenBurnBar.CloudSync.Crypto;
 
@@ -19,6 +20,8 @@ public static class WinAppCloudSyncHost
     private static CloudSyncQuotaSnapshotStore? _quotaSnapshots;
     private static byte[]? _vaultKey;
     private static Func<bool> _isSignedIn = () => false;
+    private static Func<IAttestationProducer>? _appCheckAttestationProducerFactory;
+    private static Func<IAppCheckMintTransport>? _appCheckMintTransportFactory;
 
     public static CloudSyncCompositionRoot? Root
     {
@@ -40,6 +43,25 @@ public static class WinAppCloudSyncHost
         {
             store = _quotaSnapshots;
             return store is not null;
+        }
+    }
+
+    /// <summary>
+    /// Register the platform App Check composition used by the real desktop
+    /// OAuth path. The WinUI app supplies the TPM producer and HTTP transport only
+    /// when staging App Check is explicitly configured; portable tests leave this
+    /// hook unset and retain the deterministic mock path.
+    /// </summary>
+    public static void ConfigurePlatformAppCheck(
+        Func<IAttestationProducer> attestationProducerFactory,
+        Func<IAppCheckMintTransport> mintTransportFactory)
+    {
+        if (attestationProducerFactory is null) throw new ArgumentNullException(nameof(attestationProducerFactory));
+        if (mintTransportFactory is null) throw new ArgumentNullException(nameof(mintTransportFactory));
+        lock (Gate)
+        {
+            _appCheckAttestationProducerFactory = attestationProducerFactory;
+            _appCheckMintTransportFactory = mintTransportFactory;
         }
     }
 
@@ -77,9 +99,14 @@ public static class WinAppCloudSyncHost
         string firebaseProjectId,
         string firebaseUid,
         byte[] vaultKey,
-        IAppCheckMintTransport? appCheckMintTransport = null)
+        IAppCheckMintTransport? appCheckMintTransport = null,
+        IAttestationProducer? appCheckAttestationProducer = null)
     {
         if (oauth is null) throw new ArgumentNullException(nameof(oauth));
+        if (appCheckMintTransport is null && appCheckAttestationProducer is null)
+        {
+            (appCheckMintTransport, appCheckAttestationProducer) = TryCreatePlatformAppCheck();
+        }
         lock (Gate)
         {
             _vaultKey = vaultKey;
@@ -88,7 +115,8 @@ public static class WinAppCloudSyncHost
                 oauth,
                 firebaseProjectId,
                 firebaseUid,
-                appCheckMintTransport);
+                appCheckMintTransport,
+                appCheckAttestationProducer: appCheckAttestationProducer);
             _memory = new CloudSyncMemoryStore(_root.Gateway, firebaseUid, vaultKey);
             _quotaSnapshots = new CloudSyncQuotaSnapshotStore(_root.Gateway, firebaseUid);
         }
@@ -104,12 +132,19 @@ public static class WinAppCloudSyncHost
         string firebaseProjectId,
         byte[] vaultKey,
         IAppCheckMintTransport? appCheckMintTransport = null,
+        IAttestationProducer? appCheckAttestationProducer = null,
         CancellationToken cancellationToken = default)
     {
         if (oauth is null) throw new ArgumentNullException(nameof(oauth));
         FirebaseOAuthSession session = oauth.CurrentSession
             ?? await oauth.SignInAsync(cancellationToken).ConfigureAwait(false);
-        ConfigureWithOAuth(oauth, firebaseProjectId, session.Uid, vaultKey, appCheckMintTransport);
+        ConfigureWithOAuth(
+            oauth,
+            firebaseProjectId,
+            session.Uid,
+            vaultKey,
+            appCheckMintTransport,
+            appCheckAttestationProducer);
         return session.Uid;
     }
 
@@ -149,6 +184,27 @@ public static class WinAppCloudSyncHost
     }
 
     public static void ConfigureFromEnvironment() => ConfigureFromAppConfiguration();
+
+    private static (IAppCheckMintTransport? Transport, IAttestationProducer? Producer)
+        TryCreatePlatformAppCheck()
+    {
+        Func<IAttestationProducer>? producerFactory;
+        Func<IAppCheckMintTransport>? transportFactory;
+        lock (Gate)
+        {
+            producerFactory = _appCheckAttestationProducerFactory;
+            transportFactory = _appCheckMintTransportFactory;
+        }
+
+        // A half-configured platform hook must not silently select a mock or
+        // attach an unpaired transport. The OAuth path remains id-token-only.
+        if (producerFactory is null || transportFactory is null)
+        {
+            return (null, null);
+        }
+
+        return (transportFactory(), producerFactory());
+    }
 
     public static DataControlCenterViewModel CreateDataControlViewModel()
     {

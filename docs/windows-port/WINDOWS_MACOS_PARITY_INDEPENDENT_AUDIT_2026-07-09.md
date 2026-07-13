@@ -103,8 +103,12 @@ unproven host behavior to certification:
   out. The token itself is never logged or placed in route metadata.
 - Cloud startup now restores a non-expired OAuth session from the protected
   session store without opening a browser; only a signed-out or expired session
-  falls back to the explicit dev-host path. Live Firebase/App Check/TPM
-  staging remains an external certification gate.
+  falls back to the explicit dev-host path. When
+  `OPENBURNBAR_APPCHECK_APP_ID` is explicitly configured, the WinUI composition
+  also wires the real Windows CNG/TPM attestation producer and bounded HTTP mint
+  transport into that OAuth root; without the switch it remains id-token-only.
+  Live Firebase/App Check/TPM staging and server-verifier acceptance remain
+  external certification gates.
 - Headless runs and local Mission Control DAGs now have an append-only,
   write-through JSONL journal, dependency validation, approval policy, bounded
   recovery/resume, cancellation records, deterministic topological planning,
@@ -150,8 +154,9 @@ unproven host behavior to certification:
   the injected platform secret-store validation step.
 
 These changes are covered by focused managed-runtime (37/37 mission/runtime
-tests plus 97/97 managed-agent-runtime tests), connector (99/99), presentation
-(750/750), Computer Use, bridge-policy, and provider-boundary tests. They are an
+tests plus 97/97 managed-agent-runtime tests), CloudSync (60/60), connector
+(99/99), presentation (750/750), Computer Use, bridge-policy, and
+provider-boundary tests. They are an
 implementation increment, not a claim that
 the F2 workstreams are all promoted to `Real`: full static parsing, live
 Pensieve storage integration, production composition of every F2 service,

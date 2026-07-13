@@ -17,6 +17,14 @@ public static class CloudAuthProductionComposition
     public const string FirebaseApiKeyEnv = "OPENBURNBAR_FIREBASE_WEB_API_KEY";
     public const string AppCheckAppIdEnv = "OPENBURNBAR_APPCHECK_APP_ID";
 
+    /// <summary>
+    /// True when the caller explicitly opts into the live App Check path. The
+    /// switch is intentionally separate from OAuth so a normal local install
+    /// does not attempt staging mint calls with a missing server verifier.
+    /// </summary>
+    public static bool IsAppCheckConfigured() =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(AppCheckAppIdEnv));
+
     /// <summary>True when Desktop OAuth client id + Firebase API key are configured.</summary>
     public static bool IsOAuthConfigured()
     {

@@ -11,7 +11,9 @@ using OpenBurnBar.CloudSync.Sync;
 namespace OpenBurnBar.App.CloudSync;
 
 /// <summary>
-/// App-level wiring for Firestore REST, callables, offline queue, and App Check (mock attestation until WS-D TPM).
+/// App-level wiring for Firestore REST, callables, offline queue, and App Check.
+/// Portable callers retain the deterministic mock producer for tests; the WinUI
+/// desktop supplies the Windows TPM producer through the platform composition hook.
 /// </summary>
 public sealed class CloudSyncCompositionRoot
 {
@@ -103,14 +105,16 @@ public sealed class CloudSyncCompositionRoot
     /// flips the "Authored→Real" surfaces on. App Check stays optional: pass an
     /// <paramref name="appCheckMintTransport"/> (e.g. the HttpClient mint transport)
     /// to require + attach <c>X-Firebase-AppCheck</c>; omit it to run id-token-only
-    /// (App Check disabled) while its dedicated lane matures.
+    /// The WinUI host supplies a platform producer (TPM on Windows); portable
+    /// callers may omit it for the deterministic mock producer used by tests.
     /// </summary>
     public static CloudSyncCompositionRoot CreateWithOAuth(
         DesktopOAuthCredentialsProvider oauth,
         string firebaseProjectId,
         string firebaseUid,
         IAppCheckMintTransport? appCheckMintTransport = null,
-        bool? requireAppCheckOnFirestore = null)
+        bool? requireAppCheckOnFirestore = null,
+        IAttestationProducer? appCheckAttestationProducer = null)
     {
         if (oauth is null) throw new ArgumentNullException(nameof(oauth));
         if (string.IsNullOrWhiteSpace(firebaseProjectId)) throw new ArgumentException("firebaseProjectId is required.", nameof(firebaseProjectId));
@@ -123,9 +127,11 @@ public sealed class CloudSyncCompositionRoot
         {
             var endpoint = AppCheckMintEndpoint.ForProject(firebaseProjectId);
             var mintClient = new AppCheckMintClient(endpoint, appCheckMintTransport);
-            var options = new AppCheckProviderOptions { AppId = $"1:openburnbar:web:{firebaseProjectId}" };
+            string appId = Environment.GetEnvironmentVariable(CloudAuthProductionComposition.AppCheckAppIdEnv)
+                ?? $"1:openburnbar:web:{firebaseProjectId}";
+            var options = new AppCheckProviderOptions { AppId = appId };
             appCheckProvider = new WindowsAppCheckProvider(
-                new MockAttestationProducer(),
+                appCheckAttestationProducer ?? new MockAttestationProducer(),
                 mintClient,
                 oauth, // the live Firebase id token drives the mint bearer
                 options,

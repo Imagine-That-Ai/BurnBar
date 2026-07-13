@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\cloudsync\OpenBurnBar.CloudSync\OpenBurnBar.CloudSync.csproj" />
     <ProjectReference Include="..\..\cloudsync\OpenBurnBar.CloudSync.Crypto\OpenBurnBar.CloudSync.Crypto.csproj" />
     <ProjectReference Include="..\..\cloudsync\appcheck\OpenBurnBar.CloudSync.AppCheck\OpenBurnBar.CloudSync.AppCheck.csproj" />
+    <ProjectReference Include="..\..\cloudsync\appcheck\OpenBurnBar.CloudSync.AppCheck.Net\OpenBurnBar.CloudSync.AppCheck.Net.csproj" />
   </ItemGroup>
 
 </Project>
