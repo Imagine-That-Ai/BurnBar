@@ -17,6 +17,7 @@ final class CloudVaultDomainCoreAdapterTests: XCTestCase {
 
     func testNativeRustModeMatchesCanonicalCloudVaultKAT() throws {
         XCTAssertTrue(CloudVaultDomainCoreAdapter.isNativeAvailable)
+        XCTAssertEqual(DomainCoreNativeProbe.abiVersion(), 3)
         let fixture = try loadFixture()
 
         for vector in fixture.aad {
