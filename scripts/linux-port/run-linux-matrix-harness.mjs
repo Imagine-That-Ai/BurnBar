@@ -17,6 +17,7 @@ import {
   writeJson
 } from './lib/linux-release-common.mjs';
 import { createEnvironmentCoverageReport } from './lib/environment-coverage-report.mjs';
+import { validateEnvironmentEvidenceInput } from './lib/environment-evidence-identity.mjs';
 
 function argumentValue(name) {
   const index = process.argv.indexOf(name);
@@ -139,14 +140,16 @@ function addEvidenceCheck(id, environmentName) {
       return null;
     }
     const evidence = readJson(absolute);
-    const commit = evidence.targetHead ?? evidence.git?.commit ?? evidence.commit ?? null;
-    const passed = evidence.passed === true && commit === git.commit;
-    addCheck(id, passed, passed ? path.relative(repoRoot, absolute) : `passed=${evidence.passed} commit=${commit ?? 'missing'}`);
+    const validation = validateEnvironmentEvidenceInput(expected, evidence, git.commit);
+    const detail = validation.passed
+      ? path.relative(repoRoot, absolute)
+      : validation.errors.join(' ');
+    addCheck(id, validation.passed, detail);
     return {
       path: relative.split(path.sep).join('/'),
       sha256: crypto.createHash('sha256').update(fs.readFileSync(realEvidence)).digest('hex'),
-      passed: evidence.passed === true,
-      commit
+      passed: validation.passed,
+      commit: validation.commit
     };
   } catch (error) {
     addCheck(id, false, `invalid JSON: ${error.message}`);
