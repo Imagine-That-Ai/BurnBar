@@ -14,6 +14,7 @@ import initDomainCore, {
   type InitInput,
   type SyncInitInput,
 } from "../vendor/openburnbar-domain-core-wasm/openburnbar_domain_core.js";
+import { resolveDomainCoreWebMode } from "./domainCoreBuildProfile";
 
 export type CloudVaultDomainCoreMode = "legacy" | "shadow" | "rust";
 
@@ -24,8 +25,7 @@ let requireCoreForTests = false;
 
 function configuredMode(): CloudVaultDomainCoreMode {
   if (testMode) return testMode;
-  const value = process.env.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE;
-  return value === "shadow" || value === "rust" ? value : "legacy";
+  return resolveDomainCoreWebMode("cloudVault");
 }
 
 export function cloudVaultDomainCoreMode(): CloudVaultDomainCoreMode {
@@ -44,8 +44,13 @@ async function ensureInitialized(input?: InitInput): Promise<void> {
   await initialization;
 }
 
-function warn(operation: string, category: "native_unavailable" | "shadow_mismatch" | "rust_error"): void {
-  console.warn(`domain_core.cloudvault.${category} operation=${operation} core=abi3`);
+function warn(
+  operation: string,
+  category: "native_unavailable" | "shadow_mismatch" | "rust_error",
+): void {
+  console.warn(
+    `domain_core.cloudvault.${category} operation=${operation} core=abi3`,
+  );
 }
 
 export async function applyCloudVaultDomainCore<T>(
@@ -136,10 +141,16 @@ export const domainCoreCloudVault = {
 };
 
 export async function prepareCloudVaultDomainCore(): Promise<void> {
-  await applyCloudVaultDomainCore("initialize", () => undefined, () => undefined);
+  await applyCloudVaultDomainCore(
+    "initialize",
+    () => undefined,
+    () => undefined,
+  );
 }
 
-export function initializeCloudVaultDomainCoreForTests(module: SyncInitInput): void {
+export function initializeCloudVaultDomainCoreForTests(
+  module: SyncInitInput,
+): void {
   initSync({ module });
   initialized = true;
 }

@@ -302,6 +302,9 @@ jobs:
       - name: Run updater unit tests against committed sample pin
         run: dotnet test windows/tests/updater/OpenBurnBar.Updater.Tests.csproj -c Release
 
+      - name: Resolve signed public domain-core profile
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
+
       - name: Publish WinUI app (win-x64 + win-arm64)
         # Real build. Unproven until WINUI-017 lands the full WinUI toolchain build; this only
         # runs on a windows-v* tag, which is not cut until the app builds green.
@@ -321,6 +324,7 @@ jobs:
               -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
               -p:OpenBurnBarNativeEngineDirectory="$GITHUB_WORKSPACE/windows/native-engine/$rid" \
               -p:OpenBurnBarRequireNativeEngine=true \
+              -p:DomainCoreBuildProfileProps="$GITHUB_WORKSPACE/.domain-core-profile.props" \
               -o "publish/$rid"
           done
 
@@ -329,6 +333,7 @@ jobs:
           set -euo pipefail
           for rid in win-x64 win-arm64; do
             node scripts/windows-port/validate-native-engine-layout.mjs "publish/$rid"
+            node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --windows-dir "publish/$rid"
           done
 
       - name: Authenticode sign (Azure Artifact Signing — no staple analog)

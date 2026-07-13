@@ -19,6 +19,17 @@ settings:
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
     GENERATE_INFOPLIST_FILE: YES
+    DOMAIN_CORE_BUILD_PROFILE: developer
+    DOMAIN_CORE_BUILD_AUTHORITY: development
+    DOMAIN_CORE_DISTRIBUTION: development
+    DOMAIN_CORE_ROLLOUT_CHANNEL: ""
+    DOMAIN_CORE_EVIDENCE_ENABLED: NO
+    DOMAIN_CORE_QUOTA_MODE: legacy
+    DOMAIN_CORE_CLOUDVAULT_MODE: legacy
+    DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE: legacy
+    DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE: legacy
+    DOMAIN_CORE_HERMES_MODE: legacy
+    DOMAIN_CORE_PRICING_MODE: legacy
 
 # macOS Debug: the OpenBurnBar target uses keychain-access-groups (Firebase Auth). Xcode must sign with a
 # development identity. Under targets.OpenBurnBar.settings.base add:
@@ -131,6 +142,17 @@ targets:
         SUPublicEDKey: 613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        OpenBurnBarDomainCoreBuildProfile: "$(DOMAIN_CORE_BUILD_PROFILE)"
+        OpenBurnBarDomainCoreBuildAuthority: "$(DOMAIN_CORE_BUILD_AUTHORITY)"
+        OpenBurnBarDomainCoreDistribution: "$(DOMAIN_CORE_DISTRIBUTION)"
+        OpenBurnBarDomainCoreRolloutChannel: "$(DOMAIN_CORE_ROLLOUT_CHANNEL)"
+        OpenBurnBarDomainCoreEvidenceEnabled: "$(DOMAIN_CORE_EVIDENCE_ENABLED)"
+        OpenBurnBarDomainCoreModeQuota: "$(DOMAIN_CORE_QUOTA_MODE)"
+        OpenBurnBarDomainCoreModeCloudVault: "$(DOMAIN_CORE_CLOUDVAULT_MODE)"
+        OpenBurnBarDomainCoreModeCloudVaultRewrap: "$(DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE)"
+        OpenBurnBarDomainCoreModeCloudVaultSearch: "$(DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE)"
+        OpenBurnBarDomainCoreModeHermes: "$(DOMAIN_CORE_HERMES_MODE)"
+        OpenBurnBarDomainCoreModePricing: "$(DOMAIN_CORE_PRICING_MODE)"
         # Swift 6.2 (Xcode 26+) made swift_task_isCurrentExecutor crash on an isolation
         # mismatch where it previously returned false. Restore legacy non-crashing
         # behavior until the concurrency-isolation migration is complete. Keep aligned
@@ -1006,6 +1028,17 @@ targets:
       properties:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        OpenBurnBarDomainCoreBuildProfile: "$(DOMAIN_CORE_BUILD_PROFILE)"
+        OpenBurnBarDomainCoreBuildAuthority: "$(DOMAIN_CORE_BUILD_AUTHORITY)"
+        OpenBurnBarDomainCoreDistribution: "$(DOMAIN_CORE_DISTRIBUTION)"
+        OpenBurnBarDomainCoreRolloutChannel: "$(DOMAIN_CORE_ROLLOUT_CHANNEL)"
+        OpenBurnBarDomainCoreEvidenceEnabled: "$(DOMAIN_CORE_EVIDENCE_ENABLED)"
+        OpenBurnBarDomainCoreModeQuota: "$(DOMAIN_CORE_QUOTA_MODE)"
+        OpenBurnBarDomainCoreModeCloudVault: "$(DOMAIN_CORE_CLOUDVAULT_MODE)"
+        OpenBurnBarDomainCoreModeCloudVaultRewrap: "$(DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE)"
+        OpenBurnBarDomainCoreModeCloudVaultSearch: "$(DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE)"
+        OpenBurnBarDomainCoreModeHermes: "$(DOMAIN_CORE_HERMES_MODE)"
+        OpenBurnBarDomainCoreModePricing: "$(DOMAIN_CORE_PRICING_MODE)"
         ITSAppUsesNonExemptEncryption: false
         # Resolved from the BURNBAR_AMPLITUDE_API_KEY build setting (empty by
         # default). AnalyticsConfig reads this; empty/placeholder → analytics dark.

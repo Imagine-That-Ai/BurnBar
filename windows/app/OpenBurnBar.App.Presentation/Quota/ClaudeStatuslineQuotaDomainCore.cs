@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using OpenBurnBar.App.Configuration;
 using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
 using DomainQuotaBucket = uniffi.openburnbar_domain_ffi.QuotaBucket;
 using DomainQuotaParseStatus = uniffi.openburnbar_domain_ffi.QuotaParseStatus;
@@ -23,7 +24,7 @@ internal static class ClaudeStatuslineQuotaDomainCore
     internal static ProviderQuotaSnapshot Apply(string json, ProviderQuotaSnapshot legacy)
     {
         return Apply(json, () => legacy, legacy.FetchedAt, legacy.StatusMessage,
-            ResolveMode(Environment.GetEnvironmentVariable(ModeVariable)));
+            ResolveMode(DomainCoreBuildProfileResolver.Mode("quota", ModeVariable)));
     }
 
     internal static ProviderQuotaSnapshot Apply(
@@ -41,7 +42,7 @@ internal static class ClaudeStatuslineQuotaDomainCore
         string statusMessage,
         DomainCoreQuotaMigrationMode? requestedMode = null)
     {
-        var mode = requestedMode ?? ResolveMode(Environment.GetEnvironmentVariable(ModeVariable));
+        var mode = requestedMode ?? ResolveMode(DomainCoreBuildProfileResolver.Mode("quota", ModeVariable));
         if (mode == DomainCoreQuotaMigrationMode.Legacy)
         {
             return legacy();

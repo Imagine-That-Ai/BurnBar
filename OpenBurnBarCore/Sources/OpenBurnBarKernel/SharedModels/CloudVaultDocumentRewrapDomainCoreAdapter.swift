@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 #if canImport(CoreFoundation)
 import CoreFoundation
 #endif
@@ -20,8 +21,7 @@ enum CloudVaultDocumentRewrapMigrationMode: String, Sendable {
     static let environmentKey = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE"
 
     static func resolve(environment: [String: String]) -> Self {
-        guard let raw = environment[environmentKey]?.lowercased() else { return .legacy }
-        return Self(rawValue: raw) ?? .legacy
+        Self(rawValue: DomainCoreBuildProfileResolver.mode(for: .cloudVaultRewrap, environment: environment).rawValue) ?? .legacy
     }
 }
 
