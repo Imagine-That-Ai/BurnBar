@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 #[cfg(target_os = "linux")]
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 const MAX_NOTIFICATION_ID_BYTES: usize = 96;
 const MAX_NOTIFICATION_TITLE_CHARS: usize = 160;
@@ -210,7 +210,7 @@ mod linux {
         title: &str,
         body: &str,
         id: u32,
-        urgency: NativeNotificationUrgency,
+        urgency_level: NativeNotificationUrgency,
         actions: bool,
     ) -> Result<NotificationHandle, String> {
         let mut notification = Notification::new();
@@ -220,7 +220,7 @@ mod linux {
             .body(body)
             .id(id)
             .timeout(Timeout::Default)
-            .urgency(urgency(urgency));
+            .urgency(urgency(urgency_level));
         if actions {
             // `open` is a stable action identifier; the visible label is kept
             // separate so desktop themes may localize or style it.
@@ -349,8 +349,9 @@ pub fn native_notification_show(
                 let route = route.clone();
                 let action = action.clone();
                 let notification_id = notification_id.clone();
+                let app_for_emit = app_for_route.clone();
                 let _ = app_for_route.run_on_main_thread(move || {
-                    let _ = app_for_route.emit(
+                    let _ = app_for_emit.emit(
                         "notification-action",
                         serde_json::json!({
                             "notificationId": notification_id,
