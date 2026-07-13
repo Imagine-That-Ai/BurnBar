@@ -152,22 +152,29 @@ stable Rust-authoritative release.
 Snapshot: **2026-07-13**. “Merged” below means merged into a feature branch,
 not into `main`, and does not mean production promotion.
 
-- Quota: pilot [#1590](https://github.com/Imagine-That-Ai/BurnBar/pull/1590)
-  and Q2 [#1591](https://github.com/Imagine-That-Ai/BurnBar/pull/1591) are open;
-  consumer wiring [#1592](https://github.com/Imagine-That-Ai/BurnBar/pull/1592)
-  is merged into the quota feature stack. The 14-day/10,000-sample window has
-  not been certified.
-- CloudVault: foundation [#1594](https://github.com/Imagine-That-Ai/BurnBar/pull/1594),
-  AES [#1602](https://github.com/Imagine-That-Ai/BurnBar/pull/1602), pricing
-  [#1629](https://github.com/Imagine-That-Ai/BurnBar/pull/1629), search
-  [#1632](https://github.com/Imagine-That-Ai/BurnBar/pull/1632), and document
-  rewrap [#1636](https://github.com/Imagine-That-Ai/BurnBar/pull/1636) remain
-  stacked/open or are being converged into one ABI 3 artifact line.
-- Hermes [#1609](https://github.com/Imagine-That-Ai/BurnBar/pull/1609), C1c core
-  [#1615](https://github.com/Imagine-That-Ai/BurnBar/pull/1615), the promotion
-  gate [#1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612), and some
-  platform consumers are merged into feature branches only. Other Swift,
-  Kotlin, C#, Console, search, and rewrap consumer PRs remain open or pending.
+- Quota: pilot [#1590](https://github.com/Imagine-That-Ai/BurnBar/pull/1590),
+  Q2 [#1591](https://github.com/Imagine-That-Ai/BurnBar/pull/1591), and consumer
+  wiring [#1592](https://github.com/Imagine-That-Ai/BurnBar/pull/1592) are merged.
+  The 14-day/10,000-sample window has not been certified.
+- CloudVault and pricing: foundation
+  [#1594](https://github.com/Imagine-That-Ai/BurnBar/pull/1594), AES
+  [#1602](https://github.com/Imagine-That-Ai/BurnBar/pull/1602), C1c core
+  [#1615](https://github.com/Imagine-That-Ai/BurnBar/pull/1615), Windows C1c
+  [#1616](https://github.com/Imagine-That-Ai/BurnBar/pull/1616), Console C1c
+  [#1617](https://github.com/Imagine-That-Ai/BurnBar/pull/1617), and typed
+  document rewrap [#1636](https://github.com/Imagine-That-Ai/BurnBar/pull/1636)
+  are merged into the feature stack. Pricing
+  [#1629](https://github.com/Imagine-That-Ai/BurnBar/pull/1629) and search
+  [#1632](https://github.com/Imagine-That-Ai/BurnBar/pull/1632) are closed as
+  superseded after their heads were incorporated into downstream convergence and
+  consumer branches.
+- Hermes [#1609](https://github.com/Imagine-That-Ai/BurnBar/pull/1609) and the
+  promotion gate [#1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612)
+  are merged into feature branches. Convergence
+  [#1647](https://github.com/Imagine-That-Ai/BurnBar/pull/1647), crypto
+  hardening [#1721](https://github.com/Imagine-That-Ai/BurnBar/pull/1721), rollout
+  evidence collection [#1722](https://github.com/Imagine-That-Ai/BurnBar/pull/1722),
+  and remaining Swift/Kotlin consumer PRs remain open or pending.
 - No shared-Rust domain is complete under the inventory's completion rule. No
   legacy implementation should be deleted from this status snapshot.
 
