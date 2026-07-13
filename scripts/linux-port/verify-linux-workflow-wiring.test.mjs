@@ -35,6 +35,7 @@ function valid() {
       'p39-differential-proof.test.mjs',
       'capture-p39-macos-oracle.test.mjs',
       'resolve-p39-macos-oracle-run.test.mjs',
+      'p40-data-privacy-proof.test.mjs',
       'parity-certification-preflight.test.mjs',
       'run-linux-matrix-harness.test.mjs',
       'run-product-requirement-validator.test.mjs',
@@ -63,9 +64,11 @@ function valid() {
       'capture-parity-certification-preflight.mjs',
       'capture-p34-credential-security-proof.mjs',
       'capture-p39-differential.mjs',
+      'capture-p40-data-privacy.mjs',
       "if: inputs.requirement == 'P-02'",
       "if: inputs.requirement == 'P-34'",
       "if: inputs.requirement == 'P-39'",
+      "if: inputs.requirement == 'P-40'",
       "if: always() && inputs.requirement == 'P-02'",
       'linux-product-parity-diagnostic-',
       'id: p02_capture',
@@ -82,6 +85,7 @@ function valid() {
       '--session-report "$session_report"',
       'p31-live-session.json',
       'P-34 credential security proof',
+      'P-40 data privacy proof',
       'finalize-product-feature-proof-closure.mjs',
       'prepare-product-requirement-input.mjs',
       'run-product-requirement-validator.mjs',
@@ -124,6 +128,15 @@ function valid() {
         '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
       ].join('\n'),
       'Capture P-39 cross-platform differential proof',
+      [
+        '      - name: Capture P-40 data privacy proof',
+        "        if: inputs.requirement == 'P-40'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          node scripts/linux-port/capture-p40-data-privacy.mjs',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ].join('\n'),
       'Finalize registered feature proof closure',
       'Materialize the requirement-owned release closure',
       'Run the registered requirement validator'
