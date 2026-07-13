@@ -1,5 +1,6 @@
 #if os(Linux)
 import Foundation
+import Glibc
 import OpenBurnBarCore
 
 /// Native Linux text-expansion integration boundary.
@@ -284,6 +285,9 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         }
         if process.isRunning {
             process.terminate()
+            // A broken helper must not be able to hold the daemon RPC actor
+            // indefinitely by ignoring SIGTERM.
+            _ = kill(process.processIdentifier, SIGKILL)
             process.waitUntilExit()
             _ = output.fileHandleForReading.readDataToEndOfFile()
             _ = error.fileHandleForReading.readDataToEndOfFile()
