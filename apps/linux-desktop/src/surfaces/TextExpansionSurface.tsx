@@ -38,6 +38,7 @@ export function TextExpansionSurface() {
   const bridge = useShellStore((state) => state.bridge);
   const bridgeReady = useShellStore((state) => state.bridgeReady);
   const fixtureMode = useShellStore((state) => state.fixtureMode);
+  const [storageReady, setStorageReady] = useState(!bridgeReady || fixtureMode);
   const textExpansionList = bridge?.textExpansionList;
   const textExpansionUpsert = bridge?.textExpansionUpsert;
   const textExpansionDelete = bridge?.textExpansionDelete;
@@ -64,6 +65,8 @@ export function TextExpansionSurface() {
     // policy when the route is mounted.
     configureTextExpansionStorageWithPolicy(storage, !bridgeReady || fixtureMode, fixtureMode);
     configureTextExpansionConsentStorage(storage, !bridgeReady || fixtureMode, fixtureMode);
+    setStorageError(null);
+    setStorageReady(!bridgeReady || fixtureMode);
     if (!bridgeReady) return;
     let cancelled = false;
     void Promise.all([
@@ -71,7 +74,9 @@ export function TextExpansionSurface() {
       hydrateTextExpansionConsentStorage(storage)
     ]).then(() => {
       if (!cancelled) {
-        setStorageError(textExpansionStorageError() ?? textExpansionConsentError());
+        const error = textExpansionStorageError() ?? textExpansionConsentError();
+        setStorageError(error);
+        setStorageReady(fixtureMode || error == null);
         setVersion((value) => value + 1);
       }
     });
@@ -96,11 +101,21 @@ export function TextExpansionSurface() {
     setVersion((v) => v + 1);
   };
 
+  const persistenceBlocked = Boolean(
+    !fixtureMode && bridgeReady && (!storageReady || storageError != null)
+  );
+  const nativeSetupMessage = nativeUnavailable
+    ? 'Native text expansion storage is unavailable. In-app snippets are disabled until the packaged shell is repaired.'
+    : storageError
+      ? `Native text expansion storage could not be opened: ${storageError}`
+      : 'Checking native text expansion storage. Snippet editing will unlock after the daemon responds.';
+
   const consentRow = (
     <label className="consent-row">
       <input
         type="checkbox"
         checked={Boolean(consent?.inAppOnly)}
+        disabled={persistenceBlocked}
         onChange={(e) => {
           if (e.currentTarget.checked) acknowledge();
         }}
@@ -112,6 +127,7 @@ export function TextExpansionSurface() {
   if (!consent?.inAppOnly) {
     return (
       <>
+        {persistenceBlocked ? <Banner tone="degraded" role="alert">{nativeSetupMessage}</Banner> : null}
         <Banner tone="degraded" role="alert">
           Acknowledge in-app-only expansion before saving snippets.
         </Banner>
@@ -148,11 +164,7 @@ export function TextExpansionSurface() {
 
   return (
     <>
-      {nativeUnavailable ? (
-        <Banner tone="degraded" role="alert">
-          Native text expansion storage is unavailable. In-app snippets are disabled until the packaged shell is repaired.
-        </Banner>
-      ) : storageError ? <Banner tone="degraded" role="alert">{storageError}</Banner> : null}
+      {persistenceBlocked ? <Banner tone="degraded" role="alert">{nativeSetupMessage}</Banner> : storageError ? <Banner tone="degraded" role="alert">{storageError}</Banner> : null}
       {!fixtureMode && nativeStatus ? (
         <p className="muted" role="status">
           {nativeStatus.backend
@@ -162,9 +174,9 @@ export function TextExpansionSurface() {
         </p>
       ) : null}
       {consentRow}
-      <SnippetImportExport disabled={nativeUnavailable} onImported={() => setVersion((v) => v + 1)} />
+      <SnippetImportExport disabled={persistenceBlocked} onImported={() => setVersion((v) => v + 1)} />
       <form className="snippet-form" onSubmit={onSubmit} key={editing?.id ?? 'new'}>
-        <fieldset disabled={nativeUnavailable}>
+        <fieldset disabled={persistenceBlocked}>
         <label>
           Title
           <input type="text" name="title" placeholder="Title" required defaultValue={editing?.title ?? ''} />
@@ -222,7 +234,7 @@ export function TextExpansionSurface() {
               <button
                 type="button"
                 className="ghost"
-                disabled={nativeUnavailable}
+                disabled={persistenceBlocked}
                 onClick={() => {
                   setEditingId(s.id);
                   setTriggerDraft(s.trigger);
@@ -233,6 +245,7 @@ export function TextExpansionSurface() {
               <button
                 type="button"
                 className="ghost"
+                disabled={persistenceBlocked}
                 onClick={() => {
                   void deleteSnippetPersisted(s.id).then(() => {
                     if (editingId === s.id) {

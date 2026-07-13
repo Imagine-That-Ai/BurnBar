@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { configureTextExpansionConsentStorage, writeTextExpansionConsent } from '../../textExpansionConsent.js';
 import { configureTextExpansionStorage, upsertSnippet } from '../../textExpansionStore.js';
 import { useShellStore } from '../../state/shellStore.js';
@@ -79,5 +79,25 @@ describe('TextExpansionSurface P14', () => {
   it('renders parity ledger substitution when present', () => {
     render(<TextExpansionSurface />);
     expect(screen.getByText(/Live buffer probe/)).toBeTruthy();
+  });
+
+  it('keeps live snippet controls fail-closed when native storage hydration fails', async () => {
+    useShellStore.setState({
+      fixtureMode: false,
+      bridgeReady: true,
+      bridge: {
+        textExpansionList: vi.fn().mockRejectedValue(new Error('native store unavailable')),
+        textExpansionUpsert: vi.fn(),
+        textExpansionDelete: vi.fn(),
+        textExpansionConsentUpdate: vi.fn()
+      } as never
+    });
+    render(<TextExpansionSurface />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not be opened: native store unavailable/i)).toBeTruthy();
+    });
+    expect(screen.getByRole('checkbox', { name: /in-app expansion only/i })).toHaveProperty('disabled', true);
+    expect(screen.queryByRole('button', { name: 'Add snippet' })).toBeNull();
   });
 });
