@@ -73,7 +73,7 @@ S12 adapter/registry re-slice: `InsightProviderGatewayRegistry.swift` rides P-09
 | Integrator | P-17 Engine umbrella verify | draft | P-12, P-13, P-14, P-05, P-06 |
 | Integrator | P-18 daemon/CLI repoint | draft | P-17 |
 | Integrator | P-19 Widget repoint | draft | P-16 (UI), P-10 |
-| Integrator | P-20 Keyboard repoint | draft | P-07 |
+| Integrator | P-20 Keyboard repoint | draft | P-07, **P-16 (UI)** — `KeyboardView.swift` uses `UnifiedDesignSystem`; compile-closure BLOCKED until UI extracted (see card) |
 
 ## Optional / close-out
 - S15 OBBCAbi → CoreCAbi relocation (needs P-12, P-10).

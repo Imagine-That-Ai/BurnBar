@@ -227,7 +227,7 @@ also converged the Insights adapter/registry re-slice inside S12 (see the P-08 c
 | P-17 | S16 | OpenBurnBarEngine umbrella (fill) | Integrator | draft | QUEUED |
 | P-18 | S17 | daemon/CLI repoint → OpenBurnBarEngine | Integrator | draft | QUEUED |
 | P-19 | S18 | Widget repoint | Integrator | draft | QUEUED |
-| P-20 | S19 | Keyboard repoint | Integrator | draft | QUEUED |
+| P-20 | S19 | Keyboard repoint (DEPENDS-ON P-07 **+ P-16 UI/K4** — `KeyboardView.swift` uses `UnifiedDesignSystem`) | Integrator | draft | BLOCKED(compile-closure): undeclared P-16 edge — re-slice to Wave 3 (see card) |
 | S-H | — | headless-app-build CI job (precursor to S14) | Integrator | draft | QUEUED |
 
 ## Sizing
