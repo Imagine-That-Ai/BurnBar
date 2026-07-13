@@ -190,7 +190,7 @@ jobs:
           apps/console/vendor/openburnbar-domain-core-wasm
 
   android:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
       DOMAIN_CORE_ANDROID_NDK_VERSION: "26.3.11579264"
