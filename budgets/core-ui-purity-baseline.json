@@ -1,6 +1,6 @@
 {
   "note": "Files in OpenBurnBarCore/Sources/OpenBurnBarCore importing SwiftUI/AppKit. Shrink-only: entries may only be removed (audit 2026-06-30 finding #4, kernel extraction). Regenerate via scripts/debt/check-core-ui-purity-budget.sh --update.",
-  "total": 30,
+  "total": 29,
   "files": [
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/Insights/Share/InsightShareCardRenderer.swift",
@@ -12,12 +12,6 @@
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/BurnBarLogoFormationView.swift",
       "frameworks": [
         "AppKit",
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Cards/CardEnvelopeView.swift",
-      "frameworks": [
         "SwiftUI"
       ]
     },

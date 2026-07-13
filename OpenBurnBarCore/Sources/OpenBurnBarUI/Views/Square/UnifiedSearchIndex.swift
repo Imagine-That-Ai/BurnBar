@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Unified Search Index (Hermes Square §6.2)
 //
