@@ -761,6 +761,42 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -780,16 +816,52 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2(`uid`: RustBuffer.ByValue,`collection`: RustBuffer.ByValue,`docId`: RustBuffer.ByValue,`field`: RustBuffer.ByValue,`schemaVersion`: Int,`purpose`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_combined(`combined`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_detached(`nonce`: RustBuffer.ByValue,`ciphertext`: RustBuffer.ByValue,`tag`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_text_detached(`nonce`: RustBuffer.ByValue,`ciphertext`: RustBuffer.ByValue,`tag`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_combined(`plaintext`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_detached(`plaintext`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_decode_strict(`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_encode(`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_assemble_wire(`ephemeralPublicKey`: RustBuffer.ByValue,`aesGcmCombined`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_open(`wire`: RustBuffer.ByValue,`sharedSecret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_seal(`plaintext`: RustBuffer.ByValue,`ephemeralPublicKey`: RustBuffer.ByValue,`sharedSecret`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_split_wire(`wire`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_wrapping_key(`sharedSecret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_expected_session_body_hash(`data`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`bodyHashVersion`: Int,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_key_id(`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_keyed_hash_hex(`data`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`purpose`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_normalize_recovery_key(`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_open_vault_key(`combined`: RustBuffer.ByValue,`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_verification_hash(`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_wrap_vault_key(`vaultKey`: RustBuffer.ByValue,`recoveryKey`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_wrapping_key(`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(`envelopeAad`: RustBuffer.ByValue,`context`: RustBuffer.ByValue,`rejectLegacy`: Byte,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_validate_p256_x963_public_key(`publicKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version(uniffi_out_err: UniffiRustCallStatus,
     ): Int
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_version(uniffi_out_err: UniffiRustCallStatus,
@@ -944,15 +1016,51 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_combined(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_detached(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_text_detached(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_combined(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_detached(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_decode_strict(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_encode(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_assemble_wire(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_open(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_seal(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_split_wire(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_wrapping_key(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_expected_session_body_hash(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_key_id(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_keyed_hash_hex(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_normalize_recovery_key(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_open_vault_key(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_verification_hash(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_wrap_vault_key(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_wrapping_key(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version(
     ): Short
@@ -1014,6 +1122,42 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2() != 35572.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_combined() != 9151.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_detached() != 45041.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_text_detached() != 33389.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_combined() != 15475.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_detached() != 43222.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_decode_strict() != 52306.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_encode() != 55479.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_assemble_wire() != 18166.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_open() != 34048.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_seal() != 45093.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_split_wire() != 25734.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_escrow_wrapping_key() != 13494.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_expected_session_body_hash() != 32041.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1023,10 +1167,28 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_keyed_hash_hex() != 27492.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_normalize_recovery_key() != 12469.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_open_vault_key() != 36431.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_verification_hash() != 19307.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_wrap_vault_key() != 9766.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_wrapping_key() != 39433.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad() != 62830.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex() != 55638.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key() != 27873.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version() != 60924.toShort()) {
@@ -1374,6 +1536,106 @@ public object FfiConverterTypeCloudVaultAadContextInput: FfiConverterRustBuffer<
 
 
 
+data class CloudVaultAesGcmDetachedBox (
+    var `nonce`: kotlin.ByteArray,
+    var `ciphertext`: kotlin.ByteArray,
+    var `tag`: kotlin.ByteArray
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultAesGcmDetachedBox: FfiConverterRustBuffer<CloudVaultAesGcmDetachedBox> {
+    override fun read(buf: ByteBuffer): CloudVaultAesGcmDetachedBox {
+        return CloudVaultAesGcmDetachedBox(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultAesGcmDetachedBox) = (
+            FfiConverterByteArray.allocationSize(value.`nonce`) +
+            FfiConverterByteArray.allocationSize(value.`ciphertext`) +
+            FfiConverterByteArray.allocationSize(value.`tag`)
+    )
+
+    override fun write(value: CloudVaultAesGcmDetachedBox, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`nonce`, buf)
+            FfiConverterByteArray.write(value.`ciphertext`, buf)
+            FfiConverterByteArray.write(value.`tag`, buf)
+    }
+}
+
+
+
+data class CloudVaultEscrowWireParts (
+    var `ephemeralPublicKey`: kotlin.ByteArray,
+    var `aesGcmCombined`: kotlin.ByteArray
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultEscrowWireParts: FfiConverterRustBuffer<CloudVaultEscrowWireParts> {
+    override fun read(buf: ByteBuffer): CloudVaultEscrowWireParts {
+        return CloudVaultEscrowWireParts(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultEscrowWireParts) = (
+            FfiConverterByteArray.allocationSize(value.`ephemeralPublicKey`) +
+            FfiConverterByteArray.allocationSize(value.`aesGcmCombined`)
+    )
+
+    override fun write(value: CloudVaultEscrowWireParts, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`ephemeralPublicKey`, buf)
+            FfiConverterByteArray.write(value.`aesGcmCombined`, buf)
+    }
+}
+
+
+
+data class CloudVaultRecoveryWrappedVaultKey (
+    var `combined`: kotlin.ByteArray,
+    var `verificationHash`: kotlin.String
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultRecoveryWrappedVaultKey: FfiConverterRustBuffer<CloudVaultRecoveryWrappedVaultKey> {
+    override fun read(buf: ByteBuffer): CloudVaultRecoveryWrappedVaultKey {
+        return CloudVaultRecoveryWrappedVaultKey(
+            FfiConverterByteArray.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultRecoveryWrappedVaultKey) = (
+            FfiConverterByteArray.allocationSize(value.`combined`) +
+            FfiConverterString.allocationSize(value.`verificationHash`)
+    )
+
+    override fun write(value: CloudVaultRecoveryWrappedVaultKey, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`combined`, buf)
+            FfiConverterString.write(value.`verificationHash`, buf)
+    }
+}
+
+
+
 data class QuotaBucket (
     var `key`: kotlin.String,
     var `label`: kotlin.String,
@@ -1594,6 +1856,60 @@ sealed class CloudVaultFfiException: kotlin.Exception() {
             get() = ""
     }
 
+    class InvalidNonceLength(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidCombinedLength(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class AuthenticationFailed(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidUtf8(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidBase64(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidRecoveryKey(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidSharedSecretLength(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidP256PublicKey(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidEscrowWireLength(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<CloudVaultFfiException> {
         override fun lift(error_buf: RustBuffer.ByValue): CloudVaultFfiException = FfiConverterTypeCloudVaultFfiError.lift(error_buf)
@@ -1617,6 +1933,15 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
             5 -> CloudVaultFfiException.LegacyAadRejected()
             6 -> CloudVaultFfiException.UnsupportedHashVersion()
             7 -> CloudVaultFfiException.DerivationFailure()
+            8 -> CloudVaultFfiException.InvalidNonceLength()
+            9 -> CloudVaultFfiException.InvalidCombinedLength()
+            10 -> CloudVaultFfiException.AuthenticationFailed()
+            11 -> CloudVaultFfiException.InvalidUtf8()
+            12 -> CloudVaultFfiException.InvalidBase64()
+            13 -> CloudVaultFfiException.InvalidRecoveryKey()
+            14 -> CloudVaultFfiException.InvalidSharedSecretLength()
+            15 -> CloudVaultFfiException.InvalidP256PublicKey()
+            16 -> CloudVaultFfiException.InvalidEscrowWireLength()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -1651,6 +1976,42 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
+            is CloudVaultFfiException.InvalidNonceLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidCombinedLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.AuthenticationFailed -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidUtf8 -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidBase64 -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidRecoveryKey -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidSharedSecretLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidP256PublicKey -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidEscrowWireLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
         }
     }
 
@@ -1682,6 +2043,42 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
             }
             is CloudVaultFfiException.DerivationFailure -> {
                 buf.putInt(7)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidNonceLength -> {
+                buf.putInt(8)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidCombinedLength -> {
+                buf.putInt(9)
+                Unit
+            }
+            is CloudVaultFfiException.AuthenticationFailed -> {
+                buf.putInt(10)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidUtf8 -> {
+                buf.putInt(11)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidBase64 -> {
+                buf.putInt(12)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidRecoveryKey -> {
+                buf.putInt(13)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidSharedSecretLength -> {
+                buf.putInt(14)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidP256PublicKey -> {
+                buf.putInt(15)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidEscrowWireLength -> {
+                buf.putInt(16)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -2243,6 +2640,125 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     }
 
 
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultAesGcmOpenCombined`(`combined`: kotlin.ByteArray, `key`: kotlin.ByteArray, `aad`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_combined(
+        FfiConverterByteArray.lower(`combined`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultAesGcmOpenDetached`(`nonce`: kotlin.ByteArray, `ciphertext`: kotlin.ByteArray, `tag`: kotlin.ByteArray, `key`: kotlin.ByteArray, `aad`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_detached(
+        FfiConverterByteArray.lower(`nonce`),FfiConverterByteArray.lower(`ciphertext`),FfiConverterByteArray.lower(`tag`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultAesGcmOpenTextDetached`(`nonce`: kotlin.ByteArray, `ciphertext`: kotlin.ByteArray, `tag`: kotlin.ByteArray, `key`: kotlin.ByteArray, `aad`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_text_detached(
+        FfiConverterByteArray.lower(`nonce`),FfiConverterByteArray.lower(`ciphertext`),FfiConverterByteArray.lower(`tag`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultAesGcmSealCombined`(`plaintext`: kotlin.ByteArray, `key`: kotlin.ByteArray, `nonce`: kotlin.ByteArray, `aad`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_combined(
+        FfiConverterByteArray.lower(`plaintext`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`nonce`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultAesGcmSealDetached`(`plaintext`: kotlin.ByteArray, `key`: kotlin.ByteArray, `nonce`: kotlin.ByteArray, `aad`: kotlin.ByteArray): CloudVaultAesGcmDetachedBox {
+            return FfiConverterTypeCloudVaultAesGcmDetachedBox.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_detached(
+        FfiConverterByteArray.lower(`plaintext`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`nonce`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultBase64DecodeStrict`(`value`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_decode_strict(
+        FfiConverterString.lower(`value`),_status)
+}
+    )
+    }
+
+ fun `cloudVaultBase64Encode`(`data`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_encode(
+        FfiConverterByteArray.lower(`data`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultEscrowAssembleWire`(`ephemeralPublicKey`: kotlin.ByteArray, `aesGcmCombined`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_assemble_wire(
+        FfiConverterByteArray.lower(`ephemeralPublicKey`),FfiConverterByteArray.lower(`aesGcmCombined`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultEscrowOpen`(`wire`: kotlin.ByteArray, `sharedSecret`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_open(
+        FfiConverterByteArray.lower(`wire`),FfiConverterByteArray.lower(`sharedSecret`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultEscrowSeal`(`plaintext`: kotlin.ByteArray, `ephemeralPublicKey`: kotlin.ByteArray, `sharedSecret`: kotlin.ByteArray, `nonce`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_seal(
+        FfiConverterByteArray.lower(`plaintext`),FfiConverterByteArray.lower(`ephemeralPublicKey`),FfiConverterByteArray.lower(`sharedSecret`),FfiConverterByteArray.lower(`nonce`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultEscrowSplitWire`(`wire`: kotlin.ByteArray): CloudVaultEscrowWireParts {
+            return FfiConverterTypeCloudVaultEscrowWireParts.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_split_wire(
+        FfiConverterByteArray.lower(`wire`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultEscrowWrappingKey`(`sharedSecret`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_escrow_wrapping_key(
+        FfiConverterByteArray.lower(`sharedSecret`),_status)
+}
+    )
+    }
+
+
     @Throws(CloudVaultFfiException::class) fun `cloudVaultExpectedSessionBodyHash`(`data`: kotlin.ByteArray, `key`: kotlin.ByteArray, `bodyHashVersion`: kotlin.UInt): kotlin.String {
             return FfiConverterString.lift(
     uniffiRustCallWithError(CloudVaultFfiException) { _status ->
@@ -2273,6 +2789,56 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     }
 
 
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultNormalizeRecoveryKey`(`recoveryKey`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_normalize_recovery_key(
+        FfiConverterString.lower(`recoveryKey`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultRecoveryOpenVaultKey`(`combined`: kotlin.ByteArray, `recoveryKey`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_open_vault_key(
+        FfiConverterByteArray.lower(`combined`),FfiConverterString.lower(`recoveryKey`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultRecoveryVerificationHash`(`recoveryKey`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_verification_hash(
+        FfiConverterString.lower(`recoveryKey`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultRecoveryWrapVaultKey`(`vaultKey`: kotlin.ByteArray, `recoveryKey`: kotlin.String, `nonce`: kotlin.ByteArray): CloudVaultRecoveryWrappedVaultKey {
+            return FfiConverterTypeCloudVaultRecoveryWrappedVaultKey.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_wrap_vault_key(
+        FfiConverterByteArray.lower(`vaultKey`),FfiConverterString.lower(`recoveryKey`),FfiConverterByteArray.lower(`nonce`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultRecoveryWrappingKey`(`recoveryKey`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_wrapping_key(
+        FfiConverterString.lower(`recoveryKey`),_status)
+}
+    )
+    }
+
+
     @Throws(CloudVaultFfiException::class) fun `cloudVaultResolveAad`(`envelopeAad`: kotlin.String, `context`: CloudVaultAadContextInput, `rejectLegacy`: kotlin.Boolean): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     uniffiRustCallWithError(CloudVaultFfiException) { _status ->
@@ -2290,6 +2856,15 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
 }
     )
     }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultValidateP256X963PublicKey`(`publicKey`: kotlin.ByteArray)
+        =
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_validate_p256_x963_public_key(
+        FfiConverterByteArray.lower(`publicKey`),_status)
+}
+
 
  fun `domainCoreAbiVersion`(): kotlin.UInt {
             return FfiConverterUInt.lift(

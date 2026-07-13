@@ -85,6 +85,96 @@ for (const vector of fixture.expectedSessionBodyHash) {
   );
 }
 
+for (const vector of fixture.aesGcm) {
+  const key = Buffer.from(vector.keyHex, "hex");
+  const nonce = Buffer.from(vector.nonceHex, "hex");
+  const plaintext = Buffer.from(vector.plaintextHex, "hex");
+  const aad = Buffer.from(vector.aadHex, "hex");
+  const combined = domainCore.cloudVaultAesGcmSealCombined(plaintext, key, nonce, aad);
+  assert.equal(domainCore.cloudVaultBase64Encode(combined), vector.combinedBase64);
+  assert.deepEqual(
+    Array.from(domainCore.cloudVaultAesGcmOpenCombined(combined, key, aad)),
+    Array.from(plaintext),
+  );
+  assert.deepEqual(
+    Array.from(domainCore.cloudVaultBase64DecodeStrict(vector.combinedBase64)),
+    Array.from(combined),
+  );
+}
+
+const recovery = fixture.recovery;
+assert.equal(
+  domainCore.cloudVaultNormalizeRecoveryKey(recovery.formattedKey),
+  recovery.normalizedKey,
+);
+assert.equal(
+  Buffer.from(domainCore.cloudVaultRecoveryWrappingKey(recovery.formattedKey)).toString("hex"),
+  recovery.wrappingKeyHex,
+);
+assert.equal(
+  domainCore.cloudVaultRecoveryVerificationHash(recovery.formattedKey),
+  recovery.verificationHash,
+);
+assert.throws(
+  () => domainCore.cloudVaultNormalizeRecoveryKey(recovery.unicodeFormattedKey),
+);
+assert.throws(
+  () => domainCore.cloudVaultRecoveryWrappingKey(recovery.unicodeFormattedKey),
+);
+const recoveryWrapped = domainCore.cloudVaultRecoveryWrapVaultKey(
+  Buffer.from(recovery.vaultKeyHex, "hex"),
+  recovery.formattedKey,
+  Buffer.from(recovery.nonceHex, "hex"),
+);
+assert.equal(Buffer.from(recoveryWrapped.combined).toString("hex"), recovery.combinedHex);
+assert.equal(recoveryWrapped.verificationHash, recovery.verificationHash);
+assert.equal(
+  Buffer.from(
+    domainCore.cloudVaultRecoveryOpenVaultKey(recoveryWrapped.combined, recovery.formattedKey),
+  ).toString("hex"),
+  recovery.vaultKeyHex,
+);
+recoveryWrapped.free();
+
+const escrow = fixture.p256Escrow;
+const publicKey = Buffer.from(escrow.ephemeralPublicKeyHex, "hex");
+const sharedSecret = Buffer.from(escrow.sharedSecretHex, "hex");
+const escrowNonce = Buffer.from(escrow.nonceHex, "hex");
+domainCore.cloudVaultValidateP256X963PublicKey(publicKey);
+assert.equal(
+  Buffer.from(domainCore.cloudVaultEscrowWrappingKey(sharedSecret)).toString("hex"),
+  escrow.wrappingKeyHex,
+);
+const escrowWire = domainCore.cloudVaultEscrowSeal(
+  Buffer.from(escrow.plaintextHex, "hex"),
+  publicKey,
+  sharedSecret,
+  escrowNonce,
+);
+assert.equal(Buffer.from(escrowWire).toString("hex"), escrow.wireHex);
+assert.equal(
+  Buffer.from(domainCore.cloudVaultEscrowOpen(escrowWire, sharedSecret)).toString("hex"),
+  escrow.plaintextHex,
+);
+const escrowParts = domainCore.cloudVaultEscrowSplitWire(escrowWire);
+assert.equal(Buffer.from(escrowParts.ephemeralPublicKey).toString("hex"), escrow.ephemeralPublicKeyHex);
+assert.deepEqual(
+  Array.from(domainCore.cloudVaultEscrowAssembleWire(publicKey, escrowParts.aesGcmCombined)),
+  Array.from(escrowWire),
+);
+escrowParts.free();
+const emptyEscrowWire = domainCore.cloudVaultEscrowSeal(
+  new Uint8Array(),
+  publicKey,
+  sharedSecret,
+  escrowNonce,
+);
+assert.equal(Buffer.from(emptyEscrowWire).toString("hex"), escrow.emptyWireHex);
+assert.deepEqual(
+  Array.from(domainCore.cloudVaultEscrowOpen(emptyEscrowWire, sharedSecret)),
+  [],
+);
+
 assert.throws(
   () => domainCore.cloudVaultKeyId(new Uint8Array(31)),
   /invalid_key_length/,
@@ -101,6 +191,17 @@ assert.throws(
       3,
     ),
   /unsupported_hash_version/,
+);
+assert.throws(
+  () => domainCore.cloudVaultRecoveryOpenVaultKey(
+    Buffer.from(recovery.combinedHex, "hex"),
+    "ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ",
+  ),
+  /authentication_failed/,
+);
+assert.throws(
+  () => domainCore.cloudVaultValidateP256X963PublicKey(new Uint8Array(65)),
+  /invalid_p256_public_key/,
 );
 
 console.log("domain-core Wasm generated-package smoke test passed");
