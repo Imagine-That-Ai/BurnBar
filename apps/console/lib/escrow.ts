@@ -142,12 +142,6 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
-  // Sync callers (notably escrow approval UI) can run before the async Wasm
-  // bootstrap. Keep this pure helper on the equivalent legacy path until the
-  // native module is ready instead of failing a rust-mode rollout.
-  if (cloudVaultDomainCoreMode() === "rust" && !isCloudVaultDomainCoreInitialized()) {
-    return legacyBytesToBase64(bytes);
-  }
   return applyCloudVaultDomainCoreSync(
     "base64_encode",
     () => legacyBytesToBase64(bytes),
@@ -156,9 +150,6 @@ export function bytesToBase64(bytes: Uint8Array): string {
 }
 
 export function base64ToBytes(b64: string): Uint8Array {
-  if (cloudVaultDomainCoreMode() === "rust" && !isCloudVaultDomainCoreInitialized()) {
-    return legacyBase64ToBytes(b64);
-  }
   return applyCloudVaultDomainCoreSync(
     "base64_decode",
     () => legacyBase64ToBytes(b64),

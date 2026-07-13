@@ -793,8 +793,10 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
     }
 
     static func safetyCode(agentPublicKeyBase64: String, phonePublicKeyBase64: String) -> String? {
-        guard let agent = Data(base64Encoded: agentPublicKeyBase64),
-              let phone = Data(base64Encoded: phonePublicKeyBase64),
+        let trimmedAgent = agentPublicKeyBase64.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPhone = phonePublicKeyBase64.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let agent = Data(base64Encoded: trimmedAgent),
+              let phone = Data(base64Encoded: trimmedPhone),
               !agent.isEmpty, !phone.isEmpty else { return nil }
         return try? HermesRelayCrypto.gatewayRelaySafetyCode(
             agentPublicKeyX963: agent,

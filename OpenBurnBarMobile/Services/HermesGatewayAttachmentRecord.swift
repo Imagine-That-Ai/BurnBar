@@ -107,7 +107,11 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
     /// primitive shared by the manifest-only and full-body paths.
     func unwrapBodyKey(using keypair: HermesGatewayRelayKeypair, uid: String, pinnedSenderKey: String?) -> Data? {
         guard isRelaySealed, let wrappedKey, let pinnedSenderKey else { return nil }
-        let keyAAD = try HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: id)
+        guard let keyAAD = try? HermesRelayCrypto.gatewayAttachmentKeyAAD(
+            uid: uid,
+            clientId: clientId,
+            attachmentId: id
+        ) else { return nil }
         if relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersion {
             guard relayEncryption == HermesRelayCrypto.algorithm else { return nil }
             return try? HermesRelayCrypto.unwrapSymmetricKey(

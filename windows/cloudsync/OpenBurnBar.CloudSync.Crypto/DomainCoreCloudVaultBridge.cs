@@ -19,7 +19,6 @@ namespace OpenBurnBar.CloudSync.Crypto
     internal static class DomainCoreCloudVaultBridge
     {
         private const string ModeVariable = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
-        private const string RequireNativeVariable = "OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE";
 
         internal static string AadV2(
             string uid,
@@ -284,7 +283,7 @@ namespace OpenBurnBar.CloudSync.Crypto
                 _ => DomainCoreCloudVaultMigrationMode.Legacy,
             };
 
-        private static T Apply<T>(
+        internal static T Apply<T>(
             string operation,
             Func<T> rust,
             Func<T> legacy,
@@ -296,32 +295,38 @@ namespace OpenBurnBar.CloudSync.Crypto
                 return legacy();
             }
 
-            if (!TryInvoke(rust, out var rustOutcome))
-            {
-                if (NativeRequired())
-                {
-                    throw new InvalidOperationException(
-                        $"Domain-core native library is required for {operation}, but it could not be loaded.");
-                }
-
-                Trace.TraceWarning("domain_core.{0}.native_unavailable mode={1}", operation, mode);
-                return legacy();
-            }
-
             if (mode == DomainCoreCloudVaultMigrationMode.Rust)
             {
+                if (!TryInvoke(rust, out var rustOutcome))
+                {
+                    Trace.TraceWarning("domain_core.{0}.native_unavailable mode={1}", operation, mode);
+                    throw new InvalidOperationException(
+                        $"Domain-core Rust mode requires ABI v3 for {operation}, but it could not be loaded.");
+                }
+
                 return rustOutcome!.GetOrThrow();
             }
 
             var legacyOutcome = Capture(legacy);
-            if (!Equivalent(rustOutcome!, legacyOutcome, equivalent))
+            try
             {
-                Trace.TraceWarning(
-                    "domain_core.{0}.shadow_mismatch core={1} mismatch_count=1 legacy_category={2} rust_category={3}",
-                    operation,
-                    DomainCore.DomainCoreVersion(),
-                    legacyOutcome.Category,
-                    rustOutcome!.Category);
+                if (!TryInvoke(rust, out var rustOutcome))
+                {
+                    Trace.TraceWarning("domain_core.{0}.native_unavailable mode={1}", operation, mode);
+                }
+                else if (!Equivalent(rustOutcome!, legacyOutcome, equivalent))
+                {
+                    Trace.TraceWarning(
+                        "domain_core.{0}.shadow_mismatch core={1} mismatch_count=1 legacy_category={2} rust_category={3}",
+                        operation,
+                        DomainCore.DomainCoreVersion(),
+                        legacyOutcome.Category,
+                        rustOutcome!.Category);
+                }
+            }
+            catch (Exception)
+            {
+                Trace.TraceWarning("domain_core.{0}.rust_error mode={1}", operation, mode);
             }
 
             return legacyOutcome.GetOrThrow();
@@ -394,9 +399,6 @@ namespace OpenBurnBar.CloudSync.Crypto
             return (uint)schemaVersion;
         }
 
-        private static bool NativeRequired() =>
-            string.Equals(Environment.GetEnvironmentVariable(RequireNativeVariable), "1", StringComparison.Ordinal);
-
         private static bool IsNativeLoadFailure(Exception error) =>
             error is DllNotFoundException
                 or EntryPointNotFoundException
@@ -404,8 +406,8 @@ namespace OpenBurnBar.CloudSync.Crypto
                 // UniFFI performs checksum/version validation in the generated
                 // static constructor. An older native artifact therefore fails
                 // before DomainCoreAbiVersion() can return, wrapped as a
-                // TypeInitializationException; treat that as unavailable native
-                // and preserve the legacy fallback contract.
+                // TypeInitializationException. Shadow mode may continue with
+                // legacy; explicit Rust mode handles this result fail-closed.
                 or TypeInitializationException;
 
         private static bool FixedTimeEquals(byte[] left, byte[] right) =>

@@ -99,13 +99,19 @@ extension ChatSessionController {
         }()
 
         let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-        let cost = try pricing.cost(
-            inputTokens: usageSnapshot.inputTokens,
-            outputTokens: usageSnapshot.outputTokens,
-            cacheCreationTokens: usageSnapshot.cacheCreationTokens,
-            cacheReadTokens: usageSnapshot.cacheReadTokens,
-            reasoningTokens: usageSnapshot.reasoningTokens
-        )
+        let cost: Double
+        do {
+            cost = try pricing.cost(
+                inputTokens: usageSnapshot.inputTokens,
+                outputTokens: usageSnapshot.outputTokens,
+                cacheCreationTokens: usageSnapshot.cacheCreationTokens,
+                cacheReadTokens: usageSnapshot.cacheReadTokens,
+                reasoningTokens: usageSnapshot.reasoningTokens
+            )
+        } catch {
+            AppLogger.chat.silentFailure("price in-app chat usage", error: error)
+            return
+        }
         let usage = TokenUsage(
             provider: provider,
             sessionId: "\(activeThreadID)/\(responseMessageID)",
