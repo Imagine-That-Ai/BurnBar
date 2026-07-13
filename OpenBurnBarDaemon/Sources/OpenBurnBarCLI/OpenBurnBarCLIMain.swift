@@ -19,8 +19,7 @@ struct BurnBarCLIExecutable {
         }
 
         let environment = ProcessInfo.processInfo.environment
-        let socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
-            ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
+        let socketAuthToken = Self.resolveSocketAuthToken(environment: environment)
         let socketURL = BurnBarCLISocketClient.resolvedSocketURL(environment: environment)
         let client = BurnBarCLISocketClient(socketURL: socketURL, authToken: socketAuthToken)
 
@@ -59,6 +58,26 @@ struct BurnBarCLIExecutable {
 
     private static func message(for error: any Error) -> String {
         error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription
+    }
+
+    private static func resolveSocketAuthToken(environment: [String: String]) -> String? {
+        if let token = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
+            ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"] {
+            return token.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        }
+        #if os(Linux)
+        let tokenURL = OpenBurnBarLinuxPaths.authTokenURL(environment: environment)
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: tokenURL.path),
+              let permissions = (attributes[.posixPermissions] as? NSNumber)?.uint16Value,
+              permissions & 0o077 == 0,
+              let token = try? String(contentsOf: tokenURL, encoding: .utf8),
+              let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty else {
+            return nil
+        }
+        return trimmed
+        #else
+        return nil
+        #endif
     }
 
     private static func writeLine(_ text: String, toStandardError: Bool = false) {

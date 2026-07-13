@@ -264,6 +264,50 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertEqual(result.output?.contains("session_id=session-123"), true)
         XCTAssertEqual(result.output?.contains("source=hotkey"), true)
     }
+
+    func testServiceRestartUsesTheLinuxServiceControllerAndConfirmsHealth() throws {
+        let controller = RecordingCLIServiceController()
+        let runner = BurnBarCLIRunner(
+            client: FakeCLIClient(),
+            serviceController: controller
+        )
+
+        let output = try runner.run(arguments: ["service", "restart"])
+
+        XCTAssertEqual(controller.restartCount, 1)
+        XCTAssertEqual(controller.startCount, 0)
+        XCTAssertTrue(output.contains("service=restarted"))
+        XCTAssertTrue(output.contains("restart_requested=true"))
+        XCTAssertTrue(output.contains("daemon_version=0.1.0"))
+    }
+
+    func testServiceRestartKeepsLegacyUnsupportedExitWhenSystemdIsUnavailable() async throws {
+        let runner = BurnBarCLIRunner(
+            client: FakeCLIClient(),
+            serviceController: UnavailableCLIServiceController()
+        )
+
+        let result = try await runner.invoke(
+            arguments: ["service", "restart"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        )
+
+        XCTAssertEqual(result.exitCode, 69)
+        XCTAssertEqual(result.output, "service_restart=unsupported foreground_daemon=true")
+    }
+}
+
+private final class RecordingCLIServiceController: BurnBarCLIServiceControlling, @unchecked Sendable {
+    private(set) var startCount = 0
+    private(set) var restartCount = 0
+
+    func start() throws { startCount += 1 }
+    func restart() throws { restartCount += 1 }
+}
+
+private struct UnavailableCLIServiceController: BurnBarCLIServiceControlling {
+    func start() throws { throw BurnBarCLIServiceControlError.systemdUnavailable }
+    func restart() throws { throw BurnBarCLIServiceControlError.systemdUnavailable }
 }
 
 struct FakeCLIClient: BurnBarCLIClient {

@@ -25,7 +25,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
     title: 'Local daemon & socket',
     glyph: '⌬',
     kicker: 'Peer link',
-    body: `OpenBurnBar talks to the Linux peer over AF_UNIX at ${displayLinuxSocketPath()}. Start the daemon with openburnbar-cli service foreground or your systemd user unit before using dashboard features. Support data lives under ~/.local/share/openburnbar (XDG_DATA_HOME). If you still have a legacy ~/.config/OpenBurnBar directory, set OPENBURNBAR_DAEMON_SUPPORT_DIR to that path or move the tree before first launch.`
+    body: `OpenBurnBar talks to the Linux peer over AF_UNIX at ${displayLinuxSocketPath()}. openburnbar-cli service foreground starts the packaged systemd user unit when needed, or you can start the unit directly before using dashboard features. Support data lives under ~/.local/share/openburnbar (XDG_DATA_HOME). If you still have a legacy ~/.config/OpenBurnBar directory, set OPENBURNBAR_DAEMON_SUPPORT_DIR to that path or move the tree before first launch.`
   },
   {
     id: 'secret_store',
