@@ -25,15 +25,41 @@ assert.match(
   "size gate must pass against the current committed rules",
 );
 
-// 2) The constants keep a real margin under Firebase's documented 256 KiB
-//    ceiling — the whole point is to fail BEFORE the API does.
+// 2) The constants track both Firebase ceilings and keep the source ratchet near
+//    the last production-proven ruleset rather than the misleading source max.
 const source = readFileSync(resolve(here, "check-firestore-rules-size.mjs"), "utf8");
 const hardLimit = Number(/HARD_LIMIT_BYTES = (\d+) \* 1024/.exec(source)?.[1]);
+const compiledHardLimit = Number(
+  /COMPILED_HARD_LIMIT_BYTES = (\d+) \* 1024/.exec(source)?.[1],
+);
 const failAt = Number(/FAIL_THRESHOLD_BYTES = (\d+) \* 1024/.exec(source)?.[1]);
 const warnAt = Number(/WARN_THRESHOLD_BYTES = (\d+) \* 1024/.exec(source)?.[1]);
 assert.equal(hardLimit, 256, "hard limit must track Firebase's 256 KiB ceiling");
-assert.ok(failAt < hardLimit, "fail threshold must sit below the hard ceiling");
+assert.equal(
+  compiledHardLimit,
+  250,
+  "compiled hard limit must track Firebase's 250 KiB ceiling",
+);
+assert.equal(failAt, 160, "source ratchet must fail at 160 KiB");
+assert.ok(failAt < compiledHardLimit, "fail threshold must sit below both ceilings");
 assert.ok(warnAt < failAt, "warn threshold must sit below the fail threshold");
-assert.ok(hardLimit - failAt >= 16, "keep >=16 KiB of headroom below the ceiling");
+assert.ok(
+  compiledHardLimit - failAt >= 80,
+  "keep >=80 KiB between the source ratchet and compiled ceiling",
+);
+
+// 3) Dead allow clauses still consume source/compiler budget but grant nothing.
+//    Default deny has identical behavior and must remain the canonical form.
+const firestoreRules = readFileSync(resolve(repoRoot, "firestore.rules"), "utf8");
+assert.doesNotMatch(
+  firestoreRules,
+  /^\s*allow\s+[^:]+:\s*if\s+false\b/m,
+  "dead allow-if-false clauses must use Firestore's default deny",
+);
+assert.match(
+  firestoreRules,
+  /match \/users\/\{userId\}\/\{collectionId\}\/\{documentId\}/,
+  "direct owner gates must stay consolidated to limit compiler expansion",
+);
 
 console.log("PASS: firestore rules size gate self-test");

@@ -8,21 +8,26 @@
 // gate fails loudly, at PR time, with the exact numbers — so rules growth can
 // never again break production deploys without a reviewer seeing it first.
 //
-// Firebase's documented hard limit is 256 KiB of UTF-8 rules source per ruleset.
-// We evaluate the COMPACTED form (comments/blank lines stripped) because that is
-// what the deploy actually ships, and enforce a safety margin below the ceiling.
+// Firebase documents two independent ceilings: 256 KiB of UTF-8 source and
+// 250 KiB for the compiled ruleset activated by the backend. The Rules API does
+// not expose compiled byte size, so a gate near the 256 KiB source ceiling is a
+// false comfort: compiler expansion can reject a much smaller source at release
+// time. We evaluate the COMPACTED form that deploy ships and keep it near the
+// last production-proven source size while emulator tests protect behavior.
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { compactFirebaseRulesSource } from "./firebase-rules-source.mjs";
 
-const HARD_LIMIT_BYTES = 256 * 1024; // Firebase Rules API ceiling (262144).
-// Fail well before the ceiling: a rejected release is a production incident, and
-// the ruleset AST can be rejected below the raw byte ceiling. 230 KiB leaves
-// ~26 KiB of headroom while still flagging growth early.
-const FAIL_THRESHOLD_BYTES = 230 * 1024;
-const WARN_THRESHOLD_BYTES = 200 * 1024;
+const HARD_LIMIT_BYTES = 256 * 1024; // Published UTF-8 source ceiling.
+const COMPILED_HARD_LIMIT_BYTES = 250 * 1024; // Published activated-rules ceiling.
+// The 2026-07-03 production ruleset was 156,570 compacted bytes. Keep new
+// source below 160 KiB and warn at 156 KiB; structural compiler expansion still
+// requires a real dry-run + deploy proof, but this ratchet catches source growth
+// long before another opaque release-time 400.
+const FAIL_THRESHOLD_BYTES = 160 * 1024;
+const WARN_THRESHOLD_BYTES = 156 * 1024;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -37,10 +42,10 @@ for (const { name, compact } of files) {
   const shipped = compact ? compactFirebaseRulesSource(raw) : raw;
   const bytes = Buffer.byteLength(shipped, "utf8");
   const pct = ((bytes / HARD_LIMIT_BYTES) * 100).toFixed(1);
-  const detail = `${name}: shipped=${bytes}B (${pct}% of ${HARD_LIMIT_BYTES}B limit, raw=${Buffer.byteLength(raw)}B)`;
+  const detail = `${name}: shipped=${bytes}B (${pct}% of ${HARD_LIMIT_BYTES}B source limit, compiled limit=${COMPILED_HARD_LIMIT_BYTES}B, raw=${Buffer.byteLength(raw)}B)`;
   if (bytes >= FAIL_THRESHOLD_BYTES) {
     console.error(
-      `::error::${detail} — exceeds the ${FAIL_THRESHOLD_BYTES}B safety threshold. Split the ruleset into composable per-domain files or reduce it before it breaks production deploys.`,
+      `::error::${detail} — exceeds the ${FAIL_THRESHOLD_BYTES}B safety threshold. Consolidate repeated match expressions or reduce the ruleset before it breaks production deploys.`,
     );
     failed = true;
   } else if (bytes >= WARN_THRESHOLD_BYTES) {
