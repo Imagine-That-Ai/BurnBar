@@ -66,7 +66,8 @@ function archLifecycleReport() {
       packageSignature: provenance('openburnbar-1.2.2-1-aarch64.pkg.tar.zst.ed25519.sig', 'e'),
       installedManifest: provenance('openburnbar-1.2.2-aarch64.installed-manifest.json', 'f'),
       installedManifestSignature: provenance('openburnbar-1.2.2-aarch64.installed-manifest.ed25519', '1'),
-      productProofClosure: provenance('product-proof-closure.json', '2')
+      productProofClosure: provenance('product-proof-closure.json', '2'),
+      productProofClosureSignature: provenance('product-proof-closure.json.ed25519.sig', '3')
     },
     steps,
     lifecycle: {
@@ -194,8 +195,10 @@ test('Arch lifecycle proof binds pacman transitions to exact candidate and previ
 test('architecture finalizer consumes the architecture smoke report', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'openburnbar-linux-session-'));
   const sessionDir = path.join(root, 'session');
+  const archLifecycleDir = path.join(root, 'arch-lifecycle');
   const smokeDir = path.join(root, 'smoke');
   mkdirSync(sessionDir, { recursive: true });
+  mkdirSync(archLifecycleDir, { recursive: true });
   mkdirSync(smokeDir, { recursive: true });
   const json = (file, value) => writeFileSync(file, `${JSON.stringify(value)}\n`);
 
@@ -243,7 +246,7 @@ test('architecture finalizer consumes the architecture smoke report', () => {
         ['update', 'rollback', 'dataPreservation'].map((step) => [step, { status: 'passed' }])
       )
     });
-    json(path.join(sessionDir, 'arch-package-update-rollback.json'), archLifecycleReport());
+    json(path.join(archLifecycleDir, 'arch-package-update-rollback.json'), archLifecycleReport());
 
     const result = spawnSync(
       process.execPath,
@@ -284,7 +287,7 @@ test('architecture finalizer consumes the architecture smoke report', () => {
     });
     const substituted = archLifecycleReport();
     substituted.manager = 'dpkg';
-    json(path.join(sessionDir, 'arch-package-update-rollback.json'), substituted);
+    json(path.join(archLifecycleDir, 'arch-package-update-rollback.json'), substituted);
     const rejected = spawnSync(
       process.execPath,
       [path.resolve('scripts/linux-port/finalize-linux-architecture-session.mjs')],

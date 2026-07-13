@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readJson, relative, repoRoot, writeJson } from './lib/linux-release-common.mjs';
 import {
+  authenticateArchLifecycleReport,
   requiredLifecycleSteps,
   validateArchUpdateRollbackReport
 } from './lib/linux-package-session.mjs';
@@ -24,7 +25,15 @@ function optionalJson(name) {
 const desktop = optionalJson('linux-desktop-session-report.json');
 const daemonOracle = optionalJson('daemon-session-oracle.json');
 const daemonHealth = optionalJson('daemon-health-readback.json');
-const archUpdateRollback = optionalJson('arch-package-update-rollback.json');
+const archUpdateRollback = (() => {
+  const file = path.join(outDir, 'arch-lifecycle/arch-package-update-rollback.json');
+  if (!fs.existsSync(file)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+})();
 const packageSmoke = optionalJson('../smoke/architecture-smoke.json');
 const archPackageSmoke = optionalJson('../smoke/arch-package-smoke.json');
 const archArtifacts = (closure.artifacts ?? []).filter((artifact) => artifact.type === 'arch');
@@ -40,6 +49,16 @@ try {
     version: closure.version,
     gitCommit: closure.git?.commit,
     artifact: archArtifact
+  });
+  authenticateArchLifecycleReport({
+    report: archUpdateRollback,
+    architecture: closure.architecture,
+    version: closure.version,
+    gitCommit: closure.git?.commit,
+    artifact: archArtifact,
+    releaseRoot: repoRoot,
+    publicKeyFile: path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem'),
+    candidateSignatureFile: path.join(outDir, 'sidecars', `${path.basename(archArtifact.file)}.ed25519.sig`)
   });
 } catch (error) {
   archLifecycleFailure = error.message;
@@ -92,7 +111,7 @@ const report = {
     desktopSession: relative(path.join(sessionDir, 'linux-desktop-session-report.json')),
     daemonHealth: relative(path.join(sessionDir, 'daemon-health-readback.json')),
     updateRollback: relative(path.join(sessionDir, 'package-update-rollback.json')),
-    archUpdateRollback: relative(path.join(sessionDir, 'arch-package-update-rollback.json')),
+    archUpdateRollback: relative(path.join(outDir, 'arch-lifecycle/arch-package-update-rollback.json')),
     archPackageSmoke: relative(path.join(outDir, 'smoke/arch-package-smoke.json'))
   },
   blockers,

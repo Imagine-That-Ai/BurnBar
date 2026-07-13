@@ -167,7 +167,7 @@ jobs:
                -o -name '*source-*.tar' -o -name '*provenance-predicate.json' \
                -o -name 'PKGBUILD' -o -name 'arch-release-metadata.json' \
                -o -name 'openburnbar-*.installed-manifest.json' -o -name 'openburnbar-*.installed-manifest.ed25519' \
-               -o -name 'product-proof-closure.json' -o -name 'promotion-closure.json' \
+               -o -name 'product-proof-closure.json' -o -name 'product-proof-closure.json.ed25519.sig' -o -name 'promotion-closure.json' \
                -o -name 'parity-ledger-validation.json' -o -name 'P-*.json' \
                -o -name 'latest-linux.json' -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
           prerelease_arg="--prerelease=${ALLOW_PRERELEASE}"

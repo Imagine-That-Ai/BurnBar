@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 
 export const requiredLifecycleSteps = [
@@ -16,7 +18,7 @@ const ARCH_LIFECYCLE_KEYS = [
 const PACKAGE_RECORD_KEYS = ['file', 'sha256', 'size', 'version'];
 const PROVENANCE_KEYS = [
   'installedManifest', 'installedManifestSignature', 'packageSignature',
-  'productProofClosure', 'releaseCommit', 'releaseTag'
+  'productProofClosure', 'productProofClosureSignature', 'releaseCommit', 'releaseTag'
 ];
 const TRANSITION_KEYS = [
   'architecture', 'fromSha256', 'fromVersion', 'manager', 'packageName', 'status',
@@ -73,6 +75,142 @@ function validateProvenanceRecord(record, label, prefix) {
     throw new Error(`${label} is invalid`);
   }
   return record;
+}
+
+function readBoundFile(root, record, label) {
+  const relativeFile = record?.file;
+  if (typeof relativeFile !== 'string' || relativeFile.length === 0
+      || relativeFile.includes('\\') || path.posix.normalize(relativeFile) !== relativeFile
+      || path.posix.isAbsolute(relativeFile) || relativeFile.split('/').some((segment) => segment === '.' || segment === '..')) {
+    throw new Error(`${label} path is invalid`);
+  }
+  const absolute = path.resolve(root, relativeFile);
+  const relative = path.relative(root, absolute);
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`${label} escapes the release root`);
+  }
+  let current = root;
+  for (const component of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, component);
+    const metadata = fs.lstatSync(current);
+    if (metadata.isSymbolicLink()) throw new Error(`${label} traverses a symlink`);
+  }
+  const metadata = fs.lstatSync(absolute);
+  if (!metadata.isFile()) throw new Error(`${label} is not a regular file`);
+  const bytes = fs.readFileSync(absolute);
+  const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+  if (bytes.length !== record.size || sha256 !== record.sha256) {
+    throw new Error(`${label} bytes do not match the sealed provenance record`);
+  }
+  return { absolute, bytes };
+}
+
+function verifyDetachedEd25519(bytes, signature, publicKey, label) {
+  if (signature.length !== 64) throw new Error(`${label} signature must be 64 bytes`);
+  let key;
+  try {
+    key = crypto.createPublicKey(publicKey);
+  } catch (error) {
+    throw new Error(`release public key is invalid: ${error.message}`);
+  }
+  if (key.asymmetricKeyType !== 'ed25519' || !crypto.verify(null, bytes, key, signature)) {
+    throw new Error(`${label} signature does not verify with the release public key`);
+  }
+}
+
+/**
+ * Re-open and authenticate the Arch lifecycle subjects after all package
+ * probes have completed.  The producer performs the native package checks;
+ * this second pass makes the finalizer independent of the producer's JSON.
+ */
+export function authenticateArchLifecycleReport({
+  report,
+  architecture,
+  version,
+  gitCommit,
+  artifact,
+  releaseRoot,
+  publicKeyFile,
+  candidateSignatureFile
+}) {
+  validateArchUpdateRollbackReport({ report, architecture, version, gitCommit, artifact });
+  if (!releaseRoot || !publicKeyFile || !candidateSignatureFile) {
+    throw new Error('Arch lifecycle authentication context is incomplete');
+  }
+  const root = fs.realpathSync(releaseRoot);
+  const publicKey = fs.readFileSync(publicKeyFile);
+  const candidate = readBoundFile(root, report.candidate, 'Arch candidate package');
+  const candidateSignature = readBoundFile(root, {
+    file: path.relative(root, candidateSignatureFile).split(path.sep).join('/'),
+    size: fs.statSync(candidateSignatureFile).size,
+    sha256: crypto.createHash('sha256').update(fs.readFileSync(candidateSignatureFile)).digest('hex')
+  }, 'Arch candidate package signature');
+  verifyDetachedEd25519(candidate.bytes, candidateSignature.bytes, publicKey, 'Arch candidate package');
+
+  const previous = readBoundFile(root, report.previous, 'Arch previous package');
+  const provenance = report.previousProvenance;
+  const previousPrefix = `${path.posix.dirname(report.previous.file)}/`;
+  const expectedPackageSignature = `${report.previous.file}.ed25519.sig`;
+  const expectedManifest = `${previousPrefix}openburnbar-${report.previous.version}-${architecture}.installed-manifest.json`;
+  const expectedManifestSignature = `${previousPrefix}openburnbar-${report.previous.version}-${architecture}.installed-manifest.ed25519`;
+  const expectedClosure = `${previousPrefix}product-proof-closure.json`;
+  const expectedClosureSignature = `${previousPrefix}product-proof-closure.json.ed25519.sig`;
+  const exactSubjects = [
+    ['package signature', provenance.packageSignature, expectedPackageSignature],
+    ['installed manifest', provenance.installedManifest, expectedManifest],
+    ['installed manifest signature', provenance.installedManifestSignature, expectedManifestSignature],
+    ['product proof closure', provenance.productProofClosure, expectedClosure],
+    ['product proof closure signature', provenance.productProofClosureSignature, expectedClosureSignature]
+  ];
+  const subjects = new Map();
+  for (const [label, record, expectedFile] of exactSubjects) {
+    if (record.file !== expectedFile) throw new Error(`Arch previous ${label} is not bound to the exact release asset`);
+    if (subjects.has(record.file)) throw new Error(`Arch previous provenance subjects are duplicated: ${record.file}`);
+    subjects.set(record.file, readBoundFile(root, record, `Arch previous ${label}`));
+  }
+  const packageSignature = subjects.get(expectedPackageSignature);
+  verifyDetachedEd25519(previous.bytes, packageSignature.bytes, publicKey, 'previous Arch package');
+  const manifest = subjects.get(expectedManifest);
+  const manifestSignature = subjects.get(expectedManifestSignature);
+  verifyDetachedEd25519(manifest.bytes, manifestSignature.bytes, publicKey, 'previous Arch installed manifest');
+  let manifestDocument;
+  let closureDocument;
+  try {
+    manifestDocument = JSON.parse(manifest.bytes.toString('utf8'));
+    closureDocument = JSON.parse(subjects.get(expectedClosure).bytes.toString('utf8'));
+  } catch (error) {
+    throw new Error(`Arch previous authenticated JSON is invalid: ${error.message}`);
+  }
+  if (manifestDocument.packageName !== 'openburnbar'
+      || manifestDocument.packageFormat !== 'arch'
+      || manifestDocument.packageArchitecture !== architecture
+      || manifestDocument.packageVersion !== report.previous.version
+      || manifestDocument.gitCommit !== provenance.releaseCommit) {
+    throw new Error('Arch previous installed manifest identity is not release-bound');
+  }
+  verifyDetachedEd25519(
+    subjects.get(expectedClosure).bytes,
+    subjects.get(expectedClosureSignature).bytes,
+    publicKey,
+    'previous product proof closure'
+  );
+  if (closureDocument.status !== 'passed' || closureDocument.stage !== 'candidate'
+      || closureDocument.version !== report.previous.version
+      || closureDocument.targetHead !== provenance.releaseCommit
+      || closureDocument.sourceCommit !== provenance.releaseCommit) {
+    throw new Error('Arch previous product proof closure identity is not release-bound');
+  }
+  const packageRows = (closureDocument.packages ?? []).filter((row) =>
+    row?.format === 'arch' && row?.architecture === architecture
+  );
+  if (packageRows.length !== 1) throw new Error('Arch previous product proof closure must contain exactly one matching package row');
+  const packageRow = packageRows[0];
+  if (packageRow.artifact?.sha256 !== report.previous.sha256 || packageRow.artifact?.size !== report.previous.size
+      || packageRow.installedManifest?.sha256 !== provenance.installedManifest.sha256
+      || packageRow.installedManifestSignature?.sha256 !== provenance.installedManifestSignature.sha256) {
+    throw new Error('Arch previous product proof closure subjects do not match the sealed lifecycle report');
+  }
+  return true;
 }
 
 function previousPackagePrefix(candidateFile) {

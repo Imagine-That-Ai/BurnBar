@@ -10,7 +10,10 @@ import {
 import { readJson, relative, repoRoot, runStep, writeJson } from './lib/linux-release-common.mjs';
 
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-shard'));
-const reportFile = path.join(outDir, 'session/arch-package-update-rollback.json');
+// Keep the Arch lifecycle report outside the general session directory.  The
+// later desktop/daemon probes are allowed to write session evidence, but must
+// not be able to replace an already-authenticated package transition report.
+const reportFile = path.join(outDir, 'arch-lifecycle/arch-package-update-rollback.json');
 const closure = readJson(path.join(outDir, 'architecture-closure.json'));
 const artifacts = (closure.artifacts ?? []).filter((entry) => entry.type === 'arch');
 if (artifacts.length !== 1) throw new Error(`Arch lifecycle requires exactly one closure artifact, found ${artifacts.length}`);
@@ -23,6 +26,7 @@ const previousSignature = optionalArgument('--previous-signature');
 const previousManifest = optionalArgument('--previous-installed-manifest');
 const previousManifestSignature = optionalArgument('--previous-installed-manifest-signature');
 const previousProductProof = optionalArgument('--previous-product-proof');
+const previousProductProofSignature = optionalArgument('--previous-product-proof-signature');
 const previousReleaseTag = optionalArgument('--previous-release-tag');
 
 if (!previous) {
@@ -84,6 +88,7 @@ const previousProvenance = authenticatePreviousRelease({
   manifestFile: previousManifest,
   manifestSignatureFile: previousManifestSignature,
   productProofFile: previousProductProof,
+  productProofSignatureFile: previousProductProofSignature,
   releasePublicKey: publicKeyBytes,
   releaseTag: previousReleaseTag,
   architecture: closure.architecture,
@@ -260,13 +265,15 @@ function authenticatePreviousRelease({
   manifestFile,
   manifestSignatureFile,
   productProofFile,
+  productProofSignatureFile,
   releasePublicKey: publicKey,
   releaseTag,
   architecture,
   packageMetadata
 }) {
-  if (!packageSignatureFile || !manifestFile || !manifestSignatureFile || !productProofFile || !releaseTag) {
-    throw new Error('authenticated previous Arch lifecycle evidence requires package signature, manifest, product proof, public key, and release tag');
+  if (!packageSignatureFile || !manifestFile || !manifestSignatureFile || !productProofFile
+      || !productProofSignatureFile || !releaseTag) {
+    throw new Error('authenticated previous Arch lifecycle evidence requires package signature, manifest, product proof, closure signature, public key, and release tag');
   }
   const packageSignatureBytes = readRegularFile(packageSignatureFile, 'previous Arch package signature');
   if (packageSignatureBytes.length !== 64
@@ -293,6 +300,11 @@ function authenticatePreviousRelease({
     publicKeyPem: publicKey
   });
   const proofBytes = readRegularFile(productProofFile, 'previous product proof closure');
+  const proofSignatureBytes = readRegularFile(productProofSignatureFile, 'previous product proof closure signature');
+  if (proofSignatureBytes.length !== 64
+      || !crypto.verify(null, proofBytes, crypto.createPublicKey(publicKey), proofSignatureBytes)) {
+    throw new Error('previous product proof closure signature does not verify with the pinned release public key');
+  }
   const proof = JSON.parse(proofBytes.toString('utf8'));
   const packageRow = (proof.packages ?? []).find((row) =>
     row?.format === 'arch' && row?.architecture === architecture
@@ -306,13 +318,30 @@ function authenticatePreviousRelease({
   }
   const expectedTag = `linux-v${packageMetadata.packageVersion}`;
   if (releaseTag !== expectedTag) throw new Error('previous Arch release tag does not match the signed package version');
-  return {
-    releaseTag,
-    releaseCommit: manifest.gitCommit,
+  const previousPrefix = `${path.posix.dirname(record.file)}/`;
+  const provenanceRecords = {
     packageSignature: fileRecord(packageSignatureFile),
     installedManifest: fileRecord(manifestFile),
     installedManifestSignature: fileRecord(manifestSignatureFile),
-    productProofClosure: fileRecord(productProofFile)
+    productProofClosure: fileRecord(productProofFile),
+    productProofClosureSignature: fileRecord(productProofSignatureFile)
+  };
+  const expectedFiles = {
+    packageSignature: `${record.file}.ed25519.sig`,
+    installedManifest: `${previousPrefix}openburnbar-${packageMetadata.packageVersion}-${architecture}.installed-manifest.json`,
+    installedManifestSignature: `${previousPrefix}openburnbar-${packageMetadata.packageVersion}-${architecture}.installed-manifest.ed25519`,
+    productProofClosure: `${previousPrefix}product-proof-closure.json`,
+    productProofClosureSignature: `${previousPrefix}product-proof-closure.json.ed25519.sig`
+  };
+  for (const [field, expectedFile] of Object.entries(expectedFiles)) {
+    if (provenanceRecords[field].file !== expectedFile) {
+      throw new Error(`previous Arch ${field} is not the exact release asset`);
+    }
+  }
+  return {
+    releaseTag,
+    releaseCommit: manifest.gitCommit,
+    ...provenanceRecords
   };
 }
 

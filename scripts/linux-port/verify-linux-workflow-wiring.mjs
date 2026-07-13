@@ -92,6 +92,9 @@ export function verifyLinuxWorkflowWiring(input) {
     'build-signed-arch-package.mjs',
     'smoke-arch-package.mjs',
     'verify-arch-package-update-rollback.mjs',
+    'product-proof-closure.json.ed25519.sig',
+    'sign-product-proof-closure.mjs',
+    '.linux-shard/arch-lifecycle',
     'arch_signature_pattern',
     'arch_manifest_pattern',
     'arch_manifest_signature_pattern',
@@ -100,9 +103,11 @@ export function verifyLinuxWorkflowWiring(input) {
     '--previous-installed-manifest "/workspace/',
     '--previous-installed-manifest-signature',
     '--previous-product-proof',
+    '--previous-product-proof-signature',
     '--previous-release-tag',
     'source=$PWD,target=/workspace,readonly',
     'source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session',
+    'source=$PWD/.linux-shard/arch-lifecycle,target=/workspace/.linux-shard/arch-lifecycle',
     'docker create --name "$container"',
     'docker start --attach "$container"',
     '--phase finalize',
@@ -114,6 +119,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'assemble-linux-release.mjs',
     'list-linux-release-attestation-subjects.mjs',
     'finalize-product-proof-closure.mjs',
+    'sign-product-proof-closure.mjs',
+    'product-proof-closure.json.ed25519.sig',
     'include-hidden-files: true',
     'merge-multiple: false',
     'finalize-product-proof-closure.mjs',
@@ -131,6 +138,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'finalize-linux-promotion-closure.mjs',
     'uses: actions/attest@',
     'promotion-closure.json.sigstore.jsonl',
+    'product-proof-closure.json.ed25519.sig',
     '--candidate-artifact-digest',
     '--draft',
     '--draft=false',
@@ -156,6 +164,7 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'linux-appimage-peer-manifest.test.mjs', 'PR AppImage peer manifest suite');
   requireText(input.pr, 'linux-native-package-real-tools.test.mjs', 'PR real native package suite');
   requireText(input.pr, 'sign-linux-release-requests.test.mjs', 'PR isolated signer mutation suite');
+  requireText(input.pr, 'sign-product-proof-closure.test.mjs', 'PR product-proof closure signer suite');
   requireText(input.pr, 'signed-installed-package-wiring.test.mjs', 'PR signed package wiring suite');
   requireText(
     input.pr,
@@ -339,7 +348,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'Pre-attestation Linux release verification',
     'Attest Linux release sidecars and packages',
     'Final Linux release verification',
-    'Finalize installed-product proof closure'
+    'Finalize installed-product proof closure',
+    'Sign installed-product proof closure'
   ], 'candidate workflow');
   requireOrder(input.promotionWorkflow, [
     'Resolve the immutable successful candidate artifact',

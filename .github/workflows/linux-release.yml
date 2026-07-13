@@ -289,7 +289,8 @@ jobs:
           set -euo pipefail
           mkdir -p "$OPENBURNBAR_LINUX_RELEASE_OUT/session" \
             "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/deb" \
-            "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch"
+            "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch" \
+            "$OPENBURNBAR_LINUX_RELEASE_OUT/arch-lifecycle"
           mapfile -t candidates < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT/artifacts" -maxdepth 1 -name '*.deb' -type f)
           test "${#candidates[@]}" -eq 1
           cp "${candidates[0]}" "$OPENBURNBAR_LINUX_RELEASE_OUT/session/"
@@ -311,6 +312,7 @@ jobs:
               --pattern "$arch_manifest_pattern" \
               --pattern "$arch_manifest_signature_pattern" \
               --pattern 'product-proof-closure.json' \
+              --pattern 'product-proof-closure.json.ed25519.sig' \
               --dir "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch"; then
               echo "No previous Arch package matched ${arch_pattern}; the pacman lifecycle will remain blocked."
             fi
@@ -319,11 +321,14 @@ jobs:
               test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/${arch_manifest_pattern}"
               test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/${arch_manifest_signature_pattern}"
               test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/product-proof-closure.json"
+              test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/product-proof-closure.json.ed25519.sig"
               test -f "${downloaded_arch_packages[0]}.ed25519.sig"
             fi
           fi
 
       - name: Verify Arch package update, rollback, and data preservation
+        env:
+          PREVIOUS_VERSION: ${{ needs.resolve-release.outputs.previous_version }}
         run: |
           set -euo pipefail
           mapfile -t candidates < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT/artifacts" -maxdepth 1 -name '*.pkg.tar.zst' -type f)
@@ -344,6 +349,7 @@ jobs:
               --previous-installed-manifest "/workspace/$release_output_relative/previous/arch/openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.json"
               --previous-installed-manifest-signature "/workspace/$release_output_relative/previous/arch/openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.ed25519"
               --previous-product-proof "/workspace/$release_output_relative/previous/arch/product-proof-closure.json"
+              --previous-product-proof-signature "/workspace/$release_output_relative/previous/arch/product-proof-closure.json.ed25519.sig"
               --previous-release-tag "linux-v${PREVIOUS_VERSION}"
             )
           fi
@@ -358,7 +364,7 @@ jobs:
           docker create --name "$container" \
             -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
             --mount "type=bind,source=$PWD,target=/workspace,readonly" \
-            --mount "type=bind,source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session" \
+            --mount "type=bind,source=$PWD/.linux-shard/arch-lifecycle,target=/workspace/.linux-shard/arch-lifecycle" \
             -w /workspace \
             openburnbar-arch-package:mission-001 \
             "${command[@]}"
@@ -370,7 +376,8 @@ jobs:
           -e OB_REPO_ROOT=/workspace
           -e OB_EVIDENCE_OUT=/workspace/.linux-shard/session
           -e OB_REUSE_EXISTING_DEB=1
-          -v "$PWD:/workspace"
+          --mount "type=bind,source=$PWD,target=/workspace,readonly"
+          --mount "type=bind,source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
           bash scripts/linux-port/linux-desktop-session.sh
@@ -380,7 +387,8 @@ jobs:
           docker run --rm
           -e OB_REPO_ROOT=/workspace
           -e OB_EVIDENCE_OUT=/workspace/.linux-shard/session
-          -v "$PWD:/workspace"
+          --mount "type=bind,source=$PWD,target=/workspace,readonly"
+          --mount "type=bind,source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
           bash -c "OB_CANDIDATE_DEB=\$(find /workspace/.linux-shard/session -maxdepth 1 -name '*.deb' -type f | head -n 1)
@@ -482,6 +490,14 @@ jobs:
         env:
           TARGET_HEAD: ${{ github.sha }}
         run: node scripts/linux-port/finalize-product-proof-closure.mjs --target-head "$TARGET_HEAD"
+
+      - name: Sign installed-product proof closure
+        env:
+          OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
+        run: |
+          node scripts/linux-port/sign-product-proof-closure.mjs \
+            --closure "$OPENBURNBAR_LINUX_RELEASE_OUT/product-proof-closure.json" \
+            --signature "$OPENBURNBAR_LINUX_RELEASE_OUT/product-proof-closure.json.ed25519.sig"
 
       - name: Upload Linux release evidence
         if: always()

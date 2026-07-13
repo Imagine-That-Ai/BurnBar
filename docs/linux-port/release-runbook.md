@@ -39,7 +39,8 @@ states are retained. After final release verification,
 `finalize-product-proof-closure.mjs` requires the six deb/rpm/Arch native
 architecture rows, exact signed installed manifests, package and feed signatures, Sigstore
 bundles, supply-chain sidecars, and lifecycle proof before it emits
-`product-proof-closure.json`. Native shards attach those signed records and the
+`product-proof-closure.json`; the isolated signer immediately emits the detached
+`product-proof-closure.json.ed25519.sig` sidecar. Native shards attach those signed records and the
 aggregate assembler validates confinement, exact bytes, package identity, and
 commit/version/architecture binding before preserving them.
 The product workflow materializes a requirement-owned closure from that
@@ -75,6 +76,9 @@ Required package artifacts:
   recorded as unpublished until that action occurs.
 - Flatpak tail metadata in
   [`../../packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml`](../../packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml).
+- The aggregate `product-proof-closure.json` and detached
+  `product-proof-closure.json.ed25519.sig`; Arch update/rollback evidence must
+  authenticate both before accepting a previous-release baseline.
 - Desktop entry, autostart entry, and systemd user service under
   [`../../packaging/linux/`](../../packaging/linux/).
 - Daemon launch script
