@@ -1,6 +1,7 @@
 #if os(macOS)
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarLaunchServices
 
 final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
     private var temporaryRoots: [URL] = []

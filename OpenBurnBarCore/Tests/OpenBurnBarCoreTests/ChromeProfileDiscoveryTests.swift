@@ -1,4 +1,5 @@
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarLaunchServices
 import XCTest
 
 final class ChromeProfileDiscoveryTests: XCTestCase {
