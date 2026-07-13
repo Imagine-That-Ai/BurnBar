@@ -1,75 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { prefersReducedMotion } from '../a11y.js';
 import { buildPetBehaviorGraph } from '../petBehaviorGraph.js';
-import { detectPetTierFromEnv, type PetTier } from '../petCompanion.js';
+import { probePetCapability, type PetCapabilityProbe } from '../petCompanion.js';
 import { mountPetGltfRuntime, stopPetGltfRuntime } from '../petGltfRuntime.js';
 import { useShellStore } from '../state/shellStore.js';
-import type { SessionEnv } from '../tauriBridge.js';
 import { BehaviorGraphView } from './pet/BehaviorGraphView.js';
 import { TierMatrixTable } from './pet/TierMatrixTable.js';
 import './pet/pet.css';
 
 const PET_ASSET_URL = '/pets/kawaii-aurora-fox-actions.glb';
 
-const PREVIEW_ENV: SessionEnv = {
-  XDG_SESSION_TYPE: 'wayland',
-  XDG_CURRENT_DESKTOP: 'GNOME'
-};
-
-type PetTierEnvResult = {
-  tier: PetTier;
-  compositor: string;
-  message: string;
-};
-
-export type PetTierDetection = PetTierEnvResult & { previewAssumption: boolean };
-
-
 /**
- * Pet companion surface. The GLB runtime mounts imperatively into the stage
- * element; tier detection decides overlay pass-through vs the GNOME Wayland
- * draggable-contained fallback (never a silent click-through claim).
+ * Pet companion surface. The GLB runtime mounts imperatively into the route
+ * preview; the native runtime capability manifest decides whether an overlay
+ * tier can be advertised. Environment variables are never treated as proof.
  */
 export function PetSurface() {
-  const bridge = useShellStore((s) => s.bridge);
+  const runtimeCapabilities = useShellStore((s) => s.runtimeCapabilities);
   const stageRef = useRef<HTMLDivElement>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [runtimeState, setRuntimeState] = useState<'loading' | 'loaded' | 'error'>('loading');
-  const [tierInfo, setTierInfo] = useState<PetTierDetection>(() => {
-    const detected = detectPetTierFromEnv(PREVIEW_ENV);
-    return { ...detected, previewAssumption: true };
-  });
+  const [capability, setCapability] = useState<PetCapabilityProbe>(() => probePetCapability(null));
   const [reactWaveActive, setReactWaveActive] = useState(false);
-  const graph = buildPetBehaviorGraph(tierInfo.tier);
+  const graph = buildPetBehaviorGraph(capability.tier);
 
   useEffect(() => {
-    let cancelled = false;
-    async function resolveTier(): Promise<void> {
-      if (!bridge) {
-        const detected = detectPetTierFromEnv(PREVIEW_ENV);
-        if (!cancelled) {
-          setTierInfo({ ...detected, previewAssumption: true });
-        }
-        return;
-      }
-      try {
-        const env = await bridge.sessionEnv();
-        const detected = detectPetTierFromEnv(env);
-        if (!cancelled) {
-          setTierInfo({ ...detected, previewAssumption: false });
-        }
-      } catch {
-        const detected = detectPetTierFromEnv(PREVIEW_ENV);
-        if (!cancelled) {
-          setTierInfo({ ...detected, previewAssumption: true });
-        }
-      }
-    }
-    void resolveTier();
-    return () => {
-      cancelled = true;
-    };
-  }, [bridge]);
+    setCapability(probePetCapability(runtimeCapabilities));
+  }, [runtimeCapabilities]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -112,11 +69,12 @@ export function PetSurface() {
         ref={stageRef}
         className={stageClasses}
         role="img"
-        aria-label="Pet companion GLB preview"
-        data-overlay-tier={tierInfo.tier}
-        data-input-passthrough={tierInfo.tier === 'overlay-pass-through' ? 'true' : 'false'}
+        aria-label="Pet companion contained preview"
+        data-overlay-tier={capability.tier}
+        data-capability-state={capability.state}
+        data-input-passthrough={capability.actions['click-through'].supported ? 'true' : 'false'}
         data-pet-runtime={runtimeState}
-        {...(tierInfo.tier === 'draggable-contained'
+        {...(!capability.actions.overlay.supported
           ? {
               draggable: true,
               onDragStart: (event: React.DragEvent<HTMLDivElement>) =>
@@ -128,7 +86,7 @@ export function PetSurface() {
       </div>
       <div className="pet-actions">
         <button type="button" className="pet-wave-button" onClick={waveAtPet}>
-          Wave at pet
+          Wave at preview
         </button>
       </div>
       {runtimeError ? (
@@ -136,16 +94,42 @@ export function PetSurface() {
           {runtimeError}
         </p>
       ) : null}
-      {tierInfo.previewAssumption ? (
-        <p className="pet-preview-note">Tier detection uses preview assumption (no packaged session env).</p>
+      {capability.previewOnly ? (
+        <p className="pet-preview-note" role="status">
+          Preview only: the packaged runtime capability probe is unavailable, so overlay and input pass-through remain
+          disabled.
+        </p>
       ) : null}
-      <p>{`Tier: ${tierInfo.tier}`}</p>
-      <p className="muted">{tierInfo.message}</p>
+      <p>{`Tier: ${capability.tier}`}</p>
+      <p>{`Capability: ${capability.state}`}</p>
+      {capability.compositor ? <p className="muted">{`Session: ${capability.compositor}`}</p> : null}
+      <p className="muted">{capability.message}</p>
+      {capability.substitute ? <p className="muted">{capability.substitute}</p> : null}
       <p className="muted">
-        {tierInfo.tier === 'draggable-contained'
-          ? 'Contained fallback is draggable and does not claim click-through/input passthrough.'
-          : 'Overlay tier may pass input through only on compositor-supported sessions.'}
+        {capability.actions['click-through'].supported
+          ? 'Input pass-through is enabled only because the native manifest reported the overlay tier as available.'
+          : 'Contained fallback is draggable and does not claim click-through or desktop-level interaction.'}
       </p>
+      <section className="pet-capability-section" aria-labelledby="pet-capabilities-title">
+        <h3 id="pet-capabilities-title" className="pet-section-title">
+          Native companion capabilities
+        </h3>
+        <dl className="pet-capability-list">
+          {(
+            Object.entries(capability.actions) as Array<
+              [keyof PetCapabilityProbe['actions'], PetCapabilityProbe['actions'][keyof PetCapabilityProbe['actions']]]
+            >
+          ).map(([action, status]) => (
+            <div className="pet-capability-row" key={action}>
+              <dt>{action === 'click-through' ? 'Input pass-through' : action[0].toUpperCase() + action.slice(1)}</dt>
+              <dd>
+                <strong>{status.supported ? 'Available' : 'Unavailable'}</strong>
+                <span>{status.reason}</span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
       <p>{`glTF: ${graph.gltfAsset}`}</p>
       <BehaviorGraphView graph={graph} />
       <TierMatrixTable />

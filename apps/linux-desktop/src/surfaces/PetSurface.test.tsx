@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PetSurface } from './PetSurface.js';
 import { useShellStore } from '../state/shellStore.js';
+import { makeAvailableRuntimeCapabilityManifest } from '../testing/bridgeStubs.js';
 
 const mountMock = vi.fn();
 const stopMock = vi.fn();
@@ -35,7 +36,9 @@ function resetShell(): void {
     fixtureMode: false,
     health: null,
     route: 'pet',
-    skin: 'editorial'
+    skin: 'editorial',
+    runtimeCapabilities: null,
+    bridgeReady: true
   });
 }
 
@@ -58,33 +61,36 @@ describe('PetSurface', () => {
     vi.useRealTimers();
   });
 
-  it('uses preview assumption tier when bridge is absent', async () => {
+  it('fails closed to a contained preview when the runtime probe is absent', async () => {
     render(<PetSurface />);
     await waitFor(() => {
-      expect(screen.getByText(/preview assumption/i)).toBeTruthy();
+      expect(screen.getByText(/preview only/i)).toBeTruthy();
     });
-    const stage = screen.getByRole('img', { name: /pet companion glb preview/i });
+    const stage = screen.getByRole('img', {
+      name: /pet companion contained preview/i
+    });
     expect(stage.getAttribute('data-overlay-tier')).toBe('draggable-contained');
     expect(stage.getAttribute('data-input-passthrough')).toBe('false');
     expect(stage.hasAttribute('draggable')).toBe(true);
+    expect(screen.getByText(/No canonical Linux summon/i)).toBeTruthy();
   });
 
-  it('detects tier from bridge sessionEnv when packaged', async () => {
-    const sessionEnv = vi.fn().mockResolvedValue({
-      XDG_SESSION_TYPE: 'wayland',
-      XDG_CURRENT_DESKTOP: 'KDE'
-    });
+  it('keeps a contained fallback when the native companion window is not wired', async () => {
+    const runtimeCapabilities = makeAvailableRuntimeCapabilityManifest();
     useShellStore.setState({
-      bridge: { sessionEnv } as never
+      runtimeCapabilities,
+      bridgeReady: true
     });
     render(<PetSurface />);
-    await waitFor(() => expect(sessionEnv).toHaveBeenCalled());
     await waitFor(() => {
-      expect(screen.queryByText(/preview assumption/i)).toBeNull();
+      expect(screen.queryByText(/preview only/i)).toBeNull();
     });
-    const stage = screen.getByRole('img', { name: /pet companion glb preview/i });
-    expect(stage.getAttribute('data-overlay-tier')).toBe('overlay-pass-through');
-    expect(stage.getAttribute('data-input-passthrough')).toBe('true');
+    const stage = screen.getByRole('img', {
+      name: /pet companion contained preview/i
+    });
+    expect(stage.getAttribute('data-overlay-tier')).toBe('draggable-contained');
+    expect(stage.getAttribute('data-input-passthrough')).toBe('false');
+    expect(screen.getByText(/companion-window contract is not wired/i)).toBeTruthy();
   });
   it('renders behavior graph SVG nodes for the active tier', async () => {
     render(<PetSurface />);
@@ -99,7 +105,9 @@ describe('PetSurface', () => {
 
   it('toggles raw graph disclosure', async () => {
     render(<PetSurface />);
-    const toggle = await screen.findByRole('button', { name: /show raw graph/i });
+    const toggle = await screen.findByRole('button', {
+      name: /show raw graph/i
+    });
     fireEvent.click(toggle);
     const raw = document.querySelector('pre.pet-graph');
     expect(raw).toBeTruthy();
@@ -111,8 +119,10 @@ describe('PetSurface', () => {
   it('wave button triggers react-wave highlight on stage', () => {
     vi.useFakeTimers();
     render(<PetSurface />);
-    const stage = screen.getByRole('img', { name: /pet companion glb preview/i });
-    fireEvent.click(screen.getByRole('button', { name: /wave at pet/i }));
+    const stage = screen.getByRole('img', {
+      name: /pet companion contained preview/i
+    });
+    fireEvent.click(screen.getByRole('button', { name: /wave at preview/i }));
     expect(stage.className).toContain('pet-stage--react-wave');
     act(() => {
       vi.advanceTimersByTime(2500);
@@ -125,13 +135,17 @@ describe('PetSurface', () => {
     render(<PetSurface />);
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('asset fetch failed');
-    const stage = screen.getByRole('img', { name: /pet companion glb preview/i });
+    const stage = screen.getByRole('img', {
+      name: /pet companion contained preview/i
+    });
     expect(stage.getAttribute('data-pet-runtime')).toBe('error');
   });
 
   it('sets data-pet-runtime loaded after successful mount', async () => {
     render(<PetSurface />);
-    const stage = await screen.findByRole('img', { name: /pet companion glb preview/i });
+    const stage = await screen.findByRole('img', {
+      name: /pet companion contained preview/i
+    });
     await waitFor(() => {
       expect(stage.getAttribute('data-pet-runtime')).toBe('loaded');
     });
