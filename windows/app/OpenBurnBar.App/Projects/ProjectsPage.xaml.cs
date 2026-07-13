@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using OpenBurnBar.App.Presentation.Projects;
 using OpenBurnBar.App.Presentation.SessionLogs;
+using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Storage;
 
 namespace OpenBurnBar.App.Projects;
@@ -30,7 +31,8 @@ public sealed partial class ProjectsPage : Page
         _codeIndex?.Dispose();
         _codeIndex = null;
         IProjectCodeStaticParserClient? parser = null;
-        if (!string.IsNullOrWhiteSpace(projectRoot) && Directory.Exists(projectRoot))
+        bool indexingEnabled = WindowsGeneralSettingsComposition.Load().IndexingEnabled;
+        if (indexingEnabled && !string.IsNullOrWhiteSpace(projectRoot) && Directory.Exists(projectRoot))
         {
             string? parserPath = Environment.GetEnvironmentVariable("OPENBURNBAR_CODE_STATIC_PARSER_PATH");
             if (string.IsNullOrWhiteSpace(parserPath))

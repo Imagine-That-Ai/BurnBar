@@ -254,6 +254,7 @@ public partial class App : Application
 
     private WindowsUsageRuntime CreateUsageRuntime()
     {
+        GeneralSettingsSnapshot generalSettings = WindowsGeneralSettingsComposition.Load();
         var engine = new CAbiUsageEngine();
         var store = new SqlCipherUsageRuntimeSnapshotStore(() =>
         {
@@ -264,6 +265,7 @@ public partial class App : Application
             engine,
             store,
             WindowsUsagePaths.ForCurrentUser(),
+            periodicInterval: TimeSpan.FromSeconds(generalSettings.RefreshIntervalSeconds),
             errorSink: ex => AppDiagnostics.LogException("usage-runtime", ex));
     }
 
@@ -388,6 +390,13 @@ public partial class App : Application
 
     private static ProjectCodeMemoryService? CreateProjectCodeMemoryService()
     {
+        GeneralSettingsSnapshot generalSettings = WindowsGeneralSettingsComposition.Load();
+        if (!generalSettings.IndexingEnabled)
+        {
+            AppDiagnostics.LogEvent("project-code-memory", "disabled_by_general_settings");
+            return null;
+        }
+
         string? projectRoot = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_ROOT");
         if (string.IsNullOrWhiteSpace(projectRoot) || !Directory.Exists(projectRoot))
         {

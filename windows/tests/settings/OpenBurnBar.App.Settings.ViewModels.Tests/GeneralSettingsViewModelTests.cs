@@ -17,6 +17,7 @@ public sealed class GeneralSettingsViewModelTests
         Assert.True(vm.AutoSummariesEnabled);
         Assert.Equal(GeneralEmbeddingProvider.Deterministic, vm.EmbeddingProvider);
         Assert.Equal("text-embedding-3-small", vm.OpenAIEmbeddingModel);
+        Assert.Equal(GeneralSettingsSnapshot.Default, vm.Snapshot);
     }
 
     [Fact]
@@ -62,6 +63,14 @@ public sealed class GeneralSettingsViewModelTests
         Assert.False(reloaded.AutoSummariesEnabled);
         Assert.Equal(GeneralEmbeddingProvider.OpenAI, reloaded.EmbeddingProvider);
         Assert.Equal("text-embedding-ada-002", reloaded.OpenAIEmbeddingModel);
+        Assert.Equal(new GeneralSettingsSnapshot(
+            GeneralTimeRange.Month,
+            GeneralUsageDisplayMode.Tokens,
+            900,
+            true,
+            false,
+            GeneralEmbeddingProvider.OpenAI,
+            "text-embedding-ada-002"), reloaded.Snapshot);
     }
 
     [Fact]

@@ -97,6 +97,16 @@ public sealed class GeneralSettingsViewModel : ObservableSettingsViewModel
         Load();
     }
 
+    /// <summary>Returns the normalized values consumed by Windows composition roots.</summary>
+    public GeneralSettingsSnapshot Snapshot => new(
+        _timeRange,
+        _usageDisplayMode,
+        _refreshIntervalSeconds,
+        _indexingEnabled,
+        _autoSummariesEnabled,
+        _embeddingProvider,
+        _openAIEmbeddingModel);
+
     public void Load()
     {
         GeneralSettingsSnapshot settings = _store.Load();
@@ -164,14 +174,7 @@ public sealed class GeneralSettingsViewModel : ObservableSettingsViewModel
         }
     }
 
-    private void Persist() => _store.Save(new GeneralSettingsSnapshot(
-        _timeRange,
-        _usageDisplayMode,
-        _refreshIntervalSeconds,
-        _indexingEnabled,
-        _autoSummariesEnabled,
-        _embeddingProvider,
-        _openAIEmbeddingModel));
+    private void Persist() => _store.Save(Snapshot);
 
     private static double NormalizeRefreshInterval(double value)
     {

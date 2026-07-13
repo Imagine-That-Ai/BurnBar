@@ -34,3 +34,11 @@ internal sealed class WindowsGeneralSettingsStore : IGeneralSettingsStore
     private static T ParseEnum<T>(string raw, T fallback) where T : struct, Enum =>
         Enum.TryParse(raw, ignoreCase: true, out T value) && Enum.IsDefined(value) ? value : fallback;
 }
+
+/// <summary>Single composition boundary for normalized General settings.</summary>
+internal static class WindowsGeneralSettingsComposition
+{
+    public static GeneralSettingsSnapshot Load() =>
+        new GeneralSettingsViewModel(new WindowsGeneralSettingsStore(
+            WindowsSettingsComposition.SharedPersistence)).Snapshot;
+}
