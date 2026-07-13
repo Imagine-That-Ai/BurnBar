@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Canonical provider log directory and file-pattern discovery for Linux and cross-platform ingestion.
 ///

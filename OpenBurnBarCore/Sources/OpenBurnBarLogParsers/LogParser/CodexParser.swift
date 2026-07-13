@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarKernel
+import OpenBurnBarSQLiteReader
 
 // MARK: - Codex Parser
 //
@@ -46,7 +48,7 @@ public final class CodexParser: LogParser, Sendable {
         try parseSynchronously(options: options)
     }
 
-    func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
+    public func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
         let dbPath = homeDirectoryURL
             .appendingPathComponent(".codex", isDirectory: true)
             .appendingPathComponent("state_5.sqlite", isDirectory: false)

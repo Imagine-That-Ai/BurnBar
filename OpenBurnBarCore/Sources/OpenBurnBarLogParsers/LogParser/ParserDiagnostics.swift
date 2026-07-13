@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Parser diagnostics shim (Windows-buildable, Foundation-only)
 //

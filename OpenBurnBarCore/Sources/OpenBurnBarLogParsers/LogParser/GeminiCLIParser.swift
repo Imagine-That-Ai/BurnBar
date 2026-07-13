@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Gemini CLI Parser
 
