@@ -357,6 +357,19 @@ jobs:
             Write-Host "Portable Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
           }
 
+      - name: Refresh signed native-engine manifests
+        if: steps.config.outputs.codesign == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          . "$env:GITHUB_WORKSPACE/windows/packaging/scripts/Refresh-NativeEngineManifest.ps1"
+          . "$env:GITHUB_WORKSPACE/windows/packaging/scripts/Assert-NativeEngineManifest.ps1"
+          foreach ($rid in @("win-x64", "win-arm64")) {
+            $publishRoot = Join-Path $env:GITHUB_WORKSPACE "publish/$rid"
+            Refresh-OpenBurnBarNativeEngineManifest -Root $publishRoot
+            Assert-OpenBurnBarNativeEngineManifest -Root $publishRoot
+          }
+
       - name: Package zips + checksums
         id: package
         run: |
