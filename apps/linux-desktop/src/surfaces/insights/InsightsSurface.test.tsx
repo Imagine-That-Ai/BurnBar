@@ -14,6 +14,13 @@ import { InsightsSurface } from './InsightsSurface.js';
 import { InsightsWorkspace } from './InsightsWorkspace.js';
 import { TrendChart } from './TrendChart.js';
 import { buildInsightsBrief } from './insightsBrief.js';
+import { resolveInsightsEvidence, resolveQualitativeCapability } from './insightsEvidence.js';
+import {
+  accountScopeForInsights,
+  insightsWorkspaceStorageKey,
+  readInsightsWorkspace,
+  writeInsightsWorkspace
+} from './insightsWorkspacePersistence.js';
 
 
 function noopLoad(): Promise<void> {
@@ -72,6 +79,50 @@ describe('insights brief', () => {
   });
 });
 
+describe('insights evidence and workspace persistence', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('accepts only the known usage authority and exposes qualitative analysis as unavailable', () => {
+    const fixture = fixtureUsageInsights();
+    const evidence = resolveInsightsEvidence(fixture, 'fixture transcript');
+    expect(evidence).toMatchObject({
+      sourceID: 'fixture.usage.insights',
+      state: 'verified',
+      sourceKind: 'fixture'
+    });
+    expect(resolveQualitativeCapability(fixture)).toMatchObject({ state: 'unavailable' });
+
+    const malformed = { ...fixture, source: { id: 'forged.source' } } as unknown as UsageInsights;
+    expect(resolveInsightsEvidence(malformed, 'live daemon usage insights')).toMatchObject({
+      sourceID: 'unavailable',
+      state: 'unavailable'
+    });
+    const mismatchedKind = {
+      ...fixture,
+      source: { id: 'daemon.usage.recent', kind: 'fixture', label: 'forged' }
+    } as unknown as UsageInsights;
+    expect(resolveInsightsEvidence(mismatchedKind, 'live daemon usage insights').state).toBe('unavailable');
+  });
+
+  it('persists selection and density per account scope without storing the identity in the key', () => {
+    const accountScope = accountScopeForInsights({
+      identityLabel: 'alberto@example.test',
+      installationDeviceID: 'linux-device-1'
+    });
+    writeInsightsWorkspace(accountScope, {
+      version: 1,
+      selectedWidgetID: 'provider-mix',
+      layout: 'compact'
+    });
+    expect(readInsightsWorkspace(accountScope, ['usage-trend', 'provider-mix'])).toMatchObject({
+      selectedWidgetID: 'provider-mix',
+      layout: 'compact'
+    });
+    expect(insightsWorkspaceStorageKey(accountScope)).not.toContain('alberto@example.test');
+    expect(readInsightsWorkspace('account:other', ['usage-trend', 'provider-mix']).selectedWidgetID).toBe('usage-trend');
+  });
+});
+
 describe('InsightsSurface', () => {
   beforeEach(resetStores);
   afterEach(cleanup);
@@ -79,7 +130,7 @@ describe('InsightsSurface', () => {
   it('renders populated fixture insights with chart aria-labels and hidden tables', () => {
     useShellStore.setState({ fixtureMode: true });
     render(<InsightsSurface />);
-    expect(screen.getByText(/fixture transcript/i)).toBeTruthy();
+    expect(screen.getByText(/Provenance: fixture transcript/i)).toBeTruthy();
     expect(screen.getByRole('heading', { name: /Usage is trending/i })).toBeTruthy();
     const imgs = screen.getAllByRole('img');
     expect(imgs.length).toBeGreaterThanOrEqual(3);
@@ -139,7 +190,10 @@ describe('InsightsSurface', () => {
     const followUp = vi.fn();
     render(
       <InsightsWorkspace
-        data={fixtureUsageInsights()}
+        data={{
+          ...fixtureUsageInsights(),
+          source: { id: 'daemon.usage.recent', kind: 'daemon-method', label: 'live daemon usage insights' }
+        }}
         sourceLabel="live daemon usage insights"
         onRefresh={refresh}
         onFollowUp={followUp}
@@ -147,7 +201,7 @@ describe('InsightsSurface', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /provider mix/i }));
-    expect(screen.getByText('Live daemon usage')).toBeTruthy();
+    expect(screen.getAllByText(/live daemon usage insights/i).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: /^audit$/i }));
     expect(screen.getByRole('dialog', { name: /insights audit/i })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
@@ -158,6 +212,27 @@ describe('InsightsSurface', () => {
     expect(followUp).toHaveBeenCalledWith('Compare provider mix with last week');
     fireEvent.click(screen.getByRole('button', { name: /refresh insights/i }));
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores the selected widget and compact density for the same account scope', () => {
+    const props = {
+      data: fixtureUsageInsights(),
+      sourceLabel: 'fixture transcript',
+      onRefresh: vi.fn(),
+      onFollowUp: vi.fn(),
+      accountScope: 'account:linux-device-1'
+    };
+    const first = render(<InsightsWorkspace {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /provider mix/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^compact$/i }));
+    expect(document.querySelector('.insights-canvas-grid')?.getAttribute('data-layout')).toBe('compact');
+    first.unmount();
+
+    render(<InsightsWorkspace {...props} />);
+    expect(screen.getByRole('button', { name: /provider mix/i }).getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('.insights-canvas-grid')?.getAttribute('data-layout')).toBe('compact');
+    expect(screen.getByTestId('insights-source-id').textContent).toContain('fixture.usage.insights');
+    expect(screen.getByTestId('insights-qualitative-state').textContent).toMatch(/unavailable/i);
   });
 });
 

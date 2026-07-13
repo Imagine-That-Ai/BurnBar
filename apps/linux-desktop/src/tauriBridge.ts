@@ -114,11 +114,26 @@ export type ChatMessageAppendResult = { message: PersistedChatMessage; inserted:
 
 export type WeeklyPoint = { label: string; tokens: number; costUsd: number };
 export type MixEntry = { id: string; label: string; pct: number };
+export type UsageInsightsSource = {
+  /** Stable authority identifier, not a renderer-generated citation. */
+  id: 'daemon.usage.recent' | 'fixture.usage.insights';
+  kind: 'daemon-method' | 'fixture';
+  label: string;
+};
+export type InsightsQualitativeCapability = {
+  state: 'available' | 'degraded' | 'unavailable';
+  reason: string;
+  method?: string;
+};
 export type UsageInsights = {
   weekly: WeeklyPoint[];
   providerMix: MixEntry[];
   modelMix: MixEntry[];
   cacheHitRatePct: number;
+  /** Present when the daemon response carries a known source authority. */
+  source?: UsageInsightsSource;
+  /** Linux currently has no qualitative-analysis RPC; keep that posture typed. */
+  qualitative?: InsightsQualitativeCapability;
 };
 
 // ─────────────────────────── P06: missions ────────────────────────────────
@@ -1800,7 +1815,22 @@ function mapUsageInsights(raw: RawJsonValue): UsageInsights {
   const weekly = buildWeeklyBuckets(events);
   const providerMix = buildMix(events, (e) => str(pick(e, 'providerId', 'provider'), 'unknown'));
   const modelMix = buildMix(events, (e) => str(pick(e, 'modelId', 'model'), 'unknown'));
-  return { weekly, providerMix, modelMix, cacheHitRatePct: computeCacheHitRatePct(events) };
+  return {
+    weekly,
+    providerMix,
+    modelMix,
+    cacheHitRatePct: computeCacheHitRatePct(events),
+    source: {
+      id: 'daemon.usage.recent',
+      kind: 'daemon-method',
+      label: 'live daemon usage insights'
+    },
+    qualitative: {
+      state: 'unavailable',
+      reason: 'The Linux daemon exposes usage aggregates only; no qualitative-analysis RPC is registered.',
+      method: 'daemon.usage.recent'
+    }
+  };
 }
 
 // Mirrors macOS CacheEfficiency.hitRate (UnifiedCacheHitRateBadge.swift):
