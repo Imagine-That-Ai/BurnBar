@@ -1,6 +1,6 @@
 {
   "note": "Per-consumer-root files importing the OpenBurnBarCore umbrella (docs/CORE_DECOMPOSITION_PROGRAM.md). Covers ALL Swift import-attribute forms including `@testable import OpenBurnBarCore` and `@_exported`/`@_spi(...)` prefixes (so no repoint can leave a hidden umbrella import). Shrink-only: no NEW file may import the umbrella in a tracked root. Privileged roots (OpenBurnBarDaemon, OpenBurnBarWidget, OpenBurnBarKeyboard) ratchet to zero after their repoint packets (S17/S18/S19); AgentLens/OpenBurnBarMobile keep the umbrella deliberately. Regenerate via scripts/debt/check-core-umbrella-imports-budget.sh --update.",
-  "total": 898,
+  "total": 904,
   "roots": {
     "OpenBurnBarDaemon": {
       "count": 0,
@@ -15,7 +15,7 @@
       "files": []
     },
     "AgentLens": {
-      "count": 522,
+      "count": 528,
       "files": [
         "AgentLens/App/AgentLensApp.swift",
         "AgentLens/App/AgentLensApp+Bootstrap.swift",
@@ -39,6 +39,9 @@
         "AgentLens/Services/Cast/CastDiscovery.swift",
         "AgentLens/Services/Cast/CastleStatusReader.swift",
         "AgentLens/Services/Cast/CastWizardModel.swift",
+        "AgentLens/Services/Charts/ChartInsightEngine.swift",
+        "AgentLens/Services/Charts/ChartsDataService.swift",
+        "AgentLens/Services/Charts/ChartsSnapshot.swift",
         "AgentLens/Services/Chat/ChatBackendRegistry.swift",
         "AgentLens/Services/Chat/HermesAttachmentLoader.swift",
         "AgentLens/Services/Chat/MacAgentReplyNotificationListener.swift",
@@ -93,6 +96,7 @@
         "AgentLens/Services/CloudSync/MacCloudPublisher.swift",
         "AgentLens/Services/CloudSync/MacEscrowCredentialProducer.swift",
         "AgentLens/Services/CloudSync/MemoryCloudSyncDomain.swift",
+        "AgentLens/Services/CloudSync/MissionRemoteAuthorizationShadow.swift",
         "AgentLens/Services/CloudSync/PiAgentCloudRelayHostService.swift",
         "AgentLens/Services/CloudSync/ProviderAccountDeviceLinksObserver.swift",
         "AgentLens/Services/CloudSync/QuotaSnapshotSyncService.swift",
@@ -339,6 +343,8 @@
         "AgentLens/Theme/ColorAdaptive.swift",
         "AgentLens/Theme/DesignSystem.swift",
         "AgentLens/Theme/ThemeGlassPalette.swift",
+        "AgentLens/Views/Charts/ChartCardView.swift",
+        "AgentLens/Views/Charts/ChartsPageView.swift",
         "AgentLens/Views/Chat/BudgetBlockedCard.swift",
         "AgentLens/Views/Chat/ChatMessageView.swift",
         "AgentLens/Views/Chat/ChatPanel.swift",
