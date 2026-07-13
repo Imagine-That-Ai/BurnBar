@@ -12,7 +12,7 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 use tauri::ipc::Channel;
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::menu::{MenuBuilder, MenuItem, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
@@ -4119,24 +4119,161 @@ fn foundation_reference_date_seconds() -> f64 {
     unix - 978_307_200.0
 }
 
+fn tray_number(value: &serde_json::Value, keys: &[&str]) -> Option<f64> {
+    keys.iter()
+        .find_map(|key| value.get(*key))
+        .and_then(|value| {
+            value
+                .as_f64()
+                .or_else(|| value.as_u64().map(|number| number as f64))
+                .or_else(|| value.as_i64().map(|number| number as f64))
+        })
+}
+
+/// Format the most recent daemon usage events for the native tray. The daemon
+/// has returned both a top-level array and an `{ events: [...] }` envelope in
+/// older protocol versions, so the shell deliberately accepts both shapes.
+fn tray_usage_text(value: &serde_json::Value) -> String {
+    let events = value
+        .as_array()
+        .or_else(|| value.get("events").and_then(serde_json::Value::as_array))
+        .or_else(|| value.get("rows").and_then(serde_json::Value::as_array));
+    let Some(events) = events else {
+        return "Usage: unavailable".to_string();
+    };
+    let (tokens, cost) = events.iter().fold((0.0, 0.0), |(tokens, cost), event| {
+        (
+            tokens + tray_number(event, &["tokens", "totalTokens", "tokenCount"]).unwrap_or(0.0),
+            cost + tray_number(event, &["costUsd", "cost", "estimatedCostUsd"]).unwrap_or(0.0),
+        )
+    });
+    format!(
+        "Recent usage: {} tokens - ${:.2}",
+        format_compact_number(tokens),
+        cost
+    )
+}
+
+fn format_compact_number(number: f64) -> String {
+    if number >= 1_000_000.0 {
+        format!("{:.1}M", number / 1_000_000.0)
+    } else if number >= 1_000.0 {
+        format!("{:.1}K", number / 1_000.0)
+    } else {
+        format!("{:.0}", number)
+    }
+}
+
+fn tray_update_text(status: &update_feed::LinuxUpdateStatus) -> String {
+    match status.state.as_str() {
+        "available" => format!(
+            "Update available: {}",
+            status.latest_version.as_deref().unwrap_or("new version")
+        ),
+        "current" => "Updates: up to date".to_string(),
+        "unavailable" => "Updates: feed unavailable".to_string(),
+        "invalid" => "Updates: feed rejected".to_string(),
+        state => format!("Updates: {state}"),
+    }
+}
+
+fn emit_tray_route(app: &AppHandle, route: &str) {
+    let _ = open_dashboard(app.clone());
+    let _ = app.emit("tray-route", route.to_string());
+}
+
+fn refresh_tray_status_items(
+    status_item: MenuItem<tauri::Wry>,
+    usage_item: MenuItem<tauri::Wry>,
+    update_item: MenuItem<tauri::Wry>,
+) {
+    tauri::async_runtime::spawn(async move {
+        let health = tauri::async_runtime::spawn_blocking(probe_daemon_health)
+            .await
+            .unwrap_or_default();
+        let status_text = if health.ok {
+            format!(
+                "Daemon: connected{}",
+                health
+                    .daemon_version
+                    .as_deref()
+                    .map(|version| format!(" - {version}"))
+                    .unwrap_or_default()
+            )
+        } else {
+            "Daemon: offline".to_string()
+        };
+        let _ = status_item.set_text(status_text);
+
+        let usage = tauri::async_runtime::spawn_blocking(|| usage_summary().ok())
+            .await
+            .ok()
+            .flatten();
+        let _ = usage_item.set_text(
+            usage
+                .as_ref()
+                .map(tray_usage_text)
+                .unwrap_or_else(|| "Usage: unavailable".to_string()),
+        );
+
+        let update = update_status().await;
+        let _ = update_item.set_text(tray_update_text(&update));
+    });
+}
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open_i = MenuItemBuilder::with_id("open", "Open dashboard").build(app)?;
+    let chat_i = MenuItemBuilder::with_id("chat", "Open chat").build(app)?;
+    let usage_i = MenuItemBuilder::with_id("usage", "Open usage").build(app)?;
+    let updates_i = MenuItemBuilder::with_id("updates", "Open updates").build(app)?;
+    let settings_i = MenuItemBuilder::with_id("settings", "Open settings").build(app)?;
+    let status_i = MenuItemBuilder::with_id("status", "Daemon: checking...")
+        .enabled(false)
+        .build(app)?;
+    let recent_usage_i = MenuItemBuilder::with_id("recent-usage", "Usage: checking...")
+        .enabled(false)
+        .build(app)?;
+    let update_state_i = MenuItemBuilder::with_id("update-state", "Updates: checking...")
+        .enabled(false)
+        .build(app)?;
+    let refresh_i = MenuItemBuilder::with_id("refresh", "Refresh status").build(app)?;
     let health_i = MenuItemBuilder::with_id("health", "Reconnect daemon").build(app)?;
     let quit_i = MenuItemBuilder::with_id("quit", "Quit OpenBurnBar").build(app)?;
     let menu = MenuBuilder::new(app)
-        .items(&[&open_i, &health_i, &quit_i])
+        .items(&[&open_i, &chat_i, &usage_i, &updates_i, &settings_i])
+        .separator()
+        .items(&[&status_i, &recent_usage_i, &update_state_i])
+        .separator()
+        .items(&[&refresh_i, &health_i, &quit_i])
         .build()?;
+
+    let status_for_events = status_i.clone();
+    let usage_for_events = recent_usage_i.clone();
+    let update_for_events = update_state_i.clone();
+    refresh_tray_status_items(status_i, recent_usage_i, update_state_i);
 
     let _tray = TrayIconBuilder::new()
         .menu(&menu)
-        .tooltip("OpenBurnBar")
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => {
-                let _ = open_dashboard(app.clone());
-            }
+        .tooltip("OpenBurnBar — Linux desktop assistant")
+        .on_menu_event(move |app, event| match event.id.as_ref() {
+            "open" => emit_tray_route(app, "overview"),
+            "chat" => emit_tray_route(app, "chat"),
+            "usage" => emit_tray_route(app, "insights"),
+            "updates" => emit_tray_route(app, "updates"),
+            "settings" => emit_tray_route(app, "settings"),
+            "refresh" => refresh_tray_status_items(
+                status_for_events.clone(),
+                usage_for_events.clone(),
+                update_for_events.clone(),
+            ),
             "health" => {
                 let health = daemon_health();
                 let _ = app.emit("daemon-health", health);
+                refresh_tray_status_items(
+                    status_for_events.clone(),
+                    usage_for_events.clone(),
+                    update_for_events.clone(),
+                );
             }
             "quit" => quit_app(app.clone()),
             _ => {}
@@ -4149,7 +4286,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             } = event
             {
                 let app = tray.app_handle();
-                let _ = open_dashboard(app.clone());
+                emit_tray_route(app, "overview");
             }
         })
         .build(app)?;
@@ -5541,5 +5678,46 @@ mod tests {
             "android-phone-1"
         );
         assert_eq!(payload["response"]["respondedAt"], 800_000_000.0);
+    }
+
+    #[test]
+    fn tray_usage_text_accepts_array_and_envelope_shapes() {
+        let rows = serde_json::json!([
+            {"tokens": 1_250, "costUsd": 0.11},
+            {"totalTokens": 2_750, "estimatedCostUsd": 0.24}
+        ]);
+        assert_eq!(tray_usage_text(&rows), "Recent usage: 4.0K tokens - $0.35");
+
+        let envelope = serde_json::json!({"events": [{"tokenCount": 12, "cost": 0.03}]});
+        assert_eq!(
+            tray_usage_text(&envelope),
+            "Recent usage: 12 tokens - $0.03"
+        );
+        assert_eq!(
+            tray_usage_text(&serde_json::json!({"error": "offline"})),
+            "Usage: unavailable"
+        );
+    }
+
+    #[test]
+    fn tray_update_text_is_honest_for_each_feed_state() {
+        let mut status = update_feed::LinuxUpdateStatus {
+            state: "unavailable".into(),
+            current_version: "0.1.0".into(),
+            latest_version: None,
+            channel: None,
+            published_at: None,
+            notes: None,
+            artifact: None,
+            reason: Some("offline".into()),
+        };
+        assert_eq!(tray_update_text(&status), "Updates: feed unavailable");
+
+        status.state = "current".into();
+        assert_eq!(tray_update_text(&status), "Updates: up to date");
+
+        status.state = "available".into();
+        status.latest_version = Some("0.2.0".into());
+        assert_eq!(tray_update_text(&status), "Update available: 0.2.0");
     }
 }
