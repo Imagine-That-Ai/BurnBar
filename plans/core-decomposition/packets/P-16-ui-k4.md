@@ -18,32 +18,40 @@ now DONE). Every intermediate state builds; each sub-packet is its own lane-A PR
 
 | Sub | Scope | files | LOC | STATE |
 |---|---|---|---|---|
-| **P-16a** | **`Views/Substrate/`** (incl. Aurora/Constellation/Families/Flow/Mesh/Moire/Volumetric) **+ pulled-forward `SharedModels/RGBA.swift`** (see convergence note) | 35 + 1 | 9,377 (+69) | **THIS PR** |
-| P-16b | `Views/Insights/` + `Views/Insights/Verdict/` | 38 | 6,002 | QUEUED |
-| P-16c | `Views/MissionControl/` (11; `MissionConsoleTypes` already moved in P-11) | 11 | 3,694 | QUEUED |
+| **P-16a** | **`Views/Substrate/`** (incl. Aurora/Constellation/Families/Flow/Mesh/Moire/Volumetric) **+ pulled-forward `SharedModels/RGBA.swift`** (see convergence note) | 35 + 1 | 9,377 (+69) | MERGED (base) |
+| **P-16b** | **`Views/Insights/` root (32)** **+ pulled-forward design-system closure (8)**: `Views/{UnifiedDesignSystem,UnifiedGlassCard,UnifiedProviderLogoView}.swift`, `SharedModels/{ThemePrimitives,DesignSystemTokens,AgentProvider+LogoBackdrop}.swift`, `UIModeTheme.swift`, `AgentInsights/AgentInsightsViewModel.swift` (see P-16b convergence note). **`Views/Insights/Verdict/` DEFERRED → P-16b2.** | 40 | 6,381 | **THIS PR** |
+| P-16b2 | `Views/Insights/Verdict/` (6) — trailing sub-packet (the card-prescribed 6k relief valve; Verdict is bidirectionally decoupled from Insights-root views, uses only the now-in-UI `UnifiedDesignSystem`) | 6 | 926 | QUEUED |
+| P-16c | `Views/MissionControl/` (11; `MissionConsoleTypes` already moved in P-11; `UnifiedDesignSystem`/`UIModeTheme`/color cluster already in UI via P-16b — no design-system pull-forward needed) | 11 | 3,694 | QUEUED |
 | P-16d | `Views/Cards/CardEnvelopeView.swift` (1) + `Views/Square/UnifiedSearchIndex.swift` (1) | 2 | 802 | QUEUED |
-| P-16e | UI `SharedModels` + renderers + `UIModeTheme.swift` + `AgentInsights/AgentInsightsViewModel.swift` + `Services/Insights/Share/InsightShareCardRenderer.swift` (see P-16e list below) | 14 | ~3k | QUEUED |
-| P-16f | `Views/` **root** (29) — the LAST sub-packet; deletes `"Views"` from `openBurnBarCoreExcludes` entirely + every remaining SharedModels UI exclude | 29 | 9,845 | QUEUED |
+| P-16e | UI `SharedModels` + renderers + `Services/Insights/Share/InsightShareCardRenderer.swift` (see P-16e list below). **`UIModeTheme.swift` + `AgentInsights/AgentInsightsViewModel.swift` REMOVED — pulled forward by P-16b.** | 12 | ~2.5k | QUEUED |
+| P-16f | `Views/` **root** (26 — `UnifiedDesignSystem`/`UnifiedGlassCard`/`UnifiedProviderLogoView` already moved by P-16b) — the LAST sub-packet; deletes `"Views"` from `openBurnBarCoreExcludes` entirely + every remaining SharedModels UI exclude | 26 | ~9.4k | QUEUED |
 
 > P-16b may exceed the 6k cap once compile-closure adds imports; if so, split
 > `Views/Insights/Verdict/` (6 files, 926 LOC) into its own trailing sub-packet.
+> **EXECUTED (2026-07-13):** P-16b hit 6,381 LOC after the compile-closure design-system
+> pull-forward, so `Views/Insights/Verdict/` was split OUT into P-16b2 (Verdict is fully
+> decoupled from Insights-root views in both directions — verified by grep). The 6,381 is
+> ~6% over the advisory 6k sizing guideline (no hard CI gate); the overage is the
+> irreducible design-system closure (8 pulled-forward files) that ALL Insights-root views
+> depend on — splitting it from its consumers would create more broken intermediate states.
 > P-16f exceeds the 6k LOC cap (9,845) and MUST be split ≥2 ways at execution
 > (e.g. the `SwarmCanvasView+*` cluster vs the `Unified*` design-system cluster vs
 > the logo/loader views); the mover enumerates the cut by compile-closure.
 
-**P-16e (UI SharedModels + renderers), enumerated (still in Core as of P-16a):**
-`UIModeTheme.swift`, `AgentInsights/AgentInsightsViewModel.swift`,
+**P-16e (UI SharedModels + renderers), enumerated (still in Core as of P-16b):**
 `Services/Insights/Share/InsightShareCardRenderer.swift`,
-`SharedModels/{ThemePrimitives,SwarmColorDriver,DesignSystemTokens,AgentProvider+LogoBackdrop,
+`SharedModels/{SwarmColorDriver,
 PixelClockSettingsModel,SmartHubDisplaySettingsModel,AgentWatchLiveActivityAttributes,
 AgentWatchLiveActivityIntents,BurnBarLiveActivityAttributes}.swift`,
 `PixelClockQuotaRenderer.swift`, `PixelClockProviderLogoAssets.generated.swift`.
-> `SharedModels/RGBA.swift` was REMOVED from this list — P-16a pulled it forward
-> (convergence note below). `Views/Cards/CardEnvelope.swift` + the pure `RGBA` struct
-> were already moved to the Kernel by P-04a. `SwarmColorDriver`/`DesignSystemTokens`/
-> `ThemePrimitives` form a color cluster consumed by the `Views/` root; keep them with
-> or ahead of P-16f (they reach the now-in-UI `RGBA` color-math via Kernel + the
-> re-export). Note the `Kernel` off-Apple `SubstrateCatalog` stub
+> `SharedModels/RGBA.swift` was REMOVED from this list — P-16a pulled it forward.
+> **`UIModeTheme.swift`, `AgentInsights/AgentInsightsViewModel.swift`, and
+> `SharedModels/{ThemePrimitives,DesignSystemTokens,AgentProvider+LogoBackdrop}.swift`
+> were REMOVED from this list — P-16b pulled them forward** (P-16b convergence note below;
+> the `Views/Insights/` compile-closure hard-depends on them). `SwarmColorDriver` stays
+> (its `DesignSystemColors` consumer refs resolve via the now-in-UI cluster + re-export;
+> it lands with P-16e or P-16f). `Views/Cards/CardEnvelope.swift` + the pure `RGBA` struct
+> were already moved to the Kernel by P-04a. Note the `Kernel` off-Apple `SubstrateCatalog` stub
 > (`LinuxSubstrateSupport.swift`) shadows the real UI `SubstrateCatalog` on Apple once
 > the real one is re-exported — any P-16b–f consumer that references `SubstrateCatalog`
 > unqualified on Apple must module-qualify it (`OpenBurnBarUI.SubstrateCatalog`), exactly
@@ -79,12 +87,54 @@ the Kernel's `RGBA` struct. The fix (minimal-file-forward, documented):
 > + color-math extensions, so P-16f still moves `SharedModels/RGBA.swift` (bridge-only
 > now) but must NOT move the `RGBA` struct definition (already in the Kernel).
 
-P-16f (UI SharedModels): `UIModeTheme.swift`, `AgentInsights/AgentInsightsViewModel.swift`,
-`Services/Insights/Share/InsightShareCardRenderer.swift`, `SharedModels/{ThemePrimitives,
-RGBA,SwarmColorDriver,DesignSystemTokens,AgentProvider+LogoBackdrop,PixelClockSettingsModel,
-SmartHubDisplaySettingsModel,AgentWatchLiveActivityAttributes,AgentWatchLiveActivityIntents,
-BurnBarLiveActivityAttributes}.swift`, `PixelClockQuotaRenderer.swift`,
-`PixelClockProviderLogoAssets.generated.swift`.
+P-16f (`Views/` root, 26 files after P-16b): the `SwarmCanvasView+*` cluster, the remaining
+`Unified*` views (`UnifiedMiniStat`/`UnifiedProviderTheme`/`UnifiedQuotaSignalView`/
+`UnifiedSkeletonView`/`UnifiedCacheHitRateBadge`/`UnifiedToolCallAccordion`/…), the logo/loader
+views, `BurnBarLogoFormationView`, `EmberSurfaceBackground`, `NestHubMiniPreview`,
+`PixelClockPreviewView`, etc. `UnifiedDesignSystem`/`UnifiedGlassCard`/`UnifiedProviderLogoView`
++ the `UIModeTheme`/`ThemePrimitives`/`DesignSystemTokens`/`AgentProvider+LogoBackdrop` cluster
+already moved with P-16b, so P-16f no longer carries them. (`SharedModels/RGBA` already in UI
+via P-16a; the `RGBA` struct + `CardEnvelope` already in Kernel via P-04a.) P-16f still MUST be
+split ≥2 ways (LOC cap) and deletes `"Views"` from `openBurnBarCoreExcludes` entirely.
+
+### P-16b convergence note (executed 2026-07-13) — Insights-root split + design-system pull-forward
+Compile-closure (`swift build --target OpenBurnBarUI`, learnings 9/10) proved `Views/Insights/`
+is NOT dependency-closed against OpenBurnBarUI on its own. The closure required pulling forward
+the whole design-system foundation the Insights views consume, and splitting off `Verdict/`:
+- **Moved 32 `Views/Insights/*.swift` root views** Core→UI. **Deferred `Views/Insights/Verdict/`
+  (6 files, 926 LOC) → P-16b2** (the card's prescribed 6k relief valve). Verdict is
+  bidirectionally decoupled from Insights-root views (grep-verified both directions), so the
+  split builds cleanly; Verdict rides a later PR and reaches the now-in-UI `UnifiedDesignSystem`.
+- **Pulled forward 8 design-system-closure files** (minimal-file-forward, each grep-proven a hub
+  with no further root-type deps): `Views/{UnifiedDesignSystem,UnifiedGlassCard,
+  UnifiedProviderLogoView}.swift` (used by all/1/3 Insights views resp.), the color cluster
+  `SharedModels/{ThemePrimitives,DesignSystemTokens}.swift` (`UnifiedDesignSystem.Colors` uses
+  `ThemePrimitives`'s `Color(editorial:light:dark:)` init + `DesignSystemTokens` hex strings),
+  `SharedModels/AgentProvider+LogoBackdrop.swift` (the `AgentProvider` logo-backdrop extension
+  hub `UnifiedProviderLogoView` calls), `UIModeTheme.swift` (`UnifiedGlassCard` constructs it),
+  and `AgentInsights/AgentInsightsViewModel.swift` (`AgentInsightsView` binds it). All removed
+  from the P-16e/P-16f lists above.
+- **AE-IMPORT (compiler-driven):** `import OpenBurnBarInsights` ×33 (Insights view files +
+  `AgentInsightsViewModel` + `AgentInsightsHeaderView` — for `InsightWidgetData`/`InsightWidget`/
+  `InsightCitation`/`AgentInsights*` model types) and `import OpenBurnBarKernel` ×9 (the 3
+  `Unified*` + `UIModeTheme` + `ThemePrimitives` + `DesignSystemTokens` +
+  `AgentProvider+LogoBackdrop` + `IntelligenceBriefView` + `AgentInsightsRosterView` — for
+  `AgentProvider`/`RGBA`/`UIMode`). Every moved file otherwise byte-identical (pure `git mv` +
+  import lines; zero logic edits). **AE-TESTABLE: NONE** — the one test hit
+  (`InsightAnalysisTests` → `IntelligenceBriefFormatting`) resolves via Core's
+  `@_exported import OpenBurnBarUI` because the enum + its methods are `public` (test-target
+  build + full suite green, 6072 tests, 0 failures).
+- **NO access-widening needed** (unlike P-16a's RGBA): the 23 staying-in-Core consumers of
+  `UnifiedDesignSystem`/`DesignSystemColors`/`UIModeTheme` reach the moved symbols cross-module
+  via the re-export, and every moved symbol was already `public`. **NO `SubstrateCatalog`
+  qualification needed** (Insights views don't reference it). **OFF-APPLE SAFE:** every consumer
+  of a moved symbol is off-Apple-excluded (all under `"Views"`, or `SwarmColorDriver` explicit),
+  grep-verified no off-Apple-live Core file dangles; `Package.swift` drops the 3 now-stale
+  excludes (`AgentInsightsViewModel`, `AgentProvider+LogoBackdrop`, `ThemePrimitives`;
+  `DesignSystemTokens`/`UIModeTheme` were never excluded — Foundation-only / `#if canImport`),
+  and `"Views"` still resolves (Verdict + MissionControl/Cards/Square + Views-root remain).
+  Zero functional path-pins for any moved file (`.github`/`scripts`/CODEOWNERS/project.yml/
+  swiftlint all clean).
 
 ## Per-sub-packet rules
 - Deps: `OpenBurnBarUI` already depends on Kernel/Quota/Insights/Hermes/Pretext/LogParsers
