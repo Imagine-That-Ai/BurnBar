@@ -28,6 +28,9 @@ public enum BurnBarHTTPGatewayError: Error, LocalizedError {
 /// before the socket is bound.
 public actor BurnBarHTTPGatewayServer {
     public static let defaultModelCatalogCacheTTL: TimeInterval = 45
+    /// Accommodates one bounded Linux chat attachment plus the prompt while
+    /// keeping the loopback HTTP boundary explicitly finite.
+    fileprivate static let maxRequestBytes = 16 * 1024 * 1024
 
     let configuration: BurnBarGatewayConfiguration
     let configStore: BurnBarConfigStore
@@ -1086,7 +1089,10 @@ private struct LinuxHTTPRequest {
     var body = Data()
 }
 
-private func readHTTPRequest(from fileDescriptor: Int32, maxBytes: Int = 1_048_576) throws -> Data {
+private func readHTTPRequest(
+    from fileDescriptor: Int32,
+    maxBytes: Int = BurnBarHTTPGatewayServer.maxRequestBytes
+) throws -> Data {
     var data = Data()
     var buffer = [UInt8](repeating: 0, count: 4096)
     while data.count < maxBytes {
