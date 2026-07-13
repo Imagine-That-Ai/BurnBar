@@ -4,6 +4,11 @@ import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useChatStore } from '../../state/chatStore.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
+import {
+  canOpenChatCitation,
+  normalizeMemoryCitations,
+  type MemoryCitation
+} from './chatTypes.js';
 import { ChatWorkspacePanel } from './ChatWorkspacePanel.js';
 import {
   buildChatExportDocument,
@@ -52,10 +57,13 @@ export function ChatSurface() {
   const setThinkingLevel = useChatStore((s) => s.setThinkingLevel);
   const startNewChat = useChatStore((s) => s.startNewChat);
   const sendMessage = useChatStore((s) => s.sendMessage);
+  const respondToToolApproval = useChatStore((s) => s.respondToToolApproval);
+  const retryToolApproval = useChatStore((s) => s.retryToolApproval);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
   const [streamAnnouncement, setStreamAnnouncement] = useState({ text: '', count: 0 });
   const [exportFormat, setExportFormat] = useState<ChatExportFormat>('json');
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [citationStatus, setCitationStatus] = useState<string | null>(null);
 
   useLaneLoad(load);
 
@@ -69,6 +77,10 @@ export function ChatSurface() {
 
   useEffect(() => {
     setExportStatus(null);
+  }, [selectedThreadId]);
+
+  useEffect(() => {
+    setCitationStatus(null);
   }, [selectedThreadId]);
 
   const offline = !fixtureMode && !bridge;
@@ -108,6 +120,38 @@ export function ChatSurface() {
     }
   };
 
+  const openCitation = async (citation: MemoryCitation) => {
+    const normalized = normalizeMemoryCitations([citation])[0];
+    const availableThreadIDs = threads.map((thread) => thread.id);
+    if (!normalized || !canOpenChatCitation(normalized, selectedThreadId, availableThreadIDs)) return;
+    const targetThreadID = normalized.threadID ?? selectedThreadId;
+    const targetMessageID = normalized.messageId;
+    if (!targetMessageID || !targetThreadID || streaming) return;
+    setCitationStatus('Opening cited source message…');
+    if (targetThreadID !== selectedThreadId) {
+      await selectThread(targetThreadID);
+    }
+    if (useChatStore.getState().selectedThreadId !== targetThreadID) {
+      setCitationStatus('Cited source is no longer available.');
+      return;
+    }
+    const messageExists = useChatStore
+      .getState()
+      .messages.some((message) => message.id === targetMessageID && message.threadID === targetThreadID);
+    if (!messageExists) {
+      setCitationStatus('Cited source is no longer available.');
+      return;
+    }
+    setCitationStatus('Cited source message opened.');
+    if (typeof document !== 'undefined') {
+      const element = Array.from(document.querySelectorAll<HTMLElement>('[data-chat-message-id]')).find(
+        (candidate) => candidate.dataset.chatMessageId === targetMessageID
+      );
+      element?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+      element?.focus?.({ preventScroll: true });
+    }
+  };
+
   const panelProps = {
     threads: visibleThreads,
     selectedId: selectedThreadId,
@@ -140,6 +184,10 @@ export function ChatSurface() {
     onLoadOlderMessages: () => void loadOlderMessages(),
     warnings,
     sharedFeaturesAvailable,
+    onOpenCitation: (citation: MemoryCitation) => void openCitation(citation),
+    onToolApproval: (messageID: string, decision: Parameters<typeof respondToToolApproval>[1]) =>
+      void respondToToolApproval(messageID, decision),
+    onRetryToolApproval: (messageID: string) => void retryToolApproval(messageID),
     streaming,
     streamError,
     // The store guards sends during 'composing' (persist + gateway probe) but
@@ -249,6 +297,9 @@ export function ChatSurface() {
       </p>
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {streamAnnouncement.text ? `${streamAnnouncement.text} ${streamAnnouncement.count}` : ''}
+      </p>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {citationStatus ?? ''}
       </p>
       {body}
     </div>

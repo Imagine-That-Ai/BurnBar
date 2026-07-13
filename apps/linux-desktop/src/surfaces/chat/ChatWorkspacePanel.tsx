@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ChatThreadSummary } from '../../tauriBridge.js';
-import type { ChatBackendId } from './chatTypes.js';
+import type { ChatApprovalDecision, ChatBackendId, MemoryCitation } from './chatTypes.js';
 import { ChatToolbar } from './ChatToolbar.js';
 import { Composer } from './Composer.js';
 import { MessageStream } from './MessageStream.js';
@@ -52,6 +52,9 @@ export type ChatWorkspacePanelProps = {
   onSendMessage: (text: string) => void;
   onStopStreaming: () => void;
   onOpenMissionControl: () => void;
+  onOpenCitation?: (citation: MemoryCitation) => void;
+  onToolApproval?: (messageID: string, decision: ChatApprovalDecision) => void;
+  onRetryToolApproval?: (messageID: string) => void;
   mainFallback?: ReactNode;
 };
 
@@ -95,6 +98,9 @@ export function ChatWorkspacePanel({
   onSendMessage,
   onStopStreaming,
   onOpenMissionControl,
+  onOpenCitation,
+  onToolApproval,
+  onRetryToolApproval,
   mainFallback
 }: ChatWorkspacePanelProps) {
   const hasActiveTranscript = Boolean(selectedThread) || messages.length > 0 || streaming;
@@ -144,6 +150,9 @@ export function ChatWorkspacePanel({
               streamError={streamError}
               streaming={streaming}
               onOpenMissionControl={onOpenMissionControl}
+              onOpenCitation={onOpenCitation}
+              onToolApproval={onToolApproval}
+              onRetryToolApproval={onRetryToolApproval}
             />
           ) : (
             (mainFallback ?? (

@@ -120,6 +120,116 @@ describe('exact-thread chat store', () => {
     expect(JSON.stringify(messages)).not.toContain('approvalID');
   });
 
+  it('exposes only a daemon-issued approval identity as actionable', () => {
+    const messages = applyChatStreamEvent([], 'assistant-1', {
+      type: 'tool_call',
+      toolCall: {
+        id: 'daemon-tool-1',
+        name: 'workspace.write',
+        arguments: '{}',
+        approvalID: 'approval-1'
+      }
+    });
+
+    expect(messages[0]?.toolApproval).toEqual({
+      state: 'pending',
+      source: 'daemon-run',
+      approvalID: 'approval-1'
+    });
+  });
+
+  it('routes daemon-backed approval once when approve/reject clicks race', async () => {
+    let release!: () => void;
+    const response = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    useShellStore.setState({ bridge: bridgeWith({ toolApprovalRespond: response }), fixtureMode: false });
+    useChatStore.setState({
+      messages: [
+        {
+          id: 'tool-approval-race',
+          role: 'tool',
+          text: 'Write workspace file',
+          toolName: 'workspace.write',
+          toolState: 'proposed',
+          toolApproval: { state: 'pending', source: 'daemon-run', approvalID: 'approval-race-1' }
+        }
+      ]
+    });
+
+    const approve = useChatStore.getState().respondToToolApproval('tool-approval-race', 'approve');
+    const reject = useChatStore.getState().respondToToolApproval('tool-approval-race', 'reject');
+    await Promise.resolve();
+    expect(response).toHaveBeenCalledTimes(1);
+    expect(response).toHaveBeenCalledWith('approval-race-1', 'approve');
+    expect(useChatStore.getState().messages[0]?.toolApproval).toMatchObject({ state: 'submitting' });
+
+    release();
+    await Promise.all([approve, reject]);
+    expect(useChatStore.getState().messages[0]?.toolApproval).toMatchObject({ state: 'approved' });
+    expect(useChatStore.getState().messages[0]?.toolState).toBe('approved');
+  });
+
+  it('surfaces daemon errors and retries the same decision after a restart', async () => {
+    const response = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('daemon connection lost'))
+      .mockResolvedValueOnce(undefined);
+    useShellStore.setState({ bridge: bridgeWith({ toolApprovalRespond: response }), fixtureMode: false });
+    useChatStore.setState({
+      messages: [
+        {
+          id: 'tool-approval-retry',
+          role: 'tool',
+          text: 'Run command',
+          toolName: 'workspace.exec',
+          toolState: 'proposed',
+          toolApproval: { state: 'pending', source: 'daemon-run', approvalID: 'approval-retry-1' }
+        }
+      ]
+    });
+
+    await useChatStore.getState().respondToToolApproval('tool-approval-retry', 'approve');
+    expect(useChatStore.getState().messages[0]?.toolApproval).toMatchObject({
+      state: 'error',
+      lastDecision: 'approve',
+      error: 'daemon connection lost'
+    });
+
+    // The bridge may be recreated after a daemon restart; retry uses the current bridge.
+    const restartedResponse = vi.fn(async () => undefined);
+    useShellStore.setState({ bridge: bridgeWith({ toolApprovalRespond: restartedResponse }), fixtureMode: false });
+    await useChatStore.getState().retryToolApproval('tool-approval-retry');
+    expect(restartedResponse).toHaveBeenCalledWith('approval-retry-1', 'approve');
+    expect(useChatStore.getState().messages[0]?.toolApproval).toMatchObject({ state: 'approved' });
+  });
+
+  it('fails closed while offline instead of treating an approval as resolved', async () => {
+    useShellStore.setState({ bridge: null, fixtureMode: false });
+    useChatStore.setState({
+      messages: [
+        {
+          id: 'tool-approval-offline',
+          role: 'tool',
+          text: 'Delete file',
+          toolName: 'workspace.delete',
+          toolState: 'proposed',
+          toolApproval: { state: 'pending', source: 'daemon-run', approvalID: 'approval-offline-1' }
+        }
+      ]
+    });
+
+    await useChatStore.getState().respondToToolApproval('tool-approval-offline', 'cancel');
+    expect(useChatStore.getState().messages[0]?.toolApproval).toMatchObject({
+      state: 'error',
+      lastDecision: 'cancel'
+    });
+    expect(useChatStore.getState().messages[0]?.toolState).toBe('error');
+  });
+
   it('loads the exact selected thread instead of fabricating usage transcript rows', async () => {
     const get = vi.fn(async (threadID: string) => ({
       thread: thread(threadID),

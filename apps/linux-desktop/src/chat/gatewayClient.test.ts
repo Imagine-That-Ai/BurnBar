@@ -35,6 +35,22 @@ describe('OpenAICompatibleSSEParser', () => {
     ]);
   });
 
+  it('preserves a daemon-issued approval identity without inventing one', () => {
+    const parser = new OpenAICompatibleSSEParser();
+    const events = parser.push(
+      'data: {"choices":[{"delta":{"tool_calls":[{"id":"t-approved","approval_id":"run-approval-1","function":{"name":"workspace.write","arguments":"{}"}}]}}]}\n\n'
+    );
+    expect(events).toContainEqual({
+      type: 'tool_call',
+      toolCall: {
+        id: 't-approved',
+        name: 'workspace.write',
+        arguments: '{}',
+        approvalID: 'run-approval-1'
+      }
+    });
+  });
+
   it('accumulates split tool-call argument frames', () => {
     const parser = new OpenAICompatibleSSEParser();
     const events = parser.push(

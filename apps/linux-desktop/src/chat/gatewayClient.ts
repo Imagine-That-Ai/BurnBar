@@ -20,6 +20,8 @@ export type GatewayToolCallDelta = {
   id: string;
   name: string;
   arguments: string;
+  /** Daemon-issued run approval identity when the gateway provides one. */
+  approvalID?: string;
 };
 
 export type GatewayChatStreamEvent =
@@ -145,6 +147,13 @@ export class OpenAICompatibleSSEParser {
     const explicitId = str(call?.id);
     const id = explicitId ?? (index === undefined ? undefined : this.toolCallIndexKeys.get(index) ?? `tool-${index}`);
     const name = str(fn?.name);
+    const approvalID =
+      str(call?.approvalID) ??
+      str(call?.approvalId) ??
+      str(call?.approval_id) ??
+      str(fn?.approvalID) ??
+      str(fn?.approvalId) ??
+      str(fn?.approval_id);
     const args = fn?.arguments;
     const argumentsText = typeof args === 'string' ? args : args === undefined ? '' : JSON.stringify(args);
     if (!id && !name) return null;
@@ -154,7 +163,8 @@ export class OpenAICompatibleSSEParser {
     const merged = {
       id: key,
       name: name ?? previous?.name ?? 'tool',
-      arguments: `${previous?.arguments ?? ''}${argumentsText}`
+      arguments: `${previous?.arguments ?? ''}${argumentsText}`,
+      approvalID: approvalID ?? previous?.approvalID
     };
     this.toolCallBuffers.set(key, merged);
     return merged;
