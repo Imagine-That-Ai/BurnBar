@@ -97,6 +97,93 @@ namespace OpenBurnBar.CloudSync.Crypto
                 legacy,
                 StringComparer.Ordinal.Equals);
 
+        internal static (byte[] Nonce, byte[] Ciphertext, byte[] Tag, byte[] Combined) SealDetached(
+            byte[] plaintext,
+            byte[] key,
+            byte[] nonce,
+            byte[] aad,
+            Func<(byte[] Nonce, byte[] Ciphertext, byte[] Tag, byte[] Combined)> legacy) =>
+            Apply(
+                "cloudvault_aes_seal_detached",
+                () =>
+                {
+                    var sealedBox = DomainCore.CloudVaultAesGcmSealDetached(plaintext, key, nonce, aad);
+                    return (
+                        Nonce: sealedBox.nonce,
+                        Ciphertext: sealedBox.ciphertext,
+                        Tag: sealedBox.tag,
+                        Combined: Combine(sealedBox.nonce, sealedBox.ciphertext, sealedBox.tag));
+                },
+                legacy,
+                (left, right) =>
+                    FixedTimeEquals(left.Nonce, right.Nonce)
+                    && FixedTimeEquals(left.Ciphertext, right.Ciphertext)
+                    && FixedTimeEquals(left.Tag, right.Tag)
+                    && FixedTimeEquals(left.Combined, right.Combined));
+
+        internal static byte[] SealCombined(
+            byte[] plaintext,
+            byte[] key,
+            byte[] nonce,
+            byte[] aad,
+            Func<byte[]> legacy) =>
+            Apply(
+                "cloudvault_aes_seal_combined",
+                () => DomainCore.CloudVaultAesGcmSealCombined(plaintext, key, nonce, aad),
+                legacy,
+                FixedTimeEquals);
+
+        internal static byte[] OpenDetached(
+            byte[] nonce,
+            byte[] ciphertext,
+            byte[] tag,
+            byte[] key,
+            byte[] aad,
+            Func<byte[]> legacy) =>
+            Apply(
+                "cloudvault_aes_open_detached",
+                () => DomainCore.CloudVaultAesGcmOpenDetached(nonce, ciphertext, tag, key, aad),
+                legacy,
+                FixedTimeEquals);
+
+        internal static string OpenTextDetached(
+            byte[] nonce,
+            byte[] ciphertext,
+            byte[] tag,
+            byte[] key,
+            byte[] aad,
+            Func<string> legacy) =>
+            Apply(
+                "cloudvault_aes_open_text",
+                () => DomainCore.CloudVaultAesGcmOpenTextDetached(nonce, ciphertext, tag, key, aad),
+                legacy,
+                StringComparer.Ordinal.Equals);
+
+        internal static byte[] OpenCombined(
+            byte[] combined,
+            byte[] key,
+            byte[] aad,
+            Func<byte[]> legacy) =>
+            Apply(
+                "cloudvault_aes_open_combined",
+                () => DomainCore.CloudVaultAesGcmOpenCombined(combined, key, aad),
+                legacy,
+                FixedTimeEquals);
+
+        internal static string Base64Encode(byte[] data, Func<string> legacy) =>
+            Apply(
+                "cloudvault_base64_encode",
+                () => DomainCore.CloudVaultBase64Encode(data),
+                legacy,
+                StringComparer.Ordinal.Equals);
+
+        internal static byte[] Base64Decode(string value, Func<byte[]> legacy) =>
+            Apply(
+                "cloudvault_base64_decode",
+                () => DomainCore.CloudVaultBase64DecodeStrict(value),
+                legacy,
+                FixedTimeEquals);
+
         internal static DomainCoreCloudVaultMigrationMode ResolveMode(string? raw) =>
             raw?.Trim().ToLowerInvariant() switch
             {
@@ -219,6 +306,27 @@ namespace OpenBurnBar.CloudSync.Crypto
                 || error is TypeInitializationException initialization
                     && initialization.InnerException is Exception inner
                     && IsNativeLoadFailure(inner);
+
+        private static bool FixedTimeEquals(byte[] left, byte[] right) =>
+            left.Length == right.Length && CryptographicOperations.FixedTimeEquals(left, right);
+
+        private static byte[] Combine(params byte[][] parts)
+        {
+            var length = 0;
+            foreach (var part in parts)
+            {
+                length = checked(length + part.Length);
+            }
+
+            var combined = new byte[length];
+            var offset = 0;
+            foreach (var part in parts)
+            {
+                Buffer.BlockCopy(part, 0, combined, offset, part.Length);
+                offset += part.Length;
+            }
+            return combined;
+        }
 
         private sealed class Outcome<T>
         {

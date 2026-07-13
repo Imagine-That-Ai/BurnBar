@@ -67,33 +67,18 @@ namespace OpenBurnBar.CloudSync.Crypto
         {
             var plaintext = Encoding.UTF8.GetBytes(text);
             var aead = aadContext?.Data ?? Empty;
-            var sealed_ = AesGcmBox.SealDetached(plaintext, keyData, aead, nonce);
+            var sealed_ = SealDetached(plaintext, keyData, aead, nonce);
             return new CloudVaultSealedText(
                 SchemaVersion: aadContext == null ? (int?)null : CurrentSealedTextSchemaVersion,
                 Algorithm: AesGcmAlgorithm,
                 KeyVersion: keyVersion,
-                Nonce: Convert.ToBase64String(sealed_.Nonce),
-                Ciphertext: Convert.ToBase64String(sealed_.Ciphertext),
-                Tag: Convert.ToBase64String(sealed_.Tag),
+                Nonce: EncodeBase64(sealed_.Nonce),
+                Ciphertext: EncodeBase64(sealed_.Ciphertext),
+                Tag: EncodeBase64(sealed_.Tag),
                 Aad: aadContext?.StringValue);
         }
 
         public static string OpenText(CloudVaultSealedText envelope, byte[] keyData, CloudVaultAadContext? aadContext = null)
-        {
-            var data = OpenTextData(envelope, keyData, aadContext);
-            try
-            {
-                // Strict UTF-8 decode: reject non-UTF-8 plaintext (matches Swift
-                // String(data:encoding:.utf8) returning nil -> invalidEnvelope).
-                return new UTF8Encoding(false, true).GetString(data);
-            }
-            catch (DecoderFallbackException ex)
-            {
-                throw CloudVaultCryptoException.InvalidEnvelope(ex);
-            }
-        }
-
-        private static byte[] OpenTextData(CloudVaultSealedText envelope, byte[] keyData, CloudVaultAadContext? aadContext)
         {
             if (envelope.Algorithm != AesGcmAlgorithm)
             {
@@ -110,9 +95,9 @@ namespace OpenBurnBar.CloudSync.Crypto
                     throw CloudVaultCryptoException.InvalidEnvelope();
                 }
                 var aead = AadData(envelope.Aad, aadContext);
-                return AesGcmBox.OpenDetached(nonce, ciphertext, tag, keyData, aead);
+                return OpenTextDetached(nonce, ciphertext, tag, keyData, aead);
             }
-            return AesGcmBox.OpenDetached(nonce, ciphertext, tag, keyData, Empty);
+            return OpenTextDetached(nonce, ciphertext, tag, keyData, Empty);
         }
 
         // ── sealBlob / openBlob (AES-256-GCM combined + keyed integrity) ────
@@ -124,7 +109,7 @@ namespace OpenBurnBar.CloudSync.Crypto
             byte[] data, byte[] keyData, int keyVersion, CloudVaultAadContext? aadContext, byte[]? nonce)
         {
             var aead = aadContext?.Data ?? Empty;
-            var combined = AesGcmBox.SealCombined(data, keyData, aead, nonce);
+            var combined = SealCombined(data, keyData, aead, nonce);
             return new CloudVaultBlobEnvelope(
                 SchemaVersion: CurrentBlobEnvelopeSchemaVersion,
                 Algorithm: AesGcmAlgorithm,
@@ -132,7 +117,7 @@ namespace OpenBurnBar.CloudSync.Crypto
                 PlaintextSha256: null,
                 PlaintextHmac: BlobPlaintextHmac(data, keyData),
                 IntegrityHashVersion: BlobIntegrityHashVersion,
-                SealedBoxBase64: Convert.ToBase64String(combined),
+                SealedBoxBase64: EncodeBase64(combined),
                 Aad: aadContext?.StringValue ?? BlobEnvelopeAadContext);
         }
 
@@ -147,7 +132,7 @@ namespace OpenBurnBar.CloudSync.Crypto
             switch (envelope.SchemaVersion)
             {
                 case 1:
-                    plaintext = AesGcmBox.OpenCombined(combined, keyData, Empty);
+                    plaintext = OpenCombined(combined, keyData, Empty);
                     if (envelope.PlaintextSha256 == null || Sha256Hex(plaintext) != envelope.PlaintextSha256)
                     {
                         throw CloudVaultCryptoException.InvalidEnvelope();
@@ -156,7 +141,7 @@ namespace OpenBurnBar.CloudSync.Crypto
                 case CurrentBlobEnvelopeSchemaVersion:
                     if (envelope.Aad == BlobEnvelopeAadContext)
                     {
-                        plaintext = AesGcmBox.OpenCombined(combined, keyData, Empty);
+                        plaintext = OpenCombined(combined, keyData, Empty);
                     }
                     else
                     {
@@ -164,7 +149,7 @@ namespace OpenBurnBar.CloudSync.Crypto
                         {
                             throw CloudVaultCryptoException.InvalidEnvelope();
                         }
-                        plaintext = AesGcmBox.OpenCombined(combined, keyData, AadData(envelope.Aad, aadContext));
+                        plaintext = OpenCombined(combined, keyData, AadData(envelope.Aad, aadContext));
                     }
                     if (envelope.IntegrityHashVersion != BlobIntegrityHashVersion
                         || envelope.PlaintextHmac == null
@@ -189,13 +174,13 @@ namespace OpenBurnBar.CloudSync.Crypto
         {
             var envAad = aadContext?.StringValue ?? SealedPayloadAadContext;
             var aead = SealedPayloadAad(AesGcmAlgorithm, keyVersion, vaultKeyId, aadContext);
-            var combined = AesGcmBox.SealCombined(data, keyData, aead, nonce);
+            var combined = SealCombined(data, keyData, aead, nonce);
             return new CloudVaultSealedPayload(
                 SchemaVersion: CurrentSealedPayloadSchemaVersion,
                 Algorithm: AesGcmAlgorithm,
                 KeyVersion: keyVersion,
                 VaultKeyId: vaultKeyId,
-                SealedBoxBase64: Convert.ToBase64String(combined),
+                SealedBoxBase64: EncodeBase64(combined),
                 Aad: envAad);
         }
 
@@ -209,18 +194,18 @@ namespace OpenBurnBar.CloudSync.Crypto
             switch (envelope.SchemaVersion)
             {
                 case 1:
-                    return AesGcmBox.OpenCombined(combined, keyData, Empty);
+                    return OpenCombined(combined, keyData, Empty);
                 case CurrentSealedPayloadSchemaVersion:
                     if (envelope.Aad == SealedPayloadAadContext)
                     {
-                        return AesGcmBox.OpenCombined(
+                        return OpenCombined(
                             combined, keyData, SealedPayloadAad(envelope.Algorithm, envelope.KeyVersion, envelope.VaultKeyId, null));
                     }
                     if (aadContext == null)
                     {
                         throw CloudVaultCryptoException.InvalidEnvelope();
                     }
-                    return AesGcmBox.OpenCombined(combined, keyData, AadData(envelope.Aad, aadContext));
+                    return OpenCombined(combined, keyData, AadData(envelope.Aad, aadContext));
                 default:
                     throw CloudVaultCryptoException.InvalidEnvelope();
             }
@@ -257,7 +242,7 @@ namespace OpenBurnBar.CloudSync.Crypto
             var ephemeralPublic = P256KeyAgreement.PublicX963FromScalar(ephemeralScalar);
             var shared = P256KeyAgreement.SharedSecretX(ephemeralScalar, recipientPublicKeyX963);
             var wrappingKey = HkdfDerive(shared, Empty, Encoding.UTF8.GetBytes(EscrowHkdfInfo));
-            var combined = AesGcmBox.SealCombined(keyData, wrappingKey, Empty, nonce);
+            var combined = SealCombined(keyData, wrappingKey, Empty, nonce);
             var wrapped = new byte[ephemeralPublic.Length + combined.Length];
             Buffer.BlockCopy(ephemeralPublic, 0, wrapped, 0, ephemeralPublic.Length);
             Buffer.BlockCopy(combined, 0, wrapped, ephemeralPublic.Length, combined.Length);
@@ -277,7 +262,7 @@ namespace OpenBurnBar.CloudSync.Crypto
             P256KeyAgreement.ValidateX963(publicKey);
             var shared = P256KeyAgreement.SharedSecretX(recipientPrivateKeyRaw, publicKey);
             var wrappingKey = HkdfDerive(shared, Empty, Encoding.UTF8.GetBytes(EscrowHkdfInfo));
-            var keyData = AesGcmBox.OpenCombined(box, wrappingKey, Empty);
+            var keyData = OpenCombined(box, wrappingKey, Empty);
             if (keyData.Length != 32)
             {
                 throw CloudVaultCryptoException.InvalidKeyLength();
@@ -308,14 +293,14 @@ namespace OpenBurnBar.CloudSync.Crypto
         {
             RequireVaultKey(vaultKey);
             var wrappingKey = DeriveRecoveryWrappingKey(recoveryKey);
-            var combined = AesGcmBox.SealCombined(vaultKey, wrappingKey, Empty, nonce);
-            return (Convert.ToBase64String(combined), Sha256Hex(wrappingKey));
+            var combined = SealCombined(vaultKey, wrappingKey, Empty, nonce);
+            return (EncodeBase64(combined), Sha256Hex(wrappingKey));
         }
 
         public static byte[] UnwrapVaultKeyWithRecovery(string wrappedVaultKeyBase64, string recoveryKey)
         {
             var combined = DecodeBase64(wrappedVaultKeyBase64);
-            var keyData = AesGcmBox.OpenCombined(combined, DeriveRecoveryWrappingKey(recoveryKey), Empty);
+            var keyData = OpenCombined(combined, DeriveRecoveryWrappingKey(recoveryKey), Empty);
             if (keyData.Length != 32)
             {
                 throw CloudVaultCryptoException.InvalidKeyLength();
@@ -453,7 +438,74 @@ namespace OpenBurnBar.CloudSync.Crypto
             }
         }
 
+        private static (byte[] Nonce, byte[] Ciphertext, byte[] Tag, byte[] Combined) SealDetached(
+            byte[] plaintext,
+            byte[] keyData,
+            byte[] aad,
+            byte[]? nonce)
+        {
+            var resolvedNonce = nonce ?? RandomNumberGenerator.GetBytes(AesGcmBox.NonceLength);
+            return DomainCoreCloudVaultBridge.SealDetached(
+                plaintext,
+                keyData,
+                resolvedNonce,
+                aad,
+                () => AesGcmBox.SealDetached(plaintext, keyData, aad, resolvedNonce));
+        }
+
+        private static byte[] SealCombined(byte[] plaintext, byte[] keyData, byte[] aad, byte[]? nonce)
+        {
+            var resolvedNonce = nonce ?? RandomNumberGenerator.GetBytes(AesGcmBox.NonceLength);
+            return DomainCoreCloudVaultBridge.SealCombined(
+                plaintext,
+                keyData,
+                resolvedNonce,
+                aad,
+                () => AesGcmBox.SealCombined(plaintext, keyData, aad, resolvedNonce));
+        }
+
+        private static byte[] OpenCombined(byte[] combined, byte[] keyData, byte[] aad) =>
+            DomainCoreCloudVaultBridge.OpenCombined(
+                combined,
+                keyData,
+                aad,
+                () => AesGcmBox.OpenCombined(combined, keyData, aad));
+
+        private static string OpenTextDetached(
+            byte[] nonce,
+            byte[] ciphertext,
+            byte[] tag,
+            byte[] keyData,
+            byte[] aad) =>
+            DomainCoreCloudVaultBridge.OpenTextDetached(
+                nonce,
+                ciphertext,
+                tag,
+                keyData,
+                aad,
+                () => DecodeUtf8Strict(AesGcmBox.OpenDetached(nonce, ciphertext, tag, keyData, aad)));
+
+        private static string DecodeUtf8Strict(byte[] data)
+        {
+            try
+            {
+                return new UTF8Encoding(false, true).GetString(data);
+            }
+            catch (DecoderFallbackException ex)
+            {
+                throw CloudVaultCryptoException.InvalidEnvelope(ex);
+            }
+        }
+
+        private static string EncodeBase64(byte[] data) =>
+            DomainCoreCloudVaultBridge.Base64Encode(data, () => Convert.ToBase64String(data));
+
         private static byte[] DecodeBase64(string value)
+        {
+            return DomainCoreCloudVaultBridge.Base64Decode(value, () => LegacyDecodeBase64(value));
+        }
+
+        private static byte[] LegacyDecodeBase64(string value)
         {
             try
             {

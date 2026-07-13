@@ -65,6 +65,28 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
                 };
                 Assert.Equal(vector.GetProperty("hex").GetString(), actual);
             }
+
+            foreach (var vector in root.GetProperty("aesGcm").EnumerateArray())
+            {
+                var key = Convert.FromHexString(vector.GetProperty("keyHex").GetString()!);
+                var nonce = Convert.FromHexString(vector.GetProperty("nonceHex").GetString()!);
+                var plaintext = Convert.FromHexString(vector.GetProperty("plaintextHex").GetString()!);
+                var aad = Convert.FromHexString(vector.GetProperty("aadHex").GetString()!);
+                var combined = DomainCoreCloudVaultBridge.SealCombined(
+                    plaintext,
+                    key,
+                    nonce,
+                    aad,
+                    () => throw new InvalidOperationException("legacy AES must remain lazy"));
+                Assert.Equal(vector.GetProperty("combinedBase64").GetString(), Convert.ToBase64String(combined));
+                Assert.Equal(
+                    plaintext,
+                    DomainCoreCloudVaultBridge.OpenCombined(
+                        combined,
+                        key,
+                        aad,
+                        () => throw new InvalidOperationException("legacy AES must remain lazy")));
+            }
         }
 
         [Fact]
@@ -117,6 +139,44 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
                 CloudVaultCryptoErrorCode.InvalidEnvelope,
                 Assert.Throws<CloudVaultCryptoException>(() =>
                     CloudVaultCrypto.AadData(context.LegacyV1StringValue, context, rejectLegacyV1: true)).Code);
+        }
+
+        [Fact]
+        public void RustMode_RejectsNonCanonicalBase64AcceptedByLegacyDecoder()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "rust");
+
+            var envelope = CloudVaultCrypto.SealText("secret", new byte[32]);
+            var paddedWithWhitespace = envelope with { Nonce = envelope.Nonce + "\n" };
+
+            Assert.Equal(
+                CloudVaultCryptoErrorCode.InvalidEnvelope,
+                Assert.Throws<CloudVaultCryptoException>(() =>
+                    CloudVaultCrypto.OpenText(paddedWithWhitespace, new byte[32])).Code);
+        }
+
+        [Fact]
+        public void RustMode_AuthenticationFailureNeverInvokesLegacyFallback()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "rust");
+            var sealedBox = DomainCoreCloudVaultBridge.SealCombined(
+                Array.Empty<byte>(),
+                new byte[32],
+                new byte[12],
+                Array.Empty<byte>(),
+                () => throw new InvalidOperationException("legacy seal must remain lazy"));
+            sealedBox[^1] ^= 1;
+
+            Assert.Equal(
+                CloudVaultCryptoErrorCode.InvalidEnvelope,
+                Assert.Throws<CloudVaultCryptoException>(() =>
+                    DomainCoreCloudVaultBridge.OpenCombined(
+                        sealedBox,
+                        new byte[32],
+                        Array.Empty<byte>(),
+                        () => throw new InvalidOperationException("legacy open must remain lazy"))).Code);
         }
 
         private static bool NativeRequired() =>
