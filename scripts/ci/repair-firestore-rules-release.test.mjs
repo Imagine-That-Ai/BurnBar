@@ -17,6 +17,7 @@ const PROJECT = "burnbar";
 const TOKEN = "test-token";
 const OLD_RULESET = "projects/burnbar/rulesets/old-111";
 const NEW_RULESET = "projects/burnbar/rulesets/new-222";
+const NORMALIZED_RULESET = "projects/burnbar/rulesets/normalized-444";
 const API = "https://firebaserules.googleapis.com/v1";
 const RELEASE_URL = `${API}/projects/${PROJECT}/releases/cloud.firestore`;
 const RULESETS_URL = `${API}/projects/${PROJECT}/rulesets`;
@@ -65,6 +66,10 @@ function rulesetEntry(name, createTime) {
 
 function rulesetSource(content) {
   return { source: { files: [{ name: "firestore.rules", content }] } };
+}
+
+function rulesetSourceWithFileName(content, name) {
+  return { source: { files: [{ name, content }] } };
 }
 
 // ─── Test 1: 409 on existing release -> repair PATCHes release ────────────
@@ -126,6 +131,61 @@ async function test409Repair() {
   assert.ok(methods.includes("PATCH:projects/burnbar/releases/cloud.firestore"), "must PATCH the release");
   const getCalls = methods.filter((m) => m === "GET:projects/burnbar/releases/cloud.firestore");
   assert.equal(getCalls.length, 2, "must GET the release twice (initial + verification)");
+
+  ok(label);
+}
+
+// ─── Test 2: absolute runner path is normalized before release PATCH ─────
+
+async function testNormalizesAbsoluteSourcePath() {
+  const label = "absolute source path: creates canonical firestore.rules ruleset";
+  let releaseRuleset = OLD_RULESET;
+
+  const fetchMock = makeFetchMock(({ url, method, body }) => {
+    if (url === RULESETS_URL && method === "GET") {
+      return {
+        status: 200,
+        json: { rulesets: [rulesetEntry(NEW_RULESET, "2026-07-12T18:00:00.000Z")] },
+      };
+    }
+    if (url === NEW_RULESET_URL && method === "GET") {
+      return {
+        status: 200,
+        json: rulesetSourceWithFileName(
+          RULES_CONTENT,
+          "/home/runner/work/BurnBar/BurnBar/firestore.rules",
+        ),
+      };
+    }
+    if (url === RULESETS_URL && method === "POST") {
+      assert.equal(body.source.files[0].name, "firestore.rules");
+      assert.equal(body.source.files[0].content, RULES_CONTENT);
+      return { status: 200, json: { name: NORMALIZED_RULESET } };
+    }
+    if (url === RELEASE_URL && method === "GET") {
+      return {
+        status: 200,
+        json: { name: RELEASE_URL.replace(API, ""), rulesetName: releaseRuleset },
+      };
+    }
+    if (url === RELEASE_URL && method === "PATCH") {
+      assert.equal(body.release.rulesetName, NORMALIZED_RULESET);
+      releaseRuleset = body.release.rulesetName;
+      return { status: 200, json: { name: RELEASE_URL.replace(API, ""), rulesetName: releaseRuleset } };
+    }
+    throw new Error(`unexpected ${method} ${url}`);
+  });
+
+  const result = await repairFirestoreRelease({
+    project: PROJECT,
+    token: TOKEN,
+    fetchImpl: fetchMock,
+    expectedRulesContent: RULES_CONTENT,
+  });
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.newRuleset, NORMALIZED_RULESET);
+  assert.equal(fetchMock.calls.filter((call) => call.method === "POST").length, 1);
 
   ok(label);
 }
@@ -372,6 +432,7 @@ async function run() {
 
   for (const [name, fn] of [
     ["test409Repair", test409Repair],
+    ["testNormalizesAbsoluteSourcePath", testNormalizesAbsoluteSourcePath],
     ["testSkipsNewerUnrelatedRuleset", testSkipsNewerUnrelatedRuleset],
     ["testAlreadyCurrent", testAlreadyCurrent],
     ["testPatchFails", testPatchFails],
