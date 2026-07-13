@@ -4,6 +4,10 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  COMPUTER_USE_SESSION_DEFAULTS,
+  decodeComputerUseInvokeResponse
+} from './tauriBridge.js';
 
 const invoke = vi.fn();
 
@@ -188,6 +192,7 @@ describe('VAL-RPC-002 bridge behavior', () => {
     await b.computerUseSessionStart?.({
       mode: 'browser',
       trustMode: 'step',
+      ...COMPUTER_USE_SESSION_DEFAULTS,
       clientId: 'linux-shell',
       runId: 'run-1',
       runCallId: 'call-1',
@@ -198,6 +203,7 @@ describe('VAL-RPC-002 bridge behavior', () => {
       params: {
         mode: 'browser',
         trustMode: 'step',
+        ...COMPUTER_USE_SESSION_DEFAULTS,
         clientId: 'linux-shell',
         runId: 'run-1',
         runCallId: 'call-1',
@@ -217,30 +223,57 @@ describe('VAL-RPC-002 bridge behavior', () => {
   });
 
   it('computerUseInvoke maps nested invocation object', async () => {
-    invoke.mockResolvedValueOnce({ status: 'executed' });
+    invoke.mockResolvedValueOnce({
+      sessionId: 's1',
+      callID: 'c1',
+      status: 'executed',
+      result: { succeeded: true }
+    });
     const b = await bridge();
     await b.computerUseInvoke?.({
       sessionId: 's1',
       invocation: {
-        callID: 'c1',
-        runID: 'r1',
+        callId: 'c1',
+        runId: 'r1',
         tool: 'browser_click',
-        arguments: { x: 1 },
-        requestedBy: 'linux-shell'
+        arguments: { selector: '#submit' },
+        requestedBy: 'linux-shell',
+        requestedAt: 1
       }
     });
     expect(invoke).toHaveBeenCalledWith('computer_use_invoke', {
       params: {
         sessionId: 's1',
         invocation: {
-          callID: 'c1',
-          runID: 'r1',
+          callId: 'c1',
+          runId: 'r1',
           tool: 'browser_click',
-          arguments: { x: 1 },
-          requestedBy: 'linux-shell'
+          arguments: { selector: '#submit' },
+          requestedBy: 'linux-shell',
+          requestedAt: 1
         }
       }
     });
+  });
+
+  it('computerUseInvoke response decoding accepts Swift Codable IDs and rejects incomplete results', () => {
+    expect(decodeComputerUseInvokeResponse({
+      sessionId: 's1',
+      callID: 'c1',
+      status: 'denied',
+      denyReason: 'approval_required'
+    })).toEqual({
+      sessionId: 's1',
+      callID: 'c1',
+      status: 'denied',
+      approvalId: undefined,
+      denyReason: 'approval_required',
+      auditEntryIndex: undefined,
+      auditHeadHashHex: undefined,
+      result: undefined
+    });
+    expect(() => decodeComputerUseInvokeResponse({ status: 'executed' }))
+      .toThrow(/sessionId/);
   });
 
   it('computerUseApprovalPending maps sessionId only', async () => {
@@ -312,7 +345,14 @@ describe('VAL-RPC-002 bridge behavior', () => {
     await expect(
       b.computerUseInvoke?.({
         sessionId: 's1',
-        invocation: { callID: 'c', runID: 'r', tool: 'browser_click', arguments: {} }
+        invocation: {
+          callId: 'c',
+          runId: 'r',
+          tool: 'browser_click',
+          arguments: {},
+          requestedBy: 'linux-shell',
+          requestedAt: 1
+        }
       })
     ).rejects.toThrow(/daemon down/);
   });
@@ -330,6 +370,7 @@ describe('VAL-RPC-002 bridge behavior', () => {
       b.computerUseSessionStart?.({
         mode: 'browser',
         trustMode: 'manual',
+        ...COMPUTER_USE_SESSION_DEFAULTS,
         clientId: 'linux-shell',
         runId: 'run-1',
         runCallId: 'call-1',

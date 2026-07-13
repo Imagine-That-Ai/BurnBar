@@ -501,14 +501,29 @@ export type ComputerUseSessionAuthorityStatus = {
   sessionId?: string;
 };
 
+/**
+ * Defaults from BurnBarComputerUseContracts.swift. The renderer-facing Tauri
+ * boundary is lower-camel (`clientId`, `runId`, `callId`); the Rust command
+ * translates these to the Swift Codable `clientID`/`runID`/`callID` wire keys
+ * before calling the daemon. Keeping that distinction explicit prevents the
+ * webview from accidentally sending Swift keys to a serde command.
+ */
+export const COMPUTER_USE_SESSION_DEFAULTS = {
+  scopeRuleIds: [] as string[],
+  phoneViewerNodeId: null as string | null,
+  macHostNodeId: null as string | null,
+  actionCap: 50,
+  sessionTimeoutSeconds: 1_800
+} as const;
+
 export type ComputerUseSessionStartRequest = {
   mode: 'browser';
   trustMode: 'manual' | 'step' | 'trusted';
-  scopeRuleIds?: string[];
-  phoneViewerNodeId?: string;
-  macHostNodeId?: string;
-  actionCap?: number;
-  sessionTimeoutSeconds?: number;
+  scopeRuleIds: string[];
+  phoneViewerNodeId: string | null;
+  macHostNodeId: string | null;
+  actionCap: number;
+  sessionTimeoutSeconds: number;
   clientId: 'linux-shell';
   runId: string;
   runCallId: string;
@@ -516,6 +531,54 @@ export type ComputerUseSessionStartRequest = {
   desktopOwnerAuthorizationRequest: {
     method: 'linux_desktop_owner';
   };
+};
+
+export type ComputerUseBrowserTool =
+  | 'browser_goto'
+  | 'browser_screenshot'
+  | 'browser_click'
+  | 'browser_fill';
+
+export type ComputerUseBrowserActionArguments = {
+  selector?: string;
+  text?: string;
+  url?: string;
+  key?: string;
+  value?: string;
+  positionX?: number;
+  positionY?: number;
+  timeoutMillis?: number;
+};
+
+/** Tauri command shape; Rust emits Swift's uppercase-ID Codable keys. */
+export type ComputerUseInvokeRequest = {
+  sessionId: string;
+  invocation: {
+    callId: string;
+    runId: string;
+    tool: ComputerUseBrowserTool;
+    arguments: ComputerUseBrowserActionArguments;
+    requestedBy: 'linux-shell';
+    /** Foundation reference-date seconds; Rust fills this only for legacy callers. */
+    requestedAt: number;
+  };
+};
+
+export type ComputerUseInvokeResponseStatus =
+  | 'executed'
+  | 'denied'
+  | 'awaiting_approval'
+  | 'error';
+
+export type ComputerUseInvokeResponse = {
+  sessionId: string;
+  callID: string;
+  status: ComputerUseInvokeResponseStatus;
+  approvalId?: string;
+  denyReason?: string;
+  auditEntryIndex?: number;
+  auditHeadHashHex?: string;
+  result?: RawJsonValue;
 };
 // ─────────────────────────── P13: integrations status ─────────────────────
 
@@ -683,7 +746,7 @@ export interface LinuxShellBridge {
   computerUseSessionStart?(
     params: ComputerUseSessionStartRequest
   ): Promise<ComputerUseSessionAuthorityStatus>;
-  computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseInvoke?(params: ComputerUseInvokeRequest): Promise<ComputerUseInvokeResponse>;
   computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
   computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
   computerUseAuditExport?(params?: Record<string, unknown>): Promise<unknown>;
@@ -1914,6 +1977,53 @@ function mapComputerUsePanicHalt(
   };
 }
 
+const COMPUTER_USE_INVOKE_STATUSES: readonly ComputerUseInvokeResponseStatus[] = [
+  'executed',
+  'denied',
+  'awaiting_approval',
+  'error'
+];
+
+/** Decode the daemon's Swift Codable response without hiding a malformed result. */
+export function decodeComputerUseInvokeResponse(raw: RawJsonValue): ComputerUseInvokeResponse {
+  const direct = obj(raw);
+  const source = typeof direct.status === 'string'
+    ? direct
+    : requireObject(pick(raw, 'result'), 'computer-use invoke response');
+  const status = requireString(source.status, 'computer-use invoke status');
+  if (!COMPUTER_USE_INVOKE_STATUSES.includes(status as ComputerUseInvokeResponseStatus)) {
+    throw new Error(`computer-use invoke returned unsupported status: ${status}`);
+  }
+  const sessionId = requireString(
+    pick(source, 'sessionId', 'sessionID', 'session_id'),
+    'computer-use invoke sessionId'
+  );
+  const callID = requireString(
+    pick(source, 'callID', 'callId', 'call_id'),
+    'computer-use invoke callID'
+  );
+  const auditEntryIndexRaw = pick(source, 'auditEntryIndex', 'audit_entry_index');
+  const auditEntryIndex = typeof auditEntryIndexRaw === 'number'
+    && Number.isSafeInteger(auditEntryIndexRaw)
+    && auditEntryIndexRaw >= 0
+    ? auditEntryIndexRaw
+    : undefined;
+  const optionalString = (...keys: string[]): string | undefined => {
+    const value = pick(source, ...keys);
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+  };
+  return {
+    sessionId,
+    callID,
+    status: status as ComputerUseInvokeResponseStatus,
+    approvalId: optionalString('approvalId', 'approvalID', 'approval_id'),
+    denyReason: optionalString('denyReason', 'deny_reason', 'reason'),
+    auditEntryIndex,
+    auditHeadHashHex: optionalString('auditHeadHashHex', 'audit_head_hash_hex'),
+    result: source.result
+  };
+}
+
 // ─────────────────────────── Bridge loader ────────────────────────────────
 
 export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
@@ -2336,7 +2446,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       invoke<ComputerUseSessionAuthorityStatus>('computer_use_session_authority_status'),
     computerUseSessionStart: (params) =>
       invoke<ComputerUseSessionAuthorityStatus>('computer_use_session_start', { params }),
-    computerUseInvoke: (params) => invoke<RawJsonValue>('computer_use_invoke', { params }),
+    computerUseInvoke: async (params) =>
+      decodeComputerUseInvokeResponse(await invoke<RawJsonValue>('computer_use_invoke', { params })),
     computerUseApprovalPending: (params) =>
       invoke<RawJsonValue>('computer_use_approval_pending', { params: params ?? null }),
     computerUseApprovalRespond: (params) =>
