@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarInsights
 
 /// Small pill rendered under the verdict hero showing who authored the
 /// verdict ("Authored locally by qwen3-coder:30b · 1.4s · 0 tokens out").

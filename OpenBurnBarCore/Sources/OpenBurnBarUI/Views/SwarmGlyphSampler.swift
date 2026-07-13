@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import OpenBurnBarKernel
 
 // remediation(core-swarm-decomp): relocated verbatim from SwarmCanvasView.swift to
 // shrink that 3,926-line god-file. Behavior-preserving move only. The companion

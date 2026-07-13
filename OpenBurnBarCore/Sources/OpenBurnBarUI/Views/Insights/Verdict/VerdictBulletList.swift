@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarInsights
 
 /// The 1-4 bullet rows below the rings.
 public struct VerdictBulletList: View {

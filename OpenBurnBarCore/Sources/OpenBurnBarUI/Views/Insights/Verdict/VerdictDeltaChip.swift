@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarInsights
 
 /// A small mono delta chip rendered next to numbers and bullet claims.
 ///

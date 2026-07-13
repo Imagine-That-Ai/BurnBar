@@ -466,15 +466,20 @@ let openBurnBarCoreExcludes = [
     // P-08 removed "AgentInsights/AgentInsightsBundleAssembler.swift" (FIX-6); P-09
     // removes "Demo/InsightVerdictDemoFixture.swift" (FIX-8, moved to
     // OpenBurnBarInsights/Demo/ with its RuleBasedVerdictEngine).
-    // P-09 also narrows "Services/Insights" -> "Services/Insights/Share": the
+    // P-09 narrowed "Services/Insights" -> "Services/Insights/Share": the
     // Adapters/Cadence/Trace/Verdict subtrees + InsightProviderGatewayRegistry.swift
     // all moved to OpenBurnBarInsights, leaving only Share/InsightShareCardRenderer.swift
-    // (AppKit/UIKit) in Core until S14/UI. The narrowed path excludes exactly that file.
+    // (AppKit/UIKit) in Core until S14/UI.
     // NOTE: P-15 (merged earlier on wave3-base) already moved
     // SwitcherBrowserLaunchService.swift into OpenBurnBarLaunchServices and removed its
     // Core off-Apple exclude (see the P-15 comment above), so it is intentionally NOT
     // re-listed here even though p-09's base (pre-P-15) still carried that exclude.
-    "Services/Insights/Share",
+    // P-16e (S14 UI): Services/Insights/Share/InsightShareCardRenderer.swift moved to
+    // the Apple-only OpenBurnBarUI target (with the Swarm canvas cluster + the
+    // Views/Insights/Verdict subtree). Services/Insights/Share/ is now empty in Core, so
+    // the narrowed "Services/Insights/Share" exclude is REMOVED (a stale exclude on a
+    // moved-out/empty path makes SwiftPM reject the off-Apple manifest). OpenBurnBarUI is
+    // pruned WHOLE off-Apple, so the renderer no longer exists in the off-Apple source.
     // P-16b (S14 UI): SharedModels/AgentProvider+LogoBackdrop.swift moved to the
     // Apple-only OpenBurnBarUI target (pulled forward with Views/Insights/ — it is the
     // AgentProvider logo-backdrop extension hub consumed by UnifiedProviderLogoView).

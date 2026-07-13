@@ -1,13 +1,7 @@
 {
   "note": "Files in OpenBurnBarCore/Sources/OpenBurnBarCore importing SwiftUI/AppKit. Shrink-only: entries may only be removed (audit 2026-06-30 finding #4, kernel extraction). Regenerate via scripts/debt/check-core-ui-purity-budget.sh --update.",
-  "total": 29,
+  "total": 15,
   "files": [
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/Insights/Share/InsightShareCardRenderer.swift",
-      "frameworks": [
-        "AppKit"
-      ]
-    },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/BurnBarLogoFormationView.swift",
       "frameworks": [
@@ -40,42 +34,6 @@
       ]
     },
     {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/Verdict/VerdictBulletList.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/Verdict/VerdictDeltaChip.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/Verdict/VerdictHeroView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/Verdict/VerdictProvenanceChip.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/Verdict/VerdictRingsStrip.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Insights/Verdict/VerdictTraceStripView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/LaunchSplash.swift",
       "frameworks": [
         "SwiftUI"
@@ -95,54 +53,6 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/PixelClockPreviewView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView.swift",
-      "frameworks": [
-        "AppKit",
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView+Color.swift",
-      "frameworks": [
-        "AppKit",
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView+Modes.swift",
-      "frameworks": [
-        "AppKit",
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView+ShapeData.swift",
-      "frameworks": [
-        "AppKit",
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView+ShapeGenerators.swift",
-      "frameworks": [
-        "AppKit",
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView+ShapeSampling.swift",
-      "frameworks": [
-        "AppKit",
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/SwarmCanvasView+Substrate.swift",
       "frameworks": [
         "SwiftUI"
       ]
