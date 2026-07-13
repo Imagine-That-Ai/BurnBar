@@ -1287,6 +1287,41 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertTrue(reindexed)
     }
 
+    func testSuspendedProjectWatchersResumeAfterDatabaseReplacement() throws {
+        let fixture = try makeFixture()
+        let source = fixture.project.appendingPathComponent("Sources").appendingPathComponent("RestoreWatch.swift")
+        try write("func beforeRestoreWatch() {}\n", to: source)
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "test")
+        )
+        _ = try store.watchProject(
+            BurnBarProjectCodeWatchProjectRequest(
+                projectPath: fixture.project.path,
+                maxFiles: 20,
+                pollIntervalSeconds: 0.25
+            )
+        )
+
+        let suspended = store.suspendProjectWatchersForSnapshot()
+        XCTAssertEqual(suspended.count, 1)
+        try store.resumeProjectWatchersAfterSnapshot(suspended)
+        try write("func afterRestoreWatch() {}\n", to: source)
+
+        let deadline = Date().addingTimeInterval(4.0)
+        var reindexed = false
+        while Date() < deadline {
+            if try !store.getSymbol(
+                BurnBarProjectCodeSymbolRequest(name: "afterRestoreWatch", projectPath: fixture.project.path)
+            ).symbols.isEmpty {
+                reindexed = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.15)
+        }
+        XCTAssertTrue(reindexed)
+    }
+
     func testSecretScannerCoversSharedCorpusWithLabelOnlyAudit() throws {
         let fixture = try makeFixture()
         let fakeOpenAIKey = "sk-" + String(repeating: "a", count: 32)

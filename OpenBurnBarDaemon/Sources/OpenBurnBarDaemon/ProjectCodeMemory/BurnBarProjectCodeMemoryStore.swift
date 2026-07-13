@@ -1902,11 +1902,27 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         }
     }
 
-    func stopProjectWatchersForSnapshot() {
+    func suspendProjectWatchersForSnapshot() -> [BurnBarProjectCodeWatchProjectRequest] {
+        let requests = projectWatchers.values.map { watcher in
+            BurnBarProjectCodeWatchProjectRequest(
+                projectPath: watcher.projectRoot.path,
+                maxFiles: watcher.maxFiles,
+                maxFileBytes: watcher.maxFileBytes,
+                storageBudgetBytes: watcher.storageBudgetBytes,
+                pollIntervalSeconds: watcher.pollIntervalSeconds
+            )
+        }
         for watcher in projectWatchers.values {
             watcher.timer.cancel()
             watcher.teardownEventStream()
         }
         projectWatchers.removeAll()
+        return requests
+    }
+
+    func resumeProjectWatchersAfterSnapshot(_ requests: [BurnBarProjectCodeWatchProjectRequest]) throws {
+        for request in requests {
+            _ = try watchProject(request)
+        }
     }
 }

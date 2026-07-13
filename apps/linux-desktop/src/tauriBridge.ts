@@ -4196,11 +4196,11 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         threadId: string;
         maxMessages: number;
         beforeTimestamp?: string;
-        beforeMessageID?: string;
+        beforeMessageId?: string;
       } = { threadId: threadID, maxMessages };
       if (before) {
         args.beforeTimestamp = before.timestamp;
-        args.beforeMessageID = before.messageID;
+        args.beforeMessageId = before.messageID;
       }
       const raw = await invoke<RawJsonValue>('chat_thread_get', args);
       return decodeChatThreadGet(raw);

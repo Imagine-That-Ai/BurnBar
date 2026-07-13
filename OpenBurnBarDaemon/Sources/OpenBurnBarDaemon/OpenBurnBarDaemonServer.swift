@@ -97,11 +97,12 @@ public actor BurnBarDaemonServer {
     let missionControlService: any BurnBarMissionControlServing
     let membershipService: any BurnBarMembershipServing
     var chatThreadService: (any BurnBarChatThreadServing)?
-    let indexedSearch: BurnBarIndexedSearchService?
+    var indexedSearch: BurnBarIndexedSearchService?
     let projectCodeMemory: BurnBarProjectCodeMemoryStore?
     let databaseRecoveryService: BurnBarDatabaseRecoveryBundleService?
     let textExpansionService: BurnBarTextExpansionService?
-    let resumeService: BurnBarResumeService?
+    var resumeService: BurnBarResumeService?
+    let ownsChatThreadService: Bool
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
     private var listenerFileDescriptor: Int32?
@@ -175,6 +176,7 @@ public actor BurnBarDaemonServer {
             daemonVersion: configuration.daemonVersion
         )
         self.chatThreadService = chatThreadService
+        self.ownsChatThreadService = chatThreadService == nil
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,

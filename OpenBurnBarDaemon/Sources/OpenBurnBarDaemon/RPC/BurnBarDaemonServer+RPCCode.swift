@@ -145,9 +145,35 @@ extension BurnBarDaemonServer {
                 from: requestData
             )
             do {
+                let databasePath = projectCodeMemory.databasePath
                 return encode(BurnBarRPCResponseEnvelope(
                     id: typedRequest.id,
-                    result: try projectCodeMemory.restoreDatabaseSnapshot(typedRequest.params)
+                    result: try projectCodeMemory.restoreDatabaseSnapshot(
+                        typedRequest.params,
+                        beforeReplacingActiveDatabase: { [self] in
+                            indexedSearch = nil
+                            resumeService = nil
+                            if ownsChatThreadService {
+                                chatThreadService = nil
+                            }
+                        },
+                        afterOpeningActiveDatabase: { [self] in
+                            indexedSearch = try BurnBarIndexedSearchService(
+                                databasePath: databasePath,
+                                logger: BurnBarDaemonLogger(category: "indexed-search")
+                            )
+                            resumeService = try BurnBarResumeService(
+                                databasePath: databasePath,
+                                logger: BurnBarDaemonLogger(category: "resume-service")
+                            )
+                            if ownsChatThreadService {
+                                chatThreadService = try BurnBarChatThreadService(
+                                    databasePath: databasePath,
+                                    logger: BurnBarDaemonLogger(category: "chat-thread-store")
+                                )
+                            }
+                        }
+                    )
                 ))
             } catch {
                 return encodeErrorResponse(id: typedRequest.id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)

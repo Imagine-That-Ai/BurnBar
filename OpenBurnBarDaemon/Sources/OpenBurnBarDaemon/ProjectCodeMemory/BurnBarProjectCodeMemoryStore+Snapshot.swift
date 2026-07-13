@@ -64,7 +64,9 @@ extension BurnBarProjectCodeMemoryStore {
     /// The old file is retained until the replacement opens and passes an
     /// integrity check; any failure reopens the old file before surfacing.
     func restoreDatabaseSnapshot(
-        _ request: BurnBarProjectCodeDatabaseRestoreRequest
+        _ request: BurnBarProjectCodeDatabaseRestoreRequest,
+        beforeReplacingActiveDatabase: (() -> Void)? = nil,
+        afterOpeningActiveDatabase: (() throws -> Void)? = nil
     ) throws -> BurnBarProjectCodeDatabaseRestoreResponse {
         try databaseSync {
             let limit = try validatedSnapshotLimit(request.maxBytes)
@@ -86,8 +88,9 @@ extension BurnBarProjectCodeMemoryStore {
 
             let rollback = active.deletingLastPathComponent()
                 .appendingPathComponent(".openburnbar-restore-rollback-\(UUID().uuidString)")
-            stopWatchersForRestore()
+            let suspendedWatchers = suspendProjectWatchersForSnapshot()
             try checkpointWAL()
+            beforeReplacingActiveDatabase?()
             do {
                 try FileManager.default.copyItem(at: active, to: rollback)
                 try replaceActiveDatabase(with: source, active: active)
@@ -96,8 +99,11 @@ extension BurnBarProjectCodeMemoryStore {
                 }
                 db = reopened
                 try validateHandleIntegrity(reopened)
+                try resumeProjectWatchersAfterSnapshot(suspendedWatchers)
+                try afterOpeningActiveDatabase?()
                 try? FileManager.default.removeItem(at: rollback)
             } catch {
+                beforeReplacingActiveDatabase?()
                 if let reopened = db {
                     sqlite3_close(reopened)
                 }
@@ -107,6 +113,8 @@ extension BurnBarProjectCodeMemoryStore {
                     try? FileManager.default.moveItem(at: rollback, to: active)
                 }
                 db = try? openEncryptedDatabase(at: active.path)
+                try? resumeProjectWatchersAfterSnapshot(suspendedWatchers)
+                try? afterOpeningActiveDatabase?()
                 throw BurnBarProjectCodeMemoryStoreError.databaseSnapshotFailed("restore: \(error)")
             }
 
@@ -286,10 +294,6 @@ extension BurnBarProjectCodeMemoryStore {
             sqlite3_close(handle)
             throw error
         }
-    }
-
-    private func stopWatchersForRestore() {
-        stopProjectWatchersForSnapshot()
     }
 
     private func replaceActiveDatabase(with source: URL, active: URL) throws {

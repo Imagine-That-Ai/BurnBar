@@ -2156,14 +2156,21 @@ fn open_dashboard(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn initial_deep_link_route() -> Option<String> {
-    if let Some(route) = initial_deep_link_route_store()
+    take_next_deep_link_route(initial_deep_link_route_store(), forwarded_route_queue())
+}
+
+fn take_next_deep_link_route(
+    initial: &Mutex<Option<String>>,
+    forwarded: &Mutex<Vec<String>>,
+) -> Option<String> {
+    if let Some(route) = initial
         .lock()
         .ok()
         .and_then(|mut route| route.take())
     {
         return Some(route);
     }
-    forwarded_route_queue()
+    forwarded
         .lock()
         .ok()
         .and_then(|mut routes| routes.first().cloned().map(|_| routes.remove(0)))
@@ -6311,6 +6318,17 @@ mod tests {
         let source = include_str!("lib.rs");
         assert!(source.contains("daemon.chat.message.append"));
         assert!(source.contains("fn chat_message_append"));
+    }
+
+    #[test]
+    fn initial_deep_link_drain_preserves_initial_then_forwarded_routes() {
+        let initial = Mutex::new(Some("overview".to_string()));
+        let forwarded = Mutex::new(vec!["chat".to_string(), "settings".to_string()]);
+
+        assert_eq!(take_next_deep_link_route(&initial, &forwarded).as_deref(), Some("overview"));
+        assert_eq!(take_next_deep_link_route(&initial, &forwarded).as_deref(), Some("chat"));
+        assert_eq!(take_next_deep_link_route(&initial, &forwarded).as_deref(), Some("settings"));
+        assert_eq!(take_next_deep_link_route(&initial, &forwarded), None);
     }
 
     #[test]

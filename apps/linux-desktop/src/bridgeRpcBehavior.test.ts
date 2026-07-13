@@ -164,7 +164,7 @@ describe('VAL-RPC-002 bridge behavior', () => {
       threadId: 'thread-1',
       maxMessages: 200,
       beforeTimestamp: '2026-07-10T12:00:00.000Z',
-      beforeMessageID: 'newest-page-oldest'
+      beforeMessageId: 'newest-page-oldest'
     });
   });
 

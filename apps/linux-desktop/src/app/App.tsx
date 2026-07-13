@@ -46,8 +46,22 @@ export function App() {
           if (cancelled || !ROUTES.some((candidate) => candidate.id === event.payload)) return;
           setRoute(event.payload as ShellRoute);
         });
-        if (cancelled) stop();
-        else unlisten = stop;
+        if (cancelled) {
+          stop();
+          return;
+        }
+        unlisten = stop;
+
+        // A secondary launch can forward a route before the renderer has
+        // installed the native event listener. Drain every queued route after
+        // registration; main.tsx already consumed the original launch route.
+        while (!cancelled && bridge?.initialDeepLinkRoute) {
+          const pendingRoute = await bridge.initialDeepLinkRoute();
+          if (pendingRoute === null) break;
+          if (ROUTES.some((candidate) => candidate.id === pendingRoute)) {
+            setRoute(pendingRoute as ShellRoute);
+          }
+        }
       })
       .catch(() => {
         // Browser preview has no Tauri event bus; the normal URL/hash shell
@@ -57,7 +71,7 @@ export function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [setRoute]);
+  }, [bridge, setRoute]);
 
   // Native freedesktop actions carry a closed route/action pair. Decode again
   // at the renderer boundary so a malformed or stale host event cannot steer
