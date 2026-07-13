@@ -227,6 +227,7 @@ rows:
   status: Real
   evidence:
   - docs/windows-port/evidence/f1-settings/viewmodel-host-pages.md
+  - docs/windows-port/evidence/f2/general-settings-persistence.md
   tests:
   - windows/tests/settings
   blocking_paths:

@@ -265,6 +265,12 @@ unproven host behavior to certification:
   falls back to the bundled Tree-sitter parser when an LSP is unavailable. The
   configured production language-server inventory and per-language host
   coverage remain external deployment/evidence gates.
+- The Windows General settings page now persists its time range, usage mode,
+  refresh cadence, indexing and auto-summary toggles, embedding provider/model,
+  and protected OpenAI key through one normalized settings model. The prior
+  hard-coded toggles and picker defaults no longer discard user changes; the
+  selected provider is consumed by the project-code store after indexing
+  restarts.
 - Native Swift engine staging now requires the SwiftPM
   `OpenBurnBarCore_OpenBurnBarCore.resources` bundle, copies it beside the C ABI
   DLL into every RID's publish output, and records SHA-256/size entries for its
