@@ -55,6 +55,14 @@
   color: var(--color-seal-crimson);
 }
 
+.computer-use-surface__capability {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-seal-crimson) 45%, var(--color-glass-line));
+  color: var(--color-text-mute);
+  font-size: 0.8rem;
+}
+
 .computer-use-surface__tierc {
   margin: 0;
   padding: var(--space-2) var(--space-3);
@@ -146,6 +154,68 @@
   margin: 0 0 var(--space-2);
   font-size: 0.85rem;
   color: var(--color-text-bright);
+}
+
+.computer-use-card--action {
+  grid-column: 1 / -1;
+}
+
+.computer-use-action-note {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+  max-width: 60rem;
+}
+
+.computer-use-action-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
+.computer-use-action-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--color-text-dim);
+  font-size: 0.72rem;
+}
+
+.computer-use-action-form select,
+.computer-use-action-form input {
+  min-width: 10rem;
+  max-width: min(30rem, 75vw);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-glass-line);
+  background: var(--color-glass-bg);
+  color: var(--color-text-base);
+  padding: 0.35rem 0.5rem;
+}
+
+.computer-use-action-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: var(--space-3);
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+}
+
+.computer-use-action-result strong {
+  color: var(--color-text-bright);
+}
+
+.computer-use-action-result pre {
+  margin: 0.35rem 0 0;
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--color-glass-line);
+  padding: var(--space-2);
+  color: var(--color-text-dim);
+  font: 0.72rem/1.45 var(--font-mono, ui-monospace, monospace);
 }
 
 .computer-use-empty {

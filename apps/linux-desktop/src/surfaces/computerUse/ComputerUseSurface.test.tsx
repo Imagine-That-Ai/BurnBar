@@ -2,8 +2,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../../state/shellStore.js';
-import type { ComputerUseSessionStartRequest } from '../../tauriBridge.js';
+import { makeAvailableRuntimeCapabilityManifest } from '../../testing/bridgeStubs.js';
 import {
+  COMPUTER_USE_SESSION_DEFAULTS,
+  type ComputerUseSessionStartRequest
+} from '../../tauriBridge.js';
+import {
+  buildComputerUseBrowserInvokeParams,
   buildComputerUseSessionStartParams,
   clearSessionIfCurrent,
   ComputerUseSurface,
@@ -12,7 +17,7 @@ import {
 
 afterEach(() => {
   cleanup();
-  useShellStore.setState({ bridge: null, fixtureMode: true });
+  useShellStore.setState({ bridge: null, fixtureMode: true, runtimeCapabilities: null });
 });
 
 describe('ComputerUseSurface', () => {
@@ -23,6 +28,7 @@ describe('ComputerUseSurface', () => {
     ])).toEqual({
       mode: 'browser',
       trustMode: 'step',
+      ...COMPUTER_USE_SESSION_DEFAULTS,
       clientId: 'linux-shell',
       runId: 'run-1',
       runCallId: 'call-1',
@@ -101,6 +107,7 @@ describe('ComputerUseSurface', () => {
     expect(request).toEqual({
       mode: 'browser',
       trustMode: 'step',
+      ...COMPUTER_USE_SESSION_DEFAULTS,
       clientId: 'linux-shell',
       runId: 'run-safe',
       runCallId: 'call-safe',
@@ -111,6 +118,135 @@ describe('ComputerUseSurface', () => {
       /private|password|signature|proof|localAuthenticationSatisfied|authorized\s*:/i
     );
     expect(await screen.findByText(/Waiting for approval on your paired phone/i)).toBeTruthy();
+  });
+
+  it('builds the lower-camel Tauri invoke shape and preserves the Swift wire IDs for Rust', () => {
+    expect(buildComputerUseBrowserInvokeParams(
+      'session-1',
+      'run-1',
+      { tool: 'browser_fill', url: '', selector: '#email', text: 'alberto@example.com' },
+      [{ runID: 'run-1', callID: 'call-1', generation: 9, toolKind: 'browser_fill' }],
+      123.5
+    )).toEqual({
+      sessionId: 'session-1',
+      invocation: {
+        callId: 'call-1',
+        runId: 'run-1',
+        tool: 'browser_fill',
+        arguments: { selector: '#email', text: 'alberto@example.com' },
+        requestedBy: 'linux-shell',
+        requestedAt: 123.5
+      }
+    });
+  });
+
+  it('invokes an explicit browser action and renders an approval-gated result', async () => {
+    const computerUseInvoke = vi.fn(async () => ({
+      sessionId: 'native-session-1',
+      callID: 'call-1',
+      status: 'awaiting_approval' as const,
+      approvalId: 'approval-1'
+    }));
+    useShellStore.setState({
+      fixtureMode: false,
+      runtimeCapabilities: makeAvailableRuntimeCapabilityManifest(),
+      bridge: {
+        computerUseSessionAuthorityStatus: vi.fn(async () => ({
+          state: 'authorized' as const,
+          sessionId: 'native-session-1'
+        })),
+        computerUseApprovalPending: vi.fn(async () => ({
+          requests: [],
+          runRequirements: [{ runID: 'run-1', callID: 'call-1', generation: 3, toolKind: 'browser_goto' }]
+        })),
+        computerUseInvoke
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    await screen.findByText(/Session · native-sess/i);
+    fireEvent.change(screen.getByRole('combobox', { name: /Agent run/i }), { target: { value: 'run-1' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Browser URL/i }), {
+      target: { value: 'https://example.test' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Send for approval/i }));
+
+    await waitFor(() => expect(computerUseInvoke).toHaveBeenCalledOnce());
+    expect(computerUseInvoke).toHaveBeenCalledWith({
+      sessionId: 'native-session-1',
+      invocation: {
+        callId: 'call-1',
+        runId: 'run-1',
+        tool: 'browser_goto',
+        arguments: { url: 'https://example.test' },
+        requestedBy: 'linux-shell',
+        requestedAt: expect.any(Number)
+      }
+    });
+    expect(await screen.findByText(/Action status: awaiting_approval/i)).toBeTruthy();
+    expect(screen.getByText(/Approval · approval-1/i)).toBeTruthy();
+  });
+
+  it('retires the exact session when a browser action reports an authoritative session error', async () => {
+    const computerUseInvoke = vi.fn(async () => {
+      throw new Error('Computer Use session is not active: native-session-1.');
+    });
+    useShellStore.setState({
+      fixtureMode: false,
+      runtimeCapabilities: makeAvailableRuntimeCapabilityManifest(),
+      bridge: {
+        computerUseSessionAuthorityStatus: vi.fn(async () => ({
+          state: 'authorized' as const,
+          sessionId: 'native-session-1'
+        })),
+        computerUseApprovalPending: vi.fn(async () => ({
+          requests: [],
+          runRequirements: [{ runID: 'run-1', callID: 'call-1', generation: 3, toolKind: 'browser_screenshot' }]
+        })),
+        computerUseInvoke
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    await screen.findByText(/Session · native-sess/i);
+    fireEvent.change(screen.getByRole('combobox', { name: /Agent run/i }), { target: { value: 'run-1' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /Browser action/i }), {
+      target: { value: 'browser_screenshot' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Send for approval/i }));
+
+    await waitFor(() => expect(screen.queryByText(/Session · native-sess/i)).toBeNull());
+    expect(screen.getByRole('alert').textContent).toMatch(/session is not active/i);
+  });
+
+  it('keeps system mode hidden when the native capability probe is unavailable', async () => {
+    const manifest = makeAvailableRuntimeCapabilityManifest();
+    manifest.capabilities = manifest.capabilities.map((entry) => entry.id === 'computer-use.system'
+      ? { ...entry, state: 'unavailable', reason: 'PipeWire capture is not available.' }
+      : entry);
+    useShellStore.setState({
+      fixtureMode: false,
+      runtimeCapabilities: manifest,
+      bridge: {
+        computerUseSessionAuthorityStatus: vi.fn(async () => ({ state: 'unavailable' as const })),
+        computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    expect(await screen.findByText(/System Computer Use is unavailable/i)).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /System/i })).toBeNull();
+    expect((screen.getByRole('button', { name: /Start session/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('uses a fixture approval result without dispatching a native action', async () => {
+    useShellStore.setState({ fixtureMode: true, bridge: null, runtimeCapabilities: null });
+    render(<ComputerUseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
+    await screen.findByText(/Session · fixture-ses/i);
+    fireEvent.click(screen.getByRole('button', { name: /Send for approval/i }));
+    expect(await screen.findByText(/Action status: awaiting_approval/i)).toBeTruthy();
+    expect(screen.getByText(/Approval · fixture-approval/i)).toBeTruthy();
   });
 
   it('starts a fixture session and shows pending approvals', async () => {
