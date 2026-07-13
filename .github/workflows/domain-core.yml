@@ -218,13 +218,15 @@ jobs:
           toolchain: "1.96.0"
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
+      - name: Verify committed AAR source fingerprint
+        run: ./scripts/build-domain-core-android-aar.sh --check-source
+
       - name: Build four-ABI Android AAR
         run: ./scripts/build-domain-core-android-aar.sh
 
-      - name: Reject Android artifact or binding drift
+      - name: Reject Android binding drift
         run: |
           git diff --exit-code -- \
-            Vendor/openburnbar-domain-core.aar \
             android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi
 
       - name: Compile Android native-load test
