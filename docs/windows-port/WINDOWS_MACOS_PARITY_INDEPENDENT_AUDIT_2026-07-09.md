@@ -144,7 +144,8 @@ unproven host behavior to certification:
   symbols, lexical references/call edges, and index checkpoints; restart loads
   the durable checkpoint before falling back to the legacy JSON index. Source
   text is never inserted into the store, and `code.status` exposes bounded
-  storage/index counters. Semantic chunk/embedding parity remains an explicit
+  storage/index counters; the companion plane exposes bounded
+  `code.call_graph` traversal. Semantic chunk/embedding parity remains an explicit
   follow-on rather than being implied by this metadata-store evidence.
 - App startup composes the loopback gateway, companion CLI, and durable run
   journal together. The CLI exposes health/models plus bounded `run.submit`,

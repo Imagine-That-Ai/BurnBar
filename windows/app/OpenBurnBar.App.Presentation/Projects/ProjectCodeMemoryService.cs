@@ -52,6 +52,9 @@ public sealed class ProjectCodeMemoryService : IDisposable
 
     public ProjectCodeMemoryStoreStats? DurableStoreStats => _index.DurableStoreStats;
 
+    public ProjectCodeCallGraphResult ReadCallGraph(string name, int limit = 200, int depth = 1) =>
+        _index.ReadCallGraph(name, limit, depth);
+
     public IReadOnlyList<ProjectCodeSymbol> Symbols => _index.Symbols;
 
     public bool TryLoad() => _index.TryLoad();

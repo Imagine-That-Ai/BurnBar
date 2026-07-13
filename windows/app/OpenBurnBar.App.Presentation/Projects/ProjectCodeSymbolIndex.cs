@@ -76,6 +76,10 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
 
     public ProjectCodeMemoryStoreStats? DurableStoreStats => _store?.ReadStats();
 
+    public ProjectCodeCallGraphResult ReadCallGraph(string name, int limit = 200, int depth = 1) =>
+        _store?.ReadCallGraph(name, limit, depth)
+        ?? throw new ProjectCodeParserException("project_code_call_graph_unavailable");
+
     public ProjectCodeIndexSnapshot? Snapshot
     {
         get

@@ -198,5 +198,10 @@ public sealed class CompanionCliServerTests
             "{\"op\":\"code.context_pack\",\"query\":\"Widget\"}",
             CancellationToken.None);
         Assert.Contains("code.context_pack", context, System.StringComparison.Ordinal);
+
+        string graph = await router.HandleAsync(
+            "{\"op\":\"code.call_graph\",\"name\":\"Invoke\"}",
+            CancellationToken.None);
+        Assert.Contains("code.call_graph", graph, System.StringComparison.Ordinal);
     }
 }

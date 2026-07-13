@@ -100,6 +100,59 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         }
     }
 
+    public ProjectCodeCallGraphResult ReadCallGraph(string name, int limit = 200, int depth = 1)
+    {
+        string normalized = (name ?? string.Empty).Trim();
+        if (normalized.Length == 0 || normalized.Length > 256)
+        {
+            throw new ArgumentException("A call-graph symbol name between 1 and 256 characters is required.", nameof(name));
+        }
+
+        if (limit is < 1 or > 200)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        }
+
+        if (depth is < 1 or > 3)
+        {
+            throw new ArgumentOutOfRangeException(nameof(depth));
+        }
+
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            var queue = new Queue<(string Name, int Depth)>();
+            var visitedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { normalized };
+            var edges = new List<ProjectCodeCallGraphEdge>();
+            var seenEdges = new HashSet<string>(StringComparer.Ordinal);
+            queue.Enqueue((normalized, 0));
+            while (queue.Count > 0 && edges.Count < limit)
+            {
+                (string current, int currentDepth) = queue.Dequeue();
+                IReadOnlyList<ProjectCodeCallGraphEdge> outgoing = ReadOutgoingEdges(current);
+                foreach (ProjectCodeCallGraphEdge edge in outgoing)
+                {
+                    if (seenEdges.Add(edge.EdgeID))
+                    {
+                        edges.Add(edge);
+                    }
+
+                    if (currentDepth + 1 < depth && visitedNames.Add(edge.Callee.Name))
+                    {
+                        queue.Enqueue((edge.Callee.Name, currentDepth + 1));
+                    }
+
+                    if (edges.Count >= limit)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            return new ProjectCodeCallGraphResult(normalized, edges, edges.Count >= limit);
+        }
+    }
+
     public bool TryLoad(string root, out ProjectCodeIndexSnapshot snapshot)
     {
         snapshot = default!;
@@ -358,6 +411,57 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         command.ExecuteNonQuery();
         EnsureColumn("code_index_checkpoints", "truncated", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("code_index_checkpoints", "parser_mode", "TEXT NOT NULL DEFAULT 'lexical'");
+    }
+
+    private IReadOnlyList<ProjectCodeCallGraphEdge> ReadOutgoingEdges(string callerName)
+    {
+        using var command = _connection.CreateCommand();
+        command.CommandText = """
+            SELECT e.id,
+                   caller.id, caller.name, caller.kind, caller.range_json, caller.confidence_tier,
+                   caller_art.file_path,
+                   callee.id, callee.name, callee.kind, callee.range_json, callee.confidence_tier,
+                   callee_art.file_path, e.confidence_tier
+            FROM code_call_edges AS e
+            JOIN code_symbols AS caller ON caller.id = e.caller_symbol_id
+            JOIN code_symbols AS callee ON callee.id = e.callee_symbol_id
+            JOIN code_artifacts AS caller_art ON caller_art.id = caller.artifact_id
+            JOIN code_artifacts AS callee_art ON callee_art.id = callee.artifact_id
+            WHERE caller.name = $name
+            ORDER BY callee.name COLLATE NOCASE, caller_art.file_path COLLATE NOCASE, e.id;
+            """;
+        command.Parameters.AddWithValue("$name", callerName);
+        using SqliteDataReader reader = command.ExecuteReader();
+        var edges = new List<ProjectCodeCallGraphEdge>();
+        while (reader.Read())
+        {
+            edges.Add(new ProjectCodeCallGraphEdge(
+                reader.GetString(0),
+                ReadCallGraphSymbol(reader, 1, 2, 3, 4, 5, 6),
+                ReadCallGraphSymbol(reader, 7, 8, 9, 10, 11, 12),
+                reader.GetString(13)));
+        }
+
+        return edges;
+    }
+
+    private static ProjectCodeCallGraphSymbol ReadCallGraphSymbol(
+        SqliteDataReader reader,
+        int idColumn,
+        int nameColumn,
+        int kindColumn,
+        int rangeColumn,
+        int confidenceColumn,
+        int pathColumn)
+    {
+        SymbolRange range = DeserializeRange(reader.GetString(rangeColumn));
+        return new ProjectCodeCallGraphSymbol(
+            reader.GetString(idColumn),
+            reader.GetString(nameColumn),
+            reader.GetString(kindColumn),
+            reader.GetString(pathColumn),
+            range.StartLine,
+            reader.GetString(confidenceColumn));
     }
 
     private void UpsertProject(string projectID, string root, string now, SqliteTransaction transaction)
@@ -767,3 +871,22 @@ public sealed record ProjectCodeMemoryStoreStats(
     long ManifestCount,
     long StorageBytes,
     long StorageBudgetBytes);
+
+public sealed record ProjectCodeCallGraphSymbol(
+    string SymbolID,
+    string Name,
+    string Kind,
+    string FilePath,
+    int Line,
+    string ConfidenceTier);
+
+public sealed record ProjectCodeCallGraphEdge(
+    string EdgeID,
+    ProjectCodeCallGraphSymbol Caller,
+    ProjectCodeCallGraphSymbol Callee,
+    string ConfidenceTier);
+
+public sealed record ProjectCodeCallGraphResult(
+    string Symbol,
+    IReadOnlyList<ProjectCodeCallGraphEdge> Edges,
+    bool Truncated);

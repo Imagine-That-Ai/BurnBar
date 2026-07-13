@@ -24,7 +24,8 @@ source text.
   SHA-1 Git-blob and SHA-256 content hashes for every readable artifact.
 - A restart loads the durable checkpoint and symbols before falling back to the
   legacy JSON metadata file. `code.status` reports durable-store availability
-  and bounded artifact/symbol/reference/call-edge/storage counters.
+  and bounded artifact/symbol/reference/call-edge/storage counters. The
+  companion plane exposes bounded `code.call_graph` traversal (depth 1-3).
 - Only metadata and hashes are persisted. Source is read transiently during
   reference extraction and is never inserted into the SQLite database.
 - The app composes the store by default at
@@ -40,8 +41,9 @@ dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj
 Result: **757 passed, 0 failed, 0 skipped**.
 
 The durable-store test proves two-file artifact/index persistence, lexical
-reference and call-edge persistence, checkpoint restart hydration, and absence
-of source text in the database bytes.
+reference and call-edge persistence, bounded call-graph traversal, checkpoint
+restart hydration, and absence of source text in the database bytes. The
+companion managed-runtime suite covers the new operation routing.
 
 ## Boundary
 

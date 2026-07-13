@@ -499,6 +499,11 @@ public partial class App : Application
                     OptionalBoundedInt(request, "line", 1, 1, 1_000_000),
                     OptionalBoundedInt(request, "character", 0, 0, 1_000_000),
                     cancellationToken).ConfigureAwait(false);
+            case "code.call_graph":
+                return service.ReadCallGraph(
+                    RequiredString(request, "name"),
+                    OptionalBoundedInt(request, "limit", 200, 1, 200),
+                    OptionalBoundedInt(request, "depth", 1, 1, 3));
             case "code.context_pack":
                 return service.BuildContextPack(
                     RequiredString(request, "query"),

@@ -180,6 +180,8 @@ public sealed class ProjectCodeMemoryServiceTests
                 Assert.True(stats.ReferenceCount >= 1);
                 Assert.True(stats.CallEdgeCount >= 1);
                 Assert.True(stats.StorageBytes > 0);
+                ProjectCodeCallGraphResult graph = service.ReadCallGraph("Invoke");
+                Assert.Contains(graph.Edges, edge => edge.Callee.Name == "Widget");
             }
 
             string databaseText = Encoding.UTF8.GetString(await File.ReadAllBytesAsync(databasePath));
@@ -191,6 +193,7 @@ public sealed class ProjectCodeMemoryServiceTests
             Assert.True(restoredService.TryLoad());
             Assert.Equal("Widget", Assert.Single(restoredService.FindSymbol("Widget")).Name);
             Assert.True(restoredService.DurableStoreStats?.ReferenceCount >= 1);
+            Assert.Contains(restoredService.ReadCallGraph("Invoke").Edges, edge => edge.Callee.Name == "Widget");
         }
         finally
         {
