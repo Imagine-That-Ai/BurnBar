@@ -141,7 +141,7 @@ jobs:
         run: dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime ${{ matrix.rid }}
 
   linux-arm64-native:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -190,7 +190,7 @@ jobs:
           apps/console/vendor/openburnbar-domain-core-wasm
 
   android:
-    runs-on: macos-26
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
       DOMAIN_CORE_ANDROID_NDK_VERSION: "26.3.11579264"
@@ -206,11 +206,22 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+      - name: Verify hosted Android SDK
+        run: |
+          test -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --version
 
       - name: Install Android NDK
-        run: sdkmanager "ndk;${DOMAIN_CORE_ANDROID_NDK_VERSION}"
+        run: |
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;${DOMAIN_CORE_ANDROID_NDK_VERSION}"
+
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
@@ -218,25 +229,31 @@ jobs:
           toolchain: "1.96.0"
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
+      - name: Verify committed AAR source fingerprint
+        run: ./scripts/build-domain-core-android-aar.sh --check-source
+
       - name: Build four-ABI Android AAR
         run: ./scripts/build-domain-core-android-aar.sh
 
-      - name: Reject Android artifact or binding drift
+      - name: Reject Android binding drift
         run: |
           git diff --exit-code -- \
-            Vendor/openburnbar-domain-core.aar \
             android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi
 
       - name: Compile Android native-load test
         working-directory: android
         run: ./gradlew :openburnbar-domain-core:assembleDebugAndroidTest --no-daemon
 
-      - name: Execute ABI v2 smoke on arm64 emulator
+      - name: Execute ABI v2 smoke on x86_64 emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
-          arch: arm64-v8a
+          arch: x86_64
+          disable-animations: true
+          emulator-options: >-
+            -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim
           script: cd android && ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon
 
   apple:
