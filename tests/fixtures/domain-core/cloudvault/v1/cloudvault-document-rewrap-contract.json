@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "oldKeyHex": "7171717171717171717171717171717171717171717171717171717171717171",
+  "newKeyHex": "7272727272727272727272727272727272727272727272727272727272727272",
+  "newVaultKeyID": "v1_515a733d7320b35b2117893952f93a94",
+  "bounds": {
+    "maxDocumentCiphertextBytes": 16777216,
+    "maxDocumentFields": 256,
+    "maxFieldNameBytes": 256
+  },
+  "request": {
+    "collection": "cli_agent_mission_requests",
+    "docId": "requestA",
+    "documentFieldNames": [
+      "plainStatus",
+      "sealedSnapshot",
+      "vaultKeyID",
+      "sealedReplyPayload",
+      "sealedDisplayLabel",
+      "sealedPayload"
+    ],
+    "envelopes": [
+      {
+        "aad": "OpenBurnBar-CloudVaultBlob-v2",
+        "algorithm": "AES-256-GCM",
+        "fieldName": "sealedSnapshot",
+        "hasCreatedAt": true,
+        "integrityHashVersion": 1,
+        "keyVersion": 1,
+        "kind": "blob",
+        "plaintextHmac": "ccdf8340a0ac5c43222429dfe57f07a711200f92a2b126456eb1e5b5b68935e8",
+        "plaintextSha256": null,
+        "schemaVersion": 2,
+        "sealedBoxBase64": "ExMTExMTExMTExMTHF//R2eJOKG8evtuzUFrtP+6VRddslLN+8Fd0byQUpJW80vWQA=="
+      },
+      {
+        "aad": "OpenBurnBar-CloudVaultSealedPayload-v2",
+        "algorithm": "AES-256-GCM",
+        "fieldName": "sealedReplyPayload",
+        "keyVersion": 1,
+        "kind": "sealedPayload",
+        "schemaVersion": 2,
+        "sealedBoxBase64": "FBQUFBQUFBQUFBQU4b5CfGiqypQOogjSHhuGfN0zGm6umgE91qPo",
+        "vaultKeyId": "v1_515a733d7320b35b2117893952f93a94"
+      },
+      {
+        "aad": "OpenBurnBar-CloudVault-aad-v2|userA|cli_agent_mission_requests|requestA|sealedDisplayLabel|2|sealedDisplayLabel",
+        "algorithm": "AES-256-GCM",
+        "ciphertext": "klujVkaSuje+TiZhYw0=",
+        "fieldName": "sealedDisplayLabel",
+        "keyVersion": 1,
+        "kind": "sealedText",
+        "nonce": "EhISEhISEhISEhIS",
+        "schemaVersion": 2,
+        "tag": "6fIIAety1elc8wLasntHiw=="
+      },
+      {
+        "aad": "OpenBurnBar-CloudVaultSealedPayload-v2",
+        "algorithm": "AES-256-GCM",
+        "fieldName": "sealedPayload",
+        "keyVersion": 1,
+        "kind": "sealedPayload",
+        "schemaVersion": 2,
+        "sealedBoxBase64": "ERERERERERERERER/IcMhLA283cnbpRNi2CTKvNBn1ZeDHqbBsvt7oVOgZ2I6DwXeAOM",
+        "vaultKeyId": "v1_3e441393404b2085e7a3090a47d377ab"
+      }
+    ],
+    "resealNonces": [
+      [33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33],
+      [34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34, 34],
+      [35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35]
+    ],
+    "rotationJobId": "job-7",
+    "uid": "userA",
+    "vaultGeneration": 7
+  },
+  "expected": {
+    "changedFields": [
+      "sealedDisplayLabel",
+      "sealedPayload",
+      "sealedSnapshot"
+    ],
+    "companionUpdateIntents": [
+      {
+        "companionFieldName": "vaultKeyID",
+        "sourceFieldName": "sealedPayload",
+        "vaultKeyId": "v1_515a733d7320b35b2117893952f93a94"
+      }
+    ],
+    "preservedMemberIntents": [
+      {
+        "memberName": "createdAt",
+        "sourceFieldName": "sealedSnapshot"
+      }
+    ],
+    "rewrappedEnvelopes": [
+      {
+        "aad": "OpenBurnBar-CloudVault-aad-v2|userA|cli_agent_mission_requests|requestA|sealedDisplayLabel|2|sealedDisplayLabel",
+        "algorithm": "AES-256-GCM",
+        "ciphertext": "QQAiN89FjnLldO+sUFM=",
+        "fieldName": "sealedDisplayLabel",
+        "keyVersion": 1,
+        "kind": "sealedText",
+        "nonce": "ISEhISEhISEhISEh",
+        "schemaVersion": 2,
+        "tag": "vHtGRTsSqIo62nhmt30fcQ=="
+      },
+      {
+        "aad": "OpenBurnBar-CloudVault-aad-v2|userA|cli_agent_mission_requests|requestA|sealedPayload|2|sealedPayload",
+        "algorithm": "AES-256-GCM",
+        "fieldName": "sealedPayload",
+        "keyVersion": 1,
+        "kind": "sealedPayload",
+        "schemaVersion": 2,
+        "sealedBoxBase64": "IiIiIiIiIiIiIiIiDPkyKmr4/j7NhN75rGQIyWV7Y+vX5yy/aGXFNi2r41j8lddCx4ZA",
+        "vaultKeyId": "v1_515a733d7320b35b2117893952f93a94"
+      },
+      {
+        "aad": "OpenBurnBar-CloudVault-aad-v2|userA|cli_agent_mission_requests|requestA|sealedSnapshot|2|sealedSnapshot",
+        "algorithm": "AES-256-GCM",
+        "fieldName": "sealedSnapshot",
+        "hasCreatedAt": true,
+        "integrityHashVersion": 1,
+        "keyVersion": 1,
+        "kind": "blob",
+        "plaintextHmac": "5fe0e2d17a7f00ab0c6f5ba4ae6f443026e0633d51e81c2881c668dba84f99cf",
+        "plaintextSha256": null,
+        "schemaVersion": 2,
+        "sealedBoxBase64": "IyMjIyMjIyMjIyMjpU+uxe+mY+ZHMcdXNtdZkTwAbezOrsd2xWCYDqRH3OvlumhCBA=="
+      }
+    ],
+    "rotationJobIdUpdate": "job-7",
+    "skippedFields": ["sealedReplyPayload"],
+    "vaultGenerationUpdate": 7
+  },
+  "adversarialCases": [
+    {"mutation": "wrongOldKey", "error": "invalidEnvelope"},
+    {"mutation": "wrongPathAad", "error": "aadMismatch"},
+    {"mutation": "tamperedCiphertext", "error": "authenticationFailed"},
+    {"mutation": "futureEnvelopeSchema", "error": "invalidEnvelope"},
+    {"mutation": "futureKeyVersion", "error": "invalidEnvelope"},
+    {"mutation": "malformedAlreadyNewPayload", "error": "invalidEnvelope"},
+    {"mutation": "tamperedAlreadyNewPayload", "error": "authenticationFailed"},
+    {"mutation": "duplicateDocumentField", "error": "invalidFieldSet"},
+    {"mutation": "duplicateEnvelopeField", "error": "invalidFieldSet"},
+    {"mutation": "shortNoncePlan", "error": "invalidNoncePlan"},
+    {"mutation": "reusedNonce", "error": "invalidNoncePlan"},
+    {"mutation": "fieldCountOverBound", "error": "boundsExceeded"},
+    {"mutation": "fieldNameOverBound", "error": "boundsExceeded"},
+    {"mutation": "ciphertextAggregateOverBound", "error": "boundsExceeded"}
+  ]
+}

@@ -700,6 +700,474 @@ public func FfiConverterTypeCloudVaultAesGcmDetachedBox_lower(_ value: CloudVaul
 }
 
 
+public struct CloudVaultCompanionUpdateIntent {
+    public var sourceFieldName: String
+    public var companionFieldName: String
+    public var vaultKeyId: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(sourceFieldName: String, companionFieldName: String, vaultKeyId: String) {
+        self.sourceFieldName = sourceFieldName
+        self.companionFieldName = companionFieldName
+        self.vaultKeyId = vaultKeyId
+    }
+}
+
+
+
+extension CloudVaultCompanionUpdateIntent: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultCompanionUpdateIntent, rhs: CloudVaultCompanionUpdateIntent) -> Bool {
+        if lhs.sourceFieldName != rhs.sourceFieldName {
+            return false
+        }
+        if lhs.companionFieldName != rhs.companionFieldName {
+            return false
+        }
+        if lhs.vaultKeyId != rhs.vaultKeyId {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(sourceFieldName)
+        hasher.combine(companionFieldName)
+        hasher.combine(vaultKeyId)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultCompanionUpdateIntent: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultCompanionUpdateIntent {
+        return
+            try CloudVaultCompanionUpdateIntent(
+                sourceFieldName: FfiConverterString.read(from: &buf),
+                companionFieldName: FfiConverterString.read(from: &buf),
+                vaultKeyId: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultCompanionUpdateIntent, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.sourceFieldName, into: &buf)
+        FfiConverterString.write(value.companionFieldName, into: &buf)
+        FfiConverterString.write(value.vaultKeyId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultCompanionUpdateIntent_lift(_ buf: RustBuffer) throws -> CloudVaultCompanionUpdateIntent {
+    return try FfiConverterTypeCloudVaultCompanionUpdateIntent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultCompanionUpdateIntent_lower(_ value: CloudVaultCompanionUpdateIntent) -> RustBuffer {
+    return FfiConverterTypeCloudVaultCompanionUpdateIntent.lower(value)
+}
+
+
+/**
+ * Typed, transport-safe representation of one CloudVault envelope.
+ * Fields not used by `kind` must be absent; conversion fails closed otherwise.
+ */
+public struct CloudVaultDocumentEnvelope {
+    public var kind: CloudVaultDocumentEnvelopeKind
+    public var fieldName: String
+    public var schemaVersion: UInt32?
+    public var algorithm: String
+    public var keyVersion: UInt32
+    public var vaultKeyId: String?
+    public var nonce: String?
+    public var ciphertext: String?
+    public var tag: String?
+    public var sealedBoxBase64: String?
+    public var plaintextSha256: String?
+    public var plaintextHmac: String?
+    public var integrityHashVersion: UInt32?
+    public var aad: String?
+    public var hasCreatedAt: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(kind: CloudVaultDocumentEnvelopeKind, fieldName: String, schemaVersion: UInt32?, algorithm: String, keyVersion: UInt32, vaultKeyId: String?, nonce: String?, ciphertext: String?, tag: String?, sealedBoxBase64: String?, plaintextSha256: String?, plaintextHmac: String?, integrityHashVersion: UInt32?, aad: String?, hasCreatedAt: Bool) {
+        self.kind = kind
+        self.fieldName = fieldName
+        self.schemaVersion = schemaVersion
+        self.algorithm = algorithm
+        self.keyVersion = keyVersion
+        self.vaultKeyId = vaultKeyId
+        self.nonce = nonce
+        self.ciphertext = ciphertext
+        self.tag = tag
+        self.sealedBoxBase64 = sealedBoxBase64
+        self.plaintextSha256 = plaintextSha256
+        self.plaintextHmac = plaintextHmac
+        self.integrityHashVersion = integrityHashVersion
+        self.aad = aad
+        self.hasCreatedAt = hasCreatedAt
+    }
+}
+
+
+
+extension CloudVaultDocumentEnvelope: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultDocumentEnvelope, rhs: CloudVaultDocumentEnvelope) -> Bool {
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.fieldName != rhs.fieldName {
+            return false
+        }
+        if lhs.schemaVersion != rhs.schemaVersion {
+            return false
+        }
+        if lhs.algorithm != rhs.algorithm {
+            return false
+        }
+        if lhs.keyVersion != rhs.keyVersion {
+            return false
+        }
+        if lhs.vaultKeyId != rhs.vaultKeyId {
+            return false
+        }
+        if lhs.nonce != rhs.nonce {
+            return false
+        }
+        if lhs.ciphertext != rhs.ciphertext {
+            return false
+        }
+        if lhs.tag != rhs.tag {
+            return false
+        }
+        if lhs.sealedBoxBase64 != rhs.sealedBoxBase64 {
+            return false
+        }
+        if lhs.plaintextSha256 != rhs.plaintextSha256 {
+            return false
+        }
+        if lhs.plaintextHmac != rhs.plaintextHmac {
+            return false
+        }
+        if lhs.integrityHashVersion != rhs.integrityHashVersion {
+            return false
+        }
+        if lhs.aad != rhs.aad {
+            return false
+        }
+        if lhs.hasCreatedAt != rhs.hasCreatedAt {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(kind)
+        hasher.combine(fieldName)
+        hasher.combine(schemaVersion)
+        hasher.combine(algorithm)
+        hasher.combine(keyVersion)
+        hasher.combine(vaultKeyId)
+        hasher.combine(nonce)
+        hasher.combine(ciphertext)
+        hasher.combine(tag)
+        hasher.combine(sealedBoxBase64)
+        hasher.combine(plaintextSha256)
+        hasher.combine(plaintextHmac)
+        hasher.combine(integrityHashVersion)
+        hasher.combine(aad)
+        hasher.combine(hasCreatedAt)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultDocumentEnvelope: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultDocumentEnvelope {
+        return
+            try CloudVaultDocumentEnvelope(
+                kind: FfiConverterTypeCloudVaultDocumentEnvelopeKind.read(from: &buf),
+                fieldName: FfiConverterString.read(from: &buf),
+                schemaVersion: FfiConverterOptionUInt32.read(from: &buf),
+                algorithm: FfiConverterString.read(from: &buf),
+                keyVersion: FfiConverterUInt32.read(from: &buf),
+                vaultKeyId: FfiConverterOptionString.read(from: &buf),
+                nonce: FfiConverterOptionString.read(from: &buf),
+                ciphertext: FfiConverterOptionString.read(from: &buf),
+                tag: FfiConverterOptionString.read(from: &buf),
+                sealedBoxBase64: FfiConverterOptionString.read(from: &buf),
+                plaintextSha256: FfiConverterOptionString.read(from: &buf),
+                plaintextHmac: FfiConverterOptionString.read(from: &buf),
+                integrityHashVersion: FfiConverterOptionUInt32.read(from: &buf),
+                aad: FfiConverterOptionString.read(from: &buf),
+                hasCreatedAt: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultDocumentEnvelope, into buf: inout [UInt8]) {
+        FfiConverterTypeCloudVaultDocumentEnvelopeKind.write(value.kind, into: &buf)
+        FfiConverterString.write(value.fieldName, into: &buf)
+        FfiConverterOptionUInt32.write(value.schemaVersion, into: &buf)
+        FfiConverterString.write(value.algorithm, into: &buf)
+        FfiConverterUInt32.write(value.keyVersion, into: &buf)
+        FfiConverterOptionString.write(value.vaultKeyId, into: &buf)
+        FfiConverterOptionString.write(value.nonce, into: &buf)
+        FfiConverterOptionString.write(value.ciphertext, into: &buf)
+        FfiConverterOptionString.write(value.tag, into: &buf)
+        FfiConverterOptionString.write(value.sealedBoxBase64, into: &buf)
+        FfiConverterOptionString.write(value.plaintextSha256, into: &buf)
+        FfiConverterOptionString.write(value.plaintextHmac, into: &buf)
+        FfiConverterOptionUInt32.write(value.integrityHashVersion, into: &buf)
+        FfiConverterOptionString.write(value.aad, into: &buf)
+        FfiConverterBool.write(value.hasCreatedAt, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultDocumentEnvelope_lift(_ buf: RustBuffer) throws -> CloudVaultDocumentEnvelope {
+    return try FfiConverterTypeCloudVaultDocumentEnvelope.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultDocumentEnvelope_lower(_ value: CloudVaultDocumentEnvelope) -> RustBuffer {
+    return FfiConverterTypeCloudVaultDocumentEnvelope.lower(value)
+}
+
+
+public struct CloudVaultDocumentRewrapRequest {
+    public var uid: String
+    public var collection: String
+    public var docId: String
+    public var documentFieldNames: [String]
+    public var envelopes: [CloudVaultDocumentEnvelope]
+    public var resealNonces: [Data]
+    public var vaultGeneration: Int64?
+    public var rotationJobId: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(uid: String, collection: String, docId: String, documentFieldNames: [String], envelopes: [CloudVaultDocumentEnvelope], resealNonces: [Data], vaultGeneration: Int64?, rotationJobId: String?) {
+        self.uid = uid
+        self.collection = collection
+        self.docId = docId
+        self.documentFieldNames = documentFieldNames
+        self.envelopes = envelopes
+        self.resealNonces = resealNonces
+        self.vaultGeneration = vaultGeneration
+        self.rotationJobId = rotationJobId
+    }
+}
+
+
+
+extension CloudVaultDocumentRewrapRequest: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultDocumentRewrapRequest, rhs: CloudVaultDocumentRewrapRequest) -> Bool {
+        if lhs.uid != rhs.uid {
+            return false
+        }
+        if lhs.collection != rhs.collection {
+            return false
+        }
+        if lhs.docId != rhs.docId {
+            return false
+        }
+        if lhs.documentFieldNames != rhs.documentFieldNames {
+            return false
+        }
+        if lhs.envelopes != rhs.envelopes {
+            return false
+        }
+        if lhs.resealNonces != rhs.resealNonces {
+            return false
+        }
+        if lhs.vaultGeneration != rhs.vaultGeneration {
+            return false
+        }
+        if lhs.rotationJobId != rhs.rotationJobId {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(uid)
+        hasher.combine(collection)
+        hasher.combine(docId)
+        hasher.combine(documentFieldNames)
+        hasher.combine(envelopes)
+        hasher.combine(resealNonces)
+        hasher.combine(vaultGeneration)
+        hasher.combine(rotationJobId)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultDocumentRewrapRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultDocumentRewrapRequest {
+        return
+            try CloudVaultDocumentRewrapRequest(
+                uid: FfiConverterString.read(from: &buf),
+                collection: FfiConverterString.read(from: &buf),
+                docId: FfiConverterString.read(from: &buf),
+                documentFieldNames: FfiConverterSequenceString.read(from: &buf),
+                envelopes: FfiConverterSequenceTypeCloudVaultDocumentEnvelope.read(from: &buf),
+                resealNonces: FfiConverterSequenceData.read(from: &buf),
+                vaultGeneration: FfiConverterOptionInt64.read(from: &buf),
+                rotationJobId: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultDocumentRewrapRequest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.uid, into: &buf)
+        FfiConverterString.write(value.collection, into: &buf)
+        FfiConverterString.write(value.docId, into: &buf)
+        FfiConverterSequenceString.write(value.documentFieldNames, into: &buf)
+        FfiConverterSequenceTypeCloudVaultDocumentEnvelope.write(value.envelopes, into: &buf)
+        FfiConverterSequenceData.write(value.resealNonces, into: &buf)
+        FfiConverterOptionInt64.write(value.vaultGeneration, into: &buf)
+        FfiConverterOptionString.write(value.rotationJobId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultDocumentRewrapRequest_lift(_ buf: RustBuffer) throws -> CloudVaultDocumentRewrapRequest {
+    return try FfiConverterTypeCloudVaultDocumentRewrapRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultDocumentRewrapRequest_lower(_ value: CloudVaultDocumentRewrapRequest) -> RustBuffer {
+    return FfiConverterTypeCloudVaultDocumentRewrapRequest.lower(value)
+}
+
+
+public struct CloudVaultDocumentRewrapResult {
+    public var changedFields: [String]
+    public var skippedFields: [String]
+    public var rewrappedEnvelopes: [CloudVaultDocumentEnvelope]
+    public var companionUpdateIntents: [CloudVaultCompanionUpdateIntent]
+    public var preservedMemberIntents: [CloudVaultPreservedEnvelopeMemberIntent]
+    public var vaultGenerationUpdate: Int64?
+    public var rotationJobIdUpdate: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(changedFields: [String], skippedFields: [String], rewrappedEnvelopes: [CloudVaultDocumentEnvelope], companionUpdateIntents: [CloudVaultCompanionUpdateIntent], preservedMemberIntents: [CloudVaultPreservedEnvelopeMemberIntent], vaultGenerationUpdate: Int64?, rotationJobIdUpdate: String?) {
+        self.changedFields = changedFields
+        self.skippedFields = skippedFields
+        self.rewrappedEnvelopes = rewrappedEnvelopes
+        self.companionUpdateIntents = companionUpdateIntents
+        self.preservedMemberIntents = preservedMemberIntents
+        self.vaultGenerationUpdate = vaultGenerationUpdate
+        self.rotationJobIdUpdate = rotationJobIdUpdate
+    }
+}
+
+
+
+extension CloudVaultDocumentRewrapResult: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultDocumentRewrapResult, rhs: CloudVaultDocumentRewrapResult) -> Bool {
+        if lhs.changedFields != rhs.changedFields {
+            return false
+        }
+        if lhs.skippedFields != rhs.skippedFields {
+            return false
+        }
+        if lhs.rewrappedEnvelopes != rhs.rewrappedEnvelopes {
+            return false
+        }
+        if lhs.companionUpdateIntents != rhs.companionUpdateIntents {
+            return false
+        }
+        if lhs.preservedMemberIntents != rhs.preservedMemberIntents {
+            return false
+        }
+        if lhs.vaultGenerationUpdate != rhs.vaultGenerationUpdate {
+            return false
+        }
+        if lhs.rotationJobIdUpdate != rhs.rotationJobIdUpdate {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(changedFields)
+        hasher.combine(skippedFields)
+        hasher.combine(rewrappedEnvelopes)
+        hasher.combine(companionUpdateIntents)
+        hasher.combine(preservedMemberIntents)
+        hasher.combine(vaultGenerationUpdate)
+        hasher.combine(rotationJobIdUpdate)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultDocumentRewrapResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultDocumentRewrapResult {
+        return
+            try CloudVaultDocumentRewrapResult(
+                changedFields: FfiConverterSequenceString.read(from: &buf),
+                skippedFields: FfiConverterSequenceString.read(from: &buf),
+                rewrappedEnvelopes: FfiConverterSequenceTypeCloudVaultDocumentEnvelope.read(from: &buf),
+                companionUpdateIntents: FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent.read(from: &buf),
+                preservedMemberIntents: FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent.read(from: &buf),
+                vaultGenerationUpdate: FfiConverterOptionInt64.read(from: &buf),
+                rotationJobIdUpdate: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultDocumentRewrapResult, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.changedFields, into: &buf)
+        FfiConverterSequenceString.write(value.skippedFields, into: &buf)
+        FfiConverterSequenceTypeCloudVaultDocumentEnvelope.write(value.rewrappedEnvelopes, into: &buf)
+        FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent.write(value.companionUpdateIntents, into: &buf)
+        FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent.write(value.preservedMemberIntents, into: &buf)
+        FfiConverterOptionInt64.write(value.vaultGenerationUpdate, into: &buf)
+        FfiConverterOptionString.write(value.rotationJobIdUpdate, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultDocumentRewrapResult_lift(_ buf: RustBuffer) throws -> CloudVaultDocumentRewrapResult {
+    return try FfiConverterTypeCloudVaultDocumentRewrapResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultDocumentRewrapResult_lower(_ value: CloudVaultDocumentRewrapResult) -> RustBuffer {
+    return FfiConverterTypeCloudVaultDocumentRewrapResult.lower(value)
+}
+
+
 public struct CloudVaultEscrowWireParts {
     public var ephemeralPublicKey: Data
     public var aesGcmCombined: Data
@@ -763,6 +1231,72 @@ public func FfiConverterTypeCloudVaultEscrowWireParts_lift(_ buf: RustBuffer) th
 #endif
 public func FfiConverterTypeCloudVaultEscrowWireParts_lower(_ value: CloudVaultEscrowWireParts) -> RustBuffer {
     return FfiConverterTypeCloudVaultEscrowWireParts.lower(value)
+}
+
+
+public struct CloudVaultPreservedEnvelopeMemberIntent {
+    public var sourceFieldName: String
+    public var memberName: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(sourceFieldName: String, memberName: String) {
+        self.sourceFieldName = sourceFieldName
+        self.memberName = memberName
+    }
+}
+
+
+
+extension CloudVaultPreservedEnvelopeMemberIntent: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultPreservedEnvelopeMemberIntent, rhs: CloudVaultPreservedEnvelopeMemberIntent) -> Bool {
+        if lhs.sourceFieldName != rhs.sourceFieldName {
+            return false
+        }
+        if lhs.memberName != rhs.memberName {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(sourceFieldName)
+        hasher.combine(memberName)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultPreservedEnvelopeMemberIntent {
+        return
+            try CloudVaultPreservedEnvelopeMemberIntent(
+                sourceFieldName: FfiConverterString.read(from: &buf),
+                memberName: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultPreservedEnvelopeMemberIntent, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.sourceFieldName, into: &buf)
+        FfiConverterString.write(value.memberName, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent_lift(_ buf: RustBuffer) throws -> CloudVaultPreservedEnvelopeMemberIntent {
+    return try FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent_lower(_ value: CloudVaultPreservedEnvelopeMemberIntent) -> RustBuffer {
+    return FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent.lower(value)
 }
 
 
@@ -1189,6 +1723,77 @@ extension AnthropicCredentialShape: Equatable, Hashable {}
 
 
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum CloudVaultDocumentEnvelopeKind {
+
+    case sealedPayload
+    case sealedText
+    case blob
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultDocumentEnvelopeKind: FfiConverterRustBuffer {
+    typealias SwiftType = CloudVaultDocumentEnvelopeKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultDocumentEnvelopeKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .sealedPayload
+
+        case 2: return .sealedText
+
+        case 3: return .blob
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: CloudVaultDocumentEnvelopeKind, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .sealedPayload:
+            writeInt(&buf, Int32(1))
+
+
+        case .sealedText:
+            writeInt(&buf, Int32(2))
+
+
+        case .blob:
+            writeInt(&buf, Int32(3))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultDocumentEnvelopeKind_lift(_ buf: RustBuffer) throws -> CloudVaultDocumentEnvelopeKind {
+    return try FfiConverterTypeCloudVaultDocumentEnvelopeKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultDocumentEnvelopeKind_lower(_ value: CloudVaultDocumentEnvelopeKind) -> RustBuffer {
+    return FfiConverterTypeCloudVaultDocumentEnvelopeKind.lower(value)
+}
+
+
+
+extension CloudVaultDocumentEnvelopeKind: Equatable, Hashable {}
+
+
+
 
 public enum CloudVaultFfiError {
 
@@ -1210,6 +1815,13 @@ public enum CloudVaultFfiError {
     case InvalidSharedSecretLength
     case InvalidP256PublicKey
     case InvalidEscrowWireLength
+    case NewVaultKeyIdMismatch
+    case RewrapBoundsExceeded
+    case InvalidRewrapFieldSet
+    case InvalidRewrapEnvelope
+    case InvalidRewrapNoncePlan
+    case InvalidRewrapText
+    case RewrapIntegrityMismatch
 }
 
 
@@ -1242,6 +1854,13 @@ public struct FfiConverterTypeCloudVaultFfiError: FfiConverterRustBuffer {
         case 14: return .InvalidSharedSecretLength
         case 15: return .InvalidP256PublicKey
         case 16: return .InvalidEscrowWireLength
+        case 17: return .NewVaultKeyIdMismatch
+        case 18: return .RewrapBoundsExceeded
+        case 19: return .InvalidRewrapFieldSet
+        case 20: return .InvalidRewrapEnvelope
+        case 21: return .InvalidRewrapNoncePlan
+        case 22: return .InvalidRewrapText
+        case 23: return .RewrapIntegrityMismatch
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -1316,6 +1935,34 @@ public struct FfiConverterTypeCloudVaultFfiError: FfiConverterRustBuffer {
 
         case .InvalidEscrowWireLength:
             writeInt(&buf, Int32(16))
+
+
+        case .NewVaultKeyIdMismatch:
+            writeInt(&buf, Int32(17))
+
+
+        case .RewrapBoundsExceeded:
+            writeInt(&buf, Int32(18))
+
+
+        case .InvalidRewrapFieldSet:
+            writeInt(&buf, Int32(19))
+
+
+        case .InvalidRewrapEnvelope:
+            writeInt(&buf, Int32(20))
+
+
+        case .InvalidRewrapNoncePlan:
+            writeInt(&buf, Int32(21))
+
+
+        case .InvalidRewrapText:
+            writeInt(&buf, Int32(22))
+
+
+        case .RewrapIntegrityMismatch:
+            writeInt(&buf, Int32(23))
 
         }
     }
@@ -1843,6 +2490,30 @@ extension QuotaWindowKind: Equatable, Hashable {}
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = UInt32?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt32.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt32.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
     typealias SwiftType = Int64?
 
@@ -1909,6 +2580,131 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         case 1: return try FfiConverterString.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceData: FfiConverterRustBuffer {
+    typealias SwiftType = [Data]
+
+    public static func write(_ value: [Data], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterData.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Data] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Data]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterData.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent: FfiConverterRustBuffer {
+    typealias SwiftType = [CloudVaultCompanionUpdateIntent]
+
+    public static func write(_ value: [CloudVaultCompanionUpdateIntent], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCloudVaultCompanionUpdateIntent.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CloudVaultCompanionUpdateIntent] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CloudVaultCompanionUpdateIntent]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCloudVaultCompanionUpdateIntent.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCloudVaultDocumentEnvelope: FfiConverterRustBuffer {
+    typealias SwiftType = [CloudVaultDocumentEnvelope]
+
+    public static func write(_ value: [CloudVaultDocumentEnvelope], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCloudVaultDocumentEnvelope.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CloudVaultDocumentEnvelope] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CloudVaultDocumentEnvelope]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCloudVaultDocumentEnvelope.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent: FfiConverterRustBuffer {
+    typealias SwiftType = [CloudVaultPreservedEnvelopeMemberIntent]
+
+    public static func write(_ value: [CloudVaultPreservedEnvelopeMemberIntent], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CloudVaultPreservedEnvelopeMemberIntent] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CloudVaultPreservedEnvelopeMemberIntent]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent.read(from: &buf))
+        }
+        return seq
     }
 }
 
@@ -2135,6 +2931,16 @@ public func cloudVaultResolveAad(envelopeAad: String, context: CloudVaultAadCont
     )
 })
 }
+public func cloudVaultRewrapDocument(request: CloudVaultDocumentRewrapRequest, oldKey: Data, newKey: Data, newVaultKeyId: String)throws  -> CloudVaultDocumentRewrapResult {
+    return try  FfiConverterTypeCloudVaultDocumentRewrapResult.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_rewrap_document(
+        FfiConverterTypeCloudVaultDocumentRewrapRequest.lower(request),
+        FfiConverterData.lower(oldKey),
+        FfiConverterData.lower(newKey),
+        FfiConverterString.lower(newVaultKeyId),$0
+    )
+})
+}
 public func cloudVaultSha256Hex(data: Data) -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(
@@ -2275,6 +3081,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad() != 62830) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_rewrap_document() != 48266) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex() != 55638) {

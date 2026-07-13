@@ -20,6 +20,7 @@ export const cloudVaultRecoveryOpenVaultKey: (a: number, b: number, c: number, d
 export const cloudVaultRecoveryVerificationHash: (a: number, b: number, c: number) => void;
 export const cloudVaultRecoveryWrapVaultKey: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
 export const cloudVaultRecoveryWrappingKey: (a: number, b: number, c: number) => void;
+export const cloudVaultRewrapDocumentJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
 export const cloudVaultSha256Hex: (a: number, b: number, c: number) => void;
 export const cloudVaultValidateP256X963PublicKey: (a: number, b: number, c: number) => void;
 export const cloudvaultescrowwireparts_aesGcmCombined: (a: number, b: number) => void;

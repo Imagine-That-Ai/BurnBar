@@ -771,6 +771,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -831,6 +833,8 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_wrapping_key(`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(`envelopeAad`: RustBuffer.ByValue,`context`: RustBuffer.ByValue,`rejectLegacy`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_rewrap_document(`request`: RustBuffer.ByValue,`oldKey`: RustBuffer.ByValue,`newKey`: RustBuffer.ByValue,`newVaultKeyId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -1006,6 +1010,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_rewrap_document(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key(
@@ -1105,6 +1111,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad() != 62830.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_rewrap_document() != 48266.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex() != 55638.toShort()) {
@@ -1432,6 +1441,238 @@ public object FfiConverterTypeCloudVaultAesGcmDetachedBox: FfiConverterRustBuffe
 
 
 
+data class CloudVaultCompanionUpdateIntent (
+    var `sourceFieldName`: kotlin.String,
+    var `companionFieldName`: kotlin.String,
+    var `vaultKeyId`: kotlin.String
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultCompanionUpdateIntent: FfiConverterRustBuffer<CloudVaultCompanionUpdateIntent> {
+    override fun read(buf: ByteBuffer): CloudVaultCompanionUpdateIntent {
+        return CloudVaultCompanionUpdateIntent(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultCompanionUpdateIntent) = (
+            FfiConverterString.allocationSize(value.`sourceFieldName`) +
+            FfiConverterString.allocationSize(value.`companionFieldName`) +
+            FfiConverterString.allocationSize(value.`vaultKeyId`)
+    )
+
+    override fun write(value: CloudVaultCompanionUpdateIntent, buf: ByteBuffer) {
+            FfiConverterString.write(value.`sourceFieldName`, buf)
+            FfiConverterString.write(value.`companionFieldName`, buf)
+            FfiConverterString.write(value.`vaultKeyId`, buf)
+    }
+}
+
+
+
+/**
+ * Typed, transport-safe representation of one CloudVault envelope.
+ * Fields not used by `kind` must be absent; conversion fails closed otherwise.
+ */
+data class CloudVaultDocumentEnvelope (
+    var `kind`: CloudVaultDocumentEnvelopeKind,
+    var `fieldName`: kotlin.String,
+    var `schemaVersion`: kotlin.UInt?,
+    var `algorithm`: kotlin.String,
+    var `keyVersion`: kotlin.UInt,
+    var `vaultKeyId`: kotlin.String?,
+    var `nonce`: kotlin.String?,
+    var `ciphertext`: kotlin.String?,
+    var `tag`: kotlin.String?,
+    var `sealedBoxBase64`: kotlin.String?,
+    var `plaintextSha256`: kotlin.String?,
+    var `plaintextHmac`: kotlin.String?,
+    var `integrityHashVersion`: kotlin.UInt?,
+    var `aad`: kotlin.String?,
+    var `hasCreatedAt`: kotlin.Boolean
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultDocumentEnvelope: FfiConverterRustBuffer<CloudVaultDocumentEnvelope> {
+    override fun read(buf: ByteBuffer): CloudVaultDocumentEnvelope {
+        return CloudVaultDocumentEnvelope(
+            FfiConverterTypeCloudVaultDocumentEnvelopeKind.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultDocumentEnvelope) = (
+            FfiConverterTypeCloudVaultDocumentEnvelopeKind.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`fieldName`) +
+            FfiConverterOptionalUInt.allocationSize(value.`schemaVersion`) +
+            FfiConverterString.allocationSize(value.`algorithm`) +
+            FfiConverterUInt.allocationSize(value.`keyVersion`) +
+            FfiConverterOptionalString.allocationSize(value.`vaultKeyId`) +
+            FfiConverterOptionalString.allocationSize(value.`nonce`) +
+            FfiConverterOptionalString.allocationSize(value.`ciphertext`) +
+            FfiConverterOptionalString.allocationSize(value.`tag`) +
+            FfiConverterOptionalString.allocationSize(value.`sealedBoxBase64`) +
+            FfiConverterOptionalString.allocationSize(value.`plaintextSha256`) +
+            FfiConverterOptionalString.allocationSize(value.`plaintextHmac`) +
+            FfiConverterOptionalUInt.allocationSize(value.`integrityHashVersion`) +
+            FfiConverterOptionalString.allocationSize(value.`aad`) +
+            FfiConverterBoolean.allocationSize(value.`hasCreatedAt`)
+    )
+
+    override fun write(value: CloudVaultDocumentEnvelope, buf: ByteBuffer) {
+            FfiConverterTypeCloudVaultDocumentEnvelopeKind.write(value.`kind`, buf)
+            FfiConverterString.write(value.`fieldName`, buf)
+            FfiConverterOptionalUInt.write(value.`schemaVersion`, buf)
+            FfiConverterString.write(value.`algorithm`, buf)
+            FfiConverterUInt.write(value.`keyVersion`, buf)
+            FfiConverterOptionalString.write(value.`vaultKeyId`, buf)
+            FfiConverterOptionalString.write(value.`nonce`, buf)
+            FfiConverterOptionalString.write(value.`ciphertext`, buf)
+            FfiConverterOptionalString.write(value.`tag`, buf)
+            FfiConverterOptionalString.write(value.`sealedBoxBase64`, buf)
+            FfiConverterOptionalString.write(value.`plaintextSha256`, buf)
+            FfiConverterOptionalString.write(value.`plaintextHmac`, buf)
+            FfiConverterOptionalUInt.write(value.`integrityHashVersion`, buf)
+            FfiConverterOptionalString.write(value.`aad`, buf)
+            FfiConverterBoolean.write(value.`hasCreatedAt`, buf)
+    }
+}
+
+
+
+data class CloudVaultDocumentRewrapRequest (
+    var `uid`: kotlin.String,
+    var `collection`: kotlin.String,
+    var `docId`: kotlin.String,
+    var `documentFieldNames`: List<kotlin.String>,
+    var `envelopes`: List<CloudVaultDocumentEnvelope>,
+    var `resealNonces`: List<kotlin.ByteArray>,
+    var `vaultGeneration`: kotlin.Long?,
+    var `rotationJobId`: kotlin.String?
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultDocumentRewrapRequest: FfiConverterRustBuffer<CloudVaultDocumentRewrapRequest> {
+    override fun read(buf: ByteBuffer): CloudVaultDocumentRewrapRequest {
+        return CloudVaultDocumentRewrapRequest(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceTypeCloudVaultDocumentEnvelope.read(buf),
+            FfiConverterSequenceByteArray.read(buf),
+            FfiConverterOptionalLong.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultDocumentRewrapRequest) = (
+            FfiConverterString.allocationSize(value.`uid`) +
+            FfiConverterString.allocationSize(value.`collection`) +
+            FfiConverterString.allocationSize(value.`docId`) +
+            FfiConverterSequenceString.allocationSize(value.`documentFieldNames`) +
+            FfiConverterSequenceTypeCloudVaultDocumentEnvelope.allocationSize(value.`envelopes`) +
+            FfiConverterSequenceByteArray.allocationSize(value.`resealNonces`) +
+            FfiConverterOptionalLong.allocationSize(value.`vaultGeneration`) +
+            FfiConverterOptionalString.allocationSize(value.`rotationJobId`)
+    )
+
+    override fun write(value: CloudVaultDocumentRewrapRequest, buf: ByteBuffer) {
+            FfiConverterString.write(value.`uid`, buf)
+            FfiConverterString.write(value.`collection`, buf)
+            FfiConverterString.write(value.`docId`, buf)
+            FfiConverterSequenceString.write(value.`documentFieldNames`, buf)
+            FfiConverterSequenceTypeCloudVaultDocumentEnvelope.write(value.`envelopes`, buf)
+            FfiConverterSequenceByteArray.write(value.`resealNonces`, buf)
+            FfiConverterOptionalLong.write(value.`vaultGeneration`, buf)
+            FfiConverterOptionalString.write(value.`rotationJobId`, buf)
+    }
+}
+
+
+
+data class CloudVaultDocumentRewrapResult (
+    var `changedFields`: List<kotlin.String>,
+    var `skippedFields`: List<kotlin.String>,
+    var `rewrappedEnvelopes`: List<CloudVaultDocumentEnvelope>,
+    var `companionUpdateIntents`: List<CloudVaultCompanionUpdateIntent>,
+    var `preservedMemberIntents`: List<CloudVaultPreservedEnvelopeMemberIntent>,
+    var `vaultGenerationUpdate`: kotlin.Long?,
+    var `rotationJobIdUpdate`: kotlin.String?
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultDocumentRewrapResult: FfiConverterRustBuffer<CloudVaultDocumentRewrapResult> {
+    override fun read(buf: ByteBuffer): CloudVaultDocumentRewrapResult {
+        return CloudVaultDocumentRewrapResult(
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceTypeCloudVaultDocumentEnvelope.read(buf),
+            FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent.read(buf),
+            FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent.read(buf),
+            FfiConverterOptionalLong.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultDocumentRewrapResult) = (
+            FfiConverterSequenceString.allocationSize(value.`changedFields`) +
+            FfiConverterSequenceString.allocationSize(value.`skippedFields`) +
+            FfiConverterSequenceTypeCloudVaultDocumentEnvelope.allocationSize(value.`rewrappedEnvelopes`) +
+            FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent.allocationSize(value.`companionUpdateIntents`) +
+            FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent.allocationSize(value.`preservedMemberIntents`) +
+            FfiConverterOptionalLong.allocationSize(value.`vaultGenerationUpdate`) +
+            FfiConverterOptionalString.allocationSize(value.`rotationJobIdUpdate`)
+    )
+
+    override fun write(value: CloudVaultDocumentRewrapResult, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`changedFields`, buf)
+            FfiConverterSequenceString.write(value.`skippedFields`, buf)
+            FfiConverterSequenceTypeCloudVaultDocumentEnvelope.write(value.`rewrappedEnvelopes`, buf)
+            FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent.write(value.`companionUpdateIntents`, buf)
+            FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent.write(value.`preservedMemberIntents`, buf)
+            FfiConverterOptionalLong.write(value.`vaultGenerationUpdate`, buf)
+            FfiConverterOptionalString.write(value.`rotationJobIdUpdate`, buf)
+    }
+}
+
+
+
 data class CloudVaultEscrowWireParts (
     var `ephemeralPublicKey`: kotlin.ByteArray,
     var `aesGcmCombined`: kotlin.ByteArray
@@ -1459,6 +1700,38 @@ public object FfiConverterTypeCloudVaultEscrowWireParts: FfiConverterRustBuffer<
     override fun write(value: CloudVaultEscrowWireParts, buf: ByteBuffer) {
             FfiConverterByteArray.write(value.`ephemeralPublicKey`, buf)
             FfiConverterByteArray.write(value.`aesGcmCombined`, buf)
+    }
+}
+
+
+
+data class CloudVaultPreservedEnvelopeMemberIntent (
+    var `sourceFieldName`: kotlin.String,
+    var `memberName`: kotlin.String
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent: FfiConverterRustBuffer<CloudVaultPreservedEnvelopeMemberIntent> {
+    override fun read(buf: ByteBuffer): CloudVaultPreservedEnvelopeMemberIntent {
+        return CloudVaultPreservedEnvelopeMemberIntent(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultPreservedEnvelopeMemberIntent) = (
+            FfiConverterString.allocationSize(value.`sourceFieldName`) +
+            FfiConverterString.allocationSize(value.`memberName`)
+    )
+
+    override fun write(value: CloudVaultPreservedEnvelopeMemberIntent, buf: ByteBuffer) {
+            FfiConverterString.write(value.`sourceFieldName`, buf)
+            FfiConverterString.write(value.`memberName`, buf)
     }
 }
 
@@ -1671,6 +1944,37 @@ public object FfiConverterTypeAnthropicCredentialShape: FfiConverterRustBuffer<A
 
 
 
+enum class CloudVaultDocumentEnvelopeKind {
+
+    SEALED_PAYLOAD,
+    SEALED_TEXT,
+    BLOB;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultDocumentEnvelopeKind: FfiConverterRustBuffer<CloudVaultDocumentEnvelopeKind> {
+    override fun read(buf: ByteBuffer) = try {
+        CloudVaultDocumentEnvelopeKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: CloudVaultDocumentEnvelopeKind) = 4UL
+
+    override fun write(value: CloudVaultDocumentEnvelopeKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
 
 sealed class CloudVaultFfiException: kotlin.Exception() {
 
@@ -1770,6 +2074,48 @@ sealed class CloudVaultFfiException: kotlin.Exception() {
             get() = ""
     }
 
+    class NewVaultKeyIdMismatch(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class RewrapBoundsExceeded(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidRewrapFieldSet(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidRewrapEnvelope(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidRewrapNoncePlan(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidRewrapText(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class RewrapIntegrityMismatch(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<CloudVaultFfiException> {
         override fun lift(error_buf: RustBuffer.ByValue): CloudVaultFfiException = FfiConverterTypeCloudVaultFfiError.lift(error_buf)
@@ -1802,6 +2148,13 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
             14 -> CloudVaultFfiException.InvalidSharedSecretLength()
             15 -> CloudVaultFfiException.InvalidP256PublicKey()
             16 -> CloudVaultFfiException.InvalidEscrowWireLength()
+            17 -> CloudVaultFfiException.NewVaultKeyIdMismatch()
+            18 -> CloudVaultFfiException.RewrapBoundsExceeded()
+            19 -> CloudVaultFfiException.InvalidRewrapFieldSet()
+            20 -> CloudVaultFfiException.InvalidRewrapEnvelope()
+            21 -> CloudVaultFfiException.InvalidRewrapNoncePlan()
+            22 -> CloudVaultFfiException.InvalidRewrapText()
+            23 -> CloudVaultFfiException.RewrapIntegrityMismatch()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -1872,6 +2225,34 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
+            is CloudVaultFfiException.NewVaultKeyIdMismatch -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.RewrapBoundsExceeded -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidRewrapFieldSet -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidRewrapEnvelope -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidRewrapNoncePlan -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidRewrapText -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.RewrapIntegrityMismatch -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
         }
     }
 
@@ -1939,6 +2320,34 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
             }
             is CloudVaultFfiException.InvalidEscrowWireLength -> {
                 buf.putInt(16)
+                Unit
+            }
+            is CloudVaultFfiException.NewVaultKeyIdMismatch -> {
+                buf.putInt(17)
+                Unit
+            }
+            is CloudVaultFfiException.RewrapBoundsExceeded -> {
+                buf.putInt(18)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidRewrapFieldSet -> {
+                buf.putInt(19)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidRewrapEnvelope -> {
+                buf.putInt(20)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidRewrapNoncePlan -> {
+                buf.putInt(21)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidRewrapText -> {
+                buf.putInt(22)
+                Unit
+            }
+            is CloudVaultFfiException.RewrapIntegrityMismatch -> {
+                buf.putInt(23)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -2150,6 +2559,38 @@ public object FfiConverterTypeQuotaWindowKind: FfiConverterRustBuffer<QuotaWindo
 /**
  * @suppress
  */
+public object FfiConverterOptionalUInt: FfiConverterRustBuffer<kotlin.UInt?> {
+    override fun read(buf: ByteBuffer): kotlin.UInt? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterUInt.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.UInt?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterUInt.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.UInt?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterUInt.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalLong: FfiConverterRustBuffer<kotlin.Long?> {
     override fun read(buf: ByteBuffer): kotlin.Long? {
         if (buf.get().toInt() == 0) {
@@ -2236,6 +2677,146 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
         } else {
             buf.put(1)
             FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceByteArray: FfiConverterRustBuffer<List<kotlin.ByteArray>> {
+    override fun read(buf: ByteBuffer): List<kotlin.ByteArray> {
+        val len = buf.getInt()
+        return List<kotlin.ByteArray>(len) {
+            FfiConverterByteArray.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.ByteArray>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterByteArray.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.ByteArray>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterByteArray.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent: FfiConverterRustBuffer<List<CloudVaultCompanionUpdateIntent>> {
+    override fun read(buf: ByteBuffer): List<CloudVaultCompanionUpdateIntent> {
+        val len = buf.getInt()
+        return List<CloudVaultCompanionUpdateIntent>(len) {
+            FfiConverterTypeCloudVaultCompanionUpdateIntent.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<CloudVaultCompanionUpdateIntent>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeCloudVaultCompanionUpdateIntent.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<CloudVaultCompanionUpdateIntent>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeCloudVaultCompanionUpdateIntent.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeCloudVaultDocumentEnvelope: FfiConverterRustBuffer<List<CloudVaultDocumentEnvelope>> {
+    override fun read(buf: ByteBuffer): List<CloudVaultDocumentEnvelope> {
+        val len = buf.getInt()
+        return List<CloudVaultDocumentEnvelope>(len) {
+            FfiConverterTypeCloudVaultDocumentEnvelope.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<CloudVaultDocumentEnvelope>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeCloudVaultDocumentEnvelope.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<CloudVaultDocumentEnvelope>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeCloudVaultDocumentEnvelope.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent: FfiConverterRustBuffer<List<CloudVaultPreservedEnvelopeMemberIntent>> {
+    override fun read(buf: ByteBuffer): List<CloudVaultPreservedEnvelopeMemberIntent> {
+        val len = buf.getInt()
+        return List<CloudVaultPreservedEnvelopeMemberIntent>(len) {
+            FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<CloudVaultPreservedEnvelopeMemberIntent>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<CloudVaultPreservedEnvelopeMemberIntent>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent.write(it, buf)
         }
     }
 }
@@ -2491,6 +3072,16 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     uniffiRustCallWithError(CloudVaultFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(
         FfiConverterString.lower(`envelopeAad`),FfiConverterTypeCloudVaultAadContextInput.lower(`context`),FfiConverterBoolean.lower(`rejectLegacy`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultRewrapDocument`(`request`: CloudVaultDocumentRewrapRequest, `oldKey`: kotlin.ByteArray, `newKey`: kotlin.ByteArray, `newVaultKeyId`: kotlin.String): CloudVaultDocumentRewrapResult {
+            return FfiConverterTypeCloudVaultDocumentRewrapResult.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_rewrap_document(
+        FfiConverterTypeCloudVaultDocumentRewrapRequest.lower(`request`),FfiConverterByteArray.lower(`oldKey`),FfiConverterByteArray.lower(`newKey`),FfiConverterString.lower(`newVaultKeyId`),_status)
 }
     )
     }
