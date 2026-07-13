@@ -99,6 +99,7 @@ public actor BurnBarDaemonServer {
     var chatThreadService: (any BurnBarChatThreadServing)?
     let indexedSearch: BurnBarIndexedSearchService?
     let projectCodeMemory: BurnBarProjectCodeMemoryStore?
+    let databaseRecoveryService: BurnBarDatabaseRecoveryBundleService?
     let resumeService: BurnBarResumeService?
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
@@ -481,6 +482,10 @@ public actor BurnBarDaemonServer {
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
            path.isEmpty == false {
+            self.databaseRecoveryService = BurnBarDatabaseRecoveryBundleService(
+                databasePath: path,
+                logger: BurnBarDaemonLogger(category: "database-recovery")
+            )
             if FileManager.default.fileExists(atPath: path) {
                 // RR-1: one-time plaintext→encrypted migration of the shared SQLite
                 // file BEFORE any service opens it. No-op on a stock-SQLite build or
@@ -562,6 +567,7 @@ public actor BurnBarDaemonServer {
         } else {
             self.indexedSearch = nil
             self.projectCodeMemory = nil
+            self.databaseRecoveryService = nil
             self.resumeService = nil
         }
 
@@ -1278,6 +1284,12 @@ public actor BurnBarDaemonServer {
              .codeCallGraph, .codeDiagnostics, .codeIndexStatus, .codeExplore, .codeOpsDiagnostics,
              .codeDatabaseSnapshot, .codeDatabaseRestore:
                 return try await handleCodeRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
+                return try await handleDatabaseRecoveryRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData

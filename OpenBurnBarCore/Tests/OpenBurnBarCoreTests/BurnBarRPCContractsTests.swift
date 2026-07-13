@@ -124,6 +124,8 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .codeIndexStatus: "daemon.code.index_status",
         .codeExplore: "daemon.code.explore",
         .codeOpsDiagnostics: "daemon.code.ops_diagnostics",
+        .databaseRecoveryBundleExport: "daemon.database.recovery_bundle.export",
+        .databaseRecoveryBundleImport: "daemon.database.recovery_bundle.import",
         .runResume: "run.resume",
         .daemonMediaSessionState: "daemon.media.session.state",
         .daemonMediaCallAccept: "daemon.media.call.accept",

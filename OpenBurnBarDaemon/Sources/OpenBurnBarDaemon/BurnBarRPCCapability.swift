@@ -71,7 +71,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .providerModelAliasUpsert, .providerModelAliasRemove,
              .providerCustomModelUpsert, .providerCustomModelRemove,
              .providerModelDisplayNameSet, .providerModelDisplayNameClear,
-             .quotaSignalsClear:
+             .quotaSignalsClear,
+             .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
             return .config
         case .usageRecord, .usageRecent,
              .proxyRouteLogRecent, .proxyRouteLogClear,

@@ -542,6 +542,26 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.database.recovery_bundle.export",
+    "caseName": "databaseRecoveryBundleExport",
+    "domain": "database_recovery",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarDatabaseRecoveryBundleExportRequest",
+    "result": "BurnBarDatabaseRecoveryBundleExportResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.database.recovery_bundle.import",
+    "caseName": "databaseRecoveryBundleImport",
+    "domain": "database_recovery",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarDatabaseRecoveryBundleImportRequest",
+    "result": "BurnBarDatabaseRecoveryBundleImportResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.followup.calendar",
     "caseName": "followupCalendar",
     "domain": "mission_control",

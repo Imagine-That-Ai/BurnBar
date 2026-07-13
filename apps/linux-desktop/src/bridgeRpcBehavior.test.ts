@@ -569,6 +569,29 @@ describe('VAL-RPC-002 bridge behavior', () => {
     });
   });
 
+  it('database recovery bundle bridge keeps passphrases native and maps daemon results', async () => {
+    invoke
+      .mockResolvedValueOnce({ destinationPath: '/tmp/recovery.obb', byteCount: 96, formatVersion: 1 })
+      .mockResolvedValueOnce({ sourcePath: '/tmp/recovery.obb', stored: true, restartRequired: true });
+    const b = await bridge();
+    await expect(b.databaseRecoveryBundleExport?.({
+      destinationPath: '/tmp/recovery.obb',
+      passphrase: 'correct horse battery staple'
+    })).resolves.toMatchObject({ byteCount: 96, formatVersion: 1 });
+    await expect(b.databaseRecoveryBundleImport?.({
+      sourcePath: '/tmp/recovery.obb',
+      passphrase: 'correct horse battery staple'
+    })).resolves.toMatchObject({ stored: true, restartRequired: true });
+    expect(invoke).toHaveBeenNthCalledWith(1, 'database_recovery_bundle_export', {
+      destinationPath: '/tmp/recovery.obb',
+      passphrase: 'correct horse battery staple'
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'database_recovery_bundle_import', {
+      sourcePath: '/tmp/recovery.obb',
+      passphrase: 'correct horse battery staple'
+    });
+  });
+
   it('computerUseSessionStart maps contract fields including the bound agent run', async () => {
     invoke.mockResolvedValueOnce({ state: 'authorized', sessionId: 's1' });
     const b = await bridge();

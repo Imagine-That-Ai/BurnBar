@@ -100,6 +100,17 @@ describe('VAL-RPC bridge contract', () => {
     expect(canonicalRpc).toContain('id: "daemon.code.database_restore"');
   });
 
+  it('wires database recovery only to canonical daemon-owned RPCs', () => {
+    expect(rustBridge).toContain('daemon.database.recovery_bundle.export');
+    expect(rustBridge).toContain('daemon.database.recovery_bundle.import');
+    expect(rustBridge).toContain('fn database_recovery_bundle_export');
+    expect(rustBridge).toContain('fn database_recovery_bundle_import');
+    expect(tsBridge).toContain("'database_recovery_bundle_export'");
+    expect(tsBridge).toContain("'database_recovery_bundle_import'");
+    expect(canonicalRpc).toContain('id: "daemon.database.recovery_bundle.export"');
+    expect(canonicalRpc).toContain('id: "daemon.database.recovery_bundle.import"');
+  });
+
   it('wires computer use wrappers to existing enum methods', () => {
     for (const method of [
       'daemon.computer_use.session.start',
