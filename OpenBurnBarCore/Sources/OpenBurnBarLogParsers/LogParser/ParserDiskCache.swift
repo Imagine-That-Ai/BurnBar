@@ -1,10 +1,13 @@
 import Foundation
+import OpenBurnBarKernel
 
-// AUDIT(@unchecked Sendable): Foundation documents `FileManager` as safe for
-// concurrent use. `UserDefaults` is thread-safe for value access/mutation, and
-// this module additionally funnels high-volume settings writes through
-// `SettingsPersistenceCoordinator`.
-extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
+// AUDIT(@unchecked Sendable): `UserDefaults` is thread-safe for value
+// access/mutation, and this module additionally funnels high-volume settings writes
+// through `SettingsPersistenceCoordinator`.
+// The `FileManager: @retroactive @unchecked Sendable` shim was moved DOWN to the
+// Kernel (`Platform/PlatformSupport.swift`) by the P-12 follow-up so Core's
+// `ProviderQuotaAdapterContext` and the future `OpenBurnBarQuota` target can see it
+// without depending on this leaf; this file inherits it via `import OpenBurnBarKernel`.
 extension UserDefaults: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
 extension NSDictionary: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
 extension KeyPath: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
