@@ -1,5 +1,5 @@
 # Packet P-16a…f: move Views/ + UI SharedModels → OpenBurnBarUI (K4)
-STATE: P-16a PR_OPEN (Views/Substrate + RGBA.swift); P-16b…f QUEUED
+STATE: P-16a MERGED (base); P-16b PR #1650; P-16c PR #1656 (Views/MissionControl); P-16b2/d/e/f QUEUED
 LANE: A (serial-within-lane; owns core-ui-purity-baseline.json)
 DEPENDS-ON: S0, S-H (headless-app-build CI job green), P-04a/b, P-11, P-13, P-05, P-06, P-08/09/10
 BASELINE-TOUCHING: core-ui-purity (this is where the baseline ratchets toward zero)
@@ -21,7 +21,7 @@ now DONE). Every intermediate state builds; each sub-packet is its own lane-A PR
 | **P-16a** | **`Views/Substrate/`** (incl. Aurora/Constellation/Families/Flow/Mesh/Moire/Volumetric) **+ pulled-forward `SharedModels/RGBA.swift`** (see convergence note) | 35 + 1 | 9,377 (+69) | MERGED (base) |
 | **P-16b** | **`Views/Insights/` root (32)** **+ pulled-forward design-system closure (8)**: `Views/{UnifiedDesignSystem,UnifiedGlassCard,UnifiedProviderLogoView}.swift`, `SharedModels/{ThemePrimitives,DesignSystemTokens,AgentProvider+LogoBackdrop}.swift`, `UIModeTheme.swift`, `AgentInsights/AgentInsightsViewModel.swift` (see P-16b convergence note). **`Views/Insights/Verdict/` DEFERRED → P-16b2.** | 40 | 6,381 | **THIS PR** |
 | P-16b2 | `Views/Insights/Verdict/` (6) — trailing sub-packet (the card-prescribed 6k relief valve; Verdict is bidirectionally decoupled from Insights-root views, uses only the now-in-UI `UnifiedDesignSystem`) | 6 | 926 | QUEUED |
-| P-16c | `Views/MissionControl/` (11; `MissionConsoleTypes` already moved in P-11; `UnifiedDesignSystem`/`UIModeTheme`/color cluster already in UI via P-16b — no design-system pull-forward needed) | 11 | 3,694 | QUEUED |
+| P-16c | `Views/MissionControl/` (11; `MissionConsoleTypes` already moved in P-11; `UnifiedDesignSystem`/`UIModeTheme`/color cluster already in UI via P-16b — no design-system pull-forward needed) | 11 | 3,694 | **PR #1656** (base p-16b; see P-16c convergence note) |
 | P-16d | `Views/Cards/CardEnvelopeView.swift` (1) + `Views/Square/UnifiedSearchIndex.swift` (1) | 2 | 802 | QUEUED |
 | P-16e | UI `SharedModels` + renderers + `Services/Insights/Share/InsightShareCardRenderer.swift` (see P-16e list below). **`UIModeTheme.swift` + `AgentInsights/AgentInsightsViewModel.swift` REMOVED — pulled forward by P-16b.** | 12 | ~2.5k | QUEUED |
 | P-16f | `Views/` **root** (26 — `UnifiedDesignSystem`/`UnifiedGlassCard`/`UnifiedProviderLogoView` already moved by P-16b) — the LAST sub-packet; deletes `"Views"` from `openBurnBarCoreExcludes` entirely + every remaining SharedModels UI exclude | 26 | ~9.4k | QUEUED |
@@ -135,6 +135,36 @@ the whole design-system foundation the Insights views consume, and splitting off
   and `"Views"` still resolves (Verdict + MissionControl/Cards/Square + Views-root remain).
   Zero functional path-pins for any moved file (`.github`/`scripts`/CODEOWNERS/project.yml/
   swiftlint all clean).
+
+### P-16c convergence note (executed 2026-07-13, PR #1656) — MissionControl is Kernel-closed
+Compile-closure (`swift build --target OpenBurnBarUI`, learnings 9/10) proved `Views/MissionControl/`
+IS dependency-closed against OpenBurnBarUI with a single declared dep — the Kernel — and needs
+**no** design-system pull-forward (its `Unified*`/theme/color deps already landed in UI via
+P-16a/P-16b; `MissionConsoleTypes` in the Kernel via P-11):
+- **Moved 11 `Views/MissionControl/*.swift`** Core→`OpenBurnBarUI/Views/MissionControl/`. Nothing
+  deferred; 3,694 LOC is well under the 6k valve.
+- **AE-IMPORT (compiler-driven):** `import OpenBurnBarKernel` ×10 — the Kernel-resident
+  `MissionConsole*` types (`MissionConsoleRuntime`/`Kind`/`Depth`/`ApprovalMode`/`Forecast`/
+  `Formatting`/`Host`/`Snapshot`/`SystemHealth`/`ActiveTile`/`ApprovalAsk`/`TickerEntry`/
+  `DispatchRequest`/`DispatchOutcome`, moved by P-11) + `MissionGroupDocument` (Kernel
+  `MissionGroupContracts`). `MissionGlassSurface.swift` needs **NO** import (100% rename — its
+  only non-SwiftUI refs, `UnifiedDesignSystem`/`LiquidGlassEffectIfAvailable`, are same-module
+  UI). No `Quota`/`Insights`/`Hermes`/`Pretext`/`LogParsers` import demanded (every `Hermes`/
+  `Pretext`/`AgentLens` occurrence is a string literal, not a type ref). Zero logic edits.
+- **AE-TESTABLE: NONE.** The only test touching moved symbols
+  (`OpenBurnBarCoreTests/MissionConsoleTests.swift` → `MissionFABGauge.Configuration` +
+  `MissionConsoleRuntime`/`MissionConsoleForecastComputer`) is **already** in
+  `openBurnBarCoreTestExcludes`; no non-excluded test references the moved types, so the SPM test
+  target compiles unchanged (test-target build + full suite green, exit 0).
+- **NO access-widening needed** (unlike P-16a's RGBA) and **NO `SubstrateCatalog` qualification**
+  (MissionControl doesn't reference it): grep-verified **zero** remaining Core Views files (and
+  zero non-Views Core files) reference any moved MissionControl public type — it is a
+  self-contained leaf subtree. **OFF-APPLE SAFE:** MissionControl rode the wholesale `"Views"`
+  exclude (never a distinct entry), which still resolves (Insights/Verdict + Cards/Square +
+  Views-root remain); UI is pruned whole off-Apple, so `Package.swift` changes are a doc comment
+  only — **no exclude line edits, no new excludes**. Daemon build graph verified to contain **0**
+  `OpenBurnBarUI` module references (daemon still does not link UI). Zero functional path-pins;
+  no `Bundle.module` resource-bundle hit. `budgets/core-ui-purity-baseline.json` `--update`: 41→30.
 
 ## Per-sub-packet rules
 - Deps: `OpenBurnBarUI` already depends on Kernel/Quota/Insights/Hermes/Pretext/LogParsers
