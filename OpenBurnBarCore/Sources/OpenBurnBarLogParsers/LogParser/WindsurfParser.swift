@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarKernel
+import OpenBurnBarSQLiteReader
 
 // MARK: - Windsurf Parser
 

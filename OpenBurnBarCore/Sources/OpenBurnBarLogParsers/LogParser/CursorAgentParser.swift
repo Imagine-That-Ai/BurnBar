@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Cursor Agent Parser
 
@@ -28,7 +29,7 @@ public final class CursorAgentParser: LogParser, Sendable {
         try parseSynchronously()
     }
 
-    func parseSynchronously() throws -> ParseResult {
+    public func parseSynchronously() throws -> ParseResult {
         let fm = FileManager.default
         let sessionsRoot = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
 

@@ -1,8 +1,6 @@
 import Foundation
 
-#if canImport(OpenBurnBarCore)
-import OpenBurnBarCore
-#endif
+import OpenBurnBarKernel
 
 public struct ModelPricing: Sendable {
     public let inputPerMToken: Double
@@ -37,7 +35,7 @@ public struct ModelPricing: Sendable {
 
     public static func lookup(model: String, providerID: String? = nil) -> ModelPricing {
         let normalizedModel = TokenExtractionUtility.normalizeModelName(model)
-        #if canImport(OpenBurnBarCore)
+        #if canImport(OpenBurnBarKernel)
         let pricing = OpenBurnBarCatalogLookup.shared.pricing(
             forModelName: normalizedModel,
             providerID: providerID
@@ -50,7 +48,7 @@ public struct ModelPricing: Sendable {
 
     public static func hasCatalogPricing(model: String, providerID: String? = nil) -> Bool {
         let normalizedModel = TokenExtractionUtility.normalizeModelName(model)
-        #if canImport(OpenBurnBarCore)
+        #if canImport(OpenBurnBarKernel)
         return OpenBurnBarCatalogLookup.shared.pricing(
             forModelName: normalizedModel,
             providerID: providerID
@@ -76,7 +74,7 @@ public struct ModelPricing: Sendable {
 }
 
 private extension ModelPricing {
-    #if canImport(OpenBurnBarCore)
+    #if canImport(OpenBurnBarKernel)
     init(_ pricing: BurnBarModelPricing) {
         self.init(
             inputPerMToken: pricing.inputPerMToken,
@@ -97,17 +95,17 @@ private extension ModelPricing {
 private struct OpenBurnBarCatalogLookup {
     static let shared = OpenBurnBarCatalogLookup()
 
-    #if canImport(OpenBurnBarCore)
+    #if canImport(OpenBurnBarKernel)
     private let catalog: BurnBarCatalog?
     #endif
 
     private init() {
-        #if canImport(OpenBurnBarCore)
+        #if canImport(OpenBurnBarKernel)
         self.catalog = try? BurnBarCatalogLoader.loadBundledCatalog() // try?-ok(catalog load has fallback)
         #endif
     }
 
-    #if canImport(OpenBurnBarCore)
+    #if canImport(OpenBurnBarKernel)
     func pricing(forModelName modelName: String, providerID: String? = nil) -> BurnBarModelPricing? {
         guard let catalog else { return nil }
         if let providerID, let providerPricing = catalog.pricing(forModelName: modelName, providerID: providerID) {

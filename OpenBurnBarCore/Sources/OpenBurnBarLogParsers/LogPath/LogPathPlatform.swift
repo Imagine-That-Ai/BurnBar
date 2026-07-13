@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Log directory path remap (macOS logical form -> platform on-disk root)
 //
