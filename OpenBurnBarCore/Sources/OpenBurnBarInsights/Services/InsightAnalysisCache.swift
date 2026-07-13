@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Content-addressed cache for `InsightAnalysisResult`.
 ///

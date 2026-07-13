@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 public protocol InsightAnalysisEngine: Sendable {
     func analyze(_ request: InsightAnalysisRequest) async throws -> InsightAnalysisResult
