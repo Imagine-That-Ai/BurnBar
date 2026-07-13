@@ -354,6 +354,12 @@ fn spawn_listener(
                     }
                     Err(_) => break,
                 };
+                // The listener is nonblocking so the accept loop can honor
+                // shutdown, but accepted streams must be blocking while we
+                // drain a bounded frame. Some Unix implementations inherit
+                // O_NONBLOCK here; without resetting it, a client can race
+                // into a BrokenPipe before its frame is written.
+                let _ = stream.set_nonblocking(false);
                 let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
                 let mut bytes = Vec::with_capacity(MAX_FRAME_BYTES);
                 let result = Read::by_ref(&mut stream)
