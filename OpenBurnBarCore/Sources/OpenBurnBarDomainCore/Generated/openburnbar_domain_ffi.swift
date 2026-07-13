@@ -824,6 +824,70 @@ public func FfiConverterTypeQuotaSnapshot_lower(_ value: QuotaSnapshot) -> RustB
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
+public enum AnthropicCredentialShape {
+
+    case oauthBearer
+    case consoleApiKey
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAnthropicCredentialShape: FfiConverterRustBuffer {
+    typealias SwiftType = AnthropicCredentialShape
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AnthropicCredentialShape {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .oauthBearer
+
+        case 2: return .consoleApiKey
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AnthropicCredentialShape, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .oauthBearer:
+            writeInt(&buf, Int32(1))
+
+
+        case .consoleApiKey:
+            writeInt(&buf, Int32(2))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnthropicCredentialShape_lift(_ buf: RustBuffer) throws -> AnthropicCredentialShape {
+    return try FfiConverterTypeAnthropicCredentialShape.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAnthropicCredentialShape_lower(_ value: AnthropicCredentialShape) -> RustBuffer {
+    return FfiConverterTypeAnthropicCredentialShape.lower(value)
+}
+
+
+
+extension AnthropicCredentialShape: Equatable, Hashable {}
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 public enum QuotaConfidence {
 
     case exact
@@ -1304,6 +1368,30 @@ fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
+    typealias SwiftType = String?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterString.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer {
     typealias SwiftType = [QuotaBucket]
 
@@ -1337,10 +1425,35 @@ public func domainCoreVersion() -> String {
     )
 })
 }
+public func parseAnthropicRateLimitHeaders(payload: Data, nowUnix: Int64, shape: AnthropicCredentialShape) -> QuotaParseResult {
+    return try!  FfiConverterTypeQuotaParseResult.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_parse_anthropic_rate_limit_headers(
+        FfiConverterData.lower(payload),
+        FfiConverterInt64.lower(nowUnix),
+        FfiConverterTypeAnthropicCredentialShape.lower(shape),$0
+    )
+})
+}
 public func parseClaudeStatuslineQuota(payload: Data) -> QuotaParseResult {
     return try!  FfiConverterTypeQuotaParseResult.lift(try! rustCall() {
     uniffi_openburnbar_domain_ffi_fn_func_parse_claude_statusline_quota(
         FfiConverterData.lower(payload),$0
+    )
+})
+}
+public func parseCodexUsageQuota(payload: Data, nowUnix: Int64) -> QuotaParseResult {
+    return try!  FfiConverterTypeQuotaParseResult.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_parse_codex_usage_quota(
+        FfiConverterData.lower(payload),
+        FfiConverterInt64.lower(nowUnix),$0
+    )
+})
+}
+public func parseCursorUsageQuota(payload: Data, userEmail: String?) -> QuotaParseResult {
+    return try!  FfiConverterTypeQuotaParseResult.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(
+        FfiConverterData.lower(payload),
+        FfiConverterOptionString.lower(userEmail),$0
     )
 })
 }
@@ -1366,7 +1479,16 @@ private var initializationResult: InitializationResult = {
     if (uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version() != 28819) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers() != 49269) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openburnbar_domain_ffi_checksum_func_parse_claude_statusline_quota() != 44207) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_parse_codex_usage_quota() != 48415) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota() != 39634) {
         return InitializationResult.apiChecksumMismatch
     }
 

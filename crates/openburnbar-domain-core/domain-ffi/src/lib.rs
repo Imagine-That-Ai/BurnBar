@@ -48,6 +48,12 @@ pub enum QuotaWindowKind {
     Custom,
 }
 
+#[derive(Clone, Copy, Debug, uniffi::Enum)]
+pub enum AnthropicCredentialShape {
+    OauthBearer,
+    ConsoleApiKey,
+}
+
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct QuotaBucket {
     pub key: String,
@@ -91,6 +97,34 @@ pub fn domain_core_version() -> String {
 #[uniffi::export]
 pub fn parse_claude_statusline_quota(payload: Vec<u8>) -> QuotaParseResult {
     core::parse_claude_statusline_quota(&payload).into()
+}
+
+#[uniffi::export]
+pub fn parse_codex_usage_quota(payload: Vec<u8>, now_unix: i64) -> QuotaParseResult {
+    core::parse_codex_usage_quota(&payload, now_unix).into()
+}
+
+#[uniffi::export]
+pub fn parse_cursor_usage_quota(payload: Vec<u8>, user_email: Option<String>) -> QuotaParseResult {
+    core::parse_cursor_usage_quota(&payload, user_email.as_deref()).into()
+}
+
+#[uniffi::export]
+pub fn parse_anthropic_rate_limit_headers(
+    payload: Vec<u8>,
+    now_unix: i64,
+    shape: AnthropicCredentialShape,
+) -> QuotaParseResult {
+    core::parse_anthropic_rate_limit_headers(&payload, now_unix, shape.into()).into()
+}
+
+impl From<AnthropicCredentialShape> for core::AnthropicCredentialShape {
+    fn from(value: AnthropicCredentialShape) -> Self {
+        match value {
+            AnthropicCredentialShape::OauthBearer => Self::OauthBearer,
+            AnthropicCredentialShape::ConsoleApiKey => Self::ConsoleApiKey,
+        }
+    }
 }
 
 impl From<core::QuotaParseResult> for QuotaParseResult {
@@ -207,5 +241,26 @@ mod tests {
             parse_claude_statusline_quota(br#"{"five_hour":{"used_percentage":42}}"#.to_vec());
         assert!(matches!(result.status, QuotaParseStatus::Parsed));
         assert_eq!(result.snapshot.buckets.len(), 1);
+        assert!(matches!(
+            parse_codex_usage_quota(
+                br#"{"rate_limit":{"primary_window":{"used_percent":1}}}"#.to_vec(),
+                0
+            )
+            .status,
+            QuotaParseStatus::Parsed
+        ));
+        assert!(matches!(
+            parse_cursor_usage_quota(br#"{}"#.to_vec(), None).status,
+            QuotaParseStatus::Parsed
+        ));
+        assert!(matches!(
+            parse_anthropic_rate_limit_headers(
+                br#"{"anthropic-ratelimit-requests-limit":"1"}"#.to_vec(),
+                0,
+                AnthropicCredentialShape::OauthBearer
+            )
+            .status,
+            QuotaParseStatus::Parsed
+        ));
     }
 }

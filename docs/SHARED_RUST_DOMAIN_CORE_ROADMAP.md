@@ -2,6 +2,7 @@
 
 **Status:** active program
 **ADR:** [ADR 014](architecture/014-shared-rust-domain-core.md)
+**Source inventory:** [Shared Rust Domain Inventory](SHARED_RUST_DOMAIN_INVENTORY.md)
 **First contract:** [`tests/fixtures/domain-core/quota/v1/`](../tests/fixtures/domain-core/quota/v1/)
 
 The pilot is implemented behind `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE`. Its
@@ -27,7 +28,7 @@ accepted values are `legacy` (default), `shadow`, and `rust`.
 |---|---|---|---|
 | Q1 | Claude statusline quota | Swift + C# | Rust enforced on Apple/Windows; legacy parsers deleted |
 | Q2 | Codex, Cursor, Anthropic quota | Swift + C# | Four quota mechanisms share Rust parsing |
-| C1 | CloudVault primitives and envelopes | Swift + Kotlin + C# | KAT/cross-open clean; native crypto copies deleted |
+| C1 | CloudVault primitives and envelopes | Swift + Kotlin + C# + browser TypeScript | KAT/cross-open clean; duplicated portable crypto copies deleted without exporting browser non-extractable keys |
 | C2 | Hermes relay HPKE/AAD/ratchet | Swift + Kotlin | Existing wire vectors pass through Rust sessions |
 | P1 | Model pricing and cost arithmetic | Swift + TypeScript | Integer nano-USD Rust/WASM path enforced |
 
