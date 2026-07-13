@@ -5,8 +5,8 @@ import java.security.SecureRandom
 import uniffi.openburnbar_domain_ffi.HermesAadKind
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
-import uniffi.openburnbar_domain_ffi.hermesHmacSha256
 import uniffi.openburnbar_domain_ffi.hermesHkdfSha256
+import uniffi.openburnbar_domain_ffi.hermesHmacSha256
 import uniffi.openburnbar_domain_ffi.hermesKeyWrapInfoV1
 import uniffi.openburnbar_domain_ffi.hermesKeyWrapInfoV2
 import uniffi.openburnbar_domain_ffi.hermesOpenBase64
@@ -19,43 +19,30 @@ import uniffi.openburnbar_domain_ffi.hermesSealCombined
 internal enum class HermesDomainCoreMode {
     LEGACY,
     SHADOW,
-    RUST;
+    RUST,
+    ;
 
     companion object {
         fun resolve(
             raw: String? = System.getProperty("openburnbar.domain_core.hermes.mode")
                 ?: System.getenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE"),
-        ): HermesDomainCoreMode =
-            entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: LEGACY
+        ): HermesDomainCoreMode = entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: LEGACY
     }
 }
 
 internal object HermesDomainCoreAdapter {
     private val secureRandom = SecureRandom()
 
-    fun aad(kind: HermesAadKind, arguments: List<String>, legacy: () -> ByteArray): ByteArray =
-        selectBytes("aad", legacy) { hermesRelayAad(kind, arguments) }
+    fun aad(kind: HermesAadKind, arguments: List<String>, legacy: () -> ByteArray): ByteArray = selectBytes("aad", legacy) { hermesRelayAad(kind, arguments) }
 
-    fun keyWrapInfoV1(aad: ByteArray, legacy: () -> ByteArray): ByteArray =
-        selectBytes("key_wrap_info_v1", legacy) { hermesKeyWrapInfoV1(aad) }
+    fun keyWrapInfoV1(aad: ByteArray, legacy: () -> ByteArray): ByteArray = selectBytes("key_wrap_info_v1", legacy) { hermesKeyWrapInfoV1(aad) }
 
-    fun keyWrapInfoV2(
-        aad: ByteArray,
-        enc: ByteArray,
-        recipient: ByteArray,
-        sender: ByteArray,
-        legacy: () -> ByteArray,
-    ): ByteArray = selectBytes("key_wrap_info_v2", legacy) {
-        hermesKeyWrapInfoV2(aad, enc, recipient, sender)
-    }
+    fun keyWrapInfoV2(aad: ByteArray, enc: ByteArray, recipient: ByteArray, sender: ByteArray, legacy: () -> ByteArray): ByteArray =
+        selectBytes("key_wrap_info_v2", legacy) {
+            hermesKeyWrapInfoV2(aad, enc, recipient, sender)
+        }
 
-    fun hkdf(
-        ikm: ByteArray,
-        salt: ByteArray,
-        info: ByteArray,
-        length: Int,
-        legacy: () -> ByteArray,
-    ): ByteArray = selectBytes("hkdf", legacy) {
+    fun hkdf(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int, legacy: () -> ByteArray): ByteArray = selectBytes("hkdf", legacy) {
         hermesHkdfSha256(ikm, salt, info, length.toUInt())
     }
 
@@ -101,21 +88,20 @@ internal object HermesDomainCoreAdapter {
     fun hmac(key: ByteArray, data: ByteArray, operation: String, legacy: () -> ByteArray): ByteArray =
         selectBytes(operation, legacy) { hermesHmacSha256(key, data) }
 
-    fun ratchetAad(header: HermesRatchetHeader, associatedData: ByteArray, legacy: () -> ByteArray): ByteArray =
-        selectBytes("ratchet_aad", legacy) {
-            hermesRatchetEnvelopeAad(
-                associatedData,
-                header.algorithm,
-                header.sessionID,
-                header.senderDeviceID,
-                header.receiverDeviceID,
-                header.ratchetPublicKeyBase64,
-                header.version.toULong(),
-                header.previousChainLength.toULong(),
-                header.messageNumber.toULong(),
-                header.epoch.toULong(),
-            )
-        }
+    fun ratchetAad(header: HermesRatchetHeader, associatedData: ByteArray, legacy: () -> ByteArray): ByteArray = selectBytes("ratchet_aad", legacy) {
+        hermesRatchetEnvelopeAad(
+            associatedData,
+            header.algorithm,
+            header.sessionID,
+            header.senderDeviceID,
+            header.receiverDeviceID,
+            header.ratchetPublicKeyBase64,
+            header.version.toULong(),
+            header.previousChainLength.toULong(),
+            header.messageNumber.toULong(),
+            header.epoch.toULong(),
+        )
+    }
 
     fun sealCombined(plaintext: ByteArray, key: ByteArray, aad: ByteArray, legacy: () -> ByteArray): ByteArray {
         val mode = HermesDomainCoreMode.resolve()

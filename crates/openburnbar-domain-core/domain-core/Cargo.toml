@@ -7,7 +7,7 @@ publish.workspace = true
 description = "Pure cross-platform business logic for OpenBurnBar"
 
 [dependencies]
-aes-gcm = "0.10"
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 base64 = "0.22"
 hkdf = "0.12"
 hmac = "0.12"
