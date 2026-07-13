@@ -84,6 +84,7 @@ extension DashboardView {
         BurnRailSparklineBuilder.buildSamples(
             from: dashboardUsageWindow.usages,
             range: dashboardDateRange,
+            displayMode: settingsManager.usageDisplayMode,
             bucketCount: 24
         )
     }

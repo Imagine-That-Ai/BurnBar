@@ -1456,6 +1456,7 @@ enum BurnRailSparklineBuilder {
     static func buildSamples(
         from usages: [TokenUsage],
         range: ClosedRange<Date>?,
+        displayMode: UsageDisplayMode = .tokens,
         bucketCount: Int = 24,
         now: Date = Date()
     ) -> [Double] {
@@ -1484,7 +1485,7 @@ enum BurnRailSparklineBuilder {
             var idx = Int(frac * Double(bucketCount))
             if idx >= bucketCount { idx = bucketCount - 1 }
             if idx < 0 { idx = 0 }
-            buckets[idx] += Double(u.totalTokens)
+            buckets[idx] += displayMode == .currency ? u.cost : Double(u.totalTokens)
         }
         let maxVal = buckets.max() ?? 0
         guard maxVal > 0 else { return buckets.map { _ in 0 } }

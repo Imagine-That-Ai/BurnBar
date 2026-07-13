@@ -36,15 +36,31 @@ final class ChartsDataService {
         guard key != currentKey else { return }
         currentKey = key
 
-        // Capture rows on the main actor (cached array filters — no I/O).
-        let rows = dataStore.usages(in: timeRange.dateRange())
+        // Keep the bounded warm cache only as a failure fallback. Charts must
+        // read the requested database window or long-running users would see
+        // analytics silently truncated to the newest hydration rows.
+        let fallbackRows = dataStore.usages(in: timeRange.dateRange())
         let now = Date()
         let recentLower = Calendar.current.date(byAdding: .day, value: -31, to: now) ?? now
-        let recentRows = dataStore.usages(in: recentLower...now)
+        let fallbackRecentRows = dataStore.usages(in: recentLower...now)
 
         buildTask?.cancel()
         isBuilding = snapshot == nil
         buildTask = Task { [weak self] in
+            let rows: [TokenUsage]
+            let recentRows: [TokenUsage]
+            do {
+                if let requestedRange = timeRange.dateRange() {
+                    rows = try await dataStore.fetchUsage(in: requestedRange, limit: Int.max)
+                } else {
+                    rows = try await dataStore.fetchAllUsage()
+                }
+                recentRows = try await dataStore.fetchUsage(in: recentLower...now, limit: Int.max)
+            } catch {
+                rows = fallbackRows
+                recentRows = fallbackRecentRows
+            }
+            guard !Task.isCancelled else { return }
             let built = await Self.buildDetached(
                 rows: rows,
                 recentRows: recentRows,

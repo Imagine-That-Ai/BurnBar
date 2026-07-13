@@ -244,6 +244,18 @@ final class ChartInsightEngine {
                 return
             case .throttle:
                 state = .unavailable("Fresh insights will be available shortly.")
+                task?.cancel()
+                let remaining = max(Self.reaskFloor - now.timeIntervalSince(cache.at), 0)
+                task = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+                    guard let self, !Task.isCancelled else { return }
+                    self.task = nil
+                    self.generateIfNeeded(
+                        snapshot: snapshot,
+                        bridge: bridge,
+                        enabledBackends: enabledBackends
+                    )
+                }
                 return
             case .generate:
                 break
