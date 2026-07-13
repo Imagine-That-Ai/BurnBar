@@ -278,6 +278,10 @@ public enum CloudVaultCrypto {
         Data(try randomBytes(count: 32))
     }
 
+    static func generateDocumentRewrapNonce() throws -> Data {
+        Data(try randomBytes(count: 12))
+    }
+
     public static func vaultKeyID(for keyData: Data) throws -> String {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         return "v1_" + String(sha256Hex(keyData).prefix(32))
@@ -588,6 +592,17 @@ public enum CloudVaultCrypto {
         decodeEnvelope(raw, as: CloudVaultBlobEnvelope.self)
     }
 
+    static func decodeBlobEnvelopeForDocumentRewrap(_ raw: [String: Any]) -> CloudVaultBlobEnvelope? {
+        var cryptographicMembers = raw
+        if cryptographicMembers["createdAt"] != nil {
+            // Firestore Timestamp is intentionally opaque to the crypto layer.
+            // Supply a decode-only placeholder; the caller reapplies the exact
+            // original object after resealing.
+            cryptographicMembers["createdAt"] = 0
+        }
+        return decodeBlobEnvelope(from: cryptographicMembers)
+    }
+
     public static func rewrapCloudVaultDocument(
         _ data: [String: Any],
         uid: String,
@@ -603,8 +618,57 @@ public enum CloudVaultCrypto {
             throw CloudVaultCryptoError.invalidEnvelope
         }
 
+        return try CloudVaultDocumentRewrapDomainCoreAdapter.rewrap(
+            data: data,
+            uid: uid,
+            collection: collection,
+            docID: docID,
+            oldKeyData: oldKeyData,
+            newKeyData: newKeyData,
+            newVaultKeyID: newVaultKeyID,
+            vaultGeneration: vaultGeneration,
+            rotationJobID: rotationJobId
+        ) { noncePlan in
+            try rewrapCloudVaultDocumentLegacy(
+                data,
+                uid: uid,
+                collection: collection,
+                docID: docID,
+                oldKeyData: oldKeyData,
+                newKeyData: newKeyData,
+                newVaultKeyID: newVaultKeyID,
+                vaultGeneration: vaultGeneration,
+                rotationJobID: rotationJobId,
+                noncePlan: noncePlan
+            )
+        }
+    }
+
+    private static func rewrapCloudVaultDocumentLegacy(
+        _ data: [String: Any],
+        uid: String,
+        collection: String,
+        docID: String,
+        oldKeyData: Data,
+        newKeyData: Data,
+        newVaultKeyID: String,
+        vaultGeneration: Int?,
+        rotationJobID: String?,
+        noncePlan: [CloudVaultDocumentRewrapNonce]
+    ) throws -> CloudVaultDocumentRewrapResult {
+
         var updated = data
         var changedFields: [String] = []
+        var nonceIndex = 0
+
+        func nextNonce(for field: String) throws -> Data {
+            guard nonceIndex < noncePlan.count,
+                  noncePlan[nonceIndex].fieldName == field else {
+                throw CloudVaultCryptoError.invalidEnvelope
+            }
+            defer { nonceIndex += 1 }
+            return noncePlan[nonceIndex].bytes
+        }
 
         for field in data.keys.sorted() {
             guard let rawMap = data[field] as? [String: Any] else { continue }
@@ -617,7 +681,8 @@ public enum CloudVaultCrypto {
                     plaintext,
                     keyData: newKeyData,
                     vaultKeyID: newVaultKeyID,
-                    aadContext: context
+                    aadContext: context,
+                    nonce: try nextNonce(for: field)
                 )
                 updated[field] = try firestoreDictionary(resealed)
                 applyVaultKeyCompanionUpdates(
@@ -634,31 +699,41 @@ public enum CloudVaultCrypto {
                 let resealed = try sealText(
                     plaintext,
                     keyData: newKeyData,
-                    aadContext: context
+                    aadContext: context,
+                    nonce: try nextNonce(for: field)
                 )
                 updated[field] = try firestoreDictionary(resealed)
                 changedFields.append(field)
                 continue
             }
 
-            if let envelope = decodeBlobEnvelope(from: rawMap) {
+            if let envelope = decodeBlobEnvelopeForDocumentRewrap(rawMap) {
                 let plaintext = try openBlobForRewrap(envelope, keyData: oldKeyData, aadContext: context)
                 let resealed = try sealBlob(
                     plaintext,
                     keyData: newKeyData,
-                    aadContext: context
+                    aadContext: context,
+                    nonce: try nextNonce(for: field)
                 )
-                updated[field] = try firestoreDictionary(resealed)
+                var resealedMap = try firestoreDictionary(resealed)
+                if rawMap.keys.contains("createdAt") {
+                    resealedMap["createdAt"] = rawMap["createdAt"]
+                }
+                updated[field] = resealedMap
                 changedFields.append(field)
             }
+        }
+
+        guard nonceIndex == noncePlan.count else {
+            throw CloudVaultCryptoError.invalidEnvelope
         }
 
         if changedFields.isEmpty == false {
             if let vaultGeneration {
                 updated["vaultGeneration"] = vaultGeneration
             }
-            if let rotationJobId {
-                updated["rewrapJobId"] = rotationJobId
+            if let rotationJobID {
+                updated["rewrapJobId"] = rotationJobID
             }
         }
 
@@ -1245,6 +1320,74 @@ public enum CloudVaultCrypto {
             return try openPayload(envelope, keyData: keyData, aadContext: aadContext)
         }
         return try openPayload(envelope, keyData: keyData)
+    }
+
+    private static func sealText(
+        _ text: String,
+        keyData: Data,
+        keyVersion: Int = currentKeyVersion,
+        aadContext: CloudVaultAADContext,
+        nonce: Data
+    ) throws -> CloudVaultSealedText {
+        let sealed = try PlatformCrypto.sealAESGCMDetached(
+            plaintext: Data(text.utf8),
+            keyData: keyData,
+            nonce: nonce,
+            authenticating: aadContext.data
+        )
+        return try sealedText(from: sealed, keyVersion: keyVersion, aadContext: aadContext)
+    }
+
+    private static func sealBlob(
+        _ data: Data,
+        keyData: Data,
+        keyVersion: Int = currentKeyVersion,
+        aadContext: CloudVaultAADContext,
+        nonce: Data
+    ) throws -> CloudVaultBlobEnvelope {
+        let sealed = try PlatformCrypto.sealAESGCMDetached(
+            plaintext: data,
+            keyData: keyData,
+            nonce: nonce,
+            authenticating: aadContext.data
+        )
+        return CloudVaultBlobEnvelope(
+            schemaVersion: currentBlobEnvelopeSchemaVersion,
+            keyVersion: keyVersion,
+            plaintextHMAC: try blobPlaintextHMAC(data, keyData: keyData),
+            integrityHashVersion: blobIntegrityHashVersion,
+            sealedBoxBase64: sealed.combined.base64EncodedString(),
+            aad: aadContext.stringValue
+        )
+    }
+
+    private static func sealPayload(
+        _ data: Data,
+        keyData: Data,
+        vaultKeyID: String,
+        keyVersion: Int = currentKeyVersion,
+        aadContext: CloudVaultAADContext,
+        nonce: Data
+    ) throws -> CloudVaultSealedPayload {
+        let draft = CloudVaultSealedPayload(
+            keyVersion: keyVersion,
+            vaultKeyID: vaultKeyID,
+            sealedBoxBase64: "",
+            aad: aadContext.stringValue
+        )
+        let sealed = try PlatformCrypto.sealAESGCMDetached(
+            plaintext: data,
+            keyData: keyData,
+            nonce: nonce,
+            authenticating: sealedPayloadAAD(for: draft, aadContext: aadContext)
+        )
+        return CloudVaultSealedPayload(
+            schemaVersion: currentSealedPayloadSchemaVersion,
+            keyVersion: keyVersion,
+            vaultKeyID: vaultKeyID,
+            sealedBoxBase64: sealed.combined.base64EncodedString(),
+            aad: draft.aad
+        )
     }
 
     private static func applyVaultKeyCompanionUpdates(
