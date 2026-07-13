@@ -179,6 +179,83 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
                         () => throw new InvalidOperationException("legacy open must remain lazy"))).Code);
         }
 
+        [Fact]
+        public void RustMode_ConsumesRecoveryAndEscrowCanonicalKat()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "rust");
+            using var document = JsonDocument.Parse(File.ReadAllText(
+                Path.Combine(AppContext.BaseDirectory, "Fixtures", "cloudvault-deterministic-kat.json")));
+
+            var recovery = document.RootElement.GetProperty("recovery");
+            var recoveryKey = recovery.GetProperty("formattedKey").GetString()!;
+            var vaultKey = Convert.FromHexString(recovery.GetProperty("vaultKeyHex").GetString()!);
+            var recoveryNonce = Convert.FromHexString(recovery.GetProperty("nonceHex").GetString()!);
+            var recoveryWrapped = CloudVaultCrypto.WrapVaultKeyWithRecovery(vaultKey, recoveryKey, recoveryNonce);
+            Assert.Equal(recovery.GetProperty("combinedHex").GetString(), Convert.ToHexStringLower(
+                Convert.FromBase64String(recoveryWrapped.WrappedVaultKeyBase64)));
+            Assert.Equal(recovery.GetProperty("verificationHash").GetString(), recoveryWrapped.VerificationHash);
+            Assert.Equal(vaultKey, CloudVaultCrypto.UnwrapVaultKeyWithRecovery(
+                recoveryWrapped.WrappedVaultKeyBase64,
+                recoveryKey));
+
+            var escrow = document.RootElement.GetProperty("p256Escrow");
+            var ephemeralPublic = Convert.FromHexString(escrow.GetProperty("ephemeralPublicKeyHex").GetString()!);
+            var shared = Convert.FromHexString(escrow.GetProperty("sharedSecretHex").GetString()!);
+            var nonce = Convert.FromHexString(escrow.GetProperty("nonceHex").GetString()!);
+            var wire = DomainCoreCloudVaultBridge.EscrowSeal(
+                vaultKey,
+                ephemeralPublic,
+                shared,
+                nonce,
+                () => throw new InvalidOperationException("legacy escrow seal must remain lazy"));
+            Assert.Equal(escrow.GetProperty("wireHex").GetString(), Convert.ToHexStringLower(wire));
+            Assert.Equal(
+                vaultKey,
+                DomainCoreCloudVaultBridge.EscrowOpen(
+                    wire,
+                    shared,
+                    () => throw new InvalidOperationException("legacy escrow open must remain lazy")));
+        }
+
+        [Fact]
+        public void ShadowMode_ExecutesRecoveryAndEscrowWithLegacyAuthoritative()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "shadow");
+            var vaultKey = new byte[32];
+            const string recoveryKey = "abc-defg-hjkm-npq-rst-vwxyz-23456789";
+
+            var recoveryWrapped = CloudVaultCrypto.WrapVaultKeyWithRecovery(vaultKey, recoveryKey, new byte[12]);
+            Assert.Equal(vaultKey, CloudVaultCrypto.UnwrapVaultKeyWithRecovery(
+                recoveryWrapped.WrappedVaultKeyBase64,
+                recoveryKey));
+
+            byte[] recipientPrivate = new byte[32];
+            recipientPrivate[^1] = 1;
+            byte[] recipientPublic = P256KeyAgreement.PublicX963FromScalar(recipientPrivate);
+            byte[] ephemeralPrivate = new byte[32];
+            ephemeralPrivate[^1] = 2;
+            byte[] wire = CloudVaultCrypto.WrapVaultKey(vaultKey, recipientPublic, ephemeralPrivate, new byte[12]);
+            Assert.Equal(vaultKey, CloudVaultCrypto.UnwrapVaultKey(wire, recipientPrivate));
+        }
+
+        [Fact]
+        public void RustMode_MapsRecoveryAndPublicKeyFailures()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "rust");
+
+            Assert.Equal(
+                CloudVaultCryptoErrorCode.InvalidKeyLength,
+                Assert.Throws<CloudVaultCryptoException>(() =>
+                    CloudVaultCrypto.DeriveRecoveryWrappingKey("too-short")).Code);
+            Assert.Equal(
+                CloudVaultCryptoErrorCode.InvalidPublicKey,
+                Assert.Throws<CloudVaultCryptoException>(() =>
+                    CloudVaultCrypto.WrapVaultKey(new byte[32], new byte[65], new byte[32], new byte[12])).Code);
+        }
+
         private static bool NativeRequired() =>
             string.Equals(
                 Environment.GetEnvironmentVariable("OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"),

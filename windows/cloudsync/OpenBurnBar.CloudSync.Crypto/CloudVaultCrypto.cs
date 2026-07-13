@@ -242,31 +242,45 @@ namespace OpenBurnBar.CloudSync.Crypto
         internal static byte[] WrapVaultKey(byte[] keyData, byte[] recipientPublicKeyX963, byte[] ephemeralScalar, byte[]? nonce)
         {
             RequireVaultKey(keyData);
-            P256KeyAgreement.ValidateX963(recipientPublicKeyX963);
+            DomainCoreCloudVaultBridge.ValidateP256PublicKey(
+                recipientPublicKeyX963,
+                () => P256KeyAgreement.ValidateX963(recipientPublicKeyX963));
             var ephemeralPublic = P256KeyAgreement.PublicX963FromScalar(ephemeralScalar);
             var shared = P256KeyAgreement.SharedSecretX(ephemeralScalar, recipientPublicKeyX963);
-            var wrappingKey = HkdfDerive(shared, Empty, Encoding.UTF8.GetBytes(EscrowHkdfInfo));
-            var combined = SealCombined(keyData, wrappingKey, Empty, nonce);
-            var wrapped = new byte[ephemeralPublic.Length + combined.Length];
-            Buffer.BlockCopy(ephemeralPublic, 0, wrapped, 0, ephemeralPublic.Length);
-            Buffer.BlockCopy(combined, 0, wrapped, ephemeralPublic.Length, combined.Length);
-            return wrapped;
+            var selectedNonce = nonce ?? RandomNumberGenerator.GetBytes(12);
+            try
+            {
+                return DomainCoreCloudVaultBridge.EscrowSeal(
+                    keyData,
+                    ephemeralPublic,
+                    shared,
+                    selectedNonce,
+                    () => LegacyEscrowSeal(keyData, ephemeralPublic, shared, selectedNonce));
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(shared);
+            }
         }
 
         public static byte[] UnwrapVaultKey(byte[] ciphertext, byte[] recipientPrivateKeyRaw)
         {
-            if (ciphertext.Length <= P256KeyAgreement.X963PublicKeyLength)
+            var parts = DomainCoreCloudVaultBridge.EscrowSplitWire(
+                ciphertext,
+                () => LegacyEscrowSplitWire(ciphertext));
+            var shared = P256KeyAgreement.SharedSecretX(recipientPrivateKeyRaw, parts.EphemeralPublicKey);
+            byte[] keyData;
+            try
             {
-                throw CloudVaultCryptoException.InvalidEnvelope();
+                keyData = DomainCoreCloudVaultBridge.EscrowOpen(
+                    ciphertext,
+                    shared,
+                    () => LegacyEscrowOpen(parts.AesGcmCombined, shared));
             }
-            var publicKey = new byte[P256KeyAgreement.X963PublicKeyLength];
-            var box = new byte[ciphertext.Length - P256KeyAgreement.X963PublicKeyLength];
-            Buffer.BlockCopy(ciphertext, 0, publicKey, 0, publicKey.Length);
-            Buffer.BlockCopy(ciphertext, publicKey.Length, box, 0, box.Length);
-            P256KeyAgreement.ValidateX963(publicKey);
-            var shared = P256KeyAgreement.SharedSecretX(recipientPrivateKeyRaw, publicKey);
-            var wrappingKey = HkdfDerive(shared, Empty, Encoding.UTF8.GetBytes(EscrowHkdfInfo));
-            var keyData = OpenCombined(box, wrappingKey, Empty);
+            finally
+            {
+                CryptographicOperations.ZeroMemory(shared);
+            }
             if (keyData.Length != 32)
             {
                 throw CloudVaultCryptoException.InvalidKeyLength();
@@ -276,17 +290,9 @@ namespace OpenBurnBar.CloudSync.Crypto
 
         // ── recovery wrap (HKDF(recovery key) + AES-256-GCM) ────────────────
         public static byte[] DeriveRecoveryWrappingKey(string recoveryKey)
-        {
-            var normalized = NormalizeRecoveryKey(recoveryKey);
-            if (normalized.Length < 20)
-            {
-                throw CloudVaultCryptoException.InvalidKeyLength();
-            }
-            return HkdfDerive(
-                Encoding.UTF8.GetBytes(normalized),
-                Encoding.UTF8.GetBytes(RecoverySalt),
-                Encoding.UTF8.GetBytes(RecoveryWrapInfo));
-        }
+            => DomainCoreCloudVaultBridge.RecoveryWrappingKey(
+                recoveryKey,
+                () => LegacyDeriveRecoveryWrappingKey(recoveryKey));
 
         public static (string WrappedVaultKeyBase64, string VerificationHash) WrapVaultKeyWithRecovery(
             byte[] vaultKey, string recoveryKey) =>
@@ -296,15 +302,22 @@ namespace OpenBurnBar.CloudSync.Crypto
             byte[] vaultKey, string recoveryKey, byte[]? nonce)
         {
             RequireVaultKey(vaultKey);
-            var wrappingKey = DeriveRecoveryWrappingKey(recoveryKey);
-            var combined = SealCombined(vaultKey, wrappingKey, Empty, nonce);
-            return (EncodeBase64(combined), Sha256Hex(wrappingKey));
+            var selectedNonce = nonce ?? RandomNumberGenerator.GetBytes(12);
+            var wrapped = DomainCoreCloudVaultBridge.RecoveryWrapVaultKey(
+                vaultKey,
+                recoveryKey,
+                selectedNonce,
+                () => LegacyRecoveryWrapVaultKey(vaultKey, recoveryKey, selectedNonce));
+            return (EncodeBase64(wrapped.Combined), wrapped.VerificationHash);
         }
 
         public static byte[] UnwrapVaultKeyWithRecovery(string wrappedVaultKeyBase64, string recoveryKey)
         {
             var combined = DecodeBase64(wrappedVaultKeyBase64);
-            var keyData = OpenCombined(combined, DeriveRecoveryWrappingKey(recoveryKey), Empty);
+            var keyData = DomainCoreCloudVaultBridge.RecoveryOpenVaultKey(
+                combined,
+                recoveryKey,
+                () => LegacyRecoveryOpenVaultKey(combined, recoveryKey));
             if (keyData.Length != 32)
             {
                 throw CloudVaultCryptoException.InvalidKeyLength();
@@ -313,7 +326,9 @@ namespace OpenBurnBar.CloudSync.Crypto
         }
 
         public static string RecoveryVerificationHash(string recoveryKey) =>
-            Sha256Hex(DeriveRecoveryWrappingKey(recoveryKey));
+            DomainCoreCloudVaultBridge.RecoveryVerificationHash(
+                recoveryKey,
+                () => LegacyRecoveryVerificationHash(recoveryKey));
 
         // ── vault-keyed HMAC hashes ─────────────────────────────────────────
         public static string BlobPlaintextHmac(byte[] data, byte[] keyData) =>
@@ -420,6 +435,111 @@ namespace OpenBurnBar.CloudSync.Crypto
 
         private static byte[] HkdfDerive(byte[] ikm, byte[] salt, byte[] info) =>
             HKDF.DeriveKey(HashAlgorithmName.SHA256, ikm, 32, salt, info);
+
+        private static byte[] LegacyEscrowSeal(
+            byte[] plaintext,
+            byte[] ephemeralPublic,
+            byte[] shared,
+            byte[] nonce)
+        {
+            var wrappingKey = HkdfDerive(shared, Empty, Encoding.UTF8.GetBytes(EscrowHkdfInfo));
+            try
+            {
+                var combined = AesGcmBox.SealCombined(plaintext, wrappingKey, Empty, nonce);
+                var wrapped = new byte[ephemeralPublic.Length + combined.Length];
+                Buffer.BlockCopy(ephemeralPublic, 0, wrapped, 0, ephemeralPublic.Length);
+                Buffer.BlockCopy(combined, 0, wrapped, ephemeralPublic.Length, combined.Length);
+                return wrapped;
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(wrappingKey);
+            }
+        }
+
+        private static (byte[] EphemeralPublicKey, byte[] AesGcmCombined) LegacyEscrowSplitWire(byte[] wire)
+        {
+            if (wire.Length <= P256KeyAgreement.X963PublicKeyLength)
+            {
+                throw CloudVaultCryptoException.InvalidEnvelope();
+            }
+            var publicKey = new byte[P256KeyAgreement.X963PublicKeyLength];
+            var combined = new byte[wire.Length - publicKey.Length];
+            Buffer.BlockCopy(wire, 0, publicKey, 0, publicKey.Length);
+            Buffer.BlockCopy(wire, publicKey.Length, combined, 0, combined.Length);
+            P256KeyAgreement.ValidateX963(publicKey);
+            return (publicKey, combined);
+        }
+
+        private static byte[] LegacyEscrowOpen(byte[] combined, byte[] shared)
+        {
+            var wrappingKey = HkdfDerive(shared, Empty, Encoding.UTF8.GetBytes(EscrowHkdfInfo));
+            try
+            {
+                return AesGcmBox.OpenCombined(combined, wrappingKey, Empty);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(wrappingKey);
+            }
+        }
+
+        private static byte[] LegacyDeriveRecoveryWrappingKey(string recoveryKey)
+        {
+            var normalized = NormalizeRecoveryKey(recoveryKey);
+            if (normalized.Length < 20)
+            {
+                throw CloudVaultCryptoException.InvalidKeyLength();
+            }
+            return HkdfDerive(
+                Encoding.UTF8.GetBytes(normalized),
+                Encoding.UTF8.GetBytes(RecoverySalt),
+                Encoding.UTF8.GetBytes(RecoveryWrapInfo));
+        }
+
+        private static (byte[] Combined, string VerificationHash) LegacyRecoveryWrapVaultKey(
+            byte[] vaultKey,
+            string recoveryKey,
+            byte[] nonce)
+        {
+            var wrappingKey = LegacyDeriveRecoveryWrappingKey(recoveryKey);
+            try
+            {
+                return (
+                    AesGcmBox.SealCombined(vaultKey, wrappingKey, Empty, nonce),
+                    LegacySha256Hex(wrappingKey));
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(wrappingKey);
+            }
+        }
+
+        private static byte[] LegacyRecoveryOpenVaultKey(byte[] combined, string recoveryKey)
+        {
+            var wrappingKey = LegacyDeriveRecoveryWrappingKey(recoveryKey);
+            try
+            {
+                return AesGcmBox.OpenCombined(combined, wrappingKey, Empty);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(wrappingKey);
+            }
+        }
+
+        private static string LegacyRecoveryVerificationHash(string recoveryKey)
+        {
+            var wrappingKey = LegacyDeriveRecoveryWrappingKey(recoveryKey);
+            try
+            {
+                return LegacySha256Hex(wrappingKey);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(wrappingKey);
+            }
+        }
 
         private static string NormalizeRecoveryKey(string recoveryKey)
         {

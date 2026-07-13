@@ -5,6 +5,7 @@ using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
 using DomainAadContext = uniffi.openburnbar_domain_ffi.CloudVaultAadContextInput;
 using DomainCloudVaultException = uniffi.openburnbar_domain_ffi.CloudVaultFfiException;
 using DomainHashPurpose = uniffi.openburnbar_domain_ffi.CloudVaultHashPurpose;
+using DomainEscrowWireParts = uniffi.openburnbar_domain_ffi.CloudVaultEscrowWireParts;
 
 namespace OpenBurnBar.CloudSync.Crypto
 {
@@ -184,6 +185,97 @@ namespace OpenBurnBar.CloudSync.Crypto
                 legacy,
                 FixedTimeEquals);
 
+        internal static byte[] RecoveryWrappingKey(string recoveryKey, Func<byte[]> legacy) =>
+            Apply(
+                "cloudvault_recovery_wrapping_key",
+                () => DomainCore.CloudVaultRecoveryWrappingKey(recoveryKey),
+                legacy,
+                FixedTimeEquals);
+
+        internal static string RecoveryVerificationHash(string recoveryKey, Func<string> legacy) =>
+            Apply(
+                "cloudvault_recovery_verification_hash",
+                () => DomainCore.CloudVaultRecoveryVerificationHash(recoveryKey),
+                legacy,
+                StringComparer.Ordinal.Equals);
+
+        internal static (byte[] Combined, string VerificationHash) RecoveryWrapVaultKey(
+            byte[] vaultKey,
+            string recoveryKey,
+            byte[] nonce,
+            Func<(byte[] Combined, string VerificationHash)> legacy) =>
+            Apply(
+                "cloudvault_recovery_wrap_vault_key",
+                () =>
+                {
+                    var wrapped = DomainCore.CloudVaultRecoveryWrapVaultKey(vaultKey, recoveryKey, nonce);
+                    return (Combined: wrapped.combined, VerificationHash: wrapped.verificationHash);
+                },
+                legacy,
+                (left, right) =>
+                    FixedTimeEquals(left.Combined, right.Combined)
+                    && StringComparer.Ordinal.Equals(left.VerificationHash, right.VerificationHash));
+
+        internal static byte[] RecoveryOpenVaultKey(
+            byte[] combined,
+            string recoveryKey,
+            Func<byte[]> legacy) =>
+            Apply(
+                "cloudvault_recovery_open_vault_key",
+                () => DomainCore.CloudVaultRecoveryOpenVaultKey(combined, recoveryKey),
+                legacy,
+                FixedTimeEquals);
+
+        internal static void ValidateP256PublicKey(byte[] publicKey, Action legacy)
+        {
+            _ = Apply(
+                "cloudvault_validate_p256_public_key",
+                () =>
+                {
+                    DomainCore.CloudVaultValidateP256X963PublicKey(publicKey);
+                    return true;
+                },
+                () =>
+                {
+                    legacy();
+                    return true;
+                },
+                (left, right) => left == right);
+        }
+
+        internal static byte[] EscrowSeal(
+            byte[] plaintext,
+            byte[] ephemeralPublicKey,
+            byte[] sharedSecret,
+            byte[] nonce,
+            Func<byte[]> legacy) =>
+            Apply(
+                "cloudvault_escrow_seal",
+                () => DomainCore.CloudVaultEscrowSeal(plaintext, ephemeralPublicKey, sharedSecret, nonce),
+                legacy,
+                FixedTimeEquals);
+
+        internal static byte[] EscrowOpen(
+            byte[] wire,
+            byte[] sharedSecret,
+            Func<byte[]> legacy) =>
+            Apply(
+                "cloudvault_escrow_open",
+                () => DomainCore.CloudVaultEscrowOpen(wire, sharedSecret),
+                legacy,
+                FixedTimeEquals);
+
+        internal static (byte[] EphemeralPublicKey, byte[] AesGcmCombined) EscrowSplitWire(
+            byte[] wire,
+            Func<(byte[] EphemeralPublicKey, byte[] AesGcmCombined)> legacy) =>
+            Apply(
+                "cloudvault_escrow_split_wire",
+                () => FromDomain(DomainCore.CloudVaultEscrowSplitWire(wire)),
+                legacy,
+                (left, right) =>
+                    FixedTimeEquals(left.EphemeralPublicKey, right.EphemeralPublicKey)
+                    && FixedTimeEquals(left.AesGcmCombined, right.AesGcmCombined));
+
         internal static DomainCoreCloudVaultMigrationMode ResolveMode(string? raw) =>
             raw?.Trim().ToLowerInvariant() switch
             {
@@ -283,8 +375,14 @@ namespace OpenBurnBar.CloudSync.Crypto
         private static CloudVaultCryptoException Map(DomainCloudVaultException error) => error switch
         {
             DomainCloudVaultException.InvalidKeyLength => CloudVaultCryptoException.InvalidKeyLength(),
+            DomainCloudVaultException.InvalidRecoveryKey => CloudVaultCryptoException.InvalidKeyLength(),
+            DomainCloudVaultException.InvalidP256PublicKey => CloudVaultCryptoException.InvalidPublicKey(),
             _ => CloudVaultCryptoException.InvalidEnvelope(error),
         };
+
+        private static (byte[] EphemeralPublicKey, byte[] AesGcmCombined) FromDomain(
+            DomainEscrowWireParts parts) =>
+            (parts.ephemeralPublicKey, parts.aesGcmCombined);
 
         private static uint ToSchemaVersion(int schemaVersion)
         {
