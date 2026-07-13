@@ -235,7 +235,7 @@ let domainCoreBinaryTargets: [Target] = hasDomainCoreXCFramework ? [
 ] : []
 
 let domainCoreDependencies: [Target.Dependency] = hasDomainCoreXCFramework
-    ? ["OpenBurnBarDomainCoreFFI"]
+    ? ["OpenBurnBarDomainCore", "OpenBurnBarDomainCoreFFI"]
     : []
 
 let domainCoreSmokeTargets: [Target] = hasDomainCoreXCFramework ? [
