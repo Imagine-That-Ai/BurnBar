@@ -58,14 +58,9 @@ function fixture(t) {
     sharedFiles
   );
   copyFiles(
-    path.join(repoRoot, "OpenBurnBarCore", "Sources", "OpenBurnBarCore"),
-    path.join(root, "OpenBurnBarCore", "Sources", "OpenBurnBarCore"),
-    ["SwitcherProfile.swift"]
-  );
-  copyFiles(
     path.join(repoRoot, "OpenBurnBarCore", "Sources", "OpenBurnBarKernel", "SharedModels"),
     path.join(root, "OpenBurnBarCore", "Sources", "OpenBurnBarKernel", "SharedModels"),
-    ["AgentProvider.swift"]
+    ["SwitcherProfile.swift", "AgentProvider.swift"]
   );
   copyFiles(path.join(repoRoot, "scripts"), path.join(root, "scripts"), ["rollback-migration.sh"]);
   copyFiles(path.join(repoRoot, "docs"), path.join(root, "docs"), ["DATABASE_OPERATIONS.md"]);
@@ -160,7 +155,7 @@ test("app enum mapping mutation invalidates the migration dependency fingerprint
   const root = fixture(t);
   mutate(
     root,
-    "OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherProfile.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SwitcherProfile.swift",
     "case .junie: return .junie",
     "case .junie: return .codex"
   );

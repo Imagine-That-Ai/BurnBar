@@ -434,12 +434,13 @@ let swiftCryptoNonAppleDependency: Target.Dependency = .product(
 #if os(Linux) || os(Windows)
 let openBurnBarCoreExcludes = [
     "Views",
-    "CLITerminalSessionSupervisor.swift",
-    "BrowserLaunchAdapter.swift",
-    "ChromeProfileDiscovery.swift",
-    // Firebase App Check debug-token env writer uses POSIX setenv (Windows CRT
-    // uses _putenv_s); App Check is not part of the Engine subset.
-    "AppCheckDebugTokenEnvironment.swift",
+    // P-15: CLITerminalSessionSupervisor.swift, BrowserLaunchAdapter.swift,
+    // ChromeProfileDiscovery.swift, AppCheckDebugTokenEnvironment.swift, and
+    // SwitcherBrowserLaunchService.swift moved to the Apple-only
+    // OpenBurnBarLaunchServices target (pruned WHOLE off-Apple like
+    // OpenBurnBarData), so their Core off-Apple exclude entries were removed here
+    // (they no longer live under Core; the launch/discovery services + the
+    // App Check debug-token env writer are Apple-only).
     // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
     // the prior partial set that left model files referencing excluded types.
@@ -451,7 +452,6 @@ let openBurnBarCoreExcludes = [
     "AgentInsights/AgentInsightsBundleAssembler.swift",
     "Demo/InsightVerdictDemoFixture.swift",
     "Services/Insights",
-    "SwitcherBrowserLaunchService.swift",
     "SharedModels/AgentProvider+LogoBackdrop.swift",
     "SharedModels/AgentWatchLiveActivityAttributes.swift",
     "SharedModels/BurnBarLiveActivityAttributes.swift",
