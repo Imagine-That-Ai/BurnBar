@@ -40,16 +40,14 @@ export function buildLinuxUpdatePlan({
   const install = packageChannel === 'deb'
     ? action({
         id: 'install', label: 'Update with apt',
-        instruction: 'Review the signed artifact, then let apt replace the installed package.',
-        command: 'sudo apt-get install --only-upgrade open-burn-bar',
-        available: true, requiresConfirmation: true
+        instruction: 'A signed direct-download artifact is available, but no apt repository channel is configured; install it manually after verifying its digest.',
+        available: false, requiresConfirmation: true
       })
     : packageChannel === 'rpm'
       ? action({
           id: 'install', label: 'Update with dnf',
-          instruction: 'Review the signed artifact, then let dnf replace the installed package.',
-          command: 'sudo dnf upgrade --refresh open-burn-bar',
-          available: true, requiresConfirmation: true
+          instruction: 'A signed direct-download artifact is available, but no dnf repository channel is configured; install it manually after verifying its digest.',
+          available: false, requiresConfirmation: true
         })
       : packageChannel === 'appimage'
         ? action({
@@ -65,22 +63,20 @@ export function buildLinuxUpdatePlan({
   const rollback = packageChannel === 'deb'
     ? action({
         id: 'rollback', label: 'Roll back with apt',
-        instruction: `Choose a previously signed version, verify its digest, then ask apt to install that exact version (current: ${current}, feed: ${versionLabel}).`,
-        command: 'sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION',
-        available: true, requiresConfirmation: true
+        instruction: `No previous signed Debian artifact is attached to this feed (current: ${current}, feed: ${versionLabel}); rollback stays unavailable until release metadata supplies one.`,
+        available: false, requiresConfirmation: true
       })
     : packageChannel === 'rpm'
       ? action({
           id: 'rollback', label: 'Roll back with dnf',
-          instruction: `Choose a previously signed version, verify its digest, then downgrade the package (current: ${current}, feed: ${versionLabel}).`,
-          command: 'sudo dnf downgrade open-burn-bar',
-          available: true, requiresConfirmation: true
+          instruction: `No previous signed RPM artifact is attached to this feed (current: ${current}, feed: ${versionLabel}); rollback stays unavailable until release metadata supplies one.`,
+          available: false, requiresConfirmation: true
         })
       : packageChannel === 'appimage'
         ? action({
             id: 'rollback', label: 'Restore the previous AppImage',
             instruction: 'Restore a previously signed AppImage backup, verify its digest, and relaunch OpenBurnBar.',
-            available: true, requiresConfirmation: true
+            available: false, requiresConfirmation: true
           })
         : action({
             id: 'rollback', label: 'Rollback guidance unavailable',
@@ -90,8 +86,12 @@ export function buildLinuxUpdatePlan({
   const restart = action({
     id: 'restart',
     label: 'Restart OpenBurnBar',
-    instruction: 'Quit OpenBurnBar from the tray, let the package manager finish, then launch it again.',
-    command: 'systemctl --user restart openburnbar-daemon.service',
+    instruction: packageChannel === 'appimage' || packageChannel === 'unknown'
+      ? 'Quit OpenBurnBar from the tray, replace or restore the signed artifact, then launch it again.'
+      : 'Quit OpenBurnBar from the tray, let the package manager finish, then launch it again.',
+    command: packageChannel === 'appimage' || packageChannel === 'unknown'
+      ? null
+      : 'systemctl --user restart openburnbar-daemon.service',
     available: true,
     requiresConfirmation: false
   });
