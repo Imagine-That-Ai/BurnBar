@@ -19,17 +19,17 @@
         AgentLens/Services/Memory/MemoryExtractionLLMClient.swift            (LLM seam)
         OpenBurnBarCore/.../Memory/MemorySecretPIIGate.swift                 (secret/PII gate)
 
-    It targets plain net8.0 — NO Windows TFM, zero P/Invoke, zero UI framework, zero
-    network client — on purpose: the SAME managed assembly the WinUI shell
+    It targets plain net8.0 — NO Windows TFM, zero P/Invoke, and zero UI framework
+    on purpose: the SAME managed assembly the WinUI shell
     (net8.0-windows) links is unit-tested on the macOS authoring host today
     (`dotnet test`). Mirrors the already-proven OpenBurnBar.App.TextExpansion /
     OpenBurnBar.App.Settings portable-core pattern: a higher-runtime test project
     (net10.0) references this net8.0 library, and the WinUI app references it too.
 
-    The REAL embedding + memory-extraction NETWORK calls (OpenAI embeddings, the
-    Claude/OpenAI memory-extraction LLM) are the OS/network adapter and are explicitly
-    DEFERRED to bucket B. They plug in behind the seams defined here:
-      • IEmbeddingProvider          — text -> float[] embedding (network in prod)
+    The OpenAI embedding network adapter is implemented here with an injectable
+    HttpClient and strict bounds. The Claude/OpenAI memory-extraction LLM remains
+    an injected network seam. Both plug in behind the seams defined here:
+      • IEmbeddingProvider          — text -> float[] embedding
       • ICrossEncoderScorer         — (query, candidate) -> relevance score (network in prod)
       • IMemoryExtractionLlmClient  — prompt -> raw completion JSON (network in prod)
       • the injected clock (Func&lt;DateTimeOffset&gt;) — deadlines / staleness windows

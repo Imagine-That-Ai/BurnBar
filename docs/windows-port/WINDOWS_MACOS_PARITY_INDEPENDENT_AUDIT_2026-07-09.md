@@ -207,6 +207,13 @@ unproven host behavior to certification:
   normalization. Unknown inputs and oversized payloads fail closed before the
   native call. The adapter remains advisory SendInput; signed-driver routing,
   UIA target denial, and physical safety evidence remain external gates.
+- The semantic-search provider boundary now includes a bounded OpenAI-compatible
+  embeddings transport for the three macOS-supported models. It validates
+  model dimensions, batch/input/response bounds, indexed response order, finite
+  vectors, status errors, and secret-safe typed failures through an injectable
+  HTTP client. The deterministic provider remains the offline project-code
+  fallback; protected-secret/settings selection and NaturalLanguage/BGE quality
+  remain separate composition/evidence gates.
 - Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
   without writing prompts or tool output to disk. The companion CLI now exposes
   a bounded `fusion.run` command that composes this loop with the configured

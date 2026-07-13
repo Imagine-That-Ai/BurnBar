@@ -492,8 +492,10 @@ rows:
   status: Real
   evidence:
   - docs/windows-port/evidence/f2/project-code-memory-store.md
+  - docs/windows-port/evidence/f2/openai-embedding-provider.md
   tests:
   - windows/tests/presentation/Projects/ProjectCodeMemoryServiceTests.cs
+  - windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests
   blocking_paths:
   - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeMemoryStore.cs
   - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeSymbolIndex.cs
