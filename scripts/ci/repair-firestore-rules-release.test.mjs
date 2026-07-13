@@ -20,6 +20,8 @@ const NEW_RULESET = "projects/burnbar/rulesets/new-222";
 const API = "https://firebaserules.googleapis.com/v1";
 const RELEASE_URL = `${API}/projects/${PROJECT}/releases/cloud.firestore`;
 const RULESETS_URL = `${API}/projects/${PROJECT}/rulesets`;
+const NEW_RULESET_URL = `${API}/${NEW_RULESET}`;
+const RULES_CONTENT = "match /databases/{database}/documents { allow read: if true; }\n";
 
 let passed = 0;
 let failed = 0;
@@ -61,6 +63,10 @@ function rulesetEntry(name, createTime) {
   return { name, createTime };
 }
 
+function rulesetSource(content) {
+  return { source: { files: [{ name: "firestore.rules", content }] } };
+}
+
 // ─── Test 1: 409 on existing release -> repair PATCHes release ────────────
 
 async function test409Repair() {
@@ -78,6 +84,9 @@ async function test409Repair() {
           ],
         },
       };
+    }
+    if (url === NEW_RULESET_URL && method === "GET") {
+      return { status: 200, json: rulesetSource(RULES_CONTENT) };
     }
     if (url === RELEASE_URL && method === "GET") {
       return {
@@ -104,6 +113,7 @@ async function test409Repair() {
     project: PROJECT,
     token: TOKEN,
     fetchImpl: fetchMock,
+    expectedRulesContent: RULES_CONTENT,
   });
 
   assert.equal(result.repaired, true, "repair should report repaired=true");
@@ -119,6 +129,63 @@ async function test409Repair() {
   ok(label);
 }
 
+// ─── Test 2: newest unrelated ruleset must not be selected ───────────────
+
+async function testSkipsNewerUnrelatedRuleset() {
+  const label = "matching source: skips newer unrelated ruleset";
+  const unrelated = "projects/burnbar/rulesets/unrelated-333";
+  const unrelatedUrl = `${API}/${unrelated}`;
+  let releaseRuleset = OLD_RULESET;
+
+  const fetchMock = makeFetchMock(({ url, method, body }) => {
+    if (url === RULESETS_URL && method === "GET") {
+      return {
+        status: 200,
+        json: {
+          rulesets: [
+            rulesetEntry(unrelated, "2026-07-12T19:00:00.000Z"),
+            rulesetEntry(NEW_RULESET, "2026-07-12T18:00:00.000Z"),
+          ],
+        },
+      };
+    }
+    if (url === unrelatedUrl && method === "GET") {
+      return {
+        status: 200,
+        json: {
+          source: {
+            files: [{ name: "storage.rules", content: "match /b/{bucket}/o { }\n" }],
+          },
+        },
+      };
+    }
+    if (url === NEW_RULESET_URL && method === "GET") {
+      return { status: 200, json: rulesetSource(RULES_CONTENT) };
+    }
+    if (url === RELEASE_URL && method === "GET") {
+      return {
+        status: 200,
+        json: { name: RELEASE_URL.replace(API, ""), rulesetName: releaseRuleset },
+      };
+    }
+    if (url === RELEASE_URL && method === "PATCH") {
+      assert.equal(body.rulesetName, NEW_RULESET);
+      releaseRuleset = body.rulesetName;
+      return { status: 200, json: { name: RELEASE_URL.replace(API, ""), rulesetName: releaseRuleset } };
+    }
+    throw new Error(`unexpected ${method} ${url}`);
+  });
+
+  const result = await repairFirestoreRelease({
+    project: PROJECT,
+    token: TOKEN,
+    fetchImpl: fetchMock,
+    expectedRulesContent: RULES_CONTENT,
+  });
+  assert.equal(result.newRuleset, NEW_RULESET);
+  ok(label);
+}
+
 // ─── Test 2: release already points to matching ruleset -> no-op ──────────
 
 async function testAlreadyCurrent() {
@@ -130,6 +197,9 @@ async function testAlreadyCurrent() {
         status: 200,
         json: { rulesets: [rulesetEntry(NEW_RULESET, "2026-07-12T18:00:00.000Z")] },
       };
+    }
+    if (url === NEW_RULESET_URL && method === "GET") {
+      return { status: 200, json: rulesetSource(RULES_CONTENT) };
     }
     if (url === RELEASE_URL && method === "GET") {
       return {
@@ -144,6 +214,7 @@ async function testAlreadyCurrent() {
     project: PROJECT,
     token: TOKEN,
     fetchImpl: fetchMock,
+    expectedRulesContent: RULES_CONTENT,
   });
 
   assert.equal(result.repaired, false, "should not repair when already current");
@@ -190,6 +261,9 @@ async function testPatchFails() {
         json: { rulesets: [rulesetEntry(NEW_RULESET, "2026-07-12T18:00:00.000Z")] },
       };
     }
+    if (url === NEW_RULESET_URL && method === "GET") {
+      return { status: 200, json: rulesetSource(RULES_CONTENT) };
+    }
     if (url === RELEASE_URL && method === "GET") {
       return {
         status: 200,
@@ -208,7 +282,12 @@ async function testPatchFails() {
   let threw = false;
   let errorMsg = "";
   try {
-    await repairFirestoreRelease({ project: PROJECT, token: TOKEN, fetchImpl: fetchMock });
+    await repairFirestoreRelease({
+      project: PROJECT,
+      token: TOKEN,
+      fetchImpl: fetchMock,
+      expectedRulesContent: RULES_CONTENT,
+    });
   } catch (err) {
     threw = true;
     errorMsg = err.message;
@@ -234,6 +313,9 @@ async function testIdempotent() {
         json: { rulesets: [rulesetEntry(NEW_RULESET, "2026-07-12T18:00:00.000Z")] },
       };
     }
+    if (url === NEW_RULESET_URL && method === "GET") {
+      return { status: 200, json: rulesetSource(RULES_CONTENT) };
+    }
     if (url === RELEASE_URL && method === "GET") {
       return {
         status: 200,
@@ -255,6 +337,7 @@ async function testIdempotent() {
     project: PROJECT,
     token: TOKEN,
     fetchImpl: fetchMock,
+    expectedRulesContent: RULES_CONTENT,
   });
   assert.equal(result1.repaired, true, "first run must repair");
 
@@ -263,6 +346,7 @@ async function testIdempotent() {
     project: PROJECT,
     token: TOKEN,
     fetchImpl: fetchMock,
+    expectedRulesContent: RULES_CONTENT,
   });
   assert.equal(result2.repaired, false, "second run must be no-op");
 
@@ -285,6 +369,7 @@ async function run() {
 
   for (const [name, fn] of [
     ["test409Repair", test409Repair],
+    ["testSkipsNewerUnrelatedRuleset", testSkipsNewerUnrelatedRuleset],
     ["testAlreadyCurrent", testAlreadyCurrent],
     ["testPatchFails", testPatchFails],
     ["testIdempotent", testIdempotent],

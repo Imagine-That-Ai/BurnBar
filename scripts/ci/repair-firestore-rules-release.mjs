@@ -23,8 +23,11 @@
  * Usage: node scripts/ci/repair-firestore-rules-release.mjs <project>
  */
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { rulesSourceForDeploy } from "./firebase-rules-source.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -79,10 +82,18 @@ async function rulesApi(path, { method = "GET", body, token, project, fetchImpl 
 }
 
 /**
- * List rulesets and return the most recently created one. The Firebase Rules
- * API returns rulesets sorted by createTime descending, but we sort defensively.
+ * List rulesets and return the most recently created one whose firestore.rules
+ * source matches the content that the deploy just uploaded. The Firebase Rules
+ * API returns rulesets sorted by createTime descending, but we sort defensively
+ * and inspect each candidate so a newer storage or unrelated ruleset cannot be
+ * accidentally released.
  */
-async function getLatestRuleset({ project, token, fetchImpl }) {
+async function getLatestMatchingRuleset({
+  project,
+  token,
+  fetchImpl,
+  expectedRulesContent,
+}) {
   const listing = await rulesApi(`projects/${project}/rulesets`, {
     token,
     project,
@@ -97,11 +108,29 @@ async function getLatestRuleset({ project, token, fetchImpl }) {
     const bTime = b.createTime || "";
     return bTime.localeCompare(aTime);
   });
-  const latest = sorted[0];
-  if (typeof latest.name !== "string") {
-    throw new Error("Latest ruleset response did not include a name");
+  const expected = expectedRulesContent.trimEnd();
+  for (const candidate of sorted) {
+    if (typeof candidate.name !== "string") continue;
+    const ruleset = await rulesApi(candidate.name, {
+      token,
+      project,
+      fetchImpl,
+    });
+    const files = Array.isArray(ruleset.source?.files)
+      ? ruleset.source.files
+      : [];
+    const rulesFile = files.find(
+      (file) =>
+        file?.name === "firestore.rules" ||
+        file?.name?.endsWith("/firestore.rules"),
+    );
+    if (typeof rulesFile?.content === "string" && rulesFile.content.trimEnd() === expected) {
+      return candidate;
+    }
   }
-  return latest;
+  throw new Error(
+    `No ruleset found for project ${project} matching the deployed firestore.rules source`,
+  );
 }
 
 /**
@@ -146,13 +175,27 @@ async function patchFirestoreRelease({ project, token, fetchImpl, rulesetName })
  * @param {string} opts.project     — Firebase project ID
  * @param {string} opts.token       — gcloud access token
  * @param {function} opts.fetchImpl — fetch implementation (for testing)
+ * @param {string} opts.expectedRulesContent — compacted firestore.rules source
  * @returns {Promise<{repaired: boolean, oldRuleset: string, newRuleset: string}>}
  */
-export async function repairFirestoreRelease({ project, token, fetchImpl }) {
+export async function repairFirestoreRelease({
+  project,
+  token,
+  fetchImpl,
+  expectedRulesContent,
+}) {
   const fetch = fetchImpl || globalThis.fetch;
+  if (typeof expectedRulesContent !== "string") {
+    throw new Error("expectedRulesContent is required to select the release ruleset");
+  }
 
-  // 1. Find the most recently created ruleset (the one firebase-tools uploaded).
-  const latestRuleset = await getLatestRuleset({ project, token, fetchImpl: fetch });
+  // 1. Find the newest ruleset whose firestore.rules source matches the upload.
+  const latestRuleset = await getLatestMatchingRuleset({
+    project,
+    token,
+    fetchImpl: fetch,
+    expectedRulesContent,
+  });
   const newRulesetName = latestRuleset.name;
 
   // 2. Get the current release to find the old ruleset.
@@ -215,10 +258,15 @@ async function main() {
   }
 
   const token = accessToken(project);
+  const expectedRulesContent = rulesSourceForDeploy(
+    "firestore.rules",
+    readFileSync(resolve(repoRoot, "firestore.rules"), "utf8"),
+  );
   const result = await repairFirestoreRelease({
     project,
     token,
     fetchImpl: globalThis.fetch,
+    expectedRulesContent,
   });
 
   if (result.repaired) {
