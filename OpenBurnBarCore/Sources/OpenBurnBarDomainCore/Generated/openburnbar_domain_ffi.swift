@@ -626,6 +626,80 @@ public func FfiConverterTypeCloudVaultAadContextInput_lower(_ value: CloudVaultA
 }
 
 
+public struct CloudVaultAesGcmDetachedBox {
+    public var nonce: Data
+    public var ciphertext: Data
+    public var tag: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(nonce: Data, ciphertext: Data, tag: Data) {
+        self.nonce = nonce
+        self.ciphertext = ciphertext
+        self.tag = tag
+    }
+}
+
+
+
+extension CloudVaultAesGcmDetachedBox: Equatable, Hashable {
+    public static func ==(lhs: CloudVaultAesGcmDetachedBox, rhs: CloudVaultAesGcmDetachedBox) -> Bool {
+        if lhs.nonce != rhs.nonce {
+            return false
+        }
+        if lhs.ciphertext != rhs.ciphertext {
+            return false
+        }
+        if lhs.tag != rhs.tag {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(nonce)
+        hasher.combine(ciphertext)
+        hasher.combine(tag)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudVaultAesGcmDetachedBox: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudVaultAesGcmDetachedBox {
+        return
+            try CloudVaultAesGcmDetachedBox(
+                nonce: FfiConverterData.read(from: &buf),
+                ciphertext: FfiConverterData.read(from: &buf),
+                tag: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudVaultAesGcmDetachedBox, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.nonce, into: &buf)
+        FfiConverterData.write(value.ciphertext, into: &buf)
+        FfiConverterData.write(value.tag, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultAesGcmDetachedBox_lift(_ buf: RustBuffer) throws -> CloudVaultAesGcmDetachedBox {
+    return try FfiConverterTypeCloudVaultAesGcmDetachedBox.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudVaultAesGcmDetachedBox_lower(_ value: CloudVaultAesGcmDetachedBox) -> RustBuffer {
+    return FfiConverterTypeCloudVaultAesGcmDetachedBox.lower(value)
+}
+
+
 public struct QuotaBucket {
     public var key: String
     public var label: String
@@ -995,6 +1069,11 @@ public enum CloudVaultFfiError {
     case LegacyAadRejected
     case UnsupportedHashVersion
     case DerivationFailure
+    case InvalidNonceLength
+    case InvalidCombinedLength
+    case AuthenticationFailed
+    case InvalidUtf8
+    case InvalidBase64
 }
 
 
@@ -1018,6 +1097,11 @@ public struct FfiConverterTypeCloudVaultFfiError: FfiConverterRustBuffer {
         case 5: return .LegacyAadRejected
         case 6: return .UnsupportedHashVersion
         case 7: return .DerivationFailure
+        case 8: return .InvalidNonceLength
+        case 9: return .InvalidCombinedLength
+        case 10: return .AuthenticationFailed
+        case 11: return .InvalidUtf8
+        case 12: return .InvalidBase64
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -1056,6 +1140,26 @@ public struct FfiConverterTypeCloudVaultFfiError: FfiConverterRustBuffer {
 
         case .DerivationFailure:
             writeInt(&buf, Int32(7))
+
+
+        case .InvalidNonceLength:
+            writeInt(&buf, Int32(8))
+
+
+        case .InvalidCombinedLength:
+            writeInt(&buf, Int32(9))
+
+
+        case .AuthenticationFailed:
+            writeInt(&buf, Int32(10))
+
+
+        case .InvalidUtf8:
+            writeInt(&buf, Int32(11))
+
+
+        case .InvalidBase64:
+            writeInt(&buf, Int32(12))
 
         }
     }
@@ -1698,6 +1802,71 @@ public func cloudVaultAadV2(uid: String, collection: String, docId: String, fiel
     )
 })
 }
+public func cloudVaultAesGcmOpenCombined(combined: Data, key: Data, aad: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_combined(
+        FfiConverterData.lower(combined),
+        FfiConverterData.lower(key),
+        FfiConverterData.lower(aad),$0
+    )
+})
+}
+public func cloudVaultAesGcmOpenDetached(nonce: Data, ciphertext: Data, tag: Data, key: Data, aad: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_detached(
+        FfiConverterData.lower(nonce),
+        FfiConverterData.lower(ciphertext),
+        FfiConverterData.lower(tag),
+        FfiConverterData.lower(key),
+        FfiConverterData.lower(aad),$0
+    )
+})
+}
+public func cloudVaultAesGcmOpenTextDetached(nonce: Data, ciphertext: Data, tag: Data, key: Data, aad: Data)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_text_detached(
+        FfiConverterData.lower(nonce),
+        FfiConverterData.lower(ciphertext),
+        FfiConverterData.lower(tag),
+        FfiConverterData.lower(key),
+        FfiConverterData.lower(aad),$0
+    )
+})
+}
+public func cloudVaultAesGcmSealCombined(plaintext: Data, key: Data, nonce: Data, aad: Data)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_combined(
+        FfiConverterData.lower(plaintext),
+        FfiConverterData.lower(key),
+        FfiConverterData.lower(nonce),
+        FfiConverterData.lower(aad),$0
+    )
+})
+}
+public func cloudVaultAesGcmSealDetached(plaintext: Data, key: Data, nonce: Data, aad: Data)throws  -> CloudVaultAesGcmDetachedBox {
+    return try  FfiConverterTypeCloudVaultAesGcmDetachedBox.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_detached(
+        FfiConverterData.lower(plaintext),
+        FfiConverterData.lower(key),
+        FfiConverterData.lower(nonce),
+        FfiConverterData.lower(aad),$0
+    )
+})
+}
+public func cloudVaultBase64DecodeStrict(value: String)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_decode_strict(
+        FfiConverterString.lower(value),$0
+    )
+})
+}
+public func cloudVaultBase64Encode(data: Data) -> String {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_encode(
+        FfiConverterData.lower(data),$0
+    )
+})
+}
 public func cloudVaultExpectedSessionBodyHash(data: Data, key: Data, bodyHashVersion: UInt32)throws  -> String {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_expected_session_body_hash(
@@ -1803,6 +1972,27 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2() != 35572) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_combined() != 9151) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_detached() != 45041) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_text_detached() != 33389) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_combined() != 15475) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_detached() != 43222) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_decode_strict() != 52306) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_encode() != 55479) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_expected_session_body_hash() != 32041) {

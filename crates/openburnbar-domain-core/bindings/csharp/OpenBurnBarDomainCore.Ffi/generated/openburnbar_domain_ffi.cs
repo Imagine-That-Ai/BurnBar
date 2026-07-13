@@ -765,6 +765,20 @@ static class _UniFFILib {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
@@ -777,6 +791,34 @@ static class _UniFFILib {
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2(RustBuffer @uid,RustBuffer @collection,RustBuffer @docId,RustBuffer @field,uint @schemaVersion,RustBuffer @purpose,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_combined(RustBuffer @combined,RustBuffer @key,RustBuffer @aad,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_detached(RustBuffer @nonce,RustBuffer @ciphertext,RustBuffer @tag,RustBuffer @key,RustBuffer @aad,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_text_detached(RustBuffer @nonce,RustBuffer @ciphertext,RustBuffer @tag,RustBuffer @key,RustBuffer @aad,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_combined(RustBuffer @plaintext,RustBuffer @key,RustBuffer @nonce,RustBuffer @aad,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_detached(RustBuffer @plaintext,RustBuffer @key,RustBuffer @nonce,RustBuffer @aad,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_decode_strict(RustBuffer @value,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_encode(RustBuffer @data,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1056,6 +1098,34 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_combined(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_detached(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_text_detached(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_combined(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_detached(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_decode_strict(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_encode(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_expected_session_body_hash(
     );
 
@@ -1123,6 +1193,48 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2();
             if (checksum != 35572) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2` checksum `35572`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_combined();
+            if (checksum != 9151) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_combined` checksum `9151`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_detached();
+            if (checksum != 45041) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_detached` checksum `45041`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_text_detached();
+            if (checksum != 33389) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_text_detached` checksum `33389`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_combined();
+            if (checksum != 15475) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_combined` checksum `15475`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_detached();
+            if (checksum != 43222) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_detached` checksum `43222`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_decode_strict();
+            if (checksum != 52306) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_decode_strict` checksum `52306`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_encode();
+            if (checksum != 55479) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_encode` checksum `55479`, library returned `{checksum}`");
             }
         }
         {
@@ -1419,6 +1531,40 @@ class FfiConverterTypeCloudVaultAadContextInput: FfiConverterRustBuffer<CloudVau
 
 
 
+public record CloudVaultAesGcmDetachedBox (
+    byte[] @nonce,
+    byte[] @ciphertext,
+    byte[] @tag
+) {
+}
+
+class FfiConverterTypeCloudVaultAesGcmDetachedBox: FfiConverterRustBuffer<CloudVaultAesGcmDetachedBox> {
+    public static FfiConverterTypeCloudVaultAesGcmDetachedBox INSTANCE = new FfiConverterTypeCloudVaultAesGcmDetachedBox();
+
+    public override CloudVaultAesGcmDetachedBox Read(BigEndianStream stream) {
+        return new CloudVaultAesGcmDetachedBox(
+            @nonce: FfiConverterByteArray.INSTANCE.Read(stream),
+            @ciphertext: FfiConverterByteArray.INSTANCE.Read(stream),
+            @tag: FfiConverterByteArray.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudVaultAesGcmDetachedBox value) {
+        return 0
+            + FfiConverterByteArray.INSTANCE.AllocationSize(value.@nonce)
+            + FfiConverterByteArray.INSTANCE.AllocationSize(value.@ciphertext)
+            + FfiConverterByteArray.INSTANCE.AllocationSize(value.@tag);
+    }
+
+    public override void Write(CloudVaultAesGcmDetachedBox value, BigEndianStream stream) {
+            FfiConverterByteArray.INSTANCE.Write(value.@nonce, stream);
+            FfiConverterByteArray.INSTANCE.Write(value.@ciphertext, stream);
+            FfiConverterByteArray.INSTANCE.Write(value.@tag, stream);
+    }
+}
+
+
+
 public record QuotaBucket (
     string @key,
     string @label,
@@ -1633,6 +1779,31 @@ public class CloudVaultFfiException: UniffiException {
     }
 
 
+    public class InvalidNonceLength : CloudVaultFfiException {
+        public InvalidNonceLength() : base() {}
+    }
+
+
+    public class InvalidCombinedLength : CloudVaultFfiException {
+        public InvalidCombinedLength() : base() {}
+    }
+
+
+    public class AuthenticationFailed : CloudVaultFfiException {
+        public AuthenticationFailed() : base() {}
+    }
+
+
+    public class InvalidUtf8 : CloudVaultFfiException {
+        public InvalidUtf8() : base() {}
+    }
+
+
+    public class InvalidBase64 : CloudVaultFfiException {
+        public InvalidBase64() : base() {}
+    }
+
+
 
 
 }
@@ -1657,6 +1828,16 @@ class FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudVaultFfiE
                 return new CloudVaultFfiException.UnsupportedHashVersion();
             case 7:
                 return new CloudVaultFfiException.DerivationFailure();
+            case 8:
+                return new CloudVaultFfiException.InvalidNonceLength();
+            case 9:
+                return new CloudVaultFfiException.InvalidCombinedLength();
+            case 10:
+                return new CloudVaultFfiException.AuthenticationFailed();
+            case 11:
+                return new CloudVaultFfiException.InvalidUtf8();
+            case 12:
+                return new CloudVaultFfiException.InvalidBase64();
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.Read()", value));
         }
@@ -1685,6 +1866,21 @@ class FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudVaultFfiE
 
             case CloudVaultFfiException.DerivationFailure variant_value:
                 return 4;
+
+            case CloudVaultFfiException.InvalidNonceLength variant_value:
+                return 4;
+
+            case CloudVaultFfiException.InvalidCombinedLength variant_value:
+                return 4;
+
+            case CloudVaultFfiException.AuthenticationFailed variant_value:
+                return 4;
+
+            case CloudVaultFfiException.InvalidUtf8 variant_value:
+                return 4;
+
+            case CloudVaultFfiException.InvalidBase64 variant_value:
+                return 4;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.AllocationSize()", value));
         }
@@ -1712,6 +1908,21 @@ class FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudVaultFfiE
                 break;
             case CloudVaultFfiException.DerivationFailure variant_value:
                 stream.WriteInt(7);
+                break;
+            case CloudVaultFfiException.InvalidNonceLength variant_value:
+                stream.WriteInt(8);
+                break;
+            case CloudVaultFfiException.InvalidCombinedLength variant_value:
+                stream.WriteInt(9);
+                break;
+            case CloudVaultFfiException.AuthenticationFailed variant_value:
+                stream.WriteInt(10);
+                break;
+            case CloudVaultFfiException.InvalidUtf8 variant_value:
+                stream.WriteInt(11);
+                break;
+            case CloudVaultFfiException.InvalidBase64 variant_value:
+                stream.WriteInt(12);
                 break;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.Write()", value));
@@ -2085,6 +2296,68 @@ public static class OpenburnbarDomainFfiMethods {
         return FfiConverterString.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2(FfiConverterString.INSTANCE.Lower(@uid), FfiConverterString.INSTANCE.Lower(@collection), FfiConverterString.INSTANCE.Lower(@docId), FfiConverterString.INSTANCE.Lower(@field), FfiConverterUInt32.INSTANCE.Lower(@schemaVersion), FfiConverterOptionalString.INSTANCE.Lower(@purpose), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static byte[] CloudVaultAesGcmOpenCombined(byte[] @combined, byte[] @key, byte[] @aad) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_combined(FfiConverterByteArray.INSTANCE.Lower(@combined), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterByteArray.INSTANCE.Lower(@aad), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static byte[] CloudVaultAesGcmOpenDetached(byte[] @nonce, byte[] @ciphertext, byte[] @tag, byte[] @key, byte[] @aad) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_detached(FfiConverterByteArray.INSTANCE.Lower(@nonce), FfiConverterByteArray.INSTANCE.Lower(@ciphertext), FfiConverterByteArray.INSTANCE.Lower(@tag), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterByteArray.INSTANCE.Lower(@aad), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static string CloudVaultAesGcmOpenTextDetached(byte[] @nonce, byte[] @ciphertext, byte[] @tag, byte[] @key, byte[] @aad) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_text_detached(FfiConverterByteArray.INSTANCE.Lower(@nonce), FfiConverterByteArray.INSTANCE.Lower(@ciphertext), FfiConverterByteArray.INSTANCE.Lower(@tag), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterByteArray.INSTANCE.Lower(@aad), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static byte[] CloudVaultAesGcmSealCombined(byte[] @plaintext, byte[] @key, byte[] @nonce, byte[] @aad) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_combined(FfiConverterByteArray.INSTANCE.Lower(@plaintext), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterByteArray.INSTANCE.Lower(@nonce), FfiConverterByteArray.INSTANCE.Lower(@aad), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static CloudVaultAesGcmDetachedBox CloudVaultAesGcmSealDetached(byte[] @plaintext, byte[] @key, byte[] @nonce, byte[] @aad) {
+        return FfiConverterTypeCloudVaultAesGcmDetachedBox.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_detached(FfiConverterByteArray.INSTANCE.Lower(@plaintext), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterByteArray.INSTANCE.Lower(@nonce), FfiConverterByteArray.INSTANCE.Lower(@aad), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static byte[] CloudVaultBase64DecodeStrict(string @value) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_decode_strict(FfiConverterString.INSTANCE.Lower(@value), ref _status)
+));
+    }
+
+
+    public static string CloudVaultBase64Encode(byte[] @data) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_encode(FfiConverterByteArray.INSTANCE.Lower(@data), ref _status)
 ));
     }
 

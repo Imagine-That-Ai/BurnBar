@@ -44,6 +44,12 @@ contract to ABI 2 and adds Android and Wasm packaging. Consumers must verify the
 expected ABI before invoking Rust; release artifacts must prove native loading
 on their supported architectures rather than relying on binding compilation.
 
+CloudVault C1b keeps randomness and key custody with each platform while Rust
+owns AES-256-GCM authentication and the canonical `nonce || ciphertext || tag`
+wire shape. Native callers cross the boundary once per complete payload. The
+browser adapter exposes byte-array KAT helpers, but production WebCrypto handles
+remain non-extractable and are never exported merely to call Wasm.
+
 ## Consequences
 
 - Quota parsing is the pilot because it removes real duplication with a small,

@@ -40,6 +40,8 @@ const calls = [
   (api) => api.cloudVaultExpectedSessionBodyHash(data, key, 2),
   (api) => api.cloudVaultAadV1("uid", "sessions", "doc", "body", 2),
   (api) => api.cloudVaultAadV2("uid", "sessions", "doc", "body", 2, "sync"),
+  (api) => api.cloudVaultBase64Encode(data),
+  (api) => api.cloudVaultAesGcmSealCombined(data, key, new Uint8Array(12), data),
 ];
 for (const call of calls) {
   assert.deepEqual(call(committed.module), call(generated.module));

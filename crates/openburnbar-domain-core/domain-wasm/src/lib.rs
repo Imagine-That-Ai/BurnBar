@@ -75,6 +75,35 @@ pub fn cloud_vault_expected_session_body_hash(
     cloudvault::expected_session_body_hash(data, key, body_hash_version).map_err(js_error)
 }
 
+#[wasm_bindgen(js_name = cloudVaultAesGcmSealCombined)]
+pub fn cloud_vault_aes_gcm_seal_combined(
+    plaintext: &[u8],
+    key: &[u8],
+    nonce: &[u8],
+    aad: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    cloudvault::aes_gcm_seal_combined(plaintext, key, nonce, aad).map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultAesGcmOpenCombined)]
+pub fn cloud_vault_aes_gcm_open_combined(
+    combined: &[u8],
+    key: &[u8],
+    aad: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    cloudvault::aes_gcm_open_combined(combined, key, aad).map_err(js_error)
+}
+
+#[wasm_bindgen(js_name = cloudVaultBase64Encode)]
+pub fn cloud_vault_base64_encode(data: &[u8]) -> String {
+    cloudvault::base64_encode(data)
+}
+
+#[wasm_bindgen(js_name = cloudVaultBase64DecodeStrict)]
+pub fn cloud_vault_base64_decode_strict(value: &str) -> Result<Vec<u8>, JsError> {
+    cloudvault::base64_decode_strict(value).map_err(js_error)
+}
+
 fn context(
     uid: &str,
     collection: &str,
@@ -103,6 +132,11 @@ fn js_error(error: CloudVaultError) -> JsError {
         CloudVaultError::LegacyAadRejected => "legacy_aad_rejected",
         CloudVaultError::UnsupportedHashVersion => "unsupported_hash_version",
         CloudVaultError::DerivationFailure => "derivation_failure",
+        CloudVaultError::InvalidNonceLength => "invalid_nonce_length",
+        CloudVaultError::InvalidCombinedLength => "invalid_combined_length",
+        CloudVaultError::AuthenticationFailed => "authentication_failed",
+        CloudVaultError::InvalidUtf8 => "invalid_utf8",
+        CloudVaultError::InvalidBase64 => "invalid_base64",
     };
     JsError::new(&format!("{code}: {error}"))
 }

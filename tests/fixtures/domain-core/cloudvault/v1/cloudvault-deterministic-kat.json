@@ -89,5 +89,25 @@
       "kind": "session-body-hmac",
       "hex": "24c3844a66a803df5cfaf2b64eec2e841d88cc71cfeb07d2fa1be1435ca551ea"
     }
+  ],
+  "aesGcm": [
+    {
+      "keyHex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "nonceHex": "000000000000000000000000",
+      "plaintextHex": "",
+      "aadHex": "",
+      "ciphertextHex": "",
+      "tagHex": "530f8afbc74536b9a963b4f1c4cb738b",
+      "combinedBase64": "AAAAAAAAAAAAAAAAUw+K+8dFNrmpY7TxxMtziw=="
+    },
+    {
+      "keyHex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "nonceHex": "000000000000000000000000",
+      "plaintextHex": "4f70656e4275726e426172",
+      "aadHex": "4f70656e4275726e4261722d436c6f75645661756c742d6161642d76327c757365727c73657373696f6e737c646f637c626f64797c327c626f6479",
+      "ciphertextHex": "81d725530f151900452fb7",
+      "tagHex": "e9e30933fbcf60439ddc46e286803403",
+      "combinedBase64": "AAAAAAAAAAAAAAAAgdclUw8VGQBFL7fp4wkz+89gQ53cRuKGgDQD"
+    }
   ]
 }

@@ -40,7 +40,10 @@ justifies replacement.
 CloudVault C1 is split by security boundary. C1a owns deterministic AAD
 canonicalization, SHA-256, 32-byte vault-key IDs, and fixed-purpose HKDF/HMAC.
 It ships through UniFFI ABI 2, a four-ABI Android AAR, and a deterministic browser
-Wasm package. C1b adds AES text/blob/payload cross-open; C1c adds recovery and
+Wasm package. C1b owns AES-256-GCM detached/combined framing, strict UTF-8 and
+canonical RFC 4648 Base64, with caller-generated 12-byte nonces and payload-sized
+FFI calls. Apple, Android, Windows, and Wasm execute the same AES KAT, including
+valid empty plaintext. C1c adds recovery and
 P-256 escrow; search normalization and document rewrap remain last. Browser
 device private keys stay non-extractable WebCrypto handles throughout.
 

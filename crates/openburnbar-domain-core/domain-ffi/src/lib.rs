@@ -22,6 +22,13 @@ pub struct CloudVaultAadContextInput {
     pub purpose: Option<String>,
 }
 
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultAesGcmDetachedBox {
+    pub nonce: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+    pub tag: Vec<u8>,
+}
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CloudVaultFfiError {
     #[error("cloud vault keys must be exactly 32 bytes")]
@@ -38,6 +45,16 @@ pub enum CloudVaultFfiError {
     UnsupportedHashVersion,
     #[error("the CloudVault key derivation failed")]
     DerivationFailure,
+    #[error("AES-256-GCM nonces must be exactly 12 bytes")]
+    InvalidNonceLength,
+    #[error("the AES-256-GCM combined box is too short")]
+    InvalidCombinedLength,
+    #[error("the AES-256-GCM authentication tag did not verify")]
+    AuthenticationFailed,
+    #[error("decrypted CloudVault text is not valid UTF-8")]
+    InvalidUtf8,
+    #[error("CloudVault Base64 must be canonical RFC 4648 standard encoding")]
+    InvalidBase64,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -215,6 +232,82 @@ pub fn cloud_vault_expected_session_body_hash(
     result
 }
 
+#[uniffi::export]
+pub fn cloud_vault_aes_gcm_seal_detached(
+    plaintext: Vec<u8>,
+    mut key: Vec<u8>,
+    nonce: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<CloudVaultAesGcmDetachedBox, CloudVaultFfiError> {
+    let result = cloudvault::aes_gcm_seal_detached(&plaintext, &key, &nonce, &aad)
+        .map(Into::into)
+        .map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_aes_gcm_seal_combined(
+    plaintext: Vec<u8>,
+    mut key: Vec<u8>,
+    nonce: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result =
+        cloudvault::aes_gcm_seal_combined(&plaintext, &key, &nonce, &aad).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_aes_gcm_open_detached(
+    nonce: Vec<u8>,
+    ciphertext: Vec<u8>,
+    tag: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::aes_gcm_open_detached(&nonce, &ciphertext, &tag, &key, &aad)
+        .map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_aes_gcm_open_text_detached(
+    nonce: Vec<u8>,
+    ciphertext: Vec<u8>,
+    tag: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::aes_gcm_open_text_detached(&nonce, &ciphertext, &tag, &key, &aad)
+        .map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_aes_gcm_open_combined(
+    combined: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::aes_gcm_open_combined(&combined, &key, &aad).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_base64_encode(data: Vec<u8>) -> String {
+    cloudvault::base64_encode(&data)
+}
+
+#[uniffi::export]
+pub fn cloud_vault_base64_decode_strict(value: String) -> Result<Vec<u8>, CloudVaultFfiError> {
+    cloudvault::base64_decode_strict(&value).map_err(Into::into)
+}
+
 fn cloud_vault_aad_context(
     uid: &str,
     collection: &str,
@@ -253,6 +346,21 @@ impl From<cloudvault::CloudVaultError> for CloudVaultFfiError {
             cloudvault::CloudVaultError::LegacyAadRejected => Self::LegacyAadRejected,
             cloudvault::CloudVaultError::UnsupportedHashVersion => Self::UnsupportedHashVersion,
             cloudvault::CloudVaultError::DerivationFailure => Self::DerivationFailure,
+            cloudvault::CloudVaultError::InvalidNonceLength => Self::InvalidNonceLength,
+            cloudvault::CloudVaultError::InvalidCombinedLength => Self::InvalidCombinedLength,
+            cloudvault::CloudVaultError::AuthenticationFailed => Self::AuthenticationFailed,
+            cloudvault::CloudVaultError::InvalidUtf8 => Self::InvalidUtf8,
+            cloudvault::CloudVaultError::InvalidBase64 => Self::InvalidBase64,
+        }
+    }
+}
+
+impl From<cloudvault::AesGcmDetachedBox> for CloudVaultAesGcmDetachedBox {
+    fn from(value: cloudvault::AesGcmDetachedBox) -> Self {
+        Self {
+            nonce: value.nonce,
+            ciphertext: value.ciphertext,
+            tag: value.tag,
         }
     }
 }
@@ -436,6 +544,27 @@ mod tests {
         assert!(matches!(
             cloud_vault_expected_session_body_hash(vec![], key, 99),
             Err(CloudVaultFfiError::UnsupportedHashVersion)
+        ));
+        let zero_key = vec![0; 32];
+        let sealed = cloud_vault_aes_gcm_seal_detached(
+            b"OpenBurnBar".to_vec(),
+            zero_key.clone(),
+            vec![0; 12],
+            b"aad".to_vec(),
+        )?;
+        assert_eq!(
+            cloud_vault_aes_gcm_open_text_detached(
+                sealed.nonce,
+                sealed.ciphertext,
+                sealed.tag,
+                zero_key,
+                b"aad".to_vec(),
+            )?,
+            "OpenBurnBar"
+        );
+        assert!(matches!(
+            cloud_vault_base64_decode_strict("AA==\n".into()),
+            Err(CloudVaultFfiError::InvalidBase64)
         ));
         Ok(())
     }

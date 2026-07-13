@@ -85,6 +85,23 @@ for (const vector of fixture.expectedSessionBodyHash) {
   );
 }
 
+for (const vector of fixture.aesGcm) {
+  const key = Buffer.from(vector.keyHex, "hex");
+  const nonce = Buffer.from(vector.nonceHex, "hex");
+  const plaintext = Buffer.from(vector.plaintextHex, "hex");
+  const aad = Buffer.from(vector.aadHex, "hex");
+  const combined = domainCore.cloudVaultAesGcmSealCombined(plaintext, key, nonce, aad);
+  assert.equal(domainCore.cloudVaultBase64Encode(combined), vector.combinedBase64);
+  assert.deepEqual(
+    Array.from(domainCore.cloudVaultAesGcmOpenCombined(combined, key, aad)),
+    Array.from(plaintext),
+  );
+  assert.deepEqual(
+    Array.from(domainCore.cloudVaultBase64DecodeStrict(vector.combinedBase64)),
+    Array.from(combined),
+  );
+}
+
 assert.throws(
   () => domainCore.cloudVaultKeyId(new Uint8Array(31)),
   /invalid_key_length/,

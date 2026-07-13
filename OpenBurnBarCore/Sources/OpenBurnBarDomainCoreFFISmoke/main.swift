@@ -39,4 +39,24 @@ let fiveHourUtilization = result.snapshot.buckets[0].usedPercent
 require(fiveHourUtilization != nil, "missing five-hour utilization")
 require(abs((fiveHourUtilization ?? 0) - 42.5) < 0.000_001, "unexpected five-hour utilization")
 
+do {
+    let plaintext = Data("OpenBurnBar".utf8)
+    let aad = Data("aad".utf8)
+    let sealed = try OpenBurnBarDomainCoreFFI.cloudVaultAesGcmSealCombined(
+        plaintext: plaintext,
+        key: Data(repeating: 0, count: 32),
+        nonce: Data(repeating: 0, count: 12),
+        aad: aad
+    )
+    let opened = try OpenBurnBarDomainCoreFFI.cloudVaultAesGcmOpenCombined(
+        combined: sealed,
+        key: Data(repeating: 0, count: 32),
+        aad: aad
+    )
+    require(opened == plaintext, "AES-GCM native round-trip mismatch")
+} catch {
+    FileHandle.standardError.write(Data("domain-core smoke failed: AES-GCM: \(error)\n".utf8))
+    exit(1)
+}
+
 print("domain-core native smoke passed")

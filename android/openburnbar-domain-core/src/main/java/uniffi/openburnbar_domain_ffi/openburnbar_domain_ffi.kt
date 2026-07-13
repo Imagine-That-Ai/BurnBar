@@ -735,6 +735,20 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -753,6 +767,20 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v1(`uid`: RustBuffer.ByValue,`collection`: RustBuffer.ByValue,`docId`: RustBuffer.ByValue,`field`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2(`uid`: RustBuffer.ByValue,`collection`: RustBuffer.ByValue,`docId`: RustBuffer.ByValue,`field`: RustBuffer.ByValue,`schemaVersion`: Int,`purpose`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_combined(`combined`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_detached(`nonce`: RustBuffer.ByValue,`ciphertext`: RustBuffer.ByValue,`tag`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_text_detached(`nonce`: RustBuffer.ByValue,`ciphertext`: RustBuffer.ByValue,`tag`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_combined(`plaintext`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_detached(`plaintext`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_decode_strict(`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_encode(`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_expected_session_body_hash(`data`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`bodyHashVersion`: Int,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -892,6 +920,20 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_combined(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_detached(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_text_detached(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_combined(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_detached(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_decode_strict(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_encode(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_expected_session_body_hash(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_key_id(
@@ -934,6 +976,27 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2() != 35572.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_combined() != 9151.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_detached() != 45041.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_open_text_detached() != 33389.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_combined() != 15475.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aes_gcm_seal_detached() != 43222.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_decode_strict() != 52306.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_base64_encode() != 55479.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_expected_session_body_hash() != 32041.toShort()) {
@@ -1234,6 +1297,42 @@ public object FfiConverterTypeCloudVaultAadContextInput: FfiConverterRustBuffer<
 
 
 
+data class CloudVaultAesGcmDetachedBox (
+    var `nonce`: kotlin.ByteArray,
+    var `ciphertext`: kotlin.ByteArray,
+    var `tag`: kotlin.ByteArray
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCloudVaultAesGcmDetachedBox: FfiConverterRustBuffer<CloudVaultAesGcmDetachedBox> {
+    override fun read(buf: ByteBuffer): CloudVaultAesGcmDetachedBox {
+        return CloudVaultAesGcmDetachedBox(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CloudVaultAesGcmDetachedBox) = (
+            FfiConverterByteArray.allocationSize(value.`nonce`) +
+            FfiConverterByteArray.allocationSize(value.`ciphertext`) +
+            FfiConverterByteArray.allocationSize(value.`tag`)
+    )
+
+    override fun write(value: CloudVaultAesGcmDetachedBox, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`nonce`, buf)
+            FfiConverterByteArray.write(value.`ciphertext`, buf)
+            FfiConverterByteArray.write(value.`tag`, buf)
+    }
+}
+
+
+
 data class QuotaBucket (
     var `key`: kotlin.String,
     var `label`: kotlin.String,
@@ -1454,6 +1553,36 @@ sealed class CloudVaultFfiException: kotlin.Exception() {
             get() = ""
     }
 
+    class InvalidNonceLength(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidCombinedLength(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class AuthenticationFailed(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidUtf8(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidBase64(
+        ) : CloudVaultFfiException() {
+        override val message
+            get() = ""
+    }
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<CloudVaultFfiException> {
         override fun lift(error_buf: RustBuffer.ByValue): CloudVaultFfiException = FfiConverterTypeCloudVaultFfiError.lift(error_buf)
@@ -1477,6 +1606,11 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
             5 -> CloudVaultFfiException.LegacyAadRejected()
             6 -> CloudVaultFfiException.UnsupportedHashVersion()
             7 -> CloudVaultFfiException.DerivationFailure()
+            8 -> CloudVaultFfiException.InvalidNonceLength()
+            9 -> CloudVaultFfiException.InvalidCombinedLength()
+            10 -> CloudVaultFfiException.AuthenticationFailed()
+            11 -> CloudVaultFfiException.InvalidUtf8()
+            12 -> CloudVaultFfiException.InvalidBase64()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -1511,6 +1645,26 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
+            is CloudVaultFfiException.InvalidNonceLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidCombinedLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.AuthenticationFailed -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidUtf8 -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is CloudVaultFfiException.InvalidBase64 -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
         }
     }
 
@@ -1542,6 +1696,26 @@ public object FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudV
             }
             is CloudVaultFfiException.DerivationFailure -> {
                 buf.putInt(7)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidNonceLength -> {
+                buf.putInt(8)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidCombinedLength -> {
+                buf.putInt(9)
+                Unit
+            }
+            is CloudVaultFfiException.AuthenticationFailed -> {
+                buf.putInt(10)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidUtf8 -> {
+                buf.putInt(11)
+                Unit
+            }
+            is CloudVaultFfiException.InvalidBase64 -> {
+                buf.putInt(12)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -1885,6 +2059,75 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     uniffiRustCallWithError(CloudVaultFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2(
         FfiConverterString.lower(`uid`),FfiConverterString.lower(`collection`),FfiConverterString.lower(`docId`),FfiConverterString.lower(`field`),FfiConverterUInt.lower(`schemaVersion`),FfiConverterOptionalString.lower(`purpose`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultAesGcmOpenCombined`(`combined`: kotlin.ByteArray, `key`: kotlin.ByteArray, `aad`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_combined(
+        FfiConverterByteArray.lower(`combined`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultAesGcmOpenDetached`(`nonce`: kotlin.ByteArray, `ciphertext`: kotlin.ByteArray, `tag`: kotlin.ByteArray, `key`: kotlin.ByteArray, `aad`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_detached(
+        FfiConverterByteArray.lower(`nonce`),FfiConverterByteArray.lower(`ciphertext`),FfiConverterByteArray.lower(`tag`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultAesGcmOpenTextDetached`(`nonce`: kotlin.ByteArray, `ciphertext`: kotlin.ByteArray, `tag`: kotlin.ByteArray, `key`: kotlin.ByteArray, `aad`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_open_text_detached(
+        FfiConverterByteArray.lower(`nonce`),FfiConverterByteArray.lower(`ciphertext`),FfiConverterByteArray.lower(`tag`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultAesGcmSealCombined`(`plaintext`: kotlin.ByteArray, `key`: kotlin.ByteArray, `nonce`: kotlin.ByteArray, `aad`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_combined(
+        FfiConverterByteArray.lower(`plaintext`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`nonce`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultAesGcmSealDetached`(`plaintext`: kotlin.ByteArray, `key`: kotlin.ByteArray, `nonce`: kotlin.ByteArray, `aad`: kotlin.ByteArray): CloudVaultAesGcmDetachedBox {
+            return FfiConverterTypeCloudVaultAesGcmDetachedBox.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_detached(
+        FfiConverterByteArray.lower(`plaintext`),FfiConverterByteArray.lower(`key`),FfiConverterByteArray.lower(`nonce`),FfiConverterByteArray.lower(`aad`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultBase64DecodeStrict`(`value`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_decode_strict(
+        FfiConverterString.lower(`value`),_status)
+}
+    )
+    }
+
+ fun `cloudVaultBase64Encode`(`data`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_base64_encode(
+        FfiConverterByteArray.lower(`data`),_status)
 }
     )
     }
