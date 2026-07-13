@@ -4,6 +4,7 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ProjectUpsertInput } from './tauriBridge.js';
 
 const invoke = vi.fn();
 
@@ -45,6 +46,51 @@ describe('VAL-RPC-002 bridge behavior', () => {
     invoke.mockResolvedValueOnce({ schemaVersion: 1, capabilities: [] });
     const b = await bridge();
     await expect(b.runtimeCapabilities()).rejects.toThrow(/missing_ids/);
+  });
+
+  it('project list/detail/upsert use the canonical controller RPC payloads', async () => {
+    const canonical: ProjectUpsertInput = {
+      id: 'project-apollo',
+      projectSlug: 'apollo',
+      displayName: 'Apollo',
+      summary: 'Controller project',
+      status: 'healthy',
+      preferredCadence: 'weekly',
+      aliases: ['apollo-app'],
+      automationMode: 'manual',
+      reviewModelID: 'glm-5',
+      scheduleHourLocal: 9,
+      scheduleWeekdayLocal: 2,
+      freshness: 'fresh',
+      pendingQuestionCount: 1,
+      openFollowupCount: 0,
+      activeMissionCount: 2,
+      activeMissionID: 'mission-1',
+      needsOperatorAttention: true,
+      ingestionSource: 'manual',
+      metadata: { session_count_last_7d: 4 }
+    };
+    invoke
+      .mockResolvedValueOnce({ projects: [canonical] })
+      .mockResolvedValueOnce({ project: canonical })
+      .mockResolvedValueOnce({ project: canonical });
+    const b = await bridge();
+
+    await expect(b.projectList()).resolves.toMatchObject([
+      { id: 'project-apollo', projectSlug: 'apollo', name: 'Apollo', scope: 'controller', path: '' }
+    ]);
+    await expect(b.projectGet?.('apollo')).resolves.toMatchObject({ projectSlug: 'apollo', displayName: 'Apollo' });
+    await expect(b.projectUpsert?.(canonical)).resolves.toMatchObject({ projectSlug: 'apollo' });
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'project_list');
+    expect(invoke).toHaveBeenNthCalledWith(2, 'project_get', { projectSlug: 'apollo' });
+    expect(invoke).toHaveBeenNthCalledWith(3, 'project_upsert', { project: canonical });
+  });
+
+  it('does not synthesize a project from a title-only daemon row', async () => {
+    invoke.mockResolvedValueOnce({ projects: [{ title: 'Apollo', path: '/tmp/Apollo' }] });
+    const b = await bridge();
+    await expect(b.projectList()).resolves.toEqual([]);
   });
 
   it('account auth methods use native commands and return only redacted state', async () => {

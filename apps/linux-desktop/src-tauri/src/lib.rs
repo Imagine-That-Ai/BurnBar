@@ -1958,8 +1958,49 @@ fn project_list() -> Result<serde_json::Value, String> {
         "daemon.controller.project.list",
         Some(serde_json::json!({
             "includePaused": true,
-            "limit": 100
+            "limit": 200
         })),
+    )
+}
+
+// ───────────────── P19: project detail/upsert ─────────────────
+// Wire: daemon.controller.project.get / daemon.controller.project.upsert
+// (BurnBarRPCMethod.controllerProjectGet / controllerProjectUpsert).
+#[tauri::command]
+fn project_get(project_slug: String) -> Result<serde_json::Value, String> {
+    let project_slug = project_slug.trim();
+    if project_slug.is_empty() {
+        return Err("projectSlug must be a non-empty string".to_string());
+    }
+    call_daemon_method(
+        "daemon.controller.project.get",
+        Some(serde_json::json!({ "projectSlug": project_slug })),
+    )
+}
+
+fn validate_project_upsert_payload(project: &serde_json::Value) -> Result<(), String> {
+    let object = project
+        .as_object()
+        .ok_or_else(|| "project must be a JSON object".to_string())?;
+    for field in ["projectSlug", "displayName", "summary"] {
+        let value = object
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if value.is_none() {
+            return Err(format!("project.{field} must be a non-empty string"));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn project_upsert(project: serde_json::Value) -> Result<serde_json::Value, String> {
+    validate_project_upsert_payload(&project)?;
+    call_daemon_method(
+        "daemon.controller.project.upsert",
+        Some(serde_json::json!({ "project": project })),
     )
 }
 
@@ -4452,6 +4493,8 @@ pub fn run() {
             notification_command,
             db_status,
             project_list,
+            project_get,
+            project_upsert,
             memory_boundaries,
             memory_review_inbox,
             memory_forget,
@@ -4539,6 +4582,30 @@ mod tests {
             .unwrap();
         *computer_use_broker_flow().lock().unwrap() = None;
         guard
+    }
+
+    #[test]
+    fn project_upsert_validation_requires_canonical_identity_fields() {
+        let error = validate_project_upsert_payload(&serde_json::json!({
+            "projectSlug": "apollo",
+            "displayName": "Apollo"
+        }))
+        .expect_err("summary is required by BurnBarReviewProjectSnapshot");
+        assert_eq!(error, "project.summary must be a non-empty string");
+
+        validate_project_upsert_payload(&serde_json::json!({
+            "projectSlug": "apollo",
+            "displayName": "Apollo",
+            "summary": "Controller project"
+        }))
+        .expect("canonical identity fields should validate");
+    }
+
+    #[test]
+    fn project_upsert_validation_rejects_non_object_payloads() {
+        let error = validate_project_upsert_payload(&serde_json::json!("apollo"))
+            .expect_err("project payload must be an object");
+        assert_eq!(error, "project must be a JSON object");
     }
 
     #[test]
