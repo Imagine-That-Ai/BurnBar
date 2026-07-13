@@ -66,6 +66,10 @@ text/query rather than crossing the boundary per token. Inputs fail closed over
 1,024. Nonpositive limits remain a successful empty result because that is part
 of the versioned legacy contract. Platform search services and Firestore I/O
 remain outside Rust until their dedicated shadow-mode consumer changes land.
+The Swift consumer selects `legacy`, legacy-authoritative `shadow`, or
+fail-closed `rust` with `OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE`. Each
+public token/index/query/semantic API crosses UniFFI once with the complete
+text or query; key custody, persistence, and Firestore mapping remain in Swift.
 
 ## Consequences
 

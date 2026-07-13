@@ -69,6 +69,14 @@ rejects text above 1 MiB, more than 4,096 extracted tokens, and limits above
 1,024; nonpositive limits return the contract-required empty array. Owned FFI
 and Wasm key copies and derived search keys are zeroized before return.
 
+Swift production search routing is controlled independently by
+`OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE`, with `legacy` as the default,
+`shadow` as a legacy-authoritative exact ordered comparison, and `rust` as the
+fail-closed native authority. Native unavailability, ABI mismatch, invalid
+input, or a UniFFI error never invokes legacy code in `rust` mode. Diagnostics
+contain only the operation, mismatch/error category, and core version; search
+text, hashes, and key material are never logged.
+
 ## Rollout and deletion gates
 
 Quota migrations require the complete fixture corpus, native binding load tests,

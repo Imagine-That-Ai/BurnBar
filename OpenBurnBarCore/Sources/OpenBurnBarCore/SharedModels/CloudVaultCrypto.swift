@@ -683,12 +683,38 @@ public enum CloudVaultCrypto {
     }
 
     public static func tokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {
+        try CloudVaultSearchDomainCoreAdapter.hashes(
+            operation: .token,
+            text: text,
+            keyData: keyData,
+            limit: limit
+        ) {
+            try legacyTokenHashes(for: text, keyData: keyData, limit: limit)
+        }
+    }
+
+    private static func legacyTokenHashes(for text: String, keyData: Data, limit: Int) throws -> [String] {
         let key = try searchKey(from: keyData)
         let terms = normalizedTokens(from: text)
         return tokenHashes(forTerms: terms, key: key, limit: limit)
     }
 
     public static func searchIndexTokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {
+        try CloudVaultSearchDomainCoreAdapter.hashes(
+            operation: .index,
+            text: text,
+            keyData: keyData,
+            limit: limit
+        ) {
+            try legacySearchIndexTokenHashes(for: text, keyData: keyData, limit: limit)
+        }
+    }
+
+    private static func legacySearchIndexTokenHashes(
+        for text: String,
+        keyData: Data,
+        limit: Int
+    ) throws -> [String] {
         let key = try searchKey(from: keyData)
         let tokens = uniqueNormalizedTokens(from: text)
         var terms = tokens
@@ -698,6 +724,21 @@ public enum CloudVaultCrypto {
     }
 
     public static func searchQueryTokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {
+        try CloudVaultSearchDomainCoreAdapter.hashes(
+            operation: .query,
+            text: text,
+            keyData: keyData,
+            limit: limit
+        ) {
+            try legacySearchQueryTokenHashes(for: text, keyData: keyData, limit: limit)
+        }
+    }
+
+    private static func legacySearchQueryTokenHashes(
+        for text: String,
+        keyData: Data,
+        limit: Int
+    ) throws -> [String] {
         let key = try searchKey(from: keyData)
         let tokens = uniqueNormalizedTokens(from: text)
         var terms = tokens
@@ -831,6 +872,17 @@ public enum CloudVaultCrypto {
     /// favors bounded, stable recall over model-specific vectors so every client
     /// can produce identical hashes offline.
     public static func semanticHashes(for text: String, keyData: Data, limit: Int = 24) throws -> [String] {
+        try CloudVaultSearchDomainCoreAdapter.hashes(
+            operation: .semantic,
+            text: text,
+            keyData: keyData,
+            limit: limit
+        ) {
+            try legacySemanticHashes(for: text, keyData: keyData, limit: limit)
+        }
+    }
+
+    private static func legacySemanticHashes(for text: String, keyData: Data, limit: Int) throws -> [String] {
         let tokens = exactPhraseTokens(from: text)
         guard tokens.isEmpty == false, limit > 0 else { return [] }
 
