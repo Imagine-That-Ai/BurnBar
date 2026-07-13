@@ -57,6 +57,19 @@ It does not generate randomness or perform ECDH. Platforms retain private-key
 handles in CryptoKit, Android Keystore/JCA, Windows CNG, or non-extractable
 WebCrypto and pass only the 32-byte ECDH result to Rust. No C1c FFI or Wasm API
 accepts a private scalar, private-key encoding, or `CryptoKey` export.
+Independent review of the C1d stack also hardened inherited C1c cleanup paths:
+invalid normalized recovery text, failed HKDF outputs, and authenticated
+wrong-length recovered key plaintext are structurally zeroized before return.
+
+CloudVault C1d owns whole-document envelope classification, validation,
+authenticated open/reseal, lexicographic field ordering, and companion/metadata
+update intents. The boundary is one FFI call per document. Callers provide a
+complete top-level field-name set, typed payload/text/blob envelopes, and one
+unique 12-byte nonce for each envelope Rust determines must be resealed. Dynamic
+Firestore dictionaries, persistence, timestamps, rotation orchestration,
+randomness, and platform key handles remain outside Rust. An already-new
+payload is authenticated under the new key before it is reported as skipped;
+malformed or tampered skip candidates fail closed.
 
 ## Consequences
 

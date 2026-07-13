@@ -801,6 +801,8 @@ static class _UniFFILib {
 
 
 
+
+
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
@@ -897,6 +899,10 @@ static class _UniFFILib {
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(RustBuffer @envelopeAad,RustBuffer @context,sbyte @rejectLegacy,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_rewrap_document(RustBuffer @request,RustBuffer @oldKey,RustBuffer @newKey,RustBuffer @newVaultKeyId,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1248,6 +1254,10 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_rewrap_document(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex(
     );
 
@@ -1429,6 +1439,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad();
             if (checksum != 62830) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad` checksum `62830`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_rewrap_document();
+            if (checksum != 48266) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_rewrap_document` checksum `48266`, library returned `{checksum}`");
             }
         }
         {
@@ -1741,6 +1757,230 @@ class FfiConverterTypeCloudVaultAesGcmDetachedBox: FfiConverterRustBuffer<CloudV
 
 
 
+public record CloudVaultCompanionUpdateIntent (
+    string @sourceFieldName,
+    string @companionFieldName,
+    string @vaultKeyId
+) {
+}
+
+class FfiConverterTypeCloudVaultCompanionUpdateIntent: FfiConverterRustBuffer<CloudVaultCompanionUpdateIntent> {
+    public static FfiConverterTypeCloudVaultCompanionUpdateIntent INSTANCE = new FfiConverterTypeCloudVaultCompanionUpdateIntent();
+
+    public override CloudVaultCompanionUpdateIntent Read(BigEndianStream stream) {
+        return new CloudVaultCompanionUpdateIntent(
+            @sourceFieldName: FfiConverterString.INSTANCE.Read(stream),
+            @companionFieldName: FfiConverterString.INSTANCE.Read(stream),
+            @vaultKeyId: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudVaultCompanionUpdateIntent value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.@sourceFieldName)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@companionFieldName)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@vaultKeyId);
+    }
+
+    public override void Write(CloudVaultCompanionUpdateIntent value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.@sourceFieldName, stream);
+            FfiConverterString.INSTANCE.Write(value.@companionFieldName, stream);
+            FfiConverterString.INSTANCE.Write(value.@vaultKeyId, stream);
+    }
+}
+
+
+
+/// <summary>
+/// Typed, transport-safe representation of one CloudVault envelope.
+/// Fields not used by `kind` must be absent; conversion fails closed otherwise.
+/// </summary>
+public record CloudVaultDocumentEnvelope (
+    CloudVaultDocumentEnvelopeKind @kind,
+    string @fieldName,
+    uint? @schemaVersion,
+    string @algorithm,
+    uint @keyVersion,
+    string? @vaultKeyId,
+    string? @nonce,
+    string? @ciphertext,
+    string? @tag,
+    string? @sealedBoxBase64,
+    string? @plaintextSha256,
+    string? @plaintextHmac,
+    uint? @integrityHashVersion,
+    string? @aad,
+    bool @hasCreatedAt
+) {
+}
+
+class FfiConverterTypeCloudVaultDocumentEnvelope: FfiConverterRustBuffer<CloudVaultDocumentEnvelope> {
+    public static FfiConverterTypeCloudVaultDocumentEnvelope INSTANCE = new FfiConverterTypeCloudVaultDocumentEnvelope();
+
+    public override CloudVaultDocumentEnvelope Read(BigEndianStream stream) {
+        return new CloudVaultDocumentEnvelope(
+            @kind: FfiConverterTypeCloudVaultDocumentEnvelopeKind.INSTANCE.Read(stream),
+            @fieldName: FfiConverterString.INSTANCE.Read(stream),
+            @schemaVersion: FfiConverterOptionalUInt32.INSTANCE.Read(stream),
+            @algorithm: FfiConverterString.INSTANCE.Read(stream),
+            @keyVersion: FfiConverterUInt32.INSTANCE.Read(stream),
+            @vaultKeyId: FfiConverterOptionalString.INSTANCE.Read(stream),
+            @nonce: FfiConverterOptionalString.INSTANCE.Read(stream),
+            @ciphertext: FfiConverterOptionalString.INSTANCE.Read(stream),
+            @tag: FfiConverterOptionalString.INSTANCE.Read(stream),
+            @sealedBoxBase64: FfiConverterOptionalString.INSTANCE.Read(stream),
+            @plaintextSha256: FfiConverterOptionalString.INSTANCE.Read(stream),
+            @plaintextHmac: FfiConverterOptionalString.INSTANCE.Read(stream),
+            @integrityHashVersion: FfiConverterOptionalUInt32.INSTANCE.Read(stream),
+            @aad: FfiConverterOptionalString.INSTANCE.Read(stream),
+            @hasCreatedAt: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudVaultDocumentEnvelope value) {
+        return 0
+            + FfiConverterTypeCloudVaultDocumentEnvelopeKind.INSTANCE.AllocationSize(value.@kind)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@fieldName)
+            + FfiConverterOptionalUInt32.INSTANCE.AllocationSize(value.@schemaVersion)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@algorithm)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.@keyVersion)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@vaultKeyId)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@nonce)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@ciphertext)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@tag)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@sealedBoxBase64)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@plaintextSha256)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@plaintextHmac)
+            + FfiConverterOptionalUInt32.INSTANCE.AllocationSize(value.@integrityHashVersion)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@aad)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.@hasCreatedAt);
+    }
+
+    public override void Write(CloudVaultDocumentEnvelope value, BigEndianStream stream) {
+            FfiConverterTypeCloudVaultDocumentEnvelopeKind.INSTANCE.Write(value.@kind, stream);
+            FfiConverterString.INSTANCE.Write(value.@fieldName, stream);
+            FfiConverterOptionalUInt32.INSTANCE.Write(value.@schemaVersion, stream);
+            FfiConverterString.INSTANCE.Write(value.@algorithm, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.@keyVersion, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@vaultKeyId, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@nonce, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@ciphertext, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@tag, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@sealedBoxBase64, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@plaintextSha256, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@plaintextHmac, stream);
+            FfiConverterOptionalUInt32.INSTANCE.Write(value.@integrityHashVersion, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@aad, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.@hasCreatedAt, stream);
+    }
+}
+
+
+
+public record CloudVaultDocumentRewrapRequest (
+    string @uid,
+    string @collection,
+    string @docId,
+    List<string> @documentFieldNames,
+    List<CloudVaultDocumentEnvelope> @envelopes,
+    List<byte[]> @resealNonces,
+    long? @vaultGeneration,
+    string? @rotationJobId
+) {
+}
+
+class FfiConverterTypeCloudVaultDocumentRewrapRequest: FfiConverterRustBuffer<CloudVaultDocumentRewrapRequest> {
+    public static FfiConverterTypeCloudVaultDocumentRewrapRequest INSTANCE = new FfiConverterTypeCloudVaultDocumentRewrapRequest();
+
+    public override CloudVaultDocumentRewrapRequest Read(BigEndianStream stream) {
+        return new CloudVaultDocumentRewrapRequest(
+            @uid: FfiConverterString.INSTANCE.Read(stream),
+            @collection: FfiConverterString.INSTANCE.Read(stream),
+            @docId: FfiConverterString.INSTANCE.Read(stream),
+            @documentFieldNames: FfiConverterSequenceString.INSTANCE.Read(stream),
+            @envelopes: FfiConverterSequenceTypeCloudVaultDocumentEnvelope.INSTANCE.Read(stream),
+            @resealNonces: FfiConverterSequenceByteArray.INSTANCE.Read(stream),
+            @vaultGeneration: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            @rotationJobId: FfiConverterOptionalString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudVaultDocumentRewrapRequest value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.@uid)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@collection)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@docId)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@documentFieldNames)
+            + FfiConverterSequenceTypeCloudVaultDocumentEnvelope.INSTANCE.AllocationSize(value.@envelopes)
+            + FfiConverterSequenceByteArray.INSTANCE.AllocationSize(value.@resealNonces)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.@vaultGeneration)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@rotationJobId);
+    }
+
+    public override void Write(CloudVaultDocumentRewrapRequest value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.@uid, stream);
+            FfiConverterString.INSTANCE.Write(value.@collection, stream);
+            FfiConverterString.INSTANCE.Write(value.@docId, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.@documentFieldNames, stream);
+            FfiConverterSequenceTypeCloudVaultDocumentEnvelope.INSTANCE.Write(value.@envelopes, stream);
+            FfiConverterSequenceByteArray.INSTANCE.Write(value.@resealNonces, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.@vaultGeneration, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@rotationJobId, stream);
+    }
+}
+
+
+
+public record CloudVaultDocumentRewrapResult (
+    List<string> @changedFields,
+    List<string> @skippedFields,
+    List<CloudVaultDocumentEnvelope> @rewrappedEnvelopes,
+    List<CloudVaultCompanionUpdateIntent> @companionUpdateIntents,
+    List<CloudVaultPreservedEnvelopeMemberIntent> @preservedMemberIntents,
+    long? @vaultGenerationUpdate,
+    string? @rotationJobIdUpdate
+) {
+}
+
+class FfiConverterTypeCloudVaultDocumentRewrapResult: FfiConverterRustBuffer<CloudVaultDocumentRewrapResult> {
+    public static FfiConverterTypeCloudVaultDocumentRewrapResult INSTANCE = new FfiConverterTypeCloudVaultDocumentRewrapResult();
+
+    public override CloudVaultDocumentRewrapResult Read(BigEndianStream stream) {
+        return new CloudVaultDocumentRewrapResult(
+            @changedFields: FfiConverterSequenceString.INSTANCE.Read(stream),
+            @skippedFields: FfiConverterSequenceString.INSTANCE.Read(stream),
+            @rewrappedEnvelopes: FfiConverterSequenceTypeCloudVaultDocumentEnvelope.INSTANCE.Read(stream),
+            @companionUpdateIntents: FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent.INSTANCE.Read(stream),
+            @preservedMemberIntents: FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent.INSTANCE.Read(stream),
+            @vaultGenerationUpdate: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            @rotationJobIdUpdate: FfiConverterOptionalString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudVaultDocumentRewrapResult value) {
+        return 0
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@changedFields)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@skippedFields)
+            + FfiConverterSequenceTypeCloudVaultDocumentEnvelope.INSTANCE.AllocationSize(value.@rewrappedEnvelopes)
+            + FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent.INSTANCE.AllocationSize(value.@companionUpdateIntents)
+            + FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent.INSTANCE.AllocationSize(value.@preservedMemberIntents)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.@vaultGenerationUpdate)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@rotationJobIdUpdate);
+    }
+
+    public override void Write(CloudVaultDocumentRewrapResult value, BigEndianStream stream) {
+            FfiConverterSequenceString.INSTANCE.Write(value.@changedFields, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.@skippedFields, stream);
+            FfiConverterSequenceTypeCloudVaultDocumentEnvelope.INSTANCE.Write(value.@rewrappedEnvelopes, stream);
+            FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent.INSTANCE.Write(value.@companionUpdateIntents, stream);
+            FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent.INSTANCE.Write(value.@preservedMemberIntents, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.@vaultGenerationUpdate, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@rotationJobIdUpdate, stream);
+    }
+}
+
+
+
 public record CloudVaultEscrowWireParts (
     byte[] @ephemeralPublicKey,
     byte[] @aesGcmCombined
@@ -1766,6 +2006,36 @@ class FfiConverterTypeCloudVaultEscrowWireParts: FfiConverterRustBuffer<CloudVau
     public override void Write(CloudVaultEscrowWireParts value, BigEndianStream stream) {
             FfiConverterByteArray.INSTANCE.Write(value.@ephemeralPublicKey, stream);
             FfiConverterByteArray.INSTANCE.Write(value.@aesGcmCombined, stream);
+    }
+}
+
+
+
+public record CloudVaultPreservedEnvelopeMemberIntent (
+    string @sourceFieldName,
+    string @memberName
+) {
+}
+
+class FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent: FfiConverterRustBuffer<CloudVaultPreservedEnvelopeMemberIntent> {
+    public static FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent INSTANCE = new FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent();
+
+    public override CloudVaultPreservedEnvelopeMemberIntent Read(BigEndianStream stream) {
+        return new CloudVaultPreservedEnvelopeMemberIntent(
+            @sourceFieldName: FfiConverterString.INSTANCE.Read(stream),
+            @memberName: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudVaultPreservedEnvelopeMemberIntent value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.@sourceFieldName)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@memberName);
+    }
+
+    public override void Write(CloudVaultPreservedEnvelopeMemberIntent value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.@sourceFieldName, stream);
+            FfiConverterString.INSTANCE.Write(value.@memberName, stream);
     }
 }
 
@@ -1974,6 +2244,40 @@ class FfiConverterTypeAnthropicCredentialShape: FfiConverterRustBuffer<Anthropic
 
 
 
+public enum CloudVaultDocumentEnvelopeKind: int {
+
+    SealedPayload,
+    SealedText,
+    Blob
+}
+
+class FfiConverterTypeCloudVaultDocumentEnvelopeKind: FfiConverterRustBuffer<CloudVaultDocumentEnvelopeKind> {
+    public static FfiConverterTypeCloudVaultDocumentEnvelopeKind INSTANCE = new FfiConverterTypeCloudVaultDocumentEnvelopeKind();
+
+    public override CloudVaultDocumentEnvelopeKind Read(BigEndianStream stream) {
+        var value = stream.ReadInt() - 1;
+        if (Enum.IsDefined(typeof(CloudVaultDocumentEnvelopeKind), value)) {
+            return (CloudVaultDocumentEnvelopeKind)value;
+        } else {
+            throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCloudVaultDocumentEnvelopeKind.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CloudVaultDocumentEnvelopeKind value) {
+        return 4;
+    }
+
+    public override void Write(CloudVaultDocumentEnvelopeKind value, BigEndianStream stream) {
+        stream.WriteInt((int)value + 1);
+    }
+}
+
+
+
+
+
+
+
 public class CloudVaultFfiException: UniffiException {
     CloudVaultFfiException() : base() {}
     CloudVaultFfiException(String @Message) : base(@Message) {}
@@ -2060,6 +2364,41 @@ public class CloudVaultFfiException: UniffiException {
     }
 
 
+    public class NewVaultKeyIdMismatch : CloudVaultFfiException {
+        public NewVaultKeyIdMismatch() : base() {}
+    }
+
+
+    public class RewrapBoundsExceeded : CloudVaultFfiException {
+        public RewrapBoundsExceeded() : base() {}
+    }
+
+
+    public class InvalidRewrapFieldSet : CloudVaultFfiException {
+        public InvalidRewrapFieldSet() : base() {}
+    }
+
+
+    public class InvalidRewrapEnvelope : CloudVaultFfiException {
+        public InvalidRewrapEnvelope() : base() {}
+    }
+
+
+    public class InvalidRewrapNoncePlan : CloudVaultFfiException {
+        public InvalidRewrapNoncePlan() : base() {}
+    }
+
+
+    public class InvalidRewrapText : CloudVaultFfiException {
+        public InvalidRewrapText() : base() {}
+    }
+
+
+    public class RewrapIntegrityMismatch : CloudVaultFfiException {
+        public RewrapIntegrityMismatch() : base() {}
+    }
+
+
 
 
 }
@@ -2102,6 +2441,20 @@ class FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudVaultFfiE
                 return new CloudVaultFfiException.InvalidP256PublicKey();
             case 16:
                 return new CloudVaultFfiException.InvalidEscrowWireLength();
+            case 17:
+                return new CloudVaultFfiException.NewVaultKeyIdMismatch();
+            case 18:
+                return new CloudVaultFfiException.RewrapBoundsExceeded();
+            case 19:
+                return new CloudVaultFfiException.InvalidRewrapFieldSet();
+            case 20:
+                return new CloudVaultFfiException.InvalidRewrapEnvelope();
+            case 21:
+                return new CloudVaultFfiException.InvalidRewrapNoncePlan();
+            case 22:
+                return new CloudVaultFfiException.InvalidRewrapText();
+            case 23:
+                return new CloudVaultFfiException.RewrapIntegrityMismatch();
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.Read()", value));
         }
@@ -2157,6 +2510,27 @@ class FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudVaultFfiE
 
             case CloudVaultFfiException.InvalidEscrowWireLength variant_value:
                 return 4;
+
+            case CloudVaultFfiException.NewVaultKeyIdMismatch variant_value:
+                return 4;
+
+            case CloudVaultFfiException.RewrapBoundsExceeded variant_value:
+                return 4;
+
+            case CloudVaultFfiException.InvalidRewrapFieldSet variant_value:
+                return 4;
+
+            case CloudVaultFfiException.InvalidRewrapEnvelope variant_value:
+                return 4;
+
+            case CloudVaultFfiException.InvalidRewrapNoncePlan variant_value:
+                return 4;
+
+            case CloudVaultFfiException.InvalidRewrapText variant_value:
+                return 4;
+
+            case CloudVaultFfiException.RewrapIntegrityMismatch variant_value:
+                return 4;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.AllocationSize()", value));
         }
@@ -2211,6 +2585,27 @@ class FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudVaultFfiE
                 break;
             case CloudVaultFfiException.InvalidEscrowWireLength variant_value:
                 stream.WriteInt(16);
+                break;
+            case CloudVaultFfiException.NewVaultKeyIdMismatch variant_value:
+                stream.WriteInt(17);
+                break;
+            case CloudVaultFfiException.RewrapBoundsExceeded variant_value:
+                stream.WriteInt(18);
+                break;
+            case CloudVaultFfiException.InvalidRewrapFieldSet variant_value:
+                stream.WriteInt(19);
+                break;
+            case CloudVaultFfiException.InvalidRewrapEnvelope variant_value:
+                stream.WriteInt(20);
+                break;
+            case CloudVaultFfiException.InvalidRewrapNoncePlan variant_value:
+                stream.WriteInt(21);
+                break;
+            case CloudVaultFfiException.InvalidRewrapText variant_value:
+                stream.WriteInt(22);
+                break;
+            case CloudVaultFfiException.RewrapIntegrityMismatch variant_value:
+                stream.WriteInt(23);
                 break;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.Write()", value));
@@ -2437,6 +2832,37 @@ class FfiConverterTypeQuotaWindowKind: FfiConverterRustBuffer<QuotaWindowKind> {
 
 
 
+class FfiConverterOptionalUInt32: FfiConverterRustBuffer<uint?> {
+    public static FfiConverterOptionalUInt32 INSTANCE = new FfiConverterOptionalUInt32();
+
+    public override uint? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterUInt32.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(uint? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterUInt32.INSTANCE.AllocationSize((uint)value);
+        }
+    }
+
+    public override void Write(uint? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterUInt32.INSTANCE.Write((uint)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalInt64: FfiConverterRustBuffer<long?> {
     public static FfiConverterOptionalInt64 INSTANCE = new FfiConverterOptionalInt64();
 
@@ -2524,6 +2950,216 @@ class FfiConverterOptionalString: FfiConverterRustBuffer<string?> {
             stream.WriteByte(1);
             FfiConverterString.INSTANCE.Write((string)value, stream);
         }
+    }
+}
+
+
+
+
+class FfiConverterSequenceString: FfiConverterRustBuffer<List<string>> {
+    public static FfiConverterSequenceString INSTANCE = new FfiConverterSequenceString();
+
+    public override List<string> Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        var result = new List<string>(length);
+        var readFn = FfiConverterString.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result.Add(readFn(stream));
+        }
+        return result;
+    }
+
+    public override int AllocationSize(List<string> value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterString.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(List<string> value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Count);
+        var writerFn = FfiConverterString.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceByteArray: FfiConverterRustBuffer<List<byte[]>> {
+    public static FfiConverterSequenceByteArray INSTANCE = new FfiConverterSequenceByteArray();
+
+    public override List<byte[]> Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        var result = new List<byte[]>(length);
+        var readFn = FfiConverterByteArray.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result.Add(readFn(stream));
+        }
+        return result;
+    }
+
+    public override int AllocationSize(List<byte[]> value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterByteArray.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(List<byte[]> value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Count);
+        var writerFn = FfiConverterByteArray.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent: FfiConverterRustBuffer<List<CloudVaultCompanionUpdateIntent>> {
+    public static FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent INSTANCE = new FfiConverterSequenceTypeCloudVaultCompanionUpdateIntent();
+
+    public override List<CloudVaultCompanionUpdateIntent> Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        var result = new List<CloudVaultCompanionUpdateIntent>(length);
+        var readFn = FfiConverterTypeCloudVaultCompanionUpdateIntent.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result.Add(readFn(stream));
+        }
+        return result;
+    }
+
+    public override int AllocationSize(List<CloudVaultCompanionUpdateIntent> value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeCloudVaultCompanionUpdateIntent.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(List<CloudVaultCompanionUpdateIntent> value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Count);
+        var writerFn = FfiConverterTypeCloudVaultCompanionUpdateIntent.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeCloudVaultDocumentEnvelope: FfiConverterRustBuffer<List<CloudVaultDocumentEnvelope>> {
+    public static FfiConverterSequenceTypeCloudVaultDocumentEnvelope INSTANCE = new FfiConverterSequenceTypeCloudVaultDocumentEnvelope();
+
+    public override List<CloudVaultDocumentEnvelope> Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        var result = new List<CloudVaultDocumentEnvelope>(length);
+        var readFn = FfiConverterTypeCloudVaultDocumentEnvelope.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result.Add(readFn(stream));
+        }
+        return result;
+    }
+
+    public override int AllocationSize(List<CloudVaultDocumentEnvelope> value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeCloudVaultDocumentEnvelope.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(List<CloudVaultDocumentEnvelope> value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Count);
+        var writerFn = FfiConverterTypeCloudVaultDocumentEnvelope.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent: FfiConverterRustBuffer<List<CloudVaultPreservedEnvelopeMemberIntent>> {
+    public static FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent INSTANCE = new FfiConverterSequenceTypeCloudVaultPreservedEnvelopeMemberIntent();
+
+    public override List<CloudVaultPreservedEnvelopeMemberIntent> Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        var result = new List<CloudVaultPreservedEnvelopeMemberIntent>(length);
+        var readFn = FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result.Add(readFn(stream));
+        }
+        return result;
+    }
+
+    public override int AllocationSize(List<CloudVaultPreservedEnvelopeMemberIntent> value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(List<CloudVaultPreservedEnvelopeMemberIntent> value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Count);
+        var writerFn = FfiConverterTypeCloudVaultPreservedEnvelopeMemberIntent.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
     }
 }
 
@@ -2772,6 +3408,15 @@ public static class OpenburnbarDomainFfiMethods {
         return FfiConverterByteArray.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(FfiConverterString.INSTANCE.Lower(@envelopeAad), FfiConverterTypeCloudVaultAadContextInput.INSTANCE.Lower(@context), FfiConverterBoolean.INSTANCE.Lower(@rejectLegacy), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static CloudVaultDocumentRewrapResult CloudVaultRewrapDocument(CloudVaultDocumentRewrapRequest @request, byte[] @oldKey, byte[] @newKey, string @newVaultKeyId) {
+        return FfiConverterTypeCloudVaultDocumentRewrapResult.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_rewrap_document(FfiConverterTypeCloudVaultDocumentRewrapRequest.INSTANCE.Lower(@request), FfiConverterByteArray.INSTANCE.Lower(@oldKey), FfiConverterByteArray.INSTANCE.Lower(@newKey), FfiConverterString.INSTANCE.Lower(@newVaultKeyId), ref _status)
 ));
     }
 

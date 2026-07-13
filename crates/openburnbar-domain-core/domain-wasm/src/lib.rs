@@ -1,8 +1,11 @@
 use openburnbar_domain_core::cloudvault::{
     self, CloudVaultAadContext, CloudVaultError, CloudVaultHashPurpose as CoreHashPurpose,
 };
+use openburnbar_domain_core::cloudvault_rewrap::{
+    self, CloudVaultDocumentRewrapError, CloudVaultDocumentRewrapRequest,
+};
 use wasm_bindgen::prelude::*;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -235,6 +238,28 @@ pub fn cloud_vault_escrow_open(wire: &[u8], shared_secret: &[u8]) -> Result<Vec<
     cloudvault::escrow_open(wire, shared_secret).map_err(js_error)
 }
 
+/// Whole-document rewrap for browser/Tauri consumers. `request_json` is the
+/// strict camelCase serialization of `CloudVaultDocumentRewrapRequest`; unknown
+/// fields and malformed envelope variants are rejected by serde.
+#[wasm_bindgen(js_name = cloudVaultRewrapDocumentJson)]
+pub fn cloud_vault_rewrap_document_json(
+    request_json: &str,
+    old_key: &[u8],
+    new_key: &[u8],
+    new_vault_key_id: &str,
+) -> Result<String, JsError> {
+    let request: CloudVaultDocumentRewrapRequest = serde_json::from_str(request_json)
+        .map_err(|error| JsError::new(&format!("invalid_rewrap_request: {error}")))?;
+    let old_key_copy = Zeroizing::new(old_key.to_vec());
+    let new_key_copy = Zeroizing::new(new_key.to_vec());
+    cloudvault_rewrap::rewrap_document(&request, &old_key_copy, &new_key_copy, new_vault_key_id)
+        .map_err(js_rewrap_error)
+        .and_then(|value| {
+            serde_json::to_string(&value)
+                .map_err(|error| JsError::new(&format!("rewrap_result_encoding_failed: {error}")))
+        })
+}
+
 fn context(
     uid: &str,
     collection: &str,
@@ -272,6 +297,22 @@ fn js_error(error: CloudVaultError) -> JsError {
         CloudVaultError::InvalidSharedSecretLength => "invalid_shared_secret_length",
         CloudVaultError::InvalidP256PublicKey => "invalid_p256_public_key",
         CloudVaultError::InvalidEscrowWireLength => "invalid_escrow_wire_length",
+    };
+    JsError::new(&format!("{code}: {error}"))
+}
+
+fn js_rewrap_error(error: CloudVaultDocumentRewrapError) -> JsError {
+    let code = match &error {
+        CloudVaultDocumentRewrapError::Crypto(inner) => {
+            return js_error(*inner);
+        }
+        CloudVaultDocumentRewrapError::NewVaultKeyIdMismatch => "new_vault_key_id_mismatch",
+        CloudVaultDocumentRewrapError::BoundsExceeded => "rewrap_bounds_exceeded",
+        CloudVaultDocumentRewrapError::InvalidFieldSet => "invalid_rewrap_field_set",
+        CloudVaultDocumentRewrapError::InvalidEnvelope => "invalid_rewrap_envelope",
+        CloudVaultDocumentRewrapError::InvalidNoncePlan => "invalid_rewrap_nonce_plan",
+        CloudVaultDocumentRewrapError::InvalidText => "invalid_rewrap_text",
+        CloudVaultDocumentRewrapError::IntegrityMismatch => "rewrap_integrity_mismatch",
     };
     JsError::new(&format!("{code}: {error}"))
 }

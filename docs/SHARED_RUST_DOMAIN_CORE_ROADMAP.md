@@ -48,7 +48,12 @@ P-256 escrow: canonical recovery normalization, recovery HKDF and verification,
 strict on-curve 65-byte X9.63 validation, escrow HKDF from caller-provided ECDH
 output, and exact public-key-plus-AES wire assembly. Random nonces and P-256
 private-key operations remain platform-owned; no private key crosses UniFFI or
-Wasm. Search normalization and document rewrap remain last. Browser device
+Wasm. C1d adds typed whole-document rewrap after those primitives: Rust owns
+bounded envelope validation, exact authentication, deterministic field order,
+reseal, and update intents, while callers own dynamic document mapping,
+persistence, timestamps, orchestration, and nonce generation. Its contract is
+`cloudvault-document-rewrap-contract.json`; production Swift/Kotlin flips remain
+separate rollout PRs. Search normalization remains last. Browser device
 private keys stay non-extractable WebCrypto handles throughout.
 
 ## Rollout and deletion gates

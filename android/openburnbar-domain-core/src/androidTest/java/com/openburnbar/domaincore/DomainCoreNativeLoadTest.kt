@@ -5,12 +5,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import uniffi.openburnbar_domain_ffi.CloudVaultDocumentEnvelope
+import uniffi.openburnbar_domain_ffi.CloudVaultDocumentEnvelopeKind
+import uniffi.openburnbar_domain_ffi.CloudVaultDocumentRewrapRequest
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmOpenCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmSealCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultEscrowOpen
 import uniffi.openburnbar_domain_ffi.cloudVaultEscrowSeal
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryOpenVaultKey
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrapVaultKey
+import uniffi.openburnbar_domain_ffi.cloudVaultRewrapDocument
 import uniffi.openburnbar_domain_ffi.cloudVaultValidateP256X963PublicKey
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
@@ -53,6 +57,52 @@ class DomainCoreNativeLoadTest {
         cloudVaultValidateP256X963PublicKey(publicKey)
         val escrowWire = cloudVaultEscrowSeal(ByteArray(0), publicKey, sharedSecret, nonce)
         assertTrue(cloudVaultEscrowOpen(escrowWire, sharedSecret).isEmpty())
+    }
+
+    @Test
+    fun documentRewrapExecutesThroughNativeLibrary() {
+        val newKeyId = "v1_515a733d7320b35b2117893952f93a94"
+        val envelope =
+            CloudVaultDocumentEnvelope(
+                kind = CloudVaultDocumentEnvelopeKind.SEALED_PAYLOAD,
+                fieldName = "sealedPayload",
+                schemaVersion = 2u,
+                algorithm = "AES-256-GCM",
+                keyVersion = 1u,
+                vaultKeyId = "v1_3e441393404b2085e7a3090a47d377ab",
+                nonce = null,
+                ciphertext = null,
+                tag = null,
+                sealedBoxBase64 = "ERERERERERERERER/IcMhLA283cnbpRNi2CTKvNBn1ZeDHqbBsvt7oVOgZ2I6DwXeAOM",
+                plaintextSha256 = null,
+                plaintextHmac = null,
+                integrityHashVersion = null,
+                aad = "OpenBurnBar-CloudVaultSealedPayload-v2",
+                hasCreatedAt = false,
+            )
+        val request =
+            CloudVaultDocumentRewrapRequest(
+                uid = "userA",
+                collection = "cli_agent_mission_requests",
+                docId = "requestA",
+                documentFieldNames = listOf("vaultKeyID", "plainStatus", "sealedPayload"),
+                envelopes = listOf(envelope),
+                resealNonces = listOf(ByteArray(12) { 0x22 }),
+                vaultGeneration = 7L,
+                rotationJobId = "job-7",
+            )
+        val result =
+            cloudVaultRewrapDocument(
+                request,
+                ByteArray(32) { 0x71 },
+                ByteArray(32) { 0x72 },
+                newKeyId,
+            )
+        assertEquals(listOf("sealedPayload"), result.changedFields)
+        assertEquals(listOf("vaultKeyID"), result.companionUpdateIntents.map { it.companionFieldName })
+        assertEquals(7L, result.vaultGenerationUpdate)
+        assertEquals("job-7", result.rotationJobIdUpdate)
+        assertEquals(newKeyId, result.rewrappedEnvelopes.single().vaultKeyId)
     }
 
     private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()

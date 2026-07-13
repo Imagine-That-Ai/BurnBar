@@ -120,4 +120,51 @@ do {
     exit(1)
 }
 
+do {
+    let oldKey = Data(repeating: 0x71, count: 32)
+    let newKey = Data(repeating: 0x72, count: 32)
+    let newKeyID = "v1_515a733d7320b35b2117893952f93a94"
+    let envelope = CloudVaultDocumentEnvelope(
+        kind: .sealedPayload,
+        fieldName: "sealedPayload",
+        schemaVersion: 2,
+        algorithm: "AES-256-GCM",
+        keyVersion: 1,
+        vaultKeyId: "v1_3e441393404b2085e7a3090a47d377ab",
+        nonce: nil,
+        ciphertext: nil,
+        tag: nil,
+        sealedBoxBase64: "ERERERERERERERER/IcMhLA283cnbpRNi2CTKvNBn1ZeDHqbBsvt7oVOgZ2I6DwXeAOM",
+        plaintextSha256: nil,
+        plaintextHmac: nil,
+        integrityHashVersion: nil,
+        aad: "OpenBurnBar-CloudVaultSealedPayload-v2",
+        hasCreatedAt: false
+    )
+    let request = CloudVaultDocumentRewrapRequest(
+        uid: "userA",
+        collection: "cli_agent_mission_requests",
+        docId: "requestA",
+        documentFieldNames: ["vaultKeyID", "plainStatus", "sealedPayload"],
+        envelopes: [envelope],
+        resealNonces: [Data(repeating: 0x22, count: 12)],
+        vaultGeneration: 7,
+        rotationJobId: "job-7"
+    )
+    let result = try OpenBurnBarDomainCoreFFI.cloudVaultRewrapDocument(
+        request: request,
+        oldKey: oldKey,
+        newKey: newKey,
+        newVaultKeyId: newKeyID
+    )
+    require(result.changedFields == ["sealedPayload"], "rewrap changed-field mismatch")
+    require(result.companionUpdateIntents.map(\.companionFieldName) == ["vaultKeyID"], "rewrap companion intent mismatch")
+    require(result.vaultGenerationUpdate == 7, "rewrap generation intent mismatch")
+    require(result.rotationJobIdUpdate == "job-7", "rewrap job intent mismatch")
+    require(result.rewrappedEnvelopes.first?.vaultKeyId == newKeyID, "rewrap key id mismatch")
+} catch {
+    FileHandle.standardError.write(Data("domain-core smoke failed: document rewrap: \(error)\n".utf8))
+    exit(1)
+}
+
 print("domain-core native smoke passed")

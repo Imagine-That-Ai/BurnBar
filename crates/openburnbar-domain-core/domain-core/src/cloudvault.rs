@@ -6,7 +6,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 const AAD_V2_PREFIX: &str = "OpenBurnBar-CloudVault-aad-v2";
 const AAD_V1_PREFIX: &str = "OpenBurnBar-CloudVault-aad-v1";
@@ -335,7 +335,7 @@ pub fn base64_decode_strict(value: &str) -> Result<Vec<u8>, CloudVaultError> {
 }
 
 pub fn normalize_recovery_key(recovery_key: &str) -> Result<String, CloudVaultError> {
-    let normalized: String = recovery_key
+    let mut normalized: String = recovery_key
         .chars()
         .flat_map(char::to_uppercase)
         .filter(|character| character.is_alphanumeric())
@@ -344,6 +344,7 @@ pub fn normalize_recovery_key(recovery_key: &str) -> Result<String, CloudVaultEr
     // units. Preserve keys those shipped clients already accepted, including
     // astral Unicode letters, while Rust becomes the canonical implementation.
     if normalized.encode_utf16().count() < 20 {
+        normalized.zeroize();
         return Err(CloudVaultError::InvalidRecoveryKey);
     }
     Ok(normalized)
@@ -386,9 +387,9 @@ pub fn recovery_open_vault_key(
     let mut wrapping_key = recovery_wrapping_key(recovery_key)?;
     let opened = aes_gcm_open_combined(combined, &wrapping_key, b"");
     wrapping_key.zeroize();
-    let vault_key = opened?;
+    let vault_key = Zeroizing::new(opened?);
     require_vault_key(&vault_key)?;
-    Ok(vault_key)
+    Ok(vault_key.to_vec())
 }
 
 pub fn validate_p256_x963_public_key(public_key: &[u8]) -> Result<(), CloudVaultError> {
@@ -460,10 +461,10 @@ fn derive_key_32(
     info: &[u8],
 ) -> Result<[u8; 32], CloudVaultError> {
     let hkdf = Hkdf::<Sha256>::new(Some(salt), input_key_material);
-    let mut derived_key = [0_u8; 32];
-    hkdf.expand(info, &mut derived_key)
+    let mut derived_key = Zeroizing::new([0_u8; 32]);
+    hkdf.expand(info, &mut *derived_key)
         .map_err(|_| CloudVaultError::DerivationFailure)?;
-    Ok(derived_key)
+    Ok(*derived_key)
 }
 
 fn require_vault_key(key: &[u8]) -> Result<(), CloudVaultError> {
@@ -767,6 +768,14 @@ mod tests {
         );
         assert_eq!(
             recovery_wrap_vault_key(&[0_u8; 31], formatted_key, &nonce),
+            Err(CloudVaultError::InvalidKeyLength)
+        );
+        let mut wrapping_key = recovery_wrapping_key(formatted_key)?;
+        let authenticated_short_key =
+            aes_gcm_seal_combined(&[0x5a; 31], &wrapping_key, &nonce, b"")?;
+        wrapping_key.zeroize();
+        assert_eq!(
+            recovery_open_vault_key(&authenticated_short_key, formatted_key),
             Err(CloudVaultError::InvalidKeyLength)
         );
         Ok(())

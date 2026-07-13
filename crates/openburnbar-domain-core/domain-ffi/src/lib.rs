@@ -1,6 +1,6 @@
 use openburnbar_domain_core::quota as core;
-use openburnbar_domain_core::{cloudvault, quota};
-use zeroize::Zeroize;
+use openburnbar_domain_core::{cloudvault, cloudvault_rewrap, quota};
+use zeroize::{Zeroize, Zeroizing};
 
 pub const DOMAIN_CORE_ABI_VERSION: u32 = 2;
 
@@ -41,6 +41,70 @@ pub struct CloudVaultEscrowWireParts {
     pub aes_gcm_combined: Vec<u8>,
 }
 
+#[derive(Clone, Copy, Debug, uniffi::Enum)]
+pub enum CloudVaultDocumentEnvelopeKind {
+    SealedPayload,
+    SealedText,
+    Blob,
+}
+
+/// Typed, transport-safe representation of one CloudVault envelope.
+/// Fields not used by `kind` must be absent; conversion fails closed otherwise.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultDocumentEnvelope {
+    pub kind: CloudVaultDocumentEnvelopeKind,
+    pub field_name: String,
+    pub schema_version: Option<u32>,
+    pub algorithm: String,
+    pub key_version: u32,
+    pub vault_key_id: Option<String>,
+    pub nonce: Option<String>,
+    pub ciphertext: Option<String>,
+    pub tag: Option<String>,
+    pub sealed_box_base64: Option<String>,
+    pub plaintext_sha256: Option<String>,
+    pub plaintext_hmac: Option<String>,
+    pub integrity_hash_version: Option<u32>,
+    pub aad: Option<String>,
+    pub has_created_at: bool,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultDocumentRewrapRequest {
+    pub uid: String,
+    pub collection: String,
+    pub doc_id: String,
+    pub document_field_names: Vec<String>,
+    pub envelopes: Vec<CloudVaultDocumentEnvelope>,
+    pub reseal_nonces: Vec<Vec<u8>>,
+    pub vault_generation: Option<i64>,
+    pub rotation_job_id: Option<String>,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultCompanionUpdateIntent {
+    pub source_field_name: String,
+    pub companion_field_name: String,
+    pub vault_key_id: String,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultPreservedEnvelopeMemberIntent {
+    pub source_field_name: String,
+    pub member_name: String,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultDocumentRewrapResult {
+    pub changed_fields: Vec<String>,
+    pub skipped_fields: Vec<String>,
+    pub rewrapped_envelopes: Vec<CloudVaultDocumentEnvelope>,
+    pub companion_update_intents: Vec<CloudVaultCompanionUpdateIntent>,
+    pub preserved_member_intents: Vec<CloudVaultPreservedEnvelopeMemberIntent>,
+    pub vault_generation_update: Option<i64>,
+    pub rotation_job_id_update: Option<String>,
+}
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CloudVaultFfiError {
     #[error("cloud vault keys must be exactly 32 bytes")]
@@ -75,6 +139,20 @@ pub enum CloudVaultFfiError {
     InvalidP256PublicKey,
     #[error("the P-256 escrow wire must contain a public key and AES-GCM combined box")]
     InvalidEscrowWireLength,
+    #[error("the new vault key id does not match the new key")]
+    NewVaultKeyIdMismatch,
+    #[error("the document exceeds the rewrap field, field-name, or ciphertext bound")]
+    RewrapBoundsExceeded,
+    #[error("document field names and envelope field names must be unique and consistent")]
+    InvalidRewrapFieldSet,
+    #[error("the document rewrap envelope is invalid")]
+    InvalidRewrapEnvelope,
+    #[error("the caller must supply exactly one unique 12-byte nonce per resealed envelope")]
+    InvalidRewrapNoncePlan,
+    #[error("the sealed text plaintext is not valid UTF-8")]
+    InvalidRewrapText,
+    #[error("the source envelope integrity hash did not verify")]
+    RewrapIntegrityMismatch,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -448,6 +526,21 @@ pub fn cloud_vault_escrow_open(
     result
 }
 
+#[uniffi::export]
+pub fn cloud_vault_rewrap_document(
+    request: CloudVaultDocumentRewrapRequest,
+    old_key: Vec<u8>,
+    new_key: Vec<u8>,
+    new_vault_key_id: String,
+) -> Result<CloudVaultDocumentRewrapResult, CloudVaultFfiError> {
+    let old_key = Zeroizing::new(old_key);
+    let new_key = Zeroizing::new(new_key);
+    let request = request.try_into()?;
+    cloudvault_rewrap::rewrap_document(&request, &old_key, &new_key, &new_vault_key_id)
+        .map(Into::into)
+        .map_err(Into::into)
+}
+
 fn cloud_vault_aad_context(
     uid: &str,
     collection: &str,
@@ -497,6 +590,284 @@ impl From<cloudvault::CloudVaultError> for CloudVaultFfiError {
             }
             cloudvault::CloudVaultError::InvalidP256PublicKey => Self::InvalidP256PublicKey,
             cloudvault::CloudVaultError::InvalidEscrowWireLength => Self::InvalidEscrowWireLength,
+        }
+    }
+}
+
+impl From<cloudvault_rewrap::CloudVaultDocumentRewrapError> for CloudVaultFfiError {
+    fn from(value: cloudvault_rewrap::CloudVaultDocumentRewrapError) -> Self {
+        match value {
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::Crypto(error) => error.into(),
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::NewVaultKeyIdMismatch => {
+                Self::NewVaultKeyIdMismatch
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::BoundsExceeded => {
+                Self::RewrapBoundsExceeded
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::InvalidFieldSet => {
+                Self::InvalidRewrapFieldSet
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::InvalidEnvelope => {
+                Self::InvalidRewrapEnvelope
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::InvalidNoncePlan => {
+                Self::InvalidRewrapNoncePlan
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::InvalidText => {
+                Self::InvalidRewrapText
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::IntegrityMismatch => {
+                Self::RewrapIntegrityMismatch
+            }
+        }
+    }
+}
+
+impl TryFrom<CloudVaultDocumentRewrapRequest>
+    for cloudvault_rewrap::CloudVaultDocumentRewrapRequest
+{
+    type Error = CloudVaultFfiError;
+
+    fn try_from(value: CloudVaultDocumentRewrapRequest) -> Result<Self, Self::Error> {
+        Ok(Self {
+            uid: value.uid,
+            collection: value.collection,
+            doc_id: value.doc_id,
+            document_field_names: value.document_field_names,
+            envelopes: value
+                .envelopes
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<_>, _>>()?,
+            reseal_nonces: value.reseal_nonces,
+            vault_generation: value.vault_generation,
+            rotation_job_id: value.rotation_job_id,
+        })
+    }
+}
+
+impl TryFrom<CloudVaultDocumentEnvelope> for cloudvault_rewrap::CloudVaultDocumentEnvelope {
+    type Error = CloudVaultFfiError;
+
+    fn try_from(value: CloudVaultDocumentEnvelope) -> Result<Self, Self::Error> {
+        let CloudVaultDocumentEnvelope {
+            kind,
+            field_name,
+            schema_version,
+            algorithm,
+            key_version,
+            vault_key_id,
+            nonce,
+            ciphertext,
+            tag,
+            sealed_box_base64,
+            plaintext_sha256,
+            plaintext_hmac,
+            integrity_hash_version,
+            aad,
+            has_created_at,
+        } = value;
+        match kind {
+            CloudVaultDocumentEnvelopeKind::SealedPayload => {
+                if nonce.is_some()
+                    || ciphertext.is_some()
+                    || tag.is_some()
+                    || plaintext_sha256.is_some()
+                    || plaintext_hmac.is_some()
+                    || integrity_hash_version.is_some()
+                    || has_created_at
+                {
+                    return Err(CloudVaultFfiError::InvalidRewrapEnvelope);
+                }
+                Ok(Self::SealedPayload {
+                    field_name,
+                    schema_version: schema_version
+                        .ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    algorithm,
+                    key_version,
+                    vault_key_id: vault_key_id.ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    sealed_box_base64: sealed_box_base64
+                        .ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    aad,
+                })
+            }
+            CloudVaultDocumentEnvelopeKind::SealedText => {
+                if vault_key_id.is_some()
+                    || sealed_box_base64.is_some()
+                    || plaintext_sha256.is_some()
+                    || plaintext_hmac.is_some()
+                    || integrity_hash_version.is_some()
+                    || has_created_at
+                {
+                    return Err(CloudVaultFfiError::InvalidRewrapEnvelope);
+                }
+                Ok(Self::SealedText {
+                    field_name,
+                    schema_version,
+                    algorithm,
+                    key_version,
+                    nonce: nonce.ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    ciphertext: ciphertext.ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    tag: tag.ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    aad,
+                })
+            }
+            CloudVaultDocumentEnvelopeKind::Blob => {
+                if vault_key_id.is_some()
+                    || nonce.is_some()
+                    || ciphertext.is_some()
+                    || tag.is_some()
+                {
+                    return Err(CloudVaultFfiError::InvalidRewrapEnvelope);
+                }
+                Ok(Self::Blob {
+                    field_name,
+                    schema_version: schema_version
+                        .ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    algorithm,
+                    key_version,
+                    plaintext_sha256,
+                    plaintext_hmac,
+                    integrity_hash_version,
+                    sealed_box_base64: sealed_box_base64
+                        .ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    aad,
+                    has_created_at,
+                })
+            }
+        }
+    }
+}
+
+impl From<cloudvault_rewrap::CloudVaultDocumentRewrapResult> for CloudVaultDocumentRewrapResult {
+    fn from(value: cloudvault_rewrap::CloudVaultDocumentRewrapResult) -> Self {
+        Self {
+            changed_fields: value.changed_fields,
+            skipped_fields: value.skipped_fields,
+            rewrapped_envelopes: value
+                .rewrapped_envelopes
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            companion_update_intents: value
+                .companion_update_intents
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            preserved_member_intents: value
+                .preserved_member_intents
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            vault_generation_update: value.vault_generation_update,
+            rotation_job_id_update: value.rotation_job_id_update,
+        }
+    }
+}
+
+impl From<cloudvault_rewrap::CloudVaultPreservedEnvelopeMemberIntent>
+    for CloudVaultPreservedEnvelopeMemberIntent
+{
+    fn from(value: cloudvault_rewrap::CloudVaultPreservedEnvelopeMemberIntent) -> Self {
+        Self {
+            source_field_name: value.source_field_name,
+            member_name: value.member_name,
+        }
+    }
+}
+
+impl From<cloudvault_rewrap::CloudVaultCompanionUpdateIntent> for CloudVaultCompanionUpdateIntent {
+    fn from(value: cloudvault_rewrap::CloudVaultCompanionUpdateIntent) -> Self {
+        Self {
+            source_field_name: value.source_field_name,
+            companion_field_name: value.companion_field_name,
+            vault_key_id: value.vault_key_id,
+        }
+    }
+}
+
+impl From<cloudvault_rewrap::CloudVaultDocumentEnvelope> for CloudVaultDocumentEnvelope {
+    fn from(value: cloudvault_rewrap::CloudVaultDocumentEnvelope) -> Self {
+        match value {
+            cloudvault_rewrap::CloudVaultDocumentEnvelope::SealedPayload {
+                field_name,
+                schema_version,
+                algorithm,
+                key_version,
+                vault_key_id,
+                sealed_box_base64,
+                aad,
+            } => Self {
+                kind: CloudVaultDocumentEnvelopeKind::SealedPayload,
+                field_name,
+                schema_version: Some(schema_version),
+                algorithm,
+                key_version,
+                vault_key_id: Some(vault_key_id),
+                nonce: None,
+                ciphertext: None,
+                tag: None,
+                sealed_box_base64: Some(sealed_box_base64),
+                plaintext_sha256: None,
+                plaintext_hmac: None,
+                integrity_hash_version: None,
+                aad,
+                has_created_at: false,
+            },
+            cloudvault_rewrap::CloudVaultDocumentEnvelope::SealedText {
+                field_name,
+                schema_version,
+                algorithm,
+                key_version,
+                nonce,
+                ciphertext,
+                tag,
+                aad,
+            } => Self {
+                kind: CloudVaultDocumentEnvelopeKind::SealedText,
+                field_name,
+                schema_version,
+                algorithm,
+                key_version,
+                vault_key_id: None,
+                nonce: Some(nonce),
+                ciphertext: Some(ciphertext),
+                tag: Some(tag),
+                sealed_box_base64: None,
+                plaintext_sha256: None,
+                plaintext_hmac: None,
+                integrity_hash_version: None,
+                aad,
+                has_created_at: false,
+            },
+            cloudvault_rewrap::CloudVaultDocumentEnvelope::Blob {
+                field_name,
+                schema_version,
+                algorithm,
+                key_version,
+                plaintext_sha256,
+                plaintext_hmac,
+                integrity_hash_version,
+                sealed_box_base64,
+                aad,
+                has_created_at,
+            } => Self {
+                kind: CloudVaultDocumentEnvelopeKind::Blob,
+                field_name,
+                schema_version: Some(schema_version),
+                algorithm,
+                key_version,
+                vault_key_id: None,
+                nonce: None,
+                ciphertext: None,
+                tag: None,
+                sealed_box_base64: Some(sealed_box_base64),
+                plaintext_sha256,
+                plaintext_hmac,
+                integrity_hash_version,
+                aad,
+                has_created_at,
+            },
         }
     }
 }

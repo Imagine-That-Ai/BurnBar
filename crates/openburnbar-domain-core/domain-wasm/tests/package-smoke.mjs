@@ -22,6 +22,11 @@ const fixturePath = path.resolve(
 );
 const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
 assert.equal(fixture.schema, "openburnbar.domain-core.cloudvault.deterministic.v1");
+const rewrapFixturePath = path.resolve(
+  testDirectory,
+  "../../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-document-rewrap-contract.json",
+);
+const rewrapFixture = JSON.parse(await readFile(rewrapFixturePath, "utf8"));
 
 for (const vector of fixture.aad) {
   assert.equal(
@@ -204,6 +209,26 @@ assert.throws(
 assert.throws(
   () => domainCore.cloudVaultValidateP256X963PublicKey(new Uint8Array(65)),
   /invalid_p256_public_key/,
+);
+
+const rewrapResult = JSON.parse(
+  domainCore.cloudVaultRewrapDocumentJson(
+    JSON.stringify(rewrapFixture.request),
+    Buffer.from(rewrapFixture.oldKeyHex, "hex"),
+    Buffer.from(rewrapFixture.newKeyHex, "hex"),
+    rewrapFixture.newVaultKeyID,
+  ),
+);
+assert.deepEqual(rewrapResult, rewrapFixture.expected);
+assert.throws(
+  () =>
+    domainCore.cloudVaultRewrapDocumentJson(
+      JSON.stringify({ ...rewrapFixture.request, unexpected: true }),
+      Buffer.from(rewrapFixture.oldKeyHex, "hex"),
+      Buffer.from(rewrapFixture.newKeyHex, "hex"),
+      rewrapFixture.newVaultKeyID,
+    ),
+  /invalid_rewrap_request/,
 );
 
 console.log("domain-core Wasm generated-package smoke test passed");
