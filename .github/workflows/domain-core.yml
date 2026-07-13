@@ -131,9 +131,9 @@ jobs:
       - name: Reject Swift binding drift
         run: git diff --exit-code -- OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated
 
-      - name: Run Swift quota contracts through the native library
+      - name: Load XCFramework and run the narrow native contract
         working-directory: OpenBurnBarCore
-        run: swift test --filter ClaudeQuotaDomainCoreAdapterTests
+        run: swift run OpenBurnBarDomainCoreFFISmoke
 
       - name: Upload XCFramework
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0

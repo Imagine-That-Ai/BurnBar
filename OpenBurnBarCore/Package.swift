@@ -172,6 +172,11 @@ let packageProductsBase: [Product] = [
         name: "BurnBarRemoteFFI",
         targets: ["BurnBarRemoteFFI"]
     )
+] : []) + (hasDomainCoreXCFramework ? [
+    .executable(
+        name: "OpenBurnBarDomainCoreFFISmoke",
+        targets: ["OpenBurnBarDomainCoreFFISmoke"]
+    )
 ] : [])
 
 let packageProducts: [Product] = buildLinuxSecurityOnly ? [
@@ -232,6 +237,15 @@ let domainCoreBinaryTargets: [Target] = hasDomainCoreXCFramework ? [
 let domainCoreDependencies: [Target.Dependency] = hasDomainCoreXCFramework
     ? ["OpenBurnBarDomainCoreFFI"]
     : []
+
+let domainCoreSmokeTargets: [Target] = hasDomainCoreXCFramework ? [
+    .executableTarget(
+        name: "OpenBurnBarDomainCoreFFISmoke",
+        dependencies: ["OpenBurnBarDomainCoreFFI"],
+        path: "Sources/OpenBurnBarDomainCoreFFISmoke",
+        swiftSettings: [.swiftLanguageMode(.v5)]
+    )
+] : []
 
 let burnBarRemoteBinaryTargets: [Target] = hasBurnBarRemoteXCFramework ? [
     .binaryTarget(
@@ -971,7 +985,7 @@ let linuxSecurityOnlyTargets: [Target] = [
 
 let allTargets: [Target] = buildLinuxSecurityOnly
     ? linuxSecurityOnlyTargets
-    : irohBinaryTargets + domainCoreBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
+    : irohBinaryTargets + domainCoreBinaryTargets + domainCoreSmokeTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
 
 let package = Package(
     name: "OpenBurnBarCore",
