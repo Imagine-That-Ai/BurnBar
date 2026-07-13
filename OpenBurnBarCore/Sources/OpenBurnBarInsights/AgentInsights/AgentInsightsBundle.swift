@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// The fully-resolved Insights payload for a single `AgentInsightsScope`.
 ///
