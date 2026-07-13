@@ -4,6 +4,7 @@
 **ADR:** [ADR 014](architecture/014-shared-rust-domain-core.md)
 **Source inventory:** [Shared Rust Domain Inventory](SHARED_RUST_DOMAIN_INVENTORY.md)
 **First contract:** [`tests/fixtures/domain-core/quota/v1/`](../tests/fixtures/domain-core/quota/v1/)
+**CloudVault contract:** [`tests/fixtures/domain-core/cloudvault/v1/`](../tests/fixtures/domain-core/cloudvault/v1/)
 
 The pilot is implemented behind `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE`. Its
 accepted values are `legacy` (default), `shadow`, and `rust`.
@@ -35,6 +36,13 @@ accepted values are `legacy` (default), `shadow`, and `rust`.
 Provider log parsing remains in Swift until a second real implementation exists,
 Android becomes a local log-reading peer, or Windows/Linux Swift runtime evidence
 justifies replacement.
+
+CloudVault C1 is split by security boundary. C1a owns deterministic AAD
+canonicalization, SHA-256, 32-byte vault-key IDs, and fixed-purpose HKDF/HMAC.
+It ships through UniFFI ABI 2, a four-ABI Android AAR, and a deterministic browser
+Wasm package. C1b adds AES text/blob/payload cross-open; C1c adds recovery and
+P-256 escrow; search normalization and document rewrap remain last. Browser
+device private keys stay non-extractable WebCrypto handles throughout.
 
 ## Rollout and deletion gates
 

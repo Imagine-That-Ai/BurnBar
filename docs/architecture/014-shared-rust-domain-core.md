@@ -19,7 +19,9 @@ one implementation rather than consolidate several.
 OpenBurnBar owns pure, duplicated business logic in
 `crates/openburnbar-domain-core`. The workspace has one dependency-light Rust
 library plus an explicit UniFFI adapter. A WebAssembly adapter is added only
-when a real TypeScript-owned domain migrates. Transport, persistence,
+when a real TypeScript-owned domain migrates. CloudVault C1a is that first
+adapter: it exposes deterministic AAD and hashing operations without accepting
+browser `CryptoKey` handles or changing non-extractable key custody. Transport, persistence,
 network acquisition, authentication, secret storage, UI, and operating-system
 integration remain in their existing owners.
 
@@ -36,6 +38,11 @@ independently reviewable branches; there is no long-lived SharedRust branch.
 The quota pilot is controlled by `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE` with
 `legacy`, `shadow`, and `rust` values. Missing or invalid values fail closed to
 legacy behavior.
+
+The initial quota surface is ABI 1. CloudVault C1a expands the generated
+contract to ABI 2 and adds Android and Wasm packaging. Consumers must verify the
+expected ABI before invoking Rust; release artifacts must prove native loading
+on their supported architectures rather than relying on binding compilation.
 
 ## Consequences
 
