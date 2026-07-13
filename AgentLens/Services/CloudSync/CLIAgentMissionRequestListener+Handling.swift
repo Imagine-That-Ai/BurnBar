@@ -359,7 +359,11 @@ extension CLIAgentMissionRequestListener {
             )
             return
         }
-        let fanOutCap = try? await resolvedWandFanOutCap(uid: uid)
+        // Group validation already read and checked the server-signed tier cap;
+        // reuse that value instead of issuing a second entitlement read that
+        // could transiently fail and incorrectly collapse a paid group to the
+        // free-tier cap.
+        let fanOutCap = missionGroupContext?.tierCap ?? (try? await resolvedWandFanOutCap(uid: uid))
         let authorization = await MissionRemoteAuthorizationShadow.authorize(
             ctx: shadowCtx(
                 document.documentID,
@@ -371,16 +375,39 @@ extension CLIAgentMissionRequestListener {
             executorTrustState: executorTrustState
         )
         switch authorization {
-        case .authorized:
-            break
+        case let .authorized(grantCeiling):
+            guard let grantCeiling else {
+                await failDaemonDenied(
+                    document: document,
+                    backend: backend,
+                    reason: .invalidRequest,
+                    detail: "Authorized daemon response omitted its capability ceiling."
+                )
+                return
+            }
+            // The daemon may attenuate a requested grant based on persona
+            // policy. Carry its ceiling into every downstream launch planner;
+            // never continue with the broader Firestore request.
+            data["commandsAllowed"] = grantCeiling.commandsAllowed
+            data["fileEditsAllowed"] = grantCeiling.fileEditsAllowed
         case .requiresApproval:
             await driveApprovalWriteback(document: document, data: data, backend: backend)
             return
         case let .denied(reason, detail):
-            await failDaemonDenied(document: document, backend: backend, reason: reason, detail: detail)
-            return
+            switch reason {
+            case .some(.untrustedDevice), .some(.unknownTrustState):
+                // Executor-local trust failures must not consume a shared
+                // pending mission; another trusted Mac may still execute it.
+                logger.info("mission id=\(document.documentID, privacy: .public) remains pending for another trusted executor")
+                return
+            default:
+                await failDaemonDenied(document: document, backend: backend, reason: reason, detail: detail)
+                return
+            }
         case let .daemonUnreachable(detail):
-            await failDaemonRequired(document: document, detail: detail)
+            // An unhealthy daemon is local to this executor. Leave the shared
+            // mission pending so a healthy Mac can claim it.
+            logger.warning("mission id=\(document.documentID, privacy: .public) remains pending while local daemon is unavailable: \(detail, privacy: .public)")
             return
         }
 

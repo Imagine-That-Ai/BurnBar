@@ -352,7 +352,7 @@ enum MissionRemoteAuthorizationShadow {
     /// way to `.authorized` / `.requiresApproval` is a live daemon verdict; any
     /// unreachability collapses to `.denied` with a `daemonUnreachable` reason.
     enum AuthorizationOutcome: Equatable, Sendable {
-        case authorized
+        case authorized(grantCeiling: BurnBarRemoteMissionCapabilityGrantRequest?)
         case requiresApproval
         case denied(reason: BurnBarRemoteMissionDenialReason?, detail: String?)
         case daemonUnreachable(detail: String)
@@ -401,7 +401,7 @@ enum MissionRemoteAuthorizationShadow {
             logger.info(
                 "mission_authorize enforce authorized mission=\(ctx.missionID, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
             )
-            return .authorized
+            return .authorized(grantCeiling: response.grantCeiling)
         case .requiresApproval:
             logger.info(
                 "mission_authorize enforce requires_approval mission=\(ctx.missionID, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"

@@ -312,7 +312,8 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
                 .daemonUnreachable(detail: "x").isDaemonUnreachable
         )
         XCTAssertFalse(
-            MissionRemoteAuthorizationShadow.AuthorizationOutcome.authorized.isDaemonUnreachable
+            MissionRemoteAuthorizationShadow.AuthorizationOutcome
+                .authorized(grantCeiling: nil).isDaemonUnreachable
         )
         XCTAssertFalse(
             MissionRemoteAuthorizationShadow.AuthorizationOutcome
