@@ -6,11 +6,14 @@ export type SettingsTabId =
   | 'account'
   | 'cloud'
   | 'agents'
+  | 'model-proxy'
   | 'alerts'
   | 'notifications'
   | 'devices-and-sync'
   | 'text-expansion'
   | 'media'
+  | 'computer-use'
+  | 'pets'
   | 'data-privacy';
 
 export type SettingsSectionId =
@@ -97,6 +100,15 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
     detailTitle: 'Agents'
   },
   {
+    id: 'model-proxy',
+    title: 'Model Proxy',
+    subtitle: 'Gateway routing, aliases, and model policy',
+    iconGlyph: '⇄',
+    iconTint: 'var(--color-brass-core)',
+    section: 'agents-and-models',
+    detailTitle: 'Model Proxy'
+  },
+  {
     id: 'alerts',
     title: 'Alerts',
     subtitle: 'Spend thresholds and daily digest',
@@ -142,6 +154,24 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
     detailTitle: 'Media & Sharing'
   },
   {
+    id: 'computer-use',
+    title: 'Computer Use',
+    subtitle: 'Approval-gated browser automation and audit',
+    iconGlyph: '⌁',
+    iconTint: 'var(--color-tier-end-to-end)',
+    section: 'extras',
+    detailTitle: 'Computer Use'
+  },
+  {
+    id: 'pets',
+    title: 'Pets',
+    subtitle: 'Companion presence, behavior, and reduced motion',
+    iconGlyph: '✣',
+    iconTint: 'var(--color-brass-bright)',
+    section: 'extras',
+    detailTitle: 'Pets'
+  },
+  {
     id: 'data-privacy',
     title: 'Data & Privacy',
     subtitle: 'Vault inventory, exports, telemetry, and consent',
@@ -153,7 +183,7 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
 ];
 
 export const SETTINGS_SECTIONS: { id: SettingsSectionId; title: string; tabIds: SettingsTabId[] }[] = [
-  { id: 'agents-and-models', title: 'Agents & Models', tabIds: ['agents'] },
+  { id: 'agents-and-models', title: 'Agents & Models', tabIds: ['agents', 'model-proxy'] },
   { id: 'look-and-feel', title: 'Look & Feel', tabIds: ['general'] },
   {
     id: 'account-and-sync',
@@ -161,7 +191,7 @@ export const SETTINGS_SECTIONS: { id: SettingsSectionId; title: string; tabIds: 
     tabIds: ['account', 'cloud', 'devices-and-sync', 'alerts', 'notifications']
   },
   { id: 'system', title: 'System', tabIds: ['daemon', 'updates', 'data-privacy'] },
-  { id: 'extras', title: 'More', tabIds: ['text-expansion', 'media'] }
+  { id: 'extras', title: 'More', tabIds: ['text-expansion', 'media', 'computer-use', 'pets'] }
 ];
 
 export function isSettingsTabId(value: string): value is SettingsTabId {

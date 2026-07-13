@@ -16,6 +16,8 @@ import { CopyPathButton } from '../system/CopyPathButton.js';
 import { VersionGrid } from '../support/VersionGrid.js';
 import { OnboardingSurface } from '../OnboardingSurface.js';
 import { TextExpansionSurface } from '../TextExpansionSurface.js';
+import { ComputerUseSurface } from '../computerUse/ComputerUseSurface.js';
+import { PetSurface } from '../PetSurface.js';
 import { UpdateStatusCard } from '../updates/UpdateStatusCard.js';
 import { SettingGroup } from './SettingGroup.js';
 import { SettingRow } from './SettingRow.js';
@@ -815,6 +817,9 @@ export function SettingsDetailPane({
       case 'agents':
         content = <AgentsDetail config={config} />;
         break;
+      case 'model-proxy':
+        content = <AgentsDetail config={config} />;
+        break;
       case 'account':
         content = (
           <SettingGroup title="Account" sectionHeader hideTitle>
@@ -864,6 +869,20 @@ export function SettingsDetailPane({
         break;
       case 'media':
         content = <MediaDetail />;
+        break;
+      case 'computer-use':
+        content = (
+          <div className="settings-embedded-surface">
+            <ComputerUseSurface />
+          </div>
+        );
+        break;
+      case 'pets':
+        content = (
+          <div className="settings-embedded-surface">
+            <PetSurface />
+          </div>
+        );
         break;
       case 'text-expansion':
         content = (
