@@ -493,7 +493,7 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Advanced platform features</td>
-<td>Mercury implementation and guarded Linux input/panic paths exist; typed Browser Computer Use actions (PR #1681), controller-route v2, exact-generation authority, durable replay protection, daemon-owned PKCE/Firebase/App Check credential lifecycle, signed AppImage peer admission, native startup/deep-link handoff (PR #1679), and accessibility preference contracts (PR #1683) are implemented in source and fail closed</td>
+<td>Mercury implementation and guarded Linux input/panic paths exist; typed Browser Computer Use actions (PR #1681), controller-route v2, exact-generation authority, durable replay protection, daemon-owned PKCE/Firebase/App Check credential lifecycle, signed AppImage peer admission, native startup/deep-link handoff (PR #1679), owner-checked single-instance forwarding (PR #1686), and accessibility preference contracts (PR #1683) are implemented in source and fail closed</td>
 <td>Create the dedicated desktop OAuth client, deploy the new callables, set public release variables, then certify installed physical-iPad-backed Browser CU actions/restart; continue with system CU capture, Mercury, SmartHub devices, IBus/Fcitx, notification actions/global shortcuts, and companion overlay</td>
 </tr>
 </tbody>
@@ -979,8 +979,8 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-27</td>
 <td>Notifications/deep links</td>
 <td>Actionable notifications, OAuth return, global commands, login start</td>
-<td>No complete freedesktop notification, deep-link, shortcut, or autostart adapter</td>
-<td>Missing</td>
+<td>Strict membership/OAuth deep-link validation, one-shot startup handoff, background tray startup, XDG autostart, desktop registration, and owner-checked per-user single-instance forwarding are implemented in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1679">PR #1679</a> and <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1686">PR #1686</a>; freedesktop notification actions, global shortcuts, and installed host integration remain open</td>
+<td>Partial</td>
 <td>High</td>
 </tr>
 <tr>
