@@ -17,6 +17,7 @@ build/
 build-derived/
 .lane-modulecache/
 Vendor/OpenBurnBarIroh.xcframework/
+Vendor/OpenBurnBarDomainCore.xcframework/
 Vendor/OpenBurnBarSignalFfi.xcframework/
 Vendor/BurnBarRemote.xcframework/
 build_ios/

@@ -15,6 +15,7 @@ Agent workflow: see [AGENTS.md](../../AGENTS.md) — search before building; ADR
 | [008-remote-control-engine.md](008-remote-control-engine.md) | Iroh-first remote desktop, media, and remote-control engine |
 | [010-project-code-static-parser.md](010-project-code-static-parser.md) | Stateless local Tree-sitter helper for Project Code Memory |
 | [011-stripe-redirect-url-validation.md](011-stripe-redirect-url-validation.md) | Exact-loopback + optional origin allowlist for Stripe redirects |
+| [014-shared-rust-domain-core.md](014-shared-rust-domain-core.md) | Pure duplicated business logic shared through Rust adapters |
 
 Related operational docs:
 

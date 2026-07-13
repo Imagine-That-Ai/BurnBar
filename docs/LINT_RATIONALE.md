@@ -100,6 +100,10 @@ website/src/scripts/pretextShrinkwrap.ts | ts-suppress
 # AAR rebuild-parity gate; the justification lives here instead of churning the FFI source.
 crates/openburnbar-iroh/src/lib.rs | rust-allow
 
+# --- Generated UniFFI Swift bindings (token-scoped) ---
+# Regenerated and drift-checked from crates/openburnbar-domain-core; never hand-edited.
+OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift | swiftlint-disable
+
 # --- Vendored GRDB SQLCipher fork (token-scoped) ---
 # Upstream GRDB carries SwiftLint waivers for compatibility with its own lint profile. Keep exact
 # path entries so the vendor tree remains visible; re-check and delete stale entries on GRDB updates.
