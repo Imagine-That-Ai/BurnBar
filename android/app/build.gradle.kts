@@ -410,6 +410,9 @@ dependencies {
     // Local Kotlin library: Android-side iroh transport + pairing
     // verifier. 1:1 mirror of the Swift OpenBurnBarIrohRelay package.
     implementation(project(":openburnbar-iroh-relay"))
+    // Shared Rust domain logic. The module owns generated UniFFI Kotlin sources;
+    // this app attaches the native-only AAR below when it has been built.
+    implementation(project(":openburnbar-domain-core"))
     // Local Kotlin facade for the burnbar-remote UniFFI engine. It runs with
     // deterministic Kotlin fallbacks until Vendor/burnbar-remote.aar exists.
     implementation(project(":burnbar-remote"))
@@ -419,6 +422,12 @@ dependencies {
     val irohAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/openburnbar-iroh.aar")
     if (irohAar.exists()) {
         implementation(files(irohAar))
+    }
+    val domainCoreAar =
+        rootProject.layout.projectDirectory.dir("..").asFile
+            .resolve("Vendor/openburnbar-domain-core.aar")
+    if (domainCoreAar.exists()) {
+        implementation(files(domainCoreAar))
     }
     val burnBarRemoteAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/burnbar-remote.aar")
     if (burnBarRemoteAar.exists()) {

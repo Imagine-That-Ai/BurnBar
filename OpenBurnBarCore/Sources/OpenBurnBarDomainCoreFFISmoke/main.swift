@@ -8,7 +8,7 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
-require(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 1, "unexpected ABI version")
+require(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2, "unexpected ABI version")
 require(!OpenBurnBarDomainCoreFFI.domainCoreVersion().isEmpty, "empty crate version")
 
 let fixtureURL = URL(fileURLWithPath: #filePath)

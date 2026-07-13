@@ -6,6 +6,7 @@
 #   BURNBAR_REMOTE_BUILD_PROFILE=debug ./scripts/build-burnbar-remote-android-aar.sh
 #   BURNBAR_REMOTE_ANDROID_ABIS="arm64-v8a x86_64" ./scripts/build-burnbar-remote-android-aar.sh
 #   ./scripts/build-burnbar-remote-android-aar.sh --dry-run
+#   ./scripts/build-burnbar-remote-android-aar.sh --check
 #
 # Output:
 #   Vendor/burnbar-remote.aar
@@ -41,9 +42,11 @@ else
 fi
 
 DRY_RUN=0
+CHECK_ONLY=0
 for arg in "$@"; do
   case "${arg}" in
     --dry-run) DRY_RUN=1 ;;
+    --check) CHECK_ONLY=1 ;;
     *) echo "unknown arg: ${arg}" >&2; exit 64 ;;
   esac
 done
@@ -114,6 +117,12 @@ ANDROID_NDK_HOME="$(ensure_ndk)"
 export ANDROID_NDK_HOME
 export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
 log "using NDK at ${ANDROID_NDK_HOME}"
+
+LLVM_NM="$(find "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt" -path '*/bin/llvm-nm' -type f -perm -111 | head -1)"
+[[ -x "${LLVM_NM}" ]] || abort "llvm-nm not found in ${ANDROID_NDK_HOME}"
+if [[ "${CHECK_ONLY}" -eq 1 ]]; then
+  exec python3 "${ROOT_DIR}/scripts/verify-burnbar-remote-android-aar.py" --nm "${LLVM_NM}"
+fi
 
 ANDROID_16KB_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384"
 ANDROID_REMAP_RUSTFLAGS="--remap-path-prefix=${ROOT_DIR}=/workspace --remap-path-prefix=${CRATE_DIR}=/workspace/crates/burnbar-remote --remap-path-prefix=${CARGO_HOME:-${HOME}/.cargo}=/cargo"
@@ -222,6 +231,22 @@ for abi in "${ABIS[@]}"; do
   [[ -f "${expected}" ]] || abort "expected output missing: ${expected}"
 done
 
+EXPORTS_PATH="${BUILD_DIR}/burnbar-remote-uniffi-exports.txt"
+rm -f "${EXPORTS_PATH}"
+for abi in "${ABIS[@]}"; do
+  abi_exports="${BUILD_DIR}/${abi}-uniffi-exports.txt"
+  "${LLVM_NM}" -D --defined-only "${ARCHS_DIR}/${abi}/lib${LIB_NAME}.so" \
+    | awk '{ print $NF }' \
+    | awk '/^(uniffi_|ffi_burnbar_remote_)/' \
+    | LC_ALL=C sort -u > "${abi_exports}"
+  [[ -s "${abi_exports}" ]] || abort "${abi}: no UniFFI exports found"
+  if [[ ! -f "${EXPORTS_PATH}" ]]; then
+    cp "${abi_exports}" "${EXPORTS_PATH}"
+  else
+    cmp -s "${EXPORTS_PATH}" "${abi_exports}" || abort "${abi}: UniFFI export set differs across ABIs"
+  fi
+done
+
 ensure_uniffi_bindgen_kotlin_helper
 case "$(uname -s)" in
   Darwin) host_libname="lib${LIB_NAME}.dylib" ;;
@@ -316,6 +341,11 @@ find "${EMPTY_JAR_DIR}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
 
 : > "${AAR_STAGING}/proguard.txt"
 : > "${AAR_STAGING}/R.txt"
+mkdir -p "${AAR_STAGING}/META-INF"
+cp "${EXPORTS_PATH}" "${AAR_STAGING}/META-INF/burnbar-remote-uniffi-exports.txt"
+python3 "${ROOT_DIR}/scripts/verify-burnbar-remote-android-aar.py" \
+  --write-metadata "${AAR_STAGING}/META-INF/burnbar-remote-artifact.json" \
+  --exports "${EXPORTS_PATH}" --profile "${PROFILE}"
 
 mkdir -p "${VENDOR_DIR}"
 rm -f "${AAR_PATH}"
@@ -324,6 +354,9 @@ find "${AAR_STAGING}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
   cd "${AAR_STAGING}"
   find . -type f | LC_ALL=C sort | COPYFILE_DISABLE=1 zip -0 -X -q "${AAR_PATH}" -@
 )
+
+python3 "${ROOT_DIR}/scripts/verify-burnbar-remote-android-aar.py" \
+  --aar "${AAR_PATH}" --nm "${LLVM_NM}" --profile "${PROFILE}"
 
 log "DONE: ${AAR_PATH}"
 log "kotlin bindings: ${GENERATED_KT_DIR}"

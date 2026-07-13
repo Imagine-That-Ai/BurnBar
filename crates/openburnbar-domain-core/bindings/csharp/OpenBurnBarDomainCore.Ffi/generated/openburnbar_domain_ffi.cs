@@ -751,6 +751,46 @@ static class _UniFFILib {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
@@ -758,11 +798,91 @@ static class _UniFFILib {
         }
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v1(RustBuffer @uid,RustBuffer @collection,RustBuffer @docId,RustBuffer @field,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2(RustBuffer @uid,RustBuffer @collection,RustBuffer @docId,RustBuffer @field,uint @schemaVersion,RustBuffer @purpose,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_expected_session_body_hash(RustBuffer @data,RustBuffer @key,uint @bodyHashVersion,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_key_id(RustBuffer @key,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_keyed_hash_hex(RustBuffer @data,RustBuffer @key,RustBuffer @purpose,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(RustBuffer @envelopeAad,RustBuffer @context,sbyte @rejectLegacy,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(RustBuffer @data,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern uint uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version(ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_domain_core_version(ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_gateway_relay_safety_code(RustBuffer @agentPublicKey,RustBuffer @phonePublicKey,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_hkdf_sha256(RustBuffer @inputKeyMaterial,RustBuffer @salt,RustBuffer @info,uint @outputByteCount,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_hmac_sha256(RustBuffer @key,RustBuffer @data,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_hpke_v3_info(RustBuffer @aad,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_key_wrap_info_v1(RustBuffer @aad,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_key_wrap_info_v2(RustBuffer @aad,RustBuffer @enc,RustBuffer @recipientPublicKey,RustBuffer @senderPublicKey,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_open_base64(RustBuffer @ciphertext,RustBuffer @key,RustBuffer @aad,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_open_combined(RustBuffer @combined,RustBuffer @key,RustBuffer @aad,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_envelope_aad(RustBuffer @associatedData,RustBuffer @algorithm,RustBuffer @sessionId,RustBuffer @senderDeviceId,RustBuffer @receiverDeviceId,RustBuffer @ratchetPublicKeyBase64,ulong @version,ulong @previousChainLength,ulong @messageNumber,ulong @epoch,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad(RustBuffer @kind,RustBuffer @arguments,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_base64(RustBuffer @plaintext,RustBuffer @key,RustBuffer @aad,RustBuffer @nonce,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_combined(RustBuffer @plaintext,RustBuffer @key,RustBuffer @aad,RustBuffer @nonce,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_sha256(RustBuffer @bytes,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1006,11 +1126,91 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v1(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_expected_session_body_hash(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_key_id(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_keyed_hash_hex(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version(
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_gateway_relay_safety_code(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_hkdf_sha256(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_hmac_sha256(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_hpke_v3_info(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v1(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v2(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_base64(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_combined(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_base64(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_combined(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_sha256(
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1044,6 +1244,48 @@ static class _UniFFILib {
 
     static void uniffiCheckApiChecksums() {
         {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v1();
+            if (checksum != 43983) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v1` checksum `43983`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2();
+            if (checksum != 35572) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2` checksum `35572`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_expected_session_body_hash();
+            if (checksum != 32041) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_expected_session_body_hash` checksum `32041`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_key_id();
+            if (checksum != 19743) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_key_id` checksum `19743`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_keyed_hash_hex();
+            if (checksum != 27492) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_keyed_hash_hex` checksum `27492`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad();
+            if (checksum != 62830) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_resolve_aad` checksum `62830`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex();
+            if (checksum != 55638) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex` checksum `55638`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version();
             if (checksum != 60924) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version` checksum `60924`, library returned `{checksum}`");
@@ -1053,6 +1295,84 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version();
             if (checksum != 28819) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version` checksum `28819`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_gateway_relay_safety_code();
+            if (checksum != 63787) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_gateway_relay_safety_code` checksum `63787`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_hkdf_sha256();
+            if (checksum != 32039) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_hkdf_sha256` checksum `32039`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_hmac_sha256();
+            if (checksum != 26509) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_hmac_sha256` checksum `26509`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_hpke_v3_info();
+            if (checksum != 47793) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_hpke_v3_info` checksum `47793`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v1();
+            if (checksum != 60449) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v1` checksum `60449`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v2();
+            if (checksum != 32217) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_key_wrap_info_v2` checksum `32217`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_base64();
+            if (checksum != 43968) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_base64` checksum `43968`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_combined();
+            if (checksum != 5935) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_open_combined` checksum `5935`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad();
+            if (checksum != 49577) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad` checksum `49577`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad();
+            if (checksum != 34735) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad` checksum `34735`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_base64();
+            if (checksum != 24382) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_base64` checksum `24382`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_combined();
+            if (checksum != 1816) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_combined` checksum `1816`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_sha256();
+            if (checksum != 58338) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_sha256` checksum `58338`, library returned `{checksum}`");
             }
         }
         {
@@ -1110,6 +1430,32 @@ class FfiConverterUInt32: FfiConverter<uint, uint> {
 
     public override void Write(uint value, BigEndianStream stream) {
         stream.WriteUInt(value);
+    }
+}
+
+
+
+class FfiConverterUInt64: FfiConverter<ulong, ulong> {
+    public static FfiConverterUInt64 INSTANCE = new FfiConverterUInt64();
+
+    public override ulong Lift(ulong value) {
+        return value;
+    }
+
+    public override ulong Read(BigEndianStream stream) {
+        return stream.ReadULong();
+    }
+
+    public override ulong Lower(ulong value) {
+        return value;
+    }
+
+    public override int AllocationSize(ulong value) {
+        return 8;
+    }
+
+    public override void Write(ulong value, BigEndianStream stream) {
+        stream.WriteULong(value);
     }
 }
 
@@ -1256,6 +1602,52 @@ class FfiConverterByteArray: FfiConverterRustBuffer<byte[]> {
     public override void Write(byte[] value, BigEndianStream stream) {
         stream.WriteInt(value.Length);
         stream.WriteBytes(value);
+    }
+}
+
+
+
+public record CloudVaultAadContextInput (
+    string @uid,
+    string @collection,
+    string @docId,
+    string @field,
+    uint @schemaVersion,
+    string? @purpose
+) {
+}
+
+class FfiConverterTypeCloudVaultAadContextInput: FfiConverterRustBuffer<CloudVaultAadContextInput> {
+    public static FfiConverterTypeCloudVaultAadContextInput INSTANCE = new FfiConverterTypeCloudVaultAadContextInput();
+
+    public override CloudVaultAadContextInput Read(BigEndianStream stream) {
+        return new CloudVaultAadContextInput(
+            @uid: FfiConverterString.INSTANCE.Read(stream),
+            @collection: FfiConverterString.INSTANCE.Read(stream),
+            @docId: FfiConverterString.INSTANCE.Read(stream),
+            @field: FfiConverterString.INSTANCE.Read(stream),
+            @schemaVersion: FfiConverterUInt32.INSTANCE.Read(stream),
+            @purpose: FfiConverterOptionalString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudVaultAadContextInput value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.@uid)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@collection)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@docId)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@field)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.@schemaVersion)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.@purpose);
+    }
+
+    public override void Write(CloudVaultAadContextInput value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.@uid, stream);
+            FfiConverterString.INSTANCE.Write(value.@collection, stream);
+            FfiConverterString.INSTANCE.Write(value.@docId, stream);
+            FfiConverterString.INSTANCE.Write(value.@field, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.@schemaVersion, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.@purpose, stream);
     }
 }
 
@@ -1429,6 +1821,348 @@ class FfiConverterTypeAnthropicCredentialShape: FfiConverterRustBuffer<Anthropic
 }
 
 
+
+
+
+
+
+public class CloudVaultFfiException: UniffiException {
+    CloudVaultFfiException() : base() {}
+    CloudVaultFfiException(String @Message) : base(@Message) {}
+
+    // Each variant is a nested class
+
+    public class InvalidKeyLength : CloudVaultFfiException {
+        public InvalidKeyLength() : base() {}
+    }
+
+
+    public class InvalidAadPart : CloudVaultFfiException {
+        public InvalidAadPart() : base() {}
+    }
+
+
+    public class InvalidSchemaVersion : CloudVaultFfiException {
+        public InvalidSchemaVersion() : base() {}
+    }
+
+
+    public class AadMismatch : CloudVaultFfiException {
+        public AadMismatch() : base() {}
+    }
+
+
+    public class LegacyAadRejected : CloudVaultFfiException {
+        public LegacyAadRejected() : base() {}
+    }
+
+
+    public class UnsupportedHashVersion : CloudVaultFfiException {
+        public UnsupportedHashVersion() : base() {}
+    }
+
+
+    public class DerivationFailure : CloudVaultFfiException {
+        public DerivationFailure() : base() {}
+    }
+
+
+
+
+}
+
+class FfiConverterTypeCloudVaultFfiError : FfiConverterRustBuffer<CloudVaultFfiException>, CallStatusErrorHandler<CloudVaultFfiException> {
+    public static FfiConverterTypeCloudVaultFfiError INSTANCE = new FfiConverterTypeCloudVaultFfiError();
+
+    public override CloudVaultFfiException Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new CloudVaultFfiException.InvalidKeyLength();
+            case 2:
+                return new CloudVaultFfiException.InvalidAadPart();
+            case 3:
+                return new CloudVaultFfiException.InvalidSchemaVersion();
+            case 4:
+                return new CloudVaultFfiException.AadMismatch();
+            case 5:
+                return new CloudVaultFfiException.LegacyAadRejected();
+            case 6:
+                return new CloudVaultFfiException.UnsupportedHashVersion();
+            case 7:
+                return new CloudVaultFfiException.DerivationFailure();
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CloudVaultFfiException value) {
+        switch (value) {
+
+            case CloudVaultFfiException.InvalidKeyLength variant_value:
+                return 4;
+
+            case CloudVaultFfiException.InvalidAadPart variant_value:
+                return 4;
+
+            case CloudVaultFfiException.InvalidSchemaVersion variant_value:
+                return 4;
+
+            case CloudVaultFfiException.AadMismatch variant_value:
+                return 4;
+
+            case CloudVaultFfiException.LegacyAadRejected variant_value:
+                return 4;
+
+            case CloudVaultFfiException.UnsupportedHashVersion variant_value:
+                return 4;
+
+            case CloudVaultFfiException.DerivationFailure variant_value:
+                return 4;
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(CloudVaultFfiException value, BigEndianStream stream) {
+        switch (value) {
+            case CloudVaultFfiException.InvalidKeyLength variant_value:
+                stream.WriteInt(1);
+                break;
+            case CloudVaultFfiException.InvalidAadPart variant_value:
+                stream.WriteInt(2);
+                break;
+            case CloudVaultFfiException.InvalidSchemaVersion variant_value:
+                stream.WriteInt(3);
+                break;
+            case CloudVaultFfiException.AadMismatch variant_value:
+                stream.WriteInt(4);
+                break;
+            case CloudVaultFfiException.LegacyAadRejected variant_value:
+                stream.WriteInt(5);
+                break;
+            case CloudVaultFfiException.UnsupportedHashVersion variant_value:
+                stream.WriteInt(6);
+                break;
+            case CloudVaultFfiException.DerivationFailure variant_value:
+                stream.WriteInt(7);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCloudVaultFfiError.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+public enum CloudVaultHashPurpose: int {
+
+    BlobIntegrity,
+    SessionBody,
+    SessionChunk,
+    ProjectMemoryContent
+}
+
+class FfiConverterTypeCloudVaultHashPurpose: FfiConverterRustBuffer<CloudVaultHashPurpose> {
+    public static FfiConverterTypeCloudVaultHashPurpose INSTANCE = new FfiConverterTypeCloudVaultHashPurpose();
+
+    public override CloudVaultHashPurpose Read(BigEndianStream stream) {
+        var value = stream.ReadInt() - 1;
+        if (Enum.IsDefined(typeof(CloudVaultHashPurpose), value)) {
+            return (CloudVaultHashPurpose)value;
+        } else {
+            throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCloudVaultHashPurpose.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CloudVaultHashPurpose value) {
+        return 4;
+    }
+
+    public override void Write(CloudVaultHashPurpose value, BigEndianStream stream) {
+        stream.WriteInt((int)value + 1);
+    }
+}
+
+
+
+
+
+
+
+public enum HermesAadKind: int {
+
+    Request,
+    Key,
+    AuthenticatedRequest,
+    AuthenticatedKey,
+    Chunk,
+    MediaSealKey,
+    ControlSealKey,
+    GatewayEvent,
+    GatewayEventKey,
+    GatewayMessage,
+    GatewayMessageKey,
+    GatewayAttachmentKey,
+    GatewayAttachmentManifest,
+    GatewayAttachmentBody
+}
+
+class FfiConverterTypeHermesAadKind: FfiConverterRustBuffer<HermesAadKind> {
+    public static FfiConverterTypeHermesAadKind INSTANCE = new FfiConverterTypeHermesAadKind();
+
+    public override HermesAadKind Read(BigEndianStream stream) {
+        var value = stream.ReadInt() - 1;
+        if (Enum.IsDefined(typeof(HermesAadKind), value)) {
+            return (HermesAadKind)value;
+        } else {
+            throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeHermesAadKind.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(HermesAadKind value) {
+        return 4;
+    }
+
+    public override void Write(HermesAadKind value, BigEndianStream stream) {
+        stream.WriteInt((int)value + 1);
+    }
+}
+
+
+
+
+
+
+
+public class HermesFfiException: UniffiException {
+    HermesFfiException() : base() {}
+    HermesFfiException(String @Message) : base(@Message) {}
+
+    // Each variant is a nested class
+
+    public class InvalidAadArguments : HermesFfiException {
+        public InvalidAadArguments() : base() {}
+    }
+
+
+    public class InvalidKeyLength : HermesFfiException {
+        public InvalidKeyLength() : base() {}
+    }
+
+
+    public class InvalidNonceLength : HermesFfiException {
+        public InvalidNonceLength() : base() {}
+    }
+
+
+    public class InvalidCiphertext : HermesFfiException {
+        public InvalidCiphertext() : base() {}
+    }
+
+
+    public class AuthenticationFailed : HermesFfiException {
+        public AuthenticationFailed() : base() {}
+    }
+
+
+    public class InvalidHkdfLength : HermesFfiException {
+        public InvalidHkdfLength() : base() {}
+    }
+
+
+    public class HmacFailure : HermesFfiException {
+        public HmacFailure() : base() {}
+    }
+
+
+
+
+}
+
+class FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiException>, CallStatusErrorHandler<HermesFfiException> {
+    public static FfiConverterTypeHermesFfiError INSTANCE = new FfiConverterTypeHermesFfiError();
+
+    public override HermesFfiException Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new HermesFfiException.InvalidAadArguments();
+            case 2:
+                return new HermesFfiException.InvalidKeyLength();
+            case 3:
+                return new HermesFfiException.InvalidNonceLength();
+            case 4:
+                return new HermesFfiException.InvalidCiphertext();
+            case 5:
+                return new HermesFfiException.AuthenticationFailed();
+            case 6:
+                return new HermesFfiException.InvalidHkdfLength();
+            case 7:
+                return new HermesFfiException.HmacFailure();
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeHermesFfiError.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(HermesFfiException value) {
+        switch (value) {
+
+            case HermesFfiException.InvalidAadArguments variant_value:
+                return 4;
+
+            case HermesFfiException.InvalidKeyLength variant_value:
+                return 4;
+
+            case HermesFfiException.InvalidNonceLength variant_value:
+                return 4;
+
+            case HermesFfiException.InvalidCiphertext variant_value:
+                return 4;
+
+            case HermesFfiException.AuthenticationFailed variant_value:
+                return 4;
+
+            case HermesFfiException.InvalidHkdfLength variant_value:
+                return 4;
+
+            case HermesFfiException.HmacFailure variant_value:
+                return 4;
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeHermesFfiError.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(HermesFfiException value, BigEndianStream stream) {
+        switch (value) {
+            case HermesFfiException.InvalidAadArguments variant_value:
+                stream.WriteInt(1);
+                break;
+            case HermesFfiException.InvalidKeyLength variant_value:
+                stream.WriteInt(2);
+                break;
+            case HermesFfiException.InvalidNonceLength variant_value:
+                stream.WriteInt(3);
+                break;
+            case HermesFfiException.InvalidCiphertext variant_value:
+                stream.WriteInt(4);
+                break;
+            case HermesFfiException.AuthenticationFailed variant_value:
+                stream.WriteInt(5);
+                break;
+            case HermesFfiException.InvalidHkdfLength variant_value:
+                stream.WriteInt(6);
+                break;
+            case HermesFfiException.HmacFailure variant_value:
+                stream.WriteInt(7);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeHermesFfiError.Write()", value));
+        }
+    }
+}
 
 
 
@@ -1707,6 +2441,48 @@ class FfiConverterOptionalString: FfiConverterRustBuffer<string?> {
 
 
 
+class FfiConverterSequenceString: FfiConverterRustBuffer<List<string>> {
+    public static FfiConverterSequenceString INSTANCE = new FfiConverterSequenceString();
+
+    public override List<string> Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        var result = new List<string>(length);
+        var readFn = FfiConverterString.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result.Add(readFn(stream));
+        }
+        return result;
+    }
+
+    public override int AllocationSize(List<string> value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterString.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(List<string> value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Count);
+        var writerFn = FfiConverterString.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<QuotaBucket>> {
     public static FfiConverterSequenceTypeQuotaBucket INSTANCE = new FfiConverterSequenceTypeQuotaBucket();
 
@@ -1747,6 +2523,68 @@ class FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<QuotaBuck
 }
 #pragma warning restore 8625
 public static class OpenburnbarDomainFfiMethods {
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static string CloudVaultAadV1(string @uid, string @collection, string @docId, string @field) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v1(FfiConverterString.INSTANCE.Lower(@uid), FfiConverterString.INSTANCE.Lower(@collection), FfiConverterString.INSTANCE.Lower(@docId), FfiConverterString.INSTANCE.Lower(@field), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static string CloudVaultAadV2(string @uid, string @collection, string @docId, string @field, uint @schemaVersion, string? @purpose) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2(FfiConverterString.INSTANCE.Lower(@uid), FfiConverterString.INSTANCE.Lower(@collection), FfiConverterString.INSTANCE.Lower(@docId), FfiConverterString.INSTANCE.Lower(@field), FfiConverterUInt32.INSTANCE.Lower(@schemaVersion), FfiConverterOptionalString.INSTANCE.Lower(@purpose), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static string CloudVaultExpectedSessionBodyHash(byte[] @data, byte[] @key, uint @bodyHashVersion) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_expected_session_body_hash(FfiConverterByteArray.INSTANCE.Lower(@data), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterUInt32.INSTANCE.Lower(@bodyHashVersion), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static string CloudVaultKeyId(byte[] @key) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_key_id(FfiConverterByteArray.INSTANCE.Lower(@key), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static string CloudVaultKeyedHashHex(byte[] @data, byte[] @key, CloudVaultHashPurpose @purpose) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_keyed_hash_hex(FfiConverterByteArray.INSTANCE.Lower(@data), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterTypeCloudVaultHashPurpose.INSTANCE.Lower(@purpose), ref _status)
+));
+    }
+
+
+    /// <exception cref="CloudVaultFfiException"></exception>
+    public static byte[] CloudVaultResolveAad(string @envelopeAad, CloudVaultAadContextInput @context, bool @rejectLegacy) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCloudVaultFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_resolve_aad(FfiConverterString.INSTANCE.Lower(@envelopeAad), FfiConverterTypeCloudVaultAadContextInput.INSTANCE.Lower(@context), FfiConverterBoolean.INSTANCE.Lower(@rejectLegacy), ref _status)
+));
+    }
+
+
+    public static string CloudVaultSha256Hex(byte[] @data) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(FfiConverterByteArray.INSTANCE.Lower(@data), ref _status)
+));
+    }
+
+
     public static uint DomainCoreAbiVersion() {
         return FfiConverterUInt32.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
@@ -1759,6 +2597,117 @@ public static class OpenburnbarDomainFfiMethods {
         return FfiConverterString.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_version( ref _status)
+));
+    }
+
+
+    public static string HermesGatewayRelaySafetyCode(byte[] @agentPublicKey, byte[] @phonePublicKey) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_gateway_relay_safety_code(FfiConverterByteArray.INSTANCE.Lower(@agentPublicKey), FfiConverterByteArray.INSTANCE.Lower(@phonePublicKey), ref _status)
+));
+    }
+
+
+    /// <exception cref="HermesFfiException"></exception>
+    public static byte[] HermesHkdfSha256(byte[] @inputKeyMaterial, byte[] @salt, byte[] @info, uint @outputByteCount) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeHermesFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_hkdf_sha256(FfiConverterByteArray.INSTANCE.Lower(@inputKeyMaterial), FfiConverterByteArray.INSTANCE.Lower(@salt), FfiConverterByteArray.INSTANCE.Lower(@info), FfiConverterUInt32.INSTANCE.Lower(@outputByteCount), ref _status)
+));
+    }
+
+
+    /// <exception cref="HermesFfiException"></exception>
+    public static byte[] HermesHmacSha256(byte[] @key, byte[] @data) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeHermesFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_hmac_sha256(FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterByteArray.INSTANCE.Lower(@data), ref _status)
+));
+    }
+
+
+    public static byte[] HermesHpkeV3Info(byte[] @aad) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_hpke_v3_info(FfiConverterByteArray.INSTANCE.Lower(@aad), ref _status)
+));
+    }
+
+
+    public static byte[] HermesKeyWrapInfoV1(byte[] @aad) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_key_wrap_info_v1(FfiConverterByteArray.INSTANCE.Lower(@aad), ref _status)
+));
+    }
+
+
+    public static byte[] HermesKeyWrapInfoV2(byte[] @aad, byte[] @enc, byte[] @recipientPublicKey, byte[] @senderPublicKey) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_key_wrap_info_v2(FfiConverterByteArray.INSTANCE.Lower(@aad), FfiConverterByteArray.INSTANCE.Lower(@enc), FfiConverterByteArray.INSTANCE.Lower(@recipientPublicKey), FfiConverterByteArray.INSTANCE.Lower(@senderPublicKey), ref _status)
+));
+    }
+
+
+    /// <exception cref="HermesFfiException"></exception>
+    public static byte[] HermesOpenBase64(string @ciphertext, byte[] @key, byte[] @aad) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeHermesFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_open_base64(FfiConverterString.INSTANCE.Lower(@ciphertext), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterByteArray.INSTANCE.Lower(@aad), ref _status)
+));
+    }
+
+
+    /// <exception cref="HermesFfiException"></exception>
+    public static byte[] HermesOpenCombined(byte[] @combined, byte[] @key, byte[] @aad) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeHermesFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_open_combined(FfiConverterByteArray.INSTANCE.Lower(@combined), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterByteArray.INSTANCE.Lower(@aad), ref _status)
+));
+    }
+
+
+    public static byte[] HermesRatchetEnvelopeAad(byte[] @associatedData, string @algorithm, string @sessionId, string @senderDeviceId, string @receiverDeviceId, string @ratchetPublicKeyBase64, ulong @version, ulong @previousChainLength, ulong @messageNumber, ulong @epoch) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_envelope_aad(FfiConverterByteArray.INSTANCE.Lower(@associatedData), FfiConverterString.INSTANCE.Lower(@algorithm), FfiConverterString.INSTANCE.Lower(@sessionId), FfiConverterString.INSTANCE.Lower(@senderDeviceId), FfiConverterString.INSTANCE.Lower(@receiverDeviceId), FfiConverterString.INSTANCE.Lower(@ratchetPublicKeyBase64), FfiConverterUInt64.INSTANCE.Lower(@version), FfiConverterUInt64.INSTANCE.Lower(@previousChainLength), FfiConverterUInt64.INSTANCE.Lower(@messageNumber), FfiConverterUInt64.INSTANCE.Lower(@epoch), ref _status)
+));
+    }
+
+
+    /// <exception cref="HermesFfiException"></exception>
+    public static byte[] HermesRelayAad(HermesAadKind @kind, List<string> @arguments) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeHermesFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad(FfiConverterTypeHermesAadKind.INSTANCE.Lower(@kind), FfiConverterSequenceString.INSTANCE.Lower(@arguments), ref _status)
+));
+    }
+
+
+    /// <exception cref="HermesFfiException"></exception>
+    public static string HermesSealBase64(byte[] @plaintext, byte[] @key, byte[] @aad, byte[] @nonce) {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeHermesFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_base64(FfiConverterByteArray.INSTANCE.Lower(@plaintext), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterByteArray.INSTANCE.Lower(@aad), FfiConverterByteArray.INSTANCE.Lower(@nonce), ref _status)
+));
+    }
+
+
+    /// <exception cref="HermesFfiException"></exception>
+    public static byte[] HermesSealCombined(byte[] @plaintext, byte[] @key, byte[] @aad, byte[] @nonce) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeHermesFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_combined(FfiConverterByteArray.INSTANCE.Lower(@plaintext), FfiConverterByteArray.INSTANCE.Lower(@key), FfiConverterByteArray.INSTANCE.Lower(@aad), FfiConverterByteArray.INSTANCE.Lower(@nonce), ref _status)
+));
+    }
+
+
+    public static byte[] HermesSha256(byte[] @bytes) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_sha256(FfiConverterByteArray.INSTANCE.Lower(@bytes), ref _status)
 ));
     }
 

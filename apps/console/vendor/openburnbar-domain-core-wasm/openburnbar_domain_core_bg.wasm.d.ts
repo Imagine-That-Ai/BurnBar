@@ -1,0 +1,11 @@
+export const memory: WebAssembly.Memory;
+export const cloudVaultAadV1: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
+export const cloudVaultAadV2: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
+export const cloudVaultExpectedSessionBodyHash: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const cloudVaultKeyId: (a: number, b: number, c: number) => void;
+export const cloudVaultKeyedHashHex: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const cloudVaultSha256Hex: (a: number, b: number, c: number) => void;
+export const __wbindgen_add_to_stack_pointer: (a: number) => number;
+export const __wbindgen_export: (a: number, b: number) => number;
+export const __wbindgen_export2: (a: number, b: number, c: number) => void;
+export const __wbindgen_export3: (a: number, b: number, c: number, d: number) => number;

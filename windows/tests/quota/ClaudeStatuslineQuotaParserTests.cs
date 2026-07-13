@@ -32,7 +32,7 @@ public sealed class ClaudeStatuslineQuotaParserTests
             return;
         }
 
-        Assert.Equal(1u, DomainCore.DomainCoreAbiVersion());
+        Assert.Equal(2u, DomainCore.DomainCoreAbiVersion());
         var input = QuotaFixtures.ReadInput("claude-statusline-input.json");
         var expected = QuotaFixtures.ReadExpected("claude-statusline-expected.json");
         var legacy = ClaudeStatuslineQuotaParser.ParseLegacy(input, FetchedAt);

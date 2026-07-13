@@ -96,7 +96,7 @@ internal static class ClaudeStatuslineQuotaDomainCore
         buckets = ProviderQuotaSnapshot.NoBuckets;
         try
         {
-            if (DomainCore.DomainCoreAbiVersion() != 1)
+            if (DomainCore.DomainCoreAbiVersion() != 2)
             {
                 return false;
             }
