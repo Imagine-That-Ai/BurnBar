@@ -1,6 +1,7 @@
 using System;
 using System.Security.Cryptography;
 using System.Text;
+using DomainHashPurpose = uniffi.openburnbar_domain_ffi.CloudVaultHashPurpose;
 
 namespace OpenBurnBar.CloudSync.Crypto
 {
@@ -45,10 +46,7 @@ namespace OpenBurnBar.CloudSync.Crypto
         public static byte[] GenerateVaultKey() => RandomNumberGenerator.GetBytes(32);
 
         public static string VaultKeyId(byte[] keyData)
-        {
-            RequireVaultKey(keyData);
-            return "v1_" + Sha256Hex(keyData).Substring(0, 32);
-        }
+            => DomainCoreCloudVaultBridge.VaultKeyId(keyData, () => LegacyVaultKeyId(keyData));
 
         public static CloudVaultAadContext RoamingProfileAadContext(string uid) =>
             new(
@@ -330,19 +328,35 @@ namespace OpenBurnBar.CloudSync.Crypto
 
         // ── vault-keyed HMAC hashes ─────────────────────────────────────────
         public static string BlobPlaintextHmac(byte[] data, byte[] keyData) =>
-            KeyedHmacHex(data, keyData, "blob-integrity");
+            DomainCoreCloudVaultBridge.KeyedHashHex(
+                data,
+                keyData,
+                DomainHashPurpose.BlobIntegrity,
+                () => KeyedHmacHex(data, keyData, "blob-integrity"));
 
         public static string SessionBodyHash(byte[] data, byte[] keyData) =>
-            KeyedHmacHex(data, keyData, "session-body");
+            DomainCoreCloudVaultBridge.KeyedHashHex(
+                data,
+                keyData,
+                DomainHashPurpose.SessionBody,
+                () => KeyedHmacHex(data, keyData, "session-body"));
 
         public static string SessionBodyHash(string text, byte[] keyData) =>
             SessionBodyHash(Encoding.UTF8.GetBytes(text), keyData);
 
         public static string SessionChunkHash(string chunk, byte[] keyData) =>
-            KeyedHmacHex(Encoding.UTF8.GetBytes(chunk), keyData, "session-chunk");
+            DomainCoreCloudVaultBridge.KeyedHashHex(
+                Encoding.UTF8.GetBytes(chunk),
+                keyData,
+                DomainHashPurpose.SessionChunk,
+                () => KeyedHmacHex(Encoding.UTF8.GetBytes(chunk), keyData, "session-chunk"));
 
         public static string ProjectMemoryContentHash(byte[] data, byte[] keyData) =>
-            KeyedHmacHex(data, keyData, "project-memory-content");
+            DomainCoreCloudVaultBridge.KeyedHashHex(
+                data,
+                keyData,
+                DomainHashPurpose.ProjectMemoryContent,
+                () => KeyedHmacHex(data, keyData, "project-memory-content"));
 
         /// <summary>
         /// Vault-keyed HMAC for Pensieve/memory opaque doc ids — parity with Swift
@@ -371,7 +385,8 @@ namespace OpenBurnBar.CloudSync.Crypto
         }
 
         // ── hashing helpers ─────────────────────────────────────────────────
-        public static string Sha256Hex(byte[] data) => HexString(SHA256.HashData(data));
+        public static string Sha256Hex(byte[] data) =>
+            DomainCoreCloudVaultBridge.Sha256Hex(data, () => LegacySha256Hex(data));
 
         public static string Sha256Hex(string text) => Sha256Hex(Encoding.UTF8.GetBytes(text));
 
@@ -380,6 +395,16 @@ namespace OpenBurnBar.CloudSync.Crypto
             AadData(envelopeAad, context, CloudVaultV1AadRejection.DefaultEnabled);
 
         internal static byte[] AadData(string? envelopeAad, CloudVaultAadContext context, bool rejectLegacyV1)
+            => DomainCoreCloudVaultBridge.ResolveAad(
+                envelopeAad ?? string.Empty,
+                context,
+                rejectLegacyV1,
+                () => LegacyAadData(envelopeAad, context, rejectLegacyV1));
+
+        private static byte[] LegacyAadData(
+            string? envelopeAad,
+            CloudVaultAadContext context,
+            bool rejectLegacyV1)
         {
             if (envelopeAad == context.StringValue)
             {
@@ -395,6 +420,14 @@ namespace OpenBurnBar.CloudSync.Crypto
             }
             throw CloudVaultCryptoException.InvalidEnvelope();
         }
+
+        private static string LegacyVaultKeyId(byte[] keyData)
+        {
+            RequireVaultKey(keyData);
+            return "v1_" + LegacySha256Hex(keyData).Substring(0, 32);
+        }
+
+        private static string LegacySha256Hex(byte[] data) => HexString(SHA256.HashData(data));
 
         private static byte[] HkdfDerive(byte[] ikm, byte[] salt, byte[] info) =>
             HKDF.DeriveKey(HashAlgorithmName.SHA256, ikm, 32, salt, info);
