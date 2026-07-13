@@ -371,12 +371,12 @@ body.reduced-motion .provider-card-skeleton {
   margin: 0 0 var(--space-2);
   color: var(--color-brass-core);
   font-size: 0.7rem;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .provider-model-workspace h2 {
   margin: 0;
-  font-size: clamp(1.35rem, 2vw, 1.75rem);
+  font-size: 1.5rem;
   letter-spacing: 0;
 }
 
