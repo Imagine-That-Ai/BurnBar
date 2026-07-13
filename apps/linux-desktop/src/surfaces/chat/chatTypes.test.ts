@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   canOpenChatCitation,
+  chatBackendAvailability,
+  CHAT_BACKENDS,
   citationAffordance,
   normalizeMemoryCitations
 } from './chatTypes.js';
+import { fixtureConfigSnapshot } from '../../daemonFixture.js';
 
 describe('chat citation contract', () => {
   it('bounds, deduplicates, and rejects unsafe citation references', () => {
@@ -37,5 +40,22 @@ describe('chat citation contract', () => {
         ['thread-1', 'thread-2']
       )
     ).toBe(true);
+  });
+});
+
+describe('chat backend parity contract', () => {
+  it('represents every macOS backend and keeps legacy CLI non-selectable', () => {
+    expect(CHAT_BACKENDS.map((entry) => entry.id)).toEqual([
+      'codex', 'claude', 'hermes', 'pi-agent', 'openclaw', 'openclaude', 'omp',
+      'droid', 'forge', 'antigravity', 'cursor-agent', 'junie'
+    ]);
+    expect(chatBackendAvailability(fixtureConfigSnapshot(), 'cli')).toMatchObject({ state: 'unsupported' });
+  });
+
+  it('reports configured, disabled, and unconfigured routes from daemon config', () => {
+    const config = fixtureConfigSnapshot();
+    expect(chatBackendAvailability(config, 'claude').state).toBe('available');
+    expect(chatBackendAvailability(config, 'codex').state).toBe('disabled');
+    expect(chatBackendAvailability(config, 'openclaw').state).toBe('unconfigured');
   });
 });

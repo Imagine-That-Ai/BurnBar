@@ -268,7 +268,20 @@ export function fixtureUsageSummary(): UsageSummary {
 // ─────────────────────────── P02: provider catalog fixture ────────────────────────
 
 export function fixtureProviderCatalog(): ProviderCatalog {
-  const ext = (row: ProviderCatalog[number] & Record<string, unknown>) => row;
+  const ext = (row: ProviderCatalog[number] & Record<string, unknown>) => ({
+    ...row,
+    models: [],
+    capabilities: [],
+    health: 'unknown' as const,
+    provenance: 'fixture' as const,
+    failover: {
+      mode: 'fixture',
+      eligible: false,
+      detail: 'Fixture transcript only; connect the packaged daemon for verified provider routing.'
+    },
+    catalogAvailable: false,
+    catalogError: 'Fixture transcript; live daemon catalog unavailable.'
+  });
   return [
     ext({
       id: 'anthropic',

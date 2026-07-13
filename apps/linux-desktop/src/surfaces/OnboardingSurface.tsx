@@ -33,6 +33,8 @@ function ProviderSetup({
   const [label, setLabel] = useState('Primary');
   const [apiKey, setApiKey] = useState('');
   const selected = catalog.find((entry) => entry.id === providerID) ?? catalog[0];
+  const selectedHealth = selected?.health ?? 'unknown';
+  const selectedFailover = selected?.failover;
 
   useEffect(() => {
     if (!catalog.some((entry) => entry.id === providerID)) setProviderID(catalog[0]?.id ?? '');
@@ -61,6 +63,12 @@ function ProviderSetup({
       </label>
       <p className="onboarding-provider-status muted" role="status">
         {selected?.accountLabel || 'No connected account reported by the daemon.'}
+        {selected?.provenance ? ` · ${selected.provenance}` : ''}
+      </p>
+      <p className="onboarding-provider-status muted" role="status">
+        {selectedFailover?.detail ?? (selectedHealth === 'healthy'
+          ? 'The daemon verified a provider route.'
+          : 'The daemon has not verified a provider route yet; store a credential, then retry verification.')}
       </p>
       <label>
         Credential label

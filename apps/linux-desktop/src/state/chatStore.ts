@@ -21,6 +21,7 @@ import type {
   ChatWarningBanner,
   MemoryCitation
 } from '../surfaces/chat/chatTypes.js';
+import { canSelectChatBackend } from '../surfaces/chat/chatTypes.js';
 import {
   chatModelOptions,
   defaultChatModelSelection,
@@ -235,8 +236,9 @@ async function fetchThreads(
 function backendFromThread(thread: ChatThreadSummary | null, fallback: ChatBackendId): ChatBackendId {
   switch (thread?.backendID?.trim().toLowerCase()) {
     case 'hermes':
-    case 'openclaw':
       return 'hermes';
+    case 'openclaw':
+      return 'openclaw';
     case 'codex':
     case 'openai':
       return 'codex';
@@ -250,6 +252,23 @@ function backendFromThread(thread: ChatThreadSummary | null, fallback: ChatBacke
     // arrives here lowercased.
     case 'piagent':
       return 'pi-agent';
+    case 'openclaude':
+      return 'openclaude';
+    case 'omp':
+      return 'omp';
+    case 'droid':
+    case 'factory':
+      return 'droid';
+    case 'forge':
+    case 'forgedev':
+      return 'forge';
+    case 'antigravity':
+      return 'antigravity';
+    case 'cursor-agent':
+    case 'cursoragent':
+      return 'cursor-agent';
+    case 'junie':
+      return 'junie';
     case 'cli':
       return 'cli';
     default:
@@ -265,6 +284,22 @@ function modelLabelForThread(_thread: ChatThreadSummary | null, backend: ChatBac
       return 'claude-sonnet-4';
     case 'pi-agent':
       return 'pi-agent';
+    case 'openclaw':
+      return 'openclaw';
+    case 'openclaude':
+      return 'openclaude';
+    case 'omp':
+      return 'omp';
+    case 'droid':
+      return 'droid';
+    case 'forge':
+      return 'forge';
+    case 'antigravity':
+      return 'antigravity';
+    case 'cursor-agent':
+      return 'cursor-agent';
+    case 'junie':
+      return 'junie';
     case 'cli':
       return 'CLI assistant';
     default:
@@ -722,6 +757,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   setBackend(id: ChatBackendId) {
     if (get().streaming || get().streamPhase === 'composing') return;
+    if (!canSelectChatBackend(get().config, id)) return;
     set({ backend: id, ...defaultSelectionForBackend(get().config, id) });
   },
 
