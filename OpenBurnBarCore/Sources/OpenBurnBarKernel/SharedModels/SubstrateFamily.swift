@@ -109,7 +109,14 @@ public enum SwarmSubstratePreferences {
     /// The live selected id, clamped to a real catalog entry. Defaults to plain.
     public static var currentID: String {
         let raw = UserDefaults.standard.string(forKey: substrateKey) ?? SubstrateCatalog.plainID
+        #if os(Linux) || os(Windows)
+        // The off-Apple Kernel target intentionally uses a tiny catalog stub;
+        // preserve IDs selected by the full Apple catalog instead of clamping
+        // every bespoke substrate back to `plain` on the next daemon read.
+        return raw
+        #else
         return SubstrateCatalog.byID[raw] != nil ? raw : SubstrateCatalog.plainID
+        #endif
     }
 
     /// Whether the substrate layer is enabled (default off ⇒ identical to today).
