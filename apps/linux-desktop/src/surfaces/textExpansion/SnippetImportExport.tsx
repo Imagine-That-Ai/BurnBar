@@ -1,8 +1,8 @@
 import { useId, useRef, useState, type ChangeEvent } from 'react';
 import { Banner } from '../../components/Banner.js';
-import { exportSnippets, importSnippets } from '../../textExpansionStore.js';
+import { exportSnippets, importSnippetsPersisted } from '../../textExpansionStore.js';
 
-export function SnippetImportExport({ onImported }: { onImported: () => void }) {
+export function SnippetImportExport({ onImported, disabled = false }: { onImported: () => void; disabled?: boolean }) {
   const fileInputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ tone: 'ok' | 'degraded'; message: string } | null>(null);
@@ -27,11 +27,17 @@ export function SnippetImportExport({ onImported }: { onImported: () => void }) 
     reader.onload = () => {
       try {
         const text = String(reader.result ?? '');
-        const result = importSnippets(text);
-        onImported();
-        setStatus({
-          tone: 'ok',
-          message: `Import complete: ${result.added} added, ${result.skipped} skipped.`
+        void importSnippetsPersisted(text).then((result) => {
+          onImported();
+          setStatus({
+            tone: 'ok',
+            message: `Import complete: ${result.added} added, ${result.skipped} skipped.`
+          });
+        }).catch((error) => {
+          setStatus({
+            tone: 'degraded',
+            message: error instanceof Error ? error.message : 'Import failed.'
+          });
         });
       } catch (e) {
         setStatus({
@@ -49,10 +55,10 @@ export function SnippetImportExport({ onImported }: { onImported: () => void }) 
   return (
     <section className="te-import-export" aria-label="Snippet import and export">
       <div className="te-import-export-actions">
-        <button type="button" className="ghost" onClick={onExport}>
+        <button type="button" className="ghost" onClick={onExport} disabled={disabled}>
           Export JSON
         </button>
-        <button type="button" className="ghost" onClick={() => fileRef.current?.click()}>
+        <button type="button" className="ghost" onClick={() => fileRef.current?.click()} disabled={disabled}>
           Import JSON
         </button>
         <input
