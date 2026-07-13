@@ -135,6 +135,16 @@ function stageCapture(root, { exactScale = true } = {}) {
   const session = liveSession({ targetHead: head, exactScale });
   const report = path.join(inputRoot, 'p31-live-session.json');
   writeJson(report, session);
+  const evidencePaths = new Set();
+  for (const observation of Object.values(session.observations)) {
+    for (const evidencePath of observation.evidencePaths ?? []) evidencePaths.add(evidencePath);
+    for (const nested of Object.values(observation)) {
+      if (nested && typeof nested === 'object' && Array.isArray(nested.evidencePaths)) {
+        for (const evidencePath of nested.evidencePaths) evidencePaths.add(evidencePath);
+      }
+    }
+  }
+  for (const evidencePath of evidencePaths) write(path.join(inputRoot, evidencePath), 'live evidence\n');
   const result = captureP31Accessibility({
     repoRoot: root,
     inputRoot,

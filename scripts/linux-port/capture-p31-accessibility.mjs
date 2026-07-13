@@ -71,6 +71,33 @@ function writeJsonAtomic(file, value) {
   fs.renameSync(temporary, file);
 }
 
+function validateEvidenceArtifacts(session, inputRoot) {
+  const evidencePaths = new Set();
+  for (const observation of Object.values(session.observations)) {
+    for (const evidencePath of observation.evidencePaths ?? []) evidencePaths.add(evidencePath);
+    for (const nested of Object.values(observation)) {
+      if (nested && typeof nested === 'object' && Array.isArray(nested.evidencePaths)) {
+        for (const evidencePath of nested.evidencePaths) evidencePaths.add(evidencePath);
+      }
+    }
+  }
+  for (const evidencePath of evidencePaths) {
+    const absolute = path.resolve(inputRoot, evidencePath);
+    if (absolute !== inputRoot && !absolute.startsWith(`${inputRoot}${path.sep}`)) {
+      throw new Error(`P-31 evidence path escapes the invocation root: ${evidencePath}`);
+    }
+    let stat;
+    try {
+      stat = fs.statSync(absolute);
+    } catch {
+      throw new Error(`P-31 evidence artifact is missing: ${evidencePath}`);
+    }
+    if (!stat.isFile() || stat.size === 0) {
+      throw new Error(`P-31 evidence artifact is not a non-empty regular file: ${evidencePath}`);
+    }
+  }
+}
+
 function removeStale(root) {
   const featureDir = path.join(root, 'feature-artifacts');
   for (const role of P31_ROLES) {
@@ -104,6 +131,7 @@ export function captureP31Accessibility({
   const source = readRegular(sessionReport, root, path.resolve(repoRoot), 'P-31 live session report');
   const session = parseP31Json(source.bytes, 'P-31 live session report');
   validateP31LiveSession(session, { environmentId, targetHead, candidateRunId, candidateArtifactDigest });
+  validateEvidenceArtifacts(session, root);
   const sourceSha256 = sha256Bytes(source.bytes);
   const featureDir = path.join(root, 'feature-artifacts');
   const registrations = [];

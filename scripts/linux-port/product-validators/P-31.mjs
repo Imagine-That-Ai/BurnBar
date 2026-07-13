@@ -67,5 +67,7 @@ export async function validateProductRequirement(context) {
     });
     validateSourceBinding(context, role, proofs.get(role));
   }
-  return result(context, validated.artifacts);
+  const featureArtifacts = [...(context.subjects.features ?? [])]
+    .map(({ path, sha256 }) => ({ path, sha256 }));
+  return result(context, [...validated.artifacts, ...featureArtifacts]);
 }
