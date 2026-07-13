@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
@@ -33,6 +34,8 @@ public interface IModelCompletionExecutor
 /// </summary>
 public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
 {
+    public const int MaxResponseBytes = 4 * 1024 * 1024;
+
     private readonly HttpClient _client;
     private readonly TimeSpan _timeout;
 
@@ -77,7 +80,7 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
             using HttpResponseMessage response = await _client
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token)
                 .ConfigureAwait(false);
-            byte[] body = await response.Content.ReadAsByteArrayAsync(linked.Token).ConfigureAwait(false);
+            byte[] body = await ReadBoundedAsync(response.Content, linked.Token).ConfigureAwait(false);
             string contentType = response.Content.Headers.ContentType?.ToString()
                 ?? "application/json";
             int status = (int)response.StatusCode;
@@ -91,6 +94,38 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
         {
             return new ModelCompletionResult(502, Array.Empty<byte>(), "application/json", false);
         }
+        catch (ResponseTooLargeException)
+        {
+            return new ModelCompletionResult(502, Array.Empty<byte>(), "application/json", false);
+        }
+    }
+
+    private static async Task<byte[]> ReadBoundedAsync(
+        HttpContent content,
+        CancellationToken cancellationToken)
+    {
+        await using Stream stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var buffer = new MemoryStream(capacity: Math.Min(MaxResponseBytes, 64 * 1024));
+        byte[] chunk = new byte[64 * 1024];
+        while (true)
+        {
+            int read = await stream.ReadAsync(chunk.AsMemory(), cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                return buffer.ToArray();
+            }
+
+            if (buffer.Length + read > MaxResponseBytes)
+            {
+                throw new ResponseTooLargeException();
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+    }
+
+    private sealed class ResponseTooLargeException : Exception
+    {
     }
 }
 
