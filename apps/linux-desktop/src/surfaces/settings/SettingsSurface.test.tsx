@@ -288,7 +288,7 @@ describe('SettingsSurface', () => {
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
     render(<SettingsSurface />);
     fireEvent.click(screen.getByRole('button', { name: /^Devices & Sync/i }));
-    expect(screen.getByText(/No trusted-device mutation RPC is available/i)).toBeTruthy();
+    expect(screen.getByText(/daemon exposes no Linux mutation contract/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Media & Sharing/i }));
     expect(screen.getByText(/No daemon settings RPC exists here/i)).toBeTruthy();
   });
