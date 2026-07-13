@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 /// Cross-platform provider theme backed by unified design tokens.
 public struct UnifiedProviderTheme {

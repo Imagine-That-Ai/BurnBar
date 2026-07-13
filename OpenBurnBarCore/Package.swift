@@ -433,15 +433,16 @@ let swiftCryptoNonAppleDependency: Target.Dependency = .product(
 // non-Apple hosts. Host-evaluated, so `os(Windows)` is true only on a Windows host.
 #if os(Linux) || os(Windows)
 let openBurnBarCoreExcludes = [
-    "Views",
-    // P-16c (S14 UI): the 11 Views/MissionControl/*.swift files moved to the
-    // Apple-only OpenBurnBarUI target (pulled forward as OpenBurnBarUI/Views/
-    // MissionControl/; they reference the Kernel's MissionConsole*/MissionGroupDocument
-    // types via `import OpenBurnBarKernel`). MissionControl was never a distinct exclude
-    // entry — it rode the wholesale "Views" exclude above, which STILL resolves
-    // (Views/ root + Views/Insights/Verdict/ + Views/Cards/Square remain in Core until
-    // the later P-16 sub-packets). OpenBurnBarUI is pruned WHOLE off-Apple, so no
-    // off-Apple Core file references the moved views; no exclude line changes here.
+    // P-16f (S14 UI, FINAL UI sub-packet): the last 15 Views/ root files moved to the
+    // Apple-only OpenBurnBarUI target, emptying Core's Views/ directory entirely. The
+    // wholesale "Views" exclude that P-16a–e rode is therefore DELETED — the directory no
+    // longer exists in the Core source tree, and a stale exclude on a non-existent path
+    // makes SwiftPM reject the off-Apple manifest. All of Views/ now lives in the
+    // OpenBurnBarUI target (Substrate P-16a, Insights root P-16b, MissionControl P-16c,
+    // Cards/Square P-16d, Swarm+Verdict P-16e, root P-16f), which is pruned WHOLE off-Apple
+    // (buildApplePrunedDecompositionTargets), so no off-Apple Core file references any view.
+    // K4 (the daemon's UI-free-Core payoff) is complete: OpenBurnBarCore's off-Apple source
+    // now carries ZERO SwiftUI/AppKit views.
     // P-15: CLITerminalSessionSupervisor.swift, BrowserLaunchAdapter.swift,
     // ChromeProfileDiscovery.swift, AppCheckDebugTokenEnvironment.swift, and
     // SwitcherBrowserLaunchService.swift moved to the Apple-only
@@ -589,7 +590,14 @@ let openBurnBarCoreTestExcludes = [
     "SwitcherCLIPostLaunchFallbackTests.swift",
     "SwarmLogoShapeTests.swift",
     "SwarmSubstrateContractTests.swift",
-    "SwarmSubstratePreviewRenderTests.swift"
+    "SwarmSubstratePreviewRenderTests.swift",
+    // P-16f (S14 UI): these two tests reach OpenBurnBarUI view types now that
+    // UnifiedQuotaSignalView / UnifiedToolCallAccordion moved Core→OpenBurnBarUI
+    // (UnifiedQuotaSignalCurrencyTests additionally @testable-imports the UI target for the
+    // internal fullRemainingText render helper). OpenBurnBarUI is pruned WHOLE off-Apple, so
+    // both are excluded off-Apple exactly like the Swarm/SmartHub/MissionConsole UI tests above.
+    "UnifiedQuotaSignalCurrencyTests.swift",
+    "UnifiedToolCallAccordionTests.swift"
 ]
 let computerUseCoreTestExcludes = [
     "ComputerUseOpenTimestampsClientTests.swift",

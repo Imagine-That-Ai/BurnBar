@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 public struct HolographicCrestAura: View {
     public enum Intensity: Sendable {

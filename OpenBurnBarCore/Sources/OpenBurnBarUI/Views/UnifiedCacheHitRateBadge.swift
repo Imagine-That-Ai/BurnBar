@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 // NOTE: CacheEfficiency lives in AgentLens/Models/AgentProvider.swift for the macOS target.
 // The OpenBurnBarCore version below is the canonical cross-platform definition.
