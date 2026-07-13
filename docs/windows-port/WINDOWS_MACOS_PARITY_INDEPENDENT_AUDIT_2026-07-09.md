@@ -173,8 +173,11 @@ unproven host behavior to certification:
   Windows presentation service and `code.references` companion operation. The
   user-facing API accepts one-based project lines, converts to zero-based LSP
   coordinates, confines files to the configured project root, and returns
-  relative reference paths. This advances parser depth without promoting the
-  still-unproven full static-language matrix to F2 completion.
+  relative reference paths. Tree-sitter symbol extraction now covers the
+  repository's primary C#, JavaScript, Rust, Swift, Python, TypeScript, and TSX
+  files. Java/Kotlin/Go grammar coverage and a live Windows LSP host remain
+  separate evidence gates, so this does not promote the full static-language
+  matrix to F2 completion.
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 97/97 managed-agent-runtime tests), CloudSync (60/60), connector
