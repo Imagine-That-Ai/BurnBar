@@ -6,9 +6,10 @@ using System.Text.Json.Nodes;
 namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 
 /// <summary>
-/// Narrow wire adapter for the Anthropic Messages API. It deliberately handles
-/// text-only, non-streaming requests until the full tool/SSE bridge is ported;
-/// unsupported shapes fail closed instead of being sent as OpenAI JSON.
+/// Wire adapter for the Anthropic Messages API. It handles bounded, non-streaming
+/// text and tool-call requests; streaming remains an explicit unsupported shape
+/// until the gateway has a true event-stream bridge. Unsupported shapes fail
+/// closed instead of being sent as OpenAI JSON.
 /// </summary>
 public static class AnthropicProviderAdapter
 {
@@ -43,25 +44,26 @@ public static class AnthropicProviderAdapter
             string role = (ReadString(message["role"], "anthropic_role_invalid") ?? "user")
                 .Trim()
                 .ToLowerInvariant();
-            string content = TextContent(message["content"]);
-            if (string.IsNullOrWhiteSpace(content))
+            if (role is "system" or "developer")
             {
+                string content = TextContent(message["content"]);
+                if (!string.IsNullOrWhiteSpace(content))
+                {
+                    systemParts.Add(content);
+                }
                 continue;
             }
 
-            if (role is "system" or "developer")
+            JsonArray contentBlocks = BuildMessageContent(message, role);
+            if (contentBlocks.Count == 0)
             {
-                systemParts.Add(content);
                 continue;
             }
 
             messages.Add(new JsonObject
             {
                 ["role"] = role == "assistant" ? "assistant" : "user",
-                ["content"] = new JsonArray
-                {
-                    new JsonObject { ["type"] = "text", ["text"] = content },
-                },
+                ["content"] = contentBlocks,
             });
         }
 
@@ -84,6 +86,9 @@ public static class AnthropicProviderAdapter
             target["system"] = string.Join("\n\n", systemParts);
         }
 
+        CopyTools(source, target);
+        CopyToolChoice(source, target);
+
         CopyIfPresent(source, target, "temperature");
         CopyIfPresent(source, target, "top_p");
         CopyIfPresent(source, target, "stop", "stop_sequences");
@@ -93,7 +98,7 @@ public static class AnthropicProviderAdapter
     public static byte[] ToOpenAiResponse(byte[] anthropicBody, string fallbackModel)
     {
         JsonObject source = ParseObject(anthropicBody, "anthropic_response_invalid_json");
-        string text = TextContent(source["content"]);
+        (string text, JsonArray? toolCalls) = ReadResponseContent(source["content"]);
         string model = ReadString(source["model"], "anthropic_model_invalid") ?? fallbackModel;
         string finishReason = ReadString(source["stop_reason"], "anthropic_stop_reason_invalid") switch
         {
@@ -105,6 +110,16 @@ public static class AnthropicProviderAdapter
         JsonObject? usage = source["usage"] as JsonObject;
         int promptTokens = ReadPositiveInt(usage, "input_tokens") ?? 0;
         int completionTokens = ReadPositiveInt(usage, "output_tokens") ?? 0;
+        var message = new JsonObject
+        {
+            ["role"] = "assistant",
+            ["content"] = string.IsNullOrEmpty(text) && toolCalls is not null ? null : text,
+        };
+        if (toolCalls is not null)
+        {
+            message["tool_calls"] = toolCalls;
+        }
+
         var response = new JsonObject
         {
             ["id"] = source["id"]?.GetValue<string>() ?? "anthropic-response",
@@ -116,11 +131,7 @@ public static class AnthropicProviderAdapter
                 new JsonObject
                 {
                     ["index"] = 0,
-                    ["message"] = new JsonObject
-                    {
-                        ["role"] = "assistant",
-                        ["content"] = text,
-                    },
+                    ["message"] = message,
                     ["finish_reason"] = finishReason,
                 },
             },
@@ -132,6 +143,215 @@ public static class AnthropicProviderAdapter
             },
         };
         return JsonSerializer.SerializeToUtf8Bytes(response);
+    }
+
+    private static JsonArray BuildMessageContent(JsonObject message, string role)
+    {
+        var blocks = new JsonArray();
+        string text = TextContent(message["content"]);
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            blocks.Add(new JsonObject
+            {
+                ["type"] = "text",
+                ["text"] = text,
+            });
+        }
+
+        if (role == "assistant")
+        {
+            AppendAssistantToolCalls(message, blocks);
+        }
+        else if (role == "tool")
+        {
+            string toolUseId = RequiredString(message["tool_call_id"], "anthropic_tool_call_id_required");
+            blocks.Add(new JsonObject
+            {
+                ["type"] = "tool_result",
+                ["tool_use_id"] = toolUseId,
+                ["content"] = text,
+            });
+        }
+
+        return blocks;
+    }
+
+    private static void AppendAssistantToolCalls(JsonObject message, JsonArray blocks)
+    {
+        if (message["tool_calls"] is not JsonArray calls)
+        {
+            return;
+        }
+
+        foreach (JsonNode? callNode in calls)
+        {
+            if (callNode is not JsonObject call)
+            {
+                throw new ProviderWireFormatException(400, "anthropic_tool_call_invalid");
+            }
+
+            string id = RequiredString(call["id"], "anthropic_tool_call_id_required");
+            string type = ReadString(call["type"], "anthropic_tool_call_type_invalid") ?? "function";
+            if (!string.Equals(type, "function", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ProviderWireFormatException(400, "anthropic_tool_call_type_invalid");
+            }
+
+            if (call["function"] is not JsonObject function)
+            {
+                throw new ProviderWireFormatException(400, "anthropic_tool_function_required");
+            }
+
+            string name = RequiredString(function["name"], "anthropic_tool_name_required");
+            string arguments = ReadString(function["arguments"], "anthropic_tool_arguments_invalid") ?? "{}";
+            JsonNode input = ParseToolArguments(arguments);
+            blocks.Add(new JsonObject
+            {
+                ["type"] = "tool_use",
+                ["id"] = id,
+                ["name"] = name,
+                ["input"] = input,
+            });
+        }
+    }
+
+    private static JsonNode ParseToolArguments(string arguments)
+    {
+        try
+        {
+            return JsonNode.Parse(arguments) ?? throw new ProviderWireFormatException(400, "anthropic_tool_arguments_invalid");
+        }
+        catch (JsonException exception)
+        {
+            throw new ProviderWireFormatException(400, "anthropic_tool_arguments_invalid", exception);
+        }
+    }
+
+    private static void CopyTools(JsonObject source, JsonObject target)
+    {
+        if (source["tools"] is not JsonArray sourceTools)
+        {
+            return;
+        }
+
+        var tools = new JsonArray();
+        foreach (JsonNode? node in sourceTools)
+        {
+            if (node is not JsonObject tool
+                || !string.Equals(ReadString(tool["type"], "anthropic_tool_type_invalid") ?? "function", "function", StringComparison.OrdinalIgnoreCase)
+                || tool["function"] is not JsonObject function)
+            {
+                throw new ProviderWireFormatException(400, "anthropic_tool_invalid");
+            }
+
+            string name = RequiredString(function["name"], "anthropic_tool_name_required");
+            var converted = new JsonObject
+            {
+                ["name"] = name,
+                ["input_schema"] = function["parameters"]?.DeepClone() ?? new JsonObject(),
+            };
+            string? description = ReadString(function["description"], "anthropic_tool_description_invalid");
+            if (!string.IsNullOrWhiteSpace(description))
+            {
+                converted["description"] = description;
+            }
+
+            tools.Add(converted);
+        }
+
+        target["tools"] = tools;
+    }
+
+    private static void CopyToolChoice(JsonObject source, JsonObject target)
+    {
+        JsonNode? choice = source["tool_choice"];
+        if (choice is null)
+        {
+            return;
+        }
+
+        if (choice is JsonValue value && value.TryGetValue<string>(out string? text))
+        {
+            target["tool_choice"] = text?.ToLowerInvariant() switch
+            {
+                "auto" => new JsonObject { ["type"] = "auto" },
+                "required" => new JsonObject { ["type"] = "any" },
+                "none" => null,
+                _ => throw new ProviderWireFormatException(400, "anthropic_tool_choice_invalid"),
+            };
+            return;
+        }
+
+        if (choice is not JsonObject selected
+            || !string.Equals(ReadString(selected["type"], "anthropic_tool_choice_invalid"), "function", StringComparison.OrdinalIgnoreCase)
+            || selected["function"] is not JsonObject function)
+        {
+            throw new ProviderWireFormatException(400, "anthropic_tool_choice_invalid");
+        }
+
+        target["tool_choice"] = new JsonObject
+        {
+            ["type"] = "tool",
+            ["name"] = RequiredString(function["name"], "anthropic_tool_name_required"),
+        };
+    }
+
+    private static (string Text, JsonArray? ToolCalls) ReadResponseContent(JsonNode? node)
+    {
+        if (node is not JsonArray blocks)
+        {
+            return (TextContent(node), null);
+        }
+
+        var texts = new List<string>();
+        JsonArray? toolCalls = null;
+        foreach (JsonNode? blockNode in blocks)
+        {
+            if (blockNode is not JsonObject block)
+            {
+                throw new ProviderWireFormatException(502, "anthropic_response_block_invalid");
+            }
+
+            string type = ReadString(block["type"], "anthropic_response_block_type_invalid") ?? string.Empty;
+            if (string.Equals(type, "text", StringComparison.OrdinalIgnoreCase))
+            {
+                string text = RequiredString(block["text"], "anthropic_response_text_invalid");
+                texts.Add(text);
+                continue;
+            }
+
+            if (string.Equals(type, "tool_use", StringComparison.OrdinalIgnoreCase))
+            {
+                string id = RequiredString(block["id"], "anthropic_response_tool_id_required");
+                string name = RequiredString(block["name"], "anthropic_response_tool_name_required");
+                JsonNode input = block["input"]?.DeepClone()
+                    ?? throw new ProviderWireFormatException(502, "anthropic_response_tool_input_required");
+                toolCalls ??= new JsonArray();
+                toolCalls.Add(new JsonObject
+                {
+                    ["id"] = id,
+                    ["type"] = "function",
+                    ["function"] = new JsonObject
+                    {
+                        ["name"] = name,
+                        ["arguments"] = input.ToJsonString(),
+                    },
+                });
+            }
+        }
+
+        return (string.Join("\n", texts), toolCalls);
+    }
+
+    private static string RequiredString(JsonNode? node, string error)
+    {
+        string? value = ReadString(node, error);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ProviderWireFormatException(400, error);
+        }
+
+        return value;
     }
 
     private static JsonObject ParseObject(byte[] body, string error)

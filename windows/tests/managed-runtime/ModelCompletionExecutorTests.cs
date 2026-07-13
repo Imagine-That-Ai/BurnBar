@@ -68,6 +68,60 @@ public sealed class ModelCompletionExecutorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_AdaptsAnthropicToolsAndNormalizesToolUseResponse()
+    {
+        var handler = new CapturingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"id\":\"msg_tool\",\"model\":\"claude-test\",\"content\":[{\"type\":\"text\",\"text\":\"I will look\"},{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"lookup\",\"input\":{\"q\":\"x\"}}],\"stop_reason\":\"tool_use\",\"usage\":{\"input_tokens\":5,\"output_tokens\":4}}"),
+        });
+        using var client = new HttpClient(handler);
+        var executor = new HttpModelCompletionExecutor(client);
+
+        ModelCompletionResult result = await executor.ExecuteAsync(
+            new ModelRoute(
+                "anthropic-route",
+                "anthropic",
+                "claude-test",
+                0,
+                true,
+                new Uri("https://api.anthropic.test/v1/messages"),
+                "sk-ant-test-token"),
+            Encoding.UTF8.GetBytes(
+                "{\"model\":\"claude-test\",\"messages\":[{\"role\":\"user\",\"content\":\"find x\"},{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"q\\\":\\\"x\\\"}\"}}]},{\"role\":\"tool\",\"tool_call_id\":\"call_1\",\"content\":\"result\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"description\":\"look up\",\"parameters\":{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}}}],\"tool_choice\":{\"type\":\"function\",\"function\":{\"name\":\"lookup\"}},\"max_tokens\":64}"),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        using JsonDocument response = JsonDocument.Parse(result.Body);
+        JsonElement message = response.RootElement.GetProperty("choices")[0].GetProperty("message");
+        Assert.Equal("I will look", message.GetProperty("content").GetString());
+        Assert.Equal("lookup", message.GetProperty("tool_calls")[0].GetProperty("function").GetProperty("name").GetString());
+        Assert.Equal("{\"q\":\"x\"}", message.GetProperty("tool_calls")[0].GetProperty("function").GetProperty("arguments").GetString());
+        Assert.Contains("tool_use", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("tool_result", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("input_schema", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"type\":\"tool\"", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RejectsMalformedAnthropicToolArgumentsBeforeTransport()
+    {
+        var handler = new CapturingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK));
+        using var client = new HttpClient(handler);
+        var executor = new HttpModelCompletionExecutor(client);
+
+        ModelCompletionResult result = await executor.ExecuteAsync(
+            new ModelRoute("anthropic-route", "anthropic", "claude-test", 0, true, new Uri("https://api.anthropic.test/v1/messages")),
+            Encoding.UTF8.GetBytes(
+                "{\"model\":\"claude-test\",\"messages\":[{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"not-json\"}}]}]}"),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Null(handler.RequestBody);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_RejectsUnsupportedAnthropicStreamingBeforeTransport()
     {
         var handler = new CapturingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK));
