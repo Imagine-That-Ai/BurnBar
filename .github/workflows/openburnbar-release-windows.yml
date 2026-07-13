@@ -274,13 +274,13 @@ jobs:
           "MakePri: $makepri"
 
       - name: Download x64 native engine bundle
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: openburnbar-native-engine-win-x64
           path: windows/native-engine/win-x64
 
       - name: Download ARM64 native engine bundle
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: openburnbar-native-engine-win-arm64
           path: windows/native-engine/win-arm64
@@ -583,7 +583,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download Windows release artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: windows-release-v${{ needs.resolve-release.outputs.version }}
           path: artifacts

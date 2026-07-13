@@ -52,7 +52,7 @@ jobs:
           node-version: 22
 
       - name: Download macOS nightly matched workload soak
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: linux-parity-macos-performance-nightly
           path: ${{ runner.temp }}/openburnbar-macos-performance
@@ -136,7 +136,7 @@ jobs:
 
       - name: Download nightly matched performance evidence
         if: matrix.mode == 'runnable'
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: linux-parity-matched-performance-nightly
           path: ${{ runner.temp }}/openburnbar-matched-performance
