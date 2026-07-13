@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 public enum CLITerminalSessionOutputSource: String, Equatable, Sendable {
     case stdout

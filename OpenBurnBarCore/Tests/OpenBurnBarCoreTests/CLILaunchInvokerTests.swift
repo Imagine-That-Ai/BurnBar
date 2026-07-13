@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarLaunchServices
 
 final class CLILaunchInvokerTests: XCTestCase {
     override func tearDown() {
