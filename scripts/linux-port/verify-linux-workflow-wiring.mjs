@@ -149,6 +149,33 @@ export function verifyLinuxWorkflowWiring(input) {
       if (body.includes(forbidden)) failures.push(`P-39 macOS oracle workflow permits failure: ${forbidden}`);
     }
   };
+  const requireP40CaptureContract = (body) => {
+    const stepName = 'Capture P-40 data privacy proof';
+    const start = body.indexOf(`- name: ${stepName}`);
+    const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
+    const block = start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
+    if (!block) {
+      failures.push(`product parity evidence workflow is missing executable step: ${stepName}`);
+      return;
+    }
+    const activeLines = block.split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
+    for (const line of [
+      "if: inputs.requirement == 'P-40'",
+      'set -euo pipefail',
+      'node scripts/linux-port/capture-p40-data-privacy.mjs',
+      '--candidate-run-id "$CANDIDATE_RUN_ID"',
+      '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+    ]) {
+      if (!activeLines.includes(line) && !activeLines.includes(`${line} \\`)) {
+        failures.push(`product parity evidence workflow ${stepName} is missing: ${line}`);
+      }
+    }
+    for (const forbidden of ['continue-on-error: true', 'set +e', '|| true', '; true']) {
+      if (activeLines.some((line) => line.includes(forbidden))) {
+        failures.push(`product parity evidence workflow ${stepName} permits failure: ${forbidden}`);
+      }
+    }
+  };
 
   requireText(input.release, '- "linux-v*"', 'release tag trigger');
   if (input.release.includes('- "v*"')) failures.push('legacy v* tag trigger is forbidden in the Linux release workflow.');
@@ -318,6 +345,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'p39-differential-proof.test.mjs',
     'capture-p39-macos-oracle.test.mjs',
     'resolve-p39-macos-oracle-run.test.mjs',
+    'p40-data-privacy-proof.test.mjs',
     'parity-certification-preflight.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs',
@@ -349,8 +377,10 @@ export function verifyLinuxWorkflowWiring(input) {
     'Capture P-38 release automation verification',
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
+    'capture-p40-data-privacy.mjs',
     "if: inputs.requirement == 'P-02'",
     "if: inputs.requirement == 'P-34'",
+    "if: inputs.requirement == 'P-40'",
     'Preserve non-promotable P-02 diagnostic evidence',
     "if: always() && inputs.requirement == 'P-02'",
     'linux-product-parity-diagnostic-',
@@ -368,6 +398,7 @@ export function verifyLinuxWorkflowWiring(input) {
     '--session-report "$session_report"',
     'p31-live-session.json',
     'P-34 credential security proof',
+    'P-40 data privacy proof',
     'capture-p39-differential.mjs',
     "if: inputs.requirement == 'P-39'",
     'Capture P-39 cross-platform differential proof',
@@ -385,6 +416,7 @@ export function verifyLinuxWorkflowWiring(input) {
   requireP38CaptureContract(input.productParityWorkflow);
   requireP39CaptureContract(input.productParityWorkflow);
   requireP39OracleWorkflowContract(input.macosP39OracleWorkflow);
+  requireP40CaptureContract(input.productParityWorkflow);
   if (/--run-id\s+['"]?\$\{\{\s*inputs\.candidate_run_id/u.test(input.productParityWorkflow)) {
     failures.push('product parity workflow may not interpolate candidate_run_id directly into shell.');
   }
@@ -398,6 +430,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'Capture P-31 installed accessibility matrix evidence',
     'Capture P-34 credential security proof',
     'Capture P-39 cross-platform differential proof',
+    'Capture P-40 data privacy proof',
     'Finalize registered feature proof closure',
     'Materialize the requirement-owned release closure',
     'Run the registered requirement validator'

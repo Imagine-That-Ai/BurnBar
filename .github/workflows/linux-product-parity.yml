@@ -266,6 +266,25 @@ jobs:
             --candidate-run-id "$CANDIDATE_RUN_ID" \
             --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
 
+      - name: Capture P-40 data privacy proof
+        if: inputs.requirement == 'P-40'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          node scripts/linux-port/capture-p40-data-privacy.mjs \
+            --input-root "$input_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
       - name: Finalize registered feature proof closure
         shell: bash
         env:
