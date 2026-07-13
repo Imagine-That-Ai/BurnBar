@@ -1,0 +1,105 @@
+# Maintainer: OpenBurnBar Release Engineering <release@openburnbar.dev>
+pkgname=openburnbar
+pkgver=REPLACE_WITH_RELEASE_VERSION
+pkgrel=1
+pkgdesc="Local-first AI agent cost and control dashboard"
+arch=("x86_64" "aarch64")
+url="https://github.com/Imagine-That-Ai/BurnBar"
+license=("AGPL-3.0-only")
+depends=("webkit2gtk-4.1" "gtk3" "libayatana-appindicator" "libsecret" "nodejs" "npm" "polkit")
+optdepends=("kwallet: KDE Wallet credential backend")
+
+source=(
+  "openburnbar.desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar.desktop"
+  "openburnbar-safe-mode.desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-safe-mode.desktop"
+  "openburnbar-daemon.service::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-daemon.service"
+  "openburnbar-daemon-launch::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-daemon-launch"
+  "openburnbar-linux-desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-linux-desktop"
+  "openburnbar-icon.png::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/apps/linux-desktop/src-tauri/icons/icon.png"
+  "com.openburnbar.computer-use.policy::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/com.openburnbar.computer-use.policy"
+  "openburnbar-playwright-bridge.js::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js"
+  "openburnbar-browser-runtime-probe::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/openburnbar-browser-runtime-probe"
+  "browser-runtime-requirements.json::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/browser-runtime-requirements.json"
+  "release-ed25519.pub.pem::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/openburnbar-linux-ed25519.pub.pem"
+)
+sha256sums=(
+  "REPLACE_WITH_DESKTOP_SHA256"
+  "REPLACE_WITH_SAFE_MODE_DESKTOP_SHA256"
+  "REPLACE_WITH_SERVICE_SHA256"
+  "REPLACE_WITH_LAUNCH_SHA256"
+  "REPLACE_WITH_DESKTOP_LAUNCHER_SHA256"
+  "REPLACE_WITH_ICON_SHA256"
+  "REPLACE_WITH_COMPUTER_USE_POLKIT_POLICY_SHA256"
+  "REPLACE_WITH_PLAYWRIGHT_BRIDGE_SHA256"
+  "REPLACE_WITH_BROWSER_RUNTIME_PROBE_SHA256"
+  "REPLACE_WITH_BROWSER_RUNTIME_REQUIREMENTS_SHA256"
+  "REPLACE_WITH_RELEASE_PUBLIC_KEY_SHA256"
+)
+
+source_x86_64=(
+  "OpenBurnBar_${pkgver}_amd64.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/OpenBurnBar_${pkgver}_amd64.AppImage"
+  "openburnbar-daemon-${pkgver}-x86_64::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-daemon-${pkgver}-linux-x86_64"
+  "installed-manifest.json::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-${pkgver}-x86_64.installed-manifest.json"
+  "installed-manifest.ed25519::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-${pkgver}-x86_64.installed-manifest.ed25519"
+)
+sha256sums_x86_64=(
+  "REPLACE_WITH_APPIMAGE_X86_64_SHA256"
+  "REPLACE_WITH_DAEMON_X86_64_SHA256"
+  "REPLACE_WITH_INSTALLED_MANIFEST_X86_64_SHA256"
+  "REPLACE_WITH_INSTALLED_MANIFEST_SIGNATURE_X86_64_SHA256"
+)
+
+source_aarch64=(
+  "OpenBurnBar_${pkgver}_aarch64.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/OpenBurnBar_${pkgver}_aarch64.AppImage"
+  "openburnbar-daemon-${pkgver}-aarch64::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-daemon-${pkgver}-linux-aarch64"
+  "installed-manifest.json::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-${pkgver}-aarch64.installed-manifest.json"
+  "installed-manifest.ed25519::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-${pkgver}-aarch64.installed-manifest.ed25519"
+)
+sha256sums_aarch64=(
+  "REPLACE_WITH_APPIMAGE_AARCH64_SHA256"
+  "REPLACE_WITH_DAEMON_AARCH64_SHA256"
+  "REPLACE_WITH_INSTALLED_MANIFEST_AARCH64_SHA256"
+  "REPLACE_WITH_INSTALLED_MANIFEST_SIGNATURE_AARCH64_SHA256"
+)
+
+package() {
+  local appimage_arch="${CARCH}"
+  if [[ "${CARCH}" == "x86_64" ]]; then appimage_arch="amd64"; fi
+  local appimage="${srcdir}/OpenBurnBar_${pkgver}_${appimage_arch}.AppImage"
+
+  chmod 755 "${appimage}"
+  rm -rf "${srcdir}/squashfs-root"
+  (
+    cd "${srcdir}"
+    "${appimage}" --appimage-extract >/dev/null
+  )
+  for required in \
+    AppRun \
+    usr/lib/openburnbar/native/libopenburnbar_iroh.so \
+    usr/lib/openburnbar/native/libsqlcipher.so.0 \
+    usr/lib/openburnbar/swift; do
+    test -e "${srcdir}/squashfs-root/${required}"
+  done
+
+  test -x "${srcdir}/squashfs-root/AppRun"
+  install -d "${pkgdir}/usr/lib/openburnbar/appdir"
+  cp -a "${srcdir}/squashfs-root/." "${pkgdir}/usr/lib/openburnbar/appdir/"
+  install -Dm755 "${srcdir}/openburnbar-linux-desktop" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
+  install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
+  install -d "${pkgdir}/usr/lib/openburnbar"
+  cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/native" "${pkgdir}/usr/lib/openburnbar/"
+  cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/swift" "${pkgdir}/usr/lib/openburnbar/"
+  install -Dm755 "${srcdir}/openburnbar-daemon-launch" "${pkgdir}/usr/libexec/openburnbar-daemon-launch"
+  install -Dm644 "${srcdir}/openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
+  install -Dm644 "${srcdir}/openburnbar-safe-mode.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop"
+  install -Dm644 "${srcdir}/openburnbar-icon.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/dev.openburnbar.OpenBurnBar.png"
+  install -Dm644 "${srcdir}/openburnbar-daemon.service" "${pkgdir}/usr/lib/systemd/user/openburnbar-daemon.service"
+  install -Dm644 "${srcdir}/com.openburnbar.computer-use.policy" "${pkgdir}/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy"
+  install -Dm644 "${srcdir}/openburnbar-playwright-bridge.js" "${pkgdir}/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js"
+  install -Dm755 "${srcdir}/openburnbar-browser-runtime-probe" "${pkgdir}/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe"
+  install -Dm644 "${srcdir}/browser-runtime-requirements.json" "${pkgdir}/usr/lib/openburnbar/playwright/browser-runtime-requirements.json"
+  install -Dm644 "${srcdir}/installed-manifest.json" "${pkgdir}/usr/share/openburnbar/attestation/installed-manifest.json"
+  install -Dm644 "${srcdir}/installed-manifest.ed25519" "${pkgdir}/usr/share/openburnbar/attestation/installed-manifest.json.sig"
+  install -Dm644 "${srcdir}/release-ed25519.pub.pem" "${pkgdir}/usr/share/openburnbar/attestation/release-ed25519.pub.pem"
+  rm -rf "${srcdir}/squashfs-root"
+}

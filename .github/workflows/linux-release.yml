@@ -98,8 +98,10 @@ jobs:
         include:
           - architecture: aarch64
             runner: ubuntu-24.04-arm
+            arch_base_image: menci/archlinuxarm@sha256:b5568ae763e3a3315de5a08eda6228be9213da28f5869fc45b983f0add962413
           - architecture: x86_64
             runner: ubuntu-24.04
+            arch_base_image: archlinux@sha256:377f594c95c2c4f245e7285ec7f0bc7cd5a36003bd8b869c932b9b0ff2d761a5
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 75
     env:
@@ -127,6 +129,13 @@ jobs:
       - name: Build mission Linux toolchain image
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
 
+      - name: Build architecture-pinned Arch package image
+        run: >
+          docker build
+          --build-arg 'BASE_IMAGE=${{ matrix.arch_base_image }}'
+          -t openburnbar-arch-package:mission-001
+          tools/linux-arch-package
+
       - name: Prepare unsigned native architecture artifacts
         run: >
           docker run --rm
@@ -142,6 +151,29 @@ jobs:
           --architecture-shard
           --phase prepare
           --version '${{ needs.resolve-release.outputs.version }}'"
+
+      - name: Prepare unsigned Arch installed-manifest request
+        run: |
+          set -euo pipefail
+          container="openburnbar-arch-prepare-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
+          cleanup() {
+            if [[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)" == "true" ]]; then
+              docker stop --time 10 "$container" >/dev/null
+            fi
+            docker rm "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker create --name "$container" \
+            -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID \
+            -v "$PWD:/workspace" -w /workspace \
+            openburnbar-arch-package:mission-001 \
+            node scripts/linux-port/build-signed-arch-package.mjs \
+              --phase prepare \
+              --version '${{ needs.resolve-release.outputs.version }}' \
+              --git-commit "$GITHUB_SHA" \
+              --architecture '${{ matrix.architecture }}' \
+              --state-dir /workspace/.linux-shard/signing-state
+          docker start --attach "$container"
 
       - name: Materialize exact-commit isolated signer
         env:
@@ -179,6 +211,29 @@ jobs:
           --git-commit "$GITHUB_SHA"
           --architecture '${{ matrix.architecture }}'
 
+      - name: Finalize signed Arch package with makepkg
+        run: |
+          set -euo pipefail
+          container="openburnbar-arch-finalize-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
+          cleanup() {
+            if [[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)" == "true" ]]; then
+              docker stop --time 10 "$container" >/dev/null
+            fi
+            docker rm "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker create --name "$container" \
+            -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID \
+            -v "$PWD:/workspace" -w /workspace \
+            openburnbar-arch-package:mission-001 \
+            node scripts/linux-port/build-signed-arch-package.mjs \
+              --phase finalize \
+              --version '${{ needs.resolve-release.outputs.version }}' \
+              --git-commit "$GITHUB_SHA" \
+              --architecture '${{ matrix.architecture }}' \
+              --state-dir /workspace/.linux-shard/signing-state
+          docker start --attach "$container"
+
       - name: Finalize and verify signed native architecture artifacts
         run: >
           docker run --rm
@@ -205,6 +260,24 @@ jobs:
           bash -c "git config --global --add safe.directory /workspace &&
           node scripts/linux-port/smoke-linux-packages.mjs --architecture-shard"
 
+      - name: Arch pacman install ownership and uninstall smoke
+        run: |
+          set -euo pipefail
+          container="openburnbar-arch-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
+          cleanup() {
+            if [[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)" == "true" ]]; then
+              docker stop --time 10 "$container" >/dev/null
+            fi
+            docker rm "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker create --name "$container" \
+            -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+            -v "$PWD:/workspace" -w /workspace \
+            openburnbar-arch-package:mission-001 \
+            node scripts/linux-port/smoke-arch-package.mjs
+          docker start --attach "$container"
+
       - name: Take ownership of shard output
         run: sudo chown -R "$(id -u):$(id -g)" "$OPENBURNBAR_LINUX_RELEASE_OUT"
 
@@ -214,7 +287,10 @@ jobs:
           PREVIOUS_VERSION: ${{ needs.resolve-release.outputs.previous_version }}
         run: |
           set -euo pipefail
-          mkdir -p "$OPENBURNBAR_LINUX_RELEASE_OUT/session" "$OPENBURNBAR_LINUX_RELEASE_OUT/previous"
+          mkdir -p "$OPENBURNBAR_LINUX_RELEASE_OUT/session" \
+            "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/deb" \
+            "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch" \
+            "$OPENBURNBAR_LINUX_RELEASE_OUT/arch-lifecycle"
           mapfile -t candidates < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT/artifacts" -maxdepth 1 -name '*.deb' -type f)
           test "${#candidates[@]}" -eq 1
           cp "${candidates[0]}" "$OPENBURNBAR_LINUX_RELEASE_OUT/session/"
@@ -225,8 +301,74 @@ jobs:
             esac
             gh release download "linux-v${PREVIOUS_VERSION}" \
               --pattern "$pattern" \
-              --dir "$OPENBURNBAR_LINUX_RELEASE_OUT/previous"
+              --dir "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/deb"
+            arch_pattern="openburnbar-${PREVIOUS_VERSION}-*-${{ matrix.architecture }}.pkg.tar.zst"
+            arch_signature_pattern="${arch_pattern}.ed25519.sig"
+            arch_manifest_pattern="openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.json"
+            arch_manifest_signature_pattern="openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.ed25519"
+            if ! gh release download "linux-v${PREVIOUS_VERSION}" \
+              --pattern "$arch_pattern" \
+              --pattern "$arch_signature_pattern" \
+              --pattern "$arch_manifest_pattern" \
+              --pattern "$arch_manifest_signature_pattern" \
+              --pattern 'product-proof-closure.json' \
+              --pattern 'product-proof-closure.json.ed25519.sig' \
+              --dir "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch"; then
+              echo "No previous Arch package matched ${arch_pattern}; the pacman lifecycle will remain blocked."
+            fi
+            mapfile -t downloaded_arch_packages < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch" -maxdepth 1 -name "$arch_pattern" -type f)
+            if [[ "${#downloaded_arch_packages[@]}" -eq 1 ]]; then
+              test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/${arch_manifest_pattern}"
+              test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/${arch_manifest_signature_pattern}"
+              test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/product-proof-closure.json"
+              test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/product-proof-closure.json.ed25519.sig"
+              test -f "${downloaded_arch_packages[0]}.ed25519.sig"
+            fi
           fi
+
+      - name: Verify Arch package update, rollback, and data preservation
+        env:
+          PREVIOUS_VERSION: ${{ needs.resolve-release.outputs.previous_version }}
+        run: |
+          set -euo pipefail
+          mapfile -t candidates < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT/artifacts" -maxdepth 1 -name '*.pkg.tar.zst' -type f)
+          mapfile -t previous < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch" -maxdepth 1 -name '*.pkg.tar.zst' -type f)
+          test "${#candidates[@]}" -eq 1
+          test "${#previous[@]}" -le 1
+          candidate_relative="${candidates[0]#"$PWD"/}"
+          release_output_relative="${OPENBURNBAR_LINUX_RELEASE_OUT#"$PWD"/}"
+          command=(node scripts/linux-port/verify-arch-package-update-rollback.mjs \
+            --candidate "/workspace/$candidate_relative" \
+            --release-public-key /workspace/packaging/linux/openburnbar-linux-ed25519.pub.pem)
+          if [[ "${#previous[@]}" -eq 1 ]]; then
+            previous_package="${previous[0]}"
+            previous_relative="${previous_package#"$PWD"/}"
+            command+=(
+              --previous "/workspace/$previous_relative"
+              --previous-signature "/workspace/$previous_relative.ed25519.sig"
+              --previous-installed-manifest "/workspace/$release_output_relative/previous/arch/openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.json"
+              --previous-installed-manifest-signature "/workspace/$release_output_relative/previous/arch/openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.ed25519"
+              --previous-product-proof "/workspace/$release_output_relative/previous/arch/product-proof-closure.json"
+              --previous-product-proof-signature "/workspace/$release_output_relative/previous/arch/product-proof-closure.json.ed25519.sig"
+              --previous-release-tag "linux-v${PREVIOUS_VERSION}"
+            )
+          fi
+          container="openburnbar-arch-lifecycle-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
+          cleanup() {
+            if [[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)" == "true" ]]; then
+              docker stop --time 10 "$container" >/dev/null
+            fi
+            docker rm "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker create --name "$container" \
+            -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+            --mount "type=bind,source=$PWD,target=/workspace,readonly" \
+            --mount "type=bind,source=$PWD/.linux-shard/arch-lifecycle,target=/workspace/.linux-shard/arch-lifecycle" \
+            -w /workspace \
+            openburnbar-arch-package:mission-001 \
+            "${command[@]}"
+          docker start --attach "$container"
 
       - name: Run package-owned desktop, daemon, accessibility, tray, and route session
         run: >
@@ -234,7 +376,8 @@ jobs:
           -e OB_REPO_ROOT=/workspace
           -e OB_EVIDENCE_OUT=/workspace/.linux-shard/session
           -e OB_REUSE_EXISTING_DEB=1
-          -v "$PWD:/workspace"
+          --mount "type=bind,source=$PWD,target=/workspace,readonly"
+          --mount "type=bind,source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
           bash scripts/linux-port/linux-desktop-session.sh
@@ -244,11 +387,12 @@ jobs:
           docker run --rm
           -e OB_REPO_ROOT=/workspace
           -e OB_EVIDENCE_OUT=/workspace/.linux-shard/session
-          -v "$PWD:/workspace"
+          --mount "type=bind,source=$PWD,target=/workspace,readonly"
+          --mount "type=bind,source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
           bash -c "OB_CANDIDATE_DEB=\$(find /workspace/.linux-shard/session -maxdepth 1 -name '*.deb' -type f | head -n 1)
-          OB_PREVIOUS_DEB=\$(find /workspace/.linux-shard/previous -maxdepth 1 -name '*.deb' -type f | head -n 1)
+          OB_PREVIOUS_DEB=\$(find /workspace/.linux-shard/previous/deb -maxdepth 1 -name '*.deb' -type f | head -n 1)
           bash scripts/linux-port/verify-linux-package-update-rollback.sh"
 
       - name: Finalize commit-bound architecture session
@@ -260,10 +404,11 @@ jobs:
         run: git diff --exit-code -- OpenBurnBarCore/Package.resolved OpenBurnBarDaemon/Package.resolved
 
       - name: Upload architecture shard
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: linux-release-shard-${{ matrix.architecture }}
           path: ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/
+          include-hidden-files: true
           if-no-files-found: error
 
   assemble-release:
@@ -318,7 +463,7 @@ jobs:
       - name: Attest Linux release sidecars and packages
         run: |
           set -euo pipefail
-          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*provenance-predicate.json' -o -name 'latest-linux.draft.json' \) | sort)
+          mapfile -d '' -t files < <(node scripts/linux-port/list-linux-release-attestation-subjects.mjs)
           test "${#files[@]}" -gt 0
           for file in "${files[@]}"; do
             predicate="${file}.predicate.json"
@@ -346,9 +491,17 @@ jobs:
           TARGET_HEAD: ${{ github.sha }}
         run: node scripts/linux-port/finalize-product-proof-closure.mjs --target-head "$TARGET_HEAD"
 
+      - name: Sign installed-product proof closure
+        env:
+          OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
+        run: |
+          node scripts/linux-port/sign-product-proof-closure.mjs \
+            --closure "$OPENBURNBAR_LINUX_RELEASE_OUT/product-proof-closure.json" \
+            --signature "$OPENBURNBAR_LINUX_RELEASE_OUT/product-proof-closure.json.ed25519.sig"
+
       - name: Upload Linux release evidence
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: linux-release-evidence
           path: |

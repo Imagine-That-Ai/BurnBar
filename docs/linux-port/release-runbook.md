@@ -36,10 +36,11 @@ and captures capability JSON directly from the installed desktop binary before
 and after requirement execution. It repeats installation/session checks before
 emitting a receipt; package identity must remain stable, while both valid runtime
 states are retained. After final release verification,
-`finalize-product-proof-closure.mjs` requires the four deb/rpm architecture
-rows, exact signed installed manifests, package and feed signatures, Sigstore
+`finalize-product-proof-closure.mjs` requires the six deb/rpm/Arch native
+architecture rows, exact signed installed manifests, package and feed signatures, Sigstore
 bundles, supply-chain sidecars, and lifecycle proof before it emits
-`product-proof-closure.json`. Native shards attach those signed records and the
+`product-proof-closure.json`; the isolated signer immediately emits the detached
+`product-proof-closure.json.ed25519.sig` sidecar. Native shards attach those signed records and the
 aggregate assembler validates confinement, exact bytes, package identity, and
 commit/version/architecture binding before preserving them.
 The product workflow materializes a requirement-owned closure from that
@@ -66,9 +67,18 @@ Required package artifacts:
 - AppImage primary artifact.
 - Debian package.
 - RPM package.
-- AUR metadata in [`../../packaging/linux/aur/PKGBUILD`](../../packaging/linux/aur/PKGBUILD).
+- Arch packages for `x86_64` and `aarch64`, plus a checksum-complete `PKGBUILD`,
+  `arch-release-metadata.json`, and architecture-specific installed-manifest
+  sidecars rendered from
+  [`../../packaging/linux/aur/PKGBUILD.in`](../../packaging/linux/aur/PKGBUILD.in).
+  These assets are published with the `linux-vX.Y.Z` GitHub release. AUR
+  repository publication is a separate credentialed operator action and is
+  recorded as unpublished until that action occurs.
 - Flatpak tail metadata in
   [`../../packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml`](../../packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml).
+- The aggregate `product-proof-closure.json` and detached
+  `product-proof-closure.json.ed25519.sig`; Arch update/rollback evidence must
+  authenticate both before accepting a previous-release baseline.
 - Desktop entry, autostart entry, and systemd user service under
   [`../../packaging/linux/`](../../packaging/linux/).
 - Daemon launch script
@@ -141,6 +151,22 @@ docker run --rm \
 docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
   -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
   node scripts/linux-port/smoke-linux-packages.mjs --architecture-shard
+
+# Arch package lifecycle (the isolated signer must run between these phases).
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/build-signed-arch-package.mjs \
+    --phase prepare --version "$VERSION" --git-commit "$COMMIT" \
+    --architecture "$ARCH" --state-dir /workspace/.linux-shard/signing-state
+# Run sign-linux-release-requests.mjs against signing-state, then:
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/build-signed-arch-package.mjs \
+    --phase finalize --version "$VERSION" --git-commit "$COMMIT" \
+    --architecture "$ARCH" --state-dir /workspace/.linux-shard/signing-state
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/smoke-arch-package.mjs
 ```
 
 Run prepare and finalize in the pinned Linux toolchain container as root; native
@@ -148,13 +174,13 @@ archive inventory intentionally rejects non-root extraction because it cannot
 prove the package's installed uid/gid contract. Release CI is the canonical
 invocation. It runs the prepare container without the private key, exits it,
 materializes the signer from the exact release commit, and gives a separate
-networkless, read-only, capability-free signer container only the three
+networkless, read-only, capability-free signer container only the four
 canonical request files. Final Tauri bundling and package verification then run
 without the key. The key never enters npm, Tauri, an archive extractor, or the
 mutable build container.
 
-The prepare phase compiles the Tauri executable and creates exact deb, rpm, and
-AppImage signing requests. The isolated signer binds explicit version, commit,
+The prepare phase compiles the Tauri executable and creates exact deb, rpm, Arch,
+and AppImage signing requests. The isolated signer binds explicit version, commit,
 and architecture inputs. Finalize rebuilds each native format with its detached
 attestation, preflights archive member paths, extracts with libarchive's secure
 path handling, and re-verifies exact bytes, Ed25519 signatures, authorized daemon
@@ -183,17 +209,25 @@ native smoke result.
 
 Architecture-shard smoke must inspect and install each native package, execute
 the package-owned daemon launcher against the embedded Swift/SQLCipher runtime,
-run the AppImage version path, and uninstall cleanly. Candidate certification
-must additionally prove the painted GUI, long-running daemon health, and
-update/rollback lifecycle.
+run the package-owned desktop path, and uninstall cleanly. The Arch package
+installs the extracted AppDir under `/usr/lib/openburnbar/appdir`, a fixed
+`/usr/bin/openburnbar-linux-desktop` launcher, and the canonical hicolor icon;
+it does not require FUSE or retain the AppImage as its installed executable.
+Candidate certification must additionally prove the painted GUI, long-running
+daemon health, and both deb and pacman update/rollback lifecycles.
 
 ```bash
 node scripts/linux-port/smoke-linux-packages.mjs
 ```
 
-The current first-release update path is blocked until a previous stable or
-prerelease Linux artifact exists. The smoke script records that blocker instead
-of inventing update success.
+The current first-release update path is blocked until previous same-architecture
+deb and Arch artifacts exist. When an Arch baseline is present, the pacman proof
+authenticates its detached package signature, signed installed manifest, and prior
+product-proof closure before installing the previous package; it then installs the previous package,
+updates to the exact candidate closure artifact, rolls back, restores the
+candidate, and verifies package-manager identity plus persisted-data hashes at
+every transition. Missing prior artifacts remain explicit blockers instead of
+inventing update success.
 
 ### In-app update availability
 
@@ -236,6 +270,13 @@ Sigstore/cosign bundles with
 `id-token: write`. The workflow runs only from a pre-existing
 `linux-v<version>` tag and uses this identity:
 
+The attestation input is the fail-closed set emitted by
+`scripts/linux-port/list-linux-release-attestation-subjects.mjs`, not a filename
+glob. It covers the exact ten-artifact matrix, all six native installed-manifest
+pairs, and the eight required release sidecars. Finalization requires a bundle
+for every subject and re-renders the Arch `PKGBUILD` from the canonical template
+to cross-check its source hashes, release metadata, tag, version, and commit.
+
 ```text
 https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v<version>
 ```
@@ -275,7 +316,7 @@ This must exit 0 before `website/public/downloads/latest-linux.json` or any
 public website/download metadata is added. The verifier checks:
 
 - required artifacts and package metadata exist;
-- each deb/rpm embeds the same signed installed manifest recorded by its native
+- each deb/rpm/Arch package embeds the same signed installed manifest recorded by its native
   architecture shard;
 - checksums match artifact bytes;
 - SBOM, VEX, provenance predicate, and exact-commit source archive exist;

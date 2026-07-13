@@ -4,7 +4,7 @@
   "appId": "dev.openburnbar.OpenBurnBar",
   "linuxDesktopPackage": "apps/linux-desktop",
   "primaryArtifact": "appimage",
-  "requiredArtifacts": ["appimage", "deb", "rpm", "daemon"],
+  "requiredArtifacts": ["appimage", "arch", "deb", "rpm", "daemon"],
   "supportedArchitectures": ["aarch64", "x86_64"],
   "releaseTagPrefix": "linux-v",
   "signing": {
@@ -14,7 +14,7 @@
     "cosignIdentityTemplate": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v{version}"
   },
   "tailMetadata": {
-    "aur": "packaging/linux/aur/PKGBUILD",
+    "archPackageTemplate": "packaging/linux/aur/PKGBUILD.in",
     "flatpak": "packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml",
     "desktopEntry": "packaging/linux/openburnbar.desktop",
     "safeModeDesktopEntry": "packaging/linux/openburnbar-safe-mode.desktop",

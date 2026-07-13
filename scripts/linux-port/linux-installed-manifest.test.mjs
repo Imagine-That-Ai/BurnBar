@@ -73,6 +73,21 @@ test('signed installed manifest binds exact inventory and authorized daemon', (t
   assert.equal(verified.authorizedClients[0].sha256, value.manifest.files.find((row) => row.path.endsWith('daemon')).sha256);
 });
 
+test('Arch installed manifests bind the pacman package identity', (t) => {
+  const value = fixture();
+  t.after(() => fs.rmSync(value.root, { recursive: true, force: true }));
+  const manifest = createInstalledManifest({
+    files: value.manifest.files,
+    packageVersion: '1.2.3',
+    gitCommit: 'a'.repeat(40),
+    packageArchitecture: 'x86_64',
+    packageFormat: 'arch',
+    firebaseAppId: '1:123456789012:web:abcdef1234567890'
+  });
+  assert.equal(manifest.packageFormat, 'arch');
+  assert.equal(manifest.packageName, 'openburnbar');
+});
+
 test('inventory generation is byte-deterministic and excludes only manifest self-subjects', (t) => {
   const value = fixture();
   t.after(() => fs.rmSync(value.root, { recursive: true, force: true }));

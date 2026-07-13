@@ -197,7 +197,7 @@ export function createInstalledManifest({
   if (!VERSION.test(packageVersion ?? '')) throw new Error('installed manifest requires strict X.Y.Z packageVersion');
   if (!/^[a-f0-9]{40}$/u.test(gitCommit ?? '')) throw new Error('installed manifest requires a 40-character gitCommit');
   if (!['aarch64', 'x86_64'].includes(packageArchitecture)) throw new Error('installed manifest has unsupported architecture');
-  if (!['deb', 'rpm'].includes(packageFormat)) throw new Error('installed manifest has unsupported package format');
+  if (!['arch', 'deb', 'rpm'].includes(packageFormat)) throw new Error('installed manifest has unsupported package format');
   if (!FIREBASE_APP_ID.test(firebaseAppId ?? '')) throw new Error('installed manifest requires a valid Linux Firebase app id');
   if (!Array.isArray(files) || files.length === 0) throw new Error('installed manifest requires a non-empty file inventory');
   const daemon = files.find((file) => file.path === '/usr/bin/openburnbar-daemon' && file.type === 'file');
@@ -215,7 +215,7 @@ export function createInstalledManifest({
     gitCommit,
     packageArchitecture,
     packageFormat,
-    packageName: 'open-burn-bar',
+    packageName: packageFormat === 'arch' ? 'openburnbar' : 'open-burn-bar',
     policyId: 'openburnbar-linux-signed-package-inventory-v1',
     brokerProtocolVersion: 2,
     installedFilesRootSha256: installedFilesRoot(files),
@@ -241,16 +241,19 @@ export function assertInstalledManifest(manifest) {
   }
   if (manifest.schemaVersion !== 1 || manifest.product !== 'OpenBurnBar'
       || manifest.appId !== 'dev.openburnbar.OpenBurnBar'
-      || manifest.packageName !== 'open-burn-bar'
       || manifest.policyId !== 'openburnbar-linux-signed-package-inventory-v1'
       || manifest.brokerProtocolVersion !== 2) {
     throw new Error('installed manifest constants do not match the release contract');
   }
   if (!VERSION.test(manifest.packageVersion ?? '') || !/^[a-f0-9]{40}$/u.test(manifest.gitCommit ?? '')
       || !['aarch64', 'x86_64'].includes(manifest.packageArchitecture)
-      || !['deb', 'rpm'].includes(manifest.packageFormat)
+      || !['arch', 'deb', 'rpm'].includes(manifest.packageFormat)
       || !FIREBASE_APP_ID.test(manifest.firebaseAppId ?? '')) {
     throw new Error('installed manifest identity is invalid');
+  }
+  const expectedPackageName = manifest.packageFormat === 'arch' ? 'openburnbar' : 'open-burn-bar';
+  if (manifest.packageName !== expectedPackageName) {
+    throw new Error('installed manifest package name does not match its package format');
   }
   if (!Array.isArray(manifest.files) || manifest.files.length === 0 || manifest.files.length > 100_000) {
     throw new Error('installed manifest inventory is empty or unbounded');

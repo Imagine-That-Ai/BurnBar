@@ -24,6 +24,7 @@ import {
   readShardAttestationSubject,
   validateAggregateInstalledManifest
 } from './lib/linux-aggregate-installed-attestation.mjs';
+import { materializeArchReleaseMetadata } from './lib/linux-arch-pkgbuild.mjs';
 
 const versionIndex = process.argv.indexOf('--version');
 const channelIndex = process.argv.indexOf('--channel');
@@ -71,7 +72,8 @@ const artifactsDir = path.join(outDir, 'artifacts');
 const installedManifestsDir = path.join(outDir, 'installed-manifests');
 const sidecarsDir = path.join(outDir, 'sidecars');
 const smokeDir = path.join(outDir, 'smoke');
-for (const directory of [logsDir, artifactsDir, installedManifestsDir, sidecarsDir, smokeDir]) {
+const archDir = path.join(outDir, 'arch');
+for (const directory of [logsDir, artifactsDir, installedManifestsDir, sidecarsDir, smokeDir, archDir]) {
   fs.mkdirSync(directory, { recursive: true });
 }
 
@@ -141,7 +143,7 @@ for (const shardFile of shardFiles) {
       size: fileSize(destination),
       sha256: sha256(destination)
     };
-    if (['deb', 'rpm'].includes(artifact.type)) {
+    if (['arch', 'deb', 'rpm'].includes(artifact.type)) {
       const manifestRecord = copyInstalledAttestationSubject({
         shardFile,
         record: artifact.installedManifest,
@@ -229,6 +231,25 @@ writeJson(packageSmokeFile, {
   architectures: manifest.supportedArchitectures,
   ...packageLifecycle
 });
+
+let archRelease = null;
+try {
+  archRelease = materializeArchReleaseMetadata({
+    repoRoot,
+    outDir: archDir,
+    version,
+    gitCommit: git.commit,
+    artifacts
+  });
+  for (const artifact of artifacts.filter((entry) => entry.type === 'arch')) {
+    const published = archRelease.installedAttestations[artifact.architecture];
+    if (!published) throw new Error(`missing published Arch installed attestation for ${artifact.architecture}`);
+    artifact.installedManifest = published.installedManifest;
+    artifact.installedManifestSignature = published.installedManifestSignature;
+  }
+} catch (error) {
+  blockers.push({ kind: 'arch-release-metadata', message: error.message });
+}
 
 const checksumsFile = path.join(sidecarsDir, `OpenBurnBar-${version}-linux-checksums.txt`);
 fs.writeFileSync(
@@ -363,13 +384,25 @@ const provenance = {
     sha256: sha256(packageSmokeFile),
     size: fileSize(packageSmokeFile)
   },
+  archRelease: archRelease ? {
+    pkgbuild: {
+      file: relative(archRelease.pkgbuildFile),
+      sha256: sha256(archRelease.pkgbuildFile),
+      size: fileSize(archRelease.pkgbuildFile)
+    },
+    metadata: {
+      file: relative(archRelease.metadataFile),
+      sha256: sha256(archRelease.metadataFile),
+      size: fileSize(archRelease.metadataFile)
+    }
+  } : null,
   promotionBlocked: blockers.length > 0,
   blockers
 };
 const provenanceFile = path.join(sidecarsDir, `OpenBurnBar-${version}-linux.provenance-predicate.json`);
 writeJson(provenanceFile, provenance);
 
-const closureRecord = (file) => fs.existsSync(file)
+const closureRecord = (file) => file && fs.existsSync(file)
   ? { file: relative(file), sha256: sha256(file), size: fileSize(file) }
   : null;
 writeJson(path.join(outDir, 'package-closure.json'), {
@@ -392,6 +425,8 @@ writeJson(path.join(outDir, 'package-closure.json'), {
     parityAttestation: closureRecord(parityFile),
     architectureSessions: closureRecord(architectureSessionFile),
     packageSmoke: closureRecord(packageSmokeFile),
+    archPkgbuild: closureRecord(archRelease?.pkgbuildFile),
+    archReleaseMetadata: closureRecord(archRelease?.metadataFile),
     updateFeed: closureRecord(feedFile),
     updateFeedSignature: closureRecord(feedSignatureFile)
   },

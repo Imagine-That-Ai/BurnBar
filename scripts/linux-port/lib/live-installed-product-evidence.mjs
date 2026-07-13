@@ -161,7 +161,9 @@ function listPackageOwnedPaths(installedManifest, installedRoot, runner) {
     ? ['dpkg-query', ['-L', installedManifest.packageName]]
     : installedManifest.packageFormat === 'rpm'
       ? ['rpm', ['-ql', installedManifest.packageName]]
-      : [null, null];
+      : installedManifest.packageFormat === 'arch'
+        ? ['pacman', ['-Qlq', installedManifest.packageName]]
+        : [null, null];
   if (command === null) throw new Error(`unsupported installed package format: ${installedManifest.packageFormat}`);
   const result = runner(command, args, { encoding: 'utf8', timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
   if (result.error) throw new Error(`installed package ownership query failed: ${result.error.message}`);

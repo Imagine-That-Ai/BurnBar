@@ -18,6 +18,21 @@ export function verifyLinuxWorkflowWiring(input) {
       previous = Math.max(previous, index);
     }
   };
+  const requireUploadContract = (body, stepName, paths, source) => {
+    const start = body.indexOf(`- name: ${stepName}`);
+    const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
+    const block = start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
+    if (!block) {
+      failures.push(`${source} is missing upload step: ${stepName}`);
+      return;
+    }
+    for (const marker of [
+      'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+      'include-hidden-files: true',
+      'if-no-files-found: error',
+      ...paths
+    ]) requireText(block, marker, `${source} ${stepName}`);
+  };
 
   requireText(input.release, '- "linux-v*"', 'release tag trigger');
   if (input.release.includes('- "v*"')) failures.push('legacy v* tag trigger is forbidden in the Linux release workflow.');
@@ -25,6 +40,42 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.release, 'OPENBURNBAR_LINUX_RELEASE_OUT', 'canonical release output');
   requireText(input.release, 'OPENBURNBAR_LINUX_EVIDENCE_OUT', 'canonical evidence output');
   requireText(input.release, '--candidate', 'candidate-only release assembly');
+  requireText(
+    input.release,
+    'list-linux-release-attestation-subjects.mjs',
+    'exact release attestation subject selection'
+  );
+  requireText(input.promotionWorkflow, "-name '*.pkg.tar.zst'", 'Arch package publication selection');
+  for (const marker of [
+    "-name 'PKGBUILD'",
+    "-name 'arch-release-metadata.json'",
+    "-name 'openburnbar-*.installed-manifest.json'",
+    "-name 'openburnbar-*.installed-manifest.ed25519'"
+  ]) {
+    requireText(input.promotionWorkflow, marker, 'Arch release metadata publication selection');
+  }
+  requireUploadContract(
+    input.release,
+    'Upload architecture shard',
+    ['${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/'],
+    'candidate workflow'
+  );
+  requireUploadContract(
+    input.release,
+    'Upload Linux release evidence',
+    [
+      '${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/',
+      '${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/',
+      '${{ env.OPENBURNBAR_LINUX_SHARDS_DIR }}/'
+    ],
+    'candidate workflow'
+  );
+  requireUploadContract(
+    input.promotionWorkflow,
+    'Upload promotion closure',
+    ['${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/promotion/'],
+    'promotion workflow'
+  );
   for (const marker of [
     'architecture: aarch64',
     'runner: ubuntu-24.04-arm',
@@ -38,6 +89,27 @@ export function verifyLinuxWorkflowWiring(input) {
     '--cap-drop ALL',
     '--security-opt no-new-privileges',
     'sign-linux-release-requests.mjs',
+    'build-signed-arch-package.mjs',
+    'smoke-arch-package.mjs',
+    'verify-arch-package-update-rollback.mjs',
+    'product-proof-closure.json.ed25519.sig',
+    'sign-product-proof-closure.mjs',
+    '.linux-shard/arch-lifecycle',
+    'arch_signature_pattern',
+    'arch_manifest_pattern',
+    'arch_manifest_signature_pattern',
+    "--pattern 'product-proof-closure.json'",
+    '--previous-signature',
+    '--previous-installed-manifest "/workspace/',
+    '--previous-installed-manifest-signature',
+    '--previous-product-proof',
+    '--previous-product-proof-signature',
+    '--previous-release-tag',
+    'source=$PWD,target=/workspace,readonly',
+    'source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session',
+    'source=$PWD/.linux-shard/arch-lifecycle,target=/workspace/.linux-shard/arch-lifecycle',
+    'docker create --name "$container"',
+    'docker start --attach "$container"',
     '--phase finalize',
     'previous_version',
     'linux-desktop-session.sh',
@@ -45,7 +117,10 @@ export function verifyLinuxWorkflowWiring(input) {
     'finalize-linux-architecture-session.mjs',
     'linux-release-shard-${{ matrix.architecture }}',
     'assemble-linux-release.mjs',
+    'list-linux-release-attestation-subjects.mjs',
     'finalize-product-proof-closure.mjs',
+    'sign-product-proof-closure.mjs',
+    'product-proof-closure.json.ed25519.sig',
     'include-hidden-files: true',
     'merge-multiple: false',
     'finalize-product-proof-closure.mjs',
@@ -63,6 +138,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'finalize-linux-promotion-closure.mjs',
     'uses: actions/attest@',
     'promotion-closure.json.sigstore.jsonl',
+    'product-proof-closure.json.ed25519.sig',
     '--candidate-artifact-digest',
     '--draft',
     '--draft=false',
@@ -84,10 +160,12 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
   requireText(input.pr, 'linux-aggregate-installed-attestation.test.mjs', 'PR aggregate installed-attestation mutation suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
+  requireText(input.pr, 'arch-lifecycle-authentication.test.mjs', 'PR authenticated Arch lifecycle suite');
   requireText(input.pr, 'linux-installed-manifest.test.mjs', 'PR installed manifest mutation suite');
   requireText(input.pr, 'linux-appimage-peer-manifest.test.mjs', 'PR AppImage peer manifest suite');
   requireText(input.pr, 'linux-native-package-real-tools.test.mjs', 'PR real native package suite');
   requireText(input.pr, 'sign-linux-release-requests.test.mjs', 'PR isolated signer mutation suite');
+  requireText(input.pr, 'sign-product-proof-closure.test.mjs', 'PR product-proof closure signer suite');
   requireText(input.pr, 'signed-installed-package-wiring.test.mjs', 'PR signed package wiring suite');
   requireText(
     input.pr,
@@ -98,6 +176,11 @@ export function verifyLinuxWorkflowWiring(input) {
     input.pr,
     'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
     'PR AUR Browser Computer Use package runtime suite'
+  );
+  requireText(
+    input.pr,
+    'scripts/linux-port/arch-package-lifecycle.test.mjs',
+    'PR signed Arch package lifecycle suite'
   );
   requireText(
     input.pr,
@@ -250,10 +333,14 @@ export function verifyLinuxWorkflowWiring(input) {
     'Resolve and validate Linux release version',
     'Assert native runner architecture',
     'Prepare unsigned native architecture artifacts',
+    'Prepare unsigned Arch installed-manifest request',
     'Materialize exact-commit isolated signer',
     'Sign exact native requests in isolated container',
+    'Finalize signed Arch package with makepkg',
     'Finalize and verify signed native architecture artifacts',
     'Native package inspection/install/uninstall smoke',
+    'Arch pacman install ownership and uninstall smoke',
+    'Verify Arch package update, rollback, and data preservation',
     'Run package-owned desktop, daemon, accessibility, tray, and route session',
     'Verify native package update, rollback, and data preservation',
     'Finalize commit-bound architecture session',
@@ -262,7 +349,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'Pre-attestation Linux release verification',
     'Attest Linux release sidecars and packages',
     'Final Linux release verification',
-    'Finalize installed-product proof closure'
+    'Finalize installed-product proof closure',
+    'Sign installed-product proof closure'
   ], 'candidate workflow');
   requireOrder(input.promotionWorkflow, [
     'Resolve the immutable successful candidate artifact',

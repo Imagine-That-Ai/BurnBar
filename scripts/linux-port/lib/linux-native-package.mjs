@@ -8,6 +8,17 @@ import {
   verifyInstalledManifestTree
 } from './linux-installed-manifest.mjs';
 
+export const ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST = Object.freeze([
+  '.BUILDINFO',
+  '.MTREE',
+  '.PKGINFO'
+]);
+
+export const ARCH_PACKAGE_PRIVATE_DIRECTORIES = Object.freeze([
+  '/usr/lib/openburnbar',
+  '/usr/share/openburnbar'
+]);
+
 function runBinary(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
@@ -41,7 +52,7 @@ function normalizedArchitecture(value) {
   }
 }
 
-export function assertSafeArchiveMemberNames(listing) {
+export function assertSafeArchiveMemberNames(listing, { allowedRootMetadata = [] } = {}) {
   if (typeof listing !== 'string' || listing.length === 0 || listing.includes('\0')) {
     throw new Error('native package archive member listing is empty or malformed');
   }
@@ -59,6 +70,12 @@ export function assertSafeArchiveMemberNames(listing) {
     if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) {
       throw new Error(`native package archive member traverses its extraction root: ${raw}`);
     }
+    if (segments.length === 1 && allowedRootMetadata.includes(segments[0])) {
+      const normalized = segments[0];
+      if (seen.has(normalized)) throw new Error(`native package archive contains duplicate member: ${raw}`);
+      seen.add(normalized);
+      continue;
+    }
     if (segments[0] !== 'usr') {
       throw new Error(`native package archive member is outside /usr: ${raw}`);
     }
@@ -70,10 +87,14 @@ export function assertSafeArchiveMemberNames(listing) {
   return seen;
 }
 
-export function extractPreflightedArchiveBytes(archive, destination, { env = process.env } = {}) {
+export function extractPreflightedArchiveBytes(archive, destination, {
+  env = process.env,
+  allowedRootMetadata = [],
+  extractUsrOnly = false
+} = {}) {
   if (!Buffer.isBuffer(archive) || archive.length === 0) throw new Error('native package archive is empty');
   const listing = runBinary('bsdtar', ['-tf', '-'], { input: archive, env }).toString('utf8');
-  const members = assertSafeArchiveMemberNames(listing);
+  const members = assertSafeArchiveMemberNames(listing, { allowedRootMetadata });
   const verbose = runBinary('bsdtar', ['-tvf', '-'], { input: archive, env }).toString('utf8');
   const types = verbose.split('\n').filter(Boolean).map((line) => line[0]);
   if (types.length < members.size || types.some((type) => !['-', 'd', 'l'].includes(type))) {
@@ -81,7 +102,9 @@ export function extractPreflightedArchiveBytes(archive, destination, { env = pro
   }
   fs.rmSync(destination, { recursive: true, force: true });
   fs.mkdirSync(destination, { recursive: true });
-  runBinary('bsdtar', ['-xmf', '-', '-C', destination], { input: archive, env });
+  const extractArgs = ['-xmf', '-', '-C', destination];
+  if (extractUsrOnly) extractArgs.push('usr');
+  runBinary('bsdtar', extractArgs, { input: archive, env });
   return destination;
 }
 
@@ -92,11 +115,39 @@ export function inspectNativePackageMetadata(format, artifact, { env = process.e
     : format === 'rpm'
       ? runBinary('rpm', ['-qp', '--queryformat', '%{NAME}\n%{VERSION}\n%{ARCH}\n', artifact], { env })
         .toString('utf8').trim().split('\n').map((entry) => entry.trim())
+      : format === 'arch'
+        ? inspectArchMetadata(artifact, env)
       : (() => { throw new Error(`unsupported native package format: ${format}`); })();
   if (rows.length !== 3 || rows.some((entry) => entry.length === 0)) {
     throw new Error(`${format} package metadata did not return name, version, and architecture`);
   }
   return { packageName: rows[0], packageVersion: rows[1], packageArchitecture: normalizedArchitecture(rows[2]) };
+}
+
+function inspectArchMetadata(artifact, env) {
+  const metadata = runBinary('bsdtar', ['-xOf', artifact, '.PKGINFO'], { env }).toString('utf8');
+  const fields = new Map();
+  for (const line of metadata.split('\n')) {
+    const match = /^([a-z][a-z0-9_]*) = (.+)$/u.exec(line);
+    if (match && !fields.has(match[1])) fields.set(match[1], match[2].trim());
+  }
+  const rawVersion = fields.get('pkgver') ?? '';
+  const packageVersion = rawVersion.replace(/-[1-9][0-9]*$/u, '');
+  return [fields.get('pkgname') ?? '', packageVersion, fields.get('arch') ?? ''];
+}
+
+export function inspectArchPackageDependencies(artifact, { env = process.env } = {}) {
+  const metadata = runBinary('bsdtar', ['-xOf', artifact, '.PKGINFO'], { env }).toString('utf8');
+  const dependencies = metadata.split('\n')
+    .map((line) => /^depend = (.+)$/u.exec(line)?.[1]?.trim())
+    .filter(Boolean);
+  if (dependencies.length === 0) throw new Error('Arch package metadata has no runtime dependencies');
+  for (const dependency of dependencies) {
+    if (!/^[a-z0-9@._+:-]+(?:[<>=]+[a-zA-Z0-9@._+:-]+)?$/u.test(dependency)) {
+      throw new Error(`Arch package metadata has an unsafe dependency: ${dependency}`);
+    }
+  }
+  return dependencies;
 }
 
 export function extractNativePackage(format, artifact, destination, { env = process.env } = {}) {
@@ -107,8 +158,43 @@ export function extractNativePackage(format, artifact, destination, { env = proc
     ? runBinary('dpkg-deb', ['--fsys-tarfile', artifact], { env })
     : format === 'rpm'
       ? runBinary('rpm2cpio', [artifact], { env })
+      : format === 'arch'
+        ? fs.readFileSync(artifact)
       : (() => { throw new Error(`unsupported native package format: ${format}`); })();
-  extractPreflightedArchiveBytes(archive, destination, { env });
+  extractPreflightedArchiveBytes(archive, destination, {
+    env,
+    allowedRootMetadata: format === 'arch' ? ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST : [],
+    extractUsrOnly: format === 'arch'
+  });
+}
+
+export function archPackageRemovalCandidates(listing, metadataProvider = fs.lstatSync) {
+  const candidates = [];
+  for (const file of [...new Set(listing.split('\n').filter(Boolean))]) {
+    let metadata;
+    try {
+      metadata = metadataProvider(file);
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue;
+      throw error;
+    }
+    const isPrivateDirectory = metadata.isDirectory()
+      && ARCH_PACKAGE_PRIVATE_DIRECTORIES.some((root) => file === root || file.startsWith(`${root}/`));
+    if (!metadata.isDirectory() || isPrivateDirectory) candidates.push(file);
+  }
+  return candidates;
+}
+
+export function remainingFilesystemEntriesNoFollow(files, metadataProvider = fs.lstatSync) {
+  return files.filter((file) => {
+    try {
+      metadataProvider(file);
+      return true;
+    } catch (error) {
+      if (error?.code === 'ENOENT') return false;
+      throw error;
+    }
+  });
 }
 
 export function verifySignedNativePackage({

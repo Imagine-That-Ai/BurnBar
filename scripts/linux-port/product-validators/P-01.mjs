@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { result, validateRequirementContext } from './lib.mjs';
+import { RELEASE_ARCHITECTURES, RELEASE_ARTIFACT_TYPES } from '../lib/product-proof-closure.mjs';
 
 const REQUIRED = [
   'aggregate-product-proof-closure', 'checksums', 'sbom', 'vex', 'provenance',
@@ -8,8 +9,8 @@ const REQUIRED = [
   'package-signature', 'package-sigstore'
 ];
 
-const RELEASE_KEYS = ['appimage', 'daemon', 'deb', 'rpm'].flatMap((format) =>
-  ['aarch64', 'x86_64'].map((architecture) => `${format}:${architecture}`)
+const RELEASE_KEYS = RELEASE_ARTIFACT_TYPES.flatMap((format) =>
+  RELEASE_ARCHITECTURES.map((architecture) => `${format}:${architecture}`)
 );
 
 function exactReleaseMatrix(rows, role) {

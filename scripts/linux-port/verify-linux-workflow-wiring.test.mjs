@@ -10,13 +10,16 @@ function valid() {
       'assemble-linux-release.test.mjs',
       'linux-aggregate-installed-attestation.test.mjs',
       'linux-package-session.test.mjs',
+      'arch-lifecycle-authentication.test.mjs',
       'linux-installed-manifest.test.mjs',
       'linux-appimage-peer-manifest.test.mjs',
       'linux-native-package-real-tools.test.mjs',
       'sign-linux-release-requests.test.mjs',
+      'sign-product-proof-closure.test.mjs',
       'signed-installed-package-wiring.test.mjs',
       'scripts/linux-port/browser-runtime-packaging.test.mjs',
       'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
+      'scripts/linux-port/arch-package-lifecycle.test.mjs',
       'scripts/linux-port/embed-linux-appimage-payload.test.mjs',
       'render-parity-ledger.mjs --check',
       'npm ci --prefix scripts/linux-port --ignore-scripts',
@@ -90,10 +93,16 @@ function valid() {
       'finalize-linux-promotion-closure.mjs',
       'uses: actions/attest@',
       'promotion-closure.json.sigstore.jsonl',
+      'product-proof-closure.json.ed25519.sig',
       '--candidate-artifact-digest',
       '--draft',
       '--draft=false',
       "'*source-*.tar'",
+      "-name '*.pkg.tar.zst'",
+      "-name 'PKGBUILD'",
+      "-name 'arch-release-metadata.json'",
+      "-name 'openburnbar-*.installed-manifest.json'",
+      "-name 'openburnbar-*.installed-manifest.ed25519'",
       'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
       'upload-linux-downloads-r2.sh',
       'https://downloads.burnbar.ai/latest-linux.json',
@@ -110,7 +119,8 @@ function valid() {
       'Configure branded Linux update origin',
       'Publish signed update feed to downloads origin',
       'Verify live Linux update feed after publish',
-      'Publish verified Linux GitHub release'
+      'Publish verified Linux GitHub release',
+      '      - name: Upload promotion closure\n        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4\n        with:\n          path: ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/promotion/\n          include-hidden-files: true\n          if-no-files-found: error'
     ].join('\n'),
     nightly: [
       'OPENBURNBAR_LINUX_EVIDENCE_OUT',
@@ -127,6 +137,7 @@ function valid() {
       'OPENBURNBAR_LINUX_RELEASE_OUT',
       'OPENBURNBAR_LINUX_EVIDENCE_OUT',
       "'*.sigstore.json'",
+      'list-linux-release-attestation-subjects.mjs',
       "'*source-*.tar'",
       "'*parity-attestation.json'",
       'architecture: aarch64',
@@ -140,6 +151,24 @@ function valid() {
       '--cap-drop ALL',
       '--security-opt no-new-privileges',
       'sign-linux-release-requests.mjs',
+      'build-signed-arch-package.mjs',
+      'smoke-arch-package.mjs',
+      'verify-arch-package-update-rollback.mjs',
+      'arch_signature_pattern',
+      'arch_manifest_pattern',
+      'arch_manifest_signature_pattern',
+      "--pattern 'product-proof-closure.json'",
+      '--previous-signature',
+      '--previous-installed-manifest "/workspace/',
+      '--previous-installed-manifest-signature',
+      '--previous-product-proof',
+      '--previous-product-proof-signature',
+      '--previous-release-tag',
+      'source=$PWD,target=/workspace,readonly',
+      'source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session',
+      'source=$PWD/.linux-shard/arch-lifecycle,target=/workspace/.linux-shard/arch-lifecycle',
+      'docker create --name "$container"',
+      'docker start --attach "$container"',
       '--phase finalize',
       'previous_version',
       'linux-desktop-session.sh',
@@ -149,16 +178,22 @@ function valid() {
       'assemble-linux-release.mjs',
       '--candidate',
       'finalize-product-proof-closure.mjs',
+      'sign-product-proof-closure.mjs',
+      'product-proof-closure.json.ed25519.sig',
       'include-hidden-files: true',
       'merge-multiple: false',
       'npm ci --prefix scripts/linux-port --ignore-scripts',
       'Resolve and validate Linux release version',
       'Assert native runner architecture',
       'Prepare unsigned native architecture artifacts',
+      'Prepare unsigned Arch installed-manifest request',
       'Materialize exact-commit isolated signer',
       'Sign exact native requests in isolated container',
+      'Finalize signed Arch package with makepkg',
       'Finalize and verify signed native architecture artifacts',
       'Native package inspection/install/uninstall smoke',
+      'Arch pacman install ownership and uninstall smoke',
+      'Verify Arch package update, rollback, and data preservation',
       'Run package-owned desktop, daemon, accessibility, tray, and route session',
       'Verify native package update, rollback, and data preservation',
       'Finalize commit-bound architecture session',
@@ -167,7 +202,10 @@ function valid() {
       'Pre-attestation Linux release verification',
       'Attest Linux release sidecars and packages',
       'Final Linux release verification',
-      'Finalize installed-product proof closure'
+      'Finalize installed-product proof closure',
+      'Sign installed-product proof closure',
+      '      - name: Upload architecture shard\n        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4\n        with:\n          path: ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/\n          include-hidden-files: true\n          if-no-files-found: error',
+      '      - name: Upload Linux release evidence\n        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4\n        with:\n          path: |\n            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/\n            ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/\n            ${{ env.OPENBURNBAR_LINUX_SHARDS_DIR }}/\n          include-hidden-files: true\n          if-no-files-found: error'
     ].join('\n'),
     makefile: 'release-linux:\n\tnode verify\n\nother:',
     nativeTests: [
@@ -227,6 +265,25 @@ function valid() {
 
 test('complete fail-closed workflow wiring passes', () => {
   assert.deepEqual(verifyLinuxWorkflowWiring(valid()), { passed: true, failures: [] });
+});
+
+test('hidden Linux output uploads fail closed when upload protections mutate', () => {
+  for (const [surface, step, mutation] of [
+    ['release', 'Upload architecture shard', 'include-hidden-files: false'],
+    ['release', 'Upload Linux release evidence', 'if-no-files-found: warn'],
+    ['promotionWorkflow', 'Upload promotion closure', 'actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874']
+  ]) {
+    const input = valid();
+    const start = input[surface].indexOf(`- name: ${step}`);
+    assert.ok(start >= 0, step);
+    const original = mutation.startsWith('include-hidden')
+      ? 'include-hidden-files: true'
+      : mutation.startsWith('if-no-files')
+        ? 'if-no-files-found: error'
+        : 'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4';
+    input[surface] = `${input[surface].slice(0, start)}${input[surface].slice(start).replace(original, mutation)}`;
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, `${surface}:${step}`);
+  }
 });
 
 test('product evidence dependency install and mutation suites are mandatory in the PR gate', () => {
@@ -357,8 +414,10 @@ test('candidate architecture closure and promotion publication cannot be removed
     '--architecture-shard',
     'linux-desktop-session.sh',
     'verify-linux-package-update-rollback.sh',
+    'verify-arch-package-update-rollback.mjs',
     'finalize-linux-architecture-session.mjs',
     'assemble-linux-release.mjs',
+    'list-linux-release-attestation-subjects.mjs',
     '--phase prepare',
     '--network none',
     '--read-only',
@@ -366,6 +425,10 @@ test('candidate architecture closure and promotion publication cannot be removed
     '--security-opt no-new-privileges',
     'sign-linux-release-requests.mjs',
     '--phase finalize',
+    'arch_signature_pattern',
+    '--previous-installed-manifest "/workspace/',
+    'source=$PWD,target=/workspace,readonly',
+    'source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session',
     'merge-multiple: false'
   ]) {
     const input = valid();

@@ -161,11 +161,13 @@ jobs:
           cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/"
           cp "$art/latest-linux.draft.json" "$art/latest-linux.json"
           mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art/promotion" "$art" -maxdepth 3 -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
+            \( -name '*.AppImage' -o -name '*.pkg.tar.zst' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
                -o -name '*.ed25519.sig' -o -name '*.sigstore.json' -o -name '*.sigstore.jsonl' \
                -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums*.txt' \
                -o -name '*source-*.tar' -o -name '*provenance-predicate.json' \
-               -o -name 'product-proof-closure.json' -o -name 'promotion-closure.json' \
+               -o -name 'PKGBUILD' -o -name 'arch-release-metadata.json' \
+               -o -name 'openburnbar-*.installed-manifest.json' -o -name 'openburnbar-*.installed-manifest.ed25519' \
+               -o -name 'product-proof-closure.json' -o -name 'product-proof-closure.json.ed25519.sig' -o -name 'promotion-closure.json' \
                -o -name 'parity-ledger-validation.json' -o -name 'P-*.json' \
                -o -name 'latest-linux.json' -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
           prerelease_arg="--prerelease=${ALLOW_PRERELEASE}"
@@ -215,7 +217,7 @@ jobs:
 
       - name: Upload promotion closure
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: linux-release-promotion-${{ github.sha }}
           path: |

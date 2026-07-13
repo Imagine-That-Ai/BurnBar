@@ -104,7 +104,10 @@ export function prepareProductRequirementInput({
     packageRow.installedManifestSignature,
     'selected installed manifest signature'
   );
-  const packageDestination = path.join(subjectsDir, `installed-package${expectedPackage.format === 'deb' ? '.deb' : '.rpm'}`);
+  const packageExtension = expectedPackage.format === 'deb' ? '.deb'
+    : expectedPackage.format === 'rpm' ? '.rpm'
+      : '.pkg.tar.zst';
+  const packageDestination = path.join(subjectsDir, `installed-package${packageExtension}`);
   const manifestDestination = path.join(subjectsDir, 'installed-manifest.json');
   const manifestSignatureDestination = path.join(subjectsDir, 'installed-manifest.json.sig');
   copySnapshot(packageSnapshot, packageDestination);

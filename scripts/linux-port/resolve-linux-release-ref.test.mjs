@@ -87,7 +87,7 @@ test('candidate and promotion workflows preserve one commit and separate provena
   assert.match(workflow, /resolve-linux-release-version\.mjs --github-output/u);
   assert.match(workflow, /--version '\$\{\{ needs\.resolve-release\.outputs\.version \}\}'/u);
   assert.match(workflow, /OPENBURNBAR_LINUX_RELEASE_BASE_URL: https:\/\/github\.com\/Imagine-That-Ai\/BurnBar\/releases\/download\/\$\{\{ needs\.resolve-release\.outputs\.tag \}\}/u);
-  assert.match(workflow, /-name '\*source-\*\.tar'/u);
+  assert.match(workflow, /list-linux-release-attestation-subjects\.mjs/u);
   assert.match(workflow, /cosign attest-blob/u);
   assert.match(workflow, /node scripts\/linux-port\/verify-linux-release\.mjs\s+--candidate\s+--phase final\s+--version '\$\{\{ needs\.resolve-release\.outputs\.version \}\}'/u);
   assert.doesNotMatch(workflow, /gh release create/u);
