@@ -9,7 +9,10 @@ export const CHAT_POPOUT_LABEL = 'openburnbar-chat-popout';
 
 export function isChatPopoutWindow(): boolean {
   if (typeof window === 'undefined') return false;
-  return new URLSearchParams(window.location.search).get('window') === 'chat-popout';
+  if (new URLSearchParams(window.location.search).get('window') !== 'chat-popout') return false;
+  // A query token alone is not enough: a stale URL must not turn another
+  // route into a chat child window and accidentally expose its controls.
+  return window.location.hash === '#/chat' || window.location.hash.startsWith('#/chat?');
 }
 
 function chatPopoutURL(): string {
@@ -65,8 +68,8 @@ export async function openChatPopoutWindow(): Promise<boolean> {
       // A successful constructor normally emits immediately; do not leave a
       // renderer promise hanging forever if a host omits lifecycle events.
       globalThis.setTimeout(() => {
-        if (!settled) resolve();
-      }, 250);
+        if (!settled) reject(new Error('Timed out waiting for the chat pop-out window.'));
+      }, 5000);
     });
     return true;
   } catch (error) {

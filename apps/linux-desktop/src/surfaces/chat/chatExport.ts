@@ -177,6 +177,9 @@ export async function loadCompleteChatHistory(
     if (!result.thread || result.thread.id !== thread.id) {
       throw new Error('Chat history response is missing its thread identity.');
     }
+    if (result.messages.length > pageSize) {
+      throw new Error('Chat history page exceeds the requested page size.');
+    }
     if (result.messages.length === 0) {
       if (result.hasMoreBefore) {
         throw new Error('Chat history pagination made no progress.');
@@ -184,7 +187,7 @@ export async function loadCompleteChatHistory(
       return all;
     }
 
-    for (const message of result.messages) {
+    for (const [index, message] of result.messages.entries()) {
       if (message.threadID !== thread.id) {
         throw new Error('Chat history response contains a different thread.');
       }
@@ -193,7 +196,7 @@ export async function loadCompleteChatHistory(
       }
       seenIDs.add(message.id);
       contentBytes += historyMessageSize(message);
-      if (all.length >= maxMessages || contentBytes > maxContentBytes) {
+      if (all.length + index + 1 > maxMessages || contentBytes > maxContentBytes) {
         throw new Error('Chat history exceeds the safe export limit.');
       }
     }

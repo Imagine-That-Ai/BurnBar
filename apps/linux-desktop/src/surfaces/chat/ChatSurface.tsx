@@ -40,6 +40,8 @@ export function ChatSurface() {
   const messagesLoading = useChatStore((s) => s.messagesLoading);
   const hasMoreMessages = useChatStore((s) => s.hasMoreMessages);
   const loadingOlderMessages = useChatStore((s) => s.loadingOlderMessages);
+  const loadingAllMessages = useChatStore((s) => s.loadingAllMessages);
+  const historyError = useChatStore((s) => s.historyError);
   const config = useChatStore((s) => s.config);
   const backend = useChatStore((s) => s.backend);
   const modelLabel = useChatStore((s) => s.modelLabel);
@@ -58,6 +60,8 @@ export function ChatSurface() {
   const selectThread = useChatStore((s) => s.selectThread);
   const resumeThread = useChatStore((s) => s.resumeThread);
   const loadOlderMessages = useChatStore((s) => s.loadOlderMessages);
+  const loadAllMessages = useChatStore((s) => s.loadAllMessages);
+  const loadUntilMessage = useChatStore((s) => s.loadUntilMessage);
   const loadMoreThreads = useChatStore((s) => s.loadMoreThreads);
   const setBackend = useChatStore((s) => s.setBackend);
   const setModelOption = useChatStore((s) => s.setModelOption);
@@ -201,8 +205,12 @@ export function ChatSurface() {
       .getState()
       .messages.some((message) => message.id === targetMessageID && message.threadID === targetThreadID);
     if (!messageExists) {
-      setCitationStatus('Cited source is no longer available.');
-      return;
+      setCitationStatus('Loading cited source message from the daemon…');
+      const loaded = await loadUntilMessage(targetMessageID, targetThreadID);
+      if (!loaded) {
+        setCitationStatus('Cited source is no longer available.');
+        return;
+      }
     }
     setCitationStatus('Cited source message opened.');
     if (typeof document !== 'undefined') {
@@ -252,7 +260,11 @@ export function ChatSurface() {
     messagesLoading,
     hasMoreMessages,
     loadingOlderMessages,
+    loadingAllMessages,
+    historyError,
+    totalMessageCount: selectedThread?.messageCount,
     onLoadOlderMessages: () => void loadOlderMessages(),
+    onLoadAllMessages: () => void loadAllMessages(),
     warnings,
     sharedFeaturesAvailable,
     onOpenCitation: (citation: MemoryCitation) => void openCitation(citation),

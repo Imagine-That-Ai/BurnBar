@@ -32,6 +32,9 @@ import {
 import { useShellStore } from './shellStore.js';
 
 export const CHAT_THREAD_PAGE_SIZE = 40;
+/** Bound renderer-side history traversal even if a daemon reports an unbounded transcript. */
+export const CHAT_HISTORY_LOAD_MAX_PAGES = 20;
+export const CHAT_HISTORY_LOAD_MAX_MESSAGES = 10_000;
 /** Only an opaque thread identifier is retained across shell restarts. */
 export const CHAT_ACTIVE_THREAD_STORAGE_KEY = 'openburnbar.chat.active-thread.v1';
 const CHAT_THREAD_ID_MAX_BYTES = 256;
@@ -66,7 +69,9 @@ export type ChatState = {
   messages: ChatMessage[];
   messagesLoading: boolean;
   loadingOlderMessages: boolean;
+  loadingAllMessages: boolean;
   hasMoreMessages: boolean;
+  historyError: string | null;
   config: ConfigSnapshot | null;
   loading: boolean;
   error: string | null;
@@ -91,6 +96,10 @@ export type ChatState = {
   /** Re-reads the selected durable thread after a daemon/shell restart. */
   resumeThread(): Promise<boolean>;
   loadOlderMessages(): Promise<void>;
+  /** Boundedly walks every unloaded durable page for the selected thread. */
+  loadAllMessages(): Promise<boolean>;
+  /** Loads older pages until a durable message is present or the daemon is exhausted. */
+  loadUntilMessage(messageID: string, threadID?: string): Promise<boolean>;
   loadMoreThreads(): void;
   setBackend(id: ChatBackendId): void;
   setModelOption(id: string): void;
@@ -332,6 +341,40 @@ function messageFromPersisted(message: PersistedChatMessage): ChatMessage {
   };
 }
 
+function chatPageIdentityError(threadID: string): Error {
+  return new Error(`Chat history response does not match thread ${threadID}.`);
+}
+
+/** Validate the daemon boundary again at the store so test doubles or older
+ * packaged bridges cannot merge another thread into the active transcript. */
+function validateChatPage(
+  threadID: string,
+  result: {
+    thread?: ChatThreadSummary;
+    messages: PersistedChatMessage[];
+  },
+  requireThread = true
+): void {
+  if (requireThread && (!result.thread || result.thread.id !== threadID)) {
+    throw chatPageIdentityError(threadID);
+  }
+  if (result.thread && result.thread.id !== threadID) {
+    throw chatPageIdentityError(threadID);
+  }
+  const seen = new Set<string>();
+  for (const message of result.messages) {
+    if (message.threadID !== threadID || seen.has(message.id)) {
+      throw chatPageIdentityError(threadID);
+    }
+    seen.add(message.id);
+  }
+}
+
+function messageCursor(message: PersistedChatMessage | ChatMessage): { timestamp: string; messageID: string } | null {
+  if (!message.timestamp || !message.id) return null;
+  return { timestamp: message.timestamp, messageID: message.id };
+}
+
 function gatewayBaseURLFromHealth(): string | null {
   const health = useShellStore.getState().health;
   if (!health?.ok || !health.gatewayEnabled) return null;
@@ -515,7 +558,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   messages: [],
   messagesLoading: false,
   loadingOlderMessages: false,
+  loadingAllMessages: false,
   hasMoreMessages: false,
+  historyError: null,
   config: null,
   loading: false,
   error: null,
@@ -548,7 +593,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         messages: [],
         selectedThreadId: null,
         loadingOlderMessages: false,
+        loadingAllMessages: false,
         hasMoreMessages: false,
+        historyError: null,
         warnings: [],
         sharedFeaturesAvailable: true,
         streaming: false
@@ -603,7 +650,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         messages: [],
         selectedThreadId: null,
         loadingOlderMessages: false,
+        loadingAllMessages: false,
         hasMoreMessages: false,
+        historyError: null,
         warnings: [],
         streaming: false,
         streamPhase: 'error',
@@ -638,7 +687,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         messages: [],
         messagesLoading: false,
         loadingOlderMessages: false,
+        loadingAllMessages: false,
         hasMoreMessages: false,
+        historyError: null,
         ...defaultSelectionForBackend(get().config, get().backend),
         streaming: false,
         streamPhase: 'idle',
@@ -653,7 +704,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       messages: [],
       messagesLoading: true,
       loadingOlderMessages: false,
+      loadingAllMessages: false,
       hasMoreMessages: false,
+      historyError: null,
       backend: selectedBackend,
       ...defaultSelectionForBackend(get().config, selectedBackend),
       streaming: false,
@@ -662,7 +715,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     });
     try {
       const result = fixtureMode || !bridge ? null : await bridge.chatThreadGet(id, 500);
+      if (!fixtureMode && result) validateChatPage(id, result);
       const resolvedThread = result?.thread ?? thread;
+      if (!fixtureMode && !resolvedThread) {
+        throw chatPageIdentityError(id);
+      }
       const resolvedBackend = backendFromThread(resolvedThread, selectedBackend);
       const messages = fixtureMode
         ? thread
@@ -675,6 +732,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           messages,
           messagesLoading: false,
           hasMoreMessages: result?.hasMoreBefore ?? false,
+          historyError: null,
           backend: resolvedBackend,
           ...defaultSelectionForBackend(get().config, resolvedBackend)
         });
@@ -684,8 +742,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         set({
           messages: [],
           messagesLoading: false,
+          loadingOlderMessages: false,
+          loadingAllMessages: false,
+          hasMoreMessages: false,
+          historyError: error instanceof Error ? error.message : 'Unable to load this thread.',
           streamPhase: 'error',
-          streamError: error instanceof Error ? error.message : 'Unable to load this thread.'
+          streamError: null
         });
       }
     }
@@ -723,31 +785,132 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       return;
     }
 
-    set({ loadingOlderMessages: true, streamError: null });
+    set({ loadingOlderMessages: true, historyError: null, streamError: null });
     try {
+      const before = messageCursor(oldest);
+      if (!before) throw new Error('Unable to establish a durable chat history cursor.');
       const result = await bridge.chatThreadGet(threadID, 500, {
-        timestamp: oldest.timestamp,
-        messageID: oldest.id
+        ...before
       });
+      validateChatPage(threadID, result);
       if (get().selectedThreadId !== threadID) return;
       set((current) => {
         const existingIDs = new Set(current.messages.map((message) => message.id));
-        const older = result.messages
-          .filter((message) => !existingIDs.has(message.id))
-          .map(messageFromPersisted);
+        if (result.messages.length === 0) {
+          if (result.hasMoreBefore) throw new Error('Chat history pagination made no progress.');
+          return {
+            hasMoreMessages: false,
+            loadingOlderMessages: false,
+            historyError: null
+          };
+        }
+        if (result.messages.some((message) => existingIDs.has(message.id))) {
+          throw new Error('Chat history pagination returned a duplicate message.');
+        }
+        const next = messageCursor(result.messages[0]!);
+        if (!next || (next.timestamp === before.timestamp && next.messageID === before.messageID)) {
+          throw new Error('Chat history pagination cursor did not advance.');
+        }
+        const older = result.messages.map(messageFromPersisted);
         return {
           messages: [...older, ...current.messages],
           hasMoreMessages: result.hasMoreBefore,
-          loadingOlderMessages: false
+          loadingOlderMessages: false,
+          historyError: null
         };
       });
     } catch (error) {
       if (get().selectedThreadId === threadID) {
         set({
           loadingOlderMessages: false,
-          streamError: error instanceof Error ? error.message : 'Unable to load older messages.'
+          historyError: error instanceof Error ? error.message : 'Unable to load older messages.',
+          streamError: null
         });
       }
+    }
+  },
+
+  async loadAllMessages() {
+    const initial = get();
+    const threadID = initial.selectedThreadId;
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (
+      fixtureMode ||
+      !bridge ||
+      !threadID ||
+      initial.streaming ||
+      initial.streamPhase === 'composing' ||
+      initial.loadingOlderMessages ||
+      initial.loadingAllMessages
+    ) {
+      return false;
+    }
+    set({ loadingAllMessages: true, historyError: null });
+    try {
+      for (let page = 0; page < CHAT_HISTORY_LOAD_MAX_PAGES; page += 1) {
+        const state = get();
+        if (state.selectedThreadId !== threadID) return false;
+        if (!state.hasMoreMessages) {
+          set({ loadingAllMessages: false, historyError: null });
+          return true;
+        }
+        if (state.messages.length >= CHAT_HISTORY_LOAD_MAX_MESSAGES) {
+          throw new Error('Chat history exceeds the safe load limit.');
+        }
+        await get().loadOlderMessages();
+        const after = get();
+        if (after.selectedThreadId !== threadID) return false;
+        if (after.historyError) throw new Error(after.historyError);
+      }
+      if (get().hasMoreMessages) throw new Error('Chat history exceeds the safe page limit.');
+      set({ loadingAllMessages: false, historyError: null });
+      return true;
+    } catch (error) {
+      if (get().selectedThreadId === threadID) {
+        set({
+          loadingAllMessages: false,
+          historyError: error instanceof Error ? error.message : 'Unable to load complete chat history.'
+        });
+      }
+      return false;
+    }
+  },
+
+  async loadUntilMessage(messageID, threadID = get().selectedThreadId ?? undefined) {
+    const target = messageID.trim();
+    if (!target || !threadID) return false;
+    if (get().selectedThreadId !== threadID) return false;
+    if (get().messages.some((message) => message.id === target && message.threadID === threadID)) return true;
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (fixtureMode || !bridge || get().streaming || get().streamPhase === 'composing' || get().loadingAllMessages) {
+      return false;
+    }
+    set({ loadingAllMessages: true, historyError: null });
+    try {
+      for (let page = 0; page < CHAT_HISTORY_LOAD_MAX_PAGES; page += 1) {
+        const before = get();
+        if (before.messages.some((message) => message.id === target && message.threadID === threadID)) {
+          set({ loadingAllMessages: false, historyError: null });
+          return true;
+        }
+        if (!before.hasMoreMessages || before.messages.length >= CHAT_HISTORY_LOAD_MAX_MESSAGES) break;
+        await get().loadOlderMessages();
+        const after = get();
+        if (after.selectedThreadId !== threadID) return false;
+        if (after.historyError) throw new Error(after.historyError);
+      }
+      const found = get().messages.some((message) => message.id === target && message.threadID === threadID);
+      if (!found && get().hasMoreMessages) throw new Error('Chat citation is outside the safe history load limit.');
+      set({ loadingAllMessages: false, historyError: found ? null : 'The cited message is no longer available.' });
+      return found;
+    } catch (error) {
+      if (get().selectedThreadId === threadID) {
+        set({
+          loadingAllMessages: false,
+          historyError: error instanceof Error ? error.message : 'Unable to load the cited message.'
+        });
+      }
+      return false;
     }
   },
 
@@ -798,6 +961,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       selectedThreadId: null,
       messages: [],
       messagesLoading: false,
+      loadingOlderMessages: false,
+      loadingAllMessages: false,
+      hasMoreMessages: false,
+      historyError: null,
       streaming: false,
       streamPhase: 'idle',
       streamError: null,
@@ -833,7 +1000,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       }
       if (current.selectedThreadId !== threadID) {
         try {
-          history = (await bridge.chatThreadGet(threadID, 500)).messages.map(messageFromPersisted);
+          const result = await bridge.chatThreadGet(threadID, 500);
+          validateChatPage(threadID, result);
+          history = result.messages.map(messageFromPersisted);
         } catch (error) {
           set({
             streamPhase: 'error',

@@ -245,10 +245,14 @@ type MessageStreamProps = {
   loading: boolean;
   hasMoreBefore?: boolean;
   loadingOlderMessages?: boolean;
+  loadingAllMessages?: boolean;
+  totalMessageCount?: number;
   onLoadOlder?: () => void;
+  onLoadAll?: () => void;
   warnings: ChatWarningBanner[];
   sharedFeaturesAvailable: boolean;
   streamError: string | null;
+  historyError?: string | null;
   streaming?: boolean;
   onOpenMissionControl?: () => void;
   onOpenCitation?: (citation: MemoryCitation) => void;
@@ -261,10 +265,14 @@ export function MessageStream({
   loading,
   hasMoreBefore = false,
   loadingOlderMessages = false,
+  loadingAllMessages = false,
+  totalMessageCount,
   onLoadOlder,
+  onLoadAll,
   warnings,
   sharedFeaturesAvailable,
   streamError,
+  historyError = null,
   streaming = false,
   onOpenMissionControl,
   onOpenCitation,
@@ -293,11 +301,22 @@ export function MessageStream({
               type="button"
               className="ghost"
               onClick={onLoadOlder}
-              disabled={loadingOlderMessages}
-              aria-busy={loadingOlderMessages}
+              disabled={loadingOlderMessages || loadingAllMessages}
+              aria-busy={loadingOlderMessages || loadingAllMessages}
             >
               {loadingOlderMessages ? 'Loading earlier messages…' : 'Load earlier messages'}
             </button>
+            {onLoadAll && (totalMessageCount === undefined || messages.length < totalMessageCount) ? (
+              <button
+                type="button"
+                className="ghost"
+                onClick={onLoadAll}
+                disabled={loadingOlderMessages || loadingAllMessages}
+                aria-busy={loadingAllMessages}
+              >
+                {loadingAllMessages ? 'Loading complete history…' : 'Load all earlier messages'}
+              </button>
+            ) : null}
           </div>
         ) : null}
         <WarningBanners warnings={warnings} sharedFeaturesAvailable={sharedFeaturesAvailable} />
@@ -309,6 +328,17 @@ export function MessageStream({
             <div>
               <p className="chat-warning-title">Chat stream stopped</p>
               <p className="chat-warning-message">{streamError}</p>
+            </div>
+          </div>
+        ) : null}
+        {historyError ? (
+          <div className="chat-warning-banner" role="alert">
+            <span className="chat-warning-icon" aria-hidden="true">
+              !
+            </span>
+            <div>
+              <p className="chat-warning-title">Chat history unavailable</p>
+              <p className="chat-warning-message">{historyError}</p>
             </div>
           </div>
         ) : null}

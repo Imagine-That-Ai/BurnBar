@@ -43,6 +43,14 @@ function mockBridge(handlers: {
     sessionSearch: emptyList,
     chatThreadList: handlers.chatThreadList ?? (async () => ({ threads: [] })),
     chatThreadGet: handlers.chatThreadGet ?? (async (threadID) => ({
+      thread: {
+        id: threadID,
+        title: `Thread ${threadID}`,
+        preview: 'Persisted transcript',
+        messageCount: 1,
+        createdAt: '2026-07-10T12:00:00Z',
+        updatedAt: '2026-07-10T12:00:00Z'
+      },
       messages: [{
         id: `${threadID}-message`,
         threadID,
@@ -140,7 +148,9 @@ const resetChatStore = () => {
     messages: [],
     messagesLoading: false,
     loadingOlderMessages: false,
+    loadingAllMessages: false,
     hasMoreMessages: false,
+    historyError: null,
     config: null,
     loading: false,
     error: null,
@@ -373,6 +383,55 @@ describe('ChatSurface', () => {
         delete (url as { revokeObjectURL?: unknown }).revokeObjectURL;
       }
     }
+  });
+
+  it('offers bounded loading of unloaded transcript pages in the message stream', async () => {
+    const summary = {
+      id: 'thread-load-all-ui',
+      title: 'Long transcript',
+      preview: 'A transcript with unloaded pages',
+      messageCount: 2,
+      createdAt: '2026-07-10T12:00:00Z',
+      updatedAt: '2026-07-10T12:04:00Z'
+    };
+    const chatThreadGet = vi.fn(async (_threadID: string, _maxMessages = 500, before?: ChatMessageCursor) => {
+      if (!before) {
+        return {
+          thread: summary,
+          messages: [{
+            id: 'load-all-new',
+            threadID: summary.id,
+            role: 'assistant' as const,
+            content: 'Newest page',
+            timestamp: '2026-07-10T12:04:00Z'
+          }],
+          hasMoreBefore: true
+        };
+      }
+      return {
+        thread: summary,
+        messages: [{
+          id: 'load-all-old',
+          threadID: summary.id,
+          role: 'user' as const,
+          content: 'Older page',
+          timestamp: '2026-07-10T12:00:00Z'
+        }],
+        hasMoreBefore: false
+      };
+    });
+    useShellStore.setState({
+      bridge: mockBridge({ chatThreadList: async () => ({ threads: [summary] }), chatThreadGet }),
+      fixtureMode: false,
+      bridgeReady: true
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load all earlier messages' })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load all earlier messages' }));
+    await waitFor(() => expect(screen.getByText('Older page')).toBeTruthy());
+    expect(chatThreadGet).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: 'Load all earlier messages' })).toBeNull();
   });
 
   it('uploads an attachment before sending an opaque reference to the gateway', async () => {

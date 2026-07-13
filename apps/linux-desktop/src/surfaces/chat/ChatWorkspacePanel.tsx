@@ -50,7 +50,11 @@ export type ChatWorkspacePanelProps = {
   messagesLoading: boolean;
   hasMoreMessages: boolean;
   loadingOlderMessages: boolean;
+  loadingAllMessages: boolean;
+  historyError: string | null;
+  totalMessageCount?: number;
   onLoadOlderMessages: () => void;
+  onLoadAllMessages: () => void;
   warnings: ChatWarningBanner[];
   sharedFeaturesAvailable: boolean;
   streaming: boolean;
@@ -106,7 +110,11 @@ export function ChatWorkspacePanel({
   messagesLoading,
   hasMoreMessages,
   loadingOlderMessages,
+  loadingAllMessages,
+  historyError,
+  totalMessageCount,
   onLoadOlderMessages,
+  onLoadAllMessages,
   warnings,
   sharedFeaturesAvailable,
   streaming,
@@ -172,10 +180,14 @@ export function ChatWorkspacePanel({
               loading={messagesLoading}
               hasMoreBefore={hasMoreMessages}
               loadingOlderMessages={loadingOlderMessages}
+              loadingAllMessages={loadingAllMessages}
+              totalMessageCount={totalMessageCount}
               onLoadOlder={onLoadOlderMessages}
+              onLoadAll={onLoadAllMessages}
               warnings={warnings}
               sharedFeaturesAvailable={sharedFeaturesAvailable}
               streamError={streamError}
+              historyError={historyError}
               streaming={streaming}
               onOpenMissionControl={onOpenMissionControl}
               onOpenCitation={onOpenCitation}

@@ -210,4 +210,18 @@ describe('chat export', () => {
       loadCompleteChatHistory(thread, async () => page, { maxContentBytes: 3 })
     ).rejects.toThrow(/safe export limit/i);
   });
+
+  it('enforces message bounds within a single oversized page', async () => {
+    const page = {
+      thread,
+      messages: [
+        persisted('user-1', '2026-07-10T12:00:00Z', 'one'),
+        persisted('assistant-1', '2026-07-10T12:01:00Z', 'two')
+      ],
+      hasMoreBefore: false
+    };
+    await expect(
+      loadCompleteChatHistory(thread, async () => page, { maxMessages: 1 })
+    ).rejects.toThrow(/safe export limit/i);
+  });
 });

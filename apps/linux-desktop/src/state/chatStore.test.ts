@@ -64,7 +64,9 @@ function reset() {
     messages: [],
     messagesLoading: false,
     loadingOlderMessages: false,
+    loadingAllMessages: false,
     hasMoreMessages: false,
+    historyError: null,
     config: null,
     loading: false,
     error: null,
@@ -452,6 +454,68 @@ describe('exact-thread chat store', () => {
       'newest-page-oldest'
     ]);
     expect(useChatStore.getState().hasMoreMessages).toBe(false);
+  });
+
+  it('fails closed when a daemon page changes thread identity', async () => {
+    const chatThreadGet = vi.fn(async () => ({
+      thread: thread('other-thread'),
+      messages: [],
+      hasMoreBefore: false
+    }));
+    useShellStore.setState({ bridge: bridgeWith({ chatThreadGet }), fixtureMode: false });
+    useChatStore.setState({ threads: [thread('A')] });
+
+    await useChatStore.getState().selectThread('A');
+
+    expect(chatThreadGet).toHaveBeenCalledWith('A', 500);
+    expect(useChatStore.getState().messages).toEqual([]);
+    expect(useChatStore.getState().historyError).toMatch(/does not match thread A/i);
+    expect(useChatStore.getState().streamPhase).toBe('error');
+  });
+
+  it('walks all bounded unloaded pages without exposing a partial success', async () => {
+    const current = persisted('page-current', 'A', 'assistant', 'Current page');
+    const middle = persisted('page-middle', 'A', 'user', 'Middle page');
+    const oldest = persisted('page-oldest', 'A', 'assistant', 'Oldest page');
+    const chatThreadGet = vi.fn()
+      .mockResolvedValueOnce({ thread: thread('A'), messages: [current], hasMoreBefore: true })
+      .mockResolvedValueOnce({ thread: thread('A'), messages: [middle], hasMoreBefore: true })
+      .mockResolvedValueOnce({ thread: thread('A'), messages: [oldest], hasMoreBefore: false });
+    useShellStore.setState({ bridge: bridgeWith({ chatThreadGet }), fixtureMode: false });
+    useChatStore.setState({ threads: [thread('A')] });
+
+    await useChatStore.getState().selectThread('A');
+    await expect(useChatStore.getState().loadAllMessages()).resolves.toBe(true);
+
+    expect(chatThreadGet).toHaveBeenCalledTimes(3);
+    expect(useChatStore.getState().messages.map((message) => message.id)).toEqual([
+      'page-oldest',
+      'page-middle',
+      'page-current'
+    ]);
+    expect(useChatStore.getState().hasMoreMessages).toBe(false);
+    expect(useChatStore.getState().loadingAllMessages).toBe(false);
+    expect(useChatStore.getState().historyError).toBeNull();
+  });
+
+  it('loads an unloaded cited message through the same bounded cursor path', async () => {
+    const current = persisted('citation-current', 'A', 'assistant', 'Current page');
+    const cited = persisted('citation-source', 'A', 'user', 'Cited source');
+    const chatThreadGet = vi.fn()
+      .mockResolvedValueOnce({ thread: thread('A'), messages: [current], hasMoreBefore: true })
+      .mockResolvedValueOnce({ thread: thread('A'), messages: [cited], hasMoreBefore: false });
+    useShellStore.setState({ bridge: bridgeWith({ chatThreadGet }), fixtureMode: false });
+    useChatStore.setState({ threads: [thread('A')] });
+
+    await useChatStore.getState().selectThread('A');
+    await expect(useChatStore.getState().loadUntilMessage('citation-source')).resolves.toBe(true);
+
+    expect(chatThreadGet).toHaveBeenNthCalledWith(2, 'A', 500, {
+      timestamp: NOW,
+      messageID: 'citation-current'
+    });
+    expect(useChatStore.getState().messages.some((message) => message.id === 'citation-source')).toBe(true);
+    expect(useChatStore.getState().loadingAllMessages).toBe(false);
   });
 
   it('rolls back the user turn when its durable append rejects', async () => {

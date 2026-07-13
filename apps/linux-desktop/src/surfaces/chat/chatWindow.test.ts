@@ -12,6 +12,8 @@ describe('Linux chat pop-out boundary', () => {
     expect(isChatPopoutWindow()).toBe(false);
     window.history.replaceState({}, '', '/?window=chat-popout#/chat');
     expect(isChatPopoutWindow()).toBe(true);
+    window.history.replaceState({}, '', '/?window=chat-popout#/settings');
+    expect(isChatPopoutWindow()).toBe(false);
   });
 
   it('opens a named browser fallback without claiming native support', async () => {
