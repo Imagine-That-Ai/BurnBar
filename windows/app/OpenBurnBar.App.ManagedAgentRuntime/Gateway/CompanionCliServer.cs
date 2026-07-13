@@ -5,8 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -23,14 +25,21 @@ public sealed class CompanionCliServer : IAsyncDisposable
     private readonly TcpListener _listener;
     private readonly ConcurrentDictionary<Guid, ClientConnection> _clients = new();
     private readonly ICompanionCliCommandHandler? _handler;
+    private readonly byte[]? _accessToken;
     private CancellationTokenSource? _cts;
     private Task? _acceptLoop;
 
-    public CompanionCliServer(int port = 8765, ICompanionCliCommandHandler? handler = null)
+    public CompanionCliServer(
+        int port = 8765,
+        ICompanionCliCommandHandler? handler = null,
+        string? accessToken = null)
     {
         _listener = new TcpListener(IPAddress.Loopback, port);
         Port = port;
         _handler = handler;
+        _accessToken = string.IsNullOrWhiteSpace(accessToken)
+            ? null
+            : Encoding.UTF8.GetBytes(accessToken.Trim());
     }
 
     public int Port { get; }
@@ -112,7 +121,7 @@ public sealed class CompanionCliServer : IAsyncDisposable
 
                 string response = Encoding.UTF8.GetByteCount(line) > MaxLineBytes
                     ? JsonSerializer.Serialize(new { ok = false, error = "request_too_large" })
-                    : await HandleLineAsync(line, _handler, cancellationToken).ConfigureAwait(false);
+                    : await HandleLineAsync(line, _handler, cancellationToken, _accessToken).ConfigureAwait(false);
                 await writer.WriteLineAsync(response.AsMemory(), cancellationToken).ConfigureAwait(false);
             }
         }
@@ -158,20 +167,32 @@ public sealed class CompanionCliServer : IAsyncDisposable
     public static async Task<string> HandleLineAsync(
         string line,
         ICompanionCliCommandHandler? handler,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        byte[]? accessToken = null)
     {
         if (Encoding.UTF8.GetByteCount(line) > MaxLineBytes)
         {
             return JsonSerializer.Serialize(new { ok = false, error = "request_too_large" });
         }
 
-        if (handler is null)
-        {
-            return HandleLine(line);
-        }
-
         try
         {
+            if (accessToken is not null)
+            {
+                if (!IsAuthorized(line, accessToken))
+                {
+                    return JsonSerializer.Serialize(new { ok = false, error = "unauthorized" });
+                }
+
+                // Do not expose the bearer token to command handlers.
+                line = StripAuthToken(line);
+            }
+
+            if (handler is null)
+            {
+                return HandleLine(line);
+            }
+
             return await handler.HandleAsync(line, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -186,6 +207,40 @@ public sealed class CompanionCliServer : IAsyncDisposable
         {
             return JsonSerializer.Serialize(new { ok = false, error = "handler_failed" });
         }
+    }
+
+    private static bool IsAuthorized(string line, byte[] expectedToken)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(line);
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("authToken", out JsonElement tokenElement)
+                || tokenElement.ValueKind != JsonValueKind.String)
+            {
+                return false;
+            }
+
+            byte[] actual = Encoding.UTF8.GetBytes(tokenElement.GetString()?.Trim() ?? string.Empty);
+            return CryptographicOperations.FixedTimeEquals(actual, expectedToken);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string StripAuthToken(string line)
+    {
+        JsonObject? root = JsonNode.Parse(line) as JsonObject;
+        if (root is null)
+        {
+            return line;
+        }
+
+        root.Remove("authToken");
+        return root.ToJsonString();
     }
 
     private sealed class ClientConnection : IDisposable
@@ -271,7 +326,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 "code.index" or "code.search" or "code.symbol" or "code.status" or "code.context_pack" =>
                     await InvokeRunAsync(_code, root, cancellationToken).ConfigureAwait(false),
                 "ping" => JsonSerializer.Serialize(new { ok = true, pong = true }),
-                "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-3" }),
+                "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-4" }),
                 _ => JsonSerializer.Serialize(new { ok = false, error = "unknown_op", op }),
             };
         }

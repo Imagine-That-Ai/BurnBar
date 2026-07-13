@@ -136,6 +136,9 @@ unproven host behavior to certification:
   `run.resume`, and `run.recover` commands; startup surfaces the count of
   interrupted runs without logging payloads. Only explicitly safe built-in
   steps execute by default, while arbitrary shell/provider work fails closed.
+- The companion TCP plane now requires the same bearer token as the local
+  gateway when composed by the app; missing or incorrect credentials fail closed
+  and the token is stripped before command handlers receive the request.
 - Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
   without writing prompts or tool output to disk. The companion CLI now exposes
   a bounded `fusion.run` command that composes this loop with the configured
@@ -146,7 +149,7 @@ unproven host behavior to certification:
   Empty provider/model configurations fail closed; API-key presence remains in
   the injected platform secret-store validation step.
 
-These changes are covered by focused managed-runtime (36/36 mission/runtime
+These changes are covered by focused managed-runtime (37/37 mission/runtime
 tests plus 97/97 managed-agent-runtime tests), connector (99/99), presentation
 (750/750), Computer Use, bridge-policy, and provider-boundary tests. They are an
 implementation increment, not a claim that

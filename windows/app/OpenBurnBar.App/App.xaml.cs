@@ -49,6 +49,7 @@ public partial class App : Application
     private GatewayComposition? _gatewayComposition;
     private LocalHttpGatewayHost? _gateway;
     private CompanionCliServer? _companionCli;
+    private string? _localAccessToken;
     private HeadlessRunService? _headlessRuns;
     private ElderWandFusionOrchestrator? _fusion;
     private ProjectCodeMemoryService? _projectCodeMemory;
@@ -278,6 +279,7 @@ public partial class App : Application
             }
 
             string? accessToken = ResolveGatewayAccessToken();
+            _localAccessToken = accessToken;
 
             _gateway = new LocalHttpGatewayHost(
                 port,
@@ -341,6 +343,7 @@ public partial class App : Application
                     "headless-runs.jsonl");
             var headlessRuns = new HeadlessRunService(new JsonLinesHeadlessRunJournal(journalPath));
             _headlessRuns = headlessRuns;
+            _localAccessToken ??= ResolveGatewayAccessToken();
             var runHandler = new CompanionCliHeadlessRunHandler(
                 headlessRuns,
                 BuiltInHeadlessRunSteps.ExecuteAsync);
@@ -367,7 +370,7 @@ public partial class App : Application
                 HandleFusionRunAsync,
                 HandleProjectCodeAsync,
                 runHandler.RecoverAsync);
-            _companionCli = new CompanionCliServer(port, router);
+            _companionCli = new CompanionCliServer(port, router, _localAccessToken);
             _companionCli.Start();
             AppDiagnostics.LogEvent("companion-cli.started", $"127.0.0.1:{port}");
         }
@@ -737,6 +740,7 @@ public partial class App : Application
         _projectCodeMemory = null;
         _gatewayComposition?.HttpClient.Dispose();
         _gatewayComposition = null;
+        _localAccessToken = null;
         _flyout?.Close();
         _mainWindow?.Close();
         Exit();

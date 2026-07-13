@@ -68,6 +68,52 @@ public sealed class CompanionCliServerTests
     }
 
     [Fact]
+    public async Task HandleLineAsync_RequiresConfiguredAccessToken()
+    {
+        var handler = new RecordingCliHandler();
+        byte[] token = Encoding.UTF8.GetBytes("cli-secret");
+
+        string missing = await CompanionCliServer.HandleLineAsync(
+            "{\"op\":\"ping\"}",
+            handler,
+            CancellationToken.None,
+            token);
+        Assert.Contains("unauthorized", missing, System.StringComparison.Ordinal);
+        Assert.Equal(0, handler.Calls);
+
+        string wrong = await CompanionCliServer.HandleLineAsync(
+            "{\"op\":\"ping\",\"authToken\":\"wrong\"}",
+            handler,
+            CancellationToken.None,
+            token);
+        Assert.Contains("unauthorized", wrong, System.StringComparison.Ordinal);
+        Assert.Equal(0, handler.Calls);
+
+        string accepted = await CompanionCliServer.HandleLineAsync(
+            "{\"op\":\"ping\",\"authToken\":\"cli-secret\"}",
+            handler,
+            CancellationToken.None,
+            token);
+        Assert.Contains("handled", accepted, System.StringComparison.Ordinal);
+        Assert.Equal(1, handler.Calls);
+        Assert.DoesNotContain("authToken", handler.LastLine, System.StringComparison.Ordinal);
+    }
+
+    private sealed class RecordingCliHandler : ICompanionCliCommandHandler
+    {
+        public int Calls { get; private set; }
+
+        public string LastLine { get; private set; } = string.Empty;
+
+        public Task<string> HandleAsync(string line, CancellationToken cancellationToken)
+        {
+            Calls++;
+            LastLine = line;
+            return Task.FromResult("{\"handled\":true}");
+        }
+    }
+
+    [Fact]
     public async Task HeadlessRunHandler_SubmitsSafeNoopAndRejectsUnknownKind()
     {
         string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "obb-cli-run-" + System.IO.Path.GetRandomFileName());

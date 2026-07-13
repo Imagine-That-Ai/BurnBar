@@ -42,6 +42,10 @@ The composed companion plane exposes bounded `run.submit`, `run.resume`, and
 records only the recoverable-run count in diagnostics; it never logs step
 payloads or provider credentials.
 
+When the desktop composes the TCP listener, every request must carry the same
+gateway bearer token. The protocol rejects missing or incorrect credentials and
+removes `authToken` before dispatching to a command handler.
+
 `GatewayAuthTokenPolicy` applies the same fail-closed local-gateway rule as the
 Mac: an existing bearer token is preserved, an absent token is generated from
 the OS CSPRNG, and only the explicit unauthenticated-loopback opt-out returns

@@ -8,6 +8,10 @@ The persisted-session restoration path is covered by the CloudSync app suite
 (59/59); this is composition and credential-store evidence, not live staging
 OAuth/App Check/TPM certification.
 
+The companion TCP plane uses the same bearer-token boundary as the gateway;
+the managed-runtime suite covers missing, wrong, and accepted credentials plus
+stripping the token before handlers receive the command.
+
 Validation commands:
 
 ```text
