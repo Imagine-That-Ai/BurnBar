@@ -26,8 +26,20 @@ const PROVIDER_IDS_BY_BACKEND: Record<ChatBackendId, readonly string[]> = {
   codex: ['openai', 'codex'],
   claude: ['anthropic', 'claude', 'claude-code'],
   'pi-agent': ['pi', 'pi-agent', 'piagent'],
+  openclaw: ['openclaw'],
+  openclaude: ['openclaude'],
+  omp: ['omp'],
+  droid: ['droid', 'factory'],
+  forge: ['forge', 'forgedev'],
+  antigravity: ['antigravity'],
+  'cursor-agent': ['cursor-agent', 'cursoragent'],
+  junie: ['junie'],
   cli: ['cli', 'local-cli']
 };
+
+export function providerIDsForChatBackend(backend: ChatBackendId): readonly string[] {
+  return PROVIDER_IDS_BY_BACKEND[backend];
+}
 
 const normalizeID = (value: string): string => value.trim().toLowerCase();
 

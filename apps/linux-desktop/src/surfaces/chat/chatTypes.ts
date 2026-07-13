@@ -1,14 +1,90 @@
-import type { ChatThreadSummary } from '../../tauriBridge.js';
+import type { ChatThreadSummary, ConfigSnapshot, ProviderCredentialSlot } from '../../tauriBridge.js';
 
-export type ChatBackendId = 'hermes' | 'codex' | 'claude' | 'pi-agent' | 'cli';
+/**
+ * Mirrors macOS ChatBackendID. `cli` remains a legacy read-only compatibility
+ * token for old persisted threads; it is intentionally never advertised as a
+ * selectable Linux backend.
+ */
+export type ChatBackendId =
+  | 'hermes'
+  | 'codex'
+  | 'claude'
+  | 'pi-agent'
+  | 'openclaw'
+  | 'openclaude'
+  | 'omp'
+  | 'droid'
+  | 'forge'
+  | 'antigravity'
+  | 'cursor-agent'
+  | 'junie'
+  | 'cli';
 
-export const CHAT_BACKENDS: { id: ChatBackendId; label: string }[] = [
-  { id: 'hermes', label: 'Hermes' },
-  { id: 'codex', label: 'Codex' },
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'pi-agent', label: 'Pi' },
-  { id: 'cli', label: 'CLI' }
+export type ChatBackendAvailability = 'available' | 'unconfigured' | 'disabled' | 'unknown' | 'unsupported';
+
+export type ChatBackendDescriptor = {
+  id: ChatBackendId;
+  label: string;
+  providerIDs: readonly string[];
+};
+
+export const CHAT_BACKENDS: readonly ChatBackendDescriptor[] = [
+  { id: 'codex', label: 'Codex', providerIDs: ['codex', 'openai'] },
+  { id: 'claude', label: 'Claude Code', providerIDs: ['claude-code', 'anthropic', 'claude'] },
+  { id: 'hermes', label: 'Hermes', providerIDs: ['hermes', 'openburnbar', 'open-burn-bar'] },
+  { id: 'pi-agent', label: 'Pi', providerIDs: ['pi', 'pi-agent', 'piagent'] },
+  { id: 'openclaw', label: 'OpenClaw', providerIDs: ['openclaw'] },
+  { id: 'openclaude', label: 'OpenClaude', providerIDs: ['openclaude'] },
+  { id: 'omp', label: 'OMP', providerIDs: ['omp'] },
+  { id: 'droid', label: 'Droid', providerIDs: ['droid', 'factory'] },
+  { id: 'forge', label: 'Forge', providerIDs: ['forge', 'forgedev'] },
+  { id: 'antigravity', label: 'Antigravity', providerIDs: ['antigravity'] },
+  { id: 'cursor-agent', label: 'Cursor Agent', providerIDs: ['cursor-agent', 'cursoragent'] },
+  { id: 'junie', label: 'Junie', providerIDs: ['junie'] }
 ];
+
+const LEGACY_CLI_DESCRIPTOR: ChatBackendDescriptor = { id: 'cli', label: 'CLI', providerIDs: ['cli', 'local-cli'] };
+
+export function chatBackendDescriptor(id: ChatBackendId): ChatBackendDescriptor {
+  return CHAT_BACKENDS.find((entry) => entry.id === id) ?? LEGACY_CLI_DESCRIPTOR;
+}
+
+function normalizedProvider(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function credentialIsReady(slot: ProviderCredentialSlot): boolean {
+  if (!slot.isEnabled) return false;
+  const status = slot.status.trim().toLowerCase();
+  return ['ready', 'ok', 'healthy', 'active', 'connected', 'available'].some((token) => status.includes(token));
+}
+
+/**
+ * Availability is derived from daemon config only. A provider logo or a
+ * persisted backend id never makes a route actionable by itself.
+ */
+export function chatBackendAvailability(
+  config: ConfigSnapshot | null,
+  backend: ChatBackendId
+): { state: ChatBackendAvailability; reason: string } {
+  if (backend === 'cli') return { state: 'unsupported', reason: 'The legacy CLI backend is retained only for old thread history.' };
+  if (!config) return { state: 'unknown', reason: 'Daemon provider configuration has not been loaded.' };
+  const descriptor = chatBackendDescriptor(backend);
+  const provider = config.providers?.find((candidate) =>
+    descriptor.providerIDs.some((id) => normalizedProvider(id) === normalizedProvider(candidate.providerID))
+  );
+  if (!provider) return { state: 'unconfigured', reason: 'No daemon provider configuration is available; add a credential in Settings.' };
+  if (!provider.isEnabled) return { state: 'disabled', reason: 'The daemon provider is disabled in routing settings.' };
+  if (!provider.credentialSlots.some(credentialIsReady) && !provider.providerID.toLowerCase().includes('ollama')) {
+    return { state: 'unconfigured', reason: 'No enabled credential has been verified by the daemon.' };
+  }
+  return { state: 'available', reason: 'Daemon provider configuration and a credential route are present.' };
+}
+
+export function canSelectChatBackend(config: ConfigSnapshot | null, backend: ChatBackendId): boolean {
+  const availability = chatBackendAvailability(config, backend).state;
+  return availability === 'available' || availability === 'unknown';
+}
 
 export type ChatWarningBanner = {
   id: string;
@@ -142,6 +218,22 @@ export function composerPlaceholder(backend: ChatBackendId): string {
       return 'Ask Claude Code…';
     case 'pi-agent':
       return 'Ask Pi…';
+    case 'openclaw':
+      return 'Ask OpenClaw…';
+    case 'openclaude':
+      return 'Ask OpenClaude…';
+    case 'omp':
+      return 'Ask OMP…';
+    case 'droid':
+      return 'Ask Droid…';
+    case 'forge':
+      return 'Ask Forge…';
+    case 'antigravity':
+      return 'Ask Antigravity…';
+    case 'cursor-agent':
+      return 'Ask Cursor Agent…';
+    case 'junie':
+      return 'Ask Junie…';
     case 'cli':
       return 'Ask CLI…';
     default:

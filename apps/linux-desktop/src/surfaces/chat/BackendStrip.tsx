@@ -1,5 +1,9 @@
 import type { ChatThreadSummary, ConfigSnapshot } from '../../tauriBridge.js';
-import { CHAT_BACKENDS, type ChatBackendId } from './chatTypes.js';
+import {
+  CHAT_BACKENDS,
+  chatBackendAvailability,
+  type ChatBackendId
+} from './chatTypes.js';
 import {
   chatModelOptions,
   chatThinkingLevels,
@@ -12,6 +16,14 @@ const BACKEND_LOGOS: Record<ChatBackendId, string | null> = {
   codex: '/provider-logos/codex.png',
   claude: '/provider-logos/claude-code.png',
   'pi-agent': '/provider-logos/openburnbar.png',
+  openclaw: '/provider-logos/openclaw.png',
+  openclaude: '/provider-logos/claude-code.png',
+  omp: null,
+  droid: '/provider-logos/factory.png',
+  forge: null,
+  antigravity: '/provider-logos/antigravity.png',
+  'cursor-agent': '/provider-logos/cursor.png',
+  junie: null,
   cli: null
 };
 
@@ -48,6 +60,8 @@ export function BackendStrip({
         {CHAT_BACKENDS.map((entry) => {
           const logo = BACKEND_LOGOS[entry.id];
           const active = entry.id === backend;
+          const availability = chatBackendAvailability(config, entry.id);
+          const unavailable = availability.state !== 'available' && availability.state !== 'unknown';
           return (
             <button
               key={entry.id}
@@ -56,7 +70,8 @@ export function BackendStrip({
               className={active ? 'chat-backend-pill is-active' : 'chat-backend-pill'}
               aria-pressed={active}
               aria-label={entry.label}
-              title={entry.label}
+              title={unavailable ? `${entry.label}: ${availability.reason}` : entry.label}
+              disabled={unavailable}
               onClick={() => onBackendChange(entry.id)}
             >
               {logo ? <img src={logo} alt="" width={16} height={16} /> : null}
@@ -65,6 +80,11 @@ export function BackendStrip({
           );
         })}
       </div>
+      {backend !== 'cli' && chatBackendAvailability(config, backend).state !== 'available' ? (
+        <p className="chat-backend-availability" aria-live="polite">
+          {chatBackendAvailability(config, backend).reason}
+        </p>
+      ) : null}
       <div className="chat-toolbar-model" aria-label="Model selection">
         <label className="chat-toolbar-model-label" htmlFor="chat-model-select">Model</label>
         <select

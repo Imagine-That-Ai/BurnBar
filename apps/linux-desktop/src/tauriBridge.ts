@@ -22,7 +22,7 @@ export type UsageSummary = {
 
 // ─────────────────────────── P02: provider catalog ─────────────────────────
 
-export type QuotaBucketState = 'ok' | 'cooling_down' | 'missing_credential' | 'exhausted';
+export type QuotaBucketState = 'ok' | 'cooling_down' | 'missing_credential' | 'exhausted' | 'unknown';
 export type QuotaBucket = {
   id: string;
   label: string;
@@ -35,6 +35,45 @@ export type ProviderCatalogEntry = {
   label: string;
   accountLabel: string;
   quotaBuckets: QuotaBucket[];
+  /** Canonical daemon catalog models; empty means no model catalog was proven. */
+  models?: ProviderCatalogModel[];
+  /** Provider capabilities are daemon-advertised, never inferred from a logo. */
+  capabilities?: string[];
+  health?: ProviderHealthState;
+  provenance?: ProviderCatalogProvenance;
+  failover?: ProviderFailoverState;
+  catalogAvailable?: boolean;
+  catalogError?: string;
+};
+export type ProviderHealthState = 'healthy' | 'degraded' | 'unavailable' | 'unknown';
+export type ProviderCatalogProvenance =
+  | 'daemon-catalog'
+  | 'daemon-config'
+  | 'daemon-catalog+daemon-config'
+  | 'fixture';
+export type ProviderModelProvenance =
+  | 'daemon-catalog'
+  | 'daemon-config'
+  | 'configured-model'
+  | 'custom-model'
+  | 'model-alias'
+  | 'model-variant'
+  | 'fixture';
+export type ProviderCatalogModel = {
+  id: string;
+  label: string;
+  aliases: string[];
+  canonicalModelID?: string;
+  capabilities: string[];
+  enabled: boolean;
+  health: ProviderHealthState;
+  provenance: ProviderModelProvenance;
+  detail?: string;
+};
+export type ProviderFailoverState = {
+  mode: string;
+  eligible: boolean;
+  detail: string;
 };
 export type ProviderCatalog = ProviderCatalogEntry[];
 
@@ -1554,52 +1593,239 @@ function bucketSevenDay(events: UsageEvent[]): number[] {
   return days;
 }
 
-function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
-  const snapshot = pick(raw, 'snapshot', 'config') ?? raw;
-  const providers = arr(pick(snapshot, 'providers', 'providerAccounts'));
-  if (providers.length === 0) {
-    // Fall back to deriving from credential slots — daemon.config.get returns these.
-    const slots = arr(pick(snapshot, 'credentialSlots', 'providerCredentialSlots'));
-    const byProvider = new Map<string, ProviderCatalogEntry>();
-    for (const slot of slots) {
-      const pid = str(pick(slot, 'providerId', 'provider_id'), 'unknown');
-      if (!byProvider.has(pid)) {
-        byProvider.set(pid, {
-          id: pid,
-          label: pid.charAt(0).toUpperCase() + pid.slice(1),
-          accountLabel: str(pick(slot, 'label'), 'Default'),
-          quotaBuckets: []
-        });
-      }
-    }
-    return [...byProvider.values()];
+const PROVIDER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/;
+
+function normalizedCatalogID(value: RawJsonValue, pattern: RegExp): string | null {
+  const candidate = str(value).trim();
+  if (!candidate || candidate.includes('\u0000') || /[\u0000-\u001f\u007f]/.test(candidate)) return null;
+  return pattern.test(candidate) ? candidate : null;
+}
+
+function normalizedModelID(value: RawJsonValue): string | null {
+  return normalizedCatalogID(value, MODEL_ID_PATTERN);
+}
+
+function modelIdentityMatches(
+  model: Pick<ProviderCatalogModel, 'id' | 'aliases' | 'canonicalModelID'>,
+  requested: string
+): boolean {
+  const normalized = requested.trim().toLowerCase();
+  return [model.id, model.canonicalModelID ?? '', ...model.aliases]
+    .some((value) => value.trim().toLowerCase() === normalized);
+}
+
+function normalizeProviderHealth(raw: string): ProviderHealthState {
+  const value = raw.trim().toLowerCase();
+  if (!value) return 'unknown';
+  if (['ready', 'ok', 'healthy', 'active', 'connected', 'available'].some((token) => value.includes(token))) {
+    return 'healthy';
   }
-  return providers.map(
-    (p, i): ProviderCatalogEntry => ({
-      id: str(pick(p, 'id', 'providerId', 'provider_id'), `provider-${i}`),
-      label: str(pick(p, 'label', 'displayName', 'name'), `Provider ${i + 1}`),
-      accountLabel: str(pick(p, 'accountLabel', 'account', 'label'), 'Default'),
-      quotaBuckets: arr(pick(p, 'quotaBuckets', 'quota', 'buckets')).map(
-        (b, j): QuotaBucket => ({
-          id: str(pick(b, 'id', 'bucketId'), `bucket-${j}`),
-          label: str(pick(b, 'label', 'name'), `Bucket ${j + 1}`),
-          usedPct: Math.min(100, Math.max(0, num(pick(b, 'usedPct', 'usedPercentage', 'pct')))),
-          resetsAt: str(pick(b, 'resetsAt', 'resetAt')) || undefined,
-          state: normalizeQuotaState(str(pick(b, 'state', 'status'), 'ok'))
-        })
-      )
-    })
-  );
+  if (['cool', 'rate', 'degrad', 'stale', 'warming', 'pending'].some((token) => value.includes(token))) {
+    return 'degraded';
+  }
+  if (['missing', 'credential', 'unauth', 'expired', 'error', 'failed', 'unavailable', 'disabled', 'invalid'].some((token) => value.includes(token))) {
+    return 'unavailable';
+  }
+  return 'unknown';
+}
+
+function providerHealth(
+  provider: RawJsonValue | undefined,
+  catalogProvider: RawJsonValue | undefined
+): ProviderHealthState {
+  const configured = provider !== undefined;
+  const enabledValue = pick(provider, 'isEnabled', 'enabled');
+  if (configured && enabledValue !== undefined && !Boolean(enabledValue)) return 'unavailable';
+  const slots = arr(pick(provider, 'credentialSlots', 'credentials', 'accounts'));
+  if (slots.length > 0) {
+    const states = slots.map((slot) => normalizeProviderHealth(str(pick(slot, 'status', 'state', 'health'))));
+    if (states.includes('healthy')) return 'healthy';
+    if (states.includes('degraded')) return 'degraded';
+    if (states.includes('unavailable')) return 'unavailable';
+    return 'unknown';
+  }
+  // A local provider may not need a credential slot, but its endpoint still
+  // needs a daemon probe before it is advertised as route-ready.
+  if (configured && Boolean(pick(catalogProvider, 'local'))) return 'degraded';
+  return configured ? 'unavailable' : 'unknown';
+}
+
+function catalogModelCapabilities(raw: RawJsonValue): string[] {
+  return arr(pick(raw, 'capabilities', 'features', 'capabilityClassIDs', 'capabilityClassIds'))
+    .map((value) => str(value).trim())
+    .filter(Boolean)
+    .slice(0, 32);
+}
+
+function mapCatalogModel(
+  raw: RawJsonValue,
+  providerHealthState: ProviderHealthState,
+  providerEnabled: boolean,
+  disabledModelIDs: string[],
+  preferredModelIDs: string[],
+  displayOverrides: Map<string, string>
+): ProviderCatalogModel | null {
+  const id = normalizedModelID(pick(raw, 'id', 'modelID', 'modelId'));
+  if (!id) return null;
+  const aliases = arr(pick(raw, 'aliases')).map((value) => normalizedModelID(value)).filter((value): value is string => value !== null);
+  const canonicalModelID = normalizedModelID(pick(raw, 'canonicalModelID', 'canonicalModelId')) ?? undefined;
+  const disabled = disabledModelIDs.some((disabledID) => modelIdentityMatches({ id, aliases, canonicalModelID }, disabledID));
+  const preferred = preferredModelIDs.length === 0 || preferredModelIDs.some((preferredID) => modelIdentityMatches({ id, aliases, canonicalModelID }, preferredID));
+  const displayName = displayOverrides.get(id.toLowerCase()) ?? (str(pick(raw, 'displayName', 'label', 'name')).trim() || id);
+  const routeReady = providerEnabled && providerHealthState === 'healthy';
+  return {
+    id,
+    label: displayName,
+    aliases,
+    canonicalModelID,
+    capabilities: catalogModelCapabilities(raw),
+    enabled: routeReady && !disabled && preferred,
+    health: providerEnabled ? providerHealthState : 'unavailable',
+    provenance: 'daemon-catalog',
+    detail: disabled
+      ? 'Disabled by provider configuration.'
+      : !preferred
+        ? 'Catalog entry is not selected as a preferred model.'
+        : !routeReady
+          ? 'Provider route is not verified by the daemon.'
+          : undefined
+  };
+}
+
+function failoverState(snapshot: RawJsonValue, provider: RawJsonValue | undefined, health: ProviderHealthState): ProviderFailoverState {
+  const mode = str(pick(snapshot, 'routerMode'), 'providerFamilyFailover').trim() || 'providerFamilyFailover';
+  const enabled = provider !== undefined && Boolean(pick(provider, 'isEnabled', 'enabled'));
+  if (!enabled) return { mode, eligible: false, detail: 'Provider is disabled or not configured in the daemon.' };
+  if (health === 'healthy') return { mode, eligible: true, detail: 'Verified credential route is eligible for provider-family failover.' };
+  if (health === 'degraded') return { mode, eligible: false, detail: 'Provider is configured, but the daemon has not verified a healthy route.' };
+  if (health === 'unavailable') return { mode, eligible: false, detail: 'No verified credential route is available.' };
+  return { mode, eligible: false, detail: 'Route health is not available yet.' };
+}
+
+function mapQuotaBuckets(raw: RawJsonValue): QuotaBucket[] {
+  return arr(pick(raw, 'quotaBuckets', 'quota', 'buckets')).flatMap((bucket): QuotaBucket[] => {
+    const id = normalizedCatalogID(pick(bucket, 'id', 'bucketId'), MODEL_ID_PATTERN);
+    const label = str(pick(bucket, 'label', 'name')).trim();
+    if (!id && !label) return [];
+    const stableID = id ?? label.toLowerCase().replace(/[^a-z0-9._:/-]+/g, '-').replace(/^-+|-+$/g, '');
+    if (!stableID) return [];
+    return [{
+      id: stableID,
+      label: label || stableID,
+      usedPct: Math.min(100, Math.max(0, num(pick(bucket, 'usedPct', 'usedPercentage', 'pct')))),
+      resetsAt: str(pick(bucket, 'resetsAt', 'resetAt')).trim() || undefined,
+      state: normalizeQuotaState(str(pick(bucket, 'state', 'status')))
+    }];
+  });
+}
+
+/** Map daemon.config.get plus optional daemon.catalog into a truthful UI catalog. */
+export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
+  const configResponse = pick(raw, 'config');
+  const snapshot = pick(configResponse, 'snapshot', 'config') ?? pick(raw, 'snapshot', 'config') ?? raw;
+  const catalogResponse = pick(raw, 'catalog');
+  const catalog = pick(catalogResponse, 'catalog') ?? catalogResponse;
+  const catalogProviders = arr(pick(catalog, 'providers'));
+  const configuredProviders = arr(pick(snapshot, 'providers', 'providerAccounts'));
+  const catalogAvailable = pick(raw, 'catalogAvailable') === true || catalogProviders.length > 0;
+  const catalogError = str(pick(raw, 'catalogError')).trim() || undefined;
+  const providerIDs = new Map<string, string>();
+  const addProviderID = (value: RawJsonValue) => {
+    const id = normalizedCatalogID(value, PROVIDER_ID_PATTERN);
+    if (id) providerIDs.set(id.toLowerCase(), id);
+  };
+  configuredProviders.forEach((provider) => addProviderID(pick(provider, 'id', 'providerId', 'providerID', 'provider_id')));
+  catalogProviders.forEach((provider) => addProviderID(pick(provider, 'id', 'providerId', 'providerID', 'provider_id')));
+  arr(pick(snapshot, 'credentialSlots', 'providerCredentialSlots')).forEach((slot) => addProviderID(pick(slot, 'providerId', 'providerID', 'provider_id')));
+
+  return [...providerIDs.values()].map((providerID): ProviderCatalogEntry => {
+    const normalizedID = providerID.toLowerCase();
+    const provider = configuredProviders.find((candidate) => normalizedCatalogID(pick(candidate, 'id', 'providerId', 'providerID', 'provider_id'), PROVIDER_ID_PATTERN)?.toLowerCase() === normalizedID);
+    const catalogProvider = catalogProviders.find((candidate) => normalizedCatalogID(pick(candidate, 'id', 'providerId', 'providerID', 'provider_id'), PROVIDER_ID_PATTERN)?.toLowerCase() === normalizedID);
+    const enabled = provider !== undefined && Boolean(pick(provider, 'isEnabled', 'enabled'));
+    const health = providerHealth(provider, catalogProvider);
+    const preferredModelIDs = arr(pick(provider, 'preferredModelIDs', 'preferredModelIds', 'preferred_model_ids')).map((value) => normalizedModelID(value)).filter((value): value is string => value !== null);
+    const disabledModelIDs = arr(pick(provider, 'disabledAdvertisedModelIDs', 'disabledAdvertisedModelIds')).map((value) => normalizedModelID(value)).filter((value): value is string => value !== null);
+    const displayOverrides = new Map(
+      arr(pick(provider, 'modelDisplayOverrides')).flatMap((override) => {
+        const id = normalizedModelID(pick(override, 'modelID', 'modelId'));
+        const label = str(pick(override, 'displayName')).trim();
+        return id && label ? [[id.toLowerCase(), label] as const] : [];
+      })
+    );
+    const models = arr(pick(catalogProvider, 'models')).flatMap((model) => {
+      const mapped = mapCatalogModel(model, health, enabled, disabledModelIDs, preferredModelIDs, displayOverrides);
+      return mapped ? [mapped] : [];
+    });
+    const modelIDs = new Set(models.flatMap((model) => [model.id, model.canonicalModelID ?? '', ...model.aliases].map((value) => value.toLowerCase())));
+    const appendConfiguredModel = (idValue: RawJsonValue, labelValue: RawJsonValue, provenance: ProviderModelProvenance, detail?: string) => {
+      const id = normalizedModelID(idValue);
+      if (!id || modelIDs.has(id.toLowerCase())) return;
+      modelIDs.add(id.toLowerCase());
+      const label = str(labelValue).trim() || displayOverrides.get(id.toLowerCase()) || id;
+      models.push({
+        id,
+        label,
+        aliases: [],
+        capabilities: [],
+        enabled: enabled && health === 'healthy',
+        health: enabled ? health : 'unavailable',
+        provenance,
+        detail: detail ?? (enabled && health === 'healthy' ? undefined : 'Provider route is not verified by the daemon.')
+      });
+    };
+    preferredModelIDs.forEach((id) => appendConfiguredModel(id, displayOverrides.get(id.toLowerCase()), 'configured-model'));
+    arr(pick(provider, 'customModels')).forEach((model) => appendConfiguredModel(pick(model, 'modelID', 'modelId'), pick(model, 'displayName', 'label'), 'custom-model'));
+    arr(pick(provider, 'modelAliases')).forEach((alias) => appendConfiguredModel(
+      pick(alias, 'aliasID', 'aliasId'),
+      pick(alias, 'displayName', 'label'),
+      'model-alias',
+      `Routes to ${str(pick(alias, 'baseModelID', 'baseModelId')).trim() || 'a configured model'}.`
+    ));
+    arr(pick(provider, 'modelVariants')).forEach((variant) => appendConfiguredModel(
+      pick(variant, 'variantID', 'variantId'),
+      pick(variant, 'label'),
+      'model-variant',
+      `Variant of ${str(pick(variant, 'baseModelID', 'baseModelId')).trim() || 'a configured model'}.`
+    ));
+    const label = str(pick(provider, 'label', 'displayName', 'name')).trim() || str(pick(catalogProvider, 'displayName', 'label', 'name')).trim() || providerID;
+    const slots = arr(pick(provider, 'credentialSlots', 'credentials', 'accounts'));
+    const accountLabel = str(pick(provider, 'accountLabel', 'account')).trim() || str(pick(slots[0], 'label', 'name')).trim() || (provider ? 'Not configured' : 'Catalog only');
+    const capabilities = arr(pick(catalogProvider, 'capabilities', 'features')).map((value) => str(value).trim()).filter(Boolean).slice(0, 32);
+    const provenance: ProviderCatalogProvenance = catalogProvider && provider
+      ? 'daemon-catalog+daemon-config'
+      : catalogProvider
+        ? 'daemon-catalog'
+        : provider
+          ? 'daemon-config'
+          : 'daemon-config';
+    return {
+      id: providerID,
+      label,
+      accountLabel,
+      quotaBuckets: mapQuotaBuckets(provider ?? catalogProvider),
+      models,
+      capabilities,
+      health,
+      provenance,
+      failover: failoverState(snapshot, provider, health),
+      catalogAvailable,
+      catalogError
+    };
+  });
 }
 
 function normalizeQuotaState(s: string): QuotaBucketState {
   const lower = s.toLowerCase();
+  if (!lower.trim()) return 'unknown';
   if (lower.includes('cool') || lower.includes('rate')) return 'cooling_down';
   if (lower.includes('missing') || lower.includes('credential') || lower.includes('unauth'))
     return 'missing_credential';
   if (lower.includes('exhaust') || lower.includes('deplet') || lower.includes('limit'))
     return 'exhausted';
-  return 'ok';
+  if (lower.includes('ok') || lower.includes('healthy') || lower.includes('ready') || lower.includes('available')) return 'ok';
+  return 'unknown';
 }
 
 const SESSION_LIST_RESULT_LIMIT = 500;
