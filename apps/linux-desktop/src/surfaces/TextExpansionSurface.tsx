@@ -57,12 +57,11 @@ export function TextExpansionSurface() {
           textExpansionConsentUpdate: textExpansionConsentUpdate.bind(bridge)
         }
       : null;
-    // Fixture mode intentionally keeps its in-memory fixtures across the
-    // hydration effect; test/runtime callers seed them before rendering.
-    if (storage || !fixtureMode) {
-      configureTextExpansionStorageWithPolicy(storage, !bridgeReady || fixtureMode);
-      configureTextExpansionConsentStorage(storage, !bridgeReady || fixtureMode);
-    }
+    // Fixture mode keeps its in-memory fixtures across the hydration effect,
+    // while still switching a previously fail-closed shell back to fallback
+    // policy when the route is mounted.
+    configureTextExpansionStorageWithPolicy(storage, !bridgeReady || fixtureMode, fixtureMode);
+    configureTextExpansionConsentStorage(storage, !bridgeReady || fixtureMode, fixtureMode);
     if (!bridgeReady) return;
     let cancelled = false;
     void Promise.all([

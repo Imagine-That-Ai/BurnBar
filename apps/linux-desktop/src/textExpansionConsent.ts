@@ -15,12 +15,14 @@ let consentError: string | null = null;
 
 export function configureTextExpansionConsentStorage(
   next: TextExpansionConsentBackend | null,
-  allowFallback = true
+  allowFallback = true,
+  preserveMemory = false
 ): void {
+  const backendChanged = backend !== next;
   backend = next;
   backendReady = false;
   allowMemoryFallback = allowFallback;
-  memoryConsent = null;
+  if (!preserveMemory || backendChanged) memoryConsent = null;
   consentError = next || allowFallback ? null : 'Native text expansion storage is unavailable.';
 }
 

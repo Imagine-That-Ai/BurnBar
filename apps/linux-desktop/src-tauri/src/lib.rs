@@ -2222,9 +2222,7 @@ fn register_computer_use_panic_shortcuts(app: &AppHandle) {
         COMPUTER_USE_PANIC_SHORTCUTS[1],
         OPEN_DASHBOARD_SHORTCUT,
     ];
-    let builder = match tauri_plugin_global_shortcut::Builder::new()
-        .with_shortcuts(shortcuts)
-    {
+    let builder = match tauri_plugin_global_shortcut::Builder::new().with_shortcuts(shortcuts) {
         Ok(builder) => builder,
         Err(error) => {
             eprintln!("computer_use_global_panic_hotkey_degraded: {error}");
@@ -2819,8 +2817,14 @@ fn validate_project_slug(value: &str, field: &str) -> Result<String, String> {
     let slug = validate_project_identifier(value, field)?;
     if slug.len() > 96
         || slug != slug.to_ascii_lowercase()
-        || !slug.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
-        || !slug.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
+        || !slug
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        || !slug
+            .as_bytes()
+            .last()
+            .is_some_and(u8::is_ascii_alphanumeric)
     {
         return Err(format!(
             "{field} must be a lowercase canonical project slug"
@@ -3031,7 +3035,10 @@ fn bounded_database_snapshot_bytes(max_bytes: Option<u64>) -> Result<u64, String
 }
 
 #[tauri::command]
-fn database_snapshot(destination_path: String, max_bytes: Option<u64>) -> Result<serde_json::Value, String> {
+fn database_snapshot(
+    destination_path: String,
+    max_bytes: Option<u64>,
+) -> Result<serde_json::Value, String> {
     let limit = bounded_database_snapshot_bytes(max_bytes)?;
     call_daemon_method_with_timeout(
         "daemon.code.database_snapshot",
@@ -3044,7 +3051,10 @@ fn database_snapshot(destination_path: String, max_bytes: Option<u64>) -> Result
 }
 
 #[tauri::command]
-fn database_restore(snapshot_path: String, max_bytes: Option<u64>) -> Result<serde_json::Value, String> {
+fn database_restore(
+    snapshot_path: String,
+    max_bytes: Option<u64>,
+) -> Result<serde_json::Value, String> {
     let limit = bounded_database_snapshot_bytes(max_bytes)?;
     call_daemon_method_with_timeout(
         "daemon.code.database_restore",
@@ -3113,9 +3123,14 @@ fn database_code_context_pack(
 fn bounded_recovery_path(path: String) -> Result<String, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() || trimmed.len() > 4096 || !trimmed.starts_with('/') {
-        return Err("Recovery bundle path must be an absolute local path under 4096 bytes.".to_string());
+        return Err(
+            "Recovery bundle path must be an absolute local path under 4096 bytes.".to_string(),
+        );
     }
-    if trimmed.chars().any(|character| character == '\0' || character == '\n' || character == '\r') {
+    if trimmed
+        .chars()
+        .any(|character| character == '\0' || character == '\n' || character == '\r')
+    {
         return Err("Recovery bundle path contains a prohibited control character.".to_string());
     }
     Ok(trimmed.to_string())
@@ -3468,10 +3483,7 @@ fn text_expansion_delete(id: String) -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 fn text_expansion_consent_update(consent: serde_json::Value) -> Result<serde_json::Value, String> {
-    call_daemon_method(
-        "daemon.text_expansion.consent.update",
-        Some(consent),
-    )
+    call_daemon_method("daemon.text_expansion.consent.update", Some(consent))
 }
 
 // ───────────────── P11: session env ─────────────────
@@ -7572,7 +7584,10 @@ mod tests {
 
     #[test]
     fn database_recovery_bundle_inputs_are_bounded_and_native_only() {
-        assert_eq!(bounded_recovery_path("/tmp/recovery.obb".to_string()).unwrap(), "/tmp/recovery.obb");
+        assert_eq!(
+            bounded_recovery_path("/tmp/recovery.obb".to_string()).unwrap(),
+            "/tmp/recovery.obb"
+        );
         assert!(bounded_recovery_path("relative.obb".to_string()).is_err());
         assert!(bounded_recovery_path("/tmp/recovery\n.obb".to_string()).is_err());
         assert!(bounded_recovery_passphrase("correct horse battery staple".to_string()).is_ok());

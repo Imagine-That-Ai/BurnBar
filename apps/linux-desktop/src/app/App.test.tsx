@@ -241,7 +241,10 @@ describe('App shell', () => {
     expect(await screen.findByText(/unavailable in fixture mode/i)).toBeTruthy();
   });
 
-  it('gates text expansion behind consent and supports snippet CRUD', () => {
+  it('gates text expansion behind consent and supports snippet CRUD', async () => {
+    // CRUD is intentionally exercised in the explicit fixture mode. A
+    // non-fixture shell without a daemon must keep the surface fail-closed.
+    useShellStore.setState({ fixtureMode: true, bridgeReady: true });
     const { container } = render(<App />);
     act(() => useShellStore.getState().setRoute('text-expansion'));
     expect(screen.getByText('Acknowledge in-app-only expansion before saving snippets.')).toBeTruthy();
@@ -258,10 +261,12 @@ describe('App shell', () => {
       target: { value: '-- OpenBurnBar' }
     });
     fireEvent.submit(container.querySelector('.snippet-form') as HTMLFormElement);
-    expect(within(container.querySelector('.snippet-list') as HTMLElement).getByText(';;sig')).toBeTruthy();
+    await waitFor(() => {
+      expect(within(container.querySelector('.snippet-list') as HTMLElement).getByText(';;sig')).toBeTruthy();
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(container.querySelectorAll('.snippet-list li')).toHaveLength(0);
+    await waitFor(() => expect(container.querySelectorAll('.snippet-list li')).toHaveLength(0));
   });
 
   it('keeps failure-state hooks on system routes', () => {

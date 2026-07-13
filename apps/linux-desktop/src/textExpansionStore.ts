@@ -136,13 +136,15 @@ export function configureTextExpansionStorage(next: TextExpansionStorageBackend 
 
 export function configureTextExpansionStorageWithPolicy(
   next: TextExpansionStorageBackend | null,
-  allowFallback: boolean
+  allowFallback: boolean,
+  preserveMemory = false
 ): void {
   if (backend === next && allowLocalFallback === allowFallback && next !== null && backendReady) return;
+  const backendChanged = backend !== next;
   backend = next;
   backendReady = false;
   nativeItems = [];
-  memoryItems = [];
+  if (!preserveMemory || backendChanged) memoryItems = [];
   allowLocalFallback = allowFallback;
   backendError = next || allowFallback ? null : 'Native text expansion storage is unavailable.';
 }
