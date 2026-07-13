@@ -228,7 +228,7 @@ also converged the Insights adapter/registry re-slice inside S12 (see the P-08 c
 | P-18 | S17 | daemon/CLI repoint → OpenBurnBarEngine | Integrator | draft | QUEUED |
 | P-19 | S18 | Widget repoint | Integrator | draft | QUEUED |
 | P-20 | S19 | Keyboard repoint | Integrator | draft | QUEUED |
-| S-H | — | headless-app-build CI job (precursor to S14) | Integrator | draft | QUEUED |
+| S-H | — | headless-app-build CI job (precursor to S14) | Integrator | full | PR_OPEN (recipe PROVEN locally: `scripts/ci/headless-app-build.sh` → BUILD SUCCEEDED, exit 0; new `.github/workflows/headless-app-build.yml` gates P-16 on paths `OpenBurnBarCore/**`+`AgentLens/**`) |
 
 ## Sizing
 
