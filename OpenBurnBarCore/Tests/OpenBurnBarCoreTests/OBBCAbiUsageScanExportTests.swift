@@ -7,6 +7,14 @@ import XCTest
 // `@testable import OpenBurnBarCore` stays for AgentProvider (Kernel-re-exported).
 import OpenBurnBarCoreCAbi
 @testable import OpenBurnBarCore
+// Merge (train ← origin/main) AE-TESTABLE: main's newer privacy-probe helpers
+// (`injectLegacyCodexConversation`) build `CodexCacheEntry` / `CodexConversationCacheEntry`
+// and use `ParserDiskCacheStore<CodexCacheEntry>`, all of which the train moved from the Core
+// monolith into OpenBurnBarLogParsers. Their memberwise initializers are implicitly `internal`,
+// so `@testable import OpenBurnBarCore` (public-only umbrella re-export) can't reach them —
+// `@testable import OpenBurnBarLogParsers` exposes the internal inits. Same pattern the train
+// applied to `GrokParserTests`; OpenBurnBarLogParsers is transitively linkable via the Core dep.
+@testable import OpenBurnBarLogParsers
 
 final class OBBCAbiUsageScanExportTests: XCTestCase {
     func test_scanReadsClaudeAndCursorFixturesWithStableRuntimeRows() throws {
