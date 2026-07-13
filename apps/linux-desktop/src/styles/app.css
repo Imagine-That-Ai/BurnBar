@@ -441,3 +441,169 @@ button.ghost:hover { border-color: var(--color-glass-line-bright); background: v
   .p12-stage-rail { grid-template-columns: 1fr 1fr; }
   .p12-file-panel-head, .p12-file-offer, .p12-file-send, .p12-file-row { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------------------ accessibility */
+
+/*
+ * System preference contracts. These rules intentionally live at the shell
+ * level so every route inherits the same behavior, including daemon failure
+ * and capability-unavailable states. They do not claim a desktop-level AT
+ * integration; the installed-session matrix verifies that boundary separately.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --a11y-border-strong: var(--color-text-bright);
+    --a11y-focus-color: var(--color-text-bright);
+    --a11y-status-ok: var(--color-tier-end-to-end);
+    --a11y-status-warn: var(--color-tier-server-readable);
+    --a11y-status-error: var(--color-seal-crimson);
+    --focus-ring: 0 0 0 2px var(--color-ink-void), 0 0 0 4px var(--a11y-focus-color);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--a11y-focus-color);
+    outline-offset: 2px;
+    box-shadow: var(--focus-ring);
+  }
+
+  button,
+  input,
+  textarea,
+  select,
+  [role='tab'],
+  .nav-link,
+  .glass-interactive {
+    border-style: solid;
+    border-width: 1px;
+    border-color: var(--a11y-border-strong);
+  }
+
+  [role='status'],
+  [role='alert'] {
+    outline: 1px solid var(--a11y-border-strong);
+    outline-offset: -1px;
+  }
+
+  .status-pill {
+    box-shadow: none;
+  }
+  .status-pill.ok { border-color: var(--a11y-status-ok); }
+  .status-pill.warn { border-color: var(--a11y-status-warn); }
+  .status-pill.err { border-color: var(--a11y-status-error); }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --a11y-surface: Canvas;
+    --a11y-surface-text: CanvasText;
+    --a11y-control: ButtonFace;
+    --a11y-control-text: ButtonText;
+    --a11y-border-strong: CanvasText;
+    --a11y-focus-color: Highlight;
+    --a11y-focus-text: HighlightText;
+    --focus-ring: 0 0 0 2px Canvas, 0 0 0 4px Highlight;
+  }
+
+  body,
+  .shell,
+  .shell-nav,
+  .shell-main,
+  .command-deck {
+    background: var(--a11y-surface);
+    color: var(--a11y-surface-text);
+  }
+
+  /* Decorative mesh/blur cannot be relied on in forced-colors mode. */
+  .mesh-backdrop,
+  .kernel-backdrop {
+    display: none;
+  }
+
+  .card,
+  .fact,
+  .sidebar-glass-card,
+  .command-deck,
+  .glass-card,
+  .glass-panel,
+  .glass-surface,
+  .glass-pill,
+  .glass-list-row,
+  .glass-input,
+  .status-pill,
+  .offline-notice,
+  .banner,
+  [role='status'],
+  [role='alert'] {
+    background: var(--a11y-surface);
+    color: var(--a11y-surface-text);
+    border-color: var(--a11y-border-strong);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .card::before,
+  .glass-card::before {
+    display: none;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    background: var(--a11y-control);
+    color: var(--a11y-control-text);
+    border-style: solid;
+    border-width: 1px;
+    border-color: var(--a11y-control-text);
+    box-shadow: none;
+  }
+
+  button.primary,
+  button.ghost,
+  .nav-link,
+  .glass-interactive {
+    background: var(--a11y-control);
+    color: var(--a11y-control-text);
+    border-color: var(--a11y-control-text);
+    box-shadow: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--a11y-focus-color);
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+
+  a {
+    color: LinkText;
+  }
+
+  .deck-wordmark-accent,
+  .brand span {
+    color: CanvasText;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  [aria-current='page'],
+  [aria-selected='true'],
+  [aria-pressed='true'] {
+    background: var(--a11y-focus-color);
+    color: var(--a11y-focus-text);
+    border-color: var(--a11y-focus-color);
+  }
+
+  progress {
+    accent-color: var(--a11y-focus-color);
+  }
+}
