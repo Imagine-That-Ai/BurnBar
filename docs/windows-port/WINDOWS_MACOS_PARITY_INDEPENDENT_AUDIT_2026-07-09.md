@@ -201,6 +201,12 @@ unproven host behavior to certification:
   of presenting a placeholder. Missing account/host inputs remain visibly
   data-gated; this does not claim live capture, cross-device transport, or
   physical safety certification.
+- The Windows Computer Use input adapter now has bounded allowlisted virtual-key
+  and modifier mapping, key/shortcut sequencing, drag/drop sequencing,
+  horizontal and vertical scroll, and virtual-desktop-origin coordinate
+  normalization. Unknown inputs and oversized payloads fail closed before the
+  native call. The adapter remains advisory SendInput; signed-driver routing,
+  UIA target denial, and physical safety evidence remain external gates.
 - Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
   without writing prompts or tool output to disk. The companion CLI now exposes
   a bounded `fusion.run` command that composes this loop with the configured

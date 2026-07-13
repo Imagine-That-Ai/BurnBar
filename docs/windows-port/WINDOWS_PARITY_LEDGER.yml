@@ -444,12 +444,15 @@ rows:
   evidence:
   - docs/windows-port/evidence/f1-cu/desktop-loop.md
   - docs/windows-port/evidence/f2/computer-use-audit-export.md
+  - docs/windows-port/evidence/f2/computer-use-input-adapter.md
   - docs/windows-port/evidence/f2/mercury-media-settings.md
   tests:
   - windows/tests/computeruse/DesktopLoopTests.cs
   - windows/tests/computeruse
+  - windows/tests/computeruse-windows
   blocking_paths:
   - windows/computeruse/OpenBurnBar.ComputerUse.Core/Loop/ComputerUseDesktopLoop.cs
+  - windows/computeruse/OpenBurnBar.ComputerUse.Windows/SendInputInputSynthesizer.cs
   owner_lane: wave-5-pet-native-os
   notes: Production dispatch loop and fail-closed audit validation/export are Real; physical UIA/SendInput/WGC session proof remains separate.
 - id: daemon-strategy
@@ -550,8 +553,10 @@ rows:
   status: Real
   evidence:
   - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
+  - docs/windows-port/evidence/f2/mercury-media-settings.md
   tests:
   - windows/tests/settings
+  - windows/tests/mercury
   blocking_paths:
   - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Sessions/MediaSessionStateMachine.cs
   - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Budget/MediaCapabilityGate.cs
