@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import sys
 import zipfile
 
@@ -109,6 +110,73 @@ def update_source_fingerprint(
     return actual
 
 
+def extract_uniffi_exports(contents: str) -> list[str]:
+    exports: list[str] = []
+    awaiting_function = False
+    for line in contents.splitlines():
+        stripped = line.strip()
+        if stripped == "#[uniffi::export]":
+            awaiting_function = True
+            continue
+        if not awaiting_function:
+            continue
+        match = re.match(r"pub fn ([A-Za-z0-9_]+)\s*\(", stripped)
+        if match:
+            exports.append(match.group(1))
+            awaiting_function = False
+            continue
+        if stripped.startswith("#[") or stripped.startswith("//") or not stripped:
+            continue
+        raise GateError(
+            "canonical UniFFI source has an export attribute not followed by a public function"
+        )
+    if awaiting_function:
+        raise GateError("canonical UniFFI source ends after an export attribute")
+    return exports
+
+
+def require_exact_uniffi_exports(
+    manifest: dict[str, object], surface_contents: dict[str, str]
+) -> None:
+    expected = manifest.get("uniffiExports")
+    if (
+        not isinstance(expected, list)
+        or not expected
+        or any(not isinstance(symbol, str) or not symbol for symbol in expected)
+        or len(set(expected)) != len(expected)
+    ):
+        raise GateError("uniffiExports must be a non-empty ordered list of unique symbols")
+
+    canonical = extract_uniffi_exports(surface_contents["canonical-uniffi"])
+    if canonical != expected:
+        missing = [symbol for symbol in expected if symbol not in canonical]
+        undeclared = [symbol for symbol in canonical if symbol not in expected]
+        detail = []
+        if missing:
+            detail.append("missing=" + ",".join(missing))
+        if undeclared:
+            detail.append("undeclared=" + ",".join(undeclared))
+        if not detail:
+            detail.append("order differs")
+        raise GateError("canonical UniFFI exports do not exactly match manifest: " + "; ".join(detail))
+
+    header = re.findall(
+        r"uniffi_openburnbar_domain_ffi_fn_func_([a-z0-9_]+)\s*\(",
+        surface_contents["generated-swift-c-header"],
+    )
+    if len(header) != len(set(header)) or set(header) != set(expected):
+        missing = [symbol for symbol in expected if symbol not in header]
+        undeclared = [symbol for symbol in header if symbol not in expected]
+        detail = []
+        if missing:
+            detail.append("missing=" + ",".join(missing))
+        if undeclared:
+            detail.append("undeclared=" + ",".join(undeclared))
+        if len(header) != len(set(header)):
+            detail.append("duplicate generated symbols")
+        raise GateError("generated C header exports do not exactly match manifest: " + "; ".join(detail))
+
+
 def check_abi(root: pathlib.Path, manifest: dict[str, object]) -> None:
     domains = manifest.get("domains")
     surfaces = manifest.get("abiSurfaces")
@@ -121,6 +189,7 @@ def check_abi(root: pathlib.Path, manifest: dict[str, object]) -> None:
         raise GateError("abiSurfaces must be a non-empty list")
 
     full_union_surfaces: set[str] = set()
+    surface_contents: dict[str, str] = {}
     for surface in surfaces:
         if not isinstance(surface, dict):
             raise GateError("abiSurfaces entries must be objects")
@@ -145,6 +214,7 @@ def check_abi(root: pathlib.Path, manifest: dict[str, object]) -> None:
             contents = path.read_text(encoding="utf-8")
         except OSError as error:
             raise GateError(f"{name}: cannot read {raw_path}: {error}") from error
+        surface_contents[str(name)] = contents
 
         for domain_name in required:
             domain = domains.get(domain_name)
@@ -182,6 +252,7 @@ def check_abi(root: pathlib.Path, manifest: dict[str, object]) -> None:
             "full union coverage must be asserted exactly for canonical UniFFI and generated "
             "Swift/Kotlin/C# bindings"
         )
+    require_exact_uniffi_exports(manifest, surface_contents)
 
 
 def read_sidecar(path: pathlib.Path) -> str:

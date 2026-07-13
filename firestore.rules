@@ -4470,13 +4470,8 @@ service cloud.firestore {
 
     // --- Hermes Gateway root indexes (Deny All - Server Only) ---
 
-    match /hermes_gateway_token_index/{tokenHash} {
-      allow read, write: if false;
-    }
-
-    // --- Shared Rust shadow evidence (callable/admin SDK only) ---
-    match /domain_core_shadow_samples/{sampleId} {
-      allow read, write: if false;
-    }
+    // Hermes gateway token indexes and shared-Rust shadow evidence remain
+    // callable/Admin SDK only. Firestore's default deny applies because neither
+    // root collection has a client match block.
   }
 }

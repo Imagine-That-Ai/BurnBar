@@ -26,7 +26,20 @@ def materialize_abi_surfaces(root: pathlib.Path, manifest: dict[str, object]) ->
         symbols.extend(surface.get("requiredSymbols", []))
         path = root / surface["path"]
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("\n".join(symbols) + "\n", encoding="utf-8")
+        contents = "\n".join(symbols) + "\n"
+        if surface["name"] == "canonical-uniffi":
+            contents += "\n".join(
+                f"#[uniffi::export]\npub fn {symbol}() {{}}"
+                for symbol in manifest["uniffiExports"]
+            )
+            contents += "\n"
+        elif surface["name"] == "generated-swift-c-header":
+            contents += "\n".join(
+                f"void uniffi_openburnbar_domain_ffi_fn_func_{symbol}(void);"
+                for symbol in manifest["uniffiExports"]
+            )
+            contents += "\n"
+        path.write_text(contents, encoding="utf-8")
 
 
 class DomainCoreUnionGateTests(unittest.TestCase):
@@ -96,6 +109,42 @@ class DomainCoreUnionGateTests(unittest.TestCase):
             materialize_abi_surfaces(root, mutated)
             with self.assertRaisesRegex(GATE.GateError, "full union coverage"):
                 GATE.check_abi(root, mutated)
+
+    def test_undeclared_uniffi_export_fails_closed(self) -> None:
+        _, manifest = GATE.load_manifest(ROOT)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            materialize_abi_surfaces(root, manifest)
+            rust = root / next(
+                surface["path"]
+                for surface in manifest["abiSurfaces"]
+                if surface["name"] == "canonical-uniffi"
+            )
+            rust.write_text(
+                rust.read_text(encoding="utf-8")
+                + "#[uniffi::export]\npub fn undeclared_export() {}\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(GATE.GateError, "undeclared=undeclared_export"):
+                GATE.check_abi(root, manifest)
+
+    def test_generated_header_export_drift_fails_closed(self) -> None:
+        _, manifest = GATE.load_manifest(ROOT)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            materialize_abi_surfaces(root, manifest)
+            header = root / next(
+                surface["path"]
+                for surface in manifest["abiSurfaces"]
+                if surface["name"] == "generated-swift-c-header"
+            )
+            header.write_text(
+                header.read_text(encoding="utf-8")
+                + "void uniffi_openburnbar_domain_ffi_fn_func_undeclared_export(void);\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(GATE.GateError, "undeclared=undeclared_export"):
+                GATE.check_abi(root, manifest)
 
     def test_missing_and_stale_sidecars_fail_closed(self) -> None:
         fingerprint = "a" * 64
