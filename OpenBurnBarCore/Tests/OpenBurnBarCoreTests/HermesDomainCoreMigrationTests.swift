@@ -1,12 +1,24 @@
 import Foundation
 import OpenBurnBarCore
 import XCTest
+#if canImport(OpenBurnBarDomainCoreFFI)
+import OpenBurnBarDomainCoreFFI
+#endif
 
 final class HermesDomainCoreMigrationTests: XCTestCase {
+    private func assertNativeDomainCoreLoaded() {
+        #if canImport(OpenBurnBarDomainCoreFFI)
+        XCTAssertEqual(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion(), 2)
+        #else
+        XCTFail("domain-core FFI module is unavailable in native-required test")
+        #endif
+    }
+
     func testRustModeMatchesCanonicalAadAndCrossOpensLegacyCiphertext() throws {
         guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
             throw XCTSkip("native-required in domain-core CI")
         }
+        assertNativeDomainCoreLoaded()
         setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "rust", 1)
         defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
 
@@ -35,6 +47,7 @@ final class HermesDomainCoreMigrationTests: XCTestCase {
         guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
             throw XCTSkip("native-required in domain-core CI")
         }
+        assertNativeDomainCoreLoaded()
         setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "rust", 1)
         defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
         XCTAssertEqual(
