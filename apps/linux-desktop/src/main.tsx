@@ -18,7 +18,7 @@ import { useShellStore } from './state/shellStore.js';
 
 async function boot(): Promise<void> {
   const end = markStart('app.start');
-  applyReducedMotionClass();
+  const removeReducedMotionListener = applyReducedMotionClass();
   const chatPopout = new URLSearchParams(location.search).get('window') === 'chat-popout';
   const requestedHash = location.hash;
   const hadDeepLink = chatPopout || Boolean(requestedHash && requestedHash !== '#/onboarding');
@@ -98,6 +98,7 @@ async function boot(): Promise<void> {
     ? installDaemonSubscriptionLifecycle(subscriptionSupervisor)
     : () => {};
   window.addEventListener('beforeunload', () => {
+    removeReducedMotionListener();
     uninstallSubscriptionLifecycle();
     uninstallHealthLifecycle();
   }, { once: true });
