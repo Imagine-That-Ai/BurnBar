@@ -458,9 +458,6 @@ let openBurnBarCoreExcludes = [
     "Demo/InsightVerdictDemoFixture.swift",
     "Services/Insights",
     "SwitcherBrowserLaunchService.swift",
-    // TextExpansion is an Apple keyboard-extension feature (App Group stores); not
-    // in the Engine subset and not referenced outside its own directory.
-    "TextExpansion",
     "SharedModels/AgentProvider+LogoBackdrop.swift",
     "SharedModels/AgentWatchLiveActivityAttributes.swift",
     "SharedModels/BurnBarLiveActivityAttributes.swift",
