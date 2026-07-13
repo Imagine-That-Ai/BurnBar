@@ -149,10 +149,12 @@ unproven host behavior to certification:
   text is never inserted into the store, and `code.status` exposes bounded
   storage/index counters; the companion plane exposes bounded
   `code.call_graph` traversal and semantic search over versioned deterministic
-  96-dimensional vectors. Chunk offsets and vectors are persisted without source
-  text, and semantic results read source only for an explicit context request.
-  Full macOS NaturalLanguage/provider-backed embedding quality and AST-aware
-  chunking remain explicit follow-ons. The Projects page composes the same
+  96-dimensional vectors. Tree-sitter symbol ranges now drive AST-aware chunks;
+  bounded line-aware slicing handles gaps and oversized symbols. Chunk offsets
+  and vectors are persisted without source text, and semantic results read
+  source only for an explicit context request. Full macOS
+  NaturalLanguage/provider-backed embedding quality remains an explicit
+  follow-on. The Projects page composes the same
   encrypted store, keeping visible symbols and companion operations on one
   durable checkpoint.
 - App startup composes the loopback gateway, companion CLI, and durable run
@@ -201,11 +203,11 @@ unproven host behavior to certification:
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 41/41 managed-agent-runtime tests), CloudSync (60/60), connector
-(99/99), presentation (760/760), Computer Use, bridge-policy, and
+(99/99), presentation (761/761), Computer Use, bridge-policy, and
 provider-boundary tests. They are an
 implementation increment, not a claim that
 the F2 workstreams are all complete: full macOS semantic/provider embedding
-parity, AST-aware static parsing across every grammar, production composition of every F2 service,
+parity, live LSP host evidence, production composition of every F2 service,
 physical Computer Use/media safety, and host evidence still remain. The
 ledger's 47/47 `Real` result is the scoped F1 source/product gate; WPD-0009
 continues to define F2 True 1:1 as the actual 100% parity endpoint.

@@ -237,7 +237,8 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
                     path,
                     symbol.StartLine,
                     symbol.ConfidenceTier,
-                    symbol.Parser));
+                    symbol.Parser,
+                    symbol.EndLine));
             }
         }
 
@@ -460,7 +461,8 @@ public sealed record ProjectCodeSymbol(
     string FilePath,
     int Line,
     string ConfidenceTier = "lexical_fallback",
-    string Parser = "lexical");
+    string Parser = "lexical",
+    int? EndLine = null);
 
 public sealed record ProjectCodeIndexSnapshot(
     string Root,

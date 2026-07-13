@@ -478,7 +478,7 @@ rows:
   blocking_paths:
   - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeLexicalScanner.cs
   owner_lane: wave-0-architecture
-  notes: Lexical inventory Real; full AST static analyzer deeper residual noted in WPD-0003 history.
+  notes: Tree-sitter inventory and symbol-range extraction Real; live LSP host evidence remains separate.
 - id: f2-project-code-memory-store
   macos_route: projects
   macos_capability: Pensieve watcher + project-code memory store
@@ -493,7 +493,7 @@ rows:
   - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeMemoryStore.cs
   - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeSymbolIndex.cs
   owner_lane: f2
-  notes: Live watcher + durable source-free metadata store are Real; semantic chunk/embedding parity remains separate.
+  notes: Live watcher, durable source-free store, and parser-backed AST chunk ranges are Real; learned embedding-provider quality remains separate.
 - id: dist-msix-signed
   macos_route: dist
   macos_capability: Signed distribution

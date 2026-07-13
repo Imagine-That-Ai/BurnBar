@@ -28,9 +28,11 @@ chunk/vector index. It does not persist source text.
   The companion plane exposes bounded `code.call_graph` traversal (depth 1-3)
   and `code.semantic_search` over deterministic 96-dimensional vectors.
 - Code is chunked with the macOS 2,400-character / 240-character-overlap
-  contract. The deterministic embedding version is stored beside each vector,
-  and query results return only file-relative offsets and hashes; source is read
-  later only by an explicit context-pack request.
+  contract. When Tree-sitter ranges are available, nested symbol spans are
+  merged into AST-aware chunks; bounded line-aware slicing covers gaps and
+  oversized symbols. The versioned deterministic embedding identity is stored
+  beside each vector, and query results return only file-relative offsets and
+  hashes; source is read later only by an explicit context-pack request.
 - Only metadata and hashes are persisted. Source is read transiently during
   reference extraction and is never inserted into the SQLite database.
 - The inventory includes the macOS extension set (`m/mm/h/hpp/c/cc/cpp`, JSON,
@@ -50,7 +52,7 @@ chunk/vector index. It does not persist source text.
 dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj --no-restore
 ```
 
-Result: **760 passed, 0 failed, 0 skipped**.
+Result: **761 passed, 0 failed, 0 skipped**.
 
 The durable-store test proves two-file artifact/index persistence, lexical
 reference and call-edge persistence, bounded call-graph traversal, checkpoint
@@ -59,7 +61,7 @@ companion managed-runtime suite covers the new operation routing.
 
 ## Boundary
 
-This evidence promotes the Windows watcher + durable metadata-store and bounded
-semantic-index trigger. It does not claim full macOS NaturalLanguage/provider
-embedding quality or AST-aware chunking parity, live LSP-host evidence, physical Windows performance/accessibility, staging
+This evidence promotes the Windows watcher + durable metadata-store, parser-backed
+AST chunking, and bounded semantic-index trigger. It does not claim full macOS
+NaturalLanguage/provider embedding quality, live LSP-host evidence, physical Windows performance/accessibility, staging
 cloud flows, advanced Computer Use/media safety, or Store/update certification.

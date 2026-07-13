@@ -247,4 +247,58 @@ public sealed class ProjectCodeMemoryServiceTests
             }
         }
     }
+
+    [Fact]
+    public async Task DurableStore_UsesTreeSitterSymbolRangesForChunks()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-code-ast-chunking-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        string databasePath = Path.Combine(root, "memory.sqlite");
+        try
+        {
+            string source = string.Join(
+                "\n",
+                "// file header",
+                "public class Alpha",
+                "{",
+                "    public void Run() {}",
+                "}",
+                "",
+                "public class Beta",
+                "{",
+                "    public void Stop() {}",
+                "}");
+            string sourcePath = Path.Combine(root, "Symbols.cs");
+            await File.WriteAllTextAsync(sourcePath, source);
+
+            using var store = new ProjectCodeMemoryStore(databasePath, encryptionPassphrase: "obb-project-code-ast-key-2026");
+            store.SaveIndex(
+                root,
+                new ProjectCodeIndexSnapshot(
+                    root,
+                    System.DateTimeOffset.UtcNow,
+                    new[]
+                    {
+                        new ProjectCodeSymbol("Alpha", "class", sourcePath, 2, "static_tree_sitter", "tree-sitter", 5),
+                        new ProjectCodeSymbol("Beta", "class", sourcePath, 7, "static_tree_sitter", "tree-sitter", 10),
+                    },
+                    Truncated: false,
+                    ParserMode: "tree-sitter"));
+
+            ProjectCodeSemanticSearchResult result = store.ReadSemanticSearch("Alpha");
+            int alphaOffset = source.IndexOf("public class Alpha", System.StringComparison.Ordinal);
+            Assert.Contains(result.Hits, hit => hit.StartOffset == alphaOffset);
+            Assert.All(result.Hits, hit => Assert.InRange(
+                hit.EndOffset - hit.StartOffset,
+                1,
+                ProjectCodeMemoryStore.CodeChunkMaxCharacters));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
 }

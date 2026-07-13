@@ -25,7 +25,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
     public const int CodeChunkMaxCharacters = 2_400;
     public const int CodeChunkOverlapCharacters = 240;
     public const int CodeEmbeddingDimensions = 96;
-    public const string CodeEmbeddingVersion = "openburnbar-deterministic-code-v1";
+    public const string CodeEmbeddingVersion = "openburnbar-deterministic-code-ast-v1";
     public const int MaxSemanticCandidates = 100_000;
     private const string CodeEmbeddingSeed = "openburnbar-deterministic-embedding-seed-v1";
 
@@ -289,7 +289,8 @@ public sealed class ProjectCodeMemoryStore : IDisposable
                     Path.Combine(canonicalRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)),
                     range.StartLine,
                     symbolReader.IsDBNull(4) ? "lexical_fallback" : symbolReader.GetString(4),
-                    parserMode == "tree-sitter" ? "tree-sitter" : "lexical"));
+                    parserMode == "tree-sitter" ? "tree-sitter" : "lexical",
+                    range.EndLine));
             }
 
             snapshot = new ProjectCodeIndexSnapshot(canonicalRoot, refreshedAt, symbols, truncated, parserMode);
@@ -336,7 +337,13 @@ public sealed class ProjectCodeMemoryStore : IDisposable
                     artifacts.Add(new StoredArtifact(artifactID, relativePath, file.BlobSha!, file.Text!));
                     InsertArtifact(artifactID, projectID, relativePath, file, now, transaction);
                     InsertManifest(projectID, relativePath, artifactID, file.ByteCount, file.Language, null, now, transaction);
-                    chunkCount += InsertCodeChunks(projectID, artifacts[^1], now, transaction);
+                    IReadOnlyList<ProjectCodeSymbol> fileSymbols = snapshot.Symbols
+                        .Where(symbol => string.Equals(
+                            TryRelativePath(canonicalRoot, symbol.FilePath),
+                            relativePath,
+                            StringComparison.OrdinalIgnoreCase))
+                        .ToArray();
+                    chunkCount += InsertCodeChunks(projectID, artifacts[^1], fileSymbols, now, transaction);
                 }
 
                 var symbolIDsByName = new Dictionary<string, List<(string ID, string RelativePath, int Line)>>(StringComparer.OrdinalIgnoreCase);
@@ -656,9 +663,14 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         command.ExecuteNonQuery();
     }
 
-    private int InsertCodeChunks(string projectID, StoredArtifact artifact, string now, SqliteTransaction transaction)
+    private int InsertCodeChunks(
+        string projectID,
+        StoredArtifact artifact,
+        IReadOnlyList<ProjectCodeSymbol> symbols,
+        string now,
+        SqliteTransaction transaction)
     {
-        IReadOnlyList<CodeChunk> chunks = BuildChunks(artifact.Text);
+        IReadOnlyList<CodeChunk> chunks = BuildChunks(artifact.Text, symbols);
         for (int ordinal = 0; ordinal < chunks.Count; ordinal++)
         {
             CodeChunk chunk = chunks[ordinal];
@@ -703,7 +715,12 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         command.Parameters.AddWithValue("$blob", stored.BlobSha);
         command.Parameters.AddWithValue("$name", stored.Symbol.Name);
         command.Parameters.AddWithValue("$kind", stored.Symbol.Kind);
-        command.Parameters.AddWithValue("$range", JsonSerializer.Serialize(new SymbolRange(stored.Symbol.Line, stored.Symbol.Line, stored.RelativePath)));
+        command.Parameters.AddWithValue(
+            "$range",
+            JsonSerializer.Serialize(new SymbolRange(
+                stored.Symbol.Line,
+                stored.Symbol.EndLine ?? stored.Symbol.Line,
+                stored.RelativePath)));
         command.Parameters.AddWithValue("$confidence", stored.Symbol.ConfidenceTier);
         command.Parameters.AddWithValue("$now", now);
         command.ExecuteNonQuery();
@@ -889,7 +906,9 @@ public sealed class ProjectCodeMemoryStore : IDisposable
     private static string Sha256Hex(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
-    private static IReadOnlyList<CodeChunk> BuildChunks(string text)
+    private static IReadOnlyList<CodeChunk> BuildChunks(
+        string text,
+        IReadOnlyList<ProjectCodeSymbol>? symbols = null)
     {
         if (string.IsNullOrEmpty(text))
         {
@@ -897,31 +916,145 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         }
 
         var chunks = new List<CodeChunk>();
-        int startOffset = 0;
-        while (startOffset < text.Length)
+        IReadOnlyList<(int Start, int End)> astRanges = BuildAstRanges(text, symbols ?? Array.Empty<ProjectCodeSymbol>());
+        if (astRanges.Count == 0)
         {
-            int endOffset = Math.Min(text.Length, startOffset + CodeChunkMaxCharacters);
-            if (endOffset < text.Length)
+            AppendBoundedChunks(text, 0, text.Length, chunks);
+            return chunks;
+        }
+
+        int cursor = 0;
+        foreach ((int start, int end) in astRanges)
+        {
+            if (start > cursor)
             {
-                int searchStart = Math.Min(text.Length, startOffset + CodeChunkMaxCharacters / 2);
-                int newline = text.LastIndexOf('\n', endOffset - 1, endOffset - searchStart);
-                if (newline > startOffset)
+                AppendBoundedChunks(text, cursor, start, chunks);
+            }
+
+            if (end - start <= CodeChunkMaxCharacters)
+            {
+                AddChunk(text, start, end, chunks);
+            }
+            else
+            {
+                AppendBoundedChunks(text, start, end, chunks);
+            }
+
+            cursor = Math.Max(cursor, end);
+        }
+
+        if (cursor < text.Length)
+        {
+            AppendBoundedChunks(text, cursor, text.Length, chunks);
+        }
+
+        return chunks;
+    }
+
+    private static IReadOnlyList<(int Start, int End)> BuildAstRanges(
+        string text,
+        IReadOnlyList<ProjectCodeSymbol> symbols)
+    {
+        if (symbols.Count == 0)
+        {
+            return Array.Empty<(int Start, int End)>();
+        }
+
+        int[] lineStarts = BuildLineStarts(text);
+        var ranges = symbols
+            .Where(symbol => symbol.EndLine is not null && symbol.Line > 0)
+            .Select(symbol =>
+            {
+                int start = OffsetForLine(lineStarts, symbol.Line);
+                int end = OffsetForLine(lineStarts, Math.Max(symbol.Line, symbol.EndLine!.Value) + 1);
+                return (Start: start, End: Math.Max(start, end));
+            })
+            .Where(range => range.End > range.Start)
+            .OrderBy(range => range.Start)
+            .ThenByDescending(range => range.End)
+            .ToArray();
+        if (ranges.Length == 0)
+        {
+            return Array.Empty<(int Start, int End)>();
+        }
+
+        var merged = new List<(int Start, int End)>();
+        foreach ((int start, int end) in ranges)
+        {
+            if (merged.Count == 0 || start > merged[^1].End)
+            {
+                merged.Add((start, end));
+                continue;
+            }
+
+            (int previousStart, int previousEnd) = merged[^1];
+            merged[^1] = (previousStart, Math.Max(previousEnd, end));
+        }
+
+        return merged;
+    }
+
+    private static int[] BuildLineStarts(string text)
+    {
+        var starts = new List<int> { 0 };
+        for (int index = 0; index < text.Length; index++)
+        {
+            if (text[index] == '\n' && index + 1 < text.Length)
+            {
+                starts.Add(index + 1);
+            }
+        }
+
+        return starts.ToArray();
+    }
+
+    private static int OffsetForLine(IReadOnlyList<int> lineStarts, int oneBasedLine)
+    {
+        int index = Math.Clamp(oneBasedLine - 1, 0, lineStarts.Count - 1);
+        return lineStarts[index];
+    }
+
+    private static void AppendBoundedChunks(string text, int start, int end, ICollection<CodeChunk> chunks)
+    {
+        int cursor = Math.Clamp(start, 0, text.Length);
+        int boundedEnd = Math.Clamp(end, cursor, text.Length);
+        while (cursor < boundedEnd)
+        {
+            int chunkEnd = Math.Min(boundedEnd, cursor + CodeChunkMaxCharacters);
+            if (chunkEnd < boundedEnd)
+            {
+                int searchStart = Math.Min(boundedEnd, cursor + CodeChunkMaxCharacters / 2);
+                int newline = text.LastIndexOf('\n', chunkEnd - 1, chunkEnd - searchStart);
+                if (newline >= cursor)
                 {
-                    endOffset = newline + 1;
+                    chunkEnd = newline + 1;
                 }
             }
 
-            string slice = text[startOffset..endOffset];
-            chunks.Add(new CodeChunk(startOffset, endOffset, Sha256Hex(slice), slice));
-            if (endOffset >= text.Length)
+            if (chunkEnd <= cursor)
+            {
+                chunkEnd = Math.Min(boundedEnd, cursor + CodeChunkMaxCharacters);
+            }
+
+            AddChunk(text, cursor, chunkEnd, chunks);
+            if (chunkEnd >= boundedEnd)
             {
                 break;
             }
 
-            startOffset = Math.Max(0, endOffset - CodeChunkOverlapCharacters);
+            cursor = Math.Min(boundedEnd, Math.Max(cursor + 1, chunkEnd - CodeChunkOverlapCharacters));
+        }
+    }
+
+    private static void AddChunk(string text, int start, int end, ICollection<CodeChunk> chunks)
+    {
+        if (end <= start)
+        {
+            return;
         }
 
-        return chunks;
+        string slice = text[start..end];
+        chunks.Add(new CodeChunk(start, end, Sha256Hex(slice), slice));
     }
 
     private static float[] EmbedCode(string text)
