@@ -370,8 +370,8 @@ export function petTierMatrix(): Record<string, string>[] {
   return [
     {
       desktop: 'KDE Wayland',
-      tier: 'overlay-pass-through',
-      evidence: 'Always-on-top pass-through tier allowed when compositor/window manager supports it.'
+      tier: 'draggable-contained',
+      evidence: 'Wayland environment variables do not prove a safe overlay contract; contained fallback is active.'
     },
     {
       desktop: 'GNOME Wayland',
@@ -380,8 +380,8 @@ export function petTierMatrix(): Record<string, string>[] {
     },
     {
       desktop: 'X11 session',
-      tier: 'overlay-pass-through',
-      evidence: 'Legacy X11 window managers may support pass-through; user can fall back to contained route.'
+      tier: 'draggable-contained',
+      evidence: 'X11 may provide compositor capability, but no native Linux companion-window contract is wired.'
     }
   ];
 }
