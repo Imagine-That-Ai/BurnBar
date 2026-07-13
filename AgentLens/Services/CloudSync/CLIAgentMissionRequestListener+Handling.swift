@@ -50,6 +50,23 @@ private enum WandMissionEntitlements {
 }
 
 extension CLIAgentMissionRequestListener {
+    struct ShadowContextFields {
+        let requestedRuntime: String?
+        let requestedModelID: String?
+        let commandsAllowed: Bool?
+        let fileEditsAllowed: Bool?
+        let originDeviceID: String?
+        let createdBy: String?
+        let originPlatform: String?
+        let source: String?
+        let personaScopeJSON: String?
+        let approvalMode: String?
+        let approvalStatus: String?
+        let approverDeviceID: String?
+        let entitlementTier: String?
+        let workingDirectory: String?
+    }
+
     private func validateMissionGroupClaimIfNeeded(
         data: [String: Any],
         uid: String,
@@ -197,25 +214,25 @@ extension CLIAgentMissionRequestListener {
     /// Kept as a pure helper so the security-sensitive field mapping is
     /// directly testable without requiring a live Firestore listener.
     nonisolated static func makeShadowContext(
-        data: [String: Any],
+        fields: ShadowContextFields,
         missionID: String,
         prompt: String,
         fanOutCount: Int
     ) -> MissionRemoteAuthorizationShadow.ShadowContext {
         MissionRemoteAuthorizationShadow.ShadowContext(
             missionID: missionID, prompt: prompt,
-            runtime: (data["requestedRuntime"] as? String) ?? "auto",
-            modelID: (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-            commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
-            fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false,
-            originDeviceID: (data["originDeviceID"] as? String)?.nilIfBlank ?? (data["createdBy"] as? String)?.nilIfBlank ?? "unknown",
-            originPlatform: (data["originPlatform"] as? String)?.nilIfBlank ?? (data["source"] as? String)?.nilIfBlank ?? "unknown",
-            personaScopeJSON: (data["personaScopeJSON"] as? String)?.nilIfBlank,
-            approvalMode: (data["approvalMode"] as? String)?.nilIfBlank,
-            approvalStatus: (data["approvalStatus"] as? String) ?? "",
-            approverDeviceID: (data["approverDeviceID"] as? String)?.nilIfBlank,
-            entitlementTier: (data["entitlementTier"] as? String)?.nilIfBlank ?? "none",
-            workingDirectory: (data["workingDirectory"] as? String)?.nilIfBlank,
+            runtime: fields.requestedRuntime ?? "auto",
+            modelID: fields.requestedModelID?.trimmingCharacters(in: .whitespacesAndNewlines),
+            commandsAllowed: fields.commandsAllowed ?? false,
+            fileEditsAllowed: fields.fileEditsAllowed ?? false,
+            originDeviceID: fields.originDeviceID?.nilIfBlank ?? fields.createdBy?.nilIfBlank ?? "unknown",
+            originPlatform: fields.originPlatform?.nilIfBlank ?? fields.source?.nilIfBlank ?? "unknown",
+            personaScopeJSON: fields.personaScopeJSON?.nilIfBlank,
+            approvalMode: fields.approvalMode?.nilIfBlank,
+            approvalStatus: fields.approvalStatus ?? "",
+            approverDeviceID: fields.approverDeviceID?.nilIfBlank,
+            entitlementTier: fields.entitlementTier?.nilIfBlank ?? "none",
+            workingDirectory: fields.workingDirectory?.nilIfBlank,
             fanOutCount: fanOutCount
         )
     }
@@ -263,7 +280,22 @@ extension CLIAgentMissionRequestListener {
         // Build shadow context from current data at call time (reads post-wand-routing values).
         func shadowCtx(_ id: String, _ p: String, _ fanOut: Int) -> MissionRemoteAuthorizationShadow.ShadowContext {
             Self.makeShadowContext(
-                data: data,
+                fields: .init(
+                    requestedRuntime: data["requestedRuntime"] as? String,
+                    requestedModelID: data["requestedModelID"] as? String,
+                    commandsAllowed: data["commandsAllowed"] as? Bool,
+                    fileEditsAllowed: data["fileEditsAllowed"] as? Bool,
+                    originDeviceID: data["originDeviceID"] as? String,
+                    createdBy: data["createdBy"] as? String,
+                    originPlatform: data["originPlatform"] as? String,
+                    source: data["source"] as? String,
+                    personaScopeJSON: data["personaScopeJSON"] as? String,
+                    approvalMode: data["approvalMode"] as? String,
+                    approvalStatus: data["approvalStatus"] as? String,
+                    approverDeviceID: data["approverDeviceID"] as? String,
+                    entitlementTier: data["entitlementTier"] as? String,
+                    workingDirectory: data["workingDirectory"] as? String
+                ),
                 missionID: id,
                 prompt: p,
                 fanOutCount: fanOut

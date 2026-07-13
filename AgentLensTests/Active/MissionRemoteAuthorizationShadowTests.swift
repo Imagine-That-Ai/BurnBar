@@ -299,20 +299,16 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
 
     func testListenerShadowContextMapsFieldsAndFailsClosedForMissingValues() {
         let populated = CLIAgentMissionRequestListener.makeShadowContext(
-            data: [
-                "requestedRuntime": "ollama",
-                "requestedModelID": "  llama3  ",
-                "commandsAllowed": true,
-                "fileEditsAllowed": true,
-                "originDeviceID": "device-9",
-                "originPlatform": "ios",
-                "personaScopeJSON": "{\"personaID\":\"reviewer\"}",
-                "approvalMode": "manual_all",
-                "approvalStatus": "pending",
-                "approverDeviceID": "approver-1",
-                "entitlementTier": "pro",
-                "workingDirectory": "/tmp/project"
-            ],
+            fields: .init(
+                requestedRuntime: "ollama", requestedModelID: "  llama3  ",
+                commandsAllowed: true, fileEditsAllowed: true,
+                originDeviceID: "device-9", createdBy: nil,
+                originPlatform: "ios", source: nil,
+                personaScopeJSON: "{\"personaID\":\"reviewer\"}",
+                approvalMode: "manual_all", approvalStatus: "pending",
+                approverDeviceID: "approver-1", entitlementTier: "pro",
+                workingDirectory: "/tmp/project"
+            ),
             missionID: "mapped",
             prompt: "prompt",
             fanOutCount: 4
@@ -331,12 +327,15 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         XCTAssertEqual(populated.fanOutCount, 4)
 
         let missing = CLIAgentMissionRequestListener.makeShadowContext(
-            data: [
-                "createdBy": "creator-1",
-                "source": "mobile",
-                "approvalStatus": "",
-                "entitlementTier": "  "
-            ],
+            fields: .init(
+                requestedRuntime: nil, requestedModelID: nil,
+                commandsAllowed: nil, fileEditsAllowed: nil,
+                originDeviceID: nil, createdBy: "creator-1",
+                originPlatform: nil, source: "mobile",
+                personaScopeJSON: nil, approvalMode: nil,
+                approvalStatus: "", approverDeviceID: nil,
+                entitlementTier: "  ", workingDirectory: nil
+            ),
             missionID: "fallbacks",
             prompt: "",
             fanOutCount: 0
