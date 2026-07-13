@@ -77,22 +77,70 @@ public struct BurnBarTextExpansionConsent: Codable, Hashable, Sendable {
     }
 }
 
+/// Native Linux text-expansion capability information.
+///
+/// This is deliberately diagnostic rather than an enablement claim.  The
+/// daemon may discover an IBus/Fcitx session, but it must not advertise global
+/// expansion until a packaged input-method engine is registered and its
+/// secure-field contract is proven.  Keeping this optional preserves wire
+/// compatibility with older daemons and keeps the in-app Composer usable when
+/// no desktop input method is available.
+public struct BurnBarTextExpansionNativeStatus: Codable, Hashable, Sendable {
+    public let status: String
+    public let backend: String?
+    public let backendPath: String?
+    public let sessionType: String
+    public let registration: String
+    public let supportsExternalExpansion: Bool
+    public let secureFieldPolicy: String
+    public let noGlobalCapture: Bool
+    public let detail: String
+    public let checkedAt: String
+
+    public init(
+        status: String,
+        backend: String? = nil,
+        backendPath: String? = nil,
+        sessionType: String,
+        registration: String,
+        supportsExternalExpansion: Bool,
+        secureFieldPolicy: String,
+        noGlobalCapture: Bool = true,
+        detail: String,
+        checkedAt: String
+    ) {
+        self.status = status
+        self.backend = backend
+        self.backendPath = backendPath
+        self.sessionType = sessionType
+        self.registration = registration
+        self.supportsExternalExpansion = supportsExternalExpansion
+        self.secureFieldPolicy = secureFieldPolicy
+        self.noGlobalCapture = noGlobalCapture
+        self.detail = detail
+        self.checkedAt = checkedAt
+    }
+}
+
 public struct BurnBarTextExpansionSnapshot: Codable, Hashable, Sendable {
     public let schemaVersion: Int
     public let exportedAt: String
     public let snippets: [BurnBarTextExpansionWireSnippet]
     public let consent: BurnBarTextExpansionConsent?
+    public let nativeStatus: BurnBarTextExpansionNativeStatus?
 
     public init(
         schemaVersion: Int = 1,
         exportedAt: String,
         snippets: [BurnBarTextExpansionWireSnippet],
-        consent: BurnBarTextExpansionConsent? = nil
+        consent: BurnBarTextExpansionConsent? = nil,
+        nativeStatus: BurnBarTextExpansionNativeStatus? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.exportedAt = exportedAt
         self.snippets = snippets
         self.consent = consent
+        self.nativeStatus = nativeStatus
     }
 }
 

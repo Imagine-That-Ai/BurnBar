@@ -1,4 +1,4 @@
-import type { TextExpansionSnapshot, TextExpansionWireSnippet } from './tauriBridge.js';
+import type { TextExpansionNativeStatus, TextExpansionSnapshot, TextExpansionWireSnippet } from './tauriBridge.js';
 
 /** UI-compatible in-app representation retained for the P14 surface. */
 export type TextExpansionSnippet = {
@@ -31,6 +31,7 @@ const MAX_SNIPPETS = 500;
 let backend: TextExpansionStorageBackend | null = null;
 let backendReady = false;
 let nativeItems: TextExpansionSnippet[] = [];
+let nativeStatus: TextExpansionNativeStatus | null = null;
 let memoryItems: TextExpansionSnippet[] = [];
 let backendError: string | null = null;
 let allowLocalFallback = true;
@@ -176,6 +177,7 @@ export function configureTextExpansionStorageWithPolicy(
   backend = next;
   backendReady = false;
   nativeItems = [];
+  nativeStatus = null;
   if (!preserveMemory || backendChanged) memoryItems = [];
   allowLocalFallback = allowFallback;
   backendError = next || allowFallback ? null : 'Native text expansion storage is unavailable.';
@@ -196,7 +198,9 @@ export async function hydrateTextExpansionStorage(
     return allowLocalFallback ? listSnippets() : [];
   }
   try {
-    nativeItems = fromSnapshot(await backend.textExpansionList());
+    const snapshot = await backend.textExpansionList();
+    nativeItems = fromSnapshot(snapshot);
+    nativeStatus = snapshot.nativeStatus ?? null;
     backendReady = true;
     backendError = null;
     return listSnippets();
@@ -205,6 +209,11 @@ export async function hydrateTextExpansionStorage(
     backendError = error instanceof Error ? error.message : 'Native text expansion storage unavailable.';
     return listSnippets();
   }
+}
+
+/** Last daemon-reported native IME status, or null in fixture/in-app-only mode. */
+export function textExpansionNativeStatus(): TextExpansionNativeStatus | null {
+  return nativeStatus;
 }
 
 export function listSnippets(): TextExpansionSnippet[] {
@@ -274,6 +283,7 @@ export function deleteSnippet(id: string): void {
       if (!isCurrentNativeMutation(context)) throw staleNativeMutationError();
       const snapshot = await context.backend.textExpansionDelete(id);
       nativeItems = fromSnapshot(snapshot);
+      nativeStatus = snapshot.nativeStatus ?? null;
     }).catch((error) => {
       if (isCurrentNativeMutation(context)) {
         backendError = error instanceof Error ? error.message : 'Native text expansion delete failed.';
@@ -300,6 +310,7 @@ export async function deleteSnippetPersisted(id: string): Promise<void> {
     try {
       const snapshot = await context.backend.textExpansionDelete(id);
       nativeItems = fromSnapshot(snapshot);
+      nativeStatus = snapshot.nativeStatus ?? null;
       backendError = null;
     } catch (error) {
       if (isCurrentNativeMutation(context)) {
@@ -415,7 +426,9 @@ export function importSnippets(json: string): { added: number; skipped: number }
       for (const item of addedItems) {
         await context.backend.textExpansionUpsert(toWireSnippet(item));
       }
-      nativeItems = fromSnapshot(await context.backend.textExpansionList());
+      const snapshot = await context.backend.textExpansionList();
+      nativeItems = fromSnapshot(snapshot);
+      nativeStatus = snapshot.nativeStatus ?? null;
     }).catch((error) => {
       if (isCurrentNativeMutation(context)) {
         backendError = error instanceof Error ? error.message : 'Native text expansion import failed.';
@@ -441,6 +454,7 @@ export async function importSnippetsPersisted(json: string): Promise<{ added: nu
       }
       const snapshot = await context.backend.textExpansionList();
       nativeItems = fromSnapshot(snapshot);
+      nativeStatus = snapshot.nativeStatus ?? null;
       backendError = null;
       return result;
     } catch (error) {

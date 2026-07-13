@@ -1157,11 +1157,24 @@ export type TextExpansionWireSnippet = {
   syncedAt?: string | null;
   sourceDeviceID?: string | null;
 };
+export type TextExpansionNativeStatus = {
+  status: 'available' | 'degraded' | 'blocked' | string;
+  backend?: string | null;
+  backendPath?: string | null;
+  sessionType: 'wayland' | 'x11' | 'unknown' | string;
+  registration: string;
+  supportsExternalExpansion: boolean;
+  secureFieldPolicy: string;
+  noGlobalCapture: boolean;
+  detail: string;
+  checkedAt: string;
+};
 export type TextExpansionSnapshot = {
   schemaVersion: number;
   exportedAt: string;
   snippets: TextExpansionWireSnippet[];
   consent?: TextExpansionConsent | null;
+  nativeStatus?: TextExpansionNativeStatus | null;
 };
 export type TextExpansionConsent = {
   inAppOnly: boolean;
@@ -3586,11 +3599,31 @@ function mapTextExpansionSnapshot(raw: RawJsonValue): TextExpansionSnapshot {
         declinedGlobalCapture: Boolean(pick(consentValue, 'declinedGlobalCapture', 'declined_global_capture'))
       }
     : null;
+  const rawNativeStatus = pick(value, 'nativeStatus', 'native_status');
+  const nativeStatusValue = rawNativeStatus === undefined || rawNativeStatus === null ? null : obj(rawNativeStatus);
+  const nativeStatus = nativeStatusValue
+    ? {
+        status: str(pick(nativeStatusValue, 'status'), 'blocked'),
+        backend: str(pick(nativeStatusValue, 'backend')) || null,
+        backendPath: str(pick(nativeStatusValue, 'backendPath', 'backend_path')) || null,
+        sessionType: str(pick(nativeStatusValue, 'sessionType', 'session_type'), 'unknown'),
+        registration: str(pick(nativeStatusValue, 'registration'), 'engine_not_registered'),
+        supportsExternalExpansion: Boolean(pick(nativeStatusValue, 'supportsExternalExpansion', 'supports_external_expansion')),
+        secureFieldPolicy: str(
+          pick(nativeStatusValue, 'secureFieldPolicy', 'secure_field_policy'),
+          'deny-unless-inspectable-and-explicitly-nonsecure'
+        ),
+        noGlobalCapture: pick(nativeStatusValue, 'noGlobalCapture', 'no_global_capture') !== false,
+        detail: str(pick(nativeStatusValue, 'detail'), 'Native text expansion status is unavailable.'),
+        checkedAt: str(pick(nativeStatusValue, 'checkedAt', 'checked_at'), new Date().toISOString())
+      }
+    : null;
   return {
     schemaVersion,
     exportedAt: str(pick(value, 'exportedAt', 'exported_at'), new Date().toISOString()),
     snippets,
-    consent
+    consent,
+    nativeStatus
   };
 }
 

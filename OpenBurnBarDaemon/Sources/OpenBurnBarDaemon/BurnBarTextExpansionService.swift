@@ -98,7 +98,9 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
 #endif
 
     public func snapshot() throws -> BurnBarTextExpansionSnapshot {
-        try withLock { try readSnapshot() }
+        try withLock {
+            try responseSnapshot(from: readSnapshot())
+        }
     }
 
     public func upsert(_ request: BurnBarTextExpansionUpsertRequest) throws -> BurnBarTextExpansionWireSnippet {
@@ -176,7 +178,7 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
             )
             try writeSnapshot(snapshot)
             logger.notice("text_expansion_deleted", metadata: ["snippet_id": request.id])
-            return snapshot
+            return responseSnapshot(from: snapshot)
         }
     }
 
@@ -289,8 +291,23 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
             schemaVersion: Self.snapshotSchemaVersion,
             exportedAt: snapshot.exportedAt,
             snippets: snippets,
-            consent: snapshot.consent
+            consent: snapshot.consent,
+            nativeStatus: nil
         )
+    }
+
+    private func responseSnapshot(from snapshot: BurnBarTextExpansionSnapshot) -> BurnBarTextExpansionSnapshot {
+#if os(Linux)
+        return BurnBarTextExpansionSnapshot(
+            schemaVersion: snapshot.schemaVersion,
+            exportedAt: snapshot.exportedAt,
+            snippets: snapshot.snippets,
+            consent: snapshot.consent,
+            nativeStatus: BurnBarLinuxTextExpansionAdapter().status()
+        )
+#else
+        return snapshot
+#endif
     }
 
     private func validate(_ snippet: BurnBarTextExpansionWireSnippet) throws -> BurnBarTextExpansionWireSnippet {

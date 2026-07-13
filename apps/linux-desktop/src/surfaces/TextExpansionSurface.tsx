@@ -14,6 +14,7 @@ import {
   listSnippets,
   hydrateTextExpansionStorage,
   configureTextExpansionStorageWithPolicy,
+  textExpansionNativeStatus,
   textExpansionStorageError,
   upsertSnippetPersisted,
   deleteSnippetPersisted
@@ -47,6 +48,7 @@ export function TextExpansionSurface() {
   const nativeUnavailable = bridgeReady && !fixtureMode && !nativeStorageAvailable;
   const consent = readTextExpansionConsent();
   const snippets = useMemo(() => listSnippets(), [version]);
+  const nativeStatus = textExpansionNativeStatus();
   const editing = editingId ? snippets.find((s) => s.id === editingId) : undefined;
   useEffect(() => {
     const storage = bridge && textExpansionList && textExpansionUpsert && textExpansionDelete && textExpansionConsentUpdate
@@ -151,6 +153,14 @@ export function TextExpansionSurface() {
           Native text expansion storage is unavailable. In-app snippets are disabled until the packaged shell is repaired.
         </Banner>
       ) : storageError ? <Banner tone="degraded" role="alert">{storageError}</Banner> : null}
+      {!fixtureMode && nativeStatus ? (
+        <p className="muted" role="status">
+          {nativeStatus.backend
+            ? `${nativeStatus.backend} detected for ${nativeStatus.sessionType}; external expansion is ${nativeStatus.supportsExternalExpansion ? 'enabled' : 'not registered'}.`
+            : 'No supported Linux input method was detected; in-app expansion remains available.'}
+          {' '}{nativeStatus.detail}
+        </p>
+      ) : null}
       {consentRow}
       <SnippetImportExport disabled={nativeUnavailable} onImported={() => setVersion((v) => v + 1)} />
       <form className="snippet-form" onSubmit={onSubmit} key={editing?.id ?? 'new'}>
