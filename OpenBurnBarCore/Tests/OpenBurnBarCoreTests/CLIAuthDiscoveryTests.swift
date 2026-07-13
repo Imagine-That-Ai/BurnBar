@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarLaunchServices
 
 final class CLIAuthDiscoveryTests: XCTestCase {
     override func tearDown() {
