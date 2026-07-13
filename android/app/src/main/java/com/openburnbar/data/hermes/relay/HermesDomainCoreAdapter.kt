@@ -135,14 +135,10 @@ internal object HermesDomainCoreAdapter {
 
     private fun nativeReady(): Boolean = runCatching { domainCoreAbiVersion() == 3u }.getOrDefault(false)
 
-    private fun <T> unavailable(
-        operation: String,
-        mode: HermesDomainCoreMode,
-        legacy: () -> T,
-    ): T {
+    private fun <T> unavailable(operation: String, mode: HermesDomainCoreMode, legacy: () -> T): T {
         diagnostic(operation, "native_unavailable")
         if (mode == HermesDomainCoreMode.RUST) {
-            throw IllegalStateException("Hermes Rust mode requires domain-core ABI v2")
+            throw IllegalStateException("Hermes Rust mode requires domain-core ABI v3")
         }
         return legacy()
     }

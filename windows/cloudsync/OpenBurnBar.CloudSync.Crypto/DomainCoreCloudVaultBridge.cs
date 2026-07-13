@@ -332,7 +332,7 @@ namespace OpenBurnBar.CloudSync.Crypto
             outcome = null;
             try
             {
-                if (DomainCore.DomainCoreAbiVersion() != 2)
+                if (DomainCore.DomainCoreAbiVersion() != 3)
                 {
                     return false;
                 }

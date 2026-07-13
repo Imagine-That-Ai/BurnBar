@@ -348,7 +348,7 @@ jobs:
         working-directory: android
         run: ./gradlew :openburnbar-domain-core:assembleDebugAndroidTest --no-daemon
 
-      - name: Execute ABI v2 smoke on x86_64 emulator
+      - name: Execute ABI v3 smoke on x86_64 emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34

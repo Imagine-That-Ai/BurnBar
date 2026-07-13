@@ -93,7 +93,7 @@ fn rewrap_request() -> Result<RewrapBenchmarkInput, Box<dyn Error>> {
             nonce: None,
             ciphertext: None,
             tag: None,
-            sealed_box_base64: Some(cloud_vault_base64_encode(source_box)),
+            sealed_box_base64: Some(cloud_vault_base64_encode(source_box)?),
             plaintext_sha256: None,
             plaintext_hmac: None,
             integrity_hash_version: None,
