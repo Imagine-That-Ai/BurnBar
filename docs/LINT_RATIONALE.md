@@ -78,6 +78,7 @@ budgets/raw-firestore-baseline.json
 budgets/singleton-baseline.json
 budgets/string-any-boundary-baseline.json
 budgets/swift-file-size-baseline.json
+budgets/port-file-size-baseline.json
 budgets/windows-tree-baseline.json
 budgets/core-ui-purity-baseline.json
 budgets/mission-splitbrain-baseline.json

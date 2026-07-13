@@ -200,26 +200,36 @@ assert.match(
   "foundation UIA failures must distinguish startup timeout from early process exit",
 );
 
-const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
-assert.ok(
-  firebaseRules.includes("rulesSourceForDeploy"),
-  "Firestore rules release helper must compact deploy source before creating rulesets",
-);
-assert.match(
-  firebaseRules,
-  /method: "PATCH",[\s\S]*body: JSON\.stringify\(\{\s*release: update,\s*\}\)/,
-  "Firebase Rules release PATCH must match firebase-tools' nested release payload without updateMask",
-);
+// The bespoke REST rules-release helper (deploy-firebase-rules-releases.mjs)
+// 400'd on every push for ~3 weeks (diligence 2026-07-12 LB-2) and was removed
+// in favor of firebase-tools' proven release path. Guard the replacement so the
+// supply-chain posture survives: rules ship through the pinned CLI, compacted to
+// preserve the size margin, with a pre-deploy size tripwire and no predeploy.
 const firestoreWorkflow = read(".github/workflows/deploy-firestore.yml");
 assert.match(
   firestoreWorkflow,
-  /--only firestore:indexes,storage/,
-  "Firestore deploy workflow must avoid firebase-tools' broken firestore:rules release path",
+  /--only firestore,storage/,
+  "Firestore deploy must ship rules (and indexes + storage) through firebase-tools",
+);
+assert.doesNotMatch(
+  firestoreWorkflow,
+  /deploy-firebase-rules-releases\.mjs/,
+  "the removed bespoke REST rules-release helper must not be reintroduced",
 );
 assert.match(
   firestoreWorkflow,
-  /node scripts\/ci\/deploy-firebase-rules-releases\.mjs "\$FIREBASE_PROJECT"/,
-  "Firestore deploy workflow must release rules through the hardened REST script",
+  /node scripts\/ci\/compact-firestore-rules-inplace\.mjs firestore\.rules/,
+  "Firestore rules must be compacted in place before firebase-tools deploys them",
+);
+assert.match(
+  firestoreWorkflow,
+  /node scripts\/ci\/check-firestore-rules-size\.mjs/,
+  "Firestore deploy must run the rules-size tripwire before deploying",
+);
+const compactHelper = read("scripts/ci/compact-firestore-rules-inplace.mjs");
+assert.ok(
+  compactHelper.includes("compactFirebaseRulesSource"),
+  "the in-place compaction helper must use the shared compactor so deployed bytes match the drift check",
 );
 
 console.log("PASS: ops script hardening regression checks");

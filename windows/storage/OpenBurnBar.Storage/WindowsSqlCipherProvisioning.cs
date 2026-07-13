@@ -11,8 +11,8 @@ namespace OpenBurnBar.Storage;
 
 public sealed partial class WindowsSqlCipherProvisioner
 {
-    public const string CurrentMigrationEndpoint = "v54_provider_quota_snapshots";
-    public const long CurrentMigrationCount = 55;
+    public const string CurrentMigrationEndpoint = "v55_search_chunks_fts_rowid";
+    public const long CurrentMigrationCount = 56;
     public const long CurrentUserVersion = 0;
 
     private static readonly JsonSerializerOptions JsonOptions = new()

@@ -669,7 +669,7 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(frames[0].media?.mirrorAck?.decision, .accepted)
     }
 
-    func testExistingPeerGrantAutoAcceptRenewsGrantAfterAcceptedMirror() async throws {
+    func testExistingPeerGrantAutoAcceptDoesNotRenewGrant() async throws {
         var now = Date(timeIntervalSince1970: 1_700_000_000)
         let (router, sink, consentStore) = makeRouterWithConsentStore(
             startScreenShare: { _, _, _, _, _, _, _, _ in },
@@ -686,14 +686,43 @@ final class MercuryRouterTests: XCTestCase {
         )
         let firstExpiry = try XCTUnwrap(consentStore.grants.first?.expiresAt)
 
-        now = now.addingTimeInterval(200 * 24 * 60 * 60)
+        // Auto-accept inside the fixed TTL succeeds but must NOT slide the
+        // expiry forward: remembered grants expire a fixed interval after the
+        // explicit Accept.
+        now = now.addingTimeInterval(10 * 24 * 60 * 60)
         await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
 
         XCTAssertNil(router.pendingRequest)
-        let renewedExpiry = try XCTUnwrap(consentStore.grants.first?.expiresAt)
-        XCTAssertGreaterThan(renewedExpiry, firstExpiry)
+        let expiryAfterUse = try XCTUnwrap(consentStore.grants.first?.expiresAt)
+        XCTAssertEqual(expiryAfterUse, firstExpiry,
+                       "an auto-accepted mirror must not extend the grant")
         let frames = await sink.frames
         XCTAssertEqual(frames.last?.media?.mirrorAck?.decision, .accepted)
+    }
+
+    func testExpiredPeerGrantRingsAgainInsteadOfAutoAccepting() async {
+        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        let (router, sink, consentStore) = makeRouterWithConsentStore(
+            startScreenShare: { _, _, _, _, _, _, _, _ in },
+            clock: { now }
+        )
+        consentStore.rememberAcceptedMirrorPeers = true
+        consentStore.rememberAcceptedPeer(
+            connectionId: "c",
+            viewerDeviceId: "iphone-1",
+            controlAuthorityPeerNodeId: "ios-peer",
+            remotePeerNodeId: "ios-peer",
+            requesterName: "Alberto's iPhone",
+            now: now
+        )
+
+        // Past the fixed TTL the grant is gone; the request must ring again.
+        now = now.addingTimeInterval(200 * 24 * 60 * 60)
+        await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
+
+        XCTAssertNotNil(router.pendingRequest, "an expired grant must not auto-accept")
+        let ackCount = await sink.count
+        XCTAssertEqual(ackCount, 0, "ringing must not auto-ack")
     }
 
     func testExistingPeerGrantDoesNotAutoAcceptWhenTransportPeerDiffers() async {
