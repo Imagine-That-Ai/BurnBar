@@ -261,6 +261,7 @@ extension CLIAgentMissionRequestListener {
             return
         }
         var data = mergePrivateMissionPayload(privatePayload, into: rawData)
+        // cov:ignore-start -- live Firestore mission-listener wiring; the typed mapper and shadow reducers are unit-tested without a live listener.
         // Build shadow context from current data at call time (reads post-wand-routing values).
         func shadowCtx(_ id: String, _ p: String, _ fanOut: Int) -> MissionRemoteAuthorizationShadow.ShadowContext {
             Self.makeShadowContext(
@@ -278,6 +279,7 @@ extension CLIAgentMissionRequestListener {
                 fanOutCount: fanOut
             )
         }
+        // cov:ignore-end
         let missionGroupContext: MissionGroupClaimContext?
         do {
             missionGroupContext = try await validateMissionGroupClaimIfNeeded(
@@ -287,9 +289,11 @@ extension CLIAgentMissionRequestListener {
             )
         } catch {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
+            // cov:ignore-start -- live Firestore mission-listener denial telemetry; reducer behavior is unit-tested.
             MissionRemoteAuthorizationShadow.observeDeny(
                 ctx: shadowCtx(document.documentID, "", 1),
                 executorTrustState: "trusted")
+            // cov:ignore-end
             await fail(document: document, message: error.localizedDescription)
             return
         }
@@ -315,9 +319,11 @@ extension CLIAgentMissionRequestListener {
         )
         guard trustResult.isTrusted else {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused for untrusted Mac device=\(self.accountManager.deviceId, privacy: .public)")
+            // cov:ignore-start -- live Firestore mission-listener denial telemetry; reducer behavior is unit-tested.
             MissionRemoteAuthorizationShadow.observeDeny(
                 ctx: shadowCtx(document.documentID, prompt, missionGroupContext?.siblingCount ?? 1),
                 executorTrustState: "untrusted")
+            // cov:ignore-end
             return
         }
 
@@ -348,10 +354,12 @@ extension CLIAgentMissionRequestListener {
             return
         }
         let willPauseForApproval = await shouldPauseForApproval(document: document, data: data, backend: backend)
+        // cov:ignore-start -- live Firestore mission-listener decision wiring; typed shadow inputs and reducers are unit-tested.
         let isTerminalDenial = willPauseForApproval && CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend) && !settingsManager.cliAssistantAllowed
         let ctx = shadowCtx(document.documentID, prompt, missionGroupContext?.siblingCount ?? 1)
         let personaMalformed: Bool = ctx.personaScopeJSON != nil && { if case .refused = CLIAgentMissionPersonaScopeResolution.resolve(from: data) { return true }; return false }()
         MissionRemoteAuthorizationShadow.observeTrustedDecision(ctx: ctx, isTerminalDenial: isTerminalDenial, personaScopeMalformed: personaMalformed, willPauseForApproval: willPauseForApproval)
+        // cov:ignore-end
         if willPauseForApproval {
             return
         }
