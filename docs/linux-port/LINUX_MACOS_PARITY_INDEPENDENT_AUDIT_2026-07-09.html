@@ -875,7 +875,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-14</td>
 <td>Chat</td>
 <td>Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out</td>
-<td>Synthetic transcript rows and multiple disabled controls; five vs twelve backends</td>
+<td>Exact encrypted thread list/get/search, idempotent user/assistant persistence, older-message pagination, strict Tauri decoding, and durable send ordering are implemented in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1684">PR #1684</a>; attachments, citations, approvals, options, export, pop-out, and the remaining backend catalog are still open</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -1011,7 +1011,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-31</td>
 <td>Accessibility</td>
 <td>Semantic UI, keyboard flows, assistive announcements, reduced effects</td>
-<td>All routes pass axe; installed aarch64 AT-SPI/Orca/keyboard/200% evidence passed; desktop/architecture breadth remains</td>
+<td>All routes pass axe; global reduced-motion, forced-colors, and prefers-contrast styling plus keyboard/status contracts are implemented in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1683">PR #1683</a>; installed aarch64 AT-SPI/Orca/keyboard/200% evidence passed, while desktop/architecture/high-contrast breadth remains</td>
 <td>Near parity</td>
 <td>High</td>
 </tr>
@@ -1883,12 +1883,15 @@ topmost, drag, scaling, animation, reduced motion, multi-monitor, hotkey,
 restart, GPU fallback, and unsupported contained mode.</li>
 </ul>
 <h3>GAP-019 - Replace synthetic accessibility evidence with assistive-tech proof</h3>
-<p><strong>Implementation update (2026-07-09): closed in the implementation branch.</strong>
-All 19 routes and important states now run through axe; the installed <code>.deb</code>
+<p><strong>Implementation update (2026-07-13): source polish is now explicit; certification remains open.</strong>
+All 19 routes and important states run through axe; the installed <code>.deb</code>
 is exercised through AT-SPI actions, Orca process/focus observation,
-keyboard-only traversal, and requested 200% zoom. The full shell verifier
-rejects missing or synthetic accessibility artifacts. GNOME/KDE matrix breadth
-remains tracked under GAP-004 rather than keeping this implementation gap open.</p>
+keyboard-only traversal, and requested 200% zoom. PR #1683 adds shared
+<code>prefers-reduced-motion</code>, <code>prefers-contrast: more</code>, and
+<code>forced-colors: active</code> tokens/focus/status rules with DOM keyboard/status
+contracts. The full shell verifier rejects missing or synthetic accessibility
+artifacts. GNOME/KDE matrix breadth, high-contrast visual captures, and physical
+assistive-tech execution remain open.</p>
 <ul>
 <li><strong>Difference:</strong> macOS has broad semantic labels/actions and targeted tests.
 Linux has useful landmarks, a skip link, ARIA live regions, focus styling, and
@@ -2148,7 +2151,7 @@ queueing, locked keyring, and redaction.</li>
 <tr>
 <td>LNX-A11Y-HARNESS-001</td>
 <td>Implemented</td>
-<td>All-route axe plus installed AT-SPI/Orca/keyboard/zoom contract</td>
+<td>All-route axe plus installed AT-SPI/Orca/keyboard/zoom contract and PR #1683 forced-colors/contrast/reduced-motion source tests</td>
 <td>Full architecture/desktop/high-contrast matrix</td>
 </tr>
 <tr>
@@ -2416,8 +2419,8 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-CHAT-001</td>
 <td>LNX-SESS-001, LNX-CAT-001</td>
-<td>Backends/models, streaming, attachments, citations, approvals, options, secondary window</td>
-<td>Mac-equivalent chat contract suite and installed E2E green</td>
+<td><strong>Implemented in source:</strong> canonical encrypted thread list/get/search, exact-thread idempotent append, older-message pagination, strict Tauri decoders, production synthetic-history removal, and durable send ordering in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1684">PR #1684</a></td>
+<td>Mac-equivalent chat contract suite and installed E2E green; attachments, citations, approvals, options, secondary window, and remaining backend catalog are still required</td>
 </tr>
 <tr>
 <td>LNX-MEM-001</td>
