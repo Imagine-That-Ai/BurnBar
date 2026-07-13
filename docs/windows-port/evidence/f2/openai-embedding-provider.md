@@ -18,23 +18,24 @@ transport failures produce typed errors without logging or embedding the key
 in exception text.
 
 The deterministic 96-dimensional provider remains the offline fallback used by
-the source-free project-code store and CI. This adapter is deliberately
-provider-backed and ready for the Windows protected-secret/settings composition
-to select it without changing the portable search contracts.
+CI and by Windows when the persisted provider is not `openai` or its protected
+key is absent. The Windows app now composes the provider through the durable
+project-code store without changing the portable search contracts; provider
+version and dimensions are persisted with each vector.
 
 ## Validation
 
 ```text
-dotnet test windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests/OpenBurnBar.App.MemorySearch.Tests.csproj
+dotnet test windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests/OpenBurnBar.App.MemorySearch.Tests.csproj --no-restore
 ```
 
-Result: **147 tests passed**. The provider tests use an in-memory HTTP handler
+Result: **157 tests passed**. The provider tests use an in-memory HTTP handler
 to verify request shape/authentication, indexed ordering, empty input, typed
 model/URL/key failures, malformed vector rejection, bounded error handling, and
 oversized-input rejection without contacting a real provider.
 
 ## Boundary
 
-This closes the OpenAI transport and validation seam. It does not claim live
-account credentials, production settings selection, provider billing/quotas,
+This closes the OpenAI transport and local protected-secret/settings selection
+seam. It does not claim live account credentials, provider billing/quotas,
 NaturalLanguage/BGE parity, or physical release certification.

@@ -77,7 +77,10 @@ public sealed partial class ProjectsPage : Page
                     "OpenBurnBar",
                     "project-code-memory.sqlite");
             (_, string? passphrase) = WindowsStorageDevHost.ResolveCredentials();
-            return new ProjectCodeMemoryStore(storePath, encryptionPassphrase: passphrase);
+            return new ProjectCodeMemoryStore(
+                storePath,
+                encryptionPassphrase: passphrase,
+                embeddingProvider: ProjectCodeEmbeddingProviderComposition.TryCreate());
         }
         catch
         {

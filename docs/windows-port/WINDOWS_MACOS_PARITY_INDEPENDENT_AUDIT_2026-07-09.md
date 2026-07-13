@@ -211,9 +211,11 @@ unproven host behavior to certification:
   embeddings transport for the three macOS-supported models. It validates
   model dimensions, batch/input/response bounds, indexed response order, finite
   vectors, status errors, and secret-safe typed failures through an injectable
-  HTTP client. The deterministic provider remains the offline project-code
-  fallback; protected-secret/settings selection and NaturalLanguage/BGE quality
-  remain separate composition/evidence gates.
+  HTTP client. The Windows app now selects that provider from persisted embedding
+  settings and a protected provider secret, carries its model-derived
+  version/dimension identity into the durable project-code store, and falls back
+  deterministically when it is not configured. NaturalLanguage/BGE quality and
+  live account/quota acceptance remain separate evidence gates.
 - The memory-extraction network seam now has a bounded OpenAI-compatible and
   Ollama HTTP implementation. It preserves the macOS request/response contracts,
   structured content handling, GPT-5.5/OpenRouter hints, status-based cooldowns,

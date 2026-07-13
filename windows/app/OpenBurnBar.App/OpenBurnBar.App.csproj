@@ -161,6 +161,7 @@
       render of that same logic.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.MemorySearch/OpenBurnBar.App.MemorySearch.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.ManagedAgentRuntime/OpenBurnBar.App.ManagedAgentRuntime.csproj" />

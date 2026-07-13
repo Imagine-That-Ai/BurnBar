@@ -26,7 +26,10 @@ chunk/vector index. It does not persist source text.
   legacy JSON metadata file. `code.status` reports durable-store availability
   and bounded artifact/symbol/reference/call-edge/chunk/vector/storage counters.
   The companion plane exposes bounded `code.call_graph` traversal (depth 1-3)
-  and `code.semantic_search` over deterministic 96-dimensional vectors.
+  and `code.semantic_search` over versioned vectors. Deterministic
+  96-dimensional embeddings remain the offline default; the app can select the
+  protected OpenAI provider and stores its model-derived dimensions/version
+  without mixing vector generations.
 - Code is chunked with the macOS 2,400-character / 240-character-overlap
   contract. When Tree-sitter ranges are available, nested symbol spans are
   merged into AST-aware chunks; bounded line-aware slicing covers gaps and
@@ -52,7 +55,7 @@ chunk/vector index. It does not persist source text.
 dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj --no-restore
 ```
 
-Result: **761 passed, 0 failed, 0 skipped**.
+Result: **765 passed, 0 failed, 0 skipped** in the full presentation suite.
 
 The durable-store test proves two-file artifact/index persistence, lexical
 reference and call-edge persistence, bounded call-graph traversal, checkpoint
@@ -62,6 +65,7 @@ companion managed-runtime suite covers the new operation routing.
 ## Boundary
 
 This evidence promotes the Windows watcher + durable metadata-store, parser-backed
-AST chunking, and bounded semantic-index trigger. It does not claim full macOS
-NaturalLanguage/provider embedding quality, live LSP-host evidence, physical Windows performance/accessibility, staging
-cloud flows, advanced Computer Use/media safety, or Store/update certification.
+AST chunking, bounded semantic-index trigger, and local provider selection. It
+does not claim full macOS NaturalLanguage/BGE quality, live LSP-host evidence,
+physical Windows performance/accessibility, staging cloud flows, advanced
+Computer Use/media safety, or Store/update certification.

@@ -498,6 +498,7 @@ rows:
   evidence:
   - docs/windows-port/evidence/f2/project-code-memory-store.md
   - docs/windows-port/evidence/f2/openai-embedding-provider.md
+  - docs/windows-port/evidence/f2/provider-composition.md
   - docs/windows-port/evidence/f2/live-lsp-parser-client.md
   tests:
   - windows/tests/presentation/Projects/ProjectCodeMemoryServiceTests.cs
@@ -506,7 +507,7 @@ rows:
   - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeMemoryStore.cs
   - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeSymbolIndex.cs
   owner_lane: f2
-  notes: Live watcher, durable source-free store, and parser-backed AST chunk ranges are Real; learned embedding-provider quality remains separate.
+  notes: Live watcher, durable source-free store, parser-backed AST chunk ranges, and protected OpenAI/deterministic provider selection are Real; learned embedding quality and physical/live-host evidence remain separate.
 - id: dist-msix-signed
   macos_route: dist
   macos_capability: Signed distribution

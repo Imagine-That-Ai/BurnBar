@@ -422,7 +422,10 @@ public partial class App : Application
                     "OpenBurnBar",
                     "project-code-memory.sqlite");
             (_, string? passphrase) = WindowsStorageDevHost.ResolveCredentials();
-            store = new ProjectCodeMemoryStore(storePath, encryptionPassphrase: passphrase);
+            store = new ProjectCodeMemoryStore(
+                storePath,
+                encryptionPassphrase: passphrase,
+                embeddingProvider: ProjectCodeEmbeddingProviderComposition.TryCreate());
         }
         catch (Exception ex)
         {

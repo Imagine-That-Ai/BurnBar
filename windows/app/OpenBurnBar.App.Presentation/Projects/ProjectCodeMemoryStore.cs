@@ -36,12 +36,16 @@ public sealed class ProjectCodeMemoryStore : IDisposable
     private readonly SqliteConnection _connection;
     private readonly object _gate = new();
     private readonly long _storageBudgetBytes;
+    private readonly IProjectCodeEmbeddingProvider? _embeddingProvider;
+    private readonly int _embeddingDimensions;
+    private readonly string _embeddingVersion;
     private bool _disposed;
 
     public ProjectCodeMemoryStore(
         string databasePath,
         long storageBudgetBytes = DefaultStorageBudgetBytes,
-        string? encryptionPassphrase = null)
+        string? encryptionPassphrase = null,
+        IProjectCodeEmbeddingProvider? embeddingProvider = null)
     {
         if (string.IsNullOrWhiteSpace(databasePath))
         {
@@ -53,6 +57,13 @@ public sealed class ProjectCodeMemoryStore : IDisposable
             throw new ArgumentOutOfRangeException(nameof(storageBudgetBytes));
         }
 
+        if (embeddingProvider is not null
+            && (embeddingProvider.Dimensions is < 1 or > 16_384
+                || string.IsNullOrWhiteSpace(embeddingProvider.Version)))
+        {
+            throw new ArgumentException("The embedding provider descriptor is invalid.", nameof(embeddingProvider));
+        }
+
         DatabasePath = Path.GetFullPath(databasePath);
         string? directory = Path.GetDirectoryName(DatabasePath);
         if (!string.IsNullOrWhiteSpace(directory))
@@ -61,6 +72,9 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         }
 
         _storageBudgetBytes = storageBudgetBytes;
+        _embeddingProvider = embeddingProvider;
+        _embeddingDimensions = embeddingProvider?.Dimensions ?? CodeEmbeddingDimensions;
+        _embeddingVersion = embeddingProvider?.Version ?? CodeEmbeddingVersion;
         SqlCipherParameters.EnsureProviderInitialized();
         var builder = new SqliteConnectionStringBuilder
         {
@@ -104,17 +118,17 @@ public sealed class ProjectCodeMemoryStore : IDisposable
                 ChunkCount: ReadScalarLong("SELECT COUNT(*) FROM code_chunks WHERE project_id = $project", ("$project", projectID)),
                 EmbeddingCount: ReadScalarLong(
                     "SELECT COUNT(*) FROM code_chunks WHERE project_id = $project AND embedding_version = $version",
-                    ("$project", projectID), ("$version", CodeEmbeddingVersion)),
+                    ("$project", projectID), ("$version", _embeddingVersion)),
                 EmbeddingDimensions: ReadScalarLong(
                     "SELECT COALESCE(MAX(embedding_dimension), 0) FROM code_chunks WHERE project_id = $project AND embedding_version = $version",
-                    ("$project", projectID), ("$version", CodeEmbeddingVersion)),
+                    ("$project", projectID), ("$version", _embeddingVersion)),
                 StorageBytes: DatabaseSizeBytes(),
                 StorageBudgetBytes: _storageBudgetBytes,
                 SemanticAvailable: ReadScalarLong(
                     "SELECT COUNT(*) FROM code_chunks WHERE project_id = $project AND embedding_version = $version AND embedding_dimension = $dimensions",
-                    ("$project", projectID), ("$version", CodeEmbeddingVersion),
-                    ("$dimensions", CodeEmbeddingDimensions)) > 0,
-                EmbeddingVersion: CodeEmbeddingVersion);
+                    ("$project", projectID), ("$version", _embeddingVersion),
+                    ("$dimensions", _embeddingDimensions)) > 0,
+                EmbeddingVersion: _embeddingVersion);
         }
     }
 
@@ -131,7 +145,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
             throw new ArgumentOutOfRangeException(nameof(limit));
         }
 
-        float[] queryVector = EmbedCode(normalized);
+        float[] queryVector = Embed(normalized);
         lock (_gate)
         {
             ThrowIfDisposed();
@@ -143,8 +157,8 @@ public sealed class ProjectCodeMemoryStore : IDisposable
                     Array.Empty<ProjectCodeSemanticSearchHit>(),
                     false,
                     false,
-                    CodeEmbeddingVersion,
-                    CodeEmbeddingDimensions);
+                    _embeddingVersion,
+                    _embeddingDimensions);
             }
 
             using var command = _connection.CreateCommand();
@@ -157,8 +171,8 @@ public sealed class ProjectCodeMemoryStore : IDisposable
                 LIMIT $maxCandidates;
                 """;
             command.Parameters.AddWithValue("$project", projectID);
-            command.Parameters.AddWithValue("$version", CodeEmbeddingVersion);
-            command.Parameters.AddWithValue("$dimensions", CodeEmbeddingDimensions);
+            command.Parameters.AddWithValue("$version", _embeddingVersion);
+            command.Parameters.AddWithValue("$dimensions", _embeddingDimensions);
             command.Parameters.AddWithValue("$maxCandidates", MaxSemanticCandidates);
             using SqliteDataReader reader = command.ExecuteReader();
             var ranked = new List<ProjectCodeSemanticSearchHit>();
@@ -192,8 +206,8 @@ public sealed class ProjectCodeMemoryStore : IDisposable
                     .ToArray(),
                 ranked.Count > 0,
                 truncated || ranked.Count >= MaxSemanticCandidates,
-                CodeEmbeddingVersion,
-                CodeEmbeddingDimensions);
+                _embeddingVersion,
+                _embeddingDimensions);
         }
     }
 
@@ -674,7 +688,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         for (int ordinal = 0; ordinal < chunks.Count; ordinal++)
         {
             CodeChunk chunk = chunks[ordinal];
-            float[] vector = EmbedCode(chunk.Text);
+            float[] vector = Embed(chunk.Text);
             using var command = _connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandText = """
@@ -691,8 +705,8 @@ public sealed class ProjectCodeMemoryStore : IDisposable
             command.Parameters.AddWithValue("$start", chunk.StartOffset);
             command.Parameters.AddWithValue("$end", chunk.EndOffset);
             command.Parameters.AddWithValue("$hash", chunk.ContentHash);
-            command.Parameters.AddWithValue("$version", CodeEmbeddingVersion);
-            command.Parameters.AddWithValue("$dimensions", CodeEmbeddingDimensions);
+            command.Parameters.AddWithValue("$version", _embeddingVersion);
+            command.Parameters.AddWithValue("$dimensions", _embeddingDimensions);
             command.Parameters.AddWithValue("$embedding", EncodeEmbedding(vector));
             command.ExecuteNonQuery();
         }
@@ -1057,8 +1071,19 @@ public sealed class ProjectCodeMemoryStore : IDisposable
         chunks.Add(new CodeChunk(start, end, Sha256Hex(slice), slice));
     }
 
-    private static float[] EmbedCode(string text)
+    private float[] Embed(string text)
     {
+        if (_embeddingProvider is not null)
+        {
+            float[] providerVector = _embeddingProvider.Embed(text);
+            if (providerVector.Length != _embeddingDimensions || providerVector.Any(static value => !float.IsFinite(value)))
+            {
+                throw new InvalidOperationException("The configured embedding provider returned an invalid vector.");
+            }
+
+            return providerVector;
+        }
+
         string normalized = (text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Trim().ToLowerInvariant();
         var vector = new float[CodeEmbeddingDimensions];
         var tokens = new List<string>();

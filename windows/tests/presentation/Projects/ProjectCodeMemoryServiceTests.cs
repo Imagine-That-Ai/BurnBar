@@ -301,4 +301,55 @@ public sealed class ProjectCodeMemoryServiceTests
             }
         }
     }
+
+    [Fact]
+    public async Task DurableStore_UsesConfiguredEmbeddingIdentityAndDimensions()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-code-provider-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        string databasePath = Path.Combine(root, "memory.sqlite");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "Provider.cs"), "public class Provider { public void Run() {} }\n");
+            var provider = new FixedProjectCodeEmbeddingProvider(3, "provider-test-v1");
+            using var store = new ProjectCodeMemoryStore(
+                databasePath,
+                encryptionPassphrase: "obb-project-code-provider-key-2026",
+                embeddingProvider: provider);
+            using var service = new ProjectCodeMemoryService(new ProjectCodeSymbolIndex(root, store: store));
+
+            await service.RefreshAsync();
+
+            ProjectCodeMemoryStoreStats stats = Assert.IsType<ProjectCodeMemoryStoreStats>(service.DurableStoreStats);
+            Assert.Equal(3, stats.EmbeddingDimensions);
+            Assert.Equal("provider-test-v1", stats.EmbeddingVersion);
+            Assert.True(stats.SemanticAvailable);
+            ProjectCodeSemanticSearchResult result = service.ReadSemanticSearch("Provider");
+            Assert.True(result.SemanticAvailable);
+            Assert.NotEmpty(result.Hits);
+            Assert.All(result.Hits, hit => Assert.Equal("provider-test-v1", hit.EmbeddingVersion));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    private sealed class FixedProjectCodeEmbeddingProvider : IProjectCodeEmbeddingProvider
+    {
+        public FixedProjectCodeEmbeddingProvider(int dimensions, string version)
+        {
+            Dimensions = dimensions;
+            Version = version;
+        }
+
+        public int Dimensions { get; }
+
+        public string Version { get; }
+
+        public float[] Embed(string text) => new[] { 1f, 0f, 0f };
+    }
 }
