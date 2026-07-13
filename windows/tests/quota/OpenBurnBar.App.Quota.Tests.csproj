@@ -44,10 +44,25 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Fixtures/**/*.json">
+    <Content Include="../../../tests/fixtures/domain-core/quota/v1/**/*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Fixtures/%(RecursiveDir)%(Filename)%(Extension)</Link>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.dylib"
+          Link="libopenburnbar_domain_ffi.dylib"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.dylib')" />
+    <None Include="../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so"
+          Link="libopenburnbar_domain_ffi.so"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so')" />
+    <None Include="../../../crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll"
+          Link="openburnbar_domain_ffi.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('../../../crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll')" />
   </ItemGroup>
 
 </Project>

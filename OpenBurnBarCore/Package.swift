@@ -23,6 +23,7 @@ let buildOnWindows = false
 // `#else` branch (which probes `../Vendor/*.xcframework`) stays byte-identical.
 #if os(Linux) || os(Windows)
 let hasIrohXCFramework = false
+let hasDomainCoreXCFramework = false
 let hasSignalFfiIOSXCFramework = false
 let hasSignalFfiMacXCFramework = false
 let hasLegacySignalFfiXCFramework = false
@@ -32,6 +33,12 @@ let hasBurnBarRemoteXCFramework = false
 let hasIrohXCFramework = FileManager.default.fileExists(
     atPath: packageRoot
         .appendingPathComponent("../Vendor/OpenBurnBarIroh.xcframework")
+        .standardizedFileURL
+        .path
+)
+let hasDomainCoreXCFramework = FileManager.default.fileExists(
+    atPath: packageRoot
+        .appendingPathComponent("../Vendor/OpenBurnBarDomainCore.xcframework")
         .standardizedFileURL
         .path
 )
@@ -204,6 +211,27 @@ let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
         ]
     )
 ] : []
+
+let domainCoreBinaryTargets: [Target] = hasDomainCoreXCFramework ? [
+    .binaryTarget(
+        name: "OpenBurnBarDomainCore",
+        path: "../Vendor/OpenBurnBarDomainCore.xcframework"
+    ),
+    .target(
+        name: "OpenBurnBarDomainCoreFFI",
+        dependencies: ["OpenBurnBarDomainCore"],
+        path: "Sources/OpenBurnBarDomainCore/Generated",
+        exclude: [
+            "openburnbar_domain_ffi.modulemap",
+            "openburnbar_domain_ffiFFI.h"
+        ],
+        swiftSettings: [.swiftLanguageMode(.v5)]
+    )
+] : []
+
+let domainCoreDependencies: [Target.Dependency] = hasDomainCoreXCFramework
+    ? ["OpenBurnBarDomainCoreFFI"]
+    : []
 
 let burnBarRemoteBinaryTargets: [Target] = hasBurnBarRemoteXCFramework ? [
     .binaryTarget(
@@ -596,7 +624,7 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarKernel",
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
-            ] + coreSQLiteDependencies,
+            ] + coreSQLiteDependencies + domainCoreDependencies,
             exclude: openBurnBarCoreExcludes,
             resources: [
                 // SwiftPM's `.process` rule flattens nested resource folders
@@ -943,7 +971,7 @@ let linuxSecurityOnlyTargets: [Target] = [
 
 let allTargets: [Target] = buildLinuxSecurityOnly
     ? linuxSecurityOnlyTargets
-    : irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
+    : irohBinaryTargets + domainCoreBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
 
 let package = Package(
     name: "OpenBurnBarCore",

@@ -69,9 +69,18 @@ public static class ClaudeStatuslineQuotaParser
         DateTimeOffset fetchedAt,
         string? statusMessage = null)
     {
+        var legacy = ParseLegacy(json, fetchedAt, statusMessage);
+        return ClaudeStatuslineQuotaDomainCore.Apply(json, legacy);
+    }
+
+    internal static ProviderQuotaSnapshot ParseLegacy(
+        string json,
+        DateTimeOffset fetchedAt,
+        string? statusMessage = null)
+    {
         var windows = ParseWindows(json);
         var buckets = BuildBuckets(windows);
-        return new ProviderQuotaSnapshot
+        var legacy = new ProviderQuotaSnapshot
         {
             Provider = ProviderToken,
             FetchedAt = fetchedAt,
@@ -81,6 +90,7 @@ public static class ClaudeStatuslineQuotaParser
             StatusMessage = statusMessage ?? DefaultStatusMessage,
             Buckets = buckets,
         };
+        return legacy;
     }
 
     /// <summary>

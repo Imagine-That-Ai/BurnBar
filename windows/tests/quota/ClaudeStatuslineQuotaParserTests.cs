@@ -1,5 +1,6 @@
 using System;
 using OpenBurnBar.App.Presentation.Quota;
+using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
 using Xunit;
 
 namespace OpenBurnBar.App.Quota.Tests;
@@ -19,6 +20,22 @@ public sealed class ClaudeStatuslineQuotaParserTests
         var expected = QuotaFixtures.ReadExpected("claude-statusline-expected.json");
 
         var snapshot = ClaudeStatuslineQuotaParser.Parse(input, FetchedAt);
+
+        QuotaFixtures.AssertMatches(snapshot, expected);
+    }
+
+    [Fact]
+    public void RustMode_RecordedStatuslineSnapshot_MatchesExpectedValueForValue()
+    {
+        Assert.Equal(1u, DomainCore.DomainCoreAbiVersion());
+        var input = QuotaFixtures.ReadInput("claude-statusline-input.json");
+        var expected = QuotaFixtures.ReadExpected("claude-statusline-expected.json");
+        var legacy = ClaudeStatuslineQuotaParser.ParseLegacy(input, FetchedAt);
+
+        var snapshot = ClaudeStatuslineQuotaDomainCore.Apply(
+            input,
+            legacy,
+            DomainCoreQuotaMigrationMode.Rust);
 
         QuotaFixtures.AssertMatches(snapshot, expected);
     }

@@ -3,7 +3,7 @@
   <!--
     macOS-runnable tests for the quota ACQUISITION layer (Wave 1 item 5) — the
     adapter halves feeding the landed portable parsers proven by tests/quota.
-    Same recorded fixtures (linked from ../quota/Fixtures — one oracle, two
+    Same recorded fixtures (linked from the domain-core corpus — one oracle, two
     layers), plus:
       • statusline file source: freshness gate + value-for-value payload parse;
       • hook installer: settings.json edit, original-statusline preservation +
@@ -40,8 +40,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The tests/quota recorded fixtures are the shared parity oracle. -->
-    <Content Include="../quota/Fixtures/**/*.json">
+    <!-- The language-neutral domain-core fixtures are the shared parity oracle. -->
+    <Content Include="../../../tests/fixtures/domain-core/quota/v1/**/*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Fixtures/%(RecursiveDir)%(Filename)%(Extension)</Link>
     </Content>
