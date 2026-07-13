@@ -10,6 +10,7 @@ public enum CloudVaultCryptoError: LocalizedError, Sendable {
     case invalidPublicKey
     case keychainError(Int)
     case keychainDataMissing
+    case domainCoreUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -25,6 +26,8 @@ public enum CloudVaultCryptoError: LocalizedError, Sendable {
             return "Cloud vault Keychain operation failed with status \(status)."
         case .keychainDataMissing:
             return "The cloud vault key is missing from the Keychain."
+        case .domainCoreUnavailable:
+            return "The required CloudVault domain core is unavailable."
         }
     }
 }
@@ -56,11 +59,37 @@ public struct CloudVaultAADContext: Codable, Hashable, Sendable {
     }
 
     public var stringValue: String {
-        "\(CloudVaultCrypto.aadContextPrefix)|\(uid)|\(collection)|\(docID)|\(field)|\(schemaVersion)|\(purpose)"
+        do {
+            return try CloudVaultDomainCoreAdapter.aadV2(
+                uid: uid,
+                collection: collection,
+                docID: docID,
+                field: field,
+                schemaVersion: schemaVersion,
+                purpose: purpose,
+                legacy: {
+                    "\(CloudVaultCrypto.aadContextPrefix)|\(uid)|\(collection)|\(docID)|\(field)|\(schemaVersion)|\(purpose)"
+                }
+            )
+        } catch {
+            preconditionFailure("CloudVault AAD v2 construction failed")
+        }
     }
 
     public var legacyV1StringValue: String {
-        "\(CloudVaultCrypto.legacyAADContextPrefix)|\(uid)|\(collection)|\(docID)|\(field)"
+        do {
+            return try CloudVaultDomainCoreAdapter.aadV1(
+                uid: uid,
+                collection: collection,
+                docID: docID,
+                field: field,
+                legacy: {
+                    "\(CloudVaultCrypto.legacyAADContextPrefix)|\(uid)|\(collection)|\(docID)|\(field)"
+                }
+            )
+        } catch {
+            preconditionFailure("CloudVault AAD v1 construction failed")
+        }
     }
 
     public var data: Data {
@@ -280,7 +309,15 @@ public enum CloudVaultCrypto {
 
     public static func vaultKeyID(for keyData: Data) throws -> String {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return "v1_" + String(sha256Hex(keyData).prefix(32))
+        do {
+            return try CloudVaultDomainCoreAdapter.vaultKeyID(for: keyData) {
+                "v1_" + String(PlatformCrypto.sha256Hex(keyData).prefix(32))
+            }
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch {
+            throw CloudVaultCryptoError.invalidKeyLength
+        }
     }
 
     public static func roamingProfileAADContext(uid: String) throws -> CloudVaultAADContext {
@@ -395,11 +432,11 @@ public enum CloudVaultCrypto {
     }
 
     public static func blobPlaintextHMAC(_ data: Data, keyData: Data) throws -> String {
-        try keyedHMACHex(data, keyData: keyData, purpose: "blob-integrity")
+        try domainCoreKeyedHash(data, keyData: keyData, purpose: .blobIntegrity, legacyPurpose: "blob-integrity")
     }
 
     public static func sessionBodyHash(_ data: Data, keyData: Data) throws -> String {
-        try keyedHMACHex(data, keyData: keyData, purpose: "session-body")
+        try domainCoreKeyedHash(data, keyData: keyData, purpose: .sessionBody, legacyPurpose: "session-body")
     }
 
     public static func sessionBodyHash(_ text: String, keyData: Data) throws -> String {
@@ -407,22 +444,46 @@ public enum CloudVaultCrypto {
     }
 
     public static func expectedSessionBodyHash(_ data: Data, keyData: Data, bodyHashVersion: Int) throws -> String {
-        switch bodyHashVersion {
-        case sessionBodyHashVersion:
-            return try sessionBodyHash(data, keyData: keyData)
-        case 0, 1:
-            return sha256Hex(data)
-        default:
+        do {
+            return try CloudVaultDomainCoreAdapter.expectedSessionBodyHash(
+                data,
+                keyData: keyData,
+                bodyHashVersion: bodyHashVersion
+            ) {
+                switch bodyHashVersion {
+                case sessionBodyHashVersion:
+                    return try keyedHMACHex(data, keyData: keyData, purpose: "session-body")
+                case 0, 1:
+                    return PlatformCrypto.sha256Hex(data)
+                default:
+                    throw CloudVaultCryptoError.invalidEnvelope
+                }
+            }
+        } catch let error as CloudVaultCryptoError {
+            throw error
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch {
             throw CloudVaultCryptoError.invalidEnvelope
         }
     }
 
     public static func sessionChunkHash(_ chunk: String, keyData: Data) throws -> String {
-        try keyedHMACHex(Data(chunk.utf8), keyData: keyData, purpose: "session-chunk")
+        try domainCoreKeyedHash(
+            Data(chunk.utf8),
+            keyData: keyData,
+            purpose: .sessionChunk,
+            legacyPurpose: "session-chunk"
+        )
     }
 
     public static func projectMemoryContentHash(_ data: Data, keyData: Data) throws -> String {
-        try keyedHMACHex(data, keyData: keyData, purpose: "project-memory-content")
+        try domainCoreKeyedHash(
+            data,
+            keyData: keyData,
+            purpose: .projectMemoryContent,
+            legacyPurpose: "project-memory-content"
+        )
     }
 
     public static func expectedBlobIntegrityHash(_ data: Data, envelope: CloudVaultBlobEnvelope, keyData: Data) throws -> String {
@@ -967,7 +1028,13 @@ public enum CloudVaultCrypto {
     }
 
     public static func sha256Hex(_ data: Data) -> String {
-        PlatformCrypto.sha256Hex(data)
+        do {
+            return try CloudVaultDomainCoreAdapter.sha256Hex(data) {
+                PlatformCrypto.sha256Hex(data)
+            }
+        } catch {
+            preconditionFailure("CloudVault SHA-256 failed")
+        }
     }
 
     public static func sha256Hex(_ text: String) -> String {
@@ -1002,6 +1069,29 @@ public enum CloudVaultCrypto {
         return PlatformCrypto.hexString(try PlatformCrypto.hmacSHA256(data, keyData: PlatformCrypto.symmetricKeyData(key)))
     }
 
+    private static func domainCoreKeyedHash(
+        _ data: Data,
+        keyData: Data,
+        purpose: CloudVaultDomainCoreAdapter.Purpose,
+        legacyPurpose: String
+    ) throws -> String {
+        do {
+            return try CloudVaultDomainCoreAdapter.keyedHashHex(
+                data,
+                keyData: keyData,
+                purpose: purpose
+            ) {
+                try keyedHMACHex(data, keyData: keyData, purpose: legacyPurpose)
+            }
+        } catch let error as CloudVaultCryptoError {
+            throw error
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch {
+            throw CloudVaultCryptoError.invalidKeyLength
+        }
+    }
+
     private static func sealedPayloadAAD(for envelope: CloudVaultSealedPayload, aadContext: CloudVaultAADContext?) -> Data {
         if let aadContext {
             return aadContext.data
@@ -1014,19 +1104,30 @@ public enum CloudVaultCrypto {
         context: CloudVaultAADContext,
         rejectLegacyV1: Bool = CloudVaultV1AADRejectionFlag.isEnabled()
     ) throws -> Data {
-        if envelopeAAD == context.stringValue {
-            return context.data
-        }
-        if envelopeAAD == context.legacyV1StringValue {
-            // Post-backfill cutover: once enabled, the weaker v1 (global) AAD
-            // domain-separation path is removed and any envelope still carrying it
-            // is refused (fail closed) rather than silently downgraded.
-            if rejectLegacyV1 {
+        do {
+            return try CloudVaultDomainCoreAdapter.resolveAAD(
+                envelopeAAD: envelopeAAD ?? "",
+                context: context,
+                rejectLegacyV1: rejectLegacyV1
+            ) {
+                if envelopeAAD == context.stringValue {
+                    return context.data
+                }
+                if envelopeAAD == context.legacyV1StringValue {
+                    if rejectLegacyV1 {
+                        throw CloudVaultCryptoError.invalidEnvelope
+                    }
+                    return context.legacyV1Data
+                }
                 throw CloudVaultCryptoError.invalidEnvelope
             }
-            return context.legacyV1Data
+        } catch let error as CloudVaultCryptoError {
+            throw error
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch {
+            throw CloudVaultCryptoError.invalidEnvelope
         }
-        throw CloudVaultCryptoError.invalidEnvelope
     }
 
     /// Test seam over ``aadData(matching:context:rejectLegacyV1:)`` so the v1
