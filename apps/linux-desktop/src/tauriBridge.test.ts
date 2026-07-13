@@ -314,6 +314,26 @@ describe('native Linux notification and shortcut decoding', () => {
     expect(() => decodeNativeShortcutStatus({ available: true, registered: 'yes', shortcuts: [] }))
       .toThrow('registration');
   });
+
+  it('decodes the normalized second-instance notification envelope and rejects non-object payloads', () => {
+    expect(decodeNativeNotificationActionEvent({
+      notificationId: 'single-instance-chat',
+      route: 'chat',
+      action: 'open',
+      payload: { threadId: 'thread-42' }
+    })).toMatchObject({
+      notificationId: 'single-instance-chat',
+      route: 'chat',
+      action: 'open',
+      payload: { threadId: 'thread-42' }
+    });
+    expect(() => decodeNativeNotificationActionEvent({
+      notificationId: 'single-instance-chat',
+      route: 'chat',
+      action: 'open',
+      payload: 'thread-42'
+    })).toThrow('payload');
+  });
 });
 
 describe('computeCacheHitRatePct', () => {

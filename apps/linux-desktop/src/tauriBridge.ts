@@ -738,6 +738,7 @@ export type NativeNotificationActionEvent = {
   notificationId: string;
   route: NativeNotificationRoute;
   action: 'open';
+  payload?: Record<string, unknown>;
 };
 export type NativeShortcutStatus = {
   available: boolean;
@@ -3225,10 +3226,15 @@ export function decodeNativeNotificationActionEvent(raw: RawJsonValue): NativeNo
   }
   const action = requireString(pick(value, 'action'), 'native notification action id');
   if (action !== 'open') throw new Error(`native notification action id is unsupported: ${action}`);
+  const rawPayload = pick(value, 'payload');
+  const payload = rawPayload === undefined
+    ? undefined
+    : requireObject(rawPayload, 'native notification action payload');
   return {
     notificationId: requireString(pick(value, 'notificationId', 'notification_id'), 'native notification action notificationId'),
     route: route as NativeNotificationRoute,
-    action: 'open'
+    action: 'open',
+    ...(payload ? { payload } : {})
   };
 }
 

@@ -49,10 +49,13 @@ async function boot(): Promise<void> {
         ? (nativeDeepLink as ShellRoute)
         : null;
       cacheOnboarding(authoritative);
-      if (shouldRouteToOnboarding(authoritative)) {
-        useShellStore.getState().setRoute('onboarding');
-      } else if (requestedNativeRoute) {
+      // A validated native route is an explicit user intent (for example an
+      // OAuth return or notification click). Consume it before the first-run
+      // fallback so a cold launch cannot strand the callback in onboarding.
+      if (requestedNativeRoute) {
         useShellStore.getState().setRoute(requestedNativeRoute);
+      } else if (shouldRouteToOnboarding(authoritative)) {
+        useShellStore.getState().setRoute('onboarding');
       } else if (hadDeepLink) {
         location.hash = requestedHash;
         useShellStore.getState().syncRouteFromHash();
