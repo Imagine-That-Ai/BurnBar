@@ -60,3 +60,25 @@ two authored here).
   until picked up.
 - A follow-up task carries the parser's Windows target + workflow, gated to the
   phase that delivers Project Code Memory parity.
+
+## Revival Addendum - 2026-07-13
+
+The deferred implementation has now been picked up as an F2 parser slice. The
+Rust helper remains a stateless stdin/stdout executable, but it now has a
+Windows-targeted CI lane at
+`.github/workflows/build-project-code-static-parser-windows.yml` that formats,
+tests, and smoke-tests the native x64 MSVC binary, then builds the ARM64 MSVC
+binary. The release workflow already consumes the same RID-specific parser
+binary and requires it before publish.
+
+The parser covers every code extension currently enumerated by the Windows
+project inventory: C#, Java, Kotlin, Go, JavaScript/JSX, Rust, Swift, Python,
+TypeScript, and TSX. It preserves Git-blob integrity evidence, extracts
+bounded Tree-sitter symbols, and exposes optional bounded LSP references through
+the Windows `code.references` operation. Java/Kotlin/Go are now parsed by
+dedicated grammars rather than silently falling back to lexical declarations.
+
+Local Rust tests and the macOS-hosted presentation suite are green. The first
+green Windows workflow run is still required before this addendum is treated as
+host certification; until then, the parity ledger deliberately retains the
+F2 parser row's existing conservative status.

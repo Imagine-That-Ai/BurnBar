@@ -208,6 +208,7 @@ fn parse_request(request: ParseRequest) -> ParseResponse {
         sha_match,
         &mut symbols,
     );
+    dedupe_symbols(&mut symbols);
     ParseResponse {
         request_id: request.request_id,
         file_path: request.file_path,
@@ -225,7 +226,10 @@ fn parse_request(request: ParseRequest) -> ParseResponse {
 fn language_for(language: &str) -> Option<Language> {
     match language {
         "csharp" => Some(tree_sitter_c_sharp::LANGUAGE.into()),
+        "go" => Some(tree_sitter_go::LANGUAGE.into()),
+        "java" => Some(tree_sitter_java::LANGUAGE.into()),
         "javascript" => Some(tree_sitter_javascript::LANGUAGE.into()),
+        "kotlin" => Some(tree_sitter_kotlin_ng::LANGUAGE.into()),
         "python" => Some(tree_sitter_python::LANGUAGE.into()),
         "rust" => Some(tree_sitter_rust::LANGUAGE.into()),
         "swift" => Some(tree_sitter_swift::LANGUAGE.into()),
@@ -239,7 +243,10 @@ fn normalize_language(language: Option<&str>, file_path: &str) -> String {
     let raw = language.unwrap_or_default().trim().to_ascii_lowercase();
     match raw.as_str() {
         "c#" | "cs" | "csharp" => "csharp".to_string(),
+        "go" | "golang" => "go".to_string(),
+        "java" => "java".to_string(),
         "js" | "javascript" | "jsx" => "javascript".to_string(),
+        "kt" | "kotlin" => "kotlin".to_string(),
         "py" | "python" => "python".to_string(),
         "rs" | "rust" => "rust".to_string(),
         "swift" => "swift".to_string(),
@@ -253,7 +260,10 @@ fn normalize_language(language: Option<&str>, file_path: &str) -> String {
             .as_str()
         {
             "cs" => "csharp".to_string(),
+            "go" => "go".to_string(),
+            "java" => "java".to_string(),
             "js" | "jsx" => "javascript".to_string(),
+            "kt" => "kotlin".to_string(),
             "py" => "python".to_string(),
             "rs" => "rust".to_string(),
             "swift" => "swift".to_string(),
@@ -542,7 +552,16 @@ fn validate_lsp_command(
 ) -> Option<Vec<String>> {
     if !matches!(
         language,
-        "csharp" | "javascript" | "python" | "rust" | "swift" | "typescript" | "tsx"
+        "csharp"
+            | "go"
+            | "java"
+            | "javascript"
+            | "kotlin"
+            | "python"
+            | "rust"
+            | "swift"
+            | "typescript"
+            | "tsx"
     ) {
         return None;
     }
@@ -598,6 +617,9 @@ fn validate_lsp_command(
 fn builtin_lsp_executable_allowlist() -> Vec<String> {
     vec![
         "csharp-ls".to_string(),
+        "gopls".to_string(),
+        "jdtls".to_string(),
+        "kotlin-language-server".to_string(),
         "omnisharp".to_string(),
         "rust-analyzer".to_string(),
         "sourcekit-lsp".to_string(),
@@ -918,6 +940,22 @@ fn collect_symbols(
     }
 }
 
+fn dedupe_symbols(symbols: &mut Vec<ParsedSymbol>) {
+    symbols.sort_by(|left, right| {
+        left.start_line
+            .cmp(&right.start_line)
+            .then(left.end_line.cmp(&right.end_line))
+            .then(left.name.cmp(&right.name))
+            .then(left.kind.cmp(&right.kind))
+    });
+    symbols.dedup_by(|left, right| {
+        left.name == right.name
+            && left.kind == right.kind
+            && left.start_line == right.start_line
+            && left.end_line == right.end_line
+    });
+}
+
 /// True when `text` hashes to the claimed git blob object id. An empty claim
 /// (caller supplied no blob_sha) is treated as unverifiable -> `false`.
 fn blob_sha_matches(text: &str, claimed_blob_sha: &str) -> bool {
@@ -1015,11 +1053,40 @@ fn symbol_name_and_kind(node: Node<'_>, source: &[u8], language: &str) -> Option
             _ => return None,
         }
         .to_string(),
+        "go" => match kind {
+            "function_declaration" => "function",
+            "method_declaration" => "function",
+            "type_declaration" | "type_spec" => "type",
+            "const_declaration" | "const_spec" => "constant",
+            "var_declaration" | "var_spec" => "variable",
+            _ => return None,
+        }
+        .to_string(),
+        "java" => match kind {
+            "package_declaration" => "package",
+            "class_declaration" => "class",
+            "interface_declaration" => "interface",
+            "enum_declaration" => "enum",
+            "record_declaration" => "record",
+            "method_declaration" | "constructor_declaration" => "function",
+            "field_declaration" => "field",
+            _ => return None,
+        }
+        .to_string(),
         "javascript" => match kind {
             "function_declaration" => "function",
             "class_declaration" => "class",
             "method_definition" => "function",
             "lexical_declaration" | "variable_declaration" => "variable",
+            _ => return None,
+        }
+        .to_string(),
+        "kotlin" => match kind {
+            "class_declaration" => "class",
+            "object_declaration" => "object",
+            "function_declaration" => "function",
+            "property_declaration" => "property",
+            "type_alias" => "type",
             _ => return None,
         }
         .to_string(),
@@ -1185,6 +1252,91 @@ mod tests {
             .symbols
             .iter()
             .any(|symbol| symbol.name == "Start" && symbol.kind == "function"));
+    }
+
+    #[test]
+    fn extracts_java_symbols() {
+        let response = parse_request(ParseRequest {
+            request_id: Some("java".to_string()),
+            file_path: "Runner.java".to_string(),
+            language: None,
+            blob_sha: "blob-java".to_string(),
+            text: "package demo; public class Runner { int value; public void start() {} }"
+                .to_string(),
+            root_path: None,
+            operation: None,
+            position: None,
+        });
+
+        assert!(response.ok);
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Runner" && symbol.kind == "class"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "start" && symbol.kind == "function"));
+    }
+
+    #[test]
+    fn extracts_go_symbols_without_parent_child_duplicates() {
+        let response = parse_request(ParseRequest {
+            request_id: Some("go".to_string()),
+            file_path: "runner.go".to_string(),
+            language: None,
+            blob_sha: "blob-go".to_string(),
+            text: "package main\ntype Runner struct{}\nfunc Launch() {}\nvar value = 1".to_string(),
+            root_path: None,
+            operation: None,
+            position: None,
+        });
+
+        assert!(response.ok);
+        assert_eq!(
+            response
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == "Runner")
+                .count(),
+            1
+        );
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Launch" && symbol.kind == "function"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "value" && symbol.kind == "variable"));
+    }
+
+    #[test]
+    fn extracts_kotlin_symbols() {
+        let response = parse_request(ParseRequest {
+            request_id: Some("kotlin".to_string()),
+            file_path: "Runner.kt".to_string(),
+            language: None,
+            blob_sha: "blob-kotlin".to_string(),
+            text: "class Runner { fun start() {} }\nval value = 1".to_string(),
+            root_path: None,
+            operation: None,
+            position: None,
+        });
+
+        assert!(response.ok);
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Runner" && symbol.kind == "class"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "start" && symbol.kind == "function"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "value" && symbol.kind == "property"));
     }
 
     #[test]

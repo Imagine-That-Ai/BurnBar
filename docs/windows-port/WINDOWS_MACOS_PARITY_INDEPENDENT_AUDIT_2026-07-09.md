@@ -175,9 +175,10 @@ unproven host behavior to certification:
   coordinates, confines files to the configured project root, and returns
   relative reference paths. Tree-sitter symbol extraction now covers the
   repository's primary C#, JavaScript, Rust, Swift, Python, TypeScript, and TSX
-  files. Java/Kotlin/Go grammar coverage and a live Windows LSP host remain
-  separate evidence gates, so this does not promote the full static-language
-  matrix to F2 completion.
+  files. Java/Kotlin/Go grammar coverage is now implemented, and a dedicated
+  Windows x64/ARM64 MSVC workflow includes native x64 smoke coverage; its first
+  green Windows run and a live Windows LSP host remain separate evidence gates,
+  so this does not yet promote the parser row to F2 completion.
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 97/97 managed-agent-runtime tests), CloudSync (60/60), connector
