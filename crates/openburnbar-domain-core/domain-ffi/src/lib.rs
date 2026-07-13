@@ -1,5 +1,5 @@
 use openburnbar_domain_core::quota as core;
-use openburnbar_domain_core::{cloudvault, cloudvault_rewrap, hermes, quota};
+use openburnbar_domain_core::{cloudvault, cloudvault_rewrap, hermes, pricing, quota};
 use zeroize::{Zeroize, Zeroizing};
 
 pub const DOMAIN_CORE_ABI_VERSION: u32 = 2;
@@ -103,6 +103,35 @@ pub struct CloudVaultDocumentRewrapResult {
     pub preserved_member_intents: Vec<CloudVaultPreservedEnvelopeMemberIntent>,
     pub vault_generation_update: Option<i64>,
     pub rotation_job_id_update: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, uniffi::Record)]
+pub struct TokenPricingRates {
+    pub input_nano_usd_per_m_token: u64,
+    pub output_nano_usd_per_m_token: u64,
+    pub cache_creation_nano_usd_per_m_token: Option<u64>,
+    pub cache_read_nano_usd_per_m_token: u64,
+}
+
+#[derive(Clone, Copy, Debug, uniffi::Record)]
+pub struct TokenPricingBuckets {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_creation_tokens: u64,
+    pub cache_read_tokens: u64,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct LegacyKimiPricingResult {
+    pub model: String,
+    pub total_tokens: u64,
+    pub cost_nano_usd: u64,
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum PricingFfiError {
+    #[error("pricing arithmetic overflow")]
+    ArithmeticOverflow,
 }
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -281,6 +310,26 @@ pub fn domain_core_abi_version() -> u32 {
 #[uniffi::export]
 pub fn domain_core_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
+}
+
+#[uniffi::export]
+pub fn calculate_token_cost_nano_usd(
+    rates: TokenPricingRates,
+    buckets: TokenPricingBuckets,
+) -> Result<u64, PricingFfiError> {
+    Ok(pricing::token_cost_nano_usd(rates.into(), buckets.into())?)
+}
+
+#[uniffi::export]
+pub fn is_legacy_kimi_wire_event(provider: String, model: String) -> bool {
+    pricing::is_legacy_kimi_wire_event(&provider, &model)
+}
+
+#[uniffi::export]
+pub fn price_legacy_kimi_wire_event(
+    buckets: TokenPricingBuckets,
+) -> Result<LegacyKimiPricingResult, PricingFfiError> {
+    Ok(pricing::legacy_kimi_metrics(buckets.into())?.into())
 }
 
 #[uniffi::export]
@@ -771,6 +820,17 @@ impl From<HermesAadKind> for hermes::AadKind {
     }
 }
 
+impl From<TokenPricingRates> for pricing::TokenRates {
+    fn from(value: TokenPricingRates) -> Self {
+        Self {
+            input_nano_usd_per_m_token: value.input_nano_usd_per_m_token,
+            output_nano_usd_per_m_token: value.output_nano_usd_per_m_token,
+            cache_creation_nano_usd_per_m_token: value.cache_creation_nano_usd_per_m_token,
+            cache_read_nano_usd_per_m_token: value.cache_read_nano_usd_per_m_token,
+        }
+    }
+}
+
 impl From<hermes::HermesError> for HermesFfiError {
     fn from(value: hermes::HermesError) -> Self {
         match value {
@@ -781,6 +841,35 @@ impl From<hermes::HermesError> for HermesFfiError {
             hermes::HermesError::AuthenticationFailed => Self::AuthenticationFailed,
             hermes::HermesError::InvalidHkdfLength => Self::InvalidHkdfLength,
             hermes::HermesError::HmacFailure => Self::HmacFailure,
+        }
+    }
+}
+
+impl From<TokenPricingBuckets> for pricing::TokenBuckets {
+    fn from(value: TokenPricingBuckets) -> Self {
+        Self {
+            input_tokens: value.input_tokens,
+            output_tokens: value.output_tokens,
+            cache_creation_tokens: value.cache_creation_tokens,
+            cache_read_tokens: value.cache_read_tokens,
+        }
+    }
+}
+
+impl From<pricing::LegacyKimiMetrics> for LegacyKimiPricingResult {
+    fn from(value: pricing::LegacyKimiMetrics) -> Self {
+        Self {
+            model: value.model,
+            total_tokens: value.total_tokens,
+            cost_nano_usd: value.cost_nano_usd,
+        }
+    }
+}
+
+impl From<pricing::PricingError> for PricingFfiError {
+    fn from(value: pricing::PricingError) -> Self {
+        match value {
+            pricing::PricingError::ArithmeticOverflow => Self::ArithmeticOverflow,
         }
     }
 }

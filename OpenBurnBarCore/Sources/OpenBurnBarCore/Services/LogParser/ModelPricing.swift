@@ -67,11 +67,24 @@ public struct ModelPricing: Sendable {
         cacheReadTokens: Int = 0,
         reasoningTokens: Int = 0
     ) -> Double {
-        let cacheCreationRate = cacheCreationPerMToken ?? inputPerMToken
-        return Double(inputTokens) / 1_000_000 * inputPerMToken
-            + Double(outputTokens) / 1_000_000 * outputPerMToken
-            + Double(cacheCreationTokens) / 1_000_000 * cacheCreationRate
-            + Double(cacheReadTokens) / 1_000_000 * cacheReadPerMToken
+        DomainCorePricingAdapter.cost(
+            inputPerMToken: inputPerMToken,
+            outputPerMToken: outputPerMToken,
+            cacheCreationPerMToken: cacheCreationPerMToken,
+            cacheReadPerMToken: cacheReadPerMToken,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
+            environment: DomainCorePricingAdapter.runtimeEnvironment,
+            legacy: {
+                let cacheCreationRate = cacheCreationPerMToken ?? inputPerMToken
+                return Double(inputTokens) / 1_000_000 * inputPerMToken
+                    + Double(outputTokens) / 1_000_000 * outputPerMToken
+                    + Double(cacheCreationTokens) / 1_000_000 * cacheCreationRate
+                    + Double(cacheReadTokens) / 1_000_000 * cacheReadPerMToken
+            }
+        )
     }
 }
 

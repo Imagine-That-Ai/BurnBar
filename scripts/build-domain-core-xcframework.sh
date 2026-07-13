@@ -19,6 +19,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CRATE_DIR="${ROOT_DIR}/crates/openburnbar-domain-core"
+TARGET_DIR="${CARGO_TARGET_DIR:-${CRATE_DIR}/target}"
 VENDOR_DIR="${ROOT_DIR}/Vendor"
 XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarDomainCore.xcframework"
 SWIFT_PKG_DIR="${ROOT_DIR}/OpenBurnBarCore/Sources/OpenBurnBarDomainCore"
@@ -139,9 +140,9 @@ done
 # from the iroh-introspection point of view.
 log "generating swift bindings via pinned UniFFI helper"
 ensure_uniffi_bindgen_swift_helper
-HOST_DYLIB="${CRATE_DIR}/target/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_domain_ffi.dylib"
+HOST_DYLIB="${TARGET_DIR}/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_domain_ffi.dylib"
 if [[ ! -f "${HOST_DYLIB}" ]]; then
-  HOST_DYLIB="${CRATE_DIR}/target/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_domain_ffi.a"
+  HOST_DYLIB="${TARGET_DIR}/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_domain_ffi.a"
 fi
 rm -rf "${GENERATED_DIR}"
 mkdir -p "${GENERATED_DIR}"
@@ -185,7 +186,7 @@ package_static_for_target() {
   esac
   local out_dir="${ARCHS_DIR}/${platform_id}"
   mkdir -p "${out_dir}/Headers"
-  cp "${CRATE_DIR}/target/${target}/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+  cp "${TARGET_DIR}/${target}/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
      "${out_dir}/libopenburnbar_domain_ffi.a"
   if compgen -G "${GENERATED_DIR}/*.h" >/dev/null; then
     cp "${GENERATED_DIR}/"*.h "${out_dir}/Headers/"
@@ -204,8 +205,8 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-darwin" \
   MAC_DIR="${ARCHS_DIR}/macos"
   mkdir -p "${MAC_DIR}/Headers"
   lipo -create \
-    "${CRATE_DIR}/target/aarch64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
-    "${CRATE_DIR}/target/x86_64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+    "${TARGET_DIR}/aarch64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+    "${TARGET_DIR}/x86_64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     -output "${MAC_DIR}/libopenburnbar_domain_ffi.a"
   cp "${GENERATED_DIR}/"*.h "${MAC_DIR}/Headers/"
   cp "${GENERATED_DIR}/"*.modulemap "${MAC_DIR}/Headers/module.modulemap"
@@ -224,8 +225,8 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-ios-sim" \
   SIM_DIR="${ARCHS_DIR}/ios-simulator"
   mkdir -p "${SIM_DIR}/Headers"
   lipo -create \
-    "${CRATE_DIR}/target/aarch64-apple-ios-sim/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
-    "${CRATE_DIR}/target/x86_64-apple-ios/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+    "${TARGET_DIR}/aarch64-apple-ios-sim/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+    "${TARGET_DIR}/x86_64-apple-ios/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     -output "${SIM_DIR}/libopenburnbar_domain_ffi.a"
   if compgen -G "${GENERATED_DIR}/*.h" >/dev/null; then
     cp "${GENERATED_DIR}/"*.h "${SIM_DIR}/Headers/"

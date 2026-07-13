@@ -70,9 +70,16 @@ payloads, so they are not a native relay-crypto implementation.
 
 | Operation | Current owners | Contract/deletion boundary |
 |---|---|---|
-| Catalog rate lookup and token-cost arithmetic | Swift `OpenBurnBarCatalog`/`ModelPricing`; Functions pricing and rollups | Define integer token/rate inputs and nano-USD rounding/overflow fixtures before Rust implementation |
-| Historical provider-era pricing | Functions Kimi rollups and current catalog | Keep era selection explicit; historical recomputation must not silently use current catalog rates |
-| Runtime consumers | Swift native and Functions TypeScript | Swift links native core; Functions loads reviewed WASM; remove Double/TS arithmetic only after both fixture suites pass |
+| Catalog rate lookup | Swift `OpenBurnBarCatalog` only | Not duplicated: catalog loading and provider matching stay in Swift; Rust receives the selected rates |
+| Token-cost arithmetic and cache-write fallback | Rust plus Swift/Functions during rollout | `tests/fixtures/domain-core/pricing/v2/pricing-kat.json`; checked nano-USD arithmetic is authoritative, then delete `ModelPricing.cost` and `legacyTokenCost` after rollout gates pass |
+| Historical provider-era pricing | Rust plus Functions during rollout | Kimi `chatcmpl-` recognition, `kimi-for-coding` alias, era rates, cache subtraction, and total/cost are one event-sized call |
+| Runtime consumers | Swift native and Functions TypeScript | `OPENBURNBAR_DOMAIN_CORE_PRICING_MODE=legacy|shadow|rust`; Functions lazily loads checked-in WASM from its deployable vendor package |
+
+Functions alone rounds final rollup totals to six decimals. That aggregation
+presentation rule has no Swift peer and is therefore intentionally outside P1.
+P1 returns checked integer nano-USD and converts to the existing USD number only
+inside each platform adapter. Stored schemas remain unchanged; the fixed-point
+contract changes calculation internals, not persisted representation.
 
 ## Completion rule
 
