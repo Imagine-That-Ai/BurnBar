@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,18 +31,24 @@ function isInside(root, path) {
 function snapshotFile(root, relativePath) {
   const path = join(root, ...relativePath.split("/"));
   if (!isInside(root, path)) throw new Error(`manifest path escapes the layout: ${relativePath}`);
-  let stat;
+  let descriptor;
   try {
-    stat = lstatSync(path);
+    const noFollow = fsConstants.O_NOFOLLOW ?? 0;
+    descriptor = openSync(path, fsConstants.O_RDONLY | noFollow);
   } catch {
     throw new Error(`manifest file is missing from the layout: ${relativePath}`);
   }
-  if (!stat.isFile()) throw new Error(`manifest path is not a regular file: ${relativePath}`);
-  const data = readFileSync(path);
-  return {
-    sha256: createHash("sha256").update(data).digest("hex"),
-    sizeBytes: data.byteLength,
-  };
+  try {
+    const stat = fstatSync(descriptor);
+    if (!stat.isFile()) throw new Error(`manifest path is not a regular file: ${relativePath}`);
+    const data = readFileSync(descriptor);
+    return {
+      sha256: createHash("sha256").update(data).digest("hex"),
+      sizeBytes: data.byteLength,
+    };
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 export function refreshNativeEngineManifest(layoutDirectory) {
