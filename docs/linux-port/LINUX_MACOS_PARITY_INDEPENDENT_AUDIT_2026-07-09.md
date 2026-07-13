@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, and the 2026-07-12 full Linux-native aggregate on `codex/linux-parity-controller-credentials` |
+| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, and the 2026-07-12 full Linux-native aggregate on `codex/linux-parity-controller-credentials`; follow-on source slices through 2026-07-13 are linked below |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -39,6 +39,12 @@ percentage. The active remediation stack now contains these reviewable slices:
 | P30 pet companion | PR #1674, checks in progress | Native runtime-manifest probe replaces optimistic environment detection; contained fallback and action-level unavailable states are explicit; native overlay/summon/selection remain open. |
 | P40 data/privacy | PR #1672, merge-clean | Daemon-backed telemetry/privacy/cloud-sync writes with pending/error states and explicit unavailable destructive/recovery rows; backend erasure/export/recovery remain open. |
 | P11 usage catalog | PR #1676, checks green | All 33 canonical provider identities and Swift discovery paths/patterns are contract-tested against the exact 27 ParserRegistry entries; four API-backed and two unavailable sources are labeled explicitly in Settings/onboarding; normalized corpus and runtime/install evidence remain open. |
+| P14 exact chat threads | PR #1684, checks in progress | Canonical encrypted thread list/get/search, idempotent append, older-message pagination, strict Tauri decoding, and durable send ordering; export is being added as a renderer-only safe serializer. Attachments, citations, approvals, options, pop-out, and remaining backends remain open. |
+| P07 browser Computer Use panel | PR #1681, merge-clean | Typed navigate/screenshot/click/fill actions are bound to the selected run/call/generation and fail closed when the packaged capability is absent; physical-iPad approval, production credentials, and installed browser/panic/audit/restart evidence remain open. |
+| P22 database inspection | PR #1680, merge-clean | Bounded daemon-owned code search/context packs with pagination and untrusted-source warnings; snapshots, encrypted-store recovery, and installed proof remain open. |
+| P27 native startup/deep links | PR #1679, merge-clean | Strict membership/OAuth callback parsing, one-shot startup handoff, background tray startup, XDG autostart, and package desktop registration; notification actions, global commands, single-instance forwarding, and host integration remain open. |
+| P31 accessibility preferences | PR #1683, merge-clean | Shared reduced-motion, prefers-contrast, forced-colors, focus, and status/alert contracts; installed GNOME/KDE/AT-SPI/Orca/high-contrast evidence remains open. |
+| P39 differential oracle | PR #1682, merge-clean | Same-schema normalization, credential redaction, explicit volatile-path handling, path-level diff output, and fail-closed exit codes; a same-commit macOS/Linux artifact run remains required. |
 
 These slices reduce concrete gaps, but they do not change the NO-GO verdict:
 transactional provider/auth onboarding, complete chat, cloud/device mutations,
