@@ -132,10 +132,15 @@ unproven host behavior to certification:
   a bounded `fusion.run` command that composes this loop with the configured
   gateway executor; unconfigured provider routes fail closed. Provider response
   bodies are bounded before entering the fusion loop.
+- The Cursor connector session now runs a portable provider/model preflight
+  before invoking any broker, proxy, tunnel, or Cursor-settings runtime step.
+  Empty provider/model configurations fail closed; API-key presence remains in
+  the injected platform secret-store validation step.
 
 These changes are covered by focused managed-runtime (32/32 mission/runtime
-tests plus 97/97 managed-agent-runtime tests), presentation (750/750),
-Computer Use, bridge-policy, and provider-boundary tests. They are an implementation increment, not a claim that
+tests plus 97/97 managed-agent-runtime tests), connector (99/99), presentation
+(750/750), Computer Use, bridge-policy, and provider-boundary tests. They are an
+implementation increment, not a claim that
 the F2 workstreams are all promoted to `Real`: full static parsing, live
 Pensieve storage integration, production composition of every F2 service,
 physical Computer Use/media safety, and host evidence still remain. The

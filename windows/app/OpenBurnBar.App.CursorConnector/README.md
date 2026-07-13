@@ -29,6 +29,7 @@ attribute token spend.
 | `RoutedClientConfigSyncService.cs` | `RoutedClientConfigSyncService` (Factory / OpenCode config) |
 | `CursorSettingsApplier.cs` | `backupAndApplyCursorSettings` / `restoreCursorSettings` |
 | `CursorConnectorSession.cs` | `connect()` / `disconnect()` state machine + rollback |
+| `ConnectorConfigurationValidator.cs` | Preflight provider/model validation before runtime side effects |
 | `Seams.cs` | `KeychainStore` / `FileHandle` / `SecRandomCopyBytes` / `Date` seams |
 
 ## Seams (portable core ⇄ deferred `.Windows` bucket B)
@@ -41,6 +42,13 @@ attribute token spend.
   `CursorStateDbReader` (bucket B).
 - `IConnectorFileSystem` — external-client config files (bucket B).
 - `IRandomTokenSource` — CSPRNG (`SystemRandomTokenSource`, portable).
+
+`CursorConnectorSession` runs the portable provider/model preflight before
+calling the injected runtime steps. This keeps an empty configuration from
+starting the broker, proxy, tunnel, or Cursor-settings rewrite. API-key presence
+is intentionally left to `IConnectorSessionSteps.ValidateConfiguration()`,
+where the Windows implementation can use DPAPI/CNG without putting secrets in
+the portable model.
 
 ## Composition, not duplication
 
