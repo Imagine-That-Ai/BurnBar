@@ -48,7 +48,7 @@ enum CloudVaultSearchDomainCoreOperation: String, CaseIterable, Sendable {
 }
 
 enum CloudVaultSearchDomainCoreAdapter {
-    static let requiredABIVersion: UInt32 = 2
+    static let requiredABIVersion: UInt32 = 3
 
     struct NativeBackend {
         let abiVersion: () -> UInt32
