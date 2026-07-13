@@ -146,14 +146,13 @@ public final class CodexParser: LogParser, Sendable {
                         foundExact = true
                     }
                     if includeConversationBodies {
-                        parsedConversation = cached.conversation
-                            ?? parseCodexConversationJSONL(path: expandedPath, fallbackTitle: rawTitle)
+                        parsedConversation = parseCodexConversationJSONL(path: expandedPath, fallbackTitle: rawTitle)
                         shouldEmitConversation = parsedConversation != nil
-                        if parsedConversation != cached.conversation {
+                        if cached.conversation != nil {
                             sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
                                 signature: signature,
                                 tokenUsage: cachedTokenUsage,
-                                conversation: parsedConversation
+                                conversation: nil
                             )
                             cacheMutated = true
                         }
@@ -193,7 +192,7 @@ public final class CodexParser: LogParser, Sendable {
                                     cacheRead: $0.cacheRead
                                 )
                             },
-                            conversation: parsedConversation
+                            conversation: nil
                         )
                         cacheMutated = true
                     } else if cached != nil {
