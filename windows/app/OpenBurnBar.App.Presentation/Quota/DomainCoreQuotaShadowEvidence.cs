@@ -69,6 +69,7 @@ public sealed class DomainCoreQuotaShadowEvidenceSpool
     private readonly int _maxFileBytes;
     private readonly int _maxReadyFiles;
     private readonly int _maxSamplesPerFile;
+    private long _lastReadyOrdinal;
 
     public DomainCoreQuotaShadowEvidenceSpool(
         string directory,
@@ -86,6 +87,11 @@ public sealed class DomainCoreQuotaShadowEvidenceSpool
         _maxReadyFiles = maxReadyFiles;
         _maxSamplesPerFile = maxSamplesPerFile;
         Directory.CreateDirectory(_directory);
+        _lastReadyOrdinal = ReadyFiles()
+            .Select(path => Path.GetFileName(path).Split('-', 3)[1])
+            .Select(value => long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out long ordinal) ? ordinal : 0)
+            .DefaultIfEmpty()
+            .Max();
     }
 
     public void Append(DomainCoreQuotaShadowSampleV1 sample)
@@ -166,8 +172,9 @@ public sealed class DomainCoreQuotaShadowEvidenceSpool
             File.Delete(ready[0]);
             ready.RemoveAt(0);
         }
-        string timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString("D13", CultureInfo.InvariantCulture);
-        string token = $"ready-{timestamp}-{Guid.NewGuid():D}.jsonl";
+        _lastReadyOrdinal = Math.Max(DateTime.UtcNow.Ticks, _lastReadyOrdinal + 1);
+        string ordinal = _lastReadyOrdinal.ToString("D19", CultureInfo.InvariantCulture);
+        string token = $"ready-{ordinal}-{Guid.NewGuid():D}.jsonl";
         File.Move(_activePath, Path.Combine(_directory, token));
     }
 
@@ -190,6 +197,7 @@ internal sealed class DomainCoreQuotaShadowUploadCoordinator
     private readonly Func<IReadOnlyList<DomainCoreQuotaShadowSampleV1>, CancellationToken, Task> _uploader;
     private readonly TimeSpan _debounce;
     private Task? _scheduledFlush;
+    private long _scheduleVersion;
 
     internal DomainCoreQuotaShadowUploadCoordinator(
         DomainCoreQuotaShadowEvidenceSpool spool,
@@ -206,14 +214,39 @@ internal sealed class DomainCoreQuotaShadowUploadCoordinator
     {
         lock (_scheduleGate)
         {
+            _scheduleVersion++;
             if (_scheduledFlush is { IsCompleted: false }) return;
-            _scheduledFlush = Task.Run(async () =>
+            _scheduledFlush = Task.Run(RunScheduledFlushAsync);
+        }
+    }
+
+    private async Task RunScheduledFlushAsync()
+    {
+        while (true)
+        {
+            long observedVersion;
+            lock (_scheduleGate) observedVersion = _scheduleVersion;
+
+            await Task.Delay(_debounce).ConfigureAwait(false);
+
+            lock (_scheduleGate)
             {
-                await Task.Delay(_debounce).ConfigureAwait(false);
-                await FlushAsync(CancellationToken.None).ConfigureAwait(false);
-                lock (_scheduleGate) _scheduledFlush = null;
-                if (_spool.PendingSampleCount() > 0) Schedule();
-            });
+                if (observedVersion != _scheduleVersion) continue;
+            }
+
+            await FlushAsync(CancellationToken.None).ConfigureAwait(false);
+
+            lock (_scheduleGate)
+            {
+                if (observedVersion != _scheduleVersion) continue;
+                if (_spool.PendingSampleCount() > 0)
+                {
+                    _scheduleVersion++;
+                    continue;
+                }
+                _scheduledFlush = null;
+                return;
+            }
         }
     }
 

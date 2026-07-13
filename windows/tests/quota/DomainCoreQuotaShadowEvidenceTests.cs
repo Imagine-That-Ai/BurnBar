@@ -79,15 +79,17 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
                 lock (batchSizes) batchSizes.Add(samples.Count);
                 return Task.CompletedTask;
             },
-            TimeSpan.FromMilliseconds(20));
+            TimeSpan.FromMilliseconds(60));
 
         spool.Append(Sample(1));
         coordinator.Schedule();
+        await Task.Delay(40, CancellationToken.None);
         spool.Append(Sample(2));
         coordinator.Schedule();
+        await Task.Delay(40, CancellationToken.None);
         spool.Append(Sample(3));
         coordinator.Schedule();
-        await Task.Delay(200, CancellationToken.None);
+        await Task.Delay(160, CancellationToken.None);
 
         lock (batchSizes) Assert.Equal(new[] { 3 }, batchSizes);
         Assert.Equal(0, spool.PendingSampleCount());
