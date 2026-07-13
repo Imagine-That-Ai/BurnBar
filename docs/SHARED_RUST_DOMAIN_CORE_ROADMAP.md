@@ -59,6 +59,15 @@ at least 14 days and 10,000 internal or beta shadow parses, zero unexplained
 mismatches, and no p95 latency regression above five percent. The legacy mode
 remains available for one stable release after Rust enforcement, then is deleted.
 
+Quantitative shadow evidence is evaluated by the fail-closed
+[`evaluate-domain-core-promotion.mjs`](../scripts/ci/evaluate-domain-core-promotion.mjs)
+gate against committed policy. The machine-readable report and collection
+contract are documented in the
+[promotion evidence runbook](runbooks/shared-rust-promotion-evidence.md).
+Runtime evidence is retained with the rollout review, not committed to the
+repository, and a passing quantitative report does not replace the remaining
+fixture, artifact, security-review, release, or deletion gates.
+
 Crypto migrations additionally require deterministic KATs, bidirectional
 cross-open coverage for every supported envelope version, tamper/wrong-key/AAD
 rejection, fuzzing, and independent security review. Authentication failures
