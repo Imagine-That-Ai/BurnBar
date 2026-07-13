@@ -82,7 +82,7 @@ random generation, and non-extractable key handles. No FFI or Wasm API accepts a
 private scalar, private-key encoding, or exported browser `CryptoKey` merely to
 centralize an operation.
 
-### Encrypted CloudVault search
+### CloudVault encrypted search
 
 Rust owns the complete v1 analysis and hash operation: Unicode tokenization,
 stopwords, index/query prefixes, phrase terms, semantic features, and ordered
@@ -92,11 +92,13 @@ extracted tokens, or a positive requested limit over 1,024. Nonpositive limits
 remain a successful empty result because that is part of the versioned legacy
 contract. Platform search services and Firestore I/O remain outside Rust.
 
-Android's dedicated adapter selects legacy, legacy-authoritative shadow, or
-fail-closed Rust execution at the four existing search entry points. It requires
-ABI 3 before native execution, wipes its owned key copy after every native
-attempt, and emits only bounded category/version/count diagnostics. Callers,
-key custody, and persistence mapping do not cross that boundary.
+Android and Swift each select `legacy`, legacy-authoritative `shadow`, or
+fail-closed `rust` with `OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE`. Each
+public token/index/query/semantic API crosses UniFFI once with the complete text
+or query. The Android adapter wipes its owned key copy after every native
+attempt. Both adapters require ABI 3 and emit only bounded
+category/version/count diagnostics; callers, key custody, persistence, and
+Firestore mapping do not cross the boundary.
 
 ### Typed CloudVault document rewrap
 
