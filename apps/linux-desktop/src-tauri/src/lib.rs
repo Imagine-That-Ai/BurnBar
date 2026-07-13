@@ -17,6 +17,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use tauri_plugin_shell::ShellExt;
+use zeroize::{Zeroize, Zeroizing};
 
 mod media;
 mod update_feed;
@@ -143,11 +144,12 @@ fn linux_socket_path() -> PathBuf {
 
 /// Read socket auth token; refuse world/group-readable files (mode must be 0600 or tighter).
 fn read_auth_token() -> Option<String> {
-    read_token_file_secure(&linux_support_dir().join("daemon-socket-auth-token"))
+    read_token_file_secure_zeroizing(&linux_support_dir().join("daemon-socket-auth-token"))
+        .map(|token| token.to_string())
 }
 
 /// Read a token file only when it is a regular file with mode 0600 or tighter.
-fn read_token_file_secure(path: &std::path::Path) -> Option<String> {
+fn read_token_file_secure_zeroizing(path: &std::path::Path) -> Option<Zeroizing<String>> {
     use std::os::unix::fs::FileTypeExt;
     use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
     let mut file = fs::OpenOptions::new()
@@ -185,37 +187,60 @@ fn read_token_file_secure(path: &std::path::Path) -> Option<String> {
         );
         return None;
     }
-    if meta.len() > 16_384 {
+    if meta.len() > GATEWAY_MAX_TOKEN_BYTES as u64 {
         eprintln!(
             "openburnbar: refusing oversized token file {}",
             path.display()
         );
         return None;
     }
-    let mut contents = String::new();
+    let mut contents = Zeroizing::new(String::new());
     file.read_to_string(&mut contents).ok()?;
-    let token = contents.trim().to_string();
+    trim_token_in_place(contents)
+}
+
+const GATEWAY_MIN_TOKEN_BYTES: usize = 16;
+const GATEWAY_MAX_TOKEN_BYTES: usize = 16_384;
+
+fn trim_token_in_place(mut token: Zeroizing<String>) -> Option<Zeroizing<String>> {
+    let start = token.len() - token.trim_start().len();
+    let end = start + token.trim().len();
+    token.truncate(end);
+    if start > 0 {
+        token.drain(..start);
+    }
     (!token.is_empty()).then_some(token)
 }
 
-fn read_gateway_auth_token() -> Option<String> {
+fn validate_gateway_token(token: Zeroizing<String>) -> Option<Zeroizing<String>> {
+    let valid = (GATEWAY_MIN_TOKEN_BYTES..=GATEWAY_MAX_TOKEN_BYTES).contains(&token.len())
+        && token.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'+' | b'/' | b'=')
+        });
+    valid.then_some(token)
+}
+
+fn read_gateway_auth_token() -> Option<Zeroizing<String>> {
     // Prefer file-based token (0600); env is last-resort for CI/dev only.
     if let Ok(path) = std::env::var("OPENBURNBAR_GATEWAY_AUTH_TOKEN_FILE") {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
-            if let Some(token) = read_token_file_secure(std::path::Path::new(trimmed)) {
+            if let Some(token) = read_token_file_secure_zeroizing(std::path::Path::new(trimmed))
+                .and_then(validate_gateway_token)
+            {
                 return Some(token);
             }
         }
     }
-    if let Some(token) = read_token_file_secure(&linux_support_dir().join("gateway-auth-token")) {
+    if let Some(token) =
+        read_token_file_secure_zeroizing(&linux_support_dir().join("gateway-auth-token"))
+            .and_then(validate_gateway_token)
+    {
         return Some(token);
     }
     if let Ok(token) = std::env::var("OPENBURNBAR_GATEWAY_AUTH_TOKEN") {
-        let trimmed = token.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
-        }
+        return trim_token_in_place(Zeroizing::new(token)).and_then(validate_gateway_token);
     }
     None
 }
@@ -223,6 +248,11 @@ fn read_gateway_auth_token() -> Option<String> {
 const GATEWAY_MAX_MESSAGES: usize = 256;
 const GATEWAY_MAX_CONTENT_BYTES: usize = 1_048_576;
 const GATEWAY_MAX_RESPONSE_BYTES: usize = 16_777_216;
+const GATEWAY_MAX_STREAM_EVENTS: usize = 65_536;
+const GATEWAY_MAX_TOOL_CALLS: usize = 4_096;
+const GATEWAY_MAX_TOOL_ARGUMENT_BYTES: usize = 262_144;
+const GATEWAY_MAX_TOTAL_TOOL_ARGUMENT_BYTES: usize = 1_048_576;
+const GATEWAY_MAX_IPC_BYTES: usize = 8_388_608;
 const DAEMON_ONBOARDING_SNAPSHOT_METHOD: &str = "daemon.onboarding.snapshot";
 const DAEMON_ONBOARDING_ACTION_METHOD: &str = "daemon.onboarding.action";
 const DAEMON_ONBOARDING_RESET_METHOD: &str = "daemon.onboarding.reset";
@@ -253,7 +283,670 @@ fn gateway_cancellations() -> &'static Mutex<HashMap<String, tokio_util::sync::C
     GATEWAY_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn validate_gateway_request(request: &GatewayProxyRequest) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum GatewayProxyError {
+    Aborted,
+    Http { status: u16 },
+    InvalidResponse { reason: &'static str },
+    RendererDisconnected,
+    StreamInterrupted,
+    TokenUnavailable,
+    Unimplemented,
+    Unreachable,
+}
+
+impl GatewayProxyError {
+    fn invalid(reason: &'static str) -> Self {
+        Self::InvalidResponse { reason }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GatewayToolCallEvent {
+    key: String,
+    id: String,
+    name: String,
+    arguments: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GatewayUsageEvent {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prompt_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    completion_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum GatewayStreamEvent {
+    Delta {
+        text: String,
+    },
+    Thinking {
+        text: String,
+    },
+    ToolCall {
+        #[serde(rename = "toolCall")]
+        tool_call: GatewayToolCallEvent,
+    },
+    Usage {
+        usage: GatewayUsageEvent,
+    },
+    Done {
+        #[serde(rename = "finishReason", skip_serializing_if = "Option::is_none")]
+        finish_reason: Option<String>,
+    },
+}
+
+impl GatewayStreamEvent {
+    fn zeroize_text_fields(&mut self) {
+        match self {
+            Self::Delta { text } | Self::Thinking { text } => text.zeroize(),
+            Self::ToolCall { tool_call } => {
+                tool_call.key.zeroize();
+                tool_call.id.zeroize();
+                tool_call.name.zeroize();
+                tool_call.arguments.zeroize();
+            }
+            Self::Done { finish_reason } => {
+                if let Some(reason) = finish_reason {
+                    reason.zeroize();
+                }
+            }
+            Self::Usage { .. } => {}
+        }
+    }
+}
+
+impl Drop for GatewayStreamEvent {
+    fn drop(&mut self) {
+        self.zeroize_text_fields();
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayWirePayload {
+    #[serde(default)]
+    choices: Vec<GatewayWireChoice>,
+    usage: Option<GatewayWireUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayWireChoice {
+    delta: Option<GatewayWireDelta>,
+    message: Option<GatewayWireDelta>,
+    finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayWireDelta {
+    content: Option<String>,
+    reasoning_content: Option<String>,
+    reasoning: Option<String>,
+    thinking: Option<String>,
+    #[serde(default)]
+    tool_calls: Vec<GatewayWireToolCall>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayWireToolCall {
+    index: Option<usize>,
+    id: Option<String>,
+    function: Option<GatewayWireToolFunction>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayWireToolFunction {
+    name: Option<String>,
+    arguments: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayWireUsage {
+    #[serde(alias = "promptTokens")]
+    prompt_tokens: Option<u64>,
+    #[serde(alias = "completionTokens")]
+    completion_tokens: Option<u64>,
+    #[serde(alias = "totalTokens")]
+    total_tokens: Option<u64>,
+}
+
+struct GatewayToolCallBuffer {
+    id: String,
+    name: String,
+    arguments: Zeroizing<String>,
+}
+
+struct StreamingSecretPattern<'a> {
+    secret: &'a [u8],
+    failure: Vec<usize>,
+}
+
+impl<'a> StreamingSecretPattern<'a> {
+    fn new(secret: &'a [u8]) -> Result<Self, GatewayProxyError> {
+        if secret.is_empty() || secret.len() > GATEWAY_MAX_TOKEN_BYTES {
+            return Err(GatewayProxyError::TokenUnavailable);
+        }
+        let mut failure = vec![0; secret.len()];
+        let mut matched = 0usize;
+        for index in 1..secret.len() {
+            while matched > 0 && secret[index] != secret[matched] {
+                matched = failure[matched - 1];
+            }
+            if secret[index] == secret[matched] {
+                matched += 1;
+                failure[index] = matched;
+            }
+        }
+        Ok(Self { secret, failure })
+    }
+
+    fn scan(&self, state: &mut usize, bytes: &[u8]) -> bool {
+        for byte in bytes {
+            while *state > 0 && *byte != self.secret[*state] {
+                *state = self.failure[*state - 1];
+            }
+            if *byte == self.secret[*state] {
+                *state += 1;
+                if *state == self.secret.len() {
+                    *state = self.failure[*state - 1];
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+struct GatewaySecretGuard<'a> {
+    pattern: StreamingSecretPattern<'a>,
+    global_state: usize,
+    content_state: usize,
+    delta_state: usize,
+    thinking_state: usize,
+    tool_arguments_state: usize,
+    tool_argument_states: HashMap<String, usize>,
+}
+
+impl<'a> GatewaySecretGuard<'a> {
+    fn new(secret: &'a [u8]) -> Result<Self, GatewayProxyError> {
+        Ok(Self {
+            pattern: StreamingSecretPattern::new(secret)?,
+            global_state: 0,
+            content_state: 0,
+            delta_state: 0,
+            thinking_state: 0,
+            tool_arguments_state: 0,
+            tool_argument_states: HashMap::new(),
+        })
+    }
+
+    fn scan_global(&mut self, value: &str) -> Result<(), GatewayProxyError> {
+        if self.pattern.scan(&mut self.global_state, value.as_bytes()) {
+            return Err(GatewayProxyError::invalid("secret_reflection"));
+        }
+        Ok(())
+    }
+
+    fn scan_delta(&mut self, value: &str) -> Result<(), GatewayProxyError> {
+        self.scan_global(value)?;
+        if self.pattern.scan(&mut self.content_state, value.as_bytes()) {
+            return Err(GatewayProxyError::invalid("secret_reflection"));
+        }
+        if self.pattern.scan(&mut self.delta_state, value.as_bytes()) {
+            return Err(GatewayProxyError::invalid("secret_reflection"));
+        }
+        Ok(())
+    }
+
+    fn scan_thinking(&mut self, value: &str) -> Result<(), GatewayProxyError> {
+        self.scan_global(value)?;
+        if self.pattern.scan(&mut self.content_state, value.as_bytes()) {
+            return Err(GatewayProxyError::invalid("secret_reflection"));
+        }
+        if self
+            .pattern
+            .scan(&mut self.thinking_state, value.as_bytes())
+        {
+            return Err(GatewayProxyError::invalid("secret_reflection"));
+        }
+        Ok(())
+    }
+
+    fn scan_tool_arguments(&mut self, key: &str, value: &str) -> Result<(), GatewayProxyError> {
+        self.scan_global(value)?;
+        if self.pattern.scan(&mut self.content_state, value.as_bytes())
+            || self
+                .pattern
+                .scan(&mut self.tool_arguments_state, value.as_bytes())
+        {
+            return Err(GatewayProxyError::invalid("secret_reflection"));
+        }
+        let state = self
+            .tool_argument_states
+            .entry(key.to_string())
+            .or_default();
+        if self.pattern.scan(state, value.as_bytes()) {
+            return Err(GatewayProxyError::invalid("secret_reflection"));
+        }
+        Ok(())
+    }
+
+    fn scan_ipc_event(&mut self, event: &GatewayStreamEvent) -> Result<(), GatewayProxyError> {
+        match event {
+            GatewayStreamEvent::Delta { text } | GatewayStreamEvent::Thinking { text } => {
+                self.scan_global(text)
+            }
+            GatewayStreamEvent::ToolCall { tool_call } => {
+                self.scan_global(&tool_call.key)?;
+                self.scan_global(&tool_call.id)?;
+                self.scan_global(&tool_call.name)?;
+                self.scan_global(&tool_call.arguments)
+            }
+            GatewayStreamEvent::Done { finish_reason } => {
+                if let Some(reason) = finish_reason {
+                    self.scan_global(reason)?;
+                }
+                Ok(())
+            }
+            GatewayStreamEvent::Usage { .. } => Ok(()),
+        }
+    }
+
+    fn global_state(&self) -> usize {
+        self.global_state
+    }
+}
+
+struct GatewayPendingEventBuffer<'a> {
+    secret_guard: GatewaySecretGuard<'a>,
+    pending: Vec<GatewayStreamEvent>,
+}
+
+impl<'a> GatewayPendingEventBuffer<'a> {
+    fn new(secret: &'a [u8]) -> Result<Self, GatewayProxyError> {
+        Ok(Self {
+            secret_guard: GatewaySecretGuard::new(secret)?,
+            pending: Vec::new(),
+        })
+    }
+
+    fn push(
+        &mut self,
+        mut event: GatewayStreamEvent,
+    ) -> Result<Vec<GatewayStreamEvent>, GatewayProxyError> {
+        if let Err(error) = self.secret_guard.scan_ipc_event(&event) {
+            event.zeroize_text_fields();
+            self.zeroize_pending();
+            return Err(error);
+        }
+        self.pending.push(event);
+        if self.secret_guard.global_state() == 0 {
+            Ok(std::mem::take(&mut self.pending))
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    fn finish(&mut self) -> Result<Vec<GatewayStreamEvent>, GatewayProxyError> {
+        if self.secret_guard.global_state() != 0 {
+            self.zeroize_pending();
+            return Err(GatewayProxyError::invalid("secret_reflection"));
+        }
+        Ok(std::mem::take(&mut self.pending))
+    }
+
+    fn zeroize_pending(&mut self) {
+        for event in &mut self.pending {
+            event.zeroize_text_fields();
+        }
+        self.pending.clear();
+    }
+}
+
+impl Drop for GatewayPendingEventBuffer<'_> {
+    fn drop(&mut self) {
+        self.zeroize_pending();
+    }
+}
+
+#[derive(Default)]
+struct GatewaySseBuffer {
+    bytes: Zeroizing<Vec<u8>>,
+    pending_carriage_return: bool,
+    frame_start: usize,
+    scan_cursor: usize,
+    #[cfg(test)]
+    scanned_bytes: usize,
+    #[cfg(test)]
+    compacted_bytes: usize,
+    #[cfg(test)]
+    compactions: usize,
+}
+
+impl GatewaySseBuffer {
+    fn push(&mut self, chunk: &[u8]) -> Result<Vec<Zeroizing<String>>, GatewayProxyError> {
+        for byte in chunk {
+            if self.pending_carriage_return {
+                self.bytes.push(b'\n');
+                self.pending_carriage_return = false;
+                if *byte == b'\n' {
+                    continue;
+                }
+            }
+            if *byte == b'\r' {
+                self.pending_carriage_return = true;
+            } else {
+                self.bytes.push(*byte);
+            }
+        }
+        self.drain_complete_events()
+    }
+
+    fn finish(mut self) -> Result<Vec<Zeroizing<String>>, GatewayProxyError> {
+        if self.pending_carriage_return {
+            self.bytes.push(b'\n');
+        }
+        let mut events = self.drain_complete_events()?;
+        if !self.bytes.iter().all(u8::is_ascii_whitespace) {
+            let tail = Zeroizing::new(std::mem::take(&mut *self.bytes));
+            if let Some(data) = Self::data_from_frame(&tail)? {
+                events.push(data);
+            }
+        }
+        Ok(events)
+    }
+
+    fn drain_complete_events(&mut self) -> Result<Vec<Zeroizing<String>>, GatewayProxyError> {
+        let mut events = Vec::new();
+        while self.scan_cursor + 1 < self.bytes.len() {
+            #[cfg(test)]
+            {
+                self.scanned_bytes += 1;
+            }
+            if self.bytes[self.scan_cursor] == b'\n' && self.bytes[self.scan_cursor + 1] == b'\n' {
+                let frame_end = self.scan_cursor;
+                if let Some(data) = Self::data_from_frame(&self.bytes[self.frame_start..frame_end])?
+                {
+                    events.push(data);
+                }
+                self.frame_start = frame_end + 2;
+                self.scan_cursor = self.frame_start;
+            } else {
+                self.scan_cursor += 1;
+            }
+        }
+        if self.frame_start > 0 {
+            let consumed = self.frame_start;
+            let remaining = self.bytes.len() - consumed;
+            self.bytes.copy_within(consumed.., 0);
+            self.bytes[remaining..].fill(0);
+            self.bytes.truncate(remaining);
+            self.scan_cursor = self.scan_cursor.saturating_sub(consumed);
+            self.frame_start = 0;
+            #[cfg(test)]
+            {
+                self.compactions += 1;
+                self.compacted_bytes += remaining;
+            }
+        }
+        Ok(events)
+    }
+
+    #[cfg(test)]
+    fn work_counters(&self) -> (usize, usize, usize) {
+        (self.scanned_bytes, self.compacted_bytes, self.compactions)
+    }
+
+    fn data_from_frame(frame: &[u8]) -> Result<Option<Zeroizing<String>>, GatewayProxyError> {
+        let frame =
+            std::str::from_utf8(frame).map_err(|_| GatewayProxyError::invalid("invalid_utf8"))?;
+        let mut data = Vec::new();
+        for line in frame.split('\n') {
+            if line == "data" {
+                data.push("");
+            } else if let Some(value) = line.strip_prefix("data:") {
+                data.push(value.strip_prefix(' ').unwrap_or(value));
+            }
+        }
+        if data.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(Zeroizing::new(data.join("\n"))))
+        }
+    }
+}
+
+struct GatewayEventDecoder<'a> {
+    secret_guard: GatewaySecretGuard<'a>,
+    tool_calls: HashMap<String, GatewayToolCallBuffer>,
+    tool_call_index_keys: HashMap<usize, String>,
+    tool_call_order: Vec<String>,
+    total_tool_calls: usize,
+    total_tool_argument_bytes: usize,
+}
+
+impl<'a> GatewayEventDecoder<'a> {
+    fn new(secret: &'a [u8]) -> Result<Self, GatewayProxyError> {
+        Ok(Self {
+            secret_guard: GatewaySecretGuard::new(secret)?,
+            tool_calls: HashMap::new(),
+            tool_call_index_keys: HashMap::new(),
+            tool_call_order: Vec::new(),
+            total_tool_calls: 0,
+            total_tool_argument_bytes: 0,
+        })
+    }
+
+    fn decode(&mut self, data: &str) -> Result<Vec<GatewayStreamEvent>, GatewayProxyError> {
+        if data.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        if data.trim() == "[DONE]" {
+            let mut events = self.drain_tool_calls();
+            events.push(GatewayStreamEvent::Done {
+                finish_reason: Some("stop".into()),
+            });
+            return Ok(events);
+        }
+        let payload = serde_json::from_str::<GatewayWirePayload>(data)
+            .map_err(|_| GatewayProxyError::invalid("malformed_sse_json"))?;
+        let mut events = Vec::new();
+        for choice in payload.choices {
+            if let Some(delta) = choice.delta.or(choice.message) {
+                if let Some(content) = delta.content.filter(|value| !value.is_empty()) {
+                    let mut content = Zeroizing::new(content);
+                    self.secret_guard.scan_delta(&content)?;
+                    events.push(GatewayStreamEvent::Delta {
+                        text: std::mem::take(&mut *content),
+                    });
+                }
+                if let Some(thinking) = delta
+                    .reasoning_content
+                    .or(delta.reasoning)
+                    .or(delta.thinking)
+                    .filter(|value| !value.is_empty())
+                {
+                    let mut thinking = Zeroizing::new(thinking);
+                    self.secret_guard.scan_thinking(&thinking)?;
+                    events.push(GatewayStreamEvent::Thinking {
+                        text: std::mem::take(&mut *thinking),
+                    });
+                }
+                for call in delta.tool_calls {
+                    self.decode_tool_call(call)?;
+                }
+            }
+            if let Some(finish_reason) = choice.finish_reason.filter(|value| !value.is_empty()) {
+                let mut finish_reason = Zeroizing::new(finish_reason);
+                self.secret_guard.scan_global(&finish_reason)?;
+                events.extend(self.drain_tool_calls());
+                events.push(GatewayStreamEvent::Done {
+                    finish_reason: Some(std::mem::take(&mut *finish_reason)),
+                });
+            }
+        }
+        if let Some(usage) = payload.usage {
+            events.push(GatewayStreamEvent::Usage {
+                usage: GatewayUsageEvent {
+                    prompt_tokens: usage.prompt_tokens,
+                    completion_tokens: usage.completion_tokens,
+                    total_tokens: usage.total_tokens,
+                },
+            });
+        }
+        Ok(events)
+    }
+
+    fn decode_tool_call(&mut self, call: GatewayWireToolCall) -> Result<(), GatewayProxyError> {
+        let function = call.function.unwrap_or(GatewayWireToolFunction {
+            name: None,
+            arguments: None,
+        });
+        let mut explicit_id = call
+            .id
+            .filter(|value| !value.is_empty())
+            .map(Zeroizing::new);
+        let mut name = function
+            .name
+            .filter(|value| !value.is_empty())
+            .map(Zeroizing::new);
+        if let Some(id) = explicit_id.as_ref() {
+            self.secret_guard.scan_global(id)?;
+        }
+        if let Some(name) = name.as_ref() {
+            self.secret_guard.scan_global(name)?;
+        }
+        let key = call
+            .index
+            .and_then(|index| self.tool_call_index_keys.get(&index).cloned())
+            .or_else(|| explicit_id.as_ref().map(|id| id.to_string()))
+            .or_else(|| call.index.map(|index| format!("tool-{index}")))
+            .or_else(|| name.as_ref().map(|name| format!("tool-{}", name.as_str())));
+        let Some(key) = key else { return Ok(()) };
+        if let Some(index) = call.index {
+            self.tool_call_index_keys.insert(index, key.clone());
+        }
+        let mut arguments = Zeroizing::new(match function.arguments {
+            Some(serde_json::Value::String(value)) => value,
+            Some(value) => serde_json::to_string(&value)
+                .map_err(|_| GatewayProxyError::invalid("invalid_tool_arguments"))?,
+            None => String::new(),
+        });
+        self.secret_guard.scan_tool_arguments(&key, &arguments)?;
+        let argument_bytes = arguments.len();
+        self.total_tool_argument_bytes = self
+            .total_tool_argument_bytes
+            .checked_add(argument_bytes)
+            .ok_or_else(|| GatewayProxyError::invalid("tool_arguments_too_large"))?;
+        if self.total_tool_argument_bytes > GATEWAY_MAX_TOTAL_TOOL_ARGUMENT_BYTES {
+            return Err(GatewayProxyError::invalid("tool_arguments_too_large"));
+        }
+        let is_new = !self.tool_calls.contains_key(&key);
+        if is_new {
+            self.total_tool_calls = self
+                .total_tool_calls
+                .checked_add(1)
+                .ok_or_else(|| GatewayProxyError::invalid("too_many_tool_calls"))?;
+            if self.total_tool_calls > GATEWAY_MAX_TOOL_CALLS {
+                return Err(GatewayProxyError::invalid("too_many_tool_calls"));
+            }
+        }
+        let buffer = self
+            .tool_calls
+            .entry(key.clone())
+            .or_insert_with(|| GatewayToolCallBuffer {
+                id: key.clone(),
+                name: "tool".into(),
+                arguments: Zeroizing::new(String::new()),
+            });
+        if buffer.arguments.len().saturating_add(argument_bytes) > GATEWAY_MAX_TOOL_ARGUMENT_BYTES {
+            return Err(GatewayProxyError::invalid("tool_arguments_too_large"));
+        }
+        if is_new {
+            self.tool_call_order.push(key.clone());
+        }
+        if let Some(id) = explicit_id.as_mut() {
+            buffer.id = std::mem::take(&mut **id);
+        }
+        if let Some(name) = name.as_mut() {
+            buffer.name = std::mem::take(&mut **name);
+        }
+        buffer.arguments.push_str(&arguments);
+        arguments.clear();
+        Ok(())
+    }
+
+    fn drain_tool_calls(&mut self) -> Vec<GatewayStreamEvent> {
+        let mut events = Vec::with_capacity(self.tool_call_order.len());
+        for key in std::mem::take(&mut self.tool_call_order) {
+            let Some(mut buffer) = self.tool_calls.remove(&key) else {
+                continue;
+            };
+            events.push(GatewayStreamEvent::ToolCall {
+                tool_call: GatewayToolCallEvent {
+                    key,
+                    id: buffer.id,
+                    name: buffer.name,
+                    arguments: std::mem::take(&mut *buffer.arguments),
+                },
+            });
+        }
+        events
+    }
+}
+
+#[derive(Default)]
+struct GatewayByteCounter {
+    bytes: usize,
+}
+
+impl Write for GatewayByteCounter {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.bytes = self
+            .bytes
+            .checked_add(buffer.len())
+            .ok_or_else(|| std::io::Error::other("gateway IPC size overflow"))?;
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn gateway_ipc_payload_bytes(event: &GatewayStreamEvent) -> Result<usize, GatewayProxyError> {
+    let mut counter = GatewayByteCounter::default();
+    serde_json::to_writer(&mut counter, event)
+        .map_err(|_| GatewayProxyError::invalid("ipc_serialization_failed"))?;
+    Ok(counter.bytes)
+}
+
+#[derive(Default)]
+struct GatewayIpcBudget {
+    bytes: usize,
+}
+
+impl GatewayIpcBudget {
+    fn record(&mut self, event: &GatewayStreamEvent) -> Result<(), GatewayProxyError> {
+        self.bytes = self
+            .bytes
+            .checked_add(gateway_ipc_payload_bytes(event)?)
+            .ok_or_else(|| GatewayProxyError::invalid("ipc_payload_too_large"))?;
+        if self.bytes > GATEWAY_MAX_IPC_BYTES {
+            return Err(GatewayProxyError::invalid("ipc_payload_too_large"));
+        }
+        Ok(())
+    }
+}
+
+fn validate_gateway_request(request: &GatewayProxyRequest) -> Result<(), GatewayProxyError> {
     let request_id_is_valid = !request.request_id.is_empty()
         && request.request_id.len() <= 128
         && request
@@ -261,29 +954,29 @@ fn validate_gateway_request(request: &GatewayProxyRequest) -> Result<(), String>
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
     if !request_id_is_valid {
-        return Err("gateway_invalid_request_id".into());
+        return Err(GatewayProxyError::invalid("invalid_request_id"));
     }
 
     let model = request.model.trim();
     if model.is_empty() || model.len() > 256 {
-        return Err("gateway_invalid_model".into());
+        return Err(GatewayProxyError::invalid("invalid_model"));
     }
     if request.messages.is_empty() || request.messages.len() > GATEWAY_MAX_MESSAGES {
-        return Err("gateway_invalid_message_count".into());
+        return Err(GatewayProxyError::invalid("invalid_message_count"));
     }
     let content_bytes = request.messages.iter().try_fold(0usize, |total, message| {
         if !matches!(
             message.role.as_str(),
             "system" | "user" | "assistant" | "tool"
         ) {
-            return Err("gateway_invalid_message_role".to_string());
+            return Err(GatewayProxyError::invalid("invalid_message_role"));
         }
         total
             .checked_add(message.content.len())
-            .ok_or_else(|| "gateway_request_too_large".to_string())
+            .ok_or_else(|| GatewayProxyError::invalid("request_too_large"))
     })?;
     if content_bytes > GATEWAY_MAX_CONTENT_BYTES {
-        return Err("gateway_request_too_large".into());
+        return Err(GatewayProxyError::invalid("request_too_large"));
     }
     Ok(())
 }
@@ -318,6 +1011,16 @@ fn gateway_endpoint_from_health(health: &DaemonHealth, path: &str) -> Result<req
     Ok(url)
 }
 
+fn gateway_chat_endpoint_from_health(
+    health: &DaemonHealth,
+) -> Result<reqwest::Url, GatewayProxyError> {
+    if health.ok && health.gateway_enabled.is_none() {
+        return Err(GatewayProxyError::Unimplemented);
+    }
+    gateway_endpoint_from_health(health, "/v1/chat/completions")
+        .map_err(|_| GatewayProxyError::Unreachable)
+}
+
 fn gateway_http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
@@ -327,51 +1030,40 @@ fn gateway_http_client() -> Result<reqwest::Client, String> {
         .map_err(|error| format!("gateway_client_init:{error}"))
 }
 
-#[tauri::command]
-async fn gateway_probe() -> Result<bool, String> {
-    let health = probe_daemon_health();
-    let url = gateway_endpoint_from_health(&health, "/health")?;
-    let token = read_gateway_auth_token().ok_or("gateway_token_unavailable")?;
-    let response = gateway_http_client()?
-        .get(url)
-        .bearer_auth(token)
-        .send()
-        .await
-        .map_err(|error| format!("gateway_unreachable:{error}"))?;
-    Ok(response.status().is_success())
-}
-
-async fn run_gateway_chat_stream(
+async fn run_gateway_chat_stream_proxy<F>(
     request: &GatewayProxyRequest,
-    on_event: &Channel<String>,
+    url: reqwest::Url,
+    token: &str,
+    client: reqwest::Client,
     cancellation: &tokio_util::sync::CancellationToken,
-) -> Result<(), String> {
+    mut emit: F,
+) -> Result<(), GatewayProxyError>
+where
+    F: FnMut(GatewayStreamEvent) -> Result<(), GatewayProxyError>,
+{
     validate_gateway_request(request)?;
-    let health = probe_daemon_health();
-    let url = gateway_endpoint_from_health(&health, "/v1/chat/completions")?;
-    let token = read_gateway_auth_token().ok_or("gateway_token_unavailable")?;
     let body = serde_json::json!({
         "model": request.model.trim(),
         "stream": true,
         "stream_options": { "include_usage": true },
         "messages": &request.messages,
     });
-    let send = gateway_http_client()?
+    let send = client
         .post(url)
         .bearer_auth(token)
         .header(reqwest::header::ACCEPT, "text/event-stream")
         .json(&body)
         .send();
     let response = tokio::select! {
-        _ = cancellation.cancelled() => return Err("gateway_aborted".into()),
-        result = send => result.map_err(|error| format!("gateway_unreachable:{error}"))?,
+        _ = cancellation.cancelled() => return Err(GatewayProxyError::Aborted),
+        result = send => result.map_err(|_| GatewayProxyError::Unreachable)?,
     };
 
     let status = response.status();
     if !status.is_success() {
-        let detail = response.text().await.unwrap_or_default();
-        let bounded = detail.chars().take(4096).collect::<String>();
-        return Err(format!("gateway_http:{}:{bounded}", status.as_u16()));
+        return Err(GatewayProxyError::Http {
+            status: status.as_u16(),
+        });
     }
     let content_type = response
         .headers()
@@ -383,77 +1075,111 @@ async fn run_gateway_chat_stream(
         .next()
         .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("text/event-stream"))
     {
-        return Err("gateway_invalid_content_type".into());
+        return Err(GatewayProxyError::invalid("invalid_content_type"));
     }
 
     let mut total_bytes = 0usize;
-    let mut pending_utf8 = Vec::new();
+    let mut total_events = 0usize;
+    let mut ipc_budget = GatewayIpcBudget::default();
+    let mut sse = GatewaySseBuffer::default();
+    let mut decoder = GatewayEventDecoder::new(token.as_bytes())?;
+    let mut release_buffer = GatewayPendingEventBuffer::new(token.as_bytes())?;
     let mut stream = response.bytes_stream();
-    loop {
-        let next = tokio::select! {
-            _ = cancellation.cancelled() => return Err("gateway_aborted".into()),
-            next = stream.next() => next,
+    {
+        let mut emit_checked = |event: GatewayStreamEvent| -> Result<(), GatewayProxyError> {
+            total_events = total_events
+                .checked_add(1)
+                .ok_or_else(|| GatewayProxyError::invalid("too_many_stream_events"))?;
+            if total_events > GATEWAY_MAX_STREAM_EVENTS {
+                return Err(GatewayProxyError::invalid("too_many_stream_events"));
+            }
+            ipc_budget.record(&event)?;
+            for released in release_buffer.push(event)? {
+                emit(released)?;
+            }
+            Ok(())
         };
-        let Some(chunk) = next else { break };
-        let bytes = chunk.map_err(|error| format!("gateway_stream_interrupted:{error}"))?;
-        total_bytes = total_bytes
-            .checked_add(bytes.len())
-            .ok_or("gateway_response_too_large")?;
-        if total_bytes > GATEWAY_MAX_RESPONSE_BYTES {
-            return Err("gateway_response_too_large".into());
-        }
-        pending_utf8.extend_from_slice(&bytes);
         loop {
-            match std::str::from_utf8(&pending_utf8) {
-                Ok(text) => {
-                    if !text.is_empty() {
-                        on_event
-                            .send(text.to_string())
-                            .map_err(|_| "gateway_renderer_disconnected".to_string())?;
-                    }
-                    pending_utf8.clear();
-                    break;
-                }
-                Err(error) => {
-                    let valid_up_to = error.valid_up_to();
-                    if valid_up_to > 0 {
-                        let text = std::str::from_utf8(&pending_utf8[..valid_up_to])
-                            .map_err(|_| "gateway_invalid_utf8")?;
-                        on_event
-                            .send(text.to_string())
-                            .map_err(|_| "gateway_renderer_disconnected".to_string())?;
-                        pending_utf8.drain(..valid_up_to);
-                    }
-                    if error.error_len().is_some() {
-                        return Err("gateway_invalid_utf8".into());
-                    }
-                    break;
+            let next = tokio::select! {
+                _ = cancellation.cancelled() => return Err(GatewayProxyError::Aborted),
+                next = stream.next() => next,
+            };
+            let Some(chunk) = next else { break };
+            let bytes = chunk.map_err(|_| GatewayProxyError::StreamInterrupted)?;
+            total_bytes = total_bytes
+                .checked_add(bytes.len())
+                .ok_or_else(|| GatewayProxyError::invalid("response_too_large"))?;
+            if total_bytes > GATEWAY_MAX_RESPONSE_BYTES {
+                return Err(GatewayProxyError::invalid("response_too_large"));
+            }
+            for data in sse.push(&bytes)? {
+                for event in decoder.decode(data.as_str())? {
+                    emit_checked(event)?;
                 }
             }
         }
+        for data in sse.finish()? {
+            for event in decoder.decode(data.as_str())? {
+                emit_checked(event)?;
+            }
+        }
     }
-    if !pending_utf8.is_empty() {
-        return Err("gateway_invalid_utf8".into());
+    for event in release_buffer.finish()? {
+        emit(event)?;
     }
     Ok(())
 }
 
-/// Returns the gateway bearer for the HTTP gateway client (chat stream).
-/// Security note (Issue 20): this enters the renderer JS heap. Mitigations:
-/// restrictive CSP (tauri.conf.json), token file over env, short-lived tokens.
-/// Full fix is a Rust-side gateway proxy (Phase 4) that never returns the secret.
+#[tauri::command]
+async fn gateway_probe() -> Result<bool, String> {
+    let health = probe_daemon_health();
+    let url = gateway_endpoint_from_health(&health, "/health")?;
+    let token = read_gateway_auth_token().ok_or("gateway_token_unavailable")?;
+    let response = gateway_http_client()?
+        .get(url)
+        .bearer_auth(token.as_str())
+        .send()
+        .await
+        .map_err(|_| "gateway_unreachable".to_string())?;
+    Ok(response.status().is_success())
+}
+
+async fn run_gateway_chat_stream(
+    request: &GatewayProxyRequest,
+    on_event: &Channel<GatewayStreamEvent>,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<(), GatewayProxyError> {
+    let health = probe_daemon_health();
+    let url = gateway_chat_endpoint_from_health(&health)?;
+    let token = read_gateway_auth_token().ok_or(GatewayProxyError::TokenUnavailable)?;
+    run_gateway_chat_stream_proxy(
+        request,
+        url,
+        token.as_str(),
+        gateway_http_client().map_err(|_| GatewayProxyError::Unreachable)?,
+        cancellation,
+        |event| {
+            on_event
+                .send(event)
+                .map_err(|_| GatewayProxyError::RendererDisconnected)
+        },
+    )
+    .await
+}
+
+/// Streams typed gateway data through the native proxy; bearer bytes remain in Rust.
 #[tauri::command]
 async fn gateway_chat_stream(
     request: GatewayProxyRequest,
-    on_event: Channel<String>,
-) -> Result<(), String> {
+    on_event: Channel<GatewayStreamEvent>,
+) -> Result<(), GatewayProxyError> {
     let cancellation = tokio_util::sync::CancellationToken::new();
     {
         let mut requests = gateway_cancellations()
             .lock()
-            .map_err(|_| "gateway_cancellation_registry_poisoned")?;
+            .map_err(|_| GatewayProxyError::invalid("cancellation_registry_poisoned"))?;
         if requests.contains_key(&request.request_id) {
-            return Err("gateway_duplicate_request_id".into());
+            return Err(GatewayProxyError::invalid("duplicate_request_id"));
         }
         requests.insert(request.request_id.clone(), cancellation.clone());
     }
@@ -4328,8 +5054,55 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::mpsc;
 
     static COMPUTER_USE_BROKER_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn read_http_request(stream: &mut TcpStream) -> String {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut request = Vec::new();
+        let mut buffer = [0u8; 4096];
+        while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+            let count = stream.read(&mut buffer).unwrap();
+            assert!(count > 0, "client closed before sending HTTP headers");
+            request.extend_from_slice(&buffer[..count]);
+            assert!(
+                request.len() <= 64 * 1024,
+                "test request headers are unbounded"
+            );
+        }
+        String::from_utf8(request).unwrap()
+    }
+
+    fn spawn_gateway_test_server(
+        status: &'static str,
+        content_type: &'static str,
+        body: String,
+    ) -> (
+        reqwest::Url,
+        mpsc::Receiver<String>,
+        std::thread::JoinHandle<()>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_sender, request_receiver) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_http_request(&mut stream);
+            request_sender.send(request).unwrap();
+            let response = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+        let url = reqwest::Url::parse(&format!("http://{address}/v1/chat/completions")).unwrap();
+        (url, request_receiver, server)
+    }
 
     fn valid_google_pkce_url() -> String {
         format!(
@@ -4589,7 +5362,7 @@ mod tests {
         };
         assert_eq!(
             validate_gateway_request(&invalid_role).unwrap_err(),
-            "gateway_invalid_message_role"
+            GatewayProxyError::invalid("invalid_message_role")
         );
 
         let invalid_id = GatewayProxyRequest {
@@ -4599,8 +5372,690 @@ mod tests {
         };
         assert_eq!(
             validate_gateway_request(&invalid_id).unwrap_err(),
-            "gateway_invalid_request_id"
+            GatewayProxyError::invalid("invalid_request_id")
         );
+    }
+
+    #[test]
+    fn gateway_token_validation_trims_in_place_and_enforces_the_header_contract() {
+        let token = validate_gateway_token(
+            trim_token_in_place(Zeroizing::new("  valid-token_1234  \n".into())).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(token.as_str(), "valid-token_1234");
+        assert!(trim_token_in_place(Zeroizing::new("   \n".into())).is_none());
+        assert!(validate_gateway_token(Zeroizing::new("short-token".into())).is_none());
+        assert!(validate_gateway_token(Zeroizing::new("token with spaces".into())).is_none());
+        assert!(
+            validate_gateway_token(Zeroizing::new("x".repeat(GATEWAY_MAX_TOKEN_BYTES + 1)))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn gateway_typed_ipc_serialization_matches_the_renderer_contract() {
+        assert_eq!(
+            serde_json::to_value(GatewayStreamEvent::ToolCall {
+                tool_call: GatewayToolCallEvent {
+                    key: "tool-0".into(),
+                    id: "call-1".into(),
+                    name: "workspace.read".into(),
+                    arguments: "{\"path\":\"README.md\"}".into(),
+                }
+            })
+            .unwrap(),
+            serde_json::json!({
+                "type": "tool_call",
+                "toolCall": {
+                    "key": "tool-0",
+                    "id": "call-1",
+                    "name": "workspace.read",
+                    "arguments": "{\"path\":\"README.md\"}"
+                }
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(GatewayProxyError::Http { status: 503 }).unwrap(),
+            serde_json::json!({ "kind": "http", "status": 503 })
+        );
+        assert_eq!(
+            serde_json::to_value(GatewayProxyError::Unimplemented).unwrap(),
+            serde_json::json!({ "kind": "unimplemented" })
+        );
+    }
+
+    #[tokio::test]
+    async fn gateway_proxy_authenticates_natively_and_emits_only_response_data() {
+        let token = "native-only-gateway-secret-123456";
+        let response_body = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}],",
+            "\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}\n\n",
+            "data: [DONE]\n\n"
+        )
+        .to_string();
+        let (url, request_receiver, server) =
+            spawn_gateway_test_server("200 OK", "text/event-stream", response_body.clone());
+        let request = GatewayProxyRequest {
+            request_id: "request-native-boundary".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "hello".into(),
+            }],
+        };
+        let mut renderer_events = Vec::new();
+
+        run_gateway_chat_stream_proxy(
+            &request,
+            url,
+            token,
+            gateway_http_client().unwrap(),
+            &tokio_util::sync::CancellationToken::new(),
+            |event| {
+                renderer_events.push(event);
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+
+        let native_request = request_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        server.join().unwrap();
+        assert!(native_request
+            .to_ascii_lowercase()
+            .contains(&format!("authorization: bearer {token}").to_ascii_lowercase()));
+        assert_eq!(
+            renderer_events,
+            vec![
+                GatewayStreamEvent::Delta {
+                    text: "hello".into()
+                },
+                GatewayStreamEvent::Usage {
+                    usage: GatewayUsageEvent {
+                        prompt_tokens: Some(1),
+                        completion_tokens: Some(2),
+                        total_tokens: Some(3),
+                    }
+                },
+                GatewayStreamEvent::Done {
+                    finish_reason: Some("stop".into())
+                }
+            ]
+        );
+        let renderer_json = serde_json::to_string(&renderer_events).unwrap();
+        assert!(!renderer_json.contains(token));
+        assert!(!renderer_json.contains("data:"));
+    }
+
+    #[tokio::test]
+    async fn gateway_proxy_withholds_all_events_when_bearer_completes_across_typed_fields() {
+        let token = "native-only-cross-field-secret";
+        let response_body = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"native-only-cross\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"-field-secret\"}}]}\n\n",
+            "data: [DONE]\n\n"
+        )
+        .to_string();
+        let (url, request_receiver, server) =
+            spawn_gateway_test_server("200 OK", "text/event-stream", response_body);
+        let request = GatewayProxyRequest {
+            request_id: "request-cross-field-secret".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "hello".into(),
+            }],
+        };
+        let mut renderer_events = Vec::new();
+
+        let error = run_gateway_chat_stream_proxy(
+            &request,
+            url,
+            token,
+            gateway_http_client().unwrap(),
+            &tokio_util::sync::CancellationToken::new(),
+            |event| {
+                renderer_events.push(event);
+                Ok(())
+            },
+        )
+        .await
+        .unwrap_err();
+
+        request_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        server.join().unwrap();
+        assert_eq!(error, GatewayProxyError::invalid("secret_reflection"));
+        assert_eq!(renderer_events, Vec::<GatewayStreamEvent>::new());
+    }
+
+    #[tokio::test]
+    async fn gateway_proxy_releases_withheld_events_in_order_after_secret_prefix_mismatch() {
+        let token = "native-only-release-secret";
+        let response_body = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"native-only-release\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"! safe\"}}]}\n\n",
+            "data: [DONE]\n\n"
+        )
+        .to_string();
+        let (url, request_receiver, server) =
+            spawn_gateway_test_server("200 OK", "text/event-stream", response_body);
+        let request = GatewayProxyRequest {
+            request_id: "request-prefix-mismatch".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "hello".into(),
+            }],
+        };
+        let mut renderer_events = Vec::new();
+
+        run_gateway_chat_stream_proxy(
+            &request,
+            url,
+            token,
+            gateway_http_client().unwrap(),
+            &tokio_util::sync::CancellationToken::new(),
+            |event| {
+                renderer_events.push(event);
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+
+        request_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        server.join().unwrap();
+        assert_eq!(
+            renderer_events,
+            vec![
+                GatewayStreamEvent::Delta {
+                    text: "native-only-release".into(),
+                },
+                GatewayStreamEvent::Thinking {
+                    text: "! safe".into(),
+                },
+                GatewayStreamEvent::Done {
+                    finish_reason: Some("stop".into()),
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn gateway_proxy_fails_closed_on_stream_end_with_partial_bearer_prefix() {
+        let token = "native-only-partial-secret";
+        let response_body =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"native-only-partial\"}}]}\n\n"
+                .to_string();
+        let (url, request_receiver, server) =
+            spawn_gateway_test_server("200 OK", "text/event-stream", response_body);
+        let request = GatewayProxyRequest {
+            request_id: "request-partial-secret".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "hello".into(),
+            }],
+        };
+        let mut renderer_events = Vec::new();
+
+        let error = run_gateway_chat_stream_proxy(
+            &request,
+            url,
+            token,
+            gateway_http_client().unwrap(),
+            &tokio_util::sync::CancellationToken::new(),
+            |event| {
+                renderer_events.push(event);
+                Ok(())
+            },
+        )
+        .await
+        .unwrap_err();
+
+        request_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        server.join().unwrap();
+        assert_eq!(error, GatewayProxyError::invalid("secret_reflection"));
+        assert_eq!(renderer_events, Vec::<GatewayStreamEvent>::new());
+    }
+
+    #[tokio::test]
+    async fn gateway_proxy_never_returns_an_error_body_that_reflects_the_bearer() {
+        let token = "native-only-reflected-secret-654321";
+        let (url, request_receiver, server) = spawn_gateway_test_server(
+            "401 Unauthorized",
+            "text/plain",
+            format!("upstream reflected Authorization: Bearer {token}"),
+        );
+        let request = GatewayProxyRequest {
+            request_id: "request-reflected-error".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "hello".into(),
+            }],
+        };
+
+        let error = run_gateway_chat_stream_proxy(
+            &request,
+            url,
+            token,
+            gateway_http_client().unwrap(),
+            &tokio_util::sync::CancellationToken::new(),
+            |_| panic!("an error response must not emit renderer events"),
+        )
+        .await
+        .unwrap_err();
+
+        let native_request = request_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        server.join().unwrap();
+        assert!(native_request.contains(token));
+        assert_eq!(error, GatewayProxyError::Http { status: 401 });
+        assert!(!serde_json::to_string(&error).unwrap().contains(token));
+    }
+
+    #[test]
+    fn gateway_stream_rejects_unicode_escaped_bearer_before_typed_ipc() {
+        let token = "native-only-encoded-secret";
+        let escaped = token
+            .bytes()
+            .map(|byte| format!("\\u{byte:04x}"))
+            .collect::<String>();
+        let data = format!("{{\"choices\":[{{\"delta\":{{\"content\":\"{escaped}\"}}}}]}}");
+        assert!(!data.contains(token));
+        let mut decoder = GatewayEventDecoder::new(token.as_bytes()).unwrap();
+
+        assert_eq!(
+            decoder.decode(&data).unwrap_err(),
+            GatewayProxyError::invalid("secret_reflection")
+        );
+    }
+
+    #[test]
+    fn gateway_pending_event_buffer_scans_every_text_field_and_withholds_usage() {
+        let suffix_events = vec![
+            GatewayStreamEvent::Delta {
+                text: "secret".into(),
+            },
+            GatewayStreamEvent::Thinking {
+                text: "secret".into(),
+            },
+            GatewayStreamEvent::ToolCall {
+                tool_call: GatewayToolCallEvent {
+                    key: "secret".into(),
+                    id: String::new(),
+                    name: String::new(),
+                    arguments: String::new(),
+                },
+            },
+            GatewayStreamEvent::ToolCall {
+                tool_call: GatewayToolCallEvent {
+                    key: String::new(),
+                    id: "secret".into(),
+                    name: String::new(),
+                    arguments: String::new(),
+                },
+            },
+            GatewayStreamEvent::ToolCall {
+                tool_call: GatewayToolCallEvent {
+                    key: String::new(),
+                    id: String::new(),
+                    name: "secret".into(),
+                    arguments: String::new(),
+                },
+            },
+            GatewayStreamEvent::ToolCall {
+                tool_call: GatewayToolCallEvent {
+                    key: String::new(),
+                    id: String::new(),
+                    name: String::new(),
+                    arguments: "secret".into(),
+                },
+            },
+            GatewayStreamEvent::Done {
+                finish_reason: Some("secret".into()),
+            },
+        ];
+        for suffix_event in suffix_events {
+            let mut buffer = GatewayPendingEventBuffer::new(b"bearer-secret").unwrap();
+            assert!(buffer
+                .push(GatewayStreamEvent::Delta {
+                    text: "bearer-".into(),
+                })
+                .unwrap()
+                .is_empty());
+            assert_eq!(
+                buffer.push(suffix_event).unwrap_err(),
+                GatewayProxyError::invalid("secret_reflection")
+            );
+            assert!(buffer.pending.is_empty());
+        }
+
+        let usage = GatewayStreamEvent::Usage {
+            usage: GatewayUsageEvent {
+                prompt_tokens: Some(1),
+                completion_tokens: Some(2),
+                total_tokens: Some(3),
+            },
+        };
+        let mut buffer = GatewayPendingEventBuffer::new(b"bearer-secret").unwrap();
+        assert!(buffer
+            .push(GatewayStreamEvent::Delta {
+                text: "bearer-".into(),
+            })
+            .unwrap()
+            .is_empty());
+        assert!(buffer.push(usage.clone()).unwrap().is_empty());
+        assert_eq!(
+            buffer
+                .push(GatewayStreamEvent::Thinking {
+                    text: "! safe".into(),
+                })
+                .unwrap(),
+            vec![
+                GatewayStreamEvent::Delta {
+                    text: "bearer-".into(),
+                },
+                usage,
+                GatewayStreamEvent::Thinking {
+                    text: "! safe".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn gateway_stream_preserves_multiline_sse_and_utf8_split_across_chunks() {
+        let wire = concat!(
+            "data: {\"choices\":[\r\n",
+            "data: {\"delta\":{\"content\":\"caf\u{e9}\"}}\r\n",
+            "data: ]}\r\n\r\n"
+        );
+        let split = wire.find('\u{e9}').unwrap() + 1;
+        let mut sse = GatewaySseBuffer::default();
+        assert!(sse.push(&wire.as_bytes()[..split]).unwrap().is_empty());
+        let frames = sse.push(&wire.as_bytes()[split..]).unwrap();
+        assert_eq!(frames.len(), 1);
+        let mut decoder = GatewayEventDecoder::new(b"unrelated-secret").unwrap();
+        assert_eq!(
+            decoder.decode(&frames[0]).unwrap(),
+            vec![GatewayStreamEvent::Delta {
+                text: "caf\u{e9}".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn gateway_stream_rejects_malformed_sse_json_instead_of_emitting_raw_text() {
+        let mut decoder = GatewayEventDecoder::new(b"native-secret").unwrap();
+        assert!(decoder.decode(" \n").unwrap().is_empty());
+        assert_eq!(
+            decoder.decode("not-json").unwrap_err(),
+            GatewayProxyError::invalid("malformed_sse_json")
+        );
+    }
+
+    #[test]
+    fn gateway_stream_rejects_bearer_split_across_delta_events() {
+        let token = "native-only-cross-event-secret";
+        let mut decoder = GatewayEventDecoder::new(token.as_bytes()).unwrap();
+        let first = decoder
+            .decode("{\"choices\":[{\"delta\":{\"content\":\"native-only-cross\"}}]}")
+            .unwrap();
+        assert_eq!(
+            decoder
+                .decode("{\"choices\":[{\"delta\":{\"content\":\"-event-secret\"}}]}")
+                .unwrap_err(),
+            GatewayProxyError::invalid("secret_reflection")
+        );
+        assert!(!serde_json::to_string(&first).unwrap().contains(token));
+    }
+
+    #[test]
+    fn gateway_stream_rejects_bearer_split_across_thinking_and_delta_events() {
+        let token = "native-only-mixed-content-secret";
+        let mut decoder = GatewayEventDecoder::new(token.as_bytes()).unwrap();
+        let first = decoder
+            .decode("{\"choices\":[{\"delta\":{\"reasoning_content\":\"native-only-mixed\"}}]}")
+            .unwrap();
+        assert_eq!(
+            decoder
+                .decode("{\"choices\":[{\"delta\":{\"content\":\"-content-secret\"}}]}")
+                .unwrap_err(),
+            GatewayProxyError::invalid("secret_reflection")
+        );
+        assert!(!serde_json::to_string(&first).unwrap().contains(token));
+    }
+
+    #[test]
+    fn gateway_stream_rejects_bearer_split_across_tool_argument_events() {
+        let token = "native-only-tool-secret";
+        let mut decoder = GatewayEventDecoder::new(token.as_bytes()).unwrap();
+        let first = decoder
+            .decode(concat!(
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",",
+                "\"function\":{\"name\":\"workspace.read\",\"arguments\":\"native-only\"}}]}}]}"
+            ))
+            .unwrap();
+        assert_eq!(
+            decoder
+                .decode(concat!(
+                    "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+                    "\"function\":{\"arguments\":\"-tool-secret\"}}]}}]}"
+                ))
+                .unwrap_err(),
+            GatewayProxyError::invalid("secret_reflection")
+        );
+        assert!(!serde_json::to_string(&first).unwrap().contains(token));
+    }
+
+    #[test]
+    fn gateway_decoder_emits_one_final_bounded_tool_call() {
+        let mut decoder = GatewayEventDecoder::new(b"unrelated-native-secret").unwrap();
+        let first = decoder
+            .decode(concat!(
+                "{\"choices\":[{\"delta\":{\"reasoning_content\":\"check\",",
+                "\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",",
+                "\"function\":{\"name\":\"workspace.read\",\"arguments\":\"{\\\"pa\"}}]}}]}"
+            ))
+            .unwrap();
+        assert!(first.contains(&GatewayStreamEvent::Thinking {
+            text: "check".into()
+        }));
+        assert!(!first
+            .iter()
+            .any(|event| matches!(event, GatewayStreamEvent::ToolCall { .. })));
+        let second = decoder
+            .decode(concat!(
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+                "\"function\":{\"arguments\":\"th\\\":\\\"README.md\\\"}\"}}]}}]}"
+            ))
+            .unwrap();
+        assert!(second.is_empty());
+        let final_events = decoder.decode("[DONE]").unwrap();
+        assert_eq!(
+            final_events,
+            vec![
+                GatewayStreamEvent::ToolCall {
+                    tool_call: GatewayToolCallEvent {
+                        key: "call-1".into(),
+                        id: "call-1".into(),
+                        name: "workspace.read".into(),
+                        arguments: "{\"path\":\"README.md\"}".into(),
+                    }
+                },
+                GatewayStreamEvent::Done {
+                    finish_reason: Some("stop".into())
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn gateway_decoder_keeps_the_index_storage_key_when_identity_arrives_late() {
+        let mut decoder = GatewayEventDecoder::new(b"unrelated-native-secret").unwrap();
+        let first = serde_json::json!({
+            "choices": [{"delta": {"tool_calls": [{
+                "index": 7,
+                "function": {"arguments": "{\"prefix"}
+            }]}}]
+        });
+        assert!(decoder.decode(&first.to_string()).unwrap().is_empty());
+        let second = serde_json::json!({
+            "choices": [{
+                "delta": {"tool_calls": [{
+                    "index": 7,
+                    "id": "late-id",
+                    "function": {
+                        "name": "workspace.read",
+                        "arguments": "\":true}"
+                    }
+                }]},
+                "finish_reason": "tool_calls"
+            }]
+        });
+        let events = decoder.decode(&second.to_string()).unwrap();
+        assert_eq!(
+            events,
+            vec![
+                GatewayStreamEvent::ToolCall {
+                    tool_call: GatewayToolCallEvent {
+                        key: "tool-7".into(),
+                        id: "late-id".into(),
+                        name: "workspace.read".into(),
+                        arguments: "{\"prefix\":true}".into(),
+                    }
+                },
+                GatewayStreamEvent::Done {
+                    finish_reason: Some("tool_calls".into())
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn gateway_decoder_enforces_per_tool_and_aggregate_argument_caps() {
+        let oversized = "x".repeat(GATEWAY_MAX_TOOL_ARGUMENT_BYTES + 1);
+        let data = serde_json::json!({
+            "choices": [{"delta": {"tool_calls": [{
+                "index": 0,
+                "function": {"arguments": oversized}
+            }]}}]
+        });
+        let mut decoder = GatewayEventDecoder::new(b"unrelated-native-secret").unwrap();
+        assert_eq!(
+            decoder.decode(&data.to_string()).unwrap_err(),
+            GatewayProxyError::invalid("tool_arguments_too_large")
+        );
+
+        let fragment = "x".repeat(GATEWAY_MAX_TOOL_ARGUMENT_BYTES);
+        let mut decoder = GatewayEventDecoder::new(b"unrelated-native-secret").unwrap();
+        for index in 0..4 {
+            let data = serde_json::json!({
+                "choices": [{"delta": {"tool_calls": [{
+                    "index": index,
+                    "function": {"arguments": fragment}
+                }]}}]
+            });
+            assert!(decoder.decode(&data.to_string()).unwrap().is_empty());
+        }
+        let data = serde_json::json!({
+            "choices": [{"delta": {"tool_calls": [{
+                "index": 4,
+                "function": {"arguments": "x"}
+            }]}}]
+        });
+        assert_eq!(
+            decoder.decode(&data.to_string()).unwrap_err(),
+            GatewayProxyError::invalid("tool_arguments_too_large")
+        );
+    }
+
+    #[test]
+    fn gateway_ipc_budget_accepts_the_limit_and_rejects_the_next_byte() {
+        let escaped_event = GatewayStreamEvent::Delta {
+            text: "\0\n\"\\".into(),
+        };
+        assert_eq!(
+            gateway_ipc_payload_bytes(&escaped_event).unwrap(),
+            serde_json::to_vec(&escaped_event).unwrap().len()
+        );
+        let empty_event = GatewayStreamEvent::Delta {
+            text: String::new(),
+        };
+        let envelope_bytes = gateway_ipc_payload_bytes(&empty_event).unwrap();
+        let mut budget = GatewayIpcBudget::default();
+        budget
+            .record(&GatewayStreamEvent::Delta {
+                text: "x".repeat(GATEWAY_MAX_IPC_BYTES - envelope_bytes),
+            })
+            .unwrap();
+        assert_eq!(
+            budget
+                .record(&GatewayStreamEvent::Delta { text: "x".into() })
+                .unwrap_err(),
+            GatewayProxyError::invalid("ipc_payload_too_large")
+        );
+    }
+
+    #[test]
+    fn gateway_sse_buffer_is_linear_at_the_response_and_event_limits() {
+        let payload = "x".repeat(240);
+        let frame = format!("data: {payload}\n\n");
+        let event_count = GATEWAY_MAX_STREAM_EVENTS;
+        let wire = frame.repeat(event_count);
+        assert!(wire.len() <= GATEWAY_MAX_RESPONSE_BYTES);
+        let mut sse = GatewaySseBuffer::default();
+        let mut decoded = 0usize;
+        let chunk_size = 257usize;
+        for chunk in wire.as_bytes().chunks(chunk_size) {
+            decoded += sse.push(chunk).unwrap().len();
+        }
+        let (scanned, compacted, compactions) = sse.work_counters();
+        decoded += sse.finish().unwrap().len();
+        assert_eq!(decoded, event_count);
+        assert!(scanned <= wire.len());
+        assert!(compacted <= wire.len());
+        assert!(compactions <= wire.len().div_ceil(chunk_size));
+    }
+
+    #[test]
+    fn gateway_chat_capability_absence_is_distinct_from_http_unavailability() {
+        let health = DaemonHealth {
+            ok: true,
+            gateway_enabled: None,
+            ..Default::default()
+        };
+        assert_eq!(
+            gateway_chat_endpoint_from_health(&health).unwrap_err(),
+            GatewayProxyError::Unimplemented
+        );
+        let disabled = DaemonHealth {
+            gateway_enabled: Some(false),
+            ..health
+        };
+        assert_eq!(
+            gateway_chat_endpoint_from_health(&disabled).unwrap_err(),
+            GatewayProxyError::Unreachable
+        );
+    }
+
+    #[test]
+    fn gateway_streaming_secret_matcher_detects_prefix_heavy_chunks() {
+        let pattern = StreamingSecretPattern::new(b"aaaaab").unwrap();
+        let mut state = 0usize;
+        assert!(!pattern.scan(&mut state, b"aaaaaaaaaaaaa"));
+        assert!(pattern.scan(&mut state, b"b"));
     }
 
     #[test]

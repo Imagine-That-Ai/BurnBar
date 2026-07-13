@@ -8,7 +8,7 @@ export type DaemonHealth = {
   protocolVersion?: number;
   daemonVersion?: string;
   socketPath?: string;
-  gatewayEnabled?: boolean;
+  gatewayEnabled?: boolean | null;
   gatewayHost?: string;
   gatewayPort?: number;
   error?: string;

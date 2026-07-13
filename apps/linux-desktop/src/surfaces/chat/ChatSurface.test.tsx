@@ -3,7 +3,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fixtureSessionList } from '../../daemonFixture.js';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
-import type { GatewayProxyRequest, LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
+import type {
+  GatewayProxyEvent,
+  GatewayProxyRequest,
+  LinuxShellBridge,
+  SessionListResult
+} from '../../tauriBridge.js';
 import { useChatStore } from '../../state/chatStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
@@ -13,7 +18,7 @@ function mockBridge(handlers: {
   sessionList?: () => Promise<SessionListResult>;
   sessionSearch?: (query: string) => Promise<SessionListResult>;
   gatewayProbe?: () => Promise<boolean>;
-  gatewayChatStream?: (request: GatewayProxyRequest, onChunk: (chunk: string) => void) => Promise<void>;
+  gatewayChatStream?: (request: GatewayProxyRequest, onEvent: (event: GatewayProxyEvent) => void) => Promise<void>;
 }): LinuxShellBridge {
   const emptyList = async (): Promise<SessionListResult> => ({ sessions: [], nextCursor: null });
   const bridge: LinuxShellBridge = {
@@ -116,6 +121,8 @@ const resetChatStore = () => {
     gatewayStatus: 'unknown',
     gatewayBaseURL: null,
     activeAbortController: null,
+    activeRequestId: null,
+    navigationGeneration: 0,
     warnings: [],
     sharedFeaturesAvailable: true
   });
@@ -286,18 +293,36 @@ describe('ChatSurface', () => {
     expect(screen.getByRole('button', { name: /Send message/i })).toHaveProperty('disabled', true);
   });
 
-  it('renders an unimplemented response from the native gateway proxy honestly', async () => {
+  it('keeps an explicitly disabled gateway distinct from an absent capability', async () => {
+    const gatewayProbe = vi.fn(async () => true);
     useShellStore.setState({
       bridge: mockBridge({
         sessionList: async () => ({ sessions: [], nextCursor: null }),
-        gatewayProbe: async () => true,
+        gatewayProbe
+      }),
+      fixtureMode: false,
+      bridgeReady: true,
+      health: { ok: true, gatewayEnabled: false }
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByText(/Gateway chat is disabled in daemon health/i)).toBeTruthy());
+    expect(screen.getByRole('button', { name: /Send message/i })).toHaveProperty('disabled', true);
+    expect(gatewayProbe).not.toHaveBeenCalled();
+  });
+
+  it('renders an unimplemented response from the native gateway proxy honestly', async () => {
+    const gatewayProbe = vi.fn(async () => true);
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList: async () => ({ sessions: [], nextCursor: null }),
+        gatewayProbe,
         gatewayChatStream: async () => {
-          throw new Error('gateway_http:503:chat completions unimplemented');
+          throw { kind: 'unimplemented' };
         }
       }),
       fixtureMode: false,
       bridgeReady: true,
-      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+      health: { ok: true, gatewayEnabled: null }
     });
     render(<ChatSurface />);
     await waitFor(() => expect(screen.getByLabelText(/Message composer/i)).toBeTruthy());
@@ -310,5 +335,32 @@ describe('ChatSurface', () => {
     await waitFor(() => {
       expect(screen.getByText(/Gateway chat is not available in this Linux daemon build yet/i)).toBeTruthy();
     });
+    expect(gatewayProbe).not.toHaveBeenCalled();
+  });
+
+  it('renders an ordinary gateway HTTP 503 as a transient HTTP failure', async () => {
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList: async () => ({ sessions: [], nextCursor: null }),
+        gatewayProbe: async () => true,
+        gatewayChatStream: async () => {
+          throw { kind: 'http', status: 503 };
+        }
+      }),
+      fixtureMode: false,
+      bridgeReady: true,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByLabelText(/Message composer/i)).toBeTruthy());
+    fireEvent.change(screen.getByLabelText(/Message composer/i), {
+      target: { value: 'retry the live gateway' }
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Send message/i })).toHaveProperty('disabled', false);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Send message/i }));
+    await waitFor(() => expect(screen.getByText('HTTP 503')).toBeTruthy());
+    expect(screen.queryByText(/not available in this Linux daemon build yet/i)).toBeNull();
   });
 });

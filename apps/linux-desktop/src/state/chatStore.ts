@@ -28,7 +28,7 @@ export type ChatMessage = {
 };
 
 export type ChatStreamPhase = 'idle' | 'composing' | 'streaming' | 'done' | 'error' | 'aborted';
-export type ChatGatewayStatus = 'unknown' | 'reachable' | 'unreachable' | 'disabled';
+export type ChatGatewayStatus = 'unknown' | 'reachable' | 'unreachable' | 'disabled' | 'capability_absent';
 
 export type ChatState = {
   threads: SessionEntry[];
@@ -49,6 +49,8 @@ export type ChatState = {
   gatewayStatus: ChatGatewayStatus;
   gatewayBaseURL: string | null;
   activeAbortController: AbortController | null;
+  activeRequestId: string | null;
+  navigationGeneration: number;
   warnings: ChatWarningBanner[];
   sharedFeaturesAvailable: boolean;
   load(): Promise<void>;
@@ -168,21 +170,20 @@ function modelLabelForThread(thread: SessionEntry | null, backend: ChatBackendId
   }
 }
 
-function gatewayBaseURLFromHealth(): string | null {
-  const health = useShellStore.getState().health;
-  if (!health?.ok || !health.gatewayEnabled) return null;
-  const host = health.gatewayHost?.trim() || '127.0.0.1';
-  const port = health.gatewayPort;
-  if (!port) return null;
-  return `http://${host}:${port}`;
-}
-
 async function resolveGatewayStatus(
   fixtureMode: boolean
 ): Promise<{ status: ChatGatewayStatus; baseURL: string | null }> {
   if (fixtureMode) return { status: 'reachable', baseURL: 'fixture://gateway' };
-  const baseURL = gatewayBaseURLFromHealth();
-  if (!baseURL) return { status: 'disabled', baseURL: null };
+  const health = useShellStore.getState().health;
+  if (!health?.ok) return { status: 'unreachable', baseURL: null };
+  if (health.gatewayEnabled == null) {
+    return { status: 'capability_absent', baseURL: null };
+  }
+  if (!health.gatewayEnabled) return { status: 'disabled', baseURL: null };
+  const host = health.gatewayHost?.trim() || '127.0.0.1';
+  const port = health.gatewayPort;
+  if (!port) return { status: 'unreachable', baseURL: null };
+  const baseURL = `http://${host}:${port}`;
   const bridge = useShellStore.getState().bridge;
   const reachable = (await bridge?.gatewayProbe().catch(() => false)) ?? false;
   return { status: reachable ? 'reachable' : 'unreachable', baseURL };
@@ -214,18 +215,28 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
         message.id === assistantId ? { ...message, text: message.text + event.text } : message
       );
     case 'thinking':
+      if (messages.some((message) => message.id === `${assistantId}-thinking`)) {
+        return messages.map((message) =>
+          message.id === `${assistantId}-thinking`
+            ? { ...message, text: message.text + event.text }
+            : message
+        );
+      }
       return [
         ...messages,
         {
-          id: newId('thinking'),
+          id: `${assistantId}-thinking`,
           role: 'thinking',
           text: event.text
         }
       ];
     case 'tool_call':
-      if (messages.some((message) => message.id === event.toolCall.id && message.role === 'tool')) {
+      // Tool-call keys are only unique within one assistant turn. Scope the
+      // renderer id so a later turn cannot mutate an earlier tool card.
+      const renderedToolId = `${assistantId}:${event.toolCall.key}`;
+      if (messages.some((message) => message.id === renderedToolId && message.role === 'tool')) {
         return messages.map((message) =>
-          message.id === event.toolCall.id
+          message.id === renderedToolId
             ? {
                 ...message,
                 text: summarizeToolArgs(event.toolCall.arguments),
@@ -238,7 +249,7 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
       return [
         ...messages,
         {
-          id: event.toolCall.id,
+          id: renderedToolId,
           role: 'tool',
           text: summarizeToolArgs(event.toolCall.arguments),
           toolName: event.toolCall.name,
@@ -261,7 +272,7 @@ async function* fixtureChatStream(): AsyncGenerator<GatewayChatStreamEvent, void
   const events: GatewayChatStreamEvent[] = [
     { type: 'thinking', text: 'Checking the local Linux shell context and current gateway readiness.' },
     { type: 'delta', text: 'Fixture stream online. ' },
-    { type: 'tool_call', toolCall: { id: 'fixture-tool-call', name: 'workspace.read', arguments: '{"path":"README.md"}' } },
+    { type: 'tool_call', toolCall: { key: 'fixture-tool-call', id: 'fixture-tool-call', name: 'workspace.read', arguments: '{"path":"README.md"}' } },
     { type: 'delta', text: 'The live chat client can append streamed assistant text, show thinking, and preserve tool approval as an explicit gap.' },
     { type: 'usage', usage: { promptTokens: 42, completionTokens: 31, totalTokens: 73 } },
     { type: 'done', finishReason: 'stop' }
@@ -291,10 +302,21 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   gatewayStatus: 'unknown',
   gatewayBaseURL: null,
   activeAbortController: null,
+  activeRequestId: null,
+  navigationGeneration: 0,
   warnings: [],
   sharedFeaturesAvailable: true,
 
   async load() {
+    const navigationGeneration = get().navigationGeneration + 1;
+    const ownsNavigation = () => get().navigationGeneration === navigationGeneration;
+    get().activeAbortController?.abort();
+    set({
+      activeAbortController: null,
+      activeRequestId: null,
+      navigationGeneration,
+      streaming: false
+    });
     const { query } = get();
     const { fixtureMode, bridge } = useShellStore.getState();
     if (!fixtureMode && !bridge) {
@@ -309,52 +331,68 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         selectedThreadId: null,
         warnings: [],
         sharedFeaturesAvailable: true,
-        streaming: false
+        streaming: false,
+        activeAbortController: null,
+        activeRequestId: null
       });
       return;
     }
     set({ loading: true, error: null });
     try {
       const { result, config } = await fetchThreads(query);
+      if (!ownsNavigation()) return;
       const gateway = await resolveGatewayStatus(fixtureMode);
+      if (!ownsNavigation()) return;
       const prevSelected = get().selectedThreadId;
       const stillThere = prevSelected && result.sessions.some((t) => t.id === prevSelected);
       const selectedThreadId = stillThere ? prevSelected : result.sessions[0]?.id ?? null;
       const selected = result.sessions.find((t) => t.id === selectedThreadId) ?? null;
-      set({
-        threads: result.sessions,
-        nextCursor: result.nextCursor,
-        config,
-        loading: false,
-        error: null,
-        visibleThreadCount: CHAT_THREAD_PAGE_SIZE,
-        selectedThreadId,
-        warnings: fixtureMode ? fixtureWarnings() : [],
-        sharedFeaturesAvailable: fixtureMode ? false : true,
-        modelLabel: modelLabelForThread(selected, get().backend),
-        streaming: false,
-        streamPhase: 'idle',
-        streamError: null,
-        gatewayStatus: gateway.status,
-        gatewayBaseURL: gateway.baseURL,
-        activeAbortController: null
-      });
-      await get().selectThread(selectedThreadId);
+      set((state) =>
+        state.navigationGeneration === navigationGeneration
+          ? {
+              threads: result.sessions,
+              nextCursor: result.nextCursor,
+              config,
+              loading: false,
+              error: null,
+              visibleThreadCount: CHAT_THREAD_PAGE_SIZE,
+              selectedThreadId,
+              messages: selected ? messagesForSession(selected, fixtureMode) : [],
+              messagesLoading: false,
+              warnings: fixtureMode ? fixtureWarnings() : [],
+              sharedFeaturesAvailable: !fixtureMode,
+              modelLabel: modelLabelForThread(selected, state.backend),
+              streaming: false,
+              streamPhase: 'idle',
+              streamError: null,
+              gatewayStatus: gateway.status,
+              gatewayBaseURL: gateway.baseURL,
+              activeAbortController: null,
+              activeRequestId: null
+            }
+          : state
+      );
     } catch (e) {
-      set({
-        threads: [],
-        nextCursor: null,
-        config: null,
-        loading: false,
-        error: e instanceof Error ? e.message : 'Request failed',
-        messages: [],
-        selectedThreadId: null,
-        warnings: [],
-        streaming: false,
-        streamPhase: 'error',
-        streamError: e instanceof Error ? e.message : 'Request failed',
-        activeAbortController: null
-      });
+      if (!ownsNavigation()) return;
+      set((state) =>
+        state.navigationGeneration === navigationGeneration
+          ? {
+              threads: [],
+              nextCursor: null,
+              config: null,
+              loading: false,
+              error: e instanceof Error ? e.message : 'Request failed',
+              messages: [],
+              selectedThreadId: null,
+              warnings: [],
+              streaming: false,
+              streamPhase: 'error',
+              streamError: e instanceof Error ? e.message : 'Request failed',
+              activeAbortController: null,
+              activeRequestId: null
+            }
+          : state
+      );
     }
   },
 
@@ -364,6 +402,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   async selectThread(id: string | null) {
+    const navigationGeneration = get().navigationGeneration + 1;
+    get().activeAbortController?.abort();
+    set({
+      activeAbortController: null,
+      activeRequestId: null,
+      navigationGeneration,
+      loading: false
+    });
     const { fixtureMode } = useShellStore.getState();
     if (!id) {
       set({
@@ -404,20 +450,26 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   startNewChat() {
+    const navigationGeneration = get().navigationGeneration + 1;
+    get().activeAbortController?.abort();
     set({
       selectedThreadId: null,
       messages: [],
       messagesLoading: false,
+      loading: false,
       streaming: false,
       streamPhase: 'idle',
       streamError: null,
+      activeAbortController: null,
+      activeRequestId: null,
+      navigationGeneration,
       modelLabel: modelLabelForThread(null, get().backend)
     });
   },
 
   async sendMessage(text: string) {
     const prompt = text.trim();
-    if (!prompt || get().streaming) return;
+    if (!prompt || get().activeRequestId !== null) return;
     const { fixtureMode, bridge } = useShellStore.getState();
     const user: ChatMessage = { id: newId('user'), role: 'user', text: prompt };
     const assistantId = newId('assistant');
@@ -430,6 +482,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       provider: backend === 'cli' ? undefined : backend
     };
     const controller = new AbortController();
+    const requestId = newId('gateway');
+    const navigationGeneration = get().navigationGeneration + 1;
+    const isActiveRequest = () => get().activeRequestId === requestId;
     const outboundHistory = [
       ...get()
         .messages.filter((message) => message.role === 'user' || (message.role === 'assistant' && message.text.trim()))
@@ -446,13 +501,21 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       streamPhase: 'composing',
       streamError: null,
       activeAbortController: controller,
+      activeRequestId: requestId,
+      navigationGeneration,
+      loading: false,
       modelLabel: modelLabelForThread(null, state.backend)
     }));
 
     try {
       const gateway = await resolveGatewayStatus(fixtureMode);
-      set({ gatewayStatus: gateway.status, gatewayBaseURL: gateway.baseURL });
-      if (!fixtureMode && gateway.status !== 'reachable') {
+      if (!isActiveRequest()) return;
+      set((state) =>
+        state.activeRequestId === requestId
+          ? { gatewayStatus: gateway.status, gatewayBaseURL: gateway.baseURL }
+          : state
+      );
+      if (!fixtureMode && gateway.status !== 'reachable' && gateway.status !== 'capability_absent') {
         throw new GatewayChatError('unreachable', gateway.status === 'disabled' ? 'Gateway chat is disabled in daemon health.' : 'Gateway health check failed.');
       }
       const model = get().modelLabel.trim() || 'hermes';
@@ -460,14 +523,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         ? fixtureChatStream()
         : streamGatewayChatNative(
             {
-              start: (request, onChunk) => {
+              start: (request, onEvent) => {
                 if (!bridge) return Promise.reject(new Error('Linux native gateway bridge is unavailable.'));
-                return bridge.gatewayChatStream(request, onChunk);
+                return bridge.gatewayChatStream(request, onEvent);
               },
               cancel: (requestId) => bridge?.gatewayChatCancel(requestId) ?? Promise.resolve()
             },
             {
-              requestId: newId('gateway'),
+              requestId,
               model,
               messages: [{ role: 'system', content: 'You are Hermes inside OpenBurnBar.' }, ...outboundHistory],
               signal: controller.signal
@@ -478,18 +541,35 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         'chat.firstToken.progress',
         fixtureMode ? 'fixture-chat-first-delta' : 'packaged-gateway-first-delta'
       );
-      set({ streaming: true, streamPhase: 'streaming' });
+      set((state) =>
+        state.activeRequestId === requestId ? { streaming: true, streamPhase: 'streaming' } : state
+      );
       for await (const event of stream) {
+        if (controller.signal.aborted || !isActiveRequest()) {
+          throw new GatewayChatError('aborted', 'Chat stream aborted.');
+        }
         if (event.type === 'delta' && !firstText) {
           firstText = true;
           endFirstToken();
         }
-        set((state) => ({
-          messages: applyChatStreamEvent(state.messages, assistantId, event)
-        }));
+        set((state) =>
+          state.activeRequestId === requestId
+            ? { messages: applyChatStreamEvent(state.messages, assistantId, event) }
+            : state
+        );
       }
-      set({ streaming: false, streamPhase: 'done', activeAbortController: null });
+      set((state) =>
+        state.activeRequestId === requestId
+          ? {
+              streaming: false,
+              streamPhase: 'done',
+              activeAbortController: null,
+              activeRequestId: null
+            }
+          : state
+      );
     } catch (error) {
+      if (!isActiveRequest()) return;
       const aborted = error instanceof GatewayChatError && error.kind === 'aborted';
       const unimplemented = error instanceof GatewayChatError && error.kind === 'unimplemented';
       set({
@@ -500,13 +580,24 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           : error instanceof Error
             ? error.message
             : 'Chat stream failed.',
-        activeAbortController: null
+        activeAbortController: null,
+        activeRequestId: null
       });
     }
   },
 
   stopStreaming() {
-    get().activeAbortController?.abort();
-    set({ streaming: false, streamPhase: 'aborted', activeAbortController: null });
+    const { activeAbortController, activeRequestId } = get();
+    activeAbortController?.abort();
+    set((state) =>
+      state.activeRequestId === activeRequestId
+        ? {
+            streaming: false,
+            streamPhase: 'aborted',
+            activeAbortController: null,
+            activeRequestId: null
+          }
+        : state
+    );
   }
 }));
