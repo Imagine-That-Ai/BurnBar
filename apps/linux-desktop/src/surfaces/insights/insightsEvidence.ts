@@ -1,0 +1,66 @@
+import type {
+  InsightsQualitativeCapability,
+  UsageInsights,
+  UsageInsightsSource
+} from '../../tauriBridge.js';
+
+export type InsightsEvidenceState = 'verified' | 'unavailable';
+
+export type InsightsEvidence = {
+  sourceID: string;
+  sourceKind: UsageInsightsSource['kind'] | 'unknown';
+  label: string;
+  state: InsightsEvidenceState;
+  detail: string;
+};
+
+const VALID_SOURCES: Record<UsageInsightsSource['id'], Pick<UsageInsightsSource, 'kind' | 'label'>> = {
+  'daemon.usage.recent': { kind: 'daemon-method', label: 'live daemon usage insights' },
+  'fixture.usage.insights': { kind: 'fixture', label: 'fixture transcript' }
+};
+
+/**
+ * Resolve only source IDs that belong to a known Linux response authority.
+ * A missing or malformed source must remain visibly unavailable instead of
+ * becoming a renderer-generated citation that looks authoritative.
+ */
+export function resolveInsightsEvidence(data: UsageInsights, sourceLabel: string): InsightsEvidence {
+  const source = data.source;
+  const definition = source ? VALID_SOURCES[source.id] : undefined;
+  if (source && definition && source.kind === definition.kind) {
+    return {
+      sourceID: source.id,
+      sourceKind: source.kind,
+      label: definition.label,
+      state: 'verified',
+      detail:
+        definition.kind === 'fixture'
+          ? 'Local fixture transcript; not evidence from a running daemon.'
+          : 'Aggregated from the daemon.usage.recent response.'
+    };
+  }
+  return {
+    sourceID: 'unavailable',
+    sourceKind: 'unknown',
+    label: sourceLabel,
+    state: 'unavailable',
+    detail: 'The response did not include a validated Insights source ID.'
+  };
+}
+
+export function resolveQualitativeCapability(data: UsageInsights): InsightsQualitativeCapability {
+  const capability = data.qualitative;
+  if (!capability) {
+    return {
+      state: 'unavailable',
+      reason: 'The Linux daemon has no qualitative-analysis RPC.'
+    };
+  }
+  if (capability.state === 'available' || capability.state === 'degraded' || capability.state === 'unavailable') {
+    return capability;
+  }
+  return {
+    state: 'unavailable',
+    reason: 'The qualitative-analysis capability returned an unknown state.'
+  };
+}

@@ -1,12 +1,15 @@
+import { useEffect } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useInsightsStore } from '../../state/insightsStore.js';
+import { useAccountStore } from '../../state/accountStore.js';
 import { hasInsightsUsage } from './insightsChartMath.js';
 import { InsightsEditorialBrief } from './InsightsEditorialBrief.js';
 import { buildInsightsBrief } from './insightsBrief.js';
 import { InsightsWorkspace } from './InsightsWorkspace.js';
+import { accountScopeForInsights } from './insightsWorkspacePersistence.js';
 import { useChatStore } from '../../state/chatStore.js';
 import './insights.css';
 
@@ -26,6 +29,9 @@ function InsightsSkeleton() {
 export function InsightsSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
+  const accountStatus = useAccountStore((s) => s.data);
+  const accountLoading = useAccountStore((s) => s.loading);
+  const loadAccount = useAccountStore((s) => s.load);
   const status = useDaemonStatusCopy();
   const data = useInsightsStore((s) => s.data);
   const loading = useInsightsStore((s) => s.loading);
@@ -36,6 +42,13 @@ export function InsightsSurface() {
     useChatStore.getState().startNewChat();
     void useChatStore.getState().sendToThread({ backend: 'hermes', text: question });
   };
+
+  useEffect(() => {
+    // Load the daemon-owned identity while Insights is open so persisted
+    // canvas state is namespaced per account even when Settings was never
+    // visited in this session. Failure keeps the local-only fallback.
+    if (!fixtureMode && bridge && !accountStatus && !accountLoading) void loadAccount();
+  }, [accountLoading, accountStatus, bridge, fixtureMode, loadAccount]);
 
   useLaneLoad(load);
 
@@ -76,6 +89,7 @@ export function InsightsSurface() {
   }
 
   const sourceLabel = fixtureMode ? 'fixture transcript' : 'live daemon usage insights';
+  const accountScope = accountScopeForInsights(accountStatus);
   const brief = buildInsightsBrief(data);
   return (
     <div className="insights-observatory">
@@ -85,6 +99,7 @@ export function InsightsSurface() {
         sourceLabel={sourceLabel}
         onRefresh={() => void load()}
         onFollowUp={openFollowUp}
+        accountScope={accountScope}
       />
     </div>
   );

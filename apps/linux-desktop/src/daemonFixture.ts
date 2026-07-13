@@ -579,7 +579,16 @@ export function fixtureUsageInsights(): UsageInsights {
       { id: 'gemini-3-pro', label: 'Gemini 3 Pro', pct: 20 },
       { id: 'cursor-small', label: 'Cursor Small', pct: 18 }
     ],
-    cacheHitRatePct: 34
+    cacheHitRatePct: 34,
+    source: {
+      id: 'fixture.usage.insights',
+      kind: 'fixture',
+      label: 'fixture transcript'
+    },
+    qualitative: {
+      state: 'unavailable',
+      reason: 'Fixture mode contains aggregate examples only; qualitative analysis is not simulated.'
+    }
   };
 }
 
