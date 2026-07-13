@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Source kind for a Pensieve knowledge chunk. Matches the server `SOURCE_KINDS`
 /// set in `functions/src/callables/knowledgeMemory.ts`.

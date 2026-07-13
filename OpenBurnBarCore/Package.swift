@@ -469,8 +469,12 @@ let openBurnBarCoreExcludes = [
     // P-10: SharedModels/Insights + SharedModels/InsightVerdictWidgetSnapshot.swift
     // moved to the Apple-only OpenBurnBarInsights target, so their Core off-Apple
     // exclude entries were removed here too (they no longer live under Core).
-    "SharedModels/PensieveKnowledgeChunker.swift",
-    "SharedModels/PensieveVectorCloak.swift",
+    // P-14: PensieveKnowledgeChunker + PensieveVectorCloak moved to
+    // OpenBurnBarVectorKit. They reference `PlatformCrypto` (sha256/sha256Hex/
+    // hmacSHA256) from OpenBurnBarKernel, which is fully cross-platform (CryptoKit
+    // on Apple, swift-crypto off-Apple), so they compile off-Apple in VectorKit
+    // through the Kernel dep — no VectorKit off-Apple exclude and no unguarded
+    // CryptoKit. Their Core off-Apple exclude entries are therefore removed.
     "SharedModels/PixelClockSettingsModel.swift",
     "SharedModels/SmartHubDisplaySettingsModel.swift",
     "SharedModels/SwarmColorDriver.swift",

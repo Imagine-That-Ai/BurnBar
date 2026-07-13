@@ -221,7 +221,7 @@ also converged the Insights adapter/registry re-slice inside S12 (see the P-08 c
 | P-11 | S5 | MissionGroupContracts + MissionConsoleTypes inversion → Kernel | A | draft | QUEUED |
 | P-12 | S6 | OpenBurnBarLogParsers | B | draft | QUEUED |
 | P-13 | S7 | OpenBurnBarQuota | C | draft | QUEUED |
-| P-14 | S8 | OpenBurnBarVectorKit (now also OpenBurnBarSearchContracts — FIX 4) | D | draft | QUEUED |
+| P-14 | S8 | OpenBurnBarVectorKit (now also OpenBurnBarSearchContracts — FIX 4) | D | full | PR_OPEN (base wave2-base; AE-IMPORT Kernel×6 for Locked/PlatformCrypto, AE-TESTABLE×1, Pensieve off-Apple excludes removed — cross-platform via Kernel PlatformCrypto) |
 | P-15 | S13 | OpenBurnBarLaunchServices | A | draft | QUEUED |
 | P-16a…f | S14 | OpenBurnBarUI (K4) — by Views subdirectory | A | draft | QUEUED |
 | P-17 | S16 | OpenBurnBarEngine umbrella (fill) | Integrator | draft | QUEUED |
