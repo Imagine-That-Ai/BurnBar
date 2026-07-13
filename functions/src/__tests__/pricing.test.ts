@@ -17,7 +17,13 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { LEGACY_KIMI_WIRE_MODEL, LEGACY_KIMI_WIRE_PRICING } from "../pricing.js";
+import {
+  LEGACY_KIMI_WIRE_MODEL,
+  LEGACY_KIMI_WIRE_PRICING,
+  estimateTokenCost,
+  priceLegacyKimiEvent,
+} from "../pricing.js";
+import { calculateTokenCost, DomainCorePricingError, resolveDomainCorePricingMode } from "../domainCorePricing.js";
 
 const CATALOG_PATH = resolve(__dirname, "../../..", "OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/catalog.json");
 
@@ -80,5 +86,134 @@ describe("legacy kimi wire pricing", () => {
     expect(LEGACY_KIMI_WIRE_PRICING.cacheCreationPerMToken).toBe(
       pricing.cacheCreationPerMToken ?? pricing.inputPerMToken,
     );
+  });
+});
+
+type PricingFixture = {
+  schema: string;
+  costVectors: {
+    rates: {
+      inputNanoUsdPerMToken: number;
+      outputNanoUsdPerMToken: number;
+      cacheCreationNanoUsdPerMToken: number | null;
+      cacheReadNanoUsdPerMToken: number;
+    };
+    buckets: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheCreationTokens: number;
+      cacheReadTokens: number;
+    };
+    expectedCostNanoUsd: number;
+  }[];
+  legacyKimiVectors: {
+    provider: string;
+    model: string;
+    buckets: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheCreationTokens: number;
+      cacheReadTokens: number;
+    };
+    isLegacy: boolean;
+    expected?: { model: string; totalTokens: number; costNanoUsd: number };
+  }[];
+};
+
+function loadPricingFixture(): PricingFixture {
+  return JSON.parse(
+    readFileSync(resolve(__dirname, "../../..", "tests/fixtures/domain-core/pricing/v2/pricing-kat.json"), "utf8"),
+  ) as PricingFixture;
+}
+
+describe("shared domain-core pricing", () => {
+  const fixture = loadPricingFixture();
+
+  it.each(["legacy", "shadow", "rust"] as const)("matches canonical vectors in %s mode", (mode) => {
+    for (const vector of fixture.costVectors) {
+      const actual = estimateTokenCost(
+          {
+            inputPerMToken: vector.rates.inputNanoUsdPerMToken / 1_000_000_000,
+            outputPerMToken: vector.rates.outputNanoUsdPerMToken / 1_000_000_000,
+            cacheCreationPerMToken:
+              vector.rates.cacheCreationNanoUsdPerMToken === null
+                ? undefined
+                : vector.rates.cacheCreationNanoUsdPerMToken / 1_000_000_000,
+            cacheReadPerMToken: vector.rates.cacheReadNanoUsdPerMToken / 1_000_000_000,
+          },
+          vector.buckets,
+          { OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: mode },
+        );
+      expect(Math.abs(actual * 1_000_000_000 - vector.expectedCostNanoUsd)).toBeLessThanOrEqual(0.500_001);
+    }
+  });
+
+  it.each(["legacy", "shadow", "rust"] as const)("matches Kimi rewrite vectors in %s mode", (mode) => {
+    for (const vector of fixture.legacyKimiVectors) {
+      const actual = priceLegacyKimiEvent(vector.provider, vector.model, vector.buckets, {
+        OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: mode,
+      });
+      expect(actual.isLegacy).toBe(vector.isLegacy);
+      if (vector.expected) {
+        expect(actual).toEqual({
+          isLegacy: true,
+          model: vector.expected.model,
+          totalTokens: vector.expected.totalTokens,
+          costUsd: vector.expected.costNanoUsd / 1_000_000_000,
+        });
+      }
+    }
+  });
+
+  it("does not evaluate the legacy cost closure in rust mode", () => {
+    let legacyCalls = 0;
+    const actual = calculateTokenCost(
+      { inputPerMToken: 3, outputPerMToken: 15, cacheReadPerMToken: 0.5 },
+      { inputTokens: 1_000_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      () => {
+        legacyCalls += 1;
+        return -1;
+      },
+      { OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "rust" },
+    );
+    expect(actual).toBe(3);
+    expect(legacyCalls).toBe(0);
+  });
+
+  it("fails unknown rollout values closed to legacy", () => {
+    expect(resolveDomainCorePricingMode({ OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "surprise" })).toBe("legacy");
+  });
+
+  it.each([
+    { rates: { inputPerMToken: -1, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
+    { rates: { inputPerMToken: Number.NaN, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
+    { rates: { inputPerMToken: 0.0000000001, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
+    { rates: { inputPerMToken: 1, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: Number.MAX_SAFE_INTEGER },
+    { rates: { inputPerMToken: 9_007_199.25474099, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: Number.MAX_SAFE_INTEGER },
+  ])("rejects invalid or overflowing fixed-point input in rust mode", ({ rates, inputTokens }) => {
+    let legacyCalls = 0;
+    expect(() =>
+      calculateTokenCost(
+        rates,
+        { inputTokens, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+        () => {
+          legacyCalls += 1;
+          return -1;
+        },
+        { OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "rust" },
+      ),
+    ).toThrow(DomainCorePricingError);
+    expect(legacyCalls).toBe(0);
+  });
+
+  it("keeps shadow mode legacy-authoritative when fixed-point input is rejected", () => {
+    expect(
+      calculateTokenCost(
+        { inputPerMToken: -1, outputPerMToken: 1, cacheReadPerMToken: 0 },
+        { inputTokens: 1, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+        () => 42,
+        { OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "shadow" },
+      ),
+    ).toBe(42);
   });
 });

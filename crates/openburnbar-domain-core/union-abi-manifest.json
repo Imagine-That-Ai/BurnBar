@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "cd3234c5896580a612e9662cb2fff47edca27af9b9302a61fa6a2a8384d6ccaf",
+  "sourceRoots": [
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "domain-core/Cargo.toml",
+    "domain-core/src",
+    "domain-ffi/Cargo.toml",
+    "domain-ffi/build.rs",
+    "domain-ffi/src",
+    "domain-ffi/uniffi.toml",
+    "domain-wasm/Cargo.toml",
+    "domain-wasm/src"
+  ],
+  "domains": {
+    "quota": {
+      "rust": [
+        "parse_claude_statusline_quota"
+      ],
+      "cHeader": [
+        "uniffi_openburnbar_domain_ffi_fn_func_parse_claude_statusline_quota"
+      ],
+      "swift": [
+        "parseClaudeStatuslineQuota"
+      ],
+      "kotlin": [
+        "parseClaudeStatuslineQuota"
+      ],
+      "csharp": [
+        "ParseClaudeStatuslineQuota"
+      ]
+    },
+    "cloudVaultC1a": {
+      "rust": [
+        "cloud_vault_aad_v2"
+      ],
+      "cHeader": [
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2"
+      ],
+      "swift": [
+        "cloudVaultAadV2"
+      ],
+      "kotlin": [
+        "cloudVaultAadV2"
+      ],
+      "csharp": [
+        "CloudVaultAadV2"
+      ],
+      "wasm": [
+        "cloudVaultAadV2"
+      ]
+    },
+    "cloudVaultC1b": {
+      "rust": [
+        "cloud_vault_aes_gcm_seal_combined"
+      ],
+      "cHeader": [
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_combined"
+      ],
+      "swift": [
+        "cloudVaultAesGcmSealCombined"
+      ],
+      "kotlin": [
+        "cloudVaultAesGcmSealCombined"
+      ],
+      "csharp": [
+        "CloudVaultAesGcmSealCombined"
+      ],
+      "wasm": [
+        "cloudVaultAesGcmSealCombined"
+      ]
+    },
+    "cloudVaultC1c": {
+      "rust": [
+        "cloud_vault_recovery_wrap_vault_key"
+      ],
+      "cHeader": [
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_wrap_vault_key"
+      ],
+      "swift": [
+        "cloudVaultRecoveryWrapVaultKey"
+      ],
+      "kotlin": [
+        "cloudVaultRecoveryWrapVaultKey"
+      ],
+      "csharp": [
+        "CloudVaultRecoveryWrapVaultKey"
+      ],
+      "wasm": [
+        "cloudVaultRecoveryWrapVaultKey"
+      ]
+    },
+    "documentRewrap": {
+      "rust": [
+        "cloud_vault_rewrap_document",
+        "CloudVaultResealNonce",
+        "InvalidRewrapNoncePlan"
+      ],
+      "cHeader": [
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_rewrap_document"
+      ],
+      "swift": [
+        "cloudVaultRewrapDocument",
+        "CloudVaultResealNonce",
+        "InvalidRewrapNoncePlan"
+      ],
+      "kotlin": [
+        "cloudVaultRewrapDocument",
+        "CloudVaultResealNonce",
+        "InvalidRewrapNoncePlan"
+      ],
+      "csharp": [
+        "CloudVaultRewrapDocument",
+        "CloudVaultResealNonce",
+        "InvalidRewrapNoncePlan"
+      ],
+      "wasm": [
+        "cloudVaultRewrapDocumentJson"
+      ]
+    },
+    "hermes": {
+      "rust": [
+        "hermes_relay_aad"
+      ],
+      "cHeader": [
+        "uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad"
+      ],
+      "swift": [
+        "hermesRelayAad"
+      ],
+      "kotlin": [
+        "hermesRelayAad"
+      ],
+      "csharp": [
+        "HermesRelayAad"
+      ]
+    },
+    "pricing": {
+      "rust": [
+        "calculate_token_cost_nano_usd"
+      ],
+      "cHeader": [
+        "uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost_nano_usd"
+      ],
+      "swift": [
+        "calculateTokenCostNanoUsd"
+      ],
+      "kotlin": [
+        "calculateTokenCostNanoUsd"
+      ],
+      "csharp": [
+        "CalculateTokenCostNanoUsd"
+      ],
+      "wasm": [
+        "calculateTokenCostNanoUsd"
+      ]
+    },
+    "encryptedSearch": {
+      "rust": [
+        "cloud_vault_search"
+      ],
+      "cHeader": [
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search"
+      ],
+      "swift": [
+        "cloudVaultSearch"
+      ],
+      "kotlin": [
+        "cloudVaultSearch"
+      ],
+      "csharp": [
+        "CloudVaultSearch"
+      ],
+      "wasm": [
+        "cloudVaultSearch"
+      ]
+    }
+  },
+  "abiSurfaces": [
+    {
+      "name": "canonical-uniffi",
+      "kind": "rust",
+      "path": "crates/openburnbar-domain-core/domain-ffi/src/lib.rs",
+      "requiredDomains": [
+        "quota",
+        "cloudVaultC1a",
+        "cloudVaultC1b",
+        "cloudVaultC1c",
+        "documentRewrap",
+        "hermes",
+        "pricing",
+        "encryptedSearch"
+      ]
+    },
+    {
+      "name": "generated-swift",
+      "kind": "swift",
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift",
+      "requiredDomains": [
+        "quota",
+        "cloudVaultC1a",
+        "cloudVaultC1b",
+        "cloudVaultC1c",
+        "documentRewrap",
+        "hermes",
+        "pricing",
+        "encryptedSearch"
+      ]
+    },
+    {
+      "name": "generated-swift-c-header",
+      "kind": "cHeader",
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffiFFI.h",
+      "requiredDomains": [
+        "quota",
+        "cloudVaultC1a",
+        "cloudVaultC1b",
+        "cloudVaultC1c",
+        "documentRewrap",
+        "hermes",
+        "pricing",
+        "encryptedSearch"
+      ]
+    },
+    {
+      "name": "generated-kotlin",
+      "kind": "kotlin",
+      "path": "android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi/openburnbar_domain_ffi.kt",
+      "requiredDomains": [
+        "quota",
+        "cloudVaultC1a",
+        "cloudVaultC1b",
+        "cloudVaultC1c",
+        "documentRewrap",
+        "hermes",
+        "pricing",
+        "encryptedSearch"
+      ]
+    },
+    {
+      "name": "generated-csharp",
+      "kind": "csharp",
+      "path": "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs",
+      "requiredDomains": [
+        "quota",
+        "cloudVaultC1a",
+        "cloudVaultC1b",
+        "cloudVaultC1c",
+        "documentRewrap",
+        "hermes",
+        "pricing",
+        "encryptedSearch"
+      ]
+    },
+    {
+      "name": "canonical-wasm",
+      "kind": "wasm",
+      "path": "crates/openburnbar-domain-core/domain-wasm/src/lib.rs",
+      "requiredDomains": [
+        "cloudVaultC1a",
+        "cloudVaultC1b",
+        "cloudVaultC1c",
+        "documentRewrap",
+        "pricing",
+        "encryptedSearch"
+      ],
+      "requiredSymbols": [
+        "CloudVaultDocumentRewrapRequest",
+        "invalid_rewrap_nonce_plan"
+      ]
+    },
+    {
+      "name": "generated-browser-wasm",
+      "kind": "wasm",
+      "path": "apps/console/vendor/openburnbar-domain-core-wasm/openburnbar_domain_core.d.ts",
+      "requiredDomains": [
+        "cloudVaultC1a",
+        "cloudVaultC1b",
+        "cloudVaultC1c",
+        "documentRewrap",
+        "pricing",
+        "encryptedSearch"
+      ]
+    },
+    {
+      "name": "generated-node-wasm",
+      "kind": "wasm",
+      "path": "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.d.ts",
+      "requiredDomains": [
+        "cloudVaultC1a",
+        "cloudVaultC1b",
+        "cloudVaultC1c",
+        "documentRewrap",
+        "pricing",
+        "encryptedSearch"
+      ]
+    }
+  ]
+}

@@ -58,7 +58,7 @@ class CloudVaultSearchContractTest {
         var abiCalls = 0
         CloudVaultSearchDomainCore.abiVersionOverride = {
             abiCalls += 1
-            2u
+            3u
         }
         var nativeCalls = 0
         CloudVaultSearchDomainCore.nativeSearchOverride = { request ->

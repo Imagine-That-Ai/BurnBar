@@ -1,11 +1,76 @@
 use openburnbar_domain_core::cloudvault::{
     self, CloudVaultAadContext, CloudVaultError, CloudVaultHashPurpose as CoreHashPurpose,
 };
+use openburnbar_domain_core::cloudvault_rewrap::{
+    self, CloudVaultDocumentRewrapError, CloudVaultDocumentRewrapRequest,
+};
 use openburnbar_domain_core::cloudvault_search::{
     self, CloudVaultSearchError, CloudVaultSearchOperation as CoreSearchOperation,
 };
+use openburnbar_domain_core::pricing::{self, TokenBuckets, TokenRates};
 use wasm_bindgen::prelude::*;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
+
+#[wasm_bindgen(js_name = domainCoreVersion)]
+pub fn domain_core_version() -> String {
+    env!("CARGO_PKG_VERSION").to_owned()
+}
+
+#[wasm_bindgen(js_name = calculateTokenCostNanoUsd)]
+pub fn calculate_token_cost_nano_usd(
+    rates: &[u64],
+    buckets: &[u64],
+    has_cache_creation_rate: bool,
+) -> Result<u64, JsError> {
+    if rates.len() != 4 || buckets.len() != 4 {
+        return Err(JsError::new(
+            "invalid_pricing_vector: expected four rates and four token buckets",
+        ));
+    }
+    pricing::token_cost_nano_usd(
+        TokenRates {
+            input_nano_usd_per_m_token: rates[0],
+            output_nano_usd_per_m_token: rates[1],
+            cache_creation_nano_usd_per_m_token: has_cache_creation_rate.then_some(rates[2]),
+            cache_read_nano_usd_per_m_token: rates[3],
+        },
+        TokenBuckets {
+            input_tokens: buckets[0],
+            output_tokens: buckets[1],
+            cache_creation_tokens: buckets[2],
+            cache_read_tokens: buckets[3],
+        },
+    )
+    .map_err(|error| JsError::new(&error.to_string()))
+}
+
+#[wasm_bindgen(js_name = isLegacyKimiWireEvent)]
+pub fn is_legacy_kimi_wire_event(provider: &str, model: &str) -> bool {
+    pricing::is_legacy_kimi_wire_event(provider, model)
+}
+
+/// Returns `[total_tokens, cost_nano_usd]`; the canonical model is exported separately.
+#[wasm_bindgen(js_name = priceLegacyKimiWireEvent)]
+pub fn price_legacy_kimi_wire_event(
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_creation_tokens: u64,
+    cache_read_tokens: u64,
+) -> Result<Vec<u64>, JsError> {
+    let result = pricing::legacy_kimi_metrics(TokenBuckets {
+        input_tokens,
+        output_tokens,
+        cache_creation_tokens,
+        cache_read_tokens,
+    })
+    .map_err(|error| JsError::new(&error.to_string()))?;
+    Ok(vec![result.total_tokens, result.cost_nano_usd])
+}
+
+#[wasm_bindgen(js_name = legacyKimiWireModel)]
+pub fn legacy_kimi_wire_model() -> String {
+    pricing::legacy_kimi_model().to_owned()
+}
 
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -182,55 +247,69 @@ pub fn cloud_vault_aad_v1(
 }
 
 #[wasm_bindgen(js_name = cloudVaultSha256Hex)]
-pub fn cloud_vault_sha256_hex(data: &[u8]) -> String {
-    cloudvault::sha256_hex(data)
+pub fn cloud_vault_sha256_hex(data: &[u8]) -> Result<String, JsError> {
+    cloudvault::sha256_hex(data).map_err(js_error)
 }
 
 #[wasm_bindgen(js_name = cloudVaultKeyId)]
-pub fn cloud_vault_key_id(key: &[u8]) -> Result<String, JsError> {
-    cloudvault::vault_key_id(key).map_err(js_error)
+pub fn cloud_vault_key_id(mut key: Vec<u8>) -> Result<String, JsError> {
+    let result = cloudvault::vault_key_id(&key).map_err(js_error);
+    key.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultKeyedHashHex)]
 pub fn cloud_vault_keyed_hash_hex(
-    data: &[u8],
-    key: &[u8],
+    mut data: Vec<u8>,
+    mut key: Vec<u8>,
     purpose: CloudVaultHashPurpose,
 ) -> Result<String, JsError> {
-    cloudvault::keyed_hash_hex(data, key, purpose.into()).map_err(js_error)
+    let result = cloudvault::keyed_hash_hex(&data, &key, purpose.into()).map_err(js_error);
+    data.zeroize();
+    key.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultExpectedSessionBodyHash)]
 pub fn cloud_vault_expected_session_body_hash(
-    data: &[u8],
-    key: &[u8],
+    mut data: Vec<u8>,
+    mut key: Vec<u8>,
     body_hash_version: u32,
 ) -> Result<String, JsError> {
-    cloudvault::expected_session_body_hash(data, key, body_hash_version).map_err(js_error)
+    let result =
+        cloudvault::expected_session_body_hash(&data, &key, body_hash_version).map_err(js_error);
+    data.zeroize();
+    key.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultAesGcmSealCombined)]
 pub fn cloud_vault_aes_gcm_seal_combined(
-    plaintext: &[u8],
-    key: &[u8],
+    mut plaintext: Vec<u8>,
+    mut key: Vec<u8>,
     nonce: &[u8],
     aad: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    cloudvault::aes_gcm_seal_combined(plaintext, key, nonce, aad).map_err(js_error)
+    let result = cloudvault::aes_gcm_seal_combined(&plaintext, &key, nonce, aad).map_err(js_error);
+    plaintext.zeroize();
+    key.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultAesGcmOpenCombined)]
 pub fn cloud_vault_aes_gcm_open_combined(
     combined: &[u8],
-    key: &[u8],
+    mut key: Vec<u8>,
     aad: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    cloudvault::aes_gcm_open_combined(combined, key, aad).map_err(js_error)
+    let result = cloudvault::aes_gcm_open_combined(combined, &key, aad).map_err(js_error);
+    key.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultBase64Encode)]
-pub fn cloud_vault_base64_encode(data: &[u8]) -> String {
-    cloudvault::base64_encode(data)
+pub fn cloud_vault_base64_encode(data: &[u8]) -> Result<String, JsError> {
+    cloudvault::base64_encode_checked(data).map_err(js_error)
 }
 
 #[wasm_bindgen(js_name = cloudVaultBase64DecodeStrict)]
@@ -239,46 +318,57 @@ pub fn cloud_vault_base64_decode_strict(value: &str) -> Result<Vec<u8>, JsError>
 }
 
 #[wasm_bindgen(js_name = cloudVaultNormalizeRecoveryKey)]
-pub fn cloud_vault_normalize_recovery_key(recovery_key: &str) -> Result<String, JsError> {
-    cloudvault::normalize_recovery_key(recovery_key).map_err(js_error)
+pub fn cloud_vault_normalize_recovery_key(mut recovery_key: String) -> Result<String, JsError> {
+    let result = cloudvault::normalize_recovery_key(&recovery_key).map_err(js_error);
+    recovery_key.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultRecoveryWrappingKey)]
-pub fn cloud_vault_recovery_wrapping_key(recovery_key: &str) -> Result<Vec<u8>, JsError> {
-    cloudvault::recovery_wrapping_key(recovery_key)
+pub fn cloud_vault_recovery_wrapping_key(mut recovery_key: String) -> Result<Vec<u8>, JsError> {
+    let result = cloudvault::recovery_wrapping_key(&recovery_key)
         .map(|mut key| {
             let output = key.to_vec();
             key.zeroize();
             output
         })
-        .map_err(js_error)
+        .map_err(js_error);
+    recovery_key.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultRecoveryVerificationHash)]
-pub fn cloud_vault_recovery_verification_hash(recovery_key: &str) -> Result<String, JsError> {
-    cloudvault::recovery_verification_hash(recovery_key).map_err(js_error)
+pub fn cloud_vault_recovery_verification_hash(mut recovery_key: String) -> Result<String, JsError> {
+    let result = cloudvault::recovery_verification_hash(&recovery_key).map_err(js_error);
+    recovery_key.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultRecoveryWrapVaultKey)]
 pub fn cloud_vault_recovery_wrap_vault_key(
-    vault_key: &[u8],
-    recovery_key: &str,
+    mut vault_key: Vec<u8>,
+    mut recovery_key: String,
     nonce: &[u8],
 ) -> Result<CloudVaultRecoveryWrappedVaultKey, JsError> {
-    cloudvault::recovery_wrap_vault_key(vault_key, recovery_key, nonce)
+    let result = cloudvault::recovery_wrap_vault_key(&vault_key, &recovery_key, nonce)
         .map(|wrapped| CloudVaultRecoveryWrappedVaultKey {
             combined: wrapped.combined,
             verification_hash: wrapped.verification_hash,
         })
-        .map_err(js_error)
+        .map_err(js_error);
+    vault_key.zeroize();
+    recovery_key.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultRecoveryOpenVaultKey)]
 pub fn cloud_vault_recovery_open_vault_key(
     combined: &[u8],
-    recovery_key: &str,
+    mut recovery_key: String,
 ) -> Result<Vec<u8>, JsError> {
-    cloudvault::recovery_open_vault_key(combined, recovery_key).map_err(js_error)
+    let result = cloudvault::recovery_open_vault_key(combined, &recovery_key).map_err(js_error);
+    recovery_key.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultValidateP256X963PublicKey)]
@@ -287,14 +377,16 @@ pub fn cloud_vault_validate_p256_x963_public_key(public_key: &[u8]) -> Result<()
 }
 
 #[wasm_bindgen(js_name = cloudVaultEscrowWrappingKey)]
-pub fn cloud_vault_escrow_wrapping_key(shared_secret: &[u8]) -> Result<Vec<u8>, JsError> {
-    cloudvault::escrow_wrapping_key(shared_secret)
+pub fn cloud_vault_escrow_wrapping_key(mut shared_secret: Vec<u8>) -> Result<Vec<u8>, JsError> {
+    let result = cloudvault::escrow_wrapping_key(&shared_secret)
         .map(|mut key| {
             let output = key.to_vec();
             key.zeroize();
             output
         })
-        .map_err(js_error)
+        .map_err(js_error);
+    shared_secret.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultEscrowAssembleWire)]
@@ -317,17 +409,53 @@ pub fn cloud_vault_escrow_split_wire(wire: &[u8]) -> Result<CloudVaultEscrowWire
 
 #[wasm_bindgen(js_name = cloudVaultEscrowSeal)]
 pub fn cloud_vault_escrow_seal(
-    plaintext: &[u8],
+    mut plaintext: Vec<u8>,
     ephemeral_public_key: &[u8],
-    shared_secret: &[u8],
+    mut shared_secret: Vec<u8>,
     nonce: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    cloudvault::escrow_seal(plaintext, ephemeral_public_key, shared_secret, nonce).map_err(js_error)
+    let result = cloudvault::escrow_seal(&plaintext, ephemeral_public_key, &shared_secret, nonce)
+        .map_err(js_error);
+    plaintext.zeroize();
+    shared_secret.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultEscrowOpen)]
-pub fn cloud_vault_escrow_open(wire: &[u8], shared_secret: &[u8]) -> Result<Vec<u8>, JsError> {
-    cloudvault::escrow_open(wire, shared_secret).map_err(js_error)
+pub fn cloud_vault_escrow_open(
+    wire: &[u8],
+    mut shared_secret: Vec<u8>,
+) -> Result<Vec<u8>, JsError> {
+    let result = cloudvault::escrow_open(wire, &shared_secret).map_err(js_error);
+    shared_secret.zeroize();
+    result
+}
+
+/// Whole-document rewrap for browser/Tauri consumers. `request_json` is the
+/// strict camelCase serialization of `CloudVaultDocumentRewrapRequest`; unknown
+/// fields and malformed envelope variants are rejected by serde.
+#[wasm_bindgen(js_name = cloudVaultRewrapDocumentJson)]
+pub fn cloud_vault_rewrap_document_json(
+    request_json: &str,
+    old_key: &[u8],
+    new_key: &[u8],
+    new_vault_key_id: &str,
+) -> Result<String, JsError> {
+    if request_json.len() > cloudvault_rewrap::MAX_REWRAP_JSON_BYTES {
+        return Err(JsError::new(
+            "rewrap_bounds_exceeded: request JSON is too large",
+        ));
+    }
+    let request: CloudVaultDocumentRewrapRequest = serde_json::from_str(request_json)
+        .map_err(|error| JsError::new(&format!("invalid_rewrap_request: {error}")))?;
+    let old_key_copy = Zeroizing::new(old_key.to_vec());
+    let new_key_copy = Zeroizing::new(new_key.to_vec());
+    cloudvault_rewrap::rewrap_document(&request, &old_key_copy, &new_key_copy, new_vault_key_id)
+        .map_err(js_rewrap_error)
+        .and_then(|value| {
+            serde_json::to_string(&value)
+                .map_err(|error| JsError::new(&format!("rewrap_result_encoding_failed: {error}")))
+        })
 }
 
 #[wasm_bindgen(js_name = cloudVaultSearchAnalyze)]
@@ -395,6 +523,24 @@ fn js_error(error: CloudVaultError) -> JsError {
         CloudVaultError::InvalidSharedSecretLength => "invalid_shared_secret_length",
         CloudVaultError::InvalidP256PublicKey => "invalid_p256_public_key",
         CloudVaultError::InvalidEscrowWireLength => "invalid_escrow_wire_length",
+        CloudVaultError::InputTooLarge => "input_too_large",
+    };
+    JsError::new(&format!("{code}: {error}"))
+}
+
+fn js_rewrap_error(error: CloudVaultDocumentRewrapError) -> JsError {
+    let code = match &error {
+        CloudVaultDocumentRewrapError::Crypto(inner) => {
+            return js_error(*inner);
+        }
+        CloudVaultDocumentRewrapError::NewVaultKeyIdMismatch => "new_vault_key_id_mismatch",
+        CloudVaultDocumentRewrapError::BoundsExceeded => "rewrap_bounds_exceeded",
+        CloudVaultDocumentRewrapError::InvalidFieldSet => "invalid_rewrap_field_set",
+        CloudVaultDocumentRewrapError::InvalidEnvelope => "invalid_rewrap_envelope",
+        CloudVaultDocumentRewrapError::InvalidNoncePlan => "invalid_rewrap_nonce_plan",
+        CloudVaultDocumentRewrapError::InvalidText => "invalid_rewrap_text",
+        CloudVaultDocumentRewrapError::IntegrityMismatch => "rewrap_integrity_mismatch",
+        CloudVaultDocumentRewrapError::InvalidKeyRotation => "invalid_rewrap_key_rotation",
     };
     JsError::new(&format!("{code}: {error}"))
 }

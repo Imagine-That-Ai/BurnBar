@@ -41,7 +41,7 @@ internal data class CloudVaultSearchDiagnostic(
  * persistence; each invocation lowers one complete text/query into one UniFFI call.
  */
 internal object CloudVaultSearchDomainCore {
-    private const val REQUIRED_ABI_VERSION = 2
+    private const val REQUIRED_ABI_VERSION = 3
     private const val LOG_TAG = "CloudVaultSearchCore"
     private val diagnosticCounts = ConcurrentHashMap<String, AtomicLong>()
 

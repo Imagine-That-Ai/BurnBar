@@ -23,7 +23,7 @@ class CloudVaultSearchDomainCoreTest {
         var nativeCalls = 0
         var loweredKey: ByteArray? = null
         CloudVaultSearchDomainCore.modeOverride = CloudVaultSearchMode.SHADOW
-        CloudVaultSearchDomainCore.abiVersionOverride = { 2u }
+        CloudVaultSearchDomainCore.abiVersionOverride = { 3u }
         CloudVaultSearchDomainCore.coreVersionOverride = { "0.1.0" }
         CloudVaultSearchDomainCore.diagnosticOverride = diagnostics::add
         CloudVaultSearchDomainCore.nativeSearchOverride = { request ->
@@ -48,7 +48,7 @@ class CloudVaultSearchDomainCoreTest {
     fun shadowReturnsLegacyWhenNativeIsUnavailable() {
         val diagnostics = mutableListOf<CloudVaultSearchDiagnostic>()
         CloudVaultSearchDomainCore.modeOverride = CloudVaultSearchMode.SHADOW
-        CloudVaultSearchDomainCore.abiVersionOverride = { 2u }
+        CloudVaultSearchDomainCore.abiVersionOverride = { 3u }
         CloudVaultSearchDomainCore.coreVersionOverride = { "unavailable" }
         CloudVaultSearchDomainCore.diagnosticOverride = diagnostics::add
         CloudVaultSearchDomainCore.nativeSearchOverride = { throw UnsatisfiedLinkError("test native unavailable") }
@@ -64,7 +64,7 @@ class CloudVaultSearchDomainCoreTest {
     fun rustModeFailsClosedWithoutEvaluatingLegacy() {
         var legacyCalls = 0
         CloudVaultSearchDomainCore.modeOverride = CloudVaultSearchMode.RUST
-        CloudVaultSearchDomainCore.abiVersionOverride = { 2u }
+        CloudVaultSearchDomainCore.abiVersionOverride = { 3u }
         CloudVaultSearchDomainCore.nativeSearchOverride = { throw UnsatisfiedLinkError("test native unavailable") }
 
         assertThrows(UnsatisfiedLinkError::class.java) {
@@ -85,7 +85,7 @@ class CloudVaultSearchDomainCoreTest {
     fun rustModeRejectsTamperedOperationAndOversizedLimitWithoutFallback() {
         var legacyCalls = 0
         CloudVaultSearchDomainCore.modeOverride = CloudVaultSearchMode.RUST
-        CloudVaultSearchDomainCore.abiVersionOverride = { 2u }
+        CloudVaultSearchDomainCore.abiVersionOverride = { 3u }
         CloudVaultSearchDomainCore.nativeSearchOverride = { request ->
             if (request.limit > 1024) throw IllegalArgumentException("bounded native rejection")
             CloudVaultSearchResult(FfiSearchOperation.SEMANTIC, emptyList())
@@ -121,7 +121,7 @@ class CloudVaultSearchDomainCoreTest {
         val diagnostics = mutableListOf<CloudVaultSearchDiagnostic>()
         var nativeCalls = 0
         var legacyCalls = 0
-        CloudVaultSearchDomainCore.abiVersionOverride = { 3u }
+        CloudVaultSearchDomainCore.abiVersionOverride = { 4u }
         CloudVaultSearchDomainCore.coreVersionOverride = { "0.1.0" }
         CloudVaultSearchDomainCore.diagnosticOverride = diagnostics::add
         CloudVaultSearchDomainCore.nativeSearchOverride = { request ->

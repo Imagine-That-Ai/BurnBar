@@ -1,5 +1,6 @@
 package com.openburnbar.domaincore
 
+import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -7,27 +8,46 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import uniffi.openburnbar_domain_ffi.CloudVaultDocumentEnvelope
+import uniffi.openburnbar_domain_ffi.CloudVaultDocumentEnvelopeKind
+import uniffi.openburnbar_domain_ffi.CloudVaultDocumentRewrapRequest
+import uniffi.openburnbar_domain_ffi.CloudVaultFfiException
+import uniffi.openburnbar_domain_ffi.CloudVaultResealNonce
 import uniffi.openburnbar_domain_ffi.CloudVaultSearchOperation
 import uniffi.openburnbar_domain_ffi.CloudVaultSearchRequest
-import uniffi.openburnbar_domain_ffi.CloudVaultFfiException
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmOpenCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultAesGcmSealCombined
 import uniffi.openburnbar_domain_ffi.cloudVaultEscrowOpen
 import uniffi.openburnbar_domain_ffi.cloudVaultEscrowSeal
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryOpenVaultKey
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrapVaultKey
+import uniffi.openburnbar_domain_ffi.cloudVaultRewrapDocument
 import uniffi.openburnbar_domain_ffi.cloudVaultSearch
 import uniffi.openburnbar_domain_ffi.cloudVaultSearchAnalyze
 import uniffi.openburnbar_domain_ffi.cloudVaultValidateP256X963PublicKey
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
+import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
 
 @RunWith(AndroidJUnit4::class)
 class DomainCoreNativeLoadTest {
     @Test
-    fun generatedBindingLoadsAbiVersionTwoNativeLibrary() {
-        assertEquals(2u, domainCoreAbiVersion())
+    fun generatedBindingLoadsAbiVersionThreeNativeLibrary() {
+        assertEquals(3u, domainCoreAbiVersion())
         assertTrue(domainCoreVersion().isNotBlank())
+        assertEquals(
+            "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7",
+            hermesGatewayRelaySafetyCode(
+                Base64.decode(
+                    "BGsX0fLhLEJH+Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT+NC4v4af5uO5+tKfA+eFivOM1drMV7Oy7ZAaDe/UfU=",
+                    Base64.DEFAULT,
+                ),
+                Base64.decode(
+                    "BHzyexiNA09+ilI4AwS1GsPAiWnid/IbNaYLSPxHZpl4B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E=",
+                    Base64.DEFAULT,
+                ),
+            ),
+        )
     }
 
     @Test
@@ -63,23 +83,55 @@ class DomainCoreNativeLoadTest {
     }
 
     @Test
-    fun searchContractExecutesThroughNativeLibrary() {
-        val text = "The QUICK, quick fox and X."
-        assertEquals(listOf("quick", "quick", "fox"), cloudVaultSearchAnalyze(text).normalizedTokens)
-        assertEquals(
-            listOf(
-                "e9110d7f0c79afdae6316235800dc41b",
-                "66e59fa04825dc74f5ef7cb57884d4ed",
-            ),
-            cloudVaultSearch(
-                CloudVaultSearchRequest(
-                    CloudVaultSearchOperation.TOKEN,
-                    text,
-                    ByteArray(32) { it.toByte() },
-                    250,
-                ),
-            ).hashes,
-        )
+    fun documentRewrapExecutesThroughNativeLibrary() {
+        val newKeyId = "v1_515a733d7320b35b2117893952f93a94"
+        val envelope =
+            CloudVaultDocumentEnvelope(
+                kind = CloudVaultDocumentEnvelopeKind.SEALED_PAYLOAD,
+                fieldName = "sealedPayload",
+                schemaVersion = 2u,
+                algorithm = "AES-256-GCM",
+                keyVersion = 1u,
+                vaultKeyId = "v1_3e441393404b2085e7a3090a47d377ab",
+                nonce = null,
+                ciphertext = null,
+                tag = null,
+                sealedBoxBase64 = "ERERERERERERERER/IcMhLA283cnbpRNi2CTKvNBn1ZeDHqbBsvt7oVOgZ2I6DwXeAOM",
+                plaintextSha256 = null,
+                plaintextHmac = null,
+                integrityHashVersion = null,
+                aad = "OpenBurnBar-CloudVaultSealedPayload-v2",
+                hasCreatedAt = false,
+            )
+        val request =
+            CloudVaultDocumentRewrapRequest(
+                uid = "userA",
+                collection = "cli_agent_mission_requests",
+                docId = "requestA",
+                documentFieldNames = listOf("vaultKeyID", "plainStatus", "sealedPayload"),
+                envelopes = listOf(envelope),
+                resealNoncePlan =
+                    listOf(
+                        CloudVaultResealNonce(
+                            fieldName = "sealedPayload",
+                            nonce = ByteArray(12) { 0x22 },
+                        ),
+                    ),
+                vaultGeneration = 7L,
+                rotationJobId = "job-7",
+            )
+        val result =
+            cloudVaultRewrapDocument(
+                request,
+                ByteArray(32) { 0x71 },
+                ByteArray(32) { 0x72 },
+                newKeyId,
+            )
+        assertEquals(listOf("sealedPayload"), result.changedFields)
+        assertEquals(listOf("vaultKeyID"), result.companionUpdateIntents.map { it.companionFieldName })
+        assertEquals(7L, result.vaultGenerationUpdate)
+        assertEquals("job-7", result.rotationJobIdUpdate)
+        assertEquals(newKeyId, result.rewrappedEnvelopes.single().vaultKeyId)
     }
 
     @Test
@@ -127,8 +179,12 @@ class DomainCoreNativeLoadTest {
         }
     }
 
-    private fun search(operation: CloudVaultSearchOperation, text: String, key: ByteArray, limit: Int): List<String> =
-        cloudVaultSearch(CloudVaultSearchRequest(operation, text, key, limit)).hashes
+    private fun search(
+        operation: CloudVaultSearchOperation,
+        text: String,
+        key: ByteArray,
+        limit: Int,
+    ): List<String> = cloudVaultSearch(CloudVaultSearchRequest(operation, text, key, limit)).hashes
 
     private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 }

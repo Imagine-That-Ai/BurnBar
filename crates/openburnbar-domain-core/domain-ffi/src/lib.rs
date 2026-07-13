@@ -1,8 +1,10 @@
 use openburnbar_domain_core::quota as core;
-use openburnbar_domain_core::{cloudvault, cloudvault_search, quota};
-use zeroize::Zeroize;
+use openburnbar_domain_core::{
+    cloudvault, cloudvault_rewrap, cloudvault_search, hermes, pricing, quota,
+};
+use zeroize::{Zeroize, Zeroizing};
 
-pub const DOMAIN_CORE_ABI_VERSION: u32 = 2;
+pub const DOMAIN_CORE_ABI_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
 pub enum CloudVaultHashPurpose {
@@ -20,25 +22,6 @@ pub struct CloudVaultAadContextInput {
     pub field: String,
     pub schema_version: u32,
     pub purpose: Option<String>,
-}
-
-#[derive(Clone, Debug, uniffi::Record)]
-pub struct CloudVaultAesGcmDetachedBox {
-    pub nonce: Vec<u8>,
-    pub ciphertext: Vec<u8>,
-    pub tag: Vec<u8>,
-}
-
-#[derive(Clone, Debug, uniffi::Record)]
-pub struct CloudVaultRecoveryWrappedVaultKey {
-    pub combined: Vec<u8>,
-    pub verification_hash: String,
-}
-
-#[derive(Clone, Debug, uniffi::Record)]
-pub struct CloudVaultEscrowWireParts {
-    pub ephemeral_public_key: Vec<u8>,
-    pub aes_gcm_combined: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -68,6 +51,124 @@ pub struct CloudVaultSearchAnalysis {
 pub struct CloudVaultSearchResult {
     pub operation: CloudVaultSearchOperation,
     pub hashes: Vec<String>,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultAesGcmDetachedBox {
+    pub nonce: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+    pub tag: Vec<u8>,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultRecoveryWrappedVaultKey {
+    pub combined: Vec<u8>,
+    pub verification_hash: String,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultEscrowWireParts {
+    pub ephemeral_public_key: Vec<u8>,
+    pub aes_gcm_combined: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, uniffi::Enum)]
+pub enum CloudVaultDocumentEnvelopeKind {
+    SealedPayload,
+    SealedText,
+    Blob,
+}
+
+/// Typed, transport-safe representation of one CloudVault envelope.
+/// Fields not used by `kind` must be absent; conversion fails closed otherwise.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultDocumentEnvelope {
+    pub kind: CloudVaultDocumentEnvelopeKind,
+    pub field_name: String,
+    pub schema_version: Option<u32>,
+    pub algorithm: String,
+    pub key_version: u32,
+    pub vault_key_id: Option<String>,
+    pub nonce: Option<String>,
+    pub ciphertext: Option<String>,
+    pub tag: Option<String>,
+    pub sealed_box_base64: Option<String>,
+    pub plaintext_sha256: Option<String>,
+    pub plaintext_hmac: Option<String>,
+    pub integrity_hash_version: Option<u32>,
+    pub aad: Option<String>,
+    pub has_created_at: bool,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultDocumentRewrapRequest {
+    pub uid: String,
+    pub collection: String,
+    pub doc_id: String,
+    pub document_field_names: Vec<String>,
+    pub envelopes: Vec<CloudVaultDocumentEnvelope>,
+    pub reseal_nonce_plan: Vec<CloudVaultResealNonce>,
+    pub vault_generation: Option<i64>,
+    pub rotation_job_id: Option<String>,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultResealNonce {
+    pub field_name: String,
+    pub nonce: Vec<u8>,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultCompanionUpdateIntent {
+    pub source_field_name: String,
+    pub companion_field_name: String,
+    pub vault_key_id: String,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultPreservedEnvelopeMemberIntent {
+    pub source_field_name: String,
+    pub member_name: String,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultDocumentRewrapResult {
+    pub changed_fields: Vec<String>,
+    pub skipped_fields: Vec<String>,
+    pub rewrapped_envelopes: Vec<CloudVaultDocumentEnvelope>,
+    pub companion_update_intents: Vec<CloudVaultCompanionUpdateIntent>,
+    pub preserved_member_intents: Vec<CloudVaultPreservedEnvelopeMemberIntent>,
+    pub vault_generation_update: Option<i64>,
+    pub rotation_job_id_update: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, uniffi::Record)]
+pub struct TokenPricingRates {
+    pub input_nano_usd_per_m_token: u64,
+    pub output_nano_usd_per_m_token: u64,
+    pub cache_creation_nano_usd_per_m_token: Option<u64>,
+    pub cache_read_nano_usd_per_m_token: u64,
+}
+
+#[derive(Clone, Copy, Debug, uniffi::Record)]
+pub struct TokenPricingBuckets {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_creation_tokens: u64,
+    pub cache_read_tokens: u64,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct LegacyKimiPricingResult {
+    pub model: String,
+    pub total_tokens: u64,
+    pub cost_nano_usd: u64,
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum PricingFfiError {
+    #[error("pricing arithmetic overflow")]
+    ArithmeticOverflow,
 }
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -104,12 +205,72 @@ pub enum CloudVaultFfiError {
     InvalidP256PublicKey,
     #[error("the P-256 escrow wire must contain a public key and AES-GCM combined box")]
     InvalidEscrowWireLength,
+    #[error("the CloudVault input exceeds its bounded contract")]
+    InputTooLarge,
     #[error("cloud vault search text exceeds 1048576 UTF-8 bytes")]
     SearchTextTooLarge,
     #[error("cloud vault search limits must not exceed 1024")]
     SearchLimitTooLarge,
     #[error("cloud vault search input exceeds 4096 extracted tokens")]
     SearchTooManyTokens,
+    #[error("the new vault key id does not match the new key")]
+    NewVaultKeyIdMismatch,
+    #[error("the document exceeds the rewrap field, field-name, or ciphertext bound")]
+    RewrapBoundsExceeded,
+    #[error("document field names and envelope field names must be unique and consistent")]
+    InvalidRewrapFieldSet,
+    #[error("the document rewrap envelope is invalid")]
+    InvalidRewrapEnvelope,
+    #[error("the caller must supply exactly one unique 12-byte nonce per resealed envelope")]
+    InvalidRewrapNoncePlan,
+    #[error("the sealed text plaintext is not valid UTF-8")]
+    InvalidRewrapText,
+    #[error("the source envelope integrity hash did not verify")]
+    RewrapIntegrityMismatch,
+    #[error("rewrap requires distinct old and new vault keys when any envelope changes")]
+    InvalidRewrapKeyRotation,
+}
+
+#[derive(Clone, Copy, Debug, uniffi::Enum)]
+pub enum HermesAadKind {
+    Request,
+    Key,
+    AuthenticatedRequest,
+    AuthenticatedKey,
+    Chunk,
+    MediaSealKey,
+    ControlSealKey,
+    GatewayEvent,
+    GatewayEventKey,
+    GatewayMessage,
+    GatewayMessageKey,
+    GatewayAttachmentKey,
+    GatewayAttachmentManifest,
+    GatewayAttachmentBody,
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum HermesFfiError {
+    #[error("Hermes AAD argument count does not match its domain")]
+    InvalidAadArguments,
+    #[error("Hermes symmetric keys must be exactly 32 bytes")]
+    InvalidKeyLength,
+    #[error("Hermes AES-GCM nonces must be exactly 12 bytes")]
+    InvalidNonceLength,
+    #[error("Hermes ciphertext is malformed")]
+    InvalidCiphertext,
+    #[error("Hermes AES-GCM authentication failed")]
+    AuthenticationFailed,
+    #[error("Hermes HKDF output length is invalid")]
+    InvalidHkdfLength,
+    #[error("Hermes HMAC initialization failed")]
+    HmacFailure,
+    #[error("Hermes AAD components must not contain pipes or ASCII controls")]
+    InvalidAadComponent,
+    #[error("Hermes input exceeds its bounded contract")]
+    InputTooLarge,
+    #[error("Hermes P-256 keys must be exact on-curve 65-byte X9.63 points")]
+    InvalidP256PublicKey,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -205,6 +366,26 @@ pub fn domain_core_version() -> String {
 }
 
 #[uniffi::export]
+pub fn calculate_token_cost_nano_usd(
+    rates: TokenPricingRates,
+    buckets: TokenPricingBuckets,
+) -> Result<u64, PricingFfiError> {
+    Ok(pricing::token_cost_nano_usd(rates.into(), buckets.into())?)
+}
+
+#[uniffi::export]
+pub fn is_legacy_kimi_wire_event(provider: String, model: String) -> bool {
+    pricing::is_legacy_kimi_wire_event(&provider, &model)
+}
+
+#[uniffi::export]
+pub fn price_legacy_kimi_wire_event(
+    buckets: TokenPricingBuckets,
+) -> Result<LegacyKimiPricingResult, PricingFfiError> {
+    Ok(pricing::legacy_kimi_metrics(buckets.into())?.into())
+}
+
+#[uniffi::export]
 pub fn cloud_vault_aad_v2(
     uid: String,
     collection: String,
@@ -253,8 +434,8 @@ pub fn cloud_vault_resolve_aad(
 }
 
 #[uniffi::export]
-pub fn cloud_vault_sha256_hex(data: Vec<u8>) -> String {
-    cloudvault::sha256_hex(&data)
+pub fn cloud_vault_sha256_hex(data: Vec<u8>) -> Result<String, CloudVaultFfiError> {
+    cloudvault::sha256_hex(&data).map_err(Into::into)
 }
 
 #[uniffi::export]
@@ -266,30 +447,143 @@ pub fn cloud_vault_key_id(mut key: Vec<u8>) -> Result<String, CloudVaultFfiError
 
 #[uniffi::export]
 pub fn cloud_vault_keyed_hash_hex(
-    data: Vec<u8>,
+    mut data: Vec<u8>,
     mut key: Vec<u8>,
     purpose: CloudVaultHashPurpose,
 ) -> Result<String, CloudVaultFfiError> {
     let result = cloudvault::keyed_hash_hex(&data, &key, purpose.into()).map_err(Into::into);
+    data.zeroize();
     key.zeroize();
     result
 }
 
 #[uniffi::export]
 pub fn cloud_vault_expected_session_body_hash(
-    data: Vec<u8>,
+    mut data: Vec<u8>,
     mut key: Vec<u8>,
     body_hash_version: u32,
 ) -> Result<String, CloudVaultFfiError> {
     let result =
         cloudvault::expected_session_body_hash(&data, &key, body_hash_version).map_err(Into::into);
+    data.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_relay_aad(
+    kind: HermesAadKind,
+    arguments: Vec<String>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::aad(kind.into(), &arguments).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_key_wrap_info_v1(aad: Vec<u8>) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::key_wrap_info_v1(&aad).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_key_wrap_info_v2(
+    aad: Vec<u8>,
+    enc: Vec<u8>,
+    recipient_public_key: Vec<u8>,
+    sender_public_key: Vec<u8>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::key_wrap_info_v2(&aad, &enc, &recipient_public_key, &sender_public_key)
+        .map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_hpke_v3_info(aad: Vec<u8>) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::hpke_v3_info(&aad).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_hkdf_sha256(
+    mut input_key_material: Vec<u8>,
+    salt: Vec<u8>,
+    info: Vec<u8>,
+    output_byte_count: u32,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::hkdf_sha256(
+        &input_key_material,
+        &salt,
+        &info,
+        output_byte_count as usize,
+    )
+    .map(|output| output.to_vec())
+    .map_err(Into::into);
+    input_key_material.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_sha256(bytes: Vec<u8>) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::sha256(&bytes).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_hmac_sha256(mut key: Vec<u8>, data: Vec<u8>) -> Result<Vec<u8>, HermesFfiError> {
+    let output = hermes::hmac_sha256(&key, &data).map_err(Into::into);
+    key.zeroize();
+    output
+}
+
+#[uniffi::export]
+// reason: explicit fields preserve the versioned ratchet wire contract across UniFFI.
+#[allow(clippy::too_many_arguments, reason = "wire fields")]
+pub fn hermes_ratchet_envelope_aad(
+    associated_data: Vec<u8>,
+    algorithm: String,
+    session_id: String,
+    sender_device_id: String,
+    receiver_device_id: String,
+    ratchet_public_key_base64: String,
+    version: u64,
+    previous_chain_length: u64,
+    message_number: u64,
+    epoch: u64,
+) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::ratchet_envelope_aad(
+        &associated_data,
+        &algorithm,
+        &session_id,
+        &sender_device_id,
+        &receiver_device_id,
+        &ratchet_public_key_base64,
+        version,
+        previous_chain_length,
+        message_number,
+        epoch,
+    )
+    .map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_gateway_relay_safety_code(
+    agent_public_key: Vec<u8>,
+    phone_public_key: Vec<u8>,
+) -> Result<String, HermesFfiError> {
+    hermes::gateway_relay_safety_code(&agent_public_key, &phone_public_key).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_seal_base64(
+    mut plaintext: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+    nonce: Vec<u8>,
+) -> Result<String, HermesFfiError> {
+    let result = hermes::seal_base64(&plaintext, &key, &aad, &nonce).map_err(Into::into);
+    plaintext.zeroize();
     key.zeroize();
     result
 }
 
 #[uniffi::export]
 pub fn cloud_vault_aes_gcm_seal_detached(
-    plaintext: Vec<u8>,
+    mut plaintext: Vec<u8>,
     mut key: Vec<u8>,
     nonce: Vec<u8>,
     aad: Vec<u8>,
@@ -297,19 +591,56 @@ pub fn cloud_vault_aes_gcm_seal_detached(
     let result = cloudvault::aes_gcm_seal_detached(&plaintext, &key, &nonce, &aad)
         .map(Into::into)
         .map_err(Into::into);
+    plaintext.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_open_base64(
+    ciphertext: String,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::open_base64(&ciphertext, &key, &aad).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_seal_combined(
+    mut plaintext: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+    nonce: Vec<u8>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::seal_combined(&plaintext, &key, &aad, &nonce).map_err(Into::into);
+    plaintext.zeroize();
     key.zeroize();
     result
 }
 
 #[uniffi::export]
 pub fn cloud_vault_aes_gcm_seal_combined(
-    plaintext: Vec<u8>,
+    mut plaintext: Vec<u8>,
     mut key: Vec<u8>,
     nonce: Vec<u8>,
     aad: Vec<u8>,
 ) -> Result<Vec<u8>, CloudVaultFfiError> {
     let result =
         cloudvault::aes_gcm_seal_combined(&plaintext, &key, &nonce, &aad).map_err(Into::into);
+    plaintext.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_open_combined(
+    combined: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::open_combined(&combined, &key, &aad).map_err(Into::into);
     key.zeroize();
     result
 }
@@ -354,8 +685,8 @@ pub fn cloud_vault_aes_gcm_open_combined(
 }
 
 #[uniffi::export]
-pub fn cloud_vault_base64_encode(data: Vec<u8>) -> String {
-    cloudvault::base64_encode(&data)
+pub fn cloud_vault_base64_encode(data: Vec<u8>) -> Result<String, CloudVaultFfiError> {
+    cloudvault::base64_encode_checked(&data).map_err(Into::into)
 }
 
 #[uniffi::export]
@@ -484,6 +815,21 @@ pub fn cloud_vault_escrow_open(
 }
 
 #[uniffi::export]
+pub fn cloud_vault_rewrap_document(
+    request: CloudVaultDocumentRewrapRequest,
+    old_key: Vec<u8>,
+    new_key: Vec<u8>,
+    new_vault_key_id: String,
+) -> Result<CloudVaultDocumentRewrapResult, CloudVaultFfiError> {
+    let old_key = Zeroizing::new(old_key);
+    let new_key = Zeroizing::new(new_key);
+    let request = request.try_into()?;
+    cloudvault_rewrap::rewrap_document(&request, &old_key, &new_key, &new_vault_key_id)
+        .map(Into::into)
+        .map_err(Into::into)
+}
+
+#[uniffi::export]
 pub fn cloud_vault_search_analyze(
     mut text: String,
 ) -> Result<CloudVaultSearchAnalysis, CloudVaultFfiError> {
@@ -539,6 +885,84 @@ impl From<CloudVaultHashPurpose> for cloudvault::CloudVaultHashPurpose {
     }
 }
 
+impl From<HermesAadKind> for hermes::AadKind {
+    fn from(value: HermesAadKind) -> Self {
+        match value {
+            HermesAadKind::Request => Self::Request,
+            HermesAadKind::Key => Self::Key,
+            HermesAadKind::AuthenticatedRequest => Self::AuthenticatedRequest,
+            HermesAadKind::AuthenticatedKey => Self::AuthenticatedKey,
+            HermesAadKind::Chunk => Self::Chunk,
+            HermesAadKind::MediaSealKey => Self::MediaSealKey,
+            HermesAadKind::ControlSealKey => Self::ControlSealKey,
+            HermesAadKind::GatewayEvent => Self::GatewayEvent,
+            HermesAadKind::GatewayEventKey => Self::GatewayEventKey,
+            HermesAadKind::GatewayMessage => Self::GatewayMessage,
+            HermesAadKind::GatewayMessageKey => Self::GatewayMessageKey,
+            HermesAadKind::GatewayAttachmentKey => Self::GatewayAttachmentKey,
+            HermesAadKind::GatewayAttachmentManifest => Self::GatewayAttachmentManifest,
+            HermesAadKind::GatewayAttachmentBody => Self::GatewayAttachmentBody,
+        }
+    }
+}
+
+impl From<TokenPricingRates> for pricing::TokenRates {
+    fn from(value: TokenPricingRates) -> Self {
+        Self {
+            input_nano_usd_per_m_token: value.input_nano_usd_per_m_token,
+            output_nano_usd_per_m_token: value.output_nano_usd_per_m_token,
+            cache_creation_nano_usd_per_m_token: value.cache_creation_nano_usd_per_m_token,
+            cache_read_nano_usd_per_m_token: value.cache_read_nano_usd_per_m_token,
+        }
+    }
+}
+
+impl From<hermes::HermesError> for HermesFfiError {
+    fn from(value: hermes::HermesError) -> Self {
+        match value {
+            hermes::HermesError::InvalidAadArguments => Self::InvalidAadArguments,
+            hermes::HermesError::InvalidKeyLength => Self::InvalidKeyLength,
+            hermes::HermesError::InvalidNonceLength => Self::InvalidNonceLength,
+            hermes::HermesError::InvalidCiphertext => Self::InvalidCiphertext,
+            hermes::HermesError::AuthenticationFailed => Self::AuthenticationFailed,
+            hermes::HermesError::InvalidHkdfLength => Self::InvalidHkdfLength,
+            hermes::HermesError::HmacFailure => Self::HmacFailure,
+            hermes::HermesError::InvalidAadComponent => Self::InvalidAadComponent,
+            hermes::HermesError::InputTooLarge => Self::InputTooLarge,
+            hermes::HermesError::InvalidP256PublicKey => Self::InvalidP256PublicKey,
+        }
+    }
+}
+
+impl From<TokenPricingBuckets> for pricing::TokenBuckets {
+    fn from(value: TokenPricingBuckets) -> Self {
+        Self {
+            input_tokens: value.input_tokens,
+            output_tokens: value.output_tokens,
+            cache_creation_tokens: value.cache_creation_tokens,
+            cache_read_tokens: value.cache_read_tokens,
+        }
+    }
+}
+
+impl From<pricing::LegacyKimiMetrics> for LegacyKimiPricingResult {
+    fn from(value: pricing::LegacyKimiMetrics) -> Self {
+        Self {
+            model: value.model,
+            total_tokens: value.total_tokens,
+            cost_nano_usd: value.cost_nano_usd,
+        }
+    }
+}
+
+impl From<pricing::PricingError> for PricingFfiError {
+    fn from(value: pricing::PricingError) -> Self {
+        match value {
+            pricing::PricingError::ArithmeticOverflow => Self::ArithmeticOverflow,
+        }
+    }
+}
+
 impl From<cloudvault::CloudVaultError> for CloudVaultFfiError {
     fn from(value: cloudvault::CloudVaultError) -> Self {
         match value {
@@ -560,6 +984,7 @@ impl From<cloudvault::CloudVaultError> for CloudVaultFfiError {
             }
             cloudvault::CloudVaultError::InvalidP256PublicKey => Self::InvalidP256PublicKey,
             cloudvault::CloudVaultError::InvalidEscrowWireLength => Self::InvalidEscrowWireLength,
+            cloudvault::CloudVaultError::InputTooLarge => Self::InputTooLarge,
         }
     }
 }
@@ -613,6 +1038,300 @@ impl From<cloudvault_search::CloudVaultSearchError> for CloudVaultFfiError {
             cloudvault_search::CloudVaultSearchError::LimitTooLarge => Self::SearchLimitTooLarge,
             cloudvault_search::CloudVaultSearchError::TooManyTokens => Self::SearchTooManyTokens,
             cloudvault_search::CloudVaultSearchError::DerivationFailure => Self::DerivationFailure,
+        }
+    }
+}
+
+impl From<cloudvault_rewrap::CloudVaultDocumentRewrapError> for CloudVaultFfiError {
+    fn from(value: cloudvault_rewrap::CloudVaultDocumentRewrapError) -> Self {
+        match value {
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::Crypto(error) => error.into(),
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::NewVaultKeyIdMismatch => {
+                Self::NewVaultKeyIdMismatch
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::BoundsExceeded => {
+                Self::RewrapBoundsExceeded
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::InvalidFieldSet => {
+                Self::InvalidRewrapFieldSet
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::InvalidEnvelope => {
+                Self::InvalidRewrapEnvelope
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::InvalidNoncePlan => {
+                Self::InvalidRewrapNoncePlan
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::InvalidText => {
+                Self::InvalidRewrapText
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::IntegrityMismatch => {
+                Self::RewrapIntegrityMismatch
+            }
+            cloudvault_rewrap::CloudVaultDocumentRewrapError::InvalidKeyRotation => {
+                Self::InvalidRewrapKeyRotation
+            }
+        }
+    }
+}
+
+impl TryFrom<CloudVaultDocumentRewrapRequest>
+    for cloudvault_rewrap::CloudVaultDocumentRewrapRequest
+{
+    type Error = CloudVaultFfiError;
+
+    fn try_from(value: CloudVaultDocumentRewrapRequest) -> Result<Self, Self::Error> {
+        Ok(Self {
+            uid: value.uid,
+            collection: value.collection,
+            doc_id: value.doc_id,
+            document_field_names: value.document_field_names,
+            envelopes: value
+                .envelopes
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<_>, _>>()?,
+            reseal_nonce_plan: value
+                .reseal_nonce_plan
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            vault_generation: value.vault_generation,
+            rotation_job_id: value.rotation_job_id,
+        })
+    }
+}
+
+impl From<CloudVaultResealNonce> for cloudvault_rewrap::CloudVaultResealNonce {
+    fn from(value: CloudVaultResealNonce) -> Self {
+        Self {
+            field_name: value.field_name,
+            nonce: value.nonce,
+        }
+    }
+}
+
+impl TryFrom<CloudVaultDocumentEnvelope> for cloudvault_rewrap::CloudVaultDocumentEnvelope {
+    type Error = CloudVaultFfiError;
+
+    fn try_from(value: CloudVaultDocumentEnvelope) -> Result<Self, Self::Error> {
+        let CloudVaultDocumentEnvelope {
+            kind,
+            field_name,
+            schema_version,
+            algorithm,
+            key_version,
+            vault_key_id,
+            nonce,
+            ciphertext,
+            tag,
+            sealed_box_base64,
+            plaintext_sha256,
+            plaintext_hmac,
+            integrity_hash_version,
+            aad,
+            has_created_at,
+        } = value;
+        match kind {
+            CloudVaultDocumentEnvelopeKind::SealedPayload => {
+                if nonce.is_some()
+                    || ciphertext.is_some()
+                    || tag.is_some()
+                    || plaintext_sha256.is_some()
+                    || plaintext_hmac.is_some()
+                    || integrity_hash_version.is_some()
+                    || has_created_at
+                {
+                    return Err(CloudVaultFfiError::InvalidRewrapEnvelope);
+                }
+                Ok(Self::SealedPayload {
+                    field_name,
+                    schema_version: schema_version
+                        .ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    algorithm,
+                    key_version,
+                    vault_key_id: vault_key_id.ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    sealed_box_base64: sealed_box_base64
+                        .ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    aad,
+                })
+            }
+            CloudVaultDocumentEnvelopeKind::SealedText => {
+                if vault_key_id.is_some()
+                    || sealed_box_base64.is_some()
+                    || plaintext_sha256.is_some()
+                    || plaintext_hmac.is_some()
+                    || integrity_hash_version.is_some()
+                    || has_created_at
+                {
+                    return Err(CloudVaultFfiError::InvalidRewrapEnvelope);
+                }
+                Ok(Self::SealedText {
+                    field_name,
+                    schema_version,
+                    algorithm,
+                    key_version,
+                    nonce: nonce.ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    ciphertext: ciphertext.ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    tag: tag.ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    aad,
+                })
+            }
+            CloudVaultDocumentEnvelopeKind::Blob => {
+                if vault_key_id.is_some()
+                    || nonce.is_some()
+                    || ciphertext.is_some()
+                    || tag.is_some()
+                {
+                    return Err(CloudVaultFfiError::InvalidRewrapEnvelope);
+                }
+                Ok(Self::Blob {
+                    field_name,
+                    schema_version: schema_version
+                        .ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    algorithm,
+                    key_version,
+                    plaintext_sha256,
+                    plaintext_hmac,
+                    integrity_hash_version,
+                    sealed_box_base64: sealed_box_base64
+                        .ok_or(CloudVaultFfiError::InvalidRewrapEnvelope)?,
+                    aad,
+                    has_created_at,
+                })
+            }
+        }
+    }
+}
+
+impl From<cloudvault_rewrap::CloudVaultDocumentRewrapResult> for CloudVaultDocumentRewrapResult {
+    fn from(value: cloudvault_rewrap::CloudVaultDocumentRewrapResult) -> Self {
+        Self {
+            changed_fields: value.changed_fields,
+            skipped_fields: value.skipped_fields,
+            rewrapped_envelopes: value
+                .rewrapped_envelopes
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            companion_update_intents: value
+                .companion_update_intents
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            preserved_member_intents: value
+                .preserved_member_intents
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            vault_generation_update: value.vault_generation_update,
+            rotation_job_id_update: value.rotation_job_id_update,
+        }
+    }
+}
+
+impl From<cloudvault_rewrap::CloudVaultPreservedEnvelopeMemberIntent>
+    for CloudVaultPreservedEnvelopeMemberIntent
+{
+    fn from(value: cloudvault_rewrap::CloudVaultPreservedEnvelopeMemberIntent) -> Self {
+        Self {
+            source_field_name: value.source_field_name,
+            member_name: value.member_name,
+        }
+    }
+}
+
+impl From<cloudvault_rewrap::CloudVaultCompanionUpdateIntent> for CloudVaultCompanionUpdateIntent {
+    fn from(value: cloudvault_rewrap::CloudVaultCompanionUpdateIntent) -> Self {
+        Self {
+            source_field_name: value.source_field_name,
+            companion_field_name: value.companion_field_name,
+            vault_key_id: value.vault_key_id,
+        }
+    }
+}
+
+impl From<cloudvault_rewrap::CloudVaultDocumentEnvelope> for CloudVaultDocumentEnvelope {
+    fn from(value: cloudvault_rewrap::CloudVaultDocumentEnvelope) -> Self {
+        match value {
+            cloudvault_rewrap::CloudVaultDocumentEnvelope::SealedPayload {
+                field_name,
+                schema_version,
+                algorithm,
+                key_version,
+                vault_key_id,
+                sealed_box_base64,
+                aad,
+            } => Self {
+                kind: CloudVaultDocumentEnvelopeKind::SealedPayload,
+                field_name,
+                schema_version: Some(schema_version),
+                algorithm,
+                key_version,
+                vault_key_id: Some(vault_key_id),
+                nonce: None,
+                ciphertext: None,
+                tag: None,
+                sealed_box_base64: Some(sealed_box_base64),
+                plaintext_sha256: None,
+                plaintext_hmac: None,
+                integrity_hash_version: None,
+                aad,
+                has_created_at: false,
+            },
+            cloudvault_rewrap::CloudVaultDocumentEnvelope::SealedText {
+                field_name,
+                schema_version,
+                algorithm,
+                key_version,
+                nonce,
+                ciphertext,
+                tag,
+                aad,
+            } => Self {
+                kind: CloudVaultDocumentEnvelopeKind::SealedText,
+                field_name,
+                schema_version,
+                algorithm,
+                key_version,
+                vault_key_id: None,
+                nonce: Some(nonce),
+                ciphertext: Some(ciphertext),
+                tag: Some(tag),
+                sealed_box_base64: None,
+                plaintext_sha256: None,
+                plaintext_hmac: None,
+                integrity_hash_version: None,
+                aad,
+                has_created_at: false,
+            },
+            cloudvault_rewrap::CloudVaultDocumentEnvelope::Blob {
+                field_name,
+                schema_version,
+                algorithm,
+                key_version,
+                plaintext_sha256,
+                plaintext_hmac,
+                integrity_hash_version,
+                sealed_box_base64,
+                aad,
+                has_created_at,
+            } => Self {
+                kind: CloudVaultDocumentEnvelopeKind::Blob,
+                field_name,
+                schema_version: Some(schema_version),
+                algorithm,
+                key_version,
+                vault_key_id: None,
+                nonce: None,
+                ciphertext: None,
+                tag: None,
+                sealed_box_base64: Some(sealed_box_base64),
+                plaintext_sha256,
+                plaintext_hmac,
+                integrity_hash_version,
+                aad,
+                has_created_at,
+            },
         }
     }
 }
@@ -781,7 +1500,7 @@ mod tests {
 
     #[test]
     fn ffi_surface_reports_version_and_parses_without_throwing() -> Result<(), CloudVaultFfiError> {
-        assert_eq!(domain_core_abi_version(), 2);
+        assert_eq!(domain_core_abi_version(), 3);
         assert_eq!(domain_core_version(), "0.1.0");
         let result =
             parse_claude_statusline_quota(br#"{"five_hour":{"used_percentage":42}}"#.to_vec());
@@ -809,7 +1528,7 @@ mod tests {
             QuotaParseStatus::Parsed
         ));
         assert_eq!(
-            cloud_vault_sha256_hex(b"OpenBurnBar".to_vec()),
+            cloud_vault_sha256_hex(b"OpenBurnBar".to_vec())?,
             "59800516f507102c0d9257d31f7bc779b876d6ad343d610387e74ece02a35ad7"
         );
         let key: Vec<u8> = (0_u8..32).collect();
@@ -872,21 +1591,6 @@ mod tests {
         assert_eq!(
             cloud_vault_escrow_open(wire, shared_secret)?,
             Vec::<u8>::new()
-        );
-        let analysis = cloud_vault_search_analyze("The QUICK, quick fox and X.".into())?;
-        assert_eq!(analysis.normalized_tokens, ["quick", "quick", "fox"]);
-        let search = cloud_vault_search(CloudVaultSearchRequest {
-            operation: CloudVaultSearchOperation::Token,
-            text: "The QUICK, quick fox and X.".into(),
-            vault_key: (0_u8..32).collect(),
-            limit: 250,
-        })?;
-        assert_eq!(
-            search.hashes,
-            [
-                "e9110d7f0c79afdae6316235800dc41b",
-                "66e59fa04825dc74f5ef7cb57884d4ed"
-            ]
         );
         Ok(())
     }

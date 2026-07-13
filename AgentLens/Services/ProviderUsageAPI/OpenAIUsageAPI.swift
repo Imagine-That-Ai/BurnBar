@@ -128,7 +128,7 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
         guard input > 0 || output > 0 else { return nil }
 
         let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: uncachedInput,
             outputTokens: output,
             cacheReadTokens: cached

@@ -177,7 +177,7 @@ final class HermesRelayAuthenticatedRequestOpenerTests: XCTestCase {
         let senderPeerNodeID = "node-1"
         let keyID = "relay-sender-key-1"
         let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
-        let keyAAD = HermesRelayCrypto.authenticatedKeyAAD(
+        let keyAAD = try HermesRelayCrypto.authenticatedKeyAAD(
             uid: uid,
             connectionID: connectionID,
             requestID: requestID,
@@ -201,7 +201,7 @@ final class HermesRelayAuthenticatedRequestOpenerTests: XCTestCase {
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: JSONEncoder().encode(body),
             keyData: keyData,
-            aad: HermesRelayCrypto.authenticatedRequestAAD(
+            aad: try HermesRelayCrypto.authenticatedRequestAAD(
                 uid: uid,
                 connectionID: connectionID,
                 requestID: requestID,
