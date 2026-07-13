@@ -241,7 +241,7 @@ public partial class App : Application
 
             if (palette.ChosenDestinationKey is { } key)
             {
-                _mainWindow.Shell.Navigate(key);
+                _mainWindow.Shell.Navigate(key, palette.ChosenSessionId);
             }
         }
         catch (Exception ex)
