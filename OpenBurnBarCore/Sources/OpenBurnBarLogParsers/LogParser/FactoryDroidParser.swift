@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Factory Droid Parser
 
@@ -38,7 +39,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
         try parseSynchronously(options: options)
     }
 
-    func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
+    public func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
         let sessionsURL = sessionsDirectoryOverride
             ?? URL(fileURLWithPath: NSString(string: provider.logDirectory).expandingTildeInPath)
         let sessionsPath = sessionsURL.path

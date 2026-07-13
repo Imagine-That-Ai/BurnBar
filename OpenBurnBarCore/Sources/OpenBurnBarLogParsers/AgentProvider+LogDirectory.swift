@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Provider log-directory resolution (Windows-buildable Engine seam)
 //

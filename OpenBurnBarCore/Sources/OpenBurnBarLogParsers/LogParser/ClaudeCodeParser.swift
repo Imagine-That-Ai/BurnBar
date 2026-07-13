@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Claude Code Parser
 
@@ -37,7 +37,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         try parseSynchronously(options: options)
     }
 
-    func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
+    public func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
         let projectsURL = projectsDirectoryOverride
             ?? URL(fileURLWithPath: (provider.logDirectory as NSString).expandingTildeInPath)
         let projectsPath = projectsURL.path

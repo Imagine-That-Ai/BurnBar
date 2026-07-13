@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarKernel
+import OpenBurnBarSQLiteReader
 
 // MARK: - Hermes Parser
 //
@@ -42,7 +44,7 @@ public final class HermesParser: LogParser, Sendable {
         try parseSynchronously()
     }
 
-    func parseSynchronously() throws -> ParseResult {
+    public func parseSynchronously() throws -> ParseResult {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var seenSessionIds: Set<String> = []
