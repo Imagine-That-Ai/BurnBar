@@ -1,6 +1,44 @@
 use openburnbar_domain_core::quota as core;
+use openburnbar_domain_core::{cloudvault, quota};
+use zeroize::Zeroize;
 
-pub const DOMAIN_CORE_ABI_VERSION: u32 = 1;
+pub const DOMAIN_CORE_ABI_VERSION: u32 = 2;
+
+#[derive(Clone, Copy, Debug, uniffi::Enum)]
+pub enum CloudVaultHashPurpose {
+    BlobIntegrity,
+    SessionBody,
+    SessionChunk,
+    ProjectMemoryContent,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultAadContextInput {
+    pub uid: String,
+    pub collection: String,
+    pub doc_id: String,
+    pub field: String,
+    pub schema_version: u32,
+    pub purpose: Option<String>,
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum CloudVaultFfiError {
+    #[error("cloud vault keys must be exactly 32 bytes")]
+    InvalidKeyLength,
+    #[error("cloud vault AAD parts must be non-empty and contain no controls or pipe")]
+    InvalidAadPart,
+    #[error("cloud vault AAD schema versions must be at least 2")]
+    InvalidSchemaVersion,
+    #[error("the envelope AAD does not match the expected context")]
+    AadMismatch,
+    #[error("legacy CloudVault v1 AAD is rejected")]
+    LegacyAadRejected,
+    #[error("the session body hash version is unsupported")]
+    UnsupportedHashVersion,
+    #[error("the CloudVault key derivation failed")]
+    DerivationFailure,
+}
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
 pub enum QuotaParseStatus {
@@ -95,8 +133,128 @@ pub fn domain_core_version() -> String {
 }
 
 #[uniffi::export]
+pub fn cloud_vault_aad_v2(
+    uid: String,
+    collection: String,
+    doc_id: String,
+    field: String,
+    schema_version: u32,
+    purpose: Option<String>,
+) -> Result<String, CloudVaultFfiError> {
+    Ok(cloud_vault_aad_context(
+        &uid,
+        &collection,
+        &doc_id,
+        &field,
+        schema_version,
+        purpose.as_deref(),
+    )?
+    .v2_string())
+}
+
+#[uniffi::export]
+pub fn cloud_vault_aad_v1(
+    uid: String,
+    collection: String,
+    doc_id: String,
+    field: String,
+) -> Result<String, CloudVaultFfiError> {
+    Ok(cloud_vault_aad_context(&uid, &collection, &doc_id, &field, 2, None)?.v1_string())
+}
+
+#[uniffi::export]
+pub fn cloud_vault_resolve_aad(
+    envelope_aad: String,
+    context: CloudVaultAadContextInput,
+    reject_legacy: bool,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    cloud_vault_aad_context(
+        &context.uid,
+        &context.collection,
+        &context.doc_id,
+        &context.field,
+        context.schema_version,
+        context.purpose.as_deref(),
+    )?
+    .resolve(&envelope_aad, reject_legacy)
+    .map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn cloud_vault_sha256_hex(data: Vec<u8>) -> String {
+    cloudvault::sha256_hex(&data)
+}
+
+#[uniffi::export]
+pub fn cloud_vault_key_id(mut key: Vec<u8>) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::vault_key_id(&key).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_keyed_hash_hex(
+    data: Vec<u8>,
+    mut key: Vec<u8>,
+    purpose: CloudVaultHashPurpose,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::keyed_hash_hex(&data, &key, purpose.into()).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_expected_session_body_hash(
+    data: Vec<u8>,
+    mut key: Vec<u8>,
+    body_hash_version: u32,
+) -> Result<String, CloudVaultFfiError> {
+    let result =
+        cloudvault::expected_session_body_hash(&data, &key, body_hash_version).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+fn cloud_vault_aad_context(
+    uid: &str,
+    collection: &str,
+    doc_id: &str,
+    field: &str,
+    schema_version: u32,
+    purpose: Option<&str>,
+) -> Result<cloudvault::CloudVaultAadContext, CloudVaultFfiError> {
+    cloudvault::CloudVaultAadContext::new(uid, collection, doc_id, field, schema_version, purpose)
+        .map_err(Into::into)
+}
+
+#[uniffi::export]
 pub fn parse_claude_statusline_quota(payload: Vec<u8>) -> QuotaParseResult {
-    core::parse_claude_statusline_quota(&payload).into()
+    quota::parse_claude_statusline_quota(&payload).into()
+}
+
+impl From<CloudVaultHashPurpose> for cloudvault::CloudVaultHashPurpose {
+    fn from(value: CloudVaultHashPurpose) -> Self {
+        match value {
+            CloudVaultHashPurpose::BlobIntegrity => Self::BlobIntegrity,
+            CloudVaultHashPurpose::SessionBody => Self::SessionBody,
+            CloudVaultHashPurpose::SessionChunk => Self::SessionChunk,
+            CloudVaultHashPurpose::ProjectMemoryContent => Self::ProjectMemoryContent,
+        }
+    }
+}
+
+impl From<cloudvault::CloudVaultError> for CloudVaultFfiError {
+    fn from(value: cloudvault::CloudVaultError) -> Self {
+        match value {
+            cloudvault::CloudVaultError::InvalidKeyLength => Self::InvalidKeyLength,
+            cloudvault::CloudVaultError::InvalidAadPart => Self::InvalidAadPart,
+            cloudvault::CloudVaultError::InvalidSchemaVersion => Self::InvalidSchemaVersion,
+            cloudvault::CloudVaultError::AadMismatch => Self::AadMismatch,
+            cloudvault::CloudVaultError::LegacyAadRejected => Self::LegacyAadRejected,
+            cloudvault::CloudVaultError::UnsupportedHashVersion => Self::UnsupportedHashVersion,
+            cloudvault::CloudVaultError::DerivationFailure => Self::DerivationFailure,
+        }
+    }
 }
 
 #[uniffi::export]
@@ -234,8 +392,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ffi_surface_reports_version_and_parses_without_throwing() {
-        assert_eq!(domain_core_abi_version(), 1);
+    fn ffi_surface_reports_version_and_parses_without_throwing() -> Result<(), CloudVaultFfiError> {
+        assert_eq!(domain_core_abi_version(), 2);
         assert_eq!(domain_core_version(), "0.1.0");
         let result =
             parse_claude_statusline_quota(br#"{"five_hour":{"used_percentage":42}}"#.to_vec());
@@ -262,5 +420,23 @@ mod tests {
             .status,
             QuotaParseStatus::Parsed
         ));
+        assert_eq!(
+            cloud_vault_sha256_hex(b"OpenBurnBar".to_vec()),
+            "59800516f507102c0d9257d31f7bc779b876d6ad343d610387e74ece02a35ad7"
+        );
+        let key: Vec<u8> = (0_u8..32).collect();
+        assert_eq!(
+            cloud_vault_key_id(key.clone())?,
+            "v1_630dcd2966c4336691125448bbb25b4f"
+        );
+        assert_eq!(
+            cloud_vault_aad_v2("u".into(), "c".into(), "d".into(), "f".into(), 2, None,)?,
+            "OpenBurnBar-CloudVault-aad-v2|u|c|d|f|2|f"
+        );
+        assert!(matches!(
+            cloud_vault_expected_session_body_hash(vec![], key, 99),
+            Err(CloudVaultFfiError::UnsupportedHashVersion)
+        ));
+        Ok(())
     }
 }

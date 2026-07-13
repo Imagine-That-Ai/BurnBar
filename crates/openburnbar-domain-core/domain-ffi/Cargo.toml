@@ -12,7 +12,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
 openburnbar-domain-core = { path = "../domain-core", version = "0.1.0" }
+thiserror = "2"
 uniffi = { version = "=0.28.3", features = ["cli"] }
+zeroize = "1"
 
 [build-dependencies]
 uniffi = { version = "=0.28.3", features = ["build"] }

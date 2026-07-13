@@ -1,5 +1,5 @@
 [workspace]
-members = ["domain-core", "domain-ffi"]
+members = ["domain-core", "domain-ffi", "domain-wasm"]
 resolver = "2"
 
 [workspace.package]

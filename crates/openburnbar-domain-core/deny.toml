@@ -20,6 +20,8 @@ allow = [
   "MIT",
   "AGPL-3.0-only",
   "Apache-2.0",
+  # RustCrypto's constant-time `subtle` primitive uses this permissive license.
+  "BSD-3-Clause",
   "MPL-2.0",
   "Unicode-3.0",
 ]

@@ -1,0 +1,93 @@
+{
+  "schema": "openburnbar.domain-core.cloudvault.deterministic.v1",
+  "source": "windows/tests/cloudsync/Fixtures/cloudvault-kat-vectors.json",
+  "aad": [
+    {
+      "uid": "user_alice",
+      "collection": "cloudSessions",
+      "docID": "doc_123",
+      "field": "title",
+      "schemaVersion": 2,
+      "purpose": "title",
+      "v1": "OpenBurnBar-CloudVault-aad-v1|user_alice|cloudSessions|doc_123|title",
+      "v2": "OpenBurnBar-CloudVault-aad-v2|user_alice|cloudSessions|doc_123|title|2|title"
+    },
+    {
+      "uid": "user_alice",
+      "collection": "cloudMissions",
+      "docID": "m_1",
+      "field": "sealedPayload",
+      "schemaVersion": 3,
+      "purpose": "mission-event",
+      "v1": "OpenBurnBar-CloudVault-aad-v1|user_alice|cloudMissions|m_1|sealedPayload",
+      "v2": "OpenBurnBar-CloudVault-aad-v2|user_alice|cloudMissions|m_1|sealedPayload|3|mission-event"
+    }
+  ],
+  "sha256": [
+    {
+      "dataHex": "",
+      "hex": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "dataHex": "4f70656e4275726e426172",
+      "hex": "59800516f507102c0d9257d31f7bc779b876d6ad343d610387e74ece02a35ad7"
+    }
+  ],
+  "vaultKeyID": [
+    {
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "value": "v1_630dcd2966c4336691125448bbb25b4f"
+    },
+    {
+      "keyHex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      "value": "v1_72dbb7336c76780023f83da4c355f2ee"
+    },
+    {
+      "keyHex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "value": "v1_ca2a4fe727faaecf16ecd130a86e0885"
+    }
+  ],
+  "keyedHashes": [
+    {
+      "purpose": "blob-integrity",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "dataHex": "74686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67",
+      "hex": "bc634e0b46beab56ba01e1a234d2f293d009d29e4dec54e35b853d732b5f463f"
+    },
+    {
+      "purpose": "session-body",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "dataHex": "74686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67",
+      "hex": "24c3844a66a803df5cfaf2b64eec2e841d88cc71cfeb07d2fa1be1435ca551ea"
+    },
+    {
+      "purpose": "session-chunk",
+      "keyHex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      "dataHex": "74686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67",
+      "hex": "42a8fe2314eaf574378ff0ac79da33adbc1b8189bec5cf8b90fc03b15a2436f6"
+    },
+    {
+      "purpose": "project-memory-content",
+      "keyHex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "dataHex": "74686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67",
+      "hex": "84f1494aa0e7b11f496c2fdbf44472851e28e4c4c837f345afa28162725f3078"
+    }
+  ],
+  "expectedSessionBodyHash": [
+    {
+      "bodyHashVersion": 0,
+      "kind": "sha256",
+      "hex": "05c6e08f1d9fdafa03147fcb8f82f124c76d2f70e3d989dc8aadb5e7d7450bec"
+    },
+    {
+      "bodyHashVersion": 1,
+      "kind": "sha256",
+      "hex": "05c6e08f1d9fdafa03147fcb8f82f124c76d2f70e3d989dc8aadb5e7d7450bec"
+    },
+    {
+      "bodyHashVersion": 2,
+      "kind": "session-body-hmac",
+      "hex": "24c3844a66a803df5cfaf2b64eec2e841d88cc71cfeb07d2fa1be1435ca551ea"
+    }
+  ]
+}
