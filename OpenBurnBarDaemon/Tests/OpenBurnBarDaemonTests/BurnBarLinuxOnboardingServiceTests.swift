@@ -154,6 +154,30 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         }
     }
 
+    func testProviderDataProbeRequiresCatalogAndReportsFirstDataReadback() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-provider-data-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let detail = try BurnBarLinuxOnboardingService.verifyProviderData(
+            at: directory,
+            providerCount: 12
+        )
+        XCTAssertTrue(detail.contains("provider catalog loaded with 12 provider definitions"))
+
+        XCTAssertThrowsError(
+            try BurnBarLinuxOnboardingService.verifyProviderData(
+                at: directory,
+                providerCount: 0
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? BurnBarLinuxOnboardingError,
+                .providerPathsUnavailable("The bundled provider catalog is empty; first-run data cannot be loaded.")
+            )
+        }
+    }
+
     private func makeService(stateURL: URL) -> BurnBarLinuxOnboardingService {
         BurnBarLinuxOnboardingService(
             stateURL: stateURL,
