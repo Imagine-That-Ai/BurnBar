@@ -250,24 +250,13 @@ pub async fn check_linux_update(current_version: &str, package_channel: &str) ->
     }
 
     let architecture = normalized_architecture(std::env::consts::ARCH);
-    let artifact_type = match package_channel {
-        "deb" => "deb",
-        "rpm" => "rpm",
-        _ => "appimage",
+    let Some(artifact_type) = artifact_type_for_package_channel(package_channel) else {
+        return LinuxUpdateStatus::unavailable(
+            current_version,
+            format!("Installed package channel {package_channel} is unsupported."),
+        );
     };
-    let artifact = feed
-        .artifacts
-        .iter()
-        .find(|artifact| artifact.r#type == artifact_type && artifact.architecture == architecture)
-        .cloned()
-        .or_else(|| {
-            feed.artifacts
-                .iter()
-                .find(|artifact| {
-                    artifact.r#type == "appimage" && artifact.architecture == architecture
-                })
-                .cloned()
-        });
+    let artifact = select_artifact(&feed, artifact_type, architecture);
     let Some(artifact) = artifact else {
         return LinuxUpdateStatus::invalid(
             current_version,
@@ -326,6 +315,15 @@ pub fn attach_update_instructions(
             &status.current_version,
             status.latest_version.as_deref(),
         ));
+    }
+    if status.artifact.is_none()
+        || status.signature_state != "verified"
+        || status.feed_freshness != "fresh"
+    {
+        if let Some(instructions) = status.instructions.as_mut() {
+            instructions.install.available = false;
+            instructions.rollback.available = false;
+        }
     }
     status
 }
@@ -411,6 +409,26 @@ fn channel_info(package_channel: &str) -> LinuxUpdateChannelInfo {
             explanation: "The owning package channel is not known, so install and rollback actions stay unavailable until it is identified.".into(),
         },
     }
+}
+
+fn artifact_type_for_package_channel(package_channel: &str) -> Option<&'static str> {
+    match package_channel {
+        "deb" => Some("deb"),
+        "rpm" => Some("rpm"),
+        "appimage" => Some("appimage"),
+        _ => None,
+    }
+}
+
+fn select_artifact(
+    feed: &LinuxUpdateFeed,
+    artifact_type: &str,
+    architecture: &str,
+) -> Option<LinuxUpdateArtifact> {
+    feed.artifacts
+        .iter()
+        .find(|artifact| artifact.r#type == artifact_type && artifact.architecture == architecture)
+        .cloned()
 }
 
 fn now_unix_seconds() -> u64 {
@@ -519,20 +537,20 @@ fn build_update_instructions(
             id: "rollback".into(),
             label: "Roll back with apt".into(),
             instruction: format!(
-                "Choose a previously signed version, verify its digest, then ask apt to install that exact version (current: {current_version}, feed: {version})."
+                "No previous signed Debian artifact is attached to this feed (current: {current_version}, feed: {version}); rollback stays unavailable until release metadata supplies one."
             ),
-            command: Some("sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION".into()),
-            available: true,
+            command: None,
+            available: false,
             requires_confirmation: true,
         },
         "dnf" => LinuxUpdateAction {
             id: "rollback".into(),
             label: "Roll back with dnf".into(),
             instruction: format!(
-                "Choose a previously signed version, verify its digest, then downgrade the package (current: {current_version}, feed: {version})."
+                "No previous signed RPM artifact is attached to this feed (current: {current_version}, feed: {version}); rollback stays unavailable until release metadata supplies one."
             ),
-            command: Some("sudo dnf downgrade open-burn-bar".into()),
-            available: true,
+            command: None,
+            available: false,
             requires_confirmation: true,
         },
         "appimage" => LinuxUpdateAction {
@@ -540,7 +558,7 @@ fn build_update_instructions(
             label: "Restore the previous AppImage".into(),
             instruction: "Restore a previously signed AppImage backup, verify its digest, and relaunch OpenBurnBar.".into(),
             command: None,
-            available: true,
+            available: false,
             requires_confirmation: true,
         },
         _ => LinuxUpdateAction {
@@ -940,14 +958,36 @@ mod tests {
         assert_eq!(deb.package_manager, "apt");
         assert!(deb.install.command.is_none());
         assert!(!deb.install.available);
-        assert_eq!(
-            deb.rollback.command.as_deref(),
-            Some("sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION")
-        );
+        assert!(deb.rollback.command.is_none());
+        assert!(!deb.rollback.available);
+        let rpm = build_update_instructions("rpm", "1.0.0", Some("1.1.0"));
+        assert!(rpm.rollback.command.is_none());
+        assert!(!rpm.rollback.available);
         let unknown = build_update_instructions("unknown", "1.0.0", None);
         assert!(!unknown.install.available);
         assert!(!unknown.rollback.available);
         assert!(unknown.install.command.is_none());
+    }
+
+    #[test]
+    fn artifact_selection_never_falls_back_to_a_different_package_channel_or_architecture() {
+        let release = feed();
+        assert_eq!(artifact_type_for_package_channel("deb"), Some("deb"));
+        assert_eq!(artifact_type_for_package_channel("rpm"), Some("rpm"));
+        assert_eq!(
+            artifact_type_for_package_channel("appimage"),
+            Some("appimage")
+        );
+        assert_eq!(artifact_type_for_package_channel("flatpak"), None);
+        assert!(select_artifact(&release, "deb", "aarch64").is_none());
+        assert!(select_artifact(&release, "rpm", "x86_64").is_none());
+        assert!(select_artifact(&release, "appimage", "mips64").is_none());
+        assert_eq!(
+            select_artifact(&release, "appimage", "aarch64")
+                .expect("matching appimage")
+                .architecture,
+            "aarch64"
+        );
     }
 
     #[test]
@@ -983,6 +1023,27 @@ mod tests {
     }
 
     #[test]
+    fn aligned_daemon_preserves_only_real_appimage_install_guidance() {
+        let mut status = LinuxUpdateStatus::unavailable("1.0.0", "signed feed");
+        status.state = "available".into();
+        status.artifact = Some(artifact("appimage", "x86_64"));
+        status.signature_state = "verified".into();
+        status.feed_freshness = "fresh".into();
+        status.instructions = Some(build_update_instructions(
+            "appimage",
+            "1.0.0",
+            Some("1.1.0"),
+        ));
+        let status = attach_compatibility(status, "1.0.0", Some("1.0.0"));
+        let compatibility = status.compatibility.expect("compatibility metadata");
+        assert_eq!(compatibility.state, "aligned");
+        let instructions = status.instructions.expect("instructions");
+        assert!(instructions.install.available);
+        assert!(instructions.install.command.is_none());
+        assert!(!instructions.rollback.available);
+    }
+
+    #[test]
     fn package_mutation_actions_are_disabled_when_feed_is_not_fresh() {
         let mut status = LinuxUpdateStatus::unavailable("1.0.0", "stale feed");
         status.state = "available".into();
@@ -994,6 +1055,28 @@ mod tests {
         assert!(!instructions.install.available);
         assert!(!instructions.rollback.available);
         assert!(instructions.restart.available);
+    }
+
+    #[test]
+    fn stale_future_and_tampered_feed_states_are_not_mutation_ready() {
+        assert_eq!(feed_freshness("2000-01-01T00:00:00Z"), "stale");
+        assert_eq!(feed_freshness("2999-01-01T00:00:00Z"), "future");
+        assert!(feed_age_seconds("2999-01-01T00:00:00Z").is_none());
+
+        let mut tampered = LinuxUpdateStatus::invalid(
+            "1.0.0",
+            "Update feed detached Ed25519 signature verification failed.",
+        );
+        tampered.instructions = Some(build_update_instructions(
+            "appimage",
+            "1.0.0",
+            Some("1.1.0"),
+        ));
+        let tampered = attach_compatibility(tampered, "1.0.0", Some("1.0.0"));
+        let instructions = tampered.instructions.expect("instructions");
+        assert_eq!(tampered.signature_state, "rejected");
+        assert!(!instructions.install.available);
+        assert!(!instructions.rollback.available);
     }
 
     #[test]
@@ -1016,6 +1099,8 @@ mod tests {
         assert_eq!(instructions.package_manager, "dnf");
         assert!(instructions.install.command.is_none());
         assert!(!instructions.install.available);
+        assert!(instructions.rollback.command.is_none());
+        assert!(!instructions.rollback.available);
         assert!(status.latest_version.is_none());
     }
 
@@ -1047,6 +1132,25 @@ mod tests {
             .unwrap_err()
             .contains("older than installed"));
         assert!(classify_version("1.2.3", "1.2.3-beta.1").is_err());
+    }
+
+    #[test]
+    fn replayed_signed_version_is_rejected_when_it_would_downgrade_or_is_stale() {
+        assert!(classify_version("1.2.3", "1.2.2").is_err());
+        let mut replay = LinuxUpdateStatus::unavailable("1.2.3", "replayed signed feed");
+        replay.state = "current".into();
+        replay.artifact = Some(artifact("appimage", "x86_64"));
+        replay.signature_state = "verified".into();
+        replay.feed_freshness = "stale".into();
+        replay.instructions = Some(build_update_instructions(
+            "appimage",
+            "1.2.3",
+            Some("1.2.3"),
+        ));
+        let replay = attach_compatibility(replay, "1.2.3", Some("1.2.3"));
+        let instructions = replay.instructions.expect("instructions");
+        assert!(!instructions.install.available);
+        assert!(!instructions.rollback.available);
     }
 
     #[test]

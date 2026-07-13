@@ -48,28 +48,25 @@ function fixtureUpdateStatus(): LinuxUpdateStatus {
     publishedAt: '2026-07-09T00:00:00Z',
     notes: 'Fixture status. Live builds verify the detached feed signature in native Rust.',
     instructions: {
-      packageManager: 'apt',
+      packageManager: 'unknown',
       install: {
         id: 'install',
-        label: 'Update with apt',
-        instruction: 'Fixture package action.',
-        command: 'sudo apt-get install --only-upgrade open-burn-bar',
-        available: true,
+        label: 'Use your package manager',
+        instruction: 'Fixture mode does not identify an owning package channel.',
+        available: false,
         requiresConfirmation: true
       },
       rollback: {
         id: 'rollback',
-        label: 'Roll back with apt',
-        instruction: 'Fixture rollback action.',
-        command: 'sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION',
-        available: true,
+        label: 'Rollback guidance unavailable',
+        instruction: 'Fixture mode has no signed previous artifact.',
+        available: false,
         requiresConfirmation: true
       },
       restart: {
         id: 'restart',
         label: 'Restart OpenBurnBar',
-        instruction: 'Fixture restart action.',
-        command: 'systemctl --user restart openburnbar-daemon.service',
+        instruction: 'Fixture mode cannot restart a package-owned daemon.',
         available: true,
         requiresConfirmation: false
       }
