@@ -1544,7 +1544,7 @@ public enum CloudVaultCrypto {
             nonce: nonce,
             authenticating: aadContext.data
         )
-        return try sealedText(from: sealed, keyVersion: keyVersion, aadContext: aadContext)
+        return sealedText(from: sealed, keyVersion: keyVersion, aadContext: aadContext)
     }
 
     private static func sealBlob(
@@ -1630,6 +1630,22 @@ public enum CloudVaultCrypto {
             nonce: try base64EncodeThroughDomainCore(sealed.nonce),
             ciphertext: try base64EncodeThroughDomainCore(sealed.ciphertext),
             tag: try base64EncodeThroughDomainCore(sealed.tag),
+            aad: aadContext?.stringValue
+        )
+    }
+
+    private static func sealedText(
+        from sealed: PlatformAESGCMSealedBox,
+        keyVersion: Int,
+        aadContext: CloudVaultAADContext?
+    ) -> CloudVaultSealedText {
+        CloudVaultSealedText(
+            schemaVersion: aadContext == nil ? nil : currentSealedTextSchemaVersion,
+            algorithm: aesGCMAlgorithm,
+            keyVersion: keyVersion,
+            nonce: sealed.nonce.base64EncodedString(),
+            ciphertext: sealed.ciphertext.base64EncodedString(),
+            tag: sealed.tag.base64EncodedString(),
             aad: aadContext?.stringValue
         )
     }
