@@ -2482,13 +2482,13 @@ function normalizeDatabaseCodeQuery(query: string): string {
 
 function mapAccountStatus(raw: RawJsonValue): AccountStatus {
   const status = pick(raw, 'status') ?? raw;
-  const signedIn = Boolean(pick(status, 'signedIn', 'signed_in', 'authenticated'));
+  const rawSignedIn = Boolean(pick(status, 'signedIn', 'signed_in', 'authenticated'));
   // The daemon's Linux auth authority deliberately collapses refreshing,
   // locked, configuration-required, and error phases into an unavailable
   // public state. Keep those failures visible instead of silently treating an
   // unknown/new phase as signed out (which could offer the wrong destructive
   // controls or hide a recoverable cloud session).
-  const rawState = str(pick(status, 'state'), signedIn ? 'active' : 'signed_out')
+  const rawState = str(pick(status, 'state'), rawSignedIn ? 'active' : 'signed_out')
     .trim()
     .toLowerCase()
     .replace(/-/g, '_');
@@ -2501,16 +2501,23 @@ function mapAccountStatus(raw: RawJsonValue): AccountStatus {
         : rawState === 'signed_out' || rawState === 'signedout'
           ? 'signed-out'
           : 'unavailable';
+  // Transitional and unavailable phases must not carry forward an old
+  // authenticated identity into renderer controls. The daemon may include
+  // signedIn/email while explaining a stale or rejected session; that is
+  // diagnostic input, not proof that cloud actions are safe to present.
+  const signedIn = rawSignedIn && (state === 'active' || state === 'awaiting-device-approval');
   const syncStateRaw = str(pick(status, 'syncState', 'sync_state'), signedIn ? 'active' : 'local-only');
-  const syncState: AccountStatus['syncState'] = syncStateRaw === 'active' || syncStateRaw === 'cloud-ready'
-    ? 'active'
-    : syncStateRaw === 'paused'
-      ? 'paused'
-      : 'local-only';
+  const syncState: AccountStatus['syncState'] = !signedIn
+    ? 'local-only'
+    : syncStateRaw === 'active' || syncStateRaw === 'cloud-ready'
+      ? 'active'
+      : syncStateRaw === 'paused'
+        ? 'paused'
+        : 'local-only';
   return {
     state,
     signedIn,
-    identityLabel: str(pick(status, 'identityLabel', 'email', 'label')) || undefined,
+    identityLabel: signedIn ? str(pick(status, 'identityLabel', 'email', 'label')) || undefined : undefined,
     trustClass: 'linux-lower-trust',
     syncState,
     lastSyncAt: str(pick(status, 'lastSyncAt', 'last_sync_at')) || undefined,

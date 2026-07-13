@@ -179,6 +179,25 @@ describe('AccountSurface', () => {
     expect(screen.queryByRole('button', { name: /Replace installation key/i })).toBeNull();
   });
 
+  it('does not present a stale identity or sign-out control for an unavailable daemon phase', () => {
+    setAccount({
+      data: {
+        ...signedOut,
+        state: 'unavailable',
+        signedIn: true,
+        identityLabel: 'stale@example.com',
+        syncState: 'active',
+        detail: 'refreshing'
+      }
+    });
+    render(<AccountSurface />);
+
+    expect(screen.queryByText('stale@example.com', { selector: 'strong' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Sign out$/i })).toBeNull();
+    expect(screen.getByText(/Plan · Local/i)).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toMatch(/temporarily unavailable/i);
+  });
+
   it('keeps replacement progress visible until identity rotation settles', async () => {
     const rotation = deferred<AccountStatus>();
     const accountRotateIdentity = vi.fn(() => rotation.promise);
