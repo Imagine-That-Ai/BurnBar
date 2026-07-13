@@ -266,7 +266,7 @@ class CloudVaultRotationRewrapWorker(
                             "storagePath" to uploadTicket.storagePath,
                             "sealedSnippet" to CloudVaultCrypto.sealedTextMap(sealedSnippet),
                             "tokenHashes" to
-                                CloudVaultCrypto.tokenHashes(
+                                CloudVaultCrypto.searchIndexTokenHashes(
                                     searchText,
                                     newKey,
                                     cloudSearchChunkTokenHashLimit,

@@ -1,5 +1,5 @@
 use openburnbar_domain_core::quota as core;
-use openburnbar_domain_core::{cloudvault, quota};
+use openburnbar_domain_core::{cloudvault, hermes, quota};
 use zeroize::Zeroize;
 
 pub const DOMAIN_CORE_ABI_VERSION: u32 = 2;
@@ -29,6 +29,18 @@ pub struct CloudVaultAesGcmDetachedBox {
     pub tag: Vec<u8>,
 }
 
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultRecoveryWrappedVaultKey {
+    pub combined: Vec<u8>,
+    pub verification_hash: String,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CloudVaultEscrowWireParts {
+    pub ephemeral_public_key: Vec<u8>,
+    pub aes_gcm_combined: Vec<u8>,
+}
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CloudVaultFfiError {
     #[error("cloud vault keys must be exactly 32 bytes")]
@@ -55,6 +67,50 @@ pub enum CloudVaultFfiError {
     InvalidUtf8,
     #[error("CloudVault Base64 must be canonical RFC 4648 standard encoding")]
     InvalidBase64,
+    #[error("recovery keys must contain at least 20 normalized letters or numbers")]
+    InvalidRecoveryKey,
+    #[error("P-256 ECDH shared secrets must be exactly 32 bytes")]
+    InvalidSharedSecretLength,
+    #[error("P-256 public keys must be valid 65-byte uncompressed X9.63 points")]
+    InvalidP256PublicKey,
+    #[error("the P-256 escrow wire must contain a public key and AES-GCM combined box")]
+    InvalidEscrowWireLength,
+}
+
+#[derive(Clone, Copy, Debug, uniffi::Enum)]
+pub enum HermesAadKind {
+    Request,
+    Key,
+    AuthenticatedRequest,
+    AuthenticatedKey,
+    Chunk,
+    MediaSealKey,
+    ControlSealKey,
+    GatewayEvent,
+    GatewayEventKey,
+    GatewayMessage,
+    GatewayMessageKey,
+    GatewayAttachmentKey,
+    GatewayAttachmentManifest,
+    GatewayAttachmentBody,
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum HermesFfiError {
+    #[error("Hermes AAD argument count does not match its domain")]
+    InvalidAadArguments,
+    #[error("Hermes symmetric keys must be exactly 32 bytes")]
+    InvalidKeyLength,
+    #[error("Hermes AES-GCM nonces must be exactly 12 bytes")]
+    InvalidNonceLength,
+    #[error("Hermes ciphertext is malformed")]
+    InvalidCiphertext,
+    #[error("Hermes AES-GCM authentication failed")]
+    AuthenticationFailed,
+    #[error("Hermes HKDF output length is invalid")]
+    InvalidHkdfLength,
+    #[error("Hermes HMAC initialization failed")]
+    HmacFailure,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -233,6 +289,148 @@ pub fn cloud_vault_expected_session_body_hash(
 }
 
 #[uniffi::export]
+pub fn hermes_relay_aad(
+    kind: HermesAadKind,
+    arguments: Vec<String>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::aad(kind.into(), &arguments).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_key_wrap_info_v1(aad: Vec<u8>) -> Vec<u8> {
+    hermes::key_wrap_info_v1(&aad)
+}
+
+#[uniffi::export]
+pub fn hermes_key_wrap_info_v2(
+    aad: Vec<u8>,
+    enc: Vec<u8>,
+    recipient_public_key: Vec<u8>,
+    sender_public_key: Vec<u8>,
+) -> Vec<u8> {
+    hermes::key_wrap_info_v2(&aad, &enc, &recipient_public_key, &sender_public_key)
+}
+
+#[uniffi::export]
+pub fn hermes_hpke_v3_info(aad: Vec<u8>) -> Vec<u8> {
+    hermes::hpke_v3_info(&aad)
+}
+
+#[uniffi::export]
+pub fn hermes_hkdf_sha256(
+    mut input_key_material: Vec<u8>,
+    salt: Vec<u8>,
+    info: Vec<u8>,
+    output_byte_count: u32,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::hkdf_sha256(
+        &input_key_material,
+        &salt,
+        &info,
+        output_byte_count as usize,
+    )
+    .map(|output| output.to_vec())
+    .map_err(Into::into);
+    input_key_material.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_sha256(bytes: Vec<u8>) -> Vec<u8> {
+    hermes::sha256(&bytes)
+}
+
+#[uniffi::export]
+pub fn hermes_hmac_sha256(mut key: Vec<u8>, data: Vec<u8>) -> Result<Vec<u8>, HermesFfiError> {
+    let output = hermes::hmac_sha256(&key, &data).map_err(Into::into);
+    key.zeroize();
+    output
+}
+
+#[uniffi::export]
+// reason: explicit fields preserve the versioned ratchet wire contract across UniFFI.
+#[allow(clippy::too_many_arguments, reason = "wire fields")]
+pub fn hermes_ratchet_envelope_aad(
+    associated_data: Vec<u8>,
+    algorithm: String,
+    session_id: String,
+    sender_device_id: String,
+    receiver_device_id: String,
+    ratchet_public_key_base64: String,
+    version: u64,
+    previous_chain_length: u64,
+    message_number: u64,
+    epoch: u64,
+) -> Vec<u8> {
+    hermes::ratchet_envelope_aad(
+        &associated_data,
+        &algorithm,
+        &session_id,
+        &sender_device_id,
+        &receiver_device_id,
+        &ratchet_public_key_base64,
+        version,
+        previous_chain_length,
+        message_number,
+        epoch,
+    )
+}
+
+#[uniffi::export]
+pub fn hermes_gateway_relay_safety_code(
+    agent_public_key: Vec<u8>,
+    phone_public_key: Vec<u8>,
+) -> String {
+    hermes::gateway_relay_safety_code(&agent_public_key, &phone_public_key)
+}
+
+#[uniffi::export]
+pub fn hermes_seal_base64(
+    plaintext: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+    nonce: Vec<u8>,
+) -> Result<String, HermesFfiError> {
+    let result = hermes::seal_base64(&plaintext, &key, &aad, &nonce).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_open_base64(
+    ciphertext: String,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::open_base64(&ciphertext, &key, &aad).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_seal_combined(
+    plaintext: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+    nonce: Vec<u8>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::seal_combined(&plaintext, &key, &aad, &nonce).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_open_combined(
+    combined: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::open_combined(&combined, &key, &aad).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
 pub fn cloud_vault_aes_gcm_seal_detached(
     plaintext: Vec<u8>,
     mut key: Vec<u8>,
@@ -308,6 +506,126 @@ pub fn cloud_vault_base64_decode_strict(value: String) -> Result<Vec<u8>, CloudV
     cloudvault::base64_decode_strict(&value).map_err(Into::into)
 }
 
+#[uniffi::export]
+pub fn cloud_vault_normalize_recovery_key(
+    mut recovery_key: String,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::normalize_recovery_key(&recovery_key).map_err(Into::into);
+    recovery_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_recovery_wrapping_key(
+    mut recovery_key: String,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::recovery_wrapping_key(&recovery_key)
+        .map(|mut key| {
+            let output = key.to_vec();
+            key.zeroize();
+            output
+        })
+        .map_err(Into::into);
+    recovery_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_recovery_verification_hash(
+    mut recovery_key: String,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::recovery_verification_hash(&recovery_key).map_err(Into::into);
+    recovery_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_recovery_wrap_vault_key(
+    mut vault_key: Vec<u8>,
+    mut recovery_key: String,
+    nonce: Vec<u8>,
+) -> Result<CloudVaultRecoveryWrappedVaultKey, CloudVaultFfiError> {
+    let result = cloudvault::recovery_wrap_vault_key(&vault_key, &recovery_key, &nonce)
+        .map(Into::into)
+        .map_err(Into::into);
+    vault_key.zeroize();
+    recovery_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_recovery_open_vault_key(
+    combined: Vec<u8>,
+    mut recovery_key: String,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::recovery_open_vault_key(&combined, &recovery_key).map_err(Into::into);
+    recovery_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_validate_p256_x963_public_key(
+    public_key: Vec<u8>,
+) -> Result<(), CloudVaultFfiError> {
+    cloudvault::validate_p256_x963_public_key(&public_key).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn cloud_vault_escrow_wrapping_key(
+    mut shared_secret: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::escrow_wrapping_key(&shared_secret)
+        .map(|mut key| {
+            let output = key.to_vec();
+            key.zeroize();
+            output
+        })
+        .map_err(Into::into);
+    shared_secret.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_escrow_assemble_wire(
+    ephemeral_public_key: Vec<u8>,
+    aes_gcm_combined: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    cloudvault::escrow_assemble_wire(&ephemeral_public_key, &aes_gcm_combined).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn cloud_vault_escrow_split_wire(
+    wire: Vec<u8>,
+) -> Result<CloudVaultEscrowWireParts, CloudVaultFfiError> {
+    cloudvault::escrow_split_wire(&wire)
+        .map(Into::into)
+        .map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn cloud_vault_escrow_seal(
+    mut plaintext: Vec<u8>,
+    ephemeral_public_key: Vec<u8>,
+    mut shared_secret: Vec<u8>,
+    nonce: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::escrow_seal(&plaintext, &ephemeral_public_key, &shared_secret, &nonce)
+        .map_err(Into::into);
+    plaintext.zeroize();
+    shared_secret.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_escrow_open(
+    wire: Vec<u8>,
+    mut shared_secret: Vec<u8>,
+) -> Result<Vec<u8>, CloudVaultFfiError> {
+    let result = cloudvault::escrow_open(&wire, &shared_secret).map_err(Into::into);
+    shared_secret.zeroize();
+    result
+}
+
 fn cloud_vault_aad_context(
     uid: &str,
     collection: &str,
@@ -336,6 +654,41 @@ impl From<CloudVaultHashPurpose> for cloudvault::CloudVaultHashPurpose {
     }
 }
 
+impl From<HermesAadKind> for hermes::AadKind {
+    fn from(value: HermesAadKind) -> Self {
+        match value {
+            HermesAadKind::Request => Self::Request,
+            HermesAadKind::Key => Self::Key,
+            HermesAadKind::AuthenticatedRequest => Self::AuthenticatedRequest,
+            HermesAadKind::AuthenticatedKey => Self::AuthenticatedKey,
+            HermesAadKind::Chunk => Self::Chunk,
+            HermesAadKind::MediaSealKey => Self::MediaSealKey,
+            HermesAadKind::ControlSealKey => Self::ControlSealKey,
+            HermesAadKind::GatewayEvent => Self::GatewayEvent,
+            HermesAadKind::GatewayEventKey => Self::GatewayEventKey,
+            HermesAadKind::GatewayMessage => Self::GatewayMessage,
+            HermesAadKind::GatewayMessageKey => Self::GatewayMessageKey,
+            HermesAadKind::GatewayAttachmentKey => Self::GatewayAttachmentKey,
+            HermesAadKind::GatewayAttachmentManifest => Self::GatewayAttachmentManifest,
+            HermesAadKind::GatewayAttachmentBody => Self::GatewayAttachmentBody,
+        }
+    }
+}
+
+impl From<hermes::HermesError> for HermesFfiError {
+    fn from(value: hermes::HermesError) -> Self {
+        match value {
+            hermes::HermesError::InvalidAadArguments => Self::InvalidAadArguments,
+            hermes::HermesError::InvalidKeyLength => Self::InvalidKeyLength,
+            hermes::HermesError::InvalidNonceLength => Self::InvalidNonceLength,
+            hermes::HermesError::InvalidCiphertext => Self::InvalidCiphertext,
+            hermes::HermesError::AuthenticationFailed => Self::AuthenticationFailed,
+            hermes::HermesError::InvalidHkdfLength => Self::InvalidHkdfLength,
+            hermes::HermesError::HmacFailure => Self::HmacFailure,
+        }
+    }
+}
+
 impl From<cloudvault::CloudVaultError> for CloudVaultFfiError {
     fn from(value: cloudvault::CloudVaultError) -> Self {
         match value {
@@ -351,6 +704,12 @@ impl From<cloudvault::CloudVaultError> for CloudVaultFfiError {
             cloudvault::CloudVaultError::AuthenticationFailed => Self::AuthenticationFailed,
             cloudvault::CloudVaultError::InvalidUtf8 => Self::InvalidUtf8,
             cloudvault::CloudVaultError::InvalidBase64 => Self::InvalidBase64,
+            cloudvault::CloudVaultError::InvalidRecoveryKey => Self::InvalidRecoveryKey,
+            cloudvault::CloudVaultError::InvalidSharedSecretLength => {
+                Self::InvalidSharedSecretLength
+            }
+            cloudvault::CloudVaultError::InvalidP256PublicKey => Self::InvalidP256PublicKey,
+            cloudvault::CloudVaultError::InvalidEscrowWireLength => Self::InvalidEscrowWireLength,
         }
     }
 }
@@ -361,6 +720,24 @@ impl From<cloudvault::AesGcmDetachedBox> for CloudVaultAesGcmDetachedBox {
             nonce: value.nonce,
             ciphertext: value.ciphertext,
             tag: value.tag,
+        }
+    }
+}
+
+impl From<cloudvault::RecoveryWrappedVaultKey> for CloudVaultRecoveryWrappedVaultKey {
+    fn from(value: cloudvault::RecoveryWrappedVaultKey) -> Self {
+        Self {
+            combined: value.combined,
+            verification_hash: value.verification_hash,
+        }
+    }
+}
+
+impl From<cloudvault::EscrowWireParts> for CloudVaultEscrowWireParts {
+    fn from(value: cloudvault::EscrowWireParts) -> Self {
+        Self {
+            ephemeral_public_key: value.ephemeral_public_key,
+            aes_gcm_combined: value.aes_gcm_combined,
         }
     }
 }
@@ -566,6 +943,44 @@ mod tests {
             cloud_vault_base64_decode_strict("AA==\n".into()),
             Err(CloudVaultFfiError::InvalidBase64)
         ));
+        let recovery_key = "abc-defg-hjkm-npq-rst-vwxyz-23456789".to_owned();
+        let recovery_wrapped = cloud_vault_recovery_wrap_vault_key(
+            (0_u8..32).collect(),
+            recovery_key.clone(),
+            (0_u8..12).collect(),
+        )?;
+        assert_eq!(
+            cloud_vault_recovery_open_vault_key(recovery_wrapped.combined, recovery_key)?,
+            (0_u8..32).collect::<Vec<_>>()
+        );
+
+        let public_key = decode_hex(
+            "046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296\
+             4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+        );
+        cloud_vault_validate_p256_x963_public_key(public_key.clone())?;
+        let shared_secret: Vec<u8> = (0xa0_u8..=0xbf).collect();
+        let wire = cloud_vault_escrow_seal(
+            vec![],
+            public_key,
+            shared_secret.clone(),
+            (0_u8..12).collect(),
+        )?;
+        assert_eq!(
+            cloud_vault_escrow_open(wire, shared_secret)?,
+            Vec::<u8>::new()
+        );
         Ok(())
+    }
+
+    fn decode_hex(value: &str) -> Vec<u8> {
+        value
+            .split_ascii_whitespace()
+            .collect::<String>()
+            .as_bytes()
+            .chunks_exact(2)
+            .filter_map(|pair| std::str::from_utf8(pair).ok())
+            .filter_map(|pair| u8::from_str_radix(pair, 16).ok())
+            .collect()
     }
 }

@@ -46,21 +46,54 @@ platform acquisition layer.
 | SHA-256, HMAC, HKDF, vault-key IDs and blob hashes | Same four owners, with unequal subsets | Move deterministic byte transforms first; browser may call WASM because no key handle is required |
 | AES-256-GCM text/blob/payload seal/open | Same four owners | Require bidirectional cross-open plus wrong-key/AAD/tamper rejection; never fall back after authentication failure |
 | Recovery-key wrap and P-256 escrow wrap | Swift/Kotlin/C#/Console subsets | Preserve platform key custody; migrate portable byte/key-material operations only after KAT coverage is shared |
-| Search tokens, semantic hashes and document rewrap | Swift/Kotlin, with Console consumers | Migrate after primitives; keep persistence, Firestore mapping, rotation orchestration, and random policy outside Rust |
+| Search tokens, semantic hashes and document rewrap | Swift/Kotlin | [`cloudvault-search-contract.json`](../tests/fixtures/domain-core/cloudvault/v1/cloudvault-search-contract.json); migrate after primitives; keep persistence, Firestore mapping, rotation orchestration, and random policy outside Rust |
 
 The Console stores non-extractable `CryptoKey` values in IndexedDB. Rust/WASM
 must not require exporting those keys. WebCrypto operations using such handles
 remain behind a narrow browser adapter unless a reviewed callback/handle design
 preserves non-extractability.
 
+### CloudVault search v1 contract
+
+Swift is the established v1 behavior because macOS/iOS already write and query
+the hosted session index with distinct index/query trapdoors. Android writes and
+queries the same Firestore fields, so its former reduced transform was a parity
+bug rather than a separate product contract. The shared fixture pins the
+corrected behavior executed by both legacy implementations before Rust owns it:
+
+- Lowercase with Unicode letter/number token boundaries. Ordinary tokens have
+  at least two characters and omit the frozen stopword set; exact-phrase and
+  semantic tokenization additionally retain the single token `x`.
+- Preserve token order and duplicates during tokenization. Hash operations
+  remove duplicate terms while retaining first occurrence order.
+- Index terms contain unique ordinary tokens, every 3 through 16 character
+  prefix shorter than the complete token, then exact-phrase bigrams and
+  trigrams. Query terms contain unique ordinary tokens, one 3 through 16
+  character prefix per token, then the same phrase terms.
+- Semantic features are insertion-ordered and deduplicated: concept aliases,
+  tokens, the first matching suffix stem, five-character prefixes, then adjacent
+  bigrams. The six base concepts and three compound concepts remain exactly as
+  implemented in `CloudVaultCrypto.semanticConcepts`.
+- Token and semantic hashes use their existing v1 HKDF/HMAC domains, truncate
+  HMAC-SHA256 to 16 bytes, preserve first occurrence order, and return at most
+  `limit` values. A zero or negative limit returns an empty array.
+- The vault key is part of every derivation. Equal plaintext under different
+  vault keys must not share fixture outputs.
+
+Before this contract, Kotlin split Unicode text with an ASCII-only regex, did
+not emit prefix or phrase trapdoors, omitted `x` and semantic concepts, and
+threw for a negative token limit. This contract slice corrects those accidental
+differences and records them in the fixture's `resolvedLegacyDivergences`; it
+does not claim rollout evidence or make Rust authoritative.
+
 ## C2 Hermes operations
 
 | Slice | Current owners | Contract/deletion boundary |
 |---|---|---|
-| Request/response/control/media AAD | Swift `HermesRelayCrypto`; Android `HermesRelayCrypto*` | Canonicalize relay and signal-envelope fixtures; delete serializers only after byte-for-byte vectors pass |
-| AES payload seal/open and v1/v2 key wrap | Swift/Kotlin | Cross-open and rejection vectors through Rust; transport remains in iroh/platform code |
-| Authenticated HPKE v3 | Swift/Kotlin | Preserve pinned sender authentication and existing v3 vectors; no auth fallback |
-| Ratchet transitions, skipped keys, replay, restore | Swift/Kotlin | Use an opaque UniFFI session or versioned state-in/state-out API with atomic transitions and thread-safety tests |
+| Request/response/control/media AAD | Rust plus Swift/Kotlin during rollout | `tests/fixtures/domain-core/hermes/v1`; delete serializers after rollout evidence |
+| AES payload seal/open and v1/v2 key-wrap KDF/info | Rust plus Swift/Kotlin during rollout | Rust owns framing/KDF; CryptoKit/JCA retain P-256 ECDH and secure nonce generation |
+| Authenticated HPKE v3 info | Rust plus Swift/Kotlin during rollout | Pinned sender authentication and platform private-key custody remain unchanged; no auth fallback |
+| Ratchet KDF, envelope AAD, and payload AEAD | Rust plus Swift/Kotlin during rollout | Platform code retains atomic state transitions, skipped-key maps, replay policy, P-256 ratchets, and persistence |
 
 Functions validate schemas and proof-of-possession but do not decrypt relay
 payloads, so they are not a native relay-crypto implementation.

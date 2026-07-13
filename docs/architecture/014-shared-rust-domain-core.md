@@ -44,11 +44,12 @@ contract to ABI 2 and adds Android and Wasm packaging. Consumers must verify the
 expected ABI before invoking Rust; release artifacts must prove native loading
 on their supported architectures rather than relying on binding compilation.
 
-CloudVault C1b keeps randomness and key custody with each platform while Rust
-owns AES-256-GCM authentication and the canonical `nonce || ciphertext || tag`
-wire shape. Native callers cross the boundary once per complete payload. The
-browser adapter exposes byte-array KAT helpers, but production WebCrypto handles
-remain non-extractable and are never exported merely to call Wasm.
+Hermes C2 extends ABI 2 without transferring P-256 private-key custody. Rust
+owns deterministic relay/ratchet wire bytes, KDFs, safety codes, and payload
+AEAD. CryptoKit and JCA still generate/store private keys, perform ECDH/HPKE,
+generate nonces, and commit ratchet state. The rollout flag is
+`OPENBURNBAR_DOMAIN_CORE_HERMES_MODE`; authentication failures never fall back
+to legacy code.
 
 ## Consequences
 

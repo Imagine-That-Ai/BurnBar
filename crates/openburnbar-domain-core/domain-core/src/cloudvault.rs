@@ -12,8 +12,13 @@ const AAD_V2_PREFIX: &str = "OpenBurnBar-CloudVault-aad-v2";
 const AAD_V1_PREFIX: &str = "OpenBurnBar-CloudVault-aad-v1";
 const HMAC_SALT: &[u8] = b"OpenBurnBar-CloudVault-HMAC-Salt-v1";
 const HMAC_INFO_PREFIX: &str = "OpenBurnBar-CloudVault-HMAC-v1";
+const RECOVERY_SALT: &[u8] = b"OpenBurnBar-Recovery-Salt-v1";
+const RECOVERY_WRAP_INFO: &[u8] = b"OpenBurnBar-Recovery-Wrap-v1";
+const ESCROW_HKDF_INFO: &[u8] = b"OpenBurnBar-Escrow-v1";
 pub const AES_GCM_NONCE_LENGTH: usize = 12;
 pub const AES_GCM_TAG_LENGTH: usize = 16;
+pub const P256_X963_PUBLIC_KEY_LENGTH: usize = 65;
+pub const P256_ECDH_SHARED_SECRET_LENGTH: usize = 32;
 pub const SESSION_BODY_HASH_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,6 +66,14 @@ pub enum CloudVaultError {
     InvalidUtf8,
     #[error("CloudVault Base64 must be canonical RFC 4648 standard encoding")]
     InvalidBase64,
+    #[error("recovery keys must contain at least 20 normalized letters or numbers")]
+    InvalidRecoveryKey,
+    #[error("P-256 ECDH shared secrets must be exactly 32 bytes")]
+    InvalidSharedSecretLength,
+    #[error("P-256 public keys must be valid 65-byte uncompressed X9.63 points")]
+    InvalidP256PublicKey,
+    #[error("the P-256 escrow wire must contain a public key and AES-GCM combined box")]
+    InvalidEscrowWireLength,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,6 +81,18 @@ pub struct AesGcmDetachedBox {
     pub nonce: Vec<u8>,
     pub ciphertext: Vec<u8>,
     pub tag: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecoveryWrappedVaultKey {
+    pub combined: Vec<u8>,
+    pub verification_hash: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowWireParts {
+    pub ephemeral_public_key: Vec<u8>,
+    pub aes_gcm_combined: Vec<u8>,
 }
 
 impl AesGcmDetachedBox {
@@ -307,6 +332,145 @@ pub fn base64_decode_strict(value: &str) -> Result<Vec<u8>, CloudVaultError> {
         return Err(CloudVaultError::InvalidBase64);
     }
     Ok(decoded)
+}
+
+pub fn normalize_recovery_key(recovery_key: &str) -> Result<String, CloudVaultError> {
+    // Android and Windows still normalize UTF-16 code units, so accepting
+    // supplementary-plane letters here would derive a key those clients cannot
+    // reproduce. Reject them until every shipped platform shares scalar-value
+    // normalization.
+    if recovery_key
+        .chars()
+        .any(|character| character as u32 > 0xFFFF)
+    {
+        return Err(CloudVaultError::InvalidRecoveryKey);
+    }
+    let normalized: String = recovery_key
+        .chars()
+        .flat_map(char::to_uppercase)
+        .filter(|character| character.is_alphanumeric())
+        .collect();
+    if normalized.encode_utf16().count() < 20 {
+        return Err(CloudVaultError::InvalidRecoveryKey);
+    }
+    Ok(normalized)
+}
+
+pub fn recovery_wrapping_key(recovery_key: &str) -> Result<[u8; 32], CloudVaultError> {
+    let mut normalized = normalize_recovery_key(recovery_key)?;
+    let result = derive_key_32(normalized.as_bytes(), RECOVERY_SALT, RECOVERY_WRAP_INFO);
+    normalized.zeroize();
+    result
+}
+
+pub fn recovery_verification_hash(recovery_key: &str) -> Result<String, CloudVaultError> {
+    let mut key = recovery_wrapping_key(recovery_key)?;
+    let result = sha256_hex(&key);
+    key.zeroize();
+    Ok(result)
+}
+
+pub fn recovery_wrap_vault_key(
+    vault_key: &[u8],
+    recovery_key: &str,
+    nonce: &[u8],
+) -> Result<RecoveryWrappedVaultKey, CloudVaultError> {
+    require_vault_key(vault_key)?;
+    let mut wrapping_key = recovery_wrapping_key(recovery_key)?;
+    let combined = aes_gcm_seal_combined(vault_key, &wrapping_key, nonce, b"");
+    let verification_hash = sha256_hex(&wrapping_key);
+    wrapping_key.zeroize();
+    Ok(RecoveryWrappedVaultKey {
+        combined: combined?,
+        verification_hash,
+    })
+}
+
+pub fn recovery_open_vault_key(
+    combined: &[u8],
+    recovery_key: &str,
+) -> Result<Vec<u8>, CloudVaultError> {
+    let mut wrapping_key = recovery_wrapping_key(recovery_key)?;
+    let opened = aes_gcm_open_combined(combined, &wrapping_key, b"");
+    wrapping_key.zeroize();
+    let vault_key = opened?;
+    require_vault_key(&vault_key)?;
+    Ok(vault_key)
+}
+
+pub fn validate_p256_x963_public_key(public_key: &[u8]) -> Result<(), CloudVaultError> {
+    if public_key.len() != P256_X963_PUBLIC_KEY_LENGTH || public_key.first() != Some(&0x04) {
+        return Err(CloudVaultError::InvalidP256PublicKey);
+    }
+    p256::PublicKey::from_sec1_bytes(public_key)
+        .map(|_| ())
+        .map_err(|_| CloudVaultError::InvalidP256PublicKey)
+}
+
+pub fn escrow_wrapping_key(shared_secret: &[u8]) -> Result<[u8; 32], CloudVaultError> {
+    if shared_secret.len() != P256_ECDH_SHARED_SECRET_LENGTH {
+        return Err(CloudVaultError::InvalidSharedSecretLength);
+    }
+    derive_key_32(shared_secret, b"", ESCROW_HKDF_INFO)
+}
+
+pub fn escrow_assemble_wire(
+    ephemeral_public_key: &[u8],
+    aes_gcm_combined: &[u8],
+) -> Result<Vec<u8>, CloudVaultError> {
+    validate_p256_x963_public_key(ephemeral_public_key)?;
+    if aes_gcm_combined.len() < AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH {
+        return Err(CloudVaultError::InvalidEscrowWireLength);
+    }
+    let mut wire = Vec::with_capacity(ephemeral_public_key.len() + aes_gcm_combined.len());
+    wire.extend_from_slice(ephemeral_public_key);
+    wire.extend_from_slice(aes_gcm_combined);
+    Ok(wire)
+}
+
+pub fn escrow_split_wire(wire: &[u8]) -> Result<EscrowWireParts, CloudVaultError> {
+    if wire.len() < P256_X963_PUBLIC_KEY_LENGTH + AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH {
+        return Err(CloudVaultError::InvalidEscrowWireLength);
+    }
+    let (ephemeral_public_key, aes_gcm_combined) = wire.split_at(P256_X963_PUBLIC_KEY_LENGTH);
+    validate_p256_x963_public_key(ephemeral_public_key)?;
+    Ok(EscrowWireParts {
+        ephemeral_public_key: ephemeral_public_key.to_vec(),
+        aes_gcm_combined: aes_gcm_combined.to_vec(),
+    })
+}
+
+pub fn escrow_seal(
+    plaintext: &[u8],
+    ephemeral_public_key: &[u8],
+    shared_secret: &[u8],
+    nonce: &[u8],
+) -> Result<Vec<u8>, CloudVaultError> {
+    validate_p256_x963_public_key(ephemeral_public_key)?;
+    let mut wrapping_key = escrow_wrapping_key(shared_secret)?;
+    let combined = aes_gcm_seal_combined(plaintext, &wrapping_key, nonce, b"");
+    wrapping_key.zeroize();
+    escrow_assemble_wire(ephemeral_public_key, &combined?)
+}
+
+pub fn escrow_open(wire: &[u8], shared_secret: &[u8]) -> Result<Vec<u8>, CloudVaultError> {
+    let parts = escrow_split_wire(wire)?;
+    let mut wrapping_key = escrow_wrapping_key(shared_secret)?;
+    let opened = aes_gcm_open_combined(&parts.aes_gcm_combined, &wrapping_key, b"");
+    wrapping_key.zeroize();
+    opened
+}
+
+fn derive_key_32(
+    input_key_material: &[u8],
+    salt: &[u8],
+    info: &[u8],
+) -> Result<[u8; 32], CloudVaultError> {
+    let hkdf = Hkdf::<Sha256>::new(Some(salt), input_key_material);
+    let mut derived_key = [0_u8; 32];
+    hkdf.expand(info, &mut derived_key)
+        .map_err(|_| CloudVaultError::DerivationFailure)?;
+    Ok(derived_key)
 }
 
 fn require_vault_key(key: &[u8]) -> Result<(), CloudVaultError> {
@@ -549,6 +713,150 @@ mod tests {
                 b""
             ),
             Err(CloudVaultError::InvalidUtf8)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn recovery_contract_matches_canonical_fixture_and_fails_closed(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = fixture()?;
+        let vector = &fixture["recovery"];
+        let formatted_key = required_string(vector, "formattedKey")?;
+        let vault_key = decode_hex(required_string(vector, "vaultKeyHex")?)?;
+        let nonce = decode_hex(required_string(vector, "nonceHex")?)?;
+
+        assert_eq!(
+            normalize_recovery_key(formatted_key)?,
+            required_string(vector, "normalizedKey")?
+        );
+        assert_eq!(
+            hex_lower(&recovery_wrapping_key(formatted_key)?),
+            required_string(vector, "wrappingKeyHex")?
+        );
+        assert_eq!(
+            recovery_verification_hash(formatted_key)?,
+            required_string(vector, "verificationHash")?
+        );
+        assert_eq!(
+            normalize_recovery_key(required_string(vector, "unicodeFormattedKey")?),
+            Err(CloudVaultError::InvalidRecoveryKey)
+        );
+        assert_eq!(
+            normalize_recovery_key(&"𐐀".repeat(20)),
+            Err(CloudVaultError::InvalidRecoveryKey)
+        );
+
+        let wrapped = recovery_wrap_vault_key(&vault_key, formatted_key, &nonce)?;
+        assert_eq!(
+            hex_lower(&wrapped.combined),
+            required_string(vector, "combinedHex")?
+        );
+        assert_eq!(
+            wrapped.verification_hash,
+            required_string(vector, "verificationHash")?
+        );
+        assert_eq!(
+            recovery_open_vault_key(&wrapped.combined, formatted_key)?,
+            vault_key
+        );
+
+        assert_eq!(
+            normalize_recovery_key("too-short"),
+            Err(CloudVaultError::InvalidRecoveryKey)
+        );
+        assert_eq!(
+            recovery_open_vault_key(&wrapped.combined, "ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ"),
+            Err(CloudVaultError::AuthenticationFailed)
+        );
+        assert_eq!(
+            recovery_wrap_vault_key(&[0_u8; 31], formatted_key, &nonce),
+            Err(CloudVaultError::InvalidKeyLength)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn p256_escrow_contract_matches_canonical_fixture_and_accepts_empty_plaintext(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = fixture()?;
+        let vector = &fixture["p256Escrow"];
+        let public_key = decode_hex(required_string(vector, "ephemeralPublicKeyHex")?)?;
+        let shared_secret = decode_hex(required_string(vector, "sharedSecretHex")?)?;
+        let nonce = decode_hex(required_string(vector, "nonceHex")?)?;
+        let plaintext = decode_hex(required_string(vector, "plaintextHex")?)?;
+
+        validate_p256_x963_public_key(&public_key)?;
+        assert_eq!(
+            hex_lower(&escrow_wrapping_key(&shared_secret)?),
+            required_string(vector, "wrappingKeyHex")?
+        );
+        let wire = escrow_seal(&plaintext, &public_key, &shared_secret, &nonce)?;
+        assert_eq!(hex_lower(&wire), required_string(vector, "wireHex")?);
+        assert_eq!(escrow_open(&wire, &shared_secret)?, plaintext);
+
+        let parts = escrow_split_wire(&wire)?;
+        assert_eq!(parts.ephemeral_public_key, public_key);
+        assert_eq!(
+            escrow_assemble_wire(&public_key, &parts.aes_gcm_combined)?,
+            wire
+        );
+
+        let empty_wire = escrow_seal(b"", &public_key, &shared_secret, &nonce)?;
+        assert_eq!(
+            hex_lower(&empty_wire),
+            required_string(vector, "emptyWireHex")?
+        );
+        assert_eq!(escrow_open(&empty_wire, &shared_secret)?, b"");
+        Ok(())
+    }
+
+    #[test]
+    fn p256_escrow_rejects_malformed_points_wires_and_secrets(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = fixture()?;
+        let vector = &fixture["p256Escrow"];
+        let public_key = decode_hex(required_string(vector, "ephemeralPublicKeyHex")?)?;
+        let shared_secret = decode_hex(required_string(vector, "sharedSecretHex")?)?;
+        let nonce = decode_hex(required_string(vector, "nonceHex")?)?;
+
+        let mut compressed = public_key[1..34].to_vec();
+        compressed.insert(0, 0x02);
+        assert_eq!(
+            validate_p256_x963_public_key(&compressed),
+            Err(CloudVaultError::InvalidP256PublicKey)
+        );
+        let mut off_curve = public_key.clone();
+        if let Some(last) = off_curve.last_mut() {
+            *last ^= 1;
+        }
+        assert_eq!(
+            validate_p256_x963_public_key(&off_curve),
+            Err(CloudVaultError::InvalidP256PublicKey)
+        );
+        assert_eq!(
+            escrow_wrapping_key(&[0_u8; 31]),
+            Err(CloudVaultError::InvalidSharedSecretLength)
+        );
+        assert_eq!(
+            escrow_split_wire(&[0_u8; 92]),
+            Err(CloudVaultError::InvalidEscrowWireLength)
+        );
+
+        let wire = escrow_seal(b"payload", &public_key, &shared_secret, &nonce)?;
+        let mut wrong_secret = shared_secret.clone();
+        wrong_secret[0] ^= 1;
+        assert_eq!(
+            escrow_open(&wire, &wrong_secret),
+            Err(CloudVaultError::AuthenticationFailed)
+        );
+        let mut tampered = wire;
+        if let Some(last) = tampered.last_mut() {
+            *last ^= 1;
+        }
+        assert_eq!(
+            escrow_open(&tampered, &shared_secret),
+            Err(CloudVaultError::AuthenticationFailed)
         );
         Ok(())
     }
