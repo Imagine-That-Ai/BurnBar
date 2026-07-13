@@ -1,4 +1,10 @@
 import Foundation
+// Merge (train ← origin/main) AE-IMPORT: P-13 moved this file (main's #1590 adapter) from
+// the Core monolith into OpenBurnBarQuota. The `ProviderQuotaBucket` / `ProviderQuotaWindowKind`
+// / `ProviderQuotaUnit` types it returns live in OpenBurnBarKernel (SharedModels), so the file
+// needs an explicit Kernel import in its new home — identical to the sibling ClaudeQuotaAdapter /
+// XAIQuotaAdapter / CodexQuotaAdapter, which already import OpenBurnBarKernel.
+import OpenBurnBarKernel
 
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI
