@@ -904,12 +904,12 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
 
         guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
 
-        let cost = try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
+        guard let cost = try? OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: cacheReadTokens
-        )
+        ) else { return nil }
         let projectName = workingDirectory.map { ($0 as NSString).lastPathComponent.nonEmpty ?? $0 } ?? sessionId
 
         let usage = TokenUsage(

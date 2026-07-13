@@ -1253,6 +1253,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNotEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: agentKey, phonePublicKeyBase64: otherKey))
         // Whitespace around either key must not change the code.
         XCTAssertEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: "  \(agentKey)\n", phonePublicKeyBase64: phoneKey))
+        XCTAssertEqual(code, HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: agentKey, phonePublicKeyBase64: "\t\(phoneKey)  "))
         // MP-22: a missing/blank/invalid key yields no code rather than a fabricated one.
         XCTAssertNil(HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: "   ", phonePublicKeyBase64: phoneKey))
         XCTAssertNil(HermesGatewayAgentKeyPinStore.safetyCode(agentPublicKeyBase64: agentKey, phonePublicKeyBase64: ""))

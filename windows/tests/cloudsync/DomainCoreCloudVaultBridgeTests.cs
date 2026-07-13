@@ -122,6 +122,73 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
         }
 
         [Fact]
+        public void RustMode_NativeLoadFailureNeverFallsBackWhenNativeRequirementFlagIsUnset()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "rust");
+            using var nativeRequirement = new EnvironmentVariableScope("OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE", null);
+            var legacyInvoked = false;
+
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                DomainCoreCloudVaultBridge.Apply(
+                    "forced_native_load_failure",
+                    () => throw new DllNotFoundException("forced native load failure"),
+                    () =>
+                    {
+                        legacyInvoked = true;
+                        return "legacy-result";
+                    },
+                    StringComparer.Ordinal.Equals));
+
+            Assert.Contains("Rust mode requires ABI v3", error.Message, StringComparison.Ordinal);
+            Assert.False(legacyInvoked);
+        }
+
+        [Fact]
+        public void ShadowMode_NativeLoadFailureKeepsLegacyAuthoritative()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "shadow");
+            using var nativeRequirement = new EnvironmentVariableScope("OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE", null);
+            var legacyInvoked = false;
+
+            var result = DomainCoreCloudVaultBridge.Apply(
+                "forced_native_load_failure",
+                () => throw new DllNotFoundException("forced native load failure"),
+                () =>
+                {
+                    legacyInvoked = true;
+                    return "legacy-result";
+                },
+                StringComparer.Ordinal.Equals);
+
+            Assert.Equal("legacy-result", result);
+            Assert.True(legacyInvoked);
+        }
+
+        [Fact]
+        public void ShadowMode_UnexpectedRustFailureReturnsExactLegacyResultOnce()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "shadow");
+            var legacyInvocations = 0;
+            var expected = new byte[] { 0x00, 0x7f, 0xff };
+
+            var result = DomainCoreCloudVaultBridge.Apply(
+                "forced_rust_failure",
+                () => throw new InvalidOperationException("sensitive Rust failure"),
+                () =>
+                {
+                    legacyInvocations++;
+                    return expected;
+                },
+                (left, right) => left.AsSpan().SequenceEqual(right));
+
+            Assert.Same(expected, result);
+            Assert.Equal(1, legacyInvocations);
+        }
+
+        [Fact]
         public void RustMode_MapsInvalidVaultKeyToFailClosedError()
         {
             if (!NativeRequired()) return;
@@ -275,7 +342,7 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
             private readonly string name;
             private readonly string? previous;
 
-            internal EnvironmentVariableScope(string name, string value)
+            internal EnvironmentVariableScope(string name, string? value)
             {
                 this.name = name;
                 previous = Environment.GetEnvironmentVariable(name);

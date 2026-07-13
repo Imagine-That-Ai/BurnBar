@@ -810,11 +810,13 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .testTarget(
             name: "OpenBurnBarCoreTests",
+            // Native-required migration tests must import the generated binding
+            // directly so an absent or stale ABI cannot compile into a skipped assertion.
             dependencies: [
                 "OpenBurnBarCore",
                 "OpenBurnBarFirestoreModels",
                 "OpenBurnBarLinuxSecurity"
-            ] + swiftTestingAppleDependencies,
+            ] + domainCoreDependencies + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
                 + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),

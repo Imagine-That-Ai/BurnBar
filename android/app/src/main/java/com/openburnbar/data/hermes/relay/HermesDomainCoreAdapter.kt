@@ -49,42 +49,30 @@ internal object HermesDomainCoreAdapter {
     fun seal(plaintext: ByteArray, key: ByteArray, aad: ByteArray, legacy: () -> String): String {
         val mode = HermesDomainCoreMode.resolve()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
-        if (!nativeReady()) return unavailable("seal", mode, legacy)
         if (mode == HermesDomainCoreMode.SHADOW) {
             val old = legacy()
-            val opened = runCatching { hermesOpenBase64(old, key, aad) }.getOrNull()
-            if (opened == null || !opened.contentEquals(plaintext)) diagnostic("seal", "shadow_mismatch")
+            if (!nativeReady()) {
+                diagnostic("seal", "native_unavailable")
+                return old
+            }
+            runCatching { hermesOpenBase64(old, key, aad) }.fold(
+                onSuccess = { opened ->
+                    if (!opened.contentEquals(plaintext)) diagnostic("seal", "shadow_mismatch")
+                },
+                onFailure = { diagnostic("seal", "native_error") },
+            )
             return old
         }
+        if (!nativeReady()) return unavailable("seal", mode, legacy)
         val nonce = ByteArray(12).also(secureRandom::nextBytes)
         return hermesSealBase64(plaintext, key, aad, nonce)
     }
 
-    fun open(ciphertext: String, key: ByteArray, aad: ByteArray, legacy: () -> ByteArray): ByteArray {
-        val mode = HermesDomainCoreMode.resolve()
-        if (mode == HermesDomainCoreMode.LEGACY) return legacy()
-        if (!nativeReady()) return unavailable("open", mode, legacy)
-        val rust = hermesOpenBase64(ciphertext, key, aad)
-        if (mode == HermesDomainCoreMode.SHADOW) {
-            val old = legacy()
-            if (!old.contentEquals(rust)) diagnostic("open", "shadow_mismatch")
-            return old
-        }
-        return rust
-    }
+    fun open(ciphertext: String, key: ByteArray, aad: ByteArray, legacy: () -> ByteArray): ByteArray =
+        selectBytes("open", legacy) { hermesOpenBase64(ciphertext, key, aad) }
 
-    fun safetyCode(agent: ByteArray, phone: ByteArray, legacy: () -> String): String {
-        val mode = HermesDomainCoreMode.resolve()
-        if (mode == HermesDomainCoreMode.LEGACY) return legacy()
-        if (!nativeReady()) return unavailable("safety_code", mode, legacy)
-        val rust = hermesGatewayRelaySafetyCode(agent, phone)
-        if (mode == HermesDomainCoreMode.SHADOW) {
-            val old = legacy()
-            if (old != rust) diagnostic("safety_code", "shadow_mismatch")
-            return old
-        }
-        return rust
-    }
+    fun safetyCode(agent: ByteArray, phone: ByteArray, legacy: () -> String): String =
+        selectValue("safety_code", legacy, { hermesGatewayRelaySafetyCode(agent, phone) }, String::equals)
 
     fun hmac(key: ByteArray, data: ByteArray, operation: String, legacy: () -> ByteArray): ByteArray =
         selectBytes(operation, legacy) { hermesHmacSha256(key, data) }
@@ -107,30 +95,62 @@ internal object HermesDomainCoreAdapter {
     fun sealCombined(plaintext: ByteArray, key: ByteArray, aad: ByteArray, legacy: () -> ByteArray): ByteArray {
         val mode = HermesDomainCoreMode.resolve()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
-        if (!nativeReady()) return unavailable("ratchet_seal", mode, legacy)
         if (mode == HermesDomainCoreMode.SHADOW) {
             val old = legacy()
-            val opened = runCatching { hermesOpenCombined(old, key, aad) }.getOrNull()
-            if (opened == null || !opened.contentEquals(plaintext)) diagnostic("ratchet_seal", "shadow_mismatch")
+            if (!nativeReady()) {
+                diagnostic("ratchet_seal", "native_unavailable")
+                return old
+            }
+            runCatching { hermesOpenCombined(old, key, aad) }.fold(
+                onSuccess = { opened ->
+                    if (!opened.contentEquals(plaintext)) diagnostic("ratchet_seal", "shadow_mismatch")
+                },
+                onFailure = { diagnostic("ratchet_seal", "native_error") },
+            )
             return old
         }
+        if (!nativeReady()) return unavailable("ratchet_seal", mode, legacy)
         return hermesSealCombined(plaintext, key, aad, ByteArray(12).also(secureRandom::nextBytes))
     }
 
     fun openCombined(combined: ByteArray, key: ByteArray, aad: ByteArray, legacy: () -> ByteArray): ByteArray =
         selectBytes("ratchet_open", legacy) { hermesOpenCombined(combined, key, aad) }
 
-    private fun selectBytes(operation: String, legacy: () -> ByteArray, rust: () -> ByteArray): ByteArray {
+    private fun selectBytes(operation: String, legacy: () -> ByteArray, rust: () -> ByteArray): ByteArray =
+        selectValue(operation, legacy, rust, ByteArray::contentEquals)
+
+    private fun <T> selectValue(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean): T {
         val mode = HermesDomainCoreMode.resolve()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
-        if (!nativeReady()) return unavailable(operation, mode, legacy)
-        val value = rust()
         if (mode == HermesDomainCoreMode.SHADOW) {
             val old = legacy()
-            if (!old.contentEquals(value)) diagnostic(operation, "shadow_mismatch")
+            if (!nativeReady()) {
+                diagnostic(operation, "native_unavailable")
+                return old
+            }
+            return selectValueWhenNativeAvailable(operation, mode, { old }, rust, equivalent)
+        }
+        if (!nativeReady()) return unavailable(operation, mode, legacy)
+        return selectValueWhenNativeAvailable(operation, mode, legacy, rust, equivalent)
+    }
+
+    internal fun <T> selectValueWhenNativeAvailable(
+        operation: String,
+        mode: HermesDomainCoreMode,
+        legacy: () -> T,
+        rust: () -> T,
+        equivalent: (T, T) -> Boolean,
+    ): T {
+        if (mode == HermesDomainCoreMode.SHADOW) {
+            val old = legacy()
+            val value = runCatching(rust).getOrElse {
+                diagnostic(operation, "native_error")
+                return old
+            }
+            if (!equivalent(old, value)) diagnostic(operation, "shadow_mismatch")
             return old
         }
-        return value
+        return rust()
     }
 
     private fun nativeReady(): Boolean = runCatching { domainCoreAbiVersion() == 3u }.getOrDefault(false)

@@ -301,6 +301,8 @@ object HermesRatchetCrypto {
             }
         } catch (error: GeneralSecurityException) {
             throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)
+        } catch (error: HermesFfiException.InvalidCiphertext) {
+            throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)
         } catch (error: HermesFfiException.AuthenticationFailed) {
             throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)
         }

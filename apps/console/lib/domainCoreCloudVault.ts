@@ -45,7 +45,7 @@ async function ensureInitialized(input?: InitInput): Promise<void> {
 }
 
 function warn(operation: string, category: "native_unavailable" | "shadow_mismatch" | "rust_error"): void {
-  console.warn(`domain_core.cloudvault.${category} operation=${operation} core=abi2`);
+  console.warn(`domain_core.cloudvault.${category} operation=${operation} core=abi3`);
 }
 
 export async function applyCloudVaultDomainCore<T>(

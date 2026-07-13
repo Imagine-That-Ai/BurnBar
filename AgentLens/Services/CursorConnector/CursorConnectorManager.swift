@@ -728,12 +728,12 @@ final class CursorConnectorManager {
             let reasoningTokens = normalizedUsage.reasoningTokens
             let totalTokens = normalizedUsage.totalTokens
             let timestamp = (json["timestamp"] as? String).flatMap(Self.isoDateFormatter.date(from:)) ?? Date()
-            let cost = try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
+            guard let cost = try? OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
                 inputTokens: promptTokens,
                 outputTokens: completionTokens,
                 cacheCreationTokens: cacheCreationTokens,
                 cacheReadTokens: cacheReadTokens
-            )
+            ) else { continue }
             recentUsageEvents.insert(
                 RoutedUsageEvent(
                     provider: provider,

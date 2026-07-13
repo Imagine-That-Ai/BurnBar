@@ -12,9 +12,21 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/catalog.json"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift"
+      - "AgentLens/Services/ProviderUsageAPI/*UsageAPI.swift"
+      - "AgentLens/Services/UsageAggregatorParsers*.swift"
+      - "AgentLens/Services/CursorConnector/CursorConnectorManager.swift"
+      - "AgentLens/Views/Chat/ChatSessionController+Retrieval.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesRatchetCryptoTests.swift"
+      - "OpenBurnBarMobile/Services/HermesGatewayAttachmentRecord.swift"
+      - "OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift"
+      - "OpenBurnBarMobileTests/OpenBurnBarMobileTests.swift"
       - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
       - "windows/tests/quota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift"
@@ -24,10 +36,14 @@ on:
       - "android/openburnbar-domain-core/**"
       - "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto*.kt"
       - "android/app/src/test/java/com/openburnbar/data/cloud/CloudVault*Test.kt"
+      - "android/app/src/main/java/com/openburnbar/data/hermes/**"
+      - "android/app/src/test/java/com/openburnbar/data/hermes/**"
       - "android/app/build.gradle.kts"
       - "android/settings.gradle.kts"
       - "apps/console/lib/escrow.ts"
+      - "apps/console/lib/domainCoreCloudVault.ts"
       - "apps/console/test/escrow.test.ts"
+      - "apps/console/test/domainCoreCloudVault*.test.ts"
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
       - "functions/src/domainCorePricing.ts"
       - "functions/src/pricing.ts"
@@ -52,9 +68,21 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/catalog.json"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift"
+      - "AgentLens/Services/ProviderUsageAPI/*UsageAPI.swift"
+      - "AgentLens/Services/UsageAggregatorParsers*.swift"
+      - "AgentLens/Services/CursorConnector/CursorConnectorManager.swift"
+      - "AgentLens/Views/Chat/ChatSessionController+Retrieval.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesRatchetCryptoTests.swift"
+      - "OpenBurnBarMobile/Services/HermesGatewayAttachmentRecord.swift"
+      - "OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift"
+      - "OpenBurnBarMobileTests/OpenBurnBarMobileTests.swift"
       - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
       - "windows/tests/quota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift"
@@ -64,10 +92,14 @@ on:
       - "android/openburnbar-domain-core/**"
       - "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto*.kt"
       - "android/app/src/test/java/com/openburnbar/data/cloud/CloudVault*Test.kt"
+      - "android/app/src/main/java/com/openburnbar/data/hermes/**"
+      - "android/app/src/test/java/com/openburnbar/data/hermes/**"
       - "android/app/build.gradle.kts"
       - "android/settings.gradle.kts"
       - "apps/console/lib/escrow.ts"
+      - "apps/console/lib/domainCoreCloudVault.ts"
       - "apps/console/test/escrow.test.ts"
+      - "apps/console/test/domainCoreCloudVault*.test.ts"
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
       - "functions/src/domainCorePricing.ts"
       - "functions/src/pricing.ts"
@@ -165,6 +197,11 @@ jobs:
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
+
+      - name: Run C# CloudVault contracts through the native library
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+        run: dotnet test windows/tests/cloudsync/OpenBurnBar.CloudSync.Crypto.Tests.csproj --nologo
 
   windows-native:
     strategy:
@@ -462,5 +499,6 @@ jobs:
       - name: Run Swift domain-core consumer contracts
         env:
           OPENBURNBAR_CORE_SWIFT_FILTER: DomainCore
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
           OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS: "1"
         run: ./scripts/test-openburnbar-swift.sh
