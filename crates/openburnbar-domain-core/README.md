@@ -8,9 +8,16 @@ UI, and operating-system integration.
 
 - `openburnbar-domain-core`: dependency-light Rust transformations.
 - `openburnbar-domain-ffi`: versioned UniFFI records and functions.
+- `openburnbar-domain-wasm`: browser bindings for byte-oriented portable logic.
 
-The first migrated domain is Claude statusline quota parsing. Its contract lives
-in `tests/fixtures/domain-core/quota/v1` at the repository root.
+The first migrated domain is quota parsing. CloudVault C1a-C1c additionally own
+AAD and hashing, AES wire framing, recovery wrapping, and P-256 escrow framing.
+Their contracts live in `tests/fixtures/domain-core` at the repository root.
+
+CloudVault C1c never receives a platform private key. Native and browser
+adapters perform P-256 ECDH with their existing non-exportable key handles, then
+pass only the resulting 32-byte shared secret, public X9.63 bytes, a
+caller-generated nonce, and a complete payload across the boundary.
 
 ```bash
 cargo fmt --all --check
