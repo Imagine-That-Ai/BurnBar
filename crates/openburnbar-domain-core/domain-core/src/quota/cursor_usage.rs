@@ -89,6 +89,36 @@ pub fn parse_cursor_usage_quota(payload: &[u8], user_email: Option<&str>) -> Quo
         }
     }
 
+    if string(&root, "limit_type", "limitType")
+        .map(|value| value.eq_ignore_ascii_case("team"))
+        .unwrap_or(false)
+    {
+        if let Some(on_demand) = object(&root, "team_usage", "teamUsage")
+            .and_then(|value| object(value, "on_demand", "onDemand"))
+        {
+            let used = number(on_demand, "used", "used").unwrap_or(0.0) / 100.0;
+            let limit = number(on_demand, "limit", "limit").unwrap_or(0.0) / 100.0;
+            if used > 0.0 || limit > 0.0 {
+                buckets.push(bucket(
+                    "cursor-team-ondemand",
+                    "Team on-demand",
+                    BucketValues {
+                        used,
+                        limit,
+                        remaining: (limit > 0.0).then_some((limit - used).max(0.0)),
+                        used_percent: Some(if limit > 0.0 {
+                            used / limit * 100.0
+                        } else {
+                            0.0
+                        }),
+                        resets_at_unix,
+                        unit: QuotaUnit::Currency,
+                    },
+                ));
+            }
+        }
+    }
+
     let tier = string(&root, "membership_type", "membershipType")
         .map(capitalized)
         .filter(|value| !value.is_empty())
@@ -232,5 +262,26 @@ mod tests {
         let actual = parse_cursor_usage_quota(b"not json", None);
         assert_eq!(actual.status, QuotaParseStatus::Malformed);
         assert_eq!(actual.snapshot.confidence, QuotaConfidence::Unavailable);
+    }
+
+    #[test]
+    fn team_limit_type_reads_team_on_demand_usage() {
+        let actual = parse_cursor_usage_quota(
+            br#"{
+                "limitType": "team",
+                "billingCycleEnd": "2026-08-01T00:00:00Z",
+                "teamUsage": { "onDemand": { "used": 500, "limit": 1000 } }
+            }"#,
+            None,
+        );
+        let bucket = actual
+            .snapshot
+            .buckets
+            .iter()
+            .find(|bucket| bucket.key == "cursor-team-ondemand")
+            .expect("team on-demand bucket");
+        assert_eq!(bucket.used_value, Some(5.0));
+        assert_eq!(bucket.limit_value, Some(10.0));
+        assert_eq!(bucket.remaining_value, Some(5.0));
     }
 }

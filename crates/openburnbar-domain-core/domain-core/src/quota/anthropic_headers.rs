@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde_json::Value;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use super::{
     QuotaBucket, QuotaConfidence, QuotaParseResult, QuotaParseStatus, QuotaSnapshot,
@@ -21,15 +22,9 @@ pub fn parse_anthropic_rate_limit_headers(
     let Ok(Value::Object(raw)) = serde_json::from_slice::<Value>(payload) else {
         return result(QuotaParseStatus::Malformed, now_unix, shape, Vec::new());
     };
-    let headers: HashMap<String, f64> = raw
+    let headers: HashMap<String, Value> = raw
         .into_iter()
-        .filter_map(|(key, value)| {
-            let number = value
-                .as_str()
-                .and_then(|text| text.trim().parse().ok())
-                .or_else(|| value.as_f64());
-            number.map(|number| (key.to_lowercase(), number))
-        })
+        .map(|(key, value)| (key.to_lowercase(), value))
         .collect();
     let mut buckets = Vec::new();
     let unified_limit = get(&headers, "anthropic-ratelimit-unified-tokens-limit");
@@ -42,8 +37,11 @@ pub fn parse_anthropic_rate_limit_headers(
             BucketValues {
                 limit: unified_limit,
                 remaining: unified_remaining,
-                reset: get(&headers, "anthropic-ratelimit-unified-tokens-reset"),
-                now_unix,
+                reset_at_unix: reset_at_unix(
+                    &headers,
+                    "anthropic-ratelimit-unified-tokens-reset",
+                    now_unix,
+                ),
                 unit: QuotaUnit::Tokens,
             },
         ));
@@ -52,6 +50,7 @@ pub fn parse_anthropic_rate_limit_headers(
         ("requests", "Requests / minute", QuotaUnit::Requests),
         ("input-tokens", "Input tokens / minute", QuotaUnit::Tokens),
         ("output-tokens", "Output tokens / minute", QuotaUnit::Tokens),
+        ("tokens", "Tokens / minute", QuotaUnit::Tokens),
     ] {
         let limit = get(&headers, &format!("anthropic-ratelimit-{suffix}-limit"));
         let remaining = get(&headers, &format!("anthropic-ratelimit-{suffix}-remaining"));
@@ -63,8 +62,11 @@ pub fn parse_anthropic_rate_limit_headers(
                 BucketValues {
                     limit,
                     remaining,
-                    reset: get(&headers, &format!("anthropic-ratelimit-{suffix}-reset")),
-                    now_unix,
+                    reset_at_unix: reset_at_unix(
+                        &headers,
+                        &format!("anthropic-ratelimit-{suffix}-reset"),
+                        now_unix,
+                    ),
                     unit,
                 },
             ));
@@ -78,15 +80,34 @@ pub fn parse_anthropic_rate_limit_headers(
     result(status, now_unix, shape, buckets)
 }
 
-fn get(headers: &HashMap<String, f64>, name: &str) -> Option<f64> {
-    headers.get(name).copied()
+fn get(headers: &HashMap<String, Value>, name: &str) -> Option<f64> {
+    headers.get(name).and_then(|value| {
+        value
+            .as_str()
+            .and_then(|text| text.trim().parse().ok())
+            .or_else(|| value.as_f64())
+    })
+}
+
+fn reset_at_unix(headers: &HashMap<String, Value>, name: &str, now_unix: i64) -> Option<f64> {
+    let value = headers.get(name)?;
+    if let Some(seconds) = value
+        .as_str()
+        .and_then(|text| text.trim().parse::<f64>().ok())
+        .or_else(|| value.as_f64())
+    {
+        return Some(now_unix as f64 + seconds);
+    }
+    value
+        .as_str()
+        .and_then(|text| OffsetDateTime::parse(text.trim(), &Rfc3339).ok())
+        .map(|timestamp| timestamp.unix_timestamp_nanos() as f64 / 1_000_000_000.0)
 }
 
 struct BucketValues {
     limit: Option<f64>,
     remaining: Option<f64>,
-    reset: Option<f64>,
-    now_unix: i64,
+    reset_at_unix: Option<f64>,
     unit: QuotaUnit,
 }
 
@@ -113,7 +134,7 @@ fn make_bucket(
         limit_value: values.limit,
         remaining_value: values.remaining,
         used_percent,
-        resets_at_unix: values.reset.map(|seconds| values.now_unix as f64 + seconds),
+        resets_at_unix: values.reset_at_unix,
         unit: values.unit,
         is_estimated: false,
     }
@@ -172,5 +193,36 @@ mod tests {
                 .status,
             QuotaParseStatus::Empty
         );
+    }
+
+    #[test]
+    fn accepts_rfc3339_resets_and_combined_token_bucket() {
+        let actual = parse_anthropic_rate_limit_headers(
+            br#"{
+                "anthropic-ratelimit-unified-tokens-limit": "1000",
+                "anthropic-ratelimit-unified-tokens-remaining": "900",
+                "anthropic-ratelimit-unified-tokens-reset": "2026-07-03T01:00:00Z",
+                "anthropic-ratelimit-tokens-limit": "500",
+                "anthropic-ratelimit-tokens-remaining": "400",
+                "anthropic-ratelimit-tokens-reset": "2026-07-03T01:01:00Z"
+            }"#,
+            1_783_036_800,
+            AnthropicCredentialShape::OauthBearer,
+        );
+        let unified = actual
+            .snapshot
+            .buckets
+            .iter()
+            .find(|bucket| bucket.key == "claude-unified-header-probe")
+            .expect("unified bucket");
+        assert_eq!(unified.resets_at_unix, Some(1_783_040_400.0));
+        let combined = actual
+            .snapshot
+            .buckets
+            .iter()
+            .find(|bucket| bucket.key == "claude-rate-limit-tokens")
+            .expect("combined token bucket");
+        assert_eq!(combined.limit_value, Some(500.0));
+        assert_eq!(combined.resets_at_unix, Some(1_783_040_460.0));
     }
 }
