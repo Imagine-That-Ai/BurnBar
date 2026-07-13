@@ -7,10 +7,9 @@ using System.Text;
 namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 
 /// <summary>
-/// Wire adapter for the Anthropic Messages API. It handles bounded, non-streaming
-/// text and tool-call requests; streaming remains an explicit unsupported shape
-/// until the gateway has a true event-stream bridge. Unsupported shapes fail
-/// closed instead of being sent as OpenAI JSON.
+/// Wire adapter for the Anthropic Messages API. It handles bounded text, image,
+/// and tool-call requests; unsupported shapes fail closed instead of being sent
+/// as OpenAI JSON.
 /// </summary>
 public static class AnthropicProviderAdapter
 {
@@ -398,15 +397,8 @@ public static class AnthropicProviderAdapter
     private static JsonArray BuildMessageContent(JsonObject message, string role)
     {
         var blocks = new JsonArray();
+        AppendOpenAiContentBlocks(message["content"], blocks);
         string text = TextContent(message["content"]);
-        if (!string.IsNullOrWhiteSpace(text))
-        {
-            blocks.Add(new JsonObject
-            {
-                ["type"] = "text",
-                ["text"] = text,
-            });
-        }
 
         if (role == "assistant")
         {
@@ -424,6 +416,122 @@ public static class AnthropicProviderAdapter
         }
 
         return blocks;
+    }
+
+    private static void AppendOpenAiContentBlocks(JsonNode? node, JsonArray blocks)
+    {
+        if (node is null)
+        {
+            return;
+        }
+
+        if (node is JsonValue value && value.TryGetValue<string>(out string? plainText))
+        {
+            if (!string.IsNullOrWhiteSpace(plainText))
+            {
+                blocks.Add(new JsonObject { ["type"] = "text", ["text"] = plainText });
+            }
+
+            return;
+        }
+
+        if (node is not JsonArray content)
+        {
+            throw new ProviderWireFormatException(400, "anthropic_content_invalid");
+        }
+
+        foreach (JsonNode? item in content)
+        {
+            if (item is not JsonObject block)
+            {
+                throw new ProviderWireFormatException(400, "anthropic_content_block_invalid");
+            }
+
+            string type = RequiredString(block["type"], "anthropic_content_type_required");
+            if (string.Equals(type, "text", StringComparison.OrdinalIgnoreCase))
+            {
+                string text = RequiredString(block["text"], "anthropic_content_text_required");
+                blocks.Add(new JsonObject { ["type"] = "text", ["text"] = text });
+                continue;
+            }
+
+            if (string.Equals(type, "image_url", StringComparison.OrdinalIgnoreCase))
+            {
+                blocks.Add(ConvertImageBlock(block));
+                continue;
+            }
+
+            throw new ProviderWireFormatException(400, "anthropic_content_block_unsupported");
+        }
+    }
+
+    private static JsonObject ConvertImageBlock(JsonObject block)
+    {
+        if (block["image_url"] is not JsonObject image)
+        {
+            throw new ProviderWireFormatException(400, "anthropic_image_url_required");
+        }
+
+        string url = RequiredString(image["url"], "anthropic_image_url_required");
+        if (url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            int comma = url.IndexOf(',');
+            if (comma <= 5)
+            {
+                throw new ProviderWireFormatException(400, "anthropic_image_data_url_invalid");
+            }
+
+            string metadata = url[5..comma];
+            string[] metadataParts = metadata.Split(';', StringSplitOptions.RemoveEmptyEntries);
+            string mediaType = metadataParts.Length > 0 ? metadataParts[0] : string.Empty;
+            if (!mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                || !Array.Exists(metadataParts, part => string.Equals(part, "base64", StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new ProviderWireFormatException(400, "anthropic_image_data_url_invalid");
+            }
+
+            string encoded = url[(comma + 1)..];
+            try
+            {
+                if (Convert.FromBase64String(encoded).Length > 8 * 1024 * 1024)
+                {
+                    throw new ProviderWireFormatException(413, "anthropic_image_too_large");
+                }
+            }
+            catch (FormatException error)
+            {
+                throw new ProviderWireFormatException(400, "anthropic_image_base64_invalid", error);
+            }
+
+            return new JsonObject
+            {
+                ["type"] = "image",
+                ["source"] = new JsonObject
+                {
+                    ["type"] = "base64",
+                    ["media_type"] = mediaType,
+                    ["data"] = encoded,
+                },
+            };
+        }
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
+            || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || uri.UserInfo.Length > 0
+            || url.Length > 4096)
+        {
+            throw new ProviderWireFormatException(400, "anthropic_image_url_invalid");
+        }
+
+        return new JsonObject
+        {
+            ["type"] = "image",
+            ["source"] = new JsonObject
+            {
+                ["type"] = "url",
+                ["url"] = url,
+            },
+        };
     }
 
     private static void AppendAssistantToolCalls(JsonObject message, JsonArray blocks)

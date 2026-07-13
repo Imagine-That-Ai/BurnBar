@@ -104,6 +104,48 @@ public sealed class ModelCompletionExecutorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_MapsAnthropicImageContentAndRejectsUnsafeUrls()
+    {
+        var handler = new CapturingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"id\":\"msg_image\",\"model\":\"claude-test\",\"content\":[{\"type\":\"text\",\"text\":\"seen\"}],\"stop_reason\":\"end_turn\"}"),
+        });
+        using var client = new HttpClient(handler);
+        var executor = new HttpModelCompletionExecutor(client);
+        ModelRoute route = new(
+            "anthropic-route",
+            "anthropic",
+            "claude-test",
+            0,
+            true,
+            new Uri("https://api.anthropic.test/v1/messages"),
+            "sk-ant-test-token");
+
+        ModelCompletionResult result = await executor.ExecuteAsync(
+            route,
+            Encoding.UTF8.GetBytes(
+                "{\"model\":\"claude-test\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"what is this?\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,aGVsbG8=\"}}]}],\"max_tokens\":64}"),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("\"type\":\"image\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"media_type\":\"image/png\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"data\":\"aGVsbG8=\"", handler.RequestBody, StringComparison.Ordinal);
+
+        var rejectedHandler = new CapturingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK));
+        using var rejectedClient = new HttpClient(rejectedHandler);
+        var rejected = await new HttpModelCompletionExecutor(rejectedClient).ExecuteAsync(
+            route,
+            Encoding.UTF8.GetBytes(
+                "{\"model\":\"claude-test\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"http://127.0.0.1/private.png\"}}]}] }"),
+            CancellationToken.None);
+        Assert.False(rejected.Succeeded);
+        Assert.Equal(400, rejected.StatusCode);
+        Assert.Null(rejectedHandler.RequestBody);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_RejectsMalformedAnthropicToolArgumentsBeforeTransport()
     {
         var handler = new CapturingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK));

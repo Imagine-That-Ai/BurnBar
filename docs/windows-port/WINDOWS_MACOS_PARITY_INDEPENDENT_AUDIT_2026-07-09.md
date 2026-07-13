@@ -97,9 +97,10 @@ unproven host behavior to certification:
   for non-streaming text and tool requests, including system-message conversion,
   API-key/OAuth header selection, required version headers, tool-definition and
   tool-result conversion, tool-choice mapping, normalized `tool_calls` response
-  output, and bounded Anthropic SSE-to-OpenAI event conversion. Truncated SSE,
-  malformed tool data, and unsupported multimodal shapes fail closed before
-  transport.
+  output, and bounded Anthropic SSE-to-OpenAI event conversion. OpenAI image
+  blocks now convert to bounded Anthropic base64 or HTTPS image sources;
+  truncated SSE, malformed tool data, unsafe image URLs, and unsupported
+  multimodal shapes fail closed before transport.
 - The desktop gateway composition now preserves a configured bearer token or
   generates and persists a URL-safe 256-bit token through the Windows secret
   store; unauthenticated loopback is available only through the explicit opt
