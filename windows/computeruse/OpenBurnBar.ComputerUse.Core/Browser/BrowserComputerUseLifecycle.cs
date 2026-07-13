@@ -205,6 +205,14 @@ public sealed class ProcessBrowserDriver : IBrowserDriver
             return string.Empty;
         }
 
+        if (result.ValueKind == JsonValueKind.Object
+            && result.TryGetProperty("value", out JsonElement value))
+        {
+            return value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? string.Empty
+                : value.GetRawText();
+        }
+
         return result.ValueKind == JsonValueKind.String
             ? result.GetString() ?? string.Empty
             : result.GetRawText();
