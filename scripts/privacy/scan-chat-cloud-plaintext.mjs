@@ -632,6 +632,18 @@ for (const field of [
     `"${field}"`,
     `validCliAgentMissionRequest allowlist must exclude plaintext field ${field}`,
   );
+  // The keys().hasOnly([...]) allowlist was extracted into a dedicated
+  // validCliAgentMissionRequestKeys() helper. The body of
+  // validCliAgentMissionRequest() only delegates to it, so the preamble
+  // slice above would never see a forbidden field even if the helper
+  // allowed one. Anchor a second assertion to the helper's own body.
+  assertSectionNotIncludes(
+    "firestore.rules",
+    "function validCliAgentMissionRequestKeys()",
+    "function validCliAgentMissionRequest()",
+    `"${field}"`,
+    `validCliAgentMissionRequestKeys allowlist must exclude plaintext field ${field}`,
+  );
 }
 
 assertRulesRejectFields("match /events/{eventId}", [
@@ -668,7 +680,12 @@ assertSectionIncludes(
   "firestore.rules",
   "function validSessionLogManifestCore(",
   "function ownerWritableSessionLogManifestCreate(",
-  'request.resource.data.inferredTaskTitle == "Encrypted session"',
+  // Post-refactor the rule uses the absent-safe `.get(field, default)` form,
+  // which is strictly stronger: a manifest that omits inferredTaskTitle still
+  // resolves to the generic "Encrypted session" placeholder and any other value
+  // is rejected. Same fail-closed invariant (only the generic placeholder is
+  // ever accepted for the human-readable title).
+  'request.resource.data.get("inferredTaskTitle", "Encrypted session") == "Encrypted session"',
   "session-log manifest only accepts the generic inferredTaskTitle placeholder",
 );
 assertNotIncludes(
@@ -852,34 +869,44 @@ assertNotIncludes(
   'collection("chunks")',
   "legacy Firestore session-log chunk body reader",
 );
+// `refactor(cloudsync): decompose SessionLogSyncService.swift (god-file
+// burn-down)` (81e5002dc7) split this service into single-responsibility
+// extension files. The E2EE invariants are unchanged — the enforcing code just
+// moved. Anchor each check at its new home so the scanner keeps guarding the
+// real code path instead of a file that no longer holds it.
 assertIncludes(
-  "AgentLens/Services/CloudSync/SessionLogSyncService.swift",
+  "AgentLens/Services/CloudSync/SessionLogSyncService+EncryptedCloudClient.swift",
   "func downloadEncryptedBody(storagePath: String) async throws -> Data",
   "encrypted session body download client",
 );
 assertIncludes(
-  "AgentLens/Services/CloudSync/SessionLogSyncService.swift",
+  "AgentLens/Services/CloudSync/SessionLogSyncService+CloudReadBack.swift",
   "Legacy Firestore chunk bodies are intentionally ignored",
   "legacy session chunk body fail-closed comment",
 );
 assertSectionIncludes(
   "AgentLens/Services/CloudSync/SessionLogSyncService.swift",
-  "let markdown = SessionLogMarkdownFormatter.markdown(for: record)",
+  "let markdown = OpenBurnBarCore.SessionLogMarkdownFormatter.markdown(for: record)",
   "try await encryptedCloudClient.commitEncryptedSearchIndex",
   "let privateProjectSearchText = Self.clampedPrivateSearchText(record.projectName)",
   "session project text stays local for keyed hashes",
 );
 assertSectionNotIncludes(
   "AgentLens/Services/CloudSync/SessionLogSyncService.swift",
-  "let markdown = SessionLogMarkdownFormatter.markdown(for: record)",
+  "let markdown = OpenBurnBarCore.SessionLogMarkdownFormatter.markdown(for: record)",
   "try await encryptedCloudClient.commitEncryptedSearchIndex",
   '"projectName"',
   "session-log upload raw project field",
 );
+// `uploadProjectMemorySnapshot` (the previous end anchor) moved to the
+// SessionLogSyncService+ProjectMemorySync.swift extension. `facetFields(` is now
+// the final method in this file, so bound the facet-building region at its own
+// terminal `return fields`. The invariant is unchanged: the public cockpit facet
+// map must never carry the raw working-directory path.
 assertSectionNotIncludes(
   "AgentLens/Services/CloudSync/SessionLogSyncService.swift",
   "static func facetFields(",
-  "func uploadProjectMemorySnapshot",
+  "return fields",
   '"workingDirectory"',
   "session-log raw working directory facet",
 );
@@ -1137,6 +1164,9 @@ for (const [section, note, allowlistHelperName] of [
   [
     "function validCliAgentMissionRequest()",
     "validCliAgentMissionRequest lacks keys().hasOnly allowlist",
+    // The allowlist was extracted into a dedicated keys helper; the request
+    // validator delegates to it via `return validCliAgentMissionRequestKeys() && ...`.
+    "validCliAgentMissionRequestKeys",
   ],
   [
     "function relayRequestWrite(",
