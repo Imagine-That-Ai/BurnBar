@@ -1,9 +1,11 @@
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -249,6 +251,14 @@ fn read_gateway_auth_token() -> Option<String> {
 const GATEWAY_MAX_MESSAGES: usize = 256;
 const GATEWAY_MAX_CONTENT_BYTES: usize = 1_048_576;
 const GATEWAY_MAX_RESPONSE_BYTES: usize = 16_777_216;
+/// Linux chat attachments are deliberately narrower than the macOS workspace
+/// policy. The renderer never receives the stored bytes back: it gets an
+/// opaque, single-use reference owned by this process.
+const CHAT_ATTACHMENT_MAX_BYTES: usize = 10 * 1024 * 1024;
+const CHAT_ATTACHMENT_MAX_TOTAL_BYTES: usize = 10 * 1024 * 1024;
+const CHAT_ATTACHMENT_MAX_REFS_PER_MESSAGE: usize = 8;
+const CHAT_ATTACHMENT_MAX_NAME_BYTES: usize = 240;
+const CHAT_ATTACHMENT_MAX_REGISTRY_BYTES: usize = 80 * 1024 * 1024;
 const DAEMON_ONBOARDING_SNAPSHOT_METHOD: &str = "daemon.onboarding.snapshot";
 const DAEMON_ONBOARDING_ACTION_METHOD: &str = "daemon.onboarding.action";
 const DAEMON_ONBOARDING_RESET_METHOD: &str = "daemon.onboarding.reset";
@@ -348,6 +358,14 @@ fn start_single_instance_dispatcher(app: AppHandle, receiver: Receiver<single_in
 struct GatewayProxyMessage {
     role: String,
     content: String,
+    #[serde(default)]
+    attachments: Vec<GatewayAttachmentReference>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GatewayAttachmentReference {
+    attachment_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -356,6 +374,320 @@ struct GatewayProxyRequest {
     request_id: String,
     model: String,
     messages: Vec<GatewayProxyMessage>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatAttachmentUploadRequest {
+    file_name: String,
+    mime_type: String,
+    content_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatAttachmentUploadResult {
+    attachment_id: String,
+    file_name: String,
+    mime_type: String,
+    byte_size: usize,
+    sha256: String,
+}
+
+#[derive(Debug, Clone)]
+struct StoredChatAttachment {
+    path: PathBuf,
+    file_name: String,
+    mime_type: String,
+    byte_size: usize,
+    sha256: String,
+}
+
+static CHAT_ATTACHMENTS: OnceLock<Mutex<HashMap<String, StoredChatAttachment>>> = OnceLock::new();
+
+fn chat_attachments() -> &'static Mutex<HashMap<String, StoredChatAttachment>> {
+    CHAT_ATTACHMENTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn chat_attachment_root() -> PathBuf {
+    linux_support_dir().join("chat-attachments")
+}
+
+fn is_allowed_chat_attachment_mime(mime_type: &str) -> bool {
+    matches!(
+        mime_type,
+        "text/plain" | "text/markdown" | "text/csv" | "application/json" | "application/pdf"
+    )
+}
+
+fn inferred_chat_attachment_mime(file_name: &str) -> Option<&'static str> {
+    match Path::new(file_name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "txt" => Some("text/plain"),
+        "md" | "markdown" => Some("text/markdown"),
+        "csv" => Some("text/csv"),
+        "json" => Some("application/json"),
+        "pdf" => Some("application/pdf"),
+        _ => None,
+    }
+}
+
+fn validate_chat_attachment_file_name(file_name: &str) -> Result<String, String> {
+    let trimmed = file_name.trim();
+    if trimmed.is_empty() || trimmed.as_bytes().len() > CHAT_ATTACHMENT_MAX_NAME_BYTES {
+        return Err("chat_attachment_invalid_file_name".into());
+    }
+    if trimmed == "."
+        || trimmed == ".."
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.chars().any(|character| character.is_control())
+    {
+        return Err("chat_attachment_invalid_file_name".into());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn canonical_chat_attachment_mime(file_name: &str, mime_type: &str) -> Result<String, String> {
+    let normalized = mime_type.trim().to_ascii_lowercase();
+    let inferred = inferred_chat_attachment_mime(file_name);
+    let canonical = if normalized.is_empty() || normalized == "application/octet-stream" {
+        inferred.unwrap_or("").to_string()
+    } else if is_allowed_chat_attachment_mime(&normalized) {
+        normalized
+    } else {
+        return Err("chat_attachment_unsupported_type".into());
+    };
+    if !is_allowed_chat_attachment_mime(&canonical) {
+        return Err("chat_attachment_unsupported_type".into());
+    }
+    if let Some(inferred) = inferred {
+        if inferred != canonical {
+            return Err("chat_attachment_type_mismatch".into());
+        }
+    }
+    Ok(canonical)
+}
+
+fn validate_private_attachment_path(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| "chat_attachment_missing".to_string())?;
+    if !metadata.is_file() || metadata.uid() != unsafe { libc::geteuid() } {
+        return Err("chat_attachment_ownership_invalid".into());
+    }
+    if metadata.mode() & 0o077 != 0 {
+        return Err("chat_attachment_permissions_invalid".into());
+    }
+    Ok(())
+}
+
+fn validate_private_attachment_directory(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|_| "chat_attachment_storage_unavailable".to_string())?;
+    if !metadata.is_dir() || metadata.uid() != unsafe { libc::geteuid() } {
+        return Err("chat_attachment_storage_permissions_invalid".into());
+    }
+    if metadata.mode() & 0o077 != 0 {
+        return Err("chat_attachment_storage_permissions_invalid".into());
+    }
+    Ok(())
+}
+
+fn cleanup_unclaimed_chat_attachment_files(root: &Path) {
+    let Ok(registry) = chat_attachments().lock() else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(attachment_id) = file_name.strip_suffix(".bin") else {
+            continue;
+        };
+        if !registry.contains_key(attachment_id) {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+fn store_chat_attachment(
+    request: ChatAttachmentUploadRequest,
+) -> Result<ChatAttachmentUploadResult, String> {
+    let file_name = validate_chat_attachment_file_name(&request.file_name)?;
+    let mime_type = canonical_chat_attachment_mime(&file_name, &request.mime_type)?;
+    // Reject obviously oversized encoded input before decoding. The exact byte
+    // check below remains authoritative for padded/invalid base64.
+    if request.content_base64.len() > ((CHAT_ATTACHMENT_MAX_BYTES * 4) / 3) + 8 {
+        return Err("chat_attachment_too_large".into());
+    }
+    let bytes = BASE64_STANDARD
+        .decode(request.content_base64.as_bytes())
+        .map_err(|_| "chat_attachment_invalid_encoding".to_string())?;
+    if bytes.is_empty() {
+        return Err("chat_attachment_empty".into());
+    }
+    if bytes.len() > CHAT_ATTACHMENT_MAX_BYTES {
+        return Err("chat_attachment_too_large".into());
+    }
+
+    let root = chat_attachment_root();
+    if fs::symlink_metadata(&root)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err("chat_attachment_storage_permissions_invalid".into());
+    }
+    fs::create_dir_all(&root).map_err(|_| "chat_attachment_storage_unavailable".to_string())?;
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+        .map_err(|_| "chat_attachment_storage_unavailable".to_string())?;
+    validate_private_attachment_directory(&root)?;
+    cleanup_unclaimed_chat_attachment_files(&root);
+
+    let attachment_id = uuid::Uuid::new_v4().simple().to_string();
+    let path = root.join(format!("{attachment_id}.bin"));
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&path)
+        .map_err(|_| "chat_attachment_storage_unavailable".to_string())?;
+    if let Err(error) = (|| -> Result<(), String> {
+        file.write_all(&bytes)
+            .map_err(|_| "chat_attachment_storage_unavailable".to_string())?;
+        file.sync_all()
+            .map_err(|_| "chat_attachment_storage_unavailable".to_string())?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+            .map_err(|_| "chat_attachment_storage_unavailable".to_string())?;
+        validate_private_attachment_path(&path)
+    })() {
+        let _ = fs::remove_file(&path);
+        return Err(error);
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let sha256 = format!("{:x}", hasher.finalize());
+    let stored = StoredChatAttachment {
+        path: path.clone(),
+        file_name: file_name.clone(),
+        mime_type: mime_type.clone(),
+        byte_size: bytes.len(),
+        sha256: sha256.clone(),
+    };
+    let mut registry = chat_attachments()
+        .lock()
+        .map_err(|_| "chat_attachment_registry_unavailable".to_string())?;
+    let registry_bytes = registry
+        .values()
+        .map(|attachment| attachment.byte_size)
+        .sum::<usize>();
+    if registry.len() >= 64
+        || registry_bytes.saturating_add(bytes.len()) > CHAT_ATTACHMENT_MAX_REGISTRY_BYTES
+    {
+        let _ = fs::remove_file(&path);
+        return Err("chat_attachment_registry_full".into());
+    }
+    registry.insert(attachment_id.clone(), stored);
+    Ok(ChatAttachmentUploadResult {
+        attachment_id,
+        file_name,
+        mime_type,
+        byte_size: bytes.len(),
+        sha256,
+    })
+}
+
+struct LoadedChatAttachment {
+    file_name: String,
+    text: String,
+    byte_size: usize,
+}
+
+fn take_chat_attachment(attachment_id: &str) -> Result<LoadedChatAttachment, String> {
+    if attachment_id.is_empty()
+        || attachment_id.len() > 128
+        || !attachment_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        return Err("chat_attachment_invalid_reference".into());
+    }
+    let stored = chat_attachments()
+        .lock()
+        .map_err(|_| "chat_attachment_registry_unavailable".to_string())?
+        .remove(attachment_id)
+        .ok_or_else(|| "chat_attachment_reference_expired".to_string())?;
+    if let Err(error) = validate_private_attachment_path(&stored.path) {
+        let _ = fs::remove_file(&stored.path);
+        return Err(error);
+    }
+    if stored.mime_type == "application/pdf" {
+        let _ = fs::remove_file(&stored.path);
+        return Err("gateway_attachment_unsupported:application/pdf".into());
+    }
+    let bytes = match fs::read(&stored.path) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            let _ = fs::remove_file(&stored.path);
+            return Err("chat_attachment_read_failed".into());
+        }
+    };
+    let _ = fs::remove_file(&stored.path);
+    if bytes.len() != stored.byte_size || bytes.len() > CHAT_ATTACHMENT_MAX_BYTES {
+        return Err("chat_attachment_size_changed".into());
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    if format!("{:x}", hasher.finalize()) != stored.sha256 {
+        return Err("chat_attachment_integrity_failed".into());
+    }
+    let text =
+        String::from_utf8(bytes).map_err(|_| "gateway_attachment_invalid_utf8".to_string())?;
+    Ok(LoadedChatAttachment {
+        file_name: stored.file_name,
+        text,
+        byte_size: stored.byte_size,
+    })
+}
+
+fn gateway_messages_payload(
+    request: &GatewayProxyRequest,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut total_attachment_bytes = 0usize;
+    let mut messages = Vec::with_capacity(request.messages.len());
+    for message in &request.messages {
+        let mut content = message.content.clone();
+        if content.len() > GATEWAY_MAX_CONTENT_BYTES {
+            return Err("gateway_request_too_large".into());
+        }
+        for attachment in &message.attachments {
+            let stored = take_chat_attachment(&attachment.attachment_id)?;
+            total_attachment_bytes = total_attachment_bytes
+                .checked_add(stored.byte_size)
+                .ok_or("gateway_request_too_large")?;
+            if total_attachment_bytes > CHAT_ATTACHMENT_MAX_TOTAL_BYTES {
+                return Err("gateway_request_too_large".into());
+            }
+            content.push_str("\n\n[Attachment: ");
+            content.push_str(&stored.file_name);
+            content.push_str("]\n");
+            content.push_str(&stored.text);
+            content.push_str("\n[End attachment]");
+        }
+        messages.push(serde_json::json!({
+            "role": message.role,
+            "content": content,
+        }));
+    }
+    Ok(messages)
 }
 
 static GATEWAY_CANCELLATIONS: OnceLock<
@@ -390,6 +722,20 @@ fn validate_gateway_request(request: &GatewayProxyRequest) -> Result<(), String>
             "system" | "user" | "assistant" | "tool"
         ) {
             return Err("gateway_invalid_message_role".to_string());
+        }
+        if message.attachments.len() > CHAT_ATTACHMENT_MAX_REFS_PER_MESSAGE {
+            return Err("gateway_attachment_count_exceeded".to_string());
+        }
+        for attachment in &message.attachments {
+            if attachment.attachment_id.is_empty()
+                || attachment.attachment_id.len() > 128
+                || !attachment
+                    .attachment_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+            {
+                return Err("chat_attachment_invalid_reference".to_string());
+            }
         }
         total
             .checked_add(message.content.len())
@@ -463,11 +809,12 @@ async fn run_gateway_chat_stream(
     let health = probe_daemon_health();
     let url = gateway_endpoint_from_health(&health, "/v1/chat/completions")?;
     let token = read_gateway_auth_token().ok_or("gateway_token_unavailable")?;
+    let messages = gateway_messages_payload(request)?;
     let body = serde_json::json!({
         "model": request.model.trim(),
         "stream": true,
         "stream_options": { "include_usage": true },
-        "messages": &request.messages,
+        "messages": messages,
     });
     let send = gateway_http_client()?
         .post(url)
@@ -549,6 +896,13 @@ async fn run_gateway_chat_stream(
         return Err("gateway_invalid_utf8".into());
     }
     Ok(())
+}
+
+#[tauri::command]
+fn chat_attachment_upload(
+    request: ChatAttachmentUploadRequest,
+) -> Result<ChatAttachmentUploadResult, String> {
+    store_chat_attachment(request)
 }
 
 /// Returns the gateway bearer for the HTTP gateway client (chat stream).
@@ -5169,6 +5523,7 @@ pub fn run() {
             daemon_health,
             runtime_capabilities,
             gateway_probe,
+            chat_attachment_upload,
             gateway_chat_stream,
             gateway_chat_cancel,
             open_external_url,
@@ -5687,6 +6042,7 @@ mod tests {
             messages: vec![GatewayProxyMessage {
                 role: "user".into(),
                 content: "hello".into(),
+                attachments: vec![],
             }],
         };
         assert!(validate_gateway_request(&valid).is_ok());
@@ -5697,6 +6053,7 @@ mod tests {
             messages: vec![GatewayProxyMessage {
                 role: "developer".into(),
                 content: "hello".into(),
+                attachments: vec![],
             }],
         };
         assert_eq!(
@@ -5713,6 +6070,109 @@ mod tests {
             validate_gateway_request(&invalid_id).unwrap_err(),
             "gateway_invalid_request_id"
         );
+    }
+
+    #[test]
+    fn chat_attachment_policy_allows_only_bounded_text_document_types() {
+        assert_eq!(
+            canonical_chat_attachment_mime("notes.md", "application/octet-stream").unwrap(),
+            "text/markdown"
+        );
+        assert_eq!(
+            canonical_chat_attachment_mime("data.json", "application/json").unwrap(),
+            "application/json"
+        );
+        assert_eq!(
+            canonical_chat_attachment_mime("brief.pdf", "application/pdf").unwrap(),
+            "application/pdf"
+        );
+        assert_eq!(
+            canonical_chat_attachment_mime("notes.md", "application/pdf").unwrap_err(),
+            "chat_attachment_type_mismatch"
+        );
+        assert_eq!(
+            canonical_chat_attachment_mime("secret.exe", "application/octet-stream").unwrap_err(),
+            "chat_attachment_unsupported_type"
+        );
+        assert!(validate_chat_attachment_file_name("../notes.md").is_err());
+        assert!(validate_chat_attachment_file_name("notes/secret.md").is_err());
+        assert!(validate_chat_attachment_file_name("notes\0.md").is_err());
+    }
+
+    #[test]
+    fn chat_attachment_gateway_payload_is_text_only_and_consumes_private_refs() {
+        let root = std::env::temp_dir().join(format!("openburnbar-chat-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = root.join("attachment.bin");
+        fs::write(&path, b"hello from attachment").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(b"hello from attachment");
+        let sha256 = format!("{:x}", hasher.finalize());
+        let id = format!("attachment-{}", uuid::Uuid::new_v4().simple());
+        chat_attachments().lock().unwrap().insert(
+            id.clone(),
+            StoredChatAttachment {
+                path: path.clone(),
+                file_name: "notes.md".into(),
+                mime_type: "text/markdown".into(),
+                byte_size: b"hello from attachment".len(),
+                sha256,
+            },
+        );
+        let request = GatewayProxyRequest {
+            request_id: "request-attachment".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "Summarize this".into(),
+                attachments: vec![GatewayAttachmentReference { attachment_id: id }],
+            }],
+        };
+        let payload = gateway_messages_payload(&request).unwrap();
+        let content = payload[0]["content"].as_str().unwrap();
+        assert!(content.contains("[Attachment: notes.md]"));
+        assert!(content.contains("hello from attachment"));
+        assert!(!content.contains(path.to_string_lossy().as_ref()));
+        assert!(!path.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn chat_attachment_gateway_rejects_pdf_with_explicit_capability_error() {
+        let root = std::env::temp_dir().join(format!("openburnbar-chat-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = root.join("attachment.bin");
+        fs::write(&path, b"%PDF-1.7").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let id = format!("attachment-{}", uuid::Uuid::new_v4().simple());
+        chat_attachments().lock().unwrap().insert(
+            id.clone(),
+            StoredChatAttachment {
+                path: path.clone(),
+                file_name: "brief.pdf".into(),
+                mime_type: "application/pdf".into(),
+                byte_size: 8,
+                sha256: "ignored".into(),
+            },
+        );
+        let request = GatewayProxyRequest {
+            request_id: "request-pdf".into(),
+            model: "hermes".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "Read this".into(),
+                attachments: vec![GatewayAttachmentReference { attachment_id: id }],
+            }],
+        };
+        assert_eq!(
+            gateway_messages_payload(&request).unwrap_err(),
+            "gateway_attachment_unsupported:application/pdf"
+        );
+        assert!(!path.exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -27,6 +27,8 @@ libc = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 ed25519-dalek = { version = "2", features = ["pem", "pkcs8"] }
 sha2 = "0.10"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 tokio-util = "0.7"
 tracing = "0.1"

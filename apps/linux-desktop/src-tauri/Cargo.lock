@@ -2503,6 +2503,7 @@ dependencies = [
 name = "openburnbar-linux-desktop"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "ed25519-dalek",
  "futures-util",
  "libc",
@@ -2520,6 +2521,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

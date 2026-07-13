@@ -9,6 +9,8 @@ import type {
   DatabaseWorkspaceStatus,
   ChatMessageAppendRequest,
   ChatMessageAppendResult,
+  ChatAttachmentUploadRequest,
+  ChatAttachmentUploadResult,
   ChatThreadGetResult,
   ChatThreadListResult,
   ComputerUsePanicHaltResult,
@@ -183,6 +185,10 @@ export const emptyDatabaseCodeContextPack = (
   });
 
 export const emptyGatewayProbe = (): Promise<boolean> => Promise.resolve(false);
+export const emptyChatAttachmentUpload = (
+  _request: ChatAttachmentUploadRequest
+): Promise<ChatAttachmentUploadResult> =>
+  Promise.reject(new Error('Chat attachment transport is unavailable in this test bridge.'));
 export const emptyGatewayChatStream = (): Promise<void> => Promise.resolve();
 export const emptyGatewayChatCancel = (): Promise<void> => Promise.resolve();
 
@@ -336,6 +342,7 @@ export const bridgeStubDefaults = {
   subscriptionStop: emptySubscriptionStop,
   runtimeCapabilities: availableRuntimeCapabilities,
   gatewayProbe: emptyGatewayProbe,
+  chatAttachmentUpload: emptyChatAttachmentUpload,
   gatewayChatStream: emptyGatewayChatStream,
   gatewayChatCancel: emptyGatewayChatCancel,
   chatThreadList: emptyChatThreadList,

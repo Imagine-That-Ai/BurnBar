@@ -1023,6 +1023,26 @@ export type SmartHubCommandResult =
 export type GatewayProxyMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** Opaque daemon-owned refs; raw file bytes never enter the gateway request. */
+  attachments?: GatewayAttachmentReference[];
+};
+
+export type GatewayAttachmentReference = {
+  attachmentId: string;
+};
+
+export const CHAT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+export type ChatAttachmentUploadRequest = {
+  fileName: string;
+  mimeType: string;
+  contentBase64: string;
+};
+export type ChatAttachmentUploadResult = {
+  attachmentId: string;
+  fileName: string;
+  mimeType: string;
+  byteSize: number;
+  sha256: string;
 };
 
 export type GatewayProxyRequest = {
@@ -1081,6 +1101,7 @@ export interface LinuxShellBridge {
   daemonHealth(): Promise<DaemonHealth>;
   runtimeCapabilities(): Promise<RuntimeCapabilityManifest>;
   gatewayProbe(): Promise<boolean>;
+  chatAttachmentUpload(request: ChatAttachmentUploadRequest): Promise<ChatAttachmentUploadResult>;
   gatewayChatStream(request: GatewayProxyRequest, onChunk: (chunk: string) => void): Promise<void>;
   gatewayChatCancel(requestId: string): Promise<void>;
   openDashboard(): Promise<void>;
@@ -1634,6 +1655,40 @@ export function decodeChatMessageAppend(raw: RawJsonValue): ChatMessageAppendRes
   return {
     message: decodePersistedChatMessage(source.message, 'chat message append.message'),
     inserted: requireBoolean(source.inserted, 'chat message append.inserted')
+  };
+}
+
+export function decodeChatAttachmentUpload(raw: RawJsonValue): ChatAttachmentUploadResult {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'chat attachment upload');
+  if ('path' in source || 'absolutePath' in source || 'workspacePath' in source) {
+    throw new Error('chat attachment upload response must not expose a filesystem path.');
+  }
+  const byteSize = requireCount(source.byteSize, 'chat attachment upload.byteSize');
+  if (byteSize === 0 || byteSize > CHAT_ATTACHMENT_MAX_BYTES) {
+    throw new Error(`chat attachment upload.byteSize must be between 1 and ${CHAT_ATTACHMENT_MAX_BYTES}.`);
+  }
+  const sha256 = requireBoundedString(source.sha256, 'chat attachment upload.sha256', 64);
+  if (!/^[0-9a-f]{64}$/i.test(sha256)) {
+    throw new Error('chat attachment upload.sha256 must be a SHA-256 hex digest.');
+  }
+  const mimeType = requireBoundedString(source.mimeType, 'chat attachment upload.mimeType', 128);
+  if (!['text/plain', 'text/markdown', 'text/csv', 'application/json', 'application/pdf'].includes(mimeType)) {
+    throw new Error('chat attachment upload.mimeType is unsupported.');
+  }
+  const attachmentId = requireBoundedString(source.attachmentId, 'chat attachment upload.attachmentId', 128);
+  if (!/^[A-Za-z0-9_-]+$/.test(attachmentId)) {
+    throw new Error('chat attachment upload.attachmentId is invalid.');
+  }
+  const fileName = requireBoundedString(source.fileName, 'chat attachment upload.fileName', 240);
+  if (fileName === '.' || fileName === '..' || fileName.includes('/') || fileName.includes('\\')) {
+    throw new Error('chat attachment upload.fileName is invalid.');
+  }
+  return {
+    attachmentId,
+    fileName,
+    mimeType,
+    byteSize,
+    sha256: sha256.toLowerCase()
   };
 }
 
@@ -3322,6 +3377,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     runtimeCapabilities: async () =>
       decodeRuntimeCapabilityManifest(await invoke<RawJsonValue>('runtime_capabilities')),
     gatewayProbe: () => invoke<boolean>('gateway_probe'),
+    chatAttachmentUpload: async (request) =>
+      decodeChatAttachmentUpload(await invoke<RawJsonValue>('chat_attachment_upload', { request })),
     gatewayChatStream: (request, onChunk) => {
       const onEvent = new Channel<string>();
       onEvent.onmessage = onChunk;

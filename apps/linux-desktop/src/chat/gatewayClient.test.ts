@@ -74,6 +74,32 @@ describe('streamGatewayChatNative', () => {
     ]);
   });
 
+  it('forwards only opaque daemon attachment references', async () => {
+    const start: NativeGatewayChatTransport['start'] = vi.fn(async (request, onChunk) => {
+      expect(request.messages[0]).toEqual({
+        role: 'user',
+        content: 'summarize',
+        attachments: [{ attachmentId: 'attachment-1' }]
+      });
+      expect(JSON.stringify(request)).not.toContain('contentBase64');
+      onChunk('data: [DONE]\n\n');
+    });
+    for await (const _event of streamGatewayChatNative(
+      { start, cancel: vi.fn(async () => undefined) },
+      {
+        requestId: 'gateway-attachment-ref',
+        model: 'hermes',
+        messages: [{
+          role: 'user',
+          content: 'summarize',
+          attachments: [{ attachmentId: 'attachment-1' }]
+        }]
+      }
+    )) {
+      // The assertion is made by the native transport stub above.
+    }
+  });
+
   it('cancels the native request when the renderer aborts', async () => {
     const abort = new AbortController();
     const cancel = vi.fn(async () => undefined);

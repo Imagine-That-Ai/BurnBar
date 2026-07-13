@@ -83,6 +83,35 @@ describe('VAL-RPC-002 bridge behavior', () => {
     });
   });
 
+  it('uploads chat attachments through a bounded metadata-only bridge result', async () => {
+    invoke.mockResolvedValueOnce({
+      attachmentId: 'attachment-1',
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 12,
+      sha256: 'a'.repeat(64)
+    });
+    const b = await bridge();
+    await expect(b.chatAttachmentUpload({
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      contentBase64: 'SGVsbG8gTGludXg='
+    })).resolves.toEqual({
+      attachmentId: 'attachment-1',
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 12,
+      sha256: 'a'.repeat(64)
+    });
+    expect(invoke).toHaveBeenCalledWith('chat_attachment_upload', {
+      request: {
+        fileName: 'notes.md',
+        mimeType: 'text/markdown',
+        contentBase64: 'SGVsbG8gTGludXg='
+      }
+    });
+  });
+
   it('rejects an append response that changes the idempotency identity', async () => {
     invoke.mockResolvedValueOnce({
       message: {

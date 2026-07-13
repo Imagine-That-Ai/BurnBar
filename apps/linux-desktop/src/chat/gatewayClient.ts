@@ -3,6 +3,11 @@ export type GatewayChatRole = 'system' | 'user' | 'assistant' | 'tool';
 export type GatewayChatMessage = {
   role: GatewayChatRole;
   content: string;
+  attachments?: GatewayChatAttachmentReference[];
+};
+
+export type GatewayChatAttachmentReference = {
+  attachmentId: string;
 };
 
 export type GatewayChatUsage = {

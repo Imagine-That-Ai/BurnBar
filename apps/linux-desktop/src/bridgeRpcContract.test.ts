@@ -187,6 +187,14 @@ describe('VAL-RPC bridge contract', () => {
     expect(tsBridge).toContain('chat_message_append');
   });
 
+  it('keeps chat attachment upload daemon-owned and path-free', () => {
+    expect(rustBridge).toContain('fn chat_attachment_upload');
+    expect(rustBridge).toContain('CHAT_ATTACHMENT_MAX_BYTES');
+    expect(rustBridge).toContain('chat_attachment_unsupported');
+    expect(tsBridge).toContain("'chat_attachment_upload'");
+    expect(tsBridge).toContain('must not expose a filesystem path');
+  });
+
   it('wires project lifecycle operations only to canonical controller RPCs', () => {
     for (const method of [
       'daemon.controller.project.list',
