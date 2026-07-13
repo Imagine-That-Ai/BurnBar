@@ -3,6 +3,7 @@ import type { ChatThreadSummary } from '../../tauriBridge.js';
 import type { ChatApprovalDecision, ChatBackendId, MemoryCitation } from './chatTypes.js';
 import { ChatToolbar } from './ChatToolbar.js';
 import { Composer } from './Composer.js';
+import type { PendingChatAttachment } from './Composer.js';
 import { MessageStream } from './MessageStream.js';
 import { ThreadRail } from './ThreadRail.js';
 import type { ChatWarningBanner } from './chatTypes.js';
@@ -31,6 +32,11 @@ export type ChatWorkspacePanelProps = {
   onBackendChange: (id: ChatBackendId) => void;
   onModelOptionChange: (id: string) => void;
   onThinkingLevelChange: (level: ChatThinkingSelection) => void;
+  onReconnect: () => void;
+  onPopOut?: () => void;
+  onClosePopOut?: () => void;
+  popoutWindow: boolean;
+  popoutStatus?: string | null;
   exportFormat: ChatExportFormat;
   onExportFormatChange: (format: ChatExportFormat) => void;
   onExport: () => void;
@@ -49,7 +55,7 @@ export type ChatWorkspacePanelProps = {
   composerDisabledReason: string;
   /** True while a send is composing (persisting + probing) before streaming. */
   composerBusy: boolean;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, attachment?: PendingChatAttachment) => void | Promise<boolean | void>;
   onStopStreaming: () => void;
   onOpenMissionControl: () => void;
   onOpenCitation?: (citation: MemoryCitation) => void;
@@ -78,6 +84,11 @@ export function ChatWorkspacePanel({
   onBackendChange,
   onModelOptionChange,
   onThinkingLevelChange,
+  onReconnect,
+  onPopOut,
+  onClosePopOut,
+  popoutWindow,
+  popoutStatus,
   exportFormat,
   onExportFormatChange,
   onExport,
@@ -118,6 +129,11 @@ export function ChatWorkspacePanel({
         onBackendChange={onBackendChange}
         onModelOptionChange={onModelOptionChange}
         onThinkingLevelChange={onThinkingLevelChange}
+        onReconnect={onReconnect}
+        onPopOut={onPopOut}
+        onClosePopOut={onClosePopOut}
+        popoutWindow={popoutWindow}
+        popoutStatus={popoutStatus}
         onNewChat={onNewChat}
         exportFormat={exportFormat}
         onExportFormatChange={onExportFormatChange}

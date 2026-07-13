@@ -10,6 +10,9 @@ import {
   type MemoryCitation
 } from './chatTypes.js';
 import { ChatWorkspacePanel } from './ChatWorkspacePanel.js';
+import { attachmentUploadRequest } from './chatAttachment.js';
+import { closeChatPopoutWindow, isChatPopoutWindow, openChatPopoutWindow } from './chatWindow.js';
+import type { PendingChatAttachment } from './Composer.js';
 import {
   buildChatExportDocument,
   downloadChatExport,
@@ -48,6 +51,7 @@ export function ChatSurface() {
   const warnings = useChatStore((s) => s.warnings);
   const sharedFeaturesAvailable = useChatStore((s) => s.sharedFeaturesAvailable);
   const load = useChatStore((s) => s.load);
+  const reconnectGateway = useChatStore((s) => s.reconnectGateway);
   const search = useChatStore((s) => s.search);
   const selectThread = useChatStore((s) => s.selectThread);
   const loadOlderMessages = useChatStore((s) => s.loadOlderMessages);
@@ -64,6 +68,8 @@ export function ChatSurface() {
   const [exportFormat, setExportFormat] = useState<ChatExportFormat>('json');
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [citationStatus, setCitationStatus] = useState<string | null>(null);
+  const [popoutStatus, setPopoutStatus] = useState<string | null>(null);
+  const popoutWindow = isChatPopoutWindow();
 
   useLaneLoad(load);
 
@@ -82,6 +88,39 @@ export function ChatSurface() {
   useEffect(() => {
     setCitationStatus(null);
   }, [selectedThreadId]);
+
+  useEffect(() => {
+    const reconnect = () => void reconnectGateway();
+    window.addEventListener('online', reconnect);
+    document.addEventListener('visibilitychange', reconnect);
+    return () => {
+      window.removeEventListener('online', reconnect);
+      document.removeEventListener('visibilitychange', reconnect);
+    };
+  }, [reconnectGateway]);
+
+  const sendComposerMessage = async (
+    text: string,
+    attachment?: PendingChatAttachment
+  ): Promise<boolean> => {
+    if (attachment) {
+      if (fixtureMode || !bridge) {
+        throw new Error('Attachment transport requires the packaged Linux daemon.');
+      }
+      const uploaded = await bridge.chatAttachmentUpload(
+        await attachmentUploadRequest(attachment.file, attachment.name, attachment.type)
+      );
+      await sendMessage(text, [uploaded]);
+    } else {
+      await sendMessage(text);
+    }
+    return useChatStore.getState().streamPhase === 'done';
+  };
+
+  const openPopout = async () => {
+    const opened = await openChatPopoutWindow();
+    setPopoutStatus(opened ? 'Chat opened in a separate window.' : 'A separate chat window is unavailable.');
+  };
 
   const offline = !fixtureMode && !bridge;
   const provenance = fixtureMode ? 'fixture transcript' : 'live daemon chat history';
@@ -172,6 +211,11 @@ export function ChatSurface() {
     onBackendChange: setBackend,
     onModelOptionChange: setModelOption,
     onThinkingLevelChange: setThinkingLevel,
+    onReconnect: () => void reconnectGateway(),
+    onPopOut: popoutWindow ? undefined : () => void openPopout(),
+    onClosePopOut: popoutWindow ? () => void closeChatPopoutWindow() : undefined,
+    popoutWindow,
+    popoutStatus,
     exportFormat,
     onExportFormatChange: setExportFormat,
     onExport: exportChat,
@@ -194,7 +238,7 @@ export function ChatSurface() {
     // the Composer clears the draft before calling onSend — surface the phase
     // so an Enter in that window cannot silently drop the user's text.
     composerBusy: streamPhase === 'composing',
-    onSendMessage: (text: string) => void sendMessage(text),
+    onSendMessage: (text: string, attachment?: PendingChatAttachment) => sendComposerMessage(text, attachment),
     onStopStreaming: stopStreaming,
     onOpenMissionControl: () => setRoute('missions')
   };

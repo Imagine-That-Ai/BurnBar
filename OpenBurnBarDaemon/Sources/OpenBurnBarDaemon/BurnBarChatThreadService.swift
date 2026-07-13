@@ -58,6 +58,8 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
     static let maxStoredContentBytes = 256 * 1024
     static let maxResponseContentBytes = 2 * 1024 * 1024
     static let maxBackendIDBytes = 64
+    static let maxAttachmentCount = 8
+    static let maxAttachmentIDBytes = 128
 
     private enum BindValue {
         case text(String)
@@ -210,9 +212,9 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
 
         let statement = try prepare(
             """
-            SELECT id, threadId, role, content, timestamp, cliUsed
+            SELECT id, threadId, role, content, timestamp, cliUsed, attachmentsJSON
             FROM (
-                SELECT id, threadId, role, content, timestamp, cliUsed
+                SELECT id, threadId, role, content, timestamp, cliUsed, attachmentsJSON
                 FROM chat_messages
                 WHERE \(pagePredicate)
                 ORDER BY timestamp DESC, id DESC
@@ -268,13 +270,15 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         }
         let timestamp = try Self.parseRequestTimestamp(request.timestamp)
         let backendID = try Self.validatedBackendID(request.backendID)
+        let attachments = try Self.validatedAttachments(request.attachments)
         let canonicalMessage = BurnBarChatMessage(
             id: messageID,
             threadID: threadID,
             role: request.role,
             content: request.content,
             timestamp: Self.iso8601(timestamp),
-            backendID: backendID
+            backendID: backendID,
+            attachments: attachments
         )
 
         try execute("BEGIN IMMEDIATE")
@@ -318,8 +322,8 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         )
         try execute(
             """
-            INSERT INTO chat_messages (id, role, content, timestamp, cliUsed, threadId)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO chat_messages (id, role, content, timestamp, cliUsed, threadId, attachmentsJSON)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             bindings: [
                 .text(messageID),
@@ -327,7 +331,8 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
                 .text(request.content),
                 .text(storedTimestamp),
                 backendID.map(BindValue.text) ?? .null,
-                .text(threadID)
+                .text(threadID),
+                try Self.encodeAttachments(attachments).map(BindValue.text) ?? .null
             ]
         )
         try execute("COMMIT")
@@ -360,7 +365,7 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
 
     private func fetchMessage(messageID: String) throws -> BurnBarChatMessage? {
         let statement = try prepare(
-            "SELECT id, threadId, role, content, timestamp, cliUsed FROM chat_messages WHERE id = ? LIMIT 1",
+            "SELECT id, threadId, role, content, timestamp, cliUsed, attachmentsJSON FROM chat_messages WHERE id = ? LIMIT 1",
             bindings: [.text(messageID)]
         )
         defer { sqlite3_finalize(statement) }
@@ -407,13 +412,18 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         let content = try requiredText(statement, column: 3, field: "message.content")
         let timestamp = try requiredDate(statement, column: 4, field: "message.timestamp")
         let backendID = optionalText(statement, column: 5)
+        let attachments = try Self.decodeAttachments(
+            optionalText(statement, column: 6),
+            messageID: id
+        )
         return BurnBarChatMessage(
             id: id,
             threadID: threadID,
             role: role,
             content: content,
             timestamp: Self.iso8601(timestamp),
-            backendID: backendID
+            backendID: backendID,
+            attachments: attachments
         )
     }
 
@@ -539,8 +549,15 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             """
         )
 
-        let messageColumns = try tableColumns(db: db, table: "chat_messages")
-        let requiredMessageColumns: Set<String> = ["id", "role", "content", "timestamp", "cliUsed", "threadId"]
+        var messageColumns = try tableColumns(db: db, table: "chat_messages")
+        if messageColumns.contains("attachmentsJSON") == false {
+            try execute(
+                db: db,
+                sql: "ALTER TABLE chat_messages ADD COLUMN attachmentsJSON TEXT"
+            )
+            messageColumns.insert("attachmentsJSON")
+        }
+        let requiredMessageColumns: Set<String> = ["id", "role", "content", "timestamp", "cliUsed", "threadId", "attachmentsJSON"]
         let missingMessageColumns = requiredMessageColumns.subtracting(messageColumns)
         guard missingMessageColumns.isEmpty else {
             throw BurnBarChatThreadServiceError.unavailable(
@@ -673,6 +690,124 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         return trimmed
     }
 
+    private static func validatedAttachments(
+        _ raw: [BurnBarChatAttachmentMetadata]?
+    ) throws -> [BurnBarChatAttachmentMetadata]? {
+        guard let raw, raw.isEmpty == false else { return nil }
+        guard raw.count <= maxAttachmentCount else {
+            throw BurnBarChatThreadServiceError.invalidRequest(
+                "attachments exceeds \(maxAttachmentCount) entries"
+            )
+        }
+
+        let hexCharacters = CharacterSet(charactersIn: "0123456789abcdefABCDEF")
+        var normalized: [BurnBarChatAttachmentMetadata] = []
+        normalized.reserveCapacity(raw.count)
+        for (index, attachment) in raw.enumerated() {
+            let field = "attachments[\(index)]"
+            let attachmentID = try validatedIdentifier(
+                attachment.attachmentID,
+                field: "\(field).attachmentId"
+            )
+            guard attachmentID.utf8.count <= maxAttachmentIDBytes else {
+                throw BurnBarChatThreadServiceError.invalidRequest(
+                    "\(field).attachmentId exceeds \(maxAttachmentIDBytes) UTF-8 bytes"
+                )
+            }
+
+            let fileName = attachment.fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard fileName == attachment.fileName,
+                  BurnBarChatAttachmentPolicy.isSafeFileName(fileName) else {
+                throw BurnBarChatThreadServiceError.invalidRequest(
+                    "\(field).fileName is not a safe file name"
+                )
+            }
+            guard attachment.byteSize > 0,
+                  attachment.byteSize <= BurnBarChatAttachmentPolicy.maxBytes else {
+                throw BurnBarChatThreadServiceError.invalidRequest(
+                    "\(field).byteSize must be between 1 and \(BurnBarChatAttachmentPolicy.maxBytes)"
+                )
+            }
+
+            let suppliedMimeType = attachment.mimeType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard let mimeType = BurnBarChatAttachmentPolicy.canonicalMimeType(
+                fileName: fileName,
+                mimeType: suppliedMimeType
+            ) else {
+                throw BurnBarChatThreadServiceError.invalidRequest(
+                    "\(field).mimeType does not match the supported file type"
+                )
+            }
+
+            let sha256 = attachment.sha256.lowercased()
+            guard sha256.utf8.count == 64,
+                  sha256.unicodeScalars.allSatisfy({ hexCharacters.contains($0) }) else {
+                throw BurnBarChatThreadServiceError.invalidRequest(
+                    "\(field).sha256 must be a SHA-256 hex digest"
+                )
+            }
+            normalized.append(
+                BurnBarChatAttachmentMetadata(
+                    attachmentID: attachmentID,
+                    fileName: fileName,
+                    mimeType: mimeType,
+                    byteSize: attachment.byteSize,
+                    sha256: sha256
+                )
+            )
+        }
+        return normalized
+    }
+
+    private static func encodeAttachments(
+        _ attachments: [BurnBarChatAttachmentMetadata]?
+    ) throws -> String? {
+        guard let attachments, attachments.isEmpty == false else { return nil }
+        do {
+            let data = try JSONEncoder().encode(attachments)
+            guard let json = String(data: data, encoding: .utf8) else {
+                throw BurnBarChatThreadServiceError.database("attachment metadata JSON is not UTF-8")
+            }
+            return json
+        } catch let error as BurnBarChatThreadServiceError {
+            throw error
+        } catch {
+            throw BurnBarChatThreadServiceError.database(
+                "attachment metadata could not be encoded: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private static func decodeAttachments(
+        _ raw: String?,
+        messageID: String
+    ) throws -> [BurnBarChatAttachmentMetadata]? {
+        guard let raw else { return nil }
+        guard raw.isEmpty == false,
+              let data = raw.data(using: .utf8) else {
+            throw BurnBarChatThreadServiceError.corruptData(
+                "message '\(messageID)' has invalid attachment metadata"
+            )
+        }
+        do {
+            let decoded = try JSONDecoder().decode([BurnBarChatAttachmentMetadata].self, from: data)
+            return try validatedAttachments(decoded)
+        } catch let error as BurnBarChatThreadServiceError {
+            switch error {
+            case .invalidRequest(let detail):
+                throw BurnBarChatThreadServiceError.corruptData(
+                    "message '\(messageID)' has invalid attachment metadata: \(detail)"
+                )
+            default:
+                throw error
+            }
+        } catch {
+            throw BurnBarChatThreadServiceError.corruptData(
+                "message '\(messageID)' has invalid attachment metadata: \(error.localizedDescription)"
+            )
+        }
+    }
+
     private static func parseRequestTimestamp(_ raw: String) throws -> Date {
         guard let date = parseISO8601(raw) else {
             throw BurnBarChatThreadServiceError.invalidRequest("timestamp must be ISO 8601")
@@ -745,6 +880,7 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             && lhs.role == rhs.role
             && lhs.content == rhs.content
             && lhs.backendID == rhs.backendID
+            && lhs.attachments == rhs.attachments
             && abs(lhsDate.timeIntervalSince1970 - rhsDate.timeIntervalSince1970) < 0.001
     }
 

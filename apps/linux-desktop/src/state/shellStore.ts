@@ -59,7 +59,11 @@ export type ShellState = {
 };
 
 export const useShellStore = create<ShellState>()((set, get) => ({
-  route: routeFromHash(typeof location === 'undefined' ? '' : location.hash),
+  route:
+    typeof location !== 'undefined' &&
+    new URLSearchParams(location.search).get('window') === 'chat-popout'
+      ? 'chat'
+      : routeFromHash(typeof location === 'undefined' ? '' : location.hash),
   health: null,
   healthError: null,
   healthBusy: false,

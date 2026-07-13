@@ -256,6 +256,30 @@
   text-align: center;
 }
 
+.chat-attachment-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-attachment-summary li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 18rem;
+  overflow: hidden;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--chat-text-muted) 30%, transparent);
+  border-radius: 6px;
+  color: var(--chat-text-secondary);
+  font-size: var(--chat-tiny);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 
 .chat-toolbar {
@@ -333,6 +357,59 @@
 .chat-toolbar-text-button:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.chat-options-control {
+  position: relative;
+}
+
+.chat-options-control > summary {
+  list-style: none;
+}
+
+.chat-options-control > summary::-webkit-details-marker {
+  display: none;
+}
+
+.chat-options-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  display: grid;
+  min-width: 12rem;
+  padding: 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--chat-text-muted) 35%, transparent);
+  border-radius: 8px;
+  background: var(--chat-surface-elevated);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 28%);
+}
+
+.chat-options-menu button {
+  border: 0;
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  background: transparent;
+  color: var(--chat-text-secondary);
+  font: inherit;
+  font-size: var(--chat-tiny);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-options-menu button:hover,
+.chat-options-menu button:focus-visible {
+  background: color-mix(in srgb, var(--chat-text) 9%, transparent);
+  color: var(--chat-text);
+}
+
+.chat-options-status {
+  display: block;
+  max-width: 13rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--chat-text-muted);
+  font-size: var(--chat-tiny);
+  line-height: 1.35;
 }
 
 /* ── Backend strip (logo capsules) ───────────────────────────────────────── */

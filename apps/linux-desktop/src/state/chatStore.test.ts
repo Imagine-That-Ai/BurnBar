@@ -345,6 +345,47 @@ describe('exact-thread chat store', () => {
     expect(gatewayRequests[0]?.model).toBe('gpt-5-high');
   });
 
+  it('keeps opaque attachment references on the current user turn and gateway request', async () => {
+    const gatewayRequests: GatewayProxyRequest[] = [];
+    const attachment = {
+      attachmentId: 'attachment-1',
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 5,
+      sha256: 'a'.repeat(64)
+    };
+    const bridge = bridgeWith({
+      gatewayChatStream: async (request, onChunk) => {
+        gatewayRequests.push(request);
+        onChunk('data: {"choices":[{"delta":{"content":"Done"}}]}\n\n');
+        onChunk('data: [DONE]\n\n');
+      }
+    });
+    useShellStore.setState({
+      bridge,
+      fixtureMode: false,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    useChatStore.setState({ threads: [thread('A')], selectedThreadId: 'A', messages: [] });
+
+    await useChatStore.getState().sendMessage('Review this', [attachment]);
+
+    expect(gatewayRequests[0]?.messages.at(-1)).toEqual({
+      role: 'user',
+      content: 'Review this',
+      attachments: [{ attachmentId: 'attachment-1' }]
+    });
+    expect(useChatStore.getState().messages[0]?.attachments).toEqual([attachment]);
+
+    await useChatStore.getState().sendMessage('Follow up');
+    expect(gatewayRequests[1]?.messages).toEqual([
+      { role: 'system', content: 'You are Hermes inside OpenBurnBar.' },
+      { role: 'user', content: 'Review this' },
+      { role: 'assistant', content: 'Done' },
+      { role: 'user', content: 'Follow up' }
+    ]);
+  });
+
   it('loads older durable pages before the current oldest message', async () => {
     const oldest = persisted('newest-page-oldest', 'A', 'user', 'Current page');
     const older = persisted('older-message', 'A', 'assistant', 'Earlier durable reply');
