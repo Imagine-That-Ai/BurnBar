@@ -401,9 +401,12 @@ namespace OpenBurnBar.CloudSync.Crypto
             error is DllNotFoundException
                 or EntryPointNotFoundException
                 or BadImageFormatException
-                || error is TypeInitializationException initialization
-                    && initialization.InnerException is Exception inner
-                    && IsNativeLoadFailure(inner);
+                // UniFFI performs checksum/version validation in the generated
+                // static constructor. An older native artifact therefore fails
+                // before DomainCoreAbiVersion() can return, wrapped as a
+                // TypeInitializationException; treat that as unavailable native
+                // and preserve the legacy fallback contract.
+                or TypeInitializationException;
 
         private static bool FixedTimeEquals(byte[] left, byte[] right) =>
             left.Length == right.Length && CryptographicOperations.FixedTimeEquals(left, right);
