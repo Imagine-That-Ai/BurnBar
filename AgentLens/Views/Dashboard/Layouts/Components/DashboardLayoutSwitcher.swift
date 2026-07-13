@@ -100,8 +100,7 @@ struct DashboardLayoutSwitcher: View {
 
 /// Full-width dashboard chrome with a centered content rail. The backdrop stays
 /// full-bleed, while the controls and the concept layouts share one visual edge.
-// cov:ignore-start -- dashboard shelf is declarative SwiftUI composition; behavior is smoke-tested but not line-attributed by ViewInspector
-struct DashboardLayoutShelf: View {
+struct DashboardLayoutShelf: View { // cov:ignore-start -- dashboard shelf is declarative SwiftUI composition; behavior is smoke-tested but not line-attributed by ViewInspector
     @Binding var selection: DashboardLayout
     let rangeLabel: String
     let isRefreshing: Bool
