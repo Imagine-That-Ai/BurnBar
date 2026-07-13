@@ -161,6 +161,32 @@ function validateCandidate(candidate, targetHead, expectedCandidate) {
   if (!HEAD.test(targetHead)) throw new Error('credential proof target head is invalid');
 }
 
+function expectedEnvironmentMetadata(environmentId) {
+  const architecture = environmentId.endsWith('-aarch64') ? 'aarch64' : 'x86_64';
+  const session = environmentId.includes('-x11-') ? 'x11' : 'wayland';
+  const os = environmentId.startsWith('ubuntu-')
+    ? { id: 'ubuntu', versionId: '24.04' }
+    : environmentId.startsWith('fedora-')
+      ? { id: 'fedora', versionId: null }
+      : { id: 'arch', versionId: null };
+  const desktop = environmentId.startsWith('ubuntu-') ? 'gnome'
+    : environmentId.startsWith('fedora-') ? 'kde'
+      : 'sway';
+  return { architecture, session, os, desktop };
+}
+
+function validateEnvironmentMetadata(capture, environmentId) {
+  const expected = expectedEnvironmentMetadata(environmentId);
+  if (capture.architecture !== expected.architecture || capture.session.toLowerCase() !== expected.session
+      || !capture.desktop.toLowerCase().includes(expected.desktop)) {
+    throw new Error('credential proof host metadata does not match the canonical environment');
+  }
+  if (capture.os.id !== expected.os.id
+      || (expected.os.versionId !== null && capture.os.versionId !== expected.os.versionId)) {
+    throw new Error('credential proof host operating system does not match the canonical environment');
+  }
+}
+
 function validateSourceEvidence(repoRoot, rows) {
   if (!Array.isArray(rows) || rows.length !== SOURCE_CONTRACTS.length) {
     throw new Error('credential proof source evidence must cover every security contract source');
@@ -279,6 +305,7 @@ export function validateP34CredentialSecurityProof({
   assertExactKeys(document.capture.os, ['id', 'versionId'], 'credential proof os');
   assertString(document.capture.os.id, 'credential proof os id');
   assertString(document.capture.os.versionId, 'credential proof os version');
+  validateEnvironmentMetadata(document.capture, environmentId);
 
   assertExactKeys(document.contract, [
     'diagnosticsRedacted', 'encryptedHeadlessCustody', 'fixedRootOwnedDiscovery',

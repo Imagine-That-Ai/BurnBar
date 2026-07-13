@@ -30,10 +30,10 @@ function fixtureHost() {
   return {
     platform: 'linux',
     architecture: 'x86_64',
-    desktop: 'fixture',
-    session: 'fixture',
+    desktop: 'GNOME',
+    session: 'x11',
     sessionBusPresent: false,
-    os: { id: 'fixture-linux', versionId: '0' },
+    os: { id: 'ubuntu', versionId: '24.04' },
     executables: { 'gnome-secret-service': null, 'kde-kwallet': null },
     credentialDirectoryPresent: false,
     credentialDirectoryPathObserved: false
@@ -157,7 +157,8 @@ test('P-34 validator rejects missing, locked, rotated, recovery, and redaction m
       ['old value accepted', (value) => { value.backends[1].cases.rotation.oldAccepted = true; }, /does not invalidate/u],
       ['restart required', (value) => { value.backends[2].cases.recovery.retryWithoutRestart = false; }, /repairable recovery/u],
       ['renderer leak', (value) => { value.backends[0].cases.redaction.rendererRedacted = false; }, /exposes credential material/u],
-      ['secret bytes', (value) => { value.redaction.secretBytesCaptured = true; }, /redaction contract failed/u]
+      ['secret bytes', (value) => { value.redaction.secretBytesCaptured = true; }, /redaction contract failed/u],
+      ['environment substitution', (value) => { value.capture.desktop = 'KDE'; }, /host metadata does not match/u]
     ]) {
       const mutated = structuredClone(document);
       mutate(mutated);
