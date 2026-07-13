@@ -449,7 +449,12 @@ let openBurnBarCoreExcludes = [
     // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
     // the prior partial set that left model files referencing excluded types.
-    "AgentInsights",
+    "AgentInsights/AgentInsightsViewModel.swift",
+    // Pure assembler that returns AgentInsightsBundle from the moved Insights
+    // models (now in the Apple-only OpenBurnBarInsights target). Its only Core
+    // caller is AgentInsightsViewModel.swift (excluded above), so it too must be
+    // pruned off-Apple where OpenBurnBarInsights is not linked.
+    "AgentInsights/AgentInsightsBundleAssembler.swift",
     "Demo/InsightVerdictDemoFixture.swift",
     "Services/Insights",
     "SwitcherBrowserLaunchService.swift",
@@ -461,8 +466,9 @@ let openBurnBarCoreExcludes = [
     // their Core off-Apple exclude entries were removed: CLIAgentSessionRecord,
     // CLIAgentResumePresentation, PiConnectionTypes, CloudVaultDeviceKeypair,
     // EscrowDeviceSafetyCode, HermesRatchetCrypto, HermesRelayAuthenticatedRequest.
-    "SharedModels/Insights",
-    "SharedModels/InsightVerdictWidgetSnapshot.swift",
+    // P-10: SharedModels/Insights + SharedModels/InsightVerdictWidgetSnapshot.swift
+    // moved to the Apple-only OpenBurnBarInsights target, so their Core off-Apple
+    // exclude entries were removed here too (they no longer live under Core).
     "SharedModels/PensieveKnowledgeChunker.swift",
     "SharedModels/PensieveVectorCloak.swift",
     "SharedModels/PixelClockSettingsModel.swift",
