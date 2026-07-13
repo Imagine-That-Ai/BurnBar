@@ -33,6 +33,9 @@ export type ChatWorkspacePanelProps = {
   onModelOptionChange: (id: string) => void;
   onThinkingLevelChange: (level: ChatThinkingSelection) => void;
   onReconnect: () => void;
+  onResume: () => void;
+  resumeDisabled: boolean;
+  resumeStatus?: string | null;
   onPopOut?: () => void;
   onClosePopOut?: () => void;
   popoutWindow: boolean;
@@ -41,6 +44,7 @@ export type ChatWorkspacePanelProps = {
   onExportFormatChange: (format: ChatExportFormat) => void;
   onExport: () => void;
   exportDisabled: boolean;
+  exportBusy: boolean;
   exportStatus: string | null;
   messages: ChatMessage[];
   messagesLoading: boolean;
@@ -85,6 +89,9 @@ export function ChatWorkspacePanel({
   onModelOptionChange,
   onThinkingLevelChange,
   onReconnect,
+  onResume,
+  resumeDisabled,
+  resumeStatus,
   onPopOut,
   onClosePopOut,
   popoutWindow,
@@ -93,6 +100,7 @@ export function ChatWorkspacePanel({
   onExportFormatChange,
   onExport,
   exportDisabled,
+  exportBusy,
   exportStatus,
   messages,
   messagesLoading,
@@ -130,6 +138,9 @@ export function ChatWorkspacePanel({
         onModelOptionChange={onModelOptionChange}
         onThinkingLevelChange={onThinkingLevelChange}
         onReconnect={onReconnect}
+        onResume={onResume}
+        resumeDisabled={resumeDisabled}
+        resumeStatus={resumeStatus}
         onPopOut={onPopOut}
         onClosePopOut={onClosePopOut}
         popoutWindow={popoutWindow}
@@ -139,6 +150,7 @@ export function ChatWorkspacePanel({
         onExportFormatChange={onExportFormatChange}
         onExport={onExport}
         exportDisabled={exportDisabled}
+        exportBusy={exportBusy}
         exportStatus={exportStatus}
       />
       <div className="chat-workspace-body">

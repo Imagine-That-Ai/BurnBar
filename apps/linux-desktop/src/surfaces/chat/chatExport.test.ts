@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../../state/chatStore.js';
-import type { ChatThreadSummary } from '../../tauriBridge.js';
+import type { ChatThreadGetResult, ChatThreadSummary, PersistedChatMessage } from '../../tauriBridge.js';
 import {
   buildChatExportDocument,
+  chatMessagesForExport,
   downloadChatExport,
+  loadCompleteChatHistory,
   sanitizeChatExportFilename,
   serializeChatExport
 } from './chatExport.js';
@@ -73,6 +75,18 @@ const messages: ChatMessage[] = [
 ];
 
 describe('chat export', () => {
+  const persisted = (
+    id: string,
+    timestamp: string,
+    content: string
+  ): PersistedChatMessage => ({
+    id,
+    threadID: thread.id,
+    role: id.includes('assistant') ? 'assistant' : 'user',
+    content,
+    timestamp
+  });
+
   it('exports only durable transcript fields for the selected thread', () => {
     const document = buildChatExportDocument(thread, messages);
 
@@ -135,5 +149,65 @@ describe('chat export', () => {
       content: '{}\n',
       mimeType: 'application/json'
     }, undefined)).toThrow(/unavailable/i);
+  });
+
+  it('loads every daemon page in chronological order for a complete export', async () => {
+    const pages: ChatThreadGetResult[] = [
+      {
+        thread,
+        messages: [persisted('assistant-new', '2026-07-10T12:04:00Z', 'Newest')],
+        hasMoreBefore: true
+      },
+      {
+        thread,
+        messages: [persisted('user-old', '2026-07-10T12:00:00Z', 'Oldest')],
+        hasMoreBefore: false
+      }
+    ];
+    const fetchPage = vi.fn(async (_threadID: string, _maxMessages: number, _before?: unknown) => {
+      const page = pages.shift();
+      if (!page) throw new Error('unexpected page');
+      return page;
+    });
+
+    const loaded = await loadCompleteChatHistory(thread, fetchPage);
+    expect(loaded.map((message) => message.id)).toEqual(['user-old', 'assistant-new']);
+    expect(fetchPage).toHaveBeenNthCalledWith(1, thread.id, 500, undefined);
+    expect(fetchPage).toHaveBeenNthCalledWith(2, thread.id, 500, {
+      timestamp: '2026-07-10T12:04:00Z',
+      messageID: 'assistant-new'
+    });
+    expect(chatMessagesForExport(loaded)[0]).toMatchObject({ text: 'Oldest', role: 'user' });
+  });
+
+  it('rejects duplicate/no-progress pages instead of writing partial history', async () => {
+    const duplicate = persisted('assistant-new', '2026-07-10T12:04:00Z', 'Newest');
+    const fetchPage = vi.fn(async () => ({
+      thread,
+      messages: [duplicate],
+      hasMoreBefore: true
+    }));
+    await expect(loadCompleteChatHistory(thread, fetchPage)).rejects.toThrow(/duplicate|cursor/i);
+  });
+
+  it('rejects a response with the wrong thread identity', async () => {
+    const other: ChatThreadSummary = { ...thread, id: 'other-thread' };
+    const fetchPage = async (): Promise<ChatThreadGetResult> => ({
+      thread: other,
+      messages: [],
+      hasMoreBefore: false
+    });
+    await expect(loadCompleteChatHistory(thread, fetchPage)).rejects.toThrow(/different thread|identity/i);
+  });
+
+  it('enforces message and content bounds before serializing', async () => {
+    const page = {
+      thread,
+      messages: [persisted('assistant-new', '2026-07-10T12:04:00Z', 'too large')],
+      hasMoreBefore: false
+    };
+    await expect(
+      loadCompleteChatHistory(thread, async () => page, { maxContentBytes: 3 })
+    ).rejects.toThrow(/safe export limit/i);
   });
 });
