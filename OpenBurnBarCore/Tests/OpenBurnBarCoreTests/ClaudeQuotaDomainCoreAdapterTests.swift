@@ -44,6 +44,23 @@ final class ClaudeQuotaDomainCoreAdapterTests: XCTestCase {
         }
     }
 
+    func testRustModeMatchesCanonicalContractWhenNativeCoreIsLinked() throws {
+        try XCTSkipUnless(ClaudeQuotaDomainCoreAdapter.isNativeAvailable)
+        let input = try Data(contentsOf: fixtureURL("claude-statusline-input.json"))
+        let expected = try JSONDecoder().decode(
+            ExpectedSnapshot.self,
+            from: Data(contentsOf: fixtureURL("claude-statusline-expected.json"))
+        )
+
+        let buckets = ClaudeQuotaDomainCoreAdapter.buckets(
+            from: ClaudeRateLimits(from: input),
+            environment: ["OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE": "rust"],
+            quotaLogger: NoOpQuotaLogger()
+        )
+
+        assertBuckets(buckets, match: expected.buckets)
+    }
+
     func testUnknownMigrationModeFailsClosedToLegacy() {
         XCTAssertEqual(
             DomainCoreQuotaMigrationMode.resolve(

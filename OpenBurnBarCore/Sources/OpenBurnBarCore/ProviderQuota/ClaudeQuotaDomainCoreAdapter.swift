@@ -39,18 +39,17 @@ enum ClaudeQuotaDomainCoreAdapter {
         environment: [String: String],
         quotaLogger: any QuotaLogger
     ) -> [ProviderQuotaBucket] {
-        let legacy = legacyBuckets(from: rateLimits)
         let mode = DomainCoreQuotaMigrationMode.resolve(environment: environment)
-        guard mode != .legacy else { return legacy }
+        guard mode != .legacy else { return legacyBuckets(from: rateLimits) }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
         guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 1 else {
             quotaLogger.log("domain_core.claude_quota.abi_mismatch")
-            return legacy
+            return legacyBuckets(from: rateLimits)
         }
         guard let payload = try? JSONSerialization.data(withJSONObject: rateLimits.rawDictionary) else {
             quotaLogger.log("domain_core.claude_quota.payload_encode_failed")
-            return legacy
+            return legacyBuckets(from: rateLimits)
         }
 
         let result = OpenBurnBarDomainCoreFFI.parseClaudeStatuslineQuota(payload: payload)
@@ -59,6 +58,7 @@ enum ClaudeQuotaDomainCoreAdapter {
             : []
 
         if mode == .shadow {
+            let legacy = legacyBuckets(from: rateLimits)
             if !equivalent(legacy, rust) {
                 quotaLogger.log(
                     "domain_core.claude_quota.shadow_mismatch core=\(OpenBurnBarDomainCoreFFI.domainCoreVersion()) legacy_count=\(legacy.count) rust_count=\(rust.count)"
@@ -69,7 +69,7 @@ enum ClaudeQuotaDomainCoreAdapter {
         return rust
         #else
         quotaLogger.log("domain_core.claude_quota.native_unavailable mode=\(mode.rawValue)")
-        return legacy
+        return legacyBuckets(from: rateLimits)
         #endif
     }
 
@@ -151,16 +151,24 @@ enum ClaudeQuotaDomainCoreAdapter {
                 && approximatelyEqual(left.limitValue, right.limitValue)
                 && approximatelyEqual(left.remainingValue, right.remainingValue)
                 && approximatelyEqual(left.usedPercent, right.usedPercent)
-                && left.resetsAt?.timeIntervalSince1970 == right.resetsAt?.timeIntervalSince1970
+                && approximatelyEqual(
+                    left.resetsAt?.timeIntervalSince1970,
+                    right.resetsAt?.timeIntervalSince1970,
+                    tolerance: 0.001
+                )
                 && left.unit == right.unit
                 && left.isEstimated == right.isEstimated
         }
     }
 
-    private static func approximatelyEqual(_ lhs: Double?, _ rhs: Double?) -> Bool {
+    private static func approximatelyEqual(
+        _ lhs: Double?,
+        _ rhs: Double?,
+        tolerance: Double = 0.000_001
+    ) -> Bool {
         switch (lhs, rhs) {
         case (nil, nil): true
-        case let (.some(left), .some(right)): abs(left - right) <= 0.000_001
+        case let (.some(left), .some(right)): abs(left - right) <= tolerance
         default: false
         }
     }

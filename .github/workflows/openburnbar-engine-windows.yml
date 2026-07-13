@@ -112,6 +112,11 @@ jobs:
             8.0.x
             10.0.x
 
+      - name: Install Rust toolchain for shared domain core
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
       # Python 3.10 — part of the documented Windows toolchain recipe
       # (PHASE1_CORE_SPLIT_PLAN.md §"Windows build recipe"); also backs SwiftPM's
       # plugin/lldb tooling on Windows.
@@ -267,6 +272,9 @@ jobs:
           $engine = Join-Path $bin "OpenBurnBarCoreCAbi.dll"
           $stage = Join-Path $env:RUNNER_TEMP "openburnbar-native-engine-win-x64"
           python scripts/windows-port/stage-swift-runtime.py --engine $engine --destination $stage --search-path $bin
+          cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi --release
+          $domainCore = Resolve-Path "crates/openburnbar-domain-core/target/release/openburnbar_domain_ffi.dll"
+          Copy-Item -Force $domainCore (Join-Path $stage "openburnbar_domain_ffi.dll")
           "OPENBURNBAR_CORE_CABI_PATH=$engine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENBURNBAR_NATIVE_ENGINE_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
@@ -355,6 +363,11 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+
+      - name: Install Rust toolchain for shared domain core
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
 
       # Python backs SwiftPM's plugin/lldb tooling on Windows. The x64 leg pins
       # 3.10 per the recipe, but win-arm64 has no official CPython before 3.11, so
@@ -502,6 +515,9 @@ jobs:
           $engine = Join-Path $bin "OpenBurnBarCoreCAbi.dll"
           $stage = Join-Path $env:RUNNER_TEMP "openburnbar-native-engine-win-arm64"
           python scripts/windows-port/stage-swift-runtime.py --engine $engine --destination $stage --search-path $bin
+          cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi --release
+          $domainCore = Resolve-Path "crates/openburnbar-domain-core/target/release/openburnbar_domain_ffi.dll"
+          Copy-Item -Force $domainCore (Join-Path $stage "openburnbar_domain_ffi.dll")
           "OPENBURNBAR_CORE_CABI_PATH=$engine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENBURNBAR_NATIVE_ENGINE_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 

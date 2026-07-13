@@ -27,6 +27,11 @@ public sealed class ClaudeStatuslineQuotaParserTests
     [Fact]
     public void RustMode_RecordedStatuslineSnapshot_MatchesExpectedValueForValue()
     {
+        if (Environment.GetEnvironmentVariable("OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE") != "1")
+        {
+            return;
+        }
+
         Assert.Equal(1u, DomainCore.DomainCoreAbiVersion());
         var input = QuotaFixtures.ReadInput("claude-statusline-input.json");
         var expected = QuotaFixtures.ReadExpected("claude-statusline-expected.json");

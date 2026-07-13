@@ -64,6 +64,9 @@
     <Error
       Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')"
       Text="Required Windows parser engine is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll" />
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll')"
+      Text="Required shared domain core is missing: $(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll" />
   </Target>
 
   <ItemGroup>

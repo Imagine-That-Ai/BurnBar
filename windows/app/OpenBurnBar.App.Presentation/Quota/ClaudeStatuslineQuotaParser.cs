@@ -69,8 +69,11 @@ public static class ClaudeStatuslineQuotaParser
         DateTimeOffset fetchedAt,
         string? statusMessage = null)
     {
-        var legacy = ParseLegacy(json, fetchedAt, statusMessage);
-        return ClaudeStatuslineQuotaDomainCore.Apply(json, legacy);
+        return ClaudeStatuslineQuotaDomainCore.Apply(
+            json,
+            () => ParseLegacy(json, fetchedAt, statusMessage),
+            fetchedAt,
+            statusMessage ?? DefaultStatusMessage);
     }
 
     internal static ProviderQuotaSnapshot ParseLegacy(

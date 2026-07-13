@@ -37,6 +37,7 @@ fi
 
 DEFAULT_TARGETS=(
   aarch64-apple-darwin
+  x86_64-apple-darwin
   aarch64-apple-ios
   aarch64-apple-ios-sim
   x86_64-apple-ios
@@ -64,9 +65,9 @@ fi
 
 ensure_rust_target() {
   local target="$1"
-  if ! "${RUSTUP_BIN}" target list --installed | grep -q "^${target}$"; then
+  if ! (cd "${CRATE_DIR}" && "${RUSTUP_BIN}" target list --installed) | grep -q "^${target}$"; then
     log "installing rust target ${target}"
-    "${RUSTUP_BIN}" target add "${target}"
+    (cd "${CRATE_DIR}" && "${RUSTUP_BIN}" target add "${target}")
   fi
 }
 
@@ -176,6 +177,7 @@ package_static_for_target() {
   local platform_id
   case "${target}" in
     aarch64-apple-darwin) platform_id="macos-arm64" ;;
+    x86_64-apple-darwin) platform_id="macos-x86_64" ;;
     aarch64-apple-ios) platform_id="ios-arm64" ;;
     aarch64-apple-ios-sim) platform_id="ios-arm64-simulator" ;;
     x86_64-apple-ios) platform_id="ios-x86_64-simulator" ;;
@@ -194,6 +196,26 @@ package_static_for_target() {
   fi
   build_xcframework_args+=(-library "${out_dir}/libopenburnbar_domain_ffi.a" -headers "${out_dir}/Headers")
 }
+
+# Direct-download macOS supports Apple Silicon and Intel. Package both
+# architectures as one macOS library definition in the XCFramework.
+if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-darwin" \
+   && printf '%s\n' "${TARGETS[@]}" | grep -q "x86_64-apple-darwin"; then
+  MAC_DIR="${ARCHS_DIR}/macos"
+  mkdir -p "${MAC_DIR}/Headers"
+  lipo -create \
+    "${CRATE_DIR}/target/aarch64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+    "${CRATE_DIR}/target/x86_64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
+    -output "${MAC_DIR}/libopenburnbar_domain_ffi.a"
+  cp "${GENERATED_DIR}/"*.h "${MAC_DIR}/Headers/"
+  cp "${GENERATED_DIR}/"*.modulemap "${MAC_DIR}/Headers/module.modulemap"
+  perl -0pi -e 's/framework module /module /g' "${MAC_DIR}/Headers/module.modulemap"
+  build_xcframework_args+=(-library "${MAC_DIR}/libopenburnbar_domain_ffi.a" -headers "${MAC_DIR}/Headers")
+else
+  for target in aarch64-apple-darwin x86_64-apple-darwin; do
+    [[ " ${TARGETS[*]} " == *" ${target} "* ]] && package_static_for_target "${target}"
+  done
+fi
 
 # Simulator: arm64 + x86_64 must be merged into a single fat archive before
 # packaging into the xcframework slice.
@@ -215,12 +237,14 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-ios-sim" \
   build_xcframework_args+=(-library "${SIM_DIR}/libopenburnbar_domain_ffi.a" -headers "${SIM_DIR}/Headers")
 
   # Per-arch slices still emitted for archive reproducibility.
-  for t in aarch64-apple-darwin aarch64-apple-ios; do
+  for t in aarch64-apple-ios; do
     [[ " ${TARGETS[*]} " == *" ${t} "* ]] && package_static_for_target "${t}"
   done
 else
   for target in "${TARGETS[@]}"; do
-    package_static_for_target "${target}"
+    if [[ "${target}" != "aarch64-apple-darwin" && "${target}" != "x86_64-apple-darwin" ]]; then
+      package_static_for_target "${target}"
+    fi
   done
 fi
 
