@@ -287,6 +287,15 @@ COVERAGE_ALLOWLIST = {
         "the changed observer/fetch side effects are AppKit/Firebase runtime "
         "glue that requires integration coverage."
     ),
+    "AgentLens/Services/DataControlCenterViewModel.swift": (
+        "macOS Data & Privacy Control Center callable hub. The changed lines "
+        "route deleteDomain through the trusted-device step-up "
+        "(ComputerUseSecurityCallableClient.callHighRiskOwnerAction), a live "
+        "Firebase callable invocation plus device-id lookup that only executes "
+        "against the deployed Functions backend. The step-up gate is covered "
+        "server-side by highRiskOwnerActionCallableGuards and dataDeletion "
+        "suites; the client call site requires Firebase integration coverage."
+    ),
     "AgentLens/Services/AccountManager.swift": (
         "Live FirebaseAuth/GoogleSignIn account-deletion wrapper. The "
         "server-authoritative erasure contract, local sign-out failure "
