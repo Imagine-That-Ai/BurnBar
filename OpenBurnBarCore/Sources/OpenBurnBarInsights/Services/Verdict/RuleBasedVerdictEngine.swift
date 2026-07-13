@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Deterministic, no-LLM verdict producer.
 ///
