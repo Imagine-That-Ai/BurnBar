@@ -1,89 +1,185 @@
 # Shared Rust Domain Core Roadmap
 
-**Status:** active program
+**Status:** active migration; no domain has completed production promotion and legacy deletion
+
 **ADR:** [ADR 014](architecture/014-shared-rust-domain-core.md)
+
 **Source inventory:** [Shared Rust Domain Inventory](SHARED_RUST_DOMAIN_INVENTORY.md)
-**First contract:** [`tests/fixtures/domain-core/quota/v1/`](../tests/fixtures/domain-core/quota/v1/)
+
+**Quota contract:** [`tests/fixtures/domain-core/quota/v1/`](../tests/fixtures/domain-core/quota/v1/)
+
 **CloudVault contract:** [`tests/fixtures/domain-core/cloudvault/v1/`](../tests/fixtures/domain-core/cloudvault/v1/)
+
 **Hermes contract:** [`tests/fixtures/domain-core/hermes/v1/`](../tests/fixtures/domain-core/hermes/v1/)
 
-The pilot is implemented behind `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE`. Its
-accepted values are `legacy` (default), `shadow`, and `rust`.
-Hermes relay and ratchet byte transforms use
-`OPENBURNBAR_DOMAIN_CORE_HERMES_MODE` with the same values.
+The program consolidates pure business logic that is genuinely implemented in
+more than one language. It does not rewrite every application or move
+platform-owned I/O into Rust. Provider log parsing is specifically out of
+scope: macOS, iOS, Linux, and Windows already consume the one Swift parser
+engine, while Android and Cloud Functions do not read local provider logs.
 
 ## Invariants
 
 - The Rust workspace owns pure transformations only. Platform adapters own I/O,
-  persistence, credentials, process execution, UI, and release integration.
-- One short-lived branch produces one reviewable result. The merged crate on
-  `main` is the only integration branch.
+  persistence, credentials, process execution, UI, key handles, and release
+  integration.
+- The merged crate is the integration point. Work lands through short-lived,
+  reviewable branches; there is no long-lived SharedRust branch.
 - Contract fixtures precede implementation. Rust and every active consumer must
-  emit the same normalized result.
-- Migration modes are `legacy`, `shadow`, and `rust`. Shadow mode never changes
-  the user-visible result.
-- No sensitive input, output, value, credential, or stable payload hash is
-  emitted by mismatch telemetry.
-- FFI boundaries are payload-sized. Parsers never call Rust once per line.
+  emit the same normalized result before Rust can become authoritative.
+- FFI calls are payload- or document-sized. No caller crosses the boundary once
+  per log line, token, field, or byte block.
+- Telemetry contains mismatch categories, counts, versions, and timing only. It
+  never contains sensitive inputs, outputs, credentials, user identifiers, or
+  stable payload hashes.
+- Generated Swift, Kotlin, C#, native, and Wasm artifacts are one atomic release
+  set. A consumer never mixes bindings or binaries generated from different
+  domain-core source trees.
+
+## Migration mode semantics
+
+Each production adapter exposes a domain-specific
+`OPENBURNBAR_DOMAIN_CORE_*_MODE` setting with these values:
+
+| Mode | Authority | Failure behavior |
+|---|---|---|
+| `legacy` | Existing platform implementation only | Rust is not invoked. This is an explicit rollback state, not proof that migration is complete. |
+| `shadow` | Existing platform implementation | Rust runs once against the same complete input. The adapter returns the legacy result and records only safe mismatch/failure categories. A Rust load, ABI, parse, or transform failure does not change the user-visible result because Rust is not authoritative in this mode. |
+| `rust` | Shared Rust core only | Missing artifacts, ABI mismatch, invalid input, authentication failure, or Rust errors fail closed. The adapter must not silently invoke the legacy implementation. |
+
+Missing or invalid configuration resolves to the documented legacy default
+until a reviewed rollout changes that default. Selecting `rust` is an explicit
+authority change and never enables automatic fallback. Shadow evidence is not
+promotion; it is input to the promotion gate.
 
 ## Delivery waves
 
-| Wave | Domain | Current duplication | Exit condition |
+| Wave | Domain | Real duplication | Exit condition |
 |---|---|---|---|
-| Q1 | Claude statusline quota | Swift + C# | Rust enforced on Apple/Windows; legacy parsers deleted |
-| Q2 | Codex, Cursor, Anthropic quota | Swift + C# | Four quota mechanisms share Rust parsing |
-| C1 | CloudVault primitives and envelopes | Swift + Kotlin + C# + browser TypeScript | KAT/cross-open clean; duplicated portable crypto copies deleted without exporting browser non-extractable keys |
-| C2 | Hermes relay crypto and ratchet byte transforms | Swift + Kotlin | Existing wire vectors pass through Rust; P-256 custody and state mutation remain platform-owned |
-| P1 | Model pricing and cost arithmetic | Swift + TypeScript | Integer nano-USD Rust/WASM path enforced |
+| Q1 | Claude statusline quota | Swift + C# | Rust enforced on Apple/Windows; quota rollout gate passes; named legacy transforms deleted |
+| Q2 | Codex, Cursor, Anthropic quota | Swift + C# | Four quota mechanisms use Rust as authority; quota rollout gate passes; named legacy transforms deleted |
+| C1 | CloudVault primitives, encrypted search, and document envelopes | Swift + Kotlin + C# + browser TypeScript, with different subsets | KAT/cross-open/tamper/fuzz/security gates pass for each applicable consumer; duplicated portable crypto and transform copies deleted without exporting browser private keys |
+| C2 | Hermes relay crypto and ratchet byte transforms | Swift + Kotlin | Existing wire vectors pass through Rust; P-256 custody and ratchet state mutation remain platform-owned; legacy byte transforms deleted after crypto promotion |
+| P1 | Model pricing and cost arithmetic | Swift + Cloud Functions TypeScript | Checked nano-USD Rust/Wasm path enforced; parity and rollout evidence pass; duplicate calculators deleted |
 
-Provider log parsing remains in Swift until a second real implementation exists,
-Android becomes a local log-reading peer, or Windows/Linux Swift runtime evidence
-justifies replacement.
+CloudVault C1 is split by security boundary:
 
-CloudVault C1 is split by security boundary. C1a owns deterministic AAD
-canonicalization, SHA-256, 32-byte vault-key IDs, and fixed-purpose HKDF/HMAC.
-It ships through UniFFI ABI 2, a four-ABI Android AAR, and a deterministic browser
-Wasm package. C1b owns AES-256-GCM detached/combined framing, strict UTF-8 and
-canonical RFC 4648 Base64, with caller-generated 12-byte nonces and payload-sized
-FFI calls. Apple, Android, Windows, and Wasm execute the same AES KAT, including
-valid empty plaintext. C1c adds recovery and
-P-256 escrow: canonical recovery normalization, recovery HKDF and verification,
-strict on-curve 65-byte X9.63 validation, escrow HKDF from caller-provided ECDH
-output, and exact public-key-plus-AES wire assembly. Random nonces and P-256
-private-key operations remain platform-owned; no private key crosses UniFFI or
-Wasm. C1d adds typed whole-document rewrap after those primitives: Rust owns
-bounded envelope validation, exact authentication, deterministic field order,
-reseal, and update intents, while callers own dynamic document mapping,
-persistence, timestamps, orchestration, and nonce generation. Its contract is
-`cloudvault-document-rewrap-contract.json`; production Swift/Kotlin flips remain
-separate rollout PRs. Search normalization remains last. Browser device
-private keys stay non-extractable WebCrypto handles throughout.
+- **C1a:** deterministic AAD canonicalization, SHA-256, 32-byte vault-key IDs,
+  and fixed-purpose HKDF/HMAC.
+- **C1b:** AES-256-GCM detached/combined framing, strict UTF-8, canonical RFC
+  4648 Base64, and payload-sized calls. Platforms still generate secure 12-byte
+  nonces.
+- **C1c:** recovery normalization/HKDF/verification, strict on-curve 65-byte
+  X9.63 P-256 validation, escrow HKDF from caller-provided ECDH output, and exact
+  public-key-plus-AES wire assembly. Private keys and ECDH remain in platform
+  key stores or non-extractable WebCrypto handles.
+- **C1d:** typed whole-document rewrap. Swift and Kotlin classify dynamic
+  Firestore dictionaries into typed payload/text/blob envelopes and a complete
+  top-level field-name set. Rust receives that typed request once per document,
+  authenticates and transforms envelopes in deterministic order, and returns
+  changed/skip/companion/metadata/preserved-member intents. Persistence,
+  timestamps, orchestration, and secure nonce generation remain platform-owned.
+- **Search:** complete v1 token analysis and ordered keyed hashes. Storage,
+  query orchestration, and browser non-extractable key handles stay outside
+  Rust.
 
-Hermes C2 shares relay AAD, v1/v2 wrap-info construction, HPKE v3 info,
-SHA-256/safety codes, HKDF/HMAC, AES-GCM payload framing, and ratchet envelope
-AAD through ABI 2. CryptoKit/JCA continue to own P-256 private keys, ECDH,
-secure random generation, and ratchet state mutation.
+## ABI 3 and artifact provenance
+
+The converged union is one breaking **UniFFI ABI 3** cut. C1d replaces the old
+positional nonce array with `CloudVaultResealNonce { fieldName, nonce }`. Rust
+validates exact field coverage, uniqueness, and 12-byte nonce length. A nonce
+cannot be reassigned to a different lexicographically sorted field by accident.
+Every consumer must require `domain_core_abi_version() == 3`; ABI 2 bindings or
+binaries must not be paired with ABI 3 consumers.
+
+Use this atomic process for every source change:
+
+1. Change the Rust source and its fixtures, then review the complete exported
+   union in `crates/openburnbar-domain-core/union-abi-manifest.json`.
+2. Run `python3 scripts/ci/domain-core-union-gate.py --update-source-fingerprint`
+   once to atomically replace the manifest's source SHA-256 for the reviewed
+   source tree.
+3. From that exact tree, regenerate the Swift XCFramework, Android AAR/Kotlin
+   binding, C# binding, and both browser/Node Wasm packages. Do not regenerate
+   consumers from independent feature branches.
+4. Commit the generated set together. Source fingerprints live in
+   `crates/openburnbar-domain-core/artifact-provenance/{swift,kotlin,csharp}.sha256`
+   and are embedded in the XCFramework, AAR, and both Wasm packages.
+5. Run `python3 scripts/ci/domain-core-union-gate.py --check-abi` and the normal
+   gate. CI also rebuilds/compares the generated surfaces and rejects missing,
+   stale, mixed-source, or undeclared exports.
+
+The source fingerprint proves source identity, not merely artifact presence.
+Checksums, SBOMs, native load tests, and AGPL source completeness remain
+separate release requirements.
 
 ## Rollout and deletion gates
 
-Quota migrations require the complete fixture corpus, native binding load tests,
-at least 14 days and 10,000 internal or beta shadow parses, zero unexplained
-mismatches, and no p95 latency regression above five percent. The legacy mode
-remains available for one stable release after Rust enforcement, then is deleted.
+Quota promotion requires all of the following:
 
-Crypto migrations additionally require deterministic KATs, bidirectional
-cross-open coverage for every supported envelope version, tamper/wrong-key/AAD
-rejection, fuzzing, and independent security review. Authentication failures
-remain fail-closed and never trigger automatic legacy fallback.
+1. Complete fixture corpus and native binding load tests on Apple and Windows.
+2. At least **14 consecutive days per required consumer** in an internal or beta
+   channel and **10,000 aggregate shadow parses** across the required consumers.
+3. Zero unexplained mismatches. Explained categories require a linked issue and
+   named review; explanation never removes the raw count from evidence.
+4. Rust p95 latency no more than **5 percent** above the legacy p95, using the
+   same shadow samples.
+5. A passing fail-closed quantitative report from the existing promotion
+   evidence evaluator delivered by [PR #1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612).
+   Use `node scripts/ci/evaluate-domain-core-promotion.mjs --evidence <bundle>
+   --output <report>` after that merged feature-stack commit is in the landing
+   ancestry, and follow `docs/runbooks/shared-rust-promotion-evidence.md` from
+   that commit. Do not add a second evaluator or hand-edit evidence.
+6. One stable release observed with Rust authoritative and the explicit legacy
+   rollback mode still available.
+
+Only after all six gates pass may a separate deletion PR remove the legacy
+quota implementations and rollback setting. A mismatch, artifact/ABI failure,
+or latency regression before deletion rolls the affected consumer explicitly
+back to `legacy`, preserves evidence, and restarts the applicable shadow window
+after the cause is fixed.
+
+Crypto promotion additionally requires deterministic KATs, bidirectional
+cross-open coverage for every supported envelope version and consumer,
+wrong-key/AAD/tamper rejection, boundary fuzzing, and an independent security
+review with all release-blocking findings resolved. Authentication failures in
+`rust` mode are fail-closed and never trigger legacy decryption. Legacy crypto
+is deleted only after those gates, consumer-specific rollout evidence, and one
+stable Rust-authoritative release.
+
+## Current landing state
+
+Snapshot: **2026-07-13**. “Merged” below means merged into a feature branch,
+not into `main`, and does not mean production promotion.
+
+- Quota: pilot [#1590](https://github.com/Imagine-That-Ai/BurnBar/pull/1590)
+  and Q2 [#1591](https://github.com/Imagine-That-Ai/BurnBar/pull/1591) are open;
+  consumer wiring [#1592](https://github.com/Imagine-That-Ai/BurnBar/pull/1592)
+  is merged into the quota feature stack. The 14-day/10,000-sample window has
+  not been certified.
+- CloudVault: foundation [#1594](https://github.com/Imagine-That-Ai/BurnBar/pull/1594),
+  AES [#1602](https://github.com/Imagine-That-Ai/BurnBar/pull/1602), pricing
+  [#1629](https://github.com/Imagine-That-Ai/BurnBar/pull/1629), search
+  [#1632](https://github.com/Imagine-That-Ai/BurnBar/pull/1632), and document
+  rewrap [#1636](https://github.com/Imagine-That-Ai/BurnBar/pull/1636) remain
+  stacked/open or are being converged into one ABI 3 artifact line.
+- Hermes [#1609](https://github.com/Imagine-That-Ai/BurnBar/pull/1609), C1c core
+  [#1615](https://github.com/Imagine-That-Ai/BurnBar/pull/1615), the promotion
+  gate [#1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612), and some
+  platform consumers are merged into feature branches only. Other Swift,
+  Kotlin, C#, Console, search, and rewrap consumer PRs remain open or pending.
+- No shared-Rust domain is complete under the inventory's completion rule. No
+  legacy implementation should be deleted from this status snapshot.
 
 ## Required CI
 
-- `cargo fmt --check`, Clippy with warnings denied, and Rust unit/adversarial
-  parser tests. Add continuous fuzz smoke before any parser reaches `rust` mode.
-- Generated binding drift checks against the pinned UniFFI toolchain for every
-  enabled consumer. The pilot enables Swift and C#; Kotlin is added with its
-  first Android-owned domain.
-- Apple XCFramework, Android AAR, Windows x64/ARM64 DLL, and Linux x64/ARM64
-  library load tests when those consumers are enabled.
-- Focused platform contract tests plus release checks for core/binding ABI
-  agreement, checksums, SBOM, provenance, and AGPL source completeness.
+- `cargo fmt --check`, Clippy with warnings denied, Rust unit/property tests,
+  `cargo deny`, and bounded fuzz smoke for quota-transform and crypto surfaces.
+- `domain-core-union-gate.py` ABI, export, source-fingerprint, and provenance
+  checks across all eight union domains.
+- Generated binding drift checks against the pinned UniFFI toolchain for Swift,
+  Kotlin, and C#; exact deterministic tree comparison for browser and Node Wasm.
+- Apple XCFramework, four-ABI Android AAR with 16 KiB page compatibility,
+  Windows x64/ARM64 DLL, and applicable Linux library load tests.
+- Focused platform fixture/consumer tests plus release checks for checksums,
+  SBOM, provenance, and AGPL source completeness.
