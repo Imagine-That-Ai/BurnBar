@@ -43,10 +43,12 @@ extension DashboardView {
             Button {
                 showCommandPalette = true
             } label: {
-                ShortcutChip(keys: ["\u{2318}", "K"])
+                CommandPaletteToolbarLabel()
             }
             .buttonStyle(.plain)
             .help("Command Palette (\u{2318}K)")
+            .accessibilityLabel("Open Command Palette")
+            .accessibilityHint("Shows navigation, sessions, and workspace commands")
         }
 
         // MARK: Primary — BURN hero (with range/unit popover) · overflow
@@ -215,6 +217,52 @@ extension DashboardView {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("More actions")
+    }
+}
+
+private struct CommandPaletteToolbarLabel: View {
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "command")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(isHovering ? DesignSystem.Colors.ember : DesignSystem.Colors.textSecondary)
+
+            Text("Commands")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+            ShortcutChip(keys: ["\u{2318}", "K"])
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 7)
+        .frame(height: 28)
+        .background {
+            Capsule(style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(isHovering ? 0.72 : 0.48))
+                .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+        }
+        .overlay {
+            Capsule(style: .continuous)
+                .stroke(
+                    isHovering
+                        ? DesignSystem.Colors.ember.opacity(0.38)
+                        : DesignSystem.Colors.border.opacity(0.55),
+                    lineWidth: 0.6
+                )
+        }
+        .shadow(
+            color: isHovering ? DesignSystem.Colors.ember.opacity(0.12) : Color.black.opacity(0.08),
+            radius: isHovering ? 8 : 4,
+            y: 2
+        )
+        .contentShape(Capsule(style: .continuous))
+        .onHover { hovering in
+            withAnimation(DesignSystem.Animation.snappy) {
+                isHovering = hovering
+            }
+        }
     }
 }
 
