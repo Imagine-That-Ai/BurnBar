@@ -23,9 +23,10 @@
 //     OpenBurnBarQuota is still a marker-only target. `@_exported import` of a
 //     marker-only target is valid Swift and re-exposes no usable symbol yet; the
 //     line is a forward declaration that lights up automatically when the Quota
-//     move lands. The daemon consumes NO Quota type (verified: zero
-//     ProviderQuota*/Quota* references in OpenBurnBarDaemon/Sources), so the
-//     empty re-export does not affect the S17 daemon repoint.
+//     move lands. The daemon does reference quota-domain types such as
+//     ProviderQuotaUtilizationOrdering, but those currently resolve through
+//     Kernel or daemon-local code rather than the marker-only OpenBurnBarQuota
+//     target, so the empty re-export does not affect the S17 daemon repoint.
 //
 // The whole Engine transitive closure is UI-free: no target reachable from
 // OpenBurnBarEngine imports SwiftUI or AppKit (grep-proven in packet P-17). That

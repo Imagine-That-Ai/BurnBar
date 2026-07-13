@@ -72,7 +72,11 @@ if leaked:
     failed = True
     print(f"\nFAIL: UI-carrying target(s) reached from OpenBurnBarEngine: {leaked}")
 
-import_re = re.compile(r'^\s*(?:@_?\w+(?:\([^)]*\))?\s+)*import\s+(SwiftUI|AppKit)\b')
+import_re = re.compile(
+    r'^\s*(?:@_?\w+(?:\([^)]*\))?\s+)*import\s+'
+    r'(?:(?:class|struct|enum|protocol|typealias|func|var|let)\s+)?'
+    r'(SwiftUI|AppKit)(?:\b|\.)'
+)
 for t in closure:
     root = targets[t].get('path') or os.path.join("Sources", t)
     abs_root = os.path.join(os.path.dirname(sources_root), root) if not os.path.isabs(root) else root
