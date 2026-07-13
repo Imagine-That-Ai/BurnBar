@@ -103,6 +103,6 @@ authoritative XAML validation surface.
 The presentation suite is now 761/761 after durable project-code store,
 inventory-fallback, and AST-range chunking coverage;
 the focused chat runtime suite is 24/24; the Rust parser suite is 19/19. The
-F1 parity ledger remains the machine-scanned 47-row source/product gate.
+F1 parity ledger remains the machine-scanned 48-row source/product gate.
 WPD-0009 still defines F2 True 1:1 as the full parity finish line and requires
 production composition plus host evidence before these rows can be promoted.

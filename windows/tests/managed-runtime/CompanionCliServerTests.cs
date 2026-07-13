@@ -45,6 +45,47 @@ public sealed class CompanionCliServerTests
     }
 
     [Fact]
+    public async Task Server_ExecutesHeadlessRunOverAuthenticatedLoopback()
+    {
+        string path = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "obb-cli-live-run-" + System.IO.Path.GetRandomFileName());
+        try
+        {
+            var runs = new HeadlessRunService(new JsonLinesHeadlessRunJournal(path));
+            var runHandler = new CompanionCliHeadlessRunHandler(
+                runs,
+                BuiltInHeadlessRunSteps.ExecuteAsync);
+            var router = new CompanionCliCommandRouter(
+                submit: runHandler.SubmitAsync,
+                resume: runHandler.ResumeAsync,
+                recover: runHandler.RecoverAsync);
+            await using var server = new CompanionCliServer(0, router, "integration-token");
+            server.Start();
+
+            using var client = new TcpClient();
+            await client.ConnectAsync(System.Net.IPAddress.Loopback, server.Port);
+            await using NetworkStream stream = client.GetStream();
+            using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            await writer.WriteLineAsync(
+                "{\"op\":\"run.submit\",\"authToken\":\"integration-token\",\"runId\":\"tcp-run\",\"steps\":[{\"id\":\"health\",\"kind\":\"health\"}]}");
+
+            string? line = await reader.ReadLineAsync();
+            Assert.NotNull(line);
+            Assert.Contains("Succeeded", line, System.StringComparison.Ordinal);
+            Assert.DoesNotContain("integration-token", line, System.StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
     public async Task CommandRouter_HandlesHealthModelsAndRunSubmit()
     {
         var router = new CompanionCliCommandRouter(

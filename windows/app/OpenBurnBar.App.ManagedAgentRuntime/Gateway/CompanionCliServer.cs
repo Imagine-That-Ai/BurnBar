@@ -42,7 +42,11 @@ public sealed class CompanionCliServer : IAsyncDisposable
             : Encoding.UTF8.GetBytes(accessToken.Trim());
     }
 
-    public int Port { get; }
+    /// <summary>
+    /// Bound loopback port. When constructed with port <c>0</c>, this is
+    /// populated with the OS-assigned ephemeral port after <see cref="Start"/>.
+    /// </summary>
+    public int Port { get; private set; }
 
     public int ConnectedClients => _clients.Count;
 
@@ -54,6 +58,10 @@ public sealed class CompanionCliServer : IAsyncDisposable
         }
 
         _listener.Start();
+        if (_listener.LocalEndpoint is IPEndPoint endpoint)
+        {
+            Port = endpoint.Port;
+        }
         _cts = new CancellationTokenSource();
         _acceptLoop = Task.Run(() => AcceptAsync(_cts.Token));
     }

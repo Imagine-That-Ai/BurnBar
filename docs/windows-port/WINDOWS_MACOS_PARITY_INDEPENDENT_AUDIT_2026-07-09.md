@@ -9,7 +9,7 @@
 
 At the time of this certification update, the remediation plan's F1
 source/product ledger reported 46 rows as Real, with zero DeferredApproved,
-Blocked, or Substituted rows. The current ledger is 47/47 Real. Both are scoped
+Blocked, or Substituted rows. The current ledger is 48/48 Real. Both are scoped
 F1 Ship Peer results, not proof that the F2 True 1:1 workstreams or the public
 release gates are complete.
 
@@ -218,7 +218,7 @@ implementation increment, not a claim that
 the F2 workstreams are all complete: full macOS semantic/provider embedding
 parity, live LSP host evidence, production composition of every F2 service,
 physical Computer Use/media safety, and host evidence still remain. The
-ledger's 47/47 `Real` result is the scoped F1 source/product gate; WPD-0009
+ledger's 48/48 `Real` result is the scoped F1 source/product gate; WPD-0009
 continues to define F2 True 1:1 as the actual 100% parity endpoint.
 
 ## Implementation Update - 2026-07-10

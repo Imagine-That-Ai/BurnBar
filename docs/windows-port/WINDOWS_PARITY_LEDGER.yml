@@ -728,6 +728,23 @@ rows:
   blocking_paths:
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/CompanionCliServer.cs
   notes: F2 production core Real.
+- id: f2-headless-run-recovery
+  status: Real
+  owner_lane: f2
+  windows_route: f2-headless-run
+  macos_route: f2-headless-run
+  macos_capability: Headless run service, journal, and recovery
+  windows_capability: HeadlessRunService + JsonLinesHeadlessRunJournal + authenticated companion operations
+  evidence:
+  - docs/windows-port/evidence/f2/headless-run-recovery.md
+  tests:
+  - windows/tests/managed-runtime/HeadlessRunServiceTests.cs
+  - windows/tests/managed-runtime/CompanionCliServerTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/HeadlessRunService.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/CompanionCliHeadlessRunHandler.cs
+  - windows/app/OpenBurnBar.App/App.xaml.cs
+  notes: F2 in-process headless run and recovery path Real; physical service hosting remains separate.
 f1_coverage_register:
 - subsystem: mercury-media
   ledger_row: mercury-media
@@ -768,8 +785,8 @@ f1_coverage_register:
   windows_status: Real
   note: IA-4 ProjectsPage
 finish_line_note: >-
-  100% parity under the named finish line is F2_True_1to1. The current 47-row
-  histogram is the scoped F1 Ship Peer source/product gate: 47 Real / 0
+  100% parity under the named finish line is F2_True_1to1. The current 48-row
+  histogram is the scoped F1 Ship Peer source/product gate: 48 Real / 0
   DeferredApproved / 0 Blocked / 0 Substituted. WPD-0009 governs promotion of
   F2 workstreams to full parity; production composition and host evidence remain
   explicit requirements. Operational residuals outside the ledger gate
@@ -800,3 +817,6 @@ f2_workstream_register:
 - id: f2-connector-cli
   status: Real
   ledger_row: f2-companion-cli
+- id: f2-headless-run-recovery
+  status: Real
+  ledger_row: f2-headless-run-recovery
