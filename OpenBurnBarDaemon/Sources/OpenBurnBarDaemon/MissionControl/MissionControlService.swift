@@ -16,7 +16,7 @@
 // and invest in core tracking, search, and sync reliability instead.
 
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 private struct EnterprisePacketApprovalFingerprintPayload: Encodable {
     let schemaVersion: Int

@@ -15,8 +15,10 @@ import Foundation
 //
 // Pure code motion, zero behavior change. The launch coordinator/invoker/store-coupled
 // halves (`SwitcherCLILAunchService`, `CLILaunchInvoker`, `CLILaunchCoordinator`,
-// `CLIFallback*`, `CLILaunchOutcome`, `CLILaunchRedactor`) STAY in LaunchServices; they
-// reach these types via LaunchServices' declared Kernel dependency. `CLILaunchError`
+// `CLIFallback*`, `CLILaunchOutcome`) STAY in LaunchServices; they reach these types
+// via LaunchServices' declared Kernel dependency. (`CLILaunchRedactor` — pure
+// Foundation, and reached by the daemon repoint — subsequently moved DOWN to
+// OpenBurnBarKernel/Platform/CLILaunchRedactor.swift in P-18.) `CLILaunchError`
 // moves with the adapter because the adapter's validation surface returns it (symbol
 // closure — the type could not stay ABOVE the Kernel while the adapter references it).
 //

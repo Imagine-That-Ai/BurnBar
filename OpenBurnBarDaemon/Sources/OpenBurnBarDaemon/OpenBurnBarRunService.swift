@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 // MARK: - Internal supporting types shared across extension files

@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarEngine
 #if canImport(Security)
 import Security
 #endif
