@@ -1091,7 +1091,7 @@ private struct DashboardQuickAccessEditor: View {
     private var filteredSettings: [SettingsItem] {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return Array(SettingsManifest.all.prefix(18)) }
-        return SettingsSearchEngine.search(query, in: SettingsManifest.all).prefix(18).map { $0 }
+        return Array(SettingsSearchEngine.search(query, in: SettingsManifest.all).prefix(18))
     }
 
     var body: some View {
