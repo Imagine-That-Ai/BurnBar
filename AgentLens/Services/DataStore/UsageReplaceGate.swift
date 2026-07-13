@@ -53,8 +53,18 @@ struct DashboardUsageSnapshotFingerprint: Equatable, Sendable {
             hasher.combine(summary.totalTokens)
             hasher.combine(summary.sessionCount)
             hasher.combine(summary.activeProviderCount)
-            hasher.combine(summary.providerSummaries)
-            hasher.combine(summary.modelSummaries)
+            for provider in summary.providerSummaries {
+                hasher.combine(provider.provider)
+                hasher.combine(provider.totalCost)
+                hasher.combine(provider.totalTokens)
+                hasher.combine(provider.sessionCount)
+            }
+            for model in summary.modelSummaries {
+                hasher.combine(model.modelName)
+                hasher.combine(model.totalCost)
+                hasher.combine(model.totalTokens)
+                hasher.combine(model.sessionCount)
+            }
         }
         hasher.combine(snapshot.rollingDailyAverage)
         hasher.combine(snapshot.distinctUsageDayCount)

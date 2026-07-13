@@ -280,6 +280,8 @@ final class ChartInsightEngine {
                 now: now
             ) {
             case .reuse:
+                task?.cancel()
+                task = nil
                 state = cache.state
                 return
             case .throttle:

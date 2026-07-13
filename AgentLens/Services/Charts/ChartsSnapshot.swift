@@ -327,7 +327,7 @@ extension ChartsSnapshot {
         now: Date,
         calendar: Calendar
     ) -> ClosedRange<Date> {
-        if let range = timeRange.dateRange() {
+        if let range = timeRange.dateRange(now: now) {
             return range.lowerBound...max(range.lowerBound, min(range.upperBound, now))
         }
         // All Time: span the loaded data (fall back to the last 30 days when empty).
