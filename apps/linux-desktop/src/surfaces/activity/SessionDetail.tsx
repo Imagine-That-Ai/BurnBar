@@ -18,7 +18,21 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
   const [bodyError, setBodyError] = useState<string | null>(null);
   const [resumeLoading, setResumeLoading] = useState(false);
   const [resumeStatus, setResumeStatus] = useState<string | null>(null);
-  const replayID = session.sourceID ?? session.id;
+  // Usage-row IDs are not durable conversation identities. Never pass the
+  // display/fallback ID to replay or resume: the daemon may interpret it as a
+  // different provider session or reject it ambiguously.
+  const replayID = session.sourceID?.trim() || null;
+  const sourceIdentityUnavailable = !replayID && !fixtureMode;
+  const bodyActionTitle = replayID
+    ? 'Load the persisted session body'
+    : fixtureMode
+      ? 'Unavailable until the live daemon and indexed database are connected'
+      : 'Unavailable without a verified daemon source identity';
+  const resumeActionTitle = replayID
+    ? 'Resume the persisted session'
+    : fixtureMode
+      ? 'Unavailable until the live daemon and indexed database are connected'
+      : 'Unavailable without a verified daemon source identity';
 
   const renderReplayError = (result: SessionReplayResult): string => {
     if (result.errorCode === 'session_not_found') {
@@ -33,7 +47,15 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
   const loadBody = async () => {
     setBodyError(null);
     setResumeStatus(null);
-    if (fixtureMode || !bridge?.sessionReplay) {
+    if (fixtureMode) {
+      setBodyError('Session body is unavailable until the live daemon and indexed database are connected.');
+      return;
+    }
+    if (!replayID) {
+      setBodyError('Session body is unavailable because this daemon row has no verified source identity.');
+      return;
+    }
+    if (!bridge?.sessionReplay) {
       setBodyError('Session body is unavailable until the live daemon and indexed database are connected.');
       return;
     }
@@ -60,7 +82,15 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
   const resume = async () => {
     setBodyError(null);
     setResumeStatus(null);
-    if (fixtureMode || !bridge?.sessionResume) {
+    if (fixtureMode) {
+      setResumeStatus('Resume is unavailable until the live daemon and indexed database are connected.');
+      return;
+    }
+    if (!replayID) {
+      setResumeStatus('Resume is unavailable because this daemon row has no verified source identity.');
+      return;
+    }
+    if (!bridge?.sessionResume) {
       setResumeStatus('Resume is unavailable until the live daemon and indexed database are connected.');
       return;
     }
@@ -126,13 +156,30 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
         ) : null}
       </dl>
       <div className="activity-session-actions" aria-label="Persisted session actions">
-        <button type="button" className="ghost" onClick={() => void loadBody()} disabled={bodyLoading}>
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => void loadBody()}
+          disabled={bodyLoading || sourceIdentityUnavailable}
+          title={bodyActionTitle}
+        >
           {bodyLoading ? 'Loading body...' : body ? 'Reload session body' : 'Load session body'}
         </button>
-        <button type="button" className="ghost" onClick={() => void resume()} disabled={resumeLoading}>
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => void resume()}
+          disabled={resumeLoading || sourceIdentityUnavailable}
+          title={resumeActionTitle}
+        >
           {resumeLoading ? 'Resuming...' : 'Resume session'}
         </button>
       </div>
+      {sourceIdentityUnavailable ? (
+        <p className="activity-session-status" role="status">
+          Body and resume are unavailable because this row has no verified daemon source identity.
+        </p>
+      ) : null}
       <p className="activity-session-trust muted">
         Historical body is read from the daemon's indexed conversation store and rendered as untrusted text.
       </p>

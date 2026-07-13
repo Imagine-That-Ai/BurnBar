@@ -419,6 +419,42 @@ describe('ActivitySurface', () => {
     expect(screen.getByRole('status').textContent).toContain('process 42');
   });
 
+  it('fails closed for rows without a verified source identity', async () => {
+    const indexedSession = { ...fixtureSessionList().sessions[0]!, sourceID: undefined };
+    const replay = vi.fn(async (_sessionID: string): Promise<SessionReplayResult> => ({
+      kind: 'ported',
+      briefingMD: 'Should not be requested',
+      briefingTruncated: false
+    }));
+    const resume = vi.fn(async (_sessionID: string): Promise<SessionReplayResult> => ({
+      kind: 'spawned',
+      briefingTruncated: false,
+      pid: 42
+    }));
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList: async () => ({ sessions: [indexedSession], nextCursor: null }),
+        sessionReplay: replay,
+        sessionResume: resume
+      })
+    });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: /show details/i })[0]!);
+    expect(screen.getByText(/no verified daemon source identity/i)).toBeTruthy();
+    const loadButton = screen.getByRole('button', { name: 'Load session body' }) as HTMLButtonElement;
+    const resumeButton = screen.getByRole('button', { name: 'Resume session' }) as HTMLButtonElement;
+    expect(loadButton.disabled).toBe(true);
+    expect(resumeButton.disabled).toBe(true);
+    fireEvent.click(loadButton);
+    fireEvent.click(resumeButton);
+    expect(replay).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+  });
+
   it('states that fixture rows have no persisted body or resume authority', async () => {
     useShellStore.setState({ fixtureMode: true });
     render(<ActivitySurface />);
