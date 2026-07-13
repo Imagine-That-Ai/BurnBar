@@ -50,7 +50,7 @@ chunk/vector index. It does not persist source text.
 dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj --no-restore
 ```
 
-Result: **759 passed, 0 failed, 0 skipped**.
+Result: **760 passed, 0 failed, 0 skipped**.
 
 The durable-store test proves two-file artifact/index persistence, lexical
 reference and call-edge persistence, bounded call-graph traversal, checkpoint
