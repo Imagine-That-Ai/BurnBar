@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 export const requiredLifecycleSteps = [
   'guiLaunch',
   'daemonLaunch',
@@ -9,9 +11,13 @@ export const requiredLifecycleSteps = [
 
 const ARCH_LIFECYCLE_KEYS = [
   'architecture', 'candidate', 'gitCommit', 'lifecycle', 'manager', 'packageName',
-  'passed', 'previous', 'schemaVersion', 'steps'
+  'passed', 'previous', 'previousProvenance', 'schemaVersion', 'steps'
 ];
 const PACKAGE_RECORD_KEYS = ['file', 'sha256', 'size', 'version'];
+const PROVENANCE_KEYS = [
+  'installedManifest', 'installedManifestSignature', 'packageSignature',
+  'productProofClosure', 'releaseCommit', 'releaseTag'
+];
 const TRANSITION_KEYS = [
   'architecture', 'fromSha256', 'fromVersion', 'manager', 'packageName', 'status',
   'toSha256', 'toVersion'
@@ -34,15 +40,46 @@ function exactKeys(value, expected, label) {
   }
 }
 
-function validatePackageRecord(record, label) {
+function validatePackageRecord(record, label, { exactFile = null, prefix = null } = {}) {
   exactKeys(record, PACKAGE_RECORD_KEYS, label);
+  const segments = typeof record.file === 'string' ? record.file.split('/') : [];
   if (typeof record.file !== 'string' || record.file.length === 0 || record.file.includes('\\')
-      || record.file.startsWith('/') || record.file === '..' || record.file.startsWith('../')
+      || record.file.startsWith('/') || path.posix.normalize(record.file) !== record.file
+      || segments.some((segment) => segment === '.' || segment === '..')
       || !record.file.endsWith('.pkg.tar.zst') || !SHA256.test(record.sha256 ?? '')
       || !Number.isSafeInteger(record.size) || record.size <= 0 || !VERSION.test(record.version ?? '')) {
     throw new Error(`${label} is invalid`);
   }
+  if (exactFile !== null && record.file !== exactFile) {
+    throw new Error(`${label} path is not release-bound`);
+  }
+  if (prefix !== null) {
+    const basename = record.file.slice(prefix.length);
+    if (!record.file.startsWith(prefix) || basename.length === 0 || basename.includes('/')) {
+      throw new Error(`${label} path is not confined to ${prefix}`);
+    }
+  }
   return record;
+}
+
+function validateProvenanceRecord(record, label, prefix) {
+  exactKeys(record, ['file', 'sha256', 'size'], label);
+  const segments = typeof record.file === 'string' ? record.file.split('/') : [];
+  if (typeof record.file !== 'string' || record.file.length === 0 || record.file.includes('\\')
+      || record.file.startsWith('/') || path.posix.normalize(record.file) !== record.file
+      || segments.some((segment) => segment === '.' || segment === '..')
+      || !record.file.startsWith(prefix) || record.file.slice(prefix.length).includes('/')
+      || !SHA256.test(record.sha256 ?? '') || !Number.isSafeInteger(record.size) || record.size <= 0) {
+    throw new Error(`${label} is invalid`);
+  }
+  return record;
+}
+
+function previousPackagePrefix(candidateFile) {
+  const marker = '/artifacts/';
+  const index = candidateFile.lastIndexOf(marker);
+  if (index <= 0) throw new Error('Arch candidate package path is not in the release artifact directory');
+  return `${candidateFile.slice(0, index)}/previous/arch/`;
 }
 
 function compareVersions(left, right) {
@@ -88,15 +125,28 @@ export function validateArchUpdateRollbackReport({ report, architecture, version
       || report.gitCommit !== gitCommit) {
     throw new Error('Arch update/rollback report is not a passed pacman lifecycle for this architecture and commit');
   }
-  const candidate = validatePackageRecord(report.candidate, 'Arch candidate package');
-  const previous = validatePackageRecord(report.previous, 'Arch previous package');
-  if (candidate.file !== artifact?.file || candidate.sha256 !== artifact?.sha256
-      || candidate.size !== artifact?.size || candidate.version !== version) {
-    throw new Error('Arch candidate package is not bound to the architecture closure artifact');
-  }
+  const candidate = validatePackageRecord(report.candidate, 'Arch candidate package', {
+    exactFile: artifact?.file
+  });
+  const previous = validatePackageRecord(report.previous, 'Arch previous package', {
+    prefix: previousPackagePrefix(candidate.file)
+  });
   if (previous.file === candidate.file || previous.sha256 === candidate.sha256
       || compareVersions(previous.version, candidate.version) >= 0) {
     throw new Error('Arch previous package must be a distinct older release');
+  }
+  exactKeys(report.previousProvenance, PROVENANCE_KEYS, 'Arch previous provenance');
+  const provenancePrefix = previousPackagePrefix(candidate.file);
+  for (const field of ['packageSignature', 'installedManifest', 'installedManifestSignature', 'productProofClosure']) {
+    validateProvenanceRecord(report.previousProvenance[field], `Arch previous ${field}`, provenancePrefix);
+  }
+  if (report.previousProvenance.releaseTag !== `linux-v${previous.version}`
+      || !/^[a-f0-9]{40}$/u.test(report.previousProvenance.releaseCommit ?? '')) {
+    throw new Error('Arch previous provenance release identity is invalid');
+  }
+  if (candidate.file !== artifact?.file || candidate.sha256 !== artifact?.sha256
+      || candidate.size !== artifact?.size || candidate.version !== version) {
+    throw new Error('Arch candidate package is not bound to the architecture closure artifact');
   }
   validateArchLifecycleSteps(report.steps, previous, candidate);
   exactKeys(report.lifecycle, ['dataPreservation', 'rollback', 'update'], 'Arch lifecycle');

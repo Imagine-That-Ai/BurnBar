@@ -46,6 +46,12 @@ function archLifecycleReport() {
     fromSha256: from.sha256, toSha256: to.sha256
   });
   const sentinelSha256 = 'd'.repeat(64);
+  const previousPrefix = '.linux-shard/previous/arch/';
+  const provenance = (file, fill) => ({
+    file: `${previousPrefix}${file}`,
+    sha256: fill.repeat(64),
+    size: 64
+  });
   return {
     schemaVersion: 1,
     manager: 'pacman',
@@ -54,6 +60,14 @@ function archLifecycleReport() {
     gitCommit: commit,
     candidate,
     previous,
+    previousProvenance: {
+      releaseTag: 'linux-v1.2.2',
+      releaseCommit: 'b'.repeat(40),
+      packageSignature: provenance('openburnbar-1.2.2-1-aarch64.pkg.tar.zst.ed25519.sig', 'e'),
+      installedManifest: provenance('openburnbar-1.2.2-aarch64.installed-manifest.json', 'f'),
+      installedManifestSignature: provenance('openburnbar-1.2.2-aarch64.installed-manifest.ed25519', '1'),
+      productProofClosure: provenance('product-proof-closure.json', '2')
+    },
     steps,
     lifecycle: {
       update: transition(previous, candidate),
@@ -137,7 +151,31 @@ test('Arch lifecycle proof binds pacman transitions to exact candidate and previ
     ['command substitution', (report) => { report.steps[2].command = 'dpkg -i previous.deb'; }, /command sequence/u],
     ['package path suffix spoof', (report) => {
       report.steps[2].command = `pacman -U --noconfirm /tmp/wrong ${report.previous.file}`;
-    }, /command sequence/u]
+    }, /command sequence/u],
+    ['internal traversal in previous package path', (report) => {
+      report.previous.file = '.linux-shard/previous/arch/../../../../tmp/substituted.pkg.tar.zst';
+      report.steps[2].command = `pacman -U --noconfirm /workspace/${report.previous.file}`;
+      report.steps[10].command = `pacman -U --noconfirm /workspace/${report.previous.file}`;
+    }, /invalid/u],
+    ['dot segment in previous package path', (report) => {
+      report.previous.file = '.linux-shard/previous/arch/./substituted.pkg.tar.zst';
+      report.steps[2].command = `pacman -U --noconfirm /workspace/${report.previous.file}`;
+      report.steps[10].command = `pacman -U --noconfirm /workspace/${report.previous.file}`;
+    }, /invalid/u],
+    ['previous package outside the authenticated staging directory', (report) => {
+      report.previous.file = '.linux-shard/session/substituted.pkg.tar.zst';
+      report.steps[2].command = `pacman -U --noconfirm /workspace/${report.previous.file}`;
+      report.steps[10].command = `pacman -U --noconfirm /workspace/${report.previous.file}`;
+    }, /confined/u],
+    ['previous provenance release tag substitution', (report) => {
+      report.previousProvenance.releaseTag = 'linux-v9.9.9';
+    }, /release identity/u],
+    ['previous provenance sidecar traversal', (report) => {
+      report.previousProvenance.productProofClosure.file = '.linux-shard/previous/arch/../product-proof-closure.json';
+    }, /invalid/u],
+    ['previous provenance sidecar size substitution', (report) => {
+      report.previousProvenance.packageSignature.size = 0;
+    }, /invalid/u]
   ]) {
     await t.test(name, () => {
       const report = structuredClone(valid);

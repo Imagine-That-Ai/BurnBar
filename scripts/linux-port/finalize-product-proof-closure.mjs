@@ -171,7 +171,7 @@ export function finalizeProductProofClosure({
     NATIVE_PACKAGE_TYPES.map((format) => `${format}:${architecture}`)
   ));
   if (packageKeys.size !== requiredPackageKeys.size || [...requiredPackageKeys].some((key) => !packageKeys.has(key))) {
-    throw new Error('release output must contain deb and rpm installed-manifest closures for both architectures');
+    throw new Error('release output must contain deb, rpm, and Arch installed-manifest closures for both architectures');
   }
   const requiredReleaseArtifactKeys = new Set(releaseManifest.requiredArtifacts.flatMap((type) =>
     RELEASE_ARCHITECTURES.map((architecture) => `${type}:${architecture}`)

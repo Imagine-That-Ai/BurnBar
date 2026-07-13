@@ -36,8 +36,8 @@ and captures capability JSON directly from the installed desktop binary before
 and after requirement execution. It repeats installation/session checks before
 emitting a receipt; package identity must remain stable, while both valid runtime
 states are retained. After final release verification,
-`finalize-product-proof-closure.mjs` requires the four deb/rpm architecture
-rows, exact signed installed manifests, package and feed signatures, Sigstore
+`finalize-product-proof-closure.mjs` requires the six deb/rpm/Arch native
+architecture rows, exact signed installed manifests, package and feed signatures, Sigstore
 bundles, supply-chain sidecars, and lifecycle proof before it emits
 `product-proof-closure.json`. Native shards attach those signed records and the
 aggregate assembler validates confinement, exact bytes, package identity, and
@@ -147,6 +147,22 @@ docker run --rm \
 docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
   -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
   node scripts/linux-port/smoke-linux-packages.mjs --architecture-shard
+
+# Arch package lifecycle (the isolated signer must run between these phases).
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/build-signed-arch-package.mjs \
+    --phase prepare --version "$VERSION" --git-commit "$COMMIT" \
+    --architecture "$ARCH" --state-dir /workspace/.linux-shard/signing-state
+# Run sign-linux-release-requests.mjs against signing-state, then:
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/build-signed-arch-package.mjs \
+    --phase finalize --version "$VERSION" --git-commit "$COMMIT" \
+    --architecture "$ARCH" --state-dir /workspace/.linux-shard/signing-state
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/smoke-arch-package.mjs
 ```
 
 Run prepare and finalize in the pinned Linux toolchain container as root; native
@@ -154,13 +170,13 @@ archive inventory intentionally rejects non-root extraction because it cannot
 prove the package's installed uid/gid contract. Release CI is the canonical
 invocation. It runs the prepare container without the private key, exits it,
 materializes the signer from the exact release commit, and gives a separate
-networkless, read-only, capability-free signer container only the three
+networkless, read-only, capability-free signer container only the four
 canonical request files. Final Tauri bundling and package verification then run
 without the key. The key never enters npm, Tauri, an archive extractor, or the
 mutable build container.
 
-The prepare phase compiles the Tauri executable and creates exact deb, rpm, and
-AppImage signing requests. The isolated signer binds explicit version, commit,
+The prepare phase compiles the Tauri executable and creates exact deb, rpm, Arch,
+and AppImage signing requests. The isolated signer binds explicit version, commit,
 and architecture inputs. Finalize rebuilds each native format with its detached
 attestation, preflights archive member paths, extracts with libarchive's secure
 path handling, and re-verifies exact bytes, Ed25519 signatures, authorized daemon
@@ -201,7 +217,9 @@ node scripts/linux-port/smoke-linux-packages.mjs
 ```
 
 The current first-release update path is blocked until previous same-architecture
-deb and Arch artifacts exist. The pacman proof installs the previous package,
+deb and Arch artifacts exist. When an Arch baseline is present, the pacman proof
+authenticates its detached package signature, signed installed manifest, and prior
+product-proof closure before installing the previous package; it then installs the previous package,
 updates to the exact candidate closure artifact, rolls back, restores the
 candidate, and verifies package-manager identity plus persisted-data hashes at
 every transition. Missing prior artifacts remain explicit blockers instead of

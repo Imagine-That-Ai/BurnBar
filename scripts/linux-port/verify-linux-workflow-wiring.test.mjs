@@ -151,6 +151,17 @@ function valid() {
       'build-signed-arch-package.mjs',
       'smoke-arch-package.mjs',
       'verify-arch-package-update-rollback.mjs',
+      'arch_signature_pattern',
+      'arch_manifest_pattern',
+      'arch_manifest_signature_pattern',
+      "--pattern 'product-proof-closure.json'",
+      '--previous-signature',
+      '--previous-installed-manifest "/workspace/',
+      '--previous-installed-manifest-signature',
+      '--previous-product-proof',
+      '--previous-release-tag',
+      'source=$PWD,target=/workspace,readonly',
+      'source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session',
       'docker create --name "$container"',
       'docker start --attach "$container"',
       '--phase finalize',
@@ -406,6 +417,10 @@ test('candidate architecture closure and promotion publication cannot be removed
     '--security-opt no-new-privileges',
     'sign-linux-release-requests.mjs',
     '--phase finalize',
+    'arch_signature_pattern',
+    '--previous-installed-manifest "/workspace/',
+    'source=$PWD,target=/workspace,readonly',
+    'source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session',
     'merge-multiple: false'
   ]) {
     const input = valid();

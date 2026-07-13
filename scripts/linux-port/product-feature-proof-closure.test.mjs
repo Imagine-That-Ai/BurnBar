@@ -70,7 +70,7 @@ function fixture({ registered = true, maxBytes = 4096 } = {}) {
     }] : []
   });
   const architectures = ['aarch64', 'x86_64'];
-  const releaseArtifacts = ['appimage', 'daemon', 'deb', 'rpm'].flatMap((type) =>
+  const releaseArtifacts = ['appimage', 'arch', 'daemon', 'deb', 'rpm'].flatMap((type) =>
     architectures.map((architecture) => ({
       type,
       architecture,
@@ -79,13 +79,33 @@ function fixture({ registered = true, maxBytes = 4096 } = {}) {
       sigstore: { path: `${type}-${architecture}.sigstore`, sha256: 'e'.repeat(64) }
     }))
   );
-  const packages = ['deb', 'rpm'].flatMap((format) => architectures.map((architecture) => ({
+  const packages = ['arch', 'deb', 'rpm'].flatMap((format) => architectures.map((architecture) => ({
     format,
     architecture,
     artifact: { path: `${format}-${architecture}`, sha256: 'c'.repeat(64) },
     installedManifest: { path: `${format}-${architecture}.json`, sha256: 'd'.repeat(64) },
     installedManifestSignature: { path: `${format}-${architecture}.json.sig`, sha256: 'e'.repeat(64) }
   })));
+  const attestationSubjects = [];
+  const addAttestation = (role, subjectPath, format = null, architecture = null) => {
+    const subject = { path: subjectPath, sha256: 'a'.repeat(64), size: 1 };
+    const bundle = { path: `${subjectPath}.sigstore.json`, sha256: 'b'.repeat(64), size: 1 };
+    attestationSubjects.push({
+      role,
+      ...(format ? { format } : {}),
+      ...(architecture ? { architecture } : {}),
+      subject,
+      bundle
+    });
+  };
+  for (const row of releaseArtifacts) addAttestation('release-artifact', row.artifact.path, row.type, row.architecture);
+  for (const row of packages) {
+    addAttestation('installed-manifest', row.installedManifest.path, row.format, row.architecture);
+    addAttestation('installed-manifest-signature', row.installedManifestSignature.path, row.format, row.architecture);
+  }
+  for (const role of ['checksums', 'sbom', 'vex', 'provenance', 'source-archive', 'arch-pkgbuild', 'arch-release-metadata', 'update-feed']) {
+    addAttestation(role, `sidecars/${role}.json`);
+  }
   const aggregate = {
     schemaVersion: 2,
     generatedAt: new Date(0).toISOString(),
@@ -107,6 +127,7 @@ function fixture({ registered = true, maxBytes = 4096 } = {}) {
     ],
     releaseArtifacts,
     packages,
+    attestationSubjects,
     featureProofRegistry: record(releaseRoot, registryFile),
     proofs: [{ role: 'release-placeholder' }],
     blockers: []

@@ -302,10 +302,24 @@ jobs:
               --pattern "$pattern" \
               --dir "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/deb"
             arch_pattern="openburnbar-${PREVIOUS_VERSION}-*-${{ matrix.architecture }}.pkg.tar.zst"
+            arch_signature_pattern="${arch_pattern}.ed25519.sig"
+            arch_manifest_pattern="openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.json"
+            arch_manifest_signature_pattern="openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.ed25519"
             if ! gh release download "linux-v${PREVIOUS_VERSION}" \
               --pattern "$arch_pattern" \
+              --pattern "$arch_signature_pattern" \
+              --pattern "$arch_manifest_pattern" \
+              --pattern "$arch_manifest_signature_pattern" \
+              --pattern 'product-proof-closure.json' \
               --dir "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch"; then
               echo "No previous Arch package matched ${arch_pattern}; the pacman lifecycle will remain blocked."
+            fi
+            mapfile -t downloaded_arch_packages < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch" -maxdepth 1 -name "$arch_pattern" -type f)
+            if [[ "${#downloaded_arch_packages[@]}" -eq 1 ]]; then
+              test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/${arch_manifest_pattern}"
+              test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/${arch_manifest_signature_pattern}"
+              test -f "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch/product-proof-closure.json"
+              test -f "${downloaded_arch_packages[0]}.ed25519.sig"
             fi
           fi
 
@@ -316,10 +330,22 @@ jobs:
           mapfile -t previous < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/arch" -maxdepth 1 -name '*.pkg.tar.zst' -type f)
           test "${#candidates[@]}" -eq 1
           test "${#previous[@]}" -le 1
+          candidate_relative="${candidates[0]#"$PWD"/}"
+          release_output_relative="${OPENBURNBAR_LINUX_RELEASE_OUT#"$PWD"/}"
           command=(node scripts/linux-port/verify-arch-package-update-rollback.mjs \
-            --candidate "/workspace/${candidates[0]#"$PWD"/}")
+            --candidate "/workspace/$candidate_relative" \
+            --release-public-key /workspace/packaging/linux/openburnbar-linux-ed25519.pub.pem)
           if [[ "${#previous[@]}" -eq 1 ]]; then
-            command+=(--previous "/workspace/${previous[0]#"$PWD"/}")
+            previous_package="${previous[0]}"
+            previous_relative="${previous_package#"$PWD"/}"
+            command+=(
+              --previous "/workspace/$previous_relative"
+              --previous-signature "/workspace/$previous_relative.ed25519.sig"
+              --previous-installed-manifest "/workspace/$release_output_relative/previous/arch/openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.json"
+              --previous-installed-manifest-signature "/workspace/$release_output_relative/previous/arch/openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.ed25519"
+              --previous-product-proof "/workspace/$release_output_relative/previous/arch/product-proof-closure.json"
+              --previous-release-tag "linux-v${PREVIOUS_VERSION}"
+            )
           fi
           container="openburnbar-arch-lifecycle-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
           cleanup() {
@@ -331,7 +357,9 @@ jobs:
           trap cleanup EXIT
           docker create --name "$container" \
             -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
-            -v "$PWD:/workspace" -w /workspace \
+            --mount "type=bind,source=$PWD,target=/workspace,readonly" \
+            --mount "type=bind,source=$PWD/.linux-shard/session,target=/workspace/.linux-shard/session" \
+            -w /workspace \
             openburnbar-arch-package:mission-001 \
             "${command[@]}"
           docker start --attach "$container"
