@@ -149,7 +149,7 @@ struct LinuxLocalNotificationAdapter: Sendable {
         }
         for scalar in value.unicodeScalars {
             let isLineFeed = scalar.value == 0x0A
-            let isControlCharacter = scalar.value < 0x20 || scalar.value == 0x7F
+            let isControlCharacter = CharacterSet.controlCharacters.contains(scalar)
             guard isControlCharacter == false || (allowsLineFeed && isLineFeed) else {
                 throw controlCharacter
             }
