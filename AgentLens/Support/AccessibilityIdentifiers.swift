@@ -10,12 +10,16 @@ enum OBBAccessibilityID {
     static let dashboardViewModeSwitcher = "dashboard.viewModeSwitcher"
     static let dashboardOverflowButton = "dashboard.overflowButton"
     static let dashboardSettingsButton = "dashboard.settingsButton"
+    static let dashboardRefreshButton = "dashboard.refreshButton"
     static let settingsRoot = "settings.root"
     static let settingsSidebar = "settings.sidebar"
     static let settingsCommandBar = "settings.commandBar"
     static let computerUseSettingsRoot = "computerUse.settings.root"
     static let chatPanel = "chat.panel"
     static let chatPanelMinimized = "chat.panel.minimized"
+    static let chartsPage = "charts.page"
+    static let chartsAIToggle = "charts.aiToggle"
+    static let dashboardDeckChartButton = "dashboard.deckChartButton"
 
     static func settingsRow(_ section: String) -> String {
         "settings.row.\(normalized(section))"
