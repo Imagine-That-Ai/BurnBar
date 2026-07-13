@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 131,
+  "methodCount": 133,
   "methods": [
     {
       "id": "approval.respond",
