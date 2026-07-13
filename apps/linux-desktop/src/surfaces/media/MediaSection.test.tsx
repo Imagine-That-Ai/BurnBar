@@ -138,6 +138,7 @@ describe('P12 Mercury media section', () => {
 
   it('renders fixture peers, incoming call controls, and scripted accept transition', async () => {
     useShellStore.setState({ fixtureMode: true, bridge: null });
+    localStorage.setItem('openburnbar.linux.mediaFixtureRich', '1');
     render(<MediaSection />);
     await act(async () => {
       await useMediaStore.getState().load();

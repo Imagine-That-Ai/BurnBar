@@ -47,16 +47,29 @@ homebrew_version="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$homebrew
 homebrew_sha="$(sed -nE 's/^[[:space:]]*sha256 "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
 placeholder_sha="0000000000000000000000000000000000000000000000000000000000000000"
 require_current_homebrew="${OPENBURNBAR_REQUIRE_CURRENT_HOMEBREW_CASK:-0}"
-if [[ "${GITHUB_REF_TYPE:-}" == "tag" || "${GITHUB_REF:-}" =~ refs/tags/ ]]; then
+tag_name=""
+if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+  tag_name="${GITHUB_REF_NAME:-}"
+elif [[ "${GITHUB_REF:-}" =~ ^refs/tags/(.+)$ ]]; then
+  tag_name="${BASH_REMATCH[1]}"
+fi
+# A Windows release tag must not block on the macOS-only Homebrew cask. The
+# Windows gate below enforces the Windows app identity independently; the
+# macOS release workflow still requires the cask on ordinary v* tags.
+if [[ -n "$tag_name" && "$tag_name" != windows-v* ]]; then
   require_current_homebrew=1
 fi
 if [[ -z "$homebrew_version" ]]; then
   echo "FAIL: Homebrew cask — version not found in $homebrew_file" >&2
   fail=1
 elif [[ "$homebrew_version" == "$expected_version" && "$homebrew_sha" == "$placeholder_sha" ]]; then
-  echo "FAIL: Homebrew cask — version '$expected_version' still has placeholder sha256 in $homebrew_file" >&2
-  echo "      Run scripts/update-homebrew.sh $expected_version after the notarized DMG exists." >&2
-  fail=1
+  if [[ "$require_current_homebrew" == "1" ]]; then
+    echo "FAIL: Homebrew cask — version '$expected_version' still has placeholder sha256 in $homebrew_file" >&2
+    echo "      Run scripts/update-homebrew.sh $expected_version after the notarized DMG exists." >&2
+    fail=1
+  else
+    echo "PASS: Homebrew cask deferred (version '$expected_version' has no DMG checksum until the macOS release exists)"
+  fi
 elif [[ "$homebrew_version" != "$expected_version" ]]; then
   if [[ "$require_current_homebrew" == "1" ]]; then
     echo "FAIL: Homebrew cask — expected '$expected_version', found '$homebrew_version' in $homebrew_file" >&2

@@ -119,7 +119,7 @@ extension AppDelegate {
         }
         guard !OpenBurnBarStatusItemClick.shouldIgnoreKeyboardRetoggle(
             triggeringEvent,
-            isPopoverShown: popover?.isShown ?? false
+            isPopoverShown: glassPopoverPanel?.isVisible ?? popover?.isShown ?? false
         ) else {
             return
         }
@@ -138,7 +138,7 @@ extension AppDelegate {
     }
 
     private func togglePopover(_ sender: NSStatusBarButton) {
-        if let popover, popover.isShown {
+        if glassPopoverPanel?.isVisible == true || popover?.isShown == true {
             closePopover(sender)
         } else {
             showPopover(sender)
@@ -156,14 +156,16 @@ extension AppDelegate {
             installPopoverContent(into: popover)
         }
 
-        // Avoid synchronously forcing SwiftUI layout from the AppKit click
-        // callback. On macOS 26 / Swift 6 this can trip a main-executor runtime
-        // check while DynamicProperty state is being initialized. The SwiftUI
-        // root view owns its exact frame; this only seeds the popover shell.
-        popover.contentSize = NSSize(width: 340, height: 540)
+        guard let host = popover.contentViewController,
+              let statusFrame = sender.openBurnBarScreenFrame else { return }
+        popover.contentViewController = nil
+
+        let panel = ensureGlassPopoverPanel()
+        panel.contentViewController = OpenBurnBarGlassHostingController(contentController: host)
+        panel.anchor(to: statusFrame)
 
         NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        OpenBurnBarPopoverWindowConfigurator.apply(to: panel)
         popoverDismissController.installEscapeKeyMonitor { [weak self] in
             self?.closePopover(nil)
         }
@@ -182,7 +184,21 @@ extension AppDelegate {
         return popover
     }
 
+    private func ensureGlassPopoverPanel() -> OpenBurnBarGlassPopoverPanel {
+        if let glassPopoverPanel { return glassPopoverPanel }
+        let panel = OpenBurnBarGlassPopoverPanel()
+        glassPopoverPanel = panel
+        return panel
+    }
+
     private func closePopover(_ sender: Any?) {
+        if let panel = glassPopoverPanel, panel.isVisible {
+            panel.orderOut(sender)
+            panel.contentViewController = nil
+            popoverDismissController.uninstall()
+            popoverPrewarmer?.schedulePrime()
+            return
+        }
         guard let popover, popover.isShown else { return }
         popover.performClose(sender)
     }
@@ -196,6 +212,8 @@ extension AppDelegate {
         }) ?? AnyView(Text("No Content"))
 
         let host = NSHostingController(rootView: content)
+        host.view.wantsLayer = true
+        host.view.layer?.backgroundColor = NSColor.clear.cgColor
         popover.contentViewController = host
     }
 
@@ -204,7 +222,10 @@ extension AppDelegate {
     // prewarmer's prime closure).
     func installPopoverPrewarming() {
         let prewarmer = PopoverContentPrewarmer(
-            isPopoverShown: { [weak self] in self?.popover?.isShown ?? false },
+            isPopoverShown: { [weak self] in
+                guard let self else { return false }
+                return self.glassPopoverPanel?.isVisible == true || self.popover?.isShown == true
+            },
             prime: { [weak self] in self?.primePopoverContent() }
         )
         popoverPrewarmer = prewarmer

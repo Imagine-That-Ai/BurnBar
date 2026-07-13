@@ -100,6 +100,10 @@ struct AtelierSpendCurve: View {
 
     /// Usage rows for the active window (already filtered to `range`).
     let usages: [TokenUsage]
+    /// Explicit observation token bumped whenever mined usage is replaced.
+    /// This keeps the chart's redraw contract aligned with the toolbar and
+    /// ``DashboardLiveCostCurve`` even when the filtered row count is stable.
+    var usagesRevision: Int = 0
     /// The selected window. `nil` == "All Time" → derived from the data.
     let range: ClosedRange<Date>?
     var title: String = "PROVIDER BURN OVER TIME"
@@ -121,7 +125,7 @@ struct AtelierSpendCurve: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(.easeInOut(duration: 0.3), value: model.bands.count)
+        .animation(.easeInOut(duration: 0.3), value: usagesRevision)
     }
 
     // MARK: - Header + legend

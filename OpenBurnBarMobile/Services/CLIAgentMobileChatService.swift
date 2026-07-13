@@ -172,6 +172,19 @@ final class CLIAgentMobileChatService {
         relayError: Error?,
         presentationMode: CLIAgentChatPresentationMode
     ) async {
+        // Forward any live desktop grant for this thread (matching Android's
+        // optimistic-grant forwarding) so Mac-side capability gates — e.g.
+        // Junie's full-interactive requirement for visible launches — see
+        // what the user actually approved instead of a hard-coded
+        // read-only payload.
+        let optimisticGrant = MobileAgentPermissionGrantController.shared.optimisticGrant(
+            runtimeID: runtime.assistantRuntime,
+            threadID: threadID
+        )
+        let commandsAllowed = optimisticGrant.map {
+            $0.capabilities.contains(.shell) || $0.capabilities.contains(.shellUnrestricted)
+        } ?? false
+        let fileEditsAllowed = optimisticGrant?.capabilities.contains(.workspaceWrite) ?? false
         do {
             let requestID = try await CLIAgentMissionDispatcher.shared.dispatch(
                 title: currentThreadTitle(),
@@ -180,8 +193,8 @@ final class CLIAgentMobileChatService {
                 requestedRuntime: runtime.rawValue,
                 depth: "standard",
                 approvalMode: "existing_policy",
-                commandsAllowed: false,
-                fileEditsAllowed: false,
+                commandsAllowed: commandsAllowed,
+                fileEditsAllowed: fileEditsAllowed,
                 clientThreadID: threadID,
                 parentSessionID: parentSessionID,
                 resumeAction: resumeAction,

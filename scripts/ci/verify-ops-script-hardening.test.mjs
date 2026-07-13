@@ -74,6 +74,19 @@ assert.match(
   /Test-SignedMsixLifecycle\.ps1[\s\S]*-HoldSeconds 20/,
   "signed MSIX evidence must exercise a sustained application launch",
 );
+const portableSignatureIndex = windowsReleaseWorkflow.indexOf("Verify portable Authenticode signatures");
+const signedManifestRefreshIndex = windowsReleaseWorkflow.indexOf("Refresh and validate signed native-engine layouts");
+const portablePackageIndex = windowsReleaseWorkflow.indexOf("Package zips + checksums");
+assert.ok(
+  portableSignatureIndex >= 0 &&
+    signedManifestRefreshIndex > portableSignatureIndex &&
+    portablePackageIndex > signedManifestRefreshIndex,
+  "signed native-engine manifests must be refreshed after Authenticode and before packaging",
+);
+assert.ok(
+  windowsReleaseWorkflow.includes("refresh-native-engine-manifest.mjs"),
+  "Windows release packaging must refresh native-engine hashes after signing",
+);
 assert.ok(
   windowsReleaseWorkflow.includes('predicate.write_text(json.dumps(payload'),
   "Windows release attestations must generate a per-artifact Sigstore predicate",

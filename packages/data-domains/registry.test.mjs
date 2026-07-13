@@ -92,6 +92,23 @@ test("firestore.rules parser finds the known Pensieve + core collections", () =>
   }
 });
 
+test("firestore.rules parser understands consolidated collection allowlists", () => {
+  const rulesText = `
+    match /users/{userId}/{collectionId}/{documentId} {
+      allow read: if collectionId in ["usage", "cloud_search_knowledge"];
+      allow delete: if collectionId in [
+        "session_logs",
+        "remote_mcp_clients"
+      ];
+      allow create: if request.resource.data.status in ["queued", "ready"];
+    }
+  `;
+  assert.deepEqual(
+    [...userCollectionsInRules(rulesText)].sort(),
+    ["cloud_search_knowledge", "remote_mcp_clients", "session_logs", "usage"],
+  );
+});
+
 test("NO DRIFT: every user subcollection in firestore.rules is registered or excluded", () => {
   const rulesText = readFileSync(join(HERE, "..", "..", "firestore.rules"), "utf8");
   const { uncovered } = findDrift(rulesText, registry);

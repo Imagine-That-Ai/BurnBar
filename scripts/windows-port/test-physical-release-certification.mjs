@@ -16,6 +16,13 @@ assert.match(script, /PhysicalHardware requires -HardwareAttestationPath/);
 assert.match(script, /Get-CimInstance Win32_OperatingSystem/);
 assert.match(script, /Get-CimInstance Win32_SystemEnclosure/);
 assert.match(script, /Get-CimInstance Win32_ComputerSystemProduct/);
+assert.match(script, /placeholder chassis tag/);
+assert.match(script, /systemProduct\.IdentifyingNumber/);
+assert.match(
+  script,
+  /system asset tag\|chassis asset tag/,
+  "generic chassis asset tags must fall back to the system-product identifier",
+);
 assert.match(
   script,
   /Hardware attestation \$field does not match the current device/,
