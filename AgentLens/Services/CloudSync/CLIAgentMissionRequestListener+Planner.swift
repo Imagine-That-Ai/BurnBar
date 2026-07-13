@@ -371,8 +371,6 @@ enum CLIAgentMissionRuntimePlanner {
                 arguments: arguments,
                 extraEnvironment: [:]
             )
-        case ChatBackendID.codex.rawValue, ChatBackendID.claude.rawValue:
-            return nil
         default:
             return nil
         }
@@ -422,6 +420,8 @@ enum CLIAgentMissionRuntimePlanner {
                 extraEnvironment: [:]
             )
         case ChatBackendID.junie.rawValue:
+            // Junie has no enforceable read-only/no-shell flags: require the full interactive grant.
+            guard grant.capabilities.contains(.workspaceWrite), grant.capabilities.contains(.shell) else { return nil }
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "junie",
                 arguments: CLIArgumentBuilder.junieArguments(

@@ -89,16 +89,19 @@ def sha256(path: Path) -> str:
 
 def stage(
     engine: Path,
+    extras: list[Path],
     destination: Path,
     search_paths: list[Path],
     dumpbin: str,
 ) -> dict[str, object]:
-    if not engine.is_file():
-        raise ValueError(f"engine DLL does not exist: {engine}")
+    roots = [engine, *extras]
+    for root in roots:
+        if not root.is_file():
+            raise ValueError(f"root DLL does not exist: {root}")
 
     ordered_paths: list[Path] = []
     path_keys: set[str] = set()
-    for path in [engine.parent, *search_paths]:
+    for path in [*(root.parent for root in roots), *search_paths]:
         resolved = path.resolve()
         key = str(resolved).casefold()
         if key not in path_keys:
@@ -106,8 +109,8 @@ def stage(
             ordered_paths.append(resolved)
 
     destination.mkdir(parents=True, exist_ok=True)
-    queue = [engine.resolve()]
-    queued = {engine.name.casefold()}
+    queue = [root.resolve() for root in roots]
+    queued = {root.name.casefold() for root in roots}
     staged: list[tuple[Path, Path]] = []
 
     while queue:
@@ -156,6 +159,7 @@ def stage(
     manifest: dict[str, object] = {
         "schemaVersion": 1,
         "engine": engine.name,
+        "extras": [extra.name for extra in extras],
         "files": files,
     }
     (destination / "native-engine-manifest.json").write_text(
@@ -168,6 +172,7 @@ def stage(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--engine", required=True, type=Path)
+    parser.add_argument("--extra", action="append", default=[], type=Path)
     parser.add_argument("--destination", required=True, type=Path)
     parser.add_argument("--search-path", action="append", default=[], type=Path)
     parser.add_argument("--dumpbin", default=shutil.which("dumpbin") or "dumpbin")
@@ -180,6 +185,7 @@ def main() -> int:
     try:
         manifest = stage(
             args.engine,
+            args.extra,
             args.destination,
             [*args.search_path, *environment_paths],
             args.dumpbin,

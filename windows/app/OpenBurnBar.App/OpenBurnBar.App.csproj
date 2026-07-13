@@ -48,9 +48,18 @@
 
   <ItemGroup Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')">
     <Content Include="$(OpenBurnBarNativeEngineDirectory)\*.dll"
+             Exclude="$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll"
              Link="%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <!-- The managed quota binding imports this DLL by its bare name. Keep the
+         Rust domain core explicit so a publish cannot silently omit it when the
+         native-engine staging layout changes. -->
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll"
+             Link="openburnbar_domain_ffi.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest"
+             Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll')" />
     <!-- Start the recursive glob at the engine root so %(RecursiveDir) retains
          the OpenBurnBarCore_OpenBurnBarCore.resources directory segment. -->
     <Content Include="$(OpenBurnBarNativeEngineDirectory)\**\*"
@@ -71,6 +80,9 @@
     <Error
       Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')"
       Text="Required Windows parser engine is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll" />
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll')"
+      Text="Required shared domain core is missing: $(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll" />
   </Target>
 
   <ItemGroup>

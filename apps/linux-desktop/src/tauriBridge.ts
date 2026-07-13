@@ -2279,26 +2279,5 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('integrations_status');
       return mapIntegrationsStatus(raw);
     },
-    toolApprovalRespond: async (approvalId, decision, note) => {
-      await invoke<RawJsonValue>('tool_approval_respond', {
-        approvalId,
-        decision,
-        note: note ?? null
-      });
-    },
-    memorySetStatus: async (action, payload) => {
-      return invoke<RawJsonValue>('memory_set_status', { action, payload });
-    },
-    computerUseSessionStart: (params) =>
-      invoke<RawJsonValue>('computer_use_session_start', { params }),
-    computerUseInvoke: (params) => invoke<RawJsonValue>('computer_use_invoke', { params }),
-    computerUseApprovalPending: (params) =>
-      invoke<RawJsonValue>('computer_use_approval_pending', { params: params ?? null }),
-    computerUseApprovalRespond: (params) =>
-      invoke<RawJsonValue>('computer_use_approval_respond', { params }),
-    computerUsePanicHalt: (params) =>
-      invoke<RawJsonValue>('computer_use_panic_halt', { params: params ?? null }),
-    computerUseAuditExport: (params) =>
-      invoke<RawJsonValue>('computer_use_audit_export', { params: params ?? null })
   };
 }

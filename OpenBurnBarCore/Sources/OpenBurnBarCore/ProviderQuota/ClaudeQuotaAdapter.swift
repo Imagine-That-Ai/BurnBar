@@ -214,7 +214,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 persistRefreshedProfileCredential(refreshed, context: context)
             }
             if let rateLimits = result.rateLimits, !rateLimits.isEmpty {
-                let buckets = claudeQuotaBuckets(from: rateLimits)
+                let buckets = claudeQuotaBuckets(from: rateLimits, context: context)
                 if !buckets.isEmpty {
                     let freshness = result.sourceWasCache ? " (cached)" : ""
                     let plan = result.refreshedCredentials?.planDisplayName ?? credentials.planDisplayName
@@ -242,7 +242,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
            let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL), // try?-ok(quota snapshot, skip path)
            let rateLimitsDict = payload["rate_limits"] as? [String: Any] {
             let rateLimits = ClaudeRateLimits(from: rateLimitsDict)
-            let buckets = claudeQuotaBuckets(from: rateLimits)
+            let buckets = claudeQuotaBuckets(from: rateLimits, context: context)
             if !buckets.isEmpty {
                 let credentials = context.claudeCredentialsReader.load()
                 let planSuffix = credentials.map { " · Plan: \($0.planDisplayName)" } ?? ""
@@ -468,7 +468,10 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             return nil
         }
 
-        let buckets = claudeQuotaBuckets(from: ClaudeRateLimits(from: rateLimitsDict))
+        let buckets = claudeQuotaBuckets(
+            from: ClaudeRateLimits(from: rateLimitsDict),
+            context: context
+        )
         guard !buckets.isEmpty else { return nil }
 
         let formatted = lastPayloadAt.formatted(date: .abbreviated, time: .shortened)
@@ -878,36 +881,15 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         quotaNonEmpty(environment["ANTHROPIC_API_KEY"]) != nil
     }
 
-    /// Anthropic-published window keys for Claude Code. Names map to
-    /// human labels and `ProviderQuotaWindowKind`. Adding a new label
-    /// is a one-line change.
-    private static let claudeWindowCandidates: [(key: String, label: String, kind: ProviderQuotaWindowKind)] = [
-        ("five_hour", "5-hour window", .rollingHours),
-        ("seven_day", "7-day window", .rollingDays),
-        ("seven_day_sonnet", "7-day Sonnet window", .rollingDays),
-        ("seven_day_opus", "7-day Opus window", .rollingDays),
-        ("seven_day_oauth_apps", "7-day OAuth Apps window", .rollingDays)
-    ]
-
-    private func claudeQuotaBuckets(from rateLimits: ClaudeRateLimits) -> [ProviderQuotaBucket] {
-        Self.claudeWindowCandidates.compactMap { key, label, windowKind in
-            guard let window = rateLimits.window(named: key) else { return nil }
-            guard window.usedPercentage != nil || window.remainingPercentage != nil else {
-                return nil
-            }
-            return ProviderQuotaBucket(
-                key: "claude-\(FlexibleQuotaBucketNormalizer.sanitizeKey(key))",
-                label: label,
-                windowKind: windowKind,
-                usedValue: window.usedPercentage,
-                limitValue: 100,
-                remainingValue: window.remainingPercentage,
-                usedPercent: window.usedPercentage,
-                resetsAt: window.resetsAt,
-                unit: .percent,
-                isEstimated: false
-            )
-        }
+    private func claudeQuotaBuckets(
+        from rateLimits: ClaudeRateLimits,
+        context: ProviderQuotaAdapterContext
+    ) -> [ProviderQuotaBucket] {
+        ClaudeQuotaDomainCoreAdapter.buckets(
+            from: rateLimits,
+            environment: context.environment,
+            quotaLogger: context.quotaLogger
+        )
     }
 
     // MARK: - Rate-Limit Header Probe

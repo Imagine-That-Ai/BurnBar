@@ -1,0 +1,4 @@
+module openburnbar_domain_ffiFFI {
+    header "openburnbar_domain_ffiFFI.h"
+    export *
+}
