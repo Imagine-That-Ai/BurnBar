@@ -118,6 +118,19 @@ final class BurnBarResumeService: @unchecked Sendable {
                 if let model = nonBlank(request.targetModel) {
                     argv.insert(contentsOf: ["--model", model], at: 1)
                 }
+                // `print` is the Activity detail/replay read path. Keep the
+                // native command identity, but include the persisted briefing
+                // so the UI can render the real body without launching a
+                // process or fabricating a transcript.
+                if request.mode == .print {
+                    return BurnBarRunResumeResponse(
+                        kind: "native",
+                        argv: argv,
+                        targetHarness: target,
+                        briefingMD: try renderBriefing(conversation: conversation),
+                        workingDirectory: conversation.workingDirectory
+                    )
+                }
                 if request.mode == .spawn {
                     let pid = try launchDetached(argv: argv, workingDirectory: conversation.workingDirectory)
                     return BurnBarRunResumeResponse(

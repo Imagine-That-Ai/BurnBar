@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureSessionList } from '../../daemonFixture.js';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
-import type { LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
+import type { LinuxShellBridge, SessionListResult, SessionReplayResult } from '../../tauriBridge.js';
 import { ACTIVITY_PAGE_SIZE, useActivityStore } from '../../state/activityStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
@@ -33,6 +33,8 @@ function resetShell(): void {
 function mockBridge(handlers: {
   sessionList?: () => Promise<SessionListResult>;
   sessionSearch?: (query: string) => Promise<SessionListResult>;
+  sessionReplay?: (sessionID: string) => Promise<SessionReplayResult>;
+  sessionResume?: (sessionID: string) => Promise<SessionReplayResult>;
 }): LinuxShellBridge {
   const emptyList = async (): Promise<SessionListResult> => ({ sessions: [], nextCursor: null });
   const bridge: LinuxShellBridge = {
@@ -52,6 +54,8 @@ function mockBridge(handlers: {
     providerCatalog: async () => [],
     sessionList: handlers.sessionList ?? emptyList,
     sessionSearch: handlers.sessionSearch ?? emptyList,
+    sessionReplay: handlers.sessionReplay,
+    sessionResume: handlers.sessionResume,
     usageInsights: async () => ({ weekly: [], providerMix: [], modelMix: [], cacheHitRatePct: 0 }),
     missionList: async () => ({ missions: [], pendingApprovals: [] }),
     missionApprovalDecision: async () => {},
@@ -346,6 +350,58 @@ describe('ActivitySurface', () => {
     expect(within(region as HTMLElement).getByText(/Session id/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /hide details/i }));
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('loads persisted body and requests daemon-backed resume without synthesizing content', async () => {
+    const replay = vi.fn(async (_sessionID: string): Promise<SessionReplayResult> => ({
+      kind: 'ported',
+      briefingMD: '# Persisted session\n\nOriginal body',
+      briefingTruncated: false
+    }));
+    const resume = vi.fn(async (_sessionID: string): Promise<SessionReplayResult> => ({
+      kind: 'spawned',
+      briefingTruncated: false,
+      pid: 42
+    }));
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList: async () => ({ sessions: fixtureSessionList().sessions.slice(0, 1), nextCursor: null }),
+        sessionReplay: replay,
+        sessionResume: resume
+      })
+    });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: /show details/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Load session body' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(replay).toHaveBeenCalledWith(useActivityStore.getState().sessions[0]!.id);
+    expect(screen.getByLabelText('Persisted session body').textContent).toContain('# Persisted session');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume session' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(resume).toHaveBeenCalledWith(useActivityStore.getState().sessions[0]!.id);
+    expect(screen.getByRole('status').textContent).toContain('process 42');
+  });
+
+  it('states that fixture rows have no persisted body or resume authority', async () => {
+    useShellStore.setState({ fixtureMode: true });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: /show details/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Load session body' }));
+    expect(screen.getByRole('alert').textContent).toMatch(/live daemon/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Resume session' }));
+    expect(screen.getByRole('status').textContent).toMatch(/resume is unavailable/i);
   });
 
   it('announces result count via aria-live', async () => {

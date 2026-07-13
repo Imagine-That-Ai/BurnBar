@@ -50,6 +50,17 @@ export type SessionEntry = {
   title: string;
 };
 export type SessionListResult = { sessions: SessionEntry[]; nextCursor: string | null };
+export type SessionReplayResult = {
+  kind: string;
+  briefingMD?: string;
+  briefingTruncated: boolean;
+  targetHarness?: string;
+  workingDirectory?: string;
+  note?: string;
+  pid?: number;
+  errorCode?: string;
+  errorRecovery?: string;
+};
 
 // ──────────────────────────── Exact-thread chat ────────────────────────────
 
@@ -1018,6 +1029,10 @@ export interface LinuxShellBridge {
   providerCatalog(): Promise<ProviderCatalog>;
   sessionList(): Promise<SessionListResult>;
   sessionSearch(query: string): Promise<SessionListResult>;
+  /** Optional on older packaged shells; backed by persisted conversation rows. */
+  sessionReplay?(sessionID: string): Promise<SessionReplayResult>;
+  /** Optional on older packaged shells; launches native or explicit handoff resume. */
+  sessionResume?(sessionID: string): Promise<SessionReplayResult>;
   chatThreadList(query?: string, limit?: number): Promise<ChatThreadListResult>;
   chatThreadGet(
     threadID: string,
@@ -1180,6 +1195,11 @@ function requireString(v: RawJsonValue, label: string): string {
 function requireBoolean(v: RawJsonValue, label: string): boolean {
   if (typeof v !== 'boolean') throw new Error(`${label} must be a boolean.`);
   return v;
+}
+
+function optionalBoolean(v: RawJsonValue, label: string, fallback = false): boolean {
+  if (v === undefined || v === null) return fallback;
+  return requireBoolean(v, label);
 }
 
 function requireSequence(v: RawJsonValue, label: string): number {
@@ -1362,16 +1382,47 @@ function mapSessionList(raw: RawJsonValue): SessionListResult {
   const list = arr(pick(raw, 'sessions', 'usage', 'results'));
   const sessions = list.map(
     (s, i): SessionEntry => ({
-      id: str(pick(s, 'id', 'sessionId', 'session_id'), `session-${i}`),
-      provider: str(pick(s, 'provider', 'providerId', 'provider_id'), 'unknown'),
-      model: str(pick(s, 'model', 'modelId', 'model_id'), 'unknown'),
-      startedAt: str(pick(s, 'startedAt', 'timestamp', 'createdAt', 'at'), new Date().toISOString()),
-      tokens: num(pick(s, 'tokens', 'totalTokens', 'tokenCount')),
+      id: str(pick(s, 'id', 'sessionID', 'sessionId', 'session_id'), `session-${i}`),
+      provider: str(pick(s, 'provider', 'providerID', 'providerId', 'provider_id'), 'unknown'),
+      model: str(pick(s, 'model', 'modelID', 'modelId', 'model_id'), 'unknown'),
+      startedAt: str(
+        pick(s, 'startedAt', 'recordedAt', 'timestamp', 'createdAt', 'at'),
+        new Date().toISOString()
+      ),
+      tokens: num(
+        pick(s, 'tokens', 'totalTokens', 'tokenCount'),
+        num(pick(s, 'inputTokens')) + num(pick(s, 'outputTokens'))
+      ),
       costUsd: num(pick(s, 'costUsd', 'cost', 'estimatedCostUsd')),
-      title: str(pick(s, 'title', 'summary', 'name'), 'Untitled session')
+      title: str(pick(s, 'title', 'summary', 'name', 'projectName'), 'Untitled session')
     })
   );
   return { sessions, nextCursor: str(pick(raw, 'nextCursor', 'cursor')) || null };
+}
+
+const SESSION_BRIEFING_MAX_BYTES = 65_536;
+
+function mapSessionReplay(raw: RawJsonValue): SessionReplayResult {
+  const source = obj(pick(raw, 'result') ?? raw);
+  const briefing = optionalBoundedString(
+    pick(source, 'briefingMD', 'briefing_md'),
+    'session briefing',
+    SESSION_BRIEFING_MAX_BYTES
+  );
+  return {
+    kind: str(pick(source, 'kind', 'status'), 'error'),
+    briefingMD: briefing,
+    briefingTruncated: optionalBoolean(
+      pick(source, 'briefingTruncated', 'briefing_truncated'),
+      'session briefingTruncated'
+    ),
+    targetHarness: str(pick(source, 'targetHarness', 'target_harness')) || undefined,
+    workingDirectory: str(pick(source, 'workingDirectory', 'working_directory')) || undefined,
+    note: str(pick(source, 'note')) || undefined,
+    pid: Number.isSafeInteger(num(pick(source, 'pid'), NaN)) ? num(pick(source, 'pid')) : undefined,
+    errorCode: str(pick(source, 'errorCode', 'error_code', 'code')) || undefined,
+    errorRecovery: str(pick(source, 'errorRecovery', 'error_recovery', 'recovery')) || undefined
+  };
 }
 
 const CHAT_THREAD_RESULT_LIMIT = 100;
@@ -3156,6 +3207,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('session_search', { query });
       return mapSessionList(raw);
     },
+    sessionReplay: async (sessionID) =>
+      mapSessionReplay(await invoke<RawJsonValue>('session_replay', { sessionId: sessionID })),
+    sessionResume: async (sessionID) =>
+      mapSessionReplay(await invoke<RawJsonValue>('session_resume', { sessionId: sessionID })),
     // Exact persisted chat authority; unlike P03, these never derive chat from usage rows.
     chatThreadList: async (query, limit = 100) => {
       const raw = await invoke<RawJsonValue>('chat_thread_list', { query: query || null, limit });
