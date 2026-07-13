@@ -143,8 +143,8 @@
       "maxLines": 137
     },
     "OpenBurnBarCoreCAbi": {
-      "maxFiles": 2,
-      "maxLines": 34
+      "maxFiles": 7,
+      "maxLines": 1098
     }
   }
 }

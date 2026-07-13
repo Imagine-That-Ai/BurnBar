@@ -1120,7 +1120,15 @@ let firstPartyTargetsBase: [Target] = [
                 // ProviderQuota adapters into `OpenBurnBarQuota`. `@testable import
                 // OpenBurnBarQuota` (added in that test) needs the module as a test-target
                 // dependency; the test file otherwise stays put with its logic unchanged.
-                "OpenBurnBarQuota"
+                "OpenBurnBarQuota",
+                // P-22 (S15) AE-IMPORT: `OBBCAbiUsageScanExportTests` reaches the PUBLIC
+                // OBBCAbi C-ABI surface (`OBBCAbiUsageScanExport.run`, `obb_scan_usage`,
+                // `obb_parse_cli_stdout`, `obb_string_free`), which moved Core →
+                // OpenBurnBarCoreCAbi. The test now `import OpenBurnBarCoreCAbi` (plain, not
+                // @testable — public API only); this dependency edge makes the module
+                // linkable in the test host. Acyclic: OpenBurnBarCoreCAbi depends only on
+                // OpenBurnBarCore, and a test target adding it introduces no product cycle.
+                "OpenBurnBarCoreCAbi"
             ] + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes

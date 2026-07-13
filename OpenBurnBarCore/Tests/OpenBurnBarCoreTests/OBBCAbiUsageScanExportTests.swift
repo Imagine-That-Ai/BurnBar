@@ -1,5 +1,11 @@
 import Foundation
 import XCTest
+// P-22 (S15): the OBBCAbi C-ABI export surface moved Core → OpenBurnBarCoreCAbi.
+// This test touches only PUBLIC OBBCAbi API (OBBCAbiUsageScanExport.run,
+// obb_scan_usage/obb_parse_cli_stdout/obb_string_free + the public response/request
+// types), so a plain `import` suffices — no `@testable` for the C-ABI module. The
+// `@testable import OpenBurnBarCore` stays for AgentProvider (Kernel-re-exported).
+import OpenBurnBarCoreCAbi
 @testable import OpenBurnBarCore
 
 final class OBBCAbiUsageScanExportTests: XCTestCase {
