@@ -2,15 +2,10 @@
   "note": "OpenBurnBarCore main-target membership snapshot (per-file line counts) + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink AND no individual baselined main-target file may grow (per-file check — a removed big file cannot mask regrowth in another file); no sibling may exceed its ceiling (decomposition-destination siblings use a PLANNED end-state ceiling that --update never ratchets down, others use 1.25x measured). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update.",
   "main": {
     "target": "OpenBurnBarCore",
-    "totalLines": 1610,
-    "fileCount": 16,
+    "totalLines": 127,
+    "fileCount": 11,
     "files": [
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/Engine/OBBCAbiInsightExport.swift",
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/Engine/OBBCAbiMemory.swift",
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/Engine/OBBCAbiParseExport.swift",
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/Engine/OBBCAbiUsageScanExport.swift",
       "OpenBurnBarCore/Sources/OpenBurnBarCore/KernelReexport.swift",
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/LinuxLocalPeerDiscovery.swift",
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarHermesReexport.swift",
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarInsightsReexport.swift",
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarLaunchServicesReexport.swift",
@@ -23,12 +18,7 @@
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarVectorKitReexport.swift"
     ],
     "fileLines": {
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/Engine/OBBCAbiInsightExport.swift": 267,
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/Engine/OBBCAbiMemory.swift": 31,
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/Engine/OBBCAbiParseExport.swift": 197,
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/Engine/OBBCAbiUsageScanExport.swift": 356,
       "OpenBurnBarCore/Sources/OpenBurnBarCore/KernelReexport.swift": 11,
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/LinuxLocalPeerDiscovery.swift": 632,
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarHermesReexport.swift": 10,
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarInsightsReexport.swift": 14,
       "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarLaunchServicesReexport.swift": 14,
