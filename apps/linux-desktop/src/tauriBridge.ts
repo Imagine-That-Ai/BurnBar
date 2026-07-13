@@ -547,6 +547,21 @@ export type LinuxUpdateInstructions = {
   rollback: LinuxUpdateAction;
   restart: LinuxUpdateAction;
 };
+export type LinuxUpdateChannelInfo = {
+  id: 'deb' | 'rpm' | 'appimage' | 'unknown';
+  label: string;
+  owner: string;
+  installMode: 'package-manager-guided' | 'artifact-replacement-guided' | 'unavailable';
+  automaticInstall: boolean;
+  rollbackMode: string;
+  explanation: string;
+};
+export type LinuxUpdateCompatibility = {
+  state: 'aligned' | 'mismatch' | 'unknown';
+  shellVersion: string;
+  daemonVersion?: string;
+  reason?: string;
+};
 export type LinuxUpdateStatus = {
   state: 'current' | 'available' | 'unavailable' | 'invalid';
   currentVersion: string;
@@ -556,6 +571,13 @@ export type LinuxUpdateStatus = {
   notes?: string;
   artifact?: LinuxUpdateArtifact;
   instructions?: LinuxUpdateInstructions;
+  packageChannel?: LinuxUpdateChannelInfo['id'];
+  channelInfo?: LinuxUpdateChannelInfo;
+  signatureState?: 'verified' | 'rejected' | 'unknown';
+  feedFreshness?: 'fresh' | 'stale' | 'future' | 'unknown';
+  feedAgeSeconds?: number;
+  checkedAtUnixSeconds?: number;
+  compatibility?: LinuxUpdateCompatibility;
   reason?: string;
 };
 export type DiagnosticsExport = { path: string };
@@ -2295,7 +2317,55 @@ export function decodeLinuxUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
   if (Object.keys(instructionsRaw).length > 0 && !hasInstructions) {
     throw new Error('Native update check returned incomplete package instructions.');
   }
+  const channelInfoRaw = obj(pick(raw, 'channelInfo', 'channel_info'));
+  const channelInfoId = str(pick(channelInfoRaw, 'id'));
+  const channelInfo = Object.keys(channelInfoRaw).length === 0
+    ? undefined
+    : {
+        id: channelInfoId as LinuxUpdateChannelInfo['id'],
+        label: str(pick(channelInfoRaw, 'label')),
+        owner: str(pick(channelInfoRaw, 'owner')),
+        installMode: str(pick(channelInfoRaw, 'installMode', 'install_mode')) as LinuxUpdateChannelInfo['installMode'],
+        automaticInstall: Boolean(pick(channelInfoRaw, 'automaticInstall', 'automatic_install')),
+        rollbackMode: str(pick(channelInfoRaw, 'rollbackMode', 'rollback_mode')),
+        explanation: str(pick(channelInfoRaw, 'explanation'))
+      };
+  if (channelInfo && (
+    !['deb', 'rpm', 'appimage', 'unknown'].includes(channelInfo.id)
+    || !channelInfo.label
+    || !channelInfo.owner
+    || !['package-manager-guided', 'artifact-replacement-guided', 'unavailable'].includes(channelInfo.installMode)
+    || !channelInfo.rollbackMode
+    || !channelInfo.explanation
+  )) {
+    throw new Error('Native update check returned invalid package channel metadata.');
+  }
+  const signatureStateRaw = str(pick(raw, 'signatureState', 'signature_state'));
+  if (signatureStateRaw && !['verified', 'rejected', 'unknown'].includes(signatureStateRaw)) {
+    throw new Error('Native update check returned invalid signature state.');
+  }
+  const feedFreshnessRaw = str(pick(raw, 'feedFreshness', 'feed_freshness'));
+  if (feedFreshnessRaw && !['fresh', 'stale', 'future', 'unknown'].includes(feedFreshnessRaw)) {
+    throw new Error('Native update check returned invalid feed freshness.');
+  }
+  const compatibilityRaw = obj(pick(raw, 'compatibility'));
+  const compatibilityState = str(pick(compatibilityRaw, 'state'));
+  const compatibility = Object.keys(compatibilityRaw).length === 0
+    ? undefined
+    : {
+        state: compatibilityState as LinuxUpdateCompatibility['state'],
+        shellVersion: str(pick(compatibilityRaw, 'shellVersion', 'shell_version')),
+        daemonVersion: str(pick(compatibilityRaw, 'daemonVersion', 'daemon_version')) || undefined,
+        reason: str(pick(compatibilityRaw, 'reason')) || undefined
+      };
+  if (compatibility && (
+    !['aligned', 'mismatch', 'unknown'].includes(compatibility.state)
+    || !compatibility.shellVersion
+  )) {
+    throw new Error('Native update check returned invalid shell/daemon compatibility.');
+  }
   const channel = str(pick(raw, 'channel'));
+  const packageChannelRaw = str(pick(raw, 'packageChannel', 'package_channel'));
   return {
     state: state as LinuxUpdateStatus['state'],
     currentVersion: str(pick(raw, 'currentVersion', 'current_version')),
@@ -2309,6 +2379,23 @@ export function decodeLinuxUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
     instructions: hasInstructions
       ? parsedInstructions as LinuxUpdateInstructions
       : undefined,
+    packageChannel: ['deb', 'rpm', 'appimage', 'unknown'].includes(packageChannelRaw)
+      ? packageChannelRaw as LinuxUpdateChannelInfo['id']
+      : undefined,
+    channelInfo,
+    signatureState: signatureStateRaw
+      ? signatureStateRaw as LinuxUpdateStatus['signatureState']
+      : undefined,
+    feedFreshness: feedFreshnessRaw
+      ? feedFreshnessRaw as LinuxUpdateStatus['feedFreshness']
+      : undefined,
+    feedAgeSeconds: num(pick(raw, 'feedAgeSeconds', 'feed_age_seconds'), -1) >= 0
+      ? num(pick(raw, 'feedAgeSeconds', 'feed_age_seconds'))
+      : undefined,
+    checkedAtUnixSeconds: num(pick(raw, 'checkedAtUnixSeconds', 'checked_at_unix_seconds'), -1) >= 0
+      ? num(pick(raw, 'checkedAtUnixSeconds', 'checked_at_unix_seconds'))
+      : undefined,
+    compatibility,
     reason: str(pick(raw, 'reason')) || undefined
   };
 }

@@ -140,6 +140,61 @@ describe('mission snapshot mapping', () => {
 });
 
 describe('native Linux update status decoding', () => {
+  it('decodes freshness, channel ownership, signature, and compatibility metadata', () => {
+    const decoded = decodeLinuxUpdateStatus({
+      state: 'available',
+      currentVersion: '1.0.0',
+      latestVersion: '1.1.0',
+      signatureState: 'verified',
+      feedFreshness: 'fresh',
+      feedAgeSeconds: 42,
+      checkedAtUnixSeconds: 1_750_000_000,
+      packageChannel: 'deb',
+      channelInfo: {
+        id: 'deb',
+        label: 'Debian package (.deb)',
+        owner: 'apt/dpkg',
+        installMode: 'package-manager-guided',
+        automaticInstall: false,
+        rollbackMode: 'apt-version-selection',
+        explanation: 'The distro package manager owns files.'
+      },
+      compatibility: {
+        state: 'aligned',
+        shellVersion: '1.0.0',
+        daemonVersion: '1.0.0'
+      }
+    });
+    expect(decoded).toMatchObject({
+      signatureState: 'verified',
+      feedFreshness: 'fresh',
+      feedAgeSeconds: 42,
+      packageChannel: 'deb',
+      channelInfo: { owner: 'apt/dpkg', installMode: 'package-manager-guided' },
+      compatibility: { state: 'aligned', daemonVersion: '1.0.0' }
+    });
+  });
+
+  it('rejects unsupported freshness, channel, signature, and compatibility states', () => {
+    expect(() => decodeLinuxUpdateStatus({
+      state: 'current', currentVersion: '1.0.0', feedFreshness: 'ancient'
+    })).toThrow('feed freshness');
+    expect(() => decodeLinuxUpdateStatus({
+      state: 'current', currentVersion: '1.0.0', signatureState: 'forged'
+    })).toThrow('signature state');
+    expect(() => decodeLinuxUpdateStatus({
+      state: 'current', currentVersion: '1.0.0', channelInfo: {
+        id: 'deb', label: 'Debian', owner: 'apt/dpkg', installMode: 'shell',
+        automaticInstall: false, rollbackMode: 'none', explanation: 'x'
+      }
+    })).toThrow('package channel metadata');
+    expect(() => decodeLinuxUpdateStatus({
+      state: 'current', currentVersion: '1.0.0', compatibility: {
+        state: 'mismatch', shellVersion: ''
+      }
+    })).toThrow('compatibility');
+  });
+
   it('accepts package-native actions emitted by Rust, including rollback placeholder', () => {
     const decoded = decodeLinuxUpdateStatus({
       state: 'unavailable',

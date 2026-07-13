@@ -2457,7 +2457,9 @@ fn app_version_info() -> Result<serde_json::Value, String> {
 async fn update_status() -> update_feed::LinuxUpdateStatus {
     let package_channel = detect_linux_package_channel();
     let status = update_feed::check_linux_update(env!("CARGO_PKG_VERSION"), &package_channel).await;
-    update_feed::attach_update_instructions(status, &package_channel)
+    let status = update_feed::attach_update_instructions(status, &package_channel);
+    let daemon_version = probe_daemon_health().daemon_version;
+    update_feed::attach_compatibility(status, env!("CARGO_PKG_VERSION"), daemon_version.as_deref())
 }
 
 // ───────────────── P09: redacted diagnostics export ─────────────────
@@ -6038,6 +6040,14 @@ mod tests {
             published_at: None,
             notes: None,
             artifact: None,
+            instructions: None,
+            package_channel: None,
+            channel_info: None,
+            signature_state: "unknown".into(),
+            feed_freshness: "unknown".into(),
+            feed_age_seconds: None,
+            checked_at_unix_seconds: 0,
+            compatibility: None,
             reason: Some("offline".into()),
         };
         assert_eq!(tray_update_text(&status), "Updates: feed unavailable");

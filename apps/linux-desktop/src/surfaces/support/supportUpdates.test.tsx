@@ -135,6 +135,19 @@ describe('P09 updates and support', () => {
         latestVersion: '1.1.0',
         channel: 'stable',
         publishedAt: '2026-07-09T00:00:00Z',
+        signatureState: 'verified',
+        feedFreshness: 'fresh',
+        feedAgeSeconds: 120,
+        compatibility: { state: 'aligned', shellVersion: '1.0.0', daemonVersion: '1.0.0' },
+        channelInfo: {
+          id: 'deb',
+          label: 'Debian package (.deb)',
+          owner: 'apt/dpkg',
+          installMode: 'package-manager-guided',
+          automaticInstall: false,
+          rollbackMode: 'apt-version-selection',
+          explanation: 'The distro package manager owns files and upgrades.'
+        },
         notes: 'Security and reliability fixes.',
         artifact: {
           type: 'deb',
@@ -158,6 +171,7 @@ describe('P09 updates and support', () => {
     expect(openUpdateUrl).toHaveBeenCalledWith(
       'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb'
     );
+    expect(screen.getByText('apt/dpkg')).toBeTruthy();
   });
 
   it('renders package-native install and rollback actions without executing them', async () => {
@@ -209,6 +223,66 @@ describe('P09 updates and support', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy rollback command' }));
     expect(writeText).toHaveBeenCalledWith('sudo apt-get install --allow-downgrades open-burn-bar=<previous-version>');
     expect(bridge.updateStatus).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['stale feed', { feedFreshness: 'stale' as const, feedAgeSeconds: 8 * 24 * 60 * 60 }],
+    ['daemon mismatch', {
+      feedFreshness: 'fresh' as const,
+      compatibility: {
+        state: 'mismatch' as const,
+        shellVersion: '1.1.0',
+        daemonVersion: '1.0.0',
+        reason: 'Shell 1.1.0 and daemon 1.0.0 differ; restart after the package manager finishes.'
+      }
+    }]
+  ])('keeps install and download actions disabled for %s', async (_label, metadata) => {
+    const openUpdateUrl = vi.fn().mockResolvedValue(undefined);
+    const bridge = mockBridge({
+      openUpdateUrl,
+      updateStatus: vi.fn().mockResolvedValue({
+        state: 'available',
+        currentVersion: '1.0.0',
+        latestVersion: '1.1.0',
+        channel: 'stable',
+        signatureState: 'verified',
+        ...metadata,
+        artifact: {
+          type: 'deb',
+          architecture: 'aarch64',
+          url: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb',
+          sha256: 'a'.repeat(64),
+          size: 100,
+          signatureUrl: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb.sig'
+        },
+        instructions: {
+          packageManager: 'apt',
+          install: {
+            id: 'install', label: 'Update with apt', instruction: 'Use apt.',
+            command: 'sudo apt-get install --only-upgrade open-burn-bar', available: true, requiresConfirmation: true
+          },
+          rollback: {
+            id: 'rollback', label: 'Roll back with apt', instruction: 'Choose a prior version.',
+            command: 'sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION', available: true, requiresConfirmation: true
+          },
+          restart: {
+            id: 'restart', label: 'Restart OpenBurnBar', instruction: 'Restart after replacement.',
+            command: 'systemctl --user restart openburnbar-daemon.service', available: true, requiresConfirmation: false
+          }
+        }
+      })
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<UpdatesSurface />);
+    await act(async () => {
+      await useSupportStore.getState().loadVersion();
+    });
+    expect((screen.getByRole('button', { name: 'Copy install command' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Copy rollback command' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Copy restart command' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Download unavailable' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Install and rollback guidance is disabled/)).toBeTruthy();
+    expect(openUpdateUrl).not.toHaveBeenCalled();
   });
 
   it('renders rejected update metadata as an alert with the native reason', async () => {
