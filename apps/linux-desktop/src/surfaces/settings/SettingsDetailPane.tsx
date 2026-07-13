@@ -245,10 +245,11 @@ function providerCoverageLabel(coverage: 'local-parser' | 'api-backed' | 'unavai
   }
 }
 
-function AgentsDetail({ config }: { config: ConfigSnapshot }) {
+function AgentsDetail({ config, fixtureMode }: { config: ConfigSnapshot; fixtureMode: boolean }) {
   const providers = config.providers ?? [];
   const [selectedProviderID, setSelectedProviderID] = useState(providers[0]?.providerID ?? '');
   const health = useShellStore((s) => s.health);
+  const configUpdate = useShellStore((s) => s.bridge?.configUpdate);
   const busy = useSettingsWiringStore((s) => s.busy);
   const error = useSettingsWiringStore((s) => s.error);
   const routeLog = useSettingsWiringStore((s) => s.routeLog);
@@ -271,6 +272,7 @@ function AgentsDetail({ config }: { config: ConfigSnapshot }) {
 
   const provider = providers.find((p) => p.providerID === selectedProviderID) ?? providers[0];
   const disabled = Boolean(busy);
+  const canWriteConfig = fixtureMode || typeof configUpdate === 'function';
   const endpoint = health?.gatewayEnabled
     ? `${health.gatewayHost ?? '127.0.0.1'}:${health.gatewayPort ?? 0}`
     : 'Gateway disabled or unavailable';
@@ -296,6 +298,24 @@ function AgentsDetail({ config }: { config: ConfigSnapshot }) {
     if (!baseURL) return;
     void replaceSnapshot(updateProviderSnapshot(config, provider.providerID, (p) => ({ ...p, baseURL })));
   };
+  const setPreferredCredentialSlot = (slotID: string) => {
+    if (disabled || !canWriteConfig) return;
+    void replaceSnapshot(updateProviderSnapshot(config, provider.providerID, (current) => {
+      const next = { ...current };
+      if (slotID) {
+        next.preferredCredentialSlotID = slotID;
+      } else {
+        // Omission is the daemon contract for automatic credential routing;
+        // sending null would be ambiguous to older packaged peers.
+        delete next.preferredCredentialSlotID;
+      }
+      return next;
+    }));
+  };
+  const credentialSlots = provider.credentialSlots ?? [];
+  const preferredSlotID = provider.preferredCredentialSlotID ?? '';
+  const preferredSlotExists = credentialSlots.some((slot) => slot.slotID === preferredSlotID);
+  const preferredSlotDisabled = disabled || !canWriteConfig;
 
   return (
     <>
@@ -377,6 +397,42 @@ function AgentsDetail({ config }: { config: ConfigSnapshot }) {
       </SettingGroup>
 
       <SettingGroup title="Credential Slots" sectionHeader hideTitle>
+        <SettingRow
+          iconGlyph="⇄"
+          label="Preferred account"
+          description="Pin a credential slot for this provider, or let the daemon choose the healthiest eligible slot automatically. Secrets are never shown."
+          readOnlyNote={!canWriteConfig && !fixtureMode ? 'Packaged shell config.update is unavailable; account routing is read-only.' : undefined}
+          control={
+            <span className="settings-verification-value">
+              <select
+                value={preferredSlotID}
+                disabled={preferredSlotDisabled}
+                aria-label="Preferred credential slot"
+                onChange={(event) => setPreferredCredentialSlot(event.currentTarget.value)}
+              >
+                <option value="">Auto (daemon routing)</option>
+                {preferredSlotID && !preferredSlotExists ? (
+                  <option value={preferredSlotID} disabled>
+                    Current slot unavailable ({preferredSlotID})
+                  </option>
+                ) : null}
+                {credentialSlots.map((slot) => (
+                  <option key={slot.slotID} value={slot.slotID}>
+                    {slot.label} · {slot.status}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="ghost"
+                disabled={preferredSlotDisabled || preferredSlotID === ''}
+                onClick={() => setPreferredCredentialSlot('')}
+              >
+                Use auto routing
+              </button>
+            </span>
+          }
+        />
         {provider.credentialSlots.map((slot) => (
           <SettingRow
             key={slot.slotID}
@@ -1099,10 +1155,10 @@ export function SettingsDetailPane({
         );
         break;
       case 'agents':
-        content = <AgentsDetail config={config} />;
+        content = <AgentsDetail config={config} fixtureMode={fixtureMode} />;
         break;
       case 'model-proxy':
-        content = <AgentsDetail config={config} />;
+        content = <AgentsDetail config={config} fixtureMode={fixtureMode} />;
         break;
       case 'account':
         content = (

@@ -290,6 +290,85 @@ describe('SettingsSurface', () => {
     expect(configUpdate.mock.calls[0][0].providers[0].isEnabled).toBe(false);
   });
 
+  it('switches a provider credential slot and explicitly clears back to daemon auto routing', async () => {
+    const config = fixtureConfigSnapshot();
+    config.providers![0] = {
+      ...config.providers![0],
+      preferredCredentialSlotID: 'anthropic-team',
+      credentialSlots: [
+        ...config.providers![0].credentialSlots,
+        {
+          slotID: 'anthropic-backup',
+          label: 'Backup workspace',
+          isEnabled: true,
+          status: 'ready'
+        }
+      ]
+    };
+    const configUpdate = vi.fn(async (snapshot) => snapshot);
+    useShellStore.setState({
+      bridge: bridge({ configSnapshot: async () => config, configUpdate }),
+      fixtureMode: false
+    });
+    useSystemStore.setState({ config, loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Agents/i }));
+
+    const preferredSlot = await screen.findByLabelText('Preferred credential slot');
+    expect((preferredSlot as HTMLSelectElement).value).toBe('anthropic-team');
+    fireEvent.change(preferredSlot, { target: { value: 'anthropic-backup' } });
+    await waitFor(() => expect(configUpdate).toHaveBeenCalledTimes(1));
+    expect(configUpdate.mock.calls[0]![0].providers?.[0]?.preferredCredentialSlotID).toBe('anthropic-backup');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use auto routing' }));
+    await waitFor(() => expect(configUpdate).toHaveBeenCalledTimes(2));
+    expect('preferredCredentialSlotID' in configUpdate.mock.calls[1]![0].providers![0]).toBe(false);
+  });
+
+  it('fails closed for preferred account switching without a live config.update bridge', async () => {
+    const config = fixtureConfigSnapshot();
+    const configUpdate = vi.fn(async (snapshot) => snapshot);
+    useShellStore.setState({
+      bridge: bridge({ configSnapshot: async () => config, configUpdate: undefined }),
+      fixtureMode: false
+    });
+    useSystemStore.setState({ config, loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Agents/i }));
+
+    const preferredSlot = await screen.findByLabelText('Preferred credential slot') as HTMLSelectElement;
+    expect(preferredSlot.disabled).toBe(true);
+    expect(screen.getByText(/config\.update is unavailable/i)).toBeTruthy();
+    fireEvent.change(preferredSlot, { target: { value: '' } });
+    expect(configUpdate).not.toHaveBeenCalled();
+  });
+
+  it('supports fixture account switching without rendering credential material', async () => {
+    const config = fixtureConfigSnapshot();
+    config.providers![0] = {
+      ...config.providers![0],
+      preferredCredentialSlotID: 'anthropic-team',
+      credentialSlots: [
+        ...config.providers![0].credentialSlots,
+        {
+          slotID: 'anthropic-backup',
+          label: 'Backup workspace',
+          isEnabled: true,
+          status: 'ready'
+        }
+      ]
+    };
+    useShellStore.setState({ bridge: null, fixtureMode: true });
+    useSystemStore.setState({ config, loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Agents/i }));
+
+    const preferredSlot = await screen.findByLabelText('Preferred credential slot');
+    fireEvent.change(preferredSlot, { target: { value: 'anthropic-backup' } });
+    await waitFor(() => expect(useSystemStore.getState().config?.providers?.[0]?.preferredCredentialSlotID).toBe('anthropic-backup'));
+    expect(screen.queryByText(/sk-/i)).toBeNull();
+  });
+
   it('fails closed when a packaged bridge cannot update privacy config', async () => {
     useShellStore.setState({ bridge: null, fixtureMode: false });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
