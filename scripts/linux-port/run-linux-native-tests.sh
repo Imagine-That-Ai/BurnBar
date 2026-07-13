@@ -3,6 +3,24 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
+# SwiftPM repositories are not safe to reuse after an interrupted Docker
+# build: a partially written mirror can make the next clone fail with an
+# "existing refs" error. Keep each native-test invocation isolated from the
+# checkout by default, while allowing a caller to retain a stable scratch path
+# for debugging or CI caches.
+linux_native_swift_scratch_root() {
+    local configured_root="${OPENBURNBAR_LINUX_SWIFT_SCRATCH_ROOT:-}"
+    if [[ -n "$configured_root" ]]; then
+        mkdir -p "$configured_root"
+        printf '%s\n' "$configured_root"
+        return 0
+    fi
+
+    local temporary_root="${TMPDIR:-/tmp}/openburnbar-linux-native-tests-$$"
+    mkdir -p "$temporary_root"
+    printf '%s\n' "$temporary_root"
+}
+
 run_xctest_attempt() {
     local binary="$1"
     local selector="$2"
@@ -389,21 +407,25 @@ daemon_linux_tests=(
 )
 
 main() {
+    local scratch_root
+    scratch_root="$(linux_native_swift_scratch_root)"
+    echo "Linux Swift scratch root: $scratch_root" >&2
+
     run_swift_suite \
         OpenBurnBarCore \
-        OpenBurnBarCore/.build/linux-native \
+        "$scratch_root/core" \
         OpenBurnBarLinuxCoreFoundationTests \
         "${core_foundation_tests[@]}"
 
     run_swift_suite \
         OpenBurnBarCore \
-        OpenBurnBarCore/.build/linux-native \
+        "$scratch_root/core" \
         OpenBurnBarLinuxSecurityTests \
         "${linux_security_tests[@]}"
 
     run_swift_suite \
         OpenBurnBarDaemon \
-        OpenBurnBarDaemon/.build/linux-native \
+        "$scratch_root/daemon" \
         OpenBurnBarDaemonLinuxGatewayTests \
         "${daemon_linux_tests[@]}"
 
