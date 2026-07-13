@@ -100,7 +100,11 @@ unproven host behavior to certification:
   payloads and secrets are not persisted.
 - Browser Computer Use process mode now uses a direct executable plus a
   JSON-line bridge with no shell interpolation, bounded responses, serialized
-  commands, cancellation, and process-tree cleanup.
+  commands, cancellation, and process-tree cleanup. The bridge now accepts the
+  Windows launch/navigate/evaluate/close envelope as well as the existing
+  method-based protocol, so the direct driver reaches the real Playwright
+  lifecycle rather than only the in-process fallback. SSRF and DNS-rebinding
+  guards remain enforced at the browser route chokepoint.
 - Project code now has a bounded symbol index with durable metadata-only
   persistence and a file watcher. The index can invoke the existing Rust
   Tree-sitter JSONL parser through a direct process client with Git-blob SHA
@@ -111,10 +115,13 @@ unproven host behavior to certification:
   `run.resume` commands; only explicitly safe built-in steps execute by default,
   while arbitrary shell/provider work fails closed.
 - Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
-  without writing prompts or tool output to disk.
+  without writing prompts or tool output to disk. The companion CLI now exposes
+  a bounded `fusion.run` command that composes this loop with the configured
+  gateway executor; unconfigured provider routes fail closed. Provider response
+  bodies are bounded before entering the fusion loop.
 
-These changes are covered by focused managed-runtime, presentation, and
-Computer Use tests. They are an implementation increment, not a claim that
+These changes are covered by focused managed-runtime, presentation, Computer
+Use, bridge-policy, and provider-boundary tests. They are an implementation increment, not a claim that
 the F2 workstreams are all promoted to `Real`: full static parsing, live
 Pensieve storage integration, production composition of every F2 service,
 physical Computer Use/media safety, and host evidence still remain. The
