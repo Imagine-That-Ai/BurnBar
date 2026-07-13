@@ -88,8 +88,12 @@ The integration branch now includes the next bounded source slices:
 - `d191a1be5f`: typed database recovery status/actions, candidate-key and
   integrity proof, explicit missing-database/device-transfer guidance, and
   fail-closed Tauri controls.
+- `c1f6e69514`: bounded Activity full-history export using verified daemon
+  usage/replay identities and typed unavailable state for incomplete proof.
+- `e0451afa5e`: strict provider catalog/config mapping, model provenance and
+  failover posture, provider workspace, and config-derived backend gates.
 
-The combined frontend suite is **74 files / 635 tests**, the Tauri Rust suite
+The combined frontend suite is **75 files / 647 tests**, the Tauri Rust suite
 is **87/87**, TypeScript and the production bundle verifier pass, and the
 daemon target builds. These are source gates only. The promotion ledger remains
 0/40 product rows and 0/7 environment receipts until the exact signed
@@ -128,7 +132,7 @@ integrated chat model/attachment state, persisted activity replay/resume, and
 SQLCipher-gated encrypted database snapshot/restore. The
 following checks passed:
 
-- Linux frontend: 74 Vitest files / 635 tests.
+- Linux frontend: 75 Vitest files / 647 tests.
 - TypeScript: `npx tsc --noEmit --pretty false`.
 - Production bundle: `npm run build` plus the production bundle verifier.
 - Tauri Rust: 87/87 library tests.
