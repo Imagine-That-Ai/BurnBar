@@ -1,10 +1,28 @@
-# Packet P-18 (DRAFT): repoint OpenBurnBarDaemon/CLI → OpenBurnBarEngine (S17)
-STATE: QUEUED
-LANE: Integrator          DEPENDS-ON: S0, P-17 (Engine complete)
-BASELINE-TOUCHING: core-umbrella-imports (ratchets OpenBurnBarDaemon/ to zero)
+# Packet P-18: repoint OpenBurnBarDaemon/CLI → OpenBurnBarEngine (S17)
+STATE: PR_OPEN #1664 (base core-decomp/p-13-final; EXECUTED)
+LANE: Integrator          DEPENDS-ON: S0, P-13 (Quota populated), P-15b (CLILaunchAdapter Kernel-resident)
+BASELINE-TOUCHING: core-umbrella-imports (ratchets OpenBurnBarDaemon/ to ZERO — flipped in #1664)
 
 The security payoff: the daemon/CLI stop linking the OpenBurnBarCore umbrella (and its
 transitive UI) and link the UI-free `OpenBurnBarEngine` instead.
+
+## EXECUTED (PR #1664, base core-decomp/p-13-final)
+Shipped: Package.swift Core→Engine (daemon target + LinuxGatewayTests); sed of 202 daemon
+Sources+Tests `import OpenBurnBarCore`→`import OpenBurnBarEngine`; `@testable import
+OpenBurnBarCore`→`@testable import OpenBurnBarVectorKit` (×1); `OpenBurnBarCore.Locked`→
+`OpenBurnBarEngine.Locked` (×1, module-qualified, compiler-caught). Compile-closure found
+EXACTLY 4 residual Core-only breakers, all pure, all in LaunchServices, all referenced only
+by the macOS-only OpenBurnBarSwitcherShell.swift — moved DOWN into Kernel:
+CLITerminalSessionSupervisor.swift (git mv, `#if canImport(Darwin)`), CLILaunchRedactor
+(new Kernel/Platform/CLILaunchRedactor.swift, `#if os(macOS)`), SwitcherProfileStoreAdapter+
+InMemorySwitcherProfileStoreAdapter (new Kernel/SwitcherProfileStoreAdapter.swift,
+`#if os(macOS)`). InsightMissionApprovalPolicy confirmed NOT daemon-referenced. No
+XAISuperGrokPacingLog→Hermes move needed (P-13 already homed it in OpenBurnBarQuota, an
+Engine leaf) — this base is cleaner than the prior wave3-base attempt. Ratchet flipped:
+umbrella baseline OpenBurnBarDaemon 203→0. LINK-GRAPH PROOF: Engine closure = 9 targets,
+zero SwiftUI/AppKit, no UI target reachable. Daemon build+CLI green; canon --check clean;
+membership/UI-purity gates OK. (The prior "BLOCKED — CLI-launch cluster" note is resolved
+by P-15b + this packet's 3 Kernel moves.)
 
 ## Scope
 - `OpenBurnBarDaemon/Package.swift` — change the daemon's + CLI's product dependency
