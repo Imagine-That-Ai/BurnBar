@@ -364,9 +364,7 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
     private let coordinator: DomainCoreShadowEvidenceUploadCoordinator?
 
     init(environment: [String: String] = ProcessInfo.processInfo.environment) {
-        let configured = environment["OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL"]
-            ?? Bundle.main.object(forInfoDictionaryKey: "OpenBurnBarDomainCoreRolloutChannel") as? String
-        self.channel = configured == "internal" || configured == "beta" ? configured : nil
+        self.channel = DomainCoreBuildProfileResolver.evidenceChannel(environment: environment)
         let resolvedSpool: DomainCoreShadowEvidenceSpool?
         do {
             let directory = try FileManager.default.url(

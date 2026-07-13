@@ -1,6 +1,7 @@
 package com.openburnbar.data.hermes.relay
 
 import android.util.Log
+import com.openburnbar.data.DomainCoreBuildProfile
 import java.security.SecureRandom
 import uniffi.openburnbar_domain_ffi.HermesAadKind
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
@@ -26,7 +27,9 @@ internal enum class HermesDomainCoreMode {
         fun resolve(
             raw: String? = System.getProperty("openburnbar.domain_core.hermes.mode")
                 ?: System.getenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE"),
-        ): HermesDomainCoreMode = entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: LEGACY
+        ): HermesDomainCoreMode = entries.firstOrNull {
+            it.name.equals(DomainCoreBuildProfile.mode("hermes", raw), ignoreCase = true)
+        } ?: LEGACY
     }
 }
 

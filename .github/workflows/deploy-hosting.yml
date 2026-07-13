@@ -67,6 +67,11 @@ jobs:
           npm ci --prefix website
           npm ci --prefix apps/console
 
+      - name: Resolve signed public domain-core profile
+        run: |
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env-web >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format json --output apps/console/public/domain-core-build-profile.json
+
       - name: Trust copy drift gates (block deploy)
         run: |
           node website/scripts/generate-crypto-claims.mjs --check
@@ -94,6 +99,10 @@ jobs:
           cp -a apps/console/out "$ARTIFACT_ROOT/apps/console/out"
           cp .firebaserc "$ARTIFACT_ROOT/.firebaserc"
           cp scripts/ci/deploy-firebase-hosting-rest.mjs "$ARTIFACT_ROOT/scripts/ci/"
+
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+            --profile public-production \
+            --console-dir "$ARTIFACT_ROOT/apps/console/out"
 
           node scripts/ci/write-firebase-hosting-ci-config.mjs \
             --mode hosting \

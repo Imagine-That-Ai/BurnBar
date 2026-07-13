@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI
@@ -528,11 +529,7 @@ public enum HermesRatchetCrypto {
     }
 
     private static var domainCoreMode: String {
-        switch ProcessInfo.processInfo.environment["OPENBURNBAR_DOMAIN_CORE_HERMES_MODE"]?.lowercased() {
-        case "shadow": "shadow"
-        case "rust": "rust"
-        default: "legacy"
-        }
+        DomainCoreBuildProfileResolver.mode(for: .hermes).rawValue
     }
 
     private static func diagnostic(_ operation: String, _ outcome: String) {

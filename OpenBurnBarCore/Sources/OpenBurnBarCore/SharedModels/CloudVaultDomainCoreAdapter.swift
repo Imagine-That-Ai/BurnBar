@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI
@@ -10,10 +11,7 @@ enum CloudVaultDomainCoreMigrationMode: String, Sendable {
     case rust
 
     static func resolve(environment: [String: String]) -> Self {
-        guard let raw = environment["OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"]?.lowercased() else {
-            return .legacy
-        }
-        return Self(rawValue: raw) ?? .legacy
+        Self(rawValue: DomainCoreBuildProfileResolver.mode(for: .cloudVault, environment: environment).rawValue) ?? .legacy
     }
 }
 

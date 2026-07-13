@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
+using OpenBurnBar.App.Configuration;
 using DomainAadContext = uniffi.openburnbar_domain_ffi.CloudVaultAadContextInput;
 using DomainCloudVaultException = uniffi.openburnbar_domain_ffi.CloudVaultFfiException;
 using DomainHashPurpose = uniffi.openburnbar_domain_ffi.CloudVaultHashPurpose;
@@ -289,7 +290,7 @@ namespace OpenBurnBar.CloudSync.Crypto
             Func<T> legacy,
             Func<T, T, bool> equivalent)
         {
-            var mode = ResolveMode(Environment.GetEnvironmentVariable(ModeVariable));
+            var mode = ResolveMode(DomainCoreBuildProfileResolver.Mode("cloudVault", ModeVariable));
             if (mode == DomainCoreCloudVaultMigrationMode.Legacy)
             {
                 return legacy();

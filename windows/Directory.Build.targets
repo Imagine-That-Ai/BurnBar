@@ -1,0 +1,23 @@
+<Project>
+  <PropertyGroup>
+    <DomainCoreRolloutChannelJson Condition="'$(DomainCoreRolloutChannel)' == ''">null</DomainCoreRolloutChannelJson>
+    <DomainCoreRolloutChannelJson Condition="'$(DomainCoreRolloutChannel)' != ''">&quot;$(DomainCoreRolloutChannel)&quot;</DomainCoreRolloutChannelJson>
+    <DomainCoreArtifactJson>{&quot;schemaVersion&quot;:1,&quot;name&quot;:&quot;$(DomainCoreBuildProfile)&quot;,&quot;artifactAuthority&quot;:&quot;$(DomainCoreBuildAuthority)&quot;,&quot;distribution&quot;:&quot;$(DomainCoreDistribution)&quot;,&quot;rolloutChannel&quot;:$(DomainCoreRolloutChannelJson),&quot;evidenceEnabled&quot;:$(DomainCoreEvidenceEnabled),&quot;modes&quot;:{&quot;quota&quot;:&quot;$(DomainCoreQuotaMode)&quot;,&quot;cloudVault&quot;:&quot;$(DomainCoreCloudVaultMode)&quot;,&quot;cloudVaultRewrap&quot;:&quot;$(DomainCoreCloudVaultRewrapMode)&quot;,&quot;cloudVaultSearch&quot;:&quot;$(DomainCoreCloudVaultSearchMode)&quot;,&quot;hermes&quot;:&quot;$(DomainCoreHermesMode)&quot;,&quot;pricing&quot;:&quot;$(DomainCorePricingMode)&quot;}}</DomainCoreArtifactJson>
+  </PropertyGroup>
+  <Target Name="WriteDomainCoreBuildProfileReceipt"
+          AfterTargets="Build"
+          Condition="'$(MSBuildProjectName)' == 'OpenBurnBar.App'">
+    <WriteLinesToFile File="$(TargetDir)domain-core-build-profile.json"
+                      Lines="$(DomainCoreArtifactJson)"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+  </Target>
+  <Target Name="WritePublishedDomainCoreBuildProfileReceipt"
+          AfterTargets="Publish"
+          Condition="'$(MSBuildProjectName)' == 'OpenBurnBar.App' and '$(PublishDir)' != ''">
+    <WriteLinesToFile File="$(PublishDir)domain-core-build-profile.json"
+                      Lines="$(DomainCoreArtifactJson)"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+  </Target>
+</Project>

@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "defaultReleaseProfile": "public-production",
+  "domains": [
+    "quota",
+    "cloudVault",
+    "cloudVaultRewrap",
+    "cloudVaultSearch",
+    "hermes",
+    "pricing"
+  ],
+  "profiles": {
+    "developer": {
+      "artifactAuthority": "development",
+      "distribution": "development",
+      "rolloutChannel": null,
+      "evidenceEnabled": false,
+      "modes": {
+        "quota": "legacy",
+        "cloudVault": "legacy",
+        "cloudVaultRewrap": "legacy",
+        "cloudVaultSearch": "legacy",
+        "hermes": "legacy",
+        "pricing": "legacy"
+      }
+    },
+    "public-production": {
+      "artifactAuthority": "signed",
+      "distribution": "public",
+      "rolloutChannel": null,
+      "evidenceEnabled": false,
+      "modes": {
+        "quota": "legacy",
+        "cloudVault": "legacy",
+        "cloudVaultRewrap": "legacy",
+        "cloudVaultSearch": "legacy",
+        "hermes": "legacy",
+        "pricing": "legacy"
+      }
+    },
+    "internal": {
+      "artifactAuthority": "signed",
+      "distribution": "internal",
+      "rolloutChannel": "internal",
+      "evidenceEnabled": true,
+      "modes": {
+        "quota": "shadow",
+        "cloudVault": "shadow",
+        "cloudVaultRewrap": "shadow",
+        "cloudVaultSearch": "shadow",
+        "hermes": "shadow",
+        "pricing": "shadow"
+      }
+    },
+    "beta": {
+      "artifactAuthority": "signed",
+      "distribution": "beta",
+      "rolloutChannel": "beta",
+      "evidenceEnabled": true,
+      "modes": {
+        "quota": "shadow",
+        "cloudVault": "shadow",
+        "cloudVaultRewrap": "shadow",
+        "cloudVaultSearch": "shadow",
+        "hermes": "shadow",
+        "pricing": "shadow"
+      }
+    }
+  }
+}

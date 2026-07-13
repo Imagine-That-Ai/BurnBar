@@ -10,10 +10,7 @@ enum HermesDomainCoreMode: String, Sendable {
     case rust
 
     static func resolve(environment: [String: String] = ProcessInfo.processInfo.environment) -> Self {
-        guard let raw = environment["OPENBURNBAR_DOMAIN_CORE_HERMES_MODE"]?.lowercased() else {
-            return .legacy
-        }
-        return Self(rawValue: raw) ?? .legacy
+        Self(rawValue: DomainCoreBuildProfileResolver.mode(for: .hermes, environment: environment).rawValue) ?? .legacy
     }
 }
 

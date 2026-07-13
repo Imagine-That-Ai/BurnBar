@@ -26,14 +26,14 @@ exercised by the evaluator's unit tests before merge.
 
 ## Collect quota shadow samples
 
-Quota consumers emit schema-v1 samples only when the rollout channel is
-`internal` or `beta`. Set `OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL` to one of
-those values in the signed build environment and enroll the signed-in account
-with the matching Firebase Auth custom claim
-`domainCoreShadowChannel: "internal" | "beta"`. The callable rejects absent or
-mismatched claims; the request body cannot self-assert enrollment. An absent,
-unknown, or `production` build value disables collection. Parser payloads and
-parsed quota values never cross the evidence boundary.
+Quota consumers emit schema-v1 samples only for a signed `internal` or `beta`
+profile. Resolve the artifact settings through
+[`shared-rust-build-profiles.md`](shared-rust-build-profiles.md); signed releases
+do not trust runtime channel overrides. Enroll the account with matching
+`domainCoreShadowChannel` and `domainCoreShadowConsumers` claims. The callable
+rejects absent or mismatched channel/consumer enrollment; the request cannot
+self-assert either value. Parser payloads and parsed quota values never cross
+the evidence boundary.
 
 Apple spools bounded JSONL batches under
 `Application Support/OpenBurnBar/DomainCoreShadow`; Windows uses
