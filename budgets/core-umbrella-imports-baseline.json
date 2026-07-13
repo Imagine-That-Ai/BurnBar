@@ -1,6 +1,6 @@
 {
   "note": "Per-consumer-root files importing the OpenBurnBarCore umbrella (docs/CORE_DECOMPOSITION_PROGRAM.md). Covers ALL Swift import-attribute forms including `@testable import OpenBurnBarCore` and `@_exported`/`@_spi(...)` prefixes (so no repoint can leave a hidden umbrella import). Shrink-only: no NEW file may import the umbrella in a tracked root. Privileged roots (OpenBurnBarDaemon, OpenBurnBarWidget, OpenBurnBarKeyboard) ratchet to zero after their repoint packets (S17/S18/S19); AgentLens/OpenBurnBarMobile keep the umbrella deliberately. Regenerate via scripts/debt/check-core-umbrella-imports-budget.sh --update.",
-  "total": 1120,
+  "total": 1103,
   "roots": {
     "OpenBurnBarDaemon": {
       "count": 203,
@@ -211,26 +211,8 @@
       ]
     },
     "OpenBurnBarWidget": {
-      "count": 17,
-      "files": [
-        "OpenBurnBarWidget/AgentWatchLiveActivity.swift",
-        "OpenBurnBarWidget/BurnBarEntry.swift",
-        "OpenBurnBarWidget/BurnBarLiveActivityWidget.swift",
-        "OpenBurnBarWidget/BurnBarProvider.swift",
-        "OpenBurnBarWidget/BurnBarWidgetView.swift",
-        "OpenBurnBarWidget/InsightSessionLiveActivity.swift",
-        "OpenBurnBarWidget/InsightTodayWidgetProvider.swift",
-        "OpenBurnBarWidget/InsightTodayWidgetView.swift",
-        "OpenBurnBarWidget/Views/CircularLockScreenView.swift",
-        "OpenBurnBarWidget/Views/CostSparklineMediumView.swift",
-        "OpenBurnBarWidget/Views/DashboardExtraLargeView.swift",
-        "OpenBurnBarWidget/Views/DashboardLargeView.swift",
-        "OpenBurnBarWidget/Views/HeroSmallView.swift",
-        "OpenBurnBarWidget/Views/InlineLockScreenView.swift",
-        "OpenBurnBarWidget/Views/RectangularLockScreenView.swift",
-        "OpenBurnBarWidget/WidgetDesignSystem.swift",
-        "OpenBurnBarWidget/WidgetSnapshotTests.swift"
-      ]
+      "count": 0,
+      "files": []
     },
     "OpenBurnBarKeyboard": {
       "count": 2,
