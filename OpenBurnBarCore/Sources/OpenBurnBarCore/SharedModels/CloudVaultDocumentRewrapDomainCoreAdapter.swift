@@ -127,7 +127,7 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
     static var productionBackend: NativeBackend? {
         #if canImport(OpenBurnBarDomainCoreFFI)
         NativeBackend(
-            abiVersion: { OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() },
+            abiVersion: { DomainCoreNativeProbe.abiVersion() ?? 0 },
             coreVersion: { OpenBurnBarDomainCoreFFI.domainCoreVersion() },
             rewrap: { request, oldKey, newKey, newVaultKeyID in
                 let result = try OpenBurnBarDomainCoreFFI.cloudVaultRewrapDocument(
