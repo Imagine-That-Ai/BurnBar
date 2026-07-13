@@ -39,5 +39,25 @@ cargo test --workspace
 cargo deny check
 ```
 
+The bounded property smoke uses stable `proptest`, fixed 32-byte ChaCha seeds,
+96 cases per domain, and shrinking without failure-file writes. It exercises
+the exported UniFFI Rust functions so ownership conversion and secret cleanup
+remain in the test path. This bounded PR smoke complements rather than replaces
+long-running coverage-guided fuzzing and independent crypto review:
+
+```bash
+cargo test -p openburnbar-domain-ffi --test fuzz_smoke -- --test-threads=1
+```
+
+The release-mode performance smoke crosses each Rust API once per complete
+quota response, search query, crypto payload, or typed document. Its thresholds
+are deliberately loose catastrophic-regression guards, not the rollout's
+platform-versus-legacy five-percent acceptance evidence:
+
+```bash
+cargo test --release -p openburnbar-domain-ffi \
+  --test performance_smoke -- --ignored --nocapture --test-threads=1
+```
+
 See `docs/architecture/014-shared-rust-domain-core.md` for the ownership rule and
 `docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md` for rollout and deletion gates.

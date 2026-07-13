@@ -19,5 +19,8 @@ zeroize = "1"
 [build-dependencies]
 uniffi = { version = "=0.28.3", features = ["build"] }
 
+[dev-dependencies]
+proptest = { version = "1.7", default-features = false, features = ["std"] }
+
 [lints]
 workspace = true
