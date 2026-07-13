@@ -302,22 +302,34 @@ public enum HermesRelayCrypto {
         guard keyData.count == symmetricKeyByteCount else {
             throw HermesRelayCryptoError.invalidSymmetricKey
         }
-        let combined = try PlatformCrypto.sealAESGCM(
+        return try HermesDomainCoreAdapter.seal(
             plaintext: plaintext,
-            keyData: keyData,
-            authenticating: aad
-        )
-        return combined.base64EncodedString()
+            key: keyData,
+            aad: aad
+        ) {
+            let combined = try PlatformCrypto.sealAESGCM(
+                plaintext: plaintext,
+                keyData: keyData,
+                authenticating: aad
+            )
+            return combined.base64EncodedString()
+        }
     }
 
     public static func openBase64(ciphertext: String, keyData: Data, aad: Data) throws -> Data {
         guard keyData.count == symmetricKeyByteCount else {
             throw HermesRelayCryptoError.invalidSymmetricKey
         }
-        guard let data = Data(base64Encoded: ciphertext) else {
-            throw HermesRelayCryptoError.invalidCiphertext
+        return try HermesDomainCoreAdapter.open(
+            ciphertext: ciphertext,
+            key: keyData,
+            aad: aad
+        ) {
+            guard let data = Data(base64Encoded: ciphertext) else {
+                throw HermesRelayCryptoError.invalidCiphertext
+            }
+            return try PlatformCrypto.openAESGCM(combined: data, keyData: keyData, authenticating: aad)
         }
-        return try PlatformCrypto.openAESGCM(combined: data, keyData: keyData, authenticating: aad)
     }
 
     /// Wrap a symmetric key to a recipient.
@@ -359,11 +371,9 @@ public enum HermesRelayCrypto {
             )
         } else {
             // v1 ephemeral-static (realtime relay) — unchanged byte layout.
-            wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
-                sharedSecret: dh1,
-                salt: Data(),
-                info: keyWrapSharedInfo(aad: aad),
-                outputByteCount: symmetricKeyByteCount
+            wrappingKey = try deriveWrappingKey(
+                inputKeyMaterial: dh1.withUnsafeBytes { Data($0) },
+                info: keyWrapSharedInfo(aad: aad)
             )
         }
         let combined = try PlatformCrypto.sealAESGCM(plaintext: keyData, key: wrappingKey, authenticating: aad)
@@ -410,11 +420,9 @@ public enum HermesRelayCrypto {
                 aad: aad
             )
         } else {
-            wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
-                sharedSecret: dh1,
-                salt: Data(),
-                info: keyWrapSharedInfo(aad: aad),
-                outputByteCount: symmetricKeyByteCount
+            wrappingKey = try deriveWrappingKey(
+                inputKeyMaterial: dh1.withUnsafeBytes { Data($0) },
+                info: keyWrapSharedInfo(aad: aad)
             )
         }
         return try PlatformCrypto.openAESGCM(
@@ -438,16 +446,22 @@ public enum HermesRelayCrypto {
         var ikm = Data()
         dh1.withUnsafeBytes { ikm.append(contentsOf: $0) }
         dh2.withUnsafeBytes { ikm.append(contentsOf: $0) }
-        var info = Data("OpenBurnBar-HermesRelay-KeyWrap-v2|".utf8)
-        info.append(aad)
-        info.append(enc)
-        info.append(recipientPublicKey)
-        info.append(senderPublicKey)
-        return try PlatformCrypto.deriveHKDFSHA256Key(
+        let info = HermesDomainCoreAdapter.keyWrapInfoV2(
+            aad: aad,
+            enc: enc,
+            recipient: recipientPublicKey,
+            sender: senderPublicKey
+        ) {
+            var value = Data("OpenBurnBar-HermesRelay-KeyWrap-v2|".utf8)
+            value.append(aad)
+            value.append(enc)
+            value.append(recipientPublicKey)
+            value.append(senderPublicKey)
+            return value
+        }
+        return try deriveWrappingKey(
             inputKeyMaterial: ikm,
-            salt: Data(),
-            info: info,
-            outputByteCount: symmetricKeyByteCount
+            info: info
         )
     }
 
@@ -573,19 +587,86 @@ public enum HermesRelayCrypto {
     /// HPKE `info` for v3 = `"OpenBurnBar-HermesRelay-HPKE-v3|" ‖ key_aad`.
     /// Mirrors Python `_hpke_info` / `_HPKE_INFO_PREFIX`.
     private static func hpkeV3Info(aad: Data) -> Data {
-        var info = Data("OpenBurnBar-HermesRelay-HPKE-v3|".utf8)
-        info.append(aad)
-        return info
+        HermesDomainCoreAdapter.hpkeV3Info(aad: aad) {
+            var info = Data("OpenBurnBar-HermesRelay-HPKE-v3|".utf8)
+            info.append(aad)
+            return info
+        }
+    }
+
+    public static func gatewayRelaySafetyCode(
+        agentPublicKeyX963: Data,
+        phonePublicKeyX963: Data
+    ) -> String {
+        HermesDomainCoreAdapter.safetyCode(agent: agentPublicKeyX963, phone: phonePublicKeyX963) {
+            let ordered = [agentPublicKeyX963, phonePublicKeyX963].sorted {
+                $0.lexicographicallyPrecedes($1)
+            }
+            let digest = PlatformCrypto.sha256(ordered[0] + ordered[1])
+            return stride(from: 0, to: 16, by: 2)
+                .map { String(format: "%02X%02X", digest[$0], digest[$0 + 1]) }
+                .joined(separator: " ")
+        }
     }
 
     private static func aad(_ parts: [String]) -> Data {
-        "OpenBurnBar-HermesRelay-v1|\(parts.joined(separator: "|"))".data(using: .utf8)!
+        let legacy = {
+            "OpenBurnBar-HermesRelay-v1|\(parts.joined(separator: "|"))".data(using: .utf8)!
+        }
+        guard let label = parts.first, let kind = aadKind(label) else { return legacy() }
+        return HermesDomainCoreAdapter.aad(
+            kind: kind,
+            arguments: Array(parts.dropFirst()),
+            legacy: legacy
+        )
+    }
+
+    private static func aadKind(_ label: String) -> HermesAadKindAdapter? {
+        switch label {
+        case "request": .request
+        case "key": .key
+        case "request-v3": .authenticatedRequest
+        case "key-v3": .authenticatedKey
+        case "chunk": .chunk
+        case "mediaSealKey": .mediaSealKey
+        case "controlSealKey": .controlSealKey
+        case "gatewayEvent": .gatewayEvent
+        case "gatewayEventKey": .gatewayEventKey
+        case "gatewayMessage": .gatewayMessage
+        case "gatewayMessageKey": .gatewayMessageKey
+        case "gatewayAttachmentKey": .gatewayAttachmentKey
+        case "gatewayAttachmentManifest": .gatewayAttachmentManifest
+        case "gatewayAttachmentBody": .gatewayAttachmentBody
+        default: nil
+        }
     }
 
     private static func keyWrapSharedInfo(aad: Data) -> Data {
-        var info = Data("OpenBurnBar-HermesRelay-KeyWrap-v1|".utf8)
-        info.append(aad)
-        return info
+        HermesDomainCoreAdapter.keyWrapInfoV1(aad: aad) {
+            var info = Data("OpenBurnBar-HermesRelay-KeyWrap-v1|".utf8)
+            info.append(aad)
+            return info
+        }
+    }
+
+    private static func deriveWrappingKey(
+        inputKeyMaterial: Data,
+        info: Data
+    ) throws -> PlatformSymmetricKey {
+        let bytes = try HermesDomainCoreAdapter.hkdf(
+            inputKeyMaterial: inputKeyMaterial,
+            salt: Data(),
+            info: info,
+            outputByteCount: symmetricKeyByteCount
+        ) {
+            try PlatformCrypto.deriveHKDFSHA256KeyData(
+                inputKeyMaterial: inputKeyMaterial,
+                salt: Data(),
+                info: info,
+                outputByteCount: symmetricKeyByteCount
+            )
+        }
+        return try PlatformCrypto.symmetricKey(data: bytes)
     }
 }
 

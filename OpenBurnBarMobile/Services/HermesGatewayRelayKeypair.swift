@@ -775,6 +775,12 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
             return bytes
         }
         guard decoded.count == publicKeysBase64.count, decoded.count >= 2 else { return nil }
+        if decoded.count == 2 {
+            return HermesRelayCrypto.gatewayRelaySafetyCode(
+                agentPublicKeyX963: decoded[0],
+                phonePublicKeyX963: decoded[1]
+            )
+        }
         let ordered = decoded.sorted { $0.lexicographicallyPrecedes($1) }
         let digestBytes = Array(SHA256.hash(data: ordered.reduce(into: Data()) { partial, key in
             partial.append(key)
@@ -787,7 +793,13 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
     }
 
     static func safetyCode(agentPublicKeyBase64: String, phonePublicKeyBase64: String) -> String? {
-        safetyCode(publicKeysBase64: [agentPublicKeyBase64, phonePublicKeyBase64])
+        guard let agent = Data(base64Encoded: agentPublicKeyBase64),
+              let phone = Data(base64Encoded: phonePublicKeyBase64),
+              !agent.isEmpty, !phone.isEmpty else { return nil }
+        return HermesRelayCrypto.gatewayRelaySafetyCode(
+            agentPublicKeyX963: agent,
+            phonePublicKeyX963: phone
+        )
     }
 
     /// The safety code for the currently pinned key of a client, or `nil` when no
