@@ -1,5 +1,11 @@
-import type { ChatThreadSummary } from '../../tauriBridge.js';
+import type { ChatThreadSummary, ConfigSnapshot } from '../../tauriBridge.js';
 import { CHAT_BACKENDS, type ChatBackendId } from './chatTypes.js';
+import {
+  chatModelOptions,
+  chatThinkingLevels,
+  thinkingLabel,
+  type ChatThinkingSelection
+} from './chatOptions.js';
 
 const BACKEND_LOGOS: Record<ChatBackendId, string | null> = {
   hermes: '/provider-logos/hermes.png',
@@ -12,18 +18,30 @@ const BACKEND_LOGOS: Record<ChatBackendId, string | null> = {
 type BackendStripProps = {
   backend: ChatBackendId;
   modelLabel: string;
+  modelOptionID: string;
+  thinkingLevel: ChatThinkingSelection;
+  config: ConfigSnapshot | null;
   thread: ChatThreadSummary | null;
   gatewayHint: string | null;
   onBackendChange: (id: ChatBackendId) => void;
+  onModelOptionChange: (id: string) => void;
+  onThinkingLevelChange: (level: ChatThinkingSelection) => void;
 };
 
 export function BackendStrip({
   backend,
   modelLabel,
+  modelOptionID,
+  thinkingLevel,
+  config,
   thread: _thread,
   gatewayHint: _gatewayHint,
-  onBackendChange
+  onBackendChange,
+  onModelOptionChange,
+  onThinkingLevelChange
 }: BackendStripProps) {
+  const options = chatModelOptions(config, backend, modelLabel);
+  const thinkingLevels = chatThinkingLevels(options, modelOptionID, modelLabel);
   return (
     <div className="chat-backend-strip" role="group" aria-label="Chat engine and model">
       <div className="chat-backend-pills" role="toolbar" aria-label="Chat backends">
@@ -48,15 +66,37 @@ export function BackendStrip({
         })}
       </div>
       <div className="chat-toolbar-model" aria-label="Model selection">
-        <span className="chat-toolbar-model-label">Model</span>
-        <button
-          type="button"
+        <label className="chat-toolbar-model-label" htmlFor="chat-model-select">Model</label>
+        <select
+          id="chat-model-select"
           className="chat-toolbar-model-button"
-          disabled
-          title="Model menu ships with live Hermes dispatch"
+          value={options.some((option) => option.id === modelOptionID) ? modelOptionID : options[0]?.id ?? ''}
+          onChange={(event) => onModelOptionChange(event.target.value)}
+          disabled={options.length === 0}
+          aria-label="Chat model"
         >
-          {modelLabel}
-        </button>
+          {options.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <label className="chat-toolbar-model-label" htmlFor="chat-thinking-select">Thinking</label>
+        <select
+          id="chat-thinking-select"
+          className="chat-toolbar-model-button"
+          value={thinkingLevel}
+          onChange={(event) => onThinkingLevelChange(event.target.value as ChatThinkingSelection)}
+          disabled={thinkingLevels.length === 0}
+          aria-label="Thinking level"
+        >
+          <option value="default">Default</option>
+          {thinkingLevels.map((level) => (
+            <option key={level} value={level}>
+              {thinkingLabel(level)}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="chat-toolbar-engine-extras" aria-label="Agent and CLI">
         <button

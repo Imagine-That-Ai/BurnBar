@@ -33,6 +33,8 @@ export function ChatSurface() {
   const config = useChatStore((s) => s.config);
   const backend = useChatStore((s) => s.backend);
   const modelLabel = useChatStore((s) => s.modelLabel);
+  const modelOptionID = useChatStore((s) => s.modelOptionID);
+  const thinkingLevel = useChatStore((s) => s.thinkingLevel);
   const streaming = useChatStore((s) => s.streaming);
   const streamPhase = useChatStore((s) => s.streamPhase);
   const streamError = useChatStore((s) => s.streamError);
@@ -46,6 +48,8 @@ export function ChatSurface() {
   const loadOlderMessages = useChatStore((s) => s.loadOlderMessages);
   const loadMoreThreads = useChatStore((s) => s.loadMoreThreads);
   const setBackend = useChatStore((s) => s.setBackend);
+  const setModelOption = useChatStore((s) => s.setModelOption);
+  const setThinkingLevel = useChatStore((s) => s.setThinkingLevel);
   const startNewChat = useChatStore((s) => s.startNewChat);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
@@ -118,7 +122,12 @@ export function ChatSurface() {
     gatewayHint,
     backend,
     modelLabel,
+    modelOptionID,
+    thinkingLevel,
+    config,
     onBackendChange: setBackend,
+    onModelOptionChange: setModelOption,
+    onThinkingLevelChange: setThinkingLevel,
     exportFormat,
     onExportFormatChange: setExportFormat,
     onExport: exportChat,
