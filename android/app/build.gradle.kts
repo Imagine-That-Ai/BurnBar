@@ -38,6 +38,16 @@ val openBurnBarUseDebugAppCheck =
 val openBurnBarDebugAppCheckToken =
     providers.environmentVariable("OPENBURNBAR_APP_CHECK_DEBUG_TOKEN")
         .orElse("")
+val cloudVaultDomainCoreMode =
+    providers.environmentVariable("OPENBURNBAR_CLOUDVAULT_DOMAIN_MODE")
+        .map { it.trim().lowercase() }
+        .orElse("legacy")
+
+cloudVaultDomainCoreMode.get().also { mode ->
+    require(mode in setOf("legacy", "shadow", "rust")) {
+        "OPENBURNBAR_CLOUDVAULT_DOMAIN_MODE must be legacy, shadow, or rust"
+    }
+}
 
 fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
 fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
@@ -131,6 +141,7 @@ android {
         buildConfigField("boolean", "USE_DEBUG_APP_CHECK", useDebugAppCheck.toString())
         val debugAppCheckToken = openBurnBarDebugAppCheckToken.get()
         buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"" + debugAppCheckToken + "\"")
+        buildConfigField("String", "CLOUDVAULT_DOMAIN_CORE_MODE", "\"" + cloudVaultDomainCoreMode.get() + "\"")
 
         // Sentry DSN injected at build time — empty string disables Sentry.
         // CI sets OPENBURNBAR_ANDROID_SENTRY_DSN from the GitHub secret.
@@ -221,6 +232,15 @@ android {
             it.jvmArgs("-Xshare:off")
         }
         unitTests.isIncludeAndroidResources = true
+    }
+
+    sourceSets {
+        getByName("test").resources.directories.add(
+            rootProject.layout.projectDirectory.dir("../tests/fixtures/domain-core/cloudvault/v1").asFile.absolutePath
+        )
+        getByName("androidTest").assets.directories.add(
+            rootProject.layout.projectDirectory.dir("../tests/fixtures/domain-core/cloudvault/v1").asFile.absolutePath
+        )
     }
 }
 
