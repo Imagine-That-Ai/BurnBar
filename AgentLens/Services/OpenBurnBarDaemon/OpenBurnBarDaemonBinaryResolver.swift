@@ -122,12 +122,15 @@ enum OpenBurnBarDaemonBinaryResolver {
         return candidates.first { fileManager.fileExists(atPath: $0.path) }
     }
 
-    /// Core-decomposition P-02: locates the OpenBurnBarKernel resource bundle
-    /// (`OpenBurnBarCore_OpenBurnBarKernel.bundle`) across the SAME six candidate roots
-    /// the Core-bundle resolver searches. Staged IN ADDITION to the Core bundle.
-    /// Signature on one line so no parameter line is misread as an executable region.
+    /// Core-decomposition P-02: locates the Kernel resource bundle across the SAME six
+    /// candidate roots the Core-bundle resolver searches. Staged IN ADDITION to the Core
+    /// bundle. Phase-2 WS-K packet K2 renamed the bundle
+    /// `OpenBurnBarCore_OpenBurnBarKernel.bundle` → `OpenBurnBarCore_OpenBurnBarKernelModels.bundle`,
+    /// so the resolver tries the ordered `kernelResourceBundleNames` (new FIRST, legacy
+    /// fallback) and returns the first bundle that exists — tolerating either name during
+    /// the transition. Signature on one line so no parameter line is misread as executable.
     static func resolveKernelResourceBundle(nearBinaryURL: URL, appBundleURL: URL, fileManager: FileManager) -> URL? {
-        resolveResourceBundle(nearBinaryURL: nearBinaryURL, appBundleURL: appBundleURL, fileManager: fileManager, bundleNames: [OpenBurnBarDaemonManager.kernelResourceBundleName])
+        resolveResourceBundle(nearBinaryURL: nearBinaryURL, appBundleURL: appBundleURL, fileManager: fileManager, bundleNames: OpenBurnBarDaemonManager.kernelResourceBundleNames)
     }
 
     static func resolveProjectCodeMemorySecretCorpus(

@@ -123,12 +123,32 @@ cli_bin="$app_path/Contents/Helpers/OpenBurnBarCLI"
 daemon_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarCore.bundle"
 # Core-decomposition P-02: the Kernel target gained its own resource bundle
 # (catalog.json + secret-pattern-corpus.json). Assert it is staged IN ADDITION to the Core bundle.
-daemon_kernel_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarKernel.bundle"
+#
+# Phase-2 WS-K packet K2 BUNDLE TRANSITION: K2 renamed the SwiftPM bundle
+# OpenBurnBarCore_OpenBurnBarKernel.bundle -> OpenBurnBarCore_OpenBurnBarKernelModels.bundle.
+# Accept EITHER name in each staged location during the transition. `resolve_kernel_bundle`
+# echoes the first existing directory among the new/legacy names under a given parent.
+kernel_bundle_new_name="OpenBurnBarCore_OpenBurnBarKernelModels.bundle"
+kernel_bundle_legacy_name="OpenBurnBarCore_OpenBurnBarKernel.bundle"
+resolve_kernel_bundle() {
+  local parent="$1"
+  local name
+  for name in "$kernel_bundle_new_name" "$kernel_bundle_legacy_name"; do
+    if [[ -d "$parent/$name" ]]; then
+      printf '%s\n' "$parent/$name"
+      return 0
+    fi
+  done
+  return 1
+}
+daemon_kernel_resource_bundle="$(resolve_kernel_bundle "$app_path/Contents/Resources" || true)"
+helper_kernel_resource_bundle="$(resolve_kernel_bundle "$app_path/Contents/Helpers" || true)"
 project_code_memory_corpus="$app_path/Contents/Resources/ProjectCodeMemory/secret-pattern-corpus.json"
 helper_resource_bundle="$app_path/Contents/Helpers/OpenBurnBarCore_OpenBurnBarCore.bundle"
-helper_kernel_resource_bundle="$app_path/Contents/Helpers/OpenBurnBarCore_OpenBurnBarKernel.bundle"
 installed_resource_bundle="$installed_daemon_dir/OpenBurnBarCore_OpenBurnBarCore.bundle"
-installed_kernel_resource_bundle="$installed_daemon_dir/OpenBurnBarCore_OpenBurnBarKernel.bundle"
+# The installed layout stages the kernel bundle under the NEW name (the daemon's
+# Bundle.module lookup expects it); the source is whichever name the DMG carried.
+installed_kernel_resource_bundle="$installed_daemon_dir/$kernel_bundle_new_name"
 installed_project_code_memory_corpus="$installed_daemon_dir/ProjectCodeMemory/secret-pattern-corpus.json"
 
 if [[ ! -d "$app_path" ]]; then
@@ -147,8 +167,8 @@ if [[ ! -d "$daemon_resource_bundle" ]]; then
   echo "::error::Embedded daemon resource bundle not found at $daemon_resource_bundle"
   exit 1
 fi
-if [[ ! -d "$daemon_kernel_resource_bundle" ]]; then
-  echo "::error::Embedded daemon Kernel resource bundle not found at $daemon_kernel_resource_bundle"
+if [[ -z "$daemon_kernel_resource_bundle" || ! -d "$daemon_kernel_resource_bundle" ]]; then
+  echo "::error::Embedded daemon Kernel resource bundle not found at $app_path/Contents/Resources/{$kernel_bundle_new_name,$kernel_bundle_legacy_name}"
   exit 1
 fi
 if [[ ! -f "$project_code_memory_corpus" ]]; then
@@ -159,8 +179,8 @@ if [[ ! -d "$helper_resource_bundle" ]]; then
   echo "::error::Helper-side daemon resource bundle not found at $helper_resource_bundle"
   exit 1
 fi
-if [[ ! -d "$helper_kernel_resource_bundle" ]]; then
-  echo "::error::Helper-side daemon Kernel resource bundle not found at $helper_kernel_resource_bundle"
+if [[ -z "$helper_kernel_resource_bundle" || ! -d "$helper_kernel_resource_bundle" ]]; then
+  echo "::error::Helper-side daemon Kernel resource bundle not found at $app_path/Contents/Helpers/{$kernel_bundle_new_name,$kernel_bundle_legacy_name}"
   exit 1
 fi
 

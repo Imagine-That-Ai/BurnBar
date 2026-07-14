@@ -145,7 +145,7 @@ test("does NOT flag legitimately public files (no false positives)", () => {
     "AGENTS.md",
     "AgentLens/Services/ModelPricing.swift", // code that mentions 'pricing'
     "website/src/data/capabilities.ts",
-    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AgentTier.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/AgentTier.swift",
     "docs/architecture/region-strategy.md",
     ".deepsec/data/BurnBar/INFO.md",
   ]) {

@@ -157,7 +157,7 @@ test("app enum mapping mutation invalidates the migration dependency fingerprint
   const root = fixture(t);
   mutate(
     root,
-    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SwitcherProfile.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/SwitcherProfile.swift",
     "case .junie: return .junie",
     "case .junie: return .codex"
   );

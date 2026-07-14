@@ -1,8 +1,42 @@
 # Packet K2: extract OpenBurnBarKernelModels (pure data + catalog + Resources bundle)
-STATE: DRAFT  LANE: Kernel-diet  DEPENDS-ON: K0, K1 (Platform must exist so Models's
+STATE: CONVERGED (shipped from origin/core-decomp2/k1; PR base core-decomp2/k1)
+LANE: Kernel-diet  DEPENDS-ON: K0, K1 (Platform must exist so Models's
 `import OpenBurnBarKernelPlatform` resolves)
 BASELINE-TOUCHING: none (Kernel shrink non-fatal)
-BASE: origin/main (after K1 merges)
+BASE: origin/core-decomp2/k1 (branched from k1, not main — the k1 train is unmerged)
+
+## CONVERGED REALITY (what actually shipped)
+- 90 files git-mv'd into OpenBurnBarKernelModels + Resources/ (2 files) moved + marker
+  rm'd = 92 renames + 1 delete. Final size 90 files / 23802 LOC (ceiling 95 / 24600).
+- AE-IMPORT: exactly the 4 predicted files got `import OpenBurnBarKernelPlatform`
+  (Metrics/OpenBurnBarMetrics, CLILaunchAdapter, SharedModels/ProviderQuotaTypes,
+  SharedModels/ProviderAccountDeviceLinkTypes+Generated). No other imports needed.
+- AE-TESTABLE: 3 Core test files got `@testable import OpenBurnBarKernelModels`
+  (CLIAuthDiscoveryTests, CLILaunchAdapterExecutableResolutionTests,
+  MemorySecretPIIGateTests) — reach CLILaunchAdapter/MemorySecretPIIGate internals.
+- TokenUsage wart: fixed via a Models-local `enum FusionUsageParentPrefix { static let
+  value = "elderwand-" }` in TokenUsage.swift (the card's second option), not an inline
+  literal — keeps a named single source of truth in the Models tier. FusionUsageRow
+  (K4/Contracts) keeps its own `fusionParentPrefix` alias; both = "elderwand-".
+- **CARD-GAP RESOLVED (compile-closure, documented):** the moved
+  `ProviderAccountDeviceLinkTypes+Generated.swift` `import OpenBurnBarFirestoreModels`
+  edge was NOT covered by the card's "resources-only" Package.swift allowance. That dep
+  had to follow the file: added `OpenBurnBarFirestoreModels` to the KernelModels target
+  deps. It is a pure Foundation-only leaf (no reverse kernel dep), so the edge is
+  acyclic and preserves the generated-wire-schema drift gate in the production link
+  graph. This is the ONLY manifest edit beyond the planned `resources:`/Kernel-resources-
+  removal.
+- Bundle transition: daemon manager `kernelResourceBundleName` → NEW name
+  (`OpenBurnBarCore_OpenBurnBarKernelModels.bundle`) + `legacyKernelResourceBundleNames`
+  + ordered `kernelResourceBundleNames` (new FIRST); resolver passes the ordered list;
+  release-build/release.yml stage under BOTH names; smoke accepts EITHER name. Catalog
+  SOURCE path repointed in ministry.py / select_wand_models.py / test_ministry.py AND
+  functions/src/pricing.ts + pricing.test.ts (the real functions-side pins).
+- Bundle.module proof: `BurnBarCatalogTests.test_bundledCatalog_decodesAndValidates`
+  passes (loader in KernelModels resolves catalog.json from the new bundle). test_ministry
+  passes (14). functions pricing test is CI-covered (vitest needs node_modules; new path
+  verified to resolve to the real 5085-line catalog, old path gone).
+- V-list all green (see PR body). Package.resolved churn was reverted (kept clean).
 
 Moves the 90 pure-data files (Foundation-only SharedModels + Budget/Entitlements/
 Membership/Metrics/Errors/Memory + catalog loader/models) **and the `Resources/`

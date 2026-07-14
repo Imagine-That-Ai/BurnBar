@@ -7,7 +7,12 @@
 import Foundation
 import XCTest
 @testable import OpenBurnBarCore
+// K2: MemorySecretPIIGate (+ its internal seams LoadedCorpus/passesLuhn/
+// hasBoundedIPv4Octets/_evaluate) live in OpenBurnBarKernelModels after Phase-2 WS-K
+// packet K2; @testable reaches those internals directly (the @_exported Kernel umbrella
+// re-exports only the public surface).
 @testable import OpenBurnBarKernel
+@testable import OpenBurnBarKernelModels
 
 final class MemorySecretPIIGateTests: XCTestCase {
     // MARK: - Availability (must-fix #2: Bundle.module flat loader resolves)

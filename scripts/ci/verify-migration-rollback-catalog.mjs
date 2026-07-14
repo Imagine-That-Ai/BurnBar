@@ -26,11 +26,11 @@ const INTENTIONAL_DIVERGENCES = {
     shared: "d0c286b75ada1d59c257a3a9cb8c782ffb84f486d1b0b9c59644341962eb2030",
     appExternalDependencies: [
       {
-        file: "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SwitcherProfile.swift",
+        file: "OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/SwitcherProfile.swift",
         property: "canonicalAgentProvider",
       },
       {
-        file: "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AgentProvider.swift",
+        file: "OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/AgentProvider.swift",
         property: "providerID",
       },
     ],

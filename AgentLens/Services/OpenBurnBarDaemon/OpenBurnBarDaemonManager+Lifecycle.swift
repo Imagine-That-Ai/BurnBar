@@ -247,12 +247,15 @@ extension OpenBurnBarDaemonManager {
             )
         }
 
-        // Core-decomposition P-02: stage the OpenBurnBarKernel resource bundle
-        // (catalog.json + secret-pattern-corpus.json now live in OpenBurnBarKernel)
-        // IN ADDITION to the Core bundle above, so the daemon's Bundle.module lookups
-        // for the moved Kernel resources resolve at runtime. The Core bundle keeps
-        // shipping its remaining resources (the MiningPickIcon SVGs), so both bundles
-        // must be staged.
+        // Core-decomposition P-02 / Phase-2 WS-K packet K2: stage the Kernel resource
+        // bundle (catalog.json + secret-pattern-corpus.json, which K2 moved into
+        // OpenBurnBarKernelModels) IN ADDITION to the Core bundle above, so the daemon's
+        // Bundle.module lookups for the moved resources resolve at runtime. The Core
+        // bundle keeps shipping its remaining resources (the MiningPickIcon SVGs), so
+        // both bundles must be staged. The resolver accepts EITHER the new
+        // (`...KernelModels.bundle`) or legacy (`...Kernel.bundle`) source name during
+        // the K2 transition; the bundle is always staged under the primary
+        // `kernelResourceBundleName` (the new name the daemon's Bundle.module expects).
         let installedKernelBundleURL = paths.daemonDirectory
             .appendingPathComponent(Self.kernelResourceBundleName)
         if let sourceKernelBundleURL = OpenBurnBarDaemonBinaryResolver.resolveKernelResourceBundle(

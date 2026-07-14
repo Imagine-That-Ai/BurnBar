@@ -609,7 +609,7 @@ jobs:
             packages/hermes-wire-protocol/gen/HermesWireProtocol.kt \
             packages/hermes-wire-protocol/gen/wire_protocol.rs \
             android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated/HermesRealtimeRelayGeneratedTypes.kt \
-            OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated
+            OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/Generated
           node packages/hermes-wire-protocol/codegen.mjs
           # codegen.mjs writes ALL generated surfaces (the gen/ references AND the real
           # consumed payload types: Kotlin android Generated/ + Swift SharedModels/Generated/).
@@ -619,7 +619,7 @@ jobs:
             services/hermes-realtime-relay/src/generated/wireProtocol.ts \
             packages/hermes-wire-protocol/gen \
             android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated \
-            OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated \
+            OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/Generated \
             || { echo "::error::Hermes wire-protocol generated files are stale — run 'node packages/hermes-wire-protocol/codegen.mjs' and commit."; exit 1; }
           node packages/hermes-wire-protocol/parity.mjs
           node --test packages/hermes-wire-protocol/protocol.test.mjs
@@ -1080,7 +1080,7 @@ jobs:
           sparse-checkout: |
             AgentLens/Services/DataStore
             OpenBurnBarMobile/Models
-            OpenBurnBarCore/Sources/OpenBurnBarKernel/Budget
+            OpenBurnBarCore/Sources/OpenBurnBarKernelModels/Budget
             scripts/ci/check-budget-fork-drift.sh
             scripts/ci/budget-fork-baselines
 
