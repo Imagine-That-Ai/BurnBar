@@ -13,19 +13,19 @@ import OpenBurnBarCore
 /// owner-safe manifest; without it the adapter reports a degraded/blocked
 /// state instead of claiming an integration.
 public struct BurnBarLinuxTextExpansionAdapter: Sendable {
-    public enum Backend: String, Codable, Sendable {
+    public enum Backend: String, Codable, Equatable, Sendable {
         case ibus
         case fcitx5
         case fcitx
     }
 
-    public enum SessionType: String, Codable, Sendable {
+    public enum SessionType: String, Codable, Equatable, Sendable {
         case wayland
         case x11
         case unknown
     }
 
-    public enum CapabilityState: String, Codable, Sendable {
+    public enum CapabilityState: String, Codable, Equatable, Sendable {
         case available
         case degraded
         case blocked
@@ -34,7 +34,7 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
     /// Registration is an explicit, observable boundary.  `registered` is
     /// only returned after every manifest, trust, path, permission, and
     /// compositor check succeeds.
-    public enum RegistrationState: String, Codable, Sendable {
+    public enum RegistrationState: String, Codable, Equatable, Sendable {
         case optInRequired = "opt_in_required"
         case engineMissing = "engine_missing"
         case manifestPathRejected = "manifest_path_rejected"
@@ -46,7 +46,7 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         case registered
     }
 
-    public enum SecureFieldPolicy: String, Codable, Sendable {
+    public enum SecureFieldPolicy: String, Codable, Equatable, Sendable {
         case denyUnlessInspectableAndExplicitlyNonsecure = "deny-unless-inspectable-and-explicitly-nonsecure"
     }
 
@@ -159,6 +159,236 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         }
     }
 
+    /// The versioned, text-free protocol spoken by a packaged external
+    /// expansion engine.  The engine receives only this handshake and later
+    /// lifecycle commands; field, clipboard, keyboard, and surrounding-text
+    /// data are intentionally not representable in this contract.
+    public struct EngineHandshake: Codable, Equatable, Sendable {
+        public let protocolName: String
+        public let protocolVersion: Int
+        public let engineID: String
+        public let noGlobalCapture: Bool
+        public let readsClipboard: Bool
+        public let readsSurroundingText: Bool
+        public let secureFieldPolicy: SecureFieldPolicy
+
+        public init(
+            protocolName: String = "openburnbar.text-expansion",
+            protocolVersion: Int = 1,
+            engineID: String,
+            noGlobalCapture: Bool,
+            readsClipboard: Bool,
+            readsSurroundingText: Bool,
+            secureFieldPolicy: SecureFieldPolicy
+        ) {
+            self.protocolName = protocolName
+            self.protocolVersion = protocolVersion
+            self.engineID = engineID
+            self.noGlobalCapture = noGlobalCapture
+            self.readsClipboard = readsClipboard
+            self.readsSurroundingText = readsSurroundingText
+            self.secureFieldPolicy = secureFieldPolicy
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case protocolName = "protocol"
+            case protocolVersion
+            case engineID
+            case noGlobalCapture
+            case readsClipboard
+            case readsSurroundingText
+            case secureFieldPolicy
+        }
+    }
+
+    public enum EngineRuntimeState: String, Codable, Equatable, Sendable {
+        case ready
+        case stopped
+        case timedOut = "timed_out"
+        case cancelled
+        case killSwitchActive = "kill_switch_active"
+    }
+
+    public struct EngineRuntimeStatus: Codable, Equatable, Sendable {
+        public let state: EngineRuntimeState
+        public let engineID: String
+        public let executablePath: String
+        public let detail: String
+        public let checkedAt: String
+
+        public init(
+            state: EngineRuntimeState,
+            engineID: String,
+            executablePath: String,
+            detail: String,
+            checkedAt: String
+        ) {
+            self.state = state
+            self.engineID = engineID
+            self.executablePath = executablePath
+            self.detail = detail
+            self.checkedAt = checkedAt
+        }
+    }
+
+    public enum EngineRuntimeError: Error, Equatable, CustomStringConvertible, Sendable {
+        case notRegistered(RegistrationState)
+        case manifestUnavailable
+        case launchFailed
+        case handshakeTimedOut
+        case handshakeCancelled
+        case killSwitchActive
+        case handshakeInvalid
+        case sessionStopped
+
+        public var description: String {
+            switch self {
+            case .notRegistered(let registration):
+                return "linux_text_expansion_not_registered: \(registration.rawValue)"
+            case .manifestUnavailable:
+                return "linux_text_expansion_manifest_unavailable"
+            case .launchFailed:
+                return "linux_text_expansion_engine_launch_failed"
+            case .handshakeTimedOut:
+                return "linux_text_expansion_engine_handshake_timed_out"
+            case .handshakeCancelled:
+                return "linux_text_expansion_engine_handshake_cancelled"
+            case .killSwitchActive:
+                return "linux_text_expansion_engine_kill_switch_active"
+            case .handshakeInvalid:
+                return "linux_text_expansion_engine_handshake_invalid"
+            case .sessionStopped:
+                return "linux_text_expansion_engine_session_stopped"
+            }
+        }
+    }
+
+    /// A live external engine process.  It has no expansion method by design:
+    /// callers must make a secure-field decision for each target context and
+    /// the process can only be controlled through text-free lifecycle messages.
+    public actor ExternalEngineSession {
+        public nonisolated let engineID: String
+        public nonisolated let executablePath: String
+        public nonisolated let manifestPublicKeyBase64: String
+
+        private let process: Process
+        private let input: FileHandle
+        private let output: FileHandle
+        private let error: FileHandle
+        private let killSwitch: @Sendable () -> Bool
+        private let secureFieldEvaluator: @Sendable (SecureFieldContext) -> SecureFieldDecision
+        private var state: EngineRuntimeState = .ready
+
+        fileprivate init(
+            process: Process,
+            input: FileHandle,
+            output: FileHandle,
+            error: FileHandle,
+            engineID: String,
+            executablePath: String,
+            manifestPublicKeyBase64: String,
+            killSwitch: @escaping @Sendable () -> Bool,
+            secureFieldEvaluator: @escaping @Sendable (SecureFieldContext) -> SecureFieldDecision
+        ) {
+            self.process = process
+            self.input = input
+            self.output = output
+            self.error = error
+            self.engineID = engineID
+            self.executablePath = executablePath
+            self.manifestPublicKeyBase64 = manifestPublicKeyBase64
+            self.killSwitch = killSwitch
+            self.secureFieldEvaluator = secureFieldEvaluator
+        }
+
+        deinit {
+            if process.isRunning {
+                process.terminate()
+                _ = kill(process.processIdentifier, SIGKILL)
+            }
+        }
+
+        /// Reports lifecycle state and enforces the kill switch at every
+        /// status boundary.  No engine output is surfaced in diagnostics.
+        public func status() -> EngineRuntimeStatus {
+            if state == .ready, killSwitch() {
+                terminateProcess(timeoutMillis: 100)
+                state = .killSwitchActive
+            } else if state == .ready, !process.isRunning {
+                state = .stopped
+                input.closeFile()
+                _ = output.readDataToEndOfFile()
+                _ = error.readDataToEndOfFile()
+            }
+            return makeStatus(detail: detail(for: state))
+        }
+
+        /// Applies the same fail-closed policy as the adapter without ever
+        /// forwarding the context or any field content to the engine.
+        public func secureFieldDecision(for context: SecureFieldContext) -> SecureFieldDecision {
+            secureFieldEvaluator(context)
+        }
+
+        /// Sends a text-free stop request, then terminates a non-cooperative
+        /// process within the bounded deadline.  Kill-switch termination is
+        /// distinguished from an ordinary user stop.
+        public func stop(timeoutMillis: Int = 500) async -> EngineRuntimeStatus {
+            guard state == .ready else { return status() }
+            if killSwitch() {
+                terminateProcess(timeoutMillis: min(timeoutMillis, 100))
+                state = .killSwitchActive
+                return makeStatus(detail: detail(for: state))
+            }
+            let stopRequest = Data("{\"operation\":\"stop\",\"protocol\":\"openburnbar.text-expansion\",\"protocolVersion\":1}\n".utf8)
+            try? input.write(contentsOf: stopRequest)
+            terminateProcess(timeoutMillis: max(1, timeoutMillis))
+            state = .stopped
+            return makeStatus(detail: detail(for: state))
+        }
+
+        private func makeStatus(detail: String) -> EngineRuntimeStatus {
+            EngineRuntimeStatus(
+                state: state,
+                engineID: engineID,
+                executablePath: executablePath,
+                detail: detail,
+                checkedAt: BurnBarLinuxTextExpansionAdapter.isoNow()
+            )
+        }
+
+        private func detail(for state: EngineRuntimeState) -> String {
+            switch state {
+            case .ready:
+                return "Signed external text-expansion engine handshake completed."
+            case .stopped:
+                return "External text-expansion engine stopped."
+            case .timedOut:
+                return "External text-expansion engine handshake timed out."
+            case .cancelled:
+                return "External text-expansion engine handshake was cancelled."
+            case .killSwitchActive:
+                return "External text-expansion engine stopped by the Linux kill switch."
+            }
+        }
+
+        private func terminateProcess(timeoutMillis: Int) {
+            if process.isRunning {
+                process.terminate()
+                let deadline = Date().addingTimeInterval(Double(max(1, timeoutMillis)) / 1_000)
+                while process.isRunning, Date() < deadline {
+                    usleep(5_000)
+                }
+                if process.isRunning {
+                    _ = kill(process.processIdentifier, SIGKILL)
+                    process.waitUntilExit()
+                }
+            }
+            input.closeFile()
+            _ = output.readDataToEndOfFile()
+            _ = error.readDataToEndOfFile()
+        }
+    }
+
     public enum SecureFieldDecision: Equatable, Sendable {
         case allow
         case deniedSecureField
@@ -258,6 +488,16 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
 
     private static let maxManifestBytes = 16 * 1024
     private static let maxEngineIDLength = 128
+    private static let maxHandshakeBytes = 4 * 1024
+    private static let engineProtocolName = "openburnbar.text-expansion"
+    private static let engineProtocolVersion = 1
+    private static let engineLaunchArguments = [
+        "--openburnbar-text-expansion-engine",
+        "--protocol",
+        engineProtocolName,
+        "--protocol-version",
+        "1"
+    ]
 
     public init(
         environment: @escaping EnvironmentReader = { ProcessInfo.processInfo.environment[$0] },
@@ -299,6 +539,101 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
     /// expansion response.  Health checks never include command output.
     public func status() -> BurnBarTextExpansionNativeStatus {
         typedStatus().wireValue
+    }
+
+    /// Launches the explicitly opted-in, signed engine using only the exact
+    /// executable path from its validated manifest.  The engine protocol is
+    /// intentionally lifecycle-only: no API here accepts keyboard events,
+    /// clipboard data, surrounding text, or field contents.
+    public func startExternalEngine(
+        timeoutMillis: Int = 1_000,
+        killSwitch: @escaping @Sendable () -> Bool = { false }
+    ) async throws -> ExternalEngineSession {
+        try Task.checkCancellation()
+        guard !killSwitch() else { throw EngineRuntimeError.killSwitchActive }
+
+        let registration = typedStatus()
+        guard registration.registration == .registered,
+              registration.supportsExternalExpansion,
+              let executablePath = registration.backendPath,
+              let manifestPath = engineManifestPath else {
+            throw EngineRuntimeError.notRegistered(registration.registration)
+        }
+
+        let manifest: EngineManifest
+        do {
+            guard isAllowedPath(manifestPath, roots: allowedManifestRoots),
+                  let manifestMetadata = readFileMetadata(manifestPath),
+                  isTrusted(metadata: manifestMetadata, executable: false),
+                  let executableMetadata = readFileMetadata(executablePath),
+                  isTrusted(metadata: executableMetadata, executable: true) else {
+                throw EngineRuntimeError.notRegistered(.ownerPermissionsInvalid)
+            }
+            manifest = try JSONDecoder().decode(EngineManifest.self, from: readManifest(manifestPath))
+        } catch let error as EngineRuntimeError {
+            throw error
+        } catch {
+            throw EngineRuntimeError.manifestUnavailable
+        }
+        guard isValidManifestShape(manifest),
+              Self.standardizedPath(manifest.executablePath) == Self.standardizedPath(executablePath),
+              isAllowedPath(manifest.executablePath, roots: allowedExecutableRoots),
+              verifySignature(manifest) else {
+            throw EngineRuntimeError.notRegistered(.signatureInvalid)
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = Self.engineLaunchArguments + ["--engine-id", manifest.engineID]
+        process.environment = runtimeEnvironment()
+        let inputPipe = Pipe()
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardInput = inputPipe
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+
+        do {
+            try process.run()
+            let request = try Self.handshakeRequest(for: manifest)
+            try inputPipe.fileHandleForWriting.write(contentsOf: request)
+            let data = try Self.readHandshake(
+                from: outputPipe.fileHandleForReading,
+                timeoutMillis: max(1, timeoutMillis),
+                killSwitch: killSwitch
+            )
+            try Task.checkCancellation()
+            let handshake = try JSONDecoder().decode(EngineHandshake.self, from: data)
+            guard Self.isValidHandshake(handshake, for: manifest), process.isRunning else {
+                throw EngineRuntimeError.handshakeInvalid
+            }
+            return ExternalEngineSession(
+                process: process,
+                input: inputPipe.fileHandleForWriting,
+                output: outputPipe.fileHandleForReading,
+                error: errorPipe.fileHandleForReading,
+                engineID: manifest.engineID,
+                executablePath: Self.standardizedPath(executablePath),
+                manifestPublicKeyBase64: manifest.signature.publicKeyBase64,
+                killSwitch: killSwitch,
+                secureFieldEvaluator: secureFieldDecision
+            )
+        } catch let error as EngineRuntimeError {
+            Self.terminateProcess(process, input: inputPipe, output: outputPipe, error: errorPipe)
+            throw error
+        } catch HandshakeWaitError.timedOut {
+            Self.terminateProcess(process, input: inputPipe, output: outputPipe, error: errorPipe)
+            throw EngineRuntimeError.handshakeTimedOut
+        } catch HandshakeWaitError.killSwitchActive {
+            Self.terminateProcess(process, input: inputPipe, output: outputPipe, error: errorPipe)
+            throw EngineRuntimeError.killSwitchActive
+        } catch is CancellationError {
+            Self.terminateProcess(process, input: inputPipe, output: outputPipe, error: errorPipe)
+            throw EngineRuntimeError.handshakeCancelled
+        } catch {
+            Self.terminateProcess(process, input: inputPipe, output: outputPipe, error: errorPipe)
+            throw EngineRuntimeError.launchFailed
+        }
     }
 
     /// Typed counterpart to the legacy wire snapshot. No input or clipboard
@@ -527,6 +862,127 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
             detail: detail,
             checkedAt: Self.isoNow()
         )
+    }
+
+    private func runtimeEnvironment() -> [String: String] {
+        // Do not inherit arbitrary environment entries: provider credentials
+        // and other secrets must never be copied into an external engine.
+        let allowedNames = [
+            "HOME", "PATH", "LANG", "LC_ALL", "LC_MESSAGES",
+            "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE", "WAYLAND_DISPLAY", "DISPLAY",
+            "DBUS_SESSION_BUS_ADDRESS", "XDG_CURRENT_DESKTOP", "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME", "GTK_IM_MODULE", "QT_IM_MODULE", "SDL_IM_MODULE",
+            "CLUTTER_IM_MODULE", "XMODIFIERS"
+        ]
+        return allowedNames.reduce(into: [String: String]()) { result, name in
+            if let value = Self.nonEmpty(environment(name)) {
+                result[name] = value
+            }
+        }
+    }
+
+    private struct HandshakeRequest: Codable, Sendable {
+        let operation: String
+        let `protocol`: String
+        let protocolVersion: Int
+        let engineID: String
+        let noGlobalCapture: Bool
+        let readsClipboard: Bool
+        let readsSurroundingText: Bool
+        let secureFieldPolicy: SecureFieldPolicy
+    }
+
+    private enum HandshakeWaitError: Error {
+        case timedOut
+        case killSwitchActive
+    }
+
+    private static func handshakeRequest(for manifest: EngineManifest) throws -> Data {
+        let request = HandshakeRequest(
+            operation: "handshake",
+            protocol: engineProtocolName,
+            protocolVersion: engineProtocolVersion,
+            engineID: manifest.engineID,
+            noGlobalCapture: true,
+            readsClipboard: false,
+            readsSurroundingText: false,
+            secureFieldPolicy: .denyUnlessInspectableAndExplicitlyNonsecure
+        )
+        return try JSONEncoder().encode(request) + Data([0x0A])
+    }
+
+    private static func isValidHandshake(
+        _ handshake: EngineHandshake,
+        for manifest: EngineManifest
+    ) -> Bool {
+        handshake.protocolName == engineProtocolName &&
+            handshake.protocolVersion == engineProtocolVersion &&
+            handshake.engineID == manifest.engineID &&
+            handshake.noGlobalCapture &&
+            !handshake.readsClipboard &&
+            !handshake.readsSurroundingText &&
+            handshake.secureFieldPolicy == .denyUnlessInspectableAndExplicitlyNonsecure
+    }
+
+    /// Reads only one bounded JSONL handshake line. `poll(2)` keeps the read
+    /// cancellable without a detached blocking task; the caller terminates
+    /// the process before surfacing any failure.
+    private static func readHandshake(
+        from handle: FileHandle,
+        timeoutMillis: Int,
+        killSwitch: @escaping @Sendable () -> Bool
+    ) throws -> Data {
+        let deadline = Date().addingTimeInterval(Double(max(1, timeoutMillis)) / 1_000)
+        var data = Data()
+        while data.count <= maxHandshakeBytes {
+            try Task.checkCancellation()
+            if killSwitch() { throw HandshakeWaitError.killSwitchActive }
+            let remainingSeconds = deadline.timeIntervalSinceNow
+            guard remainingSeconds > 0 else { throw HandshakeWaitError.timedOut }
+
+            var descriptor = pollfd(
+                fd: handle.fileDescriptor,
+                events: Int16(POLLIN),
+                revents: 0
+            )
+            let waitMillis = Int32(max(1, min(20, Int((remainingSeconds * 1_000).rounded(.up)))))
+            let result = poll(&descriptor, 1, waitMillis)
+            if result < 0 {
+                if errno == EINTR { continue }
+                return data
+            }
+            guard result > 0 else { continue }
+            let readable = Int16(POLLIN | POLLHUP | POLLERR)
+            guard descriptor.revents & readable != 0 else { continue }
+
+            let remaining = min(512, maxHandshakeBytes + 1 - data.count)
+            let chunk = try handle.read(upToCount: remaining) ?? Data()
+            if chunk.isEmpty { return data }
+            data.append(chunk)
+            if let newline = data.firstIndex(of: 0x0A) {
+                return Data(data[..<newline])
+            }
+        }
+        return data
+    }
+
+    private static func terminateProcess(
+        _ process: Process,
+        input: Pipe,
+        output: Pipe,
+        error: Pipe
+    ) {
+        if process.isRunning {
+            process.terminate()
+            usleep(20_000)
+            if process.isRunning {
+                _ = kill(process.processIdentifier, SIGKILL)
+                process.waitUntilExit()
+            }
+        }
+        input.fileHandleForWriting.closeFile()
+        _ = output.fileHandleForReading.readDataToEndOfFile()
+        _ = error.fileHandleForReading.readDataToEndOfFile()
     }
 
     private func sessionType() -> SessionType {

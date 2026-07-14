@@ -484,6 +484,182 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
             XCTAssertNil(recorder.lastExecutable)
         }
     }
+
+    func testRemoteDesktopSessionWaitsForConsentAndReturnsValidatedIdentity() async throws {
+        let secret = "window-title-must-not-escape"
+        let sessionHandle = "/org/freedesktop/portal/desktop/session/obb_session_1"
+        let script = PortalCommandScript(results: [
+            .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/create',)"),
+            .init(
+                exitCode: 0,
+                stdout: "signal member=Response\n   uint32 0\n   session_handle: objectpath '\(sessionHandle)'\n   \(secret)"
+            ),
+            .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/select',)"),
+            .init(exitCode: 0, stdout: "signal member=Response\n   uint32 0\n"),
+            .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/start',)"),
+            .init(exitCode: 0, stdout: "signal member=Response\n   uint32 0\n   details=\(secret)"),
+        ])
+        let adapter = makeWaylandPortalAdapter(script: script, sessionTimeoutMillis: 222)
+
+        let session = try await adapter.startWaylandRemoteDesktopSession()
+
+        XCTAssertEqual(session.state, .active)
+        XCTAssertTrue(session.consentGranted)
+        XCTAssertFalse(session.inputExecutorAvailable)
+        XCTAssertFalse(session.canDispatchInput)
+        XCTAssertEqual(session.sessionHandle, sessionHandle)
+        XCTAssertEqual(session.requestHandle, "/org/freedesktop/portal/desktop/request/start")
+        XCTAssertEqual(adapter.remoteDesktopSessionStatus(session), .active)
+
+        let encoded = try JSONEncoder().encode(session)
+        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains(secret))
+        XCTAssertEqual(script.calls.count, 6)
+        XCTAssertTrue(script.calls.allSatisfy { call in
+            call.executable == "/usr/bin/gdbus"
+                && !call.arguments.contains("sh")
+                && !call.arguments.contains("-c")
+                && !call.arguments.contains(secret)
+        })
+        XCTAssertEqual(script.timeouts[0], 1_500)
+        XCTAssertEqual(script.timeouts[1], 222)
+        XCTAssertTrue(script.calls[0].arguments.contains("org.freedesktop.portal.RemoteDesktop.CreateSession"))
+        XCTAssertTrue(script.calls[2].arguments.contains("org.freedesktop.portal.RemoteDesktop.SelectDevices"))
+        XCTAssertTrue(script.calls[2].arguments.contains("<uint32 3>"))
+        XCTAssertTrue(script.calls[4].arguments.contains("org.freedesktop.portal.RemoteDesktop.Start"))
+    }
+
+    func testRemoteDesktopSessionConsentDenialIsTypedAndRedactsBrokerOutput() async throws {
+        let secret = "private-window-title"
+        let script = PortalCommandScript(results: [
+            .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/create',)"),
+            .init(exitCode: 0, stdout: "signal member=Response\n   uint32 1\n   detail=\(secret)"),
+        ])
+        let adapter = makeWaylandPortalAdapter(script: script)
+
+        do {
+            _ = try await adapter.startWaylandRemoteDesktopSession()
+            XCTFail("portal consent denial must not create an active session")
+        } catch let error as LinuxComputerUseInputAdapter.AdapterError {
+            XCTAssertEqual(error, .portalDenied("remote_desktop_create_session_denied"))
+            XCTAssertFalse(error.description.contains(secret))
+        }
+        XCTAssertEqual(script.calls.count, 2)
+    }
+
+    func testRemoteDesktopSessionTimeoutDoesNotClaimConsent() async throws {
+        let script = PortalCommandScript(results: [
+            .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/create',)"),
+            .init(exitCode: 124),
+        ])
+        let adapter = makeWaylandPortalAdapter(script: script, sessionTimeoutMillis: 333)
+
+        do {
+            _ = try await adapter.startWaylandRemoteDesktopSession()
+            XCTFail("portal timeout must fail closed")
+        } catch let error as LinuxComputerUseInputAdapter.AdapterError {
+            XCTAssertEqual(error, .portalTimedOut)
+        }
+        XCTAssertEqual(script.timeouts.last, 333)
+    }
+
+    func testRemoteDesktopSessionCancellationIsTypedBeforeAnySecretCanReachPortal() async throws {
+        let secret = "typed-secret-never-forwarded"
+        let script = PortalCommandScript(error: CancellationError())
+        let adapter = makeWaylandPortalAdapter(script: script)
+
+        do {
+            _ = try await adapter.startWaylandRemoteDesktopSession()
+            XCTFail("cancelled portal command must not create a session")
+        } catch let error as LinuxComputerUseInputAdapter.AdapterError {
+            XCTAssertEqual(error, .portalCancelled)
+            XCTAssertFalse(error.description.contains(secret))
+        }
+        XCTAssertEqual(script.calls.count, 1)
+        XCTAssertFalse(script.calls[0].arguments.contains(secret))
+    }
+
+    func testRemoteDesktopSessionKillSwitchBlocksCreateAndClose() async throws {
+        let script = PortalCommandScript(results: [
+            .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/create',)")
+        ])
+        let adapter = makeWaylandPortalAdapter(
+            script: script,
+            environmentOverrides: ["OPENBURNBAR_COMPUTER_USE_KILL_SWITCH": "1"]
+        )
+
+        do {
+            _ = try await adapter.startWaylandRemoteDesktopSession()
+            XCTFail("the kill switch must block portal session creation")
+        } catch let error as LinuxComputerUseInputAdapter.AdapterError {
+            XCTAssertEqual(error, .killSwitchActive("environment"))
+        }
+        XCTAssertTrue(script.calls.isEmpty)
+
+        let receipt = LinuxComputerUseInputAdapter.WaylandRemoteDesktopSession(
+            state: .active,
+            sessionHandle: "/org/freedesktop/portal/desktop/session/obb_session_1",
+            consentGranted: true,
+            reason: "fixture"
+        )
+        do {
+            _ = try await adapter.stopWaylandRemoteDesktopSession(receipt)
+            XCTFail("the kill switch must block portal session close as well")
+        } catch let error as LinuxComputerUseInputAdapter.AdapterError {
+            XCTAssertEqual(error, .killSwitchActive("environment"))
+        }
+        XCTAssertTrue(script.calls.isEmpty)
+    }
+
+    func testRemoteDesktopSessionStopValidatesIdentityAndReportsStoppedStatus() async throws {
+        let script = PortalCommandScript(results: [.init(exitCode: 0, stdout: "()")])
+        let adapter = makeWaylandPortalAdapter(script: script)
+        let receipt = LinuxComputerUseInputAdapter.WaylandRemoteDesktopSession(
+            state: .active,
+            sessionHandle: "/org/freedesktop/portal/desktop/session/obb_session_1",
+            consentGranted: true,
+            reason: "fixture"
+        )
+
+        let stopped = try await adapter.stopWaylandRemoteDesktopSession(receipt)
+
+        XCTAssertEqual(stopped.state, .stopped)
+        XCTAssertFalse(stopped.consentGranted)
+        XCTAssertEqual(adapter.remoteDesktopSessionStatus(stopped), .stopped)
+        XCTAssertEqual(script.calls.count, 1)
+        XCTAssertEqual(script.calls[0].arguments[script.calls[0].arguments.count - 2], "--method")
+        XCTAssertEqual(script.calls[0].arguments.last, "org.freedesktop.portal.Session.Close")
+        XCTAssertTrue(script.calls[0].arguments.contains(receipt.sessionHandle!))
+    }
+
+    private func makeWaylandPortalAdapter(
+        script: PortalCommandScript,
+        sessionTimeoutMillis: Int = 60_000,
+        environmentOverrides: [String: String] = [:]
+    ) -> LinuxComputerUseInputAdapter {
+        LinuxComputerUseInputAdapter(
+            environment: { name in
+                if let override = environmentOverrides[name] {
+                    return override
+                }
+                return [
+                    "XDG_SESSION_TYPE": "wayland",
+                    "WAYLAND_DISPLAY": "wayland-0",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"
+                ][name]
+            },
+            resolveExecutable: { name in
+                name == "gdbus" ? "/usr/bin/gdbus" : nil
+            },
+            runPortalProbe: { executable, arguments, timeoutMillis in
+                script.record(executable: executable, arguments: arguments, timeoutMillis: timeoutMillis)
+                if let error = script.error {
+                    throw error
+                }
+                return script.nextResult()
+            },
+            portalSessionTimeoutMillis: sessionTimeoutMillis
+        )
+    }
 }
 
 final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
@@ -862,6 +1038,43 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
                 from: Data(line.utf8)
             )
         }
+    }
+}
+
+private final class PortalCommandScript: @unchecked Sendable {
+    struct Call: Sendable {
+        let executable: String
+        let arguments: [String]
+    }
+
+    private let lock = NSLock()
+    private var results: [LinuxComputerUseInputAdapter.CommandResult]
+    let error: Error?
+    private(set) var calls: [Call] = []
+    private(set) var timeouts: [Int] = []
+
+    init(
+        results: [LinuxComputerUseInputAdapter.CommandResult] = [],
+        error: Error? = nil
+    ) {
+        self.results = results
+        self.error = error
+    }
+
+    func record(executable: String, arguments: [String], timeoutMillis: Int) {
+        lock.lock()
+        calls.append(Call(executable: executable, arguments: arguments))
+        timeouts.append(timeoutMillis)
+        lock.unlock()
+    }
+
+    func nextResult() -> LinuxComputerUseInputAdapter.CommandResult {
+        lock.lock()
+        defer { lock.unlock() }
+        guard results.isEmpty == false else {
+            return .init(exitCode: 1)
+        }
+        return results.removeFirst()
     }
 }
 

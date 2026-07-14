@@ -238,6 +238,52 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'project_reassign', { sourceProjectSlug: 'apollo', targetProjectSlug: 'orion' });
   });
 
+  it('maps the daemon-owned privacy inventory and two-phase deletion contract', async () => {
+    invoke
+      .mockResolvedValueOnce({
+        stores: [
+          { store: 'proxy_route_log', state: 'ready', bytes: 24, reason: 'ready' },
+          { store: 'text_expansion_store', state: 'absent', bytes: 0, reason: 'missing' }
+        ],
+        generatedAt: '2026-07-14T00:00:00Z'
+      })
+      .mockResolvedValueOnce({
+        token: 'preview-token',
+        stores: ['proxy_route_log'],
+        entries: [{ store: 'proxy_route_log', state: 'ready', bytes: 24, reason: 'ready' }],
+        expiresAt: '2026-07-14T00:05:00Z',
+        confirmationPhrase: 'DELETE LOCAL DATA'
+      })
+      .mockResolvedValueOnce({
+        stores: ['proxy_route_log'],
+        deleted: ['proxy_route_log'],
+        alreadyAbsent: [],
+        bytesRemoved: 24,
+        idempotent: false
+      });
+    const b = await bridge();
+    await expect(b.linuxPrivacyInventory?.()).resolves.toMatchObject({
+      stores: [
+        { store: 'proxy_route_log', state: 'ready', bytes: 24 },
+        { store: 'text_expansion_store', state: 'absent', bytes: 0 }
+      ]
+    });
+    await expect(b.linuxPrivacyDeletionPreview?.(['proxy_route_log'])).resolves.toMatchObject({
+      token: 'preview-token',
+      confirmationPhrase: 'DELETE LOCAL DATA'
+    });
+    await expect(b.linuxPrivacyDeletionExecute?.({
+      token: 'preview-token',
+      stores: ['proxy_route_log'],
+      confirmation: 'DELETE LOCAL DATA'
+    })).resolves.toMatchObject({ deleted: ['proxy_route_log'], bytesRemoved: 24 });
+    expect(invoke).toHaveBeenNthCalledWith(1, 'linux_privacy_inventory');
+    expect(invoke).toHaveBeenNthCalledWith(2, 'linux_privacy_deletion_preview', { stores: ['proxy_route_log'] });
+    expect(invoke).toHaveBeenNthCalledWith(3, 'linux_privacy_deletion_execute', {
+      request: { token: 'preview-token', stores: ['proxy_route_log'], confirmation: 'DELETE LOCAL DATA' }
+    });
+  });
+
   it('uses the canonical run.resume RPC for persisted activity body and resume actions', async () => {
     invoke
       .mockResolvedValueOnce({

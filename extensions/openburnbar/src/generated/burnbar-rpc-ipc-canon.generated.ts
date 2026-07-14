@@ -982,6 +982,36 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.privacy.deletion.execute",
+    "caseName": "linuxPrivacyDeletionExecute",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxPrivacyDeletionExecuteRequest",
+    "result": "BurnBarLinuxPrivacyDeletionExecuteResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.privacy.deletion.preview",
+    "caseName": "linuxPrivacyDeletionPreview",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxPrivacyDeletionPreviewRequest",
+    "result": "BurnBarLinuxPrivacyDeletionPreviewResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.privacy.inventory",
+    "caseName": "linuxPrivacyInventory",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxPrivacyInventoryResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.projection.rebuild",
     "caseName": "projectionRebuild",
     "domain": "mission_control",
@@ -1229,6 +1259,36 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarTextExpansionDeleteRequest",
     "result": "BurnBarTextExpansionSnapshot",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.engine.start",
+    "caseName": "textExpansionEngineStart",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.text_expansion.engine.start",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.engine.status",
+    "caseName": "textExpansionEngineStatus",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.text_expansion.engine.status",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.text_expansion.engine.stop",
+    "caseName": "textExpansionEngineStop",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.text_expansion.engine.stop",
     "error": "BurnBarRPCError"
   },
   {

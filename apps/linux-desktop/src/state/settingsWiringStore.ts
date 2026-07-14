@@ -17,7 +17,11 @@ import type {
   NativeShortcutStatus,
   ProviderSettings,
   ProviderCredentialSlot,
-  ProxyRouteLogEntry
+  ProxyRouteLogEntry,
+  LinuxPrivacyDeletionPreview,
+  LinuxPrivacyDeletionResult,
+  LinuxPrivacyInventory,
+  LinuxPrivacyStoreID
 } from '../tauriBridge.js';
 import { useShellStore } from './shellStore.js';
 import { useSystemStore } from './systemStore.js';
@@ -28,6 +32,16 @@ export type PrivacyMutationStatus = 'idle' | 'pending' | 'success' | 'error';
 
 export type PrivacyMutationState = {
   status: PrivacyMutationStatus;
+  message: string | null;
+};
+
+export type PrivacyDeletionStatus = 'idle' | 'loading' | 'previewing' | 'ready' | 'deleting' | 'success' | 'error';
+
+export type PrivacyDeletionState = {
+  status: PrivacyDeletionStatus;
+  inventory: LinuxPrivacyInventory | null;
+  preview: LinuxPrivacyDeletionPreview | null;
+  result: LinuxPrivacyDeletionResult | null;
   message: string | null;
 };
 
@@ -47,12 +61,17 @@ export type SettingsWiringState = {
   busy: MutationKind | null;
   error: string | null;
   privacyMutation: PrivacyMutationState;
+  privacyDeletion: PrivacyDeletionState;
   loadRouteLog(): Promise<void>;
   clearRouteLog(): Promise<void>;
   loadNotifications(): Promise<void>;
   updateNotificationConfig(config: NotificationConfig): Promise<void>;
   runNotificationCommand(command: string, args?: string[]): Promise<void>;
   updatePrivacySettings(patch: PrivacySettingsPatch): Promise<void>;
+  loadPrivacyInventory(): Promise<void>;
+  previewPrivacyDeletion(stores: LinuxPrivacyStoreID[]): Promise<void>;
+  executePrivacyDeletion(confirmation: string): Promise<void>;
+  clearPrivacyDeletionPreview(): void;
   replaceSnapshot(snapshot: ConfigSnapshot): Promise<void>;
   upsertCredentialSlot(params: {
     providerID: string;
@@ -116,6 +135,7 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
   busy: null,
   error: null,
   privacyMutation: { status: 'idle', message: null },
+  privacyDeletion: { status: 'idle', inventory: null, preview: null, result: null, message: null },
 
   async loadRouteLog() {
     const { fixtureMode, bridge } = useShellStore.getState();
@@ -273,6 +293,58 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
         privacyMutation: { status: 'error', message: failure }
       });
     }
+  },
+
+  async loadPrivacyInventory() {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    set({ privacyDeletion: { ...get().privacyDeletion, status: 'loading', message: null } });
+    try {
+      if (fixtureMode) throw new Error('Privacy deletion requires the packaged Linux daemon.');
+      if (!bridge?.linuxPrivacyInventory) throw new Error('Privacy inventory RPC bridge is unavailable.');
+      const inventory = await bridge.linuxPrivacyInventory();
+      set({ privacyDeletion: { ...get().privacyDeletion, status: 'idle', inventory, preview: null, result: null, message: null } });
+    } catch (e) {
+      set({ privacyDeletion: { ...get().privacyDeletion, status: 'error', message: message(e, 'Privacy inventory failed.') } });
+    }
+  },
+
+  async previewPrivacyDeletion(stores) {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    set({ busy: 'privacy.deletion.preview', privacyDeletion: { ...get().privacyDeletion, status: 'previewing', message: null, preview: null, result: null } });
+    try {
+      if (fixtureMode) throw new Error('Privacy deletion requires the packaged Linux daemon.');
+      if (!bridge?.linuxPrivacyDeletionPreview) throw new Error('Privacy deletion preview RPC bridge is unavailable.');
+      if (stores.length === 0) throw new Error('Choose at least one local store.');
+      const preview = await bridge.linuxPrivacyDeletionPreview(stores);
+      set({ busy: null, privacyDeletion: { ...get().privacyDeletion, status: 'ready', preview, message: null } });
+    } catch (e) {
+      set({ busy: null, privacyDeletion: { ...get().privacyDeletion, status: 'error', message: message(e, 'Privacy deletion preview failed.') } });
+    }
+  },
+
+  async executePrivacyDeletion(confirmation) {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    const preview = get().privacyDeletion.preview;
+    set({ busy: 'privacy.deletion.execute', privacyDeletion: { ...get().privacyDeletion, status: 'deleting', message: null } });
+    try {
+      if (fixtureMode) throw new Error('Privacy deletion requires the packaged Linux daemon.');
+      if (!bridge?.linuxPrivacyDeletionExecute) throw new Error('Privacy deletion RPC bridge is unavailable.');
+      if (!preview) throw new Error('Preview local data before confirming deletion.');
+      const result = await bridge.linuxPrivacyDeletionExecute({
+        token: preview.token,
+        stores: preview.stores,
+        confirmation
+      });
+      let inventory = get().privacyDeletion.inventory;
+      if (bridge.linuxPrivacyInventory) inventory = await bridge.linuxPrivacyInventory();
+      set({ busy: null, privacyDeletion: { status: 'success', inventory, preview: null, result, message: 'Selected local stores deleted.' } });
+    } catch (e) {
+      set({ busy: null, privacyDeletion: { ...get().privacyDeletion, status: 'error', message: message(e, 'Privacy deletion failed.') } });
+    }
+  },
+
+  clearPrivacyDeletionPreview() {
+    set({ privacyDeletion: { ...get().privacyDeletion, status: 'idle', preview: null, message: null } });
   },
 
   async replaceSnapshot(snapshot) {

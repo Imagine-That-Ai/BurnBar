@@ -238,6 +238,124 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
         )
     }
 
+    func testExternalEngineRuntimeHandshakeStatusAndStop() async throws {
+        let script = try makeRuntimeScript(handshake: "{\"protocol\":\"openburnbar.text-expansion\",\"protocolVersion\":1,\"engineID\":\"openburnbar.test.engine\",\"noGlobalCapture\":true,\"readsClipboard\":false,\"readsSurroundingText\":false,\"secureFieldPolicy\":\"deny-unless-inspectable-and-explicitly-nonsecure\"}")
+        defer { try? FileManager.default.removeItem(at: script.deletingLastPathComponent()) }
+
+        let manifest = makeManifest(
+            backend: .ibus,
+            supportsWayland: true,
+            supportsX11: false,
+            executablePath: script.path
+        )
+        let manifestPath = script.deletingLastPathComponent().appendingPathComponent("engine.json").path
+        let adapter = makeExternalAdapter(
+            environment: ["XDG_SESSION_TYPE": "wayland", "GTK_IM_MODULE": "ibus"],
+            executables: ["ibus": "/usr/bin/ibus"],
+            manifestData: try JSONEncoder().encode(manifest),
+            metadata: [
+                manifestPath: .init(ownerUID: 0, mode: 0o600),
+                script.path: .init(ownerUID: 0, mode: 0o700)
+            ],
+            verifySignature: { _ in true },
+            manifestPath: manifestPath,
+            allowedRoots: [script.deletingLastPathComponent().path]
+        )
+
+        let session = try await adapter.startExternalEngine(timeoutMillis: 1_000)
+        XCTAssertEqual(session.engineID, manifest.engineID)
+        XCTAssertEqual(session.executablePath, script.path)
+        let readyStatus = await session.status()
+        XCTAssertEqual(readyStatus.state, .ready)
+        let secureDecision = await session.secureFieldDecision(
+            for: .init(inspectable: true, isSecureField: true)
+        )
+        XCTAssertEqual(secureDecision, .deniedSecureField)
+
+        let stopped = await session.stop()
+        XCTAssertEqual(stopped.state, .stopped)
+        let stoppedStatus = await session.status()
+        XCTAssertEqual(stoppedStatus.state, .stopped)
+    }
+
+    func testExternalEngineHandshakeTimeoutTerminatesWithoutDiagnostics() async throws {
+        let script = try makeRuntimeScript(handshake: nil)
+        defer { try? FileManager.default.removeItem(at: script.deletingLastPathComponent()) }
+
+        let manifest = makeManifest(
+            backend: .ibus,
+            supportsWayland: true,
+            supportsX11: false,
+            executablePath: script.path
+        )
+        let manifestPath = script.deletingLastPathComponent().appendingPathComponent("engine.json").path
+        let adapter = makeExternalAdapter(
+            environment: ["XDG_SESSION_TYPE": "wayland", "GTK_IM_MODULE": "ibus"],
+            executables: ["ibus": "/usr/bin/ibus"],
+            manifestData: try JSONEncoder().encode(manifest),
+            metadata: [
+                manifestPath: .init(ownerUID: 0, mode: 0o600),
+                script.path: .init(ownerUID: 0, mode: 0o700)
+            ],
+            verifySignature: { _ in true },
+            manifestPath: manifestPath,
+            allowedRoots: [script.deletingLastPathComponent().path]
+        )
+
+        do {
+            _ = try await adapter.startExternalEngine(timeoutMillis: 40)
+            XCTFail("expected handshake timeout")
+        } catch let error as BurnBarLinuxTextExpansionAdapter.EngineRuntimeError {
+            XCTAssertEqual(error, .handshakeTimedOut)
+            XCTAssertFalse(error.description.contains("secret"))
+        }
+    }
+
+    func testExternalEngineCancellationAndKillSwitchFailClosed() async throws {
+        let script = try makeRuntimeScript(handshake: nil)
+        defer { try? FileManager.default.removeItem(at: script.deletingLastPathComponent()) }
+
+        let manifest = makeManifest(
+            backend: .ibus,
+            supportsWayland: true,
+            supportsX11: false,
+            executablePath: script.path
+        )
+        let data = try JSONEncoder().encode(manifest)
+        let manifestPath = script.deletingLastPathComponent().appendingPathComponent("engine.json").path
+        let adapter = makeExternalAdapter(
+            environment: ["XDG_SESSION_TYPE": "wayland", "GTK_IM_MODULE": "ibus"],
+            executables: ["ibus": "/usr/bin/ibus"],
+            manifestData: data,
+            metadata: [
+                manifestPath: .init(ownerUID: 0, mode: 0o600),
+                script.path: .init(ownerUID: 0, mode: 0o700)
+            ],
+            verifySignature: { _ in true },
+            manifestPath: manifestPath,
+            allowedRoots: [script.deletingLastPathComponent().path]
+        )
+
+        do {
+            _ = try await adapter.startExternalEngine(timeoutMillis: 100, killSwitch: { true })
+            XCTFail("expected kill switch denial")
+        } catch let error as BurnBarLinuxTextExpansionAdapter.EngineRuntimeError {
+            XCTAssertEqual(error, .killSwitchActive)
+        }
+
+        let task = Task {
+            try await adapter.startExternalEngine(timeoutMillis: 2_000)
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("expected cancellation")
+        } catch let error as BurnBarLinuxTextExpansionAdapter.EngineRuntimeError {
+            XCTAssertEqual(error, .handshakeCancelled)
+        }
+    }
+
     private func makeAdapter(
         environment: [String: String],
         executables: [String: String],
@@ -259,16 +377,18 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
         executables: [String: String],
         manifestData: Data,
         metadata: [String: BurnBarLinuxTextExpansionAdapter.FileMetadata],
-        verifySignature: @escaping BurnBarLinuxTextExpansionAdapter.SignatureVerifier
+        verifySignature: @escaping BurnBarLinuxTextExpansionAdapter.SignatureVerifier,
+        manifestPath: String = "/trusted/text-expansion-engine.json",
+        allowedRoots: [String] = ["/trusted"]
     ) -> BurnBarLinuxTextExpansionAdapter {
         BurnBarLinuxTextExpansionAdapter(
             environment: { name in environment[name] },
             resolveExecutable: { name in executables[name] },
             runCommand: { _, _ in .init(exitCode: 0) },
             externalExpansionEnabled: true,
-            manifestPath: "/trusted/text-expansion-engine.json",
-            allowedManifestRoots: ["/trusted"],
-            allowedExecutableRoots: ["/trusted"],
+            manifestPath: manifestPath,
+            allowedManifestRoots: allowedRoots,
+            allowedExecutableRoots: allowedRoots,
             trustedOwnerUIDs: [0],
             readManifest: { _ in manifestData },
             readFileMetadata: { path in metadata[path] },
@@ -280,12 +400,13 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
         backend: BurnBarLinuxTextExpansionAdapter.Backend,
         supportsWayland: Bool,
         supportsX11: Bool,
-        readsClipboard: Bool = false
+        readsClipboard: Bool = false,
+        executablePath: String = "/trusted/bin/openburnbar-ibus"
     ) -> BurnBarLinuxTextExpansionAdapter.EngineManifest {
         BurnBarLinuxTextExpansionAdapter.EngineManifest(
             backend: backend,
             engineID: "openburnbar.test.engine",
-            executablePath: "/trusted/bin/openburnbar-ibus",
+            executablePath: executablePath,
             supportsWayland: supportsWayland,
             supportsX11: supportsX11,
             readsClipboard: readsClipboard,
@@ -303,6 +424,25 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
             "/trusted/text-expansion-engine.json": .init(ownerUID: 0, mode: 0o644),
             manifest.executablePath: .init(ownerUID: 0, mode: 0o755)
         ]
+    }
+
+    private func makeRuntimeScript(handshake: String?) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-text-engine-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let script = directory.appendingPathComponent("engine.sh")
+        var source = "#!/bin/sh\nIFS= read -r request || exit 2\n"
+        if let handshake {
+            source += "printf '%s\\n' '\(handshake)'\n"
+        }
+        source += "while IFS= read -r command; do\n"
+        source += "  case \"$command\" in\n"
+        source += "    *'\"operation\":\"stop\"'*) exit 0 ;;\n"
+        source += "  esac\n"
+        source += "done\n"
+        try Data(source.utf8).write(to: script, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+        return script
     }
 }
 #endif

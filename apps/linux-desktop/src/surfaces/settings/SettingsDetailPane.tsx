@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import type { AccountStatus, ConfigSnapshot, LinuxShellBridge, NotificationConfig, ProviderSettings } from '../../tauriBridge.js';
+import type {
+  AccountStatus,
+  ConfigSnapshot,
+  LinuxPrivacyStoreID,
+  LinuxShellBridge,
+  NotificationConfig,
+  ProviderSettings
+} from '../../tauriBridge.js';
 import type { DaemonStatusCopy } from '../../daemonStatusCopy.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
@@ -203,6 +210,137 @@ function ProxyRouteRetentionControl({ fixtureMode }: { fixtureMode: boolean }) {
         {confirming ? <button type="button" className="ghost" onClick={() => setConfirming(false)}>Cancel</button> : null}
       </div>
       {error && (clearBusy || confirming) ? <p className="muted" role="alert">{error}</p> : null}
+    </>
+  );
+}
+
+const PRIVACY_STORE_LABELS: Record<LinuxPrivacyStoreID, string> = {
+  proxy_route_log: 'Proxy route log',
+  text_expansion_store: 'Encrypted text-expansion store'
+};
+
+function PrivacyDeletionControl({ fixtureMode }: { fixtureMode: boolean }) {
+  const bridge = useShellStore((state) => state.bridge);
+  const busy = useSettingsWiringStore((state) => state.busy);
+  const deletion = useSettingsWiringStore((state) => state.privacyDeletion);
+  const loadInventory = useSettingsWiringStore((state) => state.loadPrivacyInventory);
+  const previewDeletion = useSettingsWiringStore((state) => state.previewPrivacyDeletion);
+  const executeDeletion = useSettingsWiringStore((state) => state.executePrivacyDeletion);
+  const clearPreview = useSettingsWiringStore((state) => state.clearPrivacyDeletionPreview);
+  const [selectedStores, setSelectedStores] = useState<LinuxPrivacyStoreID[]>([
+    'proxy_route_log',
+    'text_expansion_store'
+  ]);
+  const [confirmation, setConfirmation] = useState('');
+  const supported = !fixtureMode
+    && typeof bridge?.linuxPrivacyInventory === 'function'
+    && typeof bridge.linuxPrivacyDeletionPreview === 'function'
+    && typeof bridge.linuxPrivacyDeletionExecute === 'function';
+
+  useEffect(() => {
+    if (supported) void loadInventory();
+  }, [loadInventory, supported]);
+
+  useEffect(() => {
+    if (!deletion.inventory) return;
+    setSelectedStores((current) => current.filter((store) =>
+      deletion.inventory?.stores.some((entry) => entry.store === store && entry.state !== 'blocked')
+    ));
+  }, [deletion.inventory]);
+
+  if (!supported) {
+    return (
+      <SettingRow
+        iconGlyph="⌫"
+        label="Delete local data"
+        description="A destructive local purge requires a daemon-owned scope preview, confirmation, and receipt."
+        control={<span className="muted" role="status">Unavailable</span>}
+        readOnlyNote="No destructive deletion RPC is exposed; nothing is deleted from this pane."
+      />
+    );
+  }
+
+  const preview = deletion.preview;
+  const deleting = deletion.status === 'deleting';
+  const loading = deletion.status === 'loading';
+  const previewing = deletion.status === 'previewing';
+  const stores = deletion.inventory?.stores ?? [];
+  const selectedCount = selectedStores.length;
+  const toggleStore = (store: LinuxPrivacyStoreID, checked: boolean) => {
+    setSelectedStores((current) => checked
+      ? Array.from(new Set([...current, store]))
+      : current.filter((item) => item !== store));
+  };
+
+  return (
+    <>
+      <SettingRow
+        iconGlyph="⌫"
+        label="Delete selected local data"
+        description="Preview and confirm deletion of daemon-owned local stores only. Transcripts, credentials, and account data are never included."
+        control={
+          <button
+            type="button"
+            className="ghost"
+            disabled={Boolean(busy) || loading || previewing || deleting || selectedCount === 0}
+            onClick={() => void previewDeletion(selectedStores)}
+          >
+            {previewing ? 'Preparing…' : 'Preview deletion'}
+          </button>
+        }
+      />
+      <fieldset className="privacy-store-picker" disabled={Boolean(busy) || deleting || Boolean(preview)}>
+        <legend className="muted">Stores included in the preview</legend>
+        {stores.map((entry) => (
+          <label key={entry.store} className="setting-toggle">
+            <input
+              type="checkbox"
+              checked={selectedStores.includes(entry.store)}
+              disabled={entry.state === 'blocked'}
+              onChange={(event) => toggleStore(entry.store, event.currentTarget.checked)}
+            />
+            <span>{PRIVACY_STORE_LABELS[entry.store]} ({entry.state}, {entry.bytes} bytes)</span>
+          </label>
+        ))}
+      </fieldset>
+      <button type="button" className="ghost" disabled={Boolean(busy) || loading || deleting} onClick={() => void loadInventory()}>
+        {loading ? 'Refreshing…' : 'Refresh local store inventory'}
+      </button>
+      {preview ? (
+        <div className="actions">
+          <p className="muted" role="status">
+            Preview expires {new Date(preview.expiresAt).toLocaleString()}. {preview.entries.length} store(s) are in scope.
+          </p>
+          <label className="setting-field">
+            <span>Type {preview.confirmationPhrase} to confirm</span>
+            <input
+              type="text"
+              value={confirmation}
+              aria-label="Privacy deletion confirmation"
+              autoComplete="off"
+              onChange={(event) => setConfirmation(event.currentTarget.value)}
+            />
+          </label>
+          <span className="settings-verification-value">
+            <button
+              type="button"
+              className="danger"
+              disabled={deleting || confirmation !== preview.confirmationPhrase}
+              onClick={() => {
+                setConfirmation('');
+                void executeDeletion(preview.confirmationPhrase);
+              }}
+            >
+              {deleting ? 'Deleting…' : 'Confirm deletion'}
+            </button>
+            <button type="button" className="ghost" disabled={deleting} onClick={() => { setConfirmation(''); clearPreview(); }}>
+              Cancel
+            </button>
+          </span>
+        </div>
+      ) : null}
+      {deletion.status === 'success' ? <Banner tone="ok" role="status">{deletion.message}</Banner> : null}
+      {deletion.status === 'error' ? <Banner tone="degraded" role="alert">{deletion.message}</Banner> : null}
     </>
   );
 }
@@ -1341,13 +1479,7 @@ export function SettingsDetailPane({
                 control={<span className="muted" role="status">Unavailable</span>}
                 readOnlyNote="No canonical daemon export RPC for this scope. Support diagnostics export remains available below."
               />
-              <SettingRow
-                iconGlyph="⌫"
-                label="Delete local data"
-                description="A destructive local purge requires a daemon-owned scope preview, confirmation, and receipt."
-                control={<span className="muted" role="status">Unavailable</span>}
-                readOnlyNote="No destructive deletion RPC is exposed; nothing is deleted from this pane."
-              />
+              <PrivacyDeletionControl fixtureMode={fixtureMode} />
               <ProxyRouteRetentionControl fixtureMode={fixtureMode} />
               <SettingRow
                 iconGlyph="◎"

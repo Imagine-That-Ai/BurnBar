@@ -161,15 +161,24 @@ describe('VAL-RPC bridge contract', () => {
     expect(rustBridge).toContain('fn text_expansion_list');
     expect(rustBridge).toContain('fn text_expansion_upsert');
     expect(rustBridge).toContain('fn text_expansion_delete');
+    expect(rustBridge).toContain('fn text_expansion_engine_status');
+    expect(rustBridge).toContain('fn text_expansion_engine_start');
+    expect(rustBridge).toContain('fn text_expansion_engine_stop');
     expect(tsBridge).toContain("'text_expansion_list'");
     expect(tsBridge).toContain("'text_expansion_upsert'");
     expect(tsBridge).toContain("'text_expansion_delete'");
     expect(tsBridge).toContain("'text_expansion_consent_update'");
+    expect(tsBridge).toContain("'text_expansion_engine_status'");
+    expect(tsBridge).toContain("'text_expansion_engine_start'");
+    expect(tsBridge).toContain("'text_expansion_engine_stop'");
     for (const method of [
       'daemon.text_expansion.get',
       'daemon.text_expansion.upsert',
       'daemon.text_expansion.delete',
-      'daemon.text_expansion.consent.update'
+      'daemon.text_expansion.consent.update',
+      'daemon.text_expansion.engine.status',
+      'daemon.text_expansion.engine.start',
+      'daemon.text_expansion.engine.stop'
     ]) {
       expect(rustBridge).toContain(method);
       expect(canonicalRpc).toContain(`id: "${method}"`);

@@ -64,8 +64,8 @@ public actor BurnBarMissionControlStore {
 
     public func upsertProject(_ project: BurnBarReviewProjectSnapshot) throws -> (BurnBarReviewProjectSnapshot, BurnBarControllerEvent) {
         try validateProjectIdentity(project)
-        if try projectSlugWasDeleted(project.projectSlug) {
-            throw BurnBarMissionControlError.projectDeleted(project.projectSlug)
+        if let tombstonedIdentity = try projectIdentityWasDeleted(project) {
+            throw BurnBarMissionControlError.projectDeleted(tombstonedIdentity)
         }
         let event = try appendEvent(
             family: .controller,
@@ -82,10 +82,14 @@ public actor BurnBarMissionControlStore {
         _ request: BurnBarControllerProjectDeleteRequest
     ) throws -> (BurnBarControllerProjectDeleteResponse, BurnBarControllerEvent) {
         let sourceSlug = try resolveProjectSlug(request.projectSlug)
-        guard projection?.projects[sourceSlug] != nil else {
+        guard let project = projection?.projects[sourceSlug] else {
             throw BurnBarMissionControlError.projectNotFound(sourceSlug)
         }
-        let payload = BurnBarProjectDeletionPayload(projectSlug: sourceSlug)
+        let payload = BurnBarProjectDeletionPayload(
+            projectSlug: sourceSlug,
+            projectID: project.id,
+            aliases: project.aliases
+        )
         let event = try appendEvent(
             family: .controller,
             eventType: "project_deleted",
@@ -1053,6 +1057,26 @@ public actor BurnBarMissionControlStore {
 
         if let decoded = try journal.loadProjectionFromDiskIfPresent(decoder: decoder) {
             projection = decoded
+            // The journal is the durable source of truth. A process crash can
+            // land after appendEventToDisk but before writeProjectionFile; do
+            // not trust a projection whose checkpoint does not match the
+            // journal tail, or a delete/reassignment can be resurrected after
+            // restart.
+            let journalTailSequence = try journal
+                .readRecentEventsFromDisk(limit: 1, decoder: decoder)
+                .last?
+                .sequence ?? 0
+            if journalTailSequence != decoded.lastSequence {
+                logger.warning(
+                    "controller_projection_checkpoint_mismatch",
+                    metadata: [
+                        "projection_sequence": String(decoded.lastSequence),
+                        "journal_sequence": String(journalTailSequence)
+                    ]
+                )
+                try rebuildProjectionFromJournal(rebuiltAt: Date())
+                return
+            }
             try normalizeLoadedMissionClosureQuestionInvariants(writeImmediately: true)
         } else {
             try rebuildProjectionFromJournal(rebuiltAt: Date())
@@ -1362,12 +1386,12 @@ public actor BurnBarMissionControlStore {
             project.projectSlug == identifier || project.id == identifier || project.aliases.contains(identifier)
         }
         let matchingSlugs = Set(matches.map(\.projectSlug))
-        let deletedSource = allowDeletedSource && matchingSlugs.isEmpty
-            ? try projectSlugWasDeleted(identifier)
-            : false
+        if matchingSlugs.isEmpty,
+           allowDeletedSource,
+           let deletedSourceSlug = try deletedProjectSlug(for: identifier) {
+            return deletedSourceSlug
+        }
         switch matches.count {
-        case 0 where deletedSource:
-            return try canonicalProjectSlug(identifier)
         case 0:
             throw BurnBarMissionControlError.projectNotFound(raw)
         case 1 where matchingSlugs.count == 1:
@@ -1377,10 +1401,58 @@ public actor BurnBarMissionControlStore {
         }
     }
 
-    private func projectSlugWasDeleted(_ slug: String) throws -> Bool {
-        try loadEvents().contains { event in
-            event.family == .controller && event.eventType == "project_deleted" && event.projectSlug == slug
+    private func projectIdentityWasDeleted(_ project: BurnBarReviewProjectSnapshot) throws -> String? {
+        let identities = [project.projectSlug, project.id] + project.aliases
+        for event in try loadEvents().reversed() {
+            guard event.family == .controller,
+                  event.eventType == "project_deleted" else {
+                continue
+            }
+
+            guard let payload = try? decodePayload(BurnBarProjectDeletionPayload.self, from: event) else {
+                // A legacy or malformed tombstone still protects its event
+                // slug. Never allow a corrupted payload to weaken deletion
+                // semantics for the canonical identity.
+                if identities.contains(event.projectSlug) {
+                    return event.projectSlug
+                }
+                continue
+            }
+            let tombstoned = [payload.projectSlug]
+                + (payload.projectID.map { [$0] } ?? [])
+                + payload.aliases
+            if let match = identities.first(where: tombstoned.contains) {
+                return match
+            }
         }
+        return nil
+    }
+
+    private func deletedProjectSlug(for identifier: String) throws -> String? {
+        for event in try loadEvents().reversed() {
+            guard event.family == .controller,
+                  event.eventType == "project_deleted" else {
+                continue
+            }
+            guard event.projectSlug != identifier else { return event.projectSlug }
+            guard let payload = try? decodePayload(BurnBarProjectDeletionPayload.self, from: event) else {
+                continue
+            }
+            if payload.projectSlug == identifier
+                || payload.projectID == identifier
+                || payload.aliases.contains(identifier) {
+                return payload.projectSlug
+            }
+        }
+        return nil
+    }
+
+    private func decodePayload<Value: Decodable>(_ type: Value.Type, from event: BurnBarControllerEvent) throws -> Value {
+        guard let payload = event.metadata["payload"] else {
+            throw BurnBarMissionControlError.missingPayload(event.eventType)
+        }
+        let data = try JSONEncoder().encode(payload)
+        return try JSONDecoder().decode(Value.self, from: data)
     }
 
     private func referenceCount(for sourceSlug: String) -> Int {

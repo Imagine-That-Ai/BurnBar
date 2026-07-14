@@ -1193,6 +1193,57 @@ export type TextExpansionConsent = {
   acknowledgedAt: string;
   declinedGlobalCapture: boolean;
 };
+export type TextExpansionEngineRuntimeStatus = {
+  state: string;
+  engineID?: string | null;
+  executablePath?: string | null;
+  registration: string;
+  supportsExternalExpansion: boolean;
+  detail: string;
+  checkedAt: string;
+};
+export type TextExpansionEngineStartRequest = {
+  consentAcknowledged: boolean;
+  timeoutMillis?: number;
+};
+export type TextExpansionEngineStopRequest = {
+  timeoutMillis?: number;
+};
+
+// ─────────────────────────── P40: local privacy ───────────────────────────
+// The daemon exposes only allowlisted local stores. Absolute paths and store
+// contents never cross the Tauri boundary.
+export type LinuxPrivacyStoreID = 'proxy_route_log' | 'text_expansion_store';
+export type LinuxPrivacyStoreState = 'absent' | 'ready' | 'blocked';
+export type LinuxPrivacyStoreInventory = {
+  store: LinuxPrivacyStoreID;
+  state: LinuxPrivacyStoreState;
+  bytes: number;
+  reason: string;
+};
+export type LinuxPrivacyInventory = {
+  stores: LinuxPrivacyStoreInventory[];
+  generatedAt: string;
+};
+export type LinuxPrivacyDeletionPreview = {
+  token: string;
+  stores: LinuxPrivacyStoreID[];
+  entries: LinuxPrivacyStoreInventory[];
+  expiresAt: string;
+  confirmationPhrase: string;
+};
+export type LinuxPrivacyDeletionRequest = {
+  token: string;
+  stores: LinuxPrivacyStoreID[];
+  confirmation: string;
+};
+export type LinuxPrivacyDeletionResult = {
+  stores: LinuxPrivacyStoreID[];
+  deleted: LinuxPrivacyStoreID[];
+  alreadyAbsent: LinuxPrivacyStoreID[];
+  bytesRemoved: number;
+  idempotent: boolean;
+};
 
 export type GatewayProxyMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -1377,6 +1428,9 @@ export interface LinuxShellBridge {
   providerModelDisplayNameClear?(providerID: string, modelID: string): Promise<ConfigSnapshot>;
   proxyRouteLogRecent?(limit: number): Promise<ProxyRouteLogEntry[]>;
   proxyRouteLogClear?(): Promise<boolean>;
+  linuxPrivacyInventory?(): Promise<LinuxPrivacyInventory>;
+  linuxPrivacyDeletionPreview?(stores: LinuxPrivacyStoreID[]): Promise<LinuxPrivacyDeletionPreview>;
+  linuxPrivacyDeletionExecute?(request: LinuxPrivacyDeletionRequest): Promise<LinuxPrivacyDeletionResult>;
   notificationConfigGet?(): Promise<NotificationConfig>;
   notificationConfigUpdate?(config: NotificationConfig): Promise<NotificationConfig>;
   notificationHealth?(): Promise<NotificationHealth>;
@@ -1390,6 +1444,9 @@ export interface LinuxShellBridge {
   textExpansionUpsert?(snippet: TextExpansionWireSnippet): Promise<TextExpansionWireSnippet>;
   textExpansionDelete?(id: string): Promise<TextExpansionSnapshot>;
   textExpansionConsentUpdate?(consent: Omit<TextExpansionConsent, 'acknowledgedAt'>): Promise<TextExpansionConsent>;
+  textExpansionEngineStatus?(): Promise<TextExpansionEngineRuntimeStatus>;
+  textExpansionEngineStart?(request: TextExpansionEngineStartRequest): Promise<TextExpansionEngineRuntimeStatus>;
+  textExpansionEngineStop?(request?: TextExpansionEngineStopRequest): Promise<TextExpansionEngineRuntimeStatus>;
   toolApprovalRespond?(
     approvalId: string,
     decision: 'approve' | 'reject' | 'cancel',
@@ -3656,6 +3713,19 @@ function mapTextExpansionConsent(raw: RawJsonValue): TextExpansionConsent {
   };
 }
 
+function mapTextExpansionEngineRuntimeStatus(raw: RawJsonValue): TextExpansionEngineRuntimeStatus {
+  const value = obj(pick(raw, 'result') ?? raw);
+  return {
+    state: str(pick(value, 'state'), 'not_running'),
+    engineID: str(pick(value, 'engineID', 'engine_id')) || null,
+    executablePath: str(pick(value, 'executablePath', 'executable_path')) || null,
+    registration: str(pick(value, 'registration'), 'engine_missing'),
+    supportsExternalExpansion: Boolean(pick(value, 'supportsExternalExpansion', 'supports_external_expansion')),
+    detail: str(pick(value, 'detail'), 'Text expansion engine status is unavailable.'),
+    checkedAt: str(pick(value, 'checkedAt', 'checked_at'), new Date().toISOString())
+  };
+}
+
 function snapshotFromMutation(raw: RawJsonValue): ConfigSnapshot {
   return mapConfigSnapshot(pick(raw, 'snapshot') ? raw : { snapshot: pick(raw, 'snapshot') ?? raw });
 }
@@ -3677,6 +3747,67 @@ function mapProxyRouteLog(raw: RawJsonValue): ProxyRouteLogEntry[] {
     httpStatus: pick(entry, 'httpStatus') == null ? undefined : num(pick(entry, 'httpStatus')),
     failureMessage: str(pick(entry, 'failureMessage')) || undefined
   }));
+}
+
+const LINUX_PRIVACY_STORES = new Set<LinuxPrivacyStoreID>(['proxy_route_log', 'text_expansion_store']);
+const LINUX_PRIVACY_STATES = new Set<LinuxPrivacyStoreState>(['absent', 'ready', 'blocked']);
+
+function mapLinuxPrivacyStoreInventory(raw: RawJsonValue): LinuxPrivacyStoreInventory {
+  const value = obj(raw);
+  const store = str(pick(value, 'store')) as LinuxPrivacyStoreID;
+  const state = str(pick(value, 'state')) as LinuxPrivacyStoreState;
+  if (!LINUX_PRIVACY_STORES.has(store) || !LINUX_PRIVACY_STATES.has(state)) {
+    throw new Error('Native privacy inventory returned an unsupported store.');
+  }
+  return {
+    store,
+    state,
+    bytes: Math.max(0, Math.trunc(num(pick(value, 'bytes')))),
+    reason: str(pick(value, 'reason'), 'unavailable')
+  };
+}
+
+function mapLinuxPrivacyInventory(raw: RawJsonValue): LinuxPrivacyInventory {
+  const value = obj(pick(raw, 'result') ?? raw);
+  return {
+    stores: arr(pick(value, 'stores')).map(mapLinuxPrivacyStoreInventory),
+    generatedAt: requireTimestamp(pick(value, 'generatedAt', 'generated_at'), 'privacy inventory.generatedAt')
+  };
+}
+
+function mapLinuxPrivacyDeletionPreview(raw: RawJsonValue): LinuxPrivacyDeletionPreview {
+  const value = obj(pick(raw, 'result') ?? raw);
+  const stores = arr(pick(value, 'stores')).map((item) => {
+    const store = str(item) as LinuxPrivacyStoreID;
+    if (!LINUX_PRIVACY_STORES.has(store)) throw new Error('Native privacy preview returned an unsupported store.');
+    return store;
+  });
+  return {
+    token: requireString(pick(value, 'token'), 'privacy deletion preview.token'),
+    stores,
+    entries: arr(pick(value, 'entries')).map(mapLinuxPrivacyStoreInventory),
+    expiresAt: requireTimestamp(pick(value, 'expiresAt', 'expires_at'), 'privacy deletion preview.expiresAt'),
+    confirmationPhrase: requireString(
+      pick(value, 'confirmationPhrase', 'confirmation_phrase'),
+      'privacy deletion preview.confirmationPhrase'
+    )
+  };
+}
+
+function mapLinuxPrivacyDeletionResult(raw: RawJsonValue): LinuxPrivacyDeletionResult {
+  const value = obj(pick(raw, 'result') ?? raw);
+  const stores = (key: string): LinuxPrivacyStoreID[] => arr(pick(value, key)).map((item) => {
+    const store = str(item) as LinuxPrivacyStoreID;
+    if (!LINUX_PRIVACY_STORES.has(store)) throw new Error('Native privacy deletion returned an unsupported store.');
+    return store;
+  });
+  return {
+    stores: stores('stores'),
+    deleted: stores('deleted'),
+    alreadyAbsent: stores('alreadyAbsent'),
+    bytesRemoved: Math.max(0, Math.trunc(num(pick(value, 'bytesRemoved', 'bytes_removed')))),
+    idempotent: Boolean(pick(value, 'idempotent'))
+  };
 }
 
 export function defaultNotificationConfig(): NotificationConfig {
@@ -4343,6 +4474,18 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('proxy_route_log_clear');
       return Boolean(pick(raw, 'cleared'));
     },
+    linuxPrivacyInventory: async () => {
+      const raw = await invoke<RawJsonValue>('linux_privacy_inventory');
+      return mapLinuxPrivacyInventory(raw);
+    },
+    linuxPrivacyDeletionPreview: async (stores) => {
+      const raw = await invoke<RawJsonValue>('linux_privacy_deletion_preview', { stores });
+      return mapLinuxPrivacyDeletionPreview(raw);
+    },
+    linuxPrivacyDeletionExecute: async (request) => {
+      const raw = await invoke<RawJsonValue>('linux_privacy_deletion_execute', { request });
+      return mapLinuxPrivacyDeletionResult(raw);
+    },
     notificationConfigGet: async () => {
       const raw = await invoke<RawJsonValue>('notification_config_get');
       return mapNotificationConfig(raw);
@@ -4383,6 +4526,22 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     textExpansionConsentUpdate: async (consent) => {
       const raw = await invoke<RawJsonValue>('text_expansion_consent_update', { consent });
       return mapTextExpansionConsent(raw);
+    },
+    textExpansionEngineStatus: async () => {
+      const raw = await invoke<RawJsonValue>('text_expansion_engine_status');
+      return mapTextExpansionEngineRuntimeStatus(raw);
+    },
+    textExpansionEngineStart: async (request) => {
+      const raw = await invoke<RawJsonValue>('text_expansion_engine_start', {
+        request: { consentAcknowledged: request.consentAcknowledged, timeoutMillis: request.timeoutMillis ?? 1_000 }
+      });
+      return mapTextExpansionEngineRuntimeStatus(raw);
+    },
+    textExpansionEngineStop: async (request = {}) => {
+      const raw = await invoke<RawJsonValue>('text_expansion_engine_stop', {
+        request: { timeoutMillis: request.timeoutMillis ?? 500 }
+      });
+      return mapTextExpansionEngineRuntimeStatus(raw);
     },
     // P07 — derived from daemon.config.get + daemon.health
     dbStatus: async () => {

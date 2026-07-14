@@ -93,6 +93,7 @@ public actor BurnBarDaemonServer {
     let computerUseAuthorizationRegistry: ComputerUseAuthorizationRegistry
     #if os(Linux)
     let mediaService: MercuryLinuxMediaSessionController
+    let linuxPrivacyService: BurnBarLinuxPrivacyService
     #endif
     let missionControlService: any BurnBarMissionControlServing
     let membershipService: any BurnBarMembershipServing
@@ -137,6 +138,7 @@ public actor BurnBarDaemonServer {
         linuxCloudCredentialAuthority: LinuxDaemonCloudCredentialAuthority? = nil,
         linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer? = nil,
         linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
+        linuxPrivacyService: BurnBarLinuxPrivacyService? = nil,
         subscriptionService: BurnBarSubscriptionService? = nil,
         chatThreadService: (any BurnBarChatThreadServing)? = nil
     ) {
@@ -416,6 +418,7 @@ public actor BurnBarDaemonServer {
             },
             logger: mediaLogger
         )
+        self.linuxPrivacyService = linuxPrivacyService ?? BurnBarLinuxPrivacyService()
         #endif
         self.rateLimiter = rateLimiter ?? BurnBarRateLimiter(configuration: configuration.socketRateLimit)
         // VAL-DAEMON-011: Wire a concrete execution readiness gate with fail-closed semantics.
@@ -1184,6 +1187,7 @@ public actor BurnBarDaemonServer {
                 )
             case .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
                  .textExpansionGet, .textExpansionUpsert, .textExpansionDelete, .textExpansionConsentUpdate,
+                 .textExpansionEngineStatus, .textExpansionEngineStart, .textExpansionEngineStop,
                  .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
                  .providerModelVariantUpsert, .providerModelVariantRemove,
                  .providerModelAliasUpsert, .providerModelAliasRemove,
@@ -1194,6 +1198,14 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
+#if os(Linux)
+            case .linuxPrivacyInventory, .linuxPrivacyDeletionPreview, .linuxPrivacyDeletionExecute:
+                return try await handleLinuxPrivacyRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+#endif
             case .usageRecord, .usageRecent:
                 return try await handleUsageRPC(
                     method: method,

@@ -3,6 +3,34 @@ import Foundation
 
 struct BurnBarProjectDeletionPayload: Codable, Sendable {
     let projectSlug: String
+    let projectID: String?
+    let aliases: [String]
+
+    init(
+        projectSlug: String,
+        projectID: String? = nil,
+        aliases: [String] = []
+    ) {
+        self.projectSlug = projectSlug
+        self.projectID = projectID
+        self.aliases = aliases
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case projectSlug
+        case projectID
+        case aliases
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Older delete events only carried the canonical slug. Keep them
+        // replayable while allowing newer events to tombstone every stable
+        // project identity.
+        projectSlug = try container.decode(String.self, forKey: .projectSlug)
+        projectID = try container.decodeIfPresent(String.self, forKey: .projectID)
+        aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
+    }
 }
 
 struct BurnBarProjectReassignmentPayload: Codable, Sendable {

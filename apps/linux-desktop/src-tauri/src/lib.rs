@@ -2818,6 +2818,24 @@ fn proxy_route_log_clear() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+fn linux_privacy_inventory() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.privacy.inventory", None)
+}
+
+#[tauri::command]
+fn linux_privacy_deletion_preview(stores: Vec<String>) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.privacy.deletion.preview",
+        Some(serde_json::json!({ "stores": stores })),
+    )
+}
+
+#[tauri::command]
+fn linux_privacy_deletion_execute(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.privacy.deletion.execute", Some(request))
+}
+
+#[tauri::command]
 fn notification_config_get() -> Result<serde_json::Value, String> {
     call_daemon_method(
         "daemon.notification.config.get",
@@ -3572,6 +3590,21 @@ fn text_expansion_delete(id: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 fn text_expansion_consent_update(consent: serde_json::Value) -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.text_expansion.consent.update", Some(consent))
+}
+
+#[tauri::command]
+fn text_expansion_engine_status() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.text_expansion.engine.status", None)
+}
+
+#[tauri::command]
+fn text_expansion_engine_start(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.text_expansion.engine.start", Some(request))
+}
+
+#[tauri::command]
+fn text_expansion_engine_stop(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.text_expansion.engine.stop", Some(request))
 }
 
 // ───────────────── P11: session env ─────────────────
@@ -6026,6 +6059,9 @@ pub fn run() {
             provider_model_display_name_clear,
             proxy_route_log_recent,
             proxy_route_log_clear,
+            linux_privacy_inventory,
+            linux_privacy_deletion_preview,
+            linux_privacy_deletion_execute,
             notification_config_get,
             notification_config_update,
             notification_health,
@@ -6067,6 +6103,9 @@ pub fn run() {
             text_expansion_upsert,
             text_expansion_delete,
             text_expansion_consent_update,
+            text_expansion_engine_status,
+            text_expansion_engine_start,
+            text_expansion_engine_stop,
             session_env,
             pet_companion_status,
             media_status,

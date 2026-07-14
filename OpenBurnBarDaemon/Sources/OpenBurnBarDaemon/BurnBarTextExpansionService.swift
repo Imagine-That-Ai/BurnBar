@@ -21,6 +21,7 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
         case invalidSnippet(String)
         case duplicateTrigger
         case invalidConsent
+        case invalidRuntimeRequest
         case tooManySnippets
         case snapshotTooLarge
         case invalidIdentifier
@@ -41,6 +42,8 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
                 return "An enabled text expansion snippet already uses this trigger."
             case .invalidConsent:
                 return "Text expansion consent must explicitly allow in-app use and decline global capture."
+            case .invalidRuntimeRequest:
+                return "Text expansion engine lifecycle timeout is outside the supported range."
             case .tooManySnippets:
                 return "Text expansion has reached its 500-snippet limit."
             case .snapshotTooLarge:
@@ -66,6 +69,97 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
     private static let triggerPrefix = "&&"
     private static let minimumTriggerLength = 2
 
+#if os(Linux)
+    /// Serializes engine lifecycle transitions without holding the persistence
+    /// lock across an async process launch or shutdown.
+    private actor LinuxTextExpansionEngineRuntime {
+        private let adapter: BurnBarLinuxTextExpansionAdapter
+        private var session: BurnBarLinuxTextExpansionAdapter.ExternalEngineSession?
+        private var nativeStatus: BurnBarLinuxTextExpansionAdapter.Status?
+        private var lastStatus: BurnBarTextExpansionEngineRuntimeStatus?
+
+        init(adapter: BurnBarLinuxTextExpansionAdapter) {
+            self.adapter = adapter
+        }
+
+        func status() async -> BurnBarTextExpansionEngineRuntimeStatus {
+            if let session {
+                let runtime = await session.status()
+                let status = Self.map(runtime: runtime, native: nativeStatus ?? adapter.typedStatus())
+                lastStatus = status
+                return status
+            }
+            if let lastStatus { return lastStatus }
+            let native = adapter.typedStatus()
+            nativeStatus = native
+            return Self.map(native: native)
+        }
+
+        func start(timeoutMillis: Int) async throws -> BurnBarTextExpansionEngineRuntimeStatus {
+            let native = adapter.typedStatus()
+            nativeStatus = native
+            if let current = session {
+                _ = await current.stop(timeoutMillis: 500)
+                session = nil
+            }
+            let killSwitch: @Sendable () -> Bool = {
+                LinuxPrivilegedInputKillFlag.isActive()
+                    || LinuxPrivilegedInputKillFlag.environmentKillSwitchActive()
+            }
+            let started = try await adapter.startExternalEngine(
+                timeoutMillis: timeoutMillis,
+                killSwitch: killSwitch
+            )
+            let runtime = await started.status()
+            session = started
+            let status = Self.map(runtime: runtime, native: native)
+            lastStatus = status
+            return status
+        }
+
+        func stop(timeoutMillis: Int) async -> BurnBarTextExpansionEngineRuntimeStatus {
+            guard let current = session else {
+                return await status()
+            }
+            let runtime = await current.stop(timeoutMillis: timeoutMillis)
+            session = nil
+            let status = Self.map(runtime: runtime, native: nativeStatus ?? adapter.typedStatus())
+            lastStatus = status
+            return status
+        }
+
+        private static func map(
+            runtime: BurnBarLinuxTextExpansionAdapter.EngineRuntimeStatus,
+            native: BurnBarLinuxTextExpansionAdapter.Status
+        ) -> BurnBarTextExpansionEngineRuntimeStatus {
+            BurnBarTextExpansionEngineRuntimeStatus(
+                state: runtime.state.rawValue,
+                engineID: runtime.engineID,
+                executablePath: runtime.executablePath,
+                registration: native.registration.rawValue,
+                supportsExternalExpansion: native.supportsExternalExpansion,
+                detail: runtime.detail,
+                checkedAt: runtime.checkedAt
+            )
+        }
+
+        private static func map(
+            native: BurnBarLinuxTextExpansionAdapter.Status
+        ) -> BurnBarTextExpansionEngineRuntimeStatus {
+            BurnBarTextExpansionEngineRuntimeStatus(
+                state: "not_running",
+                registration: native.registration.rawValue,
+                supportsExternalExpansion: native.supportsExternalExpansion,
+                detail: native.detail,
+                checkedAt: native.checkedAt
+            )
+        }
+    }
+
+    private let linuxTextExpansionAdapter: BurnBarLinuxTextExpansionAdapter
+    private let linuxEngineRuntime: LinuxTextExpansionEngineRuntime
+#endif
+
     private let fileURL: URL
     private let lock = NSLock()
     private let encoder: JSONEncoder
@@ -79,12 +173,15 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
     public init(
         fileURL: URL = BurnBarDaemonPaths.defaultTextExpansionURL,
         secretStore: LinuxSecretCustodian = LinuxSecretStoreFactory.production(),
-        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "text-expansion")
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "text-expansion"),
+        textExpansionAdapter: BurnBarLinuxTextExpansionAdapter = BurnBarLinuxTextExpansionAdapter()
     ) {
         self.fileURL = fileURL
         self.secretStore = secretStore
         self.logger = logger
         self.encoder = Self.makeEncoder()
+        self.linuxTextExpansionAdapter = textExpansionAdapter
+        self.linuxEngineRuntime = LinuxTextExpansionEngineRuntime(adapter: textExpansionAdapter)
     }
 #else
     public init(
@@ -204,6 +301,57 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
         }
     }
 
+    /// Returns daemon-authoritative external engine lifecycle state. No
+    /// renderer-provided state is trusted and no text payload is involved.
+    public func engineRuntimeStatus() async -> BurnBarTextExpansionEngineRuntimeStatus {
+#if os(Linux)
+        await linuxEngineRuntime.status()
+#else
+        BurnBarTextExpansionEngineRuntimeStatus(
+            state: "unsupported",
+            registration: "unsupported",
+            supportsExternalExpansion: false,
+            detail: ServiceError.unsupportedPlatform.localizedDescription,
+            checkedAt: Self.isoNow()
+        )
+#endif
+    }
+
+    public func startExternalEngine(
+        _ request: BurnBarTextExpansionEngineStartRequest
+    ) async throws -> BurnBarTextExpansionEngineRuntimeStatus {
+        guard request.consentAcknowledged else { throw ServiceError.invalidConsent }
+        guard (100...30_000).contains(request.timeoutMillis) else {
+            throw ServiceError.invalidRuntimeRequest
+        }
+        let consent = try withLock { try readSnapshot().consent }
+        guard consent?.inAppOnly == true, consent?.declinedGlobalCapture == true else {
+            throw ServiceError.invalidConsent
+        }
+#if os(Linux)
+        guard LinuxPrivilegedInputKillFlag.isActive() == false,
+              LinuxPrivilegedInputKillFlag.environmentKillSwitchActive() == false else {
+            throw BurnBarLinuxTextExpansionAdapter.EngineRuntimeError.killSwitchActive
+        }
+        return try await linuxEngineRuntime.start(timeoutMillis: request.timeoutMillis)
+#else
+        throw ServiceError.unsupportedPlatform
+#endif
+    }
+
+    public func stopExternalEngine(
+        _ request: BurnBarTextExpansionEngineStopRequest
+    ) async throws -> BurnBarTextExpansionEngineRuntimeStatus {
+        guard (100...30_000).contains(request.timeoutMillis) else {
+            throw ServiceError.invalidRuntimeRequest
+        }
+#if os(Linux)
+        return await linuxEngineRuntime.stop(timeoutMillis: request.timeoutMillis)
+#else
+        throw ServiceError.unsupportedPlatform
+#endif
+    }
+
     private func withLock<T>(_ operation: () throws -> T) rethrows -> T {
         lock.lock()
         defer { lock.unlock() }
@@ -303,7 +451,7 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
             exportedAt: snapshot.exportedAt,
             snippets: snapshot.snippets,
             consent: snapshot.consent,
-            nativeStatus: BurnBarLinuxTextExpansionAdapter().status()
+            nativeStatus: linuxTextExpansionAdapter.status()
         )
 #else
         return snapshot

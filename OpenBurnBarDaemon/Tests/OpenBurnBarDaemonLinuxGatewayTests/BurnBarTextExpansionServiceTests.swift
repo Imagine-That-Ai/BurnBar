@@ -72,6 +72,43 @@ final class BurnBarTextExpansionServiceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("text-expansion.obbsealed").path))
     }
 
+    func testEngineRuntimeStatusIsDaemonOwnedAndStartRequiresPersistedConsent() async throws {
+        let service = makeService()
+        let status = await service.engineRuntimeStatus()
+        XCTAssertEqual(status.state, "not_running")
+        XCTAssertFalse(status.supportsExternalExpansion)
+
+        do {
+            _ = try await service.startExternalEngine(
+                BurnBarTextExpansionEngineStartRequest(consentAcknowledged: false)
+            )
+            XCTFail("start must require an explicit consent acknowledgement")
+        } catch let error as BurnBarTextExpansionService.ServiceError {
+            XCTAssertEqual(error, .invalidConsent)
+        }
+
+        do {
+            _ = try await service.startExternalEngine(
+                BurnBarTextExpansionEngineStartRequest(consentAcknowledged: true)
+            )
+            XCTFail("start must require the daemon-persisted consent record")
+        } catch let error as BurnBarTextExpansionService.ServiceError {
+            XCTAssertEqual(error, .invalidConsent)
+        }
+    }
+
+    func testEngineRuntimeTimeoutIsBoundedBeforeLaunch() async throws {
+        let service = makeService()
+        do {
+            _ = try await service.stopExternalEngine(
+                BurnBarTextExpansionEngineStopRequest(timeoutMillis: 30_001)
+            )
+            XCTFail("an unbounded lifecycle timeout must be rejected")
+        } catch let error as BurnBarTextExpansionService.ServiceError {
+            XCTAssertEqual(error, .invalidRuntimeRequest)
+        }
+    }
+
     private func makeService() -> BurnBarTextExpansionService {
         BurnBarTextExpansionService(
             fileURL: directory.appendingPathComponent("text-expansion.obbsealed"),

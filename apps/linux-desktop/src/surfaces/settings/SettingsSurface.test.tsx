@@ -42,7 +42,8 @@ function resetStores(): void {
     loadingNotifications: false,
     busy: null,
     error: null,
-    privacyMutation: { status: 'idle', message: null }
+    privacyMutation: { status: 'idle', message: null },
+    privacyDeletion: { status: 'idle', inventory: null, preview: null, result: null, message: null }
   });
 }
 
@@ -193,6 +194,52 @@ describe('SettingsSurface', () => {
     await waitFor(() => expect(proxyRouteLogClear).toHaveBeenCalledOnce());
     await waitFor(() => expect(screen.getByText('0 retained')).toBeTruthy());
     expect(proxyRouteLogRecent).toHaveBeenCalled();
+  });
+
+  it('previews and confirms daemon-owned local privacy deletion', async () => {
+    const linuxPrivacyInventory = vi.fn(async () => ({
+      stores: [
+        { store: 'proxy_route_log' as const, state: 'ready' as const, bytes: 24, reason: 'ready' },
+        { store: 'text_expansion_store' as const, state: 'absent' as const, bytes: 0, reason: 'missing' }
+      ],
+      generatedAt: '2026-07-14T00:00:00Z'
+    }));
+    const linuxPrivacyDeletionPreview = vi.fn(async () => ({
+      token: 'preview-token',
+      stores: ['proxy_route_log' as const, 'text_expansion_store' as const],
+      entries: [
+        { store: 'proxy_route_log' as const, state: 'ready' as const, bytes: 24, reason: 'ready' },
+        { store: 'text_expansion_store' as const, state: 'absent' as const, bytes: 0, reason: 'missing' }
+      ],
+      expiresAt: '2026-07-14T00:05:00Z',
+      confirmationPhrase: 'DELETE LOCAL DATA'
+    }));
+    const linuxPrivacyDeletionExecute = vi.fn(async () => ({
+      stores: ['proxy_route_log' as const, 'text_expansion_store' as const],
+      deleted: ['proxy_route_log' as const],
+      alreadyAbsent: ['text_expansion_store' as const],
+      bytesRemoved: 24,
+      idempotent: false
+    }));
+    useShellStore.setState({
+      bridge: bridge({ linuxPrivacyInventory, linuxPrivacyDeletionPreview, linuxPrivacyDeletionExecute }),
+      fixtureMode: false
+    });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getAllByRole('button', { name: /Data & Privacy/i })[0]!);
+    await waitFor(() => expect(screen.getByText(/Proxy route log \(ready, 24 bytes\)/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Preview deletion' }));
+    await waitFor(() => expect(screen.getByText(/Preview expires/i)).toBeTruthy());
+    const confirmation = screen.getByRole('textbox', { name: 'Privacy deletion confirmation' });
+    fireEvent.change(confirmation, { target: { value: 'DELETE LOCAL DATA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm deletion' }));
+    await waitFor(() => expect(linuxPrivacyDeletionExecute).toHaveBeenCalledWith({
+      token: 'preview-token',
+      stores: ['proxy_route_log', 'text_expansion_store'],
+      confirmation: 'DELETE LOCAL DATA'
+    }));
+    expect(await screen.findByText('Selected local stores deleted.')).toBeTruthy();
   });
 
   it('shows loading skeleton without fixture', () => {

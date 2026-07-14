@@ -177,3 +177,54 @@ public struct BurnBarTextExpansionConsentResponse: Codable, Hashable, Sendable {
         self.consent = consent
     }
 }
+
+/// Daemon-owned lifecycle status for a packaged Linux text-expansion engine.
+/// The status is deliberately text-free: it contains no clipboard, keyboard,
+/// surrounding-text, or field contents.
+public struct BurnBarTextExpansionEngineRuntimeStatus: Codable, Hashable, Sendable {
+    public let state: String
+    public let engineID: String?
+    public let executablePath: String?
+    public let registration: String
+    public let supportsExternalExpansion: Bool
+    public let detail: String
+    public let checkedAt: String
+
+    public init(
+        state: String,
+        engineID: String? = nil,
+        executablePath: String? = nil,
+        registration: String,
+        supportsExternalExpansion: Bool,
+        detail: String,
+        checkedAt: String
+    ) {
+        self.state = state
+        self.engineID = engineID
+        self.executablePath = executablePath
+        self.registration = registration
+        self.supportsExternalExpansion = supportsExternalExpansion
+        self.detail = detail
+        self.checkedAt = checkedAt
+    }
+}
+
+public struct BurnBarTextExpansionEngineStartRequest: Codable, Hashable, Sendable {
+    /// This must be true in addition to the daemon's persisted consent record;
+    /// the renderer cannot elevate a previously declined global-capture policy.
+    public let consentAcknowledged: Bool
+    public let timeoutMillis: Int
+
+    public init(consentAcknowledged: Bool, timeoutMillis: Int = 1_000) {
+        self.consentAcknowledged = consentAcknowledged
+        self.timeoutMillis = timeoutMillis
+    }
+}
+
+public struct BurnBarTextExpansionEngineStopRequest: Codable, Hashable, Sendable {
+    public let timeoutMillis: Int
+
+    public init(timeoutMillis: Int = 500) {
+        self.timeoutMillis = timeoutMillis
+    }
+}
