@@ -11,7 +11,7 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 /// and tool-call requests; unsupported shapes fail closed instead of being sent
 /// as OpenAI JSON.
 /// </summary>
-public static class AnthropicProviderAdapter
+public static partial class AnthropicProviderAdapter
 {
     public const string ApiVersion = "2023-06-01";
 
@@ -183,40 +183,40 @@ public static class AnthropicProviderAdapter
             switch (type)
             {
                 case "message_start":
-                {
-                    if (data["message"] is not JsonObject message)
                     {
-                        throw new ProviderWireFormatException(502, "anthropic_sse_message_invalid");
-                    }
-
-                    id = ReadString(message["id"], "anthropic_sse_id_invalid") ?? id;
-                    model = ReadString(message["model"], "anthropic_sse_model_invalid") ?? model;
-                    if (!emittedRole)
-                    {
-                        output.Append(EncodeChunk(id, model, created, new JsonObject
+                        if (data["message"] is not JsonObject message)
                         {
-                            ["role"] = "assistant",
-                        }, finishReason: null));
-                        emittedRole = true;
+                            throw new ProviderWireFormatException(502, "anthropic_sse_message_invalid");
+                        }
+
+                        id = ReadString(message["id"], "anthropic_sse_id_invalid") ?? id;
+                        model = ReadString(message["model"], "anthropic_sse_model_invalid") ?? model;
+                        if (!emittedRole)
+                        {
+                            output.Append(EncodeChunk(id, model, created, new JsonObject
+                            {
+                                ["role"] = "assistant",
+                            }, finishReason: null));
+                            emittedRole = true;
+                        }
+                        break;
                     }
-                    break;
-                }
                 case "content_block_start":
-                {
-                    if (data["content_block"] is not JsonObject block)
                     {
-                        throw new ProviderWireFormatException(502, "anthropic_sse_content_block_invalid");
-                    }
-
-                    string blockType = ReadString(block["type"], "anthropic_sse_content_type_invalid") ?? string.Empty;
-                    if (string.Equals(blockType, "tool_use", StringComparison.OrdinalIgnoreCase))
-                    {
-                        int index = ReadNonNegativeInt(data["index"], "anthropic_sse_index_invalid");
-                        string toolId = RequiredString(block["id"], "anthropic_sse_tool_id_required");
-                        string name = RequiredString(block["name"], "anthropic_sse_tool_name_required");
-                        output.Append(EncodeChunk(id, model, created, new JsonObject
+                        if (data["content_block"] is not JsonObject block)
                         {
-                            ["tool_calls"] = new JsonArray
+                            throw new ProviderWireFormatException(502, "anthropic_sse_content_block_invalid");
+                        }
+
+                        string blockType = ReadString(block["type"], "anthropic_sse_content_type_invalid") ?? string.Empty;
+                        if (string.Equals(blockType, "tool_use", StringComparison.OrdinalIgnoreCase))
+                        {
+                            int index = ReadNonNegativeInt(data["index"], "anthropic_sse_index_invalid");
+                            string toolId = RequiredString(block["id"], "anthropic_sse_tool_id_required");
+                            string name = RequiredString(block["name"], "anthropic_sse_tool_name_required");
+                            output.Append(EncodeChunk(id, model, created, new JsonObject
+                            {
+                                ["tool_calls"] = new JsonArray
                             {
                                 new JsonObject
                                 {
@@ -230,31 +230,31 @@ public static class AnthropicProviderAdapter
                                     },
                                 },
                             },
-                        }, finishReason: null));
+                            }, finishReason: null));
+                        }
+                        break;
                     }
-                    break;
-                }
                 case "content_block_delta":
-                {
-                    if (data["delta"] is not JsonObject delta)
                     {
-                        throw new ProviderWireFormatException(502, "anthropic_sse_delta_invalid");
-                    }
+                        if (data["delta"] is not JsonObject delta)
+                        {
+                            throw new ProviderWireFormatException(502, "anthropic_sse_delta_invalid");
+                        }
 
-                    string deltaType = ReadString(delta["type"], "anthropic_sse_delta_type_invalid") ?? string.Empty;
-                    if (string.Equals(deltaType, "text_delta", StringComparison.OrdinalIgnoreCase))
-                    {
-                        output.Append(EncodeChunk(id, model, created, new JsonObject
+                        string deltaType = ReadString(delta["type"], "anthropic_sse_delta_type_invalid") ?? string.Empty;
+                        if (string.Equals(deltaType, "text_delta", StringComparison.OrdinalIgnoreCase))
                         {
-                            ["content"] = RequiredString(delta["text"], "anthropic_sse_text_invalid"),
-                        }, finishReason: null));
-                    }
-                    else if (string.Equals(deltaType, "input_json_delta", StringComparison.OrdinalIgnoreCase))
-                    {
-                        int index = ReadNonNegativeInt(data["index"], "anthropic_sse_index_invalid");
-                        output.Append(EncodeChunk(id, model, created, new JsonObject
+                            output.Append(EncodeChunk(id, model, created, new JsonObject
+                            {
+                                ["content"] = RequiredString(delta["text"], "anthropic_sse_text_invalid"),
+                            }, finishReason: null));
+                        }
+                        else if (string.Equals(deltaType, "input_json_delta", StringComparison.OrdinalIgnoreCase))
                         {
-                            ["tool_calls"] = new JsonArray
+                            int index = ReadNonNegativeInt(data["index"], "anthropic_sse_index_invalid");
+                            output.Append(EncodeChunk(id, model, created, new JsonObject
+                            {
+                                ["tool_calls"] = new JsonArray
                             {
                                 new JsonObject
                                 {
@@ -265,25 +265,25 @@ public static class AnthropicProviderAdapter
                                     },
                                 },
                             },
-                        }, finishReason: null));
+                            }, finishReason: null));
+                        }
+                        else
+                        {
+                            throw new ProviderWireFormatException(501, "anthropic_sse_delta_unsupported");
+                        }
+                        break;
                     }
-                    else
-                    {
-                        throw new ProviderWireFormatException(501, "anthropic_sse_delta_unsupported");
-                    }
-                    break;
-                }
                 case "message_delta":
-                {
-                    if (data["delta"] is not JsonObject delta)
                     {
-                        throw new ProviderWireFormatException(502, "anthropic_sse_message_delta_invalid");
-                    }
+                        if (data["delta"] is not JsonObject delta)
+                        {
+                            throw new ProviderWireFormatException(502, "anthropic_sse_message_delta_invalid");
+                        }
 
-                    string finish = MapFinishReason(ReadString(delta["stop_reason"], "anthropic_sse_stop_reason_invalid"));
-                    output.Append(EncodeChunk(id, model, created, new JsonObject(), finish));
-                    break;
-                }
+                        string finish = MapFinishReason(ReadString(delta["stop_reason"], "anthropic_sse_stop_reason_invalid"));
+                        output.Append(EncodeChunk(id, model, created, new JsonObject(), finish));
+                        break;
+                    }
                 case "message_stop":
                     output.Append("data: [DONE]\n\n");
                     sawStop = true;
@@ -701,114 +701,6 @@ public static class AnthropicProviderAdapter
         return (string.Join("\n", texts), toolCalls);
     }
 
-    private static string RequiredString(JsonNode? node, string error)
-    {
-        string? value = ReadString(node, error);
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new ProviderWireFormatException(400, error);
-        }
-
-        return value;
-    }
-
-    private static JsonObject ParseObject(byte[] body, string error)
-    {
-        try
-        {
-            return JsonNode.Parse(body) as JsonObject
-                ?? throw new ProviderWireFormatException(400, error);
-        }
-        catch (JsonException exception)
-        {
-            throw new ProviderWireFormatException(400, error, exception);
-        }
-    }
-
-    private static string TextContent(JsonNode? node)
-    {
-        if (node is JsonValue value && value.TryGetValue<string>(out string? text))
-        {
-            return text ?? string.Empty;
-        }
-
-        if (node is JsonValue)
-        {
-            throw new ProviderWireFormatException(400, "anthropic_content_invalid");
-        }
-
-        if (node is not JsonArray blocks)
-        {
-            return string.Empty;
-        }
-
-        var parts = new List<string>();
-        foreach (JsonNode? blockNode in blocks)
-        {
-            if (blockNode is not JsonObject block)
-            {
-                continue;
-            }
-
-            if (string.Equals(ReadString(block["type"], "anthropic_content_type_invalid"), "text", StringComparison.OrdinalIgnoreCase)
-                && block["text"] is JsonValue blockText
-                && blockText.TryGetValue<string>(out string? textValue)
-                && !string.IsNullOrWhiteSpace(textValue))
-            {
-                parts.Add(textValue);
-            }
-        }
-
-        return string.Join("\n", parts);
-    }
-
-    private static string? ReadString(JsonNode? node, string error)
-    {
-        if (node is null)
-        {
-            return null;
-        }
-
-        if (node is JsonValue value && value.TryGetValue<string>(out string? result))
-        {
-            return result;
-        }
-
-        throw new ProviderWireFormatException(400, error);
-    }
-
-    private static bool ReadBool(JsonNode? node, string error)
-    {
-        if (node is null)
-        {
-            return false;
-        }
-
-        if (node is JsonValue value && value.TryGetValue<bool>(out bool result))
-        {
-            return result;
-        }
-
-        throw new ProviderWireFormatException(400, error);
-    }
-
-    private static int? ReadPositiveInt(JsonObject? source, string property)
-    {
-        if (source is null || source[property] is not JsonValue value || !value.TryGetValue<int>(out int result))
-        {
-            return null;
-        }
-
-        return result > 0 ? result : null;
-    }
-
-    private static void CopyIfPresent(JsonObject source, JsonObject target, string sourceName, string? targetName = null)
-    {
-        if (source[sourceName] is JsonNode value)
-        {
-            target[targetName ?? sourceName] = value.DeepClone();
-        }
-    }
 }
 
 internal sealed class ProviderWireFormatException : Exception
