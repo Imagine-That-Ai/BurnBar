@@ -272,8 +272,9 @@ function checkPackagedAccessibility() {
     if (focus.method !== 'xdotool-tab-plus-orca-atspi-focus-events') {
       add('VAL-A11Y-001', `unexpected keyboard focus method ${focus.method ?? 'missing'}`);
     }
-    if (focus.physicalTabPressCount !== 14) {
-      add('VAL-A11Y-001', `keyboard focus sequence must record 14 physical Tab presses, got ${focus.physicalTabPressCount ?? 'missing'}`);
+    const physicalKeyPressCount = focus.physicalKeyPressCount ?? focus.physicalTabPressCount;
+    if (!Number.isInteger(physicalKeyPressCount) || physicalKeyPressCount < 14) {
+      add('VAL-A11Y-001', `keyboard focus sequence must record at least 14 physical key presses, got ${physicalKeyPressCount ?? 'missing'}`);
     }
     if (focus.stepCount !== 10) add('VAL-A11Y-001', `keyboard focus sequence must contain 10 steps, got ${focus.stepCount ?? 'missing'}`);
     if ((focus.distinctFocusedTargets ?? 0) < 3) add('VAL-A11Y-001', 'keyboard focus sequence reached fewer than 3 distinct targets');

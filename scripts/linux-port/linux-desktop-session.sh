@@ -211,7 +211,10 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   # were enough on the historical arm64 image but intermittently stopped
   # after the first combo/page-tab group on current x86_64 and arm64 images.
   # Use a slower, longer traversal so the proof exercises the same focus path
-  # instead of treating a short event queue as an accessibility pass.
+  # instead of treating a short event queue as an accessibility pass.  Some
+  # arm64 WebKitGTK sessions leave the document after the forward cycle;
+  # reverse traversal re-enters the same real focus path and records that
+  # recovery rather than accepting a six-event partial traversal.
   physical_tab_presses=28
   for _ in $(seq 1 "$physical_tab_presses"); do
     xdotool key --clearmodifiers Tab
@@ -219,10 +222,15 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     # causes its queue to obsolete intermediate focus changes.
     sleep 1.25
   done
+  physical_shift_tab_presses=12
+  for _ in $(seq 1 "$physical_shift_tab_presses"); do
+    xdotool key --clearmodifiers Shift+Tab
+    sleep 1.25
+  done
   sleep 8
-  node - "$out_dir/orca-debug.log" "$focus_log_offset" "$physical_tab_presses" "$out_dir/atspi-keyboard-focus-sequence.json" <<'FOCUS'
+  node - "$out_dir/orca-debug.log" "$focus_log_offset" "$physical_tab_presses" "$physical_shift_tab_presses" "$out_dir/atspi-keyboard-focus-sequence.json" <<'FOCUS'
 const fs = require('fs');
-const [debugPath, offsetText, physicalTabPressesText, outPath] = process.argv.slice(2);
+const [debugPath, offsetText, physicalTabPressesText, physicalShiftTabPressesText, outPath] = process.argv.slice(2);
 const debug = fs.readFileSync(debugPath);
 const segment = debug.subarray(Number(offsetText)).toString('utf8');
 const focusEvent = /OBJECT EVENT: object:state-changed:focused for \[([^:\]]+): '([^']*)'\] in \[application: '([^']+)'\] \(1,\s*0,\s*0\)/g;
@@ -242,6 +250,8 @@ const result = {
   method: 'xdotool-tab-plus-orca-atspi-focus-events',
   sourceLog: 'orca-debug.log',
   physicalTabPressCount: Number(physicalTabPressesText),
+  physicalShiftTabPressCount: Number(physicalShiftTabPressesText),
+  physicalKeyPressCount: Number(physicalTabPressesText) + Number(physicalShiftTabPressesText),
   observedTrueFocusEventCount: events.length,
   stepCount: steps.length,
   distinctFocusedTargets: identities.size,
