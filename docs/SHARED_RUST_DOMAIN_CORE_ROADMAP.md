@@ -175,6 +175,28 @@ or latency regression before deletion rolls the affected consumer explicitly
 back to `legacy`, preserves evidence, and restarts the applicable shadow window
 after the cause is fixed.
 
+### Machine-enforced row transitions
+
+[`config/domain-core-legacy-deletion.json`](../config/domain-core-legacy-deletion.json)
+pins the exact eleven migration rows, source roots, legacy symbols/files, mode
+literals, and shared rollback selectors. The only states are `rollout`,
+`rust_authoritative_with_rollback`, and `legacy_deleted`.
+
+`scripts/ci/verify-domain-core-legacy-deletion.py` is fail-closed:
+
+- a target must exist while its row is `rollout` or
+  `rust_authoritative_with_rollback`;
+- a target must be absent when its row is `legacy_deleted`;
+- shared targets remain present until every member row is deleted; and
+- authoritative/deleted states require committed active receipts for promotion,
+  stable-release observation, and deletion review as applicable.
+
+CI validates the manifest before expensive domain-core builds. A missing root,
+unknown row/state/field/target kind, duplicate JSON key/row/root/target/receipt,
+malformed receipt, or path/symlink escape fails the job. Follow the
+[legacy deletion runbook](runbooks/shared-rust-legacy-deletion.md); changing
+prose or deleting an unlisted substring is not completion evidence.
+
 Crypto promotion additionally requires deterministic KATs, bidirectional
 cross-open coverage for every supported envelope version and consumer,
 wrong-key/AAD/tamper rejection, boundary fuzzing, and an independent security
@@ -213,6 +235,8 @@ not into `main`, and does not mean production promotion.
   and remaining Swift/Kotlin consumer PRs remain open or pending.
 - No shared-Rust domain is complete under the inventory's completion rule. No
   legacy implementation should be deleted from this status snapshot.
+- The row-level deletion manifest records all eleven rows as `rollout`. It has
+  no promotion, stable-release, or deletion receipts in this snapshot.
 
 ## Required CI
 

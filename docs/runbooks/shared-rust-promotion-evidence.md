@@ -125,8 +125,15 @@ without copying review metadata.
 1. Retain source evidence and the generated report with the rollout review.
 2. Confirm every non-quantitative roadmap gate independently.
 3. Change only the reviewed consumer mode to `rust`; keep explicit rollback.
-4. Observe one stable Rust-authoritative release.
-5. Delete legacy code only in a separate change with source and compile gates.
+4. Observe one stable release before proposing legacy deletion.
+5. Run source/compile gates proving the inventory's named deletion targets are
+   absent before marking that row complete.
 
-Never commit runtime telemetry or synthetic passing evidence. Tests construct
-synthetic bundles in memory solely to prove fail-closed evaluator behavior.
+The source gate and receipt procedure are defined in the
+[Shared Rust Legacy Deletion Runbook](shared-rust-legacy-deletion.md). Promotion
+reports do not update deletion state automatically, and a passing quantitative
+report cannot substitute for the stable-release or deletion-review receipts.
+
+Never commit runtime telemetry or synthetic passing evidence to the repository.
+The test suite constructs synthetic bundles in memory solely to prove evaluator
+behavior.
