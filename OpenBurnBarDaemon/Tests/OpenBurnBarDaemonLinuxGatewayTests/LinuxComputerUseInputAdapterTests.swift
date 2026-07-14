@@ -6,6 +6,242 @@ import OpenBurnBarCore
 import XCTest
 
 final class LinuxComputerUseInputAdapterTests: XCTestCase {
+    func testWaylandPortalProbeSelectsConsentOnlyStateWithoutEnablingInput() throws {
+        let recorder = CommandRecorder()
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                [
+                    "XDG_SESSION_TYPE": "wayland",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"
+                ][name]
+            },
+            resolveExecutable: { name in
+                name == "gdbus" ? "/usr/bin/gdbus" : nil
+            },
+            runCommand: { _, _ in XCTFail("portal probe must use its bounded runner"); return .init(exitCode: 1) },
+            runPortalProbe: { executable, arguments, timeoutMillis in
+                recorder.record(executable: executable, arguments: arguments)
+                XCTAssertEqual(timeoutMillis, 1_500)
+                return .init(
+                    exitCode: 0,
+                    stdout: "interface org.freedesktop.portal.RemoteDesktop { method Start; }\n"
+                )
+            }
+        )
+
+        let capability = adapter.waylandPortalCapability()
+
+        XCTAssertEqual(capability.state, .consentRequired)
+        XCTAssertTrue(capability.remoteDesktop)
+        XCTAssertFalse(capability.screenCast)
+        XCTAssertTrue(capability.requiresConsent)
+        XCTAssertTrue(capability.requiresApproval)
+        XCTAssertTrue(capability.isProbeReady)
+        XCTAssertFalse(adapter.isAvailableForSystemInput())
+        XCTAssertEqual(recorder.lastExecutable, "/usr/bin/gdbus")
+        XCTAssertEqual(
+            recorder.lastArguments,
+            [
+                "introspect", "--session", "--dest", "org.freedesktop.portal.Desktop",
+                "--object-path", "/org/freedesktop/portal/desktop"
+            ]
+        )
+    }
+
+    func testWaylandPortalPlanFailsClosedBeforeActionTextReachesAnyRunner() throws {
+        let secret = "portal-secret-never-forwarded"
+        let recorder = CommandRecorder()
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                [
+                    "XDG_SESSION_TYPE": "wayland",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"
+                ][name]
+            },
+            resolveExecutable: { name in
+                name == "gdbus" ? "/usr/bin/gdbus" : nil
+            },
+            runCommand: { executable, arguments in
+                recorder.record(executable: executable, arguments: arguments)
+                return .init(exitCode: 0)
+            },
+            runPortalProbe: { executable, arguments, _ in
+                recorder.record(executable: executable, arguments: arguments)
+                return .init(
+                    exitCode: 0,
+                    stdout: "org.freedesktop.portal.RemoteDesktop\nwindow-title=\(secret)"
+                )
+            }
+        )
+
+        XCTAssertThrowsError(try adapter.plan(for: MacInputAction(kind: .type, text: secret))) { error in
+            XCTAssertEqual(
+                error as? LinuxComputerUseInputAdapter.AdapterError,
+                .portalConsentRequired("remote_desktop_portal_requires_user_consent")
+            )
+        }
+        XCTAssertFalse(recorder.lastArguments?.contains(secret) == true)
+        let encoded = try JSONEncoder().encode(adapter.waylandPortalCapability())
+        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains(secret))
+    }
+
+    func testWaylandPortalProbeDenialIsTypedAndDoesNotFallbackToShellInput() throws {
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                [
+                    "XDG_SESSION_TYPE": "wayland",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"
+                ][name]
+            },
+            resolveExecutable: { name in
+                name == "gdbus" ? "/usr/bin/gdbus" : nil
+            },
+            runPortalProbe: { _, _, _ in
+                .init(exitCode: 1, stderr: "permission denied: account@example.invalid")
+            }
+        )
+
+        XCTAssertEqual(adapter.waylandPortalCapability().state, .denied)
+        XCTAssertThrowsError(try adapter.plan(for: MacInputAction(kind: .click, displayX: 2, displayY: 3))) { error in
+            XCTAssertEqual(
+                error as? LinuxComputerUseInputAdapter.AdapterError,
+                .portalDenied("portal_probe_denied")
+            )
+        }
+    }
+
+    func testWaylandPortalProbeTimeoutAndCancellationAreFailClosed() throws {
+        let environment: LinuxComputerUseInputAdapter.EnvironmentReader = { name in
+            [
+                "XDG_SESSION_TYPE": "wayland",
+                "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"
+            ][name]
+        }
+        let executableResolver: LinuxComputerUseInputAdapter.ExecutableResolver = { name in
+            name == "gdbus" ? "/usr/bin/gdbus" : nil
+        }
+        let timedOut = LinuxComputerUseInputAdapter(
+            environment: environment,
+            resolveExecutable: executableResolver,
+            runPortalProbe: { _, _, _ in .init(exitCode: 124) }
+        )
+        XCTAssertEqual(timedOut.waylandPortalCapability().state, .timedOut)
+        XCTAssertThrowsError(try timedOut.plan(for: MacInputAction(kind: .key, key: "Return"))) { error in
+            XCTAssertEqual(error as? LinuxComputerUseInputAdapter.AdapterError, .portalTimedOut)
+        }
+
+        let cancelled = LinuxComputerUseInputAdapter(
+            environment: environment,
+            resolveExecutable: executableResolver,
+            runPortalProbe: { _, _, _ in throw CancellationError() }
+        )
+        XCTAssertEqual(cancelled.waylandPortalCapability().state, .cancelled)
+        XCTAssertThrowsError(try cancelled.plan(for: MacInputAction(kind: .key, key: "Return"))) { error in
+            XCTAssertEqual(error as? LinuxComputerUseInputAdapter.AdapterError, .portalCancelled)
+        }
+    }
+
+    func testWaylandPortalProbeAsyncCancellationIsHonoredBeforeProbe() async {
+        let probeCalled = CommandRecorder()
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                [
+                    "XDG_SESSION_TYPE": "wayland",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"
+                ][name]
+            },
+            resolveExecutable: { name in
+                name == "gdbus" ? "/usr/bin/gdbus" : nil
+            },
+            runPortalProbe: { executable, arguments, _ in
+                probeCalled.record(executable: executable, arguments: arguments)
+                return .init(exitCode: 0)
+            }
+        )
+
+        let task = Task {
+            try await adapter.probeWaylandPortal()
+        }
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("a cancelled portal probe must not report a capability")
+        } catch is CancellationError {
+            // The cancellation can race a very fast probe; the post-probe
+            // cancellation check still guarantees no capability is returned.
+            XCTAssertTrue(probeCalled.lastExecutable == nil || probeCalled.lastExecutable == "/usr/bin/gdbus")
+        } catch {
+            XCTFail("unexpected cancellation error: \(error)")
+        }
+    }
+
+    func testWaylandPortalProbeIsBlockedByKillSwitchBeforePortalBrokerRuns() throws {
+        let flagPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-wayland-portal-kill-\(UUID().uuidString)")
+            .path
+        try "panic".write(toFile: flagPath, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: flagPath) }
+
+        let probeCalled = CommandRecorder()
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                [
+                    "XDG_SESSION_TYPE": "wayland",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+                    "OPENBURNBAR_PRIVILEGED_INPUT_KILL_FLAG_PATH": flagPath
+                ][name]
+            },
+            resolveExecutable: { name in
+                name == "gdbus" ? "/usr/bin/gdbus" : nil
+            },
+            runPortalProbe: { executable, arguments, _ in
+                probeCalled.record(executable: executable, arguments: arguments)
+                return .init(exitCode: 0)
+            }
+        )
+
+        let capability = adapter.waylandPortalCapability()
+
+        XCTAssertEqual(capability.state, .unavailable)
+        XCTAssertEqual(capability.reason, "computer_use_kill_switch_active")
+        XCTAssertNil(probeCalled.lastExecutable)
+        XCTAssertThrowsError(try adapter.plan(for: MacInputAction(kind: .key, key: "Return"))) { error in
+            XCTAssertEqual(
+                error as? LinuxComputerUseInputAdapter.AdapterError,
+                .portalUnavailable("computer_use_kill_switch_active")
+            )
+        }
+    }
+
+    func testX11SelectionRemainsAuthoritativeWhenWaylandPortalIsAlsoVisible() throws {
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                [
+                    "XDG_SESSION_TYPE": "wayland",
+                    "WAYLAND_DISPLAY": "wayland-0",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+                    "DISPLAY": ":0"
+                ][name]
+            },
+            resolveExecutable: { name in
+                switch name {
+                case "xdotool": return "/usr/bin/xdotool"
+                case "gdbus": return "/usr/bin/gdbus"
+                default: return nil
+                }
+            },
+            runPortalProbe: { _, _, _ in
+                XCTFail("X11 fallback must not probe or select the portal")
+                return .init(exitCode: 1)
+            }
+        )
+
+        let plan = try adapter.plan(for: MacInputAction(kind: .type, text: "safe"))
+        XCTAssertEqual(plan.adapter, .x11XTest)
+        XCTAssertEqual(plan.executableName, "xdotool")
+    }
+
     func testAtspiClickPlanUsesPythonWhenSessionBusIsAvailable() throws {
         let adapter = LinuxComputerUseInputAdapter(
             environment: { name in

@@ -851,6 +851,18 @@ export type NativeShortcutStatus = {
   degradedReason?: string;
 };
 
+export type PetCompanionStatus = {
+  state: 'available' | 'degraded' | 'unavailable';
+  compositor: string;
+  sessionType?: string;
+  desktop?: string;
+  overlaySupported: boolean;
+  clickThroughSupported: boolean;
+  windowContract: string;
+  reason: string;
+  source: string;
+};
+
 // ─────────────────────────── P11: session env ─────────────────────────────
 
 export type SessionEnv = { XDG_SESSION_TYPE?: string; XDG_CURRENT_DESKTOP?: string };
@@ -1372,6 +1384,8 @@ export interface LinuxShellBridge {
   nativeNotificationCapabilities?(): Promise<NativeNotificationCapabilities>;
   nativeNotificationShow?(request: NativeNotificationRequest): Promise<NativeNotificationResult>;
   nativeShortcutStatus?(): Promise<NativeShortcutStatus>;
+  /** Optional on older packaged shells; native X11-only companion contract. */
+  petCompanionStatus?(): Promise<PetCompanionStatus>;
   textExpansionList?(): Promise<TextExpansionSnapshot>;
   textExpansionUpsert?(snippet: TextExpansionWireSnippet): Promise<TextExpansionWireSnippet>;
   textExpansionDelete?(id: string): Promise<TextExpansionSnapshot>;
@@ -3792,6 +3806,31 @@ export function decodeNativeShortcutStatus(raw: RawJsonValue): NativeShortcutSta
   };
 }
 
+export function decodePetCompanionStatus(raw: RawJsonValue): PetCompanionStatus {
+  const value = requireObject(raw, 'pet companion status');
+  const state = requireString(pick(value, 'state'), 'pet companion state');
+  if (state !== 'available' && state !== 'degraded' && state !== 'unavailable') {
+    throw new Error(`pet companion state is unsupported: ${state}`);
+  }
+  return {
+    state,
+    compositor: requireString(pick(value, 'compositor'), 'pet companion compositor'),
+    sessionType: str(pick(value, 'sessionType', 'session_type')) || undefined,
+    desktop: str(pick(value, 'desktop')) || undefined,
+    overlaySupported: requireBoolean(
+      pick(value, 'overlaySupported', 'overlay_supported'),
+      'pet companion overlay capability'
+    ),
+    clickThroughSupported: requireBoolean(
+      pick(value, 'clickThroughSupported', 'click_through_supported'),
+      'pet companion click-through capability'
+    ),
+    windowContract: requireString(pick(value, 'windowContract', 'window_contract'), 'pet companion window contract'),
+    reason: requireString(pick(value, 'reason'), 'pet companion reason'),
+    source: requireString(pick(value, 'source'), 'pet companion source')
+  };
+}
+
 function normalizeChannel(s: string): AppVersionInfo['packageChannel'] {
   const lower = s.toLowerCase();
   if (lower.includes('deb')) return 'deb';
@@ -4326,6 +4365,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       decodeNativeNotificationResult(await invoke<RawJsonValue>('native_notification_show', { request })),
     nativeShortcutStatus: async () =>
       decodeNativeShortcutStatus(await invoke<RawJsonValue>('native_shortcut_status')),
+    petCompanionStatus: async () =>
+      decodePetCompanionStatus(await invoke<RawJsonValue>('pet_companion_status')),
     // P29 — authenticated daemon-owned encrypted text-expansion storage.
     textExpansionList: async () => {
       const raw = await invoke<RawJsonValue>('text_expansion_list');

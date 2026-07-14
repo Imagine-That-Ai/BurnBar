@@ -5,10 +5,12 @@ import { CommandPalette } from '../components/CommandPalette.js';
 import { KernelBackdrop } from '../components/KernelBackdrop.js';
 import { TopChrome } from '../components/TopChrome.js';
 import { SurfaceRouter } from '../surfaces/SurfaceRouter.js';
+import { PetSurface } from '../surfaces/PetSurface.js';
 import { ROUTES, type ShellRoute } from '../routes.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
 import { useShellStore } from '../state/shellStore.js';
 import { isChatPopoutWindow } from '../surfaces/chat/chatWindow.js';
+import { isPetCompanionWindow } from '../petCompanionWindow.js';
 
 function isComputerUsePanicHotkey(event: KeyboardEvent): boolean {
   const isPeriod = event.key === '.' || event.code === 'Period';
@@ -28,6 +30,7 @@ export function App() {
   const syncRouteFromHash = useShellStore((s) => s.syncRouteFromHash);
   const bridge = useShellStore((s) => s.bridge);
   const chatPopout = isChatPopoutWindow();
+  const petCompanion = isPetCompanionWindow();
 
   useEffect(() => {
     window.addEventListener('hashchange', syncRouteFromHash);
@@ -139,6 +142,14 @@ export function App() {
     return (
       <main className="chat-popout-shell" id="main" tabIndex={-1}>
         <SurfaceRouter route="chat" />
+      </main>
+    );
+  }
+
+  if (petCompanion) {
+    return (
+      <main className="pet-companion-shell" id="main" tabIndex={-1}>
+        <PetSurface companionMode />
       </main>
     );
   }

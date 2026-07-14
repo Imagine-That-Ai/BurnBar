@@ -27,6 +27,7 @@ import type {
   MemoryReviewInbox,
   MercuryMediaStatus,
   MercuryMediaSessionState,
+  PetCompanionStatus,
   MissionCreateInput,
   MissionDetail,
   MissionListResult
@@ -78,6 +79,17 @@ export const emptyMediaFileAction = (
 
 export const emptyIntegrationsStatus = (): Promise<IntegrationsStatus> =>
   Promise.resolve({ integrations: [] });
+
+export const emptyPetCompanionStatus = (): Promise<PetCompanionStatus> =>
+  Promise.resolve({
+    state: 'unavailable',
+    compositor: 'unknown/unknown',
+    overlaySupported: false,
+    clickThroughSupported: false,
+    windowContract: 'none',
+    reason: 'Native companion-window support is unavailable in the test shell.',
+    source: 'test-bridge'
+  });
 
 export const emptyMissionCreate = (
   _input: MissionCreateInput
@@ -359,6 +371,7 @@ export const bridgeStubDefaults = {
   mediaFileDecline: emptyMediaFileAction,
   mediaFileSend: emptyMediaFileAction,
   integrationsStatus: emptyIntegrationsStatus,
+  petCompanionStatus: emptyPetCompanionStatus,
   missionGet: emptyMissionGet,
   missionCancel: emptyMissionCancel,
   missionCreate: emptyMissionCreate,

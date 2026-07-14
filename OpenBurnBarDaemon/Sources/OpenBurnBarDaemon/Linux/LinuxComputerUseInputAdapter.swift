@@ -1,5 +1,6 @@
 #if os(Linux)
 import Foundation
+import Glibc
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 
@@ -93,6 +94,60 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     public enum AdapterID: String, Codable, Equatable, Sendable {
         case atspi2 = "at-spi2"
         case x11XTest = "x11-xtest"
+        /// xdg-desktop-portal RemoteDesktop/libei capability. This is a
+        /// capability probe only until a consent-backed libei event sink is
+        /// provisioned by the desktop session; it must never be treated as an
+        /// input executor by itself.
+        case waylandPortal = "wayland-portal-remote-desktop"
+    }
+
+    public enum WaylandPortalState: String, Codable, Equatable, Sendable {
+        case notWayland = "not_wayland"
+        case unavailable
+        case consentRequired = "consent_required"
+        case denied
+        case timedOut = "timed_out"
+        case cancelled
+        case unsupported
+    }
+
+    public struct WaylandPortalCapability: Codable, Equatable, Sendable {
+        public let state: WaylandPortalState
+        public let remoteDesktop: Bool
+        public let screenCast: Bool
+        public let requiresConsent: Bool
+        public let requiresApproval: Bool
+        /// A fixed, non-sensitive reason. Probe stdout/stderr is intentionally
+        /// not returned because a desktop broker could include window titles,
+        /// account names, or other user data in diagnostics.
+        public let reason: String
+
+        public init(
+            state: WaylandPortalState,
+            remoteDesktop: Bool = false,
+            screenCast: Bool = false,
+            requiresConsent: Bool = true,
+            requiresApproval: Bool = true,
+            reason: String
+        ) {
+            self.state = state
+            self.remoteDesktop = remoteDesktop
+            self.screenCast = screenCast
+            self.requiresConsent = requiresConsent
+            self.requiresApproval = requiresApproval
+            self.reason = reason
+        }
+
+        public var isWayland: Bool {
+            state != .notWayland
+        }
+
+        /// Introspection proves only that the portal interface exists. A live
+        /// input grant is established by an interactive user consent flow and
+        /// is therefore deliberately not implied by this property.
+        public var isProbeReady: Bool {
+            state == .consentRequired && remoteDesktop
+        }
     }
 
     public enum AdapterError: Error, Equatable, CustomStringConvertible {
@@ -101,6 +156,11 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         case unsupportedAction(String)
         case killSwitchActive(String)
         case commandFailed(adapter: String, exitCode: Int32, stderr: String)
+        case portalUnavailable(String)
+        case portalConsentRequired(String)
+        case portalDenied(String)
+        case portalTimedOut
+        case portalCancelled
 
         public var description: String {
             switch self {
@@ -114,6 +174,16 @@ public struct LinuxComputerUseInputAdapter: Sendable {
                 return "linux_input_kill_switch_active: \(detail)"
             case .commandFailed(let adapter, let exitCode, let stderr):
                 return "linux_input_command_failed adapter=\(adapter) exit=\(exitCode) stderr=\(stderr)"
+            case .portalUnavailable(let detail):
+                return "linux_input_portal_unavailable: \(detail)"
+            case .portalConsentRequired(let detail):
+                return "linux_input_portal_consent_required: \(detail)"
+            case .portalDenied(let detail):
+                return "linux_input_portal_denied: \(detail)"
+            case .portalTimedOut:
+                return "linux_input_portal_timed_out"
+            case .portalCancelled:
+                return "linux_input_portal_cancelled"
             }
         }
     }
@@ -158,10 +228,25 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     public typealias EnvironmentReader = @Sendable (_ name: String) -> String?
     public typealias ExecutableResolver = @Sendable (_ name: String) -> String?
     public typealias CommandRunner = @Sendable (_ executablePath: String, _ arguments: [String]) throws -> CommandResult
+    public typealias PortalProbeRunner = @Sendable (
+        _ executablePath: String,
+        _ arguments: [String],
+        _ timeoutMillis: Int
+    ) throws -> CommandResult
+
+    private static let portalProbeArguments = [
+        "introspect",
+        "--session",
+        "--dest", "org.freedesktop.portal.Desktop",
+        "--object-path", "/org/freedesktop/portal/desktop"
+    ]
+    private static let defaultPortalProbeTimeoutMillis = 1_500
 
     private let environment: EnvironmentReader
     private let resolveExecutable: ExecutableResolver
     private let runCommand: CommandRunner
+    private let runPortalProbe: PortalProbeRunner
+    private let portalProbeTimeoutMillis: Int
 
     private enum DenyRegionTarget {
         case clear
@@ -173,22 +258,112 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     init(
         environment: @escaping EnvironmentReader = { ProcessInfo.processInfo.environment[$0] },
         resolveExecutable: @escaping ExecutableResolver = LinuxComputerUseInputAdapter.which,
-        runCommand: @escaping CommandRunner = LinuxComputerUseInputAdapter.runProcess
+        runCommand: @escaping CommandRunner = LinuxComputerUseInputAdapter.runProcess,
+        runPortalProbe: PortalProbeRunner? = nil,
+        portalProbeTimeoutMillis: Int = LinuxComputerUseInputAdapter.defaultPortalProbeTimeoutMillis
     ) {
         self.environment = environment
         self.resolveExecutable = resolveExecutable
         self.runCommand = runCommand
+        if let runPortalProbe {
+            self.runPortalProbe = runPortalProbe
+        } else {
+            self.runPortalProbe = LinuxComputerUseInputAdapter.runBoundedProcess
+        }
+        self.portalProbeTimeoutMillis = max(1, portalProbeTimeoutMillis)
     }
 
     public func isAvailableForSystemInput() -> Bool {
         atspi2Available() || x11XTestAvailable()
     }
 
+    /// Returns a bounded, non-invasive probe of the Wayland desktop portal.
+    /// The probe does not open a session or trigger a consent dialog. A
+    /// `consentRequired` result means the interface is present and the next
+    /// step must be an explicit user-approved RemoteDesktop/libei session.
+    public func waylandPortalCapability() -> WaylandPortalCapability {
+        guard !LinuxPrivilegedInputKillFlag.isActive(environment: environment),
+              !LinuxPrivilegedInputKillFlag.environmentKillSwitchActive(environment: environment) else {
+            return WaylandPortalCapability(
+                state: .unavailable,
+                reason: "computer_use_kill_switch_active"
+            )
+        }
+        guard isWaylandSession() else {
+            return WaylandPortalCapability(
+                state: .notWayland,
+                requiresConsent: false,
+                requiresApproval: false,
+                reason: "wayland_session_not_detected"
+            )
+        }
+        guard nonEmptyEnvironment("DBUS_SESSION_BUS_ADDRESS") != nil else {
+            return WaylandPortalCapability(
+                state: .unavailable,
+                reason: "session_bus_unavailable"
+            )
+        }
+        guard let gdbus = resolveExecutable("gdbus") else {
+            return WaylandPortalCapability(
+                state: .unavailable,
+                reason: "gdbus_unavailable"
+            )
+        }
+
+        let result: CommandResult
+        do {
+            result = try runPortalProbe(gdbus, Self.portalProbeArguments, portalProbeTimeoutMillis)
+        } catch is CancellationError {
+            return WaylandPortalCapability(state: .cancelled, reason: "probe_cancelled")
+        } catch {
+            return WaylandPortalCapability(state: .unavailable, reason: "portal_probe_failed")
+        }
+
+        switch result.exitCode {
+        case 0:
+            let output = result.stdout + "\n" + result.stderr
+            let remoteDesktop = output.contains("org.freedesktop.portal.RemoteDesktop")
+            let screenCast = output.contains("org.freedesktop.portal.ScreenCast")
+            guard remoteDesktop else {
+                return WaylandPortalCapability(
+                    state: .unsupported,
+                    remoteDesktop: false,
+                    screenCast: screenCast,
+                    reason: "remote_desktop_portal_unavailable"
+                )
+            }
+            return WaylandPortalCapability(
+                state: .consentRequired,
+                remoteDesktop: true,
+                screenCast: screenCast,
+                reason: "remote_desktop_portal_requires_user_consent"
+            )
+        case 124:
+            return WaylandPortalCapability(state: .timedOut, reason: "portal_probe_timed_out")
+        case 130:
+            return WaylandPortalCapability(state: .cancelled, reason: "probe_cancelled")
+        default:
+            return WaylandPortalCapability(state: .denied, reason: "portal_probe_denied")
+        }
+    }
+
+    /// Async wrapper used by session orchestration when a capability refresh
+    /// may be cancelled while a desktop broker is being probed.
+    public func probeWaylandPortal() async throws -> WaylandPortalCapability {
+        try Task.checkCancellation()
+        let capability = waylandPortalCapability()
+        try Task.checkCancellation()
+        return capability
+    }
+
     public func dispatch(_ action: MacInputAction) async throws -> BurnBarJSONValue {
+        try Task.checkCancellation()
         try assertKillSwitchNotActive()
         let plan = try plan(for: action)
         let startedAt = Date()
         let result = try runCommand(plan.executablePath, plan.arguments)
+        try Task.checkCancellation()
+        try assertKillSwitchNotActive()
         let durationMs = Date().timeIntervalSince(startedAt) * 1000
         guard result.exitCode == 0 else {
             throw AdapterError.commandFailed(
@@ -214,14 +389,19 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     }
 
     public func inspectAccessibility(_ action: MacInspectAction) async throws -> BurnBarJSONValue {
-        .object([
+        try Task.checkCancellation()
+        let portal = waylandPortalCapability()
+        return .object([
             "platform": .string("linux"),
             "adapter": atspi2Available() ? .string(AdapterID.atspi2.rawValue) : .null,
             "kind": .string(action.kind.rawValue),
             "available": .bool(atspi2Available()),
             "dbusSession": .bool(nonEmptyEnvironment("DBUS_SESSION_BUS_ADDRESS") != nil),
             "atspiBus": .bool(nonEmptyEnvironment("AT_SPI_BUS_ADDRESS") != nil),
-            "python3": .bool(resolveExecutable("python3") != nil)
+            "python3": .bool(resolveExecutable("python3") != nil),
+            "waylandPortalState": .string(portal.state.rawValue),
+            "waylandPortalRemoteDesktop": .bool(portal.remoteDesktop),
+            "waylandPortalScreenCast": .bool(portal.screenCast)
         ])
     }
 
@@ -256,7 +436,8 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     }
 
     public func capabilityRows() -> [BurnBarJSONValue] {
-        [
+        let portal = waylandPortalCapability()
+        return [
             .object([
                 "id": .string(AdapterID.atspi2.rawValue),
                 "kind": .string("input"),
@@ -272,11 +453,24 @@ public struct LinuxComputerUseInputAdapter: Sendable {
                 "requiresConsent": .bool(false),
                 "requiresApproval": .bool(true),
                 "reason": .string(x11XTestAvailable() ? "X11 DISPLAY and xdotool are reachable." : "X11 DISPLAY or xdotool is unavailable.")
+            ]),
+            .object([
+                "id": .string(AdapterID.waylandPortal.rawValue),
+                "kind": .string("input"),
+                "status": .string(portalCapabilityStatus(portal)),
+                "requiresConsent": .bool(portal.requiresConsent),
+                "requiresApproval": .bool(portal.requiresApproval),
+                "reason": .string(portal.reason),
+                "remoteDesktop": .bool(portal.remoteDesktop),
+                "screenCast": .bool(portal.screenCast)
             ])
         ]
     }
 
     public func plan(for action: MacInputAction) throws -> DispatchPlan {
+        if forcedAdapter() == .waylandPortal {
+            throw portalInputError(for: waylandPortalCapability())
+        }
         if prefersATSPIClick(for: action), atspi2Available() {
             return try atspi2ClickPlan(for: action)
         }
@@ -288,6 +482,9 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         }
         if forcedAdapter() == .x11XTest {
             throw AdapterError.adapterUnavailable("forced x11-xtest but DISPLAY or xdotool is unavailable")
+        }
+        if isWaylandSession() {
+            throw portalInputError(for: waylandPortalCapability())
         }
         throw AdapterError.adapterUnavailable("no approved Linux input adapter is available")
     }
@@ -391,6 +588,37 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         resolveExecutable("xdotool") != nil && nonEmptyEnvironment("DISPLAY") != nil
     }
 
+    private func isWaylandSession() -> Bool {
+        nonEmptyEnvironment("XDG_SESSION_TYPE")?.lowercased() == "wayland"
+            || nonEmptyEnvironment("WAYLAND_DISPLAY") != nil
+    }
+
+    private func portalCapabilityStatus(_ capability: WaylandPortalCapability) -> String {
+        switch capability.state {
+        case .notWayland:
+            return "not_applicable"
+        case .consentRequired:
+            return "available_needs_consent"
+        case .unavailable, .denied, .timedOut, .cancelled, .unsupported:
+            return "blocked"
+        }
+    }
+
+    private func portalInputError(for capability: WaylandPortalCapability) -> AdapterError {
+        switch capability.state {
+        case .consentRequired:
+            return .portalConsentRequired(capability.reason)
+        case .denied:
+            return .portalDenied(capability.reason)
+        case .timedOut:
+            return .portalTimedOut
+        case .cancelled:
+            return .portalCancelled
+        case .notWayland, .unavailable, .unsupported:
+            return .portalUnavailable(capability.reason)
+        }
+    }
+
     private func denyRegionTarget(for action: MacInputAction) -> DenyRegionTarget {
         switch action.kind {
         case .click, .pointerClick:
@@ -466,6 +694,8 @@ public struct LinuxComputerUseInputAdapter: Sendable {
             return .atspi2
         case "x11-xtest", "x11", "xtest", "xdotool":
             return .x11XTest
+        case "wayland-portal", "wayland", "xdg-portal", "remote-desktop", "libei":
+            return .waylandPortal
         default:
             return nil
         }
@@ -544,10 +774,54 @@ public struct LinuxComputerUseInputAdapter: Sendable {
             candidates = ["/usr/bin/python3", "/usr/local/bin/python3", "/bin/python3"]
         case "xdotool":
             candidates = ["/usr/bin/xdotool", "/usr/local/bin/xdotool"]
+        case "gdbus":
+            candidates = ["/usr/bin/gdbus", "/usr/local/bin/gdbus", "/bin/gdbus"]
         default:
             candidates = []
         }
         return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
+    }
+
+    /// Executes the fixed portal introspection command without a shell and
+    /// with a hard deadline. A timeout/cancellation status is represented by
+    /// the conventional 124/130 exit values and is converted to typed probe
+    /// states by `waylandPortalCapability()`.
+    private static func runBoundedProcess(
+        executablePath: String,
+        arguments: [String],
+        timeoutMillis: Int
+    ) throws -> CommandResult {
+        if Task.isCancelled {
+            return CommandResult(exitCode: 130)
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+        let output = Pipe()
+        let error = Pipe()
+        process.standardOutput = output
+        process.standardError = error
+        try process.run()
+
+        let deadline = Date().addingTimeInterval(Double(max(1, timeoutMillis)) / 1_000)
+        while process.isRunning {
+            if Task.isCancelled {
+                process.terminate()
+                process.waitUntilExit()
+                return CommandResult(exitCode: 130)
+            }
+            if Date() >= deadline {
+                process.terminate()
+                process.waitUntilExit()
+                return CommandResult(exitCode: 124)
+            }
+            usleep(10_000)
+        }
+        return CommandResult(
+            exitCode: process.terminationStatus,
+            stdout: readPipe(output),
+            stderr: readPipe(error)
+        )
     }
 
     private static func runProcess(executablePath: String, arguments: [String]) throws -> CommandResult {

@@ -14,7 +14,8 @@ import {
   decodeNativeNotificationCapabilities,
   decodeNativeNotificationResult,
   decodeNativeNotificationActionEvent,
-  decodeNativeShortcutStatus
+  decodeNativeShortcutStatus,
+  decodePetCompanionStatus
 } from './tauriBridge';
 
 const ACCOUNT_UPDATED_AT = '2026-07-10T12:00:00Z';
@@ -383,6 +384,38 @@ describe('bridgeStubDefaults media wiring', () => {
     await expect(bridgeStubDefaults.mediaDeclineCall('req')).resolves.toMatchObject({ phase: 'capability-absent' });
     await expect(bridgeStubDefaults.mediaEndCall()).resolves.toMatchObject({ phase: 'capability-absent' });
     await expect(bridgeStubDefaults.mediaCapabilityGet()).resolves.toMatchObject({ available: false });
+  });
+});
+
+describe('pet companion wire decoding', () => {
+  it('accepts the explicit X11 native-window contract', () => {
+    expect(decodePetCompanionStatus({
+      state: 'available',
+      compositor: 'GNOME/x11',
+      sessionType: 'x11',
+      desktop: 'GNOME',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'tauri-x11-companion-v1',
+      reason: 'ready',
+      source: 'tauri-x11-companion-window'
+    })).toMatchObject({
+      state: 'available',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'tauri-x11-companion-v1'
+    });
+  });
+
+  it('rejects malformed or unknown native-window states', () => {
+    expect(() => decodePetCompanionStatus({
+      state: 'maybe', compositor: 'x11', overlaySupported: false, clickThroughSupported: false,
+      windowContract: 'none', reason: 'bad', source: 'test'
+    })).toThrow(/state is unsupported/);
+    expect(() => decodePetCompanionStatus({
+      state: 'degraded', compositor: 'x11', overlaySupported: false, clickThroughSupported: false,
+      windowContract: 'none', reason: 'bad'
+    })).toThrow(/source/);
   });
 });
 

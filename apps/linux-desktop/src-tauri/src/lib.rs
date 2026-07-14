@@ -3584,6 +3584,99 @@ fn session_env() -> serde_json::Value {
     })
 }
 
+// ───────────────── P30: native pet companion window ─────────────────
+//
+// Tauri's transparent/always-on-top WebView window is a real native window,
+// but Linux only has a predictable input-pass-through contract on X11. Keep
+// this probe stricter than the runtime capability catalog: a DISPLAY is
+// required before the renderer may offer the native companion action. Wayland
+// and unknown sessions stay on the contained, draggable route.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PetCompanionStatus {
+    state: String,
+    compositor: String,
+    session_type: Option<String>,
+    desktop: Option<String>,
+    overlay_supported: bool,
+    click_through_supported: bool,
+    window_contract: String,
+    reason: String,
+    source: String,
+}
+
+fn pet_companion_status_for_env(
+    session_type: Option<&str>,
+    desktop: Option<&str>,
+    display: Option<&str>,
+) -> PetCompanionStatus {
+    let normalized_session = session_type
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase);
+    let normalized_desktop = desktop
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let display_available = display
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    let compositor = format!(
+        "{}/{}",
+        normalized_desktop.as_deref().unwrap_or("unknown"),
+        normalized_session.as_deref().unwrap_or("unknown")
+    );
+
+    if normalized_session.as_deref() == Some("x11") && display_available {
+        return PetCompanionStatus {
+            state: "available".to_string(),
+            compositor,
+            session_type: normalized_session,
+            desktop: normalized_desktop,
+            overlay_supported: true,
+            click_through_supported: true,
+            window_contract: "tauri-x11-companion-v1".to_string(),
+            reason: "X11 and DISPLAY are present; Tauri can create the constrained companion window and set input pass-through explicitly.".to_string(),
+            source: "tauri-x11-companion-window".to_string(),
+        };
+    }
+
+    let (state, reason) = match normalized_session.as_deref() {
+        Some("wayland") => (
+            "degraded",
+            "Wayland does not provide a verified cross-compositor click-through contract; use the contained draggable companion window.",
+        ),
+        Some("x11") => (
+            "degraded",
+            "The X11 session has no DISPLAY value, so the native companion window is disabled.",
+        ),
+        _ => (
+            "unavailable",
+            "The desktop session is unknown, so native companion-window behavior is disabled.",
+        ),
+    };
+    PetCompanionStatus {
+        state: state.to_string(),
+        compositor,
+        session_type: normalized_session,
+        desktop: normalized_desktop,
+        overlay_supported: false,
+        click_through_supported: false,
+        window_contract: "none".to_string(),
+        reason: reason.to_string(),
+        source: "desktop-session-probe".to_string(),
+    }
+}
+
+#[tauri::command]
+fn pet_companion_status() -> PetCompanionStatus {
+    pet_companion_status_for_env(
+        std::env::var("XDG_SESSION_TYPE").ok().as_deref(),
+        std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref(),
+        std::env::var("DISPLAY").ok().as_deref(),
+    )
+}
+
 // ───────────────── P12: Mercury media ─────────────────
 #[tauri::command]
 fn media_status() -> Result<serde_json::Value, String> {
@@ -5975,6 +6068,7 @@ pub fn run() {
             text_expansion_delete,
             text_expansion_consent_update,
             session_env,
+            pet_companion_status,
             media_status,
             media_session_state,
             media_accept_call,
@@ -7605,6 +7699,36 @@ mod tests {
         assert_eq!(missing.state, "unavailable");
         assert_eq!(missing.reason, "Mercury is unavailable.");
     }
+
+    #[test]
+    fn pet_companion_status_requires_x11_and_display() {
+        let available = pet_companion_status_for_env(Some("X11"), Some("GNOME"), Some(":0"));
+        assert_eq!(available.state, "available");
+        assert_eq!(available.compositor, "GNOME/x11");
+        assert!(available.overlay_supported);
+        assert!(available.click_through_supported);
+        assert_eq!(available.window_contract, "tauri-x11-companion-v1");
+
+        let missing_display = pet_companion_status_for_env(Some("x11"), Some("KDE"), None);
+        assert_eq!(missing_display.state, "degraded");
+        assert!(!missing_display.overlay_supported);
+        assert!(missing_display.reason.contains("no DISPLAY"));
+    }
+
+    #[test]
+    fn pet_companion_status_keeps_wayland_and_unknown_sessions_fail_closed() {
+        let wayland = pet_companion_status_for_env(Some("wayland"), Some("GNOME"), Some(":0"));
+        assert_eq!(wayland.state, "degraded");
+        assert!(!wayland.overlay_supported);
+        assert!(!wayland.click_through_supported);
+        assert!(wayland.reason.contains("Wayland"));
+
+        let unknown = pet_companion_status_for_env(None, None, Some(":0"));
+        assert_eq!(unknown.state, "unavailable");
+        assert_eq!(unknown.compositor, "unknown/unknown");
+        assert_eq!(unknown.window_contract, "none");
+    }
+
     #[test]
     fn computer_use_approval_release_wire_requires_signed_phone_authority() {
         let result = computer_use_approval_respond_wire(

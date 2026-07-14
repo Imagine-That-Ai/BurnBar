@@ -15,17 +15,21 @@ import {
   installDaemonSubscriptionLifecycle
 } from './state/daemonSubscriptionSupervisor.js';
 import { useShellStore } from './state/shellStore.js';
+import { isPetCompanionWindow } from './petCompanionWindow.js';
 
 async function boot(): Promise<void> {
   const end = markStart('app.start');
   const removeReducedMotionListener = applyReducedMotionClass();
   const chatPopout = new URLSearchParams(location.search).get('window') === 'chat-popout';
+  const petCompanion = isPetCompanionWindow();
   const requestedHash = location.hash;
-  const hadDeepLink = chatPopout || Boolean(requestedHash && requestedHash !== '#/onboarding');
+  const hadDeepLink = chatPopout || petCompanion || Boolean(requestedHash && requestedHash !== '#/onboarding');
+
+  if (petCompanion) document.documentElement.classList.add('pet-companion-window');
 
   // First run lands on the onboarding wizard unless a deep link is present.
   const ob = readOnboarding();
-  if (!chatPopout && location.hash !== '#/onboarding') {
+  if (!chatPopout && !petCompanion && location.hash !== '#/onboarding') {
     location.hash = '#/onboarding';
     useShellStore.getState().syncRouteFromHash();
   }
@@ -42,6 +46,8 @@ async function boot(): Promise<void> {
   const bridge = useShellStore.getState().bridge;
   if (chatPopout) {
     useShellStore.getState().setRoute('chat');
+  } else if (petCompanion) {
+    useShellStore.getState().setRoute('pet');
   }
   if (bridge) {
     try {
@@ -55,6 +61,8 @@ async function boot(): Promise<void> {
       cacheOnboarding(authoritative);
       if (chatPopout) {
         useShellStore.getState().setRoute('chat');
+      } else if (petCompanion) {
+        useShellStore.getState().setRoute('pet');
       } else if (requestedNativeRoute) {
         useShellStore.getState().setRoute(requestedNativeRoute);
       } else if (shouldRouteToOnboarding(authoritative)) {
@@ -70,7 +78,7 @@ async function boot(): Promise<void> {
       useShellStore.getState().setRoute('onboarding');
     }
   } else {
-    if (!chatPopout) useShellStore.getState().setRoute('onboarding');
+    if (!chatPopout && !petCompanion) useShellStore.getState().setRoute('onboarding');
   }
   end();
 
@@ -99,6 +107,7 @@ async function boot(): Promise<void> {
     : () => {};
   window.addEventListener('beforeunload', () => {
     removeReducedMotionListener();
+    if (petCompanion) document.documentElement.classList.remove('pet-companion-window');
     uninstallSubscriptionLifecycle();
     uninstallHealthLifecycle();
   }, { once: true });

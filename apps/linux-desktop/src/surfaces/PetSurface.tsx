@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { prefersReducedMotion } from '../a11y.js';
 import { buildPetBehaviorGraph } from '../petBehaviorGraph.js';
-import { probePetCapability, type PetCapabilityProbe } from '../petCompanion.js';
+import {
+  petNativeContractFromStatus,
+  probePetCapability,
+  type PetCapabilityProbe
+} from '../petCompanion.js';
 import { mountPetGltfRuntime, stopPetGltfRuntime } from '../petGltfRuntime.js';
+import {
+  openPetCompanionWindow,
+  setPetCompanionClickThrough,
+  type PetCompanionWindowState
+} from '../petCompanionWindow.js';
 import { useShellStore } from '../state/shellStore.js';
+import type { PetCompanionStatus } from '../tauriBridge.js';
 import { BehaviorGraphView } from './pet/BehaviorGraphView.js';
 import { TierMatrixTable } from './pet/TierMatrixTable.js';
 import './pet/pet.css';
@@ -15,12 +25,15 @@ const PET_ASSET_URL = '/pets/kawaii-aurora-fox-actions.glb';
  * preview; the native runtime capability manifest decides whether an overlay
  * tier can be advertised. Environment variables are never treated as proof.
  */
-export function PetSurface() {
+export function PetSurface({ companionMode = false }: { companionMode?: boolean }) {
   const runtimeCapabilities = useShellStore((s) => s.runtimeCapabilities);
+  const bridge = useShellStore((s) => s.bridge);
   const stageRef = useRef<HTMLDivElement>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [runtimeState, setRuntimeState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [capability, setCapability] = useState<PetCapabilityProbe>(() => probePetCapability(null));
+  const [nativeStatus, setNativeStatus] = useState<PetCompanionStatus | null>(null);
+  const [companionWindow, setCompanionWindow] = useState<PetCompanionWindowState | null>(null);
   const [reactWaveActive, setReactWaveActive] = useState(false);
   const [containedPetSummoned, setContainedPetSummoned] = useState(false);
   const [containedPetSelected, setContainedPetSelected] = useState(false);
@@ -28,8 +41,26 @@ export function PetSurface() {
   const graph = buildPetBehaviorGraph(capability.tier);
 
   useEffect(() => {
-    setCapability(probePetCapability(runtimeCapabilities));
-  }, [runtimeCapabilities]);
+    setCapability(probePetCapability(runtimeCapabilities, petNativeContractFromStatus(nativeStatus)));
+  }, [nativeStatus, runtimeCapabilities]);
+
+  useEffect(() => {
+    if (!bridge?.petCompanionStatus) {
+      setNativeStatus(null);
+      return;
+    }
+    let cancelled = false;
+    void bridge.petCompanionStatus()
+      .then((status) => {
+        if (!cancelled) setNativeStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setNativeStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -84,6 +115,31 @@ export function PetSurface() {
     stageRef.current?.focus({ preventScroll: true });
   }, [capability.containedActions.selection.supported]);
 
+  const summonNativePet = useCallback(async () => {
+    if (!capability.actions.overlay.supported) return;
+    const result = await openPetCompanionWindow();
+    setCompanionWindow(result);
+    setNativeStatus(result.status);
+    setContainedActionStatus(
+      result.opened
+        ? 'Native X11 companion window opened and focused. Input pass-through is opt-in.'
+        : result.status.reason
+    );
+  }, [capability.actions.overlay.supported]);
+
+  const toggleNativeClickThrough = useCallback(async () => {
+    const result = await setPetCompanionClickThrough(!companionWindow?.clickThrough);
+    setCompanionWindow(result);
+    setNativeStatus(result.status);
+    setContainedActionStatus(
+      result.opened
+        ? result.clickThrough
+          ? 'Input pass-through enabled. Use the main OpenBurnBar window to restore interaction.'
+          : 'Input pass-through disabled and the companion window is focused.'
+        : result.status.reason
+    );
+  }, [companionWindow?.clickThrough]);
+
   const stageClasses = [
     'pet-stage',
     reactWaveActive ? 'pet-stage--react-wave' : '',
@@ -102,7 +158,7 @@ export function PetSurface() {
         tabIndex={-1}
         data-overlay-tier={capability.tier}
         data-capability-state={capability.state}
-        data-input-passthrough={capability.actions['click-through'].supported ? 'true' : 'false'}
+        data-input-passthrough={companionWindow?.clickThrough ? 'true' : 'false'}
         data-pet-runtime={runtimeState}
         data-pet-summoned={containedPetSummoned ? 'true' : 'false'}
         data-pet-selected={containedPetSelected ? 'true' : 'false'}
@@ -116,7 +172,7 @@ export function PetSurface() {
       >
         {runtimeState === 'loading' ? 'Loading GLB pet runtime...' : null}
       </div>
-      <div className="pet-actions">
+      {!companionMode ? <div className="pet-actions">
         <button type="button" className="pet-wave-button" onClick={waveAtPet}>
           Wave at preview
         </button>
@@ -137,7 +193,17 @@ export function PetSurface() {
         >
           {containedPetSelected ? 'Pet selected' : 'Select contained pet'}
         </button>
-      </div>
+        {capability.actions.overlay.supported ? (
+          <button type="button" className="pet-action-button" onClick={() => void summonNativePet()}>
+            Open native companion
+          </button>
+        ) : null}
+        {companionWindow?.opened ? (
+          <button type="button" className="pet-action-button" onClick={() => void toggleNativeClickThrough()}>
+            {companionWindow.clickThrough ? 'Restore companion interaction' : 'Enable click-through'}
+          </button>
+        ) : null}
+      </div> : null}
       {containedActionStatus ? (
         <p className="pet-action-status" role="status" aria-live="polite">
           {containedActionStatus}
@@ -148,23 +214,27 @@ export function PetSurface() {
           {runtimeError}
         </p>
       ) : null}
-      {capability.previewOnly ? (
+      {capability.previewOnly && !companionMode ? (
         <p className="pet-preview-note" role="status">
           Preview only: the packaged runtime capability probe is unavailable, so overlay and input pass-through remain
           disabled.
         </p>
       ) : null}
-      <p>{`Tier: ${capability.tier}`}</p>
-      <p>{`Capability: ${capability.state}`}</p>
-      {capability.compositor ? <p className="muted">{`Session: ${capability.compositor}`}</p> : null}
-      <p className="muted">{capability.message}</p>
-      {capability.substitute ? <p className="muted">{capability.substitute}</p> : null}
-      <p className="muted">
-        {capability.actions['click-through'].supported
-          ? 'Input pass-through is enabled only because the native manifest reported the overlay tier as available.'
-          : 'Contained fallback is draggable and does not claim click-through or desktop-level interaction.'}
-      </p>
-      <section className="pet-capability-section" aria-labelledby="pet-capabilities-title">
+      {!companionMode ? <>
+        <p>{`Tier: ${capability.tier}`}</p>
+        <p>{`Capability: ${capability.state}`}</p>
+        {capability.compositor ? <p className="muted">{`Session: ${capability.compositor}`}</p> : null}
+        <p className="muted">{capability.message}</p>
+        {capability.substitute ? <p className="muted">{capability.substitute}</p> : null}
+        <p className="muted">
+          {capability.actions['click-through'].supported
+            ? companionWindow?.clickThrough
+              ? 'Input pass-through is enabled for the native companion window.'
+              : 'Native input pass-through is available but remains disabled until explicitly enabled.'
+            : 'Contained fallback is draggable and does not claim click-through or desktop-level interaction.'}
+        </p>
+      </> : null}
+      {!companionMode ? <section className="pet-capability-section" aria-labelledby="pet-capabilities-title">
         <h3 id="pet-capabilities-title" className="pet-section-title">
           Native companion capabilities
         </h3>
@@ -183,10 +253,12 @@ export function PetSurface() {
             </div>
           ))}
         </dl>
-      </section>
-      <p>{`glTF: ${graph.gltfAsset}`}</p>
-      <BehaviorGraphView graph={graph} />
-      <TierMatrixTable />
+      </section> : null}
+      {!companionMode ? <>
+        <p>{`glTF: ${graph.gltfAsset}`}</p>
+        <BehaviorGraphView graph={graph} />
+        <TierMatrixTable />
+      </> : null}
     </div>
   );
 }

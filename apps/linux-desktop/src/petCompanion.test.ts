@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeAvailableRuntimeCapabilityManifest } from './testing/bridgeStubs.js';
-import { detectPetTierFromEnv, probePetCapability } from './petCompanion.js';
+import { detectPetTierFromEnv, petNativeContractFromStatus, probePetCapability } from './petCompanion.js';
 
 describe('probePetCapability', () => {
   it('fails closed when the packaged manifest is unavailable', () => {
@@ -76,5 +76,32 @@ describe('detectPetTierFromEnv', () => {
     });
     expect(tier.tier).toBe('overlay-pass-through');
     expect(tier.message).toContain('not proof');
+  });
+});
+
+describe('petNativeContractFromStatus', () => {
+  it('only enables overlay actions for an explicitly available native X11 contract', () => {
+    expect(petNativeContractFromStatus({
+      state: 'available',
+      compositor: 'GNOME/x11',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'tauri-x11-companion-v1',
+      reason: 'ready',
+      source: 'test'
+    })).toEqual({ overlay: true, 'click-through': true });
+  });
+
+  it('keeps degraded Wayland and missing statuses fail-closed', () => {
+    expect(petNativeContractFromStatus({
+      state: 'degraded',
+      compositor: 'GNOME/wayland',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'unexpected',
+      reason: 'Wayland fallback',
+      source: 'test'
+    })).toEqual({ overlay: false, 'click-through': false });
+    expect(petNativeContractFromStatus(null)).toEqual({ overlay: false, 'click-through': false });
   });
 });

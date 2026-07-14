@@ -4,6 +4,7 @@ import {
   type RuntimeCapabilityManifest,
   type RuntimeCapabilityState
 } from './runtimeCapabilities.js';
+import type { PetCompanionStatus } from './tauriBridge.js';
 
 export type PetTier = 'overlay-pass-through' | 'draggable-contained';
 
@@ -45,6 +46,14 @@ export type PetNativeContract = {
   overlay: boolean;
   'click-through': boolean;
 };
+
+export function petNativeContractFromStatus(status: PetCompanionStatus | null | undefined): PetNativeContract {
+  if (!status || status.state !== 'available') return { overlay: false, 'click-through': false };
+  return {
+    overlay: status.overlaySupported,
+    'click-through': status.clickThroughSupported
+  };
+}
 
 const NO_NATIVE_CONTRACT: PetNativeContract = {
   overlay: false,

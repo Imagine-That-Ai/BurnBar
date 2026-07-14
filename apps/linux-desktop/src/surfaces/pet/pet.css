@@ -4,6 +4,34 @@
   gap: var(--space-4);
 }
 
+/* The native child is transparent and intentionally compact. Keep only the
+ * GLB stage visible there; the full capability matrix remains in the main
+ * shell so a pass-through child cannot trap controls behind an ignored window.
+ */
+html.pet-companion-window,
+html.pet-companion-window body {
+  background: transparent !important;
+}
+
+.pet-companion-shell {
+  width: 100%;
+  min-height: 100vh;
+  padding: var(--space-3);
+  background: transparent;
+}
+
+.pet-companion-shell .pet-surface {
+  min-height: 100%;
+  justify-content: center;
+}
+
+.pet-companion-shell .pet-stage {
+  min-height: 260px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .pet-stage {
   min-height: 220px;
   display: grid;

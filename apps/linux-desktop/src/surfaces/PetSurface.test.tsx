@@ -7,10 +7,17 @@ import { makeAvailableRuntimeCapabilityManifest } from '../testing/bridgeStubs.j
 
 const mountMock = vi.fn();
 const stopMock = vi.fn();
+const openCompanionMock = vi.fn();
+const clickThroughMock = vi.fn();
 
 vi.mock('../petGltfRuntime.js', () => ({
   mountPetGltfRuntime: (...args: unknown[]) => mountMock(...args),
   stopPetGltfRuntime: () => stopMock()
+}));
+
+vi.mock('../petCompanionWindow.js', () => ({
+  openPetCompanionWindow: (...args: unknown[]) => openCompanionMock(...args),
+  setPetCompanionClickThrough: (...args: unknown[]) => clickThroughMock(...args)
 }));
 
 function stubMatchMedia(matches = false): void {
@@ -48,6 +55,8 @@ describe('PetSurface', () => {
     resetShell();
     mountMock.mockReset();
     stopMock.mockReset();
+    openCompanionMock.mockReset();
+    clickThroughMock.mockReset();
     mountMock.mockResolvedValue({
       asset: { version: '2.0' },
       nodes: [],
@@ -91,6 +100,65 @@ describe('PetSurface', () => {
     expect(stage.getAttribute('data-overlay-tier')).toBe('draggable-contained');
     expect(stage.getAttribute('data-input-passthrough')).toBe('false');
     expect(screen.getByText(/companion-window contract is not wired/i)).toBeTruthy();
+  });
+
+  it('summons and focuses the native companion only for an available X11 contract', async () => {
+    const runtimeCapabilities = makeAvailableRuntimeCapabilityManifest();
+    const status = {
+      state: 'available' as const,
+      compositor: 'GNOME/x11',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'tauri-x11-companion-v1',
+      reason: 'ready',
+      source: 'test'
+    };
+    openCompanionMock.mockResolvedValue({ status, opened: true, clickThrough: false });
+    useShellStore.setState({
+      runtimeCapabilities,
+      bridge: { petCompanionStatus: vi.fn().mockResolvedValue(status) } as never,
+      bridgeReady: true
+    });
+    render(<PetSurface />);
+
+    const open = await screen.findByRole('button', { name: /open native companion/i });
+    fireEvent.click(open);
+    await waitFor(() => expect(openCompanionMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/opened and focused/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /enable click-through/i })).toBeTruthy();
+  });
+
+  it('requires an explicit click-through action and restores focus when disabled', async () => {
+    const runtimeCapabilities = makeAvailableRuntimeCapabilityManifest();
+    const status = {
+      state: 'available' as const,
+      compositor: 'KDE/x11',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'tauri-x11-companion-v1',
+      reason: 'ready',
+      source: 'test'
+    };
+    openCompanionMock.mockResolvedValue({ status, opened: true, clickThrough: false });
+    clickThroughMock
+      .mockResolvedValueOnce({ status, opened: true, clickThrough: true })
+      .mockResolvedValueOnce({ status, opened: true, clickThrough: false });
+    useShellStore.setState({
+      runtimeCapabilities,
+      bridge: { petCompanionStatus: vi.fn().mockResolvedValue(status) } as never,
+      bridgeReady: true
+    });
+    render(<PetSurface />);
+    fireEvent.click(await screen.findByRole('button', { name: /open native companion/i }));
+    const enable = await screen.findByRole('button', { name: /enable click-through/i });
+    fireEvent.click(enable);
+    await waitFor(() => expect(clickThroughMock).toHaveBeenCalledWith(true));
+    expect(screen.getByRole('img', { name: /pet companion contained preview/i }).getAttribute('data-input-passthrough'))
+      .toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /restore companion interaction/i }));
+    await waitFor(() => expect(clickThroughMock).toHaveBeenLastCalledWith(false));
+    expect(screen.getByRole('img', { name: /pet companion contained preview/i }).getAttribute('data-input-passthrough'))
+      .toBe('false');
   });
   it('renders behavior graph SVG nodes for the active tier', async () => {
     render(<PetSurface />);
@@ -194,6 +262,12 @@ describe('PetSurface', () => {
     await waitFor(() => {
       expect(stage.getAttribute('data-pet-runtime')).toBe('loaded');
     });
+  });
+
+  it('stops the GLB runtime on unmount', () => {
+    const view = render(<PetSurface />);
+    view.unmount();
+    expect(stopMock).toHaveBeenCalledTimes(1);
   });
 
   it('renders tier matrix table rows', async () => {
