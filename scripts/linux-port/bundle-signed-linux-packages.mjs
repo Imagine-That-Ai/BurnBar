@@ -23,7 +23,6 @@ import {
   embedLinuxAppImagePayload,
   prepareLinuxAppImagePeerManifest
 } from './embed-linux-appimage-payload.mjs';
-import { verifyLinuxAppImagePeerManifest } from './lib/linux-appimage-peer-manifest.mjs';
 import { withoutLinuxReleasePrivateKey } from './lib/linux-signing-environment.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -458,12 +457,6 @@ function finalizeSignedPackages() {
     peerManifestBytes: appImageSigned.manifestBytes,
     peerSignature: appImageSigned.signatureBytes,
     env: childEnvironment
-  });
-  verifyLinuxAppImagePeerManifest({
-    manifestBytes: appImageSigned.manifestBytes,
-    signature: appImageSigned.signatureBytes,
-    executable: path.join(appDir, 'src-tauri/target/release/openburnbar-linux-desktop'),
-    publicKeyPem
   });
   return { schemaVersion: 1, phase, version, gitCommit, architecture, packages: reports, appImage: appImageReport };
 }

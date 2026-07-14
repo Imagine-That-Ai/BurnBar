@@ -103,10 +103,14 @@ test('signed AppImage finalization reuses the attested prepare artifact', () => 
     /findSingleArtifact\(path\.join\(bundleRoot, 'appimage'\), 'appimage'\)/u
   );
   assert.doesNotMatch(finalize, /bundleFormat\('appimage'\)/u);
+  assert.doesNotMatch(finalize, /verifyLinuxAppImagePeerManifest\(/u);
+  assert.doesNotMatch(finalize, /target\/release\/openburnbar-linux-desktop/u);
   assert.match(
     finalize,
     /embedLinuxAppImagePayload\([\s\S]*peerManifestBytes: appImageSigned\.manifestBytes/u
   );
+  const embedder = read('scripts/linux-port/embed-linux-appimage-payload.mjs');
+  assert.match(embedder, /assertEmbeddedPayload\(verifiedRoot, \{ requirePeerManifest: peerAttestation !== null \}\)/u);
 });
 
 test('release workflow isolates the signer from mutable build tools and the network', () => {
