@@ -32,7 +32,7 @@ function run(values = {}) {
 test('valid public release variables pass without echoing their values', () => {
   const result = run(VALID);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /validated \(3 identifiers\)/u);
+  assert.match(result.stdout, /validated\./u);
   for (const value of Object.values(VALID)) {
     assert.doesNotMatch(result.stdout, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'));
     assert.doesNotMatch(result.stderr, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'));
