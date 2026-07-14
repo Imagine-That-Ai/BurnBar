@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI
@@ -10,10 +11,7 @@ enum CloudVaultDomainCoreMigrationMode: String, Sendable {
     case rust
 
     static func resolve(environment: [String: String]) -> Self {
-        guard let raw = environment["OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"]?.lowercased() else {
-            return .legacy
-        }
-        return Self(rawValue: raw) ?? .legacy
+        Self(rawValue: DomainCoreBuildProfileResolver.mode(for: .cloudVault, environment: environment).rawValue) ?? .legacy
     }
 }
 
@@ -672,33 +670,111 @@ enum CloudVaultDomainCoreAdapter {
             if mode == .rust || requiresNative(environment) {
                 throw CloudVaultDomainCoreAdapterError.nativeUnavailable
             }
-            return try legacy()
+            let legacyStarted = Date.timeIntervalSinceReferenceDate
+            let legacyValue = try legacy()
+            recordComparison(
+                operation: operation,
+                matches: false,
+                category: "native_unavailable",
+                coreVersion: "0.0.0-native-unavailable",
+                legacyMicros: elapsedMicros(since: legacyStarted),
+                rustMicros: 0
+            )
+            return legacyValue
         }
 
         let rustValue: T
+        let rustStarted = Date.timeIntervalSinceReferenceDate
         do {
             rustValue = try rust()
         } catch {
             logger.log("domain_core.cloudvault operation=\(operation) version=3 category=rust_error")
-            if mode == .shadow { return try legacy() }
+            if mode == .shadow {
+                let legacyStarted = Date.timeIntervalSinceReferenceDate
+                let legacyValue = try legacy()
+                recordComparison(
+                    operation: operation,
+                    matches: false,
+                    category: "native_error",
+                    coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
+                    legacyMicros: elapsedMicros(since: legacyStarted),
+                    rustMicros: elapsedMicros(since: rustStarted)
+                )
+                return legacyValue
+            }
             throw map(error)
         }
 
         guard mode == .shadow else { return rustValue }
+        let rustMicros = elapsedMicros(since: rustStarted)
+        let legacyStarted = Date.timeIntervalSinceReferenceDate
         let legacyValue = try legacy()
-        if legacyValue != rustValue {
+        let matches = legacyValue == rustValue
+        if !matches {
             logger.log(
                 "domain_core.cloudvault operation=\(operation) version=3 category=value_mismatch legacy_count=1 rust_count=1"
             )
         }
+        recordComparison(
+            operation: operation,
+            matches: matches,
+            category: matches ? nil : "result_mismatch",
+            coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
+            legacyMicros: elapsedMicros(since: legacyStarted),
+            rustMicros: rustMicros
+        )
         return legacyValue
         #else
         logger.log("domain_core.cloudvault operation=\(operation) version=3 category=native_unavailable")
         if mode == .rust || requiresNative(environment) {
             throw CloudVaultDomainCoreAdapterError.nativeUnavailable
         }
-        return try legacy()
+        let legacyStarted = Date.timeIntervalSinceReferenceDate
+        let legacyValue = try legacy()
+        recordComparison(
+            operation: operation,
+            matches: false,
+            category: "native_unavailable",
+            coreVersion: "0.0.0-native-unavailable",
+            legacyMicros: elapsedMicros(since: legacyStarted),
+            rustMicros: 0
+        )
+        return legacyValue
         #endif
+    }
+
+    private static func elapsedMicros(since started: TimeInterval) -> UInt64 {
+        let micros = max(0, (Date.timeIntervalSinceReferenceDate - started) * 1_000_000)
+        return UInt64(min(600_000_000, micros.rounded()))
+    }
+
+    private static func recordComparison(
+        operation: String,
+        matches: Bool,
+        category: String?,
+        coreVersion: String,
+        legacyMicros: UInt64,
+        rustMicros: UInt64
+    ) {
+        let slice: String = if operation.contains("escrow") {
+            "escrow"
+        } else if operation.contains("recovery") {
+            "recovery"
+        } else if operation.contains("aes") || operation.contains("seal") || operation.contains("open") {
+            "aes"
+        } else {
+            "foundation"
+        }
+        DomainCoreShadowComparisonCollector.record(.init(
+            domain: "cloudvault",
+            slice: slice,
+            operation: operation,
+            coreVersion: coreVersion,
+            outcome: matches ? "match" : "mismatch",
+            mismatchCategory: category,
+            legacyMicros: legacyMicros,
+            rustMicros: rustMicros
+        ))
     }
 
     private static func requiresNative(_ environment: [String: String]) -> Bool {

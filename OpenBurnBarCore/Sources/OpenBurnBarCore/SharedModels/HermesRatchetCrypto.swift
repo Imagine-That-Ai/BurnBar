@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI
@@ -516,10 +517,24 @@ public enum HermesRatchetCrypto {
             if mode == "shadow" { return try legacy() }
             throw HermesRatchetError.nativeUnavailable
         }
+        let rustStarted = Date.timeIntervalSinceReferenceDate
         let value = try rust()
         guard mode == "shadow" else { return value }
+        let rustMicros = elapsedMicros(since: rustStarted)
+        let legacyStarted = Date.timeIntervalSinceReferenceDate
         let old = try legacy()
-        if old != value { diagnostic(operation, "shadow_mismatch") }
+        let matches = old == value
+        if !matches { diagnostic(operation, "shadow_mismatch") }
+        DomainCoreShadowComparisonCollector.record(.init(
+            domain: "hermes",
+            slice: "ratchet",
+            operation: operation,
+            coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
+            outcome: matches ? "match" : "mismatch",
+            mismatchCategory: matches ? nil : "result_mismatch",
+            legacyMicros: elapsedMicros(since: legacyStarted),
+            rustMicros: rustMicros
+        ))
         return old
         #else
         if mode == "shadow" { return try legacy() }
@@ -528,15 +543,15 @@ public enum HermesRatchetCrypto {
     }
 
     private static var domainCoreMode: String {
-        switch ProcessInfo.processInfo.environment["OPENBURNBAR_DOMAIN_CORE_HERMES_MODE"]?.lowercased() {
-        case "shadow": "shadow"
-        case "rust": "rust"
-        default: "legacy"
-        }
+        DomainCoreBuildProfileResolver.mode(for: .hermes).rawValue
     }
 
     private static func diagnostic(_ operation: String, _ outcome: String) {
         NSLog("domain_core.hermes.%@ %@", operation, outcome)
+    }
+
+    private static func elapsedMicros(since started: TimeInterval) -> UInt64 {
+        UInt64(min(600_000_000, max(0, ((Date.timeIntervalSinceReferenceDate - started) * 1_000_000).rounded())))
     }
 
     private static func skippedKeyID(ratchetPublicKeyBase64: String, messageNumber: Int) -> String {

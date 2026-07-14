@@ -160,6 +160,7 @@ class BurnBarApplication : Application() {
             .onFailure { Log.w("BurnBar", "Sentry privacy scrubber install failed: ${it.message}") }
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
+        com.openburnbar.data.AndroidDomainCoreShadowEvidence.install(this)
         // F2/F7/F10: land remote kill-switch values so the default-ON
         // protection flags can be remotely disabled (the flags default ON via
         // the source-aware reader; this makes the override reachable). iOS

@@ -5,6 +5,7 @@ using System.Linq;
 using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
 using DomainQuotaParseResult = uniffi.openburnbar_domain_ffi.QuotaParseResult;
 using DomainQuotaParseStatus = uniffi.openburnbar_domain_ffi.QuotaParseStatus;
+using OpenBurnBar.App.Configuration;
 
 namespace OpenBurnBar.App.Presentation.Quota;
 
@@ -22,7 +23,7 @@ internal static class DomainCoreQuotaBridge
         Action<string, string, bool, string?, long, long>? comparisonSink = null)
     {
         var mode = requestedMode ?? ClaudeStatuslineQuotaDomainCore.ResolveMode(
-            Environment.GetEnvironmentVariable("OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE"));
+            DomainCoreBuildProfileResolver.Mode("quota", "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE"));
         if (mode == DomainCoreQuotaMigrationMode.Legacy)
         {
             return legacy();

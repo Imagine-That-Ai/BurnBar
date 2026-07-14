@@ -990,6 +990,11 @@ jobs:
           DOMAIN_CORE_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"
         run: bash scripts/build-domain-core-xcframework.sh
 
+      - name: Resolve signed public domain-core profile
+        run: |
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env-apple >> "$GITHUB_ENV"
+
       - name: Verify shared domain core release artifact
         run: test -d Vendor/OpenBurnBarDomainCore.xcframework
 
@@ -1044,6 +1049,9 @@ jobs:
           ./gradlew :app:bundleRelease --no-daemon
           echo "aab_path=$(pwd)/app/build/outputs/bundle/release/app-release.aab" >> "$GITHUB_OUTPUT"
 
+      - name: Verify Android domain-core profile receipt
+        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --android-aab android/app/build/outputs/bundle/release/app-release.aab
+
       - name: Upload Android release bundle artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
@@ -1094,6 +1102,17 @@ jobs:
             -derivedDataPath "$DERIVED_DATA" \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
+            DOMAIN_CORE_BUILD_PROFILE="$DOMAIN_CORE_BUILD_PROFILE" \
+            DOMAIN_CORE_BUILD_AUTHORITY="$DOMAIN_CORE_BUILD_AUTHORITY" \
+            DOMAIN_CORE_DISTRIBUTION="$DOMAIN_CORE_DISTRIBUTION" \
+            DOMAIN_CORE_ROLLOUT_CHANNEL="$DOMAIN_CORE_ROLLOUT_CHANNEL" \
+            DOMAIN_CORE_EVIDENCE_ENABLED="$DOMAIN_CORE_EVIDENCE_ENABLED" \
+            DOMAIN_CORE_QUOTA_MODE="$DOMAIN_CORE_QUOTA_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_MODE="$DOMAIN_CORE_CLOUDVAULT_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE="$DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE="$DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" \
+            DOMAIN_CORE_HERMES_MODE="$DOMAIN_CORE_HERMES_MODE" \
+            DOMAIN_CORE_PRICING_MODE="$DOMAIN_CORE_PRICING_MODE" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -1130,6 +1149,9 @@ jobs:
           echo "::group::xcodebuild Release .app final log"
           tail -n 80 "$xcodebuild_log" || true
           echo "::endgroup::"
+
+      - name: Verify Apple domain-core profile receipt
+        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --apple-app "$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
 
       - name: Embed daemon binary in app bundle
         run: |

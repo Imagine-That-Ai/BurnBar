@@ -159,7 +159,7 @@ Quota promotion requires all of the following:
    same shadow samples.
 5. A passing fail-closed quantitative report from the existing promotion
    evidence evaluator delivered by [PR #1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612).
-   Use `node scripts/ci/evaluate-domain-core-promotion.mjs --evidence <bundle>
+   Use `node scripts/ci/evaluate-domain-core-promotion.mjs --domain quota --evidence <bundle>
    --output <report>` after that merged feature-stack commit is in the landing
    ancestry, and follow `docs/runbooks/shared-rust-promotion-evidence.md` from
    that commit. Do not add a second evaluator or hand-edit evidence.

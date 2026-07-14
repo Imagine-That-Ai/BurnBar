@@ -10,10 +10,13 @@ import initDomainCore, {
   cloudVaultEscrowSplitWire,
   cloudVaultKeyedHashHex,
   cloudVaultSha256Hex,
+  domainCoreVersion,
   initSync,
   type InitInput,
   type SyncInitInput,
 } from "../vendor/openburnbar-domain-core-wasm/openburnbar_domain_core.js";
+import { resolveDomainCoreWebMode } from "./domainCoreBuildProfile";
+import { recordConsoleCloudVaultShadowComparison } from "./domainCoreShadowEvidence";
 
 export type CloudVaultDomainCoreMode = "legacy" | "shadow" | "rust";
 
@@ -21,11 +24,29 @@ let initialized = false;
 let initialization: Promise<void> | undefined;
 let testMode: CloudVaultDomainCoreMode | undefined;
 let requireCoreForTests = false;
+let shadowCollector: ((comparison: CloudVaultShadowComparison) => void) | undefined;
+
+export interface CloudVaultShadowComparison {
+  domain: "cloudvault";
+  slice: "foundation" | "aes" | "escrow";
+  consumer: "console";
+  operation: string;
+  coreVersion: string;
+  outcome: "match" | "mismatch";
+  mismatchCategory: "result_mismatch" | "native_unavailable" | "native_error" | null;
+  legacyMicros: number;
+  rustMicros: number;
+}
+
+export function configureCloudVaultShadowCollector(
+  collector: ((comparison: CloudVaultShadowComparison) => void) | undefined,
+): void {
+  shadowCollector = collector;
+}
 
 function configuredMode(): CloudVaultDomainCoreMode {
   if (testMode) return testMode;
-  const value = process.env.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE;
-  return value === "shadow" || value === "rust" ? value : "legacy";
+  return resolveDomainCoreWebMode("cloudVault");
 }
 
 export function cloudVaultDomainCoreMode(): CloudVaultDomainCoreMode {
@@ -44,8 +65,13 @@ async function ensureInitialized(input?: InitInput): Promise<void> {
   await initialization;
 }
 
-function warn(operation: string, category: "native_unavailable" | "shadow_mismatch" | "rust_error"): void {
-  console.warn(`domain_core.cloudvault.${category} operation=${operation} core=abi3`);
+function warn(
+  operation: string,
+  category: "native_unavailable" | "shadow_mismatch" | "rust_error",
+): void {
+  console.warn(
+    `domain_core.cloudvault.${category} operation=${operation} core=abi3`,
+  );
 }
 
 export async function applyCloudVaultDomainCore<T>(
@@ -67,15 +93,22 @@ export async function applyCloudVaultDomainCore<T>(
 
   if (mode === "rust") return rust();
 
+  const legacyStarted = performance.now();
   const legacyValue = await legacy();
+  const legacyMicros = elapsedMicros(legacyStarted);
   let rustValue: T;
+  const rustStarted = performance.now();
   try {
     rustValue = rust();
   } catch {
     warn(operation, "rust_error");
+    collect(operation, false, "native_error", legacyMicros, elapsedMicros(rustStarted));
     return legacyValue;
   }
-  if (!equivalent(legacyValue, rustValue)) warn(operation, "shadow_mismatch");
+  const rustMicros = elapsedMicros(rustStarted);
+  const matches = equivalent(legacyValue, rustValue);
+  if (!matches) warn(operation, "shadow_mismatch");
+  collect(operation, matches, matches ? null : "result_mismatch", legacyMicros, rustMicros);
   return legacyValue;
 }
 
@@ -96,16 +129,58 @@ export function applyCloudVaultDomainCoreSync<T>(
     return legacy();
   }
   if (mode === "rust") return rust();
+  const legacyStarted = performance.now();
   const legacyValue = legacy();
+  const legacyMicros = elapsedMicros(legacyStarted);
   let rustValue: T;
+  const rustStarted = performance.now();
   try {
     rustValue = rust();
   } catch {
     warn(operation, "rust_error");
+    collect(operation, false, "native_error", legacyMicros, elapsedMicros(rustStarted));
     return legacyValue;
   }
-  if (!equivalent(legacyValue, rustValue)) warn(operation, "shadow_mismatch");
+  const rustMicros = elapsedMicros(rustStarted);
+  const matches = equivalent(legacyValue, rustValue);
+  if (!matches) warn(operation, "shadow_mismatch");
+  collect(operation, matches, matches ? null : "result_mismatch", legacyMicros, rustMicros);
   return legacyValue;
+}
+
+function elapsedMicros(startedMillis: number): number {
+  return Math.min(600_000_000, Math.max(0, Math.round((performance.now() - startedMillis) * 1_000)));
+}
+
+function sliceFor(operation: string): CloudVaultShadowComparison["slice"] {
+  if (operation.includes("escrow")) return "escrow";
+  if (operation.includes("aes") || operation.includes("seal") || operation.includes("open")) return "aes";
+  return "foundation";
+}
+
+function collect(
+  operation: string,
+  matches: boolean,
+  mismatchCategory: CloudVaultShadowComparison["mismatchCategory"],
+  legacyMicros: number,
+  rustMicros: number,
+): void {
+  const comparison: CloudVaultShadowComparison = {
+    domain: "cloudvault",
+    slice: sliceFor(operation),
+    consumer: "console",
+    operation,
+    coreVersion: domainCoreVersion(),
+    outcome: matches ? "match" : "mismatch",
+    mismatchCategory,
+    legacyMicros,
+    rustMicros,
+  };
+  try {
+    (shadowCollector ?? recordConsoleCloudVaultShadowComparison)(comparison);
+  } catch {
+    warn(operation, "rust_error");
+  }
 }
 
 export const domainCoreCloudVault = {
@@ -136,10 +211,16 @@ export const domainCoreCloudVault = {
 };
 
 export async function prepareCloudVaultDomainCore(): Promise<void> {
-  await applyCloudVaultDomainCore("initialize", () => undefined, () => undefined);
+  await applyCloudVaultDomainCore(
+    "initialize",
+    () => undefined,
+    () => undefined,
+  );
 }
 
-export function initializeCloudVaultDomainCoreForTests(module: SyncInitInput): void {
+export function initializeCloudVaultDomainCoreForTests(
+  module: SyncInitInput,
+): void {
   initSync({ module });
   initialized = true;
 }
@@ -150,4 +231,5 @@ export function configureCloudVaultDomainCoreForTests(
 ): void {
   testMode = mode;
   requireCoreForTests = requireCore;
+  if (mode === undefined) shadowCollector = undefined;
 }

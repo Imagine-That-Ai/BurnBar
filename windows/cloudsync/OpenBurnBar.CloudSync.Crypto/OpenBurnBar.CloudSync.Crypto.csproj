@@ -57,6 +57,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="../../../crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/OpenBurnBarDomainCore.Ffi.csproj" />
   </ItemGroup>
 

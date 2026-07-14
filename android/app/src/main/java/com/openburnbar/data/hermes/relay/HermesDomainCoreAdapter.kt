@@ -1,9 +1,11 @@
 package com.openburnbar.data.hermes.relay
 
 import android.util.Log
+import com.openburnbar.data.DomainCoreBuildProfile
 import java.security.SecureRandom
 import uniffi.openburnbar_domain_ffi.HermesAadKind
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
+import uniffi.openburnbar_domain_ffi.domainCoreVersion
 import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
 import uniffi.openburnbar_domain_ffi.hermesHkdfSha256
 import uniffi.openburnbar_domain_ffi.hermesHmacSha256
@@ -26,12 +28,29 @@ internal enum class HermesDomainCoreMode {
         fun resolve(
             raw: String? = System.getProperty("openburnbar.domain_core.hermes.mode")
                 ?: System.getenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE"),
-        ): HermesDomainCoreMode = entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: LEGACY
+        ): HermesDomainCoreMode = entries.firstOrNull {
+            it.name.equals(DomainCoreBuildProfile.mode("hermes", raw), ignoreCase = true)
+        } ?: LEGACY
     }
 }
 
+internal data class HermesShadowComparison(
+    val domain: String = "hermes",
+    val slice: String,
+    val consumer: String = "android",
+    val operation: String,
+    val coreVersion: String,
+    val outcome: String,
+    val mismatchCategory: String?,
+    val legacyMicros: Long,
+    val rustMicros: Long,
+)
+
 internal object HermesDomainCoreAdapter {
     private val secureRandom = SecureRandom()
+
+    @Volatile
+    internal var comparisonOverride: ((HermesShadowComparison) -> Unit)? = null
 
     fun aad(kind: HermesAadKind, arguments: List<String>, legacy: () -> ByteArray): ByteArray = selectBytes("aad", legacy) { hermesRelayAad(kind, arguments) }
 
@@ -50,16 +69,25 @@ internal object HermesDomainCoreAdapter {
         val mode = HermesDomainCoreMode.resolve()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
         if (mode == HermesDomainCoreMode.SHADOW) {
+            val legacyStarted = System.nanoTime()
             val old = legacy()
+            val legacyMicros = elapsedMicros(legacyStarted)
             if (!nativeReady()) {
                 diagnostic("seal", "native_unavailable")
+                collect("seal", false, "native_unavailable", legacyMicros, 0)
                 return old
             }
+            val rustStarted = System.nanoTime()
             runCatching { hermesOpenBase64(old, key, aad) }.fold(
                 onSuccess = { opened ->
-                    if (!opened.contentEquals(plaintext)) diagnostic("seal", "shadow_mismatch")
+                    val matches = opened.contentEquals(plaintext)
+                    if (!matches) diagnostic("seal", "shadow_mismatch")
+                    collect("seal", matches, if (matches) null else "result_mismatch", legacyMicros, elapsedMicros(rustStarted))
                 },
-                onFailure = { diagnostic("seal", "native_error") },
+                onFailure = {
+                    diagnostic("seal", "native_error")
+                    collect("seal", false, "native_error", legacyMicros, elapsedMicros(rustStarted))
+                },
             )
             return old
         }
@@ -96,16 +124,25 @@ internal object HermesDomainCoreAdapter {
         val mode = HermesDomainCoreMode.resolve()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
         if (mode == HermesDomainCoreMode.SHADOW) {
+            val legacyStarted = System.nanoTime()
             val old = legacy()
+            val legacyMicros = elapsedMicros(legacyStarted)
             if (!nativeReady()) {
                 diagnostic("ratchet_seal", "native_unavailable")
+                collect("ratchet_seal", false, "native_unavailable", legacyMicros, 0)
                 return old
             }
+            val rustStarted = System.nanoTime()
             runCatching { hermesOpenCombined(old, key, aad) }.fold(
                 onSuccess = { opened ->
-                    if (!opened.contentEquals(plaintext)) diagnostic("ratchet_seal", "shadow_mismatch")
+                    val matches = opened.contentEquals(plaintext)
+                    if (!matches) diagnostic("ratchet_seal", "shadow_mismatch")
+                    collect("ratchet_seal", matches, if (matches) null else "result_mismatch", legacyMicros, elapsedMicros(rustStarted))
                 },
-                onFailure = { diagnostic("ratchet_seal", "native_error") },
+                onFailure = {
+                    diagnostic("ratchet_seal", "native_error")
+                    collect("ratchet_seal", false, "native_error", legacyMicros, elapsedMicros(rustStarted))
+                },
             )
             return old
         }
@@ -142,12 +179,18 @@ internal object HermesDomainCoreAdapter {
         equivalent: (T, T) -> Boolean,
     ): T {
         if (mode == HermesDomainCoreMode.SHADOW) {
+            val legacyStarted = System.nanoTime()
             val old = legacy()
+            val legacyMicros = elapsedMicros(legacyStarted)
+            val rustStarted = System.nanoTime()
             val value = runCatching(rust).getOrElse {
                 diagnostic(operation, "native_error")
+                collect(operation, false, "native_error", legacyMicros, elapsedMicros(rustStarted))
                 return old
             }
-            if (!equivalent(old, value)) diagnostic(operation, "shadow_mismatch")
+            val matches = equivalent(old, value)
+            if (!matches) diagnostic(operation, "shadow_mismatch")
+            collect(operation, matches, if (matches) null else "result_mismatch", legacyMicros, elapsedMicros(rustStarted))
             return old
         }
         return rust()
@@ -165,5 +208,27 @@ internal object HermesDomainCoreAdapter {
 
     private fun diagnostic(operation: String, outcome: String) {
         Log.w("OpenBurnBarDomainCore", "domain_core.hermes.$operation $outcome")
+    }
+
+    private fun elapsedMicros(startedNanos: Long): Long = ((System.nanoTime() - startedNanos) / 1_000)
+        .coerceIn(0, 600_000_000)
+
+    private fun collect(operation: String, matches: Boolean, mismatchCategory: String?, legacyMicros: Long, rustMicros: Long) {
+        comparisonOverride?.invoke(
+            HermesShadowComparison(
+                slice = when {
+                    operation == "aad" -> "aad"
+                    operation.contains("hpke") -> "hpke-info"
+                    operation.contains("ratchet") -> "ratchet"
+                    else -> "payload-keywrap"
+                },
+                operation = operation,
+                coreVersion = runCatching(::domainCoreVersion).getOrDefault("0.0.0-native-unavailable"),
+                outcome = if (matches) "match" else "mismatch",
+                mismatchCategory = mismatchCategory,
+                legacyMicros = legacyMicros,
+                rustMicros = rustMicros,
+            ),
+        )
     }
 }

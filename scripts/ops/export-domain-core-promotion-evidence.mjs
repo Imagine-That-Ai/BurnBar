@@ -13,11 +13,14 @@ function argumentsFrom(argv) {
     if (!key?.startsWith("--") || value === undefined) throw new Error(`Invalid argument near ${key ?? "end"}`);
     values.set(key.slice(2), value);
   }
-  for (const required of ["project", "start", "end", "channel", "core-version", "source-uri", "output"]) {
+  for (const required of ["project", "domain", "start", "end", "channel", "core-version", "source-uri", "output"]) {
     if (!values.has(required)) throw new Error(`Missing --${required}`);
   }
   if (!new Set(["internal", "beta"]).has(values.get("channel"))) {
     throw new Error("--channel must be internal or beta");
+  }
+  if (!new Set(["quota", "cloudvault", "hermes", "pricing"]).has(values.get("domain"))) {
+    throw new Error("--domain must be quota, cloudvault, hermes, or pricing");
   }
   return values;
 }
@@ -41,6 +44,7 @@ async function main() {
   const evidence = buildDomainCorePromotionEvidence(
     snapshot.docs.map((document) => document.data()),
     {
+      domain: args.get("domain"),
       channel: args.get("channel"),
       coreVersion: args.get("core-version"),
       startedAt,

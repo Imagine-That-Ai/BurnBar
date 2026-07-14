@@ -13,7 +13,9 @@ import {
   wrapVaultKey,
 } from "../lib/escrow";
 import {
+  applyCloudVaultDomainCoreSync,
   configureCloudVaultDomainCoreForTests,
+  configureCloudVaultShadowCollector,
   initializeCloudVaultDomainCoreForTests,
 } from "../lib/domainCoreCloudVault";
 
@@ -106,6 +108,23 @@ describe("CloudVault domain-core browser adapter", () => {
       }),
     ).toBe("OpenBurnBar-CloudVault-aad-v2|user_alice|cloudSessions|doc_123|title|2|title");
     expect(warning).not.toHaveBeenCalled();
+  });
+
+  it("emits one generic whole-call comparison for the configured collector", () => {
+    const comparisons: unknown[] = [];
+    configureCloudVaultDomainCoreForTests("shadow", true);
+    configureCloudVaultShadowCollector((comparison) => comparisons.push(comparison));
+
+    expect(applyCloudVaultDomainCoreSync("cloudvault_aad_v2", () => "same", () => "same")).toBe("same");
+    expect(comparisons).toHaveLength(1);
+    expect(comparisons[0]).toMatchObject({
+      domain: "cloudvault",
+      slice: "foundation",
+      consumer: "console",
+      operation: "cloudvault_aad_v2",
+      outcome: "match",
+      mismatchCategory: null,
+    });
   });
 
   it("does not evaluate WebCrypto HKDF in rust mode", async () => {

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 #if canImport(CoreFoundation)
 import CoreFoundation
 #endif
@@ -20,8 +21,7 @@ enum CloudVaultDocumentRewrapMigrationMode: String, Sendable {
     static let environmentKey = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE"
 
     static func resolve(environment: [String: String]) -> Self {
-        guard let raw = environment[environmentKey]?.lowercased() else { return .legacy }
-        return Self(rawValue: raw) ?? .legacy
+        Self(rawValue: DomainCoreBuildProfileResolver.mode(for: .cloudVaultRewrap, environment: environment).rawValue) ?? .legacy
     }
 }
 
@@ -243,7 +243,12 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
                 newVaultKeyID: newVaultKeyID,
                 generator: nonceGenerator
             )
+            let legacyStarted = Date.timeIntervalSinceReferenceDate
             let legacyResult = try legacy(legacyNoncePlan)
+            let legacyMicros = elapsedMicros(since: legacyStarted)
+            let rustStarted = Date.timeIntervalSinceReferenceDate
+            var matches = false
+            var mismatchCategory: String? = "native_error"
             do {
                 let envelopes = try lowerEnvelopes(data)
                 var nonceIndex = 0
@@ -275,14 +280,29 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
                     noncePlan: noncePlan,
                     backend: backend
                 )
-                if !equivalent(legacyResult, rustResult) {
+                matches = equivalent(legacyResult, rustResult)
+                mismatchCategory = matches ? nil : "result_mismatch"
+                if !matches {
                     emit(category: "value_mismatch", backend: backend, logger: logger)
                 }
             } catch let error as CloudVaultDocumentRewrapAdapterError {
                 emit(category: diagnosticCategory(for: error), backend: backend, logger: logger)
+                mismatchCategory = error == .nativeUnavailable || error == .abiMismatch
+                    ? "native_unavailable"
+                    : "invalid_result"
             } catch {
                 emit(category: "native_error", backend: backend, logger: logger)
             }
+            DomainCoreShadowComparisonCollector.record(.init(
+                domain: "cloudvault",
+                slice: "document-rewrap",
+                operation: "document_rewrap",
+                coreVersion: backend?.coreVersion() ?? "0.0.0-native-unavailable",
+                outcome: matches ? "match" : "mismatch",
+                mismatchCategory: mismatchCategory,
+                legacyMicros: legacyMicros,
+                rustMicros: elapsedMicros(since: rustStarted)
+            ))
             return legacyResult
         }
 
@@ -307,6 +327,10 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
             noncePlan: noncePlan,
             backend: backend
         )
+    }
+
+    private static func elapsedMicros(since started: TimeInterval) -> UInt64 {
+        UInt64(min(600_000_000, max(0, ((Date.timeIntervalSinceReferenceDate - started) * 1_000_000).rounded())))
     }
 
     private static func rustRewrap(
