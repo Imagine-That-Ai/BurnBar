@@ -345,6 +345,14 @@ namespace OpenBurnBar.CloudSync.Crypto
             KeyedHmacHex(data, keyData, "project-memory-content");
 
         /// <summary>
+        /// Vault-keyed deduplication digest for Pensieve chunk plaintext. The
+        /// derived key and wire digest match Swift <c>pensieveDedupHash</c> and
+        /// the device-side TypeScript memory hook.
+        /// </summary>
+        public static string PensieveDedupHash(string plaintext, byte[] keyData) =>
+            PensieveKeyedHmacHex(Encoding.UTF8.GetBytes(plaintext), keyData, "content");
+
+        /// <summary>
         /// Vault-keyed HMAC for Pensieve/memory opaque doc ids — parity with Swift
         /// <c>pensieveSlugHmac</c> (HKDF info <c>pensieve-dedup:slug</c>).
         /// </summary>

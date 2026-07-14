@@ -148,7 +148,7 @@ unless prefixed; all Windows paths under `windows/`.
 | 15 | Notification bridge: local notifications | `MissionControl/Bridges/LocalNotificationBridge.swift` | **SUB-DONE** (seam) | `app/OpenBurnBar.App/Budget/BudgetToastNotifier.cs` is the landed WinRT AppNotification seam; mission notifications ride it if/when local execution revives. | Landed; live toast proof Wave 4/5 pass |
 | 16 | Notification bridge: Telegram | `MissionControl/Bridges/TelegramBotBridge.swift` | **SUB-DONE** (protected live command bridge) | The app lifecycle production-composes fixed-origin bounded send/getUpdates transport, durable ordered offsets, configured-chat isolation, due-followup delivery, the macOS command vocabulary, DPAPI-protected followup/question state, and real headless daily/weekly review launches. | `docs/windows-port/evidence/f2/telegram-bridge.md` |
 | 17 | Notification bridge: EventKit (calendar/reminders) | `MissionControl/Bridges/EventKitBridge.swift` | **N/A** | EventKit is Apple-only; no Windows analog in scope (a Graph-calendar substitute would be a new feature, not parity). | Bundle drift D14 |
-| 18 | Pensieve knowledge watcher | `PensieveKnowledgeWatcher.swift` | **DEFER** | Excluded even from the daemon's Linux build; the Windows memory surface already reads/writes `memory_facts` via `app/OpenBurnBar.App.CloudSync/CloudSyncMemoryStore.cs` (B4). Local knowledge *watching* is a v1.1 capability. | Bundle drift D14 |
+| 18 | Pensieve knowledge watcher | `PensieveKnowledgeWatcher.swift` | **SUB-DONE** (sealed live watcher) | The WinUI app lifecycle watches configured repo-docs/notes roots and the standard Claude session tree. It uses the same deterministic 384-dimension embedder, vault-key Householder cloak, keyed slug/dedup hashes, secret redaction, and CloudVault envelope as Swift/TS; writes atomic sealed batches plus metadata-only settled-session sentinels to the shared device queue; and fails closed without the protected vault key. | `docs/windows-port/evidence/f2/pensieve-knowledge-watcher.md` |
 | 19 | Project-code memory store + embeddings | `ProjectCodeMemory/BurnBarProjectCodeMemoryStore*.swift`, `ProjectCodeMemory/BurnBarCodeEmbedding.swift` | **SUB-DONE** (durable source-free semantic store) | WPD-0003's parser trigger fired. `ProjectCodeMemoryStore` production-composes encrypted SQLite project/artifact/symbol/reference/call-edge/checkpoint metadata, bounded AST-aware chunks, versioned deterministic or protected OpenAI embeddings, restart hydration, call-graph traversal, and semantic search without persisting source text. | `docs/windows-port/evidence/f2/project-code-memory-store.md`; WPD-0003 revival addendum |
 | 20 | Planner service | `OpenBurnBarPlannerService.swift` | **SUB-DONE** (intent normalization + outline) | WPD-0009 fired the planner trigger. The production authenticated companion plane exposes `planner.plan` with the same explicit-intent → workflow → tool → prompt → generic precedence, typed constraints/risk/desired outputs, exact three-step outlines, schema validation, bounded input, and no execution side effects. | `docs/windows-port/evidence/f2/planner-production-composition.md` |
 | 21 | Policy engine (run/tool approval) | `OpenBurnBarPolicyEngine.swift` | **SUB-DONE** (decision + durable resolution) | The production authenticated companion plane exposes bounded, side-effect-free `policy.evaluate`; row 8 consumes the same risk matrix in durable run-level and per-tool approvals. `approval.respond` resolves the protected checkpoint, an approval can authorize exactly the next risky tool, and rejection/cancellation terminates without dispatch. Physical Computer Use approval UX remains a separate host gate. | `docs/windows-port/evidence/f2/policy-engine-production-composition.md`; `docs/windows-port/evidence/f2/headless-run-recovery.md` |
@@ -170,13 +170,13 @@ unless prefixed; all Windows paths under `windows/`.
 
 Counting each row by its current primary disposition (rows 24 and 27 count as
 SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1; rows 1-4,
-6-8, 14, 16, 19-22, 25, and 29 are WPD-0009 F2 promotions):
+6-8, 14, 16, 18-22, 25, and 29 are WPD-0009 F2 promotions):
 
 | Disposition | Rows | Count |
 |---|---|---|
-| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 27, 29 | **24** |
+| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25, 27, 29 | **25** |
 | C#-substitute-to-build (SUB-BUILD) | 26 (Wave 4), 30 (Wave 3), 31 (Wave 3) | **3** |
-| v1.1-deferred (DEFER) | 18, 32, 33 | **3** |
+| v1.1-deferred (DEFER) | 32, 33 | **2** |
 | Not-applicable-on-Windows (N/A) | 10, 17, 28, 34 | **4** |
 
 Every SUB-BUILD row is owned by a named remediation-plan wave (Wave 3 item 1;

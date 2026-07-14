@@ -511,8 +511,10 @@ F2 workstreams:
 5. Local Mission Control execution: DAG scheduler, journal repository,
    projection reducer, planner, and policy engine. Gateway token-bucket limiting
    is closed by `docs/windows-port/evidence/f2/gateway-rate-limiter.md`.
-6. Pensieve knowledge watcher. The project-code memory store, embeddings, and
-   full static parser are closed by
+6. Pensieve knowledge watcher. The live repo-docs/notes/session-end watcher and
+   sealed queue are closed by
+   `docs/windows-port/evidence/f2/pensieve-knowledge-watcher.md`. The separate
+   project-code memory store, embeddings, and full static parser are closed by
    `docs/windows-port/evidence/f2/project-code-memory-store.md`,
    `docs/windows-port/evidence/f2/live-lsp-parser-client.md`, and WPD-0003's
    revival addendum.

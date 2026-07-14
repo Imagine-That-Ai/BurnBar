@@ -223,6 +223,11 @@ public partial class App
             await _usageRuntime.DisposeAsync();
             _usageRuntime = null;
         }
+        if (_pensieveKnowledgeWatcher is not null)
+        {
+            await _pensieveKnowledgeWatcher.DisposeAsync();
+            _pensieveKnowledgeWatcher = null;
+        }
         await StopLocalRuntimeAsync();
         _flyout?.Close();
         _mainWindow?.Close();

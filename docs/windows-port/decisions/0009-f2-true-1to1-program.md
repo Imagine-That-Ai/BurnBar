@@ -35,8 +35,12 @@ Closed under this decision:
 - Project-code memory store, embeddings, and full static parser: promoted by
   `docs/windows-port/evidence/f2/project-code-memory-store.md`,
   `docs/windows-port/evidence/f2/live-lsp-parser-client.md`, and the WPD-0003
-  revival addendum. The general Pensieve repo-docs/notes/session watcher remains
-  deferred under WPD-0006 row 18.
+  revival addendum.
+- Pensieve knowledge watcher: promoted by
+  `docs/windows-port/evidence/f2/pensieve-knowledge-watcher.md`. The WinUI
+  lifecycle owns recursive repo-docs/notes and settled-session watching, shared
+  TS/Swift embed-and-cloak parity, protected vault-key resolution, and atomic
+  sealed queue output without cloud credentials or transcript ingestion.
 - Gateway rate limiter: promoted by
   `docs/windows-port/evidence/f2/gateway-rate-limiter.md`. The production host
   now enforces the macOS token-bucket contract and the shared stricter
