@@ -50,6 +50,7 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
+  requireText(input.pr, 'include-hidden-files: true', 'PR hidden evidence upload');
   for (const command of [
     'macos-matched-performance',
     'run-matched-performance.mjs',
