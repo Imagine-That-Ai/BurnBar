@@ -257,8 +257,10 @@ not into `main`, and does not mean production promotion.
   packages its signed x64 and ARM64 artifacts and update metadata into one
   canonical release bundle, emits quota and CloudVault attestations as those
   modes become Rust-authoritative, and routes them through that same publisher.
-  A separate fail-closed step creates the exact published Windows release only
-  when absent; it never edits an existing, draft, or prerelease release.
+  A separate fail-closed lifecycle creates or reuses the exact draft, lets the
+  shared publisher verify the complete immutable evidence set, and only then
+  exposes the exact stable release. Prerelease and wrong-tag releases fail
+  closed.
 
 ## Required CI
 

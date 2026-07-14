@@ -508,7 +508,7 @@ test("Windows publication binds its dual-architecture artifact and tag train", (
       commit: COMMIT,
       consumer: "windows",
       signerWorkflow: ".github/workflows/openburnbar-release-windows.yml",
-      releaseAvailability: "published",
+      releaseAvailability: "draft-or-published",
       artifactPath: artifact,
       bundles: [
         {
@@ -525,13 +525,9 @@ test("Windows publication binds its dual-architecture artifact and tag train", (
       () => validateManifest({ ...manifest, tag: "v1.2.3" }),
       /tag train/,
     );
-    assert.throws(
-      () =>
-        validateManifest({
-          ...manifest,
-          releaseAvailability: "draft-or-published",
-        }),
-      /releaseAvailability/,
+    assert.equal(
+      validateManifest(manifest).releaseAvailability,
+      "draft-or-published",
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

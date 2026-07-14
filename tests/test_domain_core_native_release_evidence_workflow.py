@@ -29,6 +29,9 @@ class DomainCoreNativeReleaseEvidenceWorkflowTests(unittest.TestCase):
         custom_publish = PUBLISHER.read_text(encoding="utf-8")
         self.assertNotIn("--clobber", custom_publish)
         self.assertIn('ASSETS=("$ZIP_PATH")', source)
+        self.assertIn("resolve-domain-core-native-publication-mode.mjs", source)
+        self.assertIn('ASSETS+=("$DMG_PATH")', source)
+        self.assertIn('ASSETS+=("$AAB_PATH")', source)
 
     def test_exact_stable_tag_and_commit_gate_all_custom_attestations(self) -> None:
         source = RELEASE_WORKFLOW.read_text(encoding="utf-8")
@@ -72,6 +75,10 @@ class DomainCoreNativeReleaseEvidenceWorkflowTests(unittest.TestCase):
             'spctl --assess --type execute -vv "$app"',
             'if [[ "$architectures" != "arm64" ]]',
             'jarsigner -verify -verbose -certs "$artifact"',
+            'keytool -printcert -jarfile "$artifact"',
+            "config/android-upload-certificate.sha256",
+            "bundletool-all-${bundletool_version}.jar",
+            'java -jar "$bundletool" validate --bundle="$artifact"',
             "base/lib/$abi/libopenburnbar_domain_ffi.so",
             '--apple-app "$app"',
             '--android-aab "$artifact"',
@@ -132,13 +139,17 @@ class DomainCoreNativeReleaseEvidenceWorkflowTests(unittest.TestCase):
         source = DOMAIN_WORKFLOW.read_text(encoding="utf-8")
         for value in (
             '"scripts/ci/create-domain-core-native-release-evidence.mjs"',
+            '"config/android-upload-certificate.sha256"',
             '"scripts/ci/create-domain-core-native-release-evidence.test.mjs"',
+            '"scripts/ci/resolve-domain-core-native-publication-mode.mjs"',
+            '"scripts/ci/resolve-domain-core-native-publication-mode.test.mjs"',
             '"scripts/ci/verify-domain-core-native-release-artifact.sh"',
             '"scripts/ci/verify-domain-core-native-release-artifact.test.sh"',
             '"scripts/ci/publish-domain-core-native-release-evidence.sh"',
             '"scripts/ci/publish-domain-core-native-release-evidence.test.sh"',
             '"tests/test_domain_core_native_release_evidence_workflow.py"',
             "scripts/ci/create-domain-core-native-release-evidence.test.mjs",
+            "scripts/ci/resolve-domain-core-native-publication-mode.test.mjs",
             "bash scripts/ci/verify-domain-core-native-release-artifact.test.sh",
             "bash scripts/ci/publish-domain-core-native-release-evidence.test.sh",
             "python3 tests/test_domain_core_native_release_evidence_workflow.py",

@@ -21,13 +21,20 @@ fi
 
 artifact="$(cd "$(dirname "$artifact")" && pwd)/$(basename "$artifact")"
 apple_mount_point=""
+bundletool_directory=""
 cleanup_apple_mount() {
   if [[ -n "$apple_mount_point" ]]; then
     hdiutil detach "$apple_mount_point" -quiet >/dev/null 2>&1 || true
     rm -rf "$apple_mount_point"
   fi
 }
-trap cleanup_apple_mount EXIT
+cleanup() {
+  cleanup_apple_mount
+  if [[ -n "$bundletool_directory" ]]; then
+    rm -rf "$bundletool_directory"
+  fi
+}
+trap cleanup EXIT
 case "$consumer" in
   apple)
     expected_name="OpenBurnBar-${version}-macOS.dmg"
@@ -77,8 +84,43 @@ verify_apple() {
 }
 
 verify_android() {
+  command -v curl >/dev/null
+  command -v java >/dev/null
   command -v jarsigner >/dev/null
+  command -v keytool >/dev/null
+  command -v shasum >/dev/null
   command -v unzip >/dev/null
+
+  local approved_fingerprint_file="$repo_root/config/android-upload-certificate.sha256"
+  local approved_fingerprint
+  approved_fingerprint="$(tr -d '[:space:]' < "$approved_fingerprint_file")"
+  if [[ ! "$approved_fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "approved Android upload certificate fingerprint is invalid" >&2
+    exit 1
+  fi
+
+  local certificate_output signer_count signer_fingerprint
+  certificate_output="$(keytool -printcert -jarfile "$artifact" 2>&1)"
+  printf '%s\n' "$certificate_output"
+  signer_count="$(grep -Ec '^Signer #[0-9]+:' <<<"$certificate_output" || true)"
+  if [[ "$signer_count" != "1" ]]; then
+    echo "Android release bundle must have exactly one JAR signer, found: $signer_count" >&2
+    exit 1
+  fi
+  signer_fingerprint="$(awk '
+    /^Signer #1:/ { in_signer = 1; next }
+    /^Signer #[0-9]+:/ { in_signer = 0 }
+    in_signer && /^Certificate #1:/ { in_certificate = 1; next }
+    in_signer && in_certificate && /^[[:space:]]*SHA256:/ {
+      sub(/^[[:space:]]*SHA256:[[:space:]]*/, "")
+      print
+      exit
+    }
+  ' <<<"$certificate_output" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+  if [[ "$signer_fingerprint" != "$approved_fingerprint" ]]; then
+    echo "Android release bundle signer does not match the approved upload certificate" >&2
+    exit 1
+  fi
 
   local signature_listing
   signature_listing="$(unzip -Z1 "$artifact")"
@@ -97,6 +139,17 @@ verify_android() {
     echo "Android release bundle signature verification did not succeed" >&2
     exit 1
   fi
+
+  local bundletool_version="1.18.3"
+  local bundletool_sha256="a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29"
+  local bundletool
+  bundletool_directory="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-bundletool.XXXXXX")"
+  bundletool="$bundletool_directory/bundletool-all-${bundletool_version}.jar"
+  curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+    --output "$bundletool" \
+    "https://github.com/google/bundletool/releases/download/${bundletool_version}/bundletool-all-${bundletool_version}.jar"
+  printf '%s  %s\n' "$bundletool_sha256" "$bundletool" | shasum -a 256 -c -
+  java -jar "$bundletool" validate --bundle="$artifact"
 
   node "$repo_root/scripts/ci/verify-domain-core-build-profile-artifact.mjs" \
     --profile public-production \

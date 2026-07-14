@@ -2530,12 +2530,25 @@ jobs:
           fi
 
           if [[ "$IS_PRERELEASE" == "false" ]]; then
-            bash scripts/ci/publish-domain-core-native-release-evidence.sh \
-              apple "$RELEASE_TAG" "${{ needs.release-preflight.outputs.release_commit }}" \
-              "$DMG_PATH" "$RUNNER_TEMP"
-            bash scripts/ci/publish-domain-core-native-release-evidence.sh \
-              android "$RELEASE_TAG" "${{ needs.release-preflight.outputs.release_commit }}" \
-              "$AAB_PATH" "$RUNNER_TEMP"
+            apple_mode="$(node scripts/ci/resolve-domain-core-native-publication-mode.mjs \
+              --manifest "$RUNNER_TEMP/apple-manifest.json" --consumer apple)"
+            android_mode="$(node scripts/ci/resolve-domain-core-native-publication-mode.mjs \
+              --manifest "$RUNNER_TEMP/android-manifest.json" --consumer android)"
+
+            if [[ "$apple_mode" == "shared-rust" ]]; then
+              bash scripts/ci/publish-domain-core-native-release-evidence.sh \
+                apple "$RELEASE_TAG" "${{ needs.release-preflight.outputs.release_commit }}" \
+                "$DMG_PATH" "$RUNNER_TEMP"
+            else
+              ASSETS+=("$DMG_PATH")
+            fi
+            if [[ "$android_mode" == "shared-rust" ]]; then
+              bash scripts/ci/publish-domain-core-native-release-evidence.sh \
+                android "$RELEASE_TAG" "${{ needs.release-preflight.outputs.release_commit }}" \
+                "$AAB_PATH" "$RUNNER_TEMP"
+            else
+              ASSETS+=("$AAB_PATH")
+            fi
           fi
 
           gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber

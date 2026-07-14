@@ -62,12 +62,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   domain-specific GitHub attestations for every Rust-authoritative public mode.
   Custom bundles publish before immutable native artifacts; reruns verify the
   existing bytes, exact tag, commit, signer workflow, and embedded profile.
+  All-legacy profiles retain the normal release path, while Android evidence
+  additionally pins the sole upload certificate and validates AAB structure
+  with a digest-pinned Bundletool release.
 - **Signed Shared Rust Windows release evidence** — fully signed stable Windows
   releases now assemble one deterministic x64 and ARM64 release bundle, attest
   the exact quota and CloudVault Rust profiles, and publish those bundles before
-  the immutable artifact through the shared publisher. Release creation is a
-  separate fail-closed step that reuses only the exact published stable tag and
-  never edits a draft, prerelease, or existing release.
+  the immutable artifact through the shared publisher. The release remains a
+  draft until the publisher verifies the complete immutable evidence set, then
+  a separate fail-closed step exposes that exact stable release.
 - **Launch-readiness hardening** — added durable account-erasure barriers,
   resumable oldest-first reconciliation with poison-record quarantine, and
   privacy-safe retained audit receipts across Functions, Firestore, and Storage.

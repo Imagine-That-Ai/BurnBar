@@ -18,7 +18,7 @@ These files are **never committed** to git. They are stored in the developer's l
 
 | File | Local Path | Description |
 |------|-----------|-------------|
-| Upload keystore | `~/.secrets/android/upload-keystore.jks` | Created May 11, 2026; alias `openburnbar-upload` |
+| Upload keystore | `~/.secrets/android/openburnbar-upload-20260712.jks` | Created July 12, 2026; alias `openburnbar-upload` |
 | Keystore env | `~/.secrets/android/release-signing.env` | Shell env file with keystore path, password, alias, key password |
 | Service account JSON | `~/Library/Mobile Documents/com~apple~CloudDocs/imagine-that.ai/Super IMportant Files /AndroidAppServiceAccountKey.json` | Google Play service account for `imaginethat-17aa7` project |
 
@@ -53,7 +53,9 @@ The GitHub Actions `release.yml` workflow:
    ```
 5. Update `OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD`, `OPENBURNBAR_ANDROID_KEY_ALIAS`, `OPENBURNBAR_ANDROID_KEY_PASSWORD` in both GitHub and Firebase
 6. Update the local `~/.secrets/android/release-signing.env` file
-7. Run a release build to verify the new keystore signs correctly
+7. After Play Console accepts the replacement upload certificate, update
+   `config/android-upload-certificate.sha256` to the new leaf-certificate SHA-256
+8. Run a release build to verify the new keystore signs correctly
 
 ## How to Rotate the Service Account
 
@@ -71,11 +73,12 @@ The GitHub Actions `release.yml` workflow:
 
 After any rotation or when an agent claims credentials are missing:
 
-- [ ] `keytool -list -keystore ~/.secrets/android/upload-keystore.jks -alias openburnbar-upload` works with the stored password
+- [ ] `keytool -list -keystore ~/.secrets/android/openburnbar-upload-20260712.jks -alias openburnbar-upload` works with the stored password
 - [ ] `gh secret list --repo Imagine-That-Ai/BurnBar | grep -E 'OPENBURNBAR_ANDROID|GOOGLE_PLAY'` shows all 5 secrets
 - [ ] `firebase functions:secrets:access OPENBURNBAR_ANDROID_KEYSTORE_BASE64 --project burnbar` returns a valid base64 blob
 - [ ] `gh workflow run release.yml` or a PR build produces a signed `app-release.aab` artifact
-- [ ] The AAB can be verified in Play Console or via `bundletool` (`jarsigner` does not work on `.aab` files)
+- [ ] The AAB passes the pinned `bundletool validate` structural check
+- [ ] The AAB JAR signature is valid and its sole signer matches `config/android-upload-certificate.sha256`
 
 ## Agent Self-Service
 
@@ -112,7 +115,7 @@ If the local keystore file is lost but the GitHub secret still exists:
 # Recover from GitHub secret
 cd /tmp
 gh api repos/Imagine-That-Ai/BurnBar/actions/secrets/OPENBURNBAR_ANDROID_KEYSTORE_BASE64 > keystore.b64
-echo "Decode the value and write to ~/.secrets/android/upload-keystore.jks"
+echo "Decode the value and write to ~/.secrets/android/openburnbar-upload-20260712.jks"
 ```
 
 If both local and GitHub copies are lost, the keystore is unrecoverable. You must:

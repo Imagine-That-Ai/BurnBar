@@ -19,13 +19,13 @@ export function validateRequest(raw) {
     throw new Error("Windows release request must be an object");
   }
   const keys = Object.keys(raw).sort();
-  const expected = ["commit", "repository", "tag"].sort();
+  const expected = ["commit", "phase", "repository", "tag"].sort();
   if (
     keys.length !== expected.length ||
     keys.some((key, index) => key !== expected[index])
   ) {
     throw new Error(
-      "Windows release request must contain repository, tag, and commit",
+      "Windows release request must contain phase, repository, tag, and commit",
     );
   }
   if (raw.repository !== REPOSITORY) {
@@ -37,21 +37,26 @@ export function validateRequest(raw) {
   if (typeof raw.commit !== "string" || !COMMIT.test(raw.commit)) {
     throw new Error("Windows release commit must be a full lowercase Git SHA");
   }
+  if (raw.phase !== "prepare" && raw.phase !== "publish") {
+    throw new Error("Windows release phase must be prepare or publish");
+  }
   return { ...raw, version: match[1] };
 }
 
-export function validateRelease(release, request) {
+export function validateRelease(release, request, { allowDraft }) {
   if (!release || typeof release !== "object" || Array.isArray(release)) {
     throw new Error("GitHub returned an invalid Windows release");
   }
   if (release.tag_name !== request.tag) {
     throw new Error("GitHub returned the wrong Windows release tag");
   }
-  if (release.draft !== false) {
-    throw new Error("Windows domain-core evidence cannot use a draft release");
-  }
   if (release.prerelease !== false) {
     throw new Error("Windows domain-core evidence cannot use a prerelease");
+  }
+  if (typeof release.draft !== "boolean" || (!allowDraft && release.draft)) {
+    throw new Error(
+      "Windows domain-core evidence requires a published release",
+    );
   }
   return release;
 }
@@ -95,7 +100,7 @@ export class GhReleaseClient {
     throw new Error(`Windows release lookup failed: ${detail.trim()}`);
   }
 
-  create(request) {
+  createDraft(request) {
     const result = this.run(
       [
         "release",
@@ -104,6 +109,7 @@ export class GhReleaseClient {
         "--repo",
         request.repository,
         "--verify-tag",
+        "--draft",
         "--title",
         `OpenBurnBar Windows ${request.version}`,
         "--notes",
@@ -114,23 +120,65 @@ export class GhReleaseClient {
     );
     return result.status === 0;
   }
+
+  publish(request) {
+    const result = this.run(
+      [
+        "release",
+        "edit",
+        request.tag,
+        "--repo",
+        request.repository,
+        "--draft=false",
+        "--prerelease=false",
+        "--latest=false",
+      ],
+      { allowFailure: true },
+    );
+    return result.status === 0;
+  }
 }
 
-export function ensureRelease(raw, client) {
-  const request = validateRequest(raw);
+function prepareRelease(request, client) {
   const release = client.lookup(request.tag);
   if (release) {
-    validateRelease(release, request);
-    return { created: false };
+    validateRelease(release, request, { allowDraft: true });
+    return { created: false, draft: release.draft };
   }
-  if (client.create(request)) return { created: true };
+  if (client.createDraft(request)) return { created: true, draft: true };
 
   const concurrent = client.lookup(request.tag);
   if (!concurrent) {
-    throw new Error("exact Windows GitHub Release creation failed");
+    throw new Error("exact Windows GitHub Release draft creation failed");
   }
-  validateRelease(concurrent, request);
-  return { created: false };
+  validateRelease(concurrent, request, { allowDraft: true });
+  return { created: false, draft: concurrent.draft };
+}
+
+function publishRelease(request, client) {
+  const release = client.lookup(request.tag);
+  if (!release) throw new Error("exact Windows GitHub Release is missing");
+  validateRelease(release, request, { allowDraft: true });
+  if (!release.draft) return { published: false, alreadyPublished: true };
+  if (!client.publish(request)) {
+    const concurrent = client.lookup(request.tag);
+    if (!concurrent)
+      throw new Error("Windows GitHub Release publication failed");
+    validateRelease(concurrent, request, { allowDraft: false });
+    return { published: false, alreadyPublished: true };
+  }
+  const published = client.lookup(request.tag);
+  if (!published)
+    throw new Error("published Windows GitHub Release is missing");
+  validateRelease(published, request, { allowDraft: false });
+  return { published: true, alreadyPublished: false };
+}
+
+export function manageRelease(raw, client) {
+  const request = validateRequest(raw);
+  return request.phase === "prepare"
+    ? prepareRelease(request, client)
+    : publishRelease(request, client);
 }
 
 function parseArguments(argv) {
@@ -144,6 +192,7 @@ function parseArguments(argv) {
     if (argument === "--repository") values.repository = value;
     else if (argument === "--tag") values.tag = value;
     else if (argument === "--commit") values.commit = value;
+    else if (argument === "--phase") values.phase = value;
     else throw new Error(`unknown argument: ${argument}`);
   }
   return values;
@@ -151,7 +200,7 @@ function parseArguments(argv) {
 
 export function main(argv = process.argv) {
   const request = parseArguments(argv);
-  const result = ensureRelease(
+  const result = manageRelease(
     request,
     new GhReleaseClient(request.repository),
   );

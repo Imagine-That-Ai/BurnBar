@@ -70,6 +70,9 @@ class DomainCoreWindowsReleaseEvidenceWorkflowTests(unittest.TestCase):
         self.assertIn("scripts/ci/ensure-windows-domain-core-release.mjs", source)
         self.assertIn("scripts/ci/publish-domain-core-release-evidence.mjs", source)
         self.assertIn("Publish bundles first and immutable canonical artifact last", source)
+        self.assertIn("Publish verified Windows GitHub Release", source)
+        self.assertIn("--phase prepare", source)
+        self.assertIn("--phase publish", source)
         self.assertNotIn("--clobber", source)
 
     def test_helpers_encode_exact_identity_and_fail_closed_publication(self) -> None:
@@ -87,7 +90,7 @@ class DomainCoreWindowsReleaseEvidenceWorkflowTests(unittest.TestCase):
             self.assertIn(value, archive)
         for value in (
             'signerWorkflow: ".github/workflows/openburnbar-release-windows.yml"',
-            'releaseAvailability: "published"',
+            'releaseAvailability: "draft-or-published"',
             'consumer: "windows"',
             "node scripts/ci/publish-domain-core-release-evidence.mjs",
         ):
@@ -102,15 +105,17 @@ class DomainCoreWindowsReleaseEvidenceWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(value, publisher)
         for value in (
-            "cannot use a draft release",
-            "cannot use a prerelease",
+            "requires a published release",
+            '"--draft"',
+            '"--draft=false"',
             '"--verify-tag"',
             '"--latest=false"',
         ):
             self.assertIn(value, ensure)
         for source in (ensure, publisher):
             self.assertNotIn("--clobber", source)
-            self.assertNotIn('"edit"', source)
+        self.assertIn('"edit"', ensure)
+        self.assertNotIn('"edit"', publisher)
 
     def test_domain_core_ci_runs_windows_release_contracts(self) -> None:
         source = (ROOT / ".github/workflows/domain-core.yml").read_text(encoding="utf-8")

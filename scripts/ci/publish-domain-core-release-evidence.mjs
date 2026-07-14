@@ -164,13 +164,16 @@ export function validateManifest(raw) {
   if (!consumer || consumer.signerWorkflow !== manifest.signerWorkflow) {
     throw new Error("publication consumer does not match its signer workflow");
   }
-  const nativeConsumer =
-    manifest.consumer === "apple" || manifest.consumer === "android";
+  const draftCapableConsumer =
+    manifest.consumer === "apple" ||
+    manifest.consumer === "android" ||
+    manifest.consumer === "windows";
   if (
     !new Set(["published", "draft-or-published"]).has(
       manifest.releaseAvailability,
     ) ||
-    (manifest.releaseAvailability === "draft-or-published" && !nativeConsumer)
+    (manifest.releaseAvailability === "draft-or-published" &&
+      !draftCapableConsumer)
   ) {
     throw new Error(
       "publication releaseAvailability is invalid for its consumer",

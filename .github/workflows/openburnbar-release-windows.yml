@@ -925,7 +925,7 @@ jobs:
             commit: process.env.RELEASE_COMMIT,
             consumer: "windows",
             signerWorkflow: ".github/workflows/openburnbar-release-windows.yml",
-            releaseAvailability: "published",
+            releaseAvailability: "draft-or-published",
             artifactPath: process.env.ARTIFACT,
             bundles: candidates
               .filter(({ enabled }) => enabled === "true")
@@ -935,7 +935,7 @@ jobs:
           NODE
           echo "DOMAIN_CORE_PUBLICATION_MANIFEST=$manifest" >> "$GITHUB_ENV"
 
-      - name: Ensure exact published Windows GitHub Release
+      - name: Ensure exact draft Windows GitHub Release
         if: steps.quota-evidence.outputs.enabled == 'true' || steps.cloudvault-evidence.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -944,7 +944,8 @@ jobs:
           node scripts/ci/ensure-windows-domain-core-release.mjs \
             --repository "$GITHUB_REPOSITORY" \
             --tag "$RELEASE_TAG" \
-            --commit "$RELEASE_COMMIT"
+            --commit "$RELEASE_COMMIT" \
+            --phase prepare
 
       - name: Publish bundles first and immutable canonical artifact last
         if: steps.quota-evidence.outputs.enabled == 'true' || steps.cloudvault-evidence.outputs.enabled == 'true'
@@ -954,3 +955,15 @@ jobs:
           set -euo pipefail
           node scripts/ci/publish-domain-core-release-evidence.mjs \
             --manifest "$DOMAIN_CORE_PUBLICATION_MANIFEST"
+
+      - name: Publish verified Windows GitHub Release
+        if: steps.quota-evidence.outputs.enabled == 'true' || steps.cloudvault-evidence.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/ensure-windows-domain-core-release.mjs \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --phase publish
