@@ -70,7 +70,8 @@ public sealed class LocalHttpGatewayHostTests
             Assert.Contains("hello", Encoding.UTF8.GetString(body), System.StringComparison.Ordinal);
             return Task.FromResult(new ModelCompletionResult(
                 200,
-                Encoding.UTF8.GetBytes("{\"id\":\"completion-1\"}"),
+                Encoding.UTF8.GetBytes(
+                    "{\"id\":\"completion-1\",\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":4}}"),
                 "application/json",
                 true));
         });
@@ -91,6 +92,16 @@ public sealed class LocalHttpGatewayHostTests
         RouteMetrics metrics = router.SnapshotMetrics()["claude-route"];
         Assert.Equal(1, metrics.Attempts);
         Assert.Equal(1, metrics.Successes);
+
+        using JsonDocument telemetryDocument = JsonDocument.Parse(
+            await client.GetStringAsync("v1/metrics"));
+        JsonElement telemetry = telemetryDocument.RootElement.GetProperty("telemetry");
+        Assert.Equal(1, telemetry.GetProperty("retained_requests").GetInt32());
+        Assert.Equal(12, telemetry.GetProperty("input_tokens").GetInt64());
+        Assert.Equal(4, telemetry.GetProperty("output_tokens").GetInt64());
+        JsonElement recent = telemetryDocument.RootElement.GetProperty("recent_routes")[0];
+        Assert.Equal("claude", recent.GetProperty("client_model").GetString());
+        Assert.Equal("claude-route", recent.GetProperty("route_id").GetString());
     }
 
     [Fact]

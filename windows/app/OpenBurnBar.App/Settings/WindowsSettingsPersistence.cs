@@ -118,7 +118,10 @@ internal static class WindowsSettingsComposition
             store.ReadCredential,
             new ModelRouteHealthStore(Path.Combine(
                 Persistence.DirectoryPath,
-                "gateway-model-health.json")));
+                "gateway-model-health.json")),
+            new GatewayRouteTelemetryStore(Path.Combine(
+                Persistence.DirectoryPath,
+                "gateway-route-events.jsonl")));
     }
 
     public static ProjectCodeRootSettingsViewModel CreateProjectCodeRootSettingsViewModel() =>

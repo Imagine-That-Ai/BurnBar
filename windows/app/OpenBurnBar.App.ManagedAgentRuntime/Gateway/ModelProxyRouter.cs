@@ -13,13 +13,15 @@ public sealed class ModelProxyRouter
     private readonly IReadOnlyList<ModelRoute> _routes;
     private readonly ModelRouteHealthStore _healthStore;
     private readonly CrossVendorDegradePolicy _degradePolicy;
+    private readonly GatewayRouteTelemetryStore _telemetryStore;
     private readonly object _gate = new();
     private readonly Dictionary<string, RouteMetrics> _metrics = new(StringComparer.Ordinal);
 
     public ModelProxyRouter(
         IReadOnlyList<ModelRoute> routes,
         ModelRouteHealthStore? healthStore = null,
-        CrossVendorDegradePolicy? degradePolicy = null)
+        CrossVendorDegradePolicy? degradePolicy = null,
+        GatewayRouteTelemetryStore? telemetryStore = null)
     {
         _routes = routes ?? throw new ArgumentNullException(nameof(routes));
         if (_routes.Count == 0)
@@ -28,10 +30,14 @@ public sealed class ModelProxyRouter
         }
         _healthStore = healthStore ?? new ModelRouteHealthStore();
         _degradePolicy = degradePolicy ?? CrossVendorDegradePolicy.Disabled;
+        _telemetryStore = telemetryStore ?? new GatewayRouteTelemetryStore();
     }
 
     /// <summary>Immutable route view used by gateway model discovery.</summary>
     public IReadOnlyList<ModelRoute> Routes => _routes;
+
+    /// <summary>Metadata-only route and token-usage history for authenticated diagnostics.</summary>
+    public GatewayRouteTelemetryStore TelemetryStore => _telemetryStore;
 
     /// <summary>
     /// Select the best healthy route for <paramref name="vendorPreference"/>.

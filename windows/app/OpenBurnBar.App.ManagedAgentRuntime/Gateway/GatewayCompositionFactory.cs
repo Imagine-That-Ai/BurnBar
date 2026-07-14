@@ -45,7 +45,8 @@ public static class GatewayCompositionFactory
     public static GatewayComposition Create(
         IReadOnlyList<GatewayRouteConfiguration> configurations,
         Func<string, string?> protectedCredentialResolver,
-        ModelRouteHealthStore? healthStore = null)
+        ModelRouteHealthStore? healthStore = null,
+        GatewayRouteTelemetryStore? telemetryStore = null)
     {
         ArgumentNullException.ThrowIfNull(configurations);
         ArgumentNullException.ThrowIfNull(protectedCredentialResolver);
@@ -79,7 +80,8 @@ public static class GatewayCompositionFactory
             new ModelProxyRouter(
                 routes.Count == 0 ? DefaultRoutes() : routes,
                 healthStore,
-                CrossVendorDegradePolicy.FromEnvironment()),
+                CrossVendorDegradePolicy.FromEnvironment(),
+                telemetryStore),
             new HttpModelCompletionExecutor(client),
             client);
     }

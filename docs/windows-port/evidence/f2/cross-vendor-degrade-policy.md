@@ -34,7 +34,7 @@ routing remains the default fail-closed path.
 ## Validation
 
 `dotnet test windows/tests/managed-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj --no-restore`
-passes **165/165** locally. Focused coverage proves default-off behavior, every
+passes **172/172** locally. Focused coverage proves default-off behavior, every
 accepted enable spelling, normalized/deduplicated/bounded allow-lists, preferred
 model and wire-family enforcement, candidate caps, the two-party operator plus
 request gate, fail-closed no-candidate behavior, and live upstream model
@@ -43,6 +43,6 @@ rewriting.
 ## Boundary
 
 This closes WPD-0006 row 3 and reconciles row 1's already composed authenticated
-gateway transport. It does not claim row 4 durable route logs/streaming usage,
-row 7 provider transports or proactive local discovery, or live-provider
-staging acceptance.
+gateway transport. Row 4 telemetry has separate production evidence. This does
+not claim row 7 provider transports or proactive local discovery, or
+live-provider staging acceptance.

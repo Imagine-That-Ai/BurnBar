@@ -199,12 +199,47 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
             if (context.Request.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
                 && path is "/v1/metrics" or "/metrics")
             {
+                GatewayTelemetrySnapshot telemetry = _router.TelemetryStore.Snapshot();
+                var recentRoutes = _router.TelemetryStore.Recent().Select(entry => new
+                {
+                    id = entry.Id,
+                    started_at = entry.StartedAt,
+                    completed_at = entry.CompletedAt,
+                    duration_milliseconds = entry.DurationMilliseconds,
+                    request_path = entry.RequestPath,
+                    client_model = entry.ClientModel,
+                    routed_model = entry.RoutedModel,
+                    route_id = entry.RouteId,
+                    vendor = entry.Vendor,
+                    account_id = entry.AccountId,
+                    canonical_model_id = entry.CanonicalModelId,
+                    format_family = entry.FormatFamily,
+                    endpoint_profile_id = entry.EndpointProfileId,
+                    degraded = entry.Degraded,
+                    succeeded = entry.Succeeded,
+                    status_code = entry.StatusCode,
+                    streamed = entry.Streamed,
+                    usage = entry.Usage,
+                });
                 await WriteJsonAsync(context.Response, 200, new
                 {
                     routes = _router.SnapshotMetrics()
                         .ToDictionary(pair => pair.Key, pair => pair.Value),
                     health = _router.SnapshotHealth()
                         .ToDictionary(pair => pair.Key, pair => pair.Value),
+                    telemetry = new
+                    {
+                        retained_requests = telemetry.RetainedRequests,
+                        successes = telemetry.Successes,
+                        failures = telemetry.Failures,
+                        degrades = telemetry.Degrades,
+                        input_tokens = telemetry.InputTokens,
+                        output_tokens = telemetry.OutputTokens,
+                        cache_creation_tokens = telemetry.CacheCreationTokens,
+                        cache_read_tokens = telemetry.CacheReadTokens,
+                        reasoning_tokens = telemetry.ReasoningTokens,
+                    },
+                    recent_routes = recentRoutes,
                 }).ConfigureAwait(false);
                 return;
             }
@@ -267,9 +302,15 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         string model = modelElement.GetString()!;
         bool allowDegrade = root.TryGetProperty("openburnbar_allow_degrade", out JsonElement degrade)
             && degrade.ValueKind == JsonValueKind.True;
+        DateTimeOffset startedAt = DateTimeOffset.UtcNow;
         ModelRouteDecision decision = _router.SelectForModel(model, allowDegrade);
         if (decision.FailedClosed)
         {
+            RecordTelemetry(
+                startedAt,
+                model,
+                decision,
+                new ModelCompletionResult(503, Array.Empty<byte>(), "application/json", false));
             await WriteJsonAsync(context.Response, 503, new
             {
                 error = new { type = "model_unavailable", message = $"No healthy route is available for '{model}'." },
@@ -284,6 +325,7 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
                 cancellationToken)
             .ConfigureAwait(false);
         _router.RecordOutcome(decision.Route, result, decision.Degraded);
+        RecordTelemetry(startedAt, model, decision, result);
 
         if (!result.Succeeded)
         {
@@ -302,6 +344,36 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
 
         await WriteBytesAsync(context.Response, result.StatusCode, result.ContentType, result.Body)
             .ConfigureAwait(false);
+    }
+
+    private void RecordTelemetry(
+        DateTimeOffset startedAt,
+        string clientModel,
+        ModelRouteDecision decision,
+        ModelCompletionResult result)
+    {
+        DateTimeOffset completedAt = DateTimeOffset.UtcNow;
+        ModelRoute route = decision.Route;
+        ModelRouteRoutingMetadata metadata = route.Routing ?? new ModelRouteRoutingMetadata();
+        _router.TelemetryStore.Append(new GatewayRouteLogEntry(
+            Guid.NewGuid().ToString("N"),
+            startedAt,
+            completedAt,
+            Math.Max((long)(completedAt - startedAt).TotalMilliseconds, 0),
+            "/v1/chat/completions",
+            clientModel,
+            route.Model,
+            route.Id,
+            route.Vendor,
+            metadata.CredentialSlotId,
+            metadata.CanonicalModelId,
+            metadata.FormatFamily ?? route.Vendor,
+            metadata.EndpointProfileId,
+            decision.Degraded,
+            result.Succeeded,
+            result.StatusCode,
+            result.ContentType.StartsWith("text/event-stream", StringComparison.OrdinalIgnoreCase),
+            result.Succeeded ? GatewayUsageParser.Parse(result) : null));
     }
 
     private byte[] RewriteModel(byte[] requestBody, string model)
