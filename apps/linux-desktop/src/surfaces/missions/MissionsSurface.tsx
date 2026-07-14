@@ -39,6 +39,9 @@ export function MissionsSurface() {
   const detailById = useMissionsStore((s) => s.detailById);
   const detailLoadingById = useMissionsStore((s) => s.detailLoadingById);
   const detailErrorById = useMissionsStore((s) => s.detailErrorById);
+  const healthById = useMissionsStore((s) => s.healthById);
+  const healthLoadingById = useMissionsStore((s) => s.healthLoadingById);
+  const healthErrorById = useMissionsStore((s) => s.healthErrorById);
   const load = useMissionsStore((s) => s.load);
   const inspect = useMissionsStore((s) => s.inspect);
   const decide = useMissionsStore((s) => s.decide);
@@ -151,6 +154,9 @@ export function MissionsSurface() {
       detail={detailById[mission.id]}
       detailLoading={detailLoadingById[mission.id] ?? false}
       detailError={detailErrorById[mission.id]}
+      health={healthById[mission.id]}
+      healthLoading={healthLoadingById[mission.id] ?? false}
+      healthError={healthErrorById[mission.id]}
       cancelState={cancelById[mission.id]}
       onInspect={(id) => void inspect(id)}
       onCancel={fixtureMode ? undefined : (id, note) => void runCancellation(id, note)}

@@ -872,6 +872,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.mission.health",
+    "caseName": "missionHealth",
+    "domain": "mission_control",
+    "capability": "mission_control",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.mission.health",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.mission.list",
     "caseName": "missionsList",
     "domain": "mission_control",

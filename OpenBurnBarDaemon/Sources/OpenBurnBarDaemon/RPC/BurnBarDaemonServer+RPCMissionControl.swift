@@ -245,6 +245,17 @@ extension BurnBarDaemonServer {
                 result: try await missionControlService.missionGet(typedRequest.params)
             )
             return encode(response)
+        case .missionHealth:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarMissionHealthRequest>.self,
+                from: requestData
+            )
+            let response = BurnBarRPCResponseEnvelope<BurnBarMissionHealthResponse>(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: try await missionControlService.missionHealth(typedRequest.params)
+            )
+            return encode(response)
         case .missionApprove:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarMissionApproveRequest>.self,

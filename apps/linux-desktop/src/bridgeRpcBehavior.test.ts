@@ -436,6 +436,36 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'mission_cancel', { missionId: 'm-1', note: 'stop' });
   });
 
+  it('mission health uses the daemon-owned health/history contract', async () => {
+    invoke.mockResolvedValueOnce({
+      missionID: 'm-health',
+      health: {
+        status: 'healthy',
+        detail: 'One packet is active.',
+        checkedAt: '2026-07-13T10:00:00Z',
+        lastActivityAt: '2026-07-13T09:59:00Z',
+        activePacketCount: 1,
+        failedResultCount: 0
+      },
+      history: [{
+        id: 'packet:p-1',
+        kind: 'packet',
+        status: 'running',
+        summary: 'Worker is running.',
+        occurredAt: '2026-07-13T09:59:00Z',
+        metadata: {}
+      }]
+    });
+
+    const b = await bridge();
+    await expect(b.missionHealth?.('m-health')).resolves.toMatchObject({
+      missionId: 'm-health',
+      health: { status: 'healthy', activePacketCount: 1 },
+      history: [{ id: 'packet:p-1', kind: 'packet', status: 'running' }]
+    });
+    expect(invoke).toHaveBeenCalledWith('mission_health', { missionId: 'm-health' });
+  });
+
   it('account auth methods use native commands and return only redacted state', async () => {
     invoke
       .mockResolvedValueOnce({

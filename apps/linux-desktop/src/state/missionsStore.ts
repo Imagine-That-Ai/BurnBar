@@ -5,7 +5,8 @@ import type {
   ApprovalDecision,
   MissionCreateInput,
   MissionDetail,
-  MissionListResult
+  MissionListResult,
+  MissionHealthResult
 } from '../tauriBridge.js';
 
 export type ApprovalDecisionState = {
@@ -22,10 +23,14 @@ export type MissionsState = {
   detailById: Record<string, MissionDetail>;
   detailLoadingById: Record<string, boolean>;
   detailErrorById: Record<string, string | null>;
+  healthById: Record<string, MissionHealthResult>;
+  healthLoadingById: Record<string, boolean>;
+  healthErrorById: Record<string, string | null>;
   creating: boolean;
   createError: string | null;
   load(): Promise<void>;
   inspect(id: string): Promise<MissionDetail | null>;
+  loadHealth(id: string): Promise<MissionHealthResult | null>;
   decide(approvalId: string, decision: ApprovalDecision): Promise<void>;
   cancel(id: string, note?: string): Promise<boolean>;
   create(input: MissionCreateInput): Promise<boolean>;
@@ -41,6 +46,9 @@ export const useMissionsStore = create<MissionsState>()((set, get) => ({
   detailById: {},
   detailLoadingById: {},
   detailErrorById: {},
+  healthById: {},
+  healthLoadingById: {},
+  healthErrorById: {},
   creating: false,
   createError: null,
 
@@ -106,6 +114,7 @@ export const useMissionsStore = create<MissionsState>()((set, get) => ({
         detailLoadingById: { ...s.detailLoadingById, [id]: false },
         detailErrorById: { ...s.detailErrorById, [id]: null }
       }));
+      void get().loadHealth(id);
       return detail;
     } catch (e) {
       set((s) => ({
@@ -116,6 +125,33 @@ export const useMissionsStore = create<MissionsState>()((set, get) => ({
         }
       }));
       return cached ?? null;
+    }
+  },
+
+  async loadHealth(id) {
+    const { bridge, fixtureMode } = useShellStore.getState();
+    if (fixtureMode || !bridge || typeof bridge.missionHealth !== 'function') return null;
+    set((s) => ({
+      healthLoadingById: { ...s.healthLoadingById, [id]: true },
+      healthErrorById: { ...s.healthErrorById, [id]: null }
+    }));
+    try {
+      const result = await bridge.missionHealth(id);
+      set((s) => ({
+        healthById: { ...s.healthById, [id]: result },
+        healthLoadingById: { ...s.healthLoadingById, [id]: false },
+        healthErrorById: { ...s.healthErrorById, [id]: null }
+      }));
+      return result;
+    } catch (e) {
+      set((s) => ({
+        healthLoadingById: { ...s.healthLoadingById, [id]: false },
+        healthErrorById: {
+          ...s.healthErrorById,
+          [id]: e instanceof Error ? e.message : 'Mission health failed'
+        }
+      }));
+      return null;
     }
   },
 

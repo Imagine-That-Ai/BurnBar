@@ -81,6 +81,14 @@ public enum BurnBarMissionStatus: String, Codable, CaseIterable, Hashable, Senda
     case cancelled
 }
 
+public enum BurnBarMissionHealthStatus: String, Codable, CaseIterable, Hashable, Sendable {
+    case healthy
+    case degraded
+    case stalled
+    case failed
+    case unknown
+}
+
 public enum BurnBarMissionRecommendation: String, Codable, CaseIterable, Hashable, Sendable {
     case proceed
     case review

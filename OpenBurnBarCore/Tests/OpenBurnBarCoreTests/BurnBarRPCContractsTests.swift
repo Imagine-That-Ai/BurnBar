@@ -92,6 +92,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .missionCreate: "daemon.mission.create",
         .missionsList: "daemon.mission.list",
         .missionGet: "daemon.mission.get",
+        .missionHealth: "daemon.mission.health",
         .missionApprove: "daemon.mission.approve",
         .missionCancel: "daemon.mission.cancel",
         .missionDispatchPacket: "daemon.mission.packet.dispatch",

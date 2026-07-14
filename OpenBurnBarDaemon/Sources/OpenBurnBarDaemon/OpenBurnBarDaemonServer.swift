@@ -1269,7 +1269,7 @@ public actor BurnBarDaemonServer {
                  .controllerProjectReassign, .reviewRunRecord,
                  .questionCreate, .questionGet, .questionsList, .questionAnswer,
                  .followupCreate, .followupsList, .followupDone, .followupSnooze, .followupCalendar,
-                 .missionCreate, .missionsList, .missionGet, .missionApprove, .missionCancel,
+                 .missionCreate, .missionsList, .missionGet, .missionHealth, .missionApprove, .missionCancel,
                  .missionDispatchPacket, .missionRecordResult, .missionAuthorizeRemote,
                  .notificationConfigGet, .notificationConfigUpdate, .notificationHealth, .notificationCommand,
                  .simulatorRun, .simulatorList, .simulatorReplay, .projectionRebuild:

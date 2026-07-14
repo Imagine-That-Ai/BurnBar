@@ -453,6 +453,56 @@ public struct BurnBarMissionSnapshot: Codable, Hashable, Identifiable, Sendable 
     }
 }
 
+public struct BurnBarMissionHealthSnapshot: Codable, Hashable, Sendable {
+    public let status: BurnBarMissionHealthStatus
+    public let detail: String
+    public let checkedAt: Date
+    public let lastActivityAt: Date
+    public let activePacketCount: Int
+    public let failedResultCount: Int
+
+    public init(
+        status: BurnBarMissionHealthStatus,
+        detail: String,
+        checkedAt: Date,
+        lastActivityAt: Date,
+        activePacketCount: Int,
+        failedResultCount: Int
+    ) {
+        self.status = status
+        self.detail = detail
+        self.checkedAt = checkedAt
+        self.lastActivityAt = lastActivityAt
+        self.activePacketCount = activePacketCount
+        self.failedResultCount = failedResultCount
+    }
+}
+
+public struct BurnBarMissionHistoryEntry: Codable, Hashable, Identifiable, Sendable {
+    public let id: String
+    public let kind: String
+    public let status: String
+    public let summary: String
+    public let occurredAt: Date
+    public let metadata: BurnBarMetadata
+
+    public init(
+        id: String,
+        kind: String,
+        status: String,
+        summary: String,
+        occurredAt: Date,
+        metadata: BurnBarMetadata = [:]
+    ) {
+        self.id = id
+        self.kind = kind
+        self.status = status
+        self.summary = summary
+        self.occurredAt = occurredAt
+        self.metadata = metadata
+    }
+}
+
 public struct BurnBarNotificationChannelHealth: Codable, Hashable, Sendable {
     public let channel: BurnBarNotificationChannel
     public let status: BurnBarNotificationHealthStatus
@@ -1059,6 +1109,30 @@ public struct BurnBarMissionResponse: Codable, Hashable, Sendable {
 
     public init(mission: BurnBarMissionSnapshot?) {
         self.mission = mission
+    }
+}
+
+public struct BurnBarMissionHealthRequest: Codable, Hashable, Sendable {
+    public let missionID: BurnBarMissionID
+
+    public init(missionID: BurnBarMissionID) {
+        self.missionID = missionID
+    }
+}
+
+public struct BurnBarMissionHealthResponse: Codable, Hashable, Sendable {
+    public let missionID: BurnBarMissionID
+    public let health: BurnBarMissionHealthSnapshot
+    public let history: [BurnBarMissionHistoryEntry]
+
+    public init(
+        missionID: BurnBarMissionID,
+        health: BurnBarMissionHealthSnapshot,
+        history: [BurnBarMissionHistoryEntry]
+    ) {
+        self.missionID = missionID
+        self.health = health
+        self.history = history
     }
 }
 

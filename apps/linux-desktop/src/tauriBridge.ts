@@ -266,6 +266,28 @@ export type MissionPRLinkageSnapshot = {
   closedAt?: string;
 };
 export type MissionFreshness = 'fresh' | 'stale' | 'unknown';
+export type MissionHealthStatus = 'healthy' | 'degraded' | 'stalled' | 'failed' | 'unknown';
+export type MissionHealthSnapshot = {
+  status: MissionHealthStatus;
+  detail: string;
+  checkedAt: string;
+  lastActivityAt: string;
+  activePacketCount: number;
+  failedResultCount: number;
+};
+export type MissionHistoryEntry = {
+  id: string;
+  kind: string;
+  status: string;
+  summary: string;
+  occurredAt: string;
+  metadata: Record<string, unknown>;
+};
+export type MissionHealthResult = {
+  missionId: string;
+  health: MissionHealthSnapshot;
+  history: MissionHistoryEntry[];
+};
 export type MissionRecord = {
   id: string;
   title: string;
@@ -1362,6 +1384,7 @@ export interface LinuxShellBridge {
   usageInsights(): Promise<UsageInsights>;
   missionList(): Promise<MissionListResult>;
   missionGet(id: string): Promise<MissionDetail | null>;
+  missionHealth?(id: string): Promise<MissionHealthResult>;
   missionApprovalDecision(id: string, decision: ApprovalDecision): Promise<void>;
   missionCancel(id: string, note?: string): Promise<MissionDetail | null>;
   missionCreate(input: MissionCreateInput): Promise<MissionListResult['missions'][number] | null>;
@@ -2459,6 +2482,32 @@ function mapMissionTakeover(raw: RawJsonValue, index: number): MissionTakeoverRe
     createdAt: str(pick(raw, 'createdAt', 'created_at'), ''),
     updatedAt: str(pick(raw, 'updatedAt', 'updated_at'), ''),
     metadata: obj(pick(raw, 'metadata'))
+  };
+}
+
+const MISSION_HEALTH_STATUSES: readonly MissionHealthStatus[] = ['healthy', 'degraded', 'stalled', 'failed', 'unknown'];
+
+function mapMissionHealth(raw: RawJsonValue): MissionHealthResult {
+  const source = pick(raw, 'health') ?? raw;
+  const status = str(pick(source, 'status')).toLowerCase() as MissionHealthStatus;
+  return {
+    missionId: str(pick(raw, 'missionID', 'missionId', 'mission_id'), 'unknown'),
+    health: {
+      status: MISSION_HEALTH_STATUSES.includes(status) ? status : 'unknown',
+      detail: str(pick(source, 'detail'), 'Mission health detail unavailable.'),
+      checkedAt: str(pick(source, 'checkedAt', 'checked_at'), ''),
+      lastActivityAt: str(pick(source, 'lastActivityAt', 'last_activity_at'), ''),
+      activePacketCount: Math.max(0, num(pick(source, 'activePacketCount', 'active_packet_count'))),
+      failedResultCount: Math.max(0, num(pick(source, 'failedResultCount', 'failed_result_count')))
+    },
+    history: arr(pick(raw, 'history')).map((entry, index): MissionHistoryEntry => ({
+      id: str(pick(entry, 'id'), `history-${index}`),
+      kind: str(pick(entry, 'kind'), 'event'),
+      status: str(pick(entry, 'status'), 'unknown'),
+      summary: str(pick(entry, 'summary'), 'Mission event'),
+      occurredAt: str(pick(entry, 'occurredAt', 'occurred_at'), ''),
+      metadata: obj(pick(entry, 'metadata'))
+    }))
   };
 }
 
@@ -4402,6 +4451,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     missionGet: async (id) => {
       const raw = await invoke<RawJsonValue>('mission_get', { missionId: id });
       return mapMissionDetail(raw);
+    },
+    missionHealth: async (id) => {
+      const raw = await invoke<RawJsonValue>('mission_health', { missionId: id });
+      return mapMissionHealth(raw);
     },
     // P06 — daemon.mission.approve / daemon.mission.cancel
     missionApprovalDecision: async (id, decision) => {

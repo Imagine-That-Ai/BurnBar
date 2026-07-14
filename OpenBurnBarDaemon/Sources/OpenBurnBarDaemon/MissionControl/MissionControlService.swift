@@ -274,6 +274,10 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
         BurnBarMissionResponse(mission: try await store.mission(id: request.missionID))
     }
 
+    public func missionHealth(_ request: BurnBarMissionHealthRequest) async throws -> BurnBarMissionHealthResponse {
+        try await store.missionHealth(request)
+    }
+
     public func missionApprove(_ request: BurnBarMissionApproveRequest) async throws -> BurnBarMissionMutationResponse {
         try await store.approveMission(request)
     }

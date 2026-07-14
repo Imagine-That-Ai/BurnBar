@@ -476,6 +476,98 @@ public actor BurnBarMissionControlStore {
         return projection?.missions[id.rawValue]
     }
 
+    public func missionHealth(_ request: BurnBarMissionHealthRequest) throws -> BurnBarMissionHealthResponse {
+        try ensureLoaded()
+        guard let mission = projection?.missions[request.missionID.rawValue] else {
+            throw BurnBarMissionControlError.missionNotFound(request.missionID)
+        }
+
+        let packetHistory = mission.packets.map { packet in
+            BurnBarMissionHistoryEntry(
+                id: "packet:\(packet.id.rawValue)",
+                kind: "packet",
+                status: packet.status.rawValue,
+                summary: packet.objective,
+                occurredAt: packet.completedAt ?? packet.dispatchedAt ?? mission.createdAt,
+                metadata: packet.metadata
+            )
+        }
+        let resultHistory = mission.results.map { result in
+            BurnBarMissionHistoryEntry(
+                id: "result:\(result.id.rawValue)",
+                kind: "result",
+                status: result.status.rawValue,
+                summary: result.summary,
+                occurredAt: result.createdAt,
+                metadata: result.metadata
+            )
+        }
+        let burnHistory = mission.burnRecords.map { burn in
+            BurnBarMissionHistoryEntry(
+                id: "burn:\(burn.id)",
+                kind: "burn",
+                status: "recorded",
+                summary: "\(burn.label): \(burn.amount) \(burn.unit)",
+                occurredAt: burn.recordedAt
+            )
+        }
+        let takeoverHistory = (mission.takeoverHistory ?? []).map { takeover in
+            BurnBarMissionHistoryEntry(
+                id: "takeover:\(takeover.id)",
+                kind: "takeover",
+                status: takeover.status.rawValue,
+                summary: takeover.reason,
+                occurredAt: takeover.updatedAt,
+                metadata: takeover.metadata
+            )
+        }
+        let history = (packetHistory + resultHistory + burnHistory + takeoverHistory)
+            .sorted {
+                if $0.occurredAt != $1.occurredAt {
+                    return $0.occurredAt < $1.occurredAt
+                }
+                return $0.id < $1.id
+            }
+        let activePacketCount = mission.packets.filter {
+            [.queued, .dispatched, .running].contains($0.status)
+        }.count
+        let failedResultCount = mission.results.filter { $0.status == .failed }.count
+        let failedPacket = mission.packets.contains { $0.status == .failed }
+        let healthStatus: BurnBarMissionHealthStatus
+        let detail: String
+        switch (mission.status, failedResultCount > 0 || failedPacket, activePacketCount) {
+        case (.failed, _, _), (_, true, _):
+            healthStatus = .failed
+            detail = "Mission failure is recorded in the daemon projection."
+        case (_, _, let active) where active > 0:
+            healthStatus = .healthy
+            detail = "\(active) mission packet(s) are active."
+        case (.draft, _, _), (.awaitingApproval, _, _):
+            healthStatus = .degraded
+            detail = "Mission is waiting for approval before dispatch."
+        case (.completed, _, _), (.cancelled, _, _):
+            healthStatus = .healthy
+            detail = "Mission reached a terminal state without an active packet."
+        default:
+            healthStatus = .unknown
+            detail = "The daemon projection has no active packet or terminal result."
+        }
+        let lastActivityAt = history.last?.occurredAt ?? mission.updatedAt
+        let health = BurnBarMissionHealthSnapshot(
+            status: healthStatus,
+            detail: detail,
+            checkedAt: Date(),
+            lastActivityAt: lastActivityAt,
+            activePacketCount: activePacketCount,
+            failedResultCount: failedResultCount
+        )
+        return BurnBarMissionHealthResponse(
+            missionID: mission.id,
+            health: health,
+            history: history
+        )
+    }
+
     public func missions(_ request: BurnBarMissionListRequest) throws -> [BurnBarMissionSnapshot] {
         try ensureLoaded()
         return Array(projection?.missions.values

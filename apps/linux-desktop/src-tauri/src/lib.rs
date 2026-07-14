@@ -2588,6 +2588,16 @@ fn mission_get(mission_id: String) -> Result<serde_json::Value, String> {
     )
 }
 
+// ───────────────── P20: mission health/history ─────────────────
+// Wire: daemon.mission.health (BurnBarRPCMethod.missionHealth)
+#[tauri::command]
+fn mission_health(mission_id: String) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.mission.health",
+        Some(serde_json::json!({"missionID": mission_id})),
+    )
+}
+
 // ───────────────── P06: mission create ─────────────────
 // Wire: daemon.mission.create (BurnBarRPCMethod.missionCreate)
 // BurnBarMissionCreateRequest requires projectSlug, title, summary,
@@ -6042,6 +6052,7 @@ pub fn run() {
             usage_insights,
             mission_list,
             mission_get,
+            mission_health,
             mission_create,
             mission_approval_decision,
             mission_cancel,

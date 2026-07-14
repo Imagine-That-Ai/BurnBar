@@ -2,7 +2,8 @@ import type { CSSProperties } from 'react';
 import { useId, useState } from 'react';
 import type {
   MissionDetail,
-  PendingApproval
+  PendingApproval,
+  MissionHealthResult
 } from '../../tauriBridge.js';
 import {
   formatMissionApprovalLabel,
@@ -26,6 +27,9 @@ export function MissionRow({
   detail,
   detailLoading = false,
   detailError,
+  health,
+  healthLoading = false,
+  healthError,
   cancelState,
   onInspect,
   onCancel
@@ -36,6 +40,9 @@ export function MissionRow({
   detail?: MissionDetail;
   detailLoading?: boolean;
   detailError?: string | null;
+  health?: MissionHealthResult;
+  healthLoading?: boolean;
+  healthError?: string | null;
   cancelState?: ApprovalDecisionState;
   onInspect?: (missionId: string) => void;
   onCancel?: (missionId: string, note?: string) => void;
@@ -169,7 +176,13 @@ export function MissionRow({
               </div>
               <div>
                 <dt>Runtime health</dt>
-                <dd>Unavailable from the mission contract.</dd>
+                <dd>
+                  {healthLoading ? 'Checking…' : health
+                    ? `${health.health.status} — ${health.health.detail}`
+                    : healthError
+                      ? `Unavailable: ${healthError}`
+                      : 'Health check not requested.'}
+                </dd>
               </div>
             </dl>
             {snapshot.summary ? <p className="missions-detail-summary">{snapshot.summary}</p> : null}
@@ -214,7 +227,17 @@ export function MissionRow({
 
             <section className="missions-detail-section" aria-labelledby={`${detailsId}-history`}>
               <h5 id={`${detailsId}-history`}>Controller history</h5>
-              {(snapshot.takeoverHistory ?? []).length > 0 ? (
+              {(health?.history ?? []).length > 0 ? (
+                <ul className="missions-detail-list">
+                  {(health?.history ?? []).map((entry) => (
+                    <li key={entry.id}>
+                      <strong>{entry.kind} · {entry.status}</strong>
+                      <span>{entry.summary}</span>
+                      <span className="muted">{entry.occurredAt || 'Timestamp unavailable'}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (snapshot.takeoverHistory ?? []).length > 0 ? (
                 <ul className="missions-detail-list">
                   {(snapshot.takeoverHistory ?? []).map((record) => (
                     <li key={record.id}>
@@ -225,7 +248,7 @@ export function MissionRow({
                   ))}
                 </ul>
               ) : (
-                <p className="muted">No takeover history is present; the daemon exposes no separate history RPC.</p>
+                <p className="muted">No controller history is present in the daemon projection.</p>
               )}
             </section>
           </div>

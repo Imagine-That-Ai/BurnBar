@@ -319,6 +319,59 @@ describe('MissionsSurface', () => {
     expect(screen.getByText(/Unavailable from the mission contract/)).toBeTruthy();
   });
 
+  it('renders daemon-owned mission health and controller history when available', async () => {
+    const mission: MissionListResult['missions'][number] = {
+      id: 'm-health',
+      title: 'Healthy mission',
+      state: 'in_progress',
+      updatedAt: new Date().toISOString(),
+      laneCount: 1,
+      summary: 'Mission summary',
+      packets: [{ id: 'packet-1', workerName: 'worker-a', objective: 'Run task', status: 'running', metadata: {} }],
+      results: []
+    };
+    const list: MissionListResult = { missions: [mission], pendingApprovals: [] };
+    const missionHealth = vi.fn().mockResolvedValue({
+      missionId: 'm-health',
+      health: {
+        status: 'healthy',
+        detail: 'One packet is active.',
+        checkedAt: new Date().toISOString(),
+        lastActivityAt: new Date().toISOString(),
+        activePacketCount: 1,
+        failedResultCount: 0
+      },
+      history: [{
+        id: 'packet:packet-1',
+        kind: 'packet',
+        status: 'running',
+        summary: 'Worker is running.',
+        occurredAt: new Date().toISOString(),
+        metadata: {}
+      }]
+    });
+    const bridge = {
+      missionList: vi.fn().mockResolvedValue(list),
+      missionGet: vi.fn().mockResolvedValue(mission),
+      missionHealth
+    } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: list, loading: false, error: null }));
+    useMissionsStore.setState({ data: list, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(missionHealth).toHaveBeenCalledWith('m-health');
+    expect(screen.getByText(/healthy — One packet is active\./)).toBeTruthy();
+    expect(screen.getByText('One packet is active.')).toBeTruthy();
+    expect(screen.getByText('Worker is running.')).toBeTruthy();
+  });
+
   it('requires confirmation and calls canonical mission.cancel', async () => {
     const mission: MissionListResult['missions'][number] = {
       id: 'm-cancel',

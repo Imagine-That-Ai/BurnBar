@@ -128,6 +128,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         .missionCreate,
         .missionsList,
         .missionGet,
+        .missionHealth,
         .missionApprove,
         .missionCancel,
         .missionDispatchPacket,

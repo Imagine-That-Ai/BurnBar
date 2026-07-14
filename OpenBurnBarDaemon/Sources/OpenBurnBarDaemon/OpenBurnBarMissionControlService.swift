@@ -41,6 +41,7 @@ public protocol BurnBarMissionControlServing: AnyObject, Sendable {
     func missionCreate(_ request: BurnBarMissionCreateRequest) async throws -> BurnBarMissionMutationResponse
     func missionsList(_ request: BurnBarMissionListRequest) async throws -> BurnBarMissionListResponse
     func missionGet(_ request: BurnBarMissionGetRequest) async throws -> BurnBarMissionResponse
+    func missionHealth(_ request: BurnBarMissionHealthRequest) async throws -> BurnBarMissionHealthResponse
     func missionApprove(_ request: BurnBarMissionApproveRequest) async throws -> BurnBarMissionMutationResponse
     func missionCancel(_ request: BurnBarMissionCancelRequest) async throws -> BurnBarMissionMutationResponse
     func missionDispatchPacket(_ request: BurnBarMissionDispatchPacketRequest) async throws -> BurnBarMissionMutationResponse
