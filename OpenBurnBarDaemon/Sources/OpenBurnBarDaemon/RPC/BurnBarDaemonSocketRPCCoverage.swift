@@ -32,6 +32,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         .linuxPrivacyInventory,
         .linuxPrivacyDeletionPreview,
         .linuxPrivacyDeletionExecute,
+        .linuxPrivacyExport,
         .linuxOnboardingAction,
         .linuxOnboardingReset,
         .providerCredentialSlotUpsert,
@@ -48,7 +49,8 @@ enum BurnBarDaemonSocketRPCCoverage {
 
     static let usage: Set<BurnBarRPCMethod> = [
         .usageRecord,
-        .usageRecent
+        .usageRecent,
+        .usageInsights
     ]
 
     static let chat: Set<BurnBarRPCMethod> = [

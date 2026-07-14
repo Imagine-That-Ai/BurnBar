@@ -518,4 +518,10 @@ public actor BurnBarLinuxPrivacyService {
         pending = pending.filter { $0.value.expiresAt >= now }
     }
 }
+#else
+/// macOS keeps the shared initializer source-compatible while Linux owns the
+/// concrete privacy inventory/deletion/export implementation.
+public actor BurnBarLinuxPrivacyService {
+    public init() {}
+}
 #endif

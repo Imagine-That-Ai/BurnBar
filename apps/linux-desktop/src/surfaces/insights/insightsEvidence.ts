@@ -16,6 +16,7 @@ export type InsightsEvidence = {
 
 const VALID_SOURCES: Record<UsageInsightsSource['id'], Pick<UsageInsightsSource, 'kind' | 'label'>> = {
   'daemon.usage.recent': { kind: 'daemon-method', label: 'live daemon usage insights' },
+  'daemon.usage.insights': { kind: 'daemon-method', label: 'daemon-authored qualitative insights' },
   'fixture.usage.insights': { kind: 'fixture', label: 'fixture transcript' }
 };
 
@@ -36,7 +37,9 @@ export function resolveInsightsEvidence(data: UsageInsights, sourceLabel: string
       detail:
         definition.kind === 'fixture'
           ? 'Local fixture transcript; not evidence from a running daemon.'
-          : 'Aggregated from the daemon.usage.recent response.'
+          : source.id === 'daemon.usage.insights'
+            ? 'Authored by the daemon from a bounded local usage digest; no transcript or credential data leaves the daemon.'
+            : 'Aggregated from the daemon.usage.recent response.'
     };
   }
   return {

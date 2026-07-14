@@ -260,6 +260,12 @@ describe('VAL-RPC-002 bridge behavior', () => {
         alreadyAbsent: [],
         bytesRemoved: 24,
         idempotent: false
+      })
+      .mockResolvedValueOnce({
+        stores: ['proxy_route_log'],
+        destinationPath: '/tmp/privacy-export.obb',
+        byteCount: 192,
+        formatVersion: 1
       });
     const b = await bridge();
     await expect(b.linuxPrivacyInventory?.()).resolves.toMatchObject({
@@ -277,10 +283,22 @@ describe('VAL-RPC-002 bridge behavior', () => {
       stores: ['proxy_route_log'],
       confirmation: 'DELETE LOCAL DATA'
     })).resolves.toMatchObject({ deleted: ['proxy_route_log'], bytesRemoved: 24 });
+    await expect(b.linuxPrivacyExport?.({
+      stores: ['proxy_route_log'],
+      destinationPath: '/tmp/privacy-export.obb',
+      passphrase: 'correct horse battery'
+    })).resolves.toMatchObject({ destinationPath: '/tmp/privacy-export.obb', byteCount: 192, formatVersion: 1 });
     expect(invoke).toHaveBeenNthCalledWith(1, 'linux_privacy_inventory');
     expect(invoke).toHaveBeenNthCalledWith(2, 'linux_privacy_deletion_preview', { stores: ['proxy_route_log'] });
     expect(invoke).toHaveBeenNthCalledWith(3, 'linux_privacy_deletion_execute', {
       request: { token: 'preview-token', stores: ['proxy_route_log'], confirmation: 'DELETE LOCAL DATA' }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(4, 'linux_privacy_export', {
+      request: {
+        stores: ['proxy_route_log'],
+        destinationPath: '/tmp/privacy-export.obb',
+        passphrase: 'correct horse battery'
+      }
     });
   });
 

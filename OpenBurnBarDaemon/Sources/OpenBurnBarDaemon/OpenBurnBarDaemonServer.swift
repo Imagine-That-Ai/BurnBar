@@ -1199,14 +1199,23 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
 #if os(Linux)
-            case .linuxPrivacyInventory, .linuxPrivacyDeletionPreview, .linuxPrivacyDeletionExecute:
+            case .linuxPrivacyInventory, .linuxPrivacyDeletionPreview,
+                 .linuxPrivacyDeletionExecute, .linuxPrivacyExport:
                 return try await handleLinuxPrivacyRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData
                 )
+#else
+            case .linuxPrivacyInventory, .linuxPrivacyDeletionPreview,
+                 .linuxPrivacyDeletionExecute, .linuxPrivacyExport:
+                return encodeErrorResponse(
+                    id: request.id,
+                    code: BurnBarRPCErrorCode.methodNotFound,
+                    message: "Linux privacy RPCs are unavailable on macOS."
+                )
 #endif
-            case .usageRecord, .usageRecent:
+            case .usageRecord, .usageRecent, .usageInsights:
                 return try await handleUsageRPC(
                     method: method,
                     decoder: decoder,

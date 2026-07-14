@@ -1012,6 +1012,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.privacy.export",
+    "caseName": "linuxPrivacyExport",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxPrivacyExportRequest",
+    "result": "BurnBarLinuxPrivacyExportResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.privacy.inventory",
     "caseName": "linuxPrivacyInventory",
     "domain": "config",
@@ -1319,6 +1329,16 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarTextExpansionUpsertRequest",
     "result": "BurnBarTextExpansionWireSnippet",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.usage.insights",
+    "caseName": "usageInsights",
+    "domain": "usage",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarUsageInsightsRequest",
+    "result": "BurnBarUsageInsightsResponse",
     "error": "BurnBarRPCError"
   },
   {

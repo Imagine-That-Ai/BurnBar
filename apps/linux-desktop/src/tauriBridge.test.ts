@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bridgeStubDefaults } from './testing/bridgeStubs';
 import {
   computeCacheHitRatePct,
+  decodeUsageInsights,
   decodeChatAttachmentUpload,
   decodeChatMessageAppend,
   decodeChatThreadGet,
@@ -39,6 +40,48 @@ const CHAT_MESSAGE = {
   timestamp: ACCOUNT_UPDATED_AT,
   backendID: 'codex'
 };
+
+describe('daemon-owned qualitative insights decoding', () => {
+  it('accepts the bounded local-rules result and preserves authority metadata', () => {
+    const result = decodeUsageInsights({
+      usage: [{
+        providerID: 'codex',
+        modelID: 'gpt-5',
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        reasoningTokens: 0,
+        cost: 0.12,
+        recordedAt: ACCOUNT_UPDATED_AT,
+        sessionID: 'session-1'
+      }],
+      sourceID: 'daemon.usage.ledger',
+      sourceLabel: 'Linux daemon usage ledger · local rules',
+      analysis: {
+        requestID: 'request-1',
+        generatedAt: ACCOUNT_UPDATED_AT,
+        executiveSummary: 'Codex is the main spend driver.',
+        modelTag: { displayName: 'Linux local rules' },
+        findings: [{
+          id: 'finding-1',
+          title: 'Codex is the main spend driver',
+          whyItMatters: 'It accounts for the included spend.',
+          recommendedAction: 'Compare lower-cost routes.',
+          evidence: [{ id: 'citation-1', label: 'Codex session' }]
+        }],
+        citations: [{ id: 'citation-1', label: 'Codex session' }]
+      }
+    });
+    expect(result.source).toMatchObject({ id: 'daemon.usage.insights', kind: 'daemon-method' });
+    expect(result.qualitative).toMatchObject({
+      state: 'available',
+      method: 'daemon.usage.insights',
+      sourceID: 'daemon.usage.ledger'
+    });
+    expect(result.qualitative?.analysis?.findings[0]?.title).toBe('Codex is the main spend driver');
+  });
+});
 
 describe('exact-thread chat wire decoding', () => {
   it('strictly decodes list, get, and idempotent append results', () => {

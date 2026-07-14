@@ -1205,6 +1205,24 @@ final class BurnBarDaemonServerTests: XCTestCase {
         XCTAssertEqual(recentResponse.result?.usage.first?.projectName, "Hermes (proxy)")
         XCTAssertEqual(recentResponse.result?.usage.first?.confidence, .exact)
 
+        let insightsResponse: BurnBarRPCResponseEnvelope<BurnBarUsageInsightsResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "usage-insights-after-record",
+                method: .usageInsights,
+                authToken: "test-token",
+                params: BurnBarUsageInsightsRequest(
+                    limit: 5,
+                    windowSeconds: 366 * 24 * 60 * 60,
+                    prompt: "Summarize the recorded usage."
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(insightsResponse.error)
+        XCTAssertEqual(insightsResponse.result?.usage.count, 1)
+        XCTAssertEqual(insightsResponse.result?.sourceID, "daemon.usage.ledger")
+        XCTAssertEqual(insightsResponse.result?.analysis.platform, .linux)
+
         await server.stop()
     }
 

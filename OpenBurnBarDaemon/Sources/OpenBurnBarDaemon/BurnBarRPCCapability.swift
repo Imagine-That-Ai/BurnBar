@@ -69,6 +69,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .textExpansionGet, .textExpansionUpsert, .textExpansionDelete, .textExpansionConsentUpdate,
              .textExpansionEngineStatus, .textExpansionEngineStart, .textExpansionEngineStop,
              .linuxPrivacyInventory, .linuxPrivacyDeletionPreview, .linuxPrivacyDeletionExecute,
+             .linuxPrivacyExport,
              .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
              .providerModelVariantUpsert, .providerModelVariantRemove,
              .providerModelAliasUpsert, .providerModelAliasRemove,
@@ -78,7 +79,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .databaseRecoveryStatus,
              .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
             return .config
-        case .usageRecord, .usageRecent,
+        case .usageRecord, .usageRecent, .usageInsights,
              .proxyRouteLogRecent, .proxyRouteLogClear,
              .quotaSignalsRecent, .perfMeasure:
             return .observability

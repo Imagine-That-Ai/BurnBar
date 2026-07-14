@@ -1392,6 +1392,25 @@ public struct BurnBarRecentUsageResponse: Codable, Hashable, Sendable {
     }
 }
 
+/// Requests a privacy-bounded, daemon-owned qualitative insight brief. The
+/// daemon builds the digest from its usage ledger; the renderer never receives
+/// raw transcripts or provider credentials.
+public struct BurnBarUsageInsightsRequest: Codable, Hashable, Sendable {
+    public let limit: Int
+    public let windowSeconds: TimeInterval
+    public let prompt: String
+
+    public init(
+        limit: Int = 200,
+        windowSeconds: TimeInterval = 7 * 24 * 60 * 60,
+        prompt: String = "Summarize the most important usage changes and actions."
+    ) {
+        self.limit = limit
+        self.windowSeconds = windowSeconds
+        self.prompt = prompt
+    }
+}
+
 /// Confidence level for a recorded `BurnBarUsageEvent`. Mirrors `UsageProvenanceConfidence`
 /// at the contract layer so the daemon ledger can be written by Hermes/MCP/CLI clients
 /// without depending on the app's `OpenBurnBarCore` runtime types.

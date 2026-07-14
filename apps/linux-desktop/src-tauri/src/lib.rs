@@ -2714,12 +2714,17 @@ fn chat_message_append(request: serde_json::Value) -> Result<serde_json::Value, 
 }
 
 // ───────────────── P05: usage insights ─────────────────
-// Wire: daemon.usage.recent (aggregated client-side in the TS bridge)
+// Wire: daemon.usage.insights. The daemon owns the bounded digest and local
+// rules analysis; the renderer only receives the typed usage/analysis result.
 #[tauri::command]
 fn usage_insights() -> Result<serde_json::Value, String> {
     call_daemon_method(
-        "daemon.usage.recent",
-        Some(serde_json::json!({"limit": 200})),
+        "daemon.usage.insights",
+        Some(serde_json::json!({
+            "limit": 200,
+            "windowSeconds": 604800,
+            "prompt": "Summarize the most important usage changes and actions."
+        })),
     )
 }
 
@@ -3012,6 +3017,41 @@ fn linux_privacy_deletion_preview(stores: Vec<String>) -> Result<serde_json::Val
 #[tauri::command]
 fn linux_privacy_deletion_execute(request: serde_json::Value) -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.privacy.deletion.execute", Some(request))
+}
+
+#[tauri::command]
+fn linux_privacy_export(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    let object = request
+        .as_object()
+        .ok_or_else(|| "privacy export request must be an object".to_string())?;
+    let stores = object
+        .get("stores")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| "privacy export stores are required".to_string())?;
+    if stores.is_empty() || stores.len() > 2 {
+        return Err("privacy export must select one or two supported stores".to_string());
+    }
+    let destination_path = object
+        .get("destinationPath")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "privacy export destinationPath is required".to_string())?;
+    let passphrase = object
+        .get("passphrase")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "privacy export passphrase is required".to_string())?;
+    if destination_path.trim().is_empty()
+        || destination_path.len() > 4096
+        || !destination_path.starts_with('/')
+        || destination_path
+            .chars()
+            .any(|character| character == '\0' || character == '\n' || character == '\r')
+    {
+        return Err("privacy export destinationPath is invalid".to_string());
+    }
+    if passphrase.len() < 8 || passphrase.len() > 4096 || passphrase.contains('\0') {
+        return Err("privacy export passphrase must be between 8 and 4096 bytes".to_string());
+    }
+    call_daemon_method("daemon.privacy.export", Some(request))
 }
 
 #[tauri::command]
@@ -6242,6 +6282,7 @@ pub fn run() {
             linux_privacy_inventory,
             linux_privacy_deletion_preview,
             linux_privacy_deletion_execute,
+            linux_privacy_export,
             notification_config_get,
             notification_config_update,
             notification_health,

@@ -314,6 +314,22 @@ export function InsightsWorkspace({
                 </dd>
               </div>
             </dl>
+            {qualitative.analysis ? (
+              <section className="insights-qualitative-brief" aria-label="Daemon qualitative brief">
+                <span className="insights-eyebrow">Daemon brief · {qualitative.analysis.modelDisplayName}</span>
+                <p>{qualitative.analysis.executiveSummary}</p>
+                {qualitative.analysis.findings.length > 0 ? (
+                  <ul>
+                    {qualitative.analysis.findings.slice(0, 3).map((finding) => (
+                      <li key={finding.id}>
+                        <strong>{finding.title}</strong>
+                        <span>{finding.recommendedAction}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </section>
+            ) : null}
             <button
               type="button"
               className="secondary insights-inspector-follow-up"

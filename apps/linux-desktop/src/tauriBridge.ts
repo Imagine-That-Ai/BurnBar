@@ -169,7 +169,7 @@ export type WeeklyPoint = { label: string; tokens: number; costUsd: number };
 export type MixEntry = { id: string; label: string; pct: number };
 export type UsageInsightsSource = {
   /** Stable authority identifier, not a renderer-generated citation. */
-  id: 'daemon.usage.recent' | 'fixture.usage.insights';
+  id: 'daemon.usage.recent' | 'daemon.usage.insights' | 'fixture.usage.insights';
   kind: 'daemon-method' | 'fixture';
   label: string;
 };
@@ -177,6 +177,24 @@ export type InsightsQualitativeCapability = {
   state: 'available' | 'degraded' | 'unavailable';
   reason: string;
   method?: string;
+  sourceID?: string;
+  analysis?: UsageInsightsQualitativeAnalysis;
+};
+export type UsageInsightsQualitativeCitation = { id: string; label: string };
+export type UsageInsightsQualitativeFinding = {
+  id: string;
+  title: string;
+  whyItMatters: string;
+  recommendedAction: string;
+  evidence: UsageInsightsQualitativeCitation[];
+};
+export type UsageInsightsQualitativeAnalysis = {
+  requestID: string;
+  generatedAt: string;
+  executiveSummary: string;
+  modelDisplayName: string;
+  findings: UsageInsightsQualitativeFinding[];
+  citations: UsageInsightsQualitativeCitation[];
 };
 export type UsageInsights = {
   weekly: WeeklyPoint[];
@@ -185,7 +203,7 @@ export type UsageInsights = {
   cacheHitRatePct: number;
   /** Present when the daemon response carries a known source authority. */
   source?: UsageInsightsSource;
-  /** Linux currently has no qualitative-analysis RPC; keep that posture typed. */
+  /** Present when the daemon has produced a bounded local-rules brief. */
   qualitative?: InsightsQualitativeCapability;
 };
 
@@ -1274,6 +1292,17 @@ export type LinuxPrivacyDeletionResult = {
   bytesRemoved: number;
   idempotent: boolean;
 };
+export type LinuxPrivacyExportRequest = {
+  stores: LinuxPrivacyStoreID[];
+  destinationPath: string;
+  passphrase: string;
+};
+export type LinuxPrivacyExportResult = {
+  stores: LinuxPrivacyStoreID[];
+  destinationPath: string;
+  byteCount: number;
+  formatVersion: number;
+};
 
 export type GatewayProxyMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -1462,6 +1491,7 @@ export interface LinuxShellBridge {
   linuxPrivacyInventory?(): Promise<LinuxPrivacyInventory>;
   linuxPrivacyDeletionPreview?(stores: LinuxPrivacyStoreID[]): Promise<LinuxPrivacyDeletionPreview>;
   linuxPrivacyDeletionExecute?(request: LinuxPrivacyDeletionRequest): Promise<LinuxPrivacyDeletionResult>;
+  linuxPrivacyExport?(request: LinuxPrivacyExportRequest): Promise<LinuxPrivacyExportResult>;
   notificationConfigGet?(): Promise<NotificationConfig>;
   notificationConfigUpdate?(config: NotificationConfig): Promise<NotificationConfig>;
   notificationHealth?(): Promise<NotificationHealth>;
@@ -2308,27 +2338,80 @@ function assertAppendEcho(request: ChatMessageAppendRequest, result: ChatMessage
   }
 }
 
-function mapUsageInsights(raw: RawJsonValue): UsageInsights {
-  // Derived from daemon.usage.recent — the bridge aggregates events client-side.
+function mapQualitativeAnalysis(raw: RawJsonValue): UsageInsightsQualitativeAnalysis | undefined {
+  const source = obj(raw);
+  const requestID = str(source.requestID);
+  const generatedAt = str(source.generatedAt);
+  const executiveSummary = str(source.executiveSummary);
+  const modelTag = obj(source.modelTag);
+  const modelDisplayName = str(modelTag.displayName, 'Linux local rules');
+  if (!requestID || !generatedAt || !executiveSummary) return undefined;
+  const citations = arr(source.citations)
+    .slice(0, 24)
+    .map((rawCitation) => {
+      const citation = obj(rawCitation);
+      const id = str(citation.id);
+      const label = str(citation.label);
+      return id && label ? { id, label } : null;
+    })
+    .filter((citation): citation is UsageInsightsQualitativeCitation => citation !== null);
+  const findings = arr(source.findings)
+    .slice(0, 6)
+    .map((rawFinding) => {
+      const finding = obj(rawFinding);
+      const id = str(finding.id);
+      const title = str(finding.title);
+      const whyItMatters = str(finding.whyItMatters);
+      const recommendedAction = str(finding.recommendedAction);
+      if (!id || !title || !whyItMatters || !recommendedAction) return null;
+      const evidence = arr(finding.evidence)
+        .slice(0, 8)
+        .map((rawCitation) => {
+          const citation = obj(rawCitation);
+          const citationID = str(citation.id);
+          const label = str(citation.label);
+          return citationID && label ? { id: citationID, label } : null;
+        })
+        .filter((citation): citation is UsageInsightsQualitativeCitation => citation !== null);
+      return { id, title, whyItMatters, recommendedAction, evidence };
+    })
+    .filter((finding): finding is UsageInsightsQualitativeFinding => finding !== null);
+  return { requestID, generatedAt, executiveSummary, modelDisplayName, findings, citations };
+}
+
+export function decodeUsageInsights(raw: RawJsonValue): UsageInsights {
+  // The daemon owns both the bounded usage rows and the qualitative result;
+  // the bridge only normalizes them for the existing chart/workspace model.
   const events = arr(pick(raw, 'usage', 'events', 'recent'));
   const weekly = buildWeeklyBuckets(events);
   const providerMix = buildMix(events, (e) => str(pick(e, 'providerId', 'provider'), 'unknown'));
   const modelMix = buildMix(events, (e) => str(pick(e, 'modelId', 'model'), 'unknown'));
+  const analysis = mapQualitativeAnalysis(pick(raw, 'analysis', 'qualitativeAnalysis'));
+  const sourceID = str(pick(raw, 'sourceID', 'sourceId'));
+  const sourceLabel = str(pick(raw, 'sourceLabel'), 'daemon-authored qualitative insights');
   return {
     weekly,
     providerMix,
     modelMix,
     cacheHitRatePct: computeCacheHitRatePct(events),
     source: {
-      id: 'daemon.usage.recent',
+      id: analysis ? 'daemon.usage.insights' : 'daemon.usage.recent',
       kind: 'daemon-method',
-      label: 'live daemon usage insights'
+      label: analysis ? sourceLabel : 'live daemon usage insights'
     },
-    qualitative: {
-      state: 'unavailable',
-      reason: 'The Linux daemon exposes usage aggregates only; no qualitative-analysis RPC is registered.',
-      method: 'daemon.usage.recent'
-    }
+    qualitative: analysis
+      ? {
+          state: 'available',
+          reason: 'The daemon produced a bounded local-rules brief from usage data only.',
+          method: 'daemon.usage.insights',
+          sourceID: sourceID || 'daemon.usage.ledger',
+          analysis
+        }
+      : {
+          state: 'unavailable',
+          reason: 'The connected daemon returned usage aggregates but no qualitative-analysis result.',
+          method: 'daemon.usage.insights'
+        }
   };
 }
 
@@ -3867,6 +3950,24 @@ function mapLinuxPrivacyDeletionResult(raw: RawJsonValue): LinuxPrivacyDeletionR
   };
 }
 
+function mapLinuxPrivacyExport(raw: RawJsonValue): LinuxPrivacyExportResult {
+  const value = obj(pick(raw, 'result') ?? raw);
+  const stores = arr(pick(value, 'stores')).map((item) => {
+    const store = str(item) as LinuxPrivacyStoreID;
+    if (!LINUX_PRIVACY_STORES.has(store)) throw new Error('Native privacy export returned an unsupported store.');
+    return store;
+  });
+  const byteCount = Math.trunc(num(pick(value, 'byteCount', 'byte_count')));
+  const formatVersion = Math.trunc(num(pick(value, 'formatVersion', 'format_version')));
+  if (byteCount < 0 || formatVersion < 1) throw new Error('Native privacy export returned invalid metadata.');
+  return {
+    stores,
+    destinationPath: requireString(pick(value, 'destinationPath', 'destination_path'), 'privacy export.destinationPath'),
+    byteCount,
+    formatVersion
+  };
+}
+
 export function defaultNotificationConfig(): NotificationConfig {
   return {
     defaultSnoozeMinutes: 30,
@@ -4469,7 +4570,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     // P05 — daemon.usage.recent → insights aggregation
     usageInsights: async () => {
       const raw = await invoke<RawJsonValue>('usage_insights');
-      return mapUsageInsights(raw);
+      return decodeUsageInsights(raw);
     },
     // P06 — daemon.mission.list + pending approvals
     missionList: async () => {
@@ -4568,6 +4669,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     linuxPrivacyDeletionExecute: async (request) => {
       const raw = await invoke<RawJsonValue>('linux_privacy_deletion_execute', { request });
       return mapLinuxPrivacyDeletionResult(raw);
+    },
+    linuxPrivacyExport: async (request) => {
+      const raw = await invoke<RawJsonValue>('linux_privacy_export', { request });
+      return mapLinuxPrivacyExport(raw);
     },
     notificationConfigGet: async () => {
       const raw = await invoke<RawJsonValue>('notification_config_get');
