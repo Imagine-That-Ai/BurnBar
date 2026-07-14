@@ -22,6 +22,7 @@ using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.ManagedAgentRuntime.Run;
 using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Presentation.Projects;
+using OpenBurnBar.App.Projects;
 
 namespace OpenBurnBar.App;
 

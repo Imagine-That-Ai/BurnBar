@@ -1,5 +1,6 @@
 using System;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.MemorySearch.Search;
 using OpenBurnBar.App.Presentation.Projects;
 using OpenBurnBar.App.Settings.Winui;
