@@ -144,7 +144,7 @@ unless prefixed; all Windows paths under `windows/`.
 | 11 | Peer-auth transport (codesign peer gate, token file, local auth proof) | `BurnBarDaemonPeerAuthenticator.swift`, `BurnBarDaemonTokenFile.swift`, `DaemonLocalAuthProofVerifier.swift`, `ConstantTimeCompare.swift` | **SUB-DONE** (transport primitive) | `pal/ipc-windows/NamedPipePeerAuthListener.cs`/`NamedPipePeerAuthConnector.cs` implement the hardened equivalent (R16, `design/0004-named-pipe-peer-auth.md`) — ready for the WS-D privileged process. | Landed; consumed at WS-D |
 | 12 | Daemon self code-signature verifier | `DaemonSelfCodeSignatureVerifier.swift` | **SUB-DONE** (posture) | `dist/OpenBurnBar.Dist.Hardening/` + `dist/DLL_HARDENING.md` (WinVerifyTrust + DLL-load hardening, R19/D10). G5 proves it on a signed build. | Wave 5 (G5 evidence) |
 | 13 | Mission dispatch client (write mission requests, status polling) | `AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift` (consumer side); envelope shared with daemon Mission Control | **SUB-DONE** | `app/OpenBurnBar.App/MissionControl/FirestoreMissionDispatchHost.cs` writes the same `cli_agent_mission_requests` envelope through `cloudsync/OpenBurnBar.CloudSync/Offline/OfflineWriteQueue.cs`; hardened status polling per #1272. Execution stays on the Mac host. | Landed (#1267 + #1272); surface → Real in Wave 3 |
-| 14 | Mission Control execution: DAG scheduler, journal repository, projection reducer, state merger, store | `MissionControl/BurnBarParallelDAGScheduler.swift`, `MissionControlJournalRepository.swift`, `MissionControlProjectionReducer.swift`, `MissionControlMissionStateMerger.swift`, `MissionControlService.swift`, `MissionControlStore.swift` | **DEFER** (SWIFT-REUSE on revive) | Windows v1 is a dispatch + console client; local mission *execution* is a headless-daemon duty (revisit trigger 1). Whole module compiles off-macOS. | Revisit trigger 1 |
+| 14 | Mission Control execution: DAG scheduler, journal repository, projection reducer, state merger, store | `MissionControl/BurnBarParallelDAGScheduler.swift`, `MissionControlJournalRepository.swift`, `MissionControlProjectionReducer.swift`, `MissionControlMissionStateMerger.swift`, `MissionControlService.swift`, `MissionControlStore.swift` | **SUB-DONE** (local DAG execution) | WPD-0009 fired the local-execution trigger. The authenticated companion plane composes `LocalMissionDagExecutor` with deterministic planning, bounded policy, shared rate limiting, metadata-only journaling, and resume/recovery. Broader intent planning and provider tools remain rows 20/21. | `docs/windows-port/evidence/f2/local-mission-production-composition.md` |
 | 15 | Notification bridge: local notifications | `MissionControl/Bridges/LocalNotificationBridge.swift` | **SUB-DONE** (seam) | `app/OpenBurnBar.App/Budget/BudgetToastNotifier.cs` is the landed WinRT AppNotification seam; mission notifications ride it if/when local execution revives. | Landed; live toast proof Wave 4/5 pass |
 | 16 | Notification bridge: Telegram | `MissionControl/Bridges/TelegramBotBridge.swift` | **DEFER** | Pure-HTTP portable code, but only fires from local mission execution (row 14). Deferred with it. | With row 14 |
 | 17 | Notification bridge: EventKit (calendar/reminders) | `MissionControl/Bridges/EventKitBridge.swift` | **N/A** | EventKit is Apple-only; no Windows analog in scope (a Graph-calendar substitute would be a new feature, not parity). | Bundle drift D14 |
@@ -169,14 +169,14 @@ unless prefixed; all Windows paths under `windows/`.
 ### Disposition summary
 
 Counting each row by its current primary disposition (rows 24 and 27 count as
-SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1; row 25 is
-the WPD-0009 F2 promotion):
+SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1; rows 14
+and 25 are WPD-0009 F2 promotions):
 
 | Disposition | Rows | Count |
 |---|---|---|
-| C#-substituted-already (SUB-DONE) | 5, 9, 11, 12, 13, 15, 23, 24, 25, 27 | **10** |
+| C#-substituted-already (SUB-DONE) | 5, 9, 11, 12, 13, 14, 15, 23, 24, 25, 27 | **11** |
 | C#-substitute-to-build (SUB-BUILD) | 26 (Wave 4), 30 (Wave 3), 31 (Wave 3) | **3** |
-| v1.1-deferred (DEFER; Swift-engine-reuse is the revive path for 6, 7, 8, 14) | 1, 2, 3, 4, 6, 7, 8, 14, 16, 18, 19, 20, 21, 22, 29, 32, 33 | **17** |
+| v1.1-deferred (DEFER; Swift-engine-reuse remains a revive path for 6, 7, and 8) | 1, 2, 3, 4, 6, 7, 8, 16, 18, 19, 20, 21, 22, 29, 32, 33 | **16** |
 | Not-applicable-on-Windows (N/A) | 10, 17, 28, 34 | **4** |
 
 Every SUB-BUILD row is owned by a named remediation-plan wave (Wave 3 item 1;

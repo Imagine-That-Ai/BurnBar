@@ -24,9 +24,9 @@ public sealed class DaemonSubstitutionMatrixTests
     [Fact]
     public void PrimaryDispositionCounts_MatchTheCurrentDecisionSummary()
     {
-        Assert.Equal(10, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
+        Assert.Equal(11, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
         Assert.Equal(3, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
-        Assert.Equal(17, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
+        Assert.Equal(16, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
         Assert.Equal(4, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.NotApplicable));
 
         // Published constants agree with the live count.
@@ -57,6 +57,7 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(11, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(12, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(13, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(14, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(15, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(23, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(24, DaemonSubstitutionDisposition.SubstitutedAlready)]
@@ -70,7 +71,6 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(28, DaemonSubstitutionDisposition.NotApplicable)]
     [InlineData(34, DaemonSubstitutionDisposition.NotApplicable)]
     [InlineData(1, DaemonSubstitutionDisposition.Deferred)]
-    [InlineData(14, DaemonSubstitutionDisposition.Deferred)]
     [InlineData(32, DaemonSubstitutionDisposition.Deferred)]
     public void Row_HasExpectedDisposition(int number, DaemonSubstitutionDisposition expected)
     {
@@ -85,7 +85,7 @@ public sealed class DaemonSubstitutionMatrixTests
             .Select(r => r.Number)
             .OrderBy(n => n)
             .ToArray();
-        Assert.Equal(new[] { 1, 2, 3, 4, 6, 7, 8, 14, 16, 18, 19, 20, 21, 22, 29, 32, 33 }, deferred);
+        Assert.Equal(new[] { 1, 2, 3, 4, 6, 7, 8, 16, 18, 19, 20, 21, 22, 29, 32, 33 }, deferred);
     }
 
     [Fact]

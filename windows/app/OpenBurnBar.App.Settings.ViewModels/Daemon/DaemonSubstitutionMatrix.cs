@@ -72,9 +72,9 @@ public static class DaemonSubstitutionMatrix
             "FirestoreMissionDispatchHost writes the same cli_agent_mission_requests envelope; hardened status polling per #1272. Execution stays on the Mac host.",
             "Landed (#1267 + #1272); surface → Real in Wave 3"),
         new(14, "Mission Control execution: DAG scheduler, journal repository, projection reducer, state merger, store",
-            D.Deferred,
-            "Windows v1 is a dispatch + console client; local mission execution is a headless-daemon duty (revisit trigger 1). Whole module compiles off-macOS.",
-            "Revisit trigger 1", Qualifier: "SWIFT-REUSE on revive"),
+            D.SubstitutedAlready,
+            "The authenticated companion plane composes LocalMissionDagExecutor with deterministic planning, bounded policy, shared rate limiting, metadata-only journaling, and resume/recovery. Broader intent planning and provider tools remain separate rows.",
+            "F2 local Mission evidence", Qualifier: "local DAG execution"),
         new(15, "Notification bridge: local notifications",
             D.SubstitutedAlready,
             "BudgetToastNotifier is the landed WinRT AppNotification seam; mission notifications ride it if/when local execution revives.",
@@ -161,13 +161,13 @@ public static class DaemonSubstitutionMatrix
     // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
     /// <summary>SUB-DONE count from the current summary (including promoted row 25).</summary>
-    public const int SubstitutedAlreadyCount = 10;
+    public const int SubstitutedAlreadyCount = 11;
 
     /// <summary>SUB-BUILD count from the doc's summary (rows 26, 30, 31).</summary>
     public const int SubstituteToBuildCount = 3;
 
     /// <summary>DEFER count from the current summary.</summary>
-    public const int DeferredCount = 17;
+    public const int DeferredCount = 16;
 
     /// <summary>N/A count from the doc's summary (rows 10, 17, 28, 34).</summary>
     public const int NotApplicableCount = 4;

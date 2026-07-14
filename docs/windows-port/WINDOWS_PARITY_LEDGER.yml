@@ -677,15 +677,19 @@ rows:
   macos_route: gateway
 - id: f2-local-mission-execution
   macos_capability: Local Mission Control DAG execution
-  windows_capability: MissionLocalExecutor fail-closed step runner
+  windows_capability: Authenticated local Mission DAG execution and recovery
   status: Real
   evidence:
-  - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
+  - docs/windows-port/evidence/f2/local-mission-production-composition.md
   tests:
-  - windows/tests/presentation/MissionControl/MissionLocalExecutorTests.cs
+  - windows/tests/managed-runtime/LocalMissionDagExecutorTests.cs
+  - windows/tests/managed-runtime/CompanionCliMissionHandlerTests.cs
+  - windows/tests/managed-runtime/CompanionCliServerTests.cs
   blocking_paths:
-  - windows/app/OpenBurnBar.App.Presentation/MissionControl/MissionLocalExecutor.cs
-  notes: F2 local execution Real (dispatch remains separate).
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Mission/LocalMissionDagExecutor.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Mission/CompanionCliMissionHandler.cs
+  - windows/app/OpenBurnBar.App/App.xaml.cs
+  notes: F2 local DAG execution is production-composed; broader intent planning and provider tools remain separate rows.
   owner_lane: f2
   windows_route: missionLocal
   macos_route: missions

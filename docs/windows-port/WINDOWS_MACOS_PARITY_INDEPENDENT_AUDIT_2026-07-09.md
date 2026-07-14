@@ -155,7 +155,11 @@ unproven host behavior to certification:
   bounded UTF-8 payloads, and a shared fixed-window execution limiter that
   fails closed rather than queueing unbounded work. Tests prove that request
   payloads and secrets are not persisted and that malformed cycles are rejected
-  before journaling.
+  before journaling. The production app now constructs the local DAG executor
+  and exposes bounded `mission.submit` and `mission.resume` through the same
+  authenticated companion plane. Only `noop`, `health`, and bounded `delay`
+  execute by default; shell/provider work remains unavailable without a
+  separately approved handler.
 - Browser Computer Use process mode now uses a direct executable plus a
   JSON-line bridge with no shell interpolation, bounded responses, serialized
   commands, cancellation, and process-tree cleanup. The bridge now accepts the
@@ -166,8 +170,9 @@ unproven host behavior to certification:
   now packages that reviewed bridge, discovers an explicit or pinned
   Playwright/Chromium runtime, launches it through the central child-process
   policy, and exposes a persisted, user-initiated settings check with no
-  arbitrary script entry. A live local driver-to-Chromium test passes; the same
-  proof is required on hosted Windows x64 by the full-suite workflow.
+  arbitrary script entry. A live local driver-to-Chromium test passes. Hosted
+  Windows Full run 29304837991 passed the same x64 lifecycle with one pass and
+  zero skips, together with the full x64 and ARM64 suites.
 - Project code now has a bounded symbol index with durable metadata-only
   persistence and a file watcher. The index can invoke the existing Rust
   Tree-sitter JSONL parser through a direct process client with Git-blob SHA
@@ -338,8 +343,8 @@ Computer Use (114 passed plus a separately executed live Chromium test),
 settings (175/175), configuration (39/39), distribution (98/98), bridge-policy,
 and provider-boundary tests. They are an implementation increment, not a claim
 that the F2 workstreams are all complete: production composition of the
-remaining F2 services, including the local Mission DAG path, physical Computer
-Use/media safety, and host evidence still remain. The ledger's 48/48 `Real`
+remaining F2 provider, intent-planner, and tool-execution services, physical
+Computer Use/media safety, and host evidence still remain. The ledger's 48/48 `Real`
 result is the scoped F1 source/product gate; WPD-0009 continues to define F2
 True 1:1 as the actual 100% parity endpoint.
 

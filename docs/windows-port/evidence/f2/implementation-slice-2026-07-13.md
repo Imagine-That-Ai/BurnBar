@@ -75,6 +75,14 @@ The companion TCP plane uses the same bearer-token boundary as the gateway;
 the managed-runtime suite covers missing, wrong, and accepted credentials plus
 stripping the token before handlers receive the command.
 
+The production companion plane now also composes `LocalMissionDagExecutor`
+through bounded `mission.submit` and `mission.resume` operations. The desktop
+allows only `noop`, `health`, and bounded `delay`, uses a shared 60-per-minute
+execution limiter, and rejects unsafe kinds before journal creation. The
+managed-runtime suite is **85/85** after authenticated TCP and production
+adapter coverage. Broader macOS intent normalization and provider/tool execution
+remain distinct F2 rows.
+
 Validation commands:
 
 ```text

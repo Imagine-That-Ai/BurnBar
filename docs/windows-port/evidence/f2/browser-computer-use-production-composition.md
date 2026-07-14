@@ -50,13 +50,15 @@ Local validation on 2026-07-13:
   metadata, DNS-rebinding, resolution-failure, redirect-chokepoint, and direct
   Windows protocol cases.
 
-`.github/workflows/pr-windows-full.yml` installs the pinned runtime in an
-isolated directory and runs the same live lifecycle on hosted Windows x64. The
-exact hosted run for this implementation is pending until the commit is pushed;
-the evidence record must be amended with that run before final F2 certification.
-ARM64 continues to receive the full compile/test suite, while physical ARM64
-browser and safety certification remains an explicit beta limitation rather
-than an automated-host claim.
+Hosted Windows Full run
+[29304837991](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29304837991)
+at exact implementation commit `e7f43649c36c13df9ea5a565d728e86d1feab520`
+passed the full x64 suite, the full native-hosted ARM64 suite, and the focused
+Windows x64 process-driver -> JavaScript bridge -> Playwright 1.49 -> Chromium
+lifecycle with **1 passed, 0 failed, 0 skipped**. The focused browser test took
+807 ms after the isolated pinned runtime was installed. Physical ARM64 browser
+and safety certification remains an explicit beta limitation rather than an
+automated-host claim.
 
 ## Boundary
 

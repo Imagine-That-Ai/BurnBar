@@ -6,6 +6,7 @@ using System.Threading;
 using OpenBurnBar.App.ManagedAgentRuntime.Run;
 using System.Threading.Tasks;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
+using OpenBurnBar.App.ManagedAgentRuntime.Mission;
 using Xunit;
 
 namespace OpenBurnBar.App.ManagedAgentRuntime.Tests;
@@ -82,6 +83,43 @@ public sealed class CompanionCliServerTests
             {
                 File.Delete(path);
             }
+        }
+    }
+
+    [Fact]
+    public async Task Server_ExecutesLocalMissionDagOverAuthenticatedLoopback()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "obb-cli-live-mission-" + Path.GetRandomFileName());
+        try
+        {
+            var runs = new HeadlessRunService(new JsonLinesHeadlessRunJournal(path));
+            var missionHandler = new CompanionCliMissionHandler(
+                new LocalMissionDagExecutor(
+                    runs,
+                    rateLimiter: new MissionRateLimiter(60, TimeSpan.FromMinutes(1))));
+            var router = new CompanionCliCommandRouter(
+                missionSubmit: missionHandler.SubmitAsync,
+                missionResume: missionHandler.ResumeAsync);
+            await using var server = new CompanionCliServer(0, router, "mission-token");
+            server.Start();
+
+            using var client = new TcpClient();
+            await client.ConnectAsync(System.Net.IPAddress.Loopback, server.Port);
+            await using NetworkStream stream = client.GetStream();
+            using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            await writer.WriteLineAsync(
+                "{\"op\":\"mission.submit\",\"authToken\":\"mission-token\",\"missionId\":\"mission-tcp\",\"nodes\":[{\"id\":\"ready\",\"kind\":\"health\"},{\"id\":\"done\",\"kind\":\"noop\",\"dependsOn\":[\"ready\"]}]}");
+
+            string? line = await reader.ReadLineAsync();
+            Assert.NotNull(line);
+            Assert.Contains("mission-tcp", line, StringComparison.Ordinal);
+            Assert.Contains("Succeeded", line, StringComparison.Ordinal);
+            Assert.DoesNotContain("mission-token", line, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
         }
     }
 
