@@ -315,6 +315,34 @@ describe('native Linux notification and shortcut decoding', () => {
       shortcuts: ['Ctrl+Alt+Super+O'],
       degradedReason: 'native_shortcuts_not_initialized'
     })).toMatchObject({ registered: false, degradedReason: 'native_shortcuts_not_initialized' });
+    expect(decodeNativeShortcutStatus({
+      available: true,
+      registered: false,
+      backend: 'x11',
+      shortcuts: ['Ctrl+Alt+Super+Period', 'Ctrl+Alt+Super+O'],
+      bindings: [
+        { id: 'computer-use-panic', shortcut: 'Ctrl+Alt+Super+Period', state: 'registered' },
+        { id: 'open-dashboard', shortcut: 'Ctrl+Alt+Super+O', state: 'degraded', degradedReason: 'conflict' }
+      ],
+      degradedReason: 'native_shortcuts_partial_registration'
+    })).toMatchObject({
+      backend: 'x11',
+      available: true,
+      registered: false,
+      bindings: [{ state: 'registered' }, { state: 'degraded', degradedReason: 'conflict' }]
+    });
+    expect(() => decodeNativeShortcutStatus({
+      available: false,
+      registered: false,
+      backend: 'mir',
+      shortcuts: []
+    })).toThrow('backend');
+    expect(() => decodeNativeShortcutStatus({
+      available: false,
+      registered: false,
+      shortcuts: [],
+      bindings: [{ id: 'open-dashboard', shortcut: 'Ctrl+Alt+Super+O', state: 'active' }]
+    })).toThrow('binding state');
     expect(() => decodeNativeShortcutStatus({ available: true, registered: 'yes', shortcuts: [] }))
       .toThrow('registration');
   });

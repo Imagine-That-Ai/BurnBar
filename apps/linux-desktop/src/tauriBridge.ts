@@ -869,7 +869,15 @@ export type NativeNotificationActionEvent = {
 export type NativeShortcutStatus = {
   available: boolean;
   registered: boolean;
+  backend?: 'x11' | 'wayland' | 'unknown';
   shortcuts: string[];
+  bindings?: NativeShortcutBindingStatus[];
+  degradedReason?: string;
+};
+export type NativeShortcutBindingStatus = {
+  id: string;
+  shortcut: string;
+  state: 'registered' | 'degraded' | 'unavailable';
   degradedReason?: string;
 };
 
@@ -3978,10 +3986,32 @@ export function decodeNativeNotificationActionEvent(raw: RawJsonValue): NativeNo
 
 export function decodeNativeShortcutStatus(raw: RawJsonValue): NativeShortcutStatus {
   const value = requireObject(raw, 'native shortcut status');
+  const backend = str(pick(value, 'backend'));
+  if (backend && backend !== 'x11' && backend !== 'wayland' && backend !== 'unknown') {
+    throw new Error(`native shortcut backend is unsupported: ${backend}`);
+  }
+  const rawBindings = pick(value, 'bindings');
+  const bindings = rawBindings === undefined
+    ? undefined
+    : arr(rawBindings).map((rawBinding) => {
+      const binding = requireObject(rawBinding, 'native shortcut binding');
+      const state = requireString(pick(binding, 'state'), 'native shortcut binding state');
+      if (state !== 'registered' && state !== 'degraded' && state !== 'unavailable') {
+        throw new Error(`native shortcut binding state is unsupported: ${state}`);
+      }
+      return {
+        id: requireString(pick(binding, 'id'), 'native shortcut binding id'),
+        shortcut: requireString(pick(binding, 'shortcut'), 'native shortcut binding shortcut'),
+        state,
+        degradedReason: str(pick(binding, 'degradedReason', 'degraded_reason')) || undefined
+      } satisfies NativeShortcutBindingStatus;
+    });
   return {
     available: requireBoolean(pick(value, 'available'), 'native shortcut availability'),
     registered: requireBoolean(pick(value, 'registered'), 'native shortcut registration'),
     shortcuts: arr(pick(value, 'shortcuts')).map((shortcut) => requireString(shortcut, 'native shortcut')),
+    ...(backend ? { backend: backend as NativeShortcutStatus['backend'] } : {}),
+    ...(bindings ? { bindings } : {}),
     degradedReason: str(pick(value, 'degradedReason', 'degraded_reason')) || undefined
   };
 }

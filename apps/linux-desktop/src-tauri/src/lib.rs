@@ -17,8 +17,9 @@ use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::menu::{MenuBuilder, MenuItem, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent, Wry};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcut, Shortcut, ShortcutEvent};
 use tauri_plugin_shell::ShellExt;
 
 use native_notifications::{native_notification_capabilities, native_notification_show};
@@ -2181,12 +2182,48 @@ static TRAY_INIT_FAILED: AtomicBool = AtomicBool::new(false);
 const COMPUTER_USE_PANIC_SHORTCUTS: [&str; 2] = ["Ctrl+Alt+Super+Period", "Ctrl+Alt+Shift+Period"];
 const OPEN_DASHBOARD_SHORTCUT: &str = "Ctrl+Alt+Super+O";
 
+const NATIVE_SHORTCUT_BINDINGS: [(&str, &str); 3] = [
+    ("computer-use-panic", COMPUTER_USE_PANIC_SHORTCUTS[0]),
+    (
+        "computer-use-panic-fallback",
+        COMPUTER_USE_PANIC_SHORTCUTS[1],
+    ),
+    ("open-dashboard", OPEN_DASHBOARD_SHORTCUT),
+];
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum NativeShortcutBackend {
+    X11,
+    Wayland,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum NativeShortcutBindingState {
+    Registered,
+    Degraded,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeShortcutBindingStatus {
+    id: String,
+    shortcut: String,
+    state: NativeShortcutBindingState,
+    degraded_reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeShortcutStatus {
     available: bool,
     registered: bool,
+    backend: NativeShortcutBackend,
     shortcuts: Vec<String>,
+    bindings: Vec<NativeShortcutBindingStatus>,
     degraded_reason: Option<String>,
 }
 
@@ -2197,14 +2234,94 @@ fn native_shortcut_status_store() -> &'static Mutex<NativeShortcutStatus> {
         Mutex::new(NativeShortcutStatus {
             available: false,
             registered: false,
+            backend: native_shortcut_backend(),
             shortcuts: vec![
                 COMPUTER_USE_PANIC_SHORTCUTS[0].to_string(),
                 COMPUTER_USE_PANIC_SHORTCUTS[1].to_string(),
                 OPEN_DASHBOARD_SHORTCUT.to_string(),
             ],
+            bindings: native_shortcut_bindings(
+                NativeShortcutBindingState::Unavailable,
+                Some("native_shortcuts_not_initialized".to_string()),
+            ),
             degraded_reason: Some("native_shortcuts_not_initialized".to_string()),
         })
     })
+}
+
+fn native_shortcut_bindings(
+    state: NativeShortcutBindingState,
+    reason: Option<String>,
+) -> Vec<NativeShortcutBindingStatus> {
+    NATIVE_SHORTCUT_BINDINGS
+        .iter()
+        .map(|(id, shortcut)| NativeShortcutBindingStatus {
+            id: (*id).to_string(),
+            shortcut: (*shortcut).to_string(),
+            state,
+            degraded_reason: reason.clone(),
+        })
+        .collect()
+}
+
+fn native_shortcut_backend_from_env(
+    session_type: Option<&str>,
+    wayland_display: Option<&str>,
+    x11_display: Option<&str>,
+) -> NativeShortcutBackend {
+    let session_type = session_type.unwrap_or_default().trim().to_ascii_lowercase();
+    if session_type == "wayland" || wayland_display.is_some_and(|value| !value.trim().is_empty()) {
+        return NativeShortcutBackend::Wayland;
+    }
+    if session_type == "x11" || x11_display.is_some_and(|value| !value.trim().is_empty()) {
+        return NativeShortcutBackend::X11;
+    }
+    NativeShortcutBackend::Unknown
+}
+
+fn native_shortcut_backend() -> NativeShortcutBackend {
+    native_shortcut_backend_from_env(
+        std::env::var("XDG_SESSION_TYPE").ok().as_deref(),
+        std::env::var("WAYLAND_DISPLAY").ok().as_deref(),
+        std::env::var("DISPLAY").ok().as_deref(),
+    )
+}
+
+fn bounded_shortcut_error(error: impl std::fmt::Display) -> String {
+    let normalized = error
+        .to_string()
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>();
+    normalized.chars().take(256).collect()
+}
+
+fn native_shortcut_registration_reason(
+    backend: NativeShortcutBackend,
+    error: Option<&str>,
+) -> String {
+    match (backend, error) {
+        (NativeShortcutBackend::Wayland, Some(error)) => {
+            format!("native_shortcuts_wayland_backend_unavailable:{error}")
+        }
+        (NativeShortcutBackend::X11, Some(error)) => {
+            format!("native_shortcuts_x11_registration_failed:{error}")
+        }
+        (NativeShortcutBackend::Unknown, Some(error)) => {
+            format!("native_shortcuts_backend_unknown:{error}")
+        }
+        (NativeShortcutBackend::Wayland, None) => {
+            "native_shortcuts_wayland_backend_unavailable".to_string()
+        }
+        (NativeShortcutBackend::X11, None) => "native_shortcuts_x11_unavailable".to_string(),
+        (NativeShortcutBackend::Unknown, None) => "native_shortcuts_backend_unknown".to_string(),
+    }
 }
 
 #[tauri::command]
@@ -2215,7 +2332,9 @@ fn native_shortcut_status() -> NativeShortcutStatus {
         .unwrap_or(NativeShortcutStatus {
             available: false,
             registered: false,
+            backend: NativeShortcutBackend::Unknown,
             shortcuts: Vec::new(),
+            bindings: Vec::new(),
             degraded_reason: Some("native_shortcuts_state_unavailable".to_string()),
         })
 }
@@ -2296,48 +2415,98 @@ fn trigger_computer_use_panic_hotkey() {
     });
 }
 
+fn handle_native_shortcut(app: &AppHandle<Wry>, shortcut: &Shortcut, event: ShortcutEvent) {
+    if event.state != ShortcutState::Pressed {
+        return;
+    }
+    let base = Modifiers::CONTROL | Modifiers::ALT;
+    let meta_chord = base | Modifiers::SUPER;
+    let shift_chord = base | Modifiers::SHIFT;
+    if shortcut.matches(meta_chord, Code::KeyO) {
+        emit_tray_route(app, "overview");
+    } else if shortcut.matches(meta_chord, Code::Period)
+        || shortcut.matches(shift_chord, Code::Period)
+    {
+        trigger_computer_use_panic_hotkey();
+    }
+}
+
+fn set_native_shortcut_unavailable(backend: NativeShortcutBackend, reason: impl Into<String>) {
+    let reason = reason.into();
+    if let Ok(mut status) = native_shortcut_status_store().lock() {
+        status.available = false;
+        status.registered = false;
+        status.backend = backend;
+        status.bindings = native_shortcut_bindings(
+            NativeShortcutBindingState::Unavailable,
+            Some(reason.clone()),
+        );
+        status.degraded_reason = Some(reason);
+    }
+}
+
 fn register_computer_use_panic_shortcuts(app: &AppHandle) {
-    let shortcuts = [
-        COMPUTER_USE_PANIC_SHORTCUTS[0],
-        COMPUTER_USE_PANIC_SHORTCUTS[1],
-        OPEN_DASHBOARD_SHORTCUT,
-    ];
-    let builder = match tauri_plugin_global_shortcut::Builder::new().with_shortcuts(shortcuts) {
-        Ok(builder) => builder,
-        Err(error) => {
-            eprintln!("computer_use_global_panic_hotkey_degraded: {error}");
-            if let Ok(mut status) = native_shortcut_status_store().lock() {
-                status.degraded_reason = Some(format!("native_shortcuts_parse_failed:{error}"));
-            }
-            return;
-        }
+    let backend = native_shortcut_backend();
+    let Some(global_shortcut) = app.try_state::<GlobalShortcut<Wry>>() else {
+        set_native_shortcut_unavailable(
+            backend,
+            "native_shortcuts_plugin_state_unavailable".to_string(),
+        );
+        return;
     };
-    let plugin = builder
-        .with_handler(|app, shortcut, event| {
-            if event.state != ShortcutState::Pressed {
-                return;
+
+    // global-hotkey currently supports X11 only on Linux. Keep this explicit:
+    // Wayland/wlroots sessions must report an unavailable capability instead of
+    // claiming success, while the emergency keyboard fallback remains local.
+    if backend != NativeShortcutBackend::X11 {
+        let reason = native_shortcut_registration_reason(backend, None);
+        eprintln!("computer_use_global_panic_hotkey_degraded: {reason}");
+        set_native_shortcut_unavailable(backend, reason);
+        return;
+    }
+
+    let mut bindings = Vec::with_capacity(NATIVE_SHORTCUT_BINDINGS.len());
+    for (id, shortcut) in NATIVE_SHORTCUT_BINDINGS {
+        let result = global_shortcut.on_shortcut(shortcut, handle_native_shortcut);
+        match result {
+            Ok(()) => bindings.push(NativeShortcutBindingStatus {
+                id: id.to_string(),
+                shortcut: shortcut.to_string(),
+                state: NativeShortcutBindingState::Registered,
+                degraded_reason: None,
+            }),
+            Err(error) => {
+                let detail = bounded_shortcut_error(error);
+                let reason = native_shortcut_registration_reason(backend, Some(&detail));
+                eprintln!("computer_use_global_panic_hotkey_degraded: {id}: {reason}");
+                bindings.push(NativeShortcutBindingStatus {
+                    id: id.to_string(),
+                    shortcut: shortcut.to_string(),
+                    state: NativeShortcutBindingState::Degraded,
+                    degraded_reason: Some(reason),
+                });
             }
-            let base = Modifiers::CONTROL | Modifiers::ALT;
-            let meta_chord = base | Modifiers::SUPER;
-            let shift_chord = base | Modifiers::SHIFT;
-            if shortcut.matches(meta_chord, Code::KeyO) {
-                emit_tray_route(app, "overview");
-            } else if shortcut.matches(meta_chord, Code::Period)
-                || shortcut.matches(shift_chord, Code::Period)
-            {
-                trigger_computer_use_panic_hotkey();
-            }
-        })
-        .build();
-    if let Err(error) = app.plugin(plugin) {
-        eprintln!("computer_use_global_panic_hotkey_degraded: {error}");
-        if let Ok(mut status) = native_shortcut_status_store().lock() {
-            status.degraded_reason = Some(format!("native_shortcuts_registration_failed:{error}"));
         }
-    } else if let Ok(mut status) = native_shortcut_status_store().lock() {
-        status.available = true;
-        status.registered = true;
-        status.degraded_reason = None;
+    }
+
+    let registered_count = bindings
+        .iter()
+        .filter(|binding| binding.state == NativeShortcutBindingState::Registered)
+        .count();
+    let all_registered = registered_count == bindings.len();
+    let any_registered = registered_count > 0;
+    if let Ok(mut status) = native_shortcut_status_store().lock() {
+        status.available = any_registered;
+        status.registered = all_registered;
+        status.backend = backend;
+        status.bindings = bindings;
+        status.degraded_reason = if all_registered {
+            None
+        } else if any_registered {
+            Some("native_shortcuts_partial_registration".to_string())
+        } else {
+            Some("native_shortcuts_registration_failed".to_string())
+        };
     }
 }
 
@@ -6150,7 +6319,22 @@ pub fn run() {
                 TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
                 eprintln!("tray init degraded: {e}");
             }
-            register_computer_use_panic_shortcuts(app.handle());
+            // Install the global-shortcut manager without a batch of initial
+            // bindings. Each binding is registered independently below so a
+            // dashboard conflict cannot disable both Computer Use panic paths.
+            let app_handle = app.handle().clone();
+            if let Err(error) =
+                app_handle.plugin(tauri_plugin_global_shortcut::Builder::new().build())
+            {
+                let reason = format!(
+                    "native_shortcuts_plugin_install_failed:{}",
+                    bounded_shortcut_error(error)
+                );
+                eprintln!("computer_use_global_panic_hotkey_degraded: {reason}");
+                set_native_shortcut_unavailable(native_shortcut_backend(), reason);
+            } else {
+                register_computer_use_panic_shortcuts(&app_handle);
+            }
             start_media_session_poll_loop(app.handle().clone());
             media::start_media_socket_reader(app.handle().clone());
             Ok(())
@@ -6984,6 +7168,42 @@ mod tests {
         assert!(tauri_plugin_global_shortcut::Builder::<tauri::Wry>::new()
             .with_shortcut(OPEN_DASHBOARD_SHORTCUT)
             .is_ok());
+    }
+
+    #[test]
+    fn native_shortcut_backend_detection_is_explicit_for_linux_sessions() {
+        assert_eq!(
+            native_shortcut_backend_from_env(Some("wayland"), Some("wayland-0"), None),
+            NativeShortcutBackend::Wayland
+        );
+        assert_eq!(
+            native_shortcut_backend_from_env(Some("x11"), None, Some(":0")),
+            NativeShortcutBackend::X11
+        );
+        assert_eq!(
+            native_shortcut_backend_from_env(None, None, None),
+            NativeShortcutBackend::Unknown
+        );
+        assert_eq!(
+            native_shortcut_registration_reason(NativeShortcutBackend::Wayland, None),
+            "native_shortcuts_wayland_backend_unavailable"
+        );
+    }
+
+    #[test]
+    fn native_shortcut_binding_status_keeps_partial_registration_visible() {
+        let bindings = native_shortcut_bindings(
+            NativeShortcutBindingState::Unavailable,
+            Some("native_shortcuts_backend_unknown".to_string()),
+        );
+        assert_eq!(bindings.len(), NATIVE_SHORTCUT_BINDINGS.len());
+        assert_eq!(bindings[0].id, "computer-use-panic");
+        assert_eq!(bindings[2].shortcut, OPEN_DASHBOARD_SHORTCUT);
+        assert!(bindings
+            .iter()
+            .all(|binding| binding.state == NativeShortcutBindingState::Unavailable));
+        assert!(bounded_shortcut_error("line\nfeed").contains("line feed"));
+        assert!(bounded_shortcut_error("x".repeat(300)).len() <= 256);
     }
 
     fn computer_use_local_auth_fixture() -> (
