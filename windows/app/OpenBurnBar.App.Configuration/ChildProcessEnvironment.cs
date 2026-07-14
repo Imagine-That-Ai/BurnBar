@@ -7,6 +7,7 @@ public enum ChildProcessProfile
 {
     BrowserActivation,
     Chat,
+    Switcher,
     Updater,
     Gateway,
     Mission,
@@ -233,6 +234,28 @@ public static class ChildProcessEnvironment
         profile switch
         {
             ChildProcessProfile.ReleaseTool => new[] { "SWIFT_EXEC", "SDKROOT" },
+            ChildProcessProfile.Switcher => new[]
+            {
+                "AGY_CONFIG_HOME",
+                "ANTIGRAVITY_HOME",
+                "CLAUDE_CONFIG_DIR",
+                "CLAUDE_CONFIG_PATH",
+                "CODEX_CONFIG_PATH",
+                "CODEX_HOME",
+                "CURSOR_AGENT_CONFIG_PATH",
+                "CURSOR_AGENT_HOME",
+                "EDITOR",
+                "GEMINI_HOME",
+                "GIT_EDITOR",
+                "HG_EDITOR",
+                "LANG",
+                "LC_ALL",
+                "OPENCODE_CONFIG_PATH",
+                "PAGER",
+                "SSH_AUTH_SOCK",
+                "TERM",
+                "VISUAL",
+            },
             _ => Array.Empty<string>(),
         };
 }

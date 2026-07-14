@@ -17,6 +17,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:OpenBurnBar.App.Presentation.Switcher"
     xmlns:local="using:OpenBurnBar.App.Switcher"
+    xmlns:views="using:OpenBurnBar.App.Views"
     xmlns:comp="using:OpenBurnBar.App.Components"
     xmlns:conv="using:OpenBurnBar.App.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -86,6 +87,12 @@
 
                 <!-- Actions -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <Button Click="OnLaunchShell"
+                            Style="{StaticResource LiquidGlassInteractiveStyle}"
+                            ToolTipService.ToolTip="Launch CLI profile"
+                            Visibility="{x:Bind CanLaunchShell, Converter={StaticResource BoolToVisibility}}">
+                        <FontIcon Glyph="&#xE768;" FontSize="11" />
+                    </Button>
                     <Button Content="Make Primary"
                             FontSize="11"
                             Click="OnMakePrimary"
@@ -237,12 +244,21 @@
                      Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                      IsClosable="True" />
 
+            <InfoBar x:Name="ShellErrorBar"
+                     IsOpen="False"
+                     Severity="Error"
+                     IsClosable="True" />
+
             <!-- CLI section -->
             <TextBlock Text="CLI PROFILES" FontSize="11" FontWeight="SemiBold"
                        Foreground="{StaticResource PensieveColorTextMuteBrush}" />
             <ItemsControl x:Name="CliList"
                           ItemsSource="{x:Bind ViewModel.CliSections, Mode=OneWay}"
                           ItemTemplate="{StaticResource CliSectionTemplate}" />
+
+            <views:LiveCliStreamView x:Name="LiveShell"
+                                     Height="280"
+                                     Visibility="Collapsed" />
 
             <!-- Browser section -->
             <TextBlock Text="BROWSER PROFILES" FontSize="11" FontWeight="SemiBold"

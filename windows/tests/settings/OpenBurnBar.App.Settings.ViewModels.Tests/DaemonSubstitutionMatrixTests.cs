@@ -24,8 +24,8 @@ public sealed class DaemonSubstitutionMatrixTests
     [Fact]
     public void PrimaryDispositionCounts_MatchTheCurrentDecisionSummary()
     {
-        Assert.Equal(27, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
-        Assert.Equal(3, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
+        Assert.Equal(28, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
+        Assert.Equal(2, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
         Assert.Equal(0, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
         Assert.Equal(4, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.NotApplicable));
 
@@ -81,7 +81,7 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(33, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(26, DaemonSubstitutionDisposition.SubstituteToBuild)]
     [InlineData(30, DaemonSubstitutionDisposition.SubstituteToBuild)]
-    [InlineData(31, DaemonSubstitutionDisposition.SubstituteToBuild)]
+    [InlineData(31, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(10, DaemonSubstitutionDisposition.NotApplicable)]
     [InlineData(17, DaemonSubstitutionDisposition.NotApplicable)]
     [InlineData(28, DaemonSubstitutionDisposition.NotApplicable)]

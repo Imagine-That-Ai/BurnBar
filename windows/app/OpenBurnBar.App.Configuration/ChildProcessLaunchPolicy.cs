@@ -27,6 +27,7 @@ public static class ChildProcessLaunchPolicy
         {
             new ChildProcessLaunchReview("chat.direct-cli", ChildProcessProfile.Chat, "ChatProcessRunner", false),
             new ChildProcessLaunchReview("chat.conpty-cli", ChildProcessProfile.Chat, "ConPtyCliStream", false),
+            new ChildProcessLaunchReview("switcher.conpty-cli", ChildProcessProfile.Switcher, "ConPtyCliStream", false),
             new ChildProcessLaunchReview("cloud.oauth-browser", ChildProcessProfile.BrowserActivation, "SystemBrowserLauncher", true),
             new ChildProcessLaunchReview("computer-use.playwright-bridge", ChildProcessProfile.ComputerUse, "WindowsBrowserComputerUseService", false),
             new ChildProcessLaunchReview("data.swift-engine-interim", ChildProcessProfile.ReleaseTool, "SwiftEngineInterim", false),

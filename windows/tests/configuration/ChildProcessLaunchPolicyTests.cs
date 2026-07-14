@@ -25,6 +25,7 @@ public sealed class ChildProcessLaunchPolicyTests
             "project-code.language-server",
             "project-code.static-parser",
             "quota.claude-statusline-forwarder",
+            "switcher.conpty-cli",
         }, ids);
     }
 
@@ -144,6 +145,32 @@ public sealed class ChildProcessLaunchPolicyTests
         Assert.Equal("/usr/bin", environment["PATH"]);
         Assert.False(environment.ContainsKey("OPENAI_API_KEY"));
         Assert.False(environment.ContainsKey("FACTORY_API_KEY"));
+    }
+
+    [Fact]
+    public void SwitcherProfileAllowsOnlyReviewedConfigurationEnvironment()
+    {
+        var source = new[]
+        {
+            new KeyValuePair<string, string?>("PATH", @"C:\Windows\System32"),
+            new KeyValuePair<string, string?>("OPENAI_API_KEY", "ambient-secret"),
+        };
+        var required = new[]
+        {
+            new KeyValuePair<string, string?>("CODEX_HOME", @"C:\profiles\work"),
+            new KeyValuePair<string, string?>("TERM", "xterm-256color"),
+        };
+
+        IReadOnlyDictionary<string, string> environment = ChildProcessEnvironment.CreateAllowlisted(
+            ChildProcessProfile.Switcher,
+            source,
+            required,
+            ChildProcessHost.Windows);
+
+        Assert.Equal(@"C:\Windows\System32", environment["PATH"]);
+        Assert.Equal(@"C:\profiles\work", environment["CODEX_HOME"]);
+        Assert.Equal("xterm-256color", environment["TERM"]);
+        Assert.False(environment.ContainsKey("OPENAI_API_KEY"));
     }
 
     [Theory]

@@ -40,6 +40,7 @@
     <Compile Include="../../app/OpenBurnBar.App/Shell/WindowsActivationRouter.cs" />
     <Compile Include="AppStatePersistenceTests.cs" />
     <Compile Include="AutomationLaunchOptionsTests.cs" />
+    <Compile Include="ShellEnvironmentCollection.cs" />
     <Compile Include="RouteSmokeOptionsTests.cs" />
     <Compile Include="NavCatalogTests.cs" />
     <Compile Include="WindowsActivationRouterTests.cs" />
