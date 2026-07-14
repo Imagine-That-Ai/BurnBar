@@ -170,6 +170,17 @@ jobs:
             fi
           done
 
+      - name: Upload native artifact preparation diagnostics
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: linux-native-preparation-diagnostics-${{ matrix.architecture }}
+          path: |
+            .linux-shard/logs/
+            .linux-shard/signing-preparation.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+
       - name: Prepare unsigned Arch installed-manifest request
         run: |
           set -euo pipefail
