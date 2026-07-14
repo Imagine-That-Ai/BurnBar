@@ -145,6 +145,9 @@ function subject() {
 }
 
 function stageOwnershipSourceFixtures() {
+  // The certification preflight intentionally archives only evidence tooling;
+  // stage marker-only source files there so this ownership test can exercise the
+  // producer without turning the preflight into a product-evidence shortcut.
   if (process.env.OPENBURNBAR_PARITY_PREFLIGHT_OWNERSHIP_TEST !== '1') return () => {};
   const markers = sourceContractMarkers();
   for (const sourcePath of P40_SOURCE_CONTRACTS) {
