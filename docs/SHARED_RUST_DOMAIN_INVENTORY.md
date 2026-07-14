@@ -6,6 +6,9 @@
 
 **Roadmap:** [Shared Rust Domain Core Roadmap](SHARED_RUST_DOMAIN_CORE_ROADMAP.md)
 
+**Deletion ledger:**
+[`config/domain-core-legacy-deletion.json`](../config/domain-core-legacy-deletion.json)
+
 This ledger is the source-level proof of what is actually duplicated. A
 platform is a migration consumer only when it executes the same pure operation;
 shipping five applications does not imply five implementations of every
@@ -29,6 +32,38 @@ single Swift engine, and Windows loads it through the existing Swift C ABI.
 Android and Cloud Functions do not read local provider logs. Provider parsers
 are therefore not duplicated and are not a shared-Rust consolidation target.
 
+## Machine-enforced deletion state
+
+The deletion ledger is the authoritative source state for the eleven stable
+migration rows. Human-readable status in this document cannot authorize source
+removal. `scripts/ci/verify-domain-core-legacy-deletion.py` requires every
+listed legacy target to remain present in `rollout` and
+`rust_authoritative_with_rollback`; it requires those targets to be absent only
+in `legacy_deleted`. The gate also rejects missing source roots, unknown rows or
+fields, duplicate targets or JSON keys, and repository/symlink escapes.
+
+| Stable row ID | Current state |
+|---|---|
+| `quota.claude_statusline` | `rollout` |
+| `quota.codex_usage` | `rollout` |
+| `quota.cursor_usage` | `rollout` |
+| `quota.anthropic_headers` | `rollout` |
+| `cloudvault.portable_primitives` | `rollout` |
+| `cloudvault.document_rewrap` | `rollout` |
+| `cloudvault.search` | `rollout` |
+| `hermes.relay_crypto` | `rollout` |
+| `hermes.ratchet_transforms` | `rollout` |
+| `pricing.token_cost` | `rollout` |
+| `pricing.kimi_historical` | `rollout` |
+
+Rows advance independently. Shared rollback selectors are declared as
+`sharedTargets`; they remain required until every member row is
+`legacy_deleted`. State transitions require committed, active receipts as
+specified in the
+[legacy deletion runbook](runbooks/shared-rust-legacy-deletion.md). No receipt
+is committed for any row in this snapshot, so no row claims promotion, stable
+release observation, or deletion approval.
+
 ## Q1/Q2 quota operations
 
 | Operation | Migration owners | Contract | Production callers | Legacy deletion target |
@@ -44,11 +79,9 @@ platform acquisition layer. Rust mode must fail closed on artifact, ABI, or
 transform failure; shadow mode returns the legacy result while collecting safe
 comparison metadata.
 
-Current status: [#1590](https://github.com/Imagine-That-Ai/BurnBar/pull/1590)
-and [#1591](https://github.com/Imagine-That-Ai/BurnBar/pull/1591) remain open;
-consumer wiring [#1592](https://github.com/Imagine-That-Ai/BurnBar/pull/1592)
-is merged into the feature stack. Neither the quantitative promotion gate nor
-the stable-release gate has been satisfied.
+Current status: the implementation heads are collected by rollout integration
+[#1722](https://github.com/Imagine-That-Ai/BurnBar/pull/1722). Neither the
+quantitative promotion gate nor the stable-release gate has been satisfied.
 
 ## C1 CloudVault operations
 
@@ -88,7 +121,7 @@ must not require exporting those keys. WebCrypto operations using such handles
 remain behind a narrow browser adapter unless a reviewed callback/handle design
 preserves non-extractability.
 
-Current status snapshot (2026-07-13):
+Historical implementation stack snapshot (2026-07-13):
 
 | Slice | Core/contract PR | Consumer PRs |
 |---|---|---|
@@ -98,9 +131,10 @@ Current status snapshot (2026-07-13):
 | C1d document rewrap | [#1636](https://github.com/Imagine-That-Ai/BurnBar/pull/1636) open/converging into ABI 3 | Swift and Kotlin ABI 3 consumer changes are not yet landed |
 | Encrypted search | Contract [#1620](https://github.com/Imagine-That-Ai/BurnBar/pull/1620) merged into a feature branch; core [#1632](https://github.com/Imagine-That-Ai/BurnBar/pull/1632) open | Kotlin [#1635](https://github.com/Imagine-That-Ai/BurnBar/pull/1635) and Swift [#1640](https://github.com/Imagine-That-Ai/BurnBar/pull/1640) open |
 
-“Merged” in this table means merged into the named feature branch, not `main`.
-No CloudVault slice has completed security review, production promotion, stable
-release observation, and legacy deletion.
+The implementation heads represented by this historical table are collected by
+rollout integration [#1722](https://github.com/Imagine-That-Ai/BurnBar/pull/1722).
+This does not certify security review, production promotion, stable-release
+observation, or legacy deletion for any CloudVault row.
 
 ## C2 Hermes operations
 

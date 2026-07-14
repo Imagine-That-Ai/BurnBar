@@ -80,10 +80,19 @@ on:
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - "config/domain-core-promotion-policy.json"
+      - "config/domain-core-legacy-deletion.json"
+      - "config/domain-core-legacy-deletion.schema.json"
+      - "config/domain-core-legacy-deletion-receipt.schema.json"
+      - "config/domain-core-legacy-deletion-receipts/**"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
+      - "docs/SHARED_RUST_DOMAIN_INVENTORY.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
+      - "docs/runbooks/shared-rust-legacy-deletion.md"
       - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
       - "tests/test_domain_core_union_gate.py"
+      - "scripts/ci/verify-domain-core-legacy-deletion.py"
+      - "tests/test_domain_core_legacy_deletion_gate.py"
+      - "tests/test_domain_core_legacy_deletion_workflow.py"
       - ".github/workflows/domain-core.yml"
   pull_request:
     paths:
@@ -160,10 +169,19 @@ on:
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - "config/domain-core-promotion-policy.json"
+      - "config/domain-core-legacy-deletion.json"
+      - "config/domain-core-legacy-deletion.schema.json"
+      - "config/domain-core-legacy-deletion-receipt.schema.json"
+      - "config/domain-core-legacy-deletion-receipts/**"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
+      - "docs/SHARED_RUST_DOMAIN_INVENTORY.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
+      - "docs/runbooks/shared-rust-legacy-deletion.md"
       - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
       - "tests/test_domain_core_union_gate.py"
+      - "scripts/ci/verify-domain-core-legacy-deletion.py"
+      - "tests/test_domain_core_legacy_deletion_gate.py"
+      - "tests/test_domain_core_legacy_deletion_workflow.py"
       - ".github/workflows/domain-core.yml"
   workflow_dispatch:
 
@@ -172,6 +190,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  legacy-deletion-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test fail-closed legacy deletion governance
+        run: |
+          python3 tests/test_domain_core_legacy_deletion_gate.py
+          python3 tests/test_domain_core_legacy_deletion_workflow.py
+
+      - name: Verify legacy source ledger
+        run: python3 scripts/ci/verify-domain-core-legacy-deletion.py
+
   promotion-evidence-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -191,6 +226,7 @@ jobs:
         run: bash scripts/ci/check-firestore-ttl-declared.sh
 
   rust-and-csharp:
+    needs: legacy-deletion-gate
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -270,6 +306,7 @@ jobs:
         run: dotnet test windows/tests/cloudsync/OpenBurnBar.CloudSync.Crypto.Tests.csproj --nologo
 
   windows-native:
+    needs: legacy-deletion-gate
     strategy:
       fail-fast: false
       matrix:
@@ -309,6 +346,7 @@ jobs:
         run: dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime ${{ matrix.rid }}
 
   linux-arm64-native:
+    needs: legacy-deletion-gate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -335,6 +373,7 @@ jobs:
           dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
 
   wasm:
+    needs: legacy-deletion-gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -363,6 +402,7 @@ jobs:
           apps/console/vendor/openburnbar-domain-core-wasm
 
   functions-pricing:
+    needs: legacy-deletion-gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -396,6 +436,7 @@ jobs:
           npm run lint
 
   android:
+    needs: legacy-deletion-gate
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
@@ -467,6 +508,7 @@ jobs:
           script: cd android && ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon
 
   apple:
+    needs: legacy-deletion-gate
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -505,6 +547,7 @@ jobs:
           retention-days: 14
 
   apple-native-smoke:
+    needs: legacy-deletion-gate
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -534,6 +577,7 @@ jobs:
         run: swift run OpenBurnBarDomainCoreFFISmoke
 
   swift-consumer-contracts:
+    needs: legacy-deletion-gate
     runs-on: macos-26
     timeout-minutes: 60
     steps:
