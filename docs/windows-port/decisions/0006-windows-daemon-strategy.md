@@ -152,7 +152,7 @@ unless prefixed; all Windows paths under `windows/`.
 | 19 | Project-code memory store + embeddings | `ProjectCodeMemory/BurnBarProjectCodeMemoryStore*.swift`, `ProjectCodeMemory/BurnBarCodeEmbedding.swift` | **SUB-DONE** (durable source-free semantic store) | WPD-0003's parser trigger fired. `ProjectCodeMemoryStore` production-composes encrypted SQLite project/artifact/symbol/reference/call-edge/checkpoint metadata, bounded AST-aware chunks, versioned deterministic or protected OpenAI embeddings, restart hydration, call-graph traversal, and semantic search without persisting source text. | `docs/windows-port/evidence/f2/project-code-memory-store.md`; WPD-0003 revival addendum |
 | 20 | Planner service | `OpenBurnBarPlannerService.swift` | **SUB-DONE** (intent normalization + outline) | WPD-0009 fired the planner trigger. The production authenticated companion plane exposes `planner.plan` with the same explicit-intent → workflow → tool → prompt → generic precedence, typed constraints/risk/desired outputs, exact three-step outlines, schema validation, bounded input, and no execution side effects. | `docs/windows-port/evidence/f2/planner-production-composition.md` |
 | 21 | Policy engine (run/tool approval) | `OpenBurnBarPolicyEngine.swift` | **SUB-DONE** (decision + durable resolution) | The production authenticated companion plane exposes bounded, side-effect-free `policy.evaluate`; row 8 consumes the same risk matrix in durable run-level and per-tool approvals. `approval.respond` resolves the protected checkpoint, an approval can authorize exactly the next risky tool, and rejection/cancellation terminates without dispatch. Physical Computer Use approval UX remains a separate host gate. | `docs/windows-port/evidence/f2/policy-engine-production-composition.md`; `docs/windows-port/evidence/f2/headless-run-recovery.md` |
-| 22 | Rate limiter | `BurnBarRateLimiter.swift` | **DEFER** | Gateway-scoped (row 1). | With row 1 |
+| 22 | Rate limiter | `BurnBarRateLimiter.swift` | **SUB-DONE** (per-client token bucket) | `LocalHttpGatewayHost` production-composes a thread-safe monotonic token bucket with macOS-matched 30/50 defaults, credential-digest isolation, five-minute idle pruning, bounded 429/`Retry-After`, and the stricter shared 5/30 unauthenticated-loopback ceiling. | `docs/windows-port/evidence/f2/gateway-rate-limiter.md` |
 | 23 | Config store / daemon configuration | `OpenBurnBarConfigStore.swift`, `OpenBurnBarDaemonConfiguration.swift` | **SUB-DONE** (app-scoped) | `app/OpenBurnBar.App.Configuration/AppConfiguration.cs` owns Windows app/runtime config; daemon-endpoint config has no consumer without a daemon. | Landed; gateway config revives with row 1 |
 | 24 | Computer-use policy/capability/audit core + service coordination | `ComputerUse/ComputerUseService.swift`, `ComputerUse/ComputerUseRunCoordinator.swift`, `ComputerUse/BurnBarCLIAuditVerify.swift` | **SUB-DONE** (core) / **SUB-BUILD** (full loop) | Core substituted: `computeruse/OpenBurnBar.ComputerUse.Core/` (Capability/Gate/Scope/Audit, ~100 tests) + Windows adapters (`SendInputInputSynthesizer.cs`, `UiaInspector.cs`, `WindowsGraphicsCaptureScreenCapturer.cs`, `NamedPipeDaemonApprovalChannel.cs`). Full loop on real hardware = **Wave 4 item 1** (G4). | Wave 4 item 1 |
 | 25 | Browser tool service (Playwright driver/lifecycle, browser target policy) | `ComputerUse/OpenBurnBarPlaywrightDriver.swift`, `ComputerUse/OpenBurnBarPlaywrightLifecycle.swift`, `OpenBurnBarBrowserToolService.swift`, `OpenBurnBarBrowserTargetPolicy.swift` | **SUB-DONE** (managed browser lifecycle) | WPD-0009 fired the F2 revive trigger. The Windows app packages the reviewed Playwright bridge, composes its shell-free process lifecycle through the central child-process policy, exposes an explicit browser-runtime check, and retains the shared SSRF/DNS-rebinding target policy. | `docs/windows-port/evidence/f2/browser-computer-use-production-composition.md` |
@@ -170,13 +170,13 @@ unless prefixed; all Windows paths under `windows/`.
 
 Counting each row by its current primary disposition (rows 24 and 27 count as
 SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1; rows 1-4,
-6-8, 14, 19-21, 25, and 29 are WPD-0009 F2 promotions):
+6-8, 14, 19-22, 25, and 29 are WPD-0009 F2 promotions):
 
 | Disposition | Rows | Count |
 |---|---|---|
-| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 19, 20, 21, 23, 24, 25, 27, 29 | **22** |
+| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 27, 29 | **23** |
 | C#-substitute-to-build (SUB-BUILD) | 26 (Wave 4), 30 (Wave 3), 31 (Wave 3) | **3** |
-| v1.1-deferred (DEFER) | 16, 18, 22, 32, 33 | **5** |
+| v1.1-deferred (DEFER) | 16, 18, 32, 33 | **4** |
 | Not-applicable-on-Windows (N/A) | 10, 17, 28, 34 | **4** |
 
 Every SUB-BUILD row is owned by a named remediation-plan wave (Wave 3 item 1;

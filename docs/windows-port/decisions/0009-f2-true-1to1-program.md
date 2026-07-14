@@ -37,6 +37,10 @@ Closed under this decision:
   `docs/windows-port/evidence/f2/live-lsp-parser-client.md`, and the WPD-0003
   revival addendum. The general Pensieve repo-docs/notes/session watcher remains
   deferred under WPD-0006 row 18.
+- Gateway rate limiter: promoted by
+  `docs/windows-port/evidence/f2/gateway-rate-limiter.md`. The production host
+  now enforces the macOS token-bucket contract and the shared stricter
+  unauthenticated-loopback ceiling before provider execution.
 
 ## Product language
 

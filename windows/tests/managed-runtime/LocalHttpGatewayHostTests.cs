@@ -295,4 +295,93 @@ public sealed class LocalHttpGatewayHostTests
         HttpResponseMessage response = await client.PostAsync("v1/chat/completions", request);
         Assert.Equal(413, (int)response.StatusCode);
     }
+
+    [Fact]
+    public async Task CompletionEndpoint_RateLimitsBeforeProviderExecution()
+    {
+        int port = 23765 + System.Environment.ProcessId % 1000;
+        int executions = 0;
+        await using var host = new LocalHttpGatewayHost(
+            port,
+            new ModelProxyRouter(new[]
+            {
+                new ModelRoute("local", "openburnbar", "local", 0, true),
+            }),
+            new DelegateModelCompletionExecutor((_, _, _) =>
+            {
+                System.Threading.Interlocked.Increment(ref executions);
+                return Task.FromResult(new ModelCompletionResult(
+                    200,
+                    Encoding.UTF8.GetBytes("{}"),
+                    "application/json",
+                    true));
+            }),
+            accessToken: "test-token",
+            rateLimiter: new GatewayRateLimiter(new GatewayRateLimitConfiguration(0.1, 1)));
+        host.Start();
+        using var client = new HttpClient { BaseAddress = host.BaseAddress };
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "wrong-token");
+        HttpResponseMessage unauthorized = await PostCompletionAsync(client);
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "test-token");
+
+        HttpResponseMessage first = await PostCompletionAsync(client);
+        HttpResponseMessage second = await PostCompletionAsync(client);
+
+        Assert.Equal(401, (int)unauthorized.StatusCode);
+        Assert.Equal(200, (int)first.StatusCode);
+        Assert.Equal(429, (int)second.StatusCode);
+        Assert.Equal(System.TimeSpan.FromSeconds(10), second.Headers.RetryAfter?.Delta);
+        Assert.Equal(1, executions);
+        string responseBody = await second.Content.ReadAsStringAsync();
+        Assert.Contains("rate_limit_error", responseBody, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("test-token", responseBody, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task UnauthenticatedLoopback_UsesOneSharedBucketAcrossInventedBearerValues()
+    {
+        int port = 24765 + System.Environment.ProcessId % 1000;
+        int executions = 0;
+        await using var host = new LocalHttpGatewayHost(
+            port,
+            new ModelProxyRouter(new[]
+            {
+                new ModelRoute("local", "openburnbar", "local", 0, true),
+            }),
+            new DelegateModelCompletionExecutor((_, _, _) =>
+            {
+                System.Threading.Interlocked.Increment(ref executions);
+                return Task.FromResult(new ModelCompletionResult(
+                    200,
+                    Encoding.UTF8.GetBytes("{}"),
+                    "application/json",
+                    true));
+            }),
+            rateLimiter: new GatewayRateLimiter(new GatewayRateLimitConfiguration(100, 100)),
+            unauthenticatedLoopbackRateLimiter:
+                new GatewayRateLimiter(new GatewayRateLimitConfiguration(0.1, 1)));
+        host.Start();
+        using var client = new HttpClient { BaseAddress = host.BaseAddress };
+
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "invented-a");
+        HttpResponseMessage first = await PostCompletionAsync(client);
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "invented-b");
+        HttpResponseMessage second = await PostCompletionAsync(client);
+
+        Assert.Equal(200, (int)first.StatusCode);
+        Assert.Equal(429, (int)second.StatusCode);
+        Assert.Equal(1, executions);
+    }
+
+    private static Task<HttpResponseMessage> PostCompletionAsync(HttpClient client) =>
+        client.PostAsync(
+            "v1/chat/completions",
+            new StringContent(
+                "{\"model\":\"local\",\"messages\":[]}",
+                Encoding.UTF8,
+                "application/json"));
 }

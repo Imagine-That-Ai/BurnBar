@@ -235,8 +235,9 @@ Windows is a **local log-reading peer** like Mac for:
 F1 + revive WPD-0006 DEFER rows that Mac users treat as core. Gateway/model
 proxy, headless/local mission execution, Browser CU, and the project-code parser
 are now promoted through C# substitutes and native Windows parser evidence;
-Telegram, general Pensieve watching, gateway token-bucket limiting, full Elder
-Wand fusion, and connector brokers remain explicit workstreams.
+Telegram, general Pensieve watching, full Elder Wand fusion, and connector
+brokers remain explicit workstreams. Gateway token-bucket limiting is closed by
+`docs/windows-port/evidence/f2/gateway-rate-limiter.md`.
 
 ---
 

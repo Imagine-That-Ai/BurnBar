@@ -509,7 +509,8 @@ F2 workstreams:
    `docs/windows-port/evidence/f2/headless-run-recovery.md`; Windows-host
    compile and lifecycle stress remain release evidence, not implementation.
 5. Local Mission Control execution: DAG scheduler, journal repository,
-   projection reducer, planner, policy engine, rate limiter.
+   projection reducer, planner, and policy engine. Gateway token-bucket limiting
+   is closed by `docs/windows-port/evidence/f2/gateway-rate-limiter.md`.
 6. Pensieve knowledge watcher. The project-code memory store, embeddings, and
    full static parser are closed by
    `docs/windows-port/evidence/f2/project-code-memory-store.md`,

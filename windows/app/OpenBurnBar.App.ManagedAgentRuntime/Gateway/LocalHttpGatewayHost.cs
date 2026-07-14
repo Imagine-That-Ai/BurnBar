@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -27,6 +28,8 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
     private readonly IModelCompletionExecutor _executor;
     private readonly GatewayLiveModelDiscovery? _discovery;
     private readonly byte[]? _accessToken;
+    private readonly GatewayRateLimiter _rateLimiter;
+    private readonly GatewayRateLimiter? _unauthenticatedLoopbackRateLimiter;
     private readonly int _maxRequestBytes;
     private CancellationTokenSource? _cts;
     private Task? _loop;
@@ -59,8 +62,19 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         IModelCompletionExecutor executor,
         string? accessToken = null,
         int maxRequestBytes = 4 * 1024 * 1024,
-        GatewayLiveModelDiscovery? discovery = null)
-        : this("127.0.0.1", port, router, executor, accessToken, maxRequestBytes, discovery)
+        GatewayLiveModelDiscovery? discovery = null,
+        GatewayRateLimiter? rateLimiter = null,
+        GatewayRateLimiter? unauthenticatedLoopbackRateLimiter = null)
+        : this(
+            "127.0.0.1",
+            port,
+            router,
+            executor,
+            accessToken,
+            maxRequestBytes,
+            discovery,
+            rateLimiter,
+            unauthenticatedLoopbackRateLimiter)
     {
     }
 
@@ -71,7 +85,9 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         IModelCompletionExecutor executor,
         string? accessToken = null,
         int maxRequestBytes = 4 * 1024 * 1024,
-        GatewayLiveModelDiscovery? discovery = null)
+        GatewayLiveModelDiscovery? discovery = null,
+        GatewayRateLimiter? rateLimiter = null,
+        GatewayRateLimiter? unauthenticatedLoopbackRateLimiter = null)
     {
         if (maxRequestBytes <= 0)
         {
@@ -89,6 +105,11 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         _accessToken = string.IsNullOrWhiteSpace(accessToken)
             ? null
             : Encoding.UTF8.GetBytes(accessToken.Trim());
+        _rateLimiter = rateLimiter ?? new GatewayRateLimiter(GatewayRateLimitConfiguration.Default);
+        _unauthenticatedLoopbackRateLimiter = _accessToken is null
+            ? unauthenticatedLoopbackRateLimiter
+                ?? new GatewayRateLimiter(GatewayRateLimitConfiguration.UnauthenticatedLoopbackDefault)
+            : null;
     }
 
     public string Host => _listenerOptions.Host;
@@ -172,6 +193,26 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
                     error = new { type = "authentication_error", message = "Gateway authentication is required." },
                 }).ConfigureAwait(false);
                 return;
+            }
+
+            GatewayRateLimitDecision limit = _rateLimiter.CheckLimit(RateLimitClientKey(context.Request));
+            if (!limit.IsAllowed)
+            {
+                await WriteRateLimitResponseAsync(context.Response, limit.RetryAfterSeconds)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            if (_unauthenticatedLoopbackRateLimiter is not null)
+            {
+                GatewayRateLimitDecision anonymousLimit =
+                    _unauthenticatedLoopbackRateLimiter.CheckLimit("unauthenticated-loopback");
+                if (!anonymousLimit.IsAllowed)
+                {
+                    await WriteRateLimitResponseAsync(context.Response, anonymousLimit.RetryAfterSeconds)
+                        .ConfigureAwait(false);
+                    return;
+                }
             }
 
             if (context.Request.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
@@ -438,6 +479,22 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         return CryptographicOperations.FixedTimeEquals(actual, _accessToken);
     }
 
+    private string RateLimitClientKey(HttpListenerRequest request)
+    {
+        if (_accessToken is null)
+        {
+            return "anonymous";
+        }
+
+        string? header = request.Headers["Authorization"];
+        const string prefix = "Bearer ";
+        string token = header is not null && header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? header[prefix.Length..].Trim()
+            : string.Empty;
+        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+        return $"token:{Convert.ToHexString(digest.AsSpan(0, 12)).ToLowerInvariant()}";
+    }
+
     private async Task<byte[]> ReadBodyAsync(HttpListenerRequest request, CancellationToken cancellationToken)
     {
         if (request.ContentLength64 > _maxRequestBytes)
@@ -472,6 +529,18 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(body);
         await WriteBytesAsync(response, status, "application/json; charset=utf-8", bytes).ConfigureAwait(false);
+    }
+
+    private static async Task WriteRateLimitResponseAsync(
+        HttpListenerResponse response,
+        double retryAfterSeconds)
+    {
+        response.Headers["Retry-After"] = Math.Max((int)Math.Ceiling(retryAfterSeconds), 1)
+            .ToString(CultureInfo.InvariantCulture);
+        await WriteJsonAsync(response, 429, new
+        {
+            error = new { type = "rate_limit_error", message = "Gateway rate limit exceeded." },
+        }).ConfigureAwait(false);
     }
 
     private static async Task WriteBytesAsync(

@@ -3,7 +3,7 @@
 //
 // Row order, capability names, dispositions, qualifiers, and the SUB-DONE/SUB-BUILD
 // hybrids (rows 24, 27) match the doc exactly. The disposition-summary constants match
-// the current disposition summary (22 SUB-DONE, 3 SUB-BUILD, 5 DEFER, 4 N/A).
+// the current disposition summary (23 SUB-DONE, 3 SUB-BUILD, 4 DEFER, 4 N/A).
 // A test cross-checks both against those figures so the tab can never drift from the
 // accepted decision without a red build.
 
@@ -110,7 +110,9 @@ public static class DaemonSubstitutionMatrix
             "The authenticated companion plane exposes the macOS risk, approval-descriptor, retryability, progress, and model-approval decision core without executing tools.",
             "F2 policy evidence", Qualifier: "decision core"),
         new(22, "Rate limiter",
-            D.Deferred, "Gateway-scoped (row 1).", "With row 1"),
+            D.SubstitutedAlready,
+            "The production local gateway applies a thread-safe monotonic per-credential token bucket before provider execution and a stricter shared bucket whenever unauthenticated loopback is explicitly enabled.",
+            "F2 gateway rate-limiter evidence", Qualifier: "per-client token bucket"),
         new(23, "Config store / daemon configuration",
             D.SubstitutedAlready,
             "AppConfiguration owns Windows app/runtime config; daemon-endpoint config has no consumer without a daemon.",
@@ -167,13 +169,13 @@ public static class DaemonSubstitutionMatrix
     // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
     /// <summary>SUB-DONE count from the current summary.</summary>
-    public const int SubstitutedAlreadyCount = 22;
+    public const int SubstitutedAlreadyCount = 23;
 
     /// <summary>SUB-BUILD count from the doc's summary (rows 26, 30, 31).</summary>
     public const int SubstituteToBuildCount = 3;
 
     /// <summary>DEFER count from the current summary.</summary>
-    public const int DeferredCount = 5;
+    public const int DeferredCount = 4;
 
     /// <summary>N/A count from the doc's summary (rows 10, 17, 28, 34).</summary>
     public const int NotApplicableCount = 4;
