@@ -1,6 +1,6 @@
 #if os(Linux)
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import OpenBurnBarMedia
 
 public typealias MercuryLinuxMediaReplySender = @Sendable (HermesRealtimeRelayFrame) async throws -> Void

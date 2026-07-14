@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 /// Pure helpers for followup notification evaluation (snooze expiry and nudges).

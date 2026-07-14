@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarTextExpansion
+import OpenBurnBarUI
 
 // MARK: - Keyboard View
 /// A custom SwiftUI keyboard that precisely mirrors the native Apple iOS

@@ -1,5 +1,12 @@
 import Foundation
 @testable import OpenBurnBarCore
+// Merge (train ← origin/main): P-13 moved the ProviderQuota adapters (incl. main's
+// #1590 `ClaudeQuotaDomainCoreAdapter` / `DomainCoreQuotaMigrationMode`, both
+// `internal`) into `OpenBurnBarQuota`. `@testable import OpenBurnBarCore` only
+// re-exports Quota's *public* API through the umbrella shim, so this test reaches
+// the internal adapter via `@testable import OpenBurnBarQuota` — identical to the
+// train's `ZAIQuotaAdapterTests` AE-TESTABLE pattern (CoreTests already deps Quota).
+@testable import OpenBurnBarQuota
 import XCTest
 
 final class ClaudeQuotaDomainCoreAdapterTests: XCTestCase {

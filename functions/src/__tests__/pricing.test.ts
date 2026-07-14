@@ -19,7 +19,9 @@ import { resolve } from "node:path";
 
 import { LEGACY_KIMI_WIRE_MODEL, LEGACY_KIMI_WIRE_PRICING } from "../pricing.js";
 
-const CATALOG_PATH = resolve(__dirname, "../../..", "OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/catalog.json");
+// Core-decomposition: catalog.json moved from the Core monolith's Resources into
+// OpenBurnBarKernel/Resources (git mv). Repointed after the train ← main merge.
+const CATALOG_PATH = resolve(__dirname, "../../..", "OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json");
 
 type Matcher = { all: string[]; any: string[]; none: string[] };
 type CatalogModel = {

@@ -1,6 +1,6 @@
 import Darwin
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 // MARK: - PTYInteractiveSession
 

@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import XCTest
 @testable import OpenBurnBarDaemon
 
