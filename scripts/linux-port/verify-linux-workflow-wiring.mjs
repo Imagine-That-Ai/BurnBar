@@ -291,7 +291,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs',
     'resolve-product-evidence-run.test.mjs',
-    'resolve-product-receipt-artifacts.test.mjs'
+    'resolve-product-receipt-artifacts.test.mjs',
+    'linux-toolchain-node-runtime.test.mjs'
   ]) requireText(input.pr, command, 'PR product evidence gate');
   for (const marker of [
     'id-token: write',

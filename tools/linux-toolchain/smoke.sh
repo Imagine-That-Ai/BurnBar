@@ -146,8 +146,6 @@ echo "swift=official-swift-docker ${SWIFT_VERSION:-unknown} ${SWIFT_PLATFORM:-un
 echo "rustc=$(rustc --version)"
 echo "cargo=$(cargo --version)"
 dpkg-query -W -f='${binary:Package}=${Version}\n' \
-  nodejs \
-  npm \
   xvfb \
   openbox \
   xfce4-panel \
@@ -188,5 +186,6 @@ dpkg-query -W -f='${binary:Package}=${Version}\n' \
   patchelf \
   file \
   zlib1g-dev
+printf 'node-runtime=%s\nnpm-runtime=%s\n' "$(node --version)" "$(npm --version)"
 
 echo "openburnbar-linux-toolchain-smoke-ok"

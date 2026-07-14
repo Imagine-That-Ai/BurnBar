@@ -38,6 +38,7 @@ function valid() {
       'run-product-requirement-validator.test.mjs',
       'resolve-product-evidence-run.test.mjs',
       'resolve-product-receipt-artifacts.test.mjs',
+      'linux-toolchain-node-runtime.test.mjs',
       'macos-matched-performance',
       'run-matched-performance.mjs',
       '--profile pr',

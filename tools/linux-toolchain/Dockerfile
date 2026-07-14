@@ -7,6 +7,9 @@ ARG SQLCIPHER_VERSION=4.5.6
 ARG SQLCIPHER_SHA256=e4a527e38e67090c1d2dc41df28270d16c15f7ca5210a3e7ec4c4b8fda36e28f
 ARG SQLCIPHER_PREFIX=/opt/openburnbar/sqlcipher
 ARG RUST_TOOLCHAIN=1.96.0
+ARG NODE_VERSION=22.23.1
+ARG NODE_X64_SHA256=9749e988f437343b7fa832c69ded82a312e41a03116d766797ac14f6f9eee578
+ARG NODE_ARM64_SHA256=0294e8b915ab75f92c7513d2fcb830ae06e10684e6c603e99a87dbf8835389c1
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update \
@@ -47,8 +50,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libxcb1-dev \
         libxkbcommon-dev \
         libxrandr-dev \
-        nodejs \
-        npm \
         openbox \
         orca \
         patchelf \
@@ -72,6 +73,24 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         xz-utils \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Noble's distro Node.js is 18.x, below the release tooling contract (Node 22)
+# and the Linux desktop package contract (Node >=20.18.0). Install the official
+# multi-architecture release and verify its bytes before it enters the image.
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+        amd64) node_arch=x64; node_sha256="${NODE_X64_SHA256}" ;; \
+        arm64) node_arch=arm64; node_sha256="${NODE_ARM64_SHA256}" ;; \
+        *) echo "unsupported Node.js architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    node_archive="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"; \
+    curl -fsSLo "/tmp/${node_archive}" "https://nodejs.org/dist/v${NODE_VERSION}/${node_archive}"; \
+    echo "${node_sha256}  /tmp/${node_archive}" | sha256sum -c -; \
+    tar -xJf "/tmp/${node_archive}" --strip-components=1 -C /usr/local; \
+    rm "/tmp/${node_archive}"; \
+    test "$(node --version)" = "v${NODE_VERSION}"; \
+    node --version; \
+    npm --version
 
 ENV RUSTUP_HOME=/opt/rustup
 ENV CARGO_HOME=/opt/cargo

@@ -134,6 +134,7 @@ jobs:
           scripts/linux-port/sign-product-proof-closure.test.mjs
           scripts/linux-port/signed-installed-package-wiring.test.mjs
           scripts/linux-port/credential-storage-contract.test.mjs
+          scripts/linux-port/linux-toolchain-node-runtime.test.mjs
           scripts/linux-port/verify-linux-release.test.mjs
           scripts/linux-port/resolve-linux-release-version.test.mjs
 
