@@ -16,7 +16,7 @@ function valid() {
       'matched-performance-contract.test.mjs',
       'perf-budget-contract.test.mjs',
       'linux-parity-macos-performance-pr',
-      'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/workspace/.linux-evidence/linux-swift-tests'
+      'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests'
     ].join('\n'),
     nightly: [
       'OPENBURNBAR_LINUX_EVIDENCE_OUT',
@@ -26,7 +26,7 @@ function valid() {
       'OB_MATCHED_MACOS_INPUT',
       'OB_MATCHED_LINUX_INPUT',
       'linux-parity-matched-performance-nightly',
-      'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/workspace/.linux-evidence/linux-swift-tests'
+      'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests'
     ].join('\n'),
     release: [
       '- "linux-v*"',
@@ -290,7 +290,7 @@ test('removing PR or nightly matched performance wiring fails', () => {
 });
 
 test('Linux Swift evidence must route through the host-mounted evidence tree', () => {
-  const marker = 'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/workspace/.linux-evidence/linux-swift-tests';
+  const marker = 'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests';
   for (const field of ['pr', 'nightly']) {
     const input = valid();
     input[field] = input[field].replace(marker, '');
