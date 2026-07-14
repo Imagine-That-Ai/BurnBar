@@ -21,6 +21,12 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   export GDK_BACKEND=x11
   export LIBGL_ALWAYS_SOFTWARE=1
   export WEBKIT_DISABLE_COMPOSITING_MODE=1
+  # Xvfb has no DMABUF device. Keep WebKit on the software path just like
+  # the shipped safe-mode desktop entry, otherwise arm64 can expose only a
+  # blank filler through AT-SPI even though the native window is visible.
+  export WEBKIT_DISABLE_DMABUF_RENDERER=1
+  export MESA_GL_VERSION_OVERRIDE=4.5
+  export MESA_GLSL_VERSION_OVERRIDE=450
   export ACCESSIBILITY_ENABLED=1
   export GSETTINGS_BACKEND=memory
   export OPENBURNBAR_SOCKET_PATH="$socket_path"
@@ -35,13 +41,15 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   }
   trap cleanup_inner EXIT
 
-  Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp >"$out_dir/xvfb.log" 2>&1 &
-  for _ in $(seq 1 50); do
-    if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 0.1
-  done
+  if [[ "${OB_XVFB_PRESTARTED:-0}" != "1" ]]; then
+    Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp >"$out_dir/xvfb.log" 2>&1 &
+    for _ in $(seq 1 50); do
+      if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+  fi
   xdpyinfo -display "$DISPLAY" >"$out_dir/x11-display-info.txt"
 
   openbox >"$out_dir/openbox.log" 2>&1 &
@@ -852,12 +860,35 @@ socket_path="$(OB_SHELL_DAEMON_BIN="$installed_daemon" OB_SHELL_DAEMON_VERSION="
   "$root/scripts/linux-port/start-shell-session-daemon.sh" "$root" "$out_dir" "$work_dir")"
 daemon_pid="$(cat "$work_dir/daemon.pid")"
 ls -l "$socket_path"
-cleanup_outer() {
-  kill "$daemon_pid" 2>/dev/null || true
-}
-trap cleanup_outer EXIT
 
 echo "== desktop session =="
+desktop_display=:99
+Xvfb "$desktop_display" -screen 0 1280x900x24 -nolisten tcp >"$out_dir/xvfb.log" 2>&1 &
+xvfb_pid="$!"
+for _ in $(seq 1 50); do
+  if DISPLAY="$desktop_display" xdpyinfo >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+if ! DISPLAY="$desktop_display" xdpyinfo >"$out_dir/x11-display-info.txt" 2>&1; then
+  echo "Xvfb did not become ready on $desktop_display" >&2
+  cat "$out_dir/xvfb.log" >&2 || true
+  exit 1
+fi
+cleanup_outer() {
+  kill "$daemon_pid" 2>/dev/null || true
+  kill "$xvfb_pid" 2>/dev/null || true
+}
+trap cleanup_outer EXIT
+DISPLAY="$desktop_display" \
+HOME="$work_dir/home" \
+XDG_RUNTIME_DIR="$work_dir/runtime" \
+XDG_DATA_HOME="$work_dir/home/.local/share" \
+XDG_CONFIG_HOME="$work_dir/home/.config" \
+XDG_SESSION_TYPE=x11 \
+XDG_CURRENT_DESKTOP=XFCE \
+OB_XVFB_PRESTARTED=1 \
 dbus-run-session -- bash "$root/scripts/linux-port/linux-desktop-session.sh" \
   desktop-inner "$pkg" "$installed_bin" "$out_dir" "$work_dir" "$socket_path"
 

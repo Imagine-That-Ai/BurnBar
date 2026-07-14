@@ -11,6 +11,8 @@ import {
   validateArchitectureSessionSet
 } from './lib/linux-package-session.mjs';
 
+const releaseWorkflow = readFileSync(path.resolve('.github/workflows/linux-release.yml'), 'utf8');
+
 const manifest = { supportedArchitectures: ['aarch64', 'x86_64'] };
 const version = '1.2.3';
 const commit = 'a'.repeat(40);
@@ -19,6 +21,16 @@ const archArtifact = {
   sha256: 'a'.repeat(64),
   size: 1234
 };
+
+test('missing previous Debian assets block lifecycle without aborting the shard', () => {
+  const stage = releaseWorkflow.slice(
+    releaseWorkflow.indexOf('Stage current and previous packages for installed lifecycle proof'),
+    releaseWorkflow.indexOf('Verify Arch package update, rollback, and data preservation')
+  );
+  assert.match(stage, /if ! gh release download "linux-v\$\{PREVIOUS_VERSION\}"/u);
+  assert.match(stage, /No previous Debian package matched/u);
+  assert.match(stage, /dpkg lifecycle will remain blocked/u);
+});
 
 function archLifecycleReport() {
   const previous = {

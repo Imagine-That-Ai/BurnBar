@@ -328,9 +328,11 @@ jobs:
               aarch64) pattern="*_${PREVIOUS_VERSION}_arm64.deb" ;;
               x86_64) pattern="*_${PREVIOUS_VERSION}_amd64.deb" ;;
             esac
-            gh release download "linux-v${PREVIOUS_VERSION}" \
+            if ! gh release download "linux-v${PREVIOUS_VERSION}" \
               --pattern "$pattern" \
-              --dir "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/deb"
+              --dir "$OPENBURNBAR_LINUX_RELEASE_OUT/previous/deb"; then
+              echo "No previous Debian package matched ${pattern}; the dpkg lifecycle will remain blocked."
+            fi
             arch_pattern="openburnbar-${PREVIOUS_VERSION}-*-${{ matrix.architecture }}.pkg.tar.zst"
             arch_signature_pattern="${arch_pattern}.ed25519.sig"
             arch_manifest_pattern="openburnbar-${PREVIOUS_VERSION}-${{ matrix.architecture }}.installed-manifest.json"
