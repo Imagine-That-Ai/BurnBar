@@ -13,8 +13,10 @@ import {
   P40_PROOF_ROLE,
   P40_RETENTION_CONTRACT,
   P40_RPC_METHODS,
+  P40_SOURCE_CONTRACTS,
   P40_STORES,
   parseP40Json,
+  sourceContractMarkers,
   validateP40LiveSession,
   validateP40PrivacyProof
 } from './lib/p40-privacy-proof.mjs';
@@ -142,8 +144,20 @@ function subject() {
   return { root, inputRoot, report };
 }
 
+function stageOwnershipSourceFixtures() {
+  if (process.env.OPENBURNBAR_PARITY_PREFLIGHT_OWNERSHIP_TEST !== '1') return () => {};
+  const markers = sourceContractMarkers();
+  for (const sourcePath of P40_SOURCE_CONTRACTS) {
+    write(sourcePath, `${markers[sourcePath].join('\n')}\n`);
+  }
+  return () => {
+    for (const sourcePath of P40_SOURCE_CONTRACTS) fs.rmSync(sourcePath, { force: true });
+  };
+}
+
 function capture() {
   const value = subject();
+  const restoreSources = stageOwnershipSourceFixtures();
   try {
     const result = captureP40PrivacyProof({
       repoRoot: process.cwd(),
@@ -155,8 +169,9 @@ function capture() {
       candidateArtifactDigest: DIGEST,
       resolveHead: () => HEAD
     });
-    return { ...value, result };
+    return { ...value, result, restoreSources };
   } catch (error) {
+    restoreSources();
     fs.rmSync(value.root, { recursive: true, force: true });
     throw error;
   }
@@ -193,6 +208,7 @@ test('P-40 capture emits a candidate-bound installed privacy proof', () => {
       candidateArtifactDigest: DIGEST
     });
   } finally {
+    value.restoreSources();
     fs.rmSync(value.root, { recursive: true, force: true });
   }
 });
@@ -242,6 +258,7 @@ test('P-40 independently rejects an installed privacy proof with a substituted r
       }), pattern, name);
     }
   } finally {
+    value.restoreSources();
     fs.rmSync(value.root, { recursive: true, force: true });
   }
 });
