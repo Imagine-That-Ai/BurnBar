@@ -79,9 +79,15 @@ The production companion plane now also composes `LocalMissionDagExecutor`
 through bounded `mission.submit` and `mission.resume` operations. The desktop
 allows only `noop`, `health`, and bounded `delay`, uses a shared 60-per-minute
 execution limiter, and rejects unsafe kinds before journal creation. The
-managed-runtime suite is **85/85** after authenticated TCP and production
-adapter coverage. Broader macOS intent normalization and provider/tool execution
-remain distinct F2 rows.
+managed-runtime suite was **85/85** after authenticated TCP and production
+adapter coverage. Provider/tool execution remains a distinct F2 row.
+
+The production companion plane now also exposes side-effect-free
+`planner.plan`. Its contract matches macOS intent precedence, requested-tool
+inference, typed constraint/risk/desired-output preservation, schema and
+workflow rejection, and deterministic outlines. The superseding managed-runtime
+suite is **100/100**, including real authenticated TCP and exact wire-name proof.
+Execution and policy remain separately unclaimed.
 
 Validation commands:
 
@@ -115,7 +121,7 @@ authoritative XAML validation surface.
 The presentation suite is now 761/761 after durable project-code store,
 inventory-fallback, and AST-range chunking coverage;
 the focused chat runtime suite is 24/24; the Rust parser suite is 19/19. The
-F1 parity ledger remains the machine-scanned 48-row source/product gate.
+F1 parity ledger remains the machine-scanned 49-row source/product gate.
 WPD-0009 still defines F2 True 1:1 as the full parity finish line and requires
 production composition plus host evidence before these rows can be promoted.
 

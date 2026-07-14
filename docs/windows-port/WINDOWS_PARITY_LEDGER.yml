@@ -689,10 +689,27 @@ rows:
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Mission/LocalMissionDagExecutor.cs
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Mission/CompanionCliMissionHandler.cs
   - windows/app/OpenBurnBar.App/App.xaml.cs
-  notes: F2 local DAG execution is production-composed; broader intent planning and provider tools remain separate rows.
+  notes: F2 local DAG execution is production-composed; provider tools remain a separate row.
   owner_lane: f2
   windows_route: missionLocal
   macos_route: missions
+- id: f2-planner-service
+  macos_capability: Typed intent normalization and deterministic plan outlines
+  windows_capability: Authenticated side-effect-free planner composition
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/planner-production-composition.md
+  tests:
+  - windows/tests/managed-runtime/BurnBarPlannerServiceTests.cs
+  - windows/tests/managed-runtime/CompanionCliPlannerHandlerTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Planning/BurnBarPlannerService.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Planning/CompanionCliPlannerHandler.cs
+  - windows/app/OpenBurnBar.App/App.xaml.cs
+  notes: F2 intent planning is production-composed; execution and policy remain separate rows.
+  owner_lane: f2
+  windows_route: planner
+  macos_route: planner
 - id: f2-browser-computer-use
   status: Real
   owner_lane: f2
@@ -811,8 +828,8 @@ f1_coverage_register:
   windows_status: Real
   note: IA-4 ProjectsPage
 finish_line_note: >-
-  100% parity under the named finish line is F2_True_1to1. The current 48-row
-  histogram is the scoped F1 Ship Peer source/product gate: 48 Real / 0
+  100% parity under the named finish line is F2_True_1to1. The current 49-row
+  histogram is the scoped F1 Ship Peer source/product gate: 49 Real / 0
   DeferredApproved / 0 Blocked / 0 Substituted. WPD-0009 governs promotion of
   F2 workstreams to full parity; production composition and host evidence remain
   explicit requirements. Operational residuals outside the ledger gate

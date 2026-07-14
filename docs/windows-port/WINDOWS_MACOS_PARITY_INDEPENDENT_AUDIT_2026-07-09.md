@@ -9,7 +9,7 @@
 
 At the time of this certification update, the remediation plan's F1
 source/product ledger reported 46 rows as Real, with zero DeferredApproved,
-Blocked, or Substituted rows. The current ledger is 48/48 Real. Both are scoped
+Blocked, or Substituted rows. The current ledger is 49/49 Real. Both are scoped
 F1 Ship Peer results, not proof that the F2 True 1:1 workstreams or the public
 release gates are complete.
 
@@ -160,6 +160,12 @@ unproven host behavior to certification:
   authenticated companion plane. Only `noop`, `health`, and bounded `delay`
   execute by default; shell/provider work remains unavailable without a
   separately approved handler.
+- The authenticated companion plane now exposes the macOS-equivalent
+  side-effect-free `planner.plan` contract. It preserves explicit-intent,
+  workflow, tool, prompt, and generic precedence; requested-tool inference;
+  typed constraints/risk/desired outputs; and exact deterministic outlines.
+  Unsupported workflows and schema versions fail closed before execution. This
+  is intent planning only: provider/tool policy and execution remain separate.
 - Browser Computer Use process mode now uses a direct executable plus a
   JSON-line bridge with no shell interpolation, bounded responses, serialized
   commands, cancellation, and process-tree cleanup. The bridge now accepts the
@@ -336,15 +342,15 @@ unproven host behavior to certification:
   size, and SHA-256, including the resource bundle, before an artifact can be
   signed or zipped.
 
-These changes are covered by focused managed-runtime (40/40 mission/runtime
-tests plus 41/41 managed-agent-runtime tests), CloudSync (61/61), connector
+These changes are covered by focused managed-runtime (100/100 planner,
+mission, gateway, and recovery tests plus 41/41 managed-agent-runtime tests), CloudSync (61/61), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
 Computer Use (114 passed plus a separately executed live Chromium test),
 settings (175/175), configuration (39/39), distribution (98/98), bridge-policy,
 and provider-boundary tests. They are an implementation increment, not a claim
 that the F2 workstreams are all complete: production composition of the
-remaining F2 provider, intent-planner, and tool-execution services, physical
-Computer Use/media safety, and host evidence still remain. The ledger's 48/48 `Real`
+remaining F2 provider, policy, and tool-execution services, physical
+Computer Use/media safety, and host evidence still remain. The ledger's 49/49 `Real`
 result is the scoped F1 source/product gate; WPD-0009 continues to define F2
 True 1:1 as the actual 100% parity endpoint.
 
@@ -472,7 +478,7 @@ treated as end-to-end product parity evidence.
 | Fresh-install storage, session logs, and recovery | Windows requires a pre-existing SQLCipher DB and passphrase; failure can fall back to empty data. See windows/app/OpenBurnBar.App/Storage/WindowsStorageDevHost.cs:13-34. macOS has durable aggregation and recovery UI. | Provision/migrate the database automatically, generate a protected key, repair the database picker owner window, and expose loading, no-data, invalid-key, locked-DB, migration, retry, archive/reset, and reveal-log states. | Critical | Exercise fresh install, corrupt DB, wrong key, locked file, and migration interruption. Each must expose an actionable path and recover after retry. |
 | Secrets, identity, and cloud | SQLCipher passphrase, Firebase token, App Check token, and vault key persist in plaintext %LOCALAPPDATA%/OpenBurnBar/app_config.json; cloud startup is dev-token wiring rather than composed sign-in. See windows/app/OpenBurnBar.App.Configuration/AppConfiguration.cs:37-48,66-95 and AppConfigurationModel.cs:8-27. This is a credential-at-rest issue and a false production sign-in experience. | Add ISecretStore backed by DPAPI/Credential Manager, migrate and securely remove legacy values, then compose OAuth PKCE, refresh, TPM/App Check, offline queue, and sign-out cleanup. | Critical security / High feature | Assert that config, logs, diagnostics, child process environments, crash reports, and support bundles contain no secrets. Test staging sign-in, expiry, invalid App Check, offline recovery, and sign-out. |
 | Chat correctness and command safety | Windows now resolves approved executables directly and composes bounded persisted transcript context, including attachment metadata, before each turn. Prior transcript text is marked untrusted and absolute attachment paths are removed; streamed output, cancellation, and backend-unavailable behavior remain separate runtime gates. macOS supports persistent streamed chat, retrieval, attachments, and durable error handling. | Keep `ProcessStartInfo.ArgumentList`, stdin or structured temporary input, cancellation, output limits, persisted conversation state, and backend-unavailable UI aligned with the Windows runtime. Extend the same boundary to retrieval and multimodal providers as they become available. | Critical | Metacharacter/quote payload, cancellation, streamed-error, restart/history, duplicate-current-turn, attachment/paste/drop, and retrieval-degradation tests. |
-| Daemon, gateway, missions, and memory depth | macOS has an installed/repairable daemon lifecycle. Windows has useful portable primitives, but product settings explicitly retain gateway, headless runs, local Mission execution, watcher/planner, and connector deferrals. See windows/app/OpenBurnBar.App.Settings.ViewModels/Daemon/DaemonSettingsViewModel.cs:58-62 and DaemonSubstitutionMatrix.cs:28-53. | Decide and document a Windows service versus in-process worker. Implement authenticated IPC, durable journals, restart recovery, provider routing, mission execution, and lifecycle/recovery UI. | Critical | An approved run survives GUI close/restart, rehydrates safely, records audit state, and exposes meaningful health and error UX. |
+| Daemon, gateway, missions, and memory depth | macOS has an installed/repairable daemon lifecycle. Windows now production-composes authenticated in-process gateway, Mission DAG, recovery journal, project index, and intent planner primitives, while long-lived headless/provider execution, watcher depth, policy, and connectors remain explicitly deferred. | Complete the remaining provider/policy/tool compositions or retain their documented platform-appropriate deferrals. Prove restart recovery and lifecycle UX for every execution path that is promoted. | Critical | An approved execution run survives GUI close/restart where promised, rehydrates safely, records audit state, and exposes meaningful health and error UX. |
 | Settings and preferences | macOS has interactive, searchable settings with persistence. Many Windows tabs route to a generic reflection/text-dump host with in-memory/no-op defaults; Updates is static. See windows/app/OpenBurnBar.App/Settings/SettingsViewModelHostPage.xaml.cs:47-123 and UpdatesSettingsPage.xaml:28-44. | Replace generic host pages with concrete bound controls and production stores. Persist state securely; disable unavailable functions with a reason; wire every visible toggle and command. | High | Change each preference, restart, validate persistence and live effect. Test failed saves, unavailable services, and OS-disabled states. |
 | Onboarding and permissions | macOS probes and refreshes real permissions. Windows system permissions are informational and chat gateway health is a placeholder. See windows/app/OpenBurnBar.App/Onboarding/Steps/SystemPermissionsStepPage.xaml.cs:6-22 and ChatEngineStepPage.xaml.cs:142-146. | Add Windows-native probes for notification registration, storage/log access, runtime dependencies, UI Automation, screen capture, and optional input components. Use Windows terminology, not copied TCC labels. | High | In a clean VM, deny, grant, revoke, restart, and recover each capability. Onboarding must never falsely report readiness. |
 | Notifications, background behavior, and tray resilience | Windows has a tray foundation and a toast adapter, but live tray data, session/digest delivery, activation routing, preference persistence, Explorer restart recovery, and richer context actions are not proven or composed. See windows/app/OpenBurnBar.App/Budget/BudgetToastNotifier.cs:24-71. | Compose a notification router with the runtime. Add dedupe/rate limits, deep links, OS-disabled status, background cadence, TaskbarCreated re-registration, and Dashboard/Settings/Update tray actions. | High | Test app open/hidden/closed, sleep/wake, reboot, Explorer restart, disabled notifications, toast click/cold activation, and multi-monitor DPI. |

@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenBurnBar.App.ManagedAgentRuntime.Planning;
 
 namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 
@@ -293,6 +294,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _recover;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _missionSubmit;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _missionResume;
+    private readonly Func<JsonElement, CancellationToken, Task<object?>>? _plan;
 
     public CompanionCliCommandRouter(
         ModelProxyRouter? router = null,
@@ -302,7 +304,8 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
         Func<JsonElement, CancellationToken, Task<object?>>? code = null,
         Func<JsonElement, CancellationToken, Task<object?>>? recover = null,
         Func<JsonElement, CancellationToken, Task<object?>>? missionSubmit = null,
-        Func<JsonElement, CancellationToken, Task<object?>>? missionResume = null)
+        Func<JsonElement, CancellationToken, Task<object?>>? missionResume = null,
+        Func<JsonElement, CancellationToken, Task<object?>>? plan = null)
     {
         _router = router;
         _submit = submit;
@@ -312,6 +315,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
         _recover = recover;
         _missionSubmit = missionSubmit;
         _missionResume = missionResume;
+        _plan = plan;
     }
 
     public async Task<string> HandleAsync(string line, CancellationToken cancellationToken)
@@ -338,11 +342,12 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 "run.recover" => await InvokeRunAsync(_recover, root, cancellationToken).ConfigureAwait(false),
                 "mission.submit" => await InvokeRunAsync(_missionSubmit, root, cancellationToken).ConfigureAwait(false),
                 "mission.resume" => await InvokeRunAsync(_missionResume, root, cancellationToken).ConfigureAwait(false),
+                "planner.plan" => await InvokeRunAsync(_plan, root, cancellationToken).ConfigureAwait(false),
                 "fusion.run" => await InvokeRunAsync(_fusion, root, cancellationToken).ConfigureAwait(false),
                 "code.index" or "code.search" or "code.symbol" or "code.status" or "code.context_pack" or "code.references" or "code.call_graph" or "code.semantic_search" =>
                     await InvokeRunAsync(_code, root, cancellationToken).ConfigureAwait(false),
                 "ping" => JsonSerializer.Serialize(new { ok = true, pong = true }),
-                "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-5" }),
+                "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-6" }),
                 _ => JsonSerializer.Serialize(new { ok = false, error = "unknown_op", op }),
             };
         }
@@ -362,7 +367,28 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
             return JsonSerializer.Serialize(new { ok = false, error = "run_unavailable" });
         }
 
-        object? result = await handler(request.Clone(), cancellationToken).ConfigureAwait(false);
-        return JsonSerializer.Serialize(new { ok = true, result });
+        try
+        {
+            object? result = await handler(request.Clone(), cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Serialize(new { ok = true, result });
+        }
+        catch (BurnBarPlannerException exception)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                ok = false,
+                error = exception.Code,
+                message = exception.Message,
+            });
+        }
+        catch (ArgumentException exception)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                ok = false,
+                error = "invalid_request",
+                message = exception.Message,
+            });
+        }
     }
 }

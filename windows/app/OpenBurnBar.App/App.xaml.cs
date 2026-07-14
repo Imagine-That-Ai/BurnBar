@@ -20,6 +20,7 @@ using OpenBurnBar.App.Tray;
 using OpenBurnBar.App.UsageRuntime;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.ManagedAgentRuntime.Mission;
+using OpenBurnBar.App.ManagedAgentRuntime.Planning;
 using OpenBurnBar.App.ManagedAgentRuntime.Run;
 using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Presentation.Projects;
@@ -476,6 +477,7 @@ public partial class App : Application
                 new LocalMissionDagExecutor(
                     headlessRuns,
                     rateLimiter: new MissionRateLimiter(60, TimeSpan.FromMinutes(1))));
+            var plannerHandler = new CompanionCliPlannerHandler(new BurnBarPlannerService());
             _ = ReportRecoverableHeadlessRunsAsync(headlessRuns);
             string fusionJournalPath = Environment.GetEnvironmentVariable("OPENBURNBAR_FUSION_JOURNAL_PATH")
                 ?? Path.Combine(
@@ -514,7 +516,8 @@ public partial class App : Application
                 HandleProjectCodeAsync,
                 runHandler.RecoverAsync,
                 missionHandler.SubmitAsync,
-                missionHandler.ResumeAsync);
+                missionHandler.ResumeAsync,
+                plannerHandler.PlanAsync);
             _companionCli = new CompanionCliServer(port, router, _localAccessToken);
             _companionCli.Start();
             AppDiagnostics.LogEvent("companion-cli.started", $"127.0.0.1:{port}");

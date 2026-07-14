@@ -3,7 +3,7 @@
 //
 // Row order, capability names, dispositions, qualifiers, and the SUB-DONE/SUB-BUILD
 // hybrids (rows 24, 27) match the doc exactly. The disposition-summary constants match
-// the doc's "Disposition summary" table (9 SUB-DONE, 3 SUB-BUILD, 18 DEFER, 4 N/A).
+// the current disposition summary (12 SUB-DONE, 3 SUB-BUILD, 15 DEFER, 4 N/A).
 // A test cross-checks both against those figures so the tab can never drift from the
 // accepted decision without a red build.
 
@@ -73,7 +73,7 @@ public static class DaemonSubstitutionMatrix
             "Landed (#1267 + #1272); surface → Real in Wave 3"),
         new(14, "Mission Control execution: DAG scheduler, journal repository, projection reducer, state merger, store",
             D.SubstitutedAlready,
-            "The authenticated companion plane composes LocalMissionDagExecutor with deterministic planning, bounded policy, shared rate limiting, metadata-only journaling, and resume/recovery. Broader intent planning and provider tools remain separate rows.",
+            "The authenticated companion plane composes LocalMissionDagExecutor with deterministic DAG ordering, bounded policy, shared rate limiting, metadata-only journaling, and resume/recovery. Provider tools remain a separate row.",
             "F2 local Mission evidence", Qualifier: "local DAG execution"),
         new(15, "Notification bridge: local notifications",
             D.SubstitutedAlready,
@@ -96,9 +96,9 @@ public static class DaemonSubstitutionMatrix
             "Already governed by WPD-0003 (static parser deferred; lexical fallback = bundle drift D13). Store follows the parser.",
             "WPD-0003; D13"),
         new(20, "Planner service",
-            D.Deferred,
-            "Serves mission planning for daemon-executed runs (rows 8/14). The Mac-side listener keeps owning planning for dispatched missions.",
-            "With rows 8/14"),
+            D.SubstitutedAlready,
+            "The production companion plane composes the macOS intent-normalization and typed-plan contract with deterministic precedence, exact plan outlines, bounded inputs, and no execution side effects.",
+            "F2 planner evidence", Qualifier: "intent normalization + outline"),
         new(21, "Policy engine (run/tool approval)",
             D.Deferred,
             "Gates daemon-executed runs (row 8). The computer-use policy core is separately substituted (row 24).",
@@ -160,14 +160,14 @@ public static class DaemonSubstitutionMatrix
 
     // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
-    /// <summary>SUB-DONE count from the current summary (including promoted row 25).</summary>
-    public const int SubstitutedAlreadyCount = 11;
+    /// <summary>SUB-DONE count from the current summary.</summary>
+    public const int SubstitutedAlreadyCount = 12;
 
     /// <summary>SUB-BUILD count from the doc's summary (rows 26, 30, 31).</summary>
     public const int SubstituteToBuildCount = 3;
 
     /// <summary>DEFER count from the current summary.</summary>
-    public const int DeferredCount = 16;
+    public const int DeferredCount = 15;
 
     /// <summary>N/A count from the doc's summary (rows 10, 17, 28, 34).</summary>
     public const int NotApplicableCount = 4;
