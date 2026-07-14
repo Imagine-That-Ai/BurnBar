@@ -43,6 +43,10 @@ extension DataStore {
         try await actor.usageStore.insertChunked(newUsages, chunkSize: chunkSize)
     }
 
+    func deleteUsage(provider: AgentProvider, sessionIDs: [String]) async throws {
+        try await actor.usageStore.deleteUsage(provider: provider, sessionIDs: sessionIDs)
+    }
+
     func fetchAllUsage() async throws -> [TokenUsage] {
         try await actor.usageStore.fetchAllUsage()
     }

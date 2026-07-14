@@ -132,6 +132,183 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
         XCTAssertEqual(usage.totalTokens, 176)
     }
 
+    /// Codex broadcasts a top-level task's cumulative counter into each spawned
+    /// subagent rollout. Those mirrored counters must not become separate usage rows.
+    func test_codexParser_doesNotMultiplyParentTotalsAcrossSubagentRollouts() async throws {
+        let rolloutDirectory = harness.rootURL.appendingPathComponent(".codex/sessions/2026/07/13", isDirectory: true)
+        try harness.fileManager.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+        let parentURL = rolloutDirectory.appendingPathComponent("parent.jsonl")
+        let childURL = rolloutDirectory.appendingPathComponent("child.jsonl")
+        let parentSession = """
+        {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":160,"cached_input_tokens":40,"output_tokens":16}}}}
+        """
+        let childSession = """
+        {"timestamp":"2026-07-13T12:00:01Z","type":"session_meta","payload":{"id":"child","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent","depth":1}}}}}
+        {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":160,"cached_input_tokens":40,"output_tokens":16}}}}
+        """
+        try parentSession.write(to: parentURL, atomically: true, encoding: .utf8)
+        try childSession.write(to: childURL, atomically: true, encoding: .utf8)
+
+        let cutoff: Int64 = 1_783_936_800
+        _ = try harness.createCodexThreadDatabase(threads: [
+            (
+                id: "parent",
+                model: "openai/gpt-5.2-codex",
+                tokensUsed: 176,
+                rolloutPath: parentURL.path,
+                createdAt: cutoff - 86_400,
+                updatedAt: cutoff + 60,
+                cwd: "/tmp/OpenBurnBar"
+            ),
+            (
+                id: "child",
+                model: "openai/gpt-5.2-codex",
+                tokensUsed: 176,
+                rolloutPath: childURL.path,
+                createdAt: cutoff + 1,
+                updatedAt: cutoff + 60,
+                cwd: "/tmp/OpenBurnBar"
+            ),
+        ])
+
+        let parser = TestableCodexParser(
+            fileManager: harness.fileManager,
+            codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(
+                applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
+            )
+        )
+        let result = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(result.usages.first?.sessionId, "parent")
+        XCTAssertEqual(result.usages.first?.totalTokens, 176)
+        XCTAssertEqual(result.usageSessionIDsToDelete, ["child"])
+    }
+
+    func test_codexParser_invalidatesSubagentsOlderThanUsageScanLimit() async throws {
+        let rolloutDirectory = harness.rootURL.appendingPathComponent(".codex/sessions/2026/07/13", isDirectory: true)
+        try harness.fileManager.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+        let childURL = rolloutDirectory.appendingPathComponent("old-child.jsonl")
+        try """
+        {"timestamp":"2026-07-13T12:00:01Z","type":"session_meta","payload":{"id":"old-child","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent","depth":1}}}}}
+        """.write(to: childURL, atomically: true, encoding: .utf8)
+
+        var threads: [(id: String, model: String, tokensUsed: Int, rolloutPath: String, createdAt: Int64, updatedAt: Int64, cwd: String)] = [
+            (
+                id: "old-child",
+                model: "openai/gpt-5.2-codex",
+                tokensUsed: 176,
+                rolloutPath: childURL.path,
+                createdAt: 1,
+                updatedAt: 1,
+                cwd: "/tmp/OpenBurnBar"
+            ),
+        ]
+        for index in 0..<500 {
+            threads.append((
+                id: "newer-parent-\(index)",
+                model: "openai/gpt-5.2-codex",
+                tokensUsed: 0,
+                rolloutPath: rolloutDirectory.appendingPathComponent("missing-\(index).jsonl").path,
+                createdAt: Int64(index + 2),
+                updatedAt: Int64(index + 2),
+                cwd: "/tmp/OpenBurnBar"
+            ))
+        }
+        _ = try harness.createCodexThreadDatabase(threads: threads)
+
+        let parser = TestableCodexParser(
+            fileManager: harness.fileManager,
+            codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(
+                applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
+            )
+        )
+        let result = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+
+        XCTAssertTrue(result.usages.isEmpty)
+        XCTAssertEqual(result.usageSessionIDsToDelete, ["old-child"])
+    }
+
+    /// A long-running Codex task must contribute only its cumulative increase
+    /// to each local day, not its entire lifetime total to every intersecting day.
+    func test_codexParser_bucketsCumulativeTotalsByEventDay() async throws {
+        let rolloutDirectory = harness.rootURL.appendingPathComponent(".codex/sessions/2026/07/12", isDirectory: true)
+        try harness.fileManager.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+        let rolloutURL = rolloutDirectory.appendingPathComponent("multi-day-parent.jsonl")
+        let session = """
+        {"timestamp":"2026-07-12T12:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":10}}}}
+        {"timestamp":"2026-07-13T12:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":160,"cached_input_tokens":40,"output_tokens":16}}}}
+        """
+        try session.write(to: rolloutURL, atomically: true, encoding: .utf8)
+
+        _ = try harness.createCodexThreadDatabase(threads: [(
+            id: "multi-day-parent",
+            model: "openai/gpt-5.2-codex",
+            tokensUsed: 176,
+            rolloutPath: rolloutURL.path,
+            createdAt: 1_783_849_600,
+            updatedAt: 1_783_936_060,
+            cwd: "/tmp/OpenBurnBar"
+        )])
+
+        let parser = TestableCodexParser(
+            fileManager: harness.fileManager,
+            codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(
+                applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
+            )
+        )
+
+        let first = try await parser.parse()
+        XCTAssertEqual(first.usages.count, 2)
+        XCTAssertEqual(first.usages.map(\.totalTokens).sorted(), [66, 110])
+        XCTAssertEqual(Set(first.usages.map { Calendar.current.startOfDay(for: $0.startTime) }).count, 2)
+        XCTAssertEqual(first.usageSessionIDsToDelete, ["multi-day-parent"])
+
+        // The day slices must survive the parser cache, not collapse back into
+        // one lifetime row on the next unchanged refresh.
+        let cached = try await parser.parse()
+        XCTAssertEqual(cached.usages.map(\.totalTokens).sorted(), [66, 110])
+        XCTAssertEqual(cached.usageSessionIDsToDelete, ["multi-day-parent"])
+    }
+
+    func test_codexParser_ignoresStaleCumulativeSnapshots() async throws {
+        let rolloutDirectory = harness.rootURL.appendingPathComponent(".codex/sessions/2026/07/12", isDirectory: true)
+        try harness.fileManager.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+        let rolloutURL = rolloutDirectory.appendingPathComponent("out-of-order-parent.jsonl")
+        let session = """
+        {"timestamp":"2026-07-12T12:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":10}}}}
+        {"timestamp":"2026-07-13T12:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":160,"cached_input_tokens":40,"output_tokens":16}}}}
+        {"timestamp":"2026-07-13T12:01:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":120,"cached_input_tokens":25,"output_tokens":12}}}}
+        {"timestamp":"2026-07-13T12:02:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":200,"cached_input_tokens":50,"output_tokens":20}}}}
+        """
+        try session.write(to: rolloutURL, atomically: true, encoding: .utf8)
+
+        _ = try harness.createCodexThreadDatabase(threads: [(
+            id: "out-of-order-parent",
+            model: "openai/gpt-5.2-codex",
+            tokensUsed: 220,
+            rolloutPath: rolloutURL.path,
+            createdAt: 1_783_849_600,
+            updatedAt: 1_783_936_120,
+            cwd: "/tmp/OpenBurnBar"
+        )])
+
+        let parser = TestableCodexParser(
+            fileManager: harness.fileManager,
+            codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(
+                applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
+            )
+        )
+
+        let result = try await parser.parse()
+        XCTAssertEqual(result.usages.map(\.totalTokens).sorted(), [110, 110])
+        XCTAssertEqual(result.usages.reduce(0) { $0 + $1.totalTokens }, 220)
+    }
+
     // MARK: - Unit Tests for TokenExtractionUtility
 
     /// VAL-TOKEN-010: codexCumulativeTotalsFromTokenCountInfo must return nil for partial

@@ -32,7 +32,7 @@ public final class CodexParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 3,
             logLabel: "CodexParser"
         )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
@@ -60,15 +60,24 @@ public final class CodexParser: LogParser, Sendable {
             dbPath: dbPath,
             includeConversationBodies: options.includeConversationBodies
         )
-        return ParseResult(usages: parsed.usages, conversations: parsed.conversations)
+        return ParseResult(
+            usages: parsed.usages,
+            conversations: parsed.conversations,
+            usageSessionIDsToDelete: parsed.usageSessionIDsToDelete
+        )
     }
 
     private func parseCodexDatabase(
         dbPath: String,
         includeConversationBodies: Bool
-    ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
+    ) throws -> (
+        usages: [TokenUsage],
+        conversations: [ConversationRecord],
+        usageSessionIDsToDelete: [String]
+    ) {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var usageSessionIDsToDelete: [String] = []
         var sessionCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
@@ -80,13 +89,32 @@ public final class CodexParser: LogParser, Sendable {
         // Check if rollout_path column exists
         let columnNames = Set(try reader.columnNames(ofTable: "threads"))
         let hasRolloutPath = columnNames.contains("rollout_path")
+        let hasThreadSource = columnNames.contains("thread_source")
+
+        if hasRolloutPath {
+            let sourceProjection = hasThreadSource ? ", thread_source" : ""
+            let cleanupRows = try reader.query(
+                "SELECT id, rollout_path\(sourceProjection) FROM threads"
+            )
+            for cleanupRow in cleanupRows {
+                guard let threadId = cleanupRow.string("id") else { continue }
+                let threadSource = hasThreadSource ? cleanupRow.string("thread_source") : nil
+                let rolloutPath = cleanupRow.string("rollout_path")
+                let expandedPath = rolloutPath.map { ($0 as NSString).expandingTildeInPath }
+                if threadSource == "subagent"
+                    || (threadSource == nil && expandedPath.map(isCodexSubagentRollout) == true) {
+                    usageSessionIDsToDelete.append(threadId)
+                }
+            }
+        }
 
         let sql: String
         if hasRolloutPath {
+            let threadSourceProjection = hasThreadSource ? ", thread_source" : ""
             sql = """
                 SELECT
                     id, title, model, model_provider, tokens_used,
-                    created_at, updated_at, cwd, rollout_path
+                    created_at, updated_at, cwd, rollout_path\(threadSourceProjection)
                 FROM threads
                 WHERE archived = 0
                 ORDER BY created_at DESC
@@ -121,11 +149,23 @@ public final class CodexParser: LogParser, Sendable {
             let endTime = Date(timeIntervalSince1970: Double(updatedAt))
             let rolloutPath: String? = hasRolloutPath ? row.string("rollout_path") : nil
             let expandedRolloutPath = rolloutPath.map { ($0 as NSString).expandingTildeInPath }
+            // Current Codex builds broadcast the top-level task's cumulative token
+            // counter into every spawned subagent rollout. Emitting each mirrored
+            // counter as an independent session multiplies one task's usage by its
+            // agent count. Keep subagent conversations, but let the active parent
+            // row (selected by updated_at above) own the process-wide usage total.
+            let storedThreadSource = hasThreadSource ? row.string("thread_source") : nil
+            let isSubagentRollout = storedThreadSource == "subagent"
+                || expandedRolloutPath.map(isCodexSubagentRollout) == true
+            if isSubagentRollout {
+                usageSessionIDsToDelete.append(threadId)
+            }
 
             // Try to get exact token breakdown from JSONL session file
             var inputTokens: Int = 0
             var outputTokens: Int = 0
             var cacheReadTokens: Int = 0
+            var dailyTokenUsage: [CodexDailyTokenUsage] = []
             var foundExact = false
 
             var parsedConversation: CodexConversationCacheEntry?
@@ -143,16 +183,18 @@ public final class CodexParser: LogParser, Sendable {
                         inputTokens = tokenUsage.input
                         outputTokens = tokenUsage.output
                         cacheReadTokens = tokenUsage.cacheRead
+                        dailyTokenUsage = tokenUsage.daily
                         foundExact = true
                     }
                     if includeConversationBodies {
-                        parsedConversation = parseCodexConversationJSONL(path: expandedPath, fallbackTitle: rawTitle)
+                        parsedConversation = cached.conversation
+                            ?? parseCodexConversationJSONL(path: expandedPath, fallbackTitle: rawTitle)
                         shouldEmitConversation = parsedConversation != nil
-                        if cached.conversation != nil {
+                        if parsedConversation != cached.conversation {
                             sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
                                 signature: signature,
                                 tokenUsage: cachedTokenUsage,
-                                conversation: nil
+                                conversation: parsedConversation
                             )
                             cacheMutated = true
                         }
@@ -175,6 +217,7 @@ public final class CodexParser: LogParser, Sendable {
                         inputTokens = parsed.input
                         outputTokens = parsed.output
                         cacheReadTokens = parsed.cacheRead
+                        dailyTokenUsage = parsed.daily
                         foundExact = true
                     }
                     parsedConversation = includeConversationBodies
@@ -189,10 +232,11 @@ public final class CodexParser: LogParser, Sendable {
                                 CodexTokenUsage(
                                     input: $0.input,
                                     output: $0.output,
-                                    cacheRead: $0.cacheRead
+                                    cacheRead: $0.cacheRead,
+                                    daily: $0.daily
                                 )
                             },
-                            conversation: nil
+                            conversation: parsedConversation
                         )
                         cacheMutated = true
                     } else if cached != nil {
@@ -209,31 +253,59 @@ public final class CodexParser: LogParser, Sendable {
                 outputTokens = max(tokensUsed - inputTokens, 0)
             }
 
-            if inputTokens > 0 || outputTokens > 0 {
-                let pricing = ModelPricing.lookup(model: model)
-                let cost = pricing.cost(
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    cacheReadTokens: cacheReadTokens
-                )
-
-                let usage = TokenUsage(
-                    provider: .codex,
-                    sessionId: threadId,
-                    projectName: projectName,
-                    model: model,
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    cacheCreationTokens: 0,
-                    cacheReadTokens: cacheReadTokens,
-                    costUSD: cost,
-                    startTime: startTime,
-                    endTime: endTime,
-                    provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
-                    provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
-                    estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
-                )
-                usages.append(usage)
+            if !isSubagentRollout {
+                if !dailyTokenUsage.isEmpty {
+                    // Remove the legacy lifetime row once exact day slices are
+                    // available; otherwise it would overlap every selected day.
+                    usageSessionIDsToDelete.append(threadId)
+                    for bucket in dailyTokenUsage {
+                        let pricing = ModelPricing.lookup(model: model)
+                        let cost = pricing.cost(
+                            inputTokens: bucket.input,
+                            outputTokens: bucket.output,
+                            cacheReadTokens: bucket.cacheRead
+                        )
+                        usages.append(TokenUsage(
+                            provider: .codex,
+                            sessionId: "\(threadId)#day-\(Int(bucket.dayStart.timeIntervalSince1970))",
+                            projectName: projectName,
+                            model: model,
+                            inputTokens: bucket.input,
+                            outputTokens: bucket.output,
+                            cacheCreationTokens: 0,
+                            cacheReadTokens: bucket.cacheRead,
+                            costUSD: cost,
+                            startTime: bucket.dayStart,
+                            endTime: bucket.endTime,
+                            provenanceMethod: .providerLog,
+                            provenanceConfidence: .exact,
+                            estimatorVersion: "codex-daily-cumulative-v1"
+                        ))
+                    }
+                } else if inputTokens > 0 || outputTokens > 0 {
+                    let pricing = ModelPricing.lookup(model: model)
+                    let cost = pricing.cost(
+                        inputTokens: inputTokens,
+                        outputTokens: outputTokens,
+                        cacheReadTokens: cacheReadTokens
+                    )
+                    usages.append(TokenUsage(
+                        provider: .codex,
+                        sessionId: threadId,
+                        projectName: projectName,
+                        model: model,
+                        inputTokens: inputTokens,
+                        outputTokens: outputTokens,
+                        cacheCreationTokens: 0,
+                        cacheReadTokens: cacheReadTokens,
+                        costUSD: cost,
+                        startTime: startTime,
+                        endTime: endTime,
+                        provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
+                        provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
+                        estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
+                    ))
+                }
             }
 
             if shouldEmitConversation {
@@ -278,7 +350,7 @@ public final class CodexParser: LogParser, Sendable {
             cacheStore.persist(sessionCache)
         }
 
-        return (usages, conversations)
+        return (usages, conversations, Array(Set(usageSessionIDsToDelete)).sorted())
     }
 
     /// Parse a Codex session JSONL file to extract exact token breakdowns.
@@ -289,7 +361,9 @@ public final class CodexParser: LogParser, Sendable {
     /// accumulation to avoid double-counting.
     /// VAL-TOKEN-010: When both cumulative totals and delta events are present, cumulative
     /// totals take precedence and delta events are ignored to prevent additive double-counting.
-    private func parseCodexSessionJSONL(path: String) -> (input: Int, output: Int, cacheRead: Int)? {
+    private func parseCodexSessionJSONL(
+        path: String
+    ) -> (input: Int, output: Int, cacheRead: Int, daily: [CodexDailyTokenUsage])? {
         guard fileManager.fileExists(atPath: path),
               let handle = FileHandle(forReadingAtPath: path) else {
             return nil
@@ -301,6 +375,9 @@ public final class CodexParser: LogParser, Sendable {
         var cacheReadTokens = 0
         var foundCumulative = false
         var foundDelta = false
+        var cumulativeHighWater = (input: 0, output: 0, cacheRead: 0)
+        var dailyUsage: [Date: CodexDailyTokenUsage] = [:]
+        let calendar = Calendar.current
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
@@ -315,21 +392,36 @@ public final class CodexParser: LogParser, Sendable {
             // VAL-TOKEN-010: Cumulative totals take precedence over delta events.
             // If we've already found cumulative totals, skip processing delta events.
             if let extracted = TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
+                if !foundCumulative, foundDelta {
+                    dailyUsage.removeAll()
+                    foundDelta = false
+                }
+                let nextHighWater = (
+                    input: max(cumulativeHighWater.input, extracted.input),
+                    output: max(cumulativeHighWater.output, extracted.output),
+                    cacheRead: max(cumulativeHighWater.cacheRead, extracted.cacheRead)
+                )
                 // Codex reports `input_tokens` inclusive of `cached_input_tokens`.
                 // Subtract the cached portion so the non-cached input and cached
                 // buckets stay disjoint (VAL-TOKEN-002 / matches delta path below).
-                let nonCachedInput = max(extracted.input - extracted.cacheRead, 0)
-                if foundDelta {
-                    inputTokens = nonCachedInput
-                    outputTokens = extracted.output
-                    cacheReadTokens = extracted.cacheRead
-                    foundDelta = false
-                } else {
-                    inputTokens = nonCachedInput
-                    outputTokens = extracted.output
-                    cacheReadTokens = extracted.cacheRead
-                }
+                inputTokens = max(nextHighWater.input - nextHighWater.cacheRead, 0)
+                outputTokens = nextHighWater.output
+                cacheReadTokens = nextHighWater.cacheRead
                 foundCumulative = true
+                if let eventDate = codexEventDate(from: json) {
+                    let rawInputDelta = nextHighWater.input - cumulativeHighWater.input
+                    let outputDelta = nextHighWater.output - cumulativeHighWater.output
+                    let cacheReadDelta = nextHighWater.cacheRead - cumulativeHighWater.cacheRead
+                    recordCodexDailyUsage(
+                        eventDate: eventDate,
+                        input: max(rawInputDelta - cacheReadDelta, 0),
+                        output: outputDelta,
+                        cacheRead: cacheReadDelta,
+                        calendar: calendar,
+                        buckets: &dailyUsage
+                    )
+                }
+                cumulativeHighWater = nextHighWater
                 continue
             }
 
@@ -344,15 +436,89 @@ public final class CodexParser: LogParser, Sendable {
                 inputTokens += max(deltaInput - deltaCacheRead, 0)
                 outputTokens += lastUsage["output_tokens"] as? Int ?? 0
                 cacheReadTokens += deltaCacheRead
+                if let eventDate = codexEventDate(from: json) {
+                    recordCodexDailyUsage(
+                        eventDate: eventDate,
+                        input: max(deltaInput - deltaCacheRead, 0),
+                        output: lastUsage["output_tokens"] as? Int ?? 0,
+                        cacheRead: deltaCacheRead,
+                        calendar: calendar,
+                        buckets: &dailyUsage
+                    )
+                }
                 foundDelta = true
             }
         }
 
         // Return cumulative if found, otherwise return delta-accumulated if found
         if foundCumulative {
-            return (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens)
+            return (
+                input: inputTokens,
+                output: outputTokens,
+                cacheRead: cacheReadTokens,
+                daily: dailyUsage.values.sorted { $0.dayStart < $1.dayStart }
+            )
         }
-        return foundDelta ? (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens) : nil
+        return foundDelta
+            ? (
+                input: inputTokens,
+                output: outputTokens,
+                cacheRead: cacheReadTokens,
+                daily: dailyUsage.values.sorted { $0.dayStart < $1.dayStart }
+            )
+            : nil
+    }
+
+    private func codexEventDate(from json: [String: Any]) -> Date? {
+        guard let timestamp = json["timestamp"] as? String else { return nil }
+        return ThreadSafeISO8601DateFormatter.parse(timestamp)
+    }
+
+    private func recordCodexDailyUsage(
+        eventDate: Date,
+        input: Int,
+        output: Int,
+        cacheRead: Int,
+        calendar: Calendar,
+        buckets: inout [Date: CodexDailyTokenUsage]
+    ) {
+        guard input > 0 || output > 0 || cacheRead > 0 else { return }
+        let dayStart = calendar.startOfDay(for: eventDate)
+        let existing = buckets[dayStart]
+        buckets[dayStart] = CodexDailyTokenUsage(
+            dayStart: dayStart,
+            endTime: max(existing?.endTime ?? eventDate, eventDate),
+            input: (existing?.input ?? 0) + input,
+            output: (existing?.output ?? 0) + output,
+            cacheRead: (existing?.cacheRead ?? 0) + cacheRead
+        )
+    }
+
+    /// Codex subagent rollout files carry the parent's process-wide cumulative
+    /// token counter, so they are conversation sources rather than independent
+    /// usage ledgers. `session_meta` is the first record in current rollouts;
+    /// inspect only a bounded prefix to avoid an extra scan of large files.
+    private func isCodexSubagentRollout(_ path: String) -> Bool {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? handle.close() } // try?-ok(handle teardown)
+
+        guard let prefix = try? handle.read(upToCount: 256 * 1024),
+              !prefix.isEmpty else {
+            return false
+        }
+
+        let text = String(decoding: prefix, as: UTF8.self)
+        for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
+            guard let data = String(line).data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  json["type"] as? String == "session_meta",
+                  let payload = json["payload"] as? [String: Any],
+                  let source = payload["source"] as? [String: Any] else {
+                continue
+            }
+            return source["subagent"] != nil
+        }
+        return false
     }
 
     private func parseCodexConversationJSONL(path: String, fallbackTitle: String) -> CodexConversationCacheEntry? {
@@ -475,6 +641,15 @@ public final class CodexParser: LogParser, Sendable {
 }
 
 public struct CodexTokenUsage: Codable, Equatable, Sendable {
+    public let input: Int
+    public let output: Int
+    public let cacheRead: Int
+    public let daily: [CodexDailyTokenUsage]
+}
+
+public struct CodexDailyTokenUsage: Codable, Equatable, Sendable {
+    public let dayStart: Date
+    public let endTime: Date
     public let input: Int
     public let output: Int
     public let cacheRead: Int

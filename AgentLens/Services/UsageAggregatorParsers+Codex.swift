@@ -28,7 +28,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 3,
             logLabel: "CodexParser"
         )
         ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
@@ -52,15 +52,24 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
             dbPath: dbPath,
             includeConversationBodies: options.includeConversationBodies
         )
-        return OpenBurnBarCore.ParseResult(usages: parsed.usages, conversations: parsed.conversations)
+        return OpenBurnBarCore.ParseResult(
+            usages: parsed.usages,
+            conversations: parsed.conversations,
+            usageSessionIDsToDelete: parsed.usageSessionIDsToDelete
+        )
     }
 
     private func parseCodexDatabase(
         dbPath: String,
         includeConversationBodies: Bool
-    ) throws -> (usages: [TokenUsage], conversations: [OpenBurnBarCore.ConversationRecord]) {
+    ) throws -> (
+        usages: [TokenUsage],
+        conversations: [OpenBurnBarCore.ConversationRecord],
+        usageSessionIDsToDelete: [String]
+    ) {
         var usages: [TokenUsage] = []
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
+        var usageSessionIDsToDelete: [String] = []
         var sessionCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
@@ -74,13 +83,33 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
             let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(threads)")
             let columnNames = Set(columns.compactMap { $0["name"] as? String })
             let hasRolloutPath = columnNames.contains("rollout_path")
+            let hasThreadSource = columnNames.contains("thread_source")
 
-            let sql: String
             if hasRolloutPath {
-                sql = """
+                let sourceProjection = hasThreadSource ? ", thread_source" : ""
+                let cleanupRows = try Row.fetchAll(
+                    db,
+                    sql: "SELECT id, rollout_path\(sourceProjection) FROM threads"
+                )
+                for cleanupRow in cleanupRows {
+                    guard let threadId: String = cleanupRow["id"] else { continue }
+                    let threadSource: String? = hasThreadSource ? cleanupRow["thread_source"] : nil
+                    let rolloutPath: String? = cleanupRow["rollout_path"]
+                    let expandedPath = rolloutPath.map { ($0 as NSString).expandingTildeInPath }
+                    if threadSource == "subagent"
+                        || (threadSource == nil && expandedPath.map(isCodexSubagentRollout) == true) {
+                        usageSessionIDsToDelete.append(threadId)
+                    }
+                }
+            }
+
+        let sql: String
+        if hasRolloutPath {
+            let threadSourceProjection = hasThreadSource ? ", thread_source" : ""
+            sql = """
                     SELECT
                         id, title, model, model_provider, tokens_used,
-                        created_at, updated_at, cwd, rollout_path
+                        created_at, updated_at, cwd, rollout_path\(threadSourceProjection)
                     FROM threads
                     WHERE archived = 0
                     ORDER BY created_at DESC
@@ -115,11 +144,23 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                 let endTime = Date(timeIntervalSince1970: Double(updatedAt))
                 let rolloutPath: String? = hasRolloutPath ? (row["rollout_path"] as? String) : nil
                 let expandedRolloutPath = rolloutPath.map { ($0 as NSString).expandingTildeInPath }
+                // Current Codex builds broadcast the top-level task's cumulative token
+                // counter into every spawned subagent rollout. Emitting each mirrored
+                // counter as an independent session multiplies one task's usage by its
+                // agent count. Keep subagent conversations, but let the active parent
+                // row (selected by updated_at above) own the process-wide usage total.
+                let storedThreadSource: String? = hasThreadSource ? row["thread_source"] : nil
+                let isSubagentRollout = storedThreadSource == "subagent"
+                    || expandedRolloutPath.map(isCodexSubagentRollout) == true
+                if isSubagentRollout {
+                    usageSessionIDsToDelete.append(threadId)
+                }
 
                 // Try to get exact token breakdown from JSONL session file
                 var inputTokens: Int = 0
                 var outputTokens: Int = 0
                 var cacheReadTokens: Int = 0
+                var dailyTokenUsage: [CodexDailyTokenUsage] = []
                 var foundExact = false
 
                 var parsedConversation: CodexConversationCacheEntry?
@@ -137,6 +178,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                             inputTokens = tokenUsage.input
                             outputTokens = tokenUsage.output
                             cacheReadTokens = tokenUsage.cacheRead
+                            dailyTokenUsage = tokenUsage.daily
                             foundExact = true
                         }
                         if includeConversationBodies {
@@ -170,6 +212,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                             inputTokens = parsed.input
                             outputTokens = parsed.output
                             cacheReadTokens = parsed.cacheRead
+                            dailyTokenUsage = parsed.daily
                             foundExact = true
                         }
                         parsedConversation = includeConversationBodies
@@ -184,7 +227,8 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                                     CodexTokenUsage(
                                         input: $0.input,
                                         output: $0.output,
-                                        cacheRead: $0.cacheRead
+                                        cacheRead: $0.cacheRead,
+                                        daily: $0.daily
                                     )
                                 },
                                 conversation: parsedConversation
@@ -204,31 +248,59 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                     outputTokens = max(tokensUsed - inputTokens, 0)
                 }
 
-                if inputTokens > 0 || outputTokens > 0 {
-                    let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-                    let cost = pricing.cost(
-                        inputTokens: inputTokens,
-                        outputTokens: outputTokens,
-                        cacheReadTokens: cacheReadTokens
-                    )
-
-                    let usage = TokenUsage(
-                        provider: .codex,
-                        sessionId: threadId,
-                        projectName: projectName,
-                        model: model,
-                        inputTokens: inputTokens,
-                        outputTokens: outputTokens,
-                        cacheCreationTokens: 0,
-                        cacheReadTokens: cacheReadTokens,
-                        costUSD: cost,
-                        startTime: startTime,
-                        endTime: endTime,
-                        provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
-                        provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
-                        estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
-                    )
-                    usages.append(usage)
+                if !isSubagentRollout {
+                    if !dailyTokenUsage.isEmpty {
+                        // Remove the legacy lifetime row once exact day slices are
+                        // available; otherwise it would overlap every selected day.
+                        usageSessionIDsToDelete.append(threadId)
+                        for bucket in dailyTokenUsage {
+                            let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
+                            let cost = pricing.cost(
+                                inputTokens: bucket.input,
+                                outputTokens: bucket.output,
+                                cacheReadTokens: bucket.cacheRead
+                            )
+                            usages.append(TokenUsage(
+                                provider: .codex,
+                                sessionId: "\(threadId)#day-\(Int(bucket.dayStart.timeIntervalSince1970))",
+                                projectName: projectName,
+                                model: model,
+                                inputTokens: bucket.input,
+                                outputTokens: bucket.output,
+                                cacheCreationTokens: 0,
+                                cacheReadTokens: bucket.cacheRead,
+                                costUSD: cost,
+                                startTime: bucket.dayStart,
+                                endTime: bucket.endTime,
+                                provenanceMethod: .providerLog,
+                                provenanceConfidence: .exact,
+                                estimatorVersion: "codex-daily-cumulative-v1"
+                            ))
+                        }
+                    } else if inputTokens > 0 || outputTokens > 0 {
+                        let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
+                        let cost = pricing.cost(
+                            inputTokens: inputTokens,
+                            outputTokens: outputTokens,
+                            cacheReadTokens: cacheReadTokens
+                        )
+                        usages.append(TokenUsage(
+                            provider: .codex,
+                            sessionId: threadId,
+                            projectName: projectName,
+                            model: model,
+                            inputTokens: inputTokens,
+                            outputTokens: outputTokens,
+                            cacheCreationTokens: 0,
+                            cacheReadTokens: cacheReadTokens,
+                            costUSD: cost,
+                            startTime: startTime,
+                            endTime: endTime,
+                            provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
+                            provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
+                            estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
+                        ))
+                    }
                 }
 
                 if shouldEmitConversation {
@@ -274,7 +346,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
             cacheStore.persist(sessionCache)
         }
 
-        return (usages, conversations)
+        return (usages, conversations, Array(Set(usageSessionIDsToDelete)).sorted())
     }
 
     /// Parse a Codex session JSONL file to extract exact token breakdowns.
@@ -285,7 +357,9 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
     /// accumulation to avoid double-counting.
     /// VAL-TOKEN-010: When both cumulative totals and delta events are present, cumulative
     /// totals take precedence and delta events are ignored to prevent additive double-counting.
-    private func parseCodexSessionJSONL(path: String) -> (input: Int, output: Int, cacheRead: Int)? {
+    private func parseCodexSessionJSONL(
+        path: String
+    ) -> (input: Int, output: Int, cacheRead: Int, daily: [CodexDailyTokenUsage])? {
         guard fileManager.fileExists(atPath: path),
               let handle = FileHandle(forReadingAtPath: path) else {
             return nil
@@ -297,6 +371,9 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         var cacheReadTokens = 0
         var foundCumulative = false
         var foundDelta = false
+        var cumulativeHighWater = (input: 0, output: 0, cacheRead: 0)
+        var dailyUsage: [Date: CodexDailyTokenUsage] = [:]
+        let calendar = Calendar.current
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
@@ -311,21 +388,36 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
             // VAL-TOKEN-010: Cumulative totals take precedence over delta events.
             // If we've already found cumulative totals, skip processing delta events.
             if let extracted = OpenBurnBarCore.TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
+                if !foundCumulative, foundDelta {
+                    dailyUsage.removeAll()
+                    foundDelta = false
+                }
+                let nextHighWater = (
+                    input: max(cumulativeHighWater.input, extracted.input),
+                    output: max(cumulativeHighWater.output, extracted.output),
+                    cacheRead: max(cumulativeHighWater.cacheRead, extracted.cacheRead)
+                )
                 // Codex reports `input_tokens` inclusive of `cached_input_tokens`.
                 // Subtract the cached portion so the non-cached input and cached
                 // buckets stay disjoint (VAL-TOKEN-002 / matches delta path below).
-                let nonCachedInput = max(extracted.input - extracted.cacheRead, 0)
-                if foundDelta {
-                    inputTokens = nonCachedInput
-                    outputTokens = extracted.output
-                    cacheReadTokens = extracted.cacheRead
-                    foundDelta = false
-                } else {
-                    inputTokens = nonCachedInput
-                    outputTokens = extracted.output
-                    cacheReadTokens = extracted.cacheRead
-                }
+                inputTokens = max(nextHighWater.input - nextHighWater.cacheRead, 0)
+                outputTokens = nextHighWater.output
+                cacheReadTokens = nextHighWater.cacheRead
                 foundCumulative = true
+                if let eventDate = codexEventDate(from: json) {
+                    let rawInputDelta = nextHighWater.input - cumulativeHighWater.input
+                    let outputDelta = nextHighWater.output - cumulativeHighWater.output
+                    let cacheReadDelta = nextHighWater.cacheRead - cumulativeHighWater.cacheRead
+                    recordCodexDailyUsage(
+                        eventDate: eventDate,
+                        input: max(rawInputDelta - cacheReadDelta, 0),
+                        output: outputDelta,
+                        cacheRead: cacheReadDelta,
+                        calendar: calendar,
+                        buckets: &dailyUsage
+                    )
+                }
+                cumulativeHighWater = nextHighWater
                 continue
             }
 
@@ -340,15 +432,89 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                 inputTokens += max(deltaInput - deltaCacheRead, 0)
                 outputTokens += lastUsage["output_tokens"] as? Int ?? 0
                 cacheReadTokens += deltaCacheRead
+                if let eventDate = codexEventDate(from: json) {
+                    recordCodexDailyUsage(
+                        eventDate: eventDate,
+                        input: max(deltaInput - deltaCacheRead, 0),
+                        output: lastUsage["output_tokens"] as? Int ?? 0,
+                        cacheRead: deltaCacheRead,
+                        calendar: calendar,
+                        buckets: &dailyUsage
+                    )
+                }
                 foundDelta = true
             }
         }
 
         // Return cumulative if found, otherwise return delta-accumulated if found
         if foundCumulative {
-            return (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens)
+            return (
+                input: inputTokens,
+                output: outputTokens,
+                cacheRead: cacheReadTokens,
+                daily: dailyUsage.values.sorted { $0.dayStart < $1.dayStart }
+            )
         }
-        return foundDelta ? (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens) : nil
+        return foundDelta
+            ? (
+                input: inputTokens,
+                output: outputTokens,
+                cacheRead: cacheReadTokens,
+                daily: dailyUsage.values.sorted { $0.dayStart < $1.dayStart }
+            )
+            : nil
+    }
+
+    private func codexEventDate(from json: [String: Any]) -> Date? {
+        guard let timestamp = json["timestamp"] as? String else { return nil }
+        return OpenBurnBarCore.ThreadSafeISO8601DateFormatter.parse(timestamp)
+    }
+
+    private func recordCodexDailyUsage(
+        eventDate: Date,
+        input: Int,
+        output: Int,
+        cacheRead: Int,
+        calendar: Calendar,
+        buckets: inout [Date: CodexDailyTokenUsage]
+    ) {
+        guard input > 0 || output > 0 || cacheRead > 0 else { return }
+        let dayStart = calendar.startOfDay(for: eventDate)
+        let existing = buckets[dayStart]
+        buckets[dayStart] = CodexDailyTokenUsage(
+            dayStart: dayStart,
+            endTime: max(existing?.endTime ?? eventDate, eventDate),
+            input: (existing?.input ?? 0) + input,
+            output: (existing?.output ?? 0) + output,
+            cacheRead: (existing?.cacheRead ?? 0) + cacheRead
+        )
+    }
+
+    /// Codex subagent rollout files carry the parent's process-wide cumulative
+    /// token counter, so they are conversation sources rather than independent
+    /// usage ledgers. `session_meta` is the first record in current rollouts;
+    /// inspect only a bounded prefix to avoid an extra scan of large files.
+    private func isCodexSubagentRollout(_ path: String) -> Bool {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? handle.close() } // try?-ok(handle teardown)
+
+        guard let prefix = try? handle.read(upToCount: 256 * 1024),
+              !prefix.isEmpty else {
+            return false
+        }
+
+        let text = String(decoding: prefix, as: UTF8.self)
+        for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
+            guard let data = String(line).data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  json["type"] as? String == "session_meta",
+                  let payload = json["payload"] as? [String: Any],
+                  let source = payload["source"] as? [String: Any] else {
+                continue
+            }
+            return source["subagent"] != nil
+        }
+        return false
     }
 
     private func parseCodexConversationJSONL(path: String, fallbackTitle: String) -> CodexConversationCacheEntry? {
@@ -710,6 +876,15 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
 }
 
 struct CodexTokenUsage: Codable, Equatable {
+    let input: Int
+    let output: Int
+    let cacheRead: Int
+    let daily: [CodexDailyTokenUsage]
+}
+
+struct CodexDailyTokenUsage: Codable, Equatable {
+    let dayStart: Date
+    let endTime: Date
     let input: Int
     let output: Int
     let cacheRead: Int

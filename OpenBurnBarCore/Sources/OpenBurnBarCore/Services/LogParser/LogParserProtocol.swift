@@ -6,10 +6,18 @@ import OpenBurnBarCore
 public struct ParseResult: Sendable {
     public let usages: [TokenUsage]
     public let conversations: [ConversationRecord]
+    /// Exact provider session IDs whose previously persisted usage rows are no
+    /// longer valid (for example, mirrored Codex subagent counters).
+    public let usageSessionIDsToDelete: [String]
 
-    public init(usages: [TokenUsage], conversations: [ConversationRecord]) {
+    public init(
+        usages: [TokenUsage],
+        conversations: [ConversationRecord],
+        usageSessionIDsToDelete: [String] = []
+    ) {
         self.usages = usages
         self.conversations = conversations
+        self.usageSessionIDsToDelete = usageSessionIDsToDelete
     }
 }
 
@@ -34,7 +42,11 @@ extension LogParser {
     public func parse(options: LogParseOptions) async throws -> ParseResult {
         let result = try await parse()
         guard options.includeConversationBodies else {
-            return ParseResult(usages: result.usages, conversations: [])
+            return ParseResult(
+                usages: result.usages,
+                conversations: [],
+                usageSessionIDsToDelete: result.usageSessionIDsToDelete
+            )
         }
         return result
     }

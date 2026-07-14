@@ -43,6 +43,31 @@ final class UsageStore: Sendable {
         SearchQueryCache.shared.clear()
     }
 
+    /// Removes invalidated parser rows and their exact daily bucket namespace.
+    /// The explicit `#day-` delimiter avoids deleting unrelated sessions that
+    /// merely share a prefix.
+    func deleteUsage(provider: AgentProvider, sessionIDs: [String]) async throws {
+        let uniqueSessionIDs = Set(sessionIDs)
+        guard !uniqueSessionIDs.isEmpty else { return }
+
+        try await dbQueue.write { db in
+            for sessionID in uniqueSessionIDs {
+                try db.execute(
+                    sql: """
+                        DELETE FROM token_usage
+                        WHERE provider = ?
+                          AND (
+                              sessionId = ?
+                              OR substr(sessionId, 1, length(?) + 5) = ? || '#day-'
+                          )
+                    """,
+                    arguments: [provider.rawValue, sessionID, sessionID, sessionID]
+                )
+            }
+        }
+        SearchQueryCache.shared.clear()
+    }
+
     /// Inserts `newUsages` in fixed-size chunks, each in its own transaction.
     ///
     /// On a transient `SQLITE_IOERR` (commonly an APFS/WAL shared-memory hiccup

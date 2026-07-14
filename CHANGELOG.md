@@ -183,6 +183,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Codex token overcounting** — ignores mirrored subagent counters, removes
+  stale parent and child usage buckets, and treats out-of-order cumulative
+  snapshots as stale instead of counting them as fresh resets.
 - **macOS StoreKit entitlement resolution** — `MacCloudEntitlementStore` now
   reads StoreKit 2 current entitlements and transaction updates, maps the same
   Cloud / Cloud Pro / Cloud Ultra SKUs as iOS, and uses locally verified
