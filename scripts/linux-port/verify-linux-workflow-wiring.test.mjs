@@ -10,6 +10,7 @@ function valid() {
       'assemble-linux-release.test.mjs',
       'linux-package-session.test.mjs',
       'render-parity-ledger.mjs --check',
+      'include-hidden-files: true',
       'macos-matched-performance',
       'run-matched-performance.mjs',
       '--profile pr',
@@ -193,6 +194,12 @@ test('architecture matrix, aggregate closure, and feed publication cannot be rem
 test('package lifecycle finalizer regression suite cannot be removed', () => {
   const input = valid();
   input.pr = input.pr.replace('linux-package-session.test.mjs', '');
+  assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
+});
+
+test('hidden Linux evidence upload cannot be disabled', () => {
+  const input = valid();
+  input.pr = input.pr.replace('include-hidden-files: true', 'include-hidden-files: false');
   assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
 });
 

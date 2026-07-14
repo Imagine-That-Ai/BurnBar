@@ -54,6 +54,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests';
   requireText(input.pr, linuxSwiftResults, 'PR Linux Swift evidence routing');
   requireText(input.nightly, linuxSwiftResults, 'nightly Linux Swift evidence routing');
+  requireText(input.pr, 'include-hidden-files: true', 'PR hidden evidence upload');
   for (const command of [
     'macos-matched-performance',
     'run-matched-performance.mjs',
