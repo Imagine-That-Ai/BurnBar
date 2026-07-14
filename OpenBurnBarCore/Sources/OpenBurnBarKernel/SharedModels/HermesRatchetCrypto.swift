@@ -517,29 +517,66 @@ public enum HermesRatchetCrypto {
             if mode == "shadow" { return try legacy() }
             throw HermesRatchetError.nativeUnavailable
         }
-        let rustStarted = Date.timeIntervalSinceReferenceDate
-        let value = try rust()
-        guard mode == "shadow" else { return value }
-        let rustMicros = elapsedMicros(since: rustStarted)
-        let legacyStarted = Date.timeIntervalSinceReferenceDate
-        let old = try legacy()
-        let matches = old == value
-        if !matches { diagnostic(operation, "shadow_mismatch") }
-        DomainCoreShadowComparisonCollector.record(.init(
-            domain: "hermes",
-            slice: "ratchet",
+        return try selectDomainCoreBytesWhenNativeAvailable(
             operation: operation,
-            coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
-            outcome: matches ? "match" : "mismatch",
-            mismatchCategory: matches ? nil : "result_mismatch",
-            legacyMicros: elapsedMicros(since: legacyStarted),
-            rustMicros: rustMicros
-        ))
-        return old
+            mode: mode,
+            coreVersion: { OpenBurnBarDomainCoreFFI.domainCoreVersion() },
+            legacy: legacy,
+            rust: rust,
+            record: DomainCoreShadowComparisonCollector.record
+        )
         #else
         if mode == "shadow" { return try legacy() }
         throw HermesRatchetError.nativeUnavailable
         #endif
+    }
+
+    static func selectDomainCoreBytesWhenNativeAvailable(
+        operation: String,
+        mode: String,
+        coreVersion: () -> String,
+        legacy: () throws -> Data,
+        rust: () throws -> Data,
+        record: (DomainCoreShadowComparison) -> Void
+    ) throws -> Data {
+        guard mode == "shadow" else { return try rust() }
+
+        let legacyStarted = Date.timeIntervalSinceReferenceDate
+        let old = try legacy()
+        let legacyMicros = elapsedMicros(since: legacyStarted)
+        let comparisonCoreVersion = coreVersion()
+        let rustStarted = Date.timeIntervalSinceReferenceDate
+        let value: Data
+        do {
+            value = try rust()
+        } catch {
+            diagnostic(operation, "native_error")
+            record(.init(
+                domain: "hermes",
+                slice: "ratchet",
+                operation: operation,
+                coreVersion: comparisonCoreVersion,
+                outcome: "mismatch",
+                mismatchCategory: "native_error",
+                legacyMicros: legacyMicros,
+                rustMicros: elapsedMicros(since: rustStarted)
+            ))
+            return old
+        }
+
+        let matches = old == value
+        if !matches { diagnostic(operation, "shadow_mismatch") }
+        record(.init(
+            domain: "hermes",
+            slice: "ratchet",
+            operation: operation,
+            coreVersion: comparisonCoreVersion,
+            outcome: matches ? "match" : "mismatch",
+            mismatchCategory: matches ? nil : "result_mismatch",
+            legacyMicros: legacyMicros,
+            rustMicros: elapsedMicros(since: rustStarted)
+        ))
+        return old
     }
 
     private static var domainCoreMode: String {

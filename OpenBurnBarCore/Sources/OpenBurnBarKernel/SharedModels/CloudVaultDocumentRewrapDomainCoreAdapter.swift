@@ -249,6 +249,7 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
             let rustStarted = Date.timeIntervalSinceReferenceDate
             var matches = false
             var mismatchCategory: String? = "native_error"
+            var comparisonCoreVersion: String?
             do {
                 let envelopes = try lowerEnvelopes(data)
                 var nonceIndex = 0
@@ -282,6 +283,7 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
                 )
                 matches = equivalent(legacyResult, rustResult)
                 mismatchCategory = matches ? nil : "result_mismatch"
+                comparisonCoreVersion = backend?.coreVersion()
                 if !matches {
                     emit(category: "value_mismatch", backend: backend, logger: logger)
                 }
@@ -290,6 +292,11 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
                 mismatchCategory = error == .nativeUnavailable || error == .abiMismatch
                     ? "native_unavailable"
                     : "invalid_result"
+                if error == .abiMismatch {
+                    comparisonCoreVersion = "0.0.0-abi-mismatch"
+                } else if error == .nativeUnavailable {
+                    comparisonCoreVersion = "0.0.0-native-unavailable"
+                }
             } catch {
                 emit(category: "native_error", backend: backend, logger: logger)
             }
@@ -297,7 +304,9 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
                 domain: "cloudvault",
                 slice: "document-rewrap",
                 operation: "document_rewrap",
-                coreVersion: backend?.coreVersion() ?? "0.0.0-native-unavailable",
+                coreVersion: comparisonCoreVersion
+                    ?? backend?.coreVersion()
+                    ?? "0.0.0-native-unavailable",
                 outcome: matches ? "match" : "mismatch",
                 mismatchCategory: mismatchCategory,
                 legacyMicros: legacyMicros,
