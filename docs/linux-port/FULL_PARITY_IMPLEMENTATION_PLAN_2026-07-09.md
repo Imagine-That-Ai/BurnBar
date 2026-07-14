@@ -65,13 +65,20 @@ AES-GCM sealed storage, native Secret Service/KWallet custody, consent RPC, and
 in-app-only Composer expansion (`227d7e3c49`, `46aa7f3c91`, `6cc09bc2c0`,
 `930125a53e`, `83ef8e8edf`, `09860849c7`). These improve source parity without
 changing the 0/40 product or 0/7 environment certification state. The current
-source commit is `825e081bda`; it adds a daemon-owned `daemon.usage.insights`
+source commit is `4bc52a7961` (building on `814749c8be`, `cba9266277`, `a5485fe238`, and `825e081bda`); it adds a daemon-owned
+retention policy in addition to the `daemon.usage.insights`
 local-rules response with bounded citations, selected-scope encrypted privacy
 export, and independent per-binding native shortcut health. Focused
 changed-surface UI/bridge tests, Core privacy crypto tests, the macOS daemon
 product build, and the Tauri Rust suite are green; the daemon XCTest bundle
 builds but cannot launch on this host because the existing SQLCipher.framework
 runtime packaging is absent.
+The live UTM Ubuntu 24.04 aarch64 guest now also builds the daemon and runs the
+current root-owned Tauri/daemon pair through the trusted launcher with
+authenticated health probes; the Linux package suite is 284/284, including
+privacy 8/8, text expansion 18/18, peer-manifest 8/8, portal input 26/26, and
+mission lifecycle 3/3; the exact smoke receipt is
+`docs/linux-port/evidence/parity-audit-2026-07-10/utm-ubuntu-aarch64-installed-runtime-2026-07-14.json`.
 After the code stack is review-clean, rerun
 the strict ledger on the exact candidate and collect the installed GNOME
 X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
@@ -133,14 +140,20 @@ The integration branch now includes the next bounded source slices:
   canonical bounds, secure/excluded/uninspectable denial before write, bounded
   response validation, and cancellation/timeout/kill-switch teardown. The
   engine never receives keyboard, clipboard, surrounding-text, or field data.
+- `814749c8be`: Linux pipe reads now consume one bounded POSIX read after
+  `poll(2)`, and teardown closes stdin before terminating a blocked engine.
+- `4bc52a7961`: Linux parity fixtures now open explicit mutation windows for
+  immutable AppImage trees, inject an in-memory mission notification store, and
+  assert `gdbus` method/type substrings correctly; the full Ubuntu suite is
+  284/284.
 - `bd9d6a5173`: daemon-owned Mission Control health/history contract derived
   from the authoritative projection, stable packet/result/burn/takeover event
   IDs, active/failed counters, Core/RPC/Tauri canon, and Missions UI rendering.
 
 The combined frontend suite is **78 files / 685 tests**, the Tauri Rust suite
 is **90/90**, TypeScript and the production bundle verifier pass (303
-modules), and the
-daemon target builds. These are source gates only. The promotion ledger remains
+modules), the Linux daemon package suite is **284/284** on Ubuntu 24.04
+aarch64, and the daemon target builds. These are source gates only. The promotion ledger remains
 0/40 product rows and 0/7 environment receipts until the exact signed
 candidate, installed matrix, Linux keyring/portal/D-Bus evidence, update/
 rollback proof, and physical-iPad flow are exercised.
@@ -275,10 +288,10 @@ Full parity remains **NO-GO** until all of these gates are met in order:
    2026-07-14. Release validation must continue to fail closed when any value is
    absent or malformed.
 3. Deploy the Linux App Check callables, policy, and Firestore rules.
-4. Run the focused approval tests on the physical iPad. Generic iOS
-   build-for-testing has passed, but it does not satisfy physical-device execution.
-   On 2026-07-12 CoreDevice listed the assigned physical iPad as unavailable;
-   the visible iPhone and simulator targets are not accepted substitutes.
+4. Run the focused approval tests on the connected physical iPad. Generic iOS
+   build-for-testing and current-branch launch/liveness/console smoke have
+   passed, but they do not satisfy physical-device approval execution. The
+   visible iPhone and simulator targets remain invalid substitutes.
 5. Build and sign the exact deb/rpm/AppImage candidate, including the final-byte
    AppImage peer manifest.
 6. Install the exact candidate and complete PKCE sign-in plus physical-iPad
@@ -1253,10 +1266,10 @@ The original foundation sequence is substantially implemented. From the
    - Land Linux device list/approve/revoke, canonical device-ID/fingerprint
      validation, confirmation UX, serialized mutations, stale-load guards, and
      focused mobile tests.
-   - Preserve the passing generic iOS build-for-testing coverage, then run the
-     focused tests on the physical iPad; do not substitute an iPhone or simulator
-     for the final physical-device gate. The 2026-07-12 CoreDevice check listed
-     the assigned physical iPad as unavailable, so this remains blocked.
+   - Preserve the passing generic iOS build-for-testing coverage.
+   - Run focused tests on the connected physical iPad; do not substitute an iPhone or
+     simulator for the final physical-device gate. Launch/liveness is proven;
+     approval execution remains blocked until the exact Linux candidate is paired.
 
 4. **Production configuration change**
    - Create the dedicated Desktop OAuth client.

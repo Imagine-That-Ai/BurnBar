@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the corrected pinned Linux aggregate (**277 Swift selectors + 90 Rust tests**, `NATIVE_EXIT=0`), and follow-on source slices through `ea82fe5140`, `274f67fba0`, `d2dbbe8df8`, `bf0eb36294`, `bd9d6a5173`, `a5571694bb`, `7c8a214ce6`, and current source commit `825e081bda` are linked below |
+| Remediation evidence | `codex/linux-parity-integration-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the corrected pinned Linux aggregate (**277 Swift selectors + 90 Rust tests**, `NATIVE_EXIT=0`), and follow-on source slices through `ea82fe5140`, `274f67fba0`, `d2dbbe8df8`, `bf0eb36294`, `bd9d6a5173`, `a5571694bb`, `7c8a214ce6`, `825e081bda`, `cba9266277`, `a5485fe238`, `814749c8be`, and current branch commit `4bc52a7961` are linked below |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -37,7 +37,7 @@ percentage. The active remediation stack now contains these reviewable slices:
 | P20 missions depth | PR #1677 + `bd9d6a5173`, source checks green | Canonical mission get/cancel, typed packet/result/evidence/burn/takeover/PR snapshot mapping, freshness, expandable detail, and a daemon-owned `daemon.mission.health` RPC with typed health/history, stable event IDs, active/failed counts, and UI rendering are integrated; live mission integrations and installed proof remain open. |
 | P25 updates | PR #1673 + integration `4a2138897c` | Signed-feed freshness, exact package-channel/architecture selection, shell/daemon compatibility, and fail-closed package/download guidance now disable generic AppImage and downgrade fallbacks when no verified artifact exists; valid public feed and installed rollback remain open. |
 | P30 pet companion | PR #1674 + integration `9a527310f9` + `ea82fe5140` | Native runtime-manifest probe replaces optimistic environment detection; contained fallback now supports accessible summon/focus/status and selection/clear controls with explicit action state. `ea82fe5140` adds a real Tauri companion child window on X11 with explicit focus and click-through toggles; Wayland and unknown sessions remain degraded and the native overlay still needs compositor-installed proof. |
-| P40 data/privacy | PR #1672, `4cdc505537`, `9598c0b9e8`, `7c8a214ce6`, `825e081bda` | Daemon-backed telemetry/privacy/cloud-sync writes with pending/error states, plus a daemon-owned, allowlisted local-store inventory and preview/execute deletion contract wired through typed RPC/Tauri and a confirmation UI for the proxy-route log and encrypted text-expansion store. `7c8a214ce6` adds selected-scope encrypted export with PBKDF2-HMAC-SHA256 100k, AES-GCM authenticated headers, owner-only bounded output, race/path/permission checks, and passphrase clearing. Account erasure, full transcript/account export, retention policy, recovery-key workflows, native save-picker polish, and backend erasure receipts remain open. |
+| P40 data/privacy | PR #1672, `4cdc505537`, `9598c0b9e8`, `7c8a214ce6`, `825e081bda`, `cba9266277` | Daemon-backed telemetry/privacy/cloud-sync writes with pending/error states, plus a daemon-owned, allowlisted local-store inventory and preview/execute deletion contract wired through typed RPC/Tauri and a confirmation UI for the proxy-route log and encrypted text-expansion store. `7c8a214ce6` adds selected-scope encrypted export with PBKDF2-HMAC-SHA256 100k, AES-GCM authenticated headers, owner-only bounded output, race/path/permission checks, and passphrase clearing. `cba9266277` adds bounded age/size retention rules with fail-closed policy validation and atomic trimming limited to the same allowlist. Account erasure, full transcript/account export, recovery-key workflows, native save-picker polish, and backend erasure receipts remain open. |
 | P11 usage catalog | PR #1676, checks green | All 33 canonical provider identities and Swift discovery paths/patterns are contract-tested against the exact 27 ParserRegistry entries; four API-backed and two unavailable sources are labeled explicitly in Settings/onboarding; normalized corpus and runtime/install evidence remain open. |
 | P14 exact chat threads | PR #1684 + integration PR #1691 + `0d8ee32526` + `618c7286b9` + `5fdcccabfa` | Canonical encrypted thread list/get/search, idempotent append, older-message pagination, strict Tauri decoding, durable send ordering, daemon-authoritative full-history JSON/Markdown export with bounded cursor/duplicate/size checks, exact model/thinking selection, daemon-owned bounded attachment refs, validated path-free attachment metadata in exports, citations, approval actions, and validated daemon re-read resume are integrated. Composer uploads bounded text documents through the daemon and persists path-free metadata; reconnect/visibility handling, functional options, and browser/Tauri pop-out boundaries are explicit. Uploaded bytes remain process-lived and require re-upload after daemon restart; remaining backends and installed reconnect evidence remain open. |
 | P07 browser Computer Use panel | PR #1681, merge-clean | Typed navigate/screenshot/click/fill actions are bound to the selected run/call/generation and fail closed when the packaged capability is absent; physical-iPad approval, production credentials, and installed browser/panic/audit/restart evidence remain open. |
@@ -45,7 +45,7 @@ percentage. The active remediation stack now contains these reviewable slices:
 | P27 native startup/deep links | PR #1679 + PR #1686 + integration PR #1691 + `5f74018422` + `a5571694bb` | Strict membership/OAuth callback parsing, one-shot startup handoff, background tray startup, XDG autostart, package desktop registration, owner-checked per-user single-instance forwarding, normalized freedesktop notification actions, explicit route aliases, cold-start precedence, and additive per-binding shortcut health are integrated. X11 registration is independent per binding; Wayland/unknown sessions fail closed with typed backend states. Installed host integration remains open. |
 | P31 accessibility preferences | PR #1683 + `7cd30e2e71`, merge-clean | Shared reduced-motion, prefers-contrast, forced-colors, focus, and status/alert contracts; reduced-motion now follows live OS preference changes with WebKitGTK legacy-listener cleanup; installed GNOME/KDE/AT-SPI/Orca/high-contrast evidence remains open. |
 | P39 differential oracle | PR #1682, merge-clean | Same-schema normalization, credential redaction, explicit volatile-path handling, path-level diff output, and fail-closed exit codes; a same-commit macOS/Linux artifact run remains required. |
-| Integrated Linux validation | PR #1691 plus commits through `b012a53a6c`, `5fdcccabfa`, `4cdc505537`, `dda966ff3a`, `573184422d`, `7ae2412143`, `1ddc8bc33a`, `be375903f0`, `274f67fba0`, `ea82fe5140`, `9598c0b9e8`, `d2dbbe8df8`, `bf0eb36294`, `bd9d6a5173`, and `ffc0c58cd9`, current 2026-07-14 | Replayed the current P07/P11/P12/P13/P14/P16/P17/P19/P20/P21/P22/P23/P24/P25/P27/P28/P29/P30/P31/P35/P39/P40 source stack: TypeScript, production bundle verification, targeted mission/bridge/UI tests **108/108**, Tauri Rust **90/90**, RPC canon/formatting/suppression checks, bounded trigger-only text-engine lifecycle tests, consent-scoped portal input tests, daemon mission health/history contract tests, Mission Control replay/tombstone tests, and privacy inventory/preview/execute contract tests. The full Vitest run was attempted but host contention caused unrelated 5-second timeouts and one unhandled media fixture error; it is not treated as a green release gate. The macOS host cannot execute Linux-only Secret Service/KWallet/IBus/Fcitx/portal/input branches, and the broad Swift package build is also blocked by existing macOS-only Linux privacy exclusions and missing SQLCipher packaging. This is engineering evidence only, not installed-product certification. |
+| Integrated Linux validation | PR #1691 plus commits through `b012a53a6c`, `5fdcccabfa`, `4cdc505537`, `dda966ff3a`, `573184422d`, `7ae2412143`, `1ddc8bc33a`, `be375903f0`, `274f67fba0`, `ea82fe5140`, `9598c0b9e8`, `d2dbbe8df8`, `bf0eb36294`, `bd9d6a5173`, `ffc0c58cd9`, `10babe9c30`, `814749c8be`, and `4bc52a7961`, current 2026-07-14 | Replayed the current P07/P11/P12/P13/P14/P16/P17/P19/P20/P21/P22/P23/P24/P25/P27/P28/P29/P30/P31/P35/P39/P40 source stack: TypeScript, production bundle verification, targeted mission/bridge/UI tests **108/108**, Tauri Rust **90/90**, RPC canon/formatting/suppression checks, bounded trigger-only text-engine lifecycle tests, consent-scoped portal input tests, daemon mission health/history contract tests, Mission Control replay/tombstone tests, privacy inventory/preview/execute contract tests, Linux privacy service **8/8**, Linux external text-expansion adapter **18/18**, peer-manifest **8/8**, portal input **26/26**, mission lifecycle **3/3**, and full Swift package **284/284** on Ubuntu 24.04 aarch64. The full Vitest run was attempted but host contention caused unrelated 5-second timeouts and one unhandled media fixture error; it is not treated as a green release gate. The macOS host cannot execute Linux-only Secret Service/KWallet/IBus/Fcitx/portal/input branches, and the broad Swift package build is also blocked by existing macOS-only Linux privacy exclusions and missing SQLCipher packaging. This is engineering evidence only, not installed-product certification. |
 
 ### Execution checkpoint — 2026-07-14 source integration
 
@@ -54,15 +54,35 @@ certification ledger: `a5571694bb` exposes independent per-binding native
 shortcut registration and typed X11/Wayland/unknown backend health;
 `7c8a214ce6` adds encrypted selected-scope local privacy export; and
 `825e081bda` wires the daemon-owned `daemon.usage.insights` response, local-rules
-analysis, strict RPC canon, and renderer evidence mapping. Verification on the
-macOS host is **134/134** targeted Vitest tests, **92/92** Tauri Rust tests,
-TypeScript typecheck, Core privacy crypto **3/3**, Core package build/test
-coverage for the new response, and a successful macOS daemon product build.
+analysis, strict RPC canon, and renderer evidence mapping. `cba9266277` then
+adds daemon-owned retention policy, bounded age/size enforcement, atomic
+allowlisted trimming, and Settings controls. Verification on the macOS host is
+**134/134** targeted Vitest tests, **92/92** Tauri Rust tests, TypeScript
+typecheck, Core privacy crypto **3/3**, the retention bridge/Settings tests, Core
+package build/test coverage for the new response, and a successful macOS daemon
+product build.
 The daemon XCTest bundle built but could not launch because this host lacks the
 existing SQLCipher.framework runtime packaging. Linux-only service, keyring,
 portal, compositor, and installed-candidate receipts still require a Linux
 host; these source results do not advance the **0/40** product or **0/7**
 environment certification totals.
+
+The current source checkpoint is also proven by the live UTM Ubuntu 24.04
+aarch64 guest: `swift build -c release --product OpenBurnBarDaemon
+-Xlinker --allow-shlib-undefined` completed successfully from commit
+`4bc52a7961` (warnings only; the production source is `814749c8be`). The resulting daemon binary is not yet an
+installed signed package, so this advances the build gate only. The connected
+physical-iPad launch/liveness/console receipt is recorded separately in
+`docs/linux-port/evidence/parity-audit-2026-07-10/ipad-current-launch-2026-07-14.json`.
+
+The same guest then ran the current Tauri client and daemon from root-owned
+trusted system paths under GNOME/X11 for 20 seconds. The packaged launcher
+started the daemon, authenticated `daemon.health` probes completed, and both
+processes shut down cleanly. The exact hashes and capability limitations are
+recorded in
+`docs/linux-port/evidence/parity-audit-2026-07-10/utm-ubuntu-aarch64-installed-runtime-2026-07-14.json`.
+This is a current installed smoke receipt, not signed-release or full-matrix
+certification.
 
 These slices reduce concrete gaps, but they do not change the NO-GO verdict:
 transactional provider/auth onboarding, installed chat export/resume/pop-out
@@ -166,12 +186,16 @@ compilation because all three values were absent at dispatch time. The new
 Functions callables are not deployed, and no signed
 candidate has completed the installed Linux plus physical-iPad flow. The iPad
 approval surface is implemented against the exact nonce-bound trusted-device
-signature contract. Earlier generic iOS build-for-testing coverage passes, but
-the currently assigned physical iPad is unavailable and no current
-physical-device execution or exact-candidate approval proof exists. Real
-installed browser actions, grant/approval/panic/audit/restart certification,
-Agent Watch, Linux system capture/input, and the supported-desktop matrix remain
-open.
+signature contract. The assigned physical iPad is now connected and unlocked;
+current-branch OpenBurnBarMobile 1.0.2 (build 82) installed, launched, stayed
+alive for 29 seconds, terminated and relaunched cleanly, and produced 20
+seconds of console output without crash/fatal markers. This launch receipt is
+recorded at
+`docs/linux-port/evidence/parity-audit-2026-07-10/ipad-current-launch-2026-07-14.json`.
+It does not yet prove the Linux approval workflow or exact-candidate Browser
+Computer Use actions. Real installed browser actions, grant/approval/panic/
+audit/restart certification, Agent Watch, Linux system capture/input, and the
+supported-desktop matrix remain open.
 
 Official AppImages no longer depend on mutable environment hash pins for daemon
 peer authentication. The final embedded GUI is described by a bounded canonical
@@ -233,9 +257,9 @@ that historical installed baseline:
   without suppressions. The
   canonical `HermesRealtimeRelaySessionGrantChallenge` schema/codegen packet
   passes **18/18** checks across generated Swift and Kotlin. Strict SwiftLint is
-  clean and earlier generic iOS build-for-testing coverage passed; the current
-  physical iPad is listed by CoreDevice as unavailable, so there is no current
-  physical-iPad execution claim. The earlier focused Linux daemon suite passed
+  clean and earlier generic iOS build-for-testing coverage passed; the physical
+  iPad launch/liveness/console receipt is now current, while approval execution
+  remains unverified. The earlier focused Linux daemon suite passed
   **32/32** tests: **13** grant broker, **3** panic authority, **4** directory,
   **8** runtime, **2** Mercury teardown, and **2** service lifecycle tests. The
   final macOS focused host aggregate passed **34/34** tests: **16** callable-security
@@ -338,11 +362,10 @@ live product state were independently reproducible.
   Android **1,315** unit tests with **1** skipped passed; Android debug Kotlin
   compilation and strict Detekt pass with no suppressions. Canonical Hermes relay
   schema/codegen checks passed **18/18**, strict SwiftLint passed, and earlier
-  generic iOS build-for-testing coverage passed. On 2026-07-12 CoreDevice listed
-  the assigned physical iPad `<IOS_DEVICE_ID>` as
-  unavailable, while an iPhone and simulator were visible but explicitly not
-  accepted for this gate. There is no current physical-iPad execution claim. The
-  earlier Linux daemon packet passed
+  generic iOS build-for-testing coverage passed. On 2026-07-14 the assigned
+  physical iPad was unlocked and the current-branch app launch/liveness/console
+  receipt passed; approval execution and exact-candidate pairing remain open.
+  The earlier Linux daemon packet passed
   **32/32**. That total comprises **13** grant broker, **3** panic
   authority, **4** directory, **8** runtime, **2** Mercury teardown, and **2**
   service lifecycle tests. The final macOS focused host aggregate passed
@@ -1501,7 +1524,7 @@ coverage.
 | LNX-NOTIFY-001-FOLLOWON | Implemented in source; installed proof blocked | `5f74018422` normalizes direct and second-instance notification actions, validates bounded payloads, expands route aliases, and gives validated cold-start native routes precedence over onboarding; `a5571694bb` adds independent per-binding shortcut registration with typed X11/Wayland/unknown backend health and fail-closed unsupported states; 92 Rust and focused bridge tests pass | Capture GNOME/KDE/wlroots D-Bus action and shortcut receipts, verify host persistence/accessibility, and exercise panic paths under partial registration |
 | LNX-PET-001-FOLLOWON | Implemented in source; native overlay proof blocked | `9a527310f9` adds contained summon/focus/status and selection/clear controls with typed capability states; `ea82fe5140` adds a Tauri X11-only companion child with explicit focus and click-through toggles, capability membership, and focused pet/axe tests. Wayland and unknown sessions remain fail-closed | Certify the X11 child on supported desktops and decide/prove the Wayland-native substitute, including GPU, focus, click-through, and reduced-motion behavior |
 | LNX-CU-CREDENTIALS-001 | Implemented in source; production provisioning blocked | Daemon-owned PKCE loopback sign-in, secure refresh-token custody, Firebase ID refresh, per-install Ed25519 App Check enrollment/challenge/mint, 30-minute production token ceiling, account-generation invalidation, phase-safe sign-out/account-switch RPC teardown, scoped old-account route revoke, cancellable HTTP, and redacted RPC state. Explicit pending approval retries on a capped 15/30/60/120/300-second schedule below the public quota; permanent rejection stops polling. The earlier focused daemon credential/runtime packet passed 35/35 and App Check backend packet passed 34/34; the lifecycle/polling regression cases are now covered by the 2026-07-12 full Linux-native aggregate. A dedicated Linux Firebase web app exists | Create the separate Google Desktop OAuth client, set the public release variables, deploy the new Functions callables/policy, and prove the flow from an installed signed candidate |
-| LNX-CU-BROWSER-001 | Source authority/runtime complete; mobile approval source present; installed proof blocked | Exact run/call/generation authority, controller-route v2, mobile renewal, macOS lifecycle policy, Linux native iroh composition, durable replay, polkit owner gate, root-owned Playwright runtime, daemon credential authority, signed AppImage peer admission, and redacted Tauri/account UI are implemented. The active worktree also contains iPad list/approve/revoke UI, canonical device-ID/fingerprint validation, nonce-bound mutation descriptors, stale-load protection, serialized mutations, and focused store/parser tests. The canonical relay challenge is generated consistently for Swift/Kotlin, Android compile/static-analysis and focused tests pass, and earlier generic iOS build-for-testing coverage passes; current physical-iPad execution is blocked because CoreDevice lists the assigned physical iPad as unavailable, and installed certification remains a separate gate | Run focused tests on the physical iPad without substituting an iPhone or simulator; then use that iPad to approve the exact Linux install and prove real browser actions, grant/approval/deny/panic, audit/tamper, credential expiry, account switch, and restart behavior |
+| LNX-CU-BROWSER-001 | Source authority/runtime complete; mobile approval source present; installed proof blocked | Exact run/call/generation authority, controller-route v2, mobile renewal, macOS lifecycle policy, Linux native iroh composition, durable replay, polkit owner gate, root-owned Playwright runtime, daemon credential authority, signed AppImage peer admission, and redacted Tauri/account UI are implemented. The active worktree also contains iPad list/approve/revoke UI, canonical device-ID/fingerprint validation, nonce-bound mutation descriptors, stale-load protection, serialized mutations, and focused store/parser tests. The canonical relay challenge is generated consistently for Swift/Kotlin, Android compile/static-analysis and focused tests pass, and earlier generic iOS build-for-testing coverage passes. The assigned physical iPad now has a current-branch install/launch/liveness/console receipt; approval execution and installed certification remain separate gates | Run focused parser/store/mutation tests on the connected physical iPad, then use it to approve the exact Linux install and prove real browser actions, grant/approval/deny/panic, audit/tamper, credential expiry, account switch, and restart behavior |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
 | Phase 3 native features | In progress | Mercury core, Linux CU input, panic, outbound capture, typed SmartHub safety, and daemon-owned text-expansion persistence foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, live SmartHub devices, IBus/Fcitx, external secure-field expansion, sync, pet adapters |
 | Phase 4 certification/promotion | Blocked by design | No false stable promotion is possible | All product work plus exact-candidate environment matrix |
@@ -1639,10 +1662,9 @@ the identity, configuration, and artifact bytes established by the earlier one:
    Firebase API key and App Check app ID variables are already populated.
 3. Deploy the Linux App Check enrollment, challenge, mint, list, approve, revoke,
    and policy callables/rules; verify the dedicated Linux Firebase app ID.
-4. Run the focused approval tests on the physical iPad. Generic iOS
-   build-for-testing already passes, but the final authority proof must use the
-   physical iPad, not an iPhone or simulator. On 2026-07-12 CoreDevice listed
-   the assigned physical iPad as unavailable, so this gate remains blocked.
+4. Run the focused approval tests on the connected physical iPad. Generic iOS
+   build-for-testing and current-branch launch/liveness already pass; the final
+   authority proof must still use this iPad, not an iPhone or simulator.
 5. Build and sign the exact deb/rpm/AppImage candidate, including the AppImage
    peer manifest over the final repacked GUI bytes.
 6. Install that exact candidate on Linux and complete PKCE sign-in, device
@@ -1790,11 +1812,10 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
   explicit approve/revoke confirmation with serialized, nonce-bound mutations.
 - [x] Generic iOS build-for-testing and the canonical Swift/Kotlin relay schema
   generation pass; Android compile, focused tests, and strict static analysis pass.
-- [ ] The focused parser/store/mutation tests execute on the physical iPad
-  without using an iPhone or simulator as a substitute. On 2026-07-12
-  CoreDevice listed the assigned physical iPad
-  `<IOS_DEVICE_ID>` as unavailable, while the visible
-  iPhone and simulator targets remained invalid substitutes.
+- [ ] The focused parser/store/mutation tests execute on the connected physical
+  iPad without using an iPhone or simulator as a substitute. The current
+  launch/liveness/console receipt passes; the approval workflow itself remains
+  open.
 - [ ] The dedicated Desktop OAuth client and public release variables are set,
   and the Linux App Check callables/rules are deployed to production.
 - [ ] A paired physical iPad supplies the exact signed session grant and action
