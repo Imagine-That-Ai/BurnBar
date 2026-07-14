@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.ManagedAgentRuntime.Run;
 
-namespace OpenBurnBar.App.Run;
+namespace OpenBurnBar.App.AgentRuns;
 
 /// <summary>DPAPI-backed store for prompt-bearing agent checkpoints.</summary>
 public sealed class ProtectedHeadlessAgentCheckpointStore : IHeadlessAgentCheckpointStore

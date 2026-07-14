@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.ManagedAgentRuntime.Mission;
@@ -10,8 +11,9 @@ using OpenBurnBar.App.ManagedAgentRuntime.Planning;
 using OpenBurnBar.App.ManagedAgentRuntime.Run;
 using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Projects;
-using OpenBurnBar.App.Run;
+using OpenBurnBar.App.AgentRuns;
 using OpenBurnBar.App.Settings.Winui;
+using ProjectCodeMemoryService = OpenBurnBar.App.Presentation.Projects.ProjectCodeMemoryService;
 
 namespace OpenBurnBar.App;
 
