@@ -148,7 +148,8 @@ final class BurnBarMissionControlProjectLifecycleLinuxTests: XCTestCase {
         let store = BurnBarMissionControlStore(
             eventsFileURL: root.appendingPathComponent("controller-events.jsonl"),
             projectionFileURL: root.appendingPathComponent("controller-projection.json"),
-            logger: BurnBarDaemonLogger(category: "linux-project-lifecycle-tests")
+            logger: BurnBarDaemonLogger(category: "linux-project-lifecycle-tests"),
+            notificationSecretStore: BurnBarInMemoryNotificationSecretStore()
         )
         return BurnBarMissionControlService(
             store: store,

@@ -19,12 +19,16 @@ final class BurnBarLinuxPeerManifestTests: XCTestCase {
     func testTamperedManifestAndExecutableAreRejected() throws {
         let fixture = try makeFixture()
         defer { fixture.remove() }
+        try fixture.makeMutable()
         try Data("tampered".utf8).appendToFile(at: fixture.manifestURL)
+        try fixture.makeImmutable()
         XCTAssertThrowsError(try fixture.validate())
 
         let executableFixture = try makeFixture()
         defer { executableFixture.remove() }
+        try executableFixture.makeMutable()
         try Data("tampered".utf8).appendToFile(at: executableFixture.executableURL)
+        try executableFixture.makeImmutable()
         XCTAssertThrowsError(try executableFixture.validate())
     }
 
@@ -44,17 +48,21 @@ final class BurnBarLinuxPeerManifestTests: XCTestCase {
     func testSymlinkedAndOversizedManifestFilesAreRejected() throws {
         let symlinkFixture = try makeFixture()
         defer { symlinkFixture.remove() }
+        try symlinkFixture.makeMutable()
         let target = symlinkFixture.resourceURL.appendingPathComponent("manifest-target")
         try FileManager.default.moveItem(at: symlinkFixture.manifestURL, to: target)
         try FileManager.default.createSymbolicLink(
             at: symlinkFixture.manifestURL,
             withDestinationURL: target
         )
+        try symlinkFixture.makeImmutable()
         XCTAssertThrowsError(try symlinkFixture.validate())
 
         let oversizedFixture = try makeFixture()
         defer { oversizedFixture.remove() }
+        try oversizedFixture.makeMutable()
         try Data(repeating: 0x20, count: 4097).write(to: oversizedFixture.manifestURL)
+        try oversizedFixture.makeImmutable()
         XCTAssertThrowsError(try oversizedFixture.validate())
     }
 
@@ -202,6 +210,24 @@ private struct Fixture {
     let executableSHA256: String
     let keyID: String
     let publicKeyRaw: Data
+
+    func makeMutable() throws {
+        guard chmod(rootURL.path, 0o700) == 0,
+              chmod(manifestURL.path, 0o600) == 0,
+              chmod(signatureURL.path, 0o600) == 0,
+              chmod(executableURL.path, 0o700) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    func makeImmutable() throws {
+        guard chmod(executableURL.path, 0o555) == 0,
+              chmod(manifestURL.path, 0o444) == 0,
+              chmod(signatureURL.path, 0o444) == 0,
+              chmod(rootURL.path, 0o555) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
 
     func validate(
         trustedKeys: [BurnBarLinuxPeerManifestTrustKey]? = nil

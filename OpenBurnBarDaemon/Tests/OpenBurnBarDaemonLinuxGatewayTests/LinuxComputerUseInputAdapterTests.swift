@@ -528,7 +528,7 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
         XCTAssertEqual(script.timeouts[1], 222)
         XCTAssertTrue(script.calls[0].arguments.contains("org.freedesktop.portal.RemoteDesktop.CreateSession"))
         XCTAssertTrue(script.calls[2].arguments.contains("org.freedesktop.portal.RemoteDesktop.SelectDevices"))
-        XCTAssertTrue(script.calls[2].arguments.contains("<uint32 3>"))
+        XCTAssertTrue(script.calls[2].arguments.contains(where: { $0.contains("<uint32 3>") }))
         XCTAssertTrue(script.calls[4].arguments.contains("org.freedesktop.portal.RemoteDesktop.Start"))
     }
 
@@ -665,8 +665,8 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
         XCTAssertEqual(script.calls.count, 9)
         XCTAssertTrue(script.calls[6].arguments.contains("org.freedesktop.portal.RemoteDesktop.NotifyPointerMotionAbsolute"))
         XCTAssertEqual(Array(script.calls[6].arguments.suffix(5)), [sessionHandle, "{}", "0", "220", "160"])
-        XCTAssertTrue(script.calls[7].arguments.contains("NotifyPointerButton"))
-        XCTAssertTrue(script.calls[8].arguments.contains("NotifyPointerButton"))
+        XCTAssertTrue(script.calls[7].arguments.contains(where: { $0.contains("NotifyPointerButton") }))
+        XCTAssertTrue(script.calls[8].arguments.contains(where: { $0.contains("NotifyPointerButton") }))
         XCTAssertTrue(script.calls.dropFirst(6).allSatisfy { call in
             call.executable == "/usr/bin/gdbus"
                 && !call.arguments.contains("sh")
