@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = ROOT / ".github/workflows/release.yml"
 DOMAIN_WORKFLOW = ROOT / ".github/workflows/domain-core.yml"
 PUBLISHER = ROOT / "scripts/ci/publish-domain-core-native-release-evidence.sh"
+SHARED_PUBLISHER = ROOT / "scripts/ci/publish-domain-core-release-evidence.mjs"
 VERIFIER = ROOT / "scripts/ci/verify-domain-core-native-release-artifact.sh"
 
 
@@ -16,7 +17,7 @@ class DomainCoreNativeReleaseEvidenceWorkflowTests(unittest.TestCase):
         required = (
             'aab_name="OpenBurnBar-${VERSION}-Android.aab"',
             "aab_name: ${{ steps.android.outputs.aab_name }}",
-            "sha256sum \"$AAB_PATH\"",
+            'sha256sum "$AAB_PATH"',
             'attest_release_blob "$AAB_PATH" "${AAB_PATH##*/}"',
             "domain-core-native-release-evidence:",
             "needs: [release-preflight, build-and-release, smoke-test]",
@@ -38,9 +39,7 @@ class DomainCoreNativeReleaseEvidenceWorkflowTests(unittest.TestCase):
         self.assertIn('test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"', source)
         self.assertIn('test "$(git rev-list -n 1 "${TAG_REF}^{commit}")" = "$RELEASE_COMMIT"', source)
         self.assertEqual(
-            source.count(
-                "uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763"
-            ),
+            source.count("uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763"),
             10,
         )
         for step_id in (
@@ -59,9 +58,7 @@ class DomainCoreNativeReleaseEvidenceWorkflowTests(unittest.TestCase):
 
     def test_native_artifacts_are_verified_before_predicates_are_created(self) -> None:
         source = RELEASE_WORKFLOW.read_text(encoding="utf-8")
-        verify = source.index(
-            "Verify native release artifacts and embedded public profiles"
-        )
+        verify = source.index("Verify native release artifacts and embedded public profiles")
         apple = source.index("Create Apple domain-core predicates")
         android = source.index("Create Android domain-core predicates")
         self.assertLess(verify, apple)
@@ -75,57 +72,57 @@ class DomainCoreNativeReleaseEvidenceWorkflowTests(unittest.TestCase):
             'spctl --assess --type execute -vv "$app"',
             'if [[ "$architectures" != "arm64" ]]',
             'jarsigner -verify -verbose -certs "$artifact"',
-            'base/lib/$abi/libopenburnbar_domain_ffi.so',
-            "--apple-app \"$app\"",
-            "--android-aab \"$artifact\"",
+            "base/lib/$abi/libopenburnbar_domain_ffi.so",
+            '--apple-app "$app"',
+            '--android-aab "$artifact"',
         ):
             self.assertIn(value, verifier)
 
     def test_publication_is_bundle_first_immutable_and_post_verified(self) -> None:
-        source = PUBLISHER.read_text(encoding="utf-8")
+        adapter = PUBLISHER.read_text(encoding="utf-8")
+        source = SHARED_PUBLISHER.read_text(encoding="utf-8")
+        for value in (
+            '"signerWorkflow": ".github/workflows/release.yml"',
+            '"releaseAvailability": "draft-or-published"',
+            '"artifactPath": os.path.abspath(artifact_path)',
+            '"bundles": bundles',
+            "node scripts/ci/publish-domain-core-release-evidence.mjs",
+            '--manifest "$publication_manifest"',
+        ):
+            self.assertIn(value, adapter)
         required = (
-            '--signer-workflow "$repository/.github/workflows/release.yml"',
-            '--source-digest "$release_commit"',
-            '--source-ref "refs/tags/$release_tag"',
-            '--signer-digest "$release_commit"',
-            "--deny-self-hosted-runners",
-            "verified attestation does not contain the exact release predicate",
-            "Refusing to replace non-identical immutable release asset",
-            "Published $consumer artifact bytes differ from the signed local artifact",
+            '"--signer-workflow"',
+            '"--source-digest"',
+            '"--source-ref"',
+            "`refs/tags/${manifest.tag}`",
+            '"--signer-digest"',
+            '"--cert-oidc-issuer"',
+            '"--deny-self-hosted-runners"',
+            '"--predicate-type"',
+            "does not contain its exact predicate",
+            "refusing to replace non-identical immutable release asset",
+            "published artifact bytes differ from the signed local artifact",
         )
         for value in required:
             self.assertIn(value, source)
-        self.assertNotIn("--clobber", source)
-        bundle_upload = source.index(
-            'gh release upload "$release_tag" "$bundle" --repo "$repository"'
-        )
-        artifact_upload = source.index(
-            'gh release upload "$release_tag" "$artifact_path" --repo "$repository"'
-        )
+        for forbidden in ("--clobber", '"create"', '"edit"'):
+            self.assertNotIn(forbidden, adapter)
+            self.assertNotIn(forbidden, source)
+        publication = source.index("const uploaded = [];")
+        bundle_upload = source.index("stagedBundles.get(bundle.assetName)", publication)
+        artifact_upload = source.index("publication.artifactPath,", bundle_upload)
         self.assertLess(bundle_upload, artifact_upload)
-        self.assertGreater(
-            source.rindex('verify_bundle "$published/$bundle_name"'),
-            artifact_upload,
-        )
+        post_verify = source.index('const published = join(workspace, "published")', artifact_upload)
+        self.assertGreater(post_verify, artifact_upload)
 
     def test_apple_identity_is_arm64_everywhere(self) -> None:
-        predicate = json.loads(
-            (ROOT / "config/domain-core-release-predicate.schema.json").read_text()
-        )
-        receipt = json.loads(
-            (ROOT / "config/domain-core-legacy-deletion-receipt.schema.json").read_text()
-        )
-        generator = (
-            ROOT / "scripts/ci/create-domain-core-release-evidence.mjs"
-        ).read_text(encoding="utf-8")
-        gate = (
-            ROOT / "scripts/ci/verify-domain-core-legacy-deletion.py"
-        ).read_text(encoding="utf-8")
+        predicate = json.loads((ROOT / "config/domain-core-release-predicate.schema.json").read_text())
+        receipt = json.loads((ROOT / "config/domain-core-legacy-deletion-receipt.schema.json").read_text())
+        generator = (ROOT / "scripts/ci/create-domain-core-release-evidence.mjs").read_text(encoding="utf-8")
+        gate = (ROOT / "scripts/ci/verify-domain-core-legacy-deletion.py").read_text(encoding="utf-8")
         self.assertIn("macos-arm64", predicate["properties"]["target"]["enum"])
         self.assertNotIn("macos-universal", predicate["properties"]["target"]["enum"])
-        target_enum = receipt["$defs"]["consumerRelease"]["properties"]["target"][
-            "enum"
-        ]
+        target_enum = receipt["$defs"]["consumerRelease"]["properties"]["target"]["enum"]
         self.assertIn("macos-arm64", target_enum)
         self.assertNotIn("macos-universal", target_enum)
         self.assertIn('target: "macos-arm64"', generator)

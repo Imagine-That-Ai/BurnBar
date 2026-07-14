@@ -168,6 +168,7 @@ jobs:
             commit,
             consumer: "console",
             signerWorkflow: ".github/workflows/domain-core-console-release-evidence.yml",
+            releaseAvailability: "published",
             artifactPath,
             bundles: [{ domain: "cloudVault", assetName, bundlePath, predicatePath }],
           };

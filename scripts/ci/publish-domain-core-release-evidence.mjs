@@ -44,6 +44,8 @@ const CONSUMERS = Object.freeze({
       "pricing",
     ],
     fileName: (version) => `OpenBurnBar-${version}-macOS.dmg`,
+    bundleName: (version, domain) =>
+      `OpenBurnBar-${version}-macOS-${domain}-domain-core-attestation.sigstore.json`,
   },
   android: {
     signerWorkflow: ".github/workflows/release.yml",
@@ -51,6 +53,8 @@ const CONSUMERS = Object.freeze({
     target: "android-universal",
     domains: ["cloudVault", "cloudVaultRewrap", "cloudVaultSearch", "hermes"],
     fileName: (version) => `OpenBurnBar-${version}-Android.aab`,
+    bundleName: (version, domain) =>
+      `OpenBurnBar-${version}-Android-${domain}-domain-core-attestation.sigstore.json`,
   },
   windows: {
     signerWorkflow: WINDOWS_SIGNER_WORKFLOW,
@@ -58,6 +62,8 @@ const CONSUMERS = Object.freeze({
     target: "windows-x64-arm64",
     domains: ["quota", "cloudVault"],
     fileName: (version) => `OpenBurnBar-${version}-windows-release.zip`,
+    bundleName: (version, domain) =>
+      `OpenBurnBar-${version}-windows-release-${domain === "cloudVault" ? "cloudvault" : domain}.sigstore.json`,
   },
   console: {
     signerWorkflow:
@@ -66,6 +72,8 @@ const CONSUMERS = Object.freeze({
     target: "firebase-hosting-production",
     domains: ["cloudVault"],
     fileName: (version) => `OpenBurnBar-${version}-console-deployment.json`,
+    bundleName: (version) =>
+      `OpenBurnBar-${version}-console-deployment.sigstore.json`,
   },
   functions: {
     signerWorkflow:
@@ -74,6 +82,8 @@ const CONSUMERS = Object.freeze({
     target: "firebase-functions-production",
     domains: ["pricing"],
     fileName: (version) => `OpenBurnBar-${version}-functions-deployment.json`,
+    bundleName: (version) =>
+      `OpenBurnBar-${version}-functions-deployment.sigstore.json`,
   },
 });
 
@@ -125,6 +135,7 @@ export function validateManifest(raw) {
       "commit",
       "consumer",
       "signerWorkflow",
+      "releaseAvailability",
       "artifactPath",
       "bundles",
     ],
@@ -152,6 +163,18 @@ export function validateManifest(raw) {
   const consumer = CONSUMERS[manifest.consumer];
   if (!consumer || consumer.signerWorkflow !== manifest.signerWorkflow) {
     throw new Error("publication consumer does not match its signer workflow");
+  }
+  const nativeConsumer =
+    manifest.consumer === "apple" || manifest.consumer === "android";
+  if (
+    !new Set(["published", "draft-or-published"]).has(
+      manifest.releaseAvailability,
+    ) ||
+    (manifest.releaseAvailability === "draft-or-published" && !nativeConsumer)
+  ) {
+    throw new Error(
+      "publication releaseAvailability is invalid for its consumer",
+    );
   }
   const version = manifest.tag.replace(/^(?:windows-)?v/, "");
   const expectedTag =
@@ -198,6 +221,12 @@ export function validateManifest(raw) {
       );
     }
     seenDomains.add(bundle.domain);
+    const expectedBundleName = consumer.bundleName(version, bundle.domain);
+    if (releaseAssetName !== expectedBundleName) {
+      throw new Error(
+        `bundles[${index}] asset must be named ${expectedBundleName}`,
+      );
+    }
     const bundlePath = regularFile(
       bundle.bundlePath,
       `bundles[${index}].bundlePath`,
@@ -250,6 +279,7 @@ export function validateManifest(raw) {
     commit: manifest.commit,
     consumer: manifest.consumer,
     signerWorkflow: manifest.signerWorkflow,
+    releaseAvailability: manifest.releaseAvailability,
     artifactPath,
     artifactAssetName,
     bundles,
@@ -346,7 +376,13 @@ function waitForRelease(manifest, timeoutSeconds, pollSeconds) {
           "release lookup returned a wrong-tag or prerelease release",
         );
       }
-      if (release.draft === false) return;
+      if (
+        release.draft === false ||
+        (release.draft === true &&
+          manifest.releaseAvailability === "draft-or-published")
+      ) {
+        return;
+      }
     }
     if (Date.now() >= deadline) {
       throw new Error(

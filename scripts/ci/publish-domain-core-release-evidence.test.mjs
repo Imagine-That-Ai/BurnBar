@@ -75,7 +75,7 @@ function setup({ bundleCount = 2 } = {}) {
     writeJson(bundlePath, { valid: true, predicate });
     bundles.push({
       domain,
-      assetName: `OpenBurnBar-1.2.3-${domain.toLowerCase()}.sigstore.json`,
+      assetName: `OpenBurnBar-1.2.3-macOS-${domain}-domain-core-attestation.sigstore.json`,
       bundlePath,
       predicatePath,
     });
@@ -88,6 +88,7 @@ function setup({ bundleCount = 2 } = {}) {
     commit: COMMIT,
     consumer: "apple",
     signerWorkflow: ".github/workflows/release.yml",
+    releaseAvailability: "published",
     artifactPath: artifact,
     bundles,
   });
@@ -234,17 +235,17 @@ test("new publication uploads every verified bundle before the artifact", () => 
     const result = runHelper(fixture);
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(readdirSync(fixture.release).sort(), [
-      "OpenBurnBar-1.2.3-cloudvault.sigstore.json",
+      "OpenBurnBar-1.2.3-macOS-cloudVault-domain-core-attestation.sigstore.json",
+      "OpenBurnBar-1.2.3-macOS-quota-domain-core-attestation.sigstore.json",
       "OpenBurnBar-1.2.3-macOS.dmg",
-      "OpenBurnBar-1.2.3-quota.sigstore.json",
     ]);
     const all = commands(fixture);
     const uploads = all
       .filter((args) => args[0] === "release" && args[1] === "upload")
       .map((args) => basename(args[3]));
     assert.deepEqual(uploads, [
-      "OpenBurnBar-1.2.3-quota.sigstore.json",
-      "OpenBurnBar-1.2.3-cloudvault.sigstore.json",
+      "OpenBurnBar-1.2.3-macOS-quota-domain-core-attestation.sigstore.json",
+      "OpenBurnBar-1.2.3-macOS-cloudVault-domain-core-attestation.sigstore.json",
       "OpenBurnBar-1.2.3-macOS.dmg",
     ]);
     assert.equal(
@@ -450,6 +451,21 @@ test("release lifecycle rejects draft, prerelease, and wrong-tag releases", () =
   }
 });
 
+test("native publication may populate its exact draft release", () => {
+  const fixture = setup({ bundleCount: 1 });
+  try {
+    const manifest = JSON.parse(readFileSync(fixture.manifest, "utf8"));
+    writeJson(fixture.manifest, {
+      ...manifest,
+      releaseAvailability: "draft-or-published",
+    });
+    const result = runHelper(fixture, { MOCK_RELEASE_MODE: "draft" });
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test("manifest validation rejects unsafe identity and asset substitution", () => {
   const fixture = setup({ bundleCount: 1 });
   try {
@@ -486,7 +502,22 @@ test("manifest validation rejects unsafe identity and asset substitution", () =>
       () =>
         validateManifest({
           ...raw,
-          bundles: [{ ...raw.bundles[0], domain: "cloudVault" }],
+          releaseAvailability: "unsafe",
+        }),
+      /releaseAvailability/,
+    );
+    assert.throws(
+      () =>
+        validateManifest({
+          ...raw,
+          bundles: [
+            {
+              ...raw.bundles[0],
+              domain: "cloudVault",
+              assetName:
+                "OpenBurnBar-1.2.3-macOS-cloudVault-domain-core-attestation.sigstore.json",
+            },
+          ],
         }),
       /predicate does not bind/,
     );

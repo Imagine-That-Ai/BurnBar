@@ -251,9 +251,10 @@ not into `main`, and does not mean production promotion.
   public profiles are legacy-authoritative. The stable Apple/Android release
   train now publishes the canonical notarized arm64 DMG and signed four-ABI
   AAB, emits six Apple and four Android custom domain attestations as the
-  applicable public modes become Rust-authoritative, and publishes each custom
-  bundle before its immutable artifact. Windows exact artifact evidence remains
-  to be landed before its mapped rows can satisfy stable authority.
+  applicable public modes become Rust-authoritative, and uses the same shared,
+  fail-closed publisher as Functions and Console to publish every custom bundle
+  before its immutable artifact. Windows exact artifact evidence remains to be
+  landed before its mapped rows can satisfy stable authority.
 
 ## Required CI
 

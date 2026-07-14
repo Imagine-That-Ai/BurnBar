@@ -28,7 +28,10 @@ PY
 elif [[ "$1" == api ]]; then
   printf '{"tag_name":"v1.2.3","prerelease":false,"draft":true}\n'
 elif [[ "$1 $2" == "release view" ]]; then
-  find "$FAKE_RELEASE_ASSETS" -maxdepth 1 -type f -exec basename {} \; | sort
+  python3 - "$FAKE_RELEASE_ASSETS" <<'PY'
+import json, os, sys
+print(json.dumps({"assets": [{"name": name} for name in sorted(os.listdir(sys.argv[1]))]}))
+PY
 elif [[ "$1 $2" == "release upload" ]]; then
   cp "$4" "$FAKE_RELEASE_ASSETS/$(basename "$4")"
 elif [[ "$1 $2" == "release download" ]]; then
@@ -52,14 +55,27 @@ chmod +x "$fake_bin/gh"
 artifact="$fixture/OpenBurnBar-1.2.3-Android.aab"
 printf 'signed aab bytes\n' > "$artifact"
 sha="$(shasum -a 256 "$artifact" | awk '{print $1}')"
+profile_sha="$(python3 - <<'PY'
+import hashlib, json
+profile = {
+    "artifactAuthority": "signed",
+    "distribution": "public",
+    "rolloutChannel": None,
+    "evidenceEnabled": False,
+    "domain": "hermes",
+    "mode": "rust",
+}
+print(hashlib.sha256(json.dumps(profile, sort_keys=True, separators=(",", ":")).encode()).hexdigest())
+PY
+)"
 predicate_name="android-hermes.predicate.json"
 bundle_name="OpenBurnBar-1.2.3-Android-hermes-domain-core-attestation.sigstore.json"
 cat > "$evidence/$predicate_name" <<EOF
-{"schemaVersion":1,"consumer":"android","artifactKind":"android-aab","target":"android-universal","artifact":{"fileName":"$(basename "$artifact")","sha256":"$sha"},"release":{"version":"1.2.3","tag":"v1.2.3","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","publicProfileSha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}
+{"schemaVersion":1,"consumer":"android","artifactKind":"android-aab","target":"android-universal","artifact":{"fileName":"$(basename "$artifact")","sha256":"$sha"},"release":{"version":"1.2.3","tag":"v1.2.3","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","publicProfileSha256":"$profile_sha"}}
 EOF
 cp "$evidence/$predicate_name" "$evidence/$bundle_name"
 cat > "$evidence/android-manifest.json" <<EOF
-{"schemaVersion":1,"consumer":"android","artifactKind":"android-aab","target":"android-universal","artifact":{"fileName":"$(basename "$artifact")","sha256":"$sha"},"release":{"version":"1.2.3","tag":"v1.2.3","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"domains":[{"domain":"hermes","publicProfileSha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","predicateFileName":"$predicate_name","bundleFileName":"$bundle_name"}]}
+{"schemaVersion":1,"consumer":"android","artifactKind":"android-aab","target":"android-universal","artifact":{"fileName":"$(basename "$artifact")","sha256":"$sha"},"release":{"version":"1.2.3","tag":"v1.2.3","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"domains":[{"domain":"hermes","publicProfileSha256":"$profile_sha","predicateFileName":"$predicate_name","bundleFileName":"$bundle_name"}]}
 EOF
 
 export FAKE_GH_LOG="$fixture/gh.log"

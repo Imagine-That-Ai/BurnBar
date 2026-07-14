@@ -73,6 +73,7 @@ class DomainCoreConsoleReleaseEvidenceWorkflowTests(unittest.TestCase):
             "predicate-path: ${{ steps.evidence.outputs.predicate }}",
             'consumer: "console"',
             'signerWorkflow: ".github/workflows/domain-core-console-release-evidence.yml"',
+            'releaseAvailability: "published"',
             "artifactPath,",
             'bundles: [{ domain: "cloudVault", assetName, bundlePath, predicatePath }]',
             "scripts/ci/publish-domain-core-release-evidence.mjs",

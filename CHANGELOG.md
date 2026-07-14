@@ -52,11 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The proof binds the live profile, repository, release commit, tag, and
   artifact digest; redirects, stale identities, prerelease tags, and asset
   replacement fail closed.
-- **Shared immutable release-evidence publisher** — Functions and Console now
-  use one manifest-driven publisher, ready for the native release producers,
-  that verifies exact signer, tag, commit, OIDC issuer, predicate, artifact
-  bytes, collision behavior, and bundle-before-artifact ordering without
-  creating, editing, or overwriting a release.
+- **Shared immutable release-evidence publisher** — Functions, Console, Apple,
+  and Android now use one manifest-driven publisher that verifies exact signer,
+  tag, commit, OIDC issuer, predicate, artifact bytes, collision behavior, and
+  bundle-before-artifact ordering without creating, editing, or overwriting a
+  release.
 - **Signed Shared Rust Apple and Android release evidence** — stable releases
   now publish the exact notarized arm64 DMG and signed four-ABI AAB with
   domain-specific GitHub attestations for every Rust-authoritative public mode.

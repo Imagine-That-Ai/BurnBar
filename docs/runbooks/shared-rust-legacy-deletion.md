@@ -160,8 +160,10 @@ python3 scripts/ops/create-domain-core-promotion-receipt.py \
    and pricing predicates. Stable Android releases publish the signed
    `OpenBurnBar-<version>-Android.aab` with CloudVault, rewrap, search, and
    Hermes predicates after verifying the embedded public profile and all four
-   native ABIs. Their custom bundles publish before the immutable DMG/AAB and
-   reruns verify existing release bytes and bundles without replacing them.
+   native ABIs. Both native producers adapt their evidence plans into the same
+   shared publisher manifest used by Functions and Console. Their custom bundles
+   publish before the immutable DMG/AAB, and reruns verify existing release
+   bytes and bundles without replacing them.
    Windows exact artifact evidence remains outstanding. Do not create a stable
    receipt from an Actions artifact or unsigned deployment summary.
 7. Commit active `stable_release` receipts and advance the observed rows to
