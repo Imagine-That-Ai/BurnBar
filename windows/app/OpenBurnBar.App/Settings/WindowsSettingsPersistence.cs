@@ -113,7 +113,12 @@ internal static class WindowsSettingsComposition
     public static GatewayComposition CreateGatewayComposition()
     {
         var store = new GatewayRouteStore(Persistence);
-        return GatewayCompositionFactory.Create(store.Load(), store.ReadCredential);
+        return GatewayCompositionFactory.Create(
+            store.Load(),
+            store.ReadCredential,
+            new ModelRouteHealthStore(Path.Combine(
+                Persistence.DirectoryPath,
+                "gateway-model-health.json")));
     }
 
     public static ProjectCodeRootSettingsViewModel CreateProjectCodeRootSettingsViewModel() =>

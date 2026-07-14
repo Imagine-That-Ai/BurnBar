@@ -174,15 +174,21 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
             {
                 var models = _router.Routes
                     .OrderBy(route => route.Priority)
-                    .Select(route => new
+                    .Select(route =>
                     {
-                        id = route.Model,
-                        @object = "model",
-                        owned_by = route.Vendor,
-                        healthy = route.Healthy,
-                        route_eligible = route.IsExecutable,
-                        provider_id = route.Vendor,
-                        provider_name = route.Vendor,
+                        ModelRouteHealthRecord? failure = _router.ActiveHealthFailure(route);
+                        return new
+                        {
+                            id = route.Model,
+                            @object = "model",
+                            owned_by = route.Vendor,
+                            healthy = route.Healthy && failure is null,
+                            route_eligible = route.IsExecutable && failure is null,
+                            provider_id = route.Vendor,
+                            provider_name = route.Vendor,
+                            health_failure = failure?.FailureKind.ToString(),
+                            blocked_until = failure?.BlockedUntil,
+                        };
                     });
                 await WriteJsonAsync(context.Response, 200, new { @object = "list", data = models })
                     .ConfigureAwait(false);
@@ -195,6 +201,8 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
                 await WriteJsonAsync(context.Response, 200, new
                 {
                     routes = _router.SnapshotMetrics()
+                        .ToDictionary(pair => pair.Key, pair => pair.Value),
+                    health = _router.SnapshotHealth()
                         .ToDictionary(pair => pair.Key, pair => pair.Value),
                 }).ConfigureAwait(false);
                 return;
@@ -271,7 +279,7 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         ModelCompletionResult result = await _executor
             .ExecuteAsync(decision.Route, requestBody, cancellationToken)
             .ConfigureAwait(false);
-        _router.RecordOutcome(decision.Route, result.Succeeded, decision.Degraded);
+        _router.RecordOutcome(decision.Route, result, decision.Degraded);
 
         if (!result.Succeeded)
         {

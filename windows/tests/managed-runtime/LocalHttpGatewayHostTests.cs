@@ -206,6 +206,50 @@ public sealed class LocalHttpGatewayHostTests
     }
 
     [Fact]
+    public async Task ModelsAndMetricsExposeFailureDrivenHealthWithoutProviderBody()
+    {
+        int port = 23265 + System.Environment.ProcessId % 1000;
+        var router = new ModelProxyRouter(new[]
+        {
+            new ModelRoute(
+                "provider-route",
+                "openai",
+                "gpt-test",
+                0,
+                true,
+                new System.Uri("https://api.openai.com/v1/chat/completions")),
+        });
+        await using var host = new LocalHttpGatewayHost(
+            port,
+            router,
+            new DelegateModelCompletionExecutor((_, _, _) => Task.FromResult(
+                new ModelCompletionResult(
+                    429,
+                    Encoding.UTF8.GetBytes("provider-body-secret"),
+                    "application/json",
+                    false))));
+        host.Start();
+        using var client = new HttpClient { BaseAddress = host.BaseAddress };
+        using var request = new StringContent(
+            "{\"model\":\"gpt-test\",\"messages\":[]}",
+            Encoding.UTF8,
+            "application/json");
+
+        Assert.Equal(429, (int)(await client.PostAsync("v1/chat/completions", request)).StatusCode);
+        string modelsBody = await client.GetStringAsync("v1/models");
+        string metricsBody = await client.GetStringAsync("v1/metrics");
+
+        using JsonDocument models = JsonDocument.Parse(modelsBody);
+        JsonElement model = models.RootElement.GetProperty("data")[0];
+        Assert.False(model.GetProperty("healthy").GetBoolean());
+        Assert.False(model.GetProperty("route_eligible").GetBoolean());
+        Assert.Equal("RateLimit", model.GetProperty("health_failure").GetString());
+        Assert.Contains("RateLimit", metricsBody, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("provider-body-secret", modelsBody, System.StringComparison.Ordinal);
+        Assert.DoesNotContain("provider-body-secret", metricsBody, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CompletionEndpoint_RejectsOversizedBodies()
     {
         int port = 22765 + System.Environment.ProcessId % 1000;

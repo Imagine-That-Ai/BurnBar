@@ -42,7 +42,8 @@ public static class GatewayCompositionFactory
     /// </summary>
     public static GatewayComposition Create(
         IReadOnlyList<GatewayRouteConfiguration> configurations,
-        Func<string, string?> protectedCredentialResolver)
+        Func<string, string?> protectedCredentialResolver,
+        ModelRouteHealthStore? healthStore = null)
     {
         ArgumentNullException.ThrowIfNull(configurations);
         ArgumentNullException.ThrowIfNull(protectedCredentialResolver);
@@ -73,7 +74,7 @@ public static class GatewayCompositionFactory
 
         var client = new HttpClient();
         return new GatewayComposition(
-            new ModelProxyRouter(routes.Count == 0 ? DefaultRoutes() : routes),
+            new ModelProxyRouter(routes.Count == 0 ? DefaultRoutes() : routes, healthStore),
             new HttpModelCompletionExecutor(client),
             client);
     }

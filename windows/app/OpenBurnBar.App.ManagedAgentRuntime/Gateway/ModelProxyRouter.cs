@@ -11,16 +11,20 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 public sealed class ModelProxyRouter
 {
     private readonly IReadOnlyList<ModelRoute> _routes;
+    private readonly ModelRouteHealthStore _healthStore;
     private readonly object _gate = new();
     private readonly Dictionary<string, RouteMetrics> _metrics = new(StringComparer.Ordinal);
 
-    public ModelProxyRouter(IReadOnlyList<ModelRoute> routes)
+    public ModelProxyRouter(
+        IReadOnlyList<ModelRoute> routes,
+        ModelRouteHealthStore? healthStore = null)
     {
         _routes = routes ?? throw new ArgumentNullException(nameof(routes));
         if (_routes.Count == 0)
         {
             throw new ArgumentException("At least one route is required.", nameof(routes));
         }
+        _healthStore = healthStore ?? new ModelRouteHealthStore();
     }
 
     /// <summary>Immutable route view used by gateway model discovery.</summary>
@@ -35,7 +39,9 @@ public sealed class ModelProxyRouter
 
     private ModelRouteDecision SelectCore(string? vendorPreference, bool recordSelection)
     {
-        IReadOnlyList<RankedModelRoute> ranked = ModelRouteScorecard.Rank(_routes, vendorPreference);
+        IReadOnlyList<RankedModelRoute> ranked = ModelRouteScorecard.Rank(
+            _routes.Where(IsRouteEligible),
+            vendorPreference);
         foreach (RankedModelRoute entry in ranked)
         {
             ModelRoute route = entry.Route;
@@ -76,7 +82,7 @@ public sealed class ModelProxyRouter
             .Where(route => string.Equals(route.Model, model, StringComparison.OrdinalIgnoreCase))
             .OrderBy(route => route.Priority)
             .ToArray();
-        RankedModelRoute? healthyExact = ModelRouteScorecard.Rank(exact).FirstOrDefault();
+        RankedModelRoute? healthyExact = ModelRouteScorecard.Rank(exact.Where(IsRouteEligible)).FirstOrDefault();
         if (healthyExact is not null)
         {
             return new ModelRouteDecision(
@@ -102,7 +108,34 @@ public sealed class ModelProxyRouter
     {
         ArgumentNullException.ThrowIfNull(route);
         Record(route.Id, succeeded, degraded);
+        if (succeeded)
+        {
+            _healthStore.RecordSuccess(route);
+        }
     }
+
+    public void RecordOutcome(ModelRoute route, ModelCompletionResult result, bool degraded)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        Record(route.Id, result.Succeeded, degraded);
+        if (result.Succeeded)
+        {
+            _healthStore.RecordSuccess(route);
+        }
+        else
+        {
+            _healthStore.RecordFailure(route, result);
+        }
+    }
+
+    public bool IsRouteEligible(ModelRoute route) =>
+        route.IsAvailable() && _healthStore.ActiveFailure(route) is null;
+
+    public ModelRouteHealthRecord? ActiveHealthFailure(ModelRoute route) =>
+        _healthStore.ActiveFailure(route);
+
+    public IReadOnlyDictionary<string, ModelRouteHealthRecord> SnapshotHealth() =>
+        _healthStore.Snapshot();
 
     public IReadOnlyDictionary<string, RouteMetrics> SnapshotMetrics()
     {

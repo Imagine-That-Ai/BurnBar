@@ -490,9 +490,11 @@ F2 workstreams:
    multi-client story.
 2. Model catalog, health, route logging, cross-vendor degrade, and gateway
    metrics.
-3. Provider executors, live model health, and streaming route telemetry. The
-   production provider-router scorecard and quota-drain core are closed by
-   `docs/windows-port/evidence/f2/provider-router-scorecard.md`.
+3. Provider executors, proactive local-model discovery, and streaming route
+   telemetry. The production provider-router scorecard, quota-drain core, and
+   failure-driven model health are closed by
+   `docs/windows-port/evidence/f2/provider-router-scorecard.md` and
+   `docs/windows-port/evidence/f2/gateway-model-health.md`.
 4. Headless run service, resume/recovery, journal, and tool dispatch.
 5. Local Mission Control execution: DAG scheduler, journal repository,
    projection reducer, planner, policy engine, rate limiter.
