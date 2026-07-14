@@ -20,8 +20,9 @@ the exact receipt with GitHub Artifact Attestations and preserves the adjacent
 `.sigstore.jsonl` bundle. `attest-product-requirement.mjs` independently verifies
 repository, signer workflow, source ref/commit, receipt digest, subject digests,
 and the complete environment matrix before a row can become ready. P-01, P-03,
-P-04, and P-37 have requirement-owned validators; the other modules remain
-absent until their acceptance-specific evidence exists. The release workflow
+P-04, P-37, and P-38 are release-owned validators; P-02, P-31, P-34, and P-40
+use registered feature-proof validators. The other modules remain absent until
+their acceptance-specific evidence exists. The release workflow
 must not promote until the complete signed matrix is aggregated after
 exact-candidate assembly.
 
