@@ -15,6 +15,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using OpenBurnBar.ComputerUse.Core.Browser;
 using OpenBurnBar.ComputerUse.Core.Gate;
 using OpenBurnBar.ComputerUse.Core.Scope;
 
@@ -88,12 +92,24 @@ public sealed class InMemoryComputerUsePermissionsStore : IComputerUsePermission
     public bool OnboardingCompleted { get; set; }
 }
 
+public interface IComputerUseBrowserSettingsStore
+{
+    string BrowserCheckUrl { get; set; }
+}
+
+public sealed class InMemoryComputerUseBrowserSettingsStore : IComputerUseBrowserSettingsStore
+{
+    public string BrowserCheckUrl { get; set; } = "https://example.com";
+}
+
 /// <summary>Backs the Computer Use tab (readiness, policy trust-mode, and the audit-chain console).</summary>
 public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
 {
     private readonly IAccessibilityProbe _accessibility;
     private readonly IComputerUseAuditService _audit;
     private readonly IComputerUsePermissionsStore _permissions;
+    private readonly IComputerUseBrowserSettingsStore _browserSettings;
+    private readonly IComputerUseBrowserService _browser;
     private readonly Func<DateTimeOffset> _now;
 
     private ComputerUseSettingsSection _section = ComputerUseSettingsSection.Setup;
@@ -107,16 +123,24 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     private bool _auditAdvancedExpanded;
     private bool _auditNotarizationOptIn;
     private AuditOperationStatus _auditStatus = AuditOperationStatus.Idle;
+    private string _browserCheckUrl;
+    private string _browserCheckStatus = string.Empty;
+    private bool _browserCheckRunning;
 
     public ComputerUseSettingsViewModel(
         IAccessibilityProbe? accessibility = null,
         IComputerUseAuditService? audit = null,
         IComputerUsePermissionsStore? permissions = null,
+        IComputerUseBrowserSettingsStore? browserSettings = null,
+        IComputerUseBrowserService? browser = null,
         Func<DateTimeOffset>? now = null)
     {
         _accessibility = accessibility ?? new StaticAccessibilityProbe(false);
         _audit = audit ?? new NoopComputerUseAuditService();
         _permissions = permissions ?? new InMemoryComputerUsePermissionsStore();
+        _browserSettings = browserSettings ?? new InMemoryComputerUseBrowserSettingsStore();
+        _browser = browser ?? DisabledComputerUseBrowserService.Instance;
+        _browserCheckUrl = _browserSettings.BrowserCheckUrl;
         _now = now ?? (() => DateTimeOffset.UtcNow);
         RefreshReadiness();
     }
@@ -143,6 +167,80 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
 
     /// <summary>Re-read the OS readiness signals (Swift <c>refreshReadiness</c>).</summary>
     public void RefreshReadiness() => AccessibilityTrusted = _accessibility.IsAccessibilityTrusted;
+
+    public bool BrowserRuntimeAvailable => _browser.IsAvailable;
+
+    public string BrowserRuntimeStatus => _browser.RuntimeStatus;
+
+    public string BrowserCheckUrl
+    {
+        get => _browserCheckUrl;
+        set
+        {
+            string normalized = value?.Trim() ?? string.Empty;
+            if (Set(ref _browserCheckUrl, normalized))
+            {
+                _browserSettings.BrowserCheckUrl = normalized;
+                OnPropertyChanged(nameof(CanRunBrowserCheck));
+            }
+        }
+    }
+
+    public string BrowserCheckStatus
+    {
+        get => _browserCheckStatus;
+        private set => Set(ref _browserCheckStatus, value);
+    }
+
+    public bool IsBrowserCheckRunning
+    {
+        get => _browserCheckRunning;
+        private set
+        {
+            if (Set(ref _browserCheckRunning, value))
+            {
+                OnPropertyChanged(nameof(CanRunBrowserCheck));
+            }
+        }
+    }
+
+    public bool CanRunBrowserCheck =>
+        _browser.IsAvailable && !IsBrowserCheckRunning && IsSafeBrowserCheckUrl(BrowserCheckUrl);
+
+    public async Task RunBrowserCheck()
+    {
+        if (!CanRunBrowserCheck)
+        {
+            BrowserCheckStatus = _browser.IsAvailable
+                ? "Enter a public HTTP or HTTPS URL."
+                : _browser.RuntimeStatus;
+            return;
+        }
+
+        IsBrowserCheckRunning = true;
+        BrowserCheckStatus = "Checking the managed browser runtime...";
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            BrowserSessionResult result = await _browser
+                .RunCheckAsync(BrowserCheckUrl, timeout.Token);
+            BrowserCheckStatus = result.Succeeded
+                ? "Browser runtime check passed."
+                : "Browser runtime check failed: " + (result.Error ?? "unknown_error");
+        }
+        catch (OperationCanceledException)
+        {
+            BrowserCheckStatus = "Browser runtime check timed out.";
+        }
+        catch (Exception error)
+        {
+            BrowserCheckStatus = "Browser runtime check failed: " + error.GetBaseException().Message;
+        }
+        finally
+        {
+            IsBrowserCheckRunning = false;
+        }
+    }
 
     // ── Policy ────────────────────────────────────────────────────────────────
 
@@ -311,5 +409,60 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
         OnPropertyChanged(nameof(CanValidateChain));
         OnPropertyChanged(nameof(CanExportArchive));
         OnPropertyChanged(nameof(CanNotarize));
+    }
+
+    internal static bool IsSafeBrowserCheckUrl(string value)
+    {
+        if (value.Length > BrowserComputerUseLifecycle.MaxUrlCharacters
+            || !Uri.TryCreate(value, UriKind.Absolute, out Uri? uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            || !string.IsNullOrEmpty(uri.UserInfo)
+            || IsKnownInternalHost(uri.Host))
+        {
+            return false;
+        }
+
+        return !IPAddress.TryParse(uri.Host, out IPAddress? address) || IsPublicAddress(address);
+    }
+
+    private static bool IsKnownInternalHost(string host) =>
+        host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase)
+        || host.Equals("metadata", StringComparison.OrdinalIgnoreCase)
+        || host.Equals("metadata.google.internal", StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith(".metadata.google.internal", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsPublicAddress(IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (IPAddress.IsLoopback(address)
+            || address.IsIPv6LinkLocal
+            || address.IsIPv6SiteLocal
+            || address.IsIPv6Multicast)
+        {
+            return false;
+        }
+
+        byte[] bytes = address.GetAddressBytes();
+        if (bytes.Length != 4)
+        {
+            return !address.Equals(IPAddress.IPv6Any) && !address.Equals(IPAddress.IPv6None);
+        }
+
+        int first = bytes[0];
+        int second = bytes[1];
+        return first != 0
+            && first != 10
+            && first != 127
+            && !(first == 100 && second is >= 64 and <= 127)
+            && !(first == 169 && second == 254)
+            && !(first == 172 && second is >= 16 and <= 31)
+            && !(first == 192 && second == 168)
+            && !(first == 198 && second is 18 or 19)
+            && first < 224;
     }
 }

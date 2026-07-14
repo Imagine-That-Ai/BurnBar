@@ -15,6 +15,8 @@
   Windows service** for the data lanes) — 0006 extends that call from the
   data-wiring lanes to the entire daemon capability set. Also consistent with
   master plan §15.1 (named deferrals with criteria, no runtime trapdoors).
+  WPD-0009 is the later authority for F2 promotions; promoted rows are amended
+  here so the product-visible Engine Room does not report stale deferrals.
 
 ## Context
 
@@ -153,7 +155,7 @@ unless prefixed; all Windows paths under `windows/`.
 | 22 | Rate limiter | `BurnBarRateLimiter.swift` | **DEFER** | Gateway-scoped (row 1). | With row 1 |
 | 23 | Config store / daemon configuration | `OpenBurnBarConfigStore.swift`, `OpenBurnBarDaemonConfiguration.swift` | **SUB-DONE** (app-scoped) | `app/OpenBurnBar.App.Configuration/AppConfiguration.cs` owns Windows app/runtime config; daemon-endpoint config has no consumer without a daemon. | Landed; gateway config revives with row 1 |
 | 24 | Computer-use policy/capability/audit core + service coordination | `ComputerUse/ComputerUseService.swift`, `ComputerUse/ComputerUseRunCoordinator.swift`, `ComputerUse/BurnBarCLIAuditVerify.swift` | **SUB-DONE** (core) / **SUB-BUILD** (full loop) | Core substituted: `computeruse/OpenBurnBar.ComputerUse.Core/` (Capability/Gate/Scope/Audit, ~100 tests) + Windows adapters (`SendInputInputSynthesizer.cs`, `UiaInspector.cs`, `WindowsGraphicsCaptureScreenCapturer.cs`, `NamedPipeDaemonApprovalChannel.cs`). Full loop on real hardware = **Wave 4 item 1** (G4). | Wave 4 item 1 |
-| 25 | Browser tool service (Playwright driver/lifecycle, browser target policy) | `ComputerUse/OpenBurnBarPlaywrightDriver.swift`, `ComputerUse/OpenBurnBarPlaywrightLifecycle.swift`, `OpenBurnBarBrowserToolService.swift`, `OpenBurnBarBrowserTargetPolicy.swift` | **DEFER** | Browser-driven computer-use is not in the Wave 4 G4 scope (SendInput/UIA/WGC/ViGEm loop is). Named v1.1 deferral. | Bundle drift D14 |
+| 25 | Browser tool service (Playwright driver/lifecycle, browser target policy) | `ComputerUse/OpenBurnBarPlaywrightDriver.swift`, `ComputerUse/OpenBurnBarPlaywrightLifecycle.swift`, `OpenBurnBarBrowserToolService.swift`, `OpenBurnBarBrowserTargetPolicy.swift` | **SUB-DONE** (managed browser lifecycle) | WPD-0009 fired the F2 revive trigger. The Windows app packages the reviewed Playwright bridge, composes its shell-free process lifecycle through the central child-process policy, exposes an explicit browser-runtime check, and retains the shared SSRF/DNS-rebinding target policy. | `docs/windows-port/evidence/f2/browser-computer-use-production-composition.md` |
 | 26 | Privileged input execution + virtual HID bridge | `Sources/OpenBurnBarPrivilegedInputExecution/`, `Sources/OpenBurnBarVirtualHIDBridge/` | **SUB-BUILD** | Windows path = ViGEm + the watchdog process, **Wave 4 item 1** (R17/D11). Secure-desktop/lock-screen injection stays the §15.1 v1.1 non-goal (signed driver). | Wave 4 item 1; §15.1 |
 | 27 | Kill-switch watchdog | `Sources/OpenBurnBarPrivilegedInputKillSwitchWatchdog/PrivilegedInputKillSwitchWatchdogMain.swift` | **SUB-DONE** (protocol) / **SUB-BUILD** (process) | Protocol/core landed (`computeruse/OpenBurnBar.ComputerUse.Core/KillSwitch/KillSwitch.cs`, `Watchdog/WatchdogProtocol.cs`); the independent watchdog *process* + signed local kill channel is **Wave 4 item 1** (R17). | Wave 4 item 1 |
 | 28 | Remote access agent (+Core) and privileged-socket red-team probe | `Sources/OpenBurnBarRemoteAccessAgent/`, `Sources/OpenBurnBarRemoteAccessAgentCore/`, `Sources/OpenBurnBarPrivilegedSocketRedTeamProbe/` | **N/A** (as separate v1 processes) | Their duties (input/screen/attestation plumbing) are absorbed by the in-process computer-use adapters; a separate agent process only returns if WS-D demands isolation (trigger 2), at which point the red-team probe pattern is re-authored against named pipes. | Revisit trigger 2 |
@@ -166,14 +168,15 @@ unless prefixed; all Windows paths under `windows/`.
 
 ### Disposition summary
 
-Counting each row by its primary v1 disposition (rows 24 and 27 count as
-SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1):
+Counting each row by its current primary disposition (rows 24 and 27 count as
+SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1; row 25 is
+the WPD-0009 F2 promotion):
 
 | Disposition | Rows | Count |
 |---|---|---|
-| C#-substituted-already (SUB-DONE) | 5, 9, 11, 12, 13, 15, 23, 24, 27 | **9** |
+| C#-substituted-already (SUB-DONE) | 5, 9, 11, 12, 13, 15, 23, 24, 25, 27 | **10** |
 | C#-substitute-to-build (SUB-BUILD) | 26 (Wave 4), 30 (Wave 3), 31 (Wave 3) | **3** |
-| v1.1-deferred (DEFER; Swift-engine-reuse is the revive path for 6, 7, 8, 14) | 1, 2, 3, 4, 6, 7, 8, 14, 16, 18, 19, 20, 21, 22, 25, 29, 32, 33 | **18** |
+| v1.1-deferred (DEFER; Swift-engine-reuse is the revive path for 6, 7, 8, 14) | 1, 2, 3, 4, 6, 7, 8, 14, 16, 18, 19, 20, 21, 22, 29, 32, 33 | **17** |
 | Not-applicable-on-Windows (N/A) | 10, 17, 28, 34 | **4** |
 
 Every SUB-BUILD row is owned by a named remediation-plan wave (Wave 3 item 1;

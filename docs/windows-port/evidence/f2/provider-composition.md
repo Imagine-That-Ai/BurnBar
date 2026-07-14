@@ -35,6 +35,7 @@ the new provider composition, compile before that boundary.
 
 ## Boundary
 
-This closes the local production-selection seam. It does not claim a live
-OpenAI account, billing/quota acceptance, NaturalLanguage/BGE quality parity,
-physical Windows certification, or staging cloud approval.
+This closes the local production-selection seam and matches the macOS
+user-selectable deterministic/OpenAI contract. It does not claim a live OpenAI
+account, billing/quota acceptance, physical Windows certification, or staging
+cloud approval.

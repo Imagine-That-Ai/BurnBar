@@ -16,6 +16,10 @@ namespace OpenBurnBar.ComputerUse.Core.Browser;
 /// </summary>
 public sealed class BrowserComputerUseLifecycle
 {
+    public const int MaxUrlCharacters = 8 * 1024;
+    public const int MaxScripts = 32;
+    public const int MaxScriptCharacters = 256 * 1024;
+
     private readonly IBrowserDriver _driver;
 
     public BrowserComputerUseLifecycle(IBrowserDriver driver)
@@ -31,6 +35,32 @@ public sealed class BrowserComputerUseLifecycle
         if (string.IsNullOrWhiteSpace(request.StartUrl))
         {
             return BrowserSessionResult.Fail("start_url_required");
+        }
+
+        if (request.StartUrl.Length > MaxUrlCharacters)
+        {
+            return BrowserSessionResult.Fail("start_url_too_large");
+        }
+
+        if (request.Scripts is null || request.Scripts.Count > MaxScripts)
+        {
+            return BrowserSessionResult.Fail("scripts_too_many");
+        }
+
+        int scriptCharacters = 0;
+        foreach (string? script in request.Scripts)
+        {
+            if (string.IsNullOrWhiteSpace(script))
+            {
+                return BrowserSessionResult.Fail("script_required");
+            }
+
+            if (script.Length > MaxScriptCharacters - scriptCharacters)
+            {
+                return BrowserSessionResult.Fail("scripts_too_large");
+            }
+
+            scriptCharacters += script.Length;
         }
 
         string sessionId = await _driver.LaunchAsync(request, cancellationToken).ConfigureAwait(false);
@@ -137,28 +167,41 @@ public sealed class ProcessBrowserDriver : IBrowserDriver
 
     private readonly Dictionary<string, BrowserProcess> _processes = new(StringComparer.Ordinal);
     private readonly object _gate = new();
+    private readonly BrowserProcessLaunchOptions? _launchOptions;
+    private readonly IBrowserProcessLauncher _launcher;
+
+    public ProcessBrowserDriver()
+    {
+        _launcher = SystemBrowserProcessLauncher.Instance;
+    }
+
+    public ProcessBrowserDriver(
+        BrowserProcessLaunchOptions launchOptions,
+        IBrowserProcessLauncher? launcher = null)
+    {
+        _launchOptions = launchOptions ?? throw new ArgumentNullException(nameof(launchOptions));
+        _launcher = launcher ?? SystemBrowserProcessLauncher.Instance;
+    }
 
     public async Task<string> LaunchAsync(BrowserSessionRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
-        string? executable = Environment.GetEnvironmentVariable(ExecutableEnv);
-        if (string.IsNullOrWhiteSpace(executable))
+        BrowserProcessLaunchOptions launchOptions;
+        try
         {
-            string legacyHint = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(LegacyCommandEnv))
-                ? string.Empty
-                : " The legacy shell command is not supported; configure the direct executable instead.";
+            launchOptions = _launchOptions ?? BrowserProcessLaunchOptions.FromEnvironment();
+        }
+        catch (InvalidOperationException error) when (
+            !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(LegacyCommandEnv)))
+        {
             throw new InvalidOperationException(
-                "Browser CU executable is not configured (OPENBURNBAR_BROWSER_CU_EXECUTABLE)." + legacyHint);
+                error.Message + " The legacy shell command is not supported; configure the direct executable instead.",
+                error);
         }
 
         string id = "brp-" + Guid.NewGuid().ToString("N")[..12];
-        ProcessStartInfo psi = CreateStartInfo(
-            executable.Trim(),
-            Environment.GetEnvironmentVariable(ArgumentsEnv));
-
-        Process process = Process.Start(psi)
-            ?? throw new InvalidOperationException("Failed to start browser CU process.");
+        Process process = _launcher.Start(launchOptions);
         var browser = new BrowserProcess(process);
         lock (_gate)
         {
@@ -181,21 +224,10 @@ public sealed class ProcessBrowserDriver : IBrowserDriver
 
     internal static ProcessStartInfo CreateStartInfo(string executable, string? argumentsJson)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = executable,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        foreach (string argument in ParseArguments(argumentsJson))
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        return startInfo;
+        return BrowserProcessLaunchOptions.CreateStartInfo(
+            new BrowserProcessLaunchOptions(
+                executable,
+                BrowserProcessLaunchOptions.ParseArguments(argumentsJson)));
     }
 
     public Task NavigateAsync(string sessionId, string url, CancellationToken cancellationToken)
@@ -241,9 +273,11 @@ public sealed class ProcessBrowserDriver : IBrowserDriver
             return;
         }
 
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
         try
         {
-            await browser.SendAsync(new { op = "close", sessionId }, cancellationToken).ConfigureAwait(false);
+            await browser.SendAsync(new { op = "close", sessionId }, timeout.Token).ConfigureAwait(false);
         }
         catch
         {
@@ -278,39 +312,13 @@ public sealed class ProcessBrowserDriver : IBrowserDriver
         browser.Dispose();
     }
 
-    private static IReadOnlyList<string> ParseArguments(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return Array.Empty<string>();
-        }
-
-        using JsonDocument document = JsonDocument.Parse(json);
-        if (document.RootElement.ValueKind != JsonValueKind.Array)
-        {
-            throw new InvalidOperationException("Browser CU arguments must be a JSON array.");
-        }
-
-        var arguments = new List<string>();
-        foreach (JsonElement element in document.RootElement.EnumerateArray())
-        {
-            if (element.ValueKind != JsonValueKind.String)
-            {
-                throw new InvalidOperationException("Browser CU arguments must contain strings only.");
-            }
-
-            arguments.Add(element.GetString() ?? string.Empty);
-        }
-
-        return arguments;
-    }
-
     private sealed class BrowserProcess : IDisposable
     {
         private const int MaxResponseBytes = 1024 * 1024;
         private readonly Process _process;
         private readonly StreamReader _reader;
         private readonly StreamWriter _writer;
+        private readonly Task _stderrDrain;
         private readonly SemaphoreSlim _gate = new(1, 1);
 
         public BrowserProcess(Process process)
@@ -319,6 +327,7 @@ public sealed class ProcessBrowserDriver : IBrowserDriver
             _reader = process.StandardOutput;
             _writer = process.StandardInput;
             _writer.AutoFlush = true;
+            _stderrDrain = DrainStandardErrorAsync(process.StandardError);
         }
 
         public async Task SendAsync(object command, CancellationToken cancellationToken)
@@ -379,6 +388,24 @@ public sealed class ProcessBrowserDriver : IBrowserDriver
                 _reader.Dispose();
                 _process.Dispose();
                 _gate.Dispose();
+            }
+        }
+
+        private static async Task DrainStandardErrorAsync(StreamReader reader)
+        {
+            try
+            {
+                while (await reader.ReadLineAsync().ConfigureAwait(false) is not null)
+                {
+                    // The bridge's stderr is diagnostic-only. Draining prevents
+                    // a verbose bridge from blocking on a full pipe.
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (IOException)
+            {
             }
         }
 

@@ -162,7 +162,12 @@ unproven host behavior to certification:
   Windows launch/navigate/evaluate/close envelope as well as the existing
   method-based protocol, so the direct driver reaches the real Playwright
   lifecycle rather than only the in-process fallback. SSRF and DNS-rebinding
-  guards remain enforced at the browser route chokepoint.
+  guards remain enforced at the browser route chokepoint. The production app
+  now packages that reviewed bridge, discovers an explicit or pinned
+  Playwright/Chromium runtime, launches it through the central child-process
+  policy, and exposes a persisted, user-initiated settings check with no
+  arbitrary script entry. A live local driver-to-Chromium test passes; the same
+  proof is required on hosted Windows x64 by the full-suite workflow.
 - Project code now has a bounded symbol index with durable metadata-only
   persistence and a file watcher. The index can invoke the existing Rust
   Tree-sitter JSONL parser through a direct process client with Git-blob SHA
@@ -202,10 +207,8 @@ unproven host behavior to certification:
   96-dimensional vectors. Tree-sitter symbol ranges now drive AST-aware chunks;
   bounded line-aware slicing handles gaps and oversized symbols. Chunk offsets
   and vectors are persisted without source text, and semantic results read
-  source only for an explicit context request. Full macOS
-  NaturalLanguage/provider-backed embedding quality remains an explicit
-  follow-on. The shared service keeps visible symbols and companion operations
-  on one encrypted durable checkpoint.
+  source only for an explicit context request. The shared service keeps visible
+  symbols and companion operations on one encrypted durable checkpoint.
 - App startup always composes the router, companion CLI, and durable run journal,
   while opening the HTTP listener only when the resolved Model Proxy setting is
   enabled. The settings leaf restarts the shared local runtime as one operation so
@@ -243,8 +246,12 @@ unproven host behavior to certification:
   HTTP client. The Windows app now selects that provider from persisted embedding
   settings and a protected provider secret, carries its model-derived
   version/dimension identity into the durable project-code store, and falls back
-  deterministically when it is not configured. NaturalLanguage/BGE quality and
-  live account/quota acceptance remain separate evidence gates.
+  deterministically when it is not configured. This matches the macOS
+  user-selectable index contract: deterministic local embeddings or OpenAI with
+  the same three models. macOS BGE explicitly reports unavailable because no
+  model is bundled, while its NaturalLanguage implementation is a separate
+  memory fallback rather than a selectable index provider. Live OpenAI
+  account/quota acceptance remains a staging evidence gate.
 - The memory-extraction network seam now has a bounded OpenAI-compatible and
   Ollama HTTP implementation. It preserves the macOS request/response contracts,
   structured content handling, GPT-5.5/OpenRouter hints, status-based cooldowns,
@@ -286,18 +293,19 @@ unproven host behavior to certification:
   repository's primary C#, JavaScript, Rust, Swift, Python, TypeScript, and TSX
   files, Java/Kotlin/Go, and the remaining macOS inventory grammars for
   C/C++/Objective-C, JSON, Markdown, and YAML. The dedicated Windows x64/ARM64
-  MSVC workflow now smoke-tests each grammar; its first green Windows run and a
-  live Windows LSP host remain separate evidence gates, so this does not yet
-  promote the full parser row to F2 completion. The inventory still uses bounded
-  lexical fallback only when a parser is unavailable.
+  MSVC workflow now smoke-tests each grammar. Hosted run 29299426836 passed its
+  x64 tests/smoke and ARM64 build, closing the WPD-0003 parser-host gate. The
+  inventory still uses bounded lexical fallback only when a parser is
+  unavailable.
 - The project-code presentation layer now has a bounded shell-free JSON-RPC
   language-server client. It performs initialize/open/document-symbol or
   references/shutdown lifecycle exchange, correlates framed responses, confines
   returned paths, and emits `exact_lsp` evidence only for the current source
   blob. App startup composes this client from an explicit JSON command map and
-  falls back to the bundled Tree-sitter parser when an LSP is unavailable. The
-  configured production language-server inventory and per-language host
-  coverage remain external deployment/evidence gates.
+  falls back to the bundled Tree-sitter parser when an LSP is unavailable. LSP
+  support is additional precision beyond the macOS selectable parser contract;
+  a configured language-server inventory remains optional deployment evidence,
+  not a blocker for the bundled Tree-sitter F2 parser row.
 - The Windows General settings page now persists its time range, usage mode,
   refresh cadence, indexing and auto-summary toggles, embedding provider/model,
   and protected OpenAI key through one normalized settings model. The prior
@@ -326,13 +334,14 @@ unproven host behavior to certification:
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 41/41 managed-agent-runtime tests), CloudSync (61/61), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
-Computer Use, bridge-policy, and provider-boundary tests. They are an
-implementation increment, not a claim that
-the F2 workstreams are all complete: full macOS semantic/provider embedding
-quality evidence, live LSP host evidence, production composition of every F2 service,
-physical Computer Use/media safety, and host evidence still remain. The
-ledger's 48/48 `Real` result is the scoped F1 source/product gate; WPD-0009
-continues to define F2 True 1:1 as the actual 100% parity endpoint.
+Computer Use (114 passed plus a separately executed live Chromium test),
+settings (175/175), configuration (39/39), distribution (98/98), bridge-policy,
+and provider-boundary tests. They are an implementation increment, not a claim
+that the F2 workstreams are all complete: production composition of the
+remaining F2 services, including the local Mission DAG path, physical Computer
+Use/media safety, and host evidence still remain. The ledger's 48/48 `Real`
+result is the scoped F1 source/product gate; WPD-0009 continues to define F2
+True 1:1 as the actual 100% parity endpoint.
 
 The exact implementation commit also passed [PR Windows Fast Gate
 29299426816](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29299426816)
@@ -542,9 +551,10 @@ and release acceptance fixtures between Swift and C#.
 
 The audit's F1 implementation plan is complete under the repository's scoped
 ledger. F2 True 1:1 remains an active program under WPD-0009; the 2026-07-13
-implementation slice advances gateway, durable runs/missions, browser safety,
-project symbols, Elder Wand journaling, and the companion CLI, but does not
-close every F2 production-composition or host-evidence requirement.
+implementation slice advances gateway, durable runs/missions, production
+Browser Computer Use composition, project symbols, Elder Wand journaling, and
+the companion CLI, but does not close every F2 production-composition or
+host-evidence requirement.
 The x64/ARM64 build, signing/provenance, hosted x64 registration, ARM64 UTM
 foundation, and corrected signed-runtime gates are proven. The corrected x64
 and ARM64 packages each passed clean-install and reinstall 20-second responsive

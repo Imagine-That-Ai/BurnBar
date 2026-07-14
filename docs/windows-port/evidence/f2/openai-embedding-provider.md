@@ -38,4 +38,6 @@ oversized-input rejection without contacting a real provider.
 
 This closes the OpenAI transport and local protected-secret/settings selection
 seam. It does not claim live account credentials, provider billing/quotas,
-NaturalLanguage/BGE parity, or physical release certification.
+or physical release certification. The selectable provider/model contract itself
+matches macOS; macOS BGE is intentionally unavailable and NaturalLanguage is a
+separate memory fallback.

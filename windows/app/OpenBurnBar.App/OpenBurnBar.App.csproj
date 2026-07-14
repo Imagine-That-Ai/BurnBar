@@ -179,6 +179,7 @@
     <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.ManagedAgentRuntime/OpenBurnBar.App.ManagedAgentRuntime.csproj" />
+    <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Core/OpenBurnBar.ComputerUse.Core.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj" />
     <ProjectReference Include="../../cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck.Windows/OpenBurnBar.CloudSync.AppCheck.Windows.csproj" />
     <ProjectReference Include="../../packaging/updater/OpenBurnBar.Updater.Windows/OpenBurnBar.Updater.Windows.csproj" />
@@ -259,6 +260,10 @@
     <Content Include="..\..\packaging\updater\feed\pinned-update-key.pub"
              Link="Resources\Updates\pinned-update-key.pub"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\OpenBurnBarDaemon\Resources\PlaywrightBridge\openburnbar-playwright-bridge.js"
+             Link="Resources\PlaywrightBridge\openburnbar-playwright-bridge.js"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

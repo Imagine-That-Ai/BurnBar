@@ -28,7 +28,8 @@ public sealed partial class SettingsViewModelHostPage : Page
     {
         "CopyEndpoint", "SubmitEmail", "ClearError", "UpgradeToPremium", "SignOut",
         "DeleteAccount", "TriggerBackup", "Summon", "StartSession", "StopSession",
-        "RefreshReadiness", "SaveDraft", "CancelDraft", "NewDraft",
+        "RefreshReadiness", "RunBrowserCheck", "ValidateChain", "ExportArchive", "Notarize",
+        "CompletePermissionsSetup", "SaveDraft", "CancelDraft", "NewDraft",
     };
 
     private object? _viewModel;
@@ -196,7 +197,17 @@ public sealed partial class SettingsViewModelHostPage : Page
 
     private void AddCommandButton(object viewModel, MethodInfo method, object?[] arguments, string label)
     {
-        var button = new Button { Content = label, HorizontalAlignment = HorizontalAlignment.Left };
+        PropertyInfo? canExecute = viewModel.GetType().GetProperty(
+            "Can" + method.Name,
+            BindingFlags.Instance | BindingFlags.Public);
+        bool isEnabled = canExecute?.PropertyType != typeof(bool)
+            || canExecute.GetValue(viewModel) is true;
+        var button = new Button
+        {
+            Content = label,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            IsEnabled = isEnabled,
+        };
         AutomationProperties.SetName(button, label);
         button.Click += async (_, _) => await InvokeCommandAsync(viewModel, method, arguments, button);
         DynamicControls.Children.Add(button);
@@ -507,6 +518,14 @@ public sealed partial class SettingsViewModelHostPage : Page
         try
         {
             object? result = await Task.Run(() => method.Invoke(viewModel, arguments));
+            if (result is Task task)
+            {
+                await task;
+                Type taskType = task.GetType();
+                result = taskType.IsGenericType
+                    ? taskType.GetProperty("Result")?.GetValue(task)
+                    : null;
+            }
             if (result is bool success && !success)
             {
                 ShowError("The action could not complete. Check the account or capability status above.");

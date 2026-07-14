@@ -107,8 +107,8 @@ The exact current branch now has authoritative Windows x64 compile and automated
 test evidence for the adaptive XAML and code-behind. It is not a Windows UI
 interaction claim. A signed installed build must still exercise choose, persist,
 restart, unavailable, clear, keyboard, Narrator, high-contrast, and DPI behavior;
-the current Project Code increment also needs an ARM64 compile before those host
-gates can be promoted. Live language-server availability, learned macOS
-NaturalLanguage/BGE embedding quality, physical performance, staging cloud,
-advanced Computer Use/media safety, and Store/update certification remain
-separate gates.
+host gates can be promoted. Hosted Windows Full run 29299426779 supplies the
+ARM64 compile/test boundary. A configured language-server inventory is optional
+precision beyond the bundled parser, and the selectable deterministic/OpenAI
+embedding contract matches macOS. Physical performance, staging cloud, advanced
+Computer Use/media safety, and Store/update certification remain separate gates.

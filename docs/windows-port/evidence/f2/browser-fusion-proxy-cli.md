@@ -2,8 +2,9 @@
 
 **What this proves:** Remaining F2 workstreams ship production cores:
 
-1. **Browser CU:** BrowserComputerUseLifecycle with IBrowserDriver (InProcess + Process
-   Playwright command env) — launch/navigate/evaluate/close fail-closed.
+1. **Browser CU:** the core proof here is superseded by
+   `browser-computer-use-production-composition.md`, which covers the packaged
+   bridge, production app composition, settings UX, and live Chromium lifecycle.
 2. **Elder Wand fusion:** ElderWandFusionOrchestrator tool loop with max-step budget
    and terminal/fail-closed outcomes.
 3. **Model proxy router:** ModelProxyRouter selects healthy routes, degrades across

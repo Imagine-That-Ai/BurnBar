@@ -5,9 +5,8 @@ using Xunit;
 namespace OpenBurnBar.App.Settings.ViewModels.Tests;
 
 /// <summary>
-/// Locks the Engine Room tab's substitution matrix to WPD-0006
-/// (docs/windows-port/decisions/0006-windows-daemon-strategy.md). If the decision doc's
-/// matrix changes, these assertions must be updated in the same PR — that is the point.
+/// Locks the Engine Room tab's substitution matrix to WPD-0006 plus workstreams
+/// promoted by WPD-0009. If either decision changes, these assertions move with it.
 /// </summary>
 public sealed class DaemonSubstitutionMatrixTests
 {
@@ -23,11 +22,11 @@ public sealed class DaemonSubstitutionMatrixTests
     }
 
     [Fact]
-    public void PrimaryDispositionCounts_MatchTheWpd0006Summary()
+    public void PrimaryDispositionCounts_MatchTheCurrentDecisionSummary()
     {
-        Assert.Equal(9, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
+        Assert.Equal(10, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
         Assert.Equal(3, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
-        Assert.Equal(18, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
+        Assert.Equal(17, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
         Assert.Equal(4, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.NotApplicable));
 
         // Published constants agree with the live count.
@@ -52,7 +51,7 @@ public sealed class DaemonSubstitutionMatrixTests
     }
 
     [Theory]
-    // The exact rows named in the WPD-0006 "Disposition summary" for each disposition.
+    // WPD-0006 dispositions plus the WPD-0009 row 25 promotion.
     [InlineData(5, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(9, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(11, DaemonSubstitutionDisposition.SubstitutedAlready)]
@@ -61,6 +60,7 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(15, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(23, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(24, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(25, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(27, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(26, DaemonSubstitutionDisposition.SubstituteToBuild)]
     [InlineData(30, DaemonSubstitutionDisposition.SubstituteToBuild)]
@@ -79,13 +79,13 @@ public sealed class DaemonSubstitutionMatrixTests
     }
 
     [Fact]
-    public void DeferredRows_MatchWpd0006Exactly()
+    public void DeferredRows_ExcludePromotedWpd0009Workstreams()
     {
         var deferred = DaemonSubstitutionMatrix.RowsWith(DaemonSubstitutionDisposition.Deferred)
             .Select(r => r.Number)
             .OrderBy(n => n)
             .ToArray();
-        Assert.Equal(new[] { 1, 2, 3, 4, 6, 7, 8, 14, 16, 18, 19, 20, 21, 22, 25, 29, 32, 33 }, deferred);
+        Assert.Equal(new[] { 1, 2, 3, 4, 6, 7, 8, 14, 16, 18, 19, 20, 21, 22, 29, 32, 33 }, deferred);
     }
 
     [Fact]

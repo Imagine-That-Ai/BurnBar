@@ -69,8 +69,10 @@ companion managed-runtime suite covers the new operation routing.
 
 ## Boundary
 
-This evidence promotes the Windows watcher + durable metadata-store, parser-backed
-AST chunking, bounded semantic-index trigger, and local provider selection. It
-does not claim full macOS NaturalLanguage/BGE quality, live LSP-host evidence,
-physical Windows performance/accessibility, staging cloud flows, advanced
-Computer Use/media safety, or Store/update certification.
+This evidence promotes the Windows watcher + durable metadata-store,
+parser-backed AST chunking, bounded semantic-index trigger, and local provider
+selection. The selectable deterministic/OpenAI contract matches macOS; macOS
+BGE is unbundled and NaturalLanguage is a separate memory fallback. It does not
+claim physical Windows performance/accessibility, live provider acceptance,
+staging cloud flows, advanced Computer Use/media safety, or Store/update
+certification.

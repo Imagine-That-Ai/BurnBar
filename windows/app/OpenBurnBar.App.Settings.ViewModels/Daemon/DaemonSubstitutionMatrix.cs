@@ -114,9 +114,9 @@ public static class DaemonSubstitutionMatrix
             "Core substituted: OpenBurnBar.ComputerUse.Core (Capability/Gate/Scope/Audit, ~100 tests) + Windows adapters. Full loop on real hardware = Wave 4 item 1 (G4).",
             "Wave 4 item 1", RemainderDisposition: D.SubstituteToBuild, Qualifier: "core"),
         new(25, "Browser tool service (Playwright driver/lifecycle, browser target policy)",
-            D.Deferred,
-            "Browser-driven computer-use is not in the Wave 4 G4 scope (SendInput/UIA/WGC/ViGEm loop is). Named v1.1 deferral.",
-            "Bundle drift D14"),
+            D.SubstitutedAlready,
+            "The Windows app composes the packaged Playwright bridge through the direct-process lifecycle, exposes an explicit browser-runtime check, and retains the shared SSRF/DNS-rebinding target policy.",
+            "F2 browser host evidence", Qualifier: "managed browser lifecycle"),
         new(26, "Privileged input execution + virtual HID bridge",
             D.SubstituteToBuild,
             "Windows path = ViGEm + the watchdog process, Wave 4 item 1 (R17/D11). Secure-desktop/lock-screen injection stays the §15.1 v1.1 non-goal (signed driver).",
@@ -158,16 +158,16 @@ public static class DaemonSubstitutionMatrix
     /// <summary>The 34 capability rows in WPD-0006 order.</summary>
     public static IReadOnlyList<DaemonSubstitutionRow> Rows => MatrixRows;
 
-    // ── WPD-0006 "Disposition summary" figures (the doc's own totals) ─────────
+    // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
-    /// <summary>SUB-DONE count from the doc's summary (rows 5, 9, 11, 12, 13, 15, 23, 24, 27).</summary>
-    public const int SubstitutedAlreadyCount = 9;
+    /// <summary>SUB-DONE count from the current summary (including promoted row 25).</summary>
+    public const int SubstitutedAlreadyCount = 10;
 
     /// <summary>SUB-BUILD count from the doc's summary (rows 26, 30, 31).</summary>
     public const int SubstituteToBuildCount = 3;
 
-    /// <summary>DEFER count from the doc's summary (18 rows).</summary>
-    public const int DeferredCount = 18;
+    /// <summary>DEFER count from the current summary.</summary>
+    public const int DeferredCount = 17;
 
     /// <summary>N/A count from the doc's summary (rows 10, 17, 28, 34).</summary>
     public const int NotApplicableCount = 4;

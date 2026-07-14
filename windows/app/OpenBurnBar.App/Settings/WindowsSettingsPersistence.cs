@@ -141,7 +141,9 @@ internal static class WindowsSettingsComposition
         SettingsTab.ComputerUse => new ComputerUseSettingsViewModel(
             WindowsAccessibilityProbe.Instance,
             new FileComputerUseAuditService(ComputerUseAuditRoot()),
-            new ComputerUsePermissionsStore(Persistence)),
+            new ComputerUsePermissionsStore(Persistence),
+            new ComputerUseBrowserSettingsStore(Persistence),
+            new WindowsBrowserComputerUseService()),
         SettingsTab.Pets => new PetsSettingsViewModel(store: new PetStore(Persistence)),
         SettingsTab.Account => new AccountSettingsViewModel(
             new OAuthAccountSessionGate(OAuth.Value),
@@ -343,6 +345,16 @@ internal static class WindowsSettingsComposition
         {
             get => persistence.Read("computerUse.onboardingCompleted", false);
             set => persistence.Write("computerUse.onboardingCompleted", value);
+        }
+    }
+
+    private sealed class ComputerUseBrowserSettingsStore(WindowsSettingsPersistence persistence)
+        : IComputerUseBrowserSettingsStore
+    {
+        public string BrowserCheckUrl
+        {
+            get => persistence.Read("computerUse.browserCheckUrl", "https://example.com");
+            set => persistence.Write("computerUse.browserCheckUrl", value);
         }
     }
 

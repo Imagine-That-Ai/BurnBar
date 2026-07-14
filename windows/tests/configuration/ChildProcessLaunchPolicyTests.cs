@@ -19,6 +19,7 @@ public sealed class ChildProcessLaunchPolicyTests
             "chat.conpty-cli",
             "chat.direct-cli",
             "cloud.oauth-browser",
+            "computer-use.playwright-bridge",
             "data.swift-engine-interim",
             "project-code.language-server",
             "project-code.static-parser",

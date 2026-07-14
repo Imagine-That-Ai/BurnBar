@@ -697,12 +697,17 @@ rows:
   macos_capability: f2-browser-computer-use
   windows_capability: f2-browser-computer-use
   evidence:
-  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  - docs/windows-port/evidence/f2/browser-computer-use-production-composition.md
   tests:
   - windows/tests/computeruse/BrowserLifecycleTests.cs
+  - windows/tests/configuration/WindowsBrowserComputerUseServiceTests.cs
+  - windows/tests/settings/OpenBurnBar.App.Settings.ViewModels.Tests/ComputerUseSettingsViewModelTests.cs
+  - windows/tests/dist/PlaywrightBridgePackagingTests.cs
   blocking_paths:
   - windows/computeruse/OpenBurnBar.ComputerUse.Core/Browser/BrowserComputerUseLifecycle.cs
-  notes: F2 production core Real.
+  - windows/app/OpenBurnBar.App.Configuration/WindowsBrowserComputerUseService.cs
+  - windows/app/OpenBurnBar.App/Settings/WindowsSettingsPersistence.cs
+  notes: F2 managed Playwright lifecycle is production-composed; physical safety certification remains independent.
 - id: f2-elder-wand-fusion
   status: Real
   owner_lane: f2

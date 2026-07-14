@@ -28,6 +28,7 @@ public static class ChildProcessLaunchPolicy
             new ChildProcessLaunchReview("chat.direct-cli", ChildProcessProfile.Chat, "ChatProcessRunner", false),
             new ChildProcessLaunchReview("chat.conpty-cli", ChildProcessProfile.Chat, "ConPtyCliStream", false),
             new ChildProcessLaunchReview("cloud.oauth-browser", ChildProcessProfile.BrowserActivation, "SystemBrowserLauncher", true),
+            new ChildProcessLaunchReview("computer-use.playwright-bridge", ChildProcessProfile.ComputerUse, "WindowsBrowserComputerUseService", false),
             new ChildProcessLaunchReview("data.swift-engine-interim", ChildProcessProfile.ReleaseTool, "SwiftEngineInterim", false),
             new ChildProcessLaunchReview("project-code.language-server", ChildProcessProfile.ProjectTool, "LanguageServerProjectCodeParserClient", false),
             new ChildProcessLaunchReview("project-code.static-parser", ChildProcessProfile.ProjectTool, "JsonLinesProjectCodeStaticParserClient", false),
