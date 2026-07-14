@@ -625,7 +625,7 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
         }
         source += "while IFS= read -r command; do\n"
         if let requestCaptureURL {
-            source += "  printf '%s' \(shellQuote(requestCaptureURL.path)) > \(shellQuote(requestCaptureURL.path))\n"
+            source += "  printf '%s' \"$command\" > \(shellQuote(requestCaptureURL.path))\n"
         }
         source += "  case \"$command\" in\n"
         if let expansionResponse {

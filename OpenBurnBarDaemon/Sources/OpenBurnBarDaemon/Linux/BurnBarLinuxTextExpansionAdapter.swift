@@ -497,6 +497,10 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         }
 
         private func terminateProcess(timeoutMillis: Int) {
+            // Closing stdin first releases an engine blocked in its protocol
+            // read. Otherwise teardown can wait for a process that is waiting
+            // on the very pipe we only close after termination.
+            input.closeFile()
             if process.isRunning {
                 process.terminate()
                 let deadline = Date().addingTimeInterval(Double(max(1, timeoutMillis)) / 1_000)
@@ -508,7 +512,6 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
                     process.waitUntilExit()
                 }
             }
-            input.closeFile()
             _ = output.readDataToEndOfFile()
             _ = error.readDataToEndOfFile()
         }
@@ -1167,7 +1170,7 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
             guard descriptor.revents & readable != 0 else { continue }
 
             let remaining = min(512, maxHandshakeBytes + 1 - data.count)
-            let chunk = try handle.read(upToCount: remaining) ?? Data()
+            let chunk = readAvailable(from: handle, maximumBytes: remaining)
             if chunk.isEmpty { return data }
             data.append(chunk)
             if let newline = data.firstIndex(of: 0x0A) {
@@ -1210,7 +1213,7 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
 
             let remaining = min(512, maxExpansionBytes + 1 - data.count)
             guard remaining > 0 else { throw ExpansionWaitError.responseTooLarge }
-            let chunk = try handle.read(upToCount: remaining) ?? Data()
+            let chunk = readAvailable(from: handle, maximumBytes: remaining)
             if chunk.isEmpty { throw ExpansionWaitError.closed }
             data.append(chunk)
             if let newline = data.firstIndex(of: 0x0A) {
@@ -1228,6 +1231,7 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         output: Pipe,
         error: Pipe
     ) {
+        input.fileHandleForWriting.closeFile()
         if process.isRunning {
             process.terminate()
             usleep(20_000)
@@ -1236,9 +1240,28 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
                 process.waitUntilExit()
             }
         }
-        input.fileHandleForWriting.closeFile()
         _ = output.fileHandleForReading.readDataToEndOfFile()
         _ = error.fileHandleForReading.readDataToEndOfFile()
+    }
+
+    /// `FileHandle.read(upToCount:)` is allowed to wait for more data on
+    /// Linux even after `poll(2)` has reported a readable pipe. The engine
+    /// protocol is JSONL, so one POSIX read is the correct bounded operation:
+    /// consume what is available and let the caller wait for the next line.
+    private static func readAvailable(from handle: FileHandle, maximumBytes: Int) -> Data {
+        guard maximumBytes > 0 else { return Data() }
+        var buffer = [UInt8](repeating: 0, count: maximumBytes)
+        while true {
+            let count = buffer.withUnsafeMutableBytes { bytes -> Int in
+                guard let baseAddress = bytes.baseAddress else { return 0 }
+                return Glibc.read(handle.fileDescriptor, baseAddress, maximumBytes)
+            }
+            if count >= 0 {
+                return Data(buffer.prefix(count))
+            }
+            if errno == EINTR { continue }
+            return Data()
+        }
     }
 
     private func sessionType() -> SessionType {
