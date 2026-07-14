@@ -13,6 +13,7 @@ using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Projects;
 using OpenBurnBar.App.AgentRuns;
 using OpenBurnBar.App.Settings.Winui;
+using OpenBurnBar.App.Settings.ViewModels;
 using ProjectCodeMemoryService = OpenBurnBar.App.Presentation.Projects.ProjectCodeMemoryService;
 
 namespace OpenBurnBar.App;
