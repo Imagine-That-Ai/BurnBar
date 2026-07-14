@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { captureP40PrivacyProof } from './capture-p40-privacy-proof.mjs';
+import { main as finalizeProductFeatureProofClosure } from './finalize-product-feature-proof-closure.mjs';
+import { validateProductRequirement } from './product-validators/P-40.mjs';
 import {
   P40_DEFAULT_RETENTION_RULES,
   P40_PROOF_FILENAME,
@@ -215,7 +217,8 @@ test('P-40 capture fails closed for stale heads and missing installed evidence',
   }
 });
 
-test('P-40 independently rejects an installed privacy proof with a substituted retention contract', () => {
+test('P-40 independently rejects an installed privacy proof with a substituted retention contract', async () => {
+  await assert.rejects(() => validateProductRequirement({}), /requirement release closure/u);
   const value = capture();
   try {
     const snapshot = proofSnapshot(value);
@@ -257,6 +260,7 @@ test('P-40 live session contract rejects fixture mode and unsafe retention bound
 });
 
 test('P-40 materializer selects the candidate-bound installed privacy proof', () => {
+  assert.throws(() => finalizeProductFeatureProofClosure([]), /--requirement is required/u);
   const registry = JSON.parse(fs.readFileSync('docs/linux-port/product-feature-proof-registry.json', 'utf8'));
   const contract = registry.requirements.find((entry) => entry.requirementId === 'P-40');
   assert.deepEqual(contract?.artifacts, [{
