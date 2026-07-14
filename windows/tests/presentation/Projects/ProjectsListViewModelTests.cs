@@ -12,12 +12,12 @@ namespace OpenBurnBar.App.Presentation.Tests.Projects;
 public sealed class ProjectsListViewModelTests
 {
     [Fact]
-    public async Task LoadAsync_EmptySource_IsHonestEmpty_WithWpdDisclosure()
+    public async Task LoadAsync_EmptySource_IsHonestEmpty_WithFolderSelectionState()
     {
         var vm = new ProjectsListViewModel(new FakeSessionSource(Array.Empty<SessionLogRecord>()));
         await vm.LoadAsync();
         Assert.True(vm.IsEmpty);
-        Assert.Contains("WPD-0003", vm.DepthDisclosure, StringComparison.Ordinal);
+        Assert.Contains("Choose a project folder", vm.DepthDisclosure, StringComparison.Ordinal);
         Assert.Contains("No project groups", vm.Status, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -59,10 +59,10 @@ public sealed class ProjectsListViewModelTests
                     true)));
 
             using var index = new ProjectCodeSymbolIndex(root);
+            using var service = new ProjectCodeMemoryService(index, parser);
             var vm = new ProjectsListViewModel(
                 new FakeSessionSource(Array.Empty<SessionLogRecord>()),
-                index,
-                parser);
+                service);
             await vm.LoadAsync();
             Assert.Contains(vm.CodeSymbols, symbol => symbol.Name == "Runner");
             Assert.Contains("Tree-sitter", vm.DepthDisclosure, StringComparison.Ordinal);

@@ -40,29 +40,9 @@ public static class ProjectCodeLexicalScanner
         }
 
         var files = new List<string>();
-        try
+        foreach (string path in ProjectCodeFileEnumerator.EnumerateCodeFiles(rootDirectory, maxFiles))
         {
-            foreach (string path in Directory.EnumerateFiles(rootDirectory, "*", SearchOption.AllDirectories))
-            {
-                if (!IsCodeFile(path))
-                {
-                    continue;
-                }
-
-                files.Add(path);
-                if (files.Count >= maxFiles)
-                {
-                    break;
-                }
-            }
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return ProjectCodeInventory.Empty(rootDirectory);
-        }
-        catch (IOException)
-        {
-            return ProjectCodeInventory.Empty(rootDirectory);
+            files.Add(path);
         }
 
         var byExt = files

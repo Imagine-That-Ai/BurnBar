@@ -45,9 +45,14 @@ chunk/vector index. It does not persist source text.
 - The app composes the store by default at
   `%LOCALAPPDATA%\\OpenBurnBar\\project-code-memory.sqlite`; deployments can
   override it with `OPENBURNBAR_PROJECT_MEMORY_PATH`.
-- The Projects page uses the same encrypted store when it creates its bounded
-  symbol index, so the visible project surface and companion service share the
-  durable checkpoint rather than maintaining separate JSON-only indexes.
+- The Projects page persists a user-selected folder and consumes the app-owned
+  `ProjectCodeMemoryService`, so the visible surface and companion operations
+  share one encrypted checkpoint rather than maintaining a page-local index.
+  JSON fallback metadata is keyed by the selected root and stored under
+  `%LOCALAPPDATA%\OpenBurnBar\ProjectCode\indexes`, outside the repository.
+- The lexical inventory, symbol pass, and durable artifact pass share a
+  deterministic traversal that skips file and directory reparse points. A
+  nested junction cannot redirect indexing outside the selected workspace.
 
 ## Validation
 
@@ -55,7 +60,7 @@ chunk/vector index. It does not persist source text.
 dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj --no-restore
 ```
 
-Result: **765 passed, 0 failed, 0 skipped** in the full presentation suite.
+Result: **778 passed, 0 failed, 0 skipped** in the full presentation suite.
 
 The durable-store test proves two-file artifact/index persistence, lexical
 reference and call-edge persistence, bounded call-graph traversal, checkpoint

@@ -39,6 +39,11 @@ parser launches are present in the reviewed inventory and that no raw process
 launch bypass remains under `windows/app`. App startup now composes the same
 selection from `OPENBURNBAR_CODE_LSP_COMMANDS` when configured.
 
+The project root itself is no longer environment-only: the Projects page owns a
+persisted Windows folder-picker selection and shares the resulting long-lived
+service with the companion plane. `OPENBURNBAR_CODE_LSP_COMMANDS` remains an
+explicit language-server deployment map, not the workspace-selection path.
+
 ## Boundary
 
 This closes the Windows JSON-RPC LSP adapter and app-selection seam. It does

@@ -165,11 +165,7 @@ public sealed class ProjectCodeMemoryService : IDisposable
             throw new ArgumentException("A valid project file path is required.", nameof(filePath), error);
         }
 
-        string rootPrefix = Root.EndsWith(Path.DirectorySeparatorChar)
-            ? Root
-            : Root + Path.DirectorySeparatorChar;
-        if (!fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
-            || !File.Exists(fullPath))
+        if (!ProjectCodeFileEnumerator.IsSafeFileWithinRoot(Root, fullPath))
         {
             throw new ArgumentException("The file path must identify a file inside the project root.", nameof(filePath));
         }
@@ -281,11 +277,7 @@ public sealed class ProjectCodeMemoryService : IDisposable
             return null;
         }
 
-        string rootPrefix = Root.EndsWith(Path.DirectorySeparatorChar)
-            ? Root
-            : Root + Path.DirectorySeparatorChar;
-        if (!fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
-            || !File.Exists(fullPath))
+        if (!ProjectCodeFileEnumerator.IsSafeFileWithinRoot(Root, fullPath))
         {
             return null;
         }

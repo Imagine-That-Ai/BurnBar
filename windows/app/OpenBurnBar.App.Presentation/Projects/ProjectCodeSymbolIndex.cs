@@ -24,12 +24,14 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
     private readonly int _maxFiles;
     private readonly int _maxSymbols;
     private readonly ProjectCodeMemoryStore? _store;
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private IProjectCodeStaticParserClient? _parser;
     private readonly object _gate = new();
     private FileSystemWatcher? _watcher;
     private Timer? _refreshTimer;
     private IReadOnlyList<ProjectCodeSymbol> _symbols = Array.Empty<ProjectCodeSymbol>();
     private ProjectCodeIndexSnapshot? _snapshot;
+    private bool _disposed;
 
     public ProjectCodeSymbolIndex(
         string root,
@@ -70,7 +72,16 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
 
     public string Root => _root;
 
-    public bool IsWatching => _watcher is not null;
+    public bool IsWatching
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _watcher is not null;
+            }
+        }
+    }
 
     public bool HasDurableStore => _store is not null;
 
@@ -96,6 +107,20 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
     }
 
     public ProjectCodeIndexSnapshot Refresh()
+    {
+        _refreshGate.Wait();
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return RefreshCore();
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
+    }
+
+    private ProjectCodeIndexSnapshot RefreshCore()
     {
         if (!Directory.Exists(_root))
         {
@@ -155,95 +180,119 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(parser);
-        _parser = parser;
-        if (!Directory.Exists(_root))
+        await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            SetSymbols(Array.Empty<ProjectCodeSymbol>());
-            return Persist(parserMode: "tree-sitter");
-        }
-
-        var symbols = new List<ProjectCodeSymbol>();
-        bool truncated = false;
-        foreach (string path in EnumerateCodeFiles(_root, _maxFiles))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (symbols.Count >= _maxSymbols)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _parser = parser;
+            if (!Directory.Exists(_root))
             {
-                truncated = true;
-                break;
+                SetSymbols(Array.Empty<ProjectCodeSymbol>());
+                return Persist(parserMode: "tree-sitter");
             }
 
-            string text;
-            try
+            var symbols = new List<ProjectCodeSymbol>();
+            bool truncated = false;
+            int parserAttempts = 0;
+            int parserResponses = 0;
+            foreach (string path in EnumerateCodeFiles(_root, _maxFiles))
             {
-                text = File.ReadAllText(path);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                continue;
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-
-            string language = Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
-            if (!ProjectCodeLexicalScanner.SupportsTreeSitter(path))
-            {
-                AppendLexicalSymbols(path, symbols, _maxSymbols);
+                cancellationToken.ThrowIfCancellationRequested();
                 if (symbols.Count >= _maxSymbols)
                 {
                     truncated = true;
                     break;
                 }
 
-                continue;
-            }
+                string text;
+                try
+                {
+                    text = File.ReadAllText(path);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    continue;
+                }
+                catch (IOException)
+                {
+                    continue;
+                }
 
-            ProjectCodeParseResponse response;
-            try
-            {
-                response = await parser.ParseAsync(
-                    new ProjectCodeParseRequest(
-                        Guid.NewGuid().ToString("N"),
+                string language = Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
+                if (!ProjectCodeLexicalScanner.SupportsTreeSitter(path))
+                {
+                    AppendLexicalSymbols(path, symbols, _maxSymbols);
+                    if (symbols.Count >= _maxSymbols)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    continue;
+                }
+
+                ProjectCodeParseResponse response;
+                parserAttempts++;
+                try
+                {
+                    response = await parser.ParseAsync(
+                        new ProjectCodeParseRequest(
+                            Guid.NewGuid().ToString("N"),
+                            path,
+                            language,
+                            JsonLinesProjectCodeStaticParserClient.ComputeGitBlobSha(text),
+                            text,
+                            _root),
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (ProjectCodeParserException)
+                {
+                    continue;
+                }
+                parserResponses++;
+
+                if (!response.Ok || !response.ShaMatch)
+                {
+                    continue;
+                }
+
+                foreach (ProjectCodeParsedSymbol symbol in response.Symbols)
+                {
+                    if (symbols.Count >= _maxSymbols)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    symbols.Add(new ProjectCodeSymbol(
+                        symbol.Name,
+                        symbol.Kind,
                         path,
-                        language,
-                        JsonLinesProjectCodeStaticParserClient.ComputeGitBlobSha(text),
-                        text,
-                        _root),
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (ProjectCodeParserException)
-            {
-                continue;
-            }
-
-            if (!response.Ok || !response.ShaMatch)
-            {
-                continue;
-            }
-
-            foreach (ProjectCodeParsedSymbol symbol in response.Symbols)
-            {
-                if (symbols.Count >= _maxSymbols)
-                {
-                    truncated = true;
-                    break;
+                        symbol.StartLine,
+                        symbol.ConfidenceTier,
+                        symbol.Parser,
+                        symbol.EndLine));
                 }
-
-                symbols.Add(new ProjectCodeSymbol(
-                    symbol.Name,
-                    symbol.Kind,
-                    path,
-                    symbol.StartLine,
-                    symbol.ConfidenceTier,
-                    symbol.Parser,
-                    symbol.EndLine));
             }
-        }
 
-        SetSymbols(symbols);
-        return Persist(truncated, parserMode: "tree-sitter");
+            if (parserAttempts == 0)
+            {
+                SetSymbols(symbols);
+                return Persist(truncated, parserMode: "lexical");
+            }
+
+            if (parserResponses == 0)
+            {
+                return RefreshCore();
+            }
+
+            SetSymbols(symbols);
+            return Persist(truncated, parserMode: "tree-sitter");
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
     }
 
     public bool TryLoad()
@@ -292,67 +341,66 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
 
     public void StartWatching()
     {
-        if (!Directory.Exists(_root) || _watcher is not null)
+        lock (_gate)
         {
-            return;
-        }
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!Directory.Exists(_root) || _watcher is not null)
+            {
+                return;
+            }
 
-        _watcher = new FileSystemWatcher(_root)
-        {
-            IncludeSubdirectories = true,
-            Filter = "*.*",
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
-            EnableRaisingEvents = true,
-        };
-        _watcher.Created += OnChanged;
-        _watcher.Changed += OnChanged;
-        _watcher.Deleted += OnChanged;
-        _watcher.Renamed += OnRenamed;
+            var watcher = new FileSystemWatcher(_root)
+            {
+                IncludeSubdirectories = true,
+                Filter = "*.*",
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            };
+            try
+            {
+                watcher.Created += OnChanged;
+                watcher.Changed += OnChanged;
+                watcher.Deleted += OnChanged;
+                watcher.Renamed += OnRenamed;
+                watcher.EnableRaisingEvents = true;
+                _watcher = watcher;
+            }
+            catch
+            {
+                watcher.Dispose();
+                throw;
+            }
+        }
     }
 
     public void Dispose()
     {
-        _watcher?.Dispose();
-        _watcher = null;
-        _refreshTimer?.Dispose();
-        _refreshTimer = null;
-        _store?.Dispose();
-    }
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
 
-    private static IEnumerable<string> EnumerateCodeFiles(string root, int maxFiles)
-    {
-        int count = 0;
-        IEnumerable<string> files;
+            _disposed = true;
+            _watcher?.Dispose();
+            _watcher = null;
+            _refreshTimer?.Dispose();
+            _refreshTimer = null;
+        }
+
+        _refreshGate.Wait();
         try
         {
-            files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories);
+            _store?.Dispose();
         }
-        catch (IOException)
+        finally
         {
-            yield break;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            yield break;
-        }
-
-        foreach (string path in files)
-        {
-            if (!IsCodeFile(path))
-            {
-                continue;
-            }
-
-            yield return path;
-            count++;
-            if (count >= maxFiles)
-            {
-                yield break;
-            }
+            _refreshGate.Release();
         }
     }
 
-    private static bool IsCodeFile(string path) => ProjectCodeLexicalScanner.IsCodeFile(path);
+    private static IEnumerable<string> EnumerateCodeFiles(string root, int maxFiles) =>
+        ProjectCodeFileEnumerator.EnumerateCodeFiles(root, maxFiles);
 
     private static void AppendLexicalSymbols(string path, List<ProjectCodeSymbol> symbols, int maxSymbols)
     {
@@ -389,6 +437,11 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
     {
         lock (_gate)
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             _refreshTimer ??= new Timer(_ => _ = RefreshFromWatcherAsync(), null, Timeout.Infinite, Timeout.Infinite);
             _refreshTimer.Change(250, Timeout.Infinite);
         }
@@ -415,6 +468,10 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         catch (ProjectCodeParserException)
         {
             // Keep the last good index when the parser process is unavailable.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Disposal can win a race with an already queued watcher callback.
         }
     }
 

@@ -17,26 +17,23 @@ public sealed record ProjectListItem(string ProjectKey, int SessionCount, string
 
 /// <summary>
 /// IA-4 Projects list from usage/session source plus an optional bounded code
-/// symbol index. Missing parser/root configuration remains an explicit fallback.
+/// symbol service. Missing folder/indexing configuration remains an explicit fallback.
 /// </summary>
 public sealed class ProjectsListViewModel : INotifyPropertyChanged
 {
     private readonly ISessionLogReadSource _source;
-    private readonly ProjectCodeSymbolIndex? _codeIndex;
-    private readonly IProjectCodeStaticParserClient? _parser;
+    private readonly ProjectCodeMemoryService? _codeMemory;
     private string _status = "Loading…";
     private bool _isEmpty = true;
     private string _depthDisclosure =
-        "List-level project grouping only. Configure OPENBURNBAR_PROJECT_ROOT for code symbols.";
+        "Choose a project folder to index code symbols.";
 
     public ProjectsListViewModel(
         ISessionLogReadSource source,
-        ProjectCodeSymbolIndex? codeIndex = null,
-        IProjectCodeStaticParserClient? parser = null)
+        ProjectCodeMemoryService? codeMemory = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
-        _codeIndex = codeIndex;
-        _parser = parser;
+        _codeMemory = codeMemory;
         Projects = new ObservableCollection<ProjectListItem>();
         CodeSymbols = new ObservableCollection<ProjectCodeSymbol>();
     }
@@ -109,7 +106,7 @@ public sealed class ProjectsListViewModel : INotifyPropertyChanged
         IsEmpty = Projects.Count == 0;
         Status = IsEmpty
             ? "No project groups yet. Sessions without a project name appear as “Unassigned” once usage data is connected."
-            : $"{Projects.Count} project group(s) — list-level peer (IA-4).";
+            : $"{Projects.Count} project group(s).";
 
         await LoadCodeSymbolsAsync(cancellationToken);
     }
@@ -117,23 +114,14 @@ public sealed class ProjectsListViewModel : INotifyPropertyChanged
     private async Task LoadCodeSymbolsAsync(CancellationToken cancellationToken)
     {
         CodeSymbols.Clear();
-        if (_codeIndex is null)
+        if (_codeMemory is null)
         {
-            DepthDisclosure =
-                "List-level project grouping only. Configure OPENBURNBAR_PROJECT_ROOT for code symbols (WPD-0003).";
+            DepthDisclosure = "Choose a project folder to index code symbols.";
             return;
         }
 
-        ProjectCodeIndexSnapshot snapshot;
-        if (_parser is not null)
-        {
-            snapshot = await _codeIndex
-                .RefreshWithParserAsync(_parser, cancellationToken);
-        }
-        else
-        {
-            snapshot = await Task.Run(_codeIndex.Refresh, cancellationToken);
-        }
+        ProjectCodeIndexSnapshot snapshot = _codeMemory.Snapshot
+            ?? await _codeMemory.RefreshAsync(cancellationToken).ConfigureAwait(false);
 
         foreach (ProjectCodeSymbol symbol in snapshot.Symbols)
         {
@@ -142,7 +130,8 @@ public sealed class ProjectsListViewModel : INotifyPropertyChanged
 
         DepthDisclosure = snapshot.ParserMode == "tree-sitter"
             ? $"{CodeSymbols.Count} Tree-sitter symbol(s) indexed with blob-integrity checks."
-            : $"{CodeSymbols.Count} lexical symbol(s) indexed. Full Tree-sitter parser is unavailable (WPD-0003 fallback).";
+            : $"{CodeSymbols.Count} lexical symbol(s) indexed. The signed Tree-sitter parser is unavailable."
+                + (snapshot.Truncated ? " The bounded index reached its current limit." : string.Empty);
     }
 
     private static string ProjectKeyFor(SessionLogRecord item)

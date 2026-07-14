@@ -1,6 +1,8 @@
+using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Presentation.Projects;
 using Xunit;
@@ -99,6 +101,56 @@ public sealed class ProjectCodeMemoryServiceTests
             {
                 Directory.Delete(root, recursive: true);
             }
+        }
+    }
+
+    [Fact]
+    public void ContextPack_RejectsPersistedSymbolThatNowTraversesReparsePoint()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-code-link-root-" + Path.GetRandomFileName());
+        string outside = Path.Combine(Path.GetTempPath(), "obb-code-link-outside-" + Path.GetRandomFileName());
+        string link = Path.Combine(root, "Linked.cs");
+        string indexPath = Path.Combine(root, "symbols.json");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(outside);
+        try
+        {
+            string outsideFile = Path.Combine(outside, "Outside.cs");
+            File.WriteAllText(outsideFile, "class EscapedSecret {}");
+            try
+            {
+                File.CreateSymbolicLink(link, outsideFile);
+            }
+            catch (Exception error) when (
+                error is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            var snapshot = new ProjectCodeIndexSnapshot(
+                root,
+                DateTimeOffset.UtcNow,
+                new[] { new ProjectCodeSymbol("EscapedSecret", "class", link, 1) },
+                Truncated: false);
+            File.WriteAllText(indexPath, JsonSerializer.Serialize(snapshot));
+            using var service = new ProjectCodeMemoryService(new ProjectCodeSymbolIndex(root, indexPath));
+            Assert.True(service.TryLoad());
+
+            ProjectCodeContextPack pack = service.BuildContextPack("EscapedSecret");
+
+            Assert.Empty(pack.Context);
+            Assert.Equal(0, pack.WrappedCount);
+            Assert.False(pack.UntrustedContentWrapped);
+        }
+        finally
+        {
+            if (File.Exists(link))
+            {
+                File.Delete(link);
+            }
+
+            Directory.Delete(root, recursive: true);
+            Directory.Delete(outside, recursive: true);
         }
     }
 

@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -36,6 +37,48 @@ public sealed class ProjectCodeLexicalScannerTests
         finally
         {
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Scan_DoesNotTraverseReparsePointDirectory()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-lex-root-" + Path.GetRandomFileName());
+        string outside = Path.Combine(Path.GetTempPath(), "obb-lex-outside-" + Path.GetRandomFileName());
+        string link = Path.Combine(root, "linked-outside");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(outside);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Inside.cs"), "class Inside {}");
+            File.WriteAllText(Path.Combine(outside, "Outside.cs"), "class Outside {}");
+            try
+            {
+                Directory.CreateSymbolicLink(link, outside);
+            }
+            catch (System.Exception error) when (
+                error is IOException or UnauthorizedAccessException or System.PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            ProjectCodeInventory inventory = ProjectCodeLexicalScanner.Scan(root);
+            Assert.Equal(1, inventory.FileCount);
+
+            using var index = new ProjectCodeSymbolIndex(root);
+            ProjectCodeIndexSnapshot snapshot = index.Refresh();
+            Assert.Contains(snapshot.Symbols, symbol => symbol.Name == "Inside");
+            Assert.DoesNotContain(snapshot.Symbols, symbol => symbol.Name == "Outside");
+        }
+        finally
+        {
+            if (Directory.Exists(link))
+            {
+                Directory.Delete(link);
+            }
+
+            Directory.Delete(root, recursive: true);
+            Directory.Delete(outside, recursive: true);
         }
     }
 
@@ -96,6 +139,73 @@ public sealed class ProjectCodeLexicalScannerTests
             Assert.Equal("tree-sitter", snapshot.ParserMode);
             Assert.Contains(index.Symbols, symbol =>
                 symbol.Name == "Runner" && symbol.ConfidenceTier == "static_tree_sitter");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SymbolIndex_FallsBackToLexicalWhenParserProcessIsUnavailable()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-parser-unavailable-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Runner.cs"), "class Runner {}");
+            var parser = new DelegateProjectCodeStaticParserClient((_, _) =>
+                Task.FromException<ProjectCodeParseResponse>(
+                    new ProjectCodeParserException("project_code_parser_unavailable")));
+            using var index = new ProjectCodeSymbolIndex(root);
+
+            ProjectCodeIndexSnapshot snapshot = await index.RefreshWithParserAsync(parser);
+
+            Assert.Equal("lexical", snapshot.ParserMode);
+            Assert.Contains(snapshot.Symbols, symbol => symbol.Name == "Runner" && symbol.Parser == "lexical");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SymbolIndex_DisposeWaitsForParserRefreshAndRejectsNewWork()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-parser-dispose-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Runner.cs"), "class Runner {}");
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var parser = new DelegateProjectCodeStaticParserClient(async (_, _) =>
+            {
+                entered.SetResult();
+                await release.Task;
+                return new ProjectCodeParseResponse(
+                    Ok: true,
+                    HasParseError: false,
+                    Symbols: System.Array.Empty<ProjectCodeParsedSymbol>(),
+                    Errors: System.Array.Empty<string>(),
+                    Parser: "tree-sitter",
+                    ShaMatch: true);
+            });
+            var index = new ProjectCodeSymbolIndex(root);
+
+            Task<ProjectCodeIndexSnapshot> refresh = index.RefreshWithParserAsync(parser);
+            await entered.Task;
+            Task dispose = Task.Run(index.Dispose);
+            await Task.Delay(50);
+            Assert.False(dispose.IsCompleted);
+
+            release.SetResult();
+            await refresh;
+            await dispose;
+
+            Assert.Throws<System.ObjectDisposedException>(() => index.Refresh());
+            Assert.Throws<System.ObjectDisposedException>(index.StartWatching);
         }
         finally
         {

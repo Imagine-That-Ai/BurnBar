@@ -168,9 +168,24 @@ unproven host behavior to certification:
   Tree-sitter JSONL parser through a direct process client with Git-blob SHA
   verification, and the Windows release workflow builds and signs one parser
   executable for each RID before packaging it into portable and MSIX outputs.
-- The app now composes a long-lived `ProjectCodeMemoryService` when a project
-  root is configured. It restores and watches the metadata-only index, refreshes
-  asynchronously with lexical fallback or Tree-sitter parsing, and exposes
+- The Projects page now provides a Windows folder picker for the active Project
+  Code workspace instead of requiring `OPENBURNBAR_PROJECT_ROOT`. The normalized
+  non-secret selection persists across launches, rejects volume roots and
+  reparse-point roots, visibly preserves unavailable folders for recovery, and
+  enables indexing when the user makes an explicit selection. Failed changes
+  restore the prior folder and indexing preference. Environment selection remains
+  only as a non-persisted compatibility override when no user selection exists.
+  Per-root JSON fallback metadata is stored under
+  `%LOCALAPPDATA%\OpenBurnBar\ProjectCode\indexes`, not inside the user's repository.
+- The app composes one long-lived `ProjectCodeMemoryService` for the selected
+  root and shares it between the Projects page and companion operations. A new
+  service must load and complete its initial refresh before an atomic live swap;
+  disposal waits for any parser or watcher refresh, and recursive inventory reads
+  do not cross nested file/directory reparse points. Explicit reference/context
+  reads revalidate the root and every path component against stale links. It
+  restores and watches the
+  metadata-only index, refreshes asynchronously with lexical fallback when the
+  configured parser process is wholly unavailable, and exposes
   bounded `code.index`, `code.search`, `code.symbol`, `code.status`,
   `code.semantic_search`, and `code.context_pack` companion operations without
   persisting source text.
@@ -189,9 +204,8 @@ unproven host behavior to certification:
   and vectors are persisted without source text, and semantic results read
   source only for an explicit context request. Full macOS
   NaturalLanguage/provider-backed embedding quality remains an explicit
-  follow-on. The Projects page composes the same
-  encrypted store, keeping visible symbols and companion operations on one
-  durable checkpoint.
+  follow-on. The shared service keeps visible symbols and companion operations
+  on one encrypted durable checkpoint.
 - App startup always composes the router, companion CLI, and durable run journal,
   while opening the HTTP listener only when the resolved Model Proxy setting is
   enabled. The settings leaf restarts the shared local runtime as one operation so
@@ -311,7 +325,7 @@ unproven host behavior to certification:
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 41/41 managed-agent-runtime tests), CloudSync (61/61), connector
-(99/99), presentation (770/770), General settings (146/146), storage (18/18),
+(99/99), presentation (778/778), General settings (166/166), storage (18/18),
 Computer Use, bridge-policy, and provider-boundary tests. They are an
 implementation increment, not a claim that
 the F2 workstreams are all complete: full macOS semantic/provider embedding

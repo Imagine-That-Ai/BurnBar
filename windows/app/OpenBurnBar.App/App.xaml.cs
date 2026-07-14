@@ -12,6 +12,7 @@ using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
+using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Settings.ViewModels;
 using OpenBurnBar.App.Storage;
@@ -40,6 +41,7 @@ public partial class App : Application
 {
     private readonly GlobalHotkeyService _hotkey = new();
     private readonly SemaphoreSlim _localRuntimeRestartGate = new(1, 1);
+    private readonly SemaphoreSlim _projectCodeMemoryGate = new(1, 1);
 
     private AppStatePersistence? _state;
     private ThemeService? _theme;
@@ -73,6 +75,62 @@ public partial class App : Application
         _gatewayComposition is null
             ? Array.Empty<ElderWandProviderGroup>()
             : ElderWandGatewayCatalogProjection.Groups(_gatewayComposition.Router.Routes);
+
+    internal nint MainWindowHandle => _mainWindow is null
+        ? nint.Zero
+        : WindowChrome.GetHandle(_mainWindow);
+
+    internal ProjectCodeMemoryService? ProjectCodeMemory =>
+        Volatile.Read(ref _projectCodeMemory);
+
+    internal async Task<ProjectCodeMemoryService?> ReconfigureProjectCodeMemoryAsync()
+    {
+        ProjectCodeMemoryService? replacement = null;
+        try
+        {
+            replacement = CreateProjectCodeMemoryService();
+            if (replacement is not null)
+            {
+                replacement.TryLoad();
+                await replacement.RefreshAsync().ConfigureAwait(false);
+                replacement.StartWatching();
+            }
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                replacement?.Dispose();
+            }
+            catch (Exception disposeError)
+            {
+                AppDiagnostics.LogException("project-code-memory.dispose-replacement", disposeError);
+            }
+            AppDiagnostics.LogException("project-code-memory.reconfigure", ex);
+            throw new InvalidOperationException("The selected code folder could not be indexed.", ex);
+        }
+
+        await _projectCodeMemoryGate.WaitAsync();
+        try
+        {
+            ProjectCodeMemoryService? previous = Volatile.Read(ref _projectCodeMemory);
+            Volatile.Write(ref _projectCodeMemory, replacement);
+            try
+            {
+                previous?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                AppDiagnostics.LogException("project-code-memory.dispose-previous", ex);
+            }
+        }
+        finally
+        {
+            _projectCodeMemoryGate.Release();
+        }
+
+        return replacement;
+    }
 
     internal async Task RestartLocalGatewayAsync()
     {
@@ -421,12 +479,26 @@ public partial class App : Application
             _fusion = new ElderWandFusionOrchestrator(
                 ExecuteFusionToolAsync,
                 new JsonLinesFusionRunJournal(fusionJournalPath));
-            _projectCodeMemory = CreateProjectCodeMemoryService();
-            if (_projectCodeMemory is not null)
+            if (Volatile.Read(ref _projectCodeMemory) is null)
             {
-                _projectCodeMemory.TryLoad();
-                _projectCodeMemory.StartWatching();
-                _ = RefreshProjectCodeMemoryAsync(_projectCodeMemory);
+                ProjectCodeMemoryService? projectCodeMemory = CreateProjectCodeMemoryService();
+                if (projectCodeMemory is not null)
+                {
+                    projectCodeMemory.TryLoad();
+                    projectCodeMemory.StartWatching();
+                    ProjectCodeMemoryService? concurrent = Interlocked.CompareExchange(
+                        ref _projectCodeMemory,
+                        projectCodeMemory,
+                        null);
+                    if (concurrent is null)
+                    {
+                        _ = RefreshProjectCodeMemoryAsync(projectCodeMemory);
+                    }
+                    else
+                    {
+                        projectCodeMemory.Dispose();
+                    }
+                }
             }
             var router = new CompanionCliCommandRouter(
                 _gatewayComposition?.Router,
@@ -445,8 +517,6 @@ public partial class App : Application
             _companionCli = null;
             _headlessRuns = null;
             _fusion = null;
-            _projectCodeMemory?.Dispose();
-            _projectCodeMemory = null;
         }
     }
 
@@ -459,9 +529,33 @@ public partial class App : Application
             return null;
         }
 
-        string? projectRoot = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_ROOT");
-        if (string.IsNullOrWhiteSpace(projectRoot) || !Directory.Exists(projectRoot))
+        ProjectCodeRootSettingsViewModel rootSettings =
+            WindowsSettingsComposition.CreateProjectCodeRootSettingsViewModel();
+        string? projectRoot = rootSettings.IsAvailable ? rootSettings.RootPath : null;
+        if (projectRoot is null && !rootSettings.IsConfigured)
         {
+            string? legacyRoot = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_ROOT");
+            if (!string.IsNullOrWhiteSpace(legacyRoot))
+            {
+                try
+                {
+                    var legacySettings = new ProjectCodeRootSettingsViewModel();
+                    legacySettings.SelectRoot(legacyRoot);
+                    projectRoot = legacySettings.RootPath;
+                    AppDiagnostics.LogEvent("project-code-memory.root", "legacy_environment_override");
+                }
+                catch (ArgumentException ex)
+                {
+                    AppDiagnostics.LogException("project-code-memory.root", ex);
+                }
+            }
+        }
+
+        if (projectRoot is null)
+        {
+            AppDiagnostics.LogEvent(
+                "project-code-memory",
+                rootSettings.IsConfigured ? "selected_root_unavailable" : "root_not_selected");
             return null;
         }
 
@@ -483,7 +577,8 @@ public partial class App : Application
         IProjectCodeStaticParserClient? parser = lspParser is not null && treeSitterParser is not null
             ? new FallbackProjectCodeStaticParserClient(lspParser, treeSitterParser)
             : lspParser ?? treeSitterParser;
-        string? indexPath = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_INDEX_PATH");
+        string indexPath = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_INDEX_PATH")
+            ?? WindowsProjectCodePaths.IndexPathForRoot(projectRoot);
         ProjectCodeMemoryStore? store = null;
         try
         {
@@ -583,59 +678,67 @@ public partial class App : Application
 
     private async Task<object?> HandleProjectCodeAsync(JsonElement request, CancellationToken cancellationToken)
     {
-        ProjectCodeMemoryService? service = _projectCodeMemory;
-        if (service is null)
+        await _projectCodeMemoryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            throw new InvalidOperationException("project_code_unavailable");
-        }
+            ProjectCodeMemoryService? service = Volatile.Read(ref _projectCodeMemory);
+            if (service is null)
+            {
+                throw new InvalidOperationException("project_code_unavailable");
+            }
 
-        string op = request.TryGetProperty("op", out JsonElement opElement)
-            ? opElement.GetString() ?? string.Empty
-            : string.Empty;
-        switch (op)
-        {
-            case "code.index":
-                return ToProjectCodeStatus(await service.RefreshAsync(cancellationToken).ConfigureAwait(false), service);
-            case "code.search":
-                return new
-                {
-                    query = RequiredString(request, "query"),
-                    hits = service.Search(
-                        RequiredString(request, "query"),
-                        OptionalBoundedInt(request, "limit", 50, 1, 100)),
-                };
-            case "code.symbol":
-                return new
-                {
-                    name = RequiredString(request, "name"),
-                    symbols = service.FindSymbol(
+            string op = request.TryGetProperty("op", out JsonElement opElement)
+                ? opElement.GetString() ?? string.Empty
+                : string.Empty;
+            switch (op)
+            {
+                case "code.index":
+                    return ToProjectCodeStatus(await service.RefreshAsync(cancellationToken).ConfigureAwait(false), service);
+                case "code.search":
+                    return new
+                    {
+                        query = RequiredString(request, "query"),
+                        hits = service.Search(
+                            RequiredString(request, "query"),
+                            OptionalBoundedInt(request, "limit", 50, 1, 100)),
+                    };
+                case "code.symbol":
+                    return new
+                    {
+                        name = RequiredString(request, "name"),
+                        symbols = service.FindSymbol(
+                            RequiredString(request, "name"),
+                            OptionalBoundedInt(request, "limit", 50, 1, 100)),
+                    };
+                case "code.references":
+                    return await service.FindReferencesAsync(
+                        RequiredString(request, "filePath"),
+                        OptionalBoundedInt(request, "line", 1, 1, 1_000_000),
+                        OptionalBoundedInt(request, "character", 0, 0, 1_000_000),
+                        cancellationToken).ConfigureAwait(false);
+                case "code.call_graph":
+                    return service.ReadCallGraph(
                         RequiredString(request, "name"),
-                        OptionalBoundedInt(request, "limit", 50, 1, 100)),
-                };
-            case "code.references":
-                return await service.FindReferencesAsync(
-                    RequiredString(request, "filePath"),
-                    OptionalBoundedInt(request, "line", 1, 1, 1_000_000),
-                    OptionalBoundedInt(request, "character", 0, 0, 1_000_000),
-                    cancellationToken).ConfigureAwait(false);
-            case "code.call_graph":
-                return service.ReadCallGraph(
-                    RequiredString(request, "name"),
-                    OptionalBoundedInt(request, "limit", 200, 1, 200),
-                    OptionalBoundedInt(request, "depth", 1, 1, 3));
-            case "code.semantic_search":
-                return service.ReadSemanticSearch(
-                    RequiredString(request, "query"),
-                    OptionalBoundedInt(request, "limit", 20, 1, 100));
-            case "code.context_pack":
-                return service.BuildContextPack(
-                    RequiredString(request, "query"),
-                    OptionalBoundedInt(request, "limit", 10, 1, ProjectCodeMemoryService.MaxContextPackHits),
-                    OptionalBoundedInt(request, "maxBytes", 24_000, 1, ProjectCodeMemoryService.MaxContextPackBytes));
-            case "code.status":
-                return ToProjectCodeStatus(service.Snapshot, service);
-            default:
-                throw new ArgumentException("Unknown project-code operation.", nameof(request));
+                        OptionalBoundedInt(request, "limit", 200, 1, 200),
+                        OptionalBoundedInt(request, "depth", 1, 1, 3));
+                case "code.semantic_search":
+                    return service.ReadSemanticSearch(
+                        RequiredString(request, "query"),
+                        OptionalBoundedInt(request, "limit", 20, 1, 100));
+                case "code.context_pack":
+                    return service.BuildContextPack(
+                        RequiredString(request, "query"),
+                        OptionalBoundedInt(request, "limit", 10, 1, ProjectCodeMemoryService.MaxContextPackHits),
+                        OptionalBoundedInt(request, "maxBytes", 24_000, 1, ProjectCodeMemoryService.MaxContextPackBytes));
+                case "code.status":
+                    return ToProjectCodeStatus(service.Snapshot, service);
+                default:
+                    throw new ArgumentException("Unknown project-code operation.", nameof(request));
+            }
+        }
+        finally
+        {
+            _projectCodeMemoryGate.Release();
         }
     }
 
@@ -908,8 +1011,17 @@ public partial class App : Application
         }
         _headlessRuns = null;
         _fusion = null;
-        _projectCodeMemory?.Dispose();
-        _projectCodeMemory = null;
+        await _projectCodeMemoryGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            ProjectCodeMemoryService? projectCodeMemory = Volatile.Read(ref _projectCodeMemory);
+            Volatile.Write(ref _projectCodeMemory, null);
+            projectCodeMemory?.Dispose();
+        }
+        finally
+        {
+            _projectCodeMemoryGate.Release();
+        }
         _gatewayComposition?.Dispose();
         _gatewayComposition = null;
         _localAccessToken = null;

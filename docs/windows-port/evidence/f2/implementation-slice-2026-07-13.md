@@ -130,3 +130,27 @@ app-boundary build compiled all 26 referenced
 managed projects before reaching the expected Windows-only XAML compiler
 boundary. Exact scope and residual host/staging claims are recorded in
 `docs/windows-port/evidence/f2/model-proxy-settings-live-catalog.md`.
+
+## Persisted Project Code workspace continuation
+
+The Projects page now owns a persisted Windows folder-picker selection instead
+of reading `OPENBURNBAR_PROJECT_ROOT`. Selecting a folder explicitly enables
+indexing and atomically prepares a replacement `ProjectCodeMemoryService`; a
+failed initial refresh restores the previous folder and indexing preference.
+The page and companion operations consume that one app-owned service. Per-root
+JSON fallback metadata moves out of the selected repository and into a hashed
+path below `%LOCALAPPDATA%\OpenBurnBar\ProjectCode\indexes`.
+
+Refresh and disposal are serialized across direct, parser-backed, and watcher
+paths. A wholly unavailable parser process falls back to the lexical index, and
+the lexical inventory, symbol pass, and durable-store artifact pass all skip
+file/directory reparse points so nested junctions cannot escape the selected
+workspace. The focused root controls adapt for narrow layouts and surface
+selection, unavailable, applying, success, and error states.
+
+The superseding local runs are **778/778** for presentation and **166/166** for
+settings view models. Formatting checks and `xmllint` pass. The app build again
+compiled all referenced managed assemblies before the expected macOS inability
+to execute Windows `XamlCompiler.exe`; Windows-host XAML/render interaction
+evidence remains required. Exact scope and commands are recorded in
+`docs/windows-port/evidence/f2/project-code-root-selection.md`.

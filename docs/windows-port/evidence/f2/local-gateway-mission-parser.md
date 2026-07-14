@@ -9,5 +9,7 @@ a real filesystem root (empty inventory when missing).
 windows/tests/presentation/MissionControl/MissionLocalExecutorTests.cs,
 windows/tests/presentation/Projects/ProjectCodeLexicalScannerTests.cs.
 
-**Depth residual:** full AST static analyzer, browser Playwright CU, and Elder Wand
-fusion remain deeper F2 workstreams beyond these production cores.
+**Historical boundary:** this foundational core evidence is superseded for
+project-code depth by `project-code-memory-store.md`,
+`live-lsp-parser-client.md`, and `project-code-root-selection.md`. Browser host
+proof and physical Computer Use safety remain external gates.

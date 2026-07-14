@@ -116,6 +116,15 @@ internal static class WindowsSettingsComposition
         return GatewayCompositionFactory.Create(store.Load(), store.ReadCredential);
     }
 
+    public static ProjectCodeRootSettingsViewModel CreateProjectCodeRootSettingsViewModel() =>
+        new(new WindowsProjectCodeRootStore(Persistence));
+
+    public static ProjectCodeRootSettingsSnapshot LoadProjectCodeRootSettings() =>
+        new WindowsProjectCodeRootStore(Persistence).Load();
+
+    public static void SaveProjectCodeRootSettings(ProjectCodeRootSettingsSnapshot settings) =>
+        new WindowsProjectCodeRootStore(Persistence).Save(settings);
+
     public static object? Create(SettingsTab tab) => tab switch
     {
         SettingsTab.Daemon => new OpenBurnBar.App.Settings.ViewModels.Daemon.DaemonSettingsViewModel(),

@@ -1204,36 +1204,7 @@ public sealed class ProjectCodeMemoryStore : IDisposable
             : DateTimeOffset.MinValue;
 
     private static IEnumerable<string> EnumerateCodeFiles(string root, int maxFiles)
-    {
-        int count = 0;
-        IEnumerable<string> files;
-        try
-        {
-            files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories);
-        }
-        catch (IOException)
-        {
-            yield break;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            yield break;
-        }
-
-        foreach (string path in files)
-        {
-            if (!ProjectCodeLexicalScanner.IsCodeFile(path))
-            {
-                continue;
-            }
-
-            yield return path;
-            if (++count >= maxFiles)
-            {
-                yield break;
-            }
-        }
-    }
+        => ProjectCodeFileEnumerator.EnumerateCodeFiles(root, maxFiles);
 
     private static FileReadResult ReadFile(string path)
     {
