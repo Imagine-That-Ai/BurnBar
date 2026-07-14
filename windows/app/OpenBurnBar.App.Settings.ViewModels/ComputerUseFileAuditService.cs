@@ -343,7 +343,7 @@ public sealed class FileComputerUseAuditService : IComputerUseAuditService
                 throw new InvalidDataException("Screenshot uses a reparse point.");
             }
 
-            yield return Path.Combine("screenshots", Path.GetFileName(path));
+            yield return "screenshots/" + Path.GetFileName(path);
         }
     }
 

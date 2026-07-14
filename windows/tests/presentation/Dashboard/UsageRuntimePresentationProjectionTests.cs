@@ -11,7 +11,7 @@ public sealed class UsageRuntimePresentationProjectionTests
     [Fact]
     public void Dashboard_projection_applies_selected_window_without_all_time_fallback()
     {
-        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset now = LocalNoon();
         UsageRuntimeState state = State(
             Usage("active", "Codex", "active-session", now.AddDays(-2), 1.25, 2_000),
             Usage("old", "Claude", "old-session", now.AddDays(-10), 99, 90_000));
@@ -33,7 +33,7 @@ public sealed class UsageRuntimePresentationProjectionTests
     [Fact]
     public void Dashboard_projection_switches_visible_metrics_and_ranking_to_tokens()
     {
-        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset now = LocalNoon();
         UsageRuntimeState state = State(
             Usage("tokens", "Codex", "session-a", now.AddHours(-2), 0.01, 20_000),
             Usage("cost", "Claude", "session-b", now.AddHours(-1), 20, 100));
@@ -53,7 +53,7 @@ public sealed class UsageRuntimePresentationProjectionTests
     [Fact]
     public void Flyout_projection_uses_selected_window_for_sessions_and_providers()
     {
-        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset now = LocalNoon();
         UsageRuntimeState state = State(
             Usage("current", "Codex", "session-a", now.AddHours(-2), 1, 1_000),
             Usage("old", "Claude", "session-b", now.AddDays(-45), 3, 3_000));
@@ -98,6 +98,8 @@ public sealed class UsageRuntimePresentationProjectionTests
         DateTimeOffset.Now,
         null,
         "Ready");
+
+    private static DateTimeOffset LocalNoon() => new(DateTime.Today.AddHours(12));
 
     private static UsageEngineRecord Usage(
         string id,
