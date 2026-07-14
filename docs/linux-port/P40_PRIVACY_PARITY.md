@@ -2,11 +2,11 @@
 
 This slice closes the Linux settings gap where consent flags were displayed as
 read-only values even though the daemon already exposes the typed
-`daemon.config.update` contract. It also adds a deliberately narrow daemon-owned
-local deletion contract: the UI can inventory, preview, and delete only the
-proxy-route log and encrypted text-expansion store after an exact confirmation.
-Account erasure, full-data export, retention, and recovery-key workflows remain
-unavailable and are not implied by this local action.
+`daemon.config.update` contract. It also adds deliberately narrow daemon-owned
+local deletion and export contracts: the UI can inventory, preview, delete, and
+export only the proxy-route log and encrypted text-expansion store. Account
+erasure, full transcript/account export, retention, and recovery-key workflows
+remain unavailable and are not implied by these local actions.
 
 ## Delivered
 
@@ -28,13 +28,20 @@ unavailable and are not implied by this local action.
   Settings surface shows store state/bytes, requires scope selection and
   confirmation, refreshes inventory after success, and preserves an explicit
   unavailable state when the packaged bridge lacks the contract.
+- `7c8a214ce6` and `825e081bda` add selected-scope encrypted export. The daemon
+  reads only the fixed allowlist, rejects unsafe paths/owners/permissions,
+  bounds payload and bundle size, seals the payload with PBKDF2-HMAC-SHA256
+  (100,000 iterations) plus AES-GCM authenticated headers, writes owner-only
+  output, and returns only typed metadata. The renderer clears the passphrase
+  after the request and never persists it.
 - The current daemon response may omit path/status envelope fields; the store
   preserves the already-loaded daemon facts until an explicit config refresh,
   while consent/provider fields come from the returned canonical snapshot.
-- Full-data export, account erasure, retention, and recovery/retention are
-  presented as unavailable capability states. The existing redacted support
-  diagnostics export remains linked separately. The local deletion control does
-  not touch transcripts, credentials, account data, or arbitrary files.
+- Full transcript/account export, account erasure, retention, and recovery-key
+  workflows remain unavailable capability states. The existing redacted
+  support diagnostics export remains linked separately. The local deletion and
+  export controls do not touch transcripts, credentials, account data, or
+  arbitrary files.
 
 ## Validation
 
@@ -49,9 +56,9 @@ npm run build
 ```
 
 The final PR also records Rust formatting/tests and the production bundle
-verifier. Live GNOME Keyring/KWallet behavior, account deletion, recovery
-receipts, and multi-device propagation remain environment/backend work and are
-not claimed by this slice.
+verifier. Live GNOME Keyring/KWallet behavior, native save-picker behavior,
+account deletion, retention enforcement, recovery receipts, and multi-device
+propagation remain environment/backend work and are not claimed by this slice.
 
 ## Follow-up contract
 
@@ -61,8 +68,9 @@ daemon RPCs with explicit scope and policy before changing this UI:
 1. Extend the existing local preview/execute pattern to account deletion only
    after backend erasure authority, audit receipts, retry/partial-failure
    handling, and offline behavior are specified.
-2. Export selected scopes with native save destination, encryption policy, and
-   import/restore validation.
+2. Extend the selected-scope export with a native save destination, import/
+   restore validation, and a full transcript/account scope only after those
+   data contracts are explicitly approved.
 3. Define retention expiry and recovery-key custody, including locked keyring
    and cross-device propagation states.
 

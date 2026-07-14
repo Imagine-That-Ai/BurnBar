@@ -65,9 +65,13 @@ AES-GCM sealed storage, native Secret Service/KWallet custody, consent RPC, and
 in-app-only Composer expansion (`227d7e3c49`, `46aa7f3c91`, `6cc09bc2c0`,
 `930125a53e`, `83ef8e8edf`, `09860849c7`). These improve source parity without
 changing the 0/40 product or 0/7 environment certification state. The current
-source commit is `ffc0c58cd9`; focused changed-surface UI/bridge tests and the
-isolated pet/text-expansion suites are green, while the broad Vitest run remains
-a non-gating host-contention signal until it can run on a quiet Linux host.
+source commit is `825e081bda`; it adds a daemon-owned `daemon.usage.insights`
+local-rules response with bounded citations, selected-scope encrypted privacy
+export, and independent per-binding native shortcut health. Focused
+changed-surface UI/bridge tests, Core privacy crypto tests, the macOS daemon
+product build, and the Tauri Rust suite are green; the daemon XCTest bundle
+builds but cannot launch on this host because the existing SQLCipher.framework
+runtime packaging is absent.
 After the code stack is review-clean, rerun
 the strict ledger on the exact candidate and collect the installed GNOME
 X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
@@ -93,7 +97,8 @@ The integration branch now includes the next bounded source slices:
   resume; uploaded attachment bytes remain process-lived.
 - `b3002ab3f9`: account-scoped persisted Insights selection/density, validated
   evidence IDs, bounded audit disclosure, and typed qualitative-unavailable
-  state when no Linux RPC exists.
+  state when no Linux RPC exists; `825e081bda` adds the daemon-owned
+  qualitative response and renderer mapping.
 - `d191a1be5f`: typed database recovery status/actions, candidate-key and
   integrity proof, explicit missing-database/device-transfer guidance, and
   fail-closed Tauri controls.
@@ -107,6 +112,16 @@ The integration branch now includes the next bounded source slices:
 - `274f67fba0`: bounded, signed external IBus/Fcitx engine registration with
   explicit opt-in, owner/path/permission/session checks, and secure-field
   fail-closed policy.
+- `a5571694bb`: independent per-binding native shortcut registration with
+  typed X11/Wayland/unknown backend health; one failed dashboard grab no longer
+  suppresses the Computer Use panic bindings, and unsupported Wayland/unknown
+  hosts remain fail-closed.
+- `7c8a214ce6` and `825e081bda`: selected-scope encrypted local privacy export
+  using an authenticated PBKDF2-HMAC-SHA256/AES-GCM envelope, bounded daemon
+  path/owner/permission/race checks, typed Settings/Tauri wiring, and a
+  daemon-owned `daemon.usage.insights` local-rules qualitative response with
+  bounded usage rows/citations. Full account/transcript export, retention,
+  backend erasure, and installed Linux receipts remain separate gates.
 - `ea82fe5140`: bounded Wayland/XDG RemoteDesktop capability probing with
   typed consent/denial/timeout/cancellation states and an X11-only Tauri pet
   companion window with explicit click-through control.
@@ -201,14 +216,14 @@ commits remain separately inspectable in the branch history:
 | 2 | Activity body replay and resume | Existing indexed activity search/detail RPCs, canonical `run.resume`, bounded transcript decoder | Body replay is daemon-backed, size-bounded, untrusted-rendered, and honest on missing/offline/error; native resume carries the persisted briefing without launching a process; providers without validated native resume use the same-harness handoff; plaintext legacy SQLite remains readable under SQLCipher builds; Swift 4/4 and frontend/Rust contracts pass | Full-history export, source resolution, resume-from-export, and installed provider/runtime proof remain open |
 | 3 | Encrypted project database snapshot/restore | Project-code SQLite store, SQLCipher codec/key custody, watcher lifecycle, canonical RPC generator | Snapshot rejects traversal/symlinks/unsafe ownership, active-db overwrite, and >512 MiB; checkpoints WAL, writes owner-only temporary files, hashes content, atomically installs; restore validates integrity, stops/reopens watchers, and rolls back on failure; bridge/Rust contract suites pass | This is same-key encrypted snapshot recovery only. Key-loss/device-transfer recovery and installed proof remain open |
 | 4 | macOS-compatible database recovery bundle | Existing SQLCipher key custody, Swift Crypto, daemon RPC/canon, Database surface | v1 bundle uses exact salt16/PBKDF2-HMAC-SHA256 100k/AES-GCM combined format; parser bounds bundle/version/iterations/key length; export/import uses owner-only 0600 atomic files, candidate-key verification, and native Secret Service/KWallet custody hooks; passphrases never enter renderer persistence; source/build tests pass | Live Linux keyring round-trip, key-loss/device transfer, recovery UX for missing stores, and installed proof remain open |
-| 5 | Native notification actions and shortcut status | Tauri shell, freedesktop notify-rust capability probe, tray event bridge, existing shortcut registry | Typed notification IDs/actions/routes are bounded and validated; unsupported hosts report degraded state; action opens only allowlisted routes; global shortcut status is visible and additive to existing chords; Rust/TS tests pass | Live GNOME/KDE/wlroots D-Bus receipts, desktop persistence, and accessibility/manual proof remain open |
+| 5 | Native notification actions and shortcut status | Tauri shell, freedesktop notify-rust capability probe, tray event bridge, existing shortcut registry | Typed notification IDs/actions/routes are bounded and validated; unsupported hosts report degraded state; action opens only allowlisted routes; independent per-binding shortcut status is visible and additive to existing chords; Rust/TS tests pass | Live GNOME/KDE/wlroots D-Bus receipts, desktop persistence, and accessibility/manual proof remain open |
 | 6 | Activity replay/resume hardening | Existing indexed activity RPCs, canonical run.resume, bounded transcript decoder | Body replay is daemon-backed, size-bounded, untrusted-rendered, and honest on missing/offline/error; native resume carries persisted briefing without launching a process; provider-safe fallback and plaintext legacy SQLite readability are tested | Full-history export, source resolution, resume-from-export, and installed provider/runtime proof remain open |
 | 7 | Chat citations and tool approvals | Existing chat thread/gateway contracts, approval.respond, citation source identity | Bounded citation metadata is normalized with thread/message validation and source-unavailable fail-closed behavior; daemon-issued approval IDs route approve/reject/cancel with single-flight terminal state; focused chat tests pass | Unloaded-history export/resume, pop-out, remaining backends, and installed reconnect/offline evidence remain open |
 | 8 | SmartHub command safety | Existing typed CLI bridge and capability probe | Allowlisted discovery/status/test/cast/device/parity operations validate request IDs and bounded JSON, drain output concurrently, time out at 8 seconds, support cancellation, and expose degraded renderer state; focused TS/Rust tests pass | Real devices, Avahi/DBus, auth, offline/reconnect, and desktop matrix remain open |
 | 9 | Daemon-owned text expansion | Existing text expansion surface/Composer, daemon RPC canon, native secret custodian | AES-GCM sealed snapshot with native Secret Service/KWallet key custody, owner-only permissions, consent RPC, in-app-only expansion, no renderer localStorage/global capture, and corruption/missing-key fail-closed tests | Linux keyring runtime, IBus/Fcitx external integration, secure-field exclusions, sync/conflict policy, and Wayland/X11 evidence remain open |
 | 10 | Signed text-engine lifecycle | Slice 9 storage/consent boundary, signed engine manifest, daemon RPC canon, Tauri bridge | Registration remains owner/path/permission/session checked; typed status/start/stop RPCs enforce consent, exact executable/session binding, bounded handshake timeout, restricted environment, kill-switch cancellation, and no keyboard/clipboard/surrounding-text capture; Swift/bridge tests pass | Linux Secret Service/KWallet, real IBus/Fcitx engine execution, secure-field matrix, and installed receipt remain open |
 | 11 | Wayland Computer Use portal session and executor | Existing Computer Use authority/kill-switch boundary, `org.freedesktop.portal.RemoteDesktop` | Create/select/start/stop consent flow returns typed active/denied/timed-out/cancelled/unavailable state; `bf0eb36294` dispatches only through a consented RemoteDesktop session using typed `Notify*` methods for pointer/key/shortcut/type/scroll/drag, validates session handles, never claims libei/uinput support, and enforces timeout/cancel/kill-switch teardown | Linux GNOME/KDE/wlroots portal receipts, compositor-specific behavior, and installed input execution remain open |
-| 12 | Mission Control replay and privacy deletion | Existing project journal/checkpoint and daemon-owned local-data stores, RPC canon, Settings wiring | Projection checkpoint/tail mismatch rebuilds without resurrecting deleted IDs; local privacy inventory exposes metadata only; preview tokens expire and bind owner/perms/fingerprints; exact confirmation performs idempotent allowlisted unlink and returns a typed receipt; no account/transcript/credential deletion claim; Swift/Rust/bridge/Settings tests pass | Installed restart/crash replay, locked keyring, account erasure/full export/retention/recovery policy, and Linux runtime proof remain open |
+| 12 | Mission Control replay and privacy deletion/export | Existing project journal/checkpoint and daemon-owned local-data stores, RPC canon, Settings wiring, bounded export crypto | Projection checkpoint/tail mismatch rebuilds without resurrecting deleted IDs; local privacy inventory exposes metadata only; preview tokens expire and bind owner/perms/fingerprints; exact confirmation performs idempotent allowlisted unlink and returns a typed receipt; selected local stores can be exported through an authenticated PBKDF2/AES-GCM envelope with owner-only bounded output; no account/transcript/credential deletion claim; Swift/Rust/bridge/Settings tests pass | Installed restart/crash replay, locked keyring, account erasure/full export/retention/recovery policy, native save-picker, and Linux runtime proof remain open |
 | 13 | Mission Control health/history authority | Existing mission projection, packet/result/burn/takeover snapshots, RPC canon and Missions UI | `bd9d6a5173` adds `daemon.mission.health` request/response contracts, authoritative health derivation, stable chronological history IDs, active/failed counters, Tauri mapping, store loading/error states, and detail/history rendering; missing missions fail closed; Core/daemon/bridge/UI tests pass | Installed daemon restart/reconnect, active/failed/terminal scenarios, and exact-candidate receipt remain open |
 
 Recommended engineering order after these source slices is: (a) land and
