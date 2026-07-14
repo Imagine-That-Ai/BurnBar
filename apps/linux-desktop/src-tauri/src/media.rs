@@ -21,10 +21,26 @@ pub struct MediaViewer {
     inner: Arc<Mutex<MediaViewerInner>>,
 }
 
-#[derive(Default)]
 struct MediaViewerInner {
     received_frames: u64,
     open: bool,
+    #[cfg(feature = "media-gst")]
+    decoder: Option<openburnbar_media::DecodePipeline>,
+    #[cfg(feature = "media-gst")]
+    awaiting_keyframe: bool,
+}
+
+impl Default for MediaViewerInner {
+    fn default() -> Self {
+        Self {
+            received_frames: 0,
+            open: false,
+            #[cfg(feature = "media-gst")]
+            decoder: None,
+            #[cfg(feature = "media-gst")]
+            awaiting_keyframe: true,
+        }
+    }
 }
 
 impl MediaViewer {
@@ -42,15 +58,37 @@ impl MediaViewer {
         if inner.open {
             return;
         }
-        inner.open = true;
-        let _ = app.emit(
-            "media-viewer-ready",
-            serde_json::json!({
-                "source": if cfg!(feature = "media-gst") { "media-gst" } else { "stub" }
-            }),
-        );
         #[cfg(feature = "media-gst")]
-        gst_viewer::ensure_window();
+        let (decoder, decoder_error) = match openburnbar_media::DecodePipeline::new(
+            "vp9",
+            openburnbar_media::DecodeSinkMode::Auto,
+        ) {
+            Ok(decoder) => (Some(decoder), None),
+            Err(error) => {
+                eprintln!("openburnbar media viewer decoder unavailable: {error}");
+                (None, Some(error.to_string()))
+            }
+        };
+
+        #[cfg(feature = "media-gst")]
+        {
+            inner.decoder = decoder;
+            inner.awaiting_keyframe = true;
+        }
+        inner.open = true;
+        #[cfg(feature = "media-gst")]
+        let ready_payload = serde_json::json!({
+            "source": if cfg!(feature = "media-gst") { "media-gst" } else { "stub" },
+            "available": decoder_error.is_none(),
+            "reason": decoder_error,
+        });
+        #[cfg(not(feature = "media-gst"))]
+        let ready_payload = serde_json::json!({
+            "source": "stub",
+            "available": false,
+            "reason": "Linux media viewer was built without the GStreamer feature.",
+        });
+        let _ = app.emit("media-viewer-ready", ready_payload);
         #[cfg(not(feature = "media-gst"))]
         eprintln!("openburnbar media viewer stub: native GTK viewer window seam opened");
     }
@@ -58,17 +96,51 @@ impl MediaViewer {
     pub fn close_window(&self) {
         if let Ok(mut inner) = self.inner.lock() {
             inner.open = false;
+            #[cfg(feature = "media-gst")]
+            {
+                if let Some(decoder) = inner.decoder.take() {
+                    let _ = decoder.stop();
+                }
+                inner.awaiting_keyframe = true;
+            }
         }
-        #[cfg(feature = "media-gst")]
-        gst_viewer::close_window();
     }
 
     pub fn render_frame(&self, frame: &MediaFrame) {
-        if let Ok(mut inner) = self.inner.lock() {
-            inner.received_frames += 1;
-        }
+        let Ok(mut inner) = self.inner.lock() else {
+            return;
+        };
+        inner.received_frames += 1;
         #[cfg(feature = "media-gst")]
-        gst_viewer::render_frame(frame);
+        {
+            // The daemon currently sends VP9 video NAL frames over this
+            // socket. Ignore future audio/control frames until their native
+            // sinks are wired rather than feeding them to a video decoder.
+            const VIDEO_NAL_KIND: u8 = 0x01;
+            const KEYFRAME_FLAG: u8 = 1 << 0;
+            if !inner.open || frame.kind != VIDEO_NAL_KIND {
+                return;
+            }
+            if inner.awaiting_keyframe && frame.flags & KEYFRAME_FLAG == 0 {
+                return;
+            }
+            let Some(decoder) = inner.decoder.as_ref() else {
+                return;
+            };
+            if let Err(error) = decoder.push_frame(&frame.payload, frame.pts_ms, frame.flags) {
+                eprintln!("openburnbar media viewer decode failed: {error}");
+                let decoder = inner.decoder.take();
+                drop(inner);
+                if let Some(decoder) = decoder {
+                    let _ = decoder.stop();
+                }
+                if let Ok(mut inner) = self.inner.lock() {
+                    inner.awaiting_keyframe = true;
+                }
+                return;
+            }
+            inner.awaiting_keyframe = false;
+        }
         #[cfg(not(feature = "media-gst"))]
         eprintln!(
             "openburnbar media viewer stub: frame kind={} flags={} pts_ms={} bytes={}",
@@ -173,17 +245,61 @@ fn read_frame(stream: &mut UnixStream) -> std::io::Result<MediaFrame> {
     })
 }
 
-#[cfg(feature = "media-gst")]
-mod gst_viewer {
-    use super::MediaFrame;
+#[cfg(test)]
+mod tests {
+    use super::{read_frame, MediaFrame, FRAME_HEADER_BYTES};
+    use std::io::Write;
+    use std::os::unix::net::UnixStream;
 
-    pub fn ensure_window() {
-        let _ = std::any::type_name::<openburnbar_media::MediaFrame<'_>>();
+    fn encode_frame(kind: u8, flags: u8, pts_ms: u64, payload: &[u8]) -> Vec<u8> {
+        let body_len = FRAME_HEADER_BYTES + payload.len();
+        let mut bytes = Vec::with_capacity(4 + body_len);
+        bytes.extend_from_slice(&(body_len as u32).to_be_bytes());
+        bytes.push(kind);
+        bytes.push(flags);
+        bytes.extend_from_slice(&pts_ms.to_be_bytes());
+        bytes.extend_from_slice(payload);
+        bytes
     }
 
-    pub fn close_window() {}
+    #[test]
+    fn read_frame_decodes_shell_envelope() {
+        let (mut writer, mut reader) = UnixStream::pair().expect("socket pair");
+        writer
+            .write_all(&encode_frame(0x01, 0x01, 42, b"vp9"))
+            .expect("write frame");
 
-    pub fn render_frame(_frame: &MediaFrame) {
-        let _ = std::any::type_name::<openburnbar_media::MediaFrame<'_>>();
+        let frame = read_frame(&mut reader).expect("decode frame");
+        assert_eq!(frame.kind, 0x01);
+        assert_eq!(frame.flags, 0x01);
+        assert_eq!(frame.pts_ms, 42);
+        assert_eq!(frame.payload, b"vp9");
+    }
+
+    #[test]
+    fn read_frame_rejects_oversized_envelope_before_allocating_body() {
+        let (mut writer, mut reader) = UnixStream::pair().expect("socket pair");
+        writer
+            .write_all(&(16_u32 * 1024 * 1024 + 1).to_be_bytes())
+            .expect("write length");
+
+        let error = read_frame(&mut reader).expect_err("oversized frame must fail");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "media frame exceeds size limit");
+    }
+
+    #[test]
+    fn media_frame_debug_shape_remains_stable_for_protocol_receipts() {
+        let frame = MediaFrame {
+            kind: 0x01,
+            flags: 0x01,
+            pts_ms: 7,
+            payload: vec![1, 2, 3],
+        };
+        assert_eq!(frame.payload.len(), 3);
+        assert_eq!(
+            format!("{frame:?}"),
+            "MediaFrame { kind: 1, flags: 1, pts_ms: 7, payload: [1, 2, 3] }"
+        );
     }
 }
