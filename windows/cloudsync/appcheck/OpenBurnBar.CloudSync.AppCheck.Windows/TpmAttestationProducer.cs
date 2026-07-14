@@ -30,7 +30,7 @@ namespace OpenBurnBar.CloudSync.AppCheck.Windows;
 public sealed class TpmAttestationProducer : IAttestationProducer
 {
     /// <summary>The persisted TPM attestation key name (stable per install).</summary>
-    public const string DefaultKeyName = "OpenBurnBar.AppCheck.PlatformAttestationKey.v1";
+    public const string DefaultKeyName = "OpenBurnBar.AppCheck.PlatformAttestationKey.v2";
 
     /// <summary>The attestation kind AC-013's server verifier will answer to.</summary>
     public const string TpmKind = "tpm";
@@ -107,6 +107,7 @@ public sealed class TpmAttestationProducer : IAttestationProducer
         var provider = IntPtr.Zero;
         var subjectKey = IntPtr.Zero;
         var nonceBufferPtr = IntPtr.Zero;
+        var pcrMaskBufferPtr = IntPtr.Zero;
         var bufferDescPtr = IntPtr.Zero;
 
         try
@@ -116,25 +117,35 @@ public sealed class TpmAttestationProducer : IAttestationProducer
 
             subjectKey = OpenOrCreateAttestationKey(provider);
 
-            // Bind the nonce as the key-attestation nonce so the resulting claim is
+            // Bind the nonce as the platform-claim nonce so the resulting claim is
             // fresh and single-use (defeats replay of a captured claim).
             var nonceBytes = System.Text.Encoding.UTF8.GetBytes(nonce);
             nonceBufferPtr = Marshal.AllocHGlobal(nonceBytes.Length);
             Marshal.Copy(nonceBytes, 0, nonceBufferPtr, nonceBytes.Length);
+            pcrMaskBufferPtr = Marshal.AllocHGlobal(sizeof(int));
+            Marshal.WriteInt32(pcrMaskBufferPtr, NCryptNative.TPM_PLATFORM_CLAIM_ALL_PCRS);
 
+            var pcrMaskBuffer = new NCryptNative.NCryptBuffer
+            {
+                cbBuffer = sizeof(int),
+                BufferType = NCryptNative.NCRYPTBUFFER_TPM_PLATFORM_CLAIM_PCR_MASK,
+                pvBuffer = pcrMaskBufferPtr,
+            };
             var nonceBuffer = new NCryptNative.NCryptBuffer
             {
                 cbBuffer = nonceBytes.Length,
-                BufferType = NCryptNative.NCRYPTBUFFER_CLAIM_KEYATTESTATION_NONCE,
+                BufferType = NCryptNative.NCRYPTBUFFER_TPM_PLATFORM_CLAIM_NONCE,
                 pvBuffer = nonceBufferPtr,
             };
-            bufferDescPtr = Marshal.AllocHGlobal(Marshal.SizeOf<NCryptNative.NCryptBuffer>());
-            Marshal.StructureToPtr(nonceBuffer, bufferDescPtr, false);
+            int nativeBufferSize = Marshal.SizeOf<NCryptNative.NCryptBuffer>();
+            bufferDescPtr = Marshal.AllocHGlobal(nativeBufferSize * 2);
+            Marshal.StructureToPtr(pcrMaskBuffer, bufferDescPtr, false);
+            Marshal.StructureToPtr(nonceBuffer, IntPtr.Add(bufferDescPtr, nativeBufferSize), false);
 
             var desc = new NCryptNative.NCryptBufferDesc
             {
                 ulVersion = NCryptNative.NCRYPTBUFFER_VERSION,
-                cBuffers = 1,
+                cBuffers = 2,
                 pBuffers = bufferDescPtr,
             };
 
@@ -204,6 +215,7 @@ public sealed class TpmAttestationProducer : IAttestationProducer
         finally
         {
             if (bufferDescPtr != IntPtr.Zero) Marshal.FreeHGlobal(bufferDescPtr);
+            if (pcrMaskBufferPtr != IntPtr.Zero) Marshal.FreeHGlobal(pcrMaskBufferPtr);
             if (nonceBufferPtr != IntPtr.Zero) Marshal.FreeHGlobal(nonceBufferPtr);
             if (subjectKey != IntPtr.Zero) NCryptNative.NCryptFreeObject(subjectKey);
             if (provider != IntPtr.Zero) NCryptNative.NCryptFreeObject(provider);
@@ -226,8 +238,30 @@ public sealed class TpmAttestationProducer : IAttestationProducer
             _keyName,
             0,
             0), "NCryptCreatePersistedKey");
-        Check(NCryptNative.NCryptFinalizeKey(key, 0), "NCryptFinalizeKey");
-        return key;
+        try
+        {
+            // NCRYPT_CLAIM_PLATFORM is signed by an AIK. A normal TPM signing
+            // key is not sufficient and fails with TPM_E_PCP_KEY_NOT_AIK.
+            int usagePolicy = NCryptNative.NCRYPT_PCP_IDENTITY_KEY;
+            Check(NCryptNative.NCryptSetProperty(
+                key,
+                NCryptNative.NCRYPT_PCP_KEY_USAGE_POLICY_PROPERTY,
+                ref usagePolicy,
+                sizeof(int),
+                0), "NCryptSetProperty(PCP_KEY_USAGE_POLICY)");
+            Check(NCryptNative.NCryptFinalizeKey(key, 0), "NCryptFinalizeKey");
+            return key;
+        }
+        catch
+        {
+            // DeleteKey frees the handle on success. If deletion itself fails,
+            // still release the native handle before propagating the root error.
+            if (NCryptNative.NCryptDeleteKey(key, 0) != NCryptNative.ERROR_SUCCESS)
+            {
+                NCryptNative.NCryptFreeObject(key);
+            }
+            throw;
+        }
     }
 
     private static void Check(int status, string api)
