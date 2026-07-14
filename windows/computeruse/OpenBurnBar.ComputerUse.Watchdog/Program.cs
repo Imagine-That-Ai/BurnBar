@@ -75,7 +75,8 @@ internal static class Program
             sid,
             new PeerImageValidator(
                 TrustedModuleRoots(),
-                PrivilegedInputWatchdogEndpoint.ExpectedPublisherSubject),
+                PrivilegedInputWatchdogEndpoint.ExpectedPublisherSubject,
+                new[] { "OpenBurnBar.App.exe", "OpenBurnBar.PrivilegedInput.exe" }),
             () => new CngNonceSigner(CngNonceKeyProvisioning.OpenOrCreatePersistedKey(
                 PrivilegedInputWatchdogEndpoint.SharedKeyName)),
             () => new CngNonceVerifier(publicKey));
@@ -114,9 +115,12 @@ internal static class Program
     private static string[] TrustedModuleRoots()
     {
         string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        string installRoot = Directory.GetParent(
+            AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar))?.FullName
+            ?? AppContext.BaseDirectory;
         return string.IsNullOrWhiteSpace(windows)
-            ? new[] { AppContext.BaseDirectory }
-            : new[] { AppContext.BaseDirectory, windows };
+            ? new[] { installRoot }
+            : new[] { installRoot, windows };
     }
 
     private static async Task<byte[]> ReadMessageAsync(

@@ -31,6 +31,7 @@ public static class ChildProcessLaunchPolicy
             new ChildProcessLaunchReview("cloud.oauth-browser", ChildProcessProfile.BrowserActivation, "SystemBrowserLauncher", true),
             new ChildProcessLaunchReview("computer-use.playwright-bridge", ChildProcessProfile.ComputerUse, "WindowsBrowserComputerUseService", false),
             new ChildProcessLaunchReview("computer-use.kill-switch-watchdog", ChildProcessProfile.Watchdog, "App", false),
+            new ChildProcessLaunchReview("computer-use.privileged-input-broker", ChildProcessProfile.PrivilegedInput, "App", false),
             new ChildProcessLaunchReview("data.swift-engine-interim", ChildProcessProfile.ReleaseTool, "SwiftEngineInterim", false),
             new ChildProcessLaunchReview("gateway.provider-cli", ChildProcessProfile.Gateway, "WindowsProviderCliProcessRunner", false),
             new ChildProcessLaunchReview("project-code.language-server", ChildProcessProfile.ProjectTool, "LanguageServerProjectCodeParserClient", false),

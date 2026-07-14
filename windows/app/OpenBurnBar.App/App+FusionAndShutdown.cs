@@ -15,6 +15,7 @@ using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Presentation.Projects;
 using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.UsageRuntime;
+using OpenBurnBar.ComputerUse.Core.Gate;
 
 namespace OpenBurnBar.App;
 
@@ -488,6 +489,20 @@ public partial class App
         }
         _isExiting = true;
 
+        if (_privilegedInputRunExecutor?.HasActiveSessions == true)
+        {
+            try
+            {
+                await ActivateComputerUsePanicAsync("app_exit", ComputerUsePanicSource.Revoked);
+            }
+            catch (Exception error)
+            {
+                AppDiagnostics.LogException("computer-use.panic-on-exit", error);
+            }
+        }
+
+        _computerUseSafetyMonitor.Dispose();
+
         if (_hotkeyRegistered)
         {
             _hotkey.Dispose();
@@ -531,6 +546,7 @@ public partial class App
             await _headlessAgentRuns.DisposeAsync();
             _headlessAgentRuns = null;
         }
+        _privilegedInputRunExecutor = null;
         if (_gateway is not null)
         {
             await _gateway.DisposeAsync();

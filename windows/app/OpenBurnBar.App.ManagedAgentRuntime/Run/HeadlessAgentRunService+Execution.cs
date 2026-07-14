@@ -304,7 +304,10 @@ public sealed partial class HeadlessAgentRunService
             arguments.Clone(),
             BurnBarToolCallStatus.Pending,
             "agent_loop",
-            _now());
+            _now(),
+            ApprovalId: RequiresMandatoryApproval(tool)
+                ? checkpoint.ApprovedToolAuthorizationId
+                : null);
 
         if (RequiresMandatoryApproval(tool) && !checkpoint.ApprovalResolvedForAttempt)
         {
@@ -321,7 +324,11 @@ public sealed partial class HeadlessAgentRunService
         }
         if (RequiresMandatoryApproval(tool))
         {
-            checkpoint = checkpoint with { ApprovalResolvedForAttempt = false };
+            checkpoint = checkpoint with
+            {
+                ApprovalResolvedForAttempt = false,
+                ApprovedToolAuthorizationId = null,
+            };
         }
         checkpoint = QueueApprovedTool(checkpoint, invocation);
         await PersistAsync(checkpoint, "tool_queued", cancellationToken).ConfigureAwait(false);
@@ -368,6 +375,7 @@ public sealed partial class HeadlessAgentRunService
         {
             ApprovalRequest = approval,
             PendingApprovalToolInvocation = pendingInvocation,
+            ApprovedToolAuthorizationId = null,
         };
         return Transition(checkpoint, HeadlessAgentRunPhase.AwaitingApproval);
     }
@@ -466,6 +474,7 @@ public sealed partial class HeadlessAgentRunService
             {
                 Attempt = 2,
                 ApprovalResolvedForAttempt = false,
+                ApprovedToolAuthorizationId = null,
                 ErrorMessage = null,
             };
             checkpoint = Transition(checkpoint, HeadlessAgentRunPhase.Planning);

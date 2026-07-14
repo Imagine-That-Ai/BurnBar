@@ -74,6 +74,7 @@ public sealed class HeadlessAgentRunServiceTests
             null,
             DateTimeOffset.UtcNow));
         Assert.Equal(HeadlessAgentRunPhase.WaitingOnCompanion, queued.Run.Phase);
+        Assert.Equal(awaiting.ApprovalRequest.ApprovalId, queued.PendingToolCall?.ApprovalId);
 
         HeadlessAgentRunException unclaimed = await Assert.ThrowsAsync<HeadlessAgentRunException>(() =>
             service.SubmitToolResultAsync(new HeadlessAgentToolResultSubmission(
@@ -106,6 +107,7 @@ public sealed class HeadlessAgentRunServiceTests
             HeadlessAgentApprovalDecision.Approve, null, DateTimeOffset.UtcNow));
         HeadlessAgentRunDetail firstTool = await WaitForPhaseAsync(service, "run-one-shot", HeadlessAgentRunPhase.WaitingOnCompanion);
         Assert.Equal(BurnBarToolKind.ApplyPatch, firstTool.PendingToolCall?.Tool);
+        Assert.Equal(runApproval.ApprovalRequest!.ApprovalId, firstTool.PendingToolCall?.ApprovalId);
 
         HeadlessAgentToolClaimResponse claim = await service.ClaimToolAsync("run-one-shot", "client", "session");
         await service.SubmitToolResultAsync(new HeadlessAgentToolResultSubmission(
@@ -116,6 +118,64 @@ public sealed class HeadlessAgentRunServiceTests
             "run-one-shot",
             HeadlessAgentRunPhase.AwaitingApproval);
         Assert.Equal(BurnBarToolKind.RunTerminal, secondApproval.ApprovalRequest?.Tool);
+    }
+
+    [Fact]
+    public async Task ApprovedDesktopInputExecutesInternallyAndCompletesDurableRun()
+    {
+        var responses = new ConcurrentQueue<ModelCompletionResult>(new[]
+        {
+            Completion("""{"action":"complete","rationale":"Input complete","message":"done"}"""),
+        });
+        await using HeadlessAgentRunService service = CreateService(new TestJournal(), responses);
+        await service.StartAsync();
+        JsonElement metadata = JsonSerializer.SerializeToElement(new
+        {
+            agentIntent = new
+            {
+                kind = "generic",
+                objective = "type approved text",
+                summary = "Type into the active application.",
+                requestedTools = new[] { "mac_input_type" },
+                toolArguments = new { text = "approved text" },
+            },
+        });
+        await service.SubmitAsync(Request("run-internal-input", metadata: metadata));
+        HeadlessAgentRunDetail awaiting = await WaitForPhaseAsync(
+            service,
+            "run-internal-input",
+            HeadlessAgentRunPhase.AwaitingApproval);
+        string approvalId = awaiting.ApprovalRequest!.ApprovalId;
+        await service.RespondToApprovalAsync(new HeadlessAgentApprovalResponse(
+            "run-internal-input",
+            approvalId,
+            "client",
+            HeadlessAgentApprovalDecision.Approve,
+            null,
+            DateTimeOffset.UtcNow));
+        await WaitForPhaseAsync(service, "run-internal-input", HeadlessAgentRunPhase.WaitingOnCompanion);
+        var internalTools = new RecordingInternalToolExecutor();
+        var handler = new CompanionCliAgentRunHandler(service, internalTools);
+
+        object? wire = await handler.ClaimToolAsync(
+            JsonSerializer.SerializeToElement(new
+            {
+                runId = "run-internal-input",
+                clientId = "client",
+                sessionId = "session",
+            }),
+            CancellationToken.None);
+
+        JsonElement response = JsonSerializer.SerializeToElement(wire);
+        Assert.Equal("executed_in_process", response.GetProperty("disposition").GetString());
+        Assert.Equal(1, internalTools.Calls);
+        Assert.Equal(approvalId, internalTools.ApprovalId);
+        Assert.Equal(BurnBarToolKind.MacInputType, internalTools.Tool);
+        HeadlessAgentRunDetail completed = await WaitForPhaseAsync(
+            service,
+            "run-internal-input",
+            HeadlessAgentRunPhase.Completed);
+        Assert.Equal(HeadlessAgentRunPhase.Completed, completed.Run.Phase);
     }
 
     [Fact]
@@ -566,6 +626,28 @@ public sealed class HeadlessAgentRunServiceTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(Entries);
+        }
+    }
+
+    private sealed class RecordingInternalToolExecutor : IHeadlessAgentInternalToolExecutor
+    {
+        public int Calls { get; private set; }
+        public string? ApprovalId { get; private set; }
+        public BurnBarToolKind? Tool { get; private set; }
+
+        public bool CanExecute(BurnBarToolKind tool) => tool == BurnBarToolKind.MacInputType;
+
+        public Task<HeadlessAgentInternalToolExecutionResult> ExecuteAsync(
+            string sessionId,
+            HeadlessAgentToolCall call,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            ApprovalId = call.ApprovalId;
+            Tool = call.Tool;
+            return Task.FromResult(new HeadlessAgentInternalToolExecutionResult(
+                true,
+                JsonSerializer.SerializeToElement(new { status = "dispatched" })));
         }
     }
 

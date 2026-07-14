@@ -333,6 +333,7 @@ jobs:
           app="windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj"
           cli="windows/app/OpenBurnBar.Cli/OpenBurnBar.Cli.csproj"
           watchdog="windows/computeruse/OpenBurnBar.ComputerUse.Watchdog/OpenBurnBar.ComputerUse.Watchdog.csproj"
+          privileged_input="windows/computeruse/OpenBurnBar.PrivilegedInput/OpenBurnBar.PrivilegedInput.csproj"
           pin="windows/packaging/updater/feed/pinned-update-key.pub"
           printf '%s\n' "$WINDOWS_UPDATE_PUBLIC_KEY" > "$pin"
           for rid in win-x64 win-arm64; do
@@ -365,14 +366,17 @@ jobs:
               -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
               -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
               -o "$watchdog_out"
-            for watchdog_file in \
-              OpenBurnBar.ComputerUse.Watchdog.exe \
-              OpenBurnBar.ComputerUse.Watchdog.dll \
-              OpenBurnBar.ComputerUse.Watchdog.deps.json \
-              OpenBurnBar.ComputerUse.Watchdog.runtimeconfig.json; do
-              test -f "$watchdog_out/$watchdog_file"
-              cp "$watchdog_out/$watchdog_file" "publish/$rid/$watchdog_file"
-            done
+            test -f "$watchdog_out/OpenBurnBar.ComputerUse.Watchdog.exe"
+            mkdir -p "publish/$rid/ComputerUseWatchdog"
+            cp -R "$watchdog_out/." "publish/$rid/ComputerUseWatchdog/"
+            privileged_input_out="privileged-input-publish/$rid"
+            dotnet publish "$privileged_input" -c Release -r "$rid" --self-contained true \
+              -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
+              -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
+              -o "$privileged_input_out"
+            test -f "$privileged_input_out/OpenBurnBar.PrivilegedInput.exe"
+            mkdir -p "publish/$rid/PrivilegedInput"
+            cp -R "$privileged_input_out/." "publish/$rid/PrivilegedInput/"
           done
 
       - name: Validate published native-engine layouts
@@ -442,12 +446,18 @@ jobs:
             Write-Host "Portable Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
           }
 
-          $watchdog = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64/OpenBurnBar.ComputerUse.Watchdog.exe"
+          $watchdog = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64/ComputerUseWatchdog/OpenBurnBar.ComputerUse.Watchdog.exe"
           & $watchdog --verify-self-publisher
           if ($LASTEXITCODE -ne 0) {
             throw "The signed watchdog rejected its own Authenticode publisher (exit $LASTEXITCODE)."
           }
           Write-Host "Watchdog runtime publisher gate accepted the signed x64 image."
+          $privilegedInput = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64/PrivilegedInput/OpenBurnBar.PrivilegedInput.exe"
+          & $privilegedInput --verify-self-publisher
+          if ($LASTEXITCODE -ne 0) {
+            throw "The signed privileged-input broker rejected its own Authenticode publisher (exit $LASTEXITCODE)."
+          }
+          Write-Host "Privileged-input runtime publisher gate accepted the signed x64 image."
 
       - name: Refresh and validate signed native-engine layouts
         if: steps.config.outputs.codesign == 'true'

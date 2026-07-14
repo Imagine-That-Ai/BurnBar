@@ -389,15 +389,15 @@ public sealed partial class HeadlessAgentRunService : IAsyncDisposable
             if (response.Decision == HeadlessAgentApprovalDecision.Approve)
             {
                 HeadlessAgentToolCall? pendingInvocation = checkpoint.PendingApprovalToolInvocation;
-                bool completesRunLevelApproval = pendingInvocation is null
-                    && checkpoint.RequiresApproval
-                    && !checkpoint.RunLevelApprovalCompleted;
+                pendingInvocation = pendingInvocation is null ? null : pendingInvocation with { ApprovalId = response.ApprovalId };
+                bool completesRunLevelApproval = pendingInvocation is null && checkpoint.RequiresApproval && !checkpoint.RunLevelApprovalCompleted;
                 checkpoint = checkpoint with
                 {
                     ApprovalRequest = null,
                     PendingApprovalToolInvocation = null,
                     ApprovalResolvedForAttempt = pendingInvocation is null,
                     RunLevelApprovalCompleted = checkpoint.RunLevelApprovalCompleted || completesRunLevelApproval,
+                    ApprovedToolAuthorizationId = pendingInvocation is null ? response.ApprovalId : null,
                 };
                 checkpoint = Transition(checkpoint, HeadlessAgentRunPhase.Planning);
                 if (pendingInvocation is not null)
@@ -468,6 +468,7 @@ public sealed partial class HeadlessAgentRunService : IAsyncDisposable
                 ApprovalResolvedForAttempt = false,
                 RunLevelApprovalCompleted = false,
                 LastRecoveryReason = null,
+                ApprovedToolAuthorizationId = null,
             };
             checkpoint = Transition(checkpoint, HeadlessAgentRunPhase.Planning);
             await PersistAsync(checkpoint, "run_retried", cancellationToken).ConfigureAwait(false);

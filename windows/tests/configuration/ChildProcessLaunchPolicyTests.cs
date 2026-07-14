@@ -21,6 +21,7 @@ public sealed class ChildProcessLaunchPolicyTests
             "cloud.oauth-browser",
             "computer-use.kill-switch-watchdog",
             "computer-use.playwright-bridge",
+            "computer-use.privileged-input-broker",
             "data.swift-engine-interim",
             "gateway.provider-cli",
             "project-code.language-server",
@@ -194,6 +195,28 @@ public sealed class ChildProcessLaunchPolicyTests
         Assert.Equal(@"C:\Windows\System32", environment["PATH"]);
         Assert.False(environment.ContainsKey("OPENAI_API_KEY"));
         Assert.False(environment.ContainsKey("OPENBURNBAR_SQLCIPHER_PASSPHRASE"));
+    }
+
+    [Fact]
+    public void PrivilegedInputProfileCarriesRuntimeStateButNoProductSecrets()
+    {
+        var source = new[]
+        {
+            new KeyValuePair<string, string?>("LOCALAPPDATA", @"C:\Users\a\AppData\Local"),
+            new KeyValuePair<string, string?>("PATH", @"C:\Windows\System32"),
+            new KeyValuePair<string, string?>("OPENAI_API_KEY", "ambient-secret"),
+            new KeyValuePair<string, string?>("FIREBASE_TOKEN", "ambient-secret"),
+        };
+
+        IReadOnlyDictionary<string, string> environment = ChildProcessEnvironment.CreateAllowlisted(
+            ChildProcessProfile.PrivilegedInput,
+            source,
+            host: ChildProcessHost.Windows);
+
+        Assert.Equal(@"C:\Users\a\AppData\Local", environment["LOCALAPPDATA"]);
+        Assert.Equal(@"C:\Windows\System32", environment["PATH"]);
+        Assert.False(environment.ContainsKey("OPENAI_API_KEY"));
+        Assert.False(environment.ContainsKey("FIREBASE_TOKEN"));
     }
 
     [Theory]

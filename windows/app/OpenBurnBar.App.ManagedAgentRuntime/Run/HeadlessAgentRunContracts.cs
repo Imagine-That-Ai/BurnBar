@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using OpenBurnBar.App.ManagedAgentRuntime.Planning;
 
 namespace OpenBurnBar.App.ManagedAgentRuntime.Run;
@@ -101,7 +103,8 @@ public sealed record HeadlessAgentToolCall(
     DateTimeOffset? ClaimedAt = null,
     DateTimeOffset? CompletedAt = null,
     JsonElement? Output = null,
-    HeadlessAgentToolError? Error = null);
+    HeadlessAgentToolError? Error = null,
+    string? ApprovalId = null);
 
 public sealed record HeadlessAgentApprovalRequest(
     string ApprovalId,
@@ -153,7 +156,8 @@ public sealed record HeadlessAgentRunCheckpoint(
     bool CompanionToolCompleted,
     string? LastRecoveryReason,
     HeadlessAgentLoopState LoopState,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string? ApprovedToolAuthorizationId = null);
 
 public sealed record HeadlessAgentRunSnapshot(
     string RunId,
@@ -174,6 +178,25 @@ public sealed record HeadlessAgentRunDetail(
 public sealed record HeadlessAgentToolClaimResponse(
     HeadlessAgentToolDisposition Disposition,
     HeadlessAgentToolCall? ToolCall = null);
+
+public sealed record HeadlessAgentInternalToolExecutionResult(
+    bool Succeeded,
+    JsonElement? Output = null,
+    HeadlessAgentToolError? Error = null);
+
+/// <summary>
+/// Executes tools that must remain inside the signed app boundary. Workspace
+/// tools continue to be leased to the authenticated companion.
+/// </summary>
+public interface IHeadlessAgentInternalToolExecutor
+{
+    bool CanExecute(BurnBarToolKind tool);
+
+    Task<HeadlessAgentInternalToolExecutionResult> ExecuteAsync(
+        string sessionId,
+        HeadlessAgentToolCall call,
+        CancellationToken cancellationToken = default);
+}
 
 public sealed class HeadlessAgentRunException : InvalidOperationException
 {

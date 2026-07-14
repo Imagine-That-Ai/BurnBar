@@ -13,10 +13,14 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Run;
 public sealed class CompanionCliAgentRunHandler
 {
     private readonly HeadlessAgentRunService _runs;
+    private readonly IHeadlessAgentInternalToolExecutor? _internalTools;
 
-    public CompanionCliAgentRunHandler(HeadlessAgentRunService runs)
+    public CompanionCliAgentRunHandler(
+        HeadlessAgentRunService runs,
+        IHeadlessAgentInternalToolExecutor? internalTools = null)
     {
         _runs = runs ?? throw new ArgumentNullException(nameof(runs));
+        _internalTools = internalTools;
     }
 
     public async Task<object?> SubmitAsync(JsonElement request, CancellationToken cancellationToken)
@@ -93,11 +97,66 @@ public sealed class CompanionCliAgentRunHandler
 
     public async Task<object?> ClaimToolAsync(JsonElement request, CancellationToken cancellationToken)
     {
+        string runId = RequiredString(request, "runId");
+        string clientId = RequiredString(request, "clientId");
+        string sessionId = RequiredString(request, "sessionId");
         HeadlessAgentToolClaimResponse claim = await _runs.ClaimToolAsync(
-            RequiredString(request, "runId"),
-            RequiredString(request, "clientId"),
-            RequiredString(request, "sessionId"),
+            runId,
+            clientId,
+            sessionId,
             cancellationToken).ConfigureAwait(false);
+        if (claim.Disposition == HeadlessAgentToolDisposition.Dispatched
+            && claim.ToolCall is HeadlessAgentToolCall call
+            && _internalTools?.CanExecute(call.Tool) == true)
+        {
+            HeadlessAgentInternalToolExecutionResult execution;
+            if (string.IsNullOrWhiteSpace(call.ApprovalId))
+            {
+                execution = new HeadlessAgentInternalToolExecutionResult(
+                    false,
+                    Error: new HeadlessAgentToolError(
+                        BurnBarToolExecutionErrorCode.TrustGated,
+                        "The approved tool authorization is missing."));
+            }
+            else
+            {
+                try
+                {
+                    execution = await _internalTools.ExecuteAsync(sessionId, call, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception)
+                {
+                    execution = new HeadlessAgentInternalToolExecutionResult(
+                        false,
+                        Error: new HeadlessAgentToolError(
+                            BurnBarToolExecutionErrorCode.Unknown,
+                            "The protected in-process tool failed."));
+                }
+            }
+
+            HeadlessAgentRunDetail detail = await _runs.SubmitToolResultAsync(
+                new HeadlessAgentToolResultSubmission(
+                    clientId,
+                    sessionId,
+                    runId,
+                    call.CallId,
+                    execution.Succeeded,
+                    execution.Output,
+                    execution.Error,
+                    DateTimeOffset.UtcNow),
+                cancellationToken).ConfigureAwait(false);
+            return new
+            {
+                disposition = "executed_in_process",
+                toolCall = ToWireToolCall(call),
+                completion = ToWireDetail(detail),
+            };
+        }
         return new
         {
             disposition = Disposition(claim.Disposition),
@@ -194,6 +253,7 @@ public sealed class CompanionCliAgentRunHandler
         requestedAt = call.RequestedAt,
         claimedBy = call.ClaimedBy,
         claimedAt = call.ClaimedAt,
+        approvalId = call.ApprovalId,
     };
 
     private static string Phase(HeadlessAgentRunPhase phase) => phase switch

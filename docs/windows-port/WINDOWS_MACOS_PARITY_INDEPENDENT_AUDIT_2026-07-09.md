@@ -3,7 +3,7 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation and automated signed-runtime certification are substantially complete; F2 True 1:1 and physical/manual/live-staging release gates remain
+**Status:** F1 source/product implementation is complete; the applicable WPD-0006 F2 source substitutions are complete; exact-head signed promotion and physical/manual/live-staging release gates remain
 
 ## Certification Update - 2026-07-11
 
@@ -415,6 +415,21 @@ unproven host behavior to certification:
   ranking, sparklines, and the shell BURN capsule all consume the same selected
   range and Dollars/Tokens mode. Bounded windows no longer mix current-period
   cost with all-time tokens/sessions or silently fall back to all-time rows.
+- The last primary WPD-0006 SUB-BUILD row now has a production Windows
+  substitute. An exact approval authorizes one durable desktop-input tool call;
+  the app writes a redacted tamper-evident audit reservation, then dispatches
+  through an isolated exact-publisher broker with UIA protected-target policy,
+  an at-most-once receipt ledger, authenticated watchdog health, and leaf kill
+  checks. Ctrl+Alt+Win+Period, workstation lock, explicit halt, and app exit
+  synchronously set the durable kill flag before notifying the independent
+  watchdog. The signed release layout carries
+  complete self-contained watchdog and broker runtimes for x64 and ARM64 and
+  executes exact-publisher checks after signing. This covers the ordinary
+  interactive desktop; secure-desktop, lock-screen, and cross-integrity input
+  remain explicit non-goals pending a purpose-built signed keyboard/mouse HID
+  driver. ViGEm is not used because it emulates game controllers rather than
+  desktop keyboard/mouse devices. See
+  [`evidence/f2/privileged-input-production-composition.md`](evidence/f2/privileged-input-production-composition.md).
 - Native Swift engine staging now requires the SwiftPM
   `OpenBurnBarCore_OpenBurnBarCore.resources` bundle, copies it beside the C ABI
   DLL into every RID's publish output, and records SHA-256/size entries for its
@@ -425,17 +440,16 @@ unproven host behavior to certification:
   size, and SHA-256, including the resource bundle, before an artifact can be
   signed or zipped.
 
-These changes are covered by focused managed-runtime (238/238 planner, policy,
+These changes are covered by focused managed-runtime (293/293 planner, policy,
 mission, gateway, durable agent-run, and recovery tests plus 97/97
 managed-agent-runtime tests),
 CloudSync (80/80), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
-Computer Use (114 passed plus a separately executed live Chromium test),
-settings (186/186), configuration (48/48), distribution (101/101), bridge-policy,
+Computer Use (148 passed plus one explicit live Chromium platform skip),
+settings (186/186), configuration (58/58), distribution (101/101), bridge-policy,
 and provider-boundary tests. They are an implementation increment, not a claim
 that the F2 workstreams or release certification are all complete: the
-remaining connector/fusion depth,
-physical Computer Use/media safety, and host evidence still remain. The ledger's 50/50 `Real`
+physical Computer Use/media safety and host evidence still remain. The ledger's 50/50 `Real`
 result is the scoped F1 source/product gate; WPD-0009 continues to define F2
 True 1:1 as the actual 100% parity endpoint.
 
@@ -563,12 +577,12 @@ treated as end-to-end product parity evidence.
 | Fresh-install storage, session logs, and recovery | Windows requires a pre-existing SQLCipher DB and passphrase; failure can fall back to empty data. See windows/app/OpenBurnBar.App/Storage/WindowsStorageDevHost.cs:13-34. macOS has durable aggregation and recovery UI. | Provision/migrate the database automatically, generate a protected key, repair the database picker owner window, and expose loading, no-data, invalid-key, locked-DB, migration, retry, archive/reset, and reveal-log states. | Critical | Exercise fresh install, corrupt DB, wrong key, locked file, and migration interruption. Each must expose an actionable path and recover after retry. |
 | Secrets, identity, and cloud | SQLCipher passphrase, Firebase token, App Check token, and vault key persist in plaintext %LOCALAPPDATA%/OpenBurnBar/app_config.json; cloud startup is dev-token wiring rather than composed sign-in. See windows/app/OpenBurnBar.App.Configuration/AppConfiguration.cs:37-48,66-95 and AppConfigurationModel.cs:8-27. This is a credential-at-rest issue and a false production sign-in experience. | Add ISecretStore backed by DPAPI/Credential Manager, migrate and securely remove legacy values, then compose OAuth PKCE, refresh, TPM/App Check, offline queue, and sign-out cleanup. | Critical security / High feature | Assert that config, logs, diagnostics, child process environments, crash reports, and support bundles contain no secrets. Test staging sign-in, expiry, invalid App Check, offline recovery, and sign-out. |
 | Chat correctness and command safety | Windows now resolves approved executables directly and composes bounded persisted transcript context, including attachment metadata, before each turn. Prior transcript text is marked untrusted and absolute attachment paths are removed; streamed output, cancellation, and backend-unavailable behavior remain separate runtime gates. macOS supports persistent streamed chat, retrieval, attachments, and durable error handling. | Keep `ProcessStartInfo.ArgumentList`, stdin or structured temporary input, cancellation, output limits, persisted conversation state, and backend-unavailable UI aligned with the Windows runtime. Extend the same boundary to retrieval and multimodal providers as they become available. | Critical | Metacharacter/quote payload, cancellation, streamed-error, restart/history, duplicate-current-turn, attachment/paste/drop, and retrieval-degradation tests. |
-| Daemon, gateway, missions, and memory depth | macOS has an installed/repairable daemon lifecycle. Windows now production-composes the authenticated in-process gateway, standalone authenticated companion CLI staged for signed RID packaging, provider routing, Mission DAG, intent planner/policy, durable headless agent loop, protected recovery state, tool approval/dispatch, project index, general sealed Pensieve watcher, parallel Elder Wand fusion, indexed search, guarded Switcher shells, connector/tooling plane, and metadata-only journals. | Finish the single remaining WPD-0006 primary SUB-BUILD row (privileged input). Prove Windows-host restart/sleep lifecycle UX for every promoted execution path. | Critical | An approved execution run survives companion disconnect and app restart, rehydrates safely, records redacted audit state, and exposes meaningful health and error UX. |
+| Daemon, gateway, missions, and memory depth | macOS has an installed/repairable daemon lifecycle. Windows now production-composes the authenticated in-process gateway, standalone authenticated companion CLI staged for signed RID packaging, provider routing, Mission DAG, intent planner/policy, durable headless agent loop, exact-approval isolated input broker, protected recovery state, project index, general sealed Pensieve watcher, parallel Elder Wand fusion, indexed search, guarded Switcher shells, connector/tooling plane, and metadata-only journals. No applicable WPD-0006 primary row remains SUB-BUILD. | Prove Windows-host restart/sleep lifecycle UX for every promoted execution path and run the signed privileged-input physical protocol. | Critical | An approved execution run survives companion disconnect and app restart, rehydrates safely, records redacted audit state, and exposes meaningful health and error UX. |
 | Settings and preferences | macOS has interactive, searchable settings with persistence. Many Windows tabs route to a generic reflection/text-dump host with in-memory/no-op defaults; Updates is static. See windows/app/OpenBurnBar.App/Settings/SettingsViewModelHostPage.xaml.cs:47-123 and UpdatesSettingsPage.xaml:28-44. | Replace generic host pages with concrete bound controls and production stores. Persist state securely; disable unavailable functions with a reason; wire every visible toggle and command. | High | Change each preference, restart, validate persistence and live effect. Test failed saves, unavailable services, and OS-disabled states. |
 | Onboarding and permissions | macOS probes and refreshes real permissions. Windows system permissions are informational and chat gateway health is a placeholder. See windows/app/OpenBurnBar.App/Onboarding/Steps/SystemPermissionsStepPage.xaml.cs:6-22 and ChatEngineStepPage.xaml.cs:142-146. | Add Windows-native probes for notification registration, storage/log access, runtime dependencies, UI Automation, screen capture, and optional input components. Use Windows terminology, not copied TCC labels. | High | In a clean VM, deny, grant, revoke, restart, and recover each capability. Onboarding must never falsely report readiness. |
 | Notifications, background behavior, and tray resilience | Windows has a tray foundation and a toast adapter, but live tray data, session/digest delivery, activation routing, preference persistence, Explorer restart recovery, and richer context actions are not proven or composed. See windows/app/OpenBurnBar.App/Budget/BudgetToastNotifier.cs:24-71. | Compose a notification router with the runtime. Add dedupe/rate limits, deep links, OS-disabled status, background cadence, TaskbarCreated re-registration, and Dashboard/Settings/Update tray actions. | High | Test app open/hidden/closed, sleep/wake, reboot, Explorer restart, disabled notifications, toast click/cold activation, and multi-monitor DPI. |
 | Packaging, updater, URI/file/startup activation | MSIX declares protocol, file associations, startup, and toast activation, but app launch only handles route smoke then creates the tray. The updater core is unreferenced and required MSIX images are absent. See windows/packaging/msix/Package.appxmanifest:102-167 and windows/app/OpenBurnBar.App/App.xaml.cs:44-76. | Wire activation/update services, generate package assets, sign MSIX and portable artifacts, implement startup and single-instance handoff, and publish Windows release metadata/SBOM/attestations. | Critical | Clean x64 and ARM64 install; URI/file activation warm and cold; startup toggle; valid update, tampered-feed rejection, rollback, uninstall, and reinstall. |
-| Computer Use, Mercury, and file transfer | macOS has approvals, audit, kill paths, media permissions, calls, mirroring, and guarded file transfer/quarantine. Windows has cores/adapters but not an end-to-end main-app capability. | After the runtime foundation, compose Windows UIA/SendInput/WGC capability checks, audit archive, kill switch/watchdog, secure-desktop denial, media permission UI, immutable outbound snapshots, and Defender/MOTW-aware inbound quarantine. | High | On physical x64 and ARM64 devices, test protected-target denial, panic halt, capture consent, Windows-to-Mac transfer/call/share, and malicious-file handling. |
+| Computer Use, Mercury, and file transfer | macOS has approvals, audit, kill paths, media permissions, calls, mirroring, and guarded file transfer/quarantine. Windows production-composes exact approvals, redacted resumable audit, isolated `SendInput`, UIA protected-target policy, an independent watchdog, global panic/workstation-lock paths, media settings, and the existing capture/transfer cores. Physical behavior is not yet certified. | Run the signed x64 protected-target/input/panic/restart protocol, then complete capture consent, immutable outbound snapshots, Defender/MOTW-aware inbound quarantine, and cross-device media evidence. | High | On physical x64, test protected-target denial, panic halt, capture consent, Windows-to-Mac transfer/call/share, and malicious-file handling. Physical ARM64 remains an explicit beta limitation until hardware is available. |
 | Navigation and command palette | Windows now searches the bounded local session index through FTS ids with deterministic metadata fallback, cancellation, loading/empty/error states, and direct session deep links. Project and memory-specific result types remain future depth beyond the current section + session contract. | Add project/memory result providers when those stores expose stable read/search contracts; keep the current session path fail-closed and keyboard accessible. | Medium | Keyboard-only tests for populated, empty, slow, cancelled, and failing queries; verify each selected session opens its detail record. |
 | Visual polish and responsiveness | Windows has Mica/Acrylic, WebView2/Win2D fallbacks, and semantic styling, but data-backed layouts and performance are unverified; no runtime screenshot/performance release gate exists. See windows/app/OpenBurnBar.App/Dashboard/DashboardPage.xaml.cs:38-82. | Establish shared semantic design tokens and loading/empty/error/offline/partial state components. Tune density, resizing, motion, and GPU fallbacks against macOS intent rather than copying macOS chrome. | High | Screenshot and pixel-diff baselines at 100/150/200% DPI, narrow/wide windows, light/dark/high-contrast, reduced motion/transparency, and disabled WebView2/Win2D. Capture frame/input/memory budgets. |
 | Accessibility and keyboard | macOS has extensive annotations and Cmd shortcuts. Windows currently has limited automation metadata and mostly Ctrl+K; no UIA/Narrator interaction suite proves real accessibility. | Define accessible names/values/help, focus order, live-region announcements, Ctrl/Alt shortcuts, visible focus, high-contrast/reduced-motion behavior, and Windows UI Automation tests. | High | Narrator/manual keyboard protocol plus automated UIA tests for tray, onboarding, dashboard, settings, dialogs, palette, errors, and panic behavior. |
@@ -646,13 +660,12 @@ and release acceptance fixtures between Swift and C#.
 ## Conclusion
 
 The audit's F1 implementation plan is complete under the repository's scoped
-ledger. F2 True 1:1 remains an active program under WPD-0009; the implementation
-implementation slice advances gateway, durable runs/missions, production
-Browser Computer Use composition, project symbols, the sealed Pensieve watcher,
-the full Elder Wand fusion pipeline, and the standalone authenticated companion
-CLI plus connector/tooling plane, but does not close every
-F2 production-composition or
-host-evidence requirement.
+ledger. The applicable WPD-0006 F2 source substitutions are also complete: no
+primary row remains SUB-BUILD. That source result covers the gateway, durable
+runs/missions, Browser Computer Use, the exact-approval privileged-input broker,
+project symbols, the sealed Pensieve watcher, the full Elder Wand fusion
+pipeline, standalone companion CLI, guarded Switcher, indexed search, and the
+connector/tooling plane. It does not close signed-host or physical evidence.
 The x64/ARM64 build, signing/provenance, hosted x64 registration, ARM64 UTM
 foundation, and corrected signed-runtime gates are proven. The corrected x64
 and ARM64 packages each passed clean-install and reinstall 20-second responsive
@@ -660,8 +673,9 @@ launch holds with zero crash events. The evidence does not yet close every row
 in the QA checklist.
 
 Accordingly, the accurate current claim is: **F1 source/product parity is
-ledger-green; F2 True 1:1 is not yet 100%; automated certification is
-substantially complete, but physical release certification is not complete**.
+ledger-green; applicable F2 source composition is complete; F2 True 1:1 is not
+release-certified because exact-head signed and physical/manual/live evidence
+is incomplete**.
 A public parity release remains gated on the explicitly named
 physical Windows, manual accessibility/display, live staging/cross-device,
 advanced safety, and public lifecycle evidence above.

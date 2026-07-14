@@ -16,9 +16,12 @@ the Windows virtual-desktop origin and clamp to the valid `SendInput` range,
 including multi-monitor layouts.
 
 The adapter remains explicitly advisory (`RoutesThroughSignedDriver == false`).
-Secure-desktop, cross-integrity, lock-screen, and other non-bypassable actions
-still require the signed virtual-HID path; this change does not claim that
-`SendInput` can satisfy that safety boundary.
+Production interactive-desktop use is confined to the separately signed,
+authenticated privileged-input broker. Secure-desktop, cross-integrity, and
+lock-screen injection are explicit non-goals; supporting them would require a
+purpose-built signed keyboard/mouse HID driver and separate certification.
+ViGEm is not that path because it emulates game controllers, not desktop
+keyboard or mouse devices.
 
 ## Validation
 
@@ -34,6 +37,7 @@ Windows host and remains part of the external Computer Use safety gate.
 
 ## Boundary
 
-This closes the source-level keyboard/shortcut/drag/scroll adapter gap. It does
-not close signed-driver installation, UIA target denial, panic-kill timing,
-physical display/accessibility testing, or release certification.
+This closes the source-level keyboard/shortcut/drag/scroll adapter gap. The
+production broker closes UIA target denial and watchdog composition at source
+level; panic latency, real input delivery, physical display/accessibility, and
+release certification remain Windows-host evidence gates.

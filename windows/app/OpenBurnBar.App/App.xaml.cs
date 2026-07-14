@@ -22,6 +22,7 @@ using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Presentation.Projects;
 using OpenBurnBar.App.Projects;
+using OpenBurnBar.ComputerUse.Core.Gate;
 
 namespace OpenBurnBar.App;
 
@@ -40,6 +41,7 @@ namespace OpenBurnBar.App;
 public partial class App : Application
 {
     private readonly GlobalHotkeyService _hotkey = new();
+    private readonly ComputerUseSafetyMonitor _computerUseSafetyMonitor = new();
     private readonly SemaphoreSlim _localRuntimeRestartGate = new(1, 1);
     private readonly SemaphoreSlim _projectCodeMemoryGate = new(1, 1);
 
@@ -56,6 +58,7 @@ public partial class App : Application
     private ElderWandFusionOrchestrator? _fusion;
     private ProjectCodeMemoryService? _projectCodeMemory;
     private bool _hotkeyRegistered;
+    private bool _computerUseSafetyMonitorReady;
     private bool _activationRegistered;
     private bool _isExiting;
 
@@ -190,10 +193,10 @@ public partial class App : Application
         WindowsAppCheckComposition.RegisterIfConfigured();
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         StartComputerUseWatchdog();
+        StartPrivilegedInputBroker();
         StartPensieveKnowledgeWatcher();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
         StartLocalGateway();
-        StartCompanionCli();
 
         // Production Liquid Glass prefs (registry) — InMemory is reserved for unit tests.
         LiquidGlassEnvironment.Current = new LiquidGlassEnvironment(new RegistryLiquidGlassPreferenceStore());
@@ -211,6 +214,7 @@ public partial class App : Application
 
         if ((RouteSmokeOptions.Parse(args.Arguments) ?? RouteSmokeOptions.Parse(Environment.CommandLine)) is { } smoke)
         {
+            StartCompanionCli();
             AppDiagnostics.LogEvent("route-smoke.start", $"{smoke.RouteKey} -> {smoke.OutputDirectory}");
             StartRouteSmoke(smoke);
             return;
@@ -219,6 +223,7 @@ public partial class App : Application
         RegisterActivationRouting();
         if (automation?.MainWindow == true)
         {
+            StartCompanionCli();
             ShowMainWindow();
             return;
         }
@@ -230,6 +235,15 @@ public partial class App : Application
 
         // The flyout is the always-alive window, so anchor the global Ctrl+K hotkey there.
         _hotkeyRegistered = _hotkey.Register(_flyout, OpenCommandPalette);
+        _computerUseSafetyMonitorReady = _computerUseSafetyMonitor.Register(
+            _flyout,
+            OnComputerUsePanic);
+        if (!_computerUseSafetyMonitorReady)
+        {
+            AppDiagnostics.LogEvent("computer-use.safety-monitor-unavailable", "registration failed");
+            OnComputerUsePanic(ComputerUsePanicSource.Revoked);
+        }
+        StartCompanionCli();
 
         _tray = new TrayIcon(
             tooltip: "OpenBurnBar",

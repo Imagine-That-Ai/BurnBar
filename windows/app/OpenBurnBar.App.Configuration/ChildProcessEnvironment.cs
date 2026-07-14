@@ -13,6 +13,7 @@ public enum ChildProcessProfile
     Mission,
     ComputerUse,
     Watchdog,
+    PrivilegedInput,
     ProjectTool,
     ReleaseTool,
     Diagnostics,

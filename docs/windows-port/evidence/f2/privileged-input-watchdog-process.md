@@ -39,11 +39,11 @@ application diagnostics.
 
 ## Packaging and release gates
 
-The x64 and ARM64 release paths publish the watchdog for the matching RID and
-stage its executable, assembly, dependency manifest, and runtime configuration
-beside the app. MSIX construction fails when the executable is absent. Artifact
-Signing signs the watchdog with the same RFC 3161-timestamped publisher identity
-as the app. After signing, the x64 watchdog executes
+The x64 and ARM64 release paths publish the complete self-contained watchdog
+runtime for the matching RID under `ComputerUseWatchdog/`. MSIX construction
+fails when the nested executable is absent. Artifact Signing recursively signs
+the watchdog's first-party binaries with the same RFC 3161-timestamped publisher
+identity as the app. After signing, the x64 watchdog executes
 `--verify-self-publisher`; the workflow fails if its runtime trust-provider path
 does not accept the exact signed image.
 
@@ -54,17 +54,17 @@ The following authoring-host checks pass at this change:
 - Release IPC build, `net8.0` and `net10.0`: 0 warnings, 0 errors.
 - Release watchdog build: 0 warnings, 0 errors.
 - IPC tests: 22/22.
-- Computer Use tests: 114 passed, 1 platform skip.
-- Configuration tests: 57/57.
+- Computer Use tests: 148 passed, 1 platform skip.
+- Configuration tests: 58/58.
 - Ops-script hardening, no-suppressions, and Windows tree-budget gates: pass.
 - Self-contained `win-x64` publish: required executable/assembly/manifests present.
 
 ## Promotion boundary
 
-This document does not independently promote row 27. Promotion requires the
+Source composition promotes row 27 to SUB-DONE. Release promotion still requires the
 exact-head Windows x64 and ARM64 build/test lanes plus the signed x64 runtime
 publisher check. Physical certification must additionally prove authenticated
 health, activate/clear persistence, process restart recovery, rejected wrong
 publisher/unsigned peers, stale-heartbeat fail-closed behavior at the input
-leaf, and panic-halt latency. Row 26 remains separate until the real privileged
-input dispatcher is production-composed and physically exercised.
+leaf, and panic-halt latency. Row 26 has a separate production-composition
+receipt; its physical input and denial protocol remains an external host gate.

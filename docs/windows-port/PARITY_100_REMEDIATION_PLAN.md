@@ -74,8 +74,8 @@ Baseline: macOS app = `AgentLens/` (~266K LOC) + `OpenBurnBarCore/` (~150K) + `O
 | 7 | Cloud sync (10+ domain services, Firestore listeners) | REST gateway + offline queue + fail-closed guard authored; **live transport deferred**; ~~8/9 callables `NotImplementedException`~~ **all 9 DCC callables wired + tested (2026-07-06)** — live transport + high-risk envelope WS-D | Major |
 | 8 | E2EE / CloudVault / escrow / trusted devices | Crypto KAT byte-parity ✅; live round-trip deferred (C5); recovery/revoke callables unimplemented | Major |
 | 9 | App Check (device attestation) | Server half built; **Windows TPM/CNG client (R14) = last named kill-risk, unproven** | Kill-risk |
-| 10 | Daemon (54K LOC: HTTP gateway, provider router, Mission Control DAG, Pensieve, planner) | **DECIDED 2026-07-06 — WPD-0006** (`docs/windows-port/decisions/0006-windows-daemon-strategy.md`): no monolithic port; per-capability Tier-C substitution. WPD-0009 later promoted the authenticated gateway/catalog/telemetry and token-bucket limiter, provider router/executors, durable headless runs, local Mission DAG execution, protected Telegram commands/delivery, the sealed Pensieve watcher, project-code memory/parser/embeddings, intent planning, policy decisions, managed Browser Computer Use lifecycle, standalone companion CLI, parallel Elder Wand fusion, and the authenticated connector/tooling plane. The current 34-row matrix is 27 substituted-already, 3 to-build, 0 deferrals, and 4 N/A. Revive path = daemon Linux boundary build as a Windows Service. | Decided — executing per WPD-0006/WPD-0009 matrix |
-| 11 | Computer Use (full loop, Playwright, virtual HID, Agent Watch) | Core policy/token/audit code + 100 tests ✅; SendInput/UIA/capture/ViGEm adapters unproven; full loop = Phase 4 | Phase 4 |
+| 10 | Daemon (54K LOC: HTTP gateway, provider router, Mission Control DAG, Pensieve, planner) | **DECIDED 2026-07-06 — WPD-0006** (`docs/windows-port/decisions/0006-windows-daemon-strategy.md`): no monolithic port; per-capability Tier-C substitution. WPD-0009 promoted the authenticated gateway/catalog/telemetry, provider execution, durable runs/missions, Pensieve, project code, planner/policy, Browser Computer Use, companion CLI, Elder Wand, Switcher/search, connector tooling, and the isolated privileged-input path. The current 34-row matrix is 30 substituted-already, 0 to-build, 0 deferrals, and 4 N/A. Revive path = daemon Linux boundary build as a Windows Service. | Source composition complete; host certification pending |
+| 11 | Computer Use (approved loop, Playwright, Agent Watch) | Exact approvals, redacted resumable audit, Browser lifecycle, isolated `SendInput` broker, UIA policy, and independent watchdog are production-composed. Physical input/protected-target/panic/capture evidence remains. Secure-desktop and cross-integrity input are excluded unless a purpose-built signed keyboard/mouse HID driver is certified; ViGEm game-controller emulation is not used. | Physical Phase 4 certification |
 | 12 | Pet companion (100+ models, SceneKit/SpriteKit) | Behavior core + WinUI shell + WebView2 three.js host authored; glTF vendoring is a manual dev step; never run on Windows | Live proof |
 | 13 | Particles/backdrops (~30 substrates, KernelBackdrop) | 30 substrates ported (CPU); Win2D GPU render deferred; **60fps ARM64 spike (WINUI-017) mandatory, pending** | G3 blocker |
 | 14 | Settings: 16 tabs, search, Copilot | 5 real pages + `SettingsPlaceholderPage` for the rest; search indexes tabs that have no UI | Major |
@@ -169,13 +169,12 @@ Ordered waves; each has a hard exit criterion. Aligns with master-plan gates. Ro
    **Exit:** G3 per `PHASE3_UI_PARITY_PLAN.md`; zero sample-data surfaces; bundle surface matrix reads 13/13 **Real**.
 
 ### Wave 4 — G4: System integration
-1. Computer-use full loop on Windows: SendInput/UIA/Graphics.Capture/named-pipe + ViGEm, kill-switch + audit chain verified end-to-end.
+1. Computer-use full loop on Windows: signed isolated SendInput/UIA/Graphics.Capture/named-pipe path, kill-switch + audit chain verified end-to-end on physical hardware.
 2. Integrations live: Cast device session, Home Assistant against a real instance, SmartHub bridge, Mercury live capture/transfer between Windows↔Mac.
 3. ~~Decide~~ **DECIDED 2026-07-06 (WPD-0006)** and execute the **daemon strategy** (gap #10): **per-capability
    Tier-C substitution — no monolithic `OpenBurnBarDaemon` port for v1.** The WinUI app process + portable C# cores
-   absorb daemon duties (9 capabilities already substituted; deferrals recorded as bundle drift D14). What remains
-   *executable* here is already Wave 4 item 1 scope (computer-use full loop: ViGEm + watchdog process) plus the two
-   Wave 3 item 1 rows (switcher shell, indexed/palette search). Revisit triggers (headless/multi-client Windows,
+   absorb daemon duties. All applicable WPD-0006 source rows are now SUB-DONE; what remains in Wave 4 is physical
+   Computer Use, integration, media, and lifecycle evidence. Revisit triggers (headless/multi-client Windows,
    WS-D isolation, gateway demand) revive the shared Swift daemon via the Linux boundary build as a Windows Service.
    See the 34-row matrix in `docs/windows-port/decisions/0006-windows-daemon-strategy.md`.
    **Exit:** G4; every live adapter demonstrated on real Windows hardware with evidence in the bundle.

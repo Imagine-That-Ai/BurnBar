@@ -427,9 +427,11 @@ Primary goal: make the OS and ecosystem integrations real on Windows.
 
 Workstreams:
 
-1. Computer Use: SendInput, UIA, Windows Graphics Capture, ViGEm where needed,
-   audit chain, approval UI, panic kill, watchdog process, and evidence
-   recordings.
+1. Computer Use: signed isolated `SendInput` broker, UIA, Windows Graphics
+   Capture, audit chain, approval UI, panic kill, watchdog process, and evidence
+   recordings. Secure-desktop/cross-integrity injection is excluded unless a
+   purpose-built signed keyboard/mouse HID driver is separately certified;
+   ViGEm game-controller emulation is not such a driver.
 2. Mercury media: screen share, calls, file transfer, RFB, camera/mic capture,
    Media Foundation encoding, and permission UI.
 3. Cast, SmartHub, Home Assistant: mDNS/DNS-SD or Windows PAL, pairing/setup
@@ -602,7 +604,7 @@ gate. The remaining uncertainty is not hidden; it is listed below.
 | U4 | merge cost from `windows/liquid-glass-kernel-reskin` to current `main` | rebase early and isolate theme work | theme cannot block data Real |
 | U5 | whether Alberto wants F2 in year-one launch | written F1/F2 decision | default F1 |
 | U6 | DCC high-risk action envelope complexity | H4 spike after OAuth/App Check | keep export/revoke partial until proven |
-| U7 | ViGEm/driver friction for Computer Use | H8 host pass | ship lower-privilege CU subset only if labeled |
+| U7 | Signed input-broker behavior on physical Windows | H8 protected-target, panic-latency, restart, and input-delivery host pass | keep physical Computer Use certification blocked until evidence passes |
 | U8 | Mac-only features not yet represented in ledger | periodic `AgentLens/Views` and service inventory | add rows, do not absorb silently |
 
 ## 18. First 48 Hours

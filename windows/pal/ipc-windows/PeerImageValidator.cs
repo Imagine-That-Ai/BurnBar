@@ -16,6 +16,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -58,6 +60,7 @@ public sealed class PeerImageValidator
 {
     private readonly IReadOnlyList<string> _trustedDirectories;
     private readonly string? _expectedMainImagePublisherSubject;
+    private readonly IReadOnlySet<string>? _expectedMainImageFileNames;
 
     /// <param name="trustedDirectories">Directories a module may load from
     /// (e.g. the install dir and <c>C:\Windows\System32</c>). A module outside
@@ -65,12 +68,18 @@ public sealed class PeerImageValidator
     /// planted DLL loaded from a writable path.</param>
     public PeerImageValidator(
         IReadOnlyList<string> trustedDirectories,
-        string? expectedMainImagePublisherSubject = null)
+        string? expectedMainImagePublisherSubject = null,
+        IReadOnlyList<string>? expectedMainImageFileNames = null)
     {
         _trustedDirectories = trustedDirectories ?? throw new ArgumentNullException(nameof(trustedDirectories));
         _expectedMainImagePublisherSubject = string.IsNullOrWhiteSpace(expectedMainImagePublisherSubject)
             ? null
             : expectedMainImagePublisherSubject;
+        _expectedMainImageFileNames = expectedMainImageFileNames is { Count: > 0 }
+            ? new HashSet<string>(
+                expectedMainImageFileNames.Select(name => Path.GetFileName(name) ?? string.Empty),
+                StringComparer.OrdinalIgnoreCase)
+            : null;
     }
 
     /// <summary>
@@ -85,7 +94,9 @@ public sealed class PeerImageValidator
 
         var untrusted = new List<string>();
 
-        if (!IsModuleTrusted(mainImage)
+        if ((_expectedMainImageFileNames is not null
+                && !_expectedMainImageFileNames.Contains(Path.GetFileName(mainImage)))
+            || !IsModuleTrusted(mainImage)
             || (_expectedMainImagePublisherSubject is not null
                 && !HasPublisherSubject(mainImage, _expectedMainImagePublisherSubject)))
         {

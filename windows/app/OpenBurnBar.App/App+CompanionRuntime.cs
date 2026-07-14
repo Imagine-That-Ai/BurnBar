@@ -65,7 +65,8 @@ public partial class App
                     ProtectedHeadlessAgentCheckpointStore.CreateDefault());
                 agentRuns.StartAsync().GetAwaiter().GetResult();
                 _headlessAgentRuns = agentRuns;
-                agentHandler = new CompanionCliAgentRunHandler(agentRuns);
+                _privilegedInputRunExecutor = CreatePrivilegedInputRunToolExecutor();
+                agentHandler = new CompanionCliAgentRunHandler(agentRuns, _privilegedInputRunExecutor);
             }
 
             var runHandler = new CompanionCliHeadlessRunHandler(
@@ -113,6 +114,7 @@ public partial class App
             _companionCli = null;
             _headlessRuns = null;
             _headlessAgentRuns = null;
+            _privilegedInputRunExecutor = null;
             _fusion = null;
         }
     }

@@ -97,8 +97,8 @@ Plans already written (execute through the factory):
 - **Phase 3 — UI parity → G3:** fully planned → `docs/windows-port/PHASE3_UI_PARITY_PLAN.md`. ~370–540 PRs.
   W6 design-system foundation (token WinUI emitter → Mica/Acrylic glass shim → 30-substrate particle engine
   on Win2D → Pretext WebView2), then W7 every surface (Buckets A/B/C). Predecessor WINUI-017 already cleared.
-- **Phase 4 — computer-use + PetCompanion + integrations → G4:** SendInput/UIA/WGC/ConPTY + capability
-  tokens + watchdog + kill-switch + ViGEm; glTF pet + click-through overlay; Cast/HomeAssistant/SmartHub/
+- **Phase 4 — computer-use + PetCompanion + integrations → G4:** isolated SendInput/UIA/WGC/ConPTY + capability
+  tokens + watchdog + kill-switch; glTF pet + click-through overlay; Cast/HomeAssistant/SmartHub/
   Mercury. The ConPTY + named-pipe peer-auth harness is already built + Windows-tested (20/20).
 - **Phase 5 — signed distribution + certification → G5:** Authenticode/Azure Trusted Signing + MSIX +
   winget/Choco + Ed25519-pinned auto-update + DLL-load hardening + SBOM/Sigstore; W11 full parity-matrix

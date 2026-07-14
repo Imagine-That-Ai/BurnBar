@@ -109,6 +109,7 @@ public static class HeadlessAgentCheckpointCodec
         }
         ValidateOptionalText(checkpoint.ErrorMessage, 32 * 1024, "error message");
         ValidateOptionalText(checkpoint.WorkflowReadContent, 256 * 1024, "read content", allowControls: true, allowEmpty: true);
+        ValidateOptionalText(checkpoint.ApprovedToolAuthorizationId, 128, "approved tool authorization id");
         ValidateApproval(checkpoint.ApprovalRequest);
         ValidateToolCall(checkpoint.PendingApprovalToolInvocation);
         ValidateToolCall(checkpoint.PendingToolCall);
@@ -208,6 +209,7 @@ public static class HeadlessAgentCheckpointCodec
         ValidateRunId(call.RunId);
         ValidateText(call.RequestedBy, 128, "tool requester");
         ValidateOptionalText(call.ClaimedBy, 128, "tool claimant");
+        ValidateOptionalText(call.ApprovalId, 128, "tool approval id");
         if (!Enum.IsDefined(call.Tool)
             || !Enum.IsDefined(call.Status)
             || call.Arguments.ValueKind != JsonValueKind.Object

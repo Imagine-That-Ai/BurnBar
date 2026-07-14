@@ -6,10 +6,12 @@
 // SendInput action non-bypassable, and SendInput cannot reach the secure desktop
 // / UAC / lock screen at all. Therefore:
 //   * <see cref="RoutesThroughSignedDriver"/> is false here, and
-//   * non-bypassable actions (secure-desktop / cross-integrity / lock-screen)
-//     MUST route through a signed virtual-HID driver — ViGEm v1, WHQL driver
-//     v1.1 — which advertises RoutesThroughSignedDriver = true. The dispatcher
-//     refuses a non-bypassable action that only this advisory synthesizer serves.
+//   * production interactive-desktop input runs only in the separately signed,
+//     authenticated broker with protected-target denial and a leaf kill check;
+//   * secure-desktop / cross-integrity / lock-screen injection is out of scope.
+//     It would require a purpose-built, signed keyboard/mouse HID driver and its
+//     own certification. ViGEm is a game-controller emulation bus and does not
+//     satisfy that keyboard/mouse boundary.
 //
 // This class is Windows-only at runtime (SendInput). It Roslyn-compiles on the
 // macOS authoring host; the live injection proof is a Windows host task.
@@ -27,11 +29,23 @@ namespace OpenBurnBar.ComputerUse.Windows;
 [SupportedOSPlatform("windows10.0.19041.0")]
 public sealed class SendInputInputSynthesizer : IInputSynthesizer
 {
+    private readonly Func<bool> _killSwitchActive;
+
+    public SendInputInputSynthesizer(Func<bool>? killSwitchActive = null)
+    {
+        _killSwitchActive = killSwitchActive ?? (() => false);
+    }
+
     /// <summary>False: SendInput is advisory + same-integrity-bypassable (R17).</summary>
     public bool RoutesThroughSignedDriver => false;
 
     public InputSynthesisResult Synthesize(MacInputAction action)
     {
+        if (KillSwitchActive())
+        {
+            return new InputSynthesisResult(dispatched: false, detail: "kill_switch");
+        }
+
         switch (action.ActionKind)
         {
             case MacInputAction.Kind.Click:
@@ -109,7 +123,7 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
         return Send(inputs.ToArray(), "scroll");
     }
 
-    private static InputSynthesisResult TypeText(string? text)
+    private InputSynthesisResult TypeText(string? text)
     {
         if (string.IsNullOrEmpty(text))
         {
@@ -121,14 +135,26 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
             return new InputSynthesisResult(dispatched: false, detail: "text_too_large");
         }
 
-        var inputs = new NativeMethods.INPUT[text.Length * 2];
-        for (var i = 0; i < text.Length; i++)
+        for (var index = 0; index < text.Length; index++)
         {
-            inputs[i * 2] = MakeUnicode(text[i], keyUp: false);
-            inputs[(i * 2) + 1] = MakeUnicode(text[i], keyUp: true);
+            if (KillSwitchActive())
+            {
+                return new InputSynthesisResult(dispatched: false, detail: "kill_switch");
+            }
+
+            NativeMethods.INPUT[] inputs =
+            {
+                MakeUnicode(text[index], keyUp: false),
+                MakeUnicode(text[index], keyUp: true),
+            };
+            InputSynthesisResult result = Send(inputs, "type");
+            if (!result.Dispatched)
+            {
+                return result;
+            }
         }
 
-        return Send(inputs, "type");
+        return new InputSynthesisResult(dispatched: true, detail: "type");
     }
 
     private static InputSynthesisResult KeyPress(
@@ -316,5 +342,17 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
     {
         var sent = NativeMethods.SendInput((uint)inputs.Length, inputs, System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.INPUT>());
         return new InputSynthesisResult(dispatched: sent == inputs.Length, detail: detail);
+    }
+
+    private bool KillSwitchActive()
+    {
+        try
+        {
+            return _killSwitchActive();
+        }
+        catch (Exception)
+        {
+            return true;
+        }
     }
 }

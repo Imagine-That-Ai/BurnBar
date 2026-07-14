@@ -27,7 +27,7 @@ public sealed partial class SettingsViewModelHostPage : Page
     private static readonly HashSet<string> CommandNames = new(StringComparer.Ordinal)
     {
         "CopyEndpoint", "SubmitEmail", "ClearError", "UpgradeToPremium", "SignOut",
-        "DeleteAccount", "TriggerBackup", "Summon", "StartSession", "StopSession",
+        "DeleteAccount", "TriggerBackup", "Summon", "StartSession", "EndSession",
         "RefreshReadiness", "RunBrowserCheck", "ValidateChain", "ExportArchive", "Notarize",
         "CompletePermissionsSetup", "SaveDraft", "CancelDraft", "NewDraft",
     };
@@ -517,6 +517,23 @@ public sealed partial class SettingsViewModelHostPage : Page
         button.IsEnabled = false;
         try
         {
+            if (viewModel is ComputerUseSettingsViewModel computerUse)
+            {
+                if (method.Name == "StartSession")
+                {
+                    if (!computerUse.IsReady)
+                    {
+                        throw new InvalidOperationException("Computer Use permissions are not ready.");
+                    }
+                    await App.Current.ClearComputerUsePanicAsync();
+                }
+                else if (method.Name == "EndSession")
+                {
+                    await App.Current.ActivateComputerUsePanicAsync(
+                        "user_halt",
+                        OpenBurnBar.ComputerUse.Core.Gate.ComputerUsePanicSource.Revoked);
+                }
+            }
             object? result = await Task.Run(() => method.Invoke(viewModel, arguments));
             if (result is Task task)
             {
