@@ -77,4 +77,14 @@ class HermesDomainCoreAdapterTest {
 
         assertFalse(legacyInvoked)
     }
+
+    @Test
+    fun `hkdf length conversion rejects zero negative overflow and core overflow`() {
+        assertTrue(HermesDomainCoreAdapter.checkedHkdfLength(32) == 32u)
+        listOf(0, -1, 255 * 32 + 1, Int.MAX_VALUE).forEach { invalid ->
+            assertThrows(IllegalArgumentException::class.java) {
+                HermesDomainCoreAdapter.checkedHkdfLength(invalid)
+            }
+        }
+    }
 }

@@ -814,6 +814,7 @@ let firstPartyTargetsBase: [Target] = [
             // directly so an absent or stale ABI cannot compile into a skipped assertion.
             dependencies: [
                 "OpenBurnBarCore",
+                "OpenBurnBarKernel",
                 "OpenBurnBarFirestoreModels",
                 "OpenBurnBarLinuxSecurity"
             ] + domainCoreDependencies + swiftTestingAppleDependencies,

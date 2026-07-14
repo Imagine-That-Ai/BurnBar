@@ -1595,6 +1595,75 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn crypto_ffi_fails_closed_on_malformed_and_unauthenticated_inputs(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let key = vec![0x11; 32];
+        let nonce = vec![0x22; 12];
+        let aad = b"bound-context".to_vec();
+
+        assert!(matches!(
+            cloud_vault_aes_gcm_seal_combined(
+                b"secret".to_vec(),
+                key.clone(),
+                vec![0; 11],
+                aad.clone(),
+            ),
+            Err(CloudVaultFfiError::InvalidNonceLength)
+        ));
+        let cloudvault = cloud_vault_aes_gcm_seal_combined(
+            b"secret".to_vec(),
+            key.clone(),
+            nonce.clone(),
+            aad.clone(),
+        )?;
+        assert!(matches!(
+            cloud_vault_aes_gcm_open_combined(
+                cloudvault.clone(),
+                key.clone(),
+                b"wrong-context".to_vec(),
+            ),
+            Err(CloudVaultFfiError::AuthenticationFailed)
+        ));
+        let mut tampered_cloudvault = cloudvault;
+        let last = tampered_cloudvault
+            .last_mut()
+            .ok_or_else(|| std::io::Error::other("CloudVault test envelope unexpectedly empty"))?;
+        *last ^= 1;
+        assert!(matches!(
+            cloud_vault_aes_gcm_open_combined(tampered_cloudvault, key.clone(), aad.clone()),
+            Err(CloudVaultFfiError::AuthenticationFailed)
+        ));
+
+        assert!(matches!(
+            hermes_hkdf_sha256(vec![1], vec![], vec![], 0),
+            Err(HermesFfiError::InvalidHkdfLength)
+        ));
+        assert!(matches!(
+            hermes_hkdf_sha256(vec![1], vec![], vec![], 255 * 32 + 1),
+            Err(HermesFfiError::InvalidHkdfLength)
+        ));
+        assert!(matches!(
+            hermes_seal_combined(b"secret".to_vec(), key.clone(), aad.clone(), vec![0; 11],),
+            Err(HermesFfiError::InvalidNonceLength)
+        ));
+        let hermes = hermes_seal_combined(b"secret".to_vec(), key.clone(), aad.clone(), nonce)?;
+        assert!(matches!(
+            hermes_open_combined(hermes.clone(), key.clone(), b"wrong-context".to_vec()),
+            Err(HermesFfiError::AuthenticationFailed)
+        ));
+        let mut tampered_hermes = hermes;
+        let last = tampered_hermes
+            .last_mut()
+            .ok_or_else(|| std::io::Error::other("Hermes test envelope unexpectedly empty"))?;
+        *last ^= 1;
+        assert!(matches!(
+            hermes_open_combined(tampered_hermes, key, aad),
+            Err(HermesFfiError::AuthenticationFailed)
+        ));
+        Ok(())
+    }
+
     fn decode_hex(value: &str) -> Vec<u8> {
         value
             .split_ascii_whitespace()

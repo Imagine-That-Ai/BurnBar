@@ -190,6 +190,19 @@ assert.throws(
   () => domainCore.cloudVaultAadV2("user|alice", "cloudSessions", "doc_123", "title", 2),
   /invalid_aad_part/,
 );
+for (const invalidSchemaVersion of [-1, 1, 2.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 32]) {
+  assert.throws(
+    () =>
+      domainCore.cloudVaultAadV2(
+        "user_alice",
+        "cloudSessions",
+        "doc_123",
+        "title",
+        invalidSchemaVersion,
+      ),
+    /invalid_schema_version/,
+  );
+}
 assert.throws(
   () =>
     domainCore.cloudVaultExpectedSessionBodyHash(

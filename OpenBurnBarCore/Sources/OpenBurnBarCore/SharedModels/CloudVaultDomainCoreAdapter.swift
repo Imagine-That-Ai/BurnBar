@@ -666,13 +666,15 @@ enum CloudVaultDomainCoreAdapter {
         let mode = CloudVaultDomainCoreMigrationMode.resolve(environment: environment)
         guard mode != .legacy else { return try legacy() }
 
+        let legacyValue: T? = try mode == .shadow ? legacy() : nil
+
         #if canImport(OpenBurnBarDomainCoreFFI)
         guard DomainCoreNativeProbe.abiVersion() == 3 else {
             logger.log("domain_core.cloudvault operation=\(operation) version=3 category=abi_mismatch")
             if mode == .rust || requiresNative(environment) {
                 throw CloudVaultDomainCoreAdapterError.nativeUnavailable
             }
-            return try legacy()
+            return try legacyValue ?? legacy()
         }
 
         let rustValue: T
@@ -680,12 +682,12 @@ enum CloudVaultDomainCoreAdapter {
             rustValue = try rust()
         } catch {
             logger.log("domain_core.cloudvault operation=\(operation) version=3 category=rust_error")
-            if mode == .shadow { return try legacy() }
+            if mode == .shadow, let legacyValue { return legacyValue }
             throw map(error)
         }
 
         guard mode == .shadow else { return rustValue }
-        let legacyValue = try legacy()
+        guard let legacyValue else { return try legacy() }
         if legacyValue != rustValue {
             logger.log(
                 "domain_core.cloudvault operation=\(operation) version=3 category=value_mismatch legacy_count=1 rust_count=1"
@@ -697,7 +699,7 @@ enum CloudVaultDomainCoreAdapter {
         if mode == .rust || requiresNative(environment) {
             throw CloudVaultDomainCoreAdapterError.nativeUnavailable
         }
-        return try legacy()
+        return try legacyValue ?? legacy()
         #endif
     }
 
