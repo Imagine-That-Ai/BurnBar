@@ -1283,6 +1283,14 @@ jobs:
       - name: Core umbrella-imports budget (shrink-only ratchet)
         run: ./scripts/debt/check-core-umbrella-imports-budget.sh
 
+      # Phase-2 WS-B test decomposition (plans/core-decomposition2/packets/B* cards).
+      # OpenBurnBarCoreTests is the dissolving god test target: NEW .swift files there
+      # fail; files leaving (carried to per-module test targets by the B packets) is a
+      # non-fatal notice until the baseline is ratcheted down with --update. This job
+      # runs a full actions/checkout, so OpenBurnBarCore/Tests and budgets/ are present.
+      - name: CoreTests file budget (deny-new + shrink-only ratchet)
+        run: ./scripts/debt/check-coretests-file-budget.sh
+
       # Windows per-tree size ratchet (rooted at windows/, partitioned by
       # app/pal/native/tests). Blocking Windows check on every PR — a red
       # Windows budget fails HERE at merge time. Pure bash + python3.

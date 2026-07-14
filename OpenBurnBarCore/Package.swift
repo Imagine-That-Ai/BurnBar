@@ -910,6 +910,42 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
             "OpenBurnBarLogParsers"
         ],
         exclude: openBurnBarUIExcludes
+    ),
+    // Phase-2 WS-B (test decomposition, plans/core-decomposition2/packets/B*.md):
+    // per-module test targets for the three Apple-only presentation modules, declared
+    // inside this Apple-pruned group so off-Apple graphs never see them (their tested
+    // modules do not exist there — same pruning as the modules themselves). At B0
+    // each holds only PlaceholderTests.swift; the B-move packets fill them from
+    // OpenBurnBarCoreTests via `git mv` and rewrite `@testable import OpenBurnBarCore`
+    // to the owning module. NOTE: the SPM test target for the OpenBurnBarUI module is
+    // named OpenBurnBarUIModuleTests because the repo root already has an Xcode
+    // UI-testing bundle target named OpenBurnBarUITests (project.yml) — reusing that
+    // name would collide in scheme/test-report namespaces.
+    .testTarget(
+        name: "OpenBurnBarInsightsTests",
+        dependencies: [
+            "OpenBurnBarInsights",
+            "OpenBurnBarKernel"
+        ] + swiftTestingAppleDependencies,
+        // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+        // checker has known gaps (Task hand-off) that would contort correct tests.
+        swiftSettings: [.swiftLanguageMode(.v5)]
+    ),
+    .testTarget(
+        name: "OpenBurnBarLaunchServicesTests",
+        dependencies: [
+            "OpenBurnBarLaunchServices",
+            "OpenBurnBarKernel"
+        ] + swiftTestingAppleDependencies,
+        swiftSettings: [.swiftLanguageMode(.v5)]
+    ),
+    .testTarget(
+        name: "OpenBurnBarUIModuleTests",
+        dependencies: [
+            "OpenBurnBarUI",
+            "OpenBurnBarKernel"
+        ] + swiftTestingAppleDependencies,
+        swiftSettings: [.swiftLanguageMode(.v5)]
     )
 ] : []
 
@@ -1436,6 +1472,57 @@ let firstPartyTargetsBase: [Target] = [
             sources: hasLibSignalSwiftPackage ? nil : ["OBBSignalSessionTransportUnavailableTests.swift"],
             // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
             // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // Phase-2 WS-B (test decomposition, plans/core-decomposition2/packets/B*.md):
+        // per-module test targets for the cross-platform decomposition modules whose
+        // mapped OpenBurnBarCoreTests population is >=4 files (B0 mapping: KernelModels
+        // 43, KernelContracts 19, KernelCrypto 14, VectorKit 8, LogParsers 4). Kernel
+        // Platform mapped only 2 files, so it gets NO target of its own — its files
+        // fold into OpenBurnBarKernelModelsTests (which declares the Platform dep).
+        // At B0 each target holds only PlaceholderTests.swift; the B-move packets fill
+        // them via `git mv` and rewrite `@testable import OpenBurnBarCore` per file.
+        // Deliberately NOT pruned from the Linux graph (unlike the placeholder-only
+        // Media/Signal/... targets above): these placeholders are transitional and the
+        // targets gain real cross-platform tests as B1..B3/B6/B8 land, at which point
+        // they must run on Linux.
+        .testTarget(
+            name: "OpenBurnBarKernelModelsTests",
+            dependencies: [
+                "OpenBurnBarKernelModels",
+                "OpenBurnBarKernelPlatform"
+            ] + swiftTestingAppleDependencies,
+            // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
+            // checker has known gaps (Task hand-off) that would contort correct tests.
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "OpenBurnBarKernelContractsTests",
+            dependencies: [
+                "OpenBurnBarKernelContracts",
+                "OpenBurnBarKernelModels",
+                "OpenBurnBarKernelCrypto",
+                "OpenBurnBarKernelPlatform"
+            ] + swiftTestingAppleDependencies,
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "OpenBurnBarKernelCryptoTests",
+            dependencies: [
+                "OpenBurnBarKernelCrypto",
+                "OpenBurnBarKernelModels",
+                "OpenBurnBarKernelPlatform"
+            ] + swiftTestingAppleDependencies,
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "OpenBurnBarLogParsersTests",
+            dependencies: ["OpenBurnBarLogParsers"] + swiftTestingAppleDependencies,
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "OpenBurnBarVectorKitTests",
+            dependencies: ["OpenBurnBarVectorKit"] + swiftTestingAppleDependencies,
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
