@@ -41,13 +41,20 @@ internal static class NCryptNative
     /// <summary>NCryptCreateClaim claim type: platform (TPM) key attestation.</summary>
     internal const int NCRYPT_CLAIM_PLATFORM = 0x00010000;
 
-    /// <summary>NCryptCreatePersistedKey flag: overwrite an existing key with the same name.</summary>
-    internal const int NCRYPT_OVERWRITE_KEY_FLAG = 0x00000080;
+    /// <summary>
+    /// NCRYPTBUFFER types for TPM platform-claim PCR selection and nonce. The
+    /// nonce type is distinct
+    /// from NCRYPTBUFFER_CLAIM_KEYATTESTATION_NONCE (49), which applies to other
+    /// claim types.
+    /// </summary>
+    // Windows SDK ncrypt.h (Windows 10 RS5+). This value is part of the native ABI.
+    internal const int NCRYPTBUFFER_TPM_PLATFORM_CLAIM_PCR_MASK = 80;
+    internal const int NCRYPTBUFFER_TPM_PLATFORM_CLAIM_NONCE = 81;
+    internal const int TPM_PLATFORM_CLAIM_ALL_PCRS = 0x00FFFFFF;
 
-    /// <summary>NCRYPTBUFFER buffer type: the key-attestation challenge/nonce.</summary>
-    internal const int NCRYPTBUFFER_PKCS_ALG_OID = 41; // unused placeholder kept for clarity
-    // Windows SDK ncrypt.h (Windows 10+). This value is part of the native ABI.
-    internal const int NCRYPTBUFFER_CLAIM_KEYATTESTATION_NONCE = 49;
+    /// <summary>Marks a Platform Crypto Provider key as an Attestation Identity Key.</summary>
+    internal const string NCRYPT_PCP_KEY_USAGE_POLICY_PROPERTY = "PCP_KEY_USAGE_POLICY";
+    internal const int NCRYPT_PCP_IDENTITY_KEY = 0x00000008;
 
     /// <summary>ECDSA P-256 is the attestation subject-key algorithm.</summary>
     internal const string BCRYPT_ECDSA_P256_ALGORITHM = "ECDSA_P256";
@@ -100,6 +107,17 @@ internal static class NCryptNative
     [DllImport(Dll, SetLastError = false)]
     internal static extern int NCryptFinalizeKey(IntPtr hKey, int dwFlags);
 
+    [DllImport(Dll, CharSet = CharSet.Unicode, SetLastError = false)]
+    internal static extern int NCryptSetProperty(
+        IntPtr hObject,
+        string pszProperty,
+        ref int pbInput,
+        int cbInput,
+        int dwFlags);
+
+    [DllImport(Dll, SetLastError = false)]
+    internal static extern int NCryptDeleteKey(IntPtr hKey, int dwFlags);
+
     /// <summary>
     /// Create a key-attestation claim. Called first with pbClaimBlob = null to size
     /// the output, then again with a caller-allocated buffer.
@@ -145,8 +163,11 @@ internal static class NCryptNative
         ref NCryptBufferDesc pParameterList,
         byte[] pbClaimBlob,
         int cbClaimBlob,
-        IntPtr pOutput,
+        ref NCryptBufferDesc pOutput,
         int dwFlags);
+
+    [DllImport(Dll, SetLastError = false)]
+    internal static extern int NCryptFreeBuffer(IntPtr pvInput);
 
     [DllImport(Dll, SetLastError = false)]
     internal static extern int NCryptFreeObject(IntPtr hObject);

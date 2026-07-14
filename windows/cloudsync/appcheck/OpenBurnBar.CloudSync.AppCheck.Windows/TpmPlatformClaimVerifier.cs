@@ -28,6 +28,7 @@ public sealed class TpmPlatformClaimVerifier
         var subjectKey = IntPtr.Zero;
         var nonceBufferPtr = IntPtr.Zero;
         var bufferDescPtr = IntPtr.Zero;
+        var output = new NCryptNative.NCryptBufferDesc();
         try
         {
             var status = NCryptNative.NCryptOpenStorageProvider(
@@ -53,7 +54,7 @@ public sealed class TpmPlatformClaimVerifier
             var nonceBuffer = new NCryptNative.NCryptBuffer
             {
                 cbBuffer = nonceBytes.Length,
-                BufferType = NCryptNative.NCRYPTBUFFER_CLAIM_KEYATTESTATION_NONCE,
+                BufferType = NCryptNative.NCRYPTBUFFER_TPM_PLATFORM_CLAIM_NONCE,
                 pvBuffer = nonceBufferPtr,
             };
             bufferDescPtr = Marshal.AllocHGlobal(Marshal.SizeOf<NCryptNative.NCryptBuffer>());
@@ -72,17 +73,35 @@ public sealed class TpmPlatformClaimVerifier
                 ref parameters,
                 platformClaim,
                 platformClaim.Length,
-                IntPtr.Zero,
+                ref output,
                 0);
             return new(status == NCryptNative.ERROR_SUCCESS, status);
         }
         finally
         {
+            FreeVerificationOutput(output);
             if (bufferDescPtr != IntPtr.Zero) Marshal.FreeHGlobal(bufferDescPtr);
             if (nonceBufferPtr != IntPtr.Zero) Marshal.FreeHGlobal(nonceBufferPtr);
             if (subjectKey != IntPtr.Zero) NCryptNative.NCryptFreeObject(subjectKey);
             if (provider != IntPtr.Zero) NCryptNative.NCryptFreeObject(provider);
         }
+    }
+
+    private static void FreeVerificationOutput(NCryptNative.NCryptBufferDesc output)
+    {
+        if (output.pBuffers == IntPtr.Zero) return;
+
+        int bufferSize = Marshal.SizeOf<NCryptNative.NCryptBuffer>();
+        for (int index = 0; index < output.cBuffers; index++)
+        {
+            IntPtr bufferAddress = IntPtr.Add(output.pBuffers, index * bufferSize);
+            var buffer = Marshal.PtrToStructure<NCryptNative.NCryptBuffer>(bufferAddress);
+            if (buffer.pvBuffer != IntPtr.Zero)
+            {
+                NCryptNative.NCryptFreeBuffer(buffer.pvBuffer);
+            }
+        }
+        NCryptNative.NCryptFreeBuffer(output.pBuffers);
     }
 }
 

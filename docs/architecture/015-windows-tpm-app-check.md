@@ -20,7 +20,11 @@ for a production token mint.
   Firebase UID plus exact provisioned App Check app ID.
 - Persist only the nonce hash and consume the challenge in a Firestore
   transaction before minting. Configure TTL cleanup on the expiry timestamp.
-- Export only the TPM key's public CNG blob. The private key remains
+- Create the persisted TPM key as an Attestation Identity Key by setting
+  `NCRYPT_PCP_KEY_USAGE_POLICY_PROPERTY` to `NCRYPT_PCP_IDENTITY_KEY` before
+  finalization. The platform claim selects all PCRs and binds the server nonce
+  with the Windows SDK's platform-specific buffer types (`80` and `81`).
+- Export only the TPM AIK's public CNG blob. The private key remains
   non-exportable in the Microsoft Platform Crypto Provider.
 - Verify the platform claim in a bearer-authenticated HTTPS service running on
   Windows via `NCryptImportKey` and `NCryptVerifyClaim`. Cloud Functions accepts

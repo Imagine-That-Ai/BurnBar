@@ -11,8 +11,9 @@ from portable tests.
 2. The callable stores a two-minute challenge in Firestore. Only a SHA-256 hash
    of the nonce is persisted.
 3. `TpmAttestationProducer` uses the Microsoft Platform Crypto Provider to create
-   `NCryptCreateClaim(NCRYPT_CLAIM_PLATFORM)` over that server nonce. It sends the
-   raw claim and the public CNG blob for the non-exportable TPM-backed key.
+   a persisted Attestation Identity Key, then calls
+   `NCryptCreateClaim(NCRYPT_CLAIM_PLATFORM)` over all PCRs and the server nonce.
+   It sends the raw claim and the public CNG blob for the non-exportable TPM AIK.
 4. `mintWindowsAppCheckToken` calls the configured HTTPS verifier service. The
    service imports the public key and executes `NCryptVerifyClaim` on Windows.
 5. Functions checks the verifier response is bound to the authenticated UID,
@@ -32,6 +33,13 @@ the nonce was answered by a TPM-backed installation key, not a measured hash of
 the running executable. High-risk owner actions remain behind their stronger
 attestation/device-proof gates; this custom token does not upgrade Windows into
 the Apple App Attest trust class.
+
+The native ABI is fail-closed and contract-pinned. Platform claims use
+`NCRYPTBUFFER_TPM_PLATFORM_CLAIM_PCR_MASK = 80` and
+`NCRYPTBUFFER_TPM_PLATFORM_CLAIM_NONCE = 81`; the generic key-attestation nonce
+buffer (`49`) is not interchangeable. `NCryptVerifyClaim` also receives a real
+output descriptor, and every returned buffer is released with
+`NCryptFreeBuffer`.
 
 ## Required configuration
 
