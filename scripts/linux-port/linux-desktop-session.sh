@@ -222,6 +222,11 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     # causes its queue to obsolete intermediate focus changes.
     sleep 1.25
   done
+  # Forward traversal can leave keyboard focus on the desktop shell. Restore
+  # the packaged window before reverse traversal so those keys exercise the
+  # WebKit document rather than the XFCE panel.
+  xdotool windowfocus --sync "$window_id" 2>/dev/null || true
+  sleep 1
   physical_shift_tab_presses=12
   for _ in $(seq 1 "$physical_shift_tab_presses"); do
     xdotool key --clearmodifiers Shift+Tab
