@@ -1,6 +1,6 @@
 import UIKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarTextExpansion
 
 /// The principal input view controller for the custom iOS keyboard extension.
 ///

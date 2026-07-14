@@ -3,6 +3,11 @@ import GRDB
 import XCTest
 @testable import OpenBurnBarCore
 @testable import OpenBurnBar
+// Core-decomposition: reaches INTERNAL Quota statics (ClaudeOAuthUsageFetcher.scopedCacheURL,
+// FactoryQuotaAdapter.inferPlanTier) that moved from the Core monolith into OpenBurnBarQuota. The
+// umbrella shim re-exports only Quota's public API, so a direct @testable import is required (same
+// AE-TESTABLE pattern as the other adapter-test fixes; the app target already links OpenBurnBarQuota).
+@testable import OpenBurnBarQuota
 
 private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
 private typealias ProviderQuotaSnapshot = OpenBurnBar.ProviderQuotaSnapshot

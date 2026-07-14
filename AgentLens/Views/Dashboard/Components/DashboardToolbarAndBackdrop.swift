@@ -82,7 +82,7 @@ struct DashboardBackdrop: View {
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
     @StateObject private var substrateBox = SwarmSubstrateBox()
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
     /// Clear-side adjustment (0…1). Toward 1 the window's own plates fade so
@@ -214,7 +214,7 @@ struct WebsiteBackgroundView: View {
     @Environment(SettingsManager.self) private var settingsManager
     @StateObject private var substrateBox = SwarmSubstrateBox()
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
     /// The resolved substrate for the active backdrop theme + persisted pick.

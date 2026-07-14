@@ -1,6 +1,6 @@
 import Foundation
-import OpenBurnBarCore
 import OpenBurnBarKernel
+import OpenBurnBarQuota
 import os
 
 #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)

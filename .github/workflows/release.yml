@@ -1196,17 +1196,26 @@ jobs:
           chmod +x "$HELPERS_DIR/OpenBurnBarDaemon" "$HELPERS_DIR/OpenBurnBarCLI"
           DAEMON_RESOURCE_BUNDLE="$APP_PATH/Contents/Resources/OpenBurnBarCore_OpenBurnBarCore.bundle"
           DAEMON_HELPER_RESOURCE_BUNDLE="$HELPERS_DIR/OpenBurnBarCore_OpenBurnBarCore.bundle"
+          # Core-decomposition P-02: the Kernel target gained its own resource bundle
+          # (catalog.json + secret-pattern-corpus.json). Stage it IN ADDITION to the Core bundle.
+          DAEMON_KERNEL_RESOURCE_BUNDLE="$APP_PATH/Contents/Resources/OpenBurnBarCore_OpenBurnBarKernel.bundle"
+          DAEMON_HELPER_KERNEL_RESOURCE_BUNDLE="$HELPERS_DIR/OpenBurnBarCore_OpenBurnBarKernel.bundle"
           PROJECT_CODE_MEMORY_DIR="$APP_PATH/Contents/Resources/ProjectCodeMemory"
           if [[ ! -d "$DAEMON_RESOURCE_BUNDLE" ]]; then
             echo "::error::OpenBurnBarDaemon resource bundle missing at $DAEMON_RESOURCE_BUNDLE"
+            exit 1
+          fi
+          if [[ ! -d "$DAEMON_KERNEL_RESOURCE_BUNDLE" ]]; then
+            echo "::error::OpenBurnBarDaemon Kernel resource bundle missing at $DAEMON_KERNEL_RESOURCE_BUNDLE"
             exit 1
           fi
           if [[ ! -d "$PROJECT_CODE_MEMORY_DIR" ]]; then
             echo "::error::OpenBurnBarDaemon Project Code Memory resources missing at $PROJECT_CODE_MEMORY_DIR"
             exit 1
           fi
-          rm -rf "$DAEMON_HELPER_RESOURCE_BUNDLE" "$HELPERS_DIR/ProjectCodeMemory"
+          rm -rf "$DAEMON_HELPER_RESOURCE_BUNDLE" "$DAEMON_HELPER_KERNEL_RESOURCE_BUNDLE" "$HELPERS_DIR/ProjectCodeMemory"
           cp -R "$DAEMON_RESOURCE_BUNDLE" "$DAEMON_HELPER_RESOURCE_BUNDLE"
+          cp -R "$DAEMON_KERNEL_RESOURCE_BUNDLE" "$DAEMON_HELPER_KERNEL_RESOURCE_BUNDLE"
           if otool -L "$HELPERS_DIR/OpenBurnBarDaemon" | grep -q 'SQLCipher.framework'; then
             if [[ ! -d "$APP_PATH/Contents/Frameworks/SQLCipher.framework" ]]; then
               echo "::error::OpenBurnBarDaemon links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework"

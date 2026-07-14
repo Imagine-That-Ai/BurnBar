@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarKernel
 
 /// Cross-language known-answer test for the Cloud Vault at-rest AAD context (RR-8).
 ///

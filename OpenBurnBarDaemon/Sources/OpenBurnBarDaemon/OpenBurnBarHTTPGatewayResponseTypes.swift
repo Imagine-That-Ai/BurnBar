@@ -4,7 +4,7 @@
 // Kept nested on BurnBarHTTPGatewayServer (qualified names unchanged); widened
 // from `private` to module-internal only so this extension can hold them.
 
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import CryptoKit
 import Foundation
 import Network

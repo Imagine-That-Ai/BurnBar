@@ -1,7 +1,7 @@
 #if os(Linux)
 import Foundation
 @testable import OpenBurnBarDaemon
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import XCTest
 
 final class LinuxSwitcherAndPensieveTests: XCTestCase {

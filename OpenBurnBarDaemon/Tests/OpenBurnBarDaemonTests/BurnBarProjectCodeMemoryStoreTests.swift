@@ -1,6 +1,6 @@
 import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import SQLite3
 @testable import OpenBurnBarDaemon
 import XCTest
