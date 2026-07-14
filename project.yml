@@ -426,6 +426,13 @@ targets:
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
         product: OpenBurnBarSignalCore
+      # Core-decomposition: explicit OpenBurnBarQuota product so the OpenBurnBarTests app test
+      # target can `@testable import OpenBurnBarQuota` to reach WarpQuotaAdapter's INTERNAL
+      # candidateLogFiles (moved out of the Core monolith). Redundant for runtime — the linked
+      # OpenBurnBarCore umbrella already `@_exported import`s Quota — but required for internal
+      # test access, mirroring the other explicitly-linked-yet-re-exported siblings above.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarQuota
       - package: GRDB
         product: GRDB
       - package: SQLCipher
