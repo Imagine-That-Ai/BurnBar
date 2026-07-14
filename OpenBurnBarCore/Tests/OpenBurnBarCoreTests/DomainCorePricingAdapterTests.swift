@@ -1,5 +1,6 @@
 import Foundation
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarLogParsers
 import XCTest
 
 final class DomainCorePricingAdapterTests: XCTestCase {

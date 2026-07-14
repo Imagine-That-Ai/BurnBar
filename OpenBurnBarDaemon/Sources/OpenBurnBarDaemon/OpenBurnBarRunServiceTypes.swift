@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 // Public error surface for `BurnBarRunService` (actor + execution state remain in BurnBarRunService.swift).

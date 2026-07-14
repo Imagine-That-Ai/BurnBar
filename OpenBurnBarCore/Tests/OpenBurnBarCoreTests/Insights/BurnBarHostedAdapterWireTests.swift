@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarInsights
 
 /// Wire-format regression suite for `BurnBarHostedInsightAdapter`.
 ///

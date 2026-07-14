@@ -2,7 +2,7 @@
  * @fileoverview Hardcoded per-million-token USD pricing constants.
  *
  * The canonical pricing surface is the client-bundled model catalog
- * (`OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/catalog.json`), which is
+ * (`OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json`), which is
  * not reachable from the functions runtime. Every USD rate that functions code
  * applies server-side lives here — never inline at the call site — and
  * `__tests__/pricing.test.ts` pins the Kimi rates to the catalog so a catalog

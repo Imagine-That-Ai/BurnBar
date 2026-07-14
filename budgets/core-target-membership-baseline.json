@@ -1,0 +1,140 @@
+{
+  "note": "OpenBurnBarCore main-target membership snapshot (per-file line counts) + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink AND no individual baselined main-target file may grow (per-file check — a removed big file cannot mask regrowth in another file); no sibling may exceed its ceiling (decomposition-destination siblings use a PLANNED end-state ceiling that --update never ratchets down, others use 1.25x measured). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update.",
+  "main": {
+    "target": "OpenBurnBarCore",
+    "totalLines": 127,
+    "fileCount": 11,
+    "files": [
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/KernelReexport.swift",
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarHermesReexport.swift",
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarInsightsReexport.swift",
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarLaunchServicesReexport.swift",
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarLogParsersReexport.swift",
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarPretextReexport.swift",
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarQuotaReexport.swift",
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarSQLiteReaderReexport.swift",
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarTextExpansionReexport.swift",
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarUIReexport.swift",
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarVectorKitReexport.swift"
+    ],
+    "fileLines": {
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/KernelReexport.swift": 11,
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarHermesReexport.swift": 10,
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarInsightsReexport.swift": 14,
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarLaunchServicesReexport.swift": 14,
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarLogParsersReexport.swift": 10,
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarPretextReexport.swift": 10,
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarQuotaReexport.swift": 10,
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarSQLiteReaderReexport.swift": 10,
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarTextExpansionReexport.swift": 14,
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarUIReexport.swift": 14,
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarVectorKitReexport.swift": 10
+    }
+  },
+  "siblingCeilings": {
+    "OpenBurnBarKernel": {
+      "maxFiles": 185,
+      "maxLines": 46250,
+      "planned": true
+    },
+    "OpenBurnBarSQLiteReader": {
+      "maxFiles": 3,
+      "maxLines": 450,
+      "planned": true
+    },
+    "OpenBurnBarLogParsers": {
+      "maxFiles": 35,
+      "maxLines": 11700,
+      "planned": true
+    },
+    "OpenBurnBarQuota": {
+      "maxFiles": 55,
+      "maxLines": 13000,
+      "planned": true
+    },
+    "OpenBurnBarVectorKit": {
+      "maxFiles": 12,
+      "maxLines": 5800,
+      "planned": true
+    },
+    "OpenBurnBarInsights": {
+      "maxFiles": 100,
+      "maxLines": 20000,
+      "planned": true
+    },
+    "OpenBurnBarHermes": {
+      "maxFiles": 10,
+      "maxLines": 1800,
+      "planned": true
+    },
+    "OpenBurnBarPretext": {
+      "maxFiles": 5,
+      "maxLines": 850,
+      "planned": true
+    },
+    "OpenBurnBarTextExpansion": {
+      "maxFiles": 8,
+      "maxLines": 1100,
+      "planned": true
+    },
+    "OpenBurnBarLaunchServices": {
+      "maxFiles": 12,
+      "maxLines": 6100,
+      "planned": true
+    },
+    "OpenBurnBarUI": {
+      "maxFiles": 160,
+      "maxLines": 40000,
+      "planned": true
+    },
+    "OpenBurnBarEngine": {
+      "maxFiles": 3,
+      "maxLines": 60,
+      "planned": true
+    },
+    "OpenBurnBarComputerUseCore": {
+      "maxFiles": 74,
+      "maxLines": 15050
+    },
+    "OpenBurnBarMedia": {
+      "maxFiles": 25,
+      "maxLines": 4349
+    },
+    "OpenBurnBarIrohRelay": {
+      "maxFiles": 19,
+      "maxLines": 2547
+    },
+    "OpenBurnBarSignalCore": {
+      "maxFiles": 9,
+      "maxLines": 2415
+    },
+    "OpenBurnBarSignalSessionTransport": {
+      "maxFiles": 3,
+      "maxLines": 540
+    },
+    "OpenBurnBarFirestoreModels": {
+      "maxFiles": 18,
+      "maxLines": 659
+    },
+    "OpenBurnBarAnalytics": {
+      "maxFiles": 12,
+      "maxLines": 775
+    },
+    "OpenBurnBarLinuxSecurity": {
+      "maxFiles": 4,
+      "maxLines": 2934
+    },
+    "OpenBurnBarData": {
+      "maxFiles": 18,
+      "maxLines": 4742
+    },
+    "BurnBarRemoteEngine": {
+      "maxFiles": 2,
+      "maxLines": 137
+    },
+    "OpenBurnBarCoreCAbi": {
+      "maxFiles": 7,
+      "maxLines": 1098
+    }
+  }
+}

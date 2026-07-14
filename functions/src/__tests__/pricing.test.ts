@@ -26,7 +26,9 @@ import {
 import { calculateTokenCost, DomainCorePricingError, resolveDomainCorePricingMode } from "../domainCorePricing.js";
 import { isRecord } from "../guards.js";
 
-const CATALOG_PATH = resolve(__dirname, "../../..", "OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/catalog.json");
+// Core-decomposition: catalog.json moved from the Core monolith's Resources into
+// OpenBurnBarKernel/Resources (git mv). Repointed after the train ← main merge.
+const CATALOG_PATH = resolve(__dirname, "../../..", "OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json");
 
 type Matcher = { all: string[]; any: string[]; none: string[] };
 type CatalogModel = {
