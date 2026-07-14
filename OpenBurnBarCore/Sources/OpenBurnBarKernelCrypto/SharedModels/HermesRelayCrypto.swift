@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarKernelModels
+import OpenBurnBarKernelPlatform
 
 // MARK: - Security considerations (MP-16; mirror of relay_e2ee.py — keep in sync)
 //

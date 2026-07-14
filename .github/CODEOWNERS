@@ -51,7 +51,7 @@ functions/src/hermesGateway.ts @Ajnunezg @emilio3435
 AgentLens/Services/CloudVaultCrypto.swift @Ajnunezg @emilio3435
 AgentLens/Services/DataStore/DatabaseEncryptionService.swift @Ajnunezg @emilio3435
 OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ @Ajnunezg @emilio3435
-OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift @Ajnunezg @emilio3435
+OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/CloudVaultCrypto.swift @Ajnunezg @emilio3435
 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/*Signal*.swift @Ajnunezg @emilio3435
 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/*HPKE*.swift @Ajnunezg @emilio3435
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonLocalAuthProofVerifier.swift @Ajnunezg @emilio3435

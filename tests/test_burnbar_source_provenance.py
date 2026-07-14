@@ -33,12 +33,14 @@ def test_source_provenance_manifest_covers_agpl_signal_release_inputs() -> None:
         "docs/legal/agpl-release-review.evidence.template.json",
         "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
         "OpenBurnBarCore/Package.swift",
-        # Core-decomposition: CloudVaultCrypto.swift moved from the Core monolith into
-        # OpenBurnBarKernel/SharedModels (git mv). The provenance manifest source
-        # (scripts/ci/write_burnbar_source_provenance.py) already tracks the Kernel path;
-        # this expected-set copy is updated to match after the train ← main merge.
-        "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
-        "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SignalEnvelopeAAD.swift",
+        # Core-decomposition: CloudVaultCrypto.swift + SignalEnvelopeAAD.swift moved from
+        # the Core monolith into OpenBurnBarKernel/SharedModels (P-04a/b), then Phase-2
+        # WS-K packet K3 relocated the crypto tier again into the dedicated
+        # OpenBurnBarKernelCrypto sub-target (git mv). The provenance manifest source
+        # (scripts/ci/write_burnbar_source_provenance.py) tracks the KernelCrypto path;
+        # this expected-set copy is updated to match.
+        "OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/CloudVaultCrypto.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/SignalEnvelopeAAD.swift",
         "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift",
         "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift",
         "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/SignalEnvelopeAADTests.swift",

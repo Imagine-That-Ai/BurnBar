@@ -618,7 +618,7 @@ regexes = [
   '''inputKeyMaterial:\s*dh1\.withUnsafeBytes\s*\{\s*Data\(\$0\)\s*\}''',
 ]
 paths = [
-  '''OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto\.swift''',
+  '''OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/HermesRelayCrypto\.swift''',
 ]
 
 [[allowlists]]
