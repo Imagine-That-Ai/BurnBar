@@ -132,7 +132,7 @@ RELEASE_SIGNER_WORKFLOWS = {
     "android": ".github/workflows/release.yml",
     "windows": ".github/workflows/openburnbar-release-windows.yml",
     "console": ".github/workflows/deploy-hosting.yml",
-    "functions": ".github/workflows/deploy-production.yml",
+    "functions": ".github/workflows/domain-core-functions-release-evidence.yml",
 }
 RELEASE_PREDICATE_TYPES = {
     consumer: "https://openburnbar.dev/attestations/domain-core-release-artifact/v1"

@@ -35,6 +35,7 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
       commit: ${{ steps.tag.outputs.commit }}
       dry_run: ${{ steps.tag.outputs.dry_run }}
+      stable_release: ${{ steps.tag.outputs.stable_release }}
     env:
       HAS_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
       # WIF-only: long-lived service account keys and token fallbacks are
@@ -108,6 +109,7 @@ jobs:
             echo "tag=$TAG"
             echo "commit=$commit"
             echo "dry_run=$([[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]] && echo true || echo false)"
+            echo "stable_release=$([[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]] && echo true || echo false)"
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
@@ -306,6 +308,8 @@ jobs:
           FUNCTIONS_REGION: us-central1
           DEPLOY_HEALTH_JSON: deploy-health.json
           DEPLOY_TAG: ${{ needs.deploy-functions.outputs.tag }}
+          HEALTH_GATE_EXPECTED_SOURCE_COMMIT: ${{ needs.deploy-functions.outputs.commit }}
+          HEALTH_GATE_EXPECTED_VERSION: ${{ needs.deploy-functions.outputs.tag }}
           HEALTH_GATE_REQUIRE_SENTRY: "1"
         run: bash scripts/ci/post-deploy-health-gate.sh
 
@@ -316,3 +320,27 @@ jobs:
           name: deploy-health-${{ needs.deploy-functions.outputs.tag }}
           path: deploy-health.json
           if-no-files-found: ignore
+
+  dispatch-domain-core-functions-evidence:
+    needs: [deploy-functions, functions-health-gate]
+    if: >-
+      ${{ needs.deploy-functions.result == 'success'
+          && needs.functions-health-gate.result == 'success'
+          && needs.deploy-functions.outputs.dry_run != 'true'
+          && needs.deploy-functions.outputs.stable_release == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch tag-bound release evidence publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.deploy-functions.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run domain-core-functions-release-evidence.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$RELEASE_TAG" \
+            --field deploy_run_id="$GITHUB_RUN_ID"

@@ -242,6 +242,11 @@ not into `main`, and does not mean production promotion.
   legacy implementation should be deleted from this status snapshot.
 - The row-level deletion manifest records all eleven rows as `rollout`. It has
   no promotion, stable-release, or deletion receipts in this snapshot.
+- Stable Functions tags can now publish an immutable, health-gated deployment
+  receipt plus exact custom GitHub attestation once the pricing domain is
+  Rust-authoritative. Apple, Android, Windows, and Console exact domain
+  producer evidence remains to be landed before their
+  mapped rows can satisfy stable authority.
 
 ## Required CI
 

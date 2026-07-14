@@ -1,0 +1,259 @@
+name: Publish Shared Rust Functions Release Evidence
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_run_id:
+        description: "Successful tag-bound deploy-production run containing deploy-health evidence"
+        required: true
+        type: string
+
+concurrency:
+  group: domain-core-functions-release-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    environment: production
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out the exact release commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate tag and successful deploy identity
+        env:
+          DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$DEPLOY_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::deploy_run_id must be a positive Actions run ID."
+            exit 1
+          fi
+          if [[ ! "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Functions evidence must run from a stable release tag."
+            exit 1
+          fi
+          release_tag="${GITHUB_REF#refs/tags/}"
+          git fetch --force --tags origin "+refs/tags/$release_tag:refs/tags/$release_tag"
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" || "$(git rev-parse "refs/tags/$release_tag^{commit}")" != "$GITHUB_SHA" ]]; then
+            echo "::error::Workflow source and release tag do not resolve to the same commit."
+            exit 1
+          fi
+
+          run_json="$RUNNER_TEMP/deploy-run.json"
+          jobs_json="$RUNNER_TEMP/deploy-jobs.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOY_RUN_ID" > "$run_json"
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOY_RUN_ID/jobs?per_page=100" > "$jobs_json"
+          python3 - "$run_json" "$jobs_json" "$GITHUB_SHA" "$release_tag" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              run = json.load(handle)
+          with open(sys.argv[2], encoding="utf-8") as handle:
+              pages = json.load(handle)
+          commit, tag = sys.argv[3:]
+          if (
+              run.get("path") != ".github/workflows/deploy-production.yml"
+              or run.get("head_sha") != commit
+              or run.get("head_branch") != tag
+              or run.get("event") not in {"push", "workflow_dispatch"}
+          ):
+              raise SystemExit("deploy run does not bind the exact production workflow, tag, and commit")
+          jobs = [job for page in pages for job in page.get("jobs", [])]
+          conclusions = {job.get("name"): job.get("conclusion") for job in jobs}
+          for required in ("deploy-functions", "functions-health-gate"):
+              if conclusions.get(required) != "success":
+                  raise SystemExit(f"required deploy job {required} did not succeed")
+          PY
+          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+
+      - name: Download exact post-deploy health evidence
+        env:
+          DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download "$DEPLOY_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "deploy-health-$RELEASE_TAG" \
+            --dir "$RUNNER_TEMP/deploy-health"
+          test -s "$RUNNER_TEMP/deploy-health/deploy-health.json"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Create deterministic Functions deployment evidence
+        id: evidence
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          artifact="$RUNNER_TEMP/OpenBurnBar-${version}-functions-deployment.json"
+          predicate="$RUNNER_TEMP/OpenBurnBar-${version}-functions-deployment.predicate.json"
+          result="$RUNNER_TEMP/domain-core-functions-evidence-result.json"
+          node scripts/ci/create-domain-core-release-evidence.mjs \
+            --consumer functions \
+            --domain pricing \
+            --version "$version" \
+            --tag "$RELEASE_TAG" \
+            --commit "$GITHUB_SHA" \
+            --artifact "$artifact" \
+            --predicate "$predicate" \
+            --health-artifact "$RUNNER_TEMP/deploy-health/deploy-health.json" \
+            > "$result"
+          enabled="$(node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(String(value.enabled));' "$result")"
+          {
+            echo "enabled=$enabled"
+            echo "artifact=$artifact"
+            echo "predicate=$predicate"
+            echo "bundle_asset=OpenBurnBar-${version}-functions-deployment.sigstore.json"
+          } >> "$GITHUB_OUTPUT"
+          if [[ "$enabled" != "true" ]]; then
+            echo "::notice::Shared Rust pricing is not public-production authority; release evidence is intentionally disabled."
+          fi
+
+      - name: Attest exact Functions deployment identity
+        id: attest
+        if: steps.evidence.outputs.enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ steps.evidence.outputs.artifact }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.evidence.outputs.predicate }}
+
+      - name: Publish immutable evidence with the GitHub release
+        if: steps.evidence.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_PATH: ${{ steps.evidence.outputs.artifact }}
+          PREDICATE_PATH: ${{ steps.evidence.outputs.predicate }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          BUNDLE_ASSET: ${{ steps.evidence.outputs.bundle_asset }}
+        run: |
+          set -euo pipefail
+          artifact_name="${ARTIFACT_PATH##*/}"
+          staged_bundle="$RUNNER_TEMP/$BUNDLE_ASSET"
+          cp "$ATTESTATION_BUNDLE" "$staged_bundle"
+          verify_bundle() {
+            gh attestation verify "$ARTIFACT_PATH" \
+              --bundle "$1" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/domain-core-functions-release-evidence.yml" \
+              --source-digest "$GITHUB_SHA" \
+              --source-ref "refs/tags/$RELEASE_TAG" \
+              --signer-digest "$GITHUB_SHA" \
+              --cert-oidc-issuer https://token.actions.githubusercontent.com \
+              --deny-self-hosted-runners \
+              --predicate-type https://openburnbar.dev/attestations/domain-core-release-artifact/v1 \
+              --format json > "$RUNNER_TEMP/verified-domain-core-attestation.json"
+            python3 - "$RUNNER_TEMP/verified-domain-core-attestation.json" "$PREDICATE_PATH" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              verified = json.load(handle)
+          with open(sys.argv[2], encoding="utf-8") as handle:
+              expected = json.load(handle)
+          predicates = []
+          for result in verified if isinstance(verified, list) else []:
+              verification = result.get("verificationResult") if isinstance(result, dict) else None
+              statement = verification.get("statement") if isinstance(verification, dict) else None
+              predicate = statement.get("predicate") if isinstance(statement, dict) else None
+              if isinstance(predicate, dict):
+                  predicates.append(predicate)
+          if expected not in predicates:
+              raise SystemExit("verified attestation does not contain the exact release predicate")
+          PY
+          }
+          verify_bundle "$staged_bundle"
+
+          release_ready=false
+          for attempt in $(seq 1 120); do
+            if release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" 2>/dev/null)"; then
+              release_state="$(node -e '
+                const release=JSON.parse(process.argv[1]);
+                const tag=process.argv[2];
+                if (release.tag_name !== tag || release.prerelease) process.stdout.write("invalid");
+                else process.stdout.write(release.draft ? "draft" : "ready");
+              ' "$release_json" "$RELEASE_TAG")"
+              if [[ "$release_state" == "invalid" ]]; then
+                echo "::error::Release $RELEASE_TAG is prerelease or has the wrong tag identity."
+                exit 1
+              fi
+              if [[ "$release_state" == "ready" ]]; then
+                release_ready=true
+                break
+              fi
+            fi
+            echo "Waiting for release.yml to publish $RELEASE_TAG ($attempt/120)..."
+            sleep 30
+          done
+          if [[ "$release_ready" != "true" ]]; then
+            echo "::error::GitHub release $RELEASE_TAG was not published within 60 minutes."
+            exit 1
+          fi
+
+          mapfile -t assets < <(
+            gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'
+          )
+          has_asset() {
+            local expected="$1"
+            printf '%s\n' "${assets[@]}" | grep -Fxq "$expected"
+          }
+
+          existing="$RUNNER_TEMP/existing-domain-core-evidence"
+          mkdir -p "$existing"
+          if has_asset "$artifact_name"; then
+            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$artifact_name" --dir "$existing"
+            if ! cmp -s "$ARTIFACT_PATH" "$existing/$artifact_name"; then
+              echo "::error::Refusing to replace non-identical immutable release asset $artifact_name."
+              exit 1
+            fi
+          fi
+          if has_asset "$BUNDLE_ASSET"; then
+            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$BUNDLE_ASSET" --dir "$existing"
+            verify_bundle "$existing/$BUNDLE_ASSET"
+          elif ! gh release upload "$RELEASE_TAG" "$staged_bundle" --repo "$GITHUB_REPOSITORY"; then
+            rm -f "$existing/$BUNDLE_ASSET"
+            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$BUNDLE_ASSET" --dir "$existing"
+            verify_bundle "$existing/$BUNDLE_ASSET"
+          fi
+          if ! has_asset "$artifact_name" && ! gh release upload "$RELEASE_TAG" "$ARTIFACT_PATH" --repo "$GITHUB_REPOSITORY"; then
+            rm -f "$existing/$artifact_name"
+            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$artifact_name" --dir "$existing"
+            if ! cmp -s "$ARTIFACT_PATH" "$existing/$artifact_name"; then
+              echo "::error::Concurrent immutable release asset differs from local evidence."
+              exit 1
+            fi
+          fi
+
+          published="$RUNNER_TEMP/published-domain-core-evidence"
+          mkdir -p "$published"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$artifact_name" --pattern "$BUNDLE_ASSET" --dir "$published"
+          if ! cmp -s "$ARTIFACT_PATH" "$published/$artifact_name"; then
+            echo "::error::Published Functions evidence bytes differ from the signed local artifact."
+            exit 1
+          fi
+          verify_bundle "$published/$BUNDLE_ASSET"

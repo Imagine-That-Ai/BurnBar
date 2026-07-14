@@ -24,6 +24,7 @@ LAST_BODY_SNIPPET=""
 EXPECTED_SOURCE_URL="${OPENBURNBAR_CORRESPONDING_SOURCE_URL:-https://burnbar.ai/legal/source}"
 REQUIRE_SOURCE_METADATA="${HEALTH_GATE_REQUIRE_SOURCE_METADATA:-1}"
 SOURCE_METADATA_WARNINGS=0
+EXPECTED_SOURCE_REPOSITORY="https://github.com/Imagine-That-Ai/BurnBar"
 
 source_metadata_ok() {
   local body_file="$1"
@@ -113,25 +114,47 @@ curl_health "healthLive" "$FUNCTIONS_HEALTH_LIVE_URL" '.status == "alive"' /tmp/
 echo "==> healthReady (${FUNCTIONS_HEALTH_READY_URL})"
 curl_health "healthReady" "$FUNCTIONS_HEALTH_READY_URL" '.status == "ready"' /tmp/ob-health-ready.json
 
-if [[ -n "${DEPLOY_HEALTH_JSON:-}" ]]; then
-  generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  if command -v jq >/dev/null 2>&1; then
-    jq -n \
-      --arg generatedAt "$generated_at" \
-      --arg project "$FIREBASE_PROJECT" \
-      --arg region "$FUNCTIONS_REGION" \
-      --arg baseUrl "$FUNCTIONS_BASE_URL" \
-      --arg healthLiveUrl "$FUNCTIONS_HEALTH_LIVE_URL" \
-      --arg healthReadyUrl "$FUNCTIONS_HEALTH_READY_URL" \
-      --arg tag "${DEPLOY_TAG:-}" \
-      --slurpfile live /tmp/ob-health-live.json \
-      --slurpfile ready /tmp/ob-health-ready.json \
-      '{generatedAt: $generatedAt, project: $project, region: $region, baseUrl: $baseUrl, healthLiveUrl: $healthLiveUrl, healthReadyUrl: $healthReadyUrl, tag: $tag, healthLive: $live[0], healthReady: $ready[0]}' \
-      > "$DEPLOY_HEALTH_JSON"
-  else
-    printf '%s\n' "{\"generatedAt\":\"$generated_at\",\"project\":\"$FIREBASE_PROJECT\",\"baseUrl\":\"$FUNCTIONS_BASE_URL\",\"tag\":\"${DEPLOY_TAG:-}\"}" > "$DEPLOY_HEALTH_JSON"
+if [[ -n "${HEALTH_GATE_EXPECTED_SOURCE_COMMIT:-}" || -n "${HEALTH_GATE_EXPECTED_VERSION:-}" ]]; then
+  if [[ -z "${HEALTH_GATE_EXPECTED_SOURCE_COMMIT:-}" || -z "${HEALTH_GATE_EXPECTED_VERSION:-}" ]]; then
+    echo "FAIL: exact deployment identity requires both HEALTH_GATE_EXPECTED_SOURCE_COMMIT and HEALTH_GATE_EXPECTED_VERSION." >&2
+    exit 1
   fi
-  echo "Wrote ${DEPLOY_HEALTH_JSON}"
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "FAIL: python3 is required to validate exact deployed Functions identity." >&2
+    exit 1
+  fi
+  python3 - \
+    /tmp/ob-health-live.json \
+    /tmp/ob-health-ready.json \
+    "$EXPECTED_SOURCE_REPOSITORY" \
+    "$HEALTH_GATE_EXPECTED_SOURCE_COMMIT" \
+    "$HEALTH_GATE_EXPECTED_VERSION" <<'PY'
+import json
+import sys
+
+live_path, ready_path, repository, commit, version = sys.argv[1:]
+try:
+    with open(live_path, encoding="utf-8") as handle:
+        live = json.load(handle)
+    with open(ready_path, encoding="utf-8") as handle:
+        ready = json.load(handle)
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"FAIL: deployment identity health JSON is missing or malformed: {error}")
+
+for label, document in (("healthLive", live), ("healthReady", ready)):
+    source = document.get("source")
+    if not isinstance(source, dict):
+        raise SystemExit(f"FAIL: {label} does not expose source metadata")
+    if source.get("repository") != repository or source.get("commit") != commit:
+        raise SystemExit(
+            f"FAIL: {label} is not serving expected source {repository}@{commit}"
+        )
+if ready.get("version") != version:
+    raise SystemExit(
+        f"FAIL: healthReady version {ready.get('version')!r} does not match {version!r}"
+    )
+PY
+  echo "OK exact deployed Functions identity (${HEALTH_GATE_EXPECTED_VERSION} @ ${HEALTH_GATE_EXPECTED_SOURCE_COMMIT})"
 fi
 
 # H13: crash reporting must be enabled in production. We probe the LIVE
@@ -188,6 +211,29 @@ if [[ "$REQUIRE_SENTRY" == "1" ]]; then
   echo "OK Sentry enabled on live healthReady (environment=${sentry_env_value})"
 else
   echo "::notice title=Sentry assertion skipped::HEALTH_GATE_REQUIRE_SENTRY!=1 (dry run or synthetic lane); not asserting production crash reporting."
+fi
+
+# A deploy-health artifact is evidence, so write it only after availability,
+# source identity, version, and required Sentry assertions have all passed.
+if [[ -n "${DEPLOY_HEALTH_JSON:-}" ]]; then
+  generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "FAIL: jq is required to write complete deploy-health evidence." >&2
+    exit 1
+  fi
+  jq -n \
+    --arg generatedAt "$generated_at" \
+    --arg project "$FIREBASE_PROJECT" \
+    --arg region "$FUNCTIONS_REGION" \
+    --arg baseUrl "$FUNCTIONS_BASE_URL" \
+    --arg healthLiveUrl "$FUNCTIONS_HEALTH_LIVE_URL" \
+    --arg healthReadyUrl "$FUNCTIONS_HEALTH_READY_URL" \
+    --arg tag "${DEPLOY_TAG:-}" \
+    --slurpfile live /tmp/ob-health-live.json \
+    --slurpfile ready /tmp/ob-health-ready.json \
+    '{generatedAt: $generatedAt, project: $project, region: $region, baseUrl: $baseUrl, healthLiveUrl: $healthLiveUrl, healthReadyUrl: $healthReadyUrl, tag: $tag, healthLive: $live[0], healthReady: $ready[0]}' \
+    > "$DEPLOY_HEALTH_JSON"
+  echo "Wrote ${DEPLOY_HEALTH_JSON}"
 fi
 
 if [[ "$SOURCE_METADATA_WARNINGS" -gt 0 ]]; then

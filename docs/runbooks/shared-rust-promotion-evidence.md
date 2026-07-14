@@ -159,9 +159,11 @@ without copying review metadata.
    stable-release receipts containing each consumer's tag, release commit,
    artifact digest, and signed-provenance digest, and advance
    the rows to `rust_authoritative_with_rollback`.
-   This remains blocked until the Android, Windows, Console, and Functions
-   producer workflows publish the canonical release/deployment artifact and
-   exact custom signed predicate required by the deletion gate.
+   Functions now has a tag-bound producer for its canonical healthy-deployment
+   receipt and exact custom predicate; it stays dormant while the public pricing
+   profile remains legacy-authoritative. This remains
+   blocked for domains that require Apple, Android, Windows, or Console until
+   those producer workflows land the equivalent evidence.
 5. Run source/compile gates proving the inventory's named deletion targets are
    absent before marking that row complete.
 

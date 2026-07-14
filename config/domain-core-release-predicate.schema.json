@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/domain-core-release-predicate.schema.json",
+  "title": "OpenBurnBar Shared Rust Release Artifact Predicate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "consumer",
+    "artifactKind",
+    "target",
+    "artifact",
+    "release"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "consumer": {
+      "enum": ["apple", "android", "windows", "console", "functions"]
+    },
+    "artifactKind": {
+      "enum": [
+        "macos-dmg",
+        "android-aab",
+        "windows-release-bundle",
+        "console-deployment-receipt",
+        "functions-deployment-receipt"
+      ]
+    },
+    "target": {
+      "enum": [
+        "macos-universal",
+        "android-universal",
+        "windows-x64-arm64",
+        "firebase-hosting-production",
+        "firebase-functions-production"
+      ]
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "sha256"],
+      "properties": {
+        "fileName": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "release": { "$ref": "#/$defs/release" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "tag", "commit", "publicProfileSha256"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^(?:windows-)?v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "commit": { "$ref": "#/$defs/commit" },
+        "publicProfileSha256": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}
