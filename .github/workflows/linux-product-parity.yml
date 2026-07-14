@@ -246,7 +246,7 @@ jobs:
 
           candidate_root="$RUNNER_TEMP/openburnbar-p40-${CANDIDATE_RUN_ID}"
           rm -rf "$candidate_root"
-          mkdir -m 700 -p "$candidate_root/support" "$candidate_root/runtime/openburnbar" "$candidate_root/evidence"
+          install -d -m 700 "$candidate_root/support" "$candidate_root/runtime/openburnbar" "$candidate_root/evidence"
           socket="$candidate_root/runtime/openburnbar/daemon.sock"
           support="$candidate_root/support"
           OPENBURNBAR_DAEMON_SUPPORT_DIR="$support" \
@@ -278,7 +278,7 @@ jobs:
             --package-version "$package_version" \
             --manifest-sha256 "$manifest_sha256"
           cp -f "$candidate_root/evidence/p40-live-session.json" "$input_root/p40-live-session.json"
-          mkdir -m 700 -p "$input_root/privacy"
+          install -d -m 700 "$input_root/privacy"
           cp -f "$candidate_root/evidence/privacy/inventory.json" "$input_root/privacy/inventory.json"
           cp -f "$candidate_root/evidence/privacy/deletion.json" "$input_root/privacy/deletion.json"
           cp -f "$candidate_root/evidence/privacy/export.json" "$input_root/privacy/export.json"
