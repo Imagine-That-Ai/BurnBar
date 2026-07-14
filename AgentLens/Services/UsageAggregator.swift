@@ -452,9 +452,9 @@ private extension UsageAggregator {
             }
 
             if result.indexedConversationChanges > 0 {
-                let pendingProjectionJobs = (try? await self.dataStore.countProjectionJobs(
+                let pendingProjectionJobs = (try? await self.dataStore.countProjectionJobs( // try?-ok(opportunistic sweep gate)
                     statuses: [.queued, .leased, .running]
-                )) ?? 0 // try?-ok(opportunistic sweep gate)
+                )) ?? 0
                 if pendingProjectionJobs < AutoSummaryPolicy.pauseWhenProjectionQueueExceeds {
                     self.summaryEngine.launchAutoSummarySweep(indexedAfter: indexedAfter)
                 }
