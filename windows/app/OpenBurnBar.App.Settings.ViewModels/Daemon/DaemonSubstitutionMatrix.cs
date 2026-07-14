@@ -3,7 +3,7 @@
 //
 // Row order, capability names, dispositions, qualifiers, and the SUB-DONE/SUB-BUILD
 // hybrids (rows 24, 27) match the doc exactly. The disposition-summary constants match
-// the current disposition summary (25 SUB-DONE, 3 SUB-BUILD, 2 DEFER, 4 N/A).
+// the current disposition summary (26 SUB-DONE, 3 SUB-BUILD, 1 DEFER, 4 N/A).
 // A test cross-checks both against those figures so the tab can never drift from the
 // accepted decision without a red build.
 
@@ -150,9 +150,9 @@ public static class DaemonSubstitutionMatrix
             "Windows search is app-side: SettingsSearchEngine (landed) + the command-palette stub search called out in Wave 3 item 1; session-log search rides the storage read seam.",
             "Wave 3 item 1"),
         new(32, "Elder Wand orchestration (fusion orchestrator, tool loop, web tools)",
-            D.Deferred,
-            "Orchestrated multi-model fusion is gateway/run-service-coupled. The Windows Elder Wand surface + preset persistence convert in Wave 3 item 1 (bundle D8 covers reachability drift).",
-            "Wave 3 (surface); orchestration with rows 1/8"),
+            D.SubstitutedAlready,
+            "The production gateway and companion plane run the saved or explicit 1-8 model panel in parallel, degrade failed members, compare through the judge, synthesize through the originating model, execute bounded DNS-pinned web tools, journal only metadata/digests, and record per-route usage telemetry.",
+            "F2 Elder Wand fusion evidence", Qualifier: "parallel fusion pipeline"),
         new(33, "Connector plane + connector secret store; tooling proxy; workspace bridge broker; context selector",
             D.Deferred,
             "Adjuncts of the headless run/gateway plane (rows 1/8); no v1 consumer.",
@@ -169,13 +169,13 @@ public static class DaemonSubstitutionMatrix
     // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
     /// <summary>SUB-DONE count from the current summary.</summary>
-    public const int SubstitutedAlreadyCount = 25;
+    public const int SubstitutedAlreadyCount = 26;
 
     /// <summary>SUB-BUILD count from the doc's summary (rows 26, 30, 31).</summary>
     public const int SubstituteToBuildCount = 3;
 
     /// <summary>DEFER count from the current summary.</summary>
-    public const int DeferredCount = 2;
+    public const int DeferredCount = 1;
 
     /// <summary>N/A count from the doc's summary (rows 10, 17, 28, 34).</summary>
     public const int NotApplicableCount = 4;

@@ -41,6 +41,11 @@ Closed under this decision:
   lifecycle owns recursive repo-docs/notes and settled-session watching, shared
   TS/Swift embed-and-cloak parity, protected vault-key resolution, and atomic
   sealed queue output without cloud credentials or transcript ingestion.
+- Elder Wand fusion: promoted by
+  `docs/windows-port/evidence/f2/elder-wand-fusion.md`. The production gateway
+  and companion command share the parallel panel, comparison judge,
+  originating-model synthesis, bounded web-tool loop, recursion guard,
+  metadata-only journal, and per-route telemetry.
 - Gateway rate limiter: promoted by
   `docs/windows-port/evidence/f2/gateway-rate-limiter.md`. The production host
   now enforces the macOS token-bucket contract and the shared stricter

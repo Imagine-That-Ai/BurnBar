@@ -30,6 +30,7 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
     private readonly byte[]? _accessToken;
     private readonly GatewayRateLimiter _rateLimiter;
     private readonly GatewayRateLimiter? _unauthenticatedLoopbackRateLimiter;
+    private readonly Func<byte[], CancellationToken, Task<ModelCompletionResult?>>? _fusionHandler;
     private readonly int _maxRequestBytes;
     private CancellationTokenSource? _cts;
     private Task? _loop;
@@ -64,7 +65,8 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         int maxRequestBytes = 4 * 1024 * 1024,
         GatewayLiveModelDiscovery? discovery = null,
         GatewayRateLimiter? rateLimiter = null,
-        GatewayRateLimiter? unauthenticatedLoopbackRateLimiter = null)
+        GatewayRateLimiter? unauthenticatedLoopbackRateLimiter = null,
+        Func<byte[], CancellationToken, Task<ModelCompletionResult?>>? fusionHandler = null)
         : this(
             "127.0.0.1",
             port,
@@ -74,7 +76,8 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
             maxRequestBytes,
             discovery,
             rateLimiter,
-            unauthenticatedLoopbackRateLimiter)
+            unauthenticatedLoopbackRateLimiter,
+            fusionHandler)
     {
     }
 
@@ -87,7 +90,8 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         int maxRequestBytes = 4 * 1024 * 1024,
         GatewayLiveModelDiscovery? discovery = null,
         GatewayRateLimiter? rateLimiter = null,
-        GatewayRateLimiter? unauthenticatedLoopbackRateLimiter = null)
+        GatewayRateLimiter? unauthenticatedLoopbackRateLimiter = null,
+        Func<byte[], CancellationToken, Task<ModelCompletionResult?>>? fusionHandler = null)
     {
         if (maxRequestBytes <= 0)
         {
@@ -110,6 +114,7 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
             ? unauthenticatedLoopbackRateLimiter
                 ?? new GatewayRateLimiter(GatewayRateLimitConfiguration.UnauthenticatedLoopbackDefault)
             : null;
+        _fusionHandler = fusionHandler;
     }
 
     public string Host => _listenerOptions.Host;
@@ -368,6 +373,31 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         }
 
         string model = modelElement.GetString()!;
+        if (_fusionHandler is not null && CarriesActiveFusionPlugin(root))
+        {
+            ModelCompletionResult? fusion = await _fusionHandler(requestBody, cancellationToken)
+                .ConfigureAwait(false);
+            if (fusion is { } fusionResult)
+            {
+                if (!fusionResult.Succeeded)
+                {
+                    int status = fusionResult.StatusCode is >= 400 and <= 599
+                        ? fusionResult.StatusCode
+                        : 502;
+                    await WriteJsonAsync(context.Response, status, new
+                    {
+                        error = new { type = "fusion_error", message = "The Elder Wand fusion request failed." },
+                    }).ConfigureAwait(false);
+                    return;
+                }
+                await WriteBytesAsync(
+                    context.Response,
+                    fusionResult.StatusCode,
+                    fusionResult.ContentType,
+                    fusionResult.Body).ConfigureAwait(false);
+                return;
+            }
+        }
         bool allowDegrade = root.TryGetProperty("openburnbar_allow_degrade", out JsonElement degrade)
             && degrade.ValueKind == JsonValueKind.True;
         DateTimeOffset startedAt = DateTimeOffset.UtcNow;
@@ -412,6 +442,28 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
 
         await WriteBytesAsync(context.Response, result.StatusCode, result.ContentType, result.Body)
             .ConfigureAwait(false);
+    }
+
+    internal static bool CarriesActiveFusionPlugin(JsonElement root)
+    {
+        if (!root.TryGetProperty("plugins", out JsonElement plugins)
+            || plugins.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+        foreach (JsonElement plugin in plugins.EnumerateArray())
+        {
+            if (plugin.ValueKind != JsonValueKind.Object
+                || !plugin.TryGetProperty("id", out JsonElement id)
+                || id.ValueKind != JsonValueKind.String
+                || !string.Equals(id.GetString(), "fusion", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            return !plugin.TryGetProperty("enabled", out JsonElement enabled)
+                || enabled.ValueKind != JsonValueKind.False;
+        }
+        return false;
     }
 
     private void RecordTelemetry(

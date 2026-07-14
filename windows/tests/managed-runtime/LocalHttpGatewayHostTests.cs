@@ -377,6 +377,56 @@ public sealed class LocalHttpGatewayHostTests
         Assert.Equal(1, executions);
     }
 
+    [Fact]
+    public async Task CompletionEndpoint_InterceptsActiveFusionPluginWithoutForwardingOuterRequest()
+    {
+        int port = 25765 + System.Environment.ProcessId % 1000;
+        int outerExecutions = 0;
+        int fusionExecutions = 0;
+        await using var host = new LocalHttpGatewayHost(
+            port,
+            new ModelProxyRouter(new[]
+            {
+                new ModelRoute("origin", "openai", "origin", 0, true),
+            }),
+            new DelegateModelCompletionExecutor((_, _, _) =>
+            {
+                System.Threading.Interlocked.Increment(ref outerExecutions);
+                return Task.FromResult(new ModelCompletionResult(500, System.Array.Empty<byte>(), "application/json", false));
+            }),
+            fusionHandler: (_, _) =>
+            {
+                System.Threading.Interlocked.Increment(ref fusionExecutions);
+                return Task.FromResult<ModelCompletionResult?>(new ModelCompletionResult(
+                    200,
+                    Encoding.UTF8.GetBytes("{\"id\":\"fused\"}"),
+                    "application/json",
+                    true));
+            });
+        host.Start();
+        using var client = new HttpClient { BaseAddress = host.BaseAddress };
+        using var request = new StringContent(
+            "{\"model\":\"origin\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],"
+            + "\"plugins\":[{\"id\":\"fusion\",\"enabled\":true,\"analysis_models\":[\"a\"]}]}",
+            Encoding.UTF8,
+            "application/json");
+
+        HttpResponseMessage response = await client.PostAsync("v1/chat/completions", request);
+        Assert.Equal(200, (int)response.StatusCode);
+        Assert.Contains("fused", await response.Content.ReadAsStringAsync(), System.StringComparison.Ordinal);
+        Assert.Equal(1, fusionExecutions);
+        Assert.Equal(0, outerExecutions);
+    }
+
+    [Fact]
+    public void CarriesActiveFusionPlugin_RespectsEnabledFalse()
+    {
+        using JsonDocument active = JsonDocument.Parse("{\"plugins\":[{\"id\":\"fusion\"}]}");
+        using JsonDocument disabled = JsonDocument.Parse("{\"plugins\":[{\"id\":\"fusion\",\"enabled\":false}]}");
+        Assert.True(LocalHttpGatewayHost.CarriesActiveFusionPlugin(active.RootElement));
+        Assert.False(LocalHttpGatewayHost.CarriesActiveFusionPlugin(disabled.RootElement));
+    }
+
     private static Task<HttpResponseMessage> PostCompletionAsync(HttpClient client) =>
         client.PostAsync(
             "v1/chat/completions",

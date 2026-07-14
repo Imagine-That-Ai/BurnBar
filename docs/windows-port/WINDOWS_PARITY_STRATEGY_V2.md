@@ -194,9 +194,13 @@ No composite “% done” in ship claims.
 
 ### L11 — Elder Wand surface vs orchestration
 
-**Loophole:** Surface Real without fusion orchestrator (WPD-0006 row 32 DEFER) overclaims analysis product.
+**Loophole (resolved F2):** Surface Real without a fusion orchestrator would
+overclaim the analysis product. WPD-0006 row 32 is now SUB-DONE through the
+production gateway and companion pipeline.
 
-**Fix:** F1 = preset + judge config + persistence; F2 = multi-model fusion orchestration. UI copy must not promise fusion runs that cannot execute.
+**Fix:** F1 remains preset + judge config + persistence; F2 now composes the
+parallel panel, judge, synthesis, bounded web tools, and evidence in
+`docs/windows-port/evidence/f2/elder-wand-fusion.md`.
 
 ---
 
@@ -233,13 +237,14 @@ Windows is a **local log-reading peer** like Mac for:
 ### 2.2 F2 True 1:1
 
 F1 + revive WPD-0006 DEFER rows that Mac users treat as core. Gateway/model
-proxy, headless/local mission execution, Browser CU, and the project-code parser
-are now promoted through C# substitutes and native Windows parser evidence;
-Full Elder Wand fusion and connector brokers remain explicit workstreams.
+proxy, headless/local mission execution, Browser CU, the project-code parser,
+and full Elder Wand fusion are now promoted through C# substitutes and native
+Windows parser evidence; connector brokers remain the explicit workstream.
 General Pensieve watching, Telegram, and gateway token-bucket limiting are
 closed by `docs/windows-port/evidence/f2/pensieve-knowledge-watcher.md`,
 `docs/windows-port/evidence/f2/telegram-bridge.md`, and
-`docs/windows-port/evidence/f2/gateway-rate-limiter.md`.
+`docs/windows-port/evidence/f2/gateway-rate-limiter.md`. Elder Wand is closed by
+`docs/windows-port/evidence/f2/elder-wand-fusion.md`.
 
 ---
 

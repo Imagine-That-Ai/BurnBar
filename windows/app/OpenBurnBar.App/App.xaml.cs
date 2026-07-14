@@ -382,6 +382,7 @@ public partial class App : Application
 
         try
         {
+            EnsureFusionRuntime();
             GatewayEndpointSettings settings = WindowsSettingsComposition.LoadGatewayEndpointSettings();
             GatewayListenerOptions listenerOptions = ResolveGatewayListenerOptions(settings);
             string? accessToken = ResolveGatewayAccessToken(listenerOptions, settings);
@@ -395,7 +396,8 @@ public partial class App : Application
 
             _gateway = new LocalHttpGatewayHost(
                 listenerOptions.Host, listenerOptions.Port, _gatewayComposition.Router,
-                _gatewayComposition.Executor, accessToken, discovery: _gatewayComposition.Discovery);
+                _gatewayComposition.Executor, accessToken, discovery: _gatewayComposition.Discovery,
+                fusionHandler: HandleGatewayFusionAsync);
             _gateway.Start();
             AppDiagnostics.LogEvent("gateway.started", _gateway.BaseAddress.ToString());
         }

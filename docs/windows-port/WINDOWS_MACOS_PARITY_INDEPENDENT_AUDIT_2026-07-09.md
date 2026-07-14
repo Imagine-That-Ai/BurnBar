@@ -338,15 +338,16 @@ unproven host behavior to certification:
   cancellation, and fail-closed size/endpoint validation without exposing keys.
   Production consent/account selection and provider quota behavior remain
   separate host/staging gates.
-- Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
-  without writing prompts or tool output to disk. The companion CLI now exposes
-  a bounded `fusion.run` command that composes this loop with the configured
-  gateway executor; unconfigured provider routes fail closed. Provider response
-  bodies are bounded before entering the fusion loop. The production Elder Wand
-  page now consumes the same router catalog instead of an empty provider array;
-  synthetic no-endpoint placeholders are hidden, executable duplicate routes
-  win, and advertised unavailable routes remain disabled. Detailed evidence is
-  in `docs/windows-port/evidence/f2/model-proxy-settings-live-catalog.md`.
+- Elder Wand now runs the full bounded panel -> comparison judge -> originating
+  model synthesis contract through both the OpenAI-compatible gateway plugin
+  and authenticated companion command. Panel members execute in parallel and
+  degrade independently; inner calls cannot recursively re-enter fusion;
+  DNS-pinned web tools, exact-model route selection, saved-default presets,
+  metadata/digest-only journaling, and route/token telemetry are production
+  composed. The production page consumes the same router catalog instead of an
+  empty provider array. Detailed evidence is in
+  `docs/windows-port/evidence/f2/elder-wand-fusion.md` and
+  `docs/windows-port/evidence/f2/model-proxy-settings-live-catalog.md`.
 - The Cursor connector session now runs a portable provider/model preflight
   before invoking any broker, proxy, tunnel, or Cursor-settings runtime step.
   Empty provider/model configurations fail closed; API-key presence remains in
@@ -549,7 +550,7 @@ treated as end-to-end product parity evidence.
 | Fresh-install storage, session logs, and recovery | Windows requires a pre-existing SQLCipher DB and passphrase; failure can fall back to empty data. See windows/app/OpenBurnBar.App/Storage/WindowsStorageDevHost.cs:13-34. macOS has durable aggregation and recovery UI. | Provision/migrate the database automatically, generate a protected key, repair the database picker owner window, and expose loading, no-data, invalid-key, locked-DB, migration, retry, archive/reset, and reveal-log states. | Critical | Exercise fresh install, corrupt DB, wrong key, locked file, and migration interruption. Each must expose an actionable path and recover after retry. |
 | Secrets, identity, and cloud | SQLCipher passphrase, Firebase token, App Check token, and vault key persist in plaintext %LOCALAPPDATA%/OpenBurnBar/app_config.json; cloud startup is dev-token wiring rather than composed sign-in. See windows/app/OpenBurnBar.App.Configuration/AppConfiguration.cs:37-48,66-95 and AppConfigurationModel.cs:8-27. This is a credential-at-rest issue and a false production sign-in experience. | Add ISecretStore backed by DPAPI/Credential Manager, migrate and securely remove legacy values, then compose OAuth PKCE, refresh, TPM/App Check, offline queue, and sign-out cleanup. | Critical security / High feature | Assert that config, logs, diagnostics, child process environments, crash reports, and support bundles contain no secrets. Test staging sign-in, expiry, invalid App Check, offline recovery, and sign-out. |
 | Chat correctness and command safety | Windows now resolves approved executables directly and composes bounded persisted transcript context, including attachment metadata, before each turn. Prior transcript text is marked untrusted and absolute attachment paths are removed; streamed output, cancellation, and backend-unavailable behavior remain separate runtime gates. macOS supports persistent streamed chat, retrieval, attachments, and durable error handling. | Keep `ProcessStartInfo.ArgumentList`, stdin or structured temporary input, cancellation, output limits, persisted conversation state, and backend-unavailable UI aligned with the Windows runtime. Extend the same boundary to retrieval and multimodal providers as they become available. | Critical | Metacharacter/quote payload, cancellation, streamed-error, restart/history, duplicate-current-turn, attachment/paste/drop, and retrieval-degradation tests. |
-| Daemon, gateway, missions, and memory depth | macOS has an installed/repairable daemon lifecycle. Windows now production-composes the authenticated in-process gateway, standalone authenticated companion CLI staged for signed RID packaging, provider routing, Mission DAG, intent planner/policy, durable headless agent loop, protected recovery state, tool approval/dispatch, project index, general sealed Pensieve watcher, and metadata-only journals. Connector-specific brokers and full Elder Wand fusion depth are still separately tracked. | Finish or explicitly reclassify the remaining WPD-0006 rows. Prove Windows-host compile plus restart/sleep lifecycle UX for every promoted execution path. | Critical | An approved execution run survives companion disconnect and app restart, rehydrates safely, records redacted audit state, and exposes meaningful health and error UX. |
+| Daemon, gateway, missions, and memory depth | macOS has an installed/repairable daemon lifecycle. Windows now production-composes the authenticated in-process gateway, standalone authenticated companion CLI staged for signed RID packaging, provider routing, Mission DAG, intent planner/policy, durable headless agent loop, protected recovery state, tool approval/dispatch, project index, general sealed Pensieve watcher, parallel Elder Wand fusion, and metadata-only journals. Connector-specific brokers remain separately tracked. | Finish or explicitly reclassify the remaining WPD-0006 rows. Prove Windows-host compile plus restart/sleep lifecycle UX for every promoted execution path. | Critical | An approved execution run survives companion disconnect and app restart, rehydrates safely, records redacted audit state, and exposes meaningful health and error UX. |
 | Settings and preferences | macOS has interactive, searchable settings with persistence. Many Windows tabs route to a generic reflection/text-dump host with in-memory/no-op defaults; Updates is static. See windows/app/OpenBurnBar.App/Settings/SettingsViewModelHostPage.xaml.cs:47-123 and UpdatesSettingsPage.xaml:28-44. | Replace generic host pages with concrete bound controls and production stores. Persist state securely; disable unavailable functions with a reason; wire every visible toggle and command. | High | Change each preference, restart, validate persistence and live effect. Test failed saves, unavailable services, and OS-disabled states. |
 | Onboarding and permissions | macOS probes and refreshes real permissions. Windows system permissions are informational and chat gateway health is a placeholder. See windows/app/OpenBurnBar.App/Onboarding/Steps/SystemPermissionsStepPage.xaml.cs:6-22 and ChatEngineStepPage.xaml.cs:142-146. | Add Windows-native probes for notification registration, storage/log access, runtime dependencies, UI Automation, screen capture, and optional input components. Use Windows terminology, not copied TCC labels. | High | In a clean VM, deny, grant, revoke, restart, and recover each capability. Onboarding must never falsely report readiness. |
 | Notifications, background behavior, and tray resilience | Windows has a tray foundation and a toast adapter, but live tray data, session/digest delivery, activation routing, preference persistence, Explorer restart recovery, and richer context actions are not proven or composed. See windows/app/OpenBurnBar.App/Budget/BudgetToastNotifier.cs:24-71. | Compose a notification router with the runtime. Add dedupe/rate limits, deep links, OS-disabled status, background cadence, TaskbarCreated re-registration, and Dashboard/Settings/Update tray actions. | High | Test app open/hidden/closed, sleep/wake, reboot, Explorer restart, disabled notifications, toast click/cold activation, and multi-monitor DPI. |
@@ -635,7 +636,7 @@ The audit's F1 implementation plan is complete under the repository's scoped
 ledger. F2 True 1:1 remains an active program under WPD-0009; the implementation
 implementation slice advances gateway, durable runs/missions, production
 Browser Computer Use composition, project symbols, the sealed Pensieve watcher,
-and Elder Wand journaling, and closes the standalone authenticated companion
+the full Elder Wand fusion pipeline, and the standalone authenticated companion
 CLI, but does not close every
 F2 production-composition or
 host-evidence requirement.

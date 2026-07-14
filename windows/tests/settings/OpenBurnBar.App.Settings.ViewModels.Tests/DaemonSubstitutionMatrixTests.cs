@@ -24,9 +24,9 @@ public sealed class DaemonSubstitutionMatrixTests
     [Fact]
     public void PrimaryDispositionCounts_MatchTheCurrentDecisionSummary()
     {
-        Assert.Equal(25, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
+        Assert.Equal(26, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
         Assert.Equal(3, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
-        Assert.Equal(2, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
+        Assert.Equal(1, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
         Assert.Equal(4, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.NotApplicable));
 
         // Published constants agree with the live count.
@@ -77,6 +77,7 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(25, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(27, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(29, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(32, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(26, DaemonSubstitutionDisposition.SubstituteToBuild)]
     [InlineData(30, DaemonSubstitutionDisposition.SubstituteToBuild)]
     [InlineData(31, DaemonSubstitutionDisposition.SubstituteToBuild)]
@@ -84,7 +85,6 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(17, DaemonSubstitutionDisposition.NotApplicable)]
     [InlineData(28, DaemonSubstitutionDisposition.NotApplicable)]
     [InlineData(34, DaemonSubstitutionDisposition.NotApplicable)]
-    [InlineData(32, DaemonSubstitutionDisposition.Deferred)]
     public void Row_HasExpectedDisposition(int number, DaemonSubstitutionDisposition expected)
     {
         var row = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == number);
@@ -98,7 +98,7 @@ public sealed class DaemonSubstitutionMatrixTests
             .Select(r => r.Number)
             .OrderBy(n => n)
             .ToArray();
-        Assert.Equal(new[] { 32, 33 }, deferred);
+        Assert.Equal(new[] { 33 }, deferred);
     }
 
     [Fact]
@@ -160,6 +160,11 @@ public sealed class DaemonSubstitutionMatrixTests
         var row18 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 18);
         Assert.Equal("sealed live watcher", row18.Qualifier);
         Assert.Equal("SUB-DONE (sealed live watcher)", row18.DispositionBadge);
+
+        // Row 32 is "SUB-DONE (parallel fusion pipeline)".
+        var row32 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 32);
+        Assert.Equal("parallel fusion pipeline", row32.Qualifier);
+        Assert.Equal("SUB-DONE (parallel fusion pipeline)", row32.DispositionBadge);
     }
 
     [Fact]

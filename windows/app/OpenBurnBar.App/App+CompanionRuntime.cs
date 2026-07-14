@@ -78,11 +78,7 @@ public partial class App
             var policyHandler = new CompanionCliPolicyHandler(new BurnBarPlannerService(), new BurnBarPolicyEngine());
             TelegramMissionCommandHandler telegramCommands = CreateTelegramCommandHandler();
             _ = ReportRecoverableHeadlessRunsAsync(headlessRuns);
-            string fusionJournalPath = Environment.GetEnvironmentVariable("OPENBURNBAR_FUSION_JOURNAL_PATH")
-                ?? Path.Combine(localData, "elder-wand-runs.jsonl");
-            _fusion = new ElderWandFusionOrchestrator(
-                ExecuteFusionToolAsync,
-                new JsonLinesFusionRunJournal(fusionJournalPath));
+            EnsureFusionRuntime();
             EnsureProjectCodeMemoryStarted();
             var router = new CompanionCliCommandRouter(
                 _gatewayComposition?.Router,

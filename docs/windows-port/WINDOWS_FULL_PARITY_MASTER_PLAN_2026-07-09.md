@@ -519,7 +519,8 @@ F2 workstreams:
    `docs/windows-port/evidence/f2/live-lsp-parser-client.md`, and WPD-0003's
    revival addendum.
 7. Browser Computer Use/Playwright lifecycle and browser target policy.
-8. Elder Wand fusion orchestrator and tool loop.
+8. Elder Wand fusion orchestrator and tool loop. Closed by
+   `docs/windows-port/evidence/f2/elder-wand-fusion.md`.
 9. Connector plane and any revived connector-specific broker/client surface.
    The standalone authenticated companion CLI and daemon-client core are closed
    by `docs/windows-port/evidence/f2/companion-cli-client.md`.
