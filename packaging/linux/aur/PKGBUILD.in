@@ -105,6 +105,51 @@ package() {
     require_payload_path "${required}"
   done
 
+  # AppImage extraction preserves the source mode bits. Some AppImage
+  # producers mark wrapper files (notably AppRun.wrapped) 0777, which is
+  # executable but unsafe to ship in a root-owned package. Remove only
+  # group/world write bits so user-read/write/execute intent is preserved,
+  # then fail closed if any unsupported type or unsafe mode remains.
+  path_mode() {
+    local entry="$1"
+    local mode
+    if mode="$(stat -c '%a' "${entry}" 2>/dev/null)"; then
+      printf '%s\n' "${mode}"
+    else
+      # The recipe is built on Arch (GNU stat), but this fallback keeps the
+      # package() contract executable by the macOS fixture harness as well.
+      stat -f '%Lp' "${entry}"
+    fi
+  }
+  normalize_extracted_modes() {
+    local paths_file="${srcdir}/openburnbar-appimage-paths.list"
+    local entry mode
+    if ! find -P "${srcdir}/squashfs-root" -print0 >"${paths_file}"; then
+      printf 'openburnbar: unable to enumerate extracted AppImage paths\n' >&2
+      rm -f "${paths_file}"
+      return 1
+    fi
+    while IFS= read -r -d '' entry; do
+      if [[ -L "${entry}" ]]; then
+        continue
+      fi
+      if [[ ! -d "${entry}" && ! -f "${entry}" ]]; then
+        printf 'openburnbar: unsupported extracted AppImage path type: %s\n' "${entry}" >&2
+        rm -f "${paths_file}"
+        return 1
+      fi
+      chmod go-w "${entry}"
+      mode="$(path_mode "${entry}")"
+      if (( (8#${mode}) & 8#022 )); then
+        printf 'openburnbar: extracted AppImage path remains group/world-writable: %s (mode %s)\n' "${entry}" "${mode}" >&2
+        rm -f "${paths_file}"
+        return 1
+      fi
+    done <"${paths_file}"
+    rm -f "${paths_file}"
+  }
+  normalize_extracted_modes
+
   if [[ ! -x "${srcdir}/squashfs-root/AppRun" ]]; then
     printf 'openburnbar: extracted AppRun is not executable: %s\n' "${srcdir}/squashfs-root/AppRun" >&2
     return 1

@@ -82,11 +82,13 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     'test "$1" = --appimage-extract',
     'test "$#" = 1',
     'mkdir -p squashfs-root/usr/bin',
-    'printf "#!/bin/bash\\nprintf OpenBurnBar\\ 0.1.0\\n" >squashfs-root/usr/bin/openburnbar-linux-desktop',
+    'printf "#!/bin/bash\\nexec \\\"\\${APPDIR}/AppRun\\\" \\\"\\$@\\\"\\n" >squashfs-root/usr/bin/openburnbar-linux-desktop',
     'chmod 755 squashfs-root/usr/bin/openburnbar-linux-desktop',
     'printf "#!/bin/bash\\nexit 0\\n" >squashfs-root/usr/bin/openburnbar-cli',
     'chmod 755 squashfs-root/usr/bin/openburnbar-cli',
-    'ln -s usr/bin/openburnbar-linux-desktop squashfs-root/AppRun',
+    'printf "#!/bin/bash\\nprintf OpenBurnBar\\ 0.1.0\\n" >squashfs-root/AppRun.wrapped',
+    'chmod 777 squashfs-root/AppRun.wrapped',
+    'ln -s AppRun.wrapped squashfs-root/AppRun',
     'mkdir -p squashfs-root/usr/lib/openburnbar/native',
     'mkdir -p squashfs-root/usr/lib/openburnbar/swift/linux',
     'mkdir -p squashfs-root/usr/share/openburnbar',
@@ -155,6 +157,8 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     const appRun = path.join(pkgdir, 'usr/lib/openburnbar/appdir/AppRun');
     assert.equal(fs.statSync(appRun).mode & 0o777, 0o755);
     assert.equal(fs.lstatSync(appRun).isSymbolicLink(), true);
+    const appRunWrapped = path.join(pkgdir, 'usr/lib/openburnbar/appdir/AppRun.wrapped');
+    assert.equal(fs.statSync(appRunWrapped).mode & 0o777, 0o755);
     assert.match(fs.readFileSync(path.join(pkgdir, 'usr/bin/openburnbar-linux-desktop'), 'utf8'),
       /exec "\$\{APPDIR\}\/AppRun" "\$@"/u);
     assert.equal(
