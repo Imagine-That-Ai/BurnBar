@@ -398,11 +398,8 @@ public partial class App : Application
             }
 
             _gateway = new LocalHttpGatewayHost(
-                listenerOptions.Host,
-                listenerOptions.Port,
-                _gatewayComposition.Router,
-                _gatewayComposition.Executor,
-                accessToken);
+                listenerOptions.Host, listenerOptions.Port, _gatewayComposition.Router,
+                _gatewayComposition.Executor, accessToken, discovery: _gatewayComposition.Discovery);
             _gateway.Start();
             AppDiagnostics.LogEvent("gateway.started", _gateway.BaseAddress.ToString());
         }

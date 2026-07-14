@@ -39,6 +39,6 @@ and exact usage, truncation rejection, and the real HTTP executor boundary.
 ## Boundary
 
 This advances WPD-0006 row 7 through all configured HTTP transports. The
-separate `provider-cli-executors.md` evidence covers Codex and Factory. This
-document does not claim proactive provider discovery or live local Ollama
-hardware/runtime acceptance.
+separate `provider-cli-executors.md` evidence covers Codex and Factory, and
+`proactive-local-model-discovery.md` covers local catalogs. This document does
+not claim live local Ollama hardware/runtime acceptance.

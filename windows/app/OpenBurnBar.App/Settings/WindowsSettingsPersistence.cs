@@ -123,7 +123,8 @@ internal static class WindowsSettingsComposition
             new GatewayRouteTelemetryStore(Path.Combine(
                 Persistence.DirectoryPath,
                 "gateway-route-events.jsonl")),
-            new WindowsProviderCliProcessRunner());
+            new WindowsProviderCliProcessRunner(),
+            enableProactiveDiscovery: true);
     }
 
     public static ProjectCodeRootSettingsViewModel CreateProjectCodeRootSettingsViewModel() =>

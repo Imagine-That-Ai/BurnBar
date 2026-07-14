@@ -1,6 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using Xunit;
 
@@ -8,6 +13,38 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Tests;
 
 public sealed class GatewayCompositionFactoryTests
 {
+    [Fact]
+    public async Task Create_ProactiveDiscoveryNeverFollowsLoopbackRedirects()
+    {
+        using var source = new TcpListener(IPAddress.Loopback, 0);
+        using var destination = new TcpListener(IPAddress.Loopback, 0);
+        source.Start();
+        destination.Start();
+        int sourcePort = ((IPEndPoint)source.LocalEndpoint).Port;
+        int destinationPort = ((IPEndPoint)destination.LocalEndpoint).Port;
+        var configuration = new GatewayRouteConfiguration(
+            "local", "openai-compatible", "seed",
+            $"http://127.0.0.1:{sourcePort}/v1/chat/completions",
+            0, true, GatewayRouteAuthentication.Bearer);
+
+        Task<TcpClient> sourceRequest = source.AcceptTcpClientAsync();
+        using GatewayComposition composition = GatewayCompositionFactory.Create(
+            new[] { configuration },
+            _ => "redirect-secret",
+            enableProactiveDiscovery: true);
+        using TcpClient sourceClient = await sourceRequest.WaitAsync(TimeSpan.FromSeconds(5));
+        await ReadHeadersAsync(sourceClient);
+        byte[] response = Encoding.ASCII.GetBytes(
+            $"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{destinationPort}/capture\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        await sourceClient.GetStream().WriteAsync(response);
+
+        GatewayModelDiscoverySnapshot snapshot = await WaitForDiscoveryAsync(composition.Discovery!);
+        Assert.Equal("Discovery failed with HTTP 302.", Assert.Single(snapshot.Sources).Error);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await destination.AcceptTcpClientAsync(timeout.Token));
+    }
+
     [Fact]
     public void ParseRoutes_UsesNonSecretMetadataAndTokenEnvironmentReference()
     {
@@ -53,6 +90,33 @@ public sealed class GatewayCompositionFactoryTests
         Assert.True(route.IsExecutable);
         Assert.Equal("protected-canary", route.BearerToken);
         Assert.DoesNotContain("protected-canary", configuration.ToString(), StringComparison.Ordinal);
+    }
+
+    private static async Task ReadHeadersAsync(TcpClient client)
+    {
+        NetworkStream stream = client.GetStream();
+        var bytes = new List<byte>();
+        byte[] buffer = new byte[512];
+        while (bytes.Count < 16 * 1024)
+        {
+            int read = await stream.ReadAsync(buffer);
+            if (read == 0) return;
+            bytes.AddRange(buffer.AsSpan(0, read).ToArray());
+            if (Encoding.ASCII.GetString(bytes.ToArray()).Contains("\r\n\r\n", StringComparison.Ordinal)) return;
+        }
+        throw new InvalidOperationException("Loopback discovery request headers exceeded the test bound.");
+    }
+
+    private static async Task<GatewayModelDiscoverySnapshot> WaitForDiscoveryAsync(
+        GatewayLiveModelDiscovery discovery)
+    {
+        for (int attempt = 0; attempt < 100; attempt++)
+        {
+            GatewayModelDiscoverySnapshot snapshot = discovery.Snapshot();
+            if (snapshot.GeneratedAt != DateTimeOffset.MinValue) return snapshot;
+            await Task.Delay(10);
+        }
+        throw new TimeoutException("Proactive discovery did not publish a snapshot.");
     }
 
     [Fact]

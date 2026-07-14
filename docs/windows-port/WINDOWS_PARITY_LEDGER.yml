@@ -774,6 +774,7 @@ rows:
   - docs/windows-port/evidence/f2/gateway-route-telemetry.md
   - docs/windows-port/evidence/f2/ollama-native-provider-transport.md
   - docs/windows-port/evidence/f2/provider-cli-executors.md
+  - docs/windows-port/evidence/f2/proactive-local-model-discovery.md
   tests:
   - windows/tests/managed-runtime/ModelProxyRouterTests.cs
   - windows/tests/managed-runtime/ModelRouteHealthStoreTests.cs
@@ -782,6 +783,7 @@ rows:
   - windows/tests/managed-runtime/GatewayRouteTelemetryStoreTests.cs
   - windows/tests/managed-runtime/OllamaNativeProviderAdapterTests.cs
   - windows/tests/managed-runtime/ProviderCliModelCompletionExecutorTests.cs
+  - windows/tests/managed-runtime/GatewayLiveModelDiscoveryTests.cs
   blocking_paths:
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelProxyRouter.cs
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelRouteScorecard.cs
@@ -790,7 +792,8 @@ rows:
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/OllamaNativeProviderAdapter.cs
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ProviderCliModelCompletionExecutor.cs
   - windows/app/OpenBurnBar.App/Gateway/WindowsProviderCliProcessRunner.cs
-  notes: F2 production gateway/router Real with authenticated transport, five-factor scoring, strict quota-drain pools, failure-driven health, opt-in bounded cross-vendor degrade, bounded metadata-only route/usage telemetry, OpenAI/Anthropic/Ollama-native HTTP transports, and protected Codex/Factory CLI transports; proactive discovery remains WPD-0006 row 2 work.
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/GatewayLiveModelDiscovery.cs
+  notes: F2 production gateway/router Real with authenticated transport, five-factor scoring, strict quota-drain pools, failure-driven health, opt-in bounded cross-vendor degrade, bounded metadata-only route/usage telemetry, OpenAI/Anthropic/Ollama-native HTTP transports, protected Codex/Factory CLI transports, and proactive loopback Ollama/OpenAI-compatible plus Factory CLI discovery.
 - id: f2-companion-cli
   status: Real
   owner_lane: f2

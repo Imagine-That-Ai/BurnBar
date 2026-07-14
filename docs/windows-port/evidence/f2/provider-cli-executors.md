@@ -59,7 +59,8 @@ launch inventory, and ownership of all product process primitives.
 
 ## Boundary
 
-This closes the configured-transport portion of WPD-0006 row 7. It does not
-claim proactive local-provider/model discovery, an approved executable that is
-not present in the protected inventory, live Codex/Factory account acceptance,
-or WPD-0006 row 8's long-lived agent/tool execution loop.
+This closes the configured-transport portion of WPD-0006 row 7. Proactive local
+discovery is covered separately by `proactive-local-model-discovery.md`. This
+document does not claim an approved executable that is absent from the protected
+inventory, live Codex/Factory account acceptance, or WPD-0006 row 8's long-lived
+agent/tool execution loop.

@@ -151,8 +151,7 @@ unproven host behavior to certification:
   block key is provider/account/format/model; expiry or a success restores the
   route. The authenticated model and metrics endpoints expose health metadata,
   while provider bodies and credentials never enter the health file. Live
-  provider traffic and proactive local-model discovery remain staging/F2
-  evidence gates.
+  provider traffic remains a staging/F2 evidence gate.
 - Cross-vendor degradation is now off by default and cannot be enabled by an
   untrusted request alone. The operator must explicitly enable the policy, and
   the request must separately opt in. Candidates are restricted to a bounded
@@ -186,6 +185,14 @@ unproven host behavior to certification:
   output stream, scrubs ambient secrets, kills the process tree on cancellation
   or timeout, and removes temporary inputs after every outcome. CLI failures are
   classified without returning raw provider output or credentials.
+- Proactive local discovery now refreshes loopback Ollama `/api/tags`, loopback
+  OpenAI-compatible `/v1/models`, and the protected Factory Droid help catalog.
+  Successful models become atomic executable routes without shadowing configured
+  rows; failed authoritative refreshes remove stale rows. Source concurrency,
+  response bytes, model counts, refresh cadence, and timeouts are bounded.
+  Remote routes are never probed, authentication failures enter the shared
+  cooldown, and authenticated model/companion catalogs expose discovery source,
+  display name, freshness, counts, and safe errors without credentials.
 - Cloud startup now restores a non-expired OAuth session from the protected
   session store without opening a browser; only a signed-out or expired session
   falls back to the explicit dev-host path. When
@@ -392,7 +399,7 @@ unproven host behavior to certification:
   size, and SHA-256, including the resource bundle, before an artifact can be
   signed or zipped.
 
-These changes are covered by focused managed-runtime (195/195 planner, policy,
+These changes are covered by focused managed-runtime (206/206 planner, policy,
 mission, gateway, and recovery tests plus 41/41 managed-agent-runtime tests),
 CloudSync (61/61), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
@@ -400,8 +407,7 @@ Computer Use (114 passed plus a separately executed live Chromium test),
 settings (179/179), configuration (45/45), distribution (98/98), bridge-policy,
 and provider-boundary tests. They are an implementation increment, not a claim
 that the F2 workstreams are all complete: production composition of the
-remaining proactive provider discovery, approval-resolution,
-and tool-execution services, physical
+remaining approval-resolution and tool-execution services, physical
 Computer Use/media safety, and host evidence still remain. The ledger's 50/50 `Real`
 result is the scoped F1 source/product gate; WPD-0009 continues to define F2
 True 1:1 as the actual 100% parity endpoint.

@@ -54,6 +54,7 @@ live model/metrics endpoint projection without provider-body disclosure.
 ## Boundary
 
 This closes WPD-0006 row 2's production catalog and failure-driven health
-contract. It does not claim row 4 durable route logging/streaming usage, row 7
-provider transports or proactive Ollama discovery, or live-provider staging
-acceptance. Those remain independently named gates.
+contract. Proactive local discovery is covered separately by
+`proactive-local-model-discovery.md`. This document does not claim row 4 durable
+route logging/streaming usage, row 7 provider transports, or live-provider
+staging acceptance.

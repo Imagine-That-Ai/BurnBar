@@ -44,7 +44,7 @@ records, and the live authenticated metrics projection.
 
 ## Boundary
 
-This closes WPD-0006 row 4 for gateway route/stream usage telemetry. It does not
-claim provider-specific cost calculation, row 7 provider transports or
-proactive discovery, row 8 long-lived agent/tool execution, or live staging
-provider acceptance.
+This closes WPD-0006 row 4 for gateway route/stream usage telemetry. Provider
+transports and proactive local discovery have separate F2 evidence. This
+document does not claim provider-specific cost calculation, row 8 long-lived
+agent/tool execution, or live staging provider acceptance.

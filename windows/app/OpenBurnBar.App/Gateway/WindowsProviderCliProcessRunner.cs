@@ -180,6 +180,19 @@ public sealed class WindowsProviderCliProcessRunner : IProviderCliProcessRunner
     private static void ValidateFactoryContract(ProviderCliProcessRequest request)
     {
         string[] arguments = request.Arguments.ToArray();
+        bool discovery = arguments.SequenceEqual(new[] { "exec", "--help" }, StringComparer.Ordinal);
+        if (discovery)
+        {
+            if (request.StandardInput is not null
+                || request.RequiredEnvironment.Count != 1
+                || !request.RequiredEnvironment.TryGetValue("FACTORY_API_KEY", out string? discoveryKey)
+                || string.IsNullOrWhiteSpace(discoveryKey))
+            {
+                throw new InvalidOperationException("Factory discovery environment is outside the reviewed contract.");
+            }
+            return;
+        }
+
         string expectedPrompt = Path.Combine(request.WorkingDirectory, "prompt.txt");
         bool validArguments = arguments.Length == 11
             && arguments[0] == "exec"

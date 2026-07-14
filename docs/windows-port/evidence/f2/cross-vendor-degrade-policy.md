@@ -43,6 +43,6 @@ rewriting.
 ## Boundary
 
 This closes WPD-0006 row 3 and reconciles row 1's already composed authenticated
-gateway transport. Row 4 telemetry has separate production evidence. This does
-not claim row 7 provider transports or proactive local discovery, or
-live-provider staging acceptance.
+gateway transport. Telemetry, provider transports, and proactive local discovery
+have separate production evidence. This does not claim live-provider staging
+acceptance.

@@ -10,11 +10,13 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 /// </summary>
 public sealed class ModelProxyRouter
 {
-    private readonly IReadOnlyList<ModelRoute> _routes;
+    private readonly IReadOnlyList<ModelRoute> _configuredRoutes;
+    private IReadOnlyList<ModelRoute> _routes;
     private readonly ModelRouteHealthStore _healthStore;
     private readonly CrossVendorDegradePolicy _degradePolicy;
     private readonly GatewayRouteTelemetryStore _telemetryStore;
     private readonly object _gate = new();
+    private readonly object _routesGate = new();
     private readonly Dictionary<string, RouteMetrics> _metrics = new(StringComparer.Ordinal);
 
     public ModelProxyRouter(
@@ -23,18 +25,53 @@ public sealed class ModelProxyRouter
         CrossVendorDegradePolicy? degradePolicy = null,
         GatewayRouteTelemetryStore? telemetryStore = null)
     {
-        _routes = routes ?? throw new ArgumentNullException(nameof(routes));
-        if (_routes.Count == 0)
+        ArgumentNullException.ThrowIfNull(routes);
+        if (routes.Count == 0)
         {
             throw new ArgumentException("At least one route is required.", nameof(routes));
         }
+        _configuredRoutes = routes.ToArray();
+        _routes = _configuredRoutes;
         _healthStore = healthStore ?? new ModelRouteHealthStore();
         _degradePolicy = degradePolicy ?? CrossVendorDegradePolicy.Disabled;
         _telemetryStore = telemetryStore ?? new GatewayRouteTelemetryStore();
     }
 
     /// <summary>Immutable route view used by gateway model discovery.</summary>
-    public IReadOnlyList<ModelRoute> Routes => _routes;
+    public IReadOnlyList<ModelRoute> Routes
+    {
+        get
+        {
+            lock (_routesGate) return _routes;
+        }
+    }
+
+    /// <summary>
+    /// Atomically replaces live-discovered routes while preserving the durable
+    /// configured catalog. Discovered rows can never shadow a configured route.
+    /// </summary>
+    public int ReplaceDiscoveredRoutes(IEnumerable<ModelRoute> discoveredRoutes)
+    {
+        ArgumentNullException.ThrowIfNull(discoveredRoutes);
+        ModelRoute[] configured = _configuredRoutes.ToArray();
+        var routeIds = new HashSet<string>(configured.Select(route => route.Id), StringComparer.OrdinalIgnoreCase);
+        var modelKeys = new HashSet<string>(configured.Select(ModelKey), StringComparer.OrdinalIgnoreCase);
+        var accepted = new List<ModelRoute>();
+        foreach (ModelRoute route in discoveredRoutes.Take(513))
+        {
+            ArgumentNullException.ThrowIfNull(route);
+            if (accepted.Count >= 512) break;
+            if (route.Discovery is null || !route.IsExecutable) continue;
+            if (!routeIds.Add(route.Id) || !modelKeys.Add(ModelKey(route))) continue;
+            accepted.Add(route);
+        }
+
+        lock (_routesGate)
+        {
+            _routes = configured.Concat(accepted).ToArray();
+        }
+        return accepted.Count;
+    }
 
     /// <summary>Metadata-only route and token-usage history for authenticated diagnostics.</summary>
     public GatewayRouteTelemetryStore TelemetryStore => _telemetryStore;
@@ -48,8 +85,9 @@ public sealed class ModelProxyRouter
 
     private ModelRouteDecision SelectCore(string? vendorPreference, bool recordSelection)
     {
+        IReadOnlyList<ModelRoute> routes = Routes;
         IReadOnlyList<RankedModelRoute> ranked = ModelRouteScorecard.Rank(
-            _routes.Where(IsRouteEligible),
+            routes.Where(IsRouteEligible),
             vendorPreference);
         foreach (RankedModelRoute entry in ranked)
         {
@@ -65,7 +103,7 @@ public sealed class ModelProxyRouter
         }
 
         // Fail closed: no healthy route.
-        ModelRoute first = _routes.OrderBy(r => r.Priority).First();
+        ModelRoute first = routes.OrderBy(r => r.Priority).First();
         if (recordSelection)
         {
             Record(first.Id, success: false, degraded: false);
@@ -87,7 +125,8 @@ public sealed class ModelProxyRouter
             throw new ArgumentException("A model is required.", nameof(model));
         }
 
-        ModelRoute[] exact = _routes
+        IReadOnlyList<ModelRoute> routes = Routes;
+        ModelRoute[] exact = routes
             .Where(route => string.Equals(route.Model, model, StringComparison.OrdinalIgnoreCase))
             .OrderBy(route => route.Priority)
             .ToArray();
@@ -103,19 +142,19 @@ public sealed class ModelProxyRouter
         if (!allowDegrade || !_degradePolicy.IsEnabled)
         {
             ModelRoute failed = exact.FirstOrDefault()
-                ?? _routes.OrderBy(route => route.Priority).First();
+                ?? routes.OrderBy(route => route.Priority).First();
             Record(failed.Id, success: false, degraded: false);
             return new ModelRouteDecision(failed, Degraded: false, FailedClosed: true);
         }
 
         RankedModelRoute? degraded = ModelRouteScorecard.Rank(
-                _routes.Where(IsRouteEligible).Where(_degradePolicy.Allows))
+                routes.Where(IsRouteEligible).Where(_degradePolicy.Allows))
             .Take(_degradePolicy.MaxCandidates)
             .FirstOrDefault();
         if (degraded is null)
         {
             ModelRoute failed = exact.FirstOrDefault()
-                ?? _routes.OrderBy(route => route.Priority).First();
+                ?? routes.OrderBy(route => route.Priority).First();
             Record(failed.Id, success: false, degraded: false);
             return new ModelRouteDecision(failed, Degraded: false, FailedClosed: true);
         }
@@ -150,6 +189,35 @@ public sealed class ModelProxyRouter
         }
     }
 
+    /// <summary>
+    /// Records an authentication failure proven by a catalog request without
+    /// counting the background probe as a user completion.
+    /// </summary>
+    public void RecordDiscoveryAuthenticationFailure(ModelRoute route, int statusCode)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        if (statusCode is not 401 and not 403)
+        {
+            throw new ArgumentOutOfRangeException(nameof(statusCode));
+        }
+        _healthStore.RecordFailure(
+            route,
+            new ModelCompletionResult(statusCode, Array.Empty<byte>(), "application/json", false));
+    }
+
+    /// <summary>
+    /// Clears only a stale authentication block after the same HTTP source
+    /// accepts its catalog credential. Quota and capacity blocks remain intact.
+    /// </summary>
+    public void RecordDiscoverySuccess(ModelRoute route)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        if (_healthStore.ActiveFailure(route)?.FailureKind == ModelRouteHealthFailureKind.Authentication)
+        {
+            _healthStore.RecordSuccess(route);
+        }
+    }
+
     public bool IsRouteEligible(ModelRoute route) =>
         route.IsAvailable() && _healthStore.ActiveFailure(route) is null;
 
@@ -181,7 +249,16 @@ public sealed class ModelProxyRouter
             };
         }
     }
+
+    private static string ModelKey(ModelRoute route) =>
+        string.Join("\u001f", route.Vendor, route.Endpoint?.ToString() ?? string.Empty, route.Model);
 }
+
+public sealed record ModelRouteDiscoveryMetadata(
+    string SourceRouteId,
+    string SourceKind,
+    string DisplayName,
+    DateTimeOffset RefreshedAt);
 
 public sealed record ModelRoute(
     string Id,
@@ -191,7 +268,8 @@ public sealed record ModelRoute(
     bool Healthy,
     Uri? Endpoint = null,
     string? BearerToken = null,
-    ModelRouteRoutingMetadata? Routing = null)
+    ModelRouteRoutingMetadata? Routing = null,
+    ModelRouteDiscoveryMetadata? Discovery = null)
 {
     /// <summary>Whether this route can accept a completion request now.</summary>
     public bool IsExecutable => Healthy

@@ -25,6 +25,7 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
     private readonly GatewayListenerOptions _listenerOptions;
     private readonly ModelProxyRouter _router;
     private readonly IModelCompletionExecutor _executor;
+    private readonly GatewayLiveModelDiscovery? _discovery;
     private readonly byte[]? _accessToken;
     private readonly int _maxRequestBytes;
     private CancellationTokenSource? _cts;
@@ -57,8 +58,9 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         ModelProxyRouter router,
         IModelCompletionExecutor executor,
         string? accessToken = null,
-        int maxRequestBytes = 4 * 1024 * 1024)
-        : this("127.0.0.1", port, router, executor, accessToken, maxRequestBytes)
+        int maxRequestBytes = 4 * 1024 * 1024,
+        GatewayLiveModelDiscovery? discovery = null)
+        : this("127.0.0.1", port, router, executor, accessToken, maxRequestBytes, discovery)
     {
     }
 
@@ -68,7 +70,8 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         ModelProxyRouter router,
         IModelCompletionExecutor executor,
         string? accessToken = null,
-        int maxRequestBytes = 4 * 1024 * 1024)
+        int maxRequestBytes = 4 * 1024 * 1024,
+        GatewayLiveModelDiscovery? discovery = null)
     {
         if (maxRequestBytes <= 0)
         {
@@ -81,6 +84,7 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
             configuredPort: port);
         _router = router ?? throw new ArgumentNullException(nameof(router));
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
+        _discovery = discovery;
         _maxRequestBytes = maxRequestBytes;
         _accessToken = string.IsNullOrWhiteSpace(accessToken)
             ? null
@@ -173,6 +177,7 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
             if (context.Request.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase)
                 && path is "/v1/models" or "/models")
             {
+                GatewayModelDiscoverySnapshot? discovery = _discovery?.Snapshot();
                 var models = _router.Routes
                     .OrderBy(route => route.Priority)
                     .Select(route =>
@@ -187,11 +192,33 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
                             route_eligible = route.IsExecutable && failure is null,
                             provider_id = route.Vendor,
                             provider_name = route.Vendor,
+                            display_name = route.Discovery?.DisplayName ?? route.Model,
+                            discovered = route.Discovery is not null,
+                            discovery_source = route.Discovery?.SourceKind,
+                            source_route_id = route.Discovery?.SourceRouteId,
+                            refreshed_at = route.Discovery?.RefreshedAt,
                             health_failure = failure?.FailureKind.ToString(),
                             blocked_until = failure?.BlockedUntil,
                         };
                     });
-                await WriteJsonAsync(context.Response, 200, new { @object = "list", data = models })
+                await WriteJsonAsync(context.Response, 200, new
+                {
+                    @object = "list",
+                    data = models,
+                    discovery = discovery is null ? null : new
+                    {
+                        generated_at = discovery.GeneratedAt,
+                        discovered_route_count = discovery.DiscoveredRouteCount,
+                        sources = discovery.Sources.Select(source => new
+                        {
+                            route_id = source.RouteId,
+                            source_kind = source.SourceKind,
+                            refreshed_at = source.RefreshedAt,
+                            model_count = source.ModelCount,
+                            error = source.Error,
+                        }),
+                    },
+                })
                     .ConfigureAwait(false);
                 return;
             }

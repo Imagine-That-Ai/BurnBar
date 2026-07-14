@@ -8,9 +8,14 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 public sealed record GatewayComposition(
     ModelProxyRouter Router,
     IModelCompletionExecutor Executor,
-    HttpClient HttpClient) : IDisposable
+    HttpClient HttpClient,
+    GatewayLiveModelDiscovery? Discovery = null) : IDisposable
 {
-    public void Dispose() => HttpClient.Dispose();
+    public void Dispose()
+    {
+        Discovery?.Dispose();
+        HttpClient.Dispose();
+    }
 }
 
 /// <summary>
@@ -26,7 +31,7 @@ public static class GatewayCompositionFactory
 
     public static GatewayComposition CreateFromEnvironment()
     {
-        var client = new HttpClient();
+        HttpClient client = CreateHttpClient();
         IReadOnlyList<ModelRoute> routes = ParseRoutes(
             Environment.GetEnvironmentVariable(RoutesEnvironmentVariable));
         return new GatewayComposition(
@@ -47,7 +52,8 @@ public static class GatewayCompositionFactory
         Func<string, string?> protectedCredentialResolver,
         ModelRouteHealthStore? healthStore = null,
         GatewayRouteTelemetryStore? telemetryStore = null,
-        IProviderCliProcessRunner? cliProcessRunner = null)
+        IProviderCliProcessRunner? cliProcessRunner = null,
+        bool enableProactiveDiscovery = false)
     {
         ArgumentNullException.ThrowIfNull(configurations);
         ArgumentNullException.ThrowIfNull(protectedCredentialResolver);
@@ -76,22 +82,29 @@ public static class GatewayCompositionFactory
             routes.Add(configuration.Resolve(credential));
         }
 
-        var client = new HttpClient();
+        HttpClient client = CreateHttpClient();
         IModelCompletionExecutor httpExecutor = new HttpModelCompletionExecutor(client);
         IModelCompletionExecutor executor = cliProcessRunner is null
             ? httpExecutor
             : new CompositeModelCompletionExecutor(
                 httpExecutor,
                 new ProviderCliModelCompletionExecutor(cliProcessRunner));
-        return new GatewayComposition(
-            new ModelProxyRouter(
-                routes.Count == 0 ? DefaultRoutes() : routes,
-                healthStore,
-                CrossVendorDegradePolicy.FromEnvironment(),
-                telemetryStore),
-            executor,
-            client);
+        var router = new ModelProxyRouter(
+            routes.Count == 0 ? DefaultRoutes() : routes,
+            healthStore,
+            CrossVendorDegradePolicy.FromEnvironment(),
+            telemetryStore);
+        GatewayLiveModelDiscovery? discovery = enableProactiveDiscovery
+            ? new GatewayLiveModelDiscovery(router, client, cliProcessRunner)
+            : null;
+        discovery?.Start();
+        return new GatewayComposition(router, executor, client, discovery);
     }
+
+    private static HttpClient CreateHttpClient() => new(new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+    });
 
     public static IReadOnlyList<ModelRoute> ParseRoutes(string? json)
     {

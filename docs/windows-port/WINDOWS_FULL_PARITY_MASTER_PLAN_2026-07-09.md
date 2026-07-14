@@ -490,8 +490,9 @@ F2 workstreams:
    multi-client story.
 2. Model catalog, health, route logging, cross-vendor degrade, and gateway
    metrics.
-3. Proactive local-model discovery. Codex/Factory CLI executors are now closed
-   by `docs/windows-port/evidence/f2/provider-cli-executors.md`. The production
+3. Codex/Factory CLI executors and proactive local-model discovery are closed by
+   `docs/windows-port/evidence/f2/provider-cli-executors.md` and
+   `docs/windows-port/evidence/f2/proactive-local-model-discovery.md`. The production
    authenticated gateway, provider-router scorecard, quota-drain core,
    failure-driven model health, opt-in cross-vendor degrade policy, and durable
    route/stream usage telemetry are closed, and OpenAI-compatible, Anthropic,
@@ -501,7 +502,8 @@ F2 workstreams:
    `docs/windows-port/evidence/f2/cross-vendor-degrade-policy.md` and
    `docs/windows-port/evidence/f2/gateway-route-telemetry.md` and
    `docs/windows-port/evidence/f2/ollama-native-provider-transport.md` and
-   `docs/windows-port/evidence/f2/provider-cli-executors.md`.
+   `docs/windows-port/evidence/f2/provider-cli-executors.md` and
+   `docs/windows-port/evidence/f2/proactive-local-model-discovery.md`.
 4. Headless run service, resume/recovery, journal, and tool dispatch.
 5. Local Mission Control execution: DAG scheduler, journal repository,
    projection reducer, planner, policy engine, rate limiter.

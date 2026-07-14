@@ -337,7 +337,14 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 {
                     ok = true,
                     data = (_router?.Routes ?? Array.Empty<ModelRoute>()).Where(route => route.Healthy)
-                        .Select(route => new { id = route.Model, vendor = route.Vendor })
+                        .Select(route => new
+                        {
+                            id = route.Model,
+                            vendor = route.Vendor,
+                            display_name = route.Discovery?.DisplayName ?? route.Model,
+                            discovered = route.Discovery is not null,
+                            source_kind = route.Discovery?.SourceKind,
+                        })
                         .ToArray(),
                 }),
                 "run.submit" => await InvokeRunAsync(_submit, root, cancellationToken).ConfigureAwait(false),
