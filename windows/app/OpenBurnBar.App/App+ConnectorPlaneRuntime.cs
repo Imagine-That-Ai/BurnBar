@@ -18,35 +18,35 @@ public partial class App
     {
         ToolingProxyService tooling = _toolingProxy
             ?? throw new InvalidOperationException("tooling_proxy_unavailable");
-        string operation = RequiredString(request, "op");
+        string operation = ToolingRequiredString(request, "op");
         return operation switch
         {
             "connector.get" => await tooling.ConnectorSnapshotAsync(cancellationToken).ConfigureAwait(false),
             "connector.update" => await tooling.UpdateConnectorAsync(
-                Required<ConnectorConfigUpdateRequest>(request, "request"), cancellationToken).ConfigureAwait(false),
+                ToolingRequired<ConnectorConfigUpdateRequest>(request, "request"), cancellationToken).ConfigureAwait(false),
             "connector.action" => await tooling.PerformConnectorActionAsync(
-                Required<ConnectorActionRequest>(request, "request"), cancellationToken).ConfigureAwait(false),
+                ToolingRequired<ConnectorActionRequest>(request, "request"), cancellationToken).ConfigureAwait(false),
             "workspace.bridge.enqueue" => tooling.WorkspaceBridge.Enqueue(
-                Required<WorkspaceToolInvocation>(request, "request")),
+                ToolingRequired<WorkspaceToolInvocation>(request, "request")),
             "workspace.bridge.claim" => tooling.WorkspaceBridge.Claim(
-                OptionalString(request, "runId"), RequiredString(request, "clientId")),
+                ToolingOptionalString(request, "runId"), ToolingRequiredString(request, "clientId")),
             "workspace.bridge.result" => tooling.WorkspaceBridge.Complete(
-                Required<WorkspaceToolResultSubmission>(request, "request")),
+                ToolingRequired<WorkspaceToolResultSubmission>(request, "request")),
             "workspace.bridge.clear" => tooling.WorkspaceBridge.Clear(
-                RequiredString(request, "runId"), RequiredString(request, "callId")),
-            "workspace.bridge.cancel" => tooling.WorkspaceBridge.Cancel(RequiredString(request, "runId")),
+                ToolingRequiredString(request, "runId"), ToolingRequiredString(request, "callId")),
+            "workspace.bridge.cancel" => tooling.WorkspaceBridge.Cancel(ToolingRequiredString(request, "runId")),
             "context.next" => tooling.ContextSelector.NextAction(
-                Required<AgentIntent>(request, "intent"), Required<ContextSelectionState>(request, "state")),
+                ToolingRequired<AgentIntent>(request, "intent"), ToolingRequired<ContextSelectionState>(request, "state")),
             "context.snapshot" => tooling.ContextSelector.MakeSnapshot(
-                Required<AgentIntent>(request, "intent"),
-                Required<ContextSelectionState>(request, "state"),
-                OptionalString(request, "lastReadFilePath"),
-                Optional<IReadOnlyList<string>>(request, "searchResultPaths") ?? Array.Empty<string>()),
+                ToolingRequired<AgentIntent>(request, "intent"),
+                ToolingRequired<ContextSelectionState>(request, "state"),
+                ToolingOptionalString(request, "lastReadFilePath"),
+                ToolingOptional<IReadOnlyList<string>>(request, "searchResultPaths") ?? Array.Empty<string>()),
             _ => throw new ArgumentException("Unsupported tooling operation.", nameof(request)),
         };
     }
 
-    private static T Required<T>(JsonElement root, string property)
+    private static T ToolingRequired<T>(JsonElement root, string property)
     {
         if (!root.TryGetProperty(property, out JsonElement value))
             throw new ArgumentException($"{property} is required.");
@@ -54,17 +54,17 @@ public partial class App
             ?? throw new ArgumentException($"{property} is invalid.");
     }
 
-    private static T? Optional<T>(JsonElement root, string property)
+    private static T? ToolingOptional<T>(JsonElement root, string property)
     {
         if (!root.TryGetProperty(property, out JsonElement value) || value.ValueKind == JsonValueKind.Null) return default;
         return value.Deserialize<T>(ConnectorJsonOptions);
     }
 
-    private static string RequiredString(JsonElement root, string property) =>
-        OptionalString(root, property) is { Length: > 0 } value
+    private static string ToolingRequiredString(JsonElement root, string property) =>
+        ToolingOptionalString(root, property) is { Length: > 0 } value
             ? value : throw new ArgumentException($"{property} is required.");
 
-    private static string? OptionalString(JsonElement root, string property) =>
+    private static string? ToolingOptionalString(JsonElement root, string property) =>
         root.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()?.Trim() : null;
 }
