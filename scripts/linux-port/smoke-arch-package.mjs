@@ -21,7 +21,10 @@ const closure = readJson(path.join(outDir, 'architecture-closure.json'));
 const artifacts = (closure.artifacts ?? []).filter((entry) => entry.type === 'arch');
 if (artifacts.length !== 1) throw new Error(`Arch smoke requires exactly one artifact, found ${artifacts.length}`);
 const artifact = artifacts[0];
-const full = readRecordedFile(artifact, 'Arch package artifact').file;
+// Artifact paths in an architecture closure are repository-relative, while
+// installed-manifest subjects are shard-relative. Keep the trust root explicit
+// for each record rather than guessing from a path that an attacker controls.
+const full = readRecordedFile(artifact, 'Arch package artifact', repoRoot).file;
 const steps = [];
 const dependencies = inspectArchPackageDependencies(full);
 const dependencyPackages = archDependencyPackagesForInstall(dependencies);
@@ -44,7 +47,7 @@ let packageOwnedFiles = [];
 if (install.exitCode === 0) {
   steps.push(installedPackageVerificationStep({
     artifact,
-    readSubject: (record, label) => readRecordedFile(record, label).bytes
+    readSubject: (record, label) => readRecordedFile(record, label, outDir).bytes
   }));
   const desktop = runStep('/usr/bin/openburnbar-linux-desktop', ['--version'], {
     env: isolatedRuntimeEnvironment()
@@ -115,12 +118,20 @@ function isolatedRuntimeEnvironment() {
   for (const directory of ['config', 'data', 'run']) {
     fs.mkdirSync(path.join(root, directory), { recursive: true });
   }
+  // The direct daemon probe intentionally runs the installed binary without
+  // the launcher. Reproduce the launcher's packaged runtime search path so the
+  // probe validates the same self-contained Swift/native payload.
+  const packagedLibraryPaths = [
+    '/usr/lib/openburnbar/swift',
+    '/usr/lib/openburnbar/native'
+  ].filter((directory) => fs.existsSync(directory));
   return {
     ...process.env,
     HOME: root,
     XDG_CONFIG_HOME: path.join(root, 'config'),
     XDG_DATA_HOME: path.join(root, 'data'),
-    XDG_RUNTIME_DIR: path.join(root, 'run')
+    XDG_RUNTIME_DIR: path.join(root, 'run'),
+    LD_LIBRARY_PATH: packagedLibraryPaths.join(':')
   };
 }
 
@@ -146,19 +157,20 @@ function installedFileStep(file, { executable = false, allowSymlink = false } = 
   );
 }
 
-function readRecordedFile(record, label) {
+function readRecordedFile(record, label, trustedRoot) {
   if (record === null || typeof record !== 'object' || Array.isArray(record)
       || typeof (record.file ?? record.path) !== 'string'
       || !/^[a-f0-9]{64}$/u.test(record.sha256 ?? '')
       || !Number.isSafeInteger(record.size) || record.size < 0) {
     throw new Error(`${label} record is invalid`);
   }
-  const file = path.resolve(repoRoot, record.file ?? record.path);
-  const relative = path.relative(repoRoot, file);
+  const root = path.resolve(trustedRoot);
+  const file = path.resolve(root, record.file ?? record.path);
+  const relative = path.relative(root, file);
   if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new Error(`${label} escapes the repository`);
+    throw new Error(`${label} escapes its trusted root`);
   }
-  let current = repoRoot;
+  let current = root;
   for (const component of relative.split(path.sep).filter(Boolean)) {
     current = path.join(current, component);
     if (fs.lstatSync(current).isSymbolicLink()) throw new Error(`${label} traverses a symlink`);
