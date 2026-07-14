@@ -102,9 +102,19 @@ public sealed class CompanionCliClientTests
         {
             using TcpClient peer = await listener.AcceptTcpClientAsync();
             await using NetworkStream stream = peer.GetStream();
+            byte[] requestByte = new byte[1];
+            while (await stream.ReadAsync(requestByte) != 0)
+            {
+                if (requestByte[0] == (byte)'\n')
+                {
+                    break;
+                }
+            }
+
             byte[] oversizedResponse = Encoding.UTF8.GetBytes(new string('x', CompanionCliServer.MaxLineBytes + 1));
             await stream.WriteAsync(oversizedResponse);
             await stream.FlushAsync();
+            peer.Client.Shutdown(SocketShutdown.Send);
         });
 
         try
