@@ -98,6 +98,92 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('payload staging dereferences absolute SQLCipher SONAME links', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-package-payload-links-'));
+  const daemon = path.join(root, 'daemon');
+  const bridge = path.join(root, 'bridge');
+  const browserProbe = path.join(root, 'probe');
+  const browserRequirements = path.join(root, 'requirements');
+  const swift = path.join(root, 'swift');
+  const sqlcipher = path.join(root, 'sqlcipher');
+  const iroh = path.join(root, 'libopenburnbar_iroh.so');
+  const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
+  const payload = path.join(root, 'payload');
+  const sqlcipherBinary = path.join(sqlcipher, 'libsqlcipher.so.0.8.6');
+  fs.writeFileSync(daemon, 'daemon');
+  fs.writeFileSync(bridge, 'bridge');
+  fs.writeFileSync(browserProbe, 'probe');
+  fs.writeFileSync(browserRequirements, '{}');
+  fs.mkdirSync(swift);
+  fs.mkdirSync(sqlcipher);
+  fs.writeFileSync(sqlcipherBinary, 'sqlcipher');
+  fs.symlinkSync(sqlcipherBinary, path.join(sqlcipher, 'libsqlcipher.so.0'));
+  fs.symlinkSync(sqlcipherBinary, path.join(sqlcipher, 'libsqlcipher.so'));
+  fs.writeFileSync(iroh, 'iroh');
+  fs.writeFileSync(releasePublicKey, 'public-key');
+
+  const report = stageLinuxPackagePayload({
+    daemonBinary: daemon,
+    playwrightBridge: bridge,
+    browserRuntimeProbe: browserProbe,
+    browserRuntimeRequirements: browserRequirements,
+    releasePublicKey,
+    payloadRoot: payload,
+    swiftRuntimeDir: swift,
+    sqlcipherLibDir: sqlcipher,
+    irohNativeLibrary: iroh,
+    probe: false
+  });
+
+  for (const entry of ['libsqlcipher.so', 'libsqlcipher.so.0']) {
+    const staged = path.join(report.nativeRuntime, entry);
+    assert.equal(fs.lstatSync(staged).isFile(), true);
+    assert.equal(fs.lstatSync(staged).isSymbolicLink(), false);
+    assert.ok(fs.existsSync(staged));
+    assert.equal(fs.readFileSync(staged, 'utf8'), 'sqlcipher');
+  }
+  assert.equal(fs.readFileSync(path.join(report.nativeRuntime, 'libsqlcipher.so.0.8.6'), 'utf8'), 'sqlcipher');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('payload staging rejects SQLCipher links outside the runtime directory', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-package-payload-links-invalid-'));
+  const daemon = path.join(root, 'daemon');
+  const bridge = path.join(root, 'bridge');
+  const browserProbe = path.join(root, 'probe');
+  const browserRequirements = path.join(root, 'requirements');
+  const swift = path.join(root, 'swift');
+  const sqlcipher = path.join(root, 'sqlcipher');
+  const iroh = path.join(root, 'libopenburnbar_iroh.so');
+  const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
+  const outside = path.join(root, 'outside.so');
+  fs.writeFileSync(daemon, 'daemon');
+  fs.writeFileSync(bridge, 'bridge');
+  fs.writeFileSync(browserProbe, 'probe');
+  fs.writeFileSync(browserRequirements, '{}');
+  fs.mkdirSync(swift);
+  fs.mkdirSync(sqlcipher);
+  fs.writeFileSync(outside, 'outside');
+  fs.symlinkSync(outside, path.join(sqlcipher, 'libsqlcipher.so.0'));
+  fs.writeFileSync(path.join(sqlcipher, 'libsqlcipher.so'), 'sqlcipher');
+  fs.writeFileSync(iroh, 'iroh');
+  fs.writeFileSync(releasePublicKey, 'public-key');
+
+  assert.throws(() => stageLinuxPackagePayload({
+    daemonBinary: daemon,
+    playwrightBridge: bridge,
+    browserRuntimeProbe: browserProbe,
+    browserRuntimeRequirements: browserRequirements,
+    releasePublicKey,
+    payloadRoot: path.join(root, 'payload'),
+    swiftRuntimeDir: swift,
+    sqlcipherLibDir: sqlcipher,
+    irohNativeLibrary: iroh,
+    probe: false
+  }), /SQLCipher runtime symlink escapes its runtime directory/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('payload staging rejects SQLCipher trees without the required SONAME', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-package-payload-invalid-'));
   const daemon = path.join(root, 'daemon');

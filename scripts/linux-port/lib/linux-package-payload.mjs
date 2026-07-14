@@ -113,7 +113,8 @@ export function buildLinuxCloudAuthConfig({ env = process.env, requireConfigured
 }
 
 function copySqlcipherRuntime(source, destination) {
-  const entries = fs.readdirSync(source)
+  const sourceRoot = fs.realpathSync(source);
+  const entries = fs.readdirSync(sourceRoot)
     .filter((entry) => entry.startsWith('libsqlcipher.so'))
     .sort();
   if (!entries.some((entry) => entry === 'libsqlcipher.so.0')) {
@@ -121,10 +122,39 @@ function copySqlcipherRuntime(source, destination) {
   }
   fs.mkdirSync(destination, { recursive: true });
   for (const entry of entries) {
-    fs.cpSync(path.join(source, entry), path.join(destination, entry), {
-      dereference: false,
-      preserveTimestamps: true
-    });
+    const sourcePath = path.join(sourceRoot, entry);
+    const destinationPath = path.join(destination, entry);
+    const sourceStat = fs.lstatSync(sourcePath);
+    if (!sourceStat.isSymbolicLink()) {
+      if (!sourceStat.isFile()) {
+        throw new Error(`SQLCipher runtime entry must be a file or symlink: ${sourcePath}`);
+      }
+      fs.cpSync(sourcePath, destinationPath, { preserveTimestamps: true });
+      continue;
+    }
+
+    // Homebrew/CI installs can emit absolute SONAME links into the build prefix.
+    // Dereference links that stay inside this runtime directory so the packaged
+    // AppImage never contains a host-specific path. Relative in-tree links are
+    // kept as portable links to avoid needlessly duplicating the library bytes.
+    const linkTarget = fs.readlinkSync(sourcePath);
+    const targetPath = fs.realpathSync(sourcePath);
+    const relativeTarget = path.relative(sourceRoot, targetPath);
+    if (!relativeTarget || relativeTarget.startsWith(`..${path.sep}`)
+        || relativeTarget === '..' || path.isAbsolute(relativeTarget)) {
+      throw new Error(`SQLCipher runtime symlink escapes its runtime directory: ${sourcePath}`);
+    }
+    if (!fs.statSync(targetPath).isFile()) {
+      throw new Error(`SQLCipher runtime symlink target is not a regular file: ${sourcePath}`);
+    }
+    if (path.isAbsolute(linkTarget)) {
+      fs.cpSync(targetPath, destinationPath, { preserveTimestamps: true });
+    } else {
+      fs.symlinkSync(
+        path.relative(path.dirname(destinationPath), path.join(destination, relativeTarget)),
+        destinationPath
+      );
+    }
   }
   return entries;
 }
