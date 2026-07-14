@@ -24,6 +24,7 @@ import {
   type AppCheckTokenMinter,
   type WindowsAttestationClaim,
   type WindowsAttestationVerifier,
+  type WindowsAttestationChallengeStore,
 } from "../callables/windowsAppCheck.js";
 import { PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } from "../config.js";
 
@@ -34,6 +35,8 @@ const {
   MOCK_ATTESTATION_KIND,
   MOCK_ATTESTATION_MAX_AGE_MS,
   DEFAULT_MINT_TTL_MS,
+  TPM_ATTESTATION_KIND,
+  issueWindowsAppCheckChallengeCore,
 } = __testing__;
 
 const NOW = 1_900_000_000_000;
@@ -288,12 +291,209 @@ describe("VAL-P0-AC-011 attestation-gated production fence", () => {
   });
 });
 
+describe("VAL-P0-AC-013 production TPM verifier and challenge binding", () => {
+  const realAppId = "1:123456789012:web:abcdef0123456789";
+  const tpmClaim: WindowsAttestationClaim = {
+    kind: TPM_ATTESTATION_KIND,
+    appId: realAppId,
+    nonce: "server-nonce-0123456789abcdef",
+    issuedAtMs: NOW,
+    mac: Buffer.alloc(64, 7).toString("base64"),
+    challengeId: "challenge-0123456789abcdef",
+    subjectPublicKey: Buffer.alloc(72, 9).toString("base64"),
+  };
+
+  it("registers TPM only for HTTPS, a strong service credential, and a non-placeholder app id", () => {
+    expect(
+      buildWindowsAttestationVerifiers({
+        allowMock: false,
+        expectedAppId: APP_ID,
+        tpmVerifierURL: "https://attestation.example.test/verify",
+        tpmVerifierToken: "a".repeat(32),
+      }).has(TPM_ATTESTATION_KIND),
+    ).toBe(false);
+    expect(
+      buildWindowsAttestationVerifiers({
+        allowMock: false,
+        expectedAppId: realAppId,
+        tpmVerifierURL: "http://attestation.example.test/verify",
+        tpmVerifierToken: "a".repeat(32),
+      }).has(TPM_ATTESTATION_KIND),
+    ).toBe(false);
+    expect(
+      buildWindowsAttestationVerifiers({
+        allowMock: false,
+        expectedAppId: realAppId,
+        tpmVerifierURL: "https://attestation.example.test/verify",
+        tpmVerifierToken: "short",
+      }).has(TPM_ATTESTATION_KIND),
+    ).toBe(false);
+  });
+
+  it("mints only after the Windows verifier binds uid/app/challenge/nonce and the challenge is consumed", async () => {
+    const fetcher = async (_provider: string, _operation: string, _url: string | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      expect(body).toMatchObject({
+        uid: "user-1",
+        appId: realAppId,
+        challengeId: tpmClaim.challengeId,
+        nonce: tpmClaim.nonce,
+      });
+      return new Response(
+        JSON.stringify({
+          valid: true,
+          uid: "user-1",
+          appId: realAppId,
+          challengeId: tpmClaim.challengeId,
+          nonce: tpmClaim.nonce,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    let consumeCalls = 0;
+    const challengeStore: WindowsAttestationChallengeStore = {
+      issue: async () => {
+        throw new Error("not used");
+      },
+      consume: async (uid, appId, challengeId, nonce) => {
+        consumeCalls += 1;
+        expect({ uid, appId, challengeId, nonce }).toEqual({
+          uid: "user-1",
+          appId: realAppId,
+          challengeId: tpmClaim.challengeId,
+          nonce: tpmClaim.nonce,
+        });
+        return "ok";
+      },
+    };
+    const verifiers = buildWindowsAttestationVerifiers({
+      allowMock: false,
+      expectedAppId: realAppId,
+      tpmVerifierURL: "https://attestation.example.test/verify",
+      tpmVerifierToken: "a".repeat(32),
+      tpmVerifierFetch: fetcher,
+    });
+    const result = await mintWindowsAppCheckTokenCore({
+      claim: tpmClaim,
+      verifiers,
+      allowedAppIDs: [realAppId],
+      createToken: stubMinter(),
+      nowMillis: NOW,
+      uid: "user-1",
+      challengeStore,
+    });
+    expect(result.appId).toBe(realAppId);
+    expect(consumeCalls).toBe(1);
+  });
+
+  it("fails closed when verifier service binding differs or the challenge was replayed", async () => {
+    const bindingMismatch = async () =>
+      new Response(
+        JSON.stringify({
+          valid: true,
+          uid: "user-1",
+          appId: realAppId,
+          challengeId: tpmClaim.challengeId,
+          nonce: "different-nonce-0123456789",
+        }),
+        { status: 200 },
+      );
+    const verifiers = buildWindowsAttestationVerifiers({
+      allowMock: false,
+      expectedAppId: realAppId,
+      tpmVerifierURL: "https://attestation.example.test/verify",
+      tpmVerifierToken: "b".repeat(32),
+      tpmVerifierFetch: bindingMismatch,
+    });
+    await expect(
+      mintWindowsAppCheckTokenCore({
+        claim: tpmClaim,
+        verifiers,
+        allowedAppIDs: [realAppId],
+        createToken: stubMinter(),
+        nowMillis: NOW,
+        uid: "user-1",
+        challengeStore: {
+          issue: async () => {
+            throw new Error("not used");
+          },
+          consume: async () => "ok",
+        },
+      }),
+    ).rejects.toThrow(/did not verify/i);
+
+    const validFetch = async () =>
+      new Response(
+        JSON.stringify({
+          valid: true,
+          uid: "user-1",
+          appId: realAppId,
+          challengeId: tpmClaim.challengeId,
+          nonce: tpmClaim.nonce,
+        }),
+        { status: 200 },
+      );
+    const replayVerifiers = buildWindowsAttestationVerifiers({
+      allowMock: false,
+      expectedAppId: realAppId,
+      tpmVerifierURL: "https://attestation.example.test/verify",
+      tpmVerifierToken: "c".repeat(32),
+      tpmVerifierFetch: validFetch,
+    });
+    await expect(
+      mintWindowsAppCheckTokenCore({
+        claim: tpmClaim,
+        verifiers: replayVerifiers,
+        allowedAppIDs: [realAppId],
+        createToken: stubMinter(),
+        nowMillis: NOW,
+        uid: "user-1",
+        challengeStore: {
+          issue: async () => {
+            throw new Error("not used");
+          },
+          consume: async () => "replayed",
+        },
+      }),
+    ).rejects.toThrow(/already used/i);
+  });
+
+  it("issues challenges only for the exact configured and allowlisted app id", async () => {
+    const store: WindowsAttestationChallengeStore = {
+      issue: async (uid, appId, nowMillis) => ({
+        challengeId: `${uid}-challenge-0123456789`,
+        nonce: `${appId}-nonce-0123456789`,
+        expiresAtMs: nowMillis + 120_000,
+      }),
+      consume: async () => "ok",
+    };
+    await expect(
+      issueWindowsAppCheckChallengeCore({
+        uid: "user-1",
+        appId: realAppId,
+        expectedAppId: realAppId,
+        allowedAppIDs: [realAppId],
+        store,
+        nowMillis: NOW,
+      }),
+    ).resolves.toMatchObject({ expiresAtMs: NOW + 120_000 });
+    await expect(
+      issueWindowsAppCheckChallengeCore({
+        uid: "user-1",
+        appId: "1:999:web:evil",
+        expectedAppId: realAppId,
+        allowedAppIDs: [realAppId],
+        store,
+        nowMillis: NOW,
+      }),
+    ).rejects.toThrow(/not allowed/i);
+  });
+});
+
 describe("VAL-P0-AC-011B index.ts registration-presence (wiring)", () => {
   it("re-exports mintWindowsAppCheckToken from ./callables/windowsAppCheck.js", () => {
     const indexSource = readFileSync(resolve(__dirname, "../index.ts"), "utf8");
-    expect(indexSource).toMatch(
-      /export\s*\{\s*mintWindowsAppCheckToken\s*\}\s*from\s*"\.\/callables\/windowsAppCheck\.js"/,
-    );
+    expect(indexSource).toMatch(/issueWindowsAppCheckChallenge, mintWindowsAppCheckToken/);
   });
 
   it("exposes the callable object from the module", async () => {

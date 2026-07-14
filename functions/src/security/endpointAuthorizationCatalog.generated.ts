@@ -1366,6 +1366,30 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "issueWindowsAppCheckChallenge",
+    trigger: "callable",
+    authMethod: "Firebase Auth; server-nonce bootstrap for Windows TPM attestation",
+    appCheck: "not-required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and accepts only the exact server-configured, allowlisted Windows app id",
+    handlerModule: "callables/windowsAppCheck.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["issueWindowsAppCheckChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "Bootstrap that precedes custom App Check minting, so it cannot require App Check. It returns a short-lived nonce only after Firebase Auth and exact server-configured app-id binding.",
+  },
+  {
     exportedName: "latestRouterRundown",
     trigger: "http",
     authMethod: "public read-only JSON endpoint with product-layer IP rate limit",

@@ -12,11 +12,11 @@
     through this real transport (mirrors the Home Assistant .Net transport + live
     HttpListener test already proven in windows/tests/integrations).
 
-    Targets net10.0 (matching the Home Assistant .Net transport); it references the
-    net8.0 portable core (a lower TFM is consumable by a higher one).
+    Targets both net8.0 (the shipping WinUI app) and net10.0 (the portable test
+    harness). Both consume the net8.0 portable core.
   -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

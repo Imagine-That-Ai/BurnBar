@@ -1,8 +1,8 @@
 // P/Invoke surface for the CNG key-storage + TPM key-attestation APIs
 // (ncrypt.dll) used by the REAL Windows App Check attestation producer.
 //
-// The genuine, hardware-rooted proof that a Windows client is an unmodified app
-// is a TPM key-attestation claim: a persisted key created inside the Microsoft
+// The hardware-rooted Windows installation signal is a TPM key-attestation
+// claim: a persisted key created inside the Microsoft
 // Platform Crypto Provider (the TPM-backed CNG provider) is attested with
 // NCryptCreateClaim(NCRYPT_CLAIM_PLATFORM), binding a server-supplied nonce. The
 // resulting claim blob is what AC-013's server verifier will validate against the
@@ -36,6 +36,7 @@ internal static class NCryptNative
 
     /// <summary>The TPM-backed CNG key-storage provider.</summary>
     internal const string PlatformCryptoProvider = "Microsoft Platform Crypto Provider";
+    internal const string SoftwareKeyStorageProvider = "Microsoft Software Key Storage Provider";
 
     /// <summary>NCryptCreateClaim claim type: platform (TPM) key attestation.</summary>
     internal const int NCRYPT_CLAIM_PLATFORM = 0x00010000;
@@ -45,10 +46,12 @@ internal static class NCryptNative
 
     /// <summary>NCRYPTBUFFER buffer type: the key-attestation challenge/nonce.</summary>
     internal const int NCRYPTBUFFER_PKCS_ALG_OID = 41; // unused placeholder kept for clarity
-    internal const int NCRYPTBUFFER_CLAIM_KEYATTESTATION_NONCE = 91;
+    // Windows SDK ncrypt.h (Windows 10+). This value is part of the native ABI.
+    internal const int NCRYPTBUFFER_CLAIM_KEYATTESTATION_NONCE = 49;
 
     /// <summary>ECDSA P-256 is the attestation subject-key algorithm.</summary>
     internal const string BCRYPT_ECDSA_P256_ALGORITHM = "ECDSA_P256";
+    internal const string BCRYPT_ECCPUBLIC_BLOB = "ECCPUBLICBLOB";
 
     // NTSTATUS-style HRESULT; 0 == ERROR_SUCCESS.
     internal const int ERROR_SUCCESS = 0;
@@ -110,6 +113,39 @@ internal static class NCryptNative
         byte[]? pbClaimBlob,
         int cbClaimBlob,
         out int pcbResult,
+        int dwFlags);
+
+    [DllImport(Dll, CharSet = CharSet.Unicode, SetLastError = false)]
+    internal static extern int NCryptExportKey(
+        IntPtr hKey,
+        IntPtr hExportKey,
+        string pszBlobType,
+        IntPtr pParameterList,
+        byte[]? pbOutput,
+        int cbOutput,
+        out int pcbResult,
+        int dwFlags);
+
+    [DllImport(Dll, CharSet = CharSet.Unicode, SetLastError = false)]
+    internal static extern int NCryptImportKey(
+        IntPtr hProvider,
+        IntPtr hImportKey,
+        string pszBlobType,
+        IntPtr pParameterList,
+        out IntPtr phKey,
+        byte[] pbData,
+        int cbData,
+        int dwFlags);
+
+    [DllImport(Dll, SetLastError = false)]
+    internal static extern int NCryptVerifyClaim(
+        IntPtr hSubjectKey,
+        IntPtr hAuthorityKey,
+        int dwClaimType,
+        ref NCryptBufferDesc pParameterList,
+        byte[] pbClaimBlob,
+        int cbClaimBlob,
+        IntPtr pOutput,
         int dwFlags);
 
     [DllImport(Dll, SetLastError = false)]

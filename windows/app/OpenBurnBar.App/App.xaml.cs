@@ -5,7 +5,6 @@ using Microsoft.Windows.AppLifecycle;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.Theme;
-using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Settings.Winui;
@@ -76,7 +75,7 @@ public partial class App : Application
 
         WindowsUpdateService.Configure(WindowsSettingsComposition.SharedPersistence);
         _ = WindowsUpdateService.RunAutomaticCheckIfDueAsync(WindowsSettingsComposition.SharedPersistence);
-        WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        WindowsSettingsComposition.TryConfigureProductionCloudSync();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
 
         // Production Liquid Glass prefs (registry) — InMemory is reserved for unit tests.

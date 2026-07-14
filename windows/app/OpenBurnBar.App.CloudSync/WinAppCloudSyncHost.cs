@@ -1,14 +1,14 @@
-using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.DataControlCenter;
 using OpenBurnBar.App.Presentation.Memories;
 using OpenBurnBar.CloudSync.AppCheck.Mint;
-using OpenBurnBar.CloudSync.Crypto;
+using OpenBurnBar.CloudSync.AppCheck.Attestation;
 
 namespace OpenBurnBar.App.CloudSync;
 
 /// <summary>
-/// Dev-host singleton wiring: composition root, memory store, and callable hub accessors.
-/// Desktop OAuth remains deferred — use env tokens via <see cref="CloudSyncCompositionRoot.CreateDevHost"/>.
+/// Process-wide composition root, memory store, and callable hub accessors.
+/// Shipping WinUI code enters through the mandatory OAuth + TPM App Check path;
+/// <see cref="ConfigureForDevHost"/> is retained for deterministic host tooling.
 /// </summary>
 public static class WinAppCloudSyncHost
 {
@@ -69,15 +69,16 @@ public static class WinAppCloudSyncHost
     /// <summary>
     /// Live root wiring backed by a signed-in desktop OAuth provider (real Firebase
     /// id token). Flips <see cref="Root"/> to the OAuth-authenticated gateway so the
-    /// seam-ready surfaces read live Firestore data. App Check stays optional via
-    /// <paramref name="appCheckMintTransport"/>.
+    /// seam-ready surfaces read live Firestore data. TPM App Check is mandatory.
     /// </summary>
     public static void ConfigureWithOAuth(
         DesktopOAuthCredentialsProvider oauth,
         string firebaseProjectId,
         string firebaseUid,
         byte[] vaultKey,
-        IAppCheckMintTransport? appCheckMintTransport = null)
+        IAttestationProducer attestationProducer,
+        IAppCheckMintTransport appCheckMintTransport,
+        string appCheckAppId)
     {
         if (oauth is null) throw new ArgumentNullException(nameof(oauth));
         lock (Gate)
@@ -88,7 +89,9 @@ public static class WinAppCloudSyncHost
                 oauth,
                 firebaseProjectId,
                 firebaseUid,
-                appCheckMintTransport);
+                attestationProducer,
+                appCheckMintTransport,
+                appCheckAppId);
             _memory = new CloudSyncMemoryStore(_root.Gateway, firebaseUid, vaultKey);
             _quotaSnapshots = new CloudSyncQuotaSnapshotStore(_root.Gateway, firebaseUid);
             DomainCoreShadowEvidenceUploader.Configure(_root);
@@ -104,42 +107,24 @@ public static class WinAppCloudSyncHost
         DesktopOAuthCredentialsProvider oauth,
         string firebaseProjectId,
         byte[] vaultKey,
-        IAppCheckMintTransport? appCheckMintTransport = null,
+        IAttestationProducer attestationProducer,
+        IAppCheckMintTransport appCheckMintTransport,
+        string appCheckAppId,
         CancellationToken cancellationToken = default)
     {
         if (oauth is null) throw new ArgumentNullException(nameof(oauth));
         FirebaseOAuthSession session = oauth.CurrentSession
             ?? await oauth.SignInAsync(cancellationToken).ConfigureAwait(false);
-        ConfigureWithOAuth(oauth, firebaseProjectId, session.Uid, vaultKey, appCheckMintTransport);
+        ConfigureWithOAuth(
+            oauth,
+            firebaseProjectId,
+            session.Uid,
+            vaultKey,
+            attestationProducer,
+            appCheckMintTransport,
+            appCheckAppId);
         return session.Uid;
     }
-
-    public static void ConfigureFromAppConfiguration()
-    {
-        AppConfiguration config = AppConfiguration.Current;
-        string? uid = config.EffectiveFirebaseUid();
-        if (string.IsNullOrWhiteSpace(uid))
-        {
-            return;
-        }
-
-        string project = config.EffectiveFirebaseProjectId();
-        byte[] vaultKey = CloudVaultCrypto.GenerateVaultKey();
-        string? keyB64 = config.EffectiveVaultKeyB64();
-        if (!string.IsNullOrWhiteSpace(keyB64))
-        {
-            vaultKey = Convert.FromBase64String(keyB64);
-        }
-
-        ConfigureForDevHost(
-            project,
-            uid,
-            vaultKey,
-            idToken: config.EffectiveFirebaseIdToken(),
-            appCheckToken: config.EffectiveAppCheckToken());
-    }
-
-    public static void ConfigureFromEnvironment() => ConfigureFromAppConfiguration();
 
     public static DataControlCenterViewModel CreateDataControlViewModel()
     {

@@ -17,6 +17,22 @@ public static class CloudAuthProductionComposition
     public const string FirebaseApiKeyEnv = "OPENBURNBAR_FIREBASE_WEB_API_KEY";
     public const string AppCheckAppIdEnv = "OPENBURNBAR_APPCHECK_APP_ID";
 
+    public static string RequireAppCheckAppId()
+    {
+        string? appId = Environment.GetEnvironmentVariable(AppCheckAppIdEnv);
+        if (string.IsNullOrWhiteSpace(appId))
+        {
+            throw new InvalidOperationException($"{AppCheckAppIdEnv} is required for production Windows sign-in.");
+        }
+        if (!appId.StartsWith("1:", StringComparison.Ordinal) ||
+            !appId.Contains(":web:", StringComparison.Ordinal) ||
+            appId.Contains("placeholder", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"{AppCheckAppIdEnv} must be a provisioned Firebase web app id.");
+        }
+        return appId;
+    }
+
     /// <summary>True when Desktop OAuth client id + Firebase API key are configured.</summary>
     public static bool IsOAuthConfigured()
     {
@@ -94,7 +110,7 @@ public static class CloudAuthProductionComposition
     {
         string resolvedAppId = appId
             ?? Environment.GetEnvironmentVariable(AppCheckAppIdEnv)
-            ?? "1:000000000000:web:openburnbar-windows";
+            ?? throw new InvalidOperationException($"{AppCheckAppIdEnv} is required for production App Check.");
         var options = new AppCheckProviderOptions { AppId = resolvedAppId };
         return new WindowsAppCheckProvider(producer, mintClient, idTokenSource, options);
     }
