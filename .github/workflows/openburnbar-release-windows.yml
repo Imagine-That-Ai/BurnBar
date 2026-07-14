@@ -24,7 +24,8 @@ name: OpenBurnBar Windows Release
 # round-trip).
 #
 # TRIGGER: a `windows-v*` tag (the manifest version must be bumped first — the portable-verify job
-# enforces version consistency at tag time) or a manual dispatch.
+# enforces version consistency at tag time) or a manual dispatch run FROM the release tag ref
+# (`refs/tags/windows-vX.Y.Z`); dispatching from a branch is rejected by the authorization guard.
 
 on:
   push:
@@ -33,7 +34,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. 1.0.28) — required for manual dispatch."
+        description: "Release version (e.g. 1.0.28). Optional: manual dispatch must run from the windows-vX.Y.Z tag ref, where the version is derived from the tag itself."
         required: false
         default: ""
       allow_unsigned:
@@ -61,8 +62,15 @@ jobs:
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag_ref: ${{ steps.version.outputs.tag_ref }}
+      release_commit: ${{ steps.version.outputs.release_commit }}
     steps:
-      - name: Resolve version
+      - name: Check out repository metadata
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and authorize release tag
         id: version
         env:
           REF_NAME: ${{ github.ref_name }}
@@ -82,8 +90,53 @@ jobs:
             echo "::error::Version '${version}' is not X.Y.Z."
             exit 1
           fi
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "Resolved release version: ${version}"
+
+          tag_name="windows-v${version}"
+          tag_ref="refs/tags/${tag_name}"
+          if [[ "${GITHUB_REF}" != "${tag_ref}" ]]; then
+            echo "::error::Windows release ${version} must run from ${tag_ref}, not ${GITHUB_REF}."
+            echo "::error::For manual dispatch, select the matching protected release tag as the workflow ref."
+            exit 1
+          fi
+
+          git fetch --force --tags origin "+${tag_ref}:${tag_ref}"
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+
+          if ! release_commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"; then
+            echo "::error::Tag does not exist in repository: ${tag_name}"
+            exit 1
+          fi
+          if [[ -z "${release_commit}" ]]; then
+            echo "::error::Unable to resolve ${tag_ref} to a commit."
+            exit 1
+          fi
+
+          # Bind the release to the commit that actually triggered this run (GITHUB_SHA).
+          # Without this, a tag moved/recreated between the webhook and this step would
+          # silently build+sign whatever the tag points at NOW instead of the audited
+          # trigger commit, letting artifacts/provenance drift from the event.
+          if ! trigger_commit="$(git rev-parse --verify --quiet "${GITHUB_SHA}^{commit}")" || [[ -z "${trigger_commit}" ]]; then
+            echo "::error::Unable to resolve triggering commit ${GITHUB_SHA}."
+            exit 1
+          fi
+          if [[ "${release_commit}" != "${trigger_commit}" ]]; then
+            echo "::error::Tag ${tag_name} now points at ${release_commit}, but this run was triggered at ${trigger_commit}."
+            echo "::error::The release tag moved after the run was queued; refusing to build a drifted commit. Re-tag and re-run."
+            exit 1
+          fi
+          release_commit="${trigger_commit}"
+
+          if ! git merge-base --is-ancestor "${release_commit}" origin/main; then
+            echo "::error::Windows release tag ${tag_name} points at ${release_commit}, which is not reachable from origin/main."
+            exit 1
+          fi
+
+          {
+            echo "version=${version}"
+            echo "tag_ref=${tag_ref}"
+            echo "release_commit=${release_commit}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved authorized Windows release ${version} at ${release_commit}."
 
   # ── Always-run: prove the portable security kernel (test + signer round-trip) ─
   portable-verify:
@@ -95,8 +148,11 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Check out repository
+      - name: Check out authorized release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
@@ -171,6 +227,7 @@ jobs:
       - portable-verify
       - native-engine
     runs-on: windows-latest
+    environment: windows-release
     timeout-minutes: 60
     permissions:
       contents: read
@@ -180,8 +237,11 @@ jobs:
     env:
       VERSION: ${{ needs.resolve-release.outputs.version }}
     steps:
-      - name: Check out repository
+      - name: Check out authorized release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
@@ -287,15 +347,12 @@ jobs:
               -o "publish/$rid"
           done
 
-      - name: Verify native-engine publish layouts
-        shell: pwsh
+      - name: Validate published native-engine layouts
         run: |
-          $ErrorActionPreference = "Stop"
-          . "$env:GITHUB_WORKSPACE/windows/packaging/scripts/Assert-NativeEngineManifest.ps1"
-          foreach ($rid in @("win-x64", "win-arm64")) {
-            $publishRoot = Join-Path $env:GITHUB_WORKSPACE "publish/$rid"
-            Assert-OpenBurnBarNativeEngineManifest -Root $publishRoot
-          }
+          set -euo pipefail
+          for rid in win-x64 win-arm64; do
+            node scripts/windows-port/validate-native-engine-layout.mjs "publish/$rid"
+          done
 
       - name: Authenticode sign (Azure Artifact Signing — no staple analog)
         if: steps.config.outputs.codesign == 'true'
@@ -357,18 +414,14 @@ jobs:
             Write-Host "Portable Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
           }
 
-      - name: Refresh signed native-engine manifests
+      - name: Refresh and validate signed native-engine layouts
         if: steps.config.outputs.codesign == 'true'
-        shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-          . "$env:GITHUB_WORKSPACE/windows/packaging/scripts/Refresh-NativeEngineManifest.ps1"
-          . "$env:GITHUB_WORKSPACE/windows/packaging/scripts/Assert-NativeEngineManifest.ps1"
-          foreach ($rid in @("win-x64", "win-arm64")) {
-            $publishRoot = Join-Path $env:GITHUB_WORKSPACE "publish/$rid"
-            Refresh-OpenBurnBarNativeEngineManifest -Root $publishRoot
-            Assert-OpenBurnBarNativeEngineManifest -Root $publishRoot
-          }
+          set -euo pipefail
+          for rid in win-x64 win-arm64; do
+            node scripts/windows-port/refresh-native-engine-manifest.mjs "publish/$rid"
+            node scripts/windows-port/validate-native-engine-layout.mjs "publish/$rid"
+          done
 
       - name: Package zips + checksums
         id: package
@@ -554,8 +607,11 @@ jobs:
     env:
       VERSION: ${{ needs.resolve-release.outputs.version }}
     steps:
-      - name: Check out repository
+      - name: Check out authorized release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
 
       - name: Download Windows release artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0

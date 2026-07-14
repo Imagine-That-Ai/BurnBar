@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Liquid dashboard command deck
+
+- **A live, customizable command deck for the dashboard**: Added a dominant
+  liquid-glass top rail with an always-current burn chart, compact appearance
+  and layout controls, provider-aware shortcuts, and user-created destinations
+  for charts, settings, models, and chats.
+- **A full Charts workspace**: Added configurable spend visualizations, saved
+  card layouts, time-range routing, and privacy-preserving AI insights, while
+  keeping dashboard totals and charts synchronized with newly mined logs.
+- **A clearer menu-bar popover**: Rebuilt the popover as adaptive transparent
+  glass with clear and frosted modes, rounded sections, improved provider
+  branding, and a larger live trend tile.
+
 ### Added — Junie (JetBrains) integration
 
 - **First-class Junie CLI agent and provider**: Fully added JetBrains `junie`

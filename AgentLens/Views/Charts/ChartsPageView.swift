@@ -50,7 +50,8 @@ struct ChartsPageView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 header
 
-                if let snapshot = service.snapshot {
+                if let snapshot = service.snapshot,
+                   snapshot.timeRange == selectedTimeRange {
                     if snapshot.isEmpty {
                         emptyState
                     } else {
@@ -95,7 +96,10 @@ struct ChartsPageView: View {
             service.refresh(dataStore: dataStore, timeRange: selectedTimeRange)
         }
         .task(id: insightKey) {
-            guard aiInsightsEnabled, let snapshot = service.snapshot, !snapshot.isEmpty else { return }
+            guard aiInsightsEnabled,
+                  let snapshot = service.snapshot,
+                  snapshot.timeRange == selectedTimeRange,
+                  !snapshot.isEmpty else { return }
             insightEngine.generateIfNeeded(
                 snapshot: snapshot,
                 bridge: chatController.cliBridge,
@@ -111,7 +115,9 @@ struct ChartsPageView: View {
 
     private var insightKey: String {
         let version = service.snapshot?.usagesVersion ?? -1
-        return "\(aiInsightsEnabled)|\(version)|\(selectedTimeRange.rawValue)"
+        let snapshotRange = service.snapshot?.timeRange.rawValue ?? "none"
+        let backends = settingsManager.enabledChatBackends.map(\.rawValue).sorted().joined(separator: ",")
+        return "\(aiInsightsEnabled)|\(version)|\(selectedTimeRange.rawValue)|\(snapshotRange)|\(backends)"
     }
 
     // MARK: Header

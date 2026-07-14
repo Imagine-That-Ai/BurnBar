@@ -78,10 +78,15 @@ budgets/raw-firestore-baseline.json
 budgets/singleton-baseline.json
 budgets/string-any-boundary-baseline.json
 budgets/swift-file-size-baseline.json
+budgets/port-file-size-baseline.json
 budgets/windows-tree-baseline.json
 budgets/core-ui-purity-baseline.json
 budgets/mission-splitbrain-baseline.json
 budgets/linux-desktop.perf.json
+# migrator-parity: annotated schema divergences between the canonical Swift GRDB
+# migrator and the Windows/Linux mirrors (scripts/check-migrator-parity.mjs).
+# Exact-set matched both ways: new divergences AND stale entries fail CI.
+budgets/migrator-parity-baseline.json
 
 # --- File-level TypeScript suppressions (token-scoped) ---
 functions/src/types/legacy.ts | eslint-disable
@@ -94,6 +99,10 @@ website/src/scripts/pretextShrinkwrap.ts | ts-suppress
 # Allowlisted rather than annotated inline because crates/openburnbar-iroh/** changes trigger a full
 # AAR rebuild-parity gate; the justification lives here instead of churning the FFI source.
 crates/openburnbar-iroh/src/lib.rs | rust-allow
+
+# --- Generated UniFFI Swift bindings (token-scoped) ---
+# Regenerated and drift-checked from crates/openburnbar-domain-core; never hand-edited.
+OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift | swiftlint-disable
 
 # --- Vendored GRDB SQLCipher fork (token-scoped) ---
 # Upstream GRDB carries SwiftLint waivers for compatibility with its own lint profile. Keep exact

@@ -131,7 +131,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
                         parseCache.fileEntries[cacheKey] = ClaudeCodeCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
-                            conversation: options.includeConversationBodies ? parsed?.conversation : nil
+                            conversation: nil
                         )
                         cacheMutated = true
                     }
@@ -440,22 +440,25 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             )
         }
 
-        guard cached.conversation == nil else { return cached }
-        let parsed = try? parseClaudeSession( // try?-ok(best-effort conversation cache rewarm)
+        let parsed = try? parseClaudeSession( // try?-ok(best-effort conversation cache reparse)
             file: file,
             sessionId: sessionId,
             projectName: projectName
         )
-        let refreshed = ClaudeCodeCacheEntry(
+        let transient = ClaudeCodeCacheEntry(
             signature: signature,
             usage: cached.usage ?? parsed?.usage,
             conversation: parsed?.conversation
         )
-        if refreshed != cached {
-            parseCache.fileEntries[cacheKey] = refreshed
+        if cached.conversation != nil || (cached.usage == nil && parsed?.usage != nil) {
+            parseCache.fileEntries[cacheKey] = ClaudeCodeCacheEntry(
+                signature: signature,
+                usage: transient.usage,
+                conversation: nil
+            )
             cacheMutated = true
         }
-        return refreshed
+        return transient
     }
 
     private func stripCachedConversationIfNeeded(

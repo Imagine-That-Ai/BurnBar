@@ -218,6 +218,71 @@ COVERAGE_ALLOWLIST = {
         "by ComputerUseSecurityCallableClientTests and "
         "CloudVaultRotationPickupTests."
     ),
+    "AgentLens/App/AgentLensApp+LiveServices.swift": (
+        "SwiftUI scene-environment wiring for the live dashboard services. "
+        "The routed Charts destination is covered by ChartsRouteTests; chart "
+        "data decisions are covered by ChartsSnapshotBuilderTests."
+    ),
+    "AgentLens/App/AppCommandRouter.swift": (
+        "NSApplication command routing into dashboard windows and live scene "
+        "state cannot be driven deterministically by headless XCTest. Charts "
+        "route identity and selection behavior are covered by ChartsRouteTests."
+    ),
+    "AgentLens/App/AppDelegate+StatusItem.swift": (
+        "NSStatusItem and popover lifecycle glue requires a live AppKit status "
+        "bar. Popover content decisions remain covered by the dashboard and "
+        "provider-quota test surfaces."
+    ),
+    "AgentLens/App/OpenBurnBarStatusItemSupport.swift": (
+        "NSStatusItem button drawing, popover anchoring, and event-monitor glue "
+        "require a live window server. Chart aggregation and quota decisions "
+        "are covered independently by their model tests."
+    ),
+    "AgentLens/Models/Charts/ChartKind.swift": (
+        "Chart presentation metadata and SwiftUI-facing labels/styles. Layout "
+        "and route behavior are covered by ChartsPageLayoutTests and "
+        "ChartsRouteTests; series construction is covered separately."
+    ),
+    "AgentLens/Services/Charts/ChartInsightEngine.swift": (
+        "Live provider CLI execution and actor scheduling cannot run reliably "
+        "inside the headless app coverage lane. Parsing, cache identity, and "
+        "retry decisions are covered by ChartInsightEngineParsingTests."
+    ),
+    "AgentLens/Services/Charts/ChartsDataService.swift": (
+        "Live SQLite snapshot orchestration and detached refresh scheduling. "
+        "Its window boundaries are covered by DashboardUsageViewModelTests and "
+        "its derived output by ChartsSnapshotBuilderTests."
+    ),
+    "AgentLens/Support/AccessibilityIdentifiers.swift": (
+        "Accessibility identifier declarations and SwiftUI modifier glue are "
+        "consumed by UI automation rather than executable headless unit paths."
+    ),
+    "AgentLens/Views/Charts/": (
+        "SwiftUI and Swift Charts rendering, drag/drop, and glass-material glue "
+        "requires a live window server. Layout and navigation decisions are "
+        "covered by ChartsPageLayoutTests and ChartsRouteTests; chart data is "
+        "covered by ChartBucketingTests and ChartsSnapshotBuilderTests."
+    ),
+    "AgentLens/Views/Dashboard/": (
+        "SwiftUI dashboard rendering, liquid-glass composition, toolbar "
+        "interaction, and layout glue require a live window server. Navigation "
+        "and data decisions are covered by ChartsRouteTests, "
+        "ChartsPageLayoutTests, and DashboardUsageViewModelTests."
+    ),
+    "AgentLens/Views/Components/ProviderLogoView.swift": (
+        "Provider asset selection and SwiftUI image rendering require the app "
+        "resource bundle; provider grouping remains covered by "
+        "DashboardUsageViewModelTests."
+    ),
+    "AgentLens/Views/Popover/CloudWhisperStrip.swift": (
+        "Liquid-glass SwiftUI popover presentation requires a live window "
+        "server; underlying cloud state decisions are tested outside the view."
+    ),
+    "AgentLens/Views/Popover/MenuBarPopoverView.swift": (
+        "Menu-bar popover layout, material composition, and AppKit interaction "
+        "require a live status item and window server. Quota and dashboard "
+        "decision logic are covered by their dedicated tests."
+    ),
     "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift": (
         "Live Firestore listener and mission-state writer. The changed AAD "
         "construction and sealed-event payload logic are exercised through "
@@ -255,6 +320,16 @@ COVERAGE_ALLOWLIST = {
         "MacEscrowCredentialProducerTests; the live collaborators require "
         "Firebase/keychain integration coverage."
     ),
+    "AgentLens/Services/DataControlCenterViewModel.swift": (
+        "macOS Data & Privacy Control Center callable hub. The changed lines "
+        "route deleteDomain through the trusted-device step-up "
+        "(ComputerUseSecurityCallableClient.callHighRiskOwnerAction) — a live "
+        "Firebase callable invocation plus device-id lookup that only executes "
+        "against the deployed Functions backend. The step-up gate itself is "
+        "unit-covered server-side (highRiskOwnerActionCallableGuards, "
+        "dataDeletion suites); this client call site needs Firebase "
+        "integration coverage, matching the other callable-hub services here."
+    ),
     "AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift": (
         "Live iroh host client: async QUIC stream accept loops, heartbeat "
         "refreshes, and per-peer teardown run only against a live relay runtime. "
@@ -276,6 +351,15 @@ COVERAGE_ALLOWLIST = {
         "defaults, and kill-switch behavior are covered by SettingsManagerTests; "
         "the changed observer/fetch side effects are AppKit/Firebase runtime "
         "glue that requires integration coverage."
+    ),
+    "AgentLens/Services/DataControlCenterViewModel.swift": (
+        "macOS Data & Privacy Control Center callable hub. The changed lines "
+        "route deleteDomain through the trusted-device step-up "
+        "(ComputerUseSecurityCallableClient.callHighRiskOwnerAction), a live "
+        "Firebase callable invocation plus device-id lookup that only executes "
+        "against the deployed Functions backend. The step-up gate is covered "
+        "server-side by highRiskOwnerActionCallableGuards and dataDeletion "
+        "suites; the client call site requires Firebase integration coverage."
     ),
     "AgentLens/Services/AccountManager.swift": (
         "Live FirebaseAuth/GoogleSignIn account-deletion wrapper. The "
@@ -405,6 +489,34 @@ COVERAGE_ALLOWLIST = {
         "live DriverKit/IOHIDUserDevice session and root, which no CI lane "
         "can host. Engine logic lives in OpenBurnBarRemoteAccessAgentCore "
         "(VirtualHIDKeyboardEngine), which IS line-gated here."
+    ),
+    "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaAdapter.swift": (
+        "Anthropic credential/statusline and rate-limit-header orchestration. "
+        "The changed call sites only hand provider payloads to the deterministic "
+        "ClaudeQuotaDomainCoreAdapter; parser and bucket semantics are covered "
+        "by the Claude quota/domain-core tests, while live credential refresh, "
+        "filesystem snapshots, and HTTP headers require provider integration "
+        "fixtures unavailable to the package coverage lane."
+    ),
+    "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaDomainCoreAdapter.swift": (
+        "Provider migration adapter with native-FFI availability, ABI/version "
+        "fallback, shadow comparison, and logger wiring. The legacy parser and "
+        "Rust quota semantics are covered by focused Claude/domain-core tests; "
+        "the native branch requires the platform FFI artifact and its dedicated "
+        "smoke/contract lane, which is not emitted into Swift package line "
+        "coverage."
+    ),
+    "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift": (
+        "Generated UniFFI bindings emitted from the domain-core Rust contract. "
+        "The generator output is validated by the Rust/Swift ABI contract and "
+        "native smoke lanes; generated bridge glue is not independently line-hit "
+        "by Swift package XCTest."
+    ),
+    "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift": (
+        "Native FFI smoke executable entry point. Its process-level ABI and "
+        "payload checks run in the dedicated native smoke job, not inside the "
+        "Swift package XCTest coverage target, so line attribution here would "
+        "be misleading."
     ),
 }
 

@@ -243,12 +243,13 @@ extension DashboardView {
     }
 
     private var dashboardDeckChart: some View {
-        Button {
-            withAnimation(DesignSystem.Animation.standard) {
-                navigate(to: .charts)
-            }
-        } label: {
-            HStack(spacing: 14) {
+        HStack(spacing: 14) {
+            Button {
+                withAnimation(DesignSystem.Animation.standard) {
+                    navigate(to: .charts)
+                }
+            } label: {
+                HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 5) {
                         Text("BURN RATE")
@@ -286,53 +287,53 @@ extension DashboardView {
                 )
                     .frame(minWidth: 220, maxWidth: .infinity)
                     .frame(height: 74)
+                }
+            }
+            .buttonStyle(.plain)
+            .frame(minWidth: 360, maxWidth: .infinity)
+            .help("Open Charts — the full analytics gallery")
+            .accessibilityLabel("Open Charts")
+            .accessibilityIdentifier(OBBAccessibilityID.dashboardDeckChartButton)
 
-                // Nested control: the range chip keeps the old range/unit
-                // popover while the surrounding button now opens Charts.
-                Button {
-                    showHeroPopover.toggle()
-                } label: {
-                    VStack(spacing: 2) {
-                        Text(selectedTimeRange.displayName.uppercased())
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 7, weight: .bold))
-                    }
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(DesignSystem.Colors.surface.opacity(0.52))
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            Button {
+                showHeroPopover.toggle()
+            } label: {
+                VStack(spacing: 2) {
+                    Text(selectedTimeRange.displayName.uppercased())
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 7, weight: .bold))
                 }
-                .buttonStyle(.plain)
-                .help("Change Burn chart range or unit")
-                .accessibilityLabel("Burn chart range and unit")
-                .popover(isPresented: $showHeroPopover, arrowEdge: .bottom) {
-                    commandDeckHeroPopover
-                        .frame(width: 240)
-                }
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.52))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
-            .frame(minWidth: 440, maxWidth: .infinity)
-            .background(dashboardDeckInsetSurface(cornerRadius: 24, opacity: 0.62))
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(DesignSystem.Colors.ember.opacity(0.24), lineWidth: 0.75)
+            .buttonStyle(.plain)
+            .help("Change Burn chart range or unit")
+            .accessibilityLabel("Burn chart range and unit")
+            .popover(isPresented: $showHeroPopover, arrowEdge: .bottom) {
+                commandDeckHeroPopover
+                    .frame(width: 240)
             }
-            .clipShape(
-                RoundedRectangle(cornerRadius: 24, style: .continuous),
-                style: FillStyle(antialiased: true)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .help("Open Charts — the full analytics gallery")
-        .accessibilityLabel("Open Charts")
-        .accessibilityIdentifier(OBBAccessibilityID.dashboardDeckChartButton)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .frame(minWidth: 440, maxWidth: .infinity)
+        .background(dashboardDeckInsetSurface(cornerRadius: 24, opacity: 0.62))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(DesignSystem.Colors.ember.opacity(0.24), lineWidth: 0.75)
+        }
+        .clipShape(
+            RoundedRectangle(cornerRadius: 24, style: .continuous),
+            style: FillStyle(antialiased: true)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
     private var dashboardDeckActions: some View {
@@ -366,9 +367,14 @@ extension DashboardView {
                 .font(.system(size: 12 * scale, weight: .semibold, design: .rounded))
             Text("Updated")
                 .foregroundStyle(DesignSystem.Colors.textMuted)
-            Text(Date.now, style: .time)
-                .monospacedDigit()
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            if let lastRefresh = dataStore.lastRefresh {
+                Text(lastRefresh, style: .time)
+                    .monospacedDigit()
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            } else {
+                Text("Waiting")
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
 
             Divider()
                 .frame(height: 22 * scale)
@@ -1085,7 +1091,7 @@ private struct DashboardQuickAccessEditor: View {
     private var filteredSettings: [SettingsItem] {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return Array(SettingsManifest.all.prefix(18)) }
-        return SettingsSearchEngine.search(query, in: SettingsManifest.all).prefix(18).map { $0 }
+        return Array(SettingsSearchEngine.search(query, in: SettingsManifest.all).prefix(18))
     }
 
     var body: some View {

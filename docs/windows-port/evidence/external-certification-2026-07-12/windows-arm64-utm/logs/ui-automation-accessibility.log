@@ -1,0 +1,167 @@
+﻿  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.App.TextExpansion -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.TextExpansion\bin\ARM64\Debug\net8.0\OpenBurnBar.App.TextExpansion.dll
+  OpenBurnBar.Pretext -> C:\candidate-7c36229823-rehearsal4\windows\pretext\OpenBurnBar.Pretext\bin\ARM64\Debug\net8.0\OpenBurnBar.Pretext.dll
+  OpenBurnBar.App.Settings -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.Settings\bin\ARM64\Debug\net8.0\OpenBurnBar.App.Settings.dll
+  OpenBurnBar.Particles -> C:\candidate-7c36229823-rehearsal4\windows\particles\OpenBurnBar.Particles\bin\ARM64\Debug\net8.0\OpenBurnBar.Particles.dll
+  OpenBurnBar.App.ManagedAgentRuntime -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.ManagedAgentRuntime\bin\ARM64\Debug\net8.0\OpenBurnBar.App.ManagedAgentRuntime.dll
+  OpenBurnBar.Storage -> C:\candidate-7c36229823-rehearsal4\windows\storage\OpenBurnBar.Storage\bin\ARM64\Debug\net8.0\OpenBurnBar.Storage.dll
+  OpenBurnBar.CloudSync.AppCheck -> C:\candidate-7c36229823-rehearsal4\windows\cloudsync\appcheck\OpenBurnBar.CloudSync.AppCheck\bin\ARM64\Debug\net8.0\OpenBurnBar.CloudSync.AppCheck.dll
+  OpenBurnBar.CloudSync.Crypto -> C:\candidate-7c36229823-rehearsal4\windows\cloudsync\OpenBurnBar.CloudSync.Crypto\bin\ARM64\Debug\net8.0\OpenBurnBar.CloudSync.Crypto.dll
+  OpenBurnBar.ComputerUse.Core -> C:\candidate-7c36229823-rehearsal4\windows\computeruse\OpenBurnBar.ComputerUse.Core\bin\ARM64\Debug\net8.0\OpenBurnBar.ComputerUse.Core.dll
+  OpenBurnBar.App.Dashboard -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.Dashboard\bin\ARM64\Debug\net8.0\OpenBurnBar.App.Dashboard.dll
+  OpenBurnBar.App.Configuration -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.Configuration\bin\ARM64\Debug\net8.0\OpenBurnBar.App.Configuration.dll
+  OpenBurnBar.Dist.Hardening -> C:\candidate-7c36229823-rehearsal4\windows\dist\OpenBurnBar.Dist.Hardening\bin\ARM64\Debug\net8.0\OpenBurnBar.Dist.Hardening.dll
+  OpenBurnBar.Updater.Core -> C:\candidate-7c36229823-rehearsal4\windows\packaging\updater\OpenBurnBar.Updater.Core\bin\ARM64\Debug\net8.0\OpenBurnBar.Updater.Core.dll
+  OpenBurnBar.CloudSync -> C:\candidate-7c36229823-rehearsal4\windows\cloudsync\OpenBurnBar.CloudSync\bin\ARM64\Debug\net8.0\OpenBurnBar.CloudSync.dll
+  OpenBurnBar.Pal.Overlay -> C:\candidate-7c36229823-rehearsal4\windows\pal\overlay\bin\ARM64\Debug\net8.0\OpenBurnBar.Pal.Overlay.dll
+  OpenBurnBar.App.Presentation -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.Presentation\bin\ARM64\Debug\net8.0\OpenBurnBar.App.Presentation.dll
+  OpenBurnBar.App.UsageRuntime -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.UsageRuntime\bin\ARM64\Debug\net8.0\OpenBurnBar.App.UsageRuntime.dll
+  OpenBurnBar.App.Pet -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.Pet\bin\ARM64\Debug\net8.0\OpenBurnBar.App.Pet.dll
+  OpenBurnBar.App.Quota.Acquisition -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.Quota.Acquisition\bin\ARM64\Debug\net8.0\OpenBurnBar.App.Quota.Acquisition.dll
+  OpenBurnBar.Updater.Windows -> C:\candidate-7c36229823-rehearsal4\windows\packaging\updater\OpenBurnBar.Updater.Windows\bin\ARM64\Debug\net8.0-windows\OpenBurnBar.Updater.Windows.dll
+  OpenBurnBar.App.CursorConnector -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.CursorConnector\bin\ARM64\Debug\net8.0\OpenBurnBar.App.CursorConnector.dll
+  OpenBurnBar.App.Quota.Acquisition.Windows -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.Quota.Acquisition.Windows\bin\ARM64\Debug\net8.0\OpenBurnBar.App.Quota.Acquisition.Windows.dll
+  OpenBurnBar.App.CloudSync -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.CloudSync\bin\ARM64\Debug\net8.0\OpenBurnBar.App.CloudSync.dll
+  OpenBurnBar.App.Settings.ViewModels -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App.Settings.ViewModels\bin\ARM64\Debug\net8.0\OpenBurnBar.App.Settings.ViewModels.dll
+  OpenBurnBar.Pal.Ipc -> C:\candidate-7c36229823-rehearsal4\windows\pal\ipc\bin\ARM64\Debug\net8.0\OpenBurnBar.Pal.Ipc.dll
+  OpenBurnBar.Pal.Ipc.Windows -> C:\candidate-7c36229823-rehearsal4\windows\pal\ipc-windows\bin\ARM64\Debug\net8.0\OpenBurnBar.Pal.Ipc.Windows.dll
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\DataControlCenter\MercuryBasinHost.cs(43,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(56,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(71,36): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\DashboardBackdrop.cs(49,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(46,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(27,22): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\DataControlCenter\MercuryBasinHost.cs(35,23): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(36,24): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(47,23): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Onboarding\HermesSetupDialog.xaml.cs(61,82): warning CS8655: The switch expression does not handle some null inputs (it is not exhaustive). For example, the pattern '(true, null)' is not covered. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandAnalysisSection.xaml(55,17): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandAnalysisSection.xaml(64,23): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandConfiguratorView.xaml(50,40): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandConfiguratorView.xaml(68,40): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandConfiguratorView.xaml(84,29): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandJudgeSection.xaml(44,17): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandJudgeSection.xaml(53,23): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\DataControlCenter\MercuryBasinHost.cs(43,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(56,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(71,36): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\DashboardBackdrop.cs(49,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(46,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(27,22): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\DataControlCenter\MercuryBasinHost.cs(35,23): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(36,24): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(47,23): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Onboarding\HermesSetupDialog.xaml.cs(61,82): warning CS8655: The switch expression does not handle some null inputs (it is not exhaustive). For example, the pattern '(true, null)' is not covered. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+  OpenBurnBar.App -> C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\bin\ARM64\Debug\net8.0-windows10.0.19041.0\OpenBurnBar.App.dll
+
+Build succeeded.
+
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\DataControlCenter\MercuryBasinHost.cs(43,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(56,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(71,36): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\DashboardBackdrop.cs(49,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(46,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(27,22): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\DataControlCenter\MercuryBasinHost.cs(35,23): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(36,24): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(47,23): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Onboarding\HermesSetupDialog.xaml.cs(61,82): warning CS8655: The switch expression does not handle some null inputs (it is not exhaustive). For example, the pattern '(true, null)' is not covered. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandAnalysisSection.xaml(55,17): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandAnalysisSection.xaml(64,23): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandConfiguratorView.xaml(50,40): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandConfiguratorView.xaml(68,40): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandConfiguratorView.xaml(84,29): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandJudgeSection.xaml(44,17): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\ElderWand\ElderWandJudgeSection.xaml(53,23): XamlCompiler warning WMC1506: OneWay bindings require at least one of their steps to support raising notifications when their value changes [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\DataControlCenter\MercuryBasinHost.cs(43,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(56,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(71,36): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\DashboardBackdrop.cs(49,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(46,12): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(27,22): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\DataControlCenter\MercuryBasinHost.cs(35,23): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Dashboard\EasterEggCanvasHost.cs(36,24): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Particles\SwarmCanvasHost.cs(47,23): warning CS8305: 'Microsoft.Graphics.Canvas.UI.Xaml.CanvasAnimatedControl' is for evaluation purposes only and is subject to change or removal in future updates. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\Onboarding\HermesSetupDialog.xaml.cs(61,82): warning CS8655: The switch expression does not handle some null inputs (it is not exhaustive). For example, the pattern '(true, null)' is not covered. [C:\candidate-7c36229823-rehearsal4\windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj]
+    27 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:50.65
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.ComputerUse.Core -> C:\candidate-7c36229823-rehearsal4\windows\computeruse\OpenBurnBar.ComputerUse.Core\bin\ARM64\Debug\net8.0\OpenBurnBar.ComputerUse.Core.dll
+  OpenBurnBar.UiAutomationHarness.Core -> C:\candidate-7c36229823-rehearsal4\windows\tests\ui-automation-harness\OpenBurnBar.UiAutomationHarness.Core\bin\ARM64\Debug\net8.0\OpenBurnBar.UiAutomationHarness.Core.dll
+  OpenBurnBar.Pal.Input -> C:\candidate-7c36229823-rehearsal4\windows\pal\input\bin\ARM64\Debug\net8.0\OpenBurnBar.Pal.Input.dll
+  OpenBurnBar.Pal.Ipc -> C:\candidate-7c36229823-rehearsal4\windows\pal\ipc\bin\ARM64\Debug\net10.0\OpenBurnBar.Pal.Ipc.dll
+  OpenBurnBar.ComputerUse.Windows -> C:\candidate-7c36229823-rehearsal4\windows\computeruse\OpenBurnBar.ComputerUse.Windows\bin\ARM64\Debug\net10.0-windows10.0.19041.0\OpenBurnBar.ComputerUse.Windows.dll
+  OpenBurnBar.UiAutomationHarness -> C:\candidate-7c36229823-rehearsal4\windows\tests\ui-automation-harness\OpenBurnBar.UiAutomationHarness\bin\ARM64\Debug\net10.0-windows10.0.19041.0\OpenBurnBar.UiAutomationHarness.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:04.14
+[route] baseline/dashboard
+[route] baseline/quota
+[route] baseline/insights
+[route] baseline/sessionLogs
+[route] baseline/memory
+[route] baseline/missionControl
+[route] baseline/budget
+[route] baseline/dataControlCenter
+[route] baseline/chat
+[route] baseline/switcher
+[route] baseline/onboarding
+[route] baseline/settings
+[route] baseline/elderWand
+[route] high-contrast/dashboard
+[route] high-contrast/chat
+[route] high-contrast/settings
+[route] high-contrast/onboarding
+[route] high-contrast/dataControlCenter
+[route] reduced-transparency/dashboard
+[route] reduced-transparency/quota
+[route] reduced-transparency/missionControl
+[route] reduced-transparency/memory
+[route] dpi-100/dashboard
+[route] dpi-100/settings
+[route] dpi-100/chat
+[semantic] main window
+{
+  "verdict": "Fail",
+  "outputDirectory": "C:\\Users\\Public\\external-cert-rehearsal-7c36229823-runner-v11\\ui-automation",
+  "summaryPath": "C:\\Users\\Public\\external-cert-rehearsal-7c36229823-runner-v11\\ui-automation\\summary.json",
+  "routeCount": 25,
+  "failedRoutes": [
+    "dashboard",
+    "quota",
+    "insights",
+    "sessionLogs",
+    "memory",
+    "missionControl",
+    "budget",
+    "dataControlCenter",
+    "chat",
+    "switcher",
+    "onboarding",
+    "settings",
+    "elderWand",
+    "dashboard",
+    "chat",
+    "settings",
+    "onboarding",
+    "dataControlCenter",
+    "dashboard",
+    "quota",
+    "missionControl",
+    "memory",
+    "dashboard",
+    "settings",
+    "chat"
+  ],
+  "semanticProbe": "Fail"
+}
+
+
+

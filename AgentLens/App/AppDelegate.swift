@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // XCTest host, so tests drive `installPopoverPrewarming()` /
     // `primePopoverContent()` directly and inspect the result here.
     var popover: NSPopover?
+    var glassPopoverPanel: OpenBurnBarGlassPopoverPanel?
     var popoverPrewarmer: PopoverContentPrewarmer?
     var statusItemLocalMouseMonitor: Any?
     let popoverDismissController = PopoverDismissController()

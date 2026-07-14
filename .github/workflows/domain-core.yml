@@ -1,0 +1,169 @@
+name: Shared Rust domain core
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/openburnbar-domain-core/**"
+      - "OpenBurnBarCore/Package.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaDomainCoreAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/ClaudeQuotaDomainCoreAdapterTests.swift"
+      - "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuota*.cs"
+      - "windows/tests/quota/**"
+      - "tests/fixtures/domain-core/**"
+      - "scripts/build-domain-core-xcframework.sh"
+      - ".github/workflows/domain-core.yml"
+  pull_request:
+    paths:
+      - "crates/openburnbar-domain-core/**"
+      - "OpenBurnBarCore/Package.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaDomainCoreAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/ClaudeQuotaDomainCoreAdapterTests.swift"
+      - "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuota*.cs"
+      - "windows/tests/quota/**"
+      - "tests/fixtures/domain-core/**"
+      - "scripts/build-domain-core-xcframework.sh"
+      - ".github/workflows/domain-core.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: domain-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-and-csharp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt,clippy
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Check Rust core
+        working-directory: crates/openburnbar-domain-core
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+          cargo build -p openburnbar-domain-ffi
+
+      - name: Run C# quota contracts through the native library
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+        run: dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
+
+  windows-native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            rid: win-x64
+          - runner: windows-11-arm
+            rid: win-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build native domain core
+        working-directory: crates/openburnbar-domain-core
+        run: cargo build -p openburnbar-domain-ffi
+
+      - name: Load native core and run quota contracts
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+        run: dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime ${{ matrix.rid }}
+
+  apple:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+          targets: aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: Build Apple XCFramework and regenerate Swift bindings
+        run: ./scripts/build-domain-core-xcframework.sh
+
+      - name: Reject Swift binding drift
+        run: git diff --exit-code -- OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated
+
+      - name: Upload XCFramework
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: OpenBurnBarDomainCore.xcframework
+          path: Vendor/OpenBurnBarDomainCore.xcframework
+          if-no-files-found: error
+          retention-days: 14
+
+  apple-native-smoke:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
+      - name: Build host domain-core XCFramework
+        env:
+          DOMAIN_CORE_BUILD_PROFILE: debug
+        run: |
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            export DOMAIN_CORE_BUILD_TARGETS="aarch64-apple-darwin"
+          else
+            export DOMAIN_CORE_BUILD_TARGETS="x86_64-apple-darwin"
+          fi
+          ./scripts/build-domain-core-xcframework.sh
+
+      - name: Load XCFramework and run the narrow native contract
+        working-directory: OpenBurnBarCore
+        run: swift run OpenBurnBarDomainCoreFFISmoke

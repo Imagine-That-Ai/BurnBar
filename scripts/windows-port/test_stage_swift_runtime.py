@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 import importlib.util
+import hashlib
 import json
-import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).with_name("stage-swift-runtime.py")
@@ -46,39 +47,52 @@ class StageSwiftRuntimeTests(unittest.TestCase):
                 expected,
             )
 
-    def test_required_swift_resource_bundle_resolution(self) -> None:
+    def test_stage_copies_resource_bundle_and_hashes_manifest_entries(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             directory = Path(root)
-            bundle = directory / MODULE.RESOURCE_BUNDLE_NAME
-            bundle.mkdir()
-            self.assertEqual(MODULE.find_resource_bundle([directory]), bundle)
-
-    def test_stage_copies_and_hashes_resource_bundle(self) -> None:
-        with tempfile.TemporaryDirectory() as root:
-            source = Path(root) / "source"
-            destination = Path(root) / "destination"
-            source.mkdir()
-            engine = source / "OpenBurnBarCoreCAbi.dll"
+            engine = directory / "OpenBurnBarCoreCAbi.dll"
             engine.write_bytes(b"engine")
-            bundle = source / MODULE.RESOURCE_BUNDLE_NAME
+            extra = directory / "openburnbar_domain_ffi.dll"
+            extra.write_bytes(b"domain-core")
+            bundle = directory / "OpenBurnBarCore_OpenBurnBarCore.resources"
             bundle.mkdir()
-            (bundle / "catalog.json").write_text("{\"ok\":true}\n", encoding="utf-8")
+            resource = bundle / "catalog.json"
+            resource.write_bytes(b'{"schemaVersion":1}\n')
+            destination = directory / "stage"
 
-            dumpbin = Path(root) / "dumpbin"
-            dumpbin.write_text("#!/usr/bin/env python3\nprint('')\n", encoding="utf-8")
-            dumpbin.chmod(0o755)
+            with patch.object(
+                MODULE.subprocess,
+                "run",
+                return_value=type("Completed", (), {"stdout": "", "stderr": ""})(),
+            ):
+                manifest = MODULE.stage(engine, [extra], destination, [directory], "dumpbin")
 
-            manifest = MODULE.stage(engine, destination, [source], str(dumpbin))
-            self.assertEqual(
-                (destination / MODULE.RESOURCE_BUNDLE_NAME / "catalog.json").read_text(encoding="utf-8"),
-                "{\"ok\":true}\n",
+            staged_resource = destination / bundle.name / resource.name
+            self.assertTrue(staged_resource.is_file())
+            manifest_entry = next(
+                item for item in manifest["files"] if item["fileName"] == f"{bundle.name}/catalog.json"
             )
-            names = {entry["fileName"] for entry in manifest["files"]}
-            self.assertIn(f"{MODULE.RESOURCE_BUNDLE_NAME}/catalog.json", names)
             self.assertEqual(
-                json.loads((destination / "native-engine-manifest.json").read_text(encoding="utf-8")),
-                manifest,
+                manifest_entry["sha256"],
+                hashlib.sha256(resource.read_bytes()).hexdigest(),
             )
+            self.assertEqual(manifest["extras"], [extra.name])
+            self.assertTrue((destination / extra.name).is_file())
+            persisted = json.loads((destination / "native-engine-manifest.json").read_text())
+            self.assertEqual(persisted, manifest)
+
+    def test_stage_fails_when_resource_bundle_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            engine = directory / "OpenBurnBarCoreCAbi.dll"
+            engine.write_bytes(b"engine")
+            with patch.object(
+                MODULE.subprocess,
+                "run",
+                return_value=type("Completed", (), {"stdout": "", "stderr": ""})(),
+            ):
+                with self.assertRaisesRegex(ValueError, "required Swift resource bundle"):
+                    MODULE.stage(engine, [], directory / "stage", [directory], "dumpbin")
 
 
 if __name__ == "__main__":

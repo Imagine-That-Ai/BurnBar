@@ -40,8 +40,8 @@ struct DashboardView: View {
     @State var dashboardCanvasSize: CGSize = .zero
     @State private var overviewUsesStackedLanes = false
     @State private var overviewViewportHeight: CGFloat = 0
-    @State var burnRailDelta: Double? = nil
-    @State var burnRailDeltaRequestID: String? = nil
+    @State var burnRailDelta: Double?
+    @State var burnRailDeltaRequestID: String?
     private static let overviewScrollSpace = "dashboardOverviewScroll"
     @State var didAutoExpandEmptyTimeRange = false
     @State var showContextPackSheet = false

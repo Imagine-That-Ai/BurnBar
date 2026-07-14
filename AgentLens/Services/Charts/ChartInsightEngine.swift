@@ -55,8 +55,13 @@ enum ChartInsightParser {
 
     static func parse(_ text: String) -> ChartInsightResult? {
         guard let json = extractJSONObject(from: text),
-              let data = json.data(using: .utf8),
-              let raw = try? JSONDecoder().decode(RawPayload.self, from: data) else {
+              let data = json.data(using: .utf8) else {
+            return nil
+        }
+        let raw: RawPayload
+        do {
+            raw = try JSONDecoder().decode(RawPayload.self, from: data)
+        } catch {
             return nil
         }
         let insights = (raw.insights ?? []).enumerated().map { index, entry in
@@ -112,37 +117,72 @@ enum ChartInsightParser {
 
 enum ChartInsightMetrics {
 
+    private struct NamedCost: Encodable {
+        let name: String
+        let costUSD: Double
+    }
+
+    private struct PeakUsage: Encodable {
+        let weekdayIndexSundayZero: Int
+        let hour: Int
+    }
+
+    private struct MetricsPayload: Encodable {
+        let window: String
+        let totalCostUSD: Double
+        let totalTokens: Int
+        let sessions: Int
+        let burnDaily: [Double]
+        let providerShares: [NamedCost]
+        let topModels: [NamedCost]
+        let cacheHitRate: Double
+        let cacheSavingsEstUSD: Double
+        let reasoningTokenShare: Double
+        let weekOverWeekPercent: Double?
+        let medianSessionCostUSD: Double?
+        let projectFocusEntropy: Double
+        let exactDataShare: Double
+        let modelConcentrationHHI: Double
+        let projectedMonthEndSpendUSD: Double?
+        let peakUsage: PeakUsage?
+    }
+
     static func compactJSON(from snapshot: ChartsSnapshot) -> String {
-        var payload: [String: Any] = [
-            "window": snapshot.timeRange.rawValue,
-            "totalCostUSD": rounded(snapshot.totalCost),
-            "totalTokens": snapshot.totalTokens,
-            "sessions": snapshot.sessionCount,
-            "burnDaily": snapshot.burnSeries.suffix(31).map { rounded($0.value) },
-            "providerShares": snapshot.providerShares.prefix(6).map {
-                ["name": $0.provider.displayName, "costUSD": rounded($0.cost)]
-            },
-            "topModels": snapshot.modelCosts.prefix(6).map {
-                ["name": $0.label, "costUSD": rounded($0.value)]
-            },
-            "cacheHitRate": rounded(snapshot.cacheHitRate, places: 3),
-            "cacheSavingsEstUSD": rounded(snapshot.cacheSavingsEstimate),
-            "reasoningTokenShare": rounded(snapshot.reasoningShare, places: 3),
-            "weekOverWeekPercent": snapshot.weekOverWeekPercent.map { rounded($0, places: 1) } as Any,
-            "medianSessionCostUSD": snapshot.medianSessionCost.map { rounded($0) } as Any,
-            "projectFocusEntropy": rounded(snapshot.projectEntropy, places: 2),
-            "exactDataShare": rounded(snapshot.exactShare, places: 2),
-            "modelConcentrationHHI": rounded(snapshot.modelConcentrationIndex, places: 2)
-        ]
-        if let forecast = snapshot.forecast {
-            payload["projectedMonthEndSpendUSD"] = rounded(forecast.projectedMonthEndSpend)
+        let peakUsage = snapshot.peakHour.flatMap { hour in
+            snapshot.peakWeekdayIndex.map { PeakUsage(weekdayIndexSundayZero: $0, hour: hour) }
         }
-        if let peakHour = snapshot.peakHour, let peakDay = snapshot.peakWeekdayIndex {
-            payload["peakUsage"] = ["weekdayIndexSundayZero": peakDay, "hour": peakHour]
+        let payload = MetricsPayload(
+            window: snapshot.timeRange.rawValue,
+            totalCostUSD: rounded(snapshot.totalCost),
+            totalTokens: snapshot.totalTokens,
+            sessions: snapshot.sessionCount,
+            burnDaily: snapshot.burnSeries.suffix(31).map { rounded($0.value) },
+            providerShares: snapshot.providerShares.prefix(6).map {
+                NamedCost(name: $0.provider.displayName, costUSD: rounded($0.cost))
+            },
+            topModels: snapshot.modelCosts.prefix(6).map {
+                NamedCost(name: $0.label, costUSD: rounded($0.value))
+            },
+            cacheHitRate: rounded(snapshot.cacheHitRate, places: 3),
+            cacheSavingsEstUSD: rounded(snapshot.cacheSavingsEstimate),
+            reasoningTokenShare: rounded(snapshot.reasoningShare, places: 3),
+            weekOverWeekPercent: snapshot.weekOverWeekPercent.map { rounded($0, places: 1) },
+            medianSessionCostUSD: snapshot.medianSessionCost.map { rounded($0) },
+            projectFocusEntropy: rounded(snapshot.projectEntropy, places: 2),
+            exactDataShare: rounded(snapshot.exactShare, places: 2),
+            modelConcentrationHHI: rounded(snapshot.modelConcentrationIndex, places: 2),
+            projectedMonthEndSpendUSD: snapshot.forecast.map { rounded($0.projectedMonthEndSpend) },
+            peakUsage: peakUsage
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data: Data
+        do {
+            data = try encoder.encode(payload)
+        } catch {
+            return "{}"
         }
-        guard JSONSerialization.isValidJSONObject(payload),
-              let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
-              let json = String(data: data, encoding: .utf8) else {
+        guard let json = String(data: data, encoding: .utf8) else {
             return "{}"
         }
         return json
@@ -184,6 +224,12 @@ enum ChartInsightMetrics {
 @Observable
 final class ChartInsightEngine {
 
+    enum CacheDecision: Equatable {
+        case reuse
+        case throttle
+        case generate
+    }
+
     enum State: Equatable {
         case idle
         case loading
@@ -204,7 +250,18 @@ final class ChartInsightEngine {
 
     private var cache: CacheEntry?
     private var task: Task<Void, Never>?
-    private static let reaskFloor: TimeInterval = 15 * 60
+    nonisolated private static let reaskFloor: TimeInterval = 15 * 60
+
+    nonisolated static func cacheDecision(
+        cachedKey: ChartsDataService.SnapshotKey?,
+        cachedAt: Date?,
+        requestedKey: ChartsDataService.SnapshotKey,
+        now: Date
+    ) -> CacheDecision {
+        guard let cachedKey, let cachedAt else { return .generate }
+        if cachedKey == requestedKey { return .reuse }
+        return now.timeIntervalSince(cachedAt) < reaskFloor ? .throttle : .generate
+    }
 
     func generateIfNeeded(
         snapshot: ChartsSnapshot,
@@ -215,9 +272,40 @@ final class ChartInsightEngine {
         let key = ChartsDataService.SnapshotKey(
             usagesVersion: snapshot.usagesVersion, timeRange: snapshot.timeRange
         )
-        if let cache, cache.key == key || now.timeIntervalSince(cache.at) < Self.reaskFloor {
-            state = cache.state
-            return
+        if let cache {
+            switch Self.cacheDecision(
+                cachedKey: cache.key,
+                cachedAt: cache.at,
+                requestedKey: key,
+                now: now
+            ) {
+            case .reuse:
+                task?.cancel()
+                task = nil
+                state = cache.state
+                return
+            case .throttle:
+                state = .unavailable("Fresh insights will be available shortly.")
+                task?.cancel()
+                let remaining = max(Self.reaskFloor - now.timeIntervalSince(cache.at), 0)
+                task = Task { [weak self] in
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+                    } catch {
+                        return
+                    }
+                    guard let self, !Task.isCancelled else { return }
+                    self.task = nil
+                    self.generateIfNeeded(
+                        snapshot: snapshot,
+                        bridge: bridge,
+                        enabledBackends: enabledBackends
+                    )
+                }
+                return
+            case .generate:
+                break
+            }
         }
         guard task == nil else { return }
 
@@ -289,11 +377,17 @@ final class ChartInsightEngine {
         let stream: AsyncThrowingStream<CLIChatStreamEvent, Error>
         switch backend {
         case .hermes:
+            let bearerToken: String?
+            do {
+                bearerToken = try PetKeychainStore().get(.hermes)
+            } catch {
+                bearerToken = nil
+            }
             let history = [ChatMessageRecord(role: .user, content: message)]
             stream = bridge.chatHermes(
                 systemPrompt: systemPrompt,
                 history: history,
-                bearerToken: try? PetKeychainStore().get(.hermes)
+                bearerToken: bearerToken
             )
         case .claude:
             stream = bridge.chatClaudeStream(
@@ -322,7 +416,11 @@ final class ChartInsightEngine {
                 return collected
             }
             group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                } catch {
+                    return nil
+                }
                 return nil
             }
             let first = await group.next() ?? nil

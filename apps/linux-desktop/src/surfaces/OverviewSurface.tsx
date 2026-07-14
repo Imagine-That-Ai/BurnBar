@@ -5,6 +5,7 @@ import {
   DashboardLayoutShell,
   type DashboardSurfaceState
 } from '../dashboard/DashboardLayoutShell.js';
+import { DASHBOARD_LAYOUT_META } from '../dashboard/dashboardLayout.js';
 import { useDashboardLayoutStore } from '../state/dashboardLayoutStore.js';
 import { useDaemonStatusCopy, useShellStore } from '../state/shellStore.js';
 import { useOverviewStore } from '../state/overviewStore.js';

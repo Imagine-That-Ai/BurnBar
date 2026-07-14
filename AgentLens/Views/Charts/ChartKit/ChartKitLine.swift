@@ -31,7 +31,7 @@ struct ChartKitLine: View {
                         ChartKitPathBuilder.areaPath(points: solidPoints, height: size.height)
                             .fill(
                                 LinearGradient(
-                                    colors: [accent.opacity(0.15), accent.opacity(0.0)],
+                                    colors: [accent.opacity(0.28), accent.opacity(0.02)],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
@@ -40,21 +40,21 @@ struct ChartKitLine: View {
 
                     solidPath.stroke(
                         accent,
-                        style: StrokeStyle(lineWidth: 1.9, lineCap: .round, lineJoin: .round)
+                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
                     )
 
                     if let splitIndex, splitIndex < points.count - 1 {
                         ChartKitPathBuilder.monotonePath(Array(points[splitIndex...]))
                             .stroke(
-                                accent.opacity(0.45),
-                                style: StrokeStyle(lineWidth: 1.9, lineCap: .round, dash: [3, 5])
+                                accent.opacity(0.55),
+                                style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [4, 5])
                             )
                     }
 
                     if projectionStartIndex == nil, let last = points.last {
                         Circle()
                             .fill(accent)
-                            .frame(width: 5, height: 5)
+                            .frame(width: 6, height: 6)
                             .position(last)
                     }
                 }

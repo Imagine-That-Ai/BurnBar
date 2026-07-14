@@ -16,12 +16,45 @@ assert.match(script, /PhysicalHardware requires -HardwareAttestationPath/);
 assert.match(script, /Get-CimInstance Win32_OperatingSystem/);
 assert.match(script, /Get-CimInstance Win32_SystemEnclosure/);
 assert.match(script, /Get-CimInstance Win32_ComputerSystemProduct/);
+assert.match(script, /placeholder chassis tag/);
+assert.match(script, /systemProduct\.IdentifyingNumber/);
+assert.match(
+  script,
+  /system asset tag\|chassis asset tag/,
+  "generic chassis asset tags must fall back to the system-product identifier",
+);
 assert.match(
   script,
   /Hardware attestation \$field does not match the current device/,
 );
 assert.match(script, /Physical hardware architecture mismatch/);
 assert.match(script, /Get-Tpm/);
+assert.match(script, /IsPathRooted\(\$Path\)/);
+assert.match(script, /function ConvertTo-WindowsProcessArgument/);
+assert.match(script, /if \(\$null -ne \$startInfo\.PSObject\.Properties\['ArgumentList'\]\)/);
+assert.doesNotMatch(script, /if \(\$null -ne \$startInfo\.ArgumentList\)/);
+assert.match(script, /\$startInfo\.Arguments =/);
+assert.match(script, /ConvertTo-WindowsProcessArgument \$_/);
+assert.match(script, /'dotnet-build'[\s\S]*'-m:1'/);
+assert.match(script, /'dotnet-test'[\s\S]*'-m:1'/);
+assert.match(script, /\$script:SourceIdentity = \[ordered\]@\{/);
+assert.match(script, /Refusing certification evidence for a candidate that was dirty before execution/);
+// The pre-execution cleanliness snapshot must happen before the runner writes
+// its own output directories, and an in-repo OutputDir must be excluded from
+// the dirty-tree probe.
+assert.ok(
+  script.indexOf("Refusing certification evidence for a candidate that was dirty before execution") <
+    script.indexOf("New-Item -ItemType Directory -Force -Path $OutputDir, (Join-Path $OutputDir 'receipts')"),
+  "dirty-tree refusal must precede OutputDir creation",
+);
+assert.match(script, /\$script:RepoRelativeOutputDir/);
+assert.match(script, /:\(exclude\)/);
+// The artifact manifest must bind the signed artifact to its source commit.
+assert.match(script, /'sourceCommit',/);
+assert.match(script, /Artifact manifest sourceCommit must be a full 40-character Git SHA/);
+assert.match(script, /Artifact manifest source commit mismatch/);
+assert.match(script, /source = \$script:SourceIdentity/);
+assert.doesNotMatch(script, /source = \[ordered\]@\{ commitSha = Get-CommitSha; dirtyTree = Test-DirtyTree \}/);
 assert.match(script, /\$script:HardwareAttestationSha256 = Get-Sha256 \$attestationPath/);
 assert.doesNotMatch(script, /\$script:HardwareAttestation\.sha256\s*=/);
 assert.match(script, /ArtifactManifestPath/);

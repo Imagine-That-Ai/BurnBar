@@ -28,12 +28,6 @@ struct SingleProviderResult: Sendable {
     var error: String?
 }
 
-struct ConversationIndexingResult: Sendable {
-    var indexedConversationChanges: Int = 0
-    var errors: [AgentProvider: String] = [:]
-    var duration: TimeInterval = 0
-}
-
 // MARK: - Refresh Background Work
 
 /// Stateless namespace for off-main-thread refresh work.
@@ -69,19 +63,9 @@ enum RefreshBackgroundWork {
             settings: settings
         )
 
-        // discover → usage-only parse → persist
-        //
-        // Conversation bodies are intentionally excluded here. The caller
-        // schedules the optional indexing pass after this result is applied so
-        // today's token usage is visible without waiting for historical text
-        // reconstruction.
+        // discover → parse → reconcile → persist
         let discovery = pipeline.discover()
-        let recentUsageSince = Calendar.current.startOfDay(for: Date())
-        let parsed = try await pipeline.parse(
-            from: discovery,
-            includeConversationBodies: false,
-            minimumFileModificationDate: recentUsageSince
-        )
+        let parsed = try await pipeline.parse(from: discovery)
         let reconciled = await pipeline.reconcile(parsed: parsed)
         let persisted = await pipeline.persist(parsed: parsed)
 
@@ -114,45 +98,6 @@ enum RefreshBackgroundWork {
         return result
     }
 
-    // MARK: - Optional Conversation Indexing
-
-    /// Re-parses providers with conversation bodies enabled and indexes those
-    /// records after the usage-only refresh has already published its rows.
-    static func runConversationIndexing(
-        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
-        dataStore: DataStore,
-        orchestrator: RefreshOrchestrator,
-        indexingEnabled: Bool
-    ) async -> ConversationIndexingResult {
-        var result = ConversationIndexingResult()
-        let startedAt = Date()
-        let parserEntries = parsers.sorted { $0.key.rawValue < $1.key.rawValue }
-
-        for (provider, parser) in parserEntries {
-            do {
-                let parseResult = try await parser.parse(
-                    options: OpenBurnBarCore.LogParseOptions(includeConversationBodies: indexingEnabled)
-                )
-                if !parseResult.usages.isEmpty {
-                    try await dataStore.insertChunked(parseResult.usages, chunkSize: 500)
-                }
-                if indexingEnabled {
-                    result.indexedConversationChanges += await orchestrator.indexConversationsOffMain(
-                        parseResult.conversations,
-                        indexingEnabled: indexingEnabled
-                    )
-                }
-            } catch is CancellationError {
-                return result
-            } catch {
-                result.errors[provider] = error.localizedDescription
-            }
-        }
-
-        result.duration = Date().timeIntervalSince(startedAt)
-        return result
-    }
-
     // MARK: - Single Provider Refresh
 
     static func runSingleProviderRefresh(
@@ -165,14 +110,28 @@ enum RefreshBackgroundWork {
 
         do {
             let parseResult = try await parser.parse(
-                options: OpenBurnBarCore.LogParseOptions(includeConversationBodies: false)
+                options: OpenBurnBarCore.LogParseOptions(includeConversationBodies: settings.conversationIndexingEnabled)
             )
             result.usages = parseResult.usages
+            result.conversations = parseResult.conversations
             result.health = parseResult.usages.isEmpty
                 ? .empty
                 : .healthy(sessionCount: parseResult.usages.count)
 
             try await dataStore.insertChunked(parseResult.usages, chunkSize: 500)
+
+            if settings.conversationIndexingEnabled {
+                do {
+                    let report = try await ConversationIndexer.shared.index(
+                        parseResult.conversations, in: dataStore
+                    )
+                    result.indexedConversationChanges = report.changedRecordCount
+                } catch {
+                    let message = "Conversation indexing failed for \(provider.displayName): \(error.localizedDescription)"
+                    result.health = .degraded(sessionCount: parseResult.usages.count, error: message)
+                    result.error = message
+                }
+            }
         } catch {
             result.health = .failed(error: error.localizedDescription)
             result.error = "Provider refresh failed for \(provider.displayName): \(error.localizedDescription)"
@@ -248,7 +207,7 @@ enum RefreshBackgroundWork {
         // Same change-gate as InsightEngine.upsertHealthIfChanged: at idle this
         // row is byte-identical every tick, and rewriting it took the
         // single-writer queue for nothing.
-        let existing = try? await dataStore.fetchRetrievalHealth()
+        let existing = try await dataStore.fetchRetrievalHealth()
             .first(where: { $0.subsystem == .parserImport })
         if let existing,
            existing.status == status,

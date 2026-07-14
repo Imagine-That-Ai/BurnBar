@@ -40,10 +40,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\crates\openburnbar-domain-core\bindings\csharp\OpenBurnBarDomainCore.Ffi\OpenBurnBarDomainCore.Ffi.csproj" />
     <ProjectReference Include="..\..\storage\OpenBurnBar.Storage\OpenBurnBar.Storage.csproj" />
     <ProjectReference Include="..\OpenBurnBar.App.Configuration\OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="..\OpenBurnBar.App.ManagedAgentRuntime\OpenBurnBar.App.ManagedAgentRuntime.csproj" />
     <ProjectReference Include="..\OpenBurnBar.App.UsageRuntime\OpenBurnBar.App.UsageRuntime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>OpenBurnBar.App.Quota.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
 </Project>

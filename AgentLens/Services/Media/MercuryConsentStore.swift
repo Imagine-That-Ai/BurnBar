@@ -8,11 +8,9 @@ import Foundation
 /// request. The old global "always allow" bit is retired on startup because it
 /// did not bind consent to a device.
 ///
-/// Remembering is ON by default: the first accepted request from a device
-/// creates a device-bound grant, and each auto-accepted session renews the
-/// grant's expiry (sliding window), so an actively-used phone only ever needs
-/// its first Accept at the Mac. Grants for devices that go dormant past the
-/// TTL expire, and the ledger is revocable from Media permissions.
+/// Remembering is opt-in: once the user enables remembered peers, accepted
+/// mirror requests create short-lived device-bound grants. Grants expire on a
+/// fixed TTL and remain revocable from Media permissions.
 @MainActor
 final class MercuryConsentStore: ObservableObject {
     struct MirrorAutoAcceptGrant: Codable, Equatable, Identifiable {
@@ -30,7 +28,7 @@ final class MercuryConsentStore: ObservableObject {
     private static let legacyAlwaysAllowKey = "mercuryAlwaysAllowMyIPhoneToMirror"
     private static let rememberAcceptedPeersKey = "mercuryRememberAcceptedMirrorPeers"
     private static let grantsKey = "mercuryMirrorAutoAcceptGrants.v2"
-    private static let grantTTL: TimeInterval = 365 * 24 * 60 * 60
+    private static let grantTTL: TimeInterval = 30 * 24 * 60 * 60
 
     @Published var rememberAcceptedMirrorPeers: Bool {
         didSet {
@@ -42,7 +40,6 @@ final class MercuryConsentStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let encodeGrants: ([MirrorAutoAcceptGrant]) throws -> Data
-    private var defaultsObserver: AnyCancellable?
 
     init(
         defaults: UserDefaults = .standard,
@@ -50,39 +47,47 @@ final class MercuryConsentStore: ObservableObject {
     ) {
         self.defaults = defaults
         self.encodeGrants = encodeGrants
-        // Default ON: an unset key means the user never chose, and the grant
-        // model is device-bound + revocable, so remember-by-default is safe and
-        // spares the round-trip to the Mac for every session after the first.
-        // An explicit user choice (either way) is always respected.
         if defaults.object(forKey: Self.rememberAcceptedPeersKey) == nil {
-            self.rememberAcceptedMirrorPeers = true
+            self.rememberAcceptedMirrorPeers = false
         } else {
             self.rememberAcceptedMirrorPeers = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
         }
-        self.grants = Self.decodeGrants(defaults.data(forKey: Self.grantsKey))
+        // Cap grants persisted by the earlier sliding-renewal implementation
+        // (up to 365 days) to the current fixed TTL from their original grant
+        // time. Without this, pre-existing serialized `expiresAt` values keep
+        // authorizing peers long past the advertised 30-day lifetime.
+        var loadedGrants = Self.decodeGrants(defaults.data(forKey: Self.grantsKey))
+        var grantsMutated = false
+        for index in loadedGrants.indices {
+            let cappedExpiry = loadedGrants[index].grantedAt.addingTimeInterval(Self.grantTTL)
+            if loadedGrants[index].expiresAt > cappedExpiry {
+                loadedGrants[index].expiresAt = cappedExpiry
+                grantsMutated = true
+            }
+        }
+        self.grants = loadedGrants
         if defaults.object(forKey: Self.legacyAlwaysAllowKey) != nil {
             let legacyAlwaysAllow = defaults.bool(forKey: Self.legacyAlwaysAllowKey)
             defaults.removeObject(forKey: Self.legacyAlwaysAllowKey)
+            // Only migrate an affirmative legacy choice when the new setting
+            // has not already been explicitly chosen. The old key's mere
+            // presence is not consent.
             if defaults.object(forKey: Self.rememberAcceptedPeersKey) == nil {
-                defaults.set(legacyAlwaysAllow, forKey: Self.rememberAcceptedPeersKey)
                 self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
+                defaults.set(legacyAlwaysAllow, forKey: Self.rememberAcceptedPeersKey)
             }
         }
-        defaultsObserver = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
-            // UserDefaults notifications can be posted from arbitrary threads;
-            // this store is @MainActor-isolated, so marshal the Combine delivery
-            // before touching the ledger or its published properties.
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self, weak defaults] notification in
-                if let changedDefaults = notification.object as? UserDefaults,
-                   let defaults,
-                   changedDefaults !== defaults {
-                    return
-                }
-                Task { @MainActor [weak self] in
-                    self?.reloadRememberAcceptedMirrorPeers()
-                }
-            }
+        // Remembering is opt-in. If the preference resolves to off (including
+        // the upgrade path where a previous default-on build persisted grants
+        // without any explicit opt-in), stored grants have no consent backing
+        // them: drop them so they cannot bypass the approval UI.
+        if !rememberAcceptedMirrorPeers && !grants.isEmpty {
+            grants.removeAll()
+            grantsMutated = true
+        }
+        if grantsMutated {
+            persist()
+        }
         pruneExpired()
     }
 
@@ -101,36 +106,15 @@ final class MercuryConsentStore: ObservableObject {
         remotePeerNodeId: String?,
         now: Date = Date()
     ) -> Bool {
+        // Auto-accept is only valid while the user is opted in to remembered
+        // peers; a stored grant without a live opt-in must not bypass the
+        // approval UI.
+        guard rememberAcceptedMirrorPeers else { return false }
         guard Self.peerNodeIDsMatch(
             declaredPeerNodeId: controlAuthorityPeerNodeId,
             remotePeerNodeId: remotePeerNodeId
         ) else {
             return false
-        }
-        pruneExpired(now: now)
-        let key = Self.grantKey(
-            connectionId: connectionId,
-            viewerDeviceId: viewerDeviceId,
-            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
-        )
-        guard grants.contains(where: { $0.key == key && $0.expiresAt > now }) else {
-            return false
-        }
-        return true
-    }
-
-    func renewAutoAcceptGrant(
-        connectionId: String,
-        viewerDeviceId: String?,
-        controlAuthorityPeerNodeId: String?,
-        remotePeerNodeId: String?,
-        now: Date = Date()
-    ) {
-        guard Self.peerNodeIDsMatch(
-            declaredPeerNodeId: controlAuthorityPeerNodeId,
-            remotePeerNodeId: remotePeerNodeId
-        ) else {
-            return
         }
         pruneExpired(now: now)
         let key = Self.grantKey(
@@ -139,14 +123,11 @@ final class MercuryConsentStore: ObservableObject {
             controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
         )
         guard let index = grants.firstIndex(where: { $0.key == key && $0.expiresAt > now }) else {
-            return
+            return false
         }
         grants[index].lastUsedAt = now
-        // Sliding window: every actually auto-accepted session renews the
-        // grant, so active devices avoid re-ringing while declined/ringing
-        // attempts cannot keep consent alive.
-        grants[index].expiresAt = now.addingTimeInterval(Self.grantTTL)
         persist()
+        return true
     }
 
     func rememberAcceptedPeer(
@@ -203,14 +184,6 @@ final class MercuryConsentStore: ObservableObject {
         // intact rather than overwriting it with nil.
         guard let data = Self.encodeGrants(grants, encode: encodeGrants) else { return }
         defaults.set(data, forKey: Self.grantsKey)
-    }
-
-    private func reloadRememberAcceptedMirrorPeers() {
-        guard defaults.object(forKey: Self.rememberAcceptedPeersKey) != nil else { return }
-        let persisted = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
-        if rememberAcceptedMirrorPeers != persisted {
-            rememberAcceptedMirrorPeers = persisted
-        }
     }
 
     /// Encode the grant ledger for persistence, returning `nil` (and logging) on a

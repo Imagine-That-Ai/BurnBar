@@ -154,7 +154,9 @@ extension ChartsSnapshot {
         let range = resolvedRange(for: timeRange, rows: rows, now: now, calendar: calendar)
         let bucketComponent: Calendar.Component = timeRange == .today ? .hour : .day
 
-        let costEvents = rows.map { (date: $0.startTime, value: $0.cost) }
+        let costEvents = rows.map {
+            (date: attributionDate(for: $0, in: range), value: $0.cost)
+        }
         let burnSeries = ChartBucketing.dateBuckets(
             events: costEvents, range: range, component: bucketComponent, calendar: calendar
         )
@@ -246,7 +248,7 @@ extension ChartsSnapshot {
         let projectSeries: [ProjectDailySeries] = topProjects.map { project in
             let events = rows
                 .filter { ($0.projectName.isEmpty ? "Unassigned" : $0.projectName) == project }
-                .map { (date: $0.startTime, value: $0.cost) }
+                .map { (date: attributionDate(for: $0, in: range), value: $0.cost) }
             let buckets = ChartBucketing.dateBuckets(
                 events: events, range: range, component: bucketComponent, calendar: calendar
             )
@@ -325,13 +327,22 @@ extension ChartsSnapshot {
         now: Date,
         calendar: Calendar
     ) -> ClosedRange<Date> {
-        if let range = timeRange.dateRange() { return range }
+        if let range = timeRange.dateRange(now: now) {
+            return range.lowerBound...max(range.lowerBound, min(range.upperBound, now))
+        }
         // All Time: span the loaded data (fall back to the last 30 days when empty).
         let earliest = rows.map(\.startTime).min()
             ?? calendar.date(byAdding: .day, value: -30, to: now)
             ?? now.addingTimeInterval(-30 * 86_400)
         let lower = min(earliest, now.addingTimeInterval(-1))
         return lower...now
+    }
+
+    private static func attributionDate(
+        for row: TokenUsage,
+        in range: ClosedRange<Date>
+    ) -> Date {
+        min(max(row.startTime, range.lowerBound), range.upperBound)
     }
 
     /// Per-bucket ratio of two summed row projections (e.g. cache reads over
@@ -345,11 +356,11 @@ extension ChartsSnapshot {
         denominator: (TokenUsage) -> Double
     ) -> [ChartBucketing.DateBucket] {
         let num = ChartBucketing.dateBuckets(
-            events: rows.map { (date: $0.startTime, value: numerator($0)) },
+            events: rows.map { (date: attributionDate(for: $0, in: range), value: numerator($0)) },
             range: range, component: component, calendar: calendar
         )
         let den = ChartBucketing.dateBuckets(
-            events: rows.map { (date: $0.startTime, value: denominator($0)) },
+            events: rows.map { (date: attributionDate(for: $0, in: range), value: denominator($0)) },
             range: range, component: component, calendar: calendar
         )
         return zip(num, den).map { top, bottom in

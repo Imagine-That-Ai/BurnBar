@@ -22,6 +22,19 @@ import OpenBurnBarCore
 /// event payload, or message), and sessions without explicit usage fall back
 /// to `TokenExtractionUtility.estimateFallbackTokens` — the same ladder the
 /// Factory Droid parser uses.
+///
+/// TODO(junie-schema-pin): The `events.jsonl` field inventory has never been
+/// pinned from a REAL authenticated Junie session — JetBrains does not
+/// publicly document the on-disk event schema (checked junie.jetbrains.com
+/// docs + JetBrains/junie repo, 2026-07). The variants handled below (envelope
+/// keys, role aliases, usage-bucket spellings, snake_case index fields) are
+/// the defensive superset from PR #1136's live-install inspection.
+/// When an authenticated Junie session is available: capture a real
+/// `index.jsonl` + `<sessionId>/events.jsonl` + `state.json` triple, freeze
+/// timestamps, promote it into the ParserContract corpus
+/// (AgentLensTests/Fixtures/ParserContract, `pc-junie-*`), and regenerate the
+/// parser-output golden per docs/windows-port/PARSER_OUTPUT_CONTRACT.md.
+/// The JunieParserTests inline fixtures pin the best-known shape until then.
 final class JunieParser: LogParser, Sendable {
     let provider: AgentProvider = .junie
     private let fileManager: FileManager
@@ -182,7 +195,12 @@ final class JunieParser: LogParser, Sendable {
         var output: Int = 0
         var cacheCreation: Int = 0
         var cacheRead: Int = 0
+        var reasoning: Int = 0
         var model: String = "unknown"
+
+        var hasAnyTokens: Bool {
+            input > 0 || output > 0 || cacheCreation > 0 || cacheRead > 0 || reasoning > 0
+        }
     }
 
     private func parseSession(
@@ -220,6 +238,7 @@ final class JunieParser: LogParser, Sendable {
                     tokenData.output = extracted.output
                     tokenData.cacheCreation = extracted.cacheCreation
                     tokenData.cacheRead = extracted.cacheRead
+                    tokenData.reasoning = extracted.reasoningTokens
                     usedExplicitUsage = true
                     stateJSONProvidedTotals = true
                 }
@@ -289,6 +308,10 @@ final class JunieParser: LogParser, Sendable {
                             tokenData.output += extracted.output
                             tokenData.cacheCreation += extracted.cacheCreation
                             tokenData.cacheRead += extracted.cacheRead
+                            // VAL-TOKEN-006: reasoning stays a distinct bucket;
+                            // dropping it here silently undercounted sessions
+                            // whose usage reports thinking/reasoning tokens.
+                            tokenData.reasoning += extracted.reasoningTokens
                         }
                     }
                 }
@@ -323,7 +346,7 @@ final class JunieParser: LogParser, Sendable {
 
         conv.finalizeArrays()
 
-        if tokenData.input == 0 && tokenData.output == 0 && tokenData.cacheCreation == 0 && tokenData.cacheRead == 0 {
+        if tokenData.hasAnyTokens == false {
             let totalChars = userCharCount + assistantCharCount + assistantReasoningCharCount
             guard totalChars > 0 else { return nil }
             let estimated = TokenExtractionUtility.estimateFallbackTokens(
@@ -345,10 +368,7 @@ final class JunieParser: LogParser, Sendable {
         let startTime = conv.startTime ?? fallbackActivity
         let endTime = conv.endTime ?? startTime
 
-        guard tokenData.input > 0
-            || tokenData.output > 0
-            || tokenData.cacheCreation > 0
-            || tokenData.cacheRead > 0 else { return nil }
+        guard tokenData.hasAnyTokens else { return nil }
 
         let projectName = displayProjectName(projectPath)
 
@@ -369,6 +389,7 @@ final class JunieParser: LogParser, Sendable {
             outputTokens: tokenData.output,
             cacheCreationTokens: tokenData.cacheCreation,
             cacheReadTokens: tokenData.cacheRead,
+            reasoningTokens: tokenData.reasoning,
             costUSD: cost,
             startTime: startTime,
             endTime: endTime,

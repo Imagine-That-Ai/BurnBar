@@ -24,13 +24,13 @@ struct ChartKitDonut: View {
                     ForEach(Array(arcs(total: total).enumerated()), id: \.offset) { _, arc in
                         DonutArc(startFraction: arc.start, endFraction: arc.end)
                             .stroke(
-                                arc.color,
-                                style: StrokeStyle(lineWidth: 12, lineCap: .butt)
+                                arc.color.opacity(0.9),
+                                style: StrokeStyle(lineWidth: 13, lineCap: .butt)
                             )
                     }
                 } else {
                     Circle()
-                        .stroke(DesignSystem.Colors.textPrimary.opacity(0.07), lineWidth: 12)
+                        .stroke(DesignSystem.Colors.surface.opacity(0.6), lineWidth: 13)
                 }
                 if let centerText {
                     Text(centerText)

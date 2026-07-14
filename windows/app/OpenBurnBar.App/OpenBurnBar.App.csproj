@@ -49,17 +49,28 @@
 
   <ItemGroup Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')">
     <Content Include="$(OpenBurnBarNativeEngineDirectory)\*.dll"
+             Exclude="$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll"
              Link="%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <!-- The managed quota binding imports this DLL by its bare name. Keep the
+         Rust domain core explicit so a publish cannot silently omit it when the
+         native-engine staging layout changes. -->
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll"
+             Link="openburnbar_domain_ffi.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest"
+             Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll')" />
+    <!-- Start the recursive glob at the engine root so %(RecursiveDir) retains
+         the OpenBurnBarCore_OpenBurnBarCore.resources directory segment. -->
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\**\*"
+             Exclude="$(OpenBurnBarNativeEngineDirectory)\*.dll;$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json"
+             Link="%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json"
              Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json')"
              Link="native-engine-manifest.json"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources\**\*"
-             Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources')"
-             Link="OpenBurnBarCore_OpenBurnBarCore.resources\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
@@ -70,6 +81,9 @@
     <Error
       Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')"
       Text="Required Windows parser engine is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll" />
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll')"
+      Text="Required shared domain core is missing: $(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll" />
     <Error
       Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources')"
       Text="Required Swift resource bundle is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources" />
@@ -165,7 +179,6 @@
     <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.ManagedAgentRuntime/OpenBurnBar.App.ManagedAgentRuntime.csproj" />
-    <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj" />
     <ProjectReference Include="../../cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck.Windows/OpenBurnBar.CloudSync.AppCheck.Windows.csproj" />
     <ProjectReference Include="../../packaging/updater/OpenBurnBar.Updater.Windows/OpenBurnBar.Updater.Windows.csproj" />

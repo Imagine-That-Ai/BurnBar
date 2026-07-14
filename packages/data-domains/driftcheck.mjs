@@ -2,12 +2,13 @@
 /**
  * Firestore-rules ⇄ registry drift check.
  *
- * Asserts every per-user subcollection declared in firestore.rules
- * (`match /users/{userId}/<collection>/...`) is accounted for in the data-domain
- * registry — either covered by some domain's firestorePaths or explicitly listed
- * in `excludedCollections`. This makes it impossible to add a new user-data
- * collection without consciously deciding whether it belongs in the Data &
- * Privacy Control Center: no silent gaps.
+ * Asserts every per-user subcollection declared in firestore.rules — either as
+ * a literal `match /users/{userId}/<collection>/...` path or in a consolidated
+ * `collectionId in [...]` gate — is accounted for in the data-domain registry.
+ * Each collection must be covered by a domain's firestorePaths or explicitly
+ * listed in `excludedCollections`. This makes it impossible to add a new
+ * user-data collection without consciously deciding whether it belongs in the
+ * Data & Privacy Control Center: no silent gaps.
  *
  * Exit 0 = no drift. Exit 1 = uncovered collection(s). Pure Node.
  */
@@ -33,6 +34,17 @@ export function userCollectionsInRules(rulesText) {
   let m;
   while ((m = re.exec(rulesText)) !== null) {
     found.add(m[1]);
+  }
+
+  // Consolidated direct-child gates use a wildcard collection segment and
+  // explicit operation-level allowlists. Treat every quoted identifier inside
+  // `collectionId in [...]` as a declared user collection too. Limiting the
+  // capture to the membership expression avoids pulling unrelated rule strings
+  // (field names, enum values, or nested paths) into the registry contract.
+  const consolidated = /collectionId\s+in\s+\[([\s\S]*?)\]/g;
+  while ((m = consolidated.exec(rulesText)) !== null) {
+    const identifiers = m[1].matchAll(/"([A-Za-z0-9_]+)"/g);
+    for (const identifier of identifiers) found.add(identifier[1]);
   }
   return found;
 }

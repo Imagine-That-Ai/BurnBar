@@ -153,7 +153,28 @@ final class ChartsSnapshotBuilderTests: XCTestCase {
         )
         // Hourly bucketing across today: more granular than a single bucket.
         XCTAssertGreaterThan(snapshot.burnSeries.count, 1)
+        XCTAssertLessThanOrEqual(snapshot.burnSeries.last?.start ?? .distantFuture, now)
         XCTAssertEqual(snapshot.burnSeries.reduce(0) { $0 + $1.value }, 1.0, accuracy: 1e-9)
+    }
+
+    func test_build_sessionCrossingRangeBoundary_isAttributedToFirstVisibleBucket() {
+        let calendar = Calendar.current
+        let now = calendar.date(bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
+        let startOfToday = calendar.startOfDay(for: now)
+        let row = TokenUsage(
+            provider: .claudeCode, sessionId: "crossing", projectName: "p",
+            model: "m", inputTokens: 10, outputTokens: 10,
+            costUSD: 2.0,
+            startTime: startOfToday.addingTimeInterval(-300),
+            endTime: startOfToday.addingTimeInterval(300)
+        )
+
+        let snapshot = ChartsSnapshot.build(
+            rows: [row], recentRows: [row], timeRange: .today, usagesVersion: 0, now: now
+        )
+
+        XCTAssertEqual(snapshot.totalCost, 2.0, accuracy: 1e-9)
+        XCTAssertEqual(snapshot.burnSeries.reduce(0) { $0 + $1.value }, 2.0, accuracy: 1e-9)
     }
 
     // MARK: Forecast

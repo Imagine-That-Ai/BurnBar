@@ -18,6 +18,13 @@ pipeline's channel set (see [`docs/WINDOWS_PORT_MASTER_PLAN.md`](../../docs/WIND
 | [`chocolatey/openburnbar.nuspec`](chocolatey/openburnbar.nuspec) | Chocolatey | nuspec (installs the portable zip; no Authenticode dependency) + [`tools/chocolateyinstall.ps1`](chocolatey/tools/chocolateyinstall.ps1) / [`chocolateyuninstall.ps1`](chocolatey/tools/chocolateyuninstall.ps1). |
 | [`scripts/verify.sh`](scripts/verify.sh) | — | Host-portable validator (XML well-formedness, winget schema rules, JSON/nuspec/PowerShell checks). |
 
+The published app must retain the Swift native engine resource bundle
+`OpenBurnBarCore_OpenBurnBarCore.resources` beside `OpenBurnBarCoreCAbi.dll`.
+`scripts/windows-port/stage-swift-runtime.py` copies and hashes that bundle in
+`native-engine-manifest.json`, while
+`scripts/windows-port/validate-native-engine-layout.mjs` rejects a publish tree
+that omits it before either the portable zip or MSIX is packaged.
+
 ## Identity (mirrors the macOS app)
 
 | macOS (`project.yml` / `OpenBurnBar-Info.plist`) | Windows packaging |
