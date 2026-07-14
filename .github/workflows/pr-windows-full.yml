@@ -93,7 +93,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|crates/burnbar-remote/bindings/csharp/|crates/openburnbar-iroh/bindings/csharp/|crates/openburnbar-domain-core/|OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/|AgentLensTests/Fixtures/|\.github/workflows/pr-windows-full\.yml)'; then
+            '^(windows/|crates/burnbar-remote/bindings/csharp/|crates/openburnbar-iroh/bindings/csharp/|crates/openburnbar-domain-core/|OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/|AgentLensTests/Fixtures/|\.github/workflows/pr-windows-full\.yml)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Windows full-suite surface changed: running x64 + ARM64 full-suite legs."
           else
