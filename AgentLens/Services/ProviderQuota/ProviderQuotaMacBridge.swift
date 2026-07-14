@@ -50,13 +50,22 @@ struct ProcessQuotaCLIExecutor: CLIExecutor {
 
 struct AppLoggerQuotaLogger: QuotaLogger {
     private static let shadowEvidence = MacDomainCoreShadowEvidenceRecorder()
+    private let shadowComparisonRecorder: @Sendable (DomainCoreQuotaShadowComparison) -> Void
+
+    init(
+        shadowComparisonRecorder: @escaping @Sendable (DomainCoreQuotaShadowComparison) -> Void = {
+            Self.shadowEvidence.record($0)
+        }
+    ) {
+        self.shadowComparisonRecorder = shadowComparisonRecorder
+    }
 
     func log(_ message: String) {
         AppLogger.shared.error("quota_seam", metadata: ["message": message])
     }
 
     func recordDomainCoreShadowComparison(_ comparison: DomainCoreQuotaShadowComparison) {
-        Self.shadowEvidence.record(comparison)
+        shadowComparisonRecorder(comparison)
     }
 }
 

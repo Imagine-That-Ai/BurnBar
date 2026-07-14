@@ -363,34 +363,53 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
     private let spool: DomainCoreShadowEvidenceSpool?
     private let coordinator: DomainCoreShadowEvidenceUploadCoordinator?
 
-    init(environment: [String: String] = ProcessInfo.processInfo.environment) {
+    init(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        directory: URL? = nil,
+        submitter: (any DomainCoreShadowSampleSubmitting)? = nil,
+        debounceNanoseconds: UInt64 = 5_000_000_000
+    ) {
         let configured = environment["OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL"]
             ?? Bundle.main.object(forInfoDictionaryKey: "OpenBurnBarDomainCoreRolloutChannel") as? String
         self.channel = configured == "internal" || configured == "beta" ? configured : nil
         let resolvedSpool: DomainCoreShadowEvidenceSpool?
         do {
-            let directory = try FileManager.default.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            ).appendingPathComponent("OpenBurnBar/DomainCoreShadow", isDirectory: true)
-            resolvedSpool = try DomainCoreShadowEvidenceSpool(directory: directory)
+            let resolvedDirectory: URL
+            if let directory {
+                resolvedDirectory = directory
+            } else {
+                resolvedDirectory = try FileManager.default.url(
+                    for: .applicationSupportDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: true
+                ).appendingPathComponent("OpenBurnBar/DomainCoreShadow", isDirectory: true)
+            }
+            resolvedSpool = try DomainCoreShadowEvidenceSpool(directory: resolvedDirectory)
         } catch {
             AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "initialization_failed"])
             resolvedSpool = nil
         }
         self.spool = resolvedSpool
-        #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
-        self.coordinator = self.spool.map {
-            DomainCoreShadowEvidenceUploadCoordinator(
-                spool: $0,
-                submitter: FirebaseDomainCoreShadowSampleSubmitter()
+        if let spool = self.spool, let submitter {
+            self.coordinator = DomainCoreShadowEvidenceUploadCoordinator(
+                spool: spool,
+                submitter: submitter,
+                debounceNanoseconds: debounceNanoseconds
             )
+        } else {
+            #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
+                self.coordinator = self.spool.map {
+                    DomainCoreShadowEvidenceUploadCoordinator(
+                        spool: $0,
+                        submitter: FirebaseDomainCoreShadowSampleSubmitter(),
+                        debounceNanoseconds: debounceNanoseconds
+                )
+            }
+            #else
+            self.coordinator = nil
+            #endif
         }
-        #else
-        self.coordinator = nil
-        #endif
         if let coordinator {
             Task { await coordinator.flush() }
         }

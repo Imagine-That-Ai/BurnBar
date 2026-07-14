@@ -140,6 +140,7 @@ final class GitHubCopilotUsageAPI: ProviderUsageAPI, Sendable {
         for entry in entries {
             let dateStr = entry["date"] as? String ?? ""
             let date = formatter.date(from: dateStr) ?? Date()
+            let recordCountBeforeEntry = records.count
 
             // Copilot metrics may have model-level breakdowns
             if let models = entry["copilot_ide_chat"] as? [String: Any],
@@ -180,7 +181,7 @@ final class GitHubCopilotUsageAPI: ProviderUsageAPI, Sendable {
             // Also check for flat token counts
             let totalTokens = entry["total_tokens_used"] as? Int
                 ?? entry["total_tokens"] as? Int ?? 0
-            if totalTokens > 0 && records.isEmpty {
+            if totalTokens > 0 && records.count == recordCountBeforeEntry {
                 let inputTokens = Int(Double(totalTokens) * 0.85)
                 let outputTokens = max(totalTokens - inputTokens, 0)
 
