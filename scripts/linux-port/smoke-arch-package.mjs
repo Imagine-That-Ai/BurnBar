@@ -26,8 +26,16 @@ const steps = [];
 const dependencies = inspectArchPackageDependencies(full);
 const dependencyPackages = archDependencyPackagesForInstall(dependencies);
 
-steps.push(runStep('pacman', ['-Qip', full]));
-steps.push(runStep('pacman', ['-Qlp', full]));
+// Package inventories can contain tens of thousands of Swift/runtime paths.
+// Keep the signed smoke report useful without allowing a long listing to hit
+// the runner's per-line log limit.  The command still runs with a generous
+// process buffer and its exit code remains authoritative.
+const packageQueryOutput = {
+  maxBuffer: 256 * 1024 * 1024,
+  outputLimitBytes: 16 * 1024
+};
+steps.push(runStep('pacman', ['-Qip', full], packageQueryOutput));
+steps.push(runStep('pacman', ['-Qlp', full], packageQueryOutput));
 steps.push(runStep('pacman', ['-Syu', '--noconfirm', '--needed', ...dependencyPackages]));
 steps.push(runStep('pacman', ['-T', ...dependencies]));
 const install = runStep('pacman', ['-U', '--noconfirm', full]);

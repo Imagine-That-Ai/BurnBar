@@ -41,6 +41,8 @@ const runStepBashInlineScripts = new Set([
   'command -v kwallet-query || true'
 ]);
 const runStepSudoCommands = new Set(['dpkg', 'pacman', 'rpm']);
+const defaultRunStepMaxBuffer = 64 * 1024 * 1024;
+const maxRunStepMaxBuffer = 512 * 1024 * 1024;
 
 function isInside(parent, candidate) {
   const relativePath = path.relative(parent, candidate);
@@ -110,6 +112,32 @@ function validateRunStepEnv(env) {
   return out;
 }
 
+function validateRunStepByteLimit(value, label, { fallback, minimum = 0, maximum }) {
+  const limit = value ?? fallback;
+  if (!Number.isSafeInteger(limit) || limit < minimum || limit > maximum) {
+    throw new Error(`Linux release step ${label} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return limit;
+}
+
+function truncateUtf8(value, limit) {
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (limit === undefined || bytes <= limit) {
+    return { value, bytes, truncated: false };
+  }
+
+  let used = 0;
+  let end = 0;
+  while (end < value.length) {
+    const codePoint = value.codePointAt(end);
+    const width = codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+    if (used + width > limit) break;
+    used += width;
+    end += codePoint > 0xffff ? 2 : 1;
+  }
+  return { value: value.slice(0, end), bytes, truncated: true };
+}
+
 export function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
@@ -164,18 +192,42 @@ export function runStep(command, args, options = {}) {
   );
   const safeCwd = validateRunStepCwd(options.cwd);
   const safeEnv = validateRunStepEnv(options.env);
+  const maxBuffer = validateRunStepByteLimit(options.maxBuffer, 'maxBuffer', {
+    fallback: defaultRunStepMaxBuffer,
+    minimum: 1,
+    maximum: maxRunStepMaxBuffer
+  });
+  const outputLimitBytes = options.outputLimitBytes === undefined
+    ? undefined
+    : validateRunStepByteLimit(options.outputLimitBytes, 'outputLimitBytes', {
+      fallback: undefined,
+      maximum: maxBuffer
+    });
   const result = spawnSync(safeCommand, safeArgs, {
     cwd: safeCwd,
     env: safeEnv,
     encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024
+    maxBuffer
   });
+  const rawStdout = result.stdout ?? '';
+  const rawStderr = [
+    result.stderr ?? '',
+    result.error ? `${result.error.name}: ${result.error.message}` : ''
+  ].filter(Boolean).join('\n');
+  const stdout = truncateUtf8(rawStdout, outputLimitBytes);
+  const stderr = truncateUtf8(rawStderr, outputLimitBytes);
   return {
     command: [safeCommand, ...safeArgs].join(' '),
     cwd: path.relative(repoRoot, safeCwd) || '.',
     exitCode: result.status ?? 1,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? ''
+    stdout: stdout.value,
+    stderr: stderr.value,
+    ...(stdout.truncated
+      ? { stdoutTruncated: true, stdoutBytes: stdout.bytes, stdoutLimitBytes: outputLimitBytes }
+      : {}),
+    ...(stderr.truncated
+      ? { stderrTruncated: true, stderrBytes: stderr.bytes, stderrLimitBytes: outputLimitBytes }
+      : {})
   };
 }
 
