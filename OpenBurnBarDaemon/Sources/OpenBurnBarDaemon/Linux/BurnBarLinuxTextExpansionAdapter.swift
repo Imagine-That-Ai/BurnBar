@@ -159,10 +159,10 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         }
     }
 
-    /// The versioned, text-free protocol spoken by a packaged external
-    /// expansion engine.  The engine receives only this handshake and later
-    /// lifecycle commands; field, clipboard, keyboard, and surrounding-text
-    /// data are intentionally not representable in this contract.
+    /// The versioned protocol spoken by a packaged external expansion engine.
+    /// The engine receives a handshake and trigger-only expansion requests;
+    /// field, clipboard, keyboard, and surrounding-text data are intentionally
+    /// not representable in this contract.
     public struct EngineHandshake: Codable, Equatable, Sendable {
         public let protocolName: String
         public let protocolVersion: Int
@@ -240,6 +240,13 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         case killSwitchActive
         case handshakeInvalid
         case sessionStopped
+        case expansionInvalid
+        case expansionDenied(SecureFieldDecision)
+        case expansionTimedOut
+        case expansionCancelled
+        case expansionResponseInvalid
+        case expansionResponseTooLarge
+        case expansionFailed
 
         public var description: String {
             switch self {
@@ -259,13 +266,28 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
                 return "linux_text_expansion_engine_handshake_invalid"
             case .sessionStopped:
                 return "linux_text_expansion_engine_session_stopped"
+            case .expansionInvalid:
+                return "linux_text_expansion_engine_expansion_request_invalid"
+            case .expansionDenied(let decision):
+                return "linux_text_expansion_engine_expansion_denied: \(decision.rawValue)"
+            case .expansionTimedOut:
+                return "linux_text_expansion_engine_expansion_timed_out"
+            case .expansionCancelled:
+                return "linux_text_expansion_engine_expansion_cancelled"
+            case .expansionResponseInvalid:
+                return "linux_text_expansion_engine_expansion_response_invalid"
+            case .expansionResponseTooLarge:
+                return "linux_text_expansion_engine_expansion_response_too_large"
+            case .expansionFailed:
+                return "linux_text_expansion_engine_expansion_failed"
             }
         }
     }
 
-    /// A live external engine process.  It has no expansion method by design:
-    /// callers must make a secure-field decision for each target context and
-    /// the process can only be controlled through text-free lifecycle messages.
+    /// A live external engine process. Callers must make a secure-field
+    /// decision for each target context. Expansion requests contain only a
+    /// bounded trigger key; the process is never given keyboard events,
+    /// clipboard contents, surrounding text, or field contents.
     public actor ExternalEngineSession {
         public nonisolated let engineID: String
         public nonisolated let executablePath: String
@@ -329,6 +351,109 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
             secureFieldEvaluator(context)
         }
 
+        /// Requests one expansion using only a canonical trigger key. The
+        /// secure-field context is evaluated inside the daemon and is never
+        /// serialized to the engine. A non-cooperative or malformed engine is
+        /// terminated before the error is returned.
+        public func expand(
+            trigger: String,
+            context: SecureFieldContext,
+            timeoutMillis: Int = 1_000,
+            requestID: String = UUID().uuidString
+        ) async throws -> String? {
+            guard !Task.isCancelled else {
+                throw EngineRuntimeError.expansionCancelled
+            }
+            guard state == .ready, process.isRunning else {
+                state = .stopped
+                throw EngineRuntimeError.sessionStopped
+            }
+            guard (100...30_000).contains(timeoutMillis),
+                  let canonicalTrigger = BurnBarLinuxTextExpansionAdapter.canonicalTrigger(trigger),
+                  BurnBarLinuxTextExpansionAdapter.isValidRequestID(requestID) else {
+                throw EngineRuntimeError.expansionInvalid
+            }
+            let decision = secureFieldEvaluator(context)
+            guard decision == .allow else {
+                throw EngineRuntimeError.expansionDenied(decision)
+            }
+            guard !killSwitch() else {
+                terminateProcess(timeoutMillis: 100)
+                state = .killSwitchActive
+                throw EngineRuntimeError.killSwitchActive
+            }
+            guard !Task.isCancelled else {
+                throw EngineRuntimeError.expansionCancelled
+            }
+
+            do {
+                let request = try BurnBarLinuxTextExpansionAdapter.expansionRequest(
+                    requestID: requestID,
+                    trigger: canonicalTrigger
+                )
+                try input.write(contentsOf: request)
+                let data = try BurnBarLinuxTextExpansionAdapter.readExpansionResponse(
+                    from: output,
+                    timeoutMillis: timeoutMillis,
+                    killSwitch: killSwitch
+                )
+                try Task.checkCancellation()
+                let response: ExpansionResponse
+                do {
+                    response = try JSONDecoder().decode(ExpansionResponse.self, from: data)
+                } catch {
+                    throw EngineRuntimeError.expansionResponseInvalid
+                }
+                guard BurnBarLinuxTextExpansionAdapter.isValidExpansionResponse(response, requestID: requestID) else {
+                    throw EngineRuntimeError.expansionResponseInvalid
+                }
+                switch response.status {
+                case .expanded:
+                    guard let replacement = response.replacement else {
+                        throw EngineRuntimeError.expansionResponseInvalid
+                    }
+                    guard replacement.utf8.count <= BurnBarLinuxTextExpansionAdapter.maxExpansionBytes else {
+                        throw EngineRuntimeError.expansionResponseTooLarge
+                    }
+                    return replacement
+                case .notFound:
+                    guard response.replacement == nil else {
+                        throw EngineRuntimeError.expansionResponseInvalid
+                    }
+                    return nil
+                }
+            } catch let error as EngineRuntimeError {
+                switch error {
+                case .expansionResponseInvalid, .expansionResponseTooLarge:
+                    terminateProcess(timeoutMillis: 100)
+                    state = .stopped
+                default:
+                    break
+                }
+                throw error
+            } catch ExpansionWaitError.timedOut {
+                terminateProcess(timeoutMillis: 100)
+                state = .timedOut
+                throw EngineRuntimeError.expansionTimedOut
+            } catch ExpansionWaitError.killSwitchActive {
+                terminateProcess(timeoutMillis: 100)
+                state = .killSwitchActive
+                throw EngineRuntimeError.killSwitchActive
+            } catch ExpansionWaitError.responseTooLarge {
+                terminateProcess(timeoutMillis: 100)
+                state = .stopped
+                throw EngineRuntimeError.expansionResponseTooLarge
+            } catch is CancellationError {
+                terminateProcess(timeoutMillis: 100)
+                state = .cancelled
+                throw EngineRuntimeError.expansionCancelled
+            } catch {
+                terminateProcess(timeoutMillis: 100)
+                state = .stopped
+                throw EngineRuntimeError.expansionFailed
+            }
+        }
+
         /// Sends a text-free stop request, then terminates a non-cooperative
         /// process within the bounded deadline.  Kill-switch termination is
         /// distinguished from an ordinary user stop.
@@ -363,9 +488,9 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
             case .stopped:
                 return "External text-expansion engine stopped."
             case .timedOut:
-                return "External text-expansion engine handshake timed out."
+                return "External text-expansion engine handshake or expansion request timed out."
             case .cancelled:
-                return "External text-expansion engine handshake was cancelled."
+                return "External text-expansion engine handshake or expansion request was cancelled."
             case .killSwitchActive:
                 return "External text-expansion engine stopped by the Linux kill switch."
             }
@@ -394,6 +519,15 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         case deniedSecureField
         case deniedExcludedApplication
         case deniedUninspectable
+
+        fileprivate var rawValue: String {
+            switch self {
+            case .allow: return "allow"
+            case .deniedSecureField: return "denied_secure_field"
+            case .deniedExcludedApplication: return "denied_excluded_application"
+            case .deniedUninspectable: return "denied_uninspectable"
+            }
+        }
     }
 
     /// Metadata supplied by an IBus/Fcitx engine bridge. It contains only
@@ -489,6 +623,8 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
     private static let maxManifestBytes = 16 * 1024
     private static let maxEngineIDLength = 128
     private static let maxHandshakeBytes = 4 * 1024
+    private static let maxExpansionBytes = 128 * 1024
+    private static let maxRequestIDBytes = 128
     private static let engineProtocolName = "openburnbar.text-expansion"
     private static let engineProtocolVersion = 1
     private static let engineLaunchArguments = [
@@ -892,9 +1028,38 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         let secureFieldPolicy: SecureFieldPolicy
     }
 
+    private enum ExpansionStatus: String, Codable, Sendable {
+        case expanded
+        case notFound = "not_found"
+    }
+
+    private struct ExpansionRequest: Codable, Sendable {
+        let operation: String
+        let `protocol`: String
+        let protocolVersion: Int
+        let requestID: String
+        let trigger: String
+    }
+
+    private struct ExpansionResponse: Codable, Sendable {
+        let operation: String
+        let `protocol`: String
+        let protocolVersion: Int
+        let requestID: String
+        let status: ExpansionStatus
+        let replacement: String?
+    }
+
     private enum HandshakeWaitError: Error {
         case timedOut
         case killSwitchActive
+    }
+
+    private enum ExpansionWaitError: Error {
+        case timedOut
+        case killSwitchActive
+        case responseTooLarge
+        case closed
     }
 
     private static func handshakeRequest(for manifest: EngineManifest) throws -> Data {
@@ -922,6 +1087,52 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
             !handshake.readsClipboard &&
             !handshake.readsSurroundingText &&
             handshake.secureFieldPolicy == .denyUnlessInspectableAndExplicitlyNonsecure
+    }
+
+    private static func expansionRequest(requestID: String, trigger: String) throws -> Data {
+        let request = ExpansionRequest(
+            operation: "expand",
+            protocol: engineProtocolName,
+            protocolVersion: engineProtocolVersion,
+            requestID: requestID,
+            trigger: trigger
+        )
+        return try JSONEncoder().encode(request) + Data([0x0A])
+    }
+
+    private static func isValidExpansionResponse(
+        _ response: ExpansionResponse,
+        requestID: String
+    ) -> Bool {
+        response.operation == "expand_result" &&
+            response.protocol == engineProtocolName &&
+            response.protocolVersion == engineProtocolVersion &&
+            response.requestID == requestID
+    }
+
+    private static func canonicalTrigger(_ raw: String) -> String? {
+        var trigger = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while trigger.hasPrefix("&&") {
+            trigger.removeFirst(2)
+        }
+        guard isValidTrigger(trigger) else { return nil }
+        return trigger
+    }
+
+    private static func isValidTrigger(_ trigger: String) -> Bool {
+        let length = trigger.utf8.count
+        guard (2...64).contains(length) else { return false }
+        return trigger.utf8.allSatisfy { byte in
+            (byte >= 97 && byte <= 122) || (byte >= 48 && byte <= 57) || byte == 45 || byte == 95
+        }
+    }
+
+    private static func isValidRequestID(_ requestID: String) -> Bool {
+        let bytes = requestID.utf8
+        guard !bytes.isEmpty, bytes.count <= maxRequestIDBytes else { return false }
+        return bytes.allSatisfy { byte in
+            byte >= 0x21 && byte <= 0x7E && byte != 0x22 && byte != 0x5C
+        }
     }
 
     /// Reads only one bounded JSONL handshake line. `poll(2)` keeps the read
@@ -964,6 +1175,51 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
             }
         }
         return data
+    }
+
+    /// Reads one bounded JSONL response. Polling keeps the request path
+    /// cancellable without a detached blocking task; the caller tears down
+    /// the process before surfacing any I/O failure.
+    private static func readExpansionResponse(
+        from handle: FileHandle,
+        timeoutMillis: Int,
+        killSwitch: @escaping @Sendable () -> Bool
+    ) throws -> Data {
+        let deadline = Date().addingTimeInterval(Double(max(1, timeoutMillis)) / 1_000)
+        var data = Data()
+        while true {
+            try Task.checkCancellation()
+            if killSwitch() { throw ExpansionWaitError.killSwitchActive }
+            let remainingSeconds = deadline.timeIntervalSinceNow
+            guard remainingSeconds > 0 else { throw ExpansionWaitError.timedOut }
+
+            var descriptor = pollfd(
+                fd: handle.fileDescriptor,
+                events: Int16(POLLIN),
+                revents: 0
+            )
+            let waitMillis = Int32(max(1, min(20, Int((remainingSeconds * 1_000).rounded(.up)))))
+            let result = poll(&descriptor, 1, waitMillis)
+            if result < 0 {
+                if errno == EINTR { continue }
+                throw ExpansionWaitError.closed
+            }
+            guard result > 0 else { continue }
+            let readable = Int16(POLLIN | POLLHUP | POLLERR)
+            guard descriptor.revents & readable != 0 else { continue }
+
+            let remaining = min(512, maxExpansionBytes + 1 - data.count)
+            guard remaining > 0 else { throw ExpansionWaitError.responseTooLarge }
+            let chunk = try handle.read(upToCount: remaining) ?? Data()
+            if chunk.isEmpty { throw ExpansionWaitError.closed }
+            data.append(chunk)
+            if let newline = data.firstIndex(of: 0x0A) {
+                let line = Data(data[..<newline])
+                guard line.count <= maxExpansionBytes else { throw ExpansionWaitError.responseTooLarge }
+                return line
+            }
+            if data.count > maxExpansionBytes { throw ExpansionWaitError.responseTooLarge }
+        }
     }
 
     private static func terminateProcess(

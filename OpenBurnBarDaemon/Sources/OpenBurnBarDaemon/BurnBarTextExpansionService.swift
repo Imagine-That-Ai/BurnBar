@@ -128,6 +128,27 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
             return status
         }
 
+        func expand(
+            trigger: String,
+            context: BurnBarLinuxTextExpansionAdapter.SecureFieldContext,
+            timeoutMillis: Int,
+            requestID: String
+        ) async throws -> String? {
+            guard let session else {
+                throw BurnBarLinuxTextExpansionAdapter.EngineRuntimeError.sessionStopped
+            }
+            let replacement = try await session.expand(
+                trigger: trigger,
+                context: context,
+                timeoutMillis: timeoutMillis,
+                requestID: requestID
+            )
+            let runtime = await session.status()
+            let status = Self.map(runtime: runtime, native: nativeStatus ?? adapter.typedStatus())
+            lastStatus = status
+            return replacement
+        }
+
         private static func map(
             runtime: BurnBarLinuxTextExpansionAdapter.EngineRuntimeStatus,
             native: BurnBarLinuxTextExpansionAdapter.Status
@@ -351,6 +372,37 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
         throw ServiceError.unsupportedPlatform
 #endif
     }
+
+#if os(Linux)
+    /// Requests one trigger-only expansion from the signed external engine.
+    /// Consent remains daemon-owned, secure-field metadata is evaluated here,
+    /// and no keyboard, clipboard, surrounding-text, or field payload can be
+    /// forwarded through this API.
+    public func expandExternalEngine(
+        trigger: String,
+        context: BurnBarLinuxTextExpansionAdapter.SecureFieldContext,
+        timeoutMillis: Int = 1_000,
+        requestID: String = UUID().uuidString
+    ) async throws -> String? {
+        guard (100...30_000).contains(timeoutMillis) else {
+            throw ServiceError.invalidRuntimeRequest
+        }
+        let consent = try withLock { try readSnapshot().consent }
+        guard consent?.inAppOnly == true, consent?.declinedGlobalCapture == true else {
+            throw ServiceError.invalidConsent
+        }
+        guard LinuxPrivilegedInputKillFlag.isActive() == false,
+              LinuxPrivilegedInputKillFlag.environmentKillSwitchActive() == false else {
+            throw BurnBarLinuxTextExpansionAdapter.EngineRuntimeError.killSwitchActive
+        }
+        return try await linuxEngineRuntime.expand(
+            trigger: trigger,
+            context: context,
+            timeoutMillis: timeoutMillis,
+            requestID: requestID
+        )
+    }
+#endif
 
     private func withLock<T>(_ operation: () throws -> T) rethrows -> T {
         lock.lock()

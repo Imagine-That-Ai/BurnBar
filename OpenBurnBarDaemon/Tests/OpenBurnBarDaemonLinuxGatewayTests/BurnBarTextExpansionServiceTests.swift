@@ -109,6 +109,20 @@ final class BurnBarTextExpansionServiceTests: XCTestCase {
         }
     }
 
+    func testExternalExpansionRequiresPersistedConsentBeforeEngineSession() async throws {
+        let service = makeService()
+        do {
+            _ = try await service.expandExternalEngine(
+                trigger: "reply",
+                context: .init(inspectable: true, isSecureField: false),
+                requestID: "request-1"
+            )
+            XCTFail("external expansion must require persisted consent")
+        } catch let error as BurnBarTextExpansionService.ServiceError {
+            XCTAssertEqual(error, .invalidConsent)
+        }
+    }
+
     private func makeService() -> BurnBarTextExpansionService {
         BurnBarTextExpansionService(
             fileURL: directory.appendingPathComponent("text-expansion.obbsealed"),
