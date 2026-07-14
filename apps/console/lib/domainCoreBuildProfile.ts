@@ -15,20 +15,17 @@ const domainKeys = {
 
 export type DomainCoreWebDomain = keyof typeof domainKeys;
 
+interface SignedDomainCoreWebProfile {
+  modes: Record<DomainCoreWebDomain, DomainCoreMode>;
+  evidenceChannel?: "internal" | "beta";
+}
+
 export function resolveDomainCoreEvidenceChannel(
   environment: PublicEnvironment = process.env,
 ): "internal" | "beta" | undefined {
-  const channel = environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL;
-  if (
-    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY !== "signed" ||
-    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED !== "1" ||
-    (channel !== "internal" && channel !== "beta") ||
-    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE !== channel ||
-    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION !== channel
-  ) {
-    return undefined;
-  }
-  return channel;
+  return buildAuthority(environment) === "signed"
+    ? resolveSignedProfile(environment)?.evidenceChannel
+    : undefined;
 }
 
 export function resolveDomainCoreWebMode(
@@ -37,19 +34,24 @@ export function resolveDomainCoreWebMode(
   developmentKey: string = domainKeys[domain],
 ): DomainCoreMode {
   const embedded = mode(environment[domainKeys[domain]]);
-  if (
-    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY !== "signed"
-  ) {
+  const authority = buildAuthority(environment);
+  if (authority === undefined || authority === "development") {
     return mode(environment[developmentKey]) ?? embedded ?? "legacy";
   }
+  if (authority !== "signed") return "legacy";
+  return resolveSignedProfile(environment)?.modes[domain] ?? "legacy";
+}
+
+function resolveSignedProfile(
+  environment: PublicEnvironment,
+): SignedDomainCoreWebProfile | undefined {
   const modes = Object.fromEntries(
     Object.entries(domainKeys).map(([name, key]) => [
       name,
       mode(environment[key]),
     ]),
   ) as Record<DomainCoreWebDomain, DomainCoreMode | undefined>;
-  if (Object.values(modes).some((value) => value === undefined))
-    return "legacy";
+  if (Object.values(modes).some((value) => value === undefined)) return undefined;
   const name = environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE;
   const distribution =
     environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION;
@@ -69,7 +71,18 @@ export function resolveDomainCoreWebMode(
       channel === name &&
       evidence &&
       modes.quota === "shadow");
-  return valid ? (modes[domain] ?? "legacy") : "legacy";
+  if (!valid) return undefined;
+  return {
+    modes: modes as Record<DomainCoreWebDomain, DomainCoreMode>,
+    evidenceChannel:
+      name === "internal" || name === "beta" ? name : undefined,
+  };
+}
+
+function buildAuthority(environment: PublicEnvironment): string | undefined {
+  const authority =
+    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY?.trim();
+  return authority || undefined;
 }
 
 function mode(value: string | undefined): DomainCoreMode | undefined {

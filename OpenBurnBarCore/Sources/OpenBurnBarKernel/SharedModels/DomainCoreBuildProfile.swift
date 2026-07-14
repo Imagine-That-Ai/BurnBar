@@ -39,9 +39,9 @@ public struct DomainCoreBuildProfile: Equatable, Sendable {
 
     fileprivate static func failClosed(authority: String, valid: Bool) -> Self {
         Self(
-            name: authority == "signed" ? "invalid-signed-profile" : "developer",
+            name: valid ? "developer" : "invalid-signed-profile",
             artifactAuthority: authority,
-            distribution: authority == "signed" ? "invalid" : "development",
+            distribution: valid ? "development" : "invalid",
             rolloutChannel: nil,
             evidenceEnabled: false,
             modes: Dictionary(uniqueKeysWithValues: DomainCoreBuildDomain.allCases.map { ($0, .legacy) }),
@@ -55,9 +55,15 @@ public enum DomainCoreBuildProfileResolver {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         info: [String: Any] = Bundle.main.infoDictionary ?? [:]
     ) -> DomainCoreBuildProfile {
-        string(info["OpenBurnBarDomainCoreBuildAuthority"]) == "signed"
-            ? signed(info: info)
-            : development(environment: environment, info: info)
+        let authority = string(info["OpenBurnBarDomainCoreBuildAuthority"])
+        switch authority {
+        case nil, "", "development":
+            return development(environment: environment, info: info)
+        case "signed":
+            return signed(info: info)
+        default:
+            return .failClosed(authority: authority ?? "invalid", valid: false)
+        }
     }
 
     public static func mode(

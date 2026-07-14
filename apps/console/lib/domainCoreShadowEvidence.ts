@@ -35,7 +35,7 @@ export function recordConsoleCloudVaultShadowComparison(
     !boundedMicros(comparison.rustMicros)
   ) return;
 
-  const samples = readSamples();
+  const samples = readSamplesForChannel(channel);
   samples.push({
     schemaVersion: 2,
     sampleId: crypto.randomUUID(),
@@ -83,11 +83,17 @@ function scheduleFlush(delayMillis: number): void {
 }
 
 async function flush(): Promise<void> {
-  if (flushing || !auth().currentUser) return;
+  if (flushing) return;
+  const channel = resolveDomainCoreEvidenceChannel();
+  if (!channel) {
+    writeSamples([]);
+    return;
+  }
+  if (!auth().currentUser) return;
   flushing = true;
   try {
     while (true) {
-      const samples = readSamples();
+      const samples = readSamplesForChannel(channel);
       if (samples.length === 0) return;
       const batch = samples.slice(0, BATCH_SIZE);
       const callable = httpsCallable<
@@ -107,6 +113,15 @@ async function flush(): Promise<void> {
   } finally {
     flushing = false;
   }
+}
+
+function readSamplesForChannel(
+  channel: "internal" | "beta",
+): ConsoleShadowSampleV2[] {
+  const samples = readSamples();
+  const retained = samples.filter((sample) => sample?.channel === channel);
+  if (retained.length !== samples.length) writeSamples(retained);
+  return retained;
 }
 
 export function resetConsoleShadowEvidenceForTests(): void {

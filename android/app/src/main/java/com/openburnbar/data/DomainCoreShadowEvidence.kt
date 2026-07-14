@@ -87,14 +87,35 @@ internal class AndroidDomainCoreShadowSpool(
     }
 
     @Synchronized
-    fun nextBatch(sealActive: Boolean): Batch? {
-        if (sealActive) sealActive()
-        val file = readyFiles().firstOrNull() ?: return null
-        val samples = file.useLines { lines ->
-            lines.filter(String::isNotBlank).map { JSONObject(it).toMap() }.toList()
+    fun prepareForChannel(expectedChannel: String) {
+        require(expectedChannel == "internal" || expectedChannel == "beta")
+        sealActive()
+        readyFiles().forEach { file ->
+            if (readSamples(file)?.all { it["channel"] == expectedChannel } != true) {
+                check(file.delete())
+            }
         }
-        check(samples.isNotEmpty() && samples.size <= maxSamplesPerFile)
-        return Batch(file, samples)
+    }
+
+    @Synchronized
+    fun discardAll() {
+        check(!active.exists() || active.delete())
+        readyFiles().forEach { file -> check(file.delete()) }
+    }
+
+    @Synchronized
+    fun nextBatch(sealActive: Boolean, expectedChannel: String): Batch? {
+        require(expectedChannel == "internal" || expectedChannel == "beta")
+        if (sealActive) sealActive()
+        while (true) {
+            val file = readyFiles().firstOrNull() ?: return null
+            val samples = readSamples(file)
+            if (samples == null || samples.any { it["channel"] != expectedChannel }) {
+                check(file.delete())
+                continue
+            }
+            return Batch(file, samples)
+        }
     }
 
     @Synchronized
@@ -105,6 +126,12 @@ internal class AndroidDomainCoreShadowSpool(
     }
 
     private fun activeLineCount(): Int = if (active.exists()) active.useLines { it.count(String::isNotBlank) } else 0
+
+    private fun readSamples(file: File): List<Map<String, Any?>>? = runCatching {
+        file.useLines { lines ->
+            lines.filter(String::isNotBlank).map { JSONObject(it).toMap() }.toList()
+        }.takeIf { it.isNotEmpty() && it.size <= maxSamplesPerFile }
+    }.getOrNull()
 
     private fun sealActive() {
         if (!active.exists() || active.length() == 0L) return
@@ -139,13 +166,25 @@ internal object AndroidDomainCoreShadowEvidence {
     private var spool: AndroidDomainCoreShadowSpool? = null
     private var flushJob: Job? = null
     private var installed = false
+    private var installedChannel: DomainCoreEvidenceChannel? = null
 
-    fun install(context: Context) {
+    fun discardStoredSamples(context: Context) {
+        if (DomainCoreBuildProfile.evidenceChannel() != null) return
+        AndroidDomainCoreShadowSpool(File(context.filesDir, "domain_core_shadow")).discardAll()
+    }
+
+    fun install(context: Context, channel: DomainCoreEvidenceChannel) {
+        if (DomainCoreBuildProfile.evidenceChannel() != channel) return
         if (installed) return
         synchronized(this) {
+            if (DomainCoreBuildProfile.evidenceChannel() != channel) return
             if (installed) return
+            val preparedSpool = AndroidDomainCoreShadowSpool(File(context.filesDir, "domain_core_shadow")).also {
+                it.prepareForChannel(channel.wireValue)
+            }
+            spool = preparedSpool
+            installedChannel = channel
             installed = true
-            spool = AndroidDomainCoreShadowSpool(File(context.filesDir, "domain_core_shadow"))
             CloudVaultDomainCore.comparisonOverride = ::record
             CloudVaultDocumentRewrapDomainCore.comparisonOverride = ::record
             CloudVaultSearchDomainCore.comparisonOverride = ::record
@@ -189,12 +228,12 @@ internal object AndroidDomainCoreShadowEvidence {
         legacyMicros: Long,
         rustMicros: Long,
     ) {
-        val channel = DomainCoreBuildProfile.evidenceChannel() ?: return
+        val channel = activeEvidenceChannel() ?: return
         if (!validComparison(domain, slice, operation, coreVersion, outcome, mismatchCategory, legacyMicros, rustMicros)) return
         runCatching {
             spool?.append(
                 AndroidDomainCoreShadowSampleV2(
-                    UUID.randomUUID().toString(), domain, slice, channel, operation, coreVersion,
+                    UUID.randomUUID().toString(), domain, slice, channel.wireValue, operation, coreVersion,
                     outcome, mismatchCategory, legacyMicros, rustMicros,
                 ),
             )
@@ -203,6 +242,7 @@ internal object AndroidDomainCoreShadowEvidence {
     }
 
     private fun scheduleFlush(delayMillis: Long) {
+        if (activeEvidenceChannel() == null) return
         if (flushJob?.isActive == true) return
         flushJob = BurnBarApplication.applicationScope.launch {
             delay(delayMillis)
@@ -212,12 +252,13 @@ internal object AndroidDomainCoreShadowEvidence {
     }
 
     private suspend fun flush() = flushMutex.withLock {
+        val channel = activeEvidenceChannel() ?: return@withLock
         val activeSpool = spool ?: return@withLock
         if (FirebaseAuth.getInstance().currentUser == null) return@withLock
         runCatching {
             var sealActive = true
             while (true) {
-                val batch = activeSpool.nextBatch(sealActive) ?: break
+                val batch = activeSpool.nextBatch(sealActive, channel.wireValue) ?: break
                 sealActive = false
                 val result = Firebase.functions("us-central1")
                     .getHttpsCallable("submitDomainCoreShadowSamples")
@@ -234,6 +275,9 @@ internal object AndroidDomainCoreShadowEvidence {
             scheduleFlush(RETRY_DELAY_MILLIS)
         }
     }
+
+    private fun activeEvidenceChannel(): DomainCoreEvidenceChannel? = installedChannel
+        ?.takeIf { DomainCoreBuildProfile.evidenceChannel() == it }
 
     private fun validComparison(
         domain: String,

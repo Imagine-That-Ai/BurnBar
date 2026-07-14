@@ -1,5 +1,4 @@
 import Foundation
-import OpenBurnBarKernel
 #if canImport(CoreFoundation)
 import CoreFoundation
 #endif

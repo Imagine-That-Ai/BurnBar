@@ -226,6 +226,8 @@ android {
         )
         buildConfigField("String", "CLOUDVAULT_DOMAIN_CORE_MODE", "\"$cloudVaultDomainCoreMode\"")
         buildConfigField("String", "HERMES_DOMAIN_CORE_MODE", "\"$hermesDomainCoreMode\"")
+        buildConfigField("String", "QUOTA_DOMAIN_CORE_MODE", "\"${canonicalDomainCoreModes.getValue("quota")}\"")
+        buildConfigField("String", "PRICING_DOMAIN_CORE_MODE", "\"${canonicalDomainCoreModes.getValue("pricing")}\"")
         buildConfigField("String", "DOMAIN_CORE_BUILD_PROFILE", "\"$domainCoreProfileName\"")
         buildConfigField("String", "DOMAIN_CORE_BUILD_AUTHORITY", "\"$domainCoreAuthority\"")
         buildConfigField("String", "DOMAIN_CORE_DISTRIBUTION", "\"$domainCoreDistribution\"")
