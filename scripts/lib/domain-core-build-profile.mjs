@@ -3,37 +3,70 @@ import { readFileSync } from "node:fs";
 export const DOMAIN_CORE_PROFILE_SCHEMA_VERSION = 1;
 export const DOMAIN_CORE_MODES = new Set(["legacy", "shadow", "rust"]);
 export const DOMAIN_CORE_ARTIFACT_AUTHORITIES = new Set(["development", "signed"]);
+const DOMAIN_CORE_PROFILE_IDENTITIES = new Map([
+  ["developer", { artifactAuthority: "development", distribution: "development" }],
+  ["public-production", { artifactAuthority: "signed", distribution: "public" }],
+  ["internal", { artifactAuthority: "signed", distribution: "internal" }],
+  ["beta", { artifactAuthority: "signed", distribution: "beta" }],
+]);
 
 export function loadDomainCoreBuildProfiles(path) {
   return validateDomainCoreBuildProfiles(JSON.parse(readFileSync(path, "utf8")));
 }
 
 export function validateDomainCoreBuildProfiles(catalog) {
-  if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)) throw new Error("profile catalog must be an object");
-  if (catalog.schemaVersion !== DOMAIN_CORE_PROFILE_SCHEMA_VERSION) throw new Error("unsupported profile catalog schemaVersion");
-  if (!Array.isArray(catalog.domains) || catalog.domains.length === 0 || new Set(catalog.domains).size !== catalog.domains.length) {
+  if (!catalog || typeof catalog !== "object" || Array.isArray(catalog))
+    throw new Error("profile catalog must be an object");
+  if (catalog.schemaVersion !== DOMAIN_CORE_PROFILE_SCHEMA_VERSION)
+    throw new Error("unsupported profile catalog schemaVersion");
+  if (
+    !Array.isArray(catalog.domains) ||
+    catalog.domains.length === 0 ||
+    new Set(catalog.domains).size !== catalog.domains.length
+  ) {
     throw new Error("domains must be a non-empty unique string array");
   }
-  if (catalog.domains.some((domain) => typeof domain !== "string" || !domain)) throw new Error("domain names must be non-empty strings");
-  if (!catalog.profiles || typeof catalog.profiles !== "object" || Array.isArray(catalog.profiles)) throw new Error("profiles must be an object");
+  if (catalog.domains.some((domain) => typeof domain !== "string" || !domain))
+    throw new Error("domain names must be non-empty strings");
+  if (!catalog.profiles || typeof catalog.profiles !== "object" || Array.isArray(catalog.profiles))
+    throw new Error("profiles must be an object");
+  const profileNames = Object.keys(catalog.profiles);
+  if (
+    profileNames.length !== DOMAIN_CORE_PROFILE_IDENTITIES.size ||
+    profileNames.some((name) => !DOMAIN_CORE_PROFILE_IDENTITIES.has(name))
+  ) {
+    throw new Error("profiles must exactly declare developer, public-production, internal, and beta");
+  }
   if (!(catalog.defaultReleaseProfile in catalog.profiles)) throw new Error("defaultReleaseProfile is not declared");
 
   for (const [name, profile] of Object.entries(catalog.profiles)) validateProfile(name, profile, catalog.domains);
-  if (catalog.profiles[catalog.defaultReleaseProfile].artifactAuthority !== "signed") {
-    throw new Error("defaultReleaseProfile must be signed");
+  if (catalog.defaultReleaseProfile !== "public-production") {
+    throw new Error("defaultReleaseProfile must be public-production");
   }
   return catalog;
 }
 
 function validateProfile(name, profile, domains) {
-  if (!profile || typeof profile !== "object" || Array.isArray(profile)) throw new Error(`${name}: profile must be an object`);
-  if (!DOMAIN_CORE_ARTIFACT_AUTHORITIES.has(profile.artifactAuthority)) throw new Error(`${name}: invalid artifactAuthority`);
-  if (!new Set(["development", "public", "internal", "beta"]).has(profile.distribution)) throw new Error(`${name}: invalid distribution`);
+  if (!profile || typeof profile !== "object" || Array.isArray(profile))
+    throw new Error(`${name}: profile must be an object`);
+  if (!DOMAIN_CORE_ARTIFACT_AUTHORITIES.has(profile.artifactAuthority))
+    throw new Error(`${name}: invalid artifactAuthority`);
+  if (!new Set(["development", "public", "internal", "beta"]).has(profile.distribution))
+    throw new Error(`${name}: invalid distribution`);
+  const identity = DOMAIN_CORE_PROFILE_IDENTITIES.get(name);
+  if (
+    !identity ||
+    profile.artifactAuthority !== identity.artifactAuthority ||
+    profile.distribution !== identity.distribution
+  ) {
+    throw new Error(`${name}: artifactAuthority and distribution do not match the canonical profile identity`);
+  }
   if (profile.rolloutChannel !== null && profile.rolloutChannel !== "internal" && profile.rolloutChannel !== "beta") {
     throw new Error(`${name}: invalid rolloutChannel`);
   }
   if (typeof profile.evidenceEnabled !== "boolean") throw new Error(`${name}: evidenceEnabled must be boolean`);
-  if (!profile.modes || typeof profile.modes !== "object" || Array.isArray(profile.modes)) throw new Error(`${name}: modes must be an object`);
+  if (!profile.modes || typeof profile.modes !== "object" || Array.isArray(profile.modes))
+    throw new Error(`${name}: modes must be an object`);
   const modeKeys = Object.keys(profile.modes);
   if (modeKeys.length !== domains.length || domains.some((domain) => !modeKeys.includes(domain))) {
     throw new Error(`${name}: modes must exactly cover catalog domains`);
@@ -47,9 +80,18 @@ function validateProfile(name, profile, domains) {
       throw new Error(`${name}: public signed profiles cannot enable evidence, a rollout channel, or shadow mode`);
     }
   }
-  if (profile.artifactAuthority === "signed" && (profile.distribution === "internal" || profile.distribution === "beta")) {
-    if (profile.rolloutChannel !== profile.distribution || !profile.evidenceEnabled || profile.modes.quota !== "shadow") {
-      throw new Error(`${name}: signed ${profile.distribution} profiles require matching channel, evidence, and quota shadow`);
+  if (
+    profile.artifactAuthority === "signed" &&
+    (profile.distribution === "internal" || profile.distribution === "beta")
+  ) {
+    if (
+      profile.rolloutChannel !== profile.distribution ||
+      !profile.evidenceEnabled ||
+      profile.modes.quota !== "shadow"
+    ) {
+      throw new Error(
+        `${name}: signed ${profile.distribution} profiles require matching channel, evidence, and quota shadow`,
+      );
     }
   }
   if (profile.artifactAuthority === "development" && (profile.evidenceEnabled || profile.rolloutChannel !== null)) {

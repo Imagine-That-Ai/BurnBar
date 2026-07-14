@@ -24,11 +24,34 @@ test("public signed profiles cannot accidentally enable shadow evidence", () => 
   assert.throws(() => validateDomainCoreBuildProfiles(mutated), /public signed profiles cannot/);
 });
 
+test("profile names, authorities, and distributions are inseparable", () => {
+  const signedDevelopment = structuredClone(catalog);
+  signedDevelopment.profiles.developer.artifactAuthority = "signed";
+  assert.throws(() => validateDomainCoreBuildProfiles(signedDevelopment), /canonical profile identity/);
+
+  const injected = structuredClone(catalog);
+  injected.profiles["signed-development"] = {
+    ...structuredClone(injected.profiles.developer),
+    artifactAuthority: "signed",
+  };
+  assert.throws(() => validateDomainCoreBuildProfiles(injected), /profiles must exactly declare/);
+
+  const wrongDefault = structuredClone(catalog);
+  wrongDefault.defaultReleaseProfile = "internal";
+  assert.throws(() => validateDomainCoreBuildProfiles(wrongDefault), /must be public-production/);
+});
+
 test("internal and beta profiles require the matching evidence channel and quota shadow", () => {
   for (const mutate of [
-    (value) => { value.rolloutChannel = "beta"; },
-    (value) => { value.evidenceEnabled = false; },
-    (value) => { value.modes.quota = "legacy"; },
+    (value) => {
+      value.rolloutChannel = "beta";
+    },
+    (value) => {
+      value.evidenceEnabled = false;
+    },
+    (value) => {
+      value.modes.quota = "legacy";
+    },
   ]) {
     const mutated = structuredClone(catalog);
     mutate(mutated.profiles.internal);
@@ -62,5 +85,8 @@ test("unknown profiles fail closed at build resolution", () => {
 test("web build environment exposes only statically embeddable public names", () => {
   const environment = profileWebEnvironment(resolveDomainCoreBuildProfile(catalog, "public-production"));
   assert.equal(environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY, "signed");
-  assert.equal(Object.keys(environment).every((key) => key.startsWith("NEXT_PUBLIC_")), true);
+  assert.equal(
+    Object.keys(environment).every((key) => key.startsWith("NEXT_PUBLIC_")),
+    true,
+  );
 });

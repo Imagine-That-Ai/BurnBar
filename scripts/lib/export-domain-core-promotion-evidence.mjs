@@ -5,8 +5,20 @@ import {
 } from "./domain-core-evidence-contract.mjs";
 
 const STORED_V1_KEYS = new Set([
-  "schemaVersion", "sampleId", "domain", "consumer", "channel", "operation", "coreVersion",
-  "observedAt", "outcome", "mismatchCategory", "legacyMicros", "rustMicros", "receivedAt", "expireAt",
+  "schemaVersion",
+  "sampleId",
+  "domain",
+  "consumer",
+  "channel",
+  "operation",
+  "coreVersion",
+  "observedAt",
+  "outcome",
+  "mismatchCategory",
+  "legacyMicros",
+  "rustMicros",
+  "receivedAt",
+  "expireAt",
 ]);
 const STORED_V2_KEYS = new Set([...STORED_V1_KEYS, "slice"]);
 const CHANNELS = new Set(["internal", "beta"]);
@@ -15,6 +27,7 @@ const V1_OPERATIONS = new Set(Object.keys(DOMAIN_CORE_QUOTA_OPERATION_SLICE));
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const IDENTIFIER = /^[a-z][a-z0-9_.-]{0,63}$/u;
 const VERSION = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u;
+const UNAVAILABLE_CORE_VERSIONS = new Set(["0.0.0-unavailable", "0.0.0-native-unavailable", "0.0.0-abi-mismatch"]);
 const MISMATCH_CATEGORIES = new Set(["result_mismatch", "native_unavailable", "native_error", "invalid_result"]);
 const GIT_REVISION = /^[0-9a-f]{40}$/u;
 
@@ -120,14 +133,18 @@ export function buildDomainCorePromotionEvidence(records, options) {
       record.schemaVersion === 2 &&
       record.domain === domain &&
       record.channel === options.channel &&
-      record.coreVersion === options.coreVersion &&
+      (record.coreVersion === options.coreVersion ||
+        (UNAVAILABLE_CORE_VERSIONS.has(record.coreVersion) &&
+          record.outcome === "mismatch" &&
+          (record.mismatchCategory === "native_unavailable" || record.mismatchCategory === "native_error"))) &&
       Date.parse(record.observedAt) >= Date.parse(startedAt) &&
       Date.parse(record.observedAt) <= Date.parse(endedAt),
   );
 
   const windows = requiredCoverage.map(({ slice, consumer }) => {
     const samples = selected.filter((record) => record.slice === slice && record.consumer === consumer);
-    if (samples.length === 0) throw new Error(`No ${domain}/${slice}/${consumer} V2 samples matched the requested window`);
+    if (samples.length === 0)
+      throw new Error(`No ${domain}/${slice}/${consumer} V2 samples matched the requested window`);
     const observedMillis = samples.map((record) => Date.parse(record.observedAt));
     const coverageStartedAt = new Date(Math.min(...observedMillis)).toISOString();
     const coverageEndedAt = new Date(Math.max(...observedMillis)).toISOString();
@@ -149,7 +166,11 @@ export function buildDomainCorePromotionEvidence(records, options) {
       sampleCount: samples.length,
       mismatches: [...mismatchCounts.entries()]
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([category, count]) => ({ category, count, resolution: "unexplained" })),
+        .map(([category, count]) => ({
+          category,
+          count,
+          resolution: "unexplained",
+        })),
       latency: {
         sampleCount: samples.length,
         legacyP95Micros: nearestRankP95(samples.map((record) => record.legacyMicros)),

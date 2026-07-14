@@ -16,6 +16,7 @@ import org.junit.Test
 class HermesDomainCoreAdapterTest {
     @After
     fun restoreAndroidLog() {
+        System.clearProperty("openburnbar.domain_core.hermes.mode")
         HermesDomainCoreAdapter.comparisonOverride = null
         unmockkStatic(Log::class)
     }
@@ -65,6 +66,22 @@ class HermesDomainCoreAdapterTest {
         verify(exactly = 1) {
             Log.w("OpenBurnBarDomainCore", "domain_core.hermes.safety_code native_error")
         }
+    }
+
+    @Test
+    fun `hpke adapter emits the required promotion slice`() {
+        mockkStatic(Log::class)
+        every { Log.w(any(), any<String>()) } returns 0
+        System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
+        val expected = "OpenBurnBar-HermesRelay-HPKE-v3|aad".toByteArray()
+        val comparisons = mutableListOf<HermesShadowComparison>()
+        HermesDomainCoreAdapter.comparisonOverride = comparisons::add
+
+        val actual = HermesDomainCoreAdapter.hpkeV3Info("aad".toByteArray()) { expected }
+
+        assertArrayEquals(expected, actual)
+        assertEquals("hpke_v3_info", comparisons.single().operation)
+        assertEquals("hpke-info", comparisons.single().slice)
     }
 
     @Test

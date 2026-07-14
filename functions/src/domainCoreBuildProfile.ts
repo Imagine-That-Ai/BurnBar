@@ -17,7 +17,8 @@ export function resolveDomainCoreEvidenceChannel(
     (channel !== "internal" && channel !== "beta") ||
     environment.OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE !== channel ||
     environment.OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION !== channel
-  ) return undefined;
+  )
+    return undefined;
   for (const key of Object.values(domainKeys)) {
     if (!mode(environment[key])) return undefined;
   }
@@ -40,9 +41,14 @@ export function resolveDomainCoreRuntimeMode(
   if (environment.OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY !== "signed") {
     return mode(environment[domainKeys[domain]]) ?? "legacy";
   }
-  const modes = Object.fromEntries(
-    Object.entries(domainKeys).map(([name, key]) => [name, mode(environment[key])]),
-  ) as Record<DomainCoreRuntimeDomain, DomainCoreRuntimeMode | undefined>;
+  const modes: Record<DomainCoreRuntimeDomain, DomainCoreRuntimeMode | undefined> = {
+    quota: mode(environment[domainKeys.quota]),
+    cloudVault: mode(environment[domainKeys.cloudVault]),
+    cloudVaultRewrap: mode(environment[domainKeys.cloudVaultRewrap]),
+    cloudVaultSearch: mode(environment[domainKeys.cloudVaultSearch]),
+    hermes: mode(environment[domainKeys.hermes]),
+    pricing: mode(environment[domainKeys.pricing]),
+  };
   if (Object.values(modes).some((value) => value === undefined)) return "legacy";
   const name = environment.OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE;
   const distribution = environment.OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION;

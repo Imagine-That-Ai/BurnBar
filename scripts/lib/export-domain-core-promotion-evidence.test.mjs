@@ -77,7 +77,9 @@ function lowPolicy(domain) {
 test("exporter builds exact V2 evaluator input for every domain and real coverage pair", () => {
   for (const domain of ["quota", "cloudvault", "hermes", "pricing"]) {
     const evidence = buildDomainCorePromotionEvidence(recordsFor(domain), options(domain));
-    const report = evaluatePromotionEvidence(evidence, lowPolicy(domain), { now: "2026-07-15T00:02:00.000Z" });
+    const report = evaluatePromotionEvidence(evidence, lowPolicy(domain), {
+      now: "2026-07-15T00:02:00.000Z",
+    });
     assert.equal(report.status, "ready", domain);
     assert.deepEqual(
       evidence.windows.map(({ slice, consumer }) => `${slice}:${consumer}`),
@@ -88,28 +90,81 @@ test("exporter builds exact V2 evaluator input for every domain and real coverag
 
 test("exporter carries mismatches as unexplained promotion blockers", () => {
   const records = recordsFor("pricing");
-  records[0] = { ...records[0], outcome: "mismatch", mismatchCategory: "result_mismatch" };
+  records[0] = {
+    ...records[0],
+    outcome: "mismatch",
+    mismatchCategory: "result_mismatch",
+  };
   const evidence = buildDomainCorePromotionEvidence(records, options("pricing"));
   assert.deepEqual(evidence.windows[0].mismatches, [
     { category: "result_mismatch", count: 1, resolution: "unexplained" },
   ]);
 });
 
+test("native-availability sentinels block the target version instead of being filtered out", () => {
+  for (const [coreVersion, mismatchCategory] of [
+    ["0.0.0-unavailable", "native_unavailable"],
+    ["0.0.0-native-unavailable", "native_unavailable"],
+    ["0.0.0-abi-mismatch", "native_error"],
+  ]) {
+    const records = recordsFor("hermes");
+    const { slice, consumer } = requiredCoverageForDomain("hermes")[0];
+    records.push(
+      record("hermes", slice, consumer, 999, {
+        coreVersion,
+        outcome: "mismatch",
+        mismatchCategory,
+      }),
+    );
+
+    const evidence = buildDomainCorePromotionEvidence(records, options("hermes"));
+    assert.deepEqual(evidence.windows[0].mismatches, [
+      { category: mismatchCategory, count: 1, resolution: "unexplained" },
+    ]);
+    const report = evaluatePromotionEvidence(evidence, lowPolicy("hermes"), {
+      now: "2026-07-15T00:02:00.000Z",
+    });
+    assert.equal(report.status, "not_ready", coreVersion);
+  }
+});
+
 test("stored V1 is readable but cannot be silently upgraded into promotion coverage", () => {
   const v2 = record("quota", "claude", "apple", 1);
-  const { slice: _slice, ...v1 } = { ...v2, schemaVersion: 1, sampleId: "00000000-0000-4000-8000-ffffffffffff" };
+  const { slice: _slice, ...v1 } = {
+    ...v2,
+    schemaVersion: 1,
+    sampleId: "00000000-0000-4000-8000-ffffffffffff",
+  };
   assert.equal(parseStoredDomainCoreShadowSample(v1).schemaVersion, 1);
   assert.throws(
-    () => buildDomainCorePromotionEvidence([v1, ...recordsFor("quota").filter((item) => item.consumer === "apple")], options("quota")),
+    () =>
+      buildDomainCorePromotionEvidence(
+        [v1, ...recordsFor("quota").filter((item) => item.consumer === "apple")],
+        options("quota"),
+      ),
     /No quota\/claude\/windows V2 samples/u,
   );
 });
 
 test("exporter rejects unexpected stored fields, invalid identities, and duplicate IDs", () => {
-  assert.throws(() => parseStoredDomainCoreShadowSample({ ...record("quota", "claude", "apple", 1), uid: "secret" }), /field set/u);
-  assert.throws(() => parseStoredDomainCoreShadowSample(record("pricing", "legacy-kimi", "apple", 1)), /domain, slice, or consumer/u);
   assert.throws(
-    () => buildDomainCorePromotionEvidence([record("quota", "claude", "apple", 1), record("quota", "claude", "apple", 1)], options("quota")),
+    () =>
+      parseStoredDomainCoreShadowSample({
+        ...record("quota", "claude", "apple", 1),
+        uid: "secret",
+      }),
+    /field set/u,
+  );
+  assert.throws(
+    () => parseStoredDomainCoreShadowSample(record("pricing", "legacy-kimi", "apple", 1)),
+    /domain, slice, or consumer/u,
+  );
+  assert.throws(
+    () =>
+      buildDomainCorePromotionEvidence(
+        [record("quota", "claude", "apple", 1), record("quota", "claude", "apple", 1)],
+        options("quota"),
+      ),
     /duplicate sampleId/u,
   );
 });
@@ -130,7 +185,9 @@ test("query bounds cannot inflate densely clustered samples into rollout coverag
   const evidence = buildDomainCorePromotionEvidence(records, options("quota"));
   const policy = lowPolicy("quota");
   policy.domains.quota.minimumCoverageSeconds = 14 * 24 * 60 * 60;
-  const report = evaluatePromotionEvidence(evidence, policy, { now: "2026-07-15T00:02:00.000Z" });
+  const report = evaluatePromotionEvidence(evidence, policy, {
+    now: "2026-07-15T00:02:00.000Z",
+  });
   assert.equal(report.status, "not_ready");
   assert.equal(report.blockers.filter((item) => item.code === "insufficient_coverage").length, 8);
 });
