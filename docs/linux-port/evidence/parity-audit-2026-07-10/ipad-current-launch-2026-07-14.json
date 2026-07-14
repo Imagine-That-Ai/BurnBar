@@ -27,5 +27,5 @@
     "This receipt proves current-branch installation and process stability only.",
     "Computer Use approval, trusted-device enrollment, and cross-device action execution remain unverified."
   ],
-  "rawReceipts": ".tmp/ipad-receipt"
+  "rawReceipts": null
 }

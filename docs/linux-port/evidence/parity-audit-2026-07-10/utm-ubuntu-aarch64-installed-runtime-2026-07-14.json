@@ -1,8 +1,8 @@
 {
   "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
-  "capturedAt": "2026-07-14T13:07:18Z",
+  "capturedAt": "2026-07-14T13:56:03Z",
   "certificationScope": "non-certifying installed runtime smoke receipt",
-  "sourceCommit": "a5485fe2383d359ba1f43efa76e96feca835ef41",
+  "sourceCommit": "5a80e82b895c5d13de1432f9241128cadb17b6c8",
   "environment": {
     "vm": "OpenBurnBar Linux",
     "utmUUID": "7923D0DD-6367-45EA-9064-152EECC1AC65",
@@ -19,7 +19,7 @@
   },
   "sha256": {
     "gui": "8c1bede3064ad7a96dc8cbe8526e633b647866667491d1381bb9414749b282a7",
-    "daemon": "84d3d58416fcdb5d9fd3b3cec13e5dd36379cd7c72d6535e7ba07db3bc8c8017",
+    "daemon": "ef8458d6f257fa5fdc4e0f234331f82dab46ed12f94d103c65ec439c1158cb2f",
     "launcher": "f1bc55c14523d36bba0dbf8a013abaadd4a7f1f77cfc8abe7c121dc6bdf30f9a"
   },
   "ownershipAndMode": "root:root 0755 for GUI, daemon, and launcher",
@@ -29,7 +29,7 @@
     "authenticatedDaemonReadiness": true,
     "daemonHealthRequestsObserved": 3,
     "daemonHealthResponseBytes": 224,
-    "runDurationSeconds": 20,
+    "runDurationSeconds": 25,
     "normalTimeoutExit": true,
     "daemonSIGTERMShutdown": true,
     "temporaryRuntimeCleaned": true

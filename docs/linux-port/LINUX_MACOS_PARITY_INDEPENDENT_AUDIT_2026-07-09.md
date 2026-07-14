@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the corrected pinned Linux aggregate (**277 Swift selectors + 90 Rust tests**, `NATIVE_EXIT=0`), and follow-on source slices through `ea82fe5140`, `274f67fba0`, `d2dbbe8df8`, `bf0eb36294`, `bd9d6a5173`, `a5571694bb`, `7c8a214ce6`, `825e081bda`, `cba9266277`, `a5485fe238`, `814749c8be`, and current branch commit `4bc52a7961` are linked below |
+| Remediation evidence | `codex/linux-parity-integration-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the corrected pinned Linux aggregate (**277 Swift selectors + 90 Rust tests**, `NATIVE_EXIT=0`), and follow-on source slices through `ea82fe5140`, `274f67fba0`, `d2dbbe8df8`, `bf0eb36294`, `bd9d6a5173`, `a5571694bb`, `7c8a214ce6`, `825e081bda`, `cba9266277`, `a5485fe238`, `814749c8be`, and current branch commit `5a80e82b89` are linked below |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -45,7 +45,7 @@ percentage. The active remediation stack now contains these reviewable slices:
 | P27 native startup/deep links | PR #1679 + PR #1686 + integration PR #1691 + `5f74018422` + `a5571694bb` | Strict membership/OAuth callback parsing, one-shot startup handoff, background tray startup, XDG autostart, package desktop registration, owner-checked per-user single-instance forwarding, normalized freedesktop notification actions, explicit route aliases, cold-start precedence, and additive per-binding shortcut health are integrated. X11 registration is independent per binding; Wayland/unknown sessions fail closed with typed backend states. Installed host integration remains open. |
 | P31 accessibility preferences | PR #1683 + `7cd30e2e71`, merge-clean | Shared reduced-motion, prefers-contrast, forced-colors, focus, and status/alert contracts; reduced-motion now follows live OS preference changes with WebKitGTK legacy-listener cleanup; installed GNOME/KDE/AT-SPI/Orca/high-contrast evidence remains open. |
 | P39 differential oracle | PR #1682, merge-clean | Same-schema normalization, credential redaction, explicit volatile-path handling, path-level diff output, and fail-closed exit codes; a same-commit macOS/Linux artifact run remains required. |
-| Integrated Linux validation | PR #1691 plus commits through `b012a53a6c`, `5fdcccabfa`, `4cdc505537`, `dda966ff3a`, `573184422d`, `7ae2412143`, `1ddc8bc33a`, `be375903f0`, `274f67fba0`, `ea82fe5140`, `9598c0b9e8`, `d2dbbe8df8`, `bf0eb36294`, `bd9d6a5173`, `ffc0c58cd9`, `10babe9c30`, `814749c8be`, and `4bc52a7961`, current 2026-07-14 | Replayed the current P07/P11/P12/P13/P14/P16/P17/P19/P20/P21/P22/P23/P24/P25/P27/P28/P29/P30/P31/P35/P39/P40 source stack: TypeScript, production bundle verification, targeted mission/bridge/UI tests **108/108**, Tauri Rust **90/90**, RPC canon/formatting/suppression checks, bounded trigger-only text-engine lifecycle tests, consent-scoped portal input tests, daemon mission health/history contract tests, Mission Control replay/tombstone tests, privacy inventory/preview/execute contract tests, Linux privacy service **8/8**, Linux external text-expansion adapter **18/18**, peer-manifest **8/8**, portal input **26/26**, mission lifecycle **3/3**, and full Swift package **284/284** on Ubuntu 24.04 aarch64. The full Vitest run was attempted but host contention caused unrelated 5-second timeouts and one unhandled media fixture error; it is not treated as a green release gate. The macOS host cannot execute Linux-only Secret Service/KWallet/IBus/Fcitx/portal/input branches, and the broad Swift package build is also blocked by existing macOS-only Linux privacy exclusions and missing SQLCipher packaging. This is engineering evidence only, not installed-product certification. |
+| Integrated Linux validation | PR #1691 plus commits through `b012a53a6c`, `5fdcccabfa`, `4cdc505537`, `dda966ff3a`, `573184422d`, `7ae2412143`, `1ddc8bc33a`, `be375903f0`, `274f67fba0`, `ea82fe5140`, `9598c0b9e8`, `d2dbbe8df8`, `bf0eb36294`, `bd9d6a5173`, `ffc0c58cd9`, `10babe9c30`, `814749c8be`, `4bc52a7961`, and `5a80e82b89`, current 2026-07-14 | Replayed the current P07/P11/P12/P13/P14/P16/P17/P19/P20/P21/P22/P23/P24/P25/P27/P28/P29/P30/P31/P35/P39/P40 source stack: TypeScript, production bundle verification, targeted mission/bridge/UI tests **108/108**, Tauri Rust **90/90**, RPC canon/formatting/suppression checks, bounded trigger-only text-engine lifecycle tests, consent-scoped portal input tests, daemon mission health/history contract tests, Mission Control replay/tombstone tests, privacy inventory/preview/execute contract tests, Linux privacy service **8/8**, Linux external text-expansion adapter **18/18**, peer-manifest **8/8**, portal input **26/26**, mission lifecycle **3/3**, and full Swift package **284/284** on Ubuntu 24.04 aarch64. The full Vitest run was attempted but host contention caused unrelated 5-second timeouts and one unhandled media fixture error; it is not treated as a green release gate. The macOS host cannot execute Linux-only Secret Service/KWallet/IBus/Fcitx/portal/input branches, and the broad Swift package build is also blocked by existing macOS-only Linux privacy exclusions and missing SQLCipher packaging. This is engineering evidence only, not installed-product certification. |
 
 ### Execution checkpoint — 2026-07-14 source integration
 
@@ -69,14 +69,16 @@ environment certification totals.
 
 The current source checkpoint is also proven by the live UTM Ubuntu 24.04
 aarch64 guest: `swift build -c release --product OpenBurnBarDaemon
--Xlinker --allow-shlib-undefined` completed successfully from commit
-`4bc52a7961` (warnings only; the production source is `814749c8be`). The resulting daemon binary is not yet an
-installed signed package, so this advances the build gate only. The connected
+-Xlinker --allow-shlib-undefined` completed successfully from the current branch
+commit `5a80e82b895c5d13de1432f9241128cadb17b6c8` (warnings only). The resulting
+daemon was installed at `/usr/local/bin/openburnbar-daemon` and its exact
+SHA-256 is recorded in the installed-runtime receipt. This is an installed
+development binary, not a signed release package. The connected
 physical-iPad launch/liveness/console receipt is recorded separately in
 `docs/linux-port/evidence/parity-audit-2026-07-10/ipad-current-launch-2026-07-14.json`.
 
 The same guest then ran the current Tauri client and daemon from root-owned
-trusted system paths under GNOME/X11 for 20 seconds. The packaged launcher
+trusted system paths under GNOME/X11 for 25 seconds. The packaged launcher
 started the daemon, authenticated `daemon.health` probes completed, and both
 processes shut down cleanly. The exact hashes and capability limitations are
 recorded in

@@ -65,7 +65,7 @@ AES-GCM sealed storage, native Secret Service/KWallet custody, consent RPC, and
 in-app-only Composer expansion (`227d7e3c49`, `46aa7f3c91`, `6cc09bc2c0`,
 `930125a53e`, `83ef8e8edf`, `09860849c7`). These improve source parity without
 changing the 0/40 product or 0/7 environment certification state. The current
-source commit is `4bc52a7961` (building on `814749c8be`, `cba9266277`, `a5485fe238`, and `825e081bda`); it adds a daemon-owned
+source commit is `5a80e82b89` (building on `814749c8be`, `cba9266277`, `a5485fe238`, and `825e081bda`); it adds a daemon-owned
 retention policy in addition to the `daemon.usage.insights`
 local-rules response with bounded citations, selected-scope encrypted privacy
 export, and independent per-binding native shortcut health. Focused
