@@ -139,8 +139,15 @@ unproven host behavior to certification:
   Proxy leaf provides add/edit/delete and enable controls with automatic shared
   runtime restart. Unsafe remote HTTP endpoints, URI credentials/fragments,
   duplicate IDs, missing enabled-route credentials, and plaintext gateway-token
-  environment overrides fail closed. Live provider traffic and full macOS
-  provider-plan/quota semantics remain staging/F2 evidence gates.
+  environment overrides fail closed. The production router now consumes
+  persisted non-secret score metadata with the macOS five-factor weights for
+  capability, cost, latency, trust, and policy fit. Strict quota-drain ordering
+  applies only within matching provider/model/canonical-model/format/endpoint
+  pools; active windows reset soonest first, then the largest remaining quota,
+  before composite score and deterministic LRU/slot ties. Exhausted,
+  missing-secret, disabled, and statically unhealthy routes cannot win. Live
+  provider traffic, dynamic health, streaming telemetry, and the remaining
+  provider executors remain staging/F2 evidence gates.
 - Cloud startup now restores a non-expired OAuth session from the protected
   session store without opening a browser; only a signed-out or expired session
   falls back to the explicit dev-host path. When
@@ -347,15 +354,15 @@ unproven host behavior to certification:
   size, and SHA-256, including the resource bundle, before an artifact can be
   signed or zipped.
 
-These changes are covered by focused managed-runtime (135/135 planner, policy,
+These changes are covered by focused managed-runtime (147/147 planner, policy,
 mission, gateway, and recovery tests plus 41/41 managed-agent-runtime tests),
 CloudSync (61/61), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
 Computer Use (114 passed plus a separately executed live Chromium test),
-settings (177/177), configuration (39/39), distribution (98/98), bridge-policy,
+settings (179/179), configuration (39/39), distribution (98/98), bridge-policy,
 and provider-boundary tests. They are an implementation increment, not a claim
 that the F2 workstreams are all complete: production composition of the
-remaining F2 provider, approval-resolution, and tool-execution services, physical
+remaining F2 provider-executor, live-health/telemetry, approval-resolution, and tool-execution services, physical
 Computer Use/media safety, and host evidence still remain. The ledger's 50/50 `Real`
 result is the scoped F1 source/product gate; WPD-0009 continues to define F2
 True 1:1 as the actual 100% parity endpoint.

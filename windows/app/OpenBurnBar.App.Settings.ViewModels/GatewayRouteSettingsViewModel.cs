@@ -212,6 +212,10 @@ public sealed class GatewayRouteSettingsViewModel : ObservableSettingsViewModel
         }
 
         string routeId = existing?.Id ?? CreateRouteId(input.Vendor, input.Model);
+        ModelRouteRoutingMetadata? routing = existing is not null
+            && SameRouteIdentity(existing.Configuration, input)
+                ? existing.Configuration.Routing
+                : null;
         var configuration = new GatewayRouteConfiguration(
             routeId,
             input.Vendor,
@@ -219,7 +223,8 @@ public sealed class GatewayRouteSettingsViewModel : ObservableSettingsViewModel
             input.Endpoint,
             input.Priority,
             input.Enabled,
-            input.Authentication);
+            input.Authentication,
+            routing);
 
         try
         {
@@ -274,6 +279,13 @@ public sealed class GatewayRouteSettingsViewModel : ObservableSettingsViewModel
             return GatewayRouteMutationResult.Failure("The provider route could not be saved: " + ex.Message);
         }
     }
+
+    private static bool SameRouteIdentity(
+        GatewayRouteConfiguration existing,
+        GatewayRouteInput input) =>
+        string.Equals(existing.Vendor.Trim(), input.Vendor?.Trim(), StringComparison.OrdinalIgnoreCase)
+        && string.Equals(existing.Model.Trim(), input.Model?.Trim(), StringComparison.OrdinalIgnoreCase)
+        && string.Equals(existing.Endpoint.Trim(), input.Endpoint?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     public GatewayRouteMutationResult SetEnabled(string routeId, bool enabled)
     {

@@ -768,11 +768,13 @@ rows:
   windows_capability: f2-model-proxy-router
   evidence:
   - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  - docs/windows-port/evidence/f2/provider-router-scorecard.md
   tests:
   - windows/tests/managed-runtime/ModelProxyRouterTests.cs
   blocking_paths:
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelProxyRouter.cs
-  notes: F2 production core Real.
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelRouteScorecard.cs
+  notes: F2 production router Real with five-factor scoring and strict quota-drain pools; provider transports and live health remain separate WPD-0006 rows.
 - id: f2-companion-cli
   status: Real
   owner_lane: f2

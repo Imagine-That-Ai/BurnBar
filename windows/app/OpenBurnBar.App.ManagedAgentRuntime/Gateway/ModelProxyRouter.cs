@@ -35,31 +35,18 @@ public sealed class ModelProxyRouter
 
     private ModelRouteDecision SelectCore(string? vendorPreference, bool recordSelection)
     {
-        IEnumerable<ModelRoute> ordered = _routes;
-        if (!string.IsNullOrWhiteSpace(vendorPreference))
+        IReadOnlyList<RankedModelRoute> ranked = ModelRouteScorecard.Rank(_routes, vendorPreference);
+        foreach (RankedModelRoute entry in ranked)
         {
-            ordered = _routes
-                .OrderByDescending(r => string.Equals(r.Vendor, vendorPreference, StringComparison.OrdinalIgnoreCase))
-                .ThenBy(r => r.Priority);
-        }
-        else
-        {
-            ordered = _routes.OrderBy(r => r.Priority);
-        }
-
-        foreach (ModelRoute route in ordered)
-        {
-            if (route.Healthy)
+            ModelRoute route = entry.Route;
+            bool degraded = !string.IsNullOrWhiteSpace(vendorPreference)
+                && !string.Equals(route.Vendor, vendorPreference, StringComparison.OrdinalIgnoreCase);
+            if (recordSelection)
             {
-                bool degraded = !string.IsNullOrWhiteSpace(vendorPreference)
-                    && !string.Equals(route.Vendor, vendorPreference, StringComparison.OrdinalIgnoreCase);
-                if (recordSelection)
-                {
-                    Record(route.Id, success: true, degraded);
-                }
-
-                return new ModelRouteDecision(route, Degraded: degraded);
+                Record(route.Id, success: true, degraded);
             }
+
+            return new ModelRouteDecision(route, Degraded: degraded, Score: entry.Breakdown);
         }
 
         // Fail closed: no healthy route.
@@ -85,14 +72,17 @@ public sealed class ModelProxyRouter
             throw new ArgumentException("A model is required.", nameof(model));
         }
 
-        var exact = _routes
+        ModelRoute[] exact = _routes
             .Where(route => string.Equals(route.Model, model, StringComparison.OrdinalIgnoreCase))
             .OrderBy(route => route.Priority)
             .ToArray();
-        var healthyExact = exact.FirstOrDefault(route => route.Healthy);
+        RankedModelRoute? healthyExact = ModelRouteScorecard.Rank(exact).FirstOrDefault();
         if (healthyExact is not null)
         {
-            return new ModelRouteDecision(healthyExact, Degraded: false);
+            return new ModelRouteDecision(
+                healthyExact.Route,
+                Degraded: false,
+                Score: healthyExact.Breakdown);
         }
 
         if (!allowDegrade)
@@ -145,14 +135,32 @@ public sealed record ModelRoute(
     int Priority,
     bool Healthy,
     Uri? Endpoint = null,
-    string? BearerToken = null)
+    string? BearerToken = null,
+    ModelRouteRoutingMetadata? Routing = null)
 {
     /// <summary>Whether this route can accept a completion request now.</summary>
     public bool IsExecutable => Healthy
         && Endpoint is not null
         && GatewayRouteConfiguration.IsEndpointAllowed(Endpoint);
+
+    public bool IsAvailable()
+    {
+        if (!Healthy)
+        {
+            return false;
+        }
+
+        return Routing?.TrustStatus is not (
+            ModelRouteTrustStatus.Exhausted
+            or ModelRouteTrustStatus.MissingSecret
+            or ModelRouteTrustStatus.Disabled);
+    }
 }
 
-public sealed record ModelRouteDecision(ModelRoute Route, bool Degraded, bool FailedClosed = false);
+public sealed record ModelRouteDecision(
+    ModelRoute Route,
+    bool Degraded,
+    bool FailedClosed = false,
+    ModelRouteScoreBreakdown? Score = null);
 
 public sealed record RouteMetrics(int Attempts, int Successes, int Degrades);

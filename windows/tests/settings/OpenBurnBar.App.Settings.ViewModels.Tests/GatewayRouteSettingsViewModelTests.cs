@@ -74,6 +74,53 @@ public sealed class GatewayRouteSettingsViewModelTests
     }
 
     [Fact]
+    public void EditPreservesAdvancedRoutingMetadata()
+    {
+        var metadata = new ModelRouteRoutingMetadata(
+            CredentialSlotId: "primary",
+            TrustStatus: ModelRouteTrustStatus.Ready,
+            QuotaRemainingPercent: 80);
+        var existing = Configuration("route", "openai", "gpt-5.4", 0) with
+        {
+            Endpoint = "https://api.openai.com/v1/chat/completions",
+            Routing = metadata,
+        };
+        var store = new InMemoryGatewayRouteSettingsStore(new[] { existing });
+        var viewModel = new GatewayRouteSettingsViewModel(store);
+
+        GatewayRouteMutationResult result = viewModel.Upsert(Input(string.Empty) with
+        {
+            Id = "route",
+            Authentication = GatewayRouteAuthentication.None,
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(metadata, Assert.Single(viewModel.Routes).Configuration.Routing);
+    }
+
+    [Fact]
+    public void EditClearsAdvancedRoutingMetadataWhenRouteIdentityChanges()
+    {
+        var metadata = new ModelRouteRoutingMetadata(
+            CanonicalModelId: "gpt",
+            TrustStatus: ModelRouteTrustStatus.Ready,
+            QuotaRemainingPercent: 80);
+        var existing = Configuration("route", "openai", "gpt", 0) with { Routing = metadata };
+        var store = new InMemoryGatewayRouteSettingsStore(new[] { existing });
+        var viewModel = new GatewayRouteSettingsViewModel(store);
+
+        GatewayRouteMutationResult result = viewModel.Upsert(Input(string.Empty) with
+        {
+            Id = "route",
+            Model = "gpt-next",
+            Authentication = GatewayRouteAuthentication.None,
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Null(Assert.Single(viewModel.Routes).Configuration.Routing);
+    }
+
+    [Fact]
     public void SwitchingToNoAuthenticationDeletesProtectedCredential()
     {
         var store = new InMemoryGatewayRouteSettingsStore();

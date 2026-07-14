@@ -23,7 +23,8 @@ public sealed record GatewayRouteConfiguration(
     string Endpoint,
     int Priority,
     bool Enabled,
-    GatewayRouteAuthentication Authentication)
+    GatewayRouteAuthentication Authentication,
+    ModelRouteRoutingMetadata? Routing = null)
 {
     public const int MaximumIdLength = 128;
     public const int MaximumVendorLength = 128;
@@ -56,7 +57,8 @@ public sealed record GatewayRouteConfiguration(
             Priority,
             Enabled && credentialReady,
             endpoint,
-            bearerToken);
+            bearerToken,
+            Routing);
     }
 
     /// <summary>Returns the validated upstream endpoint.</summary>
@@ -72,6 +74,8 @@ public sealed record GatewayRouteConfiguration(
                 nameof(Priority),
                 $"Route priority must be between 0 and {MaximumPriority}.");
         }
+
+        Routing?.Validate();
 
         if (!Uri.TryCreate(Endpoint.Trim(), UriKind.Absolute, out Uri? endpoint)
             || !IsEndpointAllowed(endpoint))

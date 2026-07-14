@@ -151,4 +151,67 @@ public sealed class GatewayCompositionFactoryTests
 
         Assert.True(configuration.Resolve(null).IsExecutable);
     }
+
+    [Fact]
+    public void Configuration_PreservesValidatedNonSecretRoutingMetadata()
+    {
+        var metadata = new ModelRouteRoutingMetadata(
+            CredentialSlotId: "work",
+            CanonicalModelId: "gpt-5.4",
+            FormatFamily: "openai-compatible",
+            EndpointProfileId: "openai.production",
+            CapabilityScore: 0.9,
+            CostPerMillionTokens: 12.5,
+            LatencyMilliseconds: 80,
+            TrustStatus: ModelRouteTrustStatus.Ready,
+            QuotaRemainingPercent: 75);
+        var configuration = new GatewayRouteConfiguration(
+            "scored",
+            "openai",
+            "gpt-5.4",
+            "https://api.openai.com/v1/chat/completions",
+            0,
+            true,
+            GatewayRouteAuthentication.None,
+            metadata);
+
+        ModelRoute route = configuration.Resolve(null);
+
+        Assert.Equal(metadata, route.Routing);
+        Assert.DoesNotContain("BearerToken", configuration.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(double.NaN, 1)]
+    [InlineData(1, -1)]
+    public void Configuration_RejectsInvalidRoutingMetadata(double capability, double cost)
+    {
+        var configuration = new GatewayRouteConfiguration(
+            "invalid-score",
+            "openai",
+            "gpt",
+            "https://api.openai.com/v1/chat/completions",
+            0,
+            true,
+            GatewayRouteAuthentication.None,
+            new ModelRouteRoutingMetadata(CapabilityScore: capability, CostPerMillionTokens: cost));
+
+        Assert.ThrowsAny<ArgumentException>(() => configuration.Validate());
+    }
+
+    [Fact]
+    public void Configuration_RejectsUnknownRoutingTrustState()
+    {
+        var configuration = new GatewayRouteConfiguration(
+            "invalid-trust",
+            "openai",
+            "gpt",
+            "https://api.openai.com/v1/chat/completions",
+            0,
+            true,
+            GatewayRouteAuthentication.None,
+            new ModelRouteRoutingMetadata(TrustStatus: (ModelRouteTrustStatus)999));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => configuration.Validate());
+    }
 }
