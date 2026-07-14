@@ -207,14 +207,19 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   xdotool mousemove --window "$window_id" 8 $((HEIGHT - 8)) click 1
   sleep 0.3
   focus_log_offset="$(wc -c <"$out_dir/orca-debug.log")"
-  physical_tab_presses=14
+  # WebKitGTK and Orca enqueue focus events independently.  Fourteen keys
+  # were enough on the historical arm64 image but intermittently stopped
+  # after the first combo/page-tab group on current x86_64 and arm64 images.
+  # Use a slower, longer traversal so the proof exercises the same focus path
+  # instead of treating a short event queue as an accessibility pass.
+  physical_tab_presses=28
   for _ in $(seq 1 "$physical_tab_presses"); do
     xdotool key --clearmodifiers Tab
     # Orca intentionally serializes accessibility events. Fast synthetic input
     # causes its queue to obsolete intermediate focus changes.
-    sleep 1.5
+    sleep 1.25
   done
-  sleep 4
+  sleep 8
   node - "$out_dir/orca-debug.log" "$focus_log_offset" "$physical_tab_presses" "$out_dir/atspi-keyboard-focus-sequence.json" <<'FOCUS'
 const fs = require('fs');
 const [debugPath, offsetText, physicalTabPressesText, outPath] = process.argv.slice(2);
