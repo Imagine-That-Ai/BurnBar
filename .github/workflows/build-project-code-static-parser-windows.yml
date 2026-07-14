@@ -79,7 +79,7 @@ jobs:
             @{ path = "widget.cpp"; language = "cpp"; text = "namespace demo { class Widget {}; }" },
             @{ path = "Widget.m"; language = "objc"; text = "@interface Widget : NSObject`n@end" },
             @{ path = "config.json"; language = "json"; text = '{"name":"BurnBar"}' },
-            @{ path = "README.md"; language = "markdown"; text = "# BurnBar" },
+            @{ path = "README.md"; language = "markdown"; text = "# BurnBar`n" },
             @{ path = "config.yaml"; language = "yaml"; text = "name: BurnBar" }
           )
           foreach ($case in $extended) {
