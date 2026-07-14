@@ -20,6 +20,11 @@ enum HermesDomainCoreAdapterError: Error {
 }
 
 enum HermesDomainCoreAdapter {
+    enum NativeStatus: Equatable {
+        case available
+        case unavailable(coreVersion: String, mismatchCategory: String)
+    }
+
     static var isNativeAvailable: Bool {
         #if canImport(OpenBurnBarDomainCoreFFI)
         OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3
@@ -34,44 +39,16 @@ enum HermesDomainCoreAdapter {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         legacy: () -> Data
     ) throws -> Data {
-        let mode = HermesDomainCoreMode.resolve(environment: environment)
-        guard mode != .legacy else { return legacy() }
-        #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
-            diagnostic("aad", "native_unavailable")
-            if mode == .rust { throw HermesDomainCoreAdapterError.nativeUnavailable }
-            return legacy()
-        }
-        let legacyStarted = Date.timeIntervalSinceReferenceDate
-        let old = mode == .shadow ? legacy() : nil
-        let legacyMicros = mode == .shadow ? elapsedMicros(since: legacyStarted) : 0
-        let rust: Data
-        let rustStarted = Date.timeIntervalSinceReferenceDate
-        do {
-            rust = try OpenBurnBarDomainCoreFFI.hermesRelayAad(
+        try selectBytes(operation: "aad", environment: environment, legacy: { legacy() }, rust: {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.hermesRelayAad(
                 kind: kind.ffi,
                 arguments: arguments
             )
-        } catch {
-            diagnostic("aad", "native_unavailable")
-            if mode == .rust { throw error }
-            if old != nil {
-                record("aad", "aad", false, "native_error", legacyMicros, elapsedMicros(since: rustStarted))
-            }
-            return old ?? legacy()
-        }
-        guard mode == .shadow else { return rust }
-        guard let old else { return legacy() }
-        let rustMicros = elapsedMicros(since: rustStarted)
-        let matches = old == rust
-        if !matches { diagnostic("aad", "shadow_mismatch") }
-        record("aad", "aad", matches, matches ? nil : "result_mismatch", legacyMicros, rustMicros)
-        return old
-        #else
-        diagnostic("aad", "native_unavailable")
-        if mode == .rust { throw HermesDomainCoreAdapterError.nativeUnavailable }
-        return legacy()
-        #endif
+            #else
+            throw HermesDomainCoreAdapterError.nativeUnavailable
+            #endif
+        })
     }
 
     static func seal(
@@ -83,23 +60,47 @@ enum HermesDomainCoreAdapter {
     ) throws -> String {
         let mode = HermesDomainCoreMode.resolve(environment: environment)
         guard mode != .legacy else { return try legacy() }
+        let legacyStarted = Date.timeIntervalSinceReferenceDate
+        let old: String?
+        if mode == .shadow {
+            old = try legacy()
+        } else {
+            old = nil
+        }
+        let legacyMicros = mode == .shadow ? elapsedMicros(since: legacyStarted) : 0
         #if canImport(OpenBurnBarDomainCoreFFI)
         guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             diagnostic("seal", "abi_mismatch")
-            if mode == .shadow { return try legacy() }
+            if let old {
+                record(
+                    "seal", "payload-keywrap", false, "native_error",
+                    "0.0.0-abi-mismatch", legacyMicros, 0
+                )
+                return old
+            }
             throw HermesDomainCoreAdapterError.nativeUnavailable
         }
-        if mode == .shadow {
-            let old = try legacy()
+        if let old {
+            let coreVersion = OpenBurnBarDomainCoreFFI.domainCoreVersion()
+            let rustStarted = Date.timeIntervalSinceReferenceDate
             do {
                 let opened = try OpenBurnBarDomainCoreFFI.hermesOpenBase64(
                     ciphertext: old,
                     key: key,
                     aad: aad
                 )
-                if opened != plaintext { diagnostic("seal", "shadow_mismatch") }
+                let matches = opened == plaintext
+                if !matches { diagnostic("seal", "shadow_mismatch") }
+                record(
+                    "seal", "payload-keywrap", matches, matches ? nil : "result_mismatch",
+                    coreVersion, legacyMicros, elapsedMicros(since: rustStarted)
+                )
             } catch {
                 diagnostic("seal", "native_error")
+                record(
+                    "seal", "payload-keywrap", false, "native_error",
+                    coreVersion, legacyMicros, elapsedMicros(since: rustStarted)
+                )
             }
             return old
         }
@@ -112,7 +113,13 @@ enum HermesDomainCoreAdapter {
         )
         #else
         diagnostic("seal", "native_unavailable")
-        if mode == .shadow { return try legacy() }
+        if let old {
+            record(
+                "seal", "payload-keywrap", false, "native_unavailable",
+                "0.0.0-native-unavailable", legacyMicros, 0
+            )
+            return old
+        }
         throw HermesDomainCoreAdapterError.nativeUnavailable
         #endif
     }
@@ -124,21 +131,17 @@ enum HermesDomainCoreAdapter {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         legacy: () throws -> Data
     ) throws -> Data {
-        #if canImport(OpenBurnBarDomainCoreFFI)
-        return try selectBytes(operation: "open", environment: environment, legacy: legacy) {
+        try selectBytes(operation: "open", environment: environment, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
             try OpenBurnBarDomainCoreFFI.hermesOpenBase64(
                 ciphertext: ciphertext,
                 key: key,
                 aad: aad
             )
+            #else
+            throw HermesDomainCoreAdapterError.nativeUnavailable
+            #endif
         }
-        #else
-        let mode = HermesDomainCoreMode.resolve(environment: environment)
-        guard mode != .legacy else { return try legacy() }
-        diagnostic("open", "native_unavailable")
-        if mode == .shadow { return try legacy() }
-        throw HermesDomainCoreAdapterError.nativeUnavailable
-        #endif
     }
 
     static func safetyCode(
@@ -148,31 +151,25 @@ enum HermesDomainCoreAdapter {
         legacy: () -> String
     ) throws -> String {
         let mode = HermesDomainCoreMode.resolve(environment: environment)
-        guard mode != .legacy else { return legacy() }
-        #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
-            if mode == .rust { throw HermesDomainCoreAdapterError.nativeUnavailable }
-            return legacy()
-        }
-        let old = mode == .shadow ? legacy() : nil
-        let rust: String
-        do {
-            rust = try OpenBurnBarDomainCoreFFI.hermesGatewayRelaySafetyCode(
-                agentPublicKey: agent,
-                phonePublicKey: phone
-            )
-        } catch {
-            if mode == .rust { throw error }
-            return old ?? legacy()
-        }
-        guard mode == .shadow else { return rust }
-        guard let old else { return legacy() }
-        if old != rust { diagnostic("safety_code", "shadow_mismatch") }
-        return old
-        #else
-        if mode == .rust { throw HermesDomainCoreAdapterError.nativeUnavailable }
-        return legacy()
-        #endif
+        return try selectValue(
+            operation: "safety_code",
+            mode: mode,
+            nativeStatus: nativeStatus,
+            coreVersion: currentCoreVersion,
+            legacy: legacy,
+            rust: {
+                #if canImport(OpenBurnBarDomainCoreFFI)
+                try OpenBurnBarDomainCoreFFI.hermesGatewayRelaySafetyCode(
+                    agentPublicKey: agent,
+                    phonePublicKey: phone
+                )
+                #else
+                throw HermesDomainCoreAdapterError.nativeUnavailable
+                #endif
+            },
+            equivalent: ==,
+            recordComparison: DomainCoreShadowComparisonCollector.record
+        )
     }
 
     static func keyWrapInfoV1(
@@ -180,14 +177,13 @@ enum HermesDomainCoreAdapter {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         legacy: () throws -> Data
     ) throws -> Data {
-        #if canImport(OpenBurnBarDomainCoreFFI)
         try selectBytes(operation: "key_wrap_info_v1", environment: environment, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
             try OpenBurnBarDomainCoreFFI.hermesKeyWrapInfoV1(aad: aad)
+            #else
+            throw HermesDomainCoreAdapterError.nativeUnavailable
+            #endif
         }
-        #else
-        if HermesDomainCoreMode.resolve(environment: environment) != .rust { return try legacy() }
-        throw HermesDomainCoreAdapterError.nativeUnavailable
-        #endif
     }
 
     static func keyWrapInfoV2(
@@ -198,19 +194,18 @@ enum HermesDomainCoreAdapter {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         legacy: () throws -> Data
     ) throws -> Data {
-        #if canImport(OpenBurnBarDomainCoreFFI)
         try selectBytes(operation: "key_wrap_info_v2", environment: environment, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
             try OpenBurnBarDomainCoreFFI.hermesKeyWrapInfoV2(
                 aad: aad,
                 enc: enc,
                 recipientPublicKey: recipient,
                 senderPublicKey: sender
             )
+            #else
+            throw HermesDomainCoreAdapterError.nativeUnavailable
+            #endif
         }
-        #else
-        if HermesDomainCoreMode.resolve(environment: environment) != .rust { return try legacy() }
-        throw HermesDomainCoreAdapterError.nativeUnavailable
-        #endif
     }
 
     static func hpkeV3Info(
@@ -218,14 +213,13 @@ enum HermesDomainCoreAdapter {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         legacy: () throws -> Data
     ) throws -> Data {
-        #if canImport(OpenBurnBarDomainCoreFFI)
         try selectBytes(operation: "hpke_v3_info", environment: environment, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
             try OpenBurnBarDomainCoreFFI.hermesHpkeV3Info(aad: aad)
+            #else
+            throw HermesDomainCoreAdapterError.nativeUnavailable
+            #endif
         }
-        #else
-        if HermesDomainCoreMode.resolve(environment: environment) != .rust { return try legacy() }
-        throw HermesDomainCoreAdapterError.nativeUnavailable
-        #endif
     }
 
     static func hkdf(
@@ -236,21 +230,18 @@ enum HermesDomainCoreAdapter {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         legacy: () throws -> Data
     ) throws -> Data {
-        #if canImport(OpenBurnBarDomainCoreFFI)
         return try selectBytes(operation: "hkdf", environment: environment, legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
             try OpenBurnBarDomainCoreFFI.hermesHkdfSha256(
                 inputKeyMaterial: inputKeyMaterial,
                 salt: salt,
                 info: info,
                 outputByteCount: try checkedHkdfOutputByteCount(outputByteCount)
             )
+            #else
+            throw HermesDomainCoreAdapterError.nativeUnavailable
+            #endif
         }
-        #else
-        let mode = HermesDomainCoreMode.resolve(environment: environment)
-        guard mode != .legacy else { return try legacy() }
-        if mode == .shadow { return try legacy() }
-        throw HermesDomainCoreAdapterError.nativeUnavailable
-        #endif
     }
 
     private static func selectBytes(
@@ -260,23 +251,15 @@ enum HermesDomainCoreAdapter {
         rust: () throws -> Data
     ) throws -> Data {
         let mode = HermesDomainCoreMode.resolve(environment: environment)
-        guard mode != .legacy else { return try legacy() }
-        #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
-            diagnostic(operation, "abi_mismatch")
-            if mode == .shadow { return try legacy() }
-            throw HermesDomainCoreAdapterError.nativeUnavailable
-        }
-        return try selectBytesWhenNativeAvailable(
+        return try selectBytes(
             operation: operation,
             mode: mode,
+            nativeStatus: nativeStatus,
+            coreVersion: currentCoreVersion,
             legacy: legacy,
-            rust: rust
+            rust: rust,
+            recordComparison: DomainCoreShadowComparisonCollector.record
         )
-        #else
-        if mode == .shadow { return try legacy() }
-        throw HermesDomainCoreAdapterError.nativeUnavailable
-        #endif
     }
 
     static func checkedHkdfOutputByteCount(_ value: Int) throws -> UInt32 {
@@ -290,15 +273,83 @@ enum HermesDomainCoreAdapter {
         operation: String,
         mode: HermesDomainCoreMode,
         legacy: () throws -> Data,
-        rust: () throws -> Data
+        rust: () throws -> Data,
+        coreVersion: () -> String = { "0.0.0-native-unavailable" },
+        recordComparison: (DomainCoreShadowComparison) -> Void = DomainCoreShadowComparisonCollector.record
     ) throws -> Data {
+        try selectBytes(
+            operation: operation,
+            mode: mode,
+            nativeStatus: { .available },
+            coreVersion: coreVersion,
+            legacy: legacy,
+            rust: rust,
+            recordComparison: recordComparison
+        )
+    }
+
+    static func selectBytes(
+        operation: String,
+        mode: HermesDomainCoreMode,
+        nativeStatus: () -> NativeStatus,
+        coreVersion: () -> String,
+        legacy: () throws -> Data,
+        rust: () throws -> Data,
+        recordComparison: (DomainCoreShadowComparison) -> Void
+    ) throws -> Data {
+        try selectValue(
+            operation: operation,
+            mode: mode,
+            nativeStatus: nativeStatus,
+            coreVersion: coreVersion,
+            legacy: legacy,
+            rust: rust,
+            equivalent: ==,
+            recordComparison: recordComparison
+        )
+    }
+
+    static func selectValue<T: Equatable>(
+        operation: String,
+        mode: HermesDomainCoreMode,
+        nativeStatus: () -> NativeStatus,
+        coreVersion: () -> String,
+        legacy: () throws -> T,
+        rust: () throws -> T,
+        equivalent: (T, T) -> Bool,
+        recordComparison: (DomainCoreShadowComparison) -> Void
+    ) throws -> T {
         guard mode != .legacy else { return try legacy() }
-        guard mode == .shadow else { return try rust() }
+        guard mode == .shadow else {
+            guard nativeStatus() == .available else {
+                throw HermesDomainCoreAdapterError.nativeUnavailable
+            }
+            return try rust()
+        }
 
         let legacyStarted = Date.timeIntervalSinceReferenceDate
         let old = try legacy()
         let legacyMicros = elapsedMicros(since: legacyStarted)
-        let value: Data
+        switch nativeStatus() {
+        case .available:
+            break
+        case let .unavailable(unavailableCoreVersion, mismatchCategory):
+            diagnostic(operation, mismatchCategory == "native_error" ? "abi_mismatch" : "native_unavailable")
+            record(
+                operation,
+                slice(for: operation),
+                false,
+                mismatchCategory,
+                unavailableCoreVersion,
+                legacyMicros,
+                0,
+                recordComparison: recordComparison
+            )
+            return old
+        }
+
+        let comparisonCoreVersion = coreVersion()
+        let value: T
         let rustStarted = Date.timeIntervalSinceReferenceDate
         do {
             value = try rust()
@@ -306,23 +357,27 @@ enum HermesDomainCoreAdapter {
             diagnostic(operation, "native_error")
             record(
                 operation,
-                operation.contains("hpke") ? "hpke-info" : "payload-keywrap",
+                slice(for: operation),
                 false,
                 "native_error",
+                comparisonCoreVersion,
                 legacyMicros,
-                elapsedMicros(since: rustStarted)
+                elapsedMicros(since: rustStarted),
+                recordComparison: recordComparison
             )
             return old
         }
-        let matches = old == value
+        let matches = equivalent(old, value)
         if !matches { diagnostic(operation, "shadow_mismatch") }
         record(
             operation,
-            operation.contains("hpke") ? "hpke-info" : "payload-keywrap",
+            slice(for: operation),
             matches,
             matches ? nil : "result_mismatch",
+            comparisonCoreVersion,
             legacyMicros,
-            elapsedMicros(since: rustStarted)
+            elapsedMicros(since: rustStarted),
+            recordComparison: recordComparison
         )
         return old
     }
@@ -340,20 +395,49 @@ enum HermesDomainCoreAdapter {
         _ slice: String,
         _ matches: Bool,
         _ category: String?,
+        _ coreVersion: String,
         _ legacyMicros: UInt64,
-        _ rustMicros: UInt64
+        _ rustMicros: UInt64,
+        recordComparison: (DomainCoreShadowComparison) -> Void = DomainCoreShadowComparisonCollector.record
     ) {
-        #if canImport(OpenBurnBarDomainCoreFFI)
-        DomainCoreShadowComparisonCollector.record(.init(
+        recordComparison(.init(
             domain: "hermes",
             slice: slice,
             operation: operation,
-            coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
+            coreVersion: coreVersion,
             outcome: matches ? "match" : "mismatch",
             mismatchCategory: category,
             legacyMicros: legacyMicros,
             rustMicros: rustMicros
         ))
+    }
+
+    private static func slice(for operation: String) -> String {
+        operation == "aad" ? "aad" : operation.contains("hpke") ? "hpke-info" : "payload-keywrap"
+    }
+
+    private static func nativeStatus() -> NativeStatus {
+        #if canImport(OpenBurnBarDomainCoreFFI)
+        if OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 {
+            return .available
+        }
+        return .unavailable(
+            coreVersion: "0.0.0-abi-mismatch",
+            mismatchCategory: "native_error"
+        )
+        #else
+        return .unavailable(
+            coreVersion: "0.0.0-native-unavailable",
+            mismatchCategory: "native_unavailable"
+        )
+        #endif
+    }
+
+    private static func currentCoreVersion() -> String {
+        #if canImport(OpenBurnBarDomainCoreFFI)
+        OpenBurnBarDomainCoreFFI.domainCoreVersion()
+        #else
+        "0.0.0-native-unavailable"
         #endif
     }
 }

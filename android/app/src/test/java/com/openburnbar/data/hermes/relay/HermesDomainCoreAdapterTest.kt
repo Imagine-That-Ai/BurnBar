@@ -17,8 +17,64 @@ class HermesDomainCoreAdapterTest {
     @After
     fun restoreAndroidLog() {
         System.clearProperty("openburnbar.domain_core.hermes.mode")
-        HermesDomainCoreAdapter.comparisonOverride = null
+        HermesDomainCoreAdapter.resetTestOverrides()
         unmockkStatic(Log::class)
+    }
+
+    @Test
+    fun `shadow generic adapter records native unavailable without leaking the failure`() {
+        mockkStatic(Log::class)
+        every { Log.w(any(), any<String>()) } returns 0
+        System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
+        val expected = String(charArrayOf('l', 'e', 'g', 'a', 'c', 'y'))
+        val comparisons = mutableListOf<HermesShadowComparison>()
+        HermesDomainCoreAdapter.comparisonOverride = comparisons::add
+        HermesDomainCoreAdapter.abiVersionOverride = { error("secret native loader detail") }
+        HermesDomainCoreAdapter.coreVersionOverride = { error("must not query version") }
+
+        val actual = HermesDomainCoreAdapter.safetyCode(byteArrayOf(0x01), byteArrayOf(0x02)) { expected }
+
+        assertTrue(expected === actual)
+        assertEquals(
+            HermesShadowComparison(
+                slice = "payload-keywrap",
+                operation = "safety_code",
+                coreVersion = "0.0.0-native-unavailable",
+                outcome = "mismatch",
+                mismatchCategory = "native_unavailable",
+                legacyMicros = comparisons.single().legacyMicros,
+                rustMicros = 0,
+            ),
+            comparisons.single(),
+        )
+        verify(exactly = 1) {
+            Log.w("OpenBurnBarDomainCore", "domain_core.hermes.safety_code native_unavailable")
+        }
+    }
+
+    @Test
+    fun `shadow generic adapter records ABI mismatch without querying native version`() {
+        mockkStatic(Log::class)
+        every { Log.w(any(), any<String>()) } returns 0
+        System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
+        val expected = byteArrayOf(0x00, 0x7f, 0xff.toByte())
+        val comparisons = mutableListOf<HermesShadowComparison>()
+        HermesDomainCoreAdapter.comparisonOverride = comparisons::add
+        HermesDomainCoreAdapter.abiVersionOverride = { 2u }
+        HermesDomainCoreAdapter.coreVersionOverride = { error("must not query version") }
+
+        val actual = HermesDomainCoreAdapter.open("sensitive ciphertext", byteArrayOf(0x01), byteArrayOf(0x02)) { expected }
+
+        assertArrayEquals(expected, actual)
+        assertEquals("payload-keywrap", comparisons.single().slice)
+        assertEquals("open", comparisons.single().operation)
+        assertEquals("0.0.0-abi-mismatch", comparisons.single().coreVersion)
+        assertEquals("mismatch", comparisons.single().outcome)
+        assertEquals("native_error", comparisons.single().mismatchCategory)
+        assertEquals(0, comparisons.single().rustMicros)
+        verify(exactly = 1) {
+            Log.w("OpenBurnBarDomainCore", "domain_core.hermes.open abi_mismatch")
+        }
     }
 
     @Test
@@ -28,6 +84,7 @@ class HermesDomainCoreAdapterTest {
         val expected = byteArrayOf(0x00, 0x7f, 0xff.toByte())
         val comparisons = mutableListOf<HermesShadowComparison>()
         HermesDomainCoreAdapter.comparisonOverride = comparisons::add
+        HermesDomainCoreAdapter.coreVersionOverride = { "1.2.3" }
 
         val actual = HermesDomainCoreAdapter.selectValueWhenNativeAvailable(
             operation = "bounded_input",
@@ -46,6 +103,7 @@ class HermesDomainCoreAdapterTest {
         assertEquals("payload-keywrap", comparisons.single().slice)
         assertEquals("android", comparisons.single().consumer)
         assertEquals("native_error", comparisons.single().mismatchCategory)
+        assertEquals("1.2.3", comparisons.single().coreVersion)
     }
 
     @Test

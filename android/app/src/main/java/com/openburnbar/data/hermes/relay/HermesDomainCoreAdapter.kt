@@ -48,10 +48,30 @@ internal data class HermesShadowComparison(
 )
 
 internal object HermesDomainCoreAdapter {
+    private const val REQUIRED_ABI_VERSION = 3u
+    private const val ABI_MISMATCH_VERSION = "0.0.0-abi-mismatch"
+    private const val NATIVE_UNAVAILABLE_VERSION = "0.0.0-native-unavailable"
+
+    private enum class NativeAvailability(
+        val diagnosticCategory: String,
+        val evidenceVersion: String,
+        val evidenceMismatchCategory: String,
+    ) {
+        READY("", "", ""),
+        ABI_MISMATCH("abi_mismatch", ABI_MISMATCH_VERSION, "native_error"),
+        NATIVE_UNAVAILABLE("native_unavailable", NATIVE_UNAVAILABLE_VERSION, "native_unavailable"),
+    }
+
     private val secureRandom = SecureRandom()
 
     @Volatile
     internal var comparisonOverride: ((HermesShadowComparison) -> Unit)? = null
+
+    @Volatile
+    internal var abiVersionOverride: (() -> UInt)? = null
+
+    @Volatile
+    internal var coreVersionOverride: (() -> String)? = null
 
     fun aad(kind: HermesAadKind, arguments: List<String>, legacy: () -> ByteArray): ByteArray = selectBytes("aad", legacy) { hermesRelayAad(kind, arguments) }
 
@@ -75,9 +95,9 @@ internal object HermesDomainCoreAdapter {
             val legacyStarted = System.nanoTime()
             val old = legacy()
             val legacyMicros = elapsedMicros(legacyStarted)
-            if (!nativeReady()) {
-                diagnostic("seal", "native_unavailable")
-                collect("seal", false, "native_unavailable", legacyMicros, 0)
+            val availability = nativeAvailability()
+            if (availability != NativeAvailability.READY) {
+                collectUnavailable("seal", availability, legacyMicros)
                 return old
             }
             val rustStarted = System.nanoTime()
@@ -94,7 +114,8 @@ internal object HermesDomainCoreAdapter {
             )
             return old
         }
-        if (!nativeReady()) return unavailable("seal", mode, legacy)
+        val availability = nativeAvailability()
+        if (availability != NativeAvailability.READY) return unavailable("seal", mode, availability, legacy)
         val nonce = ByteArray(12).also(secureRandom::nextBytes)
         return hermesSealBase64(plaintext, key, aad, nonce)
     }
@@ -130,9 +151,9 @@ internal object HermesDomainCoreAdapter {
             val legacyStarted = System.nanoTime()
             val old = legacy()
             val legacyMicros = elapsedMicros(legacyStarted)
-            if (!nativeReady()) {
-                diagnostic("ratchet_seal", "native_unavailable")
-                collect("ratchet_seal", false, "native_unavailable", legacyMicros, 0)
+            val availability = nativeAvailability()
+            if (availability != NativeAvailability.READY) {
+                collectUnavailable("ratchet_seal", availability, legacyMicros)
                 return old
             }
             val rustStarted = System.nanoTime()
@@ -149,7 +170,8 @@ internal object HermesDomainCoreAdapter {
             )
             return old
         }
-        if (!nativeReady()) return unavailable("ratchet_seal", mode, legacy)
+        val availability = nativeAvailability()
+        if (availability != NativeAvailability.READY) return unavailable("ratchet_seal", mode, availability, legacy)
         return hermesSealCombined(plaintext, key, aad, ByteArray(12).also(secureRandom::nextBytes))
     }
 
@@ -166,14 +188,15 @@ internal object HermesDomainCoreAdapter {
             val legacyStarted = System.nanoTime()
             val old = legacy()
             val legacyMicros = elapsedMicros(legacyStarted)
-            if (!nativeReady()) {
-                diagnostic(operation, "native_unavailable")
-                collect(operation, false, "native_unavailable", legacyMicros, 0)
+            val availability = nativeAvailability()
+            if (availability != NativeAvailability.READY) {
+                collectUnavailable(operation, availability, legacyMicros)
                 return old
             }
             return selectValueWhenNativeAvailable(operation, mode, { old }, rust, equivalent)
         }
-        if (!nativeReady()) return unavailable(operation, mode, legacy)
+        val availability = nativeAvailability()
+        if (availability != NativeAvailability.READY) return unavailable(operation, mode, availability, legacy)
         return selectValueWhenNativeAvailable(operation, mode, legacy, rust, equivalent)
     }
 
@@ -207,14 +230,37 @@ internal object HermesDomainCoreAdapter {
         return length.toUInt()
     }
 
-    private fun nativeReady(): Boolean = runCatching { domainCoreAbiVersion() == 3u }.getOrDefault(false)
+    internal fun resetTestOverrides() {
+        comparisonOverride = null
+        abiVersionOverride = null
+        coreVersionOverride = null
+    }
 
-    private fun <T> unavailable(operation: String, mode: HermesDomainCoreMode, legacy: () -> T): T {
-        diagnostic(operation, "native_unavailable")
+    private fun nativeAvailability(): NativeAvailability {
+        val abiVersion = runCatching { abiVersionOverride?.invoke() ?: domainCoreAbiVersion() }
+            .getOrElse { return NativeAvailability.NATIVE_UNAVAILABLE }
+        return if (abiVersion == REQUIRED_ABI_VERSION) NativeAvailability.READY else NativeAvailability.ABI_MISMATCH
+    }
+
+    private fun <T> unavailable(operation: String, mode: HermesDomainCoreMode, availability: NativeAvailability, legacy: () -> T): T {
+        diagnostic(operation, availability.diagnosticCategory)
         if (mode == HermesDomainCoreMode.RUST) {
             throw IllegalStateException("Hermes Rust mode requires domain-core ABI v3")
         }
         return legacy()
+    }
+
+    private fun collectUnavailable(operation: String, availability: NativeAvailability, legacyMicros: Long) {
+        check(availability != NativeAvailability.READY)
+        diagnostic(operation, availability.diagnosticCategory)
+        collect(
+            operation = operation,
+            matches = false,
+            mismatchCategory = availability.evidenceMismatchCategory,
+            legacyMicros = legacyMicros,
+            rustMicros = 0,
+            coreVersion = availability.evidenceVersion,
+        )
     }
 
     private fun diagnostic(operation: String, outcome: String) {
@@ -224,7 +270,14 @@ internal object HermesDomainCoreAdapter {
     private fun elapsedMicros(startedNanos: Long): Long = ((System.nanoTime() - startedNanos) / 1_000)
         .coerceIn(0, 600_000_000)
 
-    private fun collect(operation: String, matches: Boolean, mismatchCategory: String?, legacyMicros: Long, rustMicros: Long) {
+    private fun collect(
+        operation: String,
+        matches: Boolean,
+        mismatchCategory: String?,
+        legacyMicros: Long,
+        rustMicros: Long,
+        coreVersion: String = safeCoreVersion(),
+    ) {
         comparisonOverride?.invoke(
             HermesShadowComparison(
                 slice = when {
@@ -234,7 +287,7 @@ internal object HermesDomainCoreAdapter {
                     else -> "payload-keywrap"
                 },
                 operation = operation,
-                coreVersion = runCatching(::domainCoreVersion).getOrDefault("0.0.0-native-unavailable"),
+                coreVersion = coreVersion,
                 outcome = if (matches) "match" else "mismatch",
                 mismatchCategory = mismatchCategory,
                 legacyMicros = legacyMicros,
@@ -242,4 +295,7 @@ internal object HermesDomainCoreAdapter {
             ),
         )
     }
+
+    private fun safeCoreVersion(): String = runCatching { coreVersionOverride?.invoke() ?: domainCoreVersion() }
+        .getOrDefault(NATIVE_UNAVAILABLE_VERSION)
 }
