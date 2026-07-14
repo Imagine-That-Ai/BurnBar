@@ -24,9 +24,9 @@ public sealed class DaemonSubstitutionMatrixTests
     [Fact]
     public void PrimaryDispositionCounts_MatchTheCurrentDecisionSummary()
     {
-        Assert.Equal(21, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
+        Assert.Equal(22, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
         Assert.Equal(3, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
-        Assert.Equal(6, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
+        Assert.Equal(5, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
         Assert.Equal(4, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.NotApplicable));
 
         // Published constants agree with the live count.
@@ -66,6 +66,7 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(13, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(14, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(15, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(19, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(20, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(21, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(23, DaemonSubstitutionDisposition.SubstitutedAlready)]
@@ -94,7 +95,7 @@ public sealed class DaemonSubstitutionMatrixTests
             .Select(r => r.Number)
             .OrderBy(n => n)
             .ToArray();
-        Assert.Equal(new[] { 16, 18, 19, 22, 32, 33 }, deferred);
+        Assert.Equal(new[] { 16, 18, 22, 32, 33 }, deferred);
     }
 
     [Fact]
@@ -136,6 +137,11 @@ public sealed class DaemonSubstitutionMatrixTests
         var row29 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 29);
         Assert.Equal("authenticated standalone client", row29.Qualifier);
         Assert.Equal("SUB-DONE (authenticated standalone client)", row29.DispositionBadge);
+
+        // Row 19 is "SUB-DONE (durable source-free semantic store)".
+        var row19 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 19);
+        Assert.Equal("durable source-free semantic store", row19.Qualifier);
+        Assert.Equal("SUB-DONE (durable source-free semantic store)", row19.DispositionBadge);
     }
 
     [Fact]

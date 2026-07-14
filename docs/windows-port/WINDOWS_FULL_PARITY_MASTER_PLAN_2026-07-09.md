@@ -510,7 +510,11 @@ F2 workstreams:
    compile and lifecycle stress remain release evidence, not implementation.
 5. Local Mission Control execution: DAG scheduler, journal repository,
    projection reducer, planner, policy engine, rate limiter.
-6. Pensieve watcher, project-code memory store, and full static parser.
+6. Pensieve knowledge watcher. The project-code memory store, embeddings, and
+   full static parser are closed by
+   `docs/windows-port/evidence/f2/project-code-memory-store.md`,
+   `docs/windows-port/evidence/f2/live-lsp-parser-client.md`, and WPD-0003's
+   revival addendum.
 7. Browser Computer Use/Playwright lifecycle and browser target policy.
 8. Elder Wand fusion orchestrator and tool loop.
 9. Connector plane and any revived connector-specific broker/client surface.

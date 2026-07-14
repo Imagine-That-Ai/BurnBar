@@ -19,8 +19,7 @@ ledger row(s) to `Real` and remove the corresponding deferral line.
 | Model catalog / health / route logging / degrade metrics | Live gateway metrics surface on Windows with tests |
 | Provider router + provider executors | Production router path on Windows with golden tests |
 | Local Mission Control DAG/planner/policy | Local execution path (not dispatch-only) with evidence |
-| Pensieve watcher + project-code memory store | Live watcher + store on Windows |
-| Full project-code static parser | WPD-0003 revive + parser evidence |
+| Pensieve knowledge watcher | Live repo-docs/notes/session-end watcher + sealed queue on Windows |
 | Browser Computer Use / Playwright | Host browser CU lifecycle evidence |
 | Elder Wand fusion orchestrator | Fusion tool loop live (presets-only is F1) |
 | Connector plane / tooling proxy / workspace broker | Live external connector consumer evidence |
@@ -33,6 +32,11 @@ Closed under this decision:
 - Standalone companion CLI + authenticated daemon-client core: promoted by
   `docs/windows-port/evidence/f2/companion-cli-client.md`. The separate
   connector plane remains deferred under WPD-0006 row 33.
+- Project-code memory store, embeddings, and full static parser: promoted by
+  `docs/windows-port/evidence/f2/project-code-memory-store.md`,
+  `docs/windows-port/evidence/f2/live-lsp-parser-client.md`, and the WPD-0003
+  revival addendum. The general Pensieve repo-docs/notes/session watcher remains
+  deferred under WPD-0006 row 18.
 
 ## Product language
 

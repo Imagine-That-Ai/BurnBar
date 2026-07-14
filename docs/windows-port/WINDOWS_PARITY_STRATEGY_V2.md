@@ -36,7 +36,7 @@ What *this* document claims at high confidence:
 
 | Finish line | Name | Includes | Excludes (documented) |
 |---|---|---|---|
-| **F1 — Ship Peer (G5 default)** | Local peer desktop under accepted WPDs | Log ingest, quota, chat via in-app backends, CU desktop loop, pet, cloud sync, DCC, tray, signed install | WPD-0006 DEFER rows, WPD-0003 lexical-only until revived, Tier-C Apple-only |
+| **F1 — Ship Peer (G5 default)** | Local peer desktop under accepted WPDs | Log ingest, quota, chat via in-app backends, CU desktop loop, pet, cloud sync, DCC, tray, signed install | Remaining WPD-0006 DEFER rows, physical parser performance, Tier-C Apple-only |
 | **F2 — True 1:1** | Mac feature completeness | F1 **plus** local HTTP gateway + model proxy live, local mission execution, headless runs, Pensieve watcher, project-code static parser, browser CU, Elder Wand fusion orchestration | Only Tier-C structural N/A |
 
 **Gate language rule:** Never say “100% parity” without **F1** or **F2**. Ledger Real on F1 scope ≠ F2 complete.
@@ -121,9 +121,11 @@ What *this* document claims at high confidence:
 | **IA-2** | Database **system** mode first (schema/tables/FTS over SQLCipher seam) | Functional peer of Mac System mode |
 | **IA-3** | Database story/atlas | Visual/product depth |
 | **IA-4** | Projects list + open path from usage DB / folder paths | List-level peer |
-| **IA-5** | Projects memory + static parse depth | Requires WPD-0003 revive or explicit lexical-only badge |
+| **IA-5** | Projects memory + static parse depth | Closed by WPD-0003 revival, native x64/ARM64 parser evidence, and the encrypted source-free semantic store |
 
-**Do not** claim Projects Real at Mac depth while WPD-0003 remains deferred without UI disclosure.
+**Do not** claim physical parser performance from hosted architecture evidence;
+WPD-0003 is revived for implementation, while physical performance remains a
+release-certification gate.
 
 ---
 
@@ -230,7 +232,11 @@ Windows is a **local log-reading peer** like Mac for:
 
 ### 2.2 F2 True 1:1
 
-F1 + revive WPD-0006 DEFER rows that Mac users treat as core (gateway + model proxy + headless/local mission execution + browser CU + project-code parser + Elder Wand fusion), via Linux-boundary Swift Service and/or C# substitutes, with revisit triggers fired intentionally—not by accident.
+F1 + revive WPD-0006 DEFER rows that Mac users treat as core. Gateway/model
+proxy, headless/local mission execution, Browser CU, and the project-code parser
+are now promoted through C# substitutes and native Windows parser evidence;
+Telegram, general Pensieve watching, gateway token-bucket limiting, full Elder
+Wand fusion, and connector brokers remain explicit workstreams.
 
 ---
 

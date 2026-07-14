@@ -78,7 +78,8 @@ bounded Tree-sitter symbols, and exposes optional bounded LSP references through
 the Windows `code.references` operation. Java/Kotlin/Go are now parsed by
 dedicated grammars rather than silently falling back to lexical declarations.
 
-Local Rust tests and the macOS-hosted presentation suite are green. The first
-green Windows workflow run is still required before this addendum is treated as
-host certification; until then, the parity ledger deliberately retains the
-F2 parser row's existing conservative status.
+Local Rust tests and the presentation suite are green. Windows workflow
+[29299426836](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29299426836)
+passed native x64 MSVC tests/smoke and the ARM64 MSVC build. The revival is
+therefore complete for implementation and hosted architecture evidence;
+physical performance remains a separate release-certification gate.

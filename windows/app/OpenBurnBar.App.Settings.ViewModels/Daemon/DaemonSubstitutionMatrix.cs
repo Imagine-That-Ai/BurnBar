@@ -3,7 +3,7 @@
 //
 // Row order, capability names, dispositions, qualifiers, and the SUB-DONE/SUB-BUILD
 // hybrids (rows 24, 27) match the doc exactly. The disposition-summary constants match
-// the current disposition summary (21 SUB-DONE, 3 SUB-BUILD, 6 DEFER, 4 N/A).
+// the current disposition summary (22 SUB-DONE, 3 SUB-BUILD, 5 DEFER, 4 N/A).
 // A test cross-checks both against those figures so the tab can never drift from the
 // accepted decision without a red build.
 
@@ -98,9 +98,9 @@ public static class DaemonSubstitutionMatrix
             "Excluded even from the daemon's Linux build; the Windows memory surface already reads/writes memory_facts via CloudSyncMemoryStore (B4). Local knowledge watching is a v1.1 capability.",
             "Bundle drift D14"),
         new(19, "Project-code memory store + embeddings",
-            D.Deferred,
-            "Already governed by WPD-0003 (static parser deferred; lexical fallback = bundle drift D13). Store follows the parser.",
-            "WPD-0003; D13"),
+            D.SubstitutedAlready,
+            "The encrypted source-free ProjectCodeMemoryStore persists project, artifact, symbol, reference, call-edge, checkpoint, chunk, and versioned embedding metadata with restart hydration and bounded semantic queries.",
+            "F2 project-code memory store evidence; WPD-0003 revival", Qualifier: "durable source-free semantic store"),
         new(20, "Planner service",
             D.SubstitutedAlready,
             "The production companion plane composes the macOS intent-normalization and typed-plan contract with deterministic precedence, exact plan outlines, bounded inputs, and no execution side effects.",
@@ -167,13 +167,13 @@ public static class DaemonSubstitutionMatrix
     // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
     /// <summary>SUB-DONE count from the current summary.</summary>
-    public const int SubstitutedAlreadyCount = 21;
+    public const int SubstitutedAlreadyCount = 22;
 
     /// <summary>SUB-BUILD count from the doc's summary (rows 26, 30, 31).</summary>
     public const int SubstituteToBuildCount = 3;
 
     /// <summary>DEFER count from the current summary.</summary>
-    public const int DeferredCount = 6;
+    public const int DeferredCount = 5;
 
     /// <summary>N/A count from the doc's summary (rows 10, 17, 28, 34).</summary>
     public const int NotApplicableCount = 4;
