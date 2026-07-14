@@ -274,8 +274,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: enabledDirectory) }
         let enabledSubmitter = RecordingDomainCoreShadowSubmitter()
         let enabledRecorder = MacDomainCoreShadowEvidenceRecorder(
-            environment: [:],
-            info: signedProfileInfo(
+            profile: signedProfile(
                 profile: "internal",
                 distribution: "internal",
                 channel: "internal",
@@ -296,8 +295,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: disabledDirectory) }
         let disabledSubmitter = RecordingDomainCoreShadowSubmitter()
         let disabledRecorder = MacDomainCoreShadowEvidenceRecorder(
-            environment: [:],
-            info: signedProfileInfo(
+            profile: signedProfile(
                 profile: "public-production",
                 distribution: "public",
                 channel: "",
@@ -325,8 +323,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         let submitter = RecordingDomainCoreShadowSubmitter()
 
         let recorder = MacDomainCoreShadowEvidenceRecorder(
-            environment: [:],
-            info: signedProfileInfo(
+            profile: signedProfile(
                 profile: "internal",
                 distribution: "internal",
                 channel: "internal",
@@ -352,8 +349,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         let submitter = RecordingDomainCoreShadowSubmitter()
 
         let recorder = MacDomainCoreShadowEvidenceRecorder(
-            environment: [:],
-            info: signedProfileInfo(
+            profile: signedProfile(
                 profile: "public-production",
                 distribution: "public",
                 channel: "",
@@ -381,8 +377,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         let submitter = RecordingDomainCoreShadowSubmitter()
 
         let recorder = MacDomainCoreShadowEvidenceRecorder(
-            environment: [:],
-            info: signedProfileInfo(
+            profile: signedProfile(
                 profile: "beta",
                 distribution: "beta",
                 channel: "beta",
@@ -407,8 +402,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         let sentinel = Data("not-a-directory".utf8)
         try sentinel.write(to: directory)
         let recorder = MacDomainCoreShadowEvidenceRecorder(
-            environment: [:],
-            info: signedProfileInfo(
+            profile: signedProfile(
                 profile: "internal",
                 distribution: "internal",
                 channel: "internal",
@@ -426,8 +420,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
     func testMacRecorderHandlesSpoolDisappearingBeforeRecord() async throws {
         let directory = temporaryDirectory()
         let recorder = MacDomainCoreShadowEvidenceRecorder(
-            environment: [:],
-            info: signedProfileInfo(
+            profile: signedProfile(
                 profile: "internal",
                 distribution: "internal",
                 channel: "internal",
@@ -525,14 +518,14 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTFail("condition was not satisfied before timeout")
     }
 
-    private func signedProfileInfo(
+    private func signedProfile(
         profile: String,
         distribution: String,
         channel: String,
         evidenceEnabled: Bool,
         quotaMode: String = "shadow"
-    ) -> [String: Any] {
-        [
+    ) -> DomainCoreBuildProfile {
+        DomainCoreBuildProfileResolver.current(environment: [:], info: [
             "OpenBurnBarDomainCoreBuildAuthority": "signed",
             "OpenBurnBarDomainCoreBuildProfile": profile,
             "OpenBurnBarDomainCoreDistribution": distribution,
@@ -544,7 +537,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             "OpenBurnBarDomainCoreModeCloudVaultSearch": "legacy",
             "OpenBurnBarDomainCoreModeHermes": "legacy",
             "OpenBurnBarDomainCoreModePricing": "legacy"
-        ]
+        ])
     }
 
     private func temporaryDirectory() -> URL {

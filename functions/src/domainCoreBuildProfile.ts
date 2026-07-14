@@ -1,5 +1,5 @@
-export type DomainCoreRuntimeMode = "legacy" | "shadow" | "rust";
-export type DomainCoreRuntimeDomain =
+type DomainCoreRuntimeMode = "legacy" | "shadow" | "rust";
+type DomainCoreRuntimeDomain =
   | "quota"
   | "cloudVault"
   | "cloudVaultRewrap"

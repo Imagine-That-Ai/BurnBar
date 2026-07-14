@@ -3,7 +3,9 @@ import { createRequire } from "node:module";
 import { isRecord } from "./guards.js";
 import { logWarn } from "./logging.js";
 import { resolveDomainCoreEvidenceChannel, resolveDomainCoreRuntimeMode } from "./domainCoreBuildProfile.js";
-import { buildDomainCoreShadowSampleV2, type DomainCoreShadowSampleV2 } from "./domainCoreShadowEvidence.js";
+import { buildDomainCoreShadowSampleV2 } from "./domainCoreShadowEvidence.js";
+
+type DomainCoreShadowSampleV2 = ReturnType<typeof buildDomainCoreShadowSampleV2>;
 
 type DomainCorePricingMode = "legacy" | "shadow" | "rust";
 
