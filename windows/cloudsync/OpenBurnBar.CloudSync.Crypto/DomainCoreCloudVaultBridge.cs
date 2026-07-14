@@ -17,9 +17,28 @@ namespace OpenBurnBar.CloudSync.Crypto
         Rust,
     }
 
+    public sealed record DomainCoreCloudVaultShadowComparison(
+        string Domain,
+        string Slice,
+        string Consumer,
+        string Operation,
+        string CoreVersion,
+        string Outcome,
+        string? MismatchCategory,
+        long LegacyMicros,
+        long RustMicros);
+
+    public static class DomainCoreCloudVaultShadowEvidence
+    {
+        public static void Configure(Action<DomainCoreCloudVaultShadowComparison>? sink) =>
+            DomainCoreCloudVaultBridge.ComparisonSink = sink;
+    }
+
     internal static class DomainCoreCloudVaultBridge
     {
         private const string ModeVariable = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
+
+        internal static Action<DomainCoreCloudVaultShadowComparison>? ComparisonSink { get; set; }
 
         internal static string AadV2(
             string uid,
@@ -308,29 +327,84 @@ namespace OpenBurnBar.CloudSync.Crypto
                 return rustOutcome!.GetOrThrow();
             }
 
+            long legacyStarted = Stopwatch.GetTimestamp();
             var legacyOutcome = Capture(legacy);
+            long legacyMicros = ElapsedMicros(legacyStarted);
+            long rustStarted = Stopwatch.GetTimestamp();
             try
             {
                 if (!TryInvoke(rust, out var rustOutcome))
                 {
                     Trace.TraceWarning("domain_core.{0}.native_unavailable mode={1}", operation, mode);
+                    RecordComparison(operation, false, "native_unavailable", legacyMicros, ElapsedMicros(rustStarted));
                 }
-                else if (!Equivalent(rustOutcome!, legacyOutcome, equivalent))
+                else
                 {
-                    Trace.TraceWarning(
-                        "domain_core.{0}.shadow_mismatch core={1} mismatch_count=1 legacy_category={2} rust_category={3}",
+                    bool matches = Equivalent(rustOutcome!, legacyOutcome, equivalent);
+                    if (!matches)
+                    {
+                        Trace.TraceWarning(
+                            "domain_core.{0}.shadow_mismatch core={1} mismatch_count=1 legacy_category={2} rust_category={3}",
+                            operation,
+                            DomainCore.DomainCoreVersion(),
+                            legacyOutcome.Category,
+                            rustOutcome!.Category);
+                    }
+                    RecordComparison(
                         operation,
-                        DomainCore.DomainCoreVersion(),
-                        legacyOutcome.Category,
-                        rustOutcome!.Category);
+                        matches,
+                        matches ? null : "result_mismatch",
+                        legacyMicros,
+                        ElapsedMicros(rustStarted));
                 }
             }
             catch (Exception)
             {
                 Trace.TraceWarning("domain_core.{0}.rust_error mode={1}", operation, mode);
+                RecordComparison(operation, false, "native_error", legacyMicros, ElapsedMicros(rustStarted));
             }
 
             return legacyOutcome.GetOrThrow();
+        }
+
+        private static long ElapsedMicros(long started) => Math.Clamp(
+            (long)(Stopwatch.GetElapsedTime(started).TotalMilliseconds * 1_000),
+            0,
+            600_000_000);
+
+        private static void RecordComparison(
+            string operation,
+            bool equivalent,
+            string? mismatchCategory,
+            long legacyMicros,
+            long rustMicros)
+        {
+            if (ComparisonSink is null) return;
+            string slice = operation.Contains("escrow", StringComparison.Ordinal) ? "escrow"
+                : operation.Contains("recovery", StringComparison.Ordinal) ? "recovery"
+                : operation.Contains("aes", StringComparison.Ordinal)
+                    || operation.Contains("seal", StringComparison.Ordinal)
+                    || operation.Contains("open", StringComparison.Ordinal) ? "aes"
+                : "foundation";
+            string coreVersion;
+            try
+            {
+                coreVersion = DomainCore.DomainCoreVersion();
+            }
+            catch
+            {
+                coreVersion = "0.0.0-native-unavailable";
+            }
+            ComparisonSink(new DomainCoreCloudVaultShadowComparison(
+                "cloudvault",
+                slice,
+                "windows",
+                operation,
+                coreVersion,
+                equivalent ? "match" : "mismatch",
+                mismatchCategory,
+                legacyMicros,
+                rustMicros));
         }
 
         private static bool TryInvoke<T>(Func<T> operation, out Outcome<T>? outcome)

@@ -13,7 +13,7 @@
  * expectation here with a dated note) or follow the catalog (update the
  * constant) — never let the two drift without a recorded decision.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -23,7 +23,12 @@ import {
   estimateTokenCost,
   priceLegacyKimiEvent,
 } from "../pricing.js";
-import { calculateTokenCost, DomainCorePricingError, resolveDomainCorePricingMode } from "../domainCorePricing.js";
+import {
+  calculateTokenCost,
+  configureDomainCorePricingShadowEvidenceSink,
+  DomainCorePricingError,
+  resolveDomainCorePricingMode,
+} from "../domainCorePricing.js";
 import { isRecord } from "../guards.js";
 
 // Core-decomposition: catalog.json moved from the Core monolith's Resources into
@@ -185,6 +190,8 @@ function loadPricingFixture(): PricingFixture {
 describe("shared domain-core pricing", () => {
   const fixture = loadPricingFixture();
 
+  afterEach(() => configureDomainCorePricingShadowEvidenceSink(undefined));
+
   it.each(["legacy", "shadow", "rust"] as const)("matches canonical vectors in %s mode", (mode) => {
     for (const vector of fixture.costVectors) {
       const actual = estimateTokenCost(
@@ -274,5 +281,40 @@ describe("shared domain-core pricing", () => {
         { OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "shadow" },
       ),
     ).toBe(42);
+  });
+
+  it("emits one generic V2 whole-call comparison to the configured sink", () => {
+    const samples: unknown[] = [];
+    configureDomainCorePricingShadowEvidenceSink((sample) => samples.push(sample));
+    expect(
+      calculateTokenCost(
+        { inputPerMToken: 3, outputPerMToken: 15, cacheReadPerMToken: 0.5 },
+        { inputTokens: 1_000_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+        () => 3,
+        {
+          OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY: "signed",
+          OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE: "internal",
+          OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION: "internal",
+          OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED: "1",
+          OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "shadow",
+          OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE: "shadow",
+          OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE: "shadow",
+          OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE: "shadow",
+          OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE: "shadow",
+          OPENBURNBAR_DOMAIN_CORE_HERMES_MODE: "shadow",
+          OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL: "internal",
+        },
+      ),
+    ).toBe(3);
+    expect(samples).toHaveLength(1);
+    expect(samples[0]).toMatchObject({
+      schemaVersion: 2,
+      domain: "pricing",
+      slice: "token-cost",
+      consumer: "functions",
+      operation: "calculate_token_cost",
+      outcome: "match",
+      mismatchCategory: null,
+    });
   });
 });

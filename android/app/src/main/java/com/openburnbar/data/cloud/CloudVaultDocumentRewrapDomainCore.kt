@@ -70,6 +70,9 @@ internal object CloudVaultDocumentRewrapDomainCore {
     @Volatile
     internal var diagnosticOverride: ((CloudVaultDocumentRewrapDiagnostic) -> Unit)? = null
 
+    @Volatile
+    internal var comparisonOverride: ((CloudVaultShadowComparison) -> Unit)? = null
+
     private val mode: CloudVaultDocumentRewrapMode
         get() = modeOverride ?: CloudVaultDocumentRewrapMode.parse(BuildConfig.CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE)
 
@@ -103,30 +106,68 @@ internal object CloudVaultDocumentRewrapDomainCore {
                     envelopes,
                     noncePlan,
                 )
-            CloudVaultDocumentRewrapMode.SHADOW -> {
-                val legacyResult = legacy(noncePlan)
-                val rustResult = runCatching {
-                    rustRewrap(
-                        data,
-                        uid,
-                        collection,
-                        docID,
-                        oldKey,
-                        newKey,
-                        newVaultKeyID,
-                        vaultGeneration,
-                        rotationJobId,
-                        envelopes,
-                        noncePlan,
-                    )
-                }
-                when {
-                    rustResult.isFailure -> record("rust_error")
-                    !equivalent(legacyResult, rustResult.getOrThrow()) -> record("mismatch")
-                }
-                legacyResult
-            }
+            CloudVaultDocumentRewrapMode.SHADOW -> shadowRewrap(
+                data, uid, collection, docID, oldKey, newKey, newVaultKeyID,
+                vaultGeneration, rotationJobId, envelopes, noncePlan, legacy,
+            )
         }
+    }
+
+    private fun shadowRewrap(
+        data: Map<String, Any?>,
+        uid: String,
+        collection: String,
+        docID: String,
+        oldKey: ByteArray,
+        newKey: ByteArray,
+        newVaultKeyID: String,
+        vaultGeneration: Int?,
+        rotationJobId: String?,
+        envelopes: List<FfiEnvelope>,
+        noncePlan: List<CloudVaultDocumentRewrapNonce>,
+        legacy: (List<CloudVaultDocumentRewrapNonce>) -> CloudVaultDocumentRewrapResult,
+    ): CloudVaultDocumentRewrapResult {
+        val legacyStarted = System.nanoTime()
+        val legacyResult = legacy(noncePlan)
+        val legacyMicros = elapsedMicros(legacyStarted)
+        val rustStarted = System.nanoTime()
+        val rustResult = runCatching {
+            rustRewrap(
+                data, uid, collection, docID, oldKey, newKey, newVaultKeyID,
+                vaultGeneration, rotationJobId, envelopes, noncePlan,
+            )
+        }
+        emitShadowComparison(legacyResult, rustResult, legacyMicros, elapsedMicros(rustStarted))
+        return legacyResult
+    }
+
+    private fun emitShadowComparison(
+        legacyResult: CloudVaultDocumentRewrapResult,
+        rustResult: Result<CloudVaultDocumentRewrapResult>,
+        legacyMicros: Long,
+        rustMicros: Long,
+    ) {
+        val matches = rustResult.isSuccess && equivalent(legacyResult, rustResult.getOrThrow())
+        when {
+            rustResult.isFailure -> record("rust_error")
+            !matches -> record("mismatch")
+        }
+        comparisonOverride?.invoke(
+            CloudVaultShadowComparison(
+                slice = "document-rewrap",
+                operation = OPERATION,
+                coreVersion = runCatching { coreVersionOverride?.invoke() ?: domainCoreVersion() }
+                    .getOrDefault("0.0.0-native-unavailable"),
+                outcome = if (matches) "match" else "mismatch",
+                mismatchCategory = when {
+                    matches -> null
+                    rustResult.isFailure -> "native_error"
+                    else -> "result_mismatch"
+                },
+                legacyMicros = legacyMicros,
+                rustMicros = rustMicros,
+            ),
+        )
     }
 
     internal fun resetTestOverrides() {
@@ -136,6 +177,7 @@ internal object CloudVaultDocumentRewrapDomainCore {
         coreVersionOverride = null
         nonceOverride = null
         diagnosticOverride = null
+        comparisonOverride = null
         cachedAbiVersion = null
         diagnosticCounts.clear()
     }
@@ -408,3 +450,6 @@ internal object CloudVaultDocumentRewrapDomainCore {
         return asLong.toUInt()
     }
 }
+
+private fun elapsedMicros(startedNanos: Long): Long = ((System.nanoTime() - startedNanos) / 1_000)
+    .coerceIn(0, 600_000_000)

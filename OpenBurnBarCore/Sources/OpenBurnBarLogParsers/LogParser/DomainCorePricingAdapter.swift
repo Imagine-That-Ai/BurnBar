@@ -63,6 +63,7 @@ enum DomainCorePricingAdapter {
             return rejected(mode: mode, event: "domain_core.pricing.invalid_input", legacy: legacy)
         }
         do {
+            let rustStarted = Date.timeIntervalSinceReferenceDate
             let nanoUsd = try OpenBurnBarDomainCoreFFI.calculateTokenCostNanoUsd(
                 rates: rates,
                 buckets: buckets
@@ -72,12 +73,32 @@ enum DomainCorePricingAdapter {
             }
             let rust = Double(nanoUsd) / nanoUsdPerUsd
             if mode == .rust { return rust }
+            let rustMicros = elapsedMicros(since: rustStarted)
+            let legacyStarted = Date.timeIntervalSinceReferenceDate
             let swift = legacy()
-            if !withinShadowBound(legacyUsd: swift, rustNanoUsd: nanoUsd) {
+            let matches = withinShadowBound(legacyUsd: swift, rustNanoUsd: nanoUsd)
+            if !matches {
                 ParserDiagnostics.silentFailure("domain_core.pricing.shadow_mismatch")
             }
+            record(
+                matches: matches,
+                category: matches ? nil : "result_mismatch",
+                legacyMicros: elapsedMicros(since: legacyStarted),
+                rustMicros: rustMicros
+            )
             return swift
         } catch {
+            if mode == .shadow {
+                let started = Date.timeIntervalSinceReferenceDate
+                let value = legacy()
+                record(
+                    matches: false,
+                    category: "native_error",
+                    legacyMicros: elapsedMicros(since: started),
+                    rustMicros: 0
+                )
+                return value
+            }
             return rejected(mode: mode, event: "domain_core.pricing.arithmetic_rejected", legacy: legacy)
         }
         #else
@@ -139,6 +160,25 @@ enum DomainCorePricingAdapter {
     private static func withinShadowBound(legacyUsd: Double, rustNanoUsd: UInt64) -> Bool {
         guard legacyUsd.isFinite else { return false }
         return abs(legacyUsd * nanoUsdPerUsd - Double(rustNanoUsd)) <= shadowMaximumDeltaNanoUsd
+    }
+
+    private static func elapsedMicros(since started: TimeInterval) -> UInt64 {
+        UInt64(min(600_000_000, max(0, ((Date.timeIntervalSinceReferenceDate - started) * 1_000_000).rounded())))
+    }
+
+    private static func record(matches: Bool, category: String?, legacyMicros: UInt64, rustMicros: UInt64) {
+        #if canImport(OpenBurnBarDomainCoreFFI)
+        DomainCoreShadowComparisonCollector.record(.init(
+            domain: "pricing",
+            slice: "token-cost",
+            operation: "calculate_token_cost",
+            coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
+            outcome: matches ? "match" : "mismatch",
+            mismatchCategory: category,
+            legacyMicros: legacyMicros,
+            rustMicros: rustMicros
+        ))
+        #endif
     }
 
     private static func rejected(

@@ -93,6 +93,7 @@ on:
       - "scripts/ci/evaluate-domain-core-promotion.mjs"
       - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
       - "scripts/lib/domain-core-promotion-evidence.mjs"
+      - "scripts/lib/domain-core-evidence-contract.mjs"
       - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
       - "scripts/ci/*domain-core-build-profile*"
@@ -107,6 +108,7 @@ on:
       - "docs/runbooks/shared-rust-promotion-evidence.md"
       - "docs/runbooks/shared-rust-build-profiles.md"
       - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
+      - "docs/contracts/domain-core-shadow-sample-v2.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
   pull_request:
@@ -197,6 +199,7 @@ on:
       - "scripts/ci/evaluate-domain-core-promotion.mjs"
       - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
       - "scripts/lib/domain-core-promotion-evidence.mjs"
+      - "scripts/lib/domain-core-evidence-contract.mjs"
       - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
       - "scripts/ci/*domain-core-build-profile*"
@@ -211,6 +214,7 @@ on:
       - "docs/runbooks/shared-rust-promotion-evidence.md"
       - "docs/runbooks/shared-rust-build-profiles.md"
       - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
+      - "docs/contracts/domain-core-shadow-sample-v2.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
   workflow_dispatch:

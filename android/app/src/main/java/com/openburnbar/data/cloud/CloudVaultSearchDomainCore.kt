@@ -63,6 +63,9 @@ internal object CloudVaultSearchDomainCore {
     @Volatile
     internal var diagnosticOverride: ((CloudVaultSearchDiagnostic) -> Unit)? = null
 
+    @Volatile
+    internal var comparisonOverride: ((CloudVaultShadowComparison) -> Unit)? = null
+
     private val mode: CloudVaultSearchMode
         get() = modeOverride ?: CloudVaultSearchMode.parse(BuildConfig.CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE)
 
@@ -70,12 +73,33 @@ internal object CloudVaultSearchDomainCore {
         CloudVaultSearchMode.LEGACY -> legacy()
         CloudVaultSearchMode.RUST -> rustSearch(operation, text, vaultKey, limit)
         CloudVaultSearchMode.SHADOW -> {
+            val legacyStarted = System.nanoTime()
             val legacyHashes = legacy()
+            val legacyMicros = elapsedMicros(legacyStarted)
+            val rustStarted = System.nanoTime()
             val rustHashes = runCatching { rustSearch(operation, text, vaultKey, limit) }
+            val rustMicros = elapsedMicros(rustStarted)
+            val matches = rustHashes.isSuccess && legacyHashes == rustHashes.getOrThrow()
             when {
                 rustHashes.isFailure -> record("${operation.diagnosticName}_rust_error")
-                legacyHashes != rustHashes.getOrThrow() -> record("${operation.diagnosticName}_mismatch")
+                !matches -> record("${operation.diagnosticName}_mismatch")
             }
+            comparisonOverride?.invoke(
+                CloudVaultShadowComparison(
+                    slice = "search",
+                    operation = operation.diagnosticName,
+                    coreVersion = runCatching { coreVersionOverride?.invoke() ?: domainCoreVersion() }
+                        .getOrDefault("0.0.0-native-unavailable"),
+                    outcome = if (matches) "match" else "mismatch",
+                    mismatchCategory = when {
+                        matches -> null
+                        rustHashes.isFailure -> "native_error"
+                        else -> "result_mismatch"
+                    },
+                    legacyMicros = legacyMicros,
+                    rustMicros = rustMicros,
+                ),
+            )
             legacyHashes
         }
     }
@@ -86,6 +110,7 @@ internal object CloudVaultSearchDomainCore {
         abiVersionOverride = null
         coreVersionOverride = null
         diagnosticOverride = null
+        comparisonOverride = null
         cachedAbiVersion = null
         diagnosticCounts.clear()
     }
@@ -122,6 +147,9 @@ internal object CloudVaultSearchDomainCore {
             )
         }
     }
+
+    private fun elapsedMicros(startedNanos: Long): Long = ((System.nanoTime() - startedNanos) / 1_000)
+        .coerceIn(0, 600_000_000)
 
     private val CloudVaultSearchOperation.ffiValue: FfiSearchOperation
         get() = when (this) {
