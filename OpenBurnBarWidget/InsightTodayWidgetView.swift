@@ -1,6 +1,6 @@
 import SwiftUI
 import WidgetKit
-import OpenBurnBarCore
+import OpenBurnBarInsights
 
 struct InsightTodayWidgetView: View {
     var entry: InsightTodayWidgetEntry

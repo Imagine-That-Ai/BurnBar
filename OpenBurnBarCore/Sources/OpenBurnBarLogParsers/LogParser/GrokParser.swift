@@ -1,0 +1,560 @@
+import Foundation
+import OpenBurnBarKernel
+
+// MARK: - Grok Build Parser
+
+/// Parses Grok Build CLI sessions from `~/.grok/sessions/<encoded-cwd>/<session-id>/`.
+///
+/// Token accounting prefers exact per-turn usage from `updates.jsonl`, then falls
+/// back to the current context-window snapshot in `signals.json`. Conversation
+/// text is rebuilt from `chat_history.jsonl` when present.
+public final class GrokParser: LogParser, Sendable {
+    public let provider: AgentProvider = .xAI
+    let logDirectoryOverride: String?
+
+    public init(logDirectoryOverride: String? = nil) {
+        self.logDirectoryOverride = logDirectoryOverride
+    }
+
+    public func parse() async throws -> ParseResult {
+        let fileManager = FileManager.default
+        let sessionsRoot = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
+        guard fileManager.fileExists(atPath: sessionsRoot) else {
+            return ParseResult(usages: [], conversations: [])
+        }
+
+        var usages: [TokenUsage] = []
+        var conversations: [ConversationRecord] = []
+
+        let workspaceDirs = try fileManager.contentsOfDirectory(
+            at: URL(fileURLWithPath: sessionsRoot),
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir excluded)
+
+        var sessions: [(directory: URL, projectName: String)] = []
+        for workspaceDir in workspaceDirs {
+            let projectName = decodedWorkspaceName(from: workspaceDir.lastPathComponent)
+            let sessionDirs = try fileManager.contentsOfDirectory(
+                at: workspaceDir,
+                includingPropertiesForKeys: [.isDirectoryKey]
+            ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir excluded)
+            sessions.append(contentsOf: sessionDirs.map { ($0, projectName) })
+        }
+
+        let sessionDirs = sessions.map(\.directory)
+        let exactUsageByDirectory = exactUsageByDirectory(in: sessionDirs)
+        let reconciledExactUsage = reconciledExactUsageByDirectory(
+            in: sessionDirs,
+            exactUsageByDirectory: exactUsageByDirectory
+        )
+
+        for session in sessions {
+            let summaryURL = session.directory.appendingPathComponent("summary.json")
+            guard fileManager.fileExists(atPath: summaryURL.path) else { continue }
+
+            if let pair = try parseSession(
+                sessionDir: session.directory,
+                summaryURL: summaryURL,
+                projectName: session.projectName,
+                exactUsage: reconciledExactUsage[session.directory]
+            ), let usage = pair.usage {
+                usages.append(usage)
+                if let conversation = pair.conversation {
+                    conversations.append(conversation)
+                }
+            }
+        }
+
+        return ParseResult(usages: usages, conversations: conversations)
+    }
+
+    private func exactUsageByDirectory(in sessionDirs: [URL]) -> [URL: TokenBreakdown] {
+        var result: [URL: TokenBreakdown] = [:]
+        for sessionDir in sessionDirs {
+            if let usage = exactTurnUsage(in: sessionDir.appendingPathComponent("updates.jsonl")) {
+                result[sessionDir] = usage
+            }
+        }
+        return result
+    }
+
+    /// Grok's parent `turn_completed` usage includes all calls made by child
+    /// agents, while each child is also stored as a normal session. Keep both
+    /// rows (so existing database rows are updated in place) but subtract each
+    /// child's aggregate from its parent before persistence.
+    private func reconciledExactUsageByDirectory(
+        in sessionDirs: [URL],
+        exactUsageByDirectory: [URL: TokenBreakdown]
+    ) -> [URL: TokenBreakdown] {
+        var result = exactUsageByDirectory
+        let fileManager = FileManager.default
+        let directoriesBySessionID = Dictionary(grouping: sessionDirs, by: \.lastPathComponent)
+
+        for parentDir in sessionDirs {
+            guard let parentUsage = exactUsageByDirectory[parentDir] else { continue }
+            let metadataRoot = parentDir.appendingPathComponent("subagents", isDirectory: true)
+            guard let metadataDirs = try? fileManager.contentsOfDirectory(
+                at: metadataRoot,
+                includingPropertiesForKeys: [.isDirectoryKey]
+            ), !metadataDirs.isEmpty else { // try?-ok(non-parent sessions have no subagent metadata)
+                continue
+            }
+
+            var childAggregate = TokenBreakdown.zero
+
+            for metadataDir in metadataDirs {
+                let metadataURL = metadataDir.appendingPathComponent("meta.json")
+                guard let data = try? Data(contentsOf: metadataURL), // try?-ok(incomplete child metadata skipped)
+                      let metadata = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(malformed metadata skipped)
+                      let childSessionID = (metadata["child_session_id"] as? String)?.nilIfEmpty else {
+                    continue
+                }
+                // Session IDs are expected to be globally unique. If corrupt
+                // logs duplicate an ID across roots, skip subtraction rather
+                // than guessing which child's usage belongs to this parent.
+                if let childDirs = directoriesBySessionID[childSessionID],
+                   childDirs.count == 1,
+                   let childDir = childDirs.first,
+                   let childUsage = exactUsageByDirectory[childDir] {
+                    childAggregate = childAggregate.adding(childUsage)
+                }
+            }
+            result[parentDir] = parentUsage.subtracting(childAggregate)
+        }
+
+        return result
+    }
+
+    // MARK: - Session parsing
+
+    private func parseSession(
+        sessionDir: URL,
+        summaryURL: URL,
+        projectName: String,
+        exactUsage: TokenBreakdown?
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path)[.modificationDate]) as? Date // try?-ok(mtime falls back)
+        guard let summaryData = try? Data(contentsOf: summaryURL), // try?-ok(missing summary skipped)
+              let summary = try? JSONSerialization.jsonObject(with: summaryData) as? [String: Any] else { // try?-ok(malformed JSON skipped)
+            return nil
+        }
+
+        let info = summary["info"] as? [String: Any]
+        let sessionId = (info?["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? sessionDir.lastPathComponent
+        let cwd = (info?["cwd"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedProject = cwd.flatMap { URL(fileURLWithPath: $0).lastPathComponent } ?? projectName
+
+        let model = (summary["current_model_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty ?? "grok-build"
+
+        let startTime = parseISO8601(summary["created_at"] as? String) ?? mtime
+        let endTime = parseISO8601(summary["updated_at"] as? String)
+            ?? parseISO8601(summary["last_active_at"] as? String)
+            ?? mtime
+
+        let signalsURL = sessionDir.appendingPathComponent("signals.json")
+        let signals = loadSignals(at: signalsURL)
+        let chatHistoryURL = sessionDir.appendingPathComponent("chat_history.jsonl")
+        let chatTurns = parseChatHistory(at: chatHistoryURL)
+
+        let tokenBreakdown = tokenBreakdown(
+            from: signals,
+            chatTurns: chatTurns,
+            updatesURL: sessionDir.appendingPathComponent("updates.jsonl"),
+            exactUsage: exactUsage
+        )
+        // An exact zero is a meaningful correction: normal refresh upserts
+        // rows but does not delete a stale pre-reconciliation parent row.
+        guard tokenBreakdown.totalTokens > 0 || tokenBreakdown.isExact else { return nil }
+
+        let pricing = ModelPricing.lookup(model: model)
+        let cost = try pricing.cost(
+            inputTokens: tokenBreakdown.inputTokens,
+            outputTokens: tokenBreakdown.outputTokens + tokenBreakdown.reasoningTokens,
+            cacheCreationTokens: 0,
+            cacheReadTokens: tokenBreakdown.cacheReadTokens
+        )
+
+        let provenance: UsageProvenanceMethod = tokenBreakdown.isExact || signals?.contextTokensUsed != nil
+            ? .providerLog
+            : .heuristicEstimate
+        let confidence: UsageProvenanceConfidence = tokenBreakdown.isExact ? .exact : .lowConfidenceEstimate
+
+        let usage = TokenUsage(
+            provider: .xAI,
+            sessionId: sessionId,
+            projectName: resolvedProject,
+            model: model,
+            inputTokens: tokenBreakdown.inputTokens,
+            outputTokens: tokenBreakdown.outputTokens,
+            cacheCreationTokens: 0,
+            cacheReadTokens: tokenBreakdown.cacheReadTokens,
+            reasoningTokens: tokenBreakdown.reasoningTokens,
+            costUSD: cost,
+            startTime: startTime ?? Date(),
+            endTime: endTime ?? startTime ?? Date(),
+            provenanceMethod: provenance,
+            provenanceConfidence: confidence,
+            estimatorVersion: confidence == .exact ? "" : TokenExtractionUtility.currentEstimatorVersion
+        )
+
+        let title = (summary["generated_title"] as? String)?.nilIfEmpty
+            ?? (summary["session_summary"] as? String)?.nilIfEmpty
+            ?? sessionId
+
+        let conversation = buildConversation(
+            sessionId: sessionId,
+            projectName: resolvedProject,
+            title: title,
+            chatTurns: chatTurns,
+            startTime: startTime,
+            endTime: endTime,
+            mtime: mtime
+        )
+
+        return (usage, conversation)
+    }
+
+    // MARK: - Token breakdown
+
+    private struct GrokSignals: Sendable {
+        let contextTokensUsed: Int?
+        let userMessageCount: Int
+        let assistantMessageCount: Int
+    }
+
+    private struct TokenBreakdown: Sendable {
+        let inputTokens: Int
+        let outputTokens: Int
+        let cacheReadTokens: Int
+        let reasoningTokens: Int
+        let isExact: Bool
+
+        var totalTokens: Int {
+            inputTokens + outputTokens + cacheReadTokens + reasoningTokens
+        }
+
+        static let zero = TokenBreakdown(
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            reasoningTokens: 0,
+            isExact: true
+        )
+
+        func adding(_ other: TokenBreakdown) -> TokenBreakdown {
+            TokenBreakdown(
+                inputTokens: inputTokens + other.inputTokens,
+                outputTokens: outputTokens + other.outputTokens,
+                cacheReadTokens: cacheReadTokens + other.cacheReadTokens,
+                reasoningTokens: reasoningTokens + other.reasoningTokens,
+                isExact: isExact && other.isExact
+            )
+        }
+
+        func subtracting(_ other: TokenBreakdown) -> TokenBreakdown {
+            TokenBreakdown(
+                inputTokens: max(inputTokens - other.inputTokens, 0),
+                outputTokens: max(outputTokens - other.outputTokens, 0),
+                cacheReadTokens: max(cacheReadTokens - other.cacheReadTokens, 0),
+                reasoningTokens: max(reasoningTokens - other.reasoningTokens, 0),
+                isExact: isExact
+            )
+        }
+    }
+
+    private struct ChatTurn: Sendable {
+        let role: String
+        let content: String
+    }
+
+    private func loadSignals(at url: URL) -> GrokSignals? {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url), // try?-ok(missing signals skipped)
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON skipped)
+            return nil
+        }
+        return GrokSignals(
+            contextTokensUsed: json["contextTokensUsed"] as? Int,
+            userMessageCount: json["userMessageCount"] as? Int ?? 0,
+            assistantMessageCount: json["assistantMessageCount"] as? Int ?? 0
+        )
+    }
+
+    private func tokenBreakdown(
+        from signals: GrokSignals?,
+        chatTurns: [ChatTurn],
+        updatesURL: URL,
+        exactUsage: TokenBreakdown?
+    ) -> TokenBreakdown {
+        if let exactUsage {
+            return exactUsage
+        }
+
+        let updatesMax = maxTotalTokens(in: updatesURL)
+        let totalFromSignals = signals?.contextTokensUsed ?? 0
+        let totalTokens = max(totalFromSignals, updatesMax)
+
+        let userCount = max(
+            signals?.userMessageCount ?? 0,
+            chatTurns.filter { $0.role == "user" }.count
+        )
+        let assistantCount = max(
+            signals?.assistantMessageCount ?? 0,
+            chatTurns.filter { $0.role == "assistant" }.count
+        )
+
+        if totalTokens > 0 {
+            let denominator = max(userCount + assistantCount, 1)
+            let inputTokens = max(1, (totalTokens * userCount) / denominator)
+            let outputTokens = max(0, totalTokens - inputTokens)
+            return TokenBreakdown(
+                inputTokens: inputTokens,
+                outputTokens: outputTokens,
+                cacheReadTokens: 0,
+                reasoningTokens: 0,
+                isExact: false
+            )
+        }
+
+        let userChars = chatTurns.filter { $0.role == "user" }.reduce(0) { $0 + $1.content.count }
+        let assistantChars = chatTurns.filter { $0.role == "assistant" }.reduce(0) { $0 + $1.content.count }
+        let allContent = chatTurns.map(\.content).joined()
+        let ratio = TokenExtractionUtility.charsPerToken(for: allContent, defaultRatio: 3.5)
+        return TokenBreakdown(
+            inputTokens: TokenExtractionUtility.estimatedTokenCount(for: userChars, charsPerToken: ratio),
+            outputTokens: TokenExtractionUtility.estimatedTokenCount(for: assistantChars, charsPerToken: ratio),
+            cacheReadTokens: 0,
+            reasoningTokens: 0,
+            isExact: false
+        )
+    }
+
+    /// Grok Build emits one `turn_completed` usage payload per prompt. Its
+    /// `inputTokens` includes cached reads and `outputTokens` includes reasoning,
+    /// so split those nested buckets before constructing BurnBar's disjoint totals.
+    private func exactTurnUsage(in url: URL) -> TokenBreakdown? {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let handle = try? FileHandle(forReadingFrom: url) else { // try?-ok(unreadable falls back)
+            return nil
+        }
+        defer { try? handle.close() } // try?-ok(handle teardown)
+
+        var inputTokens = 0
+        var outputTokens = 0
+        var cacheReadTokens = 0
+        var reasoningTokens = 0
+        var foundUsage = false
+        var seenPromptIDs = Set<String>()
+
+        for line in handle.readAllUTF8Lines() {
+            guard let data = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+                continue
+            }
+            let params = json["params"] as? [String: Any]
+            let update = params?["update"] as? [String: Any] ?? json
+            guard (update["sessionUpdate"] as? String) == "turn_completed",
+                  let usage = update["usage"] as? [String: Any] else {
+                continue
+            }
+
+            if let promptID = (update["prompt_id"] as? String)?.nilIfEmpty {
+                guard seenPromptIDs.insert(promptID).inserted else { continue }
+            }
+
+            let rawInput = integerValue(usage["inputTokens"])
+            let rawOutput = integerValue(usage["outputTokens"])
+            let cacheRead = integerValue(usage["cachedReadTokens"])
+            let reasoning = integerValue(usage["reasoningTokens"])
+            let reportedTotal = integerValue(usage["totalTokens"])
+            guard rawInput > 0 || rawOutput > 0 || cacheRead > 0 || reasoning > 0 else { continue }
+
+            // Current Grok Build totals satisfy total = input + output; cache and
+            // reasoning are informative subsets of those primary buckets.
+            let nestedBucketsAreInclusive = reportedTotal > 0
+                && reportedTotal == rawInput + rawOutput
+            inputTokens += nestedBucketsAreInclusive ? max(rawInput - cacheRead, 0) : rawInput
+            outputTokens += nestedBucketsAreInclusive ? max(rawOutput - reasoning, 0) : rawOutput
+            cacheReadTokens += cacheRead
+            reasoningTokens += reasoning
+            foundUsage = true
+        }
+
+        guard foundUsage else { return nil }
+        return TokenBreakdown(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheReadTokens: cacheReadTokens,
+            reasoningTokens: reasoningTokens,
+            isExact: true
+        )
+    }
+
+    private func maxTotalTokens(in url: URL) -> Int {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let handle = try? FileHandle(forReadingFrom: url) else { // try?-ok(unreadable returns zero)
+            return 0
+        }
+        defer { try? handle.close() } // try?-ok(handle teardown)
+
+        var maxTokens = 0
+        for line in handle.readAllUTF8Lines() {
+            guard let data = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+                continue
+            }
+            if let meta = json["_meta"] as? [String: Any],
+               let total = meta["totalTokens"] as? Int {
+                maxTokens = max(maxTokens, total)
+            }
+            if let params = json["params"] as? [String: Any],
+               let meta = params["_meta"] as? [String: Any],
+               let total = meta["totalTokens"] as? Int {
+                maxTokens = max(maxTokens, total)
+            }
+            if let params = json["params"] as? [String: Any],
+               let update = params["update"] as? [String: Any],
+               let meta = update["_meta"] as? [String: Any],
+               let total = meta["totalTokens"] as? Int {
+                maxTokens = max(maxTokens, total)
+            }
+        }
+        return maxTokens
+    }
+
+    private func integerValue(_ value: Any?) -> Int {
+        if let value = value as? Int { return max(value, 0) }
+        if let value = value as? NSNumber { return max(value.intValue, 0) }
+        if let value = value as? String, let parsed = Int(value) { return max(parsed, 0) }
+        return 0
+    }
+
+    // MARK: - Chat history
+
+    private func parseChatHistory(at url: URL) -> [ChatTurn] {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let handle = try? FileHandle(forReadingFrom: url) else { // try?-ok(unreadable returns empty)
+            return []
+        }
+        defer { try? handle.close() } // try?-ok(handle teardown)
+
+        var turns: [ChatTurn] = []
+        for line in handle.readAllUTF8Lines() {
+            guard let data = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+                continue
+            }
+            let role = (json["type"] as? String)?.lowercased() ?? ""
+            guard role == "user" || role == "assistant" else { continue }
+            let content = flattenedContent(json["content"])
+            guard !content.isEmpty else { continue }
+            turns.append(ChatTurn(role: role, content: content))
+        }
+        return turns
+    }
+
+    private func flattenedContent(_ value: Any?) -> String {
+        if let text = value as? String {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let parts = value as? [[String: Any]] {
+            return parts.compactMap { part in
+                (part["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            }.filter { !$0.isEmpty }.joined(separator: "\n")
+        }
+        return ""
+    }
+
+    private func buildConversation(
+        sessionId: String,
+        projectName: String,
+        title: String,
+        chatTurns: [ChatTurn],
+        startTime: Date?,
+        endTime: Date?,
+        mtime: Date?
+    ) -> ConversationRecord? {
+        guard !chatTurns.isEmpty else { return nil }
+
+        var fullText = ""
+        var firstUser: String?
+        var lastAssistant = ""
+        var userWords = 0
+        var assistantWords = 0
+
+        for turn in chatTurns {
+            switch turn.role {
+            case "user":
+                if firstUser == nil {
+                    firstUser = String(turn.content.prefix(120))
+                }
+                userWords += wordCount(turn.content)
+                appendText(&fullText, turn.content)
+            case "assistant":
+                lastAssistant = turn.content
+                assistantWords += wordCount(turn.content)
+                appendText(&fullText, turn.content)
+            default:
+                break
+            }
+        }
+
+        return ConversationRecord(
+            id: ConversationRecord.stableId(provider: .xAI, sessionId: sessionId),
+            provider: .xAI,
+            sessionId: sessionId,
+            projectName: projectName,
+            startTime: startTime ?? mtime ?? Date(),
+            endTime: endTime ?? mtime ?? Date(),
+            messageCount: chatTurns.count,
+            userWordCount: userWords,
+            assistantWordCount: assistantWords,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: firstUser ?? title,
+            lastAssistantMessage: lastAssistant,
+            fullText: fullText,
+            indexedAt: Date(),
+            fileModifiedAt: mtime,
+            summary: title
+        )
+    }
+
+    // MARK: - Helpers
+
+    private func decodedWorkspaceName(from encoded: String) -> String {
+        encoded.removingPercentEncoding?
+            .split(separator: "/")
+            .last
+            .map(String.init) ?? encoded
+    }
+
+    func parseISO8601(_ raw: String?) -> Date? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        // Shared lock-guarded formatter pair (fractional then basic) — same
+        // acceptance as the per-call formatters this replaced, without the
+        // per-timestamp allocation cost on the log-ingestion path.
+        return ThreadSafeISO8601DateFormatter.parse(trimmed)
+    }
+
+    private func appendText(_ full: inout String, _ chunk: String) {
+        if !full.isEmpty { full += "\n\n" }
+        full += chunk
+    }
+
+    private func wordCount(_ value: String) -> Int {
+        value.split { $0.isWhitespace || $0.isNewline }.filter { !$0.isEmpty }.count
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}

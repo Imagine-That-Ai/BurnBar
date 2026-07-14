@@ -1,6 +1,10 @@
 import XCTest
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
+// Core-decomposition: reaches INTERNAL AnthropicCredentialProbe members (parse, isHealthy,
+// rateLimitHeaders) that moved from the Core monolith into OpenBurnBarQuota. The umbrella shim
+// re-exports only Quota's public API, so a direct @testable import is required.
+@testable import OpenBurnBarQuota
 
 /// Coverage for the pure / deterministic surfaces of `AnthropicCredentialProbe`.
 ///

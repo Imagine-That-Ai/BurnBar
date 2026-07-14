@@ -82,6 +82,8 @@ budgets/port-file-size-baseline.json
 budgets/windows-tree-baseline.json
 budgets/core-ui-purity-baseline.json
 budgets/mission-splitbrain-baseline.json
+budgets/core-target-membership-baseline.json
+budgets/core-umbrella-imports-baseline.json
 budgets/linux-desktop.perf.json
 # migrator-parity: annotated schema divergences between the canonical Swift GRDB
 # migrator and the Windows/Linux mirrors (scripts/check-migrator-parity.mjs).

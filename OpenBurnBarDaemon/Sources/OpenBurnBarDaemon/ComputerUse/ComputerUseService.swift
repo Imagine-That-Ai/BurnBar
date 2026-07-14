@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import OpenBurnBarComputerUseCore
 
 /// Daemon RPC facade for Computer Use session lifecycle.

@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 /// Supported providers are now derived from the catalog — any provider present in catalog.json

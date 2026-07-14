@@ -1,5 +1,5 @@
 import OpenBurnBarDaemon
-import OpenBurnBarCore
+import OpenBurnBarEngine
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)

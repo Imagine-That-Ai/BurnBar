@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 #if canImport(FoundationNetworking)
 @preconcurrency import FoundationNetworking

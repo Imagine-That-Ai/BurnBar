@@ -35,7 +35,7 @@ def _configure_repo_root(repo_root: str | None) -> None:
         return
     root = Path(repo_root).expanduser().resolve()
     ministry.REPO_ROOT = root
-    ministry.CATALOG_PATH = root / "OpenBurnBarCore" / "Sources" / "OpenBurnBarCore" / "Resources" / "catalog.json"
+    ministry.CATALOG_PATH = root / "OpenBurnBarCore" / "Sources" / "OpenBurnBarKernel" / "Resources" / "catalog.json"
     ministry.MODELS_JSON_PATHS = (
         root / "website" / "public" / "data" / "models.json",
         root / "website" / "scripts" / "rundown-seed" / "models.json",
