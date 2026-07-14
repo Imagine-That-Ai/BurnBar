@@ -150,6 +150,7 @@ jobs:
           unzip -l Vendor/burnbar-remote.aar | head -60
 
       - name: Upload AAR artifact
+        if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: burnbar-remote.aar
@@ -158,6 +159,7 @@ jobs:
           retention-days: 14
 
       - name: Upload generated Kotlin bindings
+        if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: burnbar-remote-kotlin-bindings
