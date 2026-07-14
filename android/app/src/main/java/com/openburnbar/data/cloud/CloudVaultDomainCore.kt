@@ -30,6 +30,7 @@ import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrapVaultKey
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrappingKey
 import uniffi.openburnbar_domain_ffi.cloudVaultSha256Hex
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
+import uniffi.openburnbar_domain_ffi.domainCoreVersion
 
 internal enum class CloudVaultDomainCoreMode(val wireValue: String) {
     LEGACY("legacy"),
@@ -55,6 +56,18 @@ internal data class CloudVaultDomainCoreDiagnostic(
     val abiVersion: Int,
     val category: String,
     val count: Long,
+)
+
+internal data class CloudVaultShadowComparison(
+    val domain: String = "cloudvault",
+    val slice: String,
+    val consumer: String = "android",
+    val operation: String,
+    val coreVersion: String,
+    val outcome: String,
+    val mismatchCategory: String?,
+    val legacyMicros: Long,
+    val rustMicros: Long,
 )
 
 internal data class CloudVaultAesDetachedBox(
@@ -86,6 +99,9 @@ internal object CloudVaultDomainCore {
 
     @Volatile
     internal var diagnosticOverride: ((CloudVaultDomainCoreDiagnostic) -> Unit)? = null
+
+    @Volatile
+    internal var comparisonOverride: ((CloudVaultShadowComparison) -> Unit)? = null
 
     @Volatile
     internal var abiVersionOverride: (() -> UInt)? = null
@@ -204,6 +220,7 @@ internal object CloudVaultDomainCore {
     internal fun resetTestOverrides() {
         modeOverride = null
         diagnosticOverride = null
+        comparisonOverride = null
         abiVersionOverride = null
         cachedAbiVersion = null
         diagnosticCounts.clear()
@@ -236,12 +253,32 @@ internal object CloudVaultDomainCore {
         CloudVaultDomainCoreMode.LEGACY -> legacy()
         CloudVaultDomainCoreMode.RUST -> rust()
         CloudVaultDomainCoreMode.SHADOW -> {
+            val legacyStarted = System.nanoTime()
             val legacyResult = legacy()
+            val legacyMicros = elapsedMicros(legacyStarted)
+            val rustStarted = System.nanoTime()
             val rustResult = runCatching(rust)
+            val rustMicros = elapsedMicros(rustStarted)
+            val matches = rustResult.isSuccess && equivalent(legacyResult, rustResult.getOrThrow())
             when {
                 rustResult.isFailure -> record(operation, "rust_error")
-                !equivalent(legacyResult, rustResult.getOrThrow()) -> record(operation, "mismatch")
+                !matches -> record(operation, "mismatch")
             }
+            comparisonOverride?.invoke(
+                CloudVaultShadowComparison(
+                    slice = sliceFor(operation),
+                    operation = operation,
+                    coreVersion = runCatching(::domainCoreVersion).getOrDefault("0.0.0-native-unavailable"),
+                    outcome = if (matches) "match" else "mismatch",
+                    mismatchCategory = when {
+                        matches -> null
+                        rustResult.isFailure -> "native_error"
+                        else -> "result_mismatch"
+                    },
+                    legacyMicros = legacyMicros,
+                    rustMicros = rustMicros,
+                ),
+            )
             legacyResult
         }
     }
@@ -332,6 +369,16 @@ internal object CloudVaultRecoveryDomainCore {
         legacy = legacy,
         rust = { cloudVaultEscrowOpen(wire, sharedSecret) },
     )
+}
+
+private fun elapsedMicros(startedNanos: Long): Long = ((System.nanoTime() - startedNanos) / 1_000)
+    .coerceIn(0, 600_000_000)
+
+private fun sliceFor(operation: String): String = when {
+    operation.contains("escrow") -> "escrow"
+    operation.contains("recovery") -> "recovery"
+    operation.contains("aes") || operation.contains("seal") || operation.contains("open") -> "aes"
+    else -> "foundation"
 }
 
 private object CloudVaultLegacyCrypto {

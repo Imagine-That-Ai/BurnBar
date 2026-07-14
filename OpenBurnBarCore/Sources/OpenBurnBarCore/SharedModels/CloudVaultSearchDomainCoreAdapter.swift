@@ -132,21 +132,27 @@ enum CloudVaultSearchDomainCoreAdapter {
         guard mode != .legacy else { return try legacy() }
 
         let legacyHashes: [String]?
+        let legacyMicros: UInt64
         if mode == .shadow {
+            let started = Date.timeIntervalSinceReferenceDate
             legacyHashes = try legacy()
+            legacyMicros = elapsedMicros(since: started)
         } else {
             legacyHashes = nil
+            legacyMicros = 0
         }
 
         guard let backend else {
             emit(operation: operation, category: "native_unavailable", core: "unavailable", logger: logger)
             guard mode == .shadow else { throw CloudVaultSearchDomainCoreAdapterError.nativeUnavailable }
+            record(operation, false, "native_unavailable", "0.0.0-native-unavailable", legacyMicros, 0)
             return try requiredShadowValue(legacyHashes)
         }
 
         guard backend.abiVersion() == requiredABIVersion else {
             emit(operation: operation, category: "abi_mismatch", core: "incompatible", logger: logger)
             guard mode == .shadow else { throw CloudVaultSearchDomainCoreAdapterError.abiMismatch }
+            record(operation, false, "native_unavailable", "0.0.0-abi-mismatch", legacyMicros, 0)
             return try requiredShadowValue(legacyHashes)
         }
         let coreVersion = backend.coreVersion()
@@ -154,10 +160,12 @@ enum CloudVaultSearchDomainCoreAdapter {
         guard let ffiLimit = Int32(exactly: limit) else {
             emit(operation: operation, category: "invalid_input", core: coreVersion, logger: logger)
             guard mode == .shadow else { throw CloudVaultSearchDomainCoreAdapterError.invalidInput }
+            record(operation, false, "invalid_result", coreVersion, legacyMicros, 0)
             return try requiredShadowValue(legacyHashes)
         }
 
         let rustHashes: [String]
+        let rustStarted = Date.timeIntervalSinceReferenceDate
         do {
             rustHashes = try backend.search(operation, text, keyData, ffiLimit)
         } catch {
@@ -168,15 +176,49 @@ enum CloudVaultSearchDomainCoreAdapter {
                 }
                 throw CloudVaultSearchDomainCoreAdapterError.nativeFailure
             }
+            record(operation, false, "native_error", coreVersion, legacyMicros, elapsedMicros(since: rustStarted))
             return try requiredShadowValue(legacyHashes)
         }
 
         guard mode == .shadow else { return rustHashes }
         guard let legacyHashes else { throw CloudVaultSearchDomainCoreAdapterError.invalidResult }
-        if legacyHashes != rustHashes {
+        let matches = legacyHashes == rustHashes
+        if !matches {
             emit(operation: operation, category: "value_mismatch", core: coreVersion, logger: logger)
         }
+        record(
+            operation,
+            matches,
+            matches ? nil : "result_mismatch",
+            coreVersion,
+            legacyMicros,
+            elapsedMicros(since: rustStarted)
+        )
         return legacyHashes
+    }
+
+    private static func elapsedMicros(since started: TimeInterval) -> UInt64 {
+        UInt64(min(600_000_000, max(0, ((Date.timeIntervalSinceReferenceDate - started) * 1_000_000).rounded())))
+    }
+
+    private static func record(
+        _ operation: CloudVaultSearchDomainCoreOperation,
+        _ matches: Bool,
+        _ category: String?,
+        _ coreVersion: String,
+        _ legacyMicros: UInt64,
+        _ rustMicros: UInt64
+    ) {
+        DomainCoreShadowComparisonCollector.record(.init(
+            domain: "cloudvault",
+            slice: "search",
+            operation: operation.rawValue,
+            coreVersion: coreVersion,
+            outcome: matches ? "match" : "mismatch",
+            mismatchCategory: category,
+            legacyMicros: legacyMicros,
+            rustMicros: rustMicros
+        ))
     }
 
     private static func requiredShadowValue(_ value: [String]?) throws -> [String] {

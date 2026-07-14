@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarKernel
 import XCTest
 @testable import OpenBurnBar
 
@@ -10,7 +11,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         XCTAssertEqual(Set(object.keys), Set([
-            "schemaVersion", "sampleId", "domain", "consumer", "channel", "operation",
+            "schemaVersion", "sampleId", "domain", "slice", "consumer", "channel", "operation",
             "coreVersion", "observedAt", "outcome", "mismatchCategory", "legacyMicros", "rustMicros"
         ]))
         XCTAssertTrue(object["mismatchCategory"] is NSNull)
@@ -41,6 +42,32 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertEqual(readyFiles.count, 2)
         XCTAssertEqual(batch.samples.single?.legacyMicros, 2)
         XCTAssertEqual(batch.token, "ready-00000000000000000001.jsonl")
+    }
+
+    func testGenericCollectorBuildsValidatedV2SamplesForEveryAppleDomain() throws {
+        for (domain, slice, operation) in [
+            ("cloudvault", "search", "query"),
+            ("hermes", "ratchet", "ratchet_chain_kdf"),
+            ("pricing", "token-cost", "calculate_token_cost")
+        ] {
+            let sample = try XCTUnwrap(DomainCoreShadowSampleV2(
+                comparison: .init(
+                    domain: domain,
+                    slice: slice,
+                    operation: operation,
+                    coreVersion: "0.3.0",
+                    outcome: "match",
+                    mismatchCategory: nil,
+                    legacyMicros: 10,
+                    rustMicros: 8
+                ),
+                channel: "internal"
+            ))
+            XCTAssertEqual(sample.schemaVersion, 2)
+            XCTAssertEqual(sample.domain, domain)
+            XCTAssertEqual(sample.slice, slice)
+            XCTAssertEqual(sample.consumer, "apple")
+        }
     }
 
     func testUnacknowledgedBatchIsReturnedForRetryUntilAcknowledged() throws {
@@ -98,8 +125,8 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertThrowsError(try spool.nextBatch(sealActive: false))
     }
 
-    private func makeSample(micros: UInt64 = 120) -> DomainCoreShadowSampleV1? {
-        DomainCoreShadowSampleV1(
+    private func makeSample(micros: UInt64 = 120) -> DomainCoreShadowSampleV2? {
+        DomainCoreShadowSampleV2(
             comparison: DomainCoreQuotaShadowComparison(
                 operation: "claude_quota",
                 coreVersion: "0.3.0",
@@ -121,7 +148,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
 private actor RecordingDomainCoreShadowSubmitter: DomainCoreShadowSampleSubmitting {
     private var sizes: [Int] = []
 
-    func submit(_ samples: [DomainCoreShadowSampleV1]) async throws {
+    func submit(_ samples: [DomainCoreShadowSampleV2]) async throws {
         sizes.append(samples.count)
     }
 

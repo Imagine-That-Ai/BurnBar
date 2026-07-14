@@ -2,24 +2,28 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   DOMAIN_CORE_SHADOW_RETENTION_MS,
+  buildDomainCoreShadowSampleV2,
   enforceDomainCoreShadowChannelClaim,
   parseDomainCoreShadowSampleRequest,
   persistDomainCoreShadowSamples,
   storedDomainCoreShadowSample,
   storedDomainCoreShadowSampleMatches,
+  type DomainCoreShadowSampleV2,
 } from "../domainCoreShadowEvidence.js";
 
 type DomainCoreShadowStore = Parameters<typeof persistDomainCoreShadowSamples>[0];
 
-type DomainCoreShadowSampleV1 = ReturnType<typeof parseDomainCoreShadowSampleRequest>[number];
+type DomainCoreShadowSample = ReturnType<typeof parseDomainCoreShadowSampleRequest>[number];
+type DomainCoreShadowSampleV1 = Extract<DomainCoreShadowSample, { schemaVersion: 1 }>;
 
 const NOW = Date.parse("2026-07-13T12:00:00.000Z");
 
-function sample(overrides: Partial<DomainCoreShadowSampleV1> = {}): DomainCoreShadowSampleV1 {
+function sample(overrides: Partial<DomainCoreShadowSampleV2> = {}): DomainCoreShadowSampleV2 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sampleId: "00000000-0000-4000-8000-000000000001",
     domain: "quota",
+    slice: "claude",
     consumer: "apple",
     channel: "internal",
     operation: "claude_quota",
@@ -51,7 +55,47 @@ describe("domain-core shadow evidence contract", () => {
       "rustMicros",
       "sampleId",
       "schemaVersion",
+      "slice",
     ]);
+  });
+
+  it("keeps V1 quota samples readable without converting them into V2 coverage", () => {
+    const { slice: _slice, ...legacyBase } = sample();
+    const legacy: DomainCoreShadowSampleV1 = {
+      ...legacyBase,
+      schemaVersion: 1,
+      domain: "quota",
+      consumer: "apple",
+      operation: "claude_quota",
+    };
+    const parsed = parseDomainCoreShadowSampleRequest({ samples: [legacy] }, NOW);
+
+    expect(parsed).toEqual([legacy]);
+    expect("slice" in (parsed[0] as DomainCoreShadowSample)).toBe(false);
+  });
+
+  it.each([
+    ["quota", "claude", "apple", "claude_quota"],
+    ["cloudvault", "foundation", "console", "cloudvault_aad_v2"],
+    ["hermes", "ratchet", "android", "ratchet_kdf"],
+    ["pricing", "token-cost", "functions", "calculate_token_cost"],
+  ] as const)("builds a validated generic V2 %s collector sample", (domain, slice, consumer, operation) => {
+    const built = buildDomainCoreShadowSampleV2(
+      {
+        domain,
+        slice,
+        consumer,
+        channel: "internal",
+        operation,
+        coreVersion: "0.3.0",
+        outcome: "match",
+        mismatchCategory: null,
+        legacyMicros: 10,
+        rustMicros: 8,
+      },
+      { nowMillis: NOW, sampleId: "00000000-0000-4000-8000-000000000099" },
+    );
+    expect(built).toMatchObject({ schemaVersion: 2, domain, slice, consumer, operation });
   });
 
   it.each([
@@ -62,6 +106,9 @@ describe("domain-core shadow evidence contract", () => {
     ["unsafe timing", { samples: [sample({ rustMicros: Number.MAX_SAFE_INTEGER + 1 })] }],
     ["non-UTC timestamp", { samples: [sample({ observedAt: "2026-07-13T11:59:59+00:00" })] }],
     ["stale sample", { samples: [sample({ observedAt: "2026-05-01T00:00:00.000Z" })] }],
+    ["invented domain", { samples: [sample({ domain: "logs" as "quota" })] }],
+    ["invalid slice consumer", { samples: [sample({ domain: "pricing", slice: "legacy-kimi", consumer: "apple" })] }],
+    ["quota slice mismatch", { samples: [sample({ slice: "codex" })] }],
   ])("rejects %s", (_label, request) => {
     expect(() => parseDomainCoreShadowSampleRequest(request, NOW)).toThrow();
   });
