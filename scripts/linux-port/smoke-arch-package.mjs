@@ -10,6 +10,7 @@ import {
 } from './lib/linux-release-common.mjs';
 import { installedPackageVerificationStep } from './lib/linux-package-smoke-installed.mjs';
 import {
+  archDependencyPackagesForInstall,
   archPackageRemovalCandidates,
   inspectArchPackageDependencies,
   remainingFilesystemEntriesNoFollow
@@ -23,11 +24,7 @@ const artifact = artifacts[0];
 const full = readRecordedFile(artifact, 'Arch package artifact').file;
 const steps = [];
 const dependencies = inspectArchPackageDependencies(full);
-const dependencyPackages = [...new Set(dependencies.map((dependency) => {
-  const match = /^([a-z0-9@._+:-]+)/u.exec(dependency);
-  if (!match) throw new Error(`Arch dependency cannot be installed safely: ${dependency}`);
-  return match[1];
-}))];
+const dependencyPackages = archDependencyPackagesForInstall(dependencies);
 
 steps.push(runStep('pacman', ['-Qip', full]));
 steps.push(runStep('pacman', ['-Qlp', full]));

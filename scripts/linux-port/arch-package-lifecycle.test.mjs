@@ -18,6 +18,7 @@ import {
 } from './lib/linux-installed-manifest.mjs';
 import {
   ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST,
+  archDependencyPackagesForInstall,
   archPackageRemovalCandidates,
   assertSafeArchiveMemberNames,
   extractPreflightedArchiveBytes,
@@ -181,6 +182,24 @@ test('Arch manager metadata is read from the package .PKGINFO', {
     packageArchitecture: 'x86_64'
   });
   assert.deepEqual(inspectArchPackageDependencies(artifact), ['gtk3', 'nodejs>=22']);
+});
+
+test('Arch prerequisite installation pins the virtual font provider for noninteractive pacman', () => {
+  assert.deepEqual(
+    archDependencyPackagesForInstall(['gtk3', 'nodejs>=22', 'ttf-dejavu']),
+    ['gtk3', 'nodejs', 'ttf-dejavu']
+  );
+  assert.deepEqual(
+    archDependencyPackagesForInstall(['gtk3']),
+    ['gtk3', 'ttf-dejavu']
+  );
+});
+
+test('Arch prerequisite installation rejects malformed dependency names', () => {
+  assert.throws(
+    () => archDependencyPackagesForInstall(['gtk3', '$(id)']),
+    /cannot be installed safely/u
+  );
 });
 
 test('Arch extraction preflight permits only known package metadata beside /usr', () => {

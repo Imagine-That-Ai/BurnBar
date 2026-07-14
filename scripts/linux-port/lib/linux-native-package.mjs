@@ -19,6 +19,15 @@ export const ARCH_PACKAGE_PRIVATE_DIRECTORIES = Object.freeze([
   '/usr/share/openburnbar'
 ]);
 
+// Pacman cannot resolve virtual dependencies non-interactively with only
+// --noconfirm.  The GTK/WebKit runtime pulls in the virtual `ttf-font`
+// dependency, so pin the provider used by the release smoke/lifecycle jobs.
+// This is deliberately an install-time prerequisite, not a product package
+// dependency: the package's declared dependency set remains release-owned.
+export const ARCH_NONINTERACTIVE_PROVIDER_PACKAGES = Object.freeze([
+  'ttf-dejavu'
+]);
+
 function runBinary(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
@@ -148,6 +157,21 @@ export function inspectArchPackageDependencies(artifact, { env = process.env } =
     }
   }
   return dependencies;
+}
+
+export function archDependencyPackagesForInstall(dependencies) {
+  if (!Array.isArray(dependencies) || dependencies.length === 0) {
+    throw new Error('Arch package dependency list is empty');
+  }
+  const packageNames = dependencies.map((dependency) => {
+    if (typeof dependency !== 'string') {
+      throw new Error(`Arch dependency cannot be installed safely: ${dependency}`);
+    }
+    const match = /^([a-z0-9@._+:-]+)/u.exec(dependency);
+    if (!match) throw new Error(`Arch dependency cannot be installed safely: ${dependency}`);
+    return match[1];
+  });
+  return [...new Set([...packageNames, ...ARCH_NONINTERACTIVE_PROVIDER_PACKAGES])];
 }
 
 export function extractNativePackage(format, artifact, destination, { env = process.env } = {}) {

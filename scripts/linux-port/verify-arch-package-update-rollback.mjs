@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  archDependencyPackagesForInstall,
   inspectArchPackageDependencies,
   inspectNativePackageMetadata,
   verifySignedNativePackage
@@ -96,11 +97,7 @@ const previousProvenance = authenticatePreviousRelease({
 });
 
 const dependencies = inspectArchPackageDependencies(candidate);
-const dependencyPackages = [...new Set(dependencies.map((dependency) => {
-  const match = /^([a-z0-9@._+:-]+)/u.exec(dependency);
-  if (!match) throw new Error(`Arch dependency cannot be installed safely: ${dependency}`);
-  return match[1];
-}))];
+const dependencyPackages = archDependencyPackagesForInstall(dependencies);
 const steps = [];
 runRequired('pacman', ['-Syu', '--noconfirm', '--needed', ...dependencyPackages]);
 runRequired('pacman', ['-T', ...dependencies]);
