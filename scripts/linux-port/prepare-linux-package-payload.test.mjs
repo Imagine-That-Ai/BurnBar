@@ -98,7 +98,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('payload staging dereferences absolute SQLCipher SONAME links', () => {
+test('payload staging dereferences SQLCipher SONAME links', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-package-payload-links-'));
   const daemon = path.join(root, 'daemon');
   const bridge = path.join(root, 'bridge');
@@ -118,7 +118,7 @@ test('payload staging dereferences absolute SQLCipher SONAME links', () => {
   fs.mkdirSync(sqlcipher);
   fs.writeFileSync(sqlcipherBinary, 'sqlcipher');
   fs.symlinkSync(sqlcipherBinary, path.join(sqlcipher, 'libsqlcipher.so.0'));
-  fs.symlinkSync(sqlcipherBinary, path.join(sqlcipher, 'libsqlcipher.so'));
+  fs.symlinkSync('libsqlcipher.so.0', path.join(sqlcipher, 'libsqlcipher.so'));
   fs.writeFileSync(iroh, 'iroh');
   fs.writeFileSync(releasePublicKey, 'public-key');
 

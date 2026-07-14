@@ -133,11 +133,10 @@ function copySqlcipherRuntime(source, destination) {
       continue;
     }
 
-    // Homebrew/CI installs can emit absolute SONAME links into the build prefix.
-    // Dereference links that stay inside this runtime directory so the packaged
-    // AppImage never contains a host-specific path. Relative in-tree links are
-    // kept as portable links to avoid needlessly duplicating the library bytes.
-    const linkTarget = fs.readlinkSync(sourcePath);
+    // Homebrew/CI installs can emit absolute SONAME links into the build prefix,
+    // and AppImage extraction can rewrite even relative links to an absolute
+    // AppDir path. Dereference every in-tree link so no host or AppDir path can
+    // leak into the package.
     const targetPath = fs.realpathSync(sourcePath);
     const relativeTarget = path.relative(sourceRoot, targetPath);
     if (!relativeTarget || relativeTarget.startsWith(`..${path.sep}`)
@@ -147,14 +146,7 @@ function copySqlcipherRuntime(source, destination) {
     if (!fs.statSync(targetPath).isFile()) {
       throw new Error(`SQLCipher runtime symlink target is not a regular file: ${sourcePath}`);
     }
-    if (path.isAbsolute(linkTarget)) {
-      fs.cpSync(targetPath, destinationPath, { preserveTimestamps: true });
-    } else {
-      fs.symlinkSync(
-        path.relative(path.dirname(destinationPath), path.join(destination, relativeTarget)),
-        destinationPath
-      );
-    }
+    fs.cpSync(targetPath, destinationPath, { preserveTimestamps: true });
   }
   return entries;
 }
