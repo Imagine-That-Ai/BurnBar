@@ -9,6 +9,7 @@ using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Presentation.Projects;
+using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.UsageRuntime;
 
 namespace OpenBurnBar.App;
