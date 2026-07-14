@@ -430,16 +430,20 @@ targets:
       # `@testable import` them to reach INTERNAL symbols that moved out of the Core monolith
       # (Quota: WarpQuotaAdapter.candidateLogFiles, AntigravityQuotaAdapter.referenceDate*,
       # XAIQuotaAdapter.superGrokLogURL, ClaudeOAuthUsageFetcher.scopedCacheURL,
-      # FactoryQuotaAdapter.inferPlanTier; Kernel: OpenBurnBarError.database; LogParsers:
-      # TimestampNormalizationUtility.firestoreMaxEpochSeconds). Redundant for runtime — the linked
-      # OpenBurnBarCore umbrella already `@_exported import`s all three — but required for internal
-      # @testable access, mirroring the other explicitly-linked-yet-re-exported siblings above.
+      # FactoryQuotaAdapter.inferPlanTier, AnthropicCredentialProbe.{parse,isHealthy,rateLimitHeaders},
+      # ClaudeQuotaAdapter.scopedClaudeProfileMatchesDefaultLogin; Kernel: OpenBurnBarError.database;
+      # LogParsers: TimestampNormalizationUtility.firestoreMaxEpochSeconds, TokenUsage bucket helpers;
+      # UI: SwarmCanvasView.{sanitizedFrameRate,animationFrameScale,shouldDrawGlyphParticle}). Redundant
+      # for runtime — the linked OpenBurnBarCore umbrella already `@_exported import`s all of them — but
+      # required for internal @testable access, mirroring the other explicitly-linked siblings above.
       - package: OpenBurnBarCore
         product: OpenBurnBarQuota
       - package: OpenBurnBarCore
         product: OpenBurnBarKernel
       - package: OpenBurnBarCore
         product: OpenBurnBarLogParsers
+      - package: OpenBurnBarCore
+        product: OpenBurnBarUI
       - package: GRDB
         product: GRDB
       - package: SQLCipher
