@@ -96,15 +96,24 @@ enum OpenBurnBarDaemonBinaryResolver {
         return frameworks
     }
 
+    /// Default bundle-name search list for the Core resource bundle (current name +
+    /// first legacy name). Hoisted to a stored constant so the `resolveResourceBundle`
+    /// default argument is a single non-executable reference rather than a multi-line
+    /// literal — the multi-line default-arg form produced ambiguous per-line coverage
+    /// regions for the app xccov diff-coverage gate (it intermittently reported the
+    /// signature lines as "missing_line_evidence" even though every call site is
+    /// exercised). Same values, one canonical definition.
+    static let coreResourceBundleSearchNames: [String] = [
+        OpenBurnBarDaemonManager.resourceBundleName,
+        OpenBurnBarDaemonManager.legacyResourceBundleNames[0]
+    ]
+
     /// Locates the OpenBurnBarCore resource bundle that must be installed alongside the daemon binary.
     static func resolveResourceBundle(
         nearBinaryURL: URL,
         appBundleURL: URL,
         fileManager: FileManager,
-        bundleNames: [String] = [
-            OpenBurnBarDaemonManager.resourceBundleName,
-            OpenBurnBarDaemonManager.legacyResourceBundleNames[0]
-        ]
+        bundleNames: [String] = OpenBurnBarDaemonBinaryResolver.coreResourceBundleSearchNames
     ) -> URL? {
         let binaryDirectory = nearBinaryURL.deletingLastPathComponent()
         let appParent = appBundleURL.deletingLastPathComponent()
