@@ -255,3 +255,13 @@ test('P-40 live session contract rejects fixture mode and unsafe retention bound
     environmentId: ENVIRONMENT, targetHead: HEAD, candidateRunId: RUN_ID, candidateArtifactDigest: DIGEST
   }), /safety bounds/u);
 });
+
+test('P-40 materializer selects the candidate-bound installed privacy proof', () => {
+  const registry = JSON.parse(fs.readFileSync('docs/linux-port/product-feature-proof-registry.json', 'utf8'));
+  const contract = registry.requirements.find((entry) => entry.requirementId === 'P-40');
+  assert.deepEqual(contract?.artifacts, [{
+    role: P40_PROOF_ROLE,
+    mediaType: 'application/json',
+    maxBytes: 1_048_576
+  }]);
+});
