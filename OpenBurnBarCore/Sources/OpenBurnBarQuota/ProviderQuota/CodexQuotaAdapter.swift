@@ -180,7 +180,7 @@ public struct CodexQuotaAdapter: ProviderQuotaAdapter {
     }
 }
 
-private enum CodexOAuthQuotaFetcher {
+enum CodexOAuthQuotaFetcher {
     private static let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
     private static let authRefreshGrace: TimeInterval = 8 * 24 * 60 * 60
 
@@ -194,21 +194,24 @@ private enum CodexOAuthQuotaFetcher {
         }
 
         do {
-            return try await fetchUsageSnapshot(accessToken: auth.accessToken, session: context.session)
+            return try await fetchUsageSnapshot(accessToken: auth.accessToken, context: context)
         } catch CodexOAuthQuotaError.unauthorized {
             await nudgeCodexAuthRefresh(context: context, configURL: configURL)
             auth = try loadAuth(from: authURL)
-            return try await fetchUsageSnapshot(accessToken: auth.accessToken, session: context.session)
+            return try await fetchUsageSnapshot(accessToken: auth.accessToken, context: context)
         }
     }
 
-    private static func fetchUsageSnapshot(accessToken: String, session: URLSession) async throws -> ProviderQuotaSnapshot {
+    private static func fetchUsageSnapshot(
+        accessToken: String,
+        context: ProviderQuotaAdapterContext
+    ) async throws -> ProviderQuotaSnapshot {
         var request = URLRequest(url: usageURL)
         request.httpMethod = "GET"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await context.session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw CodexOAuthQuotaError.invalidResponse
         }
@@ -219,8 +222,33 @@ private enum CodexOAuthQuotaFetcher {
             throw CodexOAuthQuotaError.invalidResponse
         }
 
-        let payload = try JSONDecoder().decode(CodexUsagePayload.self, from: data)
         let now = Date()
+        return try parseUsageSnapshot(
+            data,
+            now: now,
+            environment: context.environment,
+            quotaLogger: context.quotaLogger
+        )
+    }
+
+    static func parseUsageSnapshot(
+        _ data: Data,
+        now: Date,
+        environment: [String: String],
+        quotaLogger: any QuotaLogger
+    ) throws -> ProviderQuotaSnapshot {
+        try CodexQuotaDomainCoreAdapter.snapshot(
+            payload: data,
+            now: now,
+            environment: environment,
+            quotaLogger: quotaLogger
+        ) {
+            try legacyUsageSnapshot(data, now: now)
+        }
+    }
+
+    private static func legacyUsageSnapshot(_ data: Data, now: Date) throws -> ProviderQuotaSnapshot {
+        let payload = try JSONDecoder().decode(CodexUsagePayload.self, from: data)
         var buckets = rateLimitBuckets(
             payload.rateLimit,
             prefix: "codex",

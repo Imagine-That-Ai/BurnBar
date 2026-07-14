@@ -213,7 +213,7 @@ public final class CodexParser: LogParser, Sendable {
 
             if inputTokens > 0 || outputTokens > 0 {
                 let pricing = ModelPricing.lookup(model: model)
-                let cost = pricing.cost(
+                let cost = try pricing.cost(
                     inputTokens: inputTokens,
                     outputTokens: outputTokens,
                     cacheReadTokens: cacheReadTokens

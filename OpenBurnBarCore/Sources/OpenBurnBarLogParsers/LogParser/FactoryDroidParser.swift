@@ -323,7 +323,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
             || tokenData.cacheRead > 0 else { return nil }
 
         let pricing = ModelPricing.lookup(model: tokenData.model, providerID: "factory")
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: tokenData.input,
             outputTokens: tokenData.output,
             cacheCreationTokens: tokenData.cacheCreation,

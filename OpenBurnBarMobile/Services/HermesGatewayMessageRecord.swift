@@ -278,7 +278,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             return resolved
         }
         do {
-            let keyAAD = HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: id)
+            let keyAAD = try HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: id)
             let keyData: Data
             if relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersion {
                 guard relayEncryption == HermesRelayCrypto.algorithm else { return resolved }
@@ -305,7 +305,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             let plaintext = try HermesRelayCrypto.openBase64(
                 ciphertext: payloadCiphertext,
                 keyData: keyData,
-                aad: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: id)
+                aad: try HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: id)
             )
             // MP-27: the agent seals JSON {text, actionId?, kind?}; decode it (never
             // render the raw bytes, which would show literal `{"text":...}`). A
@@ -386,7 +386,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             let plaintext = try HermesRatchetCrypto.decrypt(
                 envelope,
                 state: &state,
-                associatedData: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: id)
+                associatedData: try HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: id)
             )
             try HermesGatewayRatchetSessionStore.save(state)
             try HermesGatewayRatchetSessionStore.saveCurrentChatSessionID(state.sessionID, uid: uid, clientId: clientId)

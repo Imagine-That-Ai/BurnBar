@@ -10,6 +10,23 @@ namespace OpenBurnBar.App.Quota.Tests;
 /// </summary>
 public sealed class CodexUsageQuotaParserTests
 {
+    [Theory]
+    [InlineData((int)DomainCoreQuotaMigrationMode.Shadow)]
+    [InlineData((int)DomainCoreQuotaMigrationMode.Rust)]
+    public void Parse_RecordedUsagePayload_DomainCoreModesMatchCanonicalFixture(
+        int rawMode)
+    {
+        var mode = (DomainCoreQuotaMigrationMode)rawMode;
+        var input = QuotaFixtures.ReadInput("codex-usage-input.json");
+        var expected = QuotaFixtures.ReadExpected("codex-usage-expected.json");
+        var now = DateTimeOffset.FromUnixTimeSeconds(expected.NowUnix!.Value);
+
+        var snapshot = CodexUsageQuotaParser.Parse(input, now, mode);
+
+        Assert.NotNull(snapshot);
+        QuotaFixtures.AssertMatches(snapshot!, expected);
+    }
+
     [Fact]
     public void Parse_RecordedUsagePayload_MatchesExpectedValueForValue()
     {
@@ -75,5 +92,9 @@ public sealed class CodexUsageQuotaParserTests
 
         Assert.Null(CodexUsageQuotaParser.Parse("{ \"plan_type\": \"pro\" }", now));
         Assert.Null(CodexUsageQuotaParser.Parse("not json", now));
+        Assert.Null(CodexUsageQuotaParser.Parse(
+            "{ \"plan_type\": \"pro\" }", now, DomainCoreQuotaMigrationMode.Rust));
+        Assert.Null(CodexUsageQuotaParser.Parse(
+            "not json", now, DomainCoreQuotaMigrationMode.Rust));
     }
 }

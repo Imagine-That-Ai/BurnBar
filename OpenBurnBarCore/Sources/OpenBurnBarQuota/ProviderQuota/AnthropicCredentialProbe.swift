@@ -137,6 +137,29 @@ public struct RateLimitHeaders: Sendable, Equatable {
                 outputTokensResetSeconds: doubleValue("anthropic-ratelimit-output-tokens-reset")
             )
         }
+
+        static func payload(from response: HTTPURLResponse) -> Data {
+            let names = [
+                "anthropic-ratelimit-unified-tokens-limit",
+                "anthropic-ratelimit-unified-tokens-remaining",
+                "anthropic-ratelimit-unified-tokens-reset",
+                "anthropic-ratelimit-requests-limit",
+                "anthropic-ratelimit-requests-remaining",
+                "anthropic-ratelimit-requests-reset",
+                "anthropic-ratelimit-input-tokens-limit",
+                "anthropic-ratelimit-input-tokens-remaining",
+                "anthropic-ratelimit-input-tokens-reset",
+                "anthropic-ratelimit-output-tokens-limit",
+                "anthropic-ratelimit-output-tokens-remaining",
+                "anthropic-ratelimit-output-tokens-reset"
+            ]
+            let values = names.reduce(into: [String: String]()) { payload, name in
+                if let value = response.value(forHTTPHeaderField: name) {
+                    payload[name] = value
+                }
+            }
+            return (try? JSONSerialization.data(withJSONObject: values, options: [.sortedKeys])) ?? Data()
+        }
     }
 
 public struct Result: Sendable, Equatable {
@@ -145,6 +168,7 @@ public struct Result: Sendable, Equatable {
         let redactedLabel: String
         let probedAt: Date
         let rateLimitHeaders: RateLimitHeaders
+        let rateLimitHeaderPayload: Data
 
         var isHealthy: Bool { verdict.isHealthy }
     }
@@ -222,7 +246,8 @@ public func probe(credential rawCredential: String) async -> Result {
                 shape: shape,
                 redactedLabel: label,
                 probedAt: clock(),
-                rateLimitHeaders: .empty
+                rateLimitHeaders: .empty,
+                rateLimitHeaderPayload: Data()
             )
         }
         let request = built.request
@@ -236,20 +261,30 @@ public func probe(credential rawCredential: String) async -> Result {
                     shape: shape,
                     redactedLabel: label,
                     probedAt: clock(),
-                    rateLimitHeaders: .empty
+                    rateLimitHeaders: .empty,
+                    rateLimitHeaderPayload: Data()
                 )
             }
             let bodyText = String(data: data, encoding: .utf8) ?? ""
             let verdict = classify(status: http.statusCode, body: bodyText)
             let headers = RateLimitHeaders.parse(from: http)
-            return Result(verdict: verdict, shape: shape, redactedLabel: label, probedAt: clock(), rateLimitHeaders: headers)
+            let headerPayload = RateLimitHeaders.payload(from: http)
+            return Result(
+                verdict: verdict,
+                shape: shape,
+                redactedLabel: label,
+                probedAt: clock(),
+                rateLimitHeaders: headers,
+                rateLimitHeaderPayload: headerPayload
+            )
         } catch {
             return Result(
                 verdict: .networkError(message: error.localizedDescription),
                 shape: shape,
                 redactedLabel: label,
                 probedAt: clock(),
-                rateLimitHeaders: .empty
+                rateLimitHeaders: .empty,
+                rateLimitHeaderPayload: Data()
             )
         }
     }

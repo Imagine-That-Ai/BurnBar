@@ -39,6 +39,7 @@ on:
       # full suite too.
       - "crates/burnbar-remote/bindings/csharp/**"
       - "crates/openburnbar-iroh/bindings/csharp/**"
+      - "crates/openburnbar-domain-core/**"
       - ".github/workflows/pr-windows-full.yml"
   pull_request:
     branches: [main]
@@ -92,7 +93,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|crates/burnbar-remote/bindings/csharp/|crates/openburnbar-iroh/bindings/csharp/|OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/|AgentLensTests/Fixtures/|\.github/workflows/pr-windows-full\.yml)'; then
+            '^(windows/|crates/burnbar-remote/bindings/csharp/|crates/openburnbar-iroh/bindings/csharp/|crates/openburnbar-domain-core/|OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/|AgentLensTests/Fixtures/|\.github/workflows/pr-windows-full\.yml)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Windows full-suite surface changed: running x64 + ARM64 full-suite legs."
           else
@@ -129,6 +130,11 @@ jobs:
             8.0.x
             10.0.x
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
       - name: Verify Windows solution
         run: |
           if (-not (Test-Path "windows/OpenBurnBar.sln")) {
@@ -141,6 +147,9 @@ jobs:
       # SQLitePCLRaw.bundle_e_sqlcipher, xunit) in one pass.
       - name: Restore (dotnet restore)
         run: dotnet restore windows/OpenBurnBar.sln
+
+      - name: Build native shared domain core
+        run: cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
 
       # Build the full solution in Debug. The WinUI app builds to full
       # XamlCompiler completion (proven by #1248 on physical Windows). The
@@ -155,6 +164,8 @@ jobs:
       # match), presentation (budget, memory, switcher, insights), onboarding,
       # shell, components, theme, signal-interop. xunit collects + reports.
       - name: Test (dotnet test — full suite)
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-x64.trx" --results-directory TestResults-x64
 
       # Publish the TRX results so a red fixture is inspectable in the Actions UI.
@@ -200,6 +211,11 @@ jobs:
             8.0.x
             10.0.x
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
       - name: Verify Windows solution
         run: |
           if (-not (Test-Path "windows/OpenBurnBar.sln")) {
@@ -210,10 +226,15 @@ jobs:
       - name: Restore (dotnet restore)
         run: dotnet restore windows/OpenBurnBar.sln
 
+      - name: Build native shared domain core
+        run: cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
+
       - name: Build (dotnet build — full solution, Debug)
         run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=ARM64
 
       - name: Test (dotnet test — full suite)
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-arm64.trx" --results-directory TestResults-arm64
 
       - name: Upload test results

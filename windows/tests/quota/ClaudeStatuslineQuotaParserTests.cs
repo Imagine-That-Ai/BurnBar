@@ -49,7 +49,7 @@ public sealed class ClaudeStatuslineQuotaParserTests
             return;
         }
 
-        Assert.Equal(1u, abiVersion);
+        Assert.Equal(3u, abiVersion);
         var input = QuotaFixtures.ReadInput("claude-statusline-input.json");
         var expected = QuotaFixtures.ReadExpected("claude-statusline-expected.json");
         var legacy = ClaudeStatuslineQuotaParser.ParseLegacy(input, FetchedAt);
@@ -60,6 +60,21 @@ public sealed class ClaudeStatuslineQuotaParserTests
             DomainCoreQuotaMigrationMode.Rust);
 
         QuotaFixtures.AssertMatches(snapshot, expected);
+    }
+
+    [Fact]
+    public void ExplicitRustMode_DoesNotFallbackWhenNativeCoreIsUnavailable()
+    {
+        if (Environment.GetEnvironmentVariable("OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE") == "1")
+        {
+            return;
+        }
+        var legacy = ClaudeStatuslineQuotaParser.ParseLegacy("{}", FetchedAt);
+        Assert.Throws<InvalidOperationException>(() =>
+            ClaudeStatuslineQuotaDomainCore.Apply("{}", legacy, DomainCoreQuotaMigrationMode.Rust));
+        Assert.Same(
+            legacy,
+            ClaudeStatuslineQuotaDomainCore.Apply("{}", legacy, DomainCoreQuotaMigrationMode.Shadow));
     }
 
     [Fact]

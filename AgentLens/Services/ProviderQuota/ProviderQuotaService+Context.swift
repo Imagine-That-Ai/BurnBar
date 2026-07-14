@@ -46,7 +46,10 @@ extension ProviderQuotaService {
                 }
             },
             claudeCredentialsReader: claudeCredentialsReader,
-            resolvedAPIKeys: resolvedKeys
+            resolvedAPIKeys: resolvedKeys,
+            secretStore: ProviderQuotaMacPlatform.secretStore,
+            cliExecutor: ProviderQuotaMacPlatform.cliExecutor,
+            quotaLogger: ProviderQuotaMacPlatform.quotaLogger
         )
     }
 

@@ -481,6 +481,21 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+  submitDomainCoreShadowSamples: {
+    objectIdsFromClient: ["sampleId"],
+    ownershipCheck:
+      "handler requires Auth, App Check, and a matching server-issued rollout-channel claim; writes immutable uid-free samples to a global TTL collection",
+    handlerModule: "callables/domainCoreShadowEvidence.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/domainCoreShadowEvidence.bola.test.ts",
+        test: "submitDomainCoreShadowSamples preserves victim tenant data",
+        kind: "runtime-cross-user",
+        covers: ["submitDomainCoreShadowSamples"],
+        expectedOutcome: "no-side-effect",
+      },
+    ],
+  },
   triggerVoIPCall: {
     bolaCoverage: [
       {

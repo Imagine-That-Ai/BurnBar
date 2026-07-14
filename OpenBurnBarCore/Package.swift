@@ -924,7 +924,7 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
-            ],
+            ] + domainCoreDependencies,
             resources: [.process("Resources")]
         ),
         // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): cross-platform
@@ -942,7 +942,8 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarLogParsers",
-            dependencies: ["OpenBurnBarKernel", "OpenBurnBarSQLiteReader"],
+            dependencies: ["OpenBurnBarKernel", "OpenBurnBarSQLiteReader"]
+                + domainCoreDependencies,
             exclude: openBurnBarLogParsersExcludes
         ),
         .target(
@@ -1190,8 +1191,12 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .testTarget(
             name: "OpenBurnBarCoreTests",
+            // Native-required migration tests must import the generated binding
+            // directly so an absent or stale ABI cannot compile into a skipped assertion.
             dependencies: [
                 "OpenBurnBarCore",
+                "OpenBurnBarKernel",
+                "OpenBurnBarLogParsers",
                 "OpenBurnBarFirestoreModels",
                 "OpenBurnBarLinuxSecurity",
                 // P-13 AE-TESTABLE: `ZAIQuotaAdapterTests` reaches the INTERNAL
@@ -1208,7 +1213,7 @@ let firstPartyTargetsBase: [Target] = [
                 // linkable in the test host. Acyclic: OpenBurnBarCoreCAbi depends only on
                 // OpenBurnBarCore, and a test target adding it introduces no product cycle.
                 "OpenBurnBarCoreCAbi"
-            ] + swiftTestingAppleDependencies,
+            ] + domainCoreDependencies + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
                 + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),

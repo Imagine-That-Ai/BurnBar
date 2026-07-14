@@ -45,9 +45,9 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
                 let pair: (usage: TokenUsage?, conversation: ConversationRecord?)?
                 if chatFile.pathExtension == "jsonl" {
-                    pair = parseJsonlSession(file: chatFile, sessionId: sessionId, projectName: projectName)
+                    pair = try parseJsonlSession(file: chatFile, sessionId: sessionId, projectName: projectName)
                 } else {
-                    pair = parseJsonSession(file: chatFile, sessionId: sessionId, projectName: projectName)
+                    pair = try parseJsonSession(file: chatFile, sessionId: sessionId, projectName: projectName)
                 }
 
                 if let pair, let usage = pair.usage {
@@ -66,7 +66,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
         file: URL,
         sessionId: String,
         projectName: String
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(open file, guard nil)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
@@ -81,7 +81,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
             ingestLine(json, into: &acc)
         }
 
-        return buildResult(acc: acc, sessionId: sessionId, projectName: projectName, mtime: mtime)
+        return try buildResult(acc: acc, sessionId: sessionId, projectName: projectName, mtime: mtime)
     }
 
     // MARK: - JSON Session Parsing
@@ -90,7 +90,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
         file: URL,
         sessionId: String,
         projectName: String
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let data = try? Data(contentsOf: file) else { return nil } // try?-ok(file read, guard nil)
 
         let mtime = modificationDate(of: file)
@@ -110,7 +110,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
             }
         }
 
-        return buildResult(acc: acc, sessionId: sessionId, projectName: projectName, mtime: mtime)
+        return try buildResult(acc: acc, sessionId: sessionId, projectName: projectName, mtime: mtime)
     }
 
     // MARK: - Shared Ingestion
@@ -224,7 +224,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
         sessionId: String,
         projectName: String,
         mtime: Date?
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         var inputTokens = acc.inputTokens
         var outputTokens = acc.outputTokens
 
@@ -248,7 +248,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
         let model = acc.model ?? "gemini"
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheReadTokens: acc.cacheReadTokens

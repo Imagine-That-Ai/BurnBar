@@ -206,7 +206,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
 
                 if inputTokens > 0 || outputTokens > 0 {
                     let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-                    let cost = pricing.cost(
+                    let cost = try pricing.cost(
                         inputTokens: inputTokens,
                         outputTokens: outputTokens,
                         cacheReadTokens: cacheReadTokens
@@ -592,7 +592,12 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
             outputTokens = OpenBurnBarCore.TokenExtractionUtility.estimatedTokenCount(for: assistantText.joined(separator: "\n").count, charsPerToken: 3.5)
         }
 
-        let usage: TokenUsage? = (inputTokens > 0 || outputTokens > 0) ? TokenUsage(
+        let cost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheReadTokens: cacheReadTokens
+        ))
+        let usage: TokenUsage? = (inputTokens > 0 || outputTokens > 0) ? cost.map { computedCost in TokenUsage(
             provider: .openClaw,
             sessionId: sessionId,
             projectName: "OpenClaw",
@@ -601,13 +606,13 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
             outputTokens: outputTokens,
             cacheCreationTokens: 0,
             cacheReadTokens: cacheReadTokens,
-            costUSD: OpenBurnBarCore.ModelPricing.lookup(model: model).cost(inputTokens: inputTokens, outputTokens: outputTokens, cacheReadTokens: cacheReadTokens),
+            costUSD: computedCost,
             startTime: effectiveStart,
             endTime: effectiveEnd,
             provenanceMethod: cacheReadTokens > 0 ? .providerLog : .heuristicEstimate,
             provenanceConfidence: cacheReadTokens > 0 ? .exact : .lowConfidenceEstimate,
             estimatorVersion: cacheReadTokens > 0 ? "" : OpenBurnBarCore.TokenExtractionUtility.currentEstimatorVersion
-        ) : nil
+        ) } : nil
 
         let conversation = OpenBurnBarCore.ConversationRecord(
             id: OpenBurnBarCore.ConversationRecord.stableId(provider: .openClaw, sessionId: sessionId),

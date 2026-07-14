@@ -9,25 +9,163 @@ on:
     paths:
       - "crates/openburnbar-domain-core/**"
       - "OpenBurnBarCore/Package.swift"
-      - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaDomainCoreAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift"
+      - "AgentLens/Services/ProviderUsageAPI/*UsageAPI.swift"
+      - "AgentLens/Services/UsageAggregatorParsers*.swift"
+      - "AgentLens/Services/CursorConnector/CursorConnectorManager.swift"
+      - "AgentLens/Views/Chat/ChatSessionController+Retrieval.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
-      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/ClaudeQuotaDomainCoreAdapterTests.swift"
-      - "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuota*.cs"
+      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
+      - "AgentLens/Services/ProviderQuota/DomainCoreShadowEvidenceSpool.swift"
+      - "AgentLens/Services/ProviderQuota/ProviderQuotaMacBridge.swift"
+      - "AgentLensTests/Active/DomainCoreShadowEvidenceSpoolTests.swift"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesRatchetCryptoTests.swift"
+      - "OpenBurnBarMobile/Services/HermesGatewayAttachmentRecord.swift"
+      - "OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift"
+      - "OpenBurnBarMobileTests/OpenBurnBarMobileTests.swift"
+      - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
+      - "windows/app/OpenBurnBar.App.CloudSync/DomainCoreShadowEvidenceUploader.cs"
+      - "windows/app/OpenBurnBar.App.CloudSync/WinAppCloudSyncHost.cs"
       - "windows/tests/quota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVault*Tests.swift"
+      - "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/**"
+      - "windows/tests/cloudsync/**"
+      - "android/openburnbar-domain-core/**"
+      - "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto*.kt"
+      - "android/app/src/test/java/com/openburnbar/data/cloud/CloudVault*Test.kt"
+      - "android/app/src/main/java/com/openburnbar/data/hermes/**"
+      - "android/app/src/test/java/com/openburnbar/data/hermes/**"
+      - "android/app/build.gradle.kts"
+      - "android/settings.gradle.kts"
+      - "apps/console/lib/escrow.ts"
+      - "apps/console/lib/domainCoreCloudVault.ts"
+      - "apps/console/test/escrow.test.ts"
+      - "apps/console/test/domainCoreCloudVault*.test.ts"
+      - "apps/console/vendor/openburnbar-domain-core-wasm/**"
+      - "functions/src/domainCorePricing.ts"
+      - "functions/src/pricing.ts"
+      - "functions/src/rollupCounters.ts"
+      - "functions/src/insightsHostedAnswer.ts"
+      - "functions/src/__tests__/pricing.test.ts"
+      - "functions/src/domainCoreShadowEvidence.ts"
+      - "functions/src/callables/domainCoreShadowEvidence.ts"
+      - "functions/src/__tests__/domainCoreShadowEvidence.test.ts"
+      - "functions/src/index.ts"
+      - "functions/src/security/endpointAuthorizationCatalog.generated.ts"
+      - "functions/scripts/generate-endpoint-catalog.mjs"
+      - "firestore.indexes.json"
+      - "firestore.rules"
+      - "ops/firestore-ttl-policies.json"
+      - "functions/vendor/openburnbar/domain-core-wasm/**"
+      - "functions/package*.json"
+      - "Vendor/openburnbar-domain-core.aar"
       - "tests/fixtures/domain-core/**"
       - "scripts/build-domain-core-xcframework.sh"
+      - "scripts/domain-core/safe-quota-ffi.swift.inc"
+      - "scripts/build-domain-core-android-aar.sh"
+      - "scripts/build-domain-core-wasm.sh"
+      - "scripts/ci/domain-core-union-gate.py"
+      - "scripts/ci/evaluate-domain-core-promotion.mjs"
+      - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
+      - "scripts/lib/domain-core-promotion-evidence.mjs"
+      - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
+      - "scripts/ops/export-domain-core-promotion-evidence.mjs"
+      - "scripts/windows-port/check-csharp-binding-drift.sh"
+      - "config/domain-core-android-ndk-version.txt"
+      - "config/domain-core-promotion-policy.json"
+      - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
+      - "docs/runbooks/shared-rust-promotion-evidence.md"
+      - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
+      - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
   pull_request:
     paths:
       - "crates/openburnbar-domain-core/**"
       - "OpenBurnBarCore/Package.swift"
-      - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaDomainCoreAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift"
+      - "AgentLens/Services/ProviderUsageAPI/*UsageAPI.swift"
+      - "AgentLens/Services/UsageAggregatorParsers*.swift"
+      - "AgentLens/Services/CursorConnector/CursorConnectorManager.swift"
+      - "AgentLens/Views/Chat/ChatSessionController+Retrieval.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
-      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/ClaudeQuotaDomainCoreAdapterTests.swift"
-      - "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuota*.cs"
+      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
+      - "AgentLens/Services/ProviderQuota/DomainCoreShadowEvidenceSpool.swift"
+      - "AgentLens/Services/ProviderQuota/ProviderQuotaMacBridge.swift"
+      - "AgentLensTests/Active/DomainCoreShadowEvidenceSpoolTests.swift"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesRatchetCryptoTests.swift"
+      - "OpenBurnBarMobile/Services/HermesGatewayAttachmentRecord.swift"
+      - "OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift"
+      - "OpenBurnBarMobileTests/OpenBurnBarMobileTests.swift"
+      - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
+      - "windows/app/OpenBurnBar.App.CloudSync/DomainCoreShadowEvidenceUploader.cs"
+      - "windows/app/OpenBurnBar.App.CloudSync/WinAppCloudSyncHost.cs"
       - "windows/tests/quota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift"
+      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVault*Tests.swift"
+      - "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/**"
+      - "windows/tests/cloudsync/**"
+      - "android/openburnbar-domain-core/**"
+      - "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto*.kt"
+      - "android/app/src/test/java/com/openburnbar/data/cloud/CloudVault*Test.kt"
+      - "android/app/src/main/java/com/openburnbar/data/hermes/**"
+      - "android/app/src/test/java/com/openburnbar/data/hermes/**"
+      - "android/app/build.gradle.kts"
+      - "android/settings.gradle.kts"
+      - "apps/console/lib/escrow.ts"
+      - "apps/console/lib/domainCoreCloudVault.ts"
+      - "apps/console/test/escrow.test.ts"
+      - "apps/console/test/domainCoreCloudVault*.test.ts"
+      - "apps/console/vendor/openburnbar-domain-core-wasm/**"
+      - "functions/src/domainCorePricing.ts"
+      - "functions/src/pricing.ts"
+      - "functions/src/rollupCounters.ts"
+      - "functions/src/insightsHostedAnswer.ts"
+      - "functions/src/__tests__/pricing.test.ts"
+      - "functions/src/domainCoreShadowEvidence.ts"
+      - "functions/src/callables/domainCoreShadowEvidence.ts"
+      - "functions/src/__tests__/domainCoreShadowEvidence.test.ts"
+      - "functions/src/index.ts"
+      - "functions/src/security/endpointAuthorizationCatalog.generated.ts"
+      - "functions/scripts/generate-endpoint-catalog.mjs"
+      - "firestore.indexes.json"
+      - "firestore.rules"
+      - "ops/firestore-ttl-policies.json"
+      - "functions/vendor/openburnbar/domain-core-wasm/**"
+      - "functions/package*.json"
+      - "Vendor/openburnbar-domain-core.aar"
       - "tests/fixtures/domain-core/**"
       - "scripts/build-domain-core-xcframework.sh"
+      - "scripts/domain-core/safe-quota-ffi.swift.inc"
+      - "scripts/build-domain-core-android-aar.sh"
+      - "scripts/build-domain-core-wasm.sh"
+      - "scripts/ci/domain-core-union-gate.py"
+      - "scripts/ci/evaluate-domain-core-promotion.mjs"
+      - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
+      - "scripts/lib/domain-core-promotion-evidence.mjs"
+      - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
+      - "scripts/ops/export-domain-core-promotion-evidence.mjs"
+      - "scripts/windows-port/check-csharp-binding-drift.sh"
+      - "config/domain-core-android-ndk-version.txt"
+      - "config/domain-core-promotion-policy.json"
+      - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
+      - "docs/runbooks/shared-rust-promotion-evidence.md"
+      - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
+      - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
   workflow_dispatch:
 
@@ -36,9 +174,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  promotion-evidence-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test fail-closed promotion evidence evaluation
+        run: >-
+          node --test
+          scripts/ci/evaluate-domain-core-promotion.test.mjs
+          scripts/lib/export-domain-core-promotion-evidence.test.mjs
+
+      - name: Verify shadow evidence retention declaration
+        run: bash scripts/ci/check-firestore-ttl-declared.sh
+
   rust-and-csharp:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -66,10 +222,54 @@ jobs:
           cargo test --workspace
           cargo build -p openburnbar-domain-ffi
 
+      - name: Run deterministic domain fuzz smoke
+        working-directory: crates/openburnbar-domain-core
+        run: >-
+          cargo test -p openburnbar-domain-ffi --test fuzz_smoke --
+          --test-threads=1
+
+      - name: Guard complete-payload FFI performance
+        working-directory: crates/openburnbar-domain-core
+        run: >-
+          cargo test --release -p openburnbar-domain-ffi
+          --test performance_smoke -- --ignored --nocapture --test-threads=1
+
+      - name: Test and verify union ABI manifest
+        run: |
+          python3 tests/test_domain_core_union_gate.py
+          python3 scripts/ci/domain-core-union-gate.py --check-abi
+
+      - name: Cache pinned uniffi-bindgen-cs
+        id: domain-bindgen-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cargo/bin/uniffi-bindgen-cs
+          key: domain-core-uniffi-bindgen-cs-${{ runner.os }}-v0.9.2+v0.28.3
+
+      - name: Install pinned uniffi-bindgen-cs
+        if: steps.domain-bindgen-cache.outputs.cache-hit != 'true'
+        run: >-
+          cargo install uniffi-bindgen-cs
+          --git https://github.com/NordSecurity/uniffi-bindgen-cs
+          --tag v0.9.2+v0.28.3
+
+      - name: Reject C# domain-core binding drift
+        run: scripts/windows-port/check-csharp-binding-drift.sh domain-core
+
+      - name: Verify C# generated-source provenance
+        run: >-
+          python3 scripts/ci/domain-core-union-gate.py
+          --check-provenance csharp
+
       - name: Run C# quota contracts through the native library
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
+
+      - name: Run C# CloudVault contracts through the native library
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+        run: dotnet test windows/tests/cloudsync/OpenBurnBar.CloudSync.Crypto.Tests.csproj --nologo
 
   windows-native:
     strategy:
@@ -110,6 +310,193 @@ jobs:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime ${{ matrix.rid }}
 
+  linux-arm64-native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build and load native domain core
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+        run: |
+          cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
+
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+          targets: wasm32-unknown-unknown
+
+      - name: Verify generated Wasm package drift
+        env:
+          DOMAIN_CORE_ARTIFACT_EXPORT_DIR: ${{ runner.temp }}/domain-core-wasm-rebuilt
+        run: ./scripts/build-domain-core-wasm.sh --check
+
+      - name: Upload rebuilt Wasm packages
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        with:
+          name: domain-core-wasm-rebuilt
+          path: ${{ runner.temp }}/domain-core-wasm-rebuilt/
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Verify browser and Node Wasm provenance
+        run: >-
+          python3 scripts/ci/domain-core-union-gate.py
+          --check-provenance browser-wasm node-wasm
+
+      - name: Run generated package against the canonical KAT
+        run: >-
+          node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs
+          apps/console/vendor/openburnbar-domain-core-wasm
+
+  functions-pricing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Run Functions domain-core contracts
+        working-directory: functions
+        run: >-
+          npx vitest run
+          src/__tests__/pricing.test.ts
+          src/__tests__/domainCoreShadowEvidence.test.ts
+
+      - name: Typecheck and lint Functions
+        working-directory: functions
+        run: |
+          npm run build
+          npm run lint
+
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Load canonical Android toolchain
+        shell: bash
+        run: |
+          ndk_version="$(sed -nE \
+            's/^([0-9]+(\.[0-9]+)+)$/\1/p' \
+            config/domain-core-android-ndk-version.txt)"
+          [[ "${ndk_version}" =~ ^[0-9]+(\.[0-9]+)+$ ]]
+          printf 'DOMAIN_CORE_ANDROID_NDK_VERSION=%s\n' "${ndk_version}" >> "${GITHUB_ENV}"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Verify hosted Android SDK
+        run: |
+          test -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --version
+
+      - name: Install Android NDK
+        run: |
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;${DOMAIN_CORE_ANDROID_NDK_VERSION}"
+
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Rebuild and byte-compare four-ABI Android AAR
+        env:
+          DOMAIN_CORE_ARTIFACT_EXPORT_DIR: ${{ runner.temp }}/domain-core-android-rebuilt
+        run: ./scripts/build-domain-core-android-aar.sh --check-artifact
+
+      - name: Upload rebuilt Android AAR and bindings
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        with:
+          name: domain-core-android-rebuilt
+          path: ${{ runner.temp }}/domain-core-android-rebuilt/
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Reject Android binding and provenance drift
+        run: |
+          status="$(git status --porcelain -- \
+            android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi \
+            crates/openburnbar-domain-core/artifact-provenance/kotlin.sha256)"
+          if [[ -n "${status}" ]]; then
+            printf '%s\n' "${status}" >&2
+            exit 1
+          fi
+          python3 scripts/ci/domain-core-union-gate.py \
+            --check-provenance aar kotlin
+
+      - name: Compile Android native-load test
+        working-directory: android
+        run: ./gradlew :openburnbar-domain-core:assembleDebugAndroidTest --no-daemon
+
+      - name: Execute ABI v3 smoke on x86_64 emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: >-
+            -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim
+          script: cd android && ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon
+
   apple:
     runs-on: macos-15
     timeout-minutes: 45
@@ -128,8 +515,29 @@ jobs:
       - name: Build Apple XCFramework and regenerate Swift bindings
         run: ./scripts/build-domain-core-xcframework.sh
 
-      - name: Reject Swift binding drift
-        run: git diff --exit-code -- OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated
+      - name: Reject Swift binding and provenance drift
+        run: |
+          status="$(git status --porcelain -- \
+            OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated \
+            crates/openburnbar-domain-core/artifact-provenance/swift.sha256)"
+          if [[ -n "${status}" ]]; then
+            printf '%s\n' "${status}" >&2
+            exit 1
+          fi
+          python3 scripts/ci/domain-core-union-gate.py \
+            --check-provenance swift xcframework
+
+      - name: Upload rebuilt Apple artifacts
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        with:
+          name: domain-core-apple-rebuilt
+          path: |
+            Vendor/OpenBurnBarDomainCore.xcframework/
+            OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/
+            crates/openburnbar-domain-core/artifact-provenance/swift.sha256
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Upload XCFramework
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
@@ -167,3 +575,47 @@ jobs:
       - name: Load XCFramework and run the narrow native contract
         working-directory: OpenBurnBarCore
         run: swift run OpenBurnBarDomainCoreFFISmoke
+
+  swift-consumer-contracts:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Build host domain-core XCFramework
+        env:
+          DOMAIN_CORE_BUILD_PROFILE: debug
+        run: |
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            export DOMAIN_CORE_BUILD_TARGETS="aarch64-apple-darwin"
+          else
+            export DOMAIN_CORE_BUILD_TARGETS="x86_64-apple-darwin"
+          fi
+          ./scripts/build-domain-core-xcframework.sh
+
+      - name: Run Swift domain-core consumer contracts
+        env:
+          OPENBURNBAR_CORE_SWIFT_FILTER: DomainCore
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+          OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS: "1"
+        run: ./scripts/test-openburnbar-swift.sh
+
+      - name: Run Apple shadow evidence spool contracts
+        run: >-
+          ./scripts/test-openburnbar-app.sh
+          -only-testing:OpenBurnBarTests/DomainCoreShadowEvidenceSpoolTests
