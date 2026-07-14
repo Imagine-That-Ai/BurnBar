@@ -504,7 +504,10 @@ F2 workstreams:
    `docs/windows-port/evidence/f2/ollama-native-provider-transport.md` and
    `docs/windows-port/evidence/f2/provider-cli-executors.md` and
    `docs/windows-port/evidence/f2/proactive-local-model-discovery.md`.
-4. Headless run service, resume/recovery, journal, and tool dispatch.
+4. Headless run service, resume/recovery, protected checkpoints,
+   metadata-only journal, approval, and companion tool dispatch are closed by
+   `docs/windows-port/evidence/f2/headless-run-recovery.md`; Windows-host
+   compile and lifecycle stress remain release evidence, not implementation.
 5. Local Mission Control execution: DAG scheduler, journal repository,
    projection reducer, planner, policy engine, rate limiter.
 6. Pensieve watcher, project-code memory store, and full static parser.

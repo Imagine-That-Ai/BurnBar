@@ -18,13 +18,18 @@ ledger row(s) to `Real` and remove the corresponding deferral line.
 | Local HTTP gateway multi-client | Live Windows Service or accepted in-process multi-client gateway with evidence |
 | Model catalog / health / route logging / degrade metrics | Live gateway metrics surface on Windows with tests |
 | Provider router + provider executors | Production router path on Windows with golden tests |
-| Headless run service + journal + recovery | Live run service evidence |
 | Local Mission Control DAG/planner/policy | Local execution path (not dispatch-only) with evidence |
 | Pensieve watcher + project-code memory store | Live watcher + store on Windows |
 | Full project-code static parser | WPD-0003 revive + parser evidence |
 | Browser Computer Use / Playwright | Host browser CU lifecycle evidence |
 | Elder Wand fusion orchestrator | Fusion tool loop live (presets-only is F1) |
 | Connector plane / companion CLI / daemon-client core | Live connector/CLI client evidence |
+
+Closed under this decision:
+
+- Headless run service + protected checkpoints + metadata journal + recovery,
+  approval, and leased tool dispatch: promoted by
+  `docs/windows-port/evidence/f2/headless-run-recovery.md`.
 
 ## Product language
 

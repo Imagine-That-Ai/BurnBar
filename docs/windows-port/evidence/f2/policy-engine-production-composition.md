@@ -33,13 +33,14 @@ approval-resolution side effects.
 ## Validation
 
 `dotnet test windows/tests/managed-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj --no-restore`
-passes **135/135** locally. Coverage enumerates the full tool-risk matrix,
+passes **225/225** locally. Coverage enumerates the full tool-risk matrix,
 approval-disabled/default/custom behavior, empty requested-tool fallback, every
 retry code, progress status/output rules, exact wire values, and authenticated
 real-TCP evaluation.
 
 ## Boundary
 
-This closes the WPD-0006 row 21 decision core. Approval persistence/resolution,
-provider/tool execution, and physical Computer Use approval safety remain
-separate gates and do not inherit this status.
+This closes the WPD-0006 row 21 decision core. Durable approval
+persistence/resolution and provider/tool execution are composed by the
+separately evidenced headless run service. Physical Computer Use approval
+safety remains an independent host gate and does not inherit this status.

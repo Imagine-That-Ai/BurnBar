@@ -231,15 +231,20 @@ public partial class App
 
     private async Task StopLocalRuntimeAsync()
     {
-        if (_gateway is not null)
-        {
-            await _gateway.DisposeAsync();
-            _gateway = null;
-        }
         if (_companionCli is not null)
         {
             await _companionCli.DisposeAsync();
             _companionCli = null;
+        }
+        if (_headlessAgentRuns is not null)
+        {
+            await _headlessAgentRuns.DisposeAsync();
+            _headlessAgentRuns = null;
+        }
+        if (_gateway is not null)
+        {
+            await _gateway.DisposeAsync();
+            _gateway = null;
         }
         _headlessRuns = null;
         _fusion = null;

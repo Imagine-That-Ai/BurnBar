@@ -41,7 +41,7 @@ JSON without dropping the client or echoing the access token.
 ## Validation
 
 `dotnet test windows/tests/managed-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj --no-restore`
-passes **100/100** locally. Coverage includes:
+passes **225/225** locally. Coverage includes:
 
 - macOS precedence and exact outline vectors;
 - workflow, tool, replacement, selection, terminal, search, read, and generic
@@ -55,7 +55,7 @@ passes **100/100** locally. Coverage includes:
 
 ## Boundary
 
-This closes WPD-0006 row 20's intent-planning contract. It does not execute the
-requested plan. Provider routing/execution, tool approval/dispatch, long-lived
-headless execution, and live staging/physical certification remain separate
-rows and do not inherit this status.
+This closes WPD-0006 row 20's intent-planning contract. Provider
+routing/execution, tool approval/dispatch, and long-lived headless execution
+are composed by their separately evidenced rows. Live staging and physical
+certification remain independent gates and do not inherit this status.

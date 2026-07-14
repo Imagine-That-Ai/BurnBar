@@ -19,9 +19,6 @@ using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Tray;
 using OpenBurnBar.App.UsageRuntime;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
-using OpenBurnBar.App.ManagedAgentRuntime.Mission;
-using OpenBurnBar.App.ManagedAgentRuntime.Planning;
-using OpenBurnBar.App.ManagedAgentRuntime.Run;
 using OpenBurnBar.App.Presentation.ElderWand;
 using OpenBurnBar.App.Presentation.Projects;
 using OpenBurnBar.App.Projects;
@@ -55,9 +52,7 @@ public partial class App : Application
     private IUsageRuntime? _usageRuntime;
     private GatewayComposition? _gatewayComposition;
     private LocalHttpGatewayHost? _gateway;
-    private CompanionCliServer? _companionCli;
     private string? _localAccessToken;
-    private HeadlessRunService? _headlessRuns;
     private ElderWandFusionOrchestrator? _fusion;
     private ProjectCodeMemoryService? _projectCodeMemory;
     private bool _hotkeyRegistered;
@@ -442,94 +437,6 @@ public partial class App : Application
             hostOverride: Environment.GetEnvironmentVariable("OPENBURNBAR_GATEWAY_HOST"),
             portOverride: Environment.GetEnvironmentVariable("OPENBURNBAR_GATEWAY_PORT"));
 
-    private void StartCompanionCli()
-    {
-        try
-        {
-            int port = 8765;
-            string? configuredPort = Environment.GetEnvironmentVariable("OPENBURNBAR_COMPANION_CLI_PORT");
-            if (int.TryParse(configuredPort, out int parsedPort) && parsedPort is > 0 and <= 65535)
-            {
-                port = parsedPort;
-            }
-
-            string journalPath = Environment.GetEnvironmentVariable("OPENBURNBAR_RUN_JOURNAL_PATH")
-                ?? Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "OpenBurnBar",
-                    "headless-runs.jsonl");
-            var headlessRuns = new HeadlessRunService(new JsonLinesHeadlessRunJournal(journalPath));
-            _headlessRuns = headlessRuns;
-            if (_localAccessToken is null)
-            {
-                GatewayEndpointSettings settings = WindowsSettingsComposition.LoadGatewayEndpointSettings();
-                _localAccessToken = ResolveGatewayAccessToken(
-                    new GatewayListenerOptions(true, "127.0.0.1", port),
-                    settings);
-            }
-            var runHandler = new CompanionCliHeadlessRunHandler(
-                headlessRuns,
-                BuiltInHeadlessRunSteps.ExecuteAsync);
-            var missionHandler = new CompanionCliMissionHandler(
-                new LocalMissionDagExecutor(
-                    headlessRuns,
-                    rateLimiter: new MissionRateLimiter(60, TimeSpan.FromMinutes(1))));
-            var plannerHandler = new CompanionCliPlannerHandler(new BurnBarPlannerService());
-            var policyHandler = new CompanionCliPolicyHandler(new BurnBarPlannerService(), new BurnBarPolicyEngine());
-            _ = ReportRecoverableHeadlessRunsAsync(headlessRuns);
-            string fusionJournalPath = Environment.GetEnvironmentVariable("OPENBURNBAR_FUSION_JOURNAL_PATH")
-                ?? Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "OpenBurnBar",
-                    "elder-wand-runs.jsonl");
-            _fusion = new ElderWandFusionOrchestrator(
-                ExecuteFusionToolAsync,
-                new JsonLinesFusionRunJournal(fusionJournalPath));
-            if (Volatile.Read(ref _projectCodeMemory) is null)
-            {
-                ProjectCodeMemoryService? projectCodeMemory = CreateProjectCodeMemoryService();
-                if (projectCodeMemory is not null)
-                {
-                    projectCodeMemory.TryLoad();
-                    projectCodeMemory.StartWatching();
-                    ProjectCodeMemoryService? concurrent = Interlocked.CompareExchange(
-                        ref _projectCodeMemory,
-                        projectCodeMemory,
-                        null);
-                    if (concurrent is null)
-                    {
-                        _ = RefreshProjectCodeMemoryAsync(projectCodeMemory);
-                    }
-                    else
-                    {
-                        projectCodeMemory.Dispose();
-                    }
-                }
-            }
-            var router = new CompanionCliCommandRouter(
-                _gatewayComposition?.Router,
-                runHandler.SubmitAsync,
-                runHandler.ResumeAsync,
-                HandleFusionRunAsync,
-                HandleProjectCodeAsync,
-                runHandler.RecoverAsync,
-                missionHandler.SubmitAsync,
-                missionHandler.ResumeAsync,
-                plannerHandler.PlanAsync,
-                policyHandler.EvaluateAsync);
-            _companionCli = new CompanionCliServer(port, router, _localAccessToken);
-            _companionCli.Start();
-            AppDiagnostics.LogEvent("companion-cli.started", $"127.0.0.1:{port}");
-        }
-        catch (Exception ex)
-        {
-            AppDiagnostics.LogException("companion-cli.start", ex);
-            _companionCli = null;
-            _headlessRuns = null;
-            _fusion = null;
-        }
-    }
-
     private static ProjectCodeMemoryService? CreateProjectCodeMemoryService()
     {
         GeneralSettingsSnapshot generalSettings = WindowsGeneralSettingsComposition.Load();
@@ -665,24 +572,6 @@ public partial class App : Application
         catch (Exception ex)
         {
             AppDiagnostics.LogException("project-code-memory.refresh", ex);
-        }
-    }
-
-    private static async Task ReportRecoverableHeadlessRunsAsync(HeadlessRunService service)
-    {
-        try
-        {
-            IReadOnlyList<RecoverableHeadlessRun> runs = await service
-                .RecoverAsync()
-                .ConfigureAwait(false);
-            if (runs.Count > 0)
-            {
-                AppDiagnostics.LogEvent("headless-runs.recoverable", runs.Count.ToString());
-            }
-        }
-        catch (Exception ex)
-        {
-            AppDiagnostics.LogException("headless-runs.recovery", ex);
         }
     }
 

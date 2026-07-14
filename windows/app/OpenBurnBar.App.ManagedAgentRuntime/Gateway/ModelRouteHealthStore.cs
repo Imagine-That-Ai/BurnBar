@@ -139,7 +139,7 @@ public sealed class ModelRouteHealthStore
             route.Id,
             route.Model,
             route.Vendor,
-            metadata?.CredentialSlotId?.Trim() ?? "legacy",
+            metadata?.CredentialSlotId?.Trim() ?? route.Id,
             metadata?.FormatFamily?.Trim() ?? "openai-compatible",
             result.StatusCode,
             policy.Value.Kind,
@@ -273,7 +273,7 @@ public sealed class ModelRouteHealthStore
     private static string Key(ModelRoute route) => string.Join(
         "#",
         route.Vendor.Trim().ToLowerInvariant(),
-        route.Routing?.CredentialSlotId?.Trim().ToLowerInvariant() ?? "legacy",
+        route.Routing?.CredentialSlotId?.Trim().ToLowerInvariant() ?? route.Id.Trim().ToLowerInvariant(),
         route.Routing?.FormatFamily?.Trim().ToLowerInvariant() ?? "openai-compatible",
         route.Model.Trim().ToLowerInvariant());
 

@@ -18,17 +18,26 @@ public sealed class CompanionCliHeadlessRunHandler
     private const int MaxPayloadCharacters = 64 * 1024;
     private readonly HeadlessRunService _runs;
     private readonly Func<HeadlessRunStep, CancellationToken, Task<HeadlessRunStepResult>> _stepHandler;
+    private readonly CompanionCliAgentRunHandler? _agentRuns;
 
     public CompanionCliHeadlessRunHandler(
         HeadlessRunService runs,
-        Func<HeadlessRunStep, CancellationToken, Task<HeadlessRunStepResult>> stepHandler)
+        Func<HeadlessRunStep, CancellationToken, Task<HeadlessRunStepResult>> stepHandler,
+        CompanionCliAgentRunHandler? agentRuns = null)
     {
         _runs = runs ?? throw new ArgumentNullException(nameof(runs));
         _stepHandler = stepHandler ?? throw new ArgumentNullException(nameof(stepHandler));
+        _agentRuns = agentRuns;
     }
 
     public async Task<object?> SubmitAsync(JsonElement request, CancellationToken cancellationToken)
     {
+        if (!request.TryGetProperty("steps", out _))
+        {
+            return _agentRuns is null
+                ? throw new ArgumentException("steps are required when agent runs are unavailable.", nameof(request))
+                : await _agentRuns.SubmitAsync(request, cancellationToken).ConfigureAwait(false);
+        }
         HeadlessRunDefinition definition = ParseDefinition(request);
         HeadlessRunResult result = await _runs
             .ExecuteAsync(definition, _stepHandler, cancellationToken)
@@ -38,6 +47,12 @@ public sealed class CompanionCliHeadlessRunHandler
 
     public async Task<object?> ResumeAsync(JsonElement request, CancellationToken cancellationToken)
     {
+        if (!request.TryGetProperty("steps", out _))
+        {
+            return _agentRuns is null
+                ? throw new ArgumentException("steps are required when agent runs are unavailable.", nameof(request))
+                : await _agentRuns.RetryAsync(request, cancellationToken).ConfigureAwait(false);
+        }
         HeadlessRunDefinition definition = ParseDefinition(request);
         HeadlessRunResult result = await _runs
             .ResumeAsync(definition, _stepHandler, cancellationToken)
@@ -48,6 +63,10 @@ public sealed class CompanionCliHeadlessRunHandler
     /// <summary>Lists interrupted runs without re-executing any step.</summary>
     public async Task<object?> RecoverAsync(JsonElement request, CancellationToken cancellationToken)
     {
+        if (_agentRuns is not null && request.TryGetProperty("clientId", out _))
+        {
+            return await _agentRuns.RecoverAsync(request, cancellationToken).ConfigureAwait(false);
+        }
         IReadOnlyList<RecoverableHeadlessRun> runs = await _runs
             .RecoverAsync(cancellationToken)
             .ConfigureAwait(false);

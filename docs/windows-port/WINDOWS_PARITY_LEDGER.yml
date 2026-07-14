@@ -814,17 +814,23 @@ rows:
   windows_route: f2-headless-run
   macos_route: f2-headless-run
   macos_capability: Headless run service, journal, and recovery
-  windows_capability: HeadlessRunService + JsonLinesHeadlessRunJournal + authenticated companion operations
+  windows_capability: Durable HeadlessAgentRunService + protected checkpoints + metadata journal + authenticated approval/tool operations
   evidence:
   - docs/windows-port/evidence/f2/headless-run-recovery.md
   tests:
+  - windows/tests/managed-runtime/HeadlessAgentRunServiceTests.cs
   - windows/tests/managed-runtime/HeadlessRunServiceTests.cs
   - windows/tests/managed-runtime/CompanionCliServerTests.cs
   blocking_paths:
-  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/HeadlessRunService.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/HeadlessAgentRunService.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/HeadlessAgentRunService+Execution.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/HeadlessAgentLoopService.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/CompanionCliAgentRunHandler.cs
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/CompanionCliHeadlessRunHandler.cs
-  - windows/app/OpenBurnBar.App/App.xaml.cs
-  notes: F2 in-process headless run and recovery path Real; physical service hosting remains separate.
+  - windows/app/OpenBurnBar.App/Run/ProtectedHeadlessAgentCheckpointStore.cs
+  - windows/app/OpenBurnBar.App.Configuration/ProtectedFilePayloadStore.cs
+  - windows/app/OpenBurnBar.App/App+CompanionRuntime.cs
+  notes: F2 accepted in-process headless run, protected recovery, approval, and leased tool-dispatch path Real; Windows-host and physical lifecycle evidence remain separate.
 f1_coverage_register:
 - subsystem: mercury-media
   ledger_row: mercury-media

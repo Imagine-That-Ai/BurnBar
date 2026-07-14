@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using OpenBurnBar.App.ManagedAgentRuntime.Run;
 using System.Threading.Tasks;
@@ -87,6 +88,159 @@ public sealed class CompanionCliServerTests
     }
 
     [Fact]
+    public async Task Server_DrivesDurableAgentApprovalAndToolLifecycleOverAuthenticatedLoopback()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "obb-cli-agent-" + Path.GetRandomFileName());
+        try
+        {
+            int completionCalls = 0;
+            var modelRouter = new ModelProxyRouter(new[]
+            {
+                new ModelRoute(
+                    "agent-route",
+                    "test",
+                    "test-model",
+                    0,
+                    true,
+                    new Uri("https://agent-route.test/v1/chat/completions")),
+            });
+            var executor = new DelegateModelCompletionExecutor((_, _, _) =>
+            {
+                string decision = Interlocked.Increment(ref completionCalls) == 1
+                    ? "{\"action\":\"apply_patch\",\"rationale\":\"Edit\",\"arguments\":{\"changes\":[{\"path\":\"a.txt\",\"content\":\"new\"}]}}"
+                    : "{\"action\":\"complete\",\"rationale\":\"Done\"}";
+                byte[] body = JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    choices = new[] { new { message = new { content = decision } } },
+                });
+                return Task.FromResult(new ModelCompletionResult(200, body, "application/json", true));
+            });
+            await using var agentService = new HeadlessAgentRunService(
+                modelRouter,
+                executor,
+                new JsonLinesHeadlessRunJournal(path),
+                new InMemoryHeadlessAgentCheckpointStore());
+            await agentService.StartAsync();
+            var agentHandler = new CompanionCliAgentRunHandler(agentService);
+            var dagHandler = new CompanionCliHeadlessRunHandler(
+                new HeadlessRunService(new JsonLinesHeadlessRunJournal(path + ".dag")),
+                BuiltInHeadlessRunSteps.ExecuteAsync,
+                agentHandler);
+            var commandRouter = new CompanionCliCommandRouter(
+                modelRouter,
+                submit: dagHandler.SubmitAsync,
+                resume: dagHandler.ResumeAsync,
+                recover: dagHandler.RecoverAsync,
+                agentRuns: agentHandler);
+            await using var server = new CompanionCliServer(0, commandRouter, "agent-token");
+            server.Start();
+
+            using var client = new TcpClient();
+            await client.ConnectAsync(System.Net.IPAddress.Loopback, server.Port);
+            await using NetworkStream stream = client.GetStream();
+            using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+
+            async Task<JsonElement> ExchangeAsync(object request)
+            {
+                await writer.WriteLineAsync(JsonSerializer.Serialize(request));
+                string line = Assert.IsType<string>(await reader.ReadLineAsync());
+                Assert.DoesNotContain("agent-token", line, StringComparison.Ordinal);
+                using JsonDocument document = JsonDocument.Parse(line);
+                Assert.True(document.RootElement.GetProperty("ok").GetBoolean(), line);
+                return document.RootElement.GetProperty("result").Clone();
+            }
+
+            await ExchangeAsync(new
+            {
+                op = "run.submit",
+                authToken = "agent-token",
+                runId = "agent-tcp",
+                clientId = "companion",
+                sessionId = "desktop-session",
+                prompt = "edit the file",
+                modelId = "test-model",
+                metadata = new
+                {
+                    agentIntent = new
+                    {
+                        kind = "generic",
+                        objective = "edit",
+                        summary = "Edit the requested file.",
+                    },
+                },
+            });
+
+            JsonElement detail = default;
+            for (int attempt = 0; attempt < 100; attempt++)
+            {
+                detail = await ExchangeAsync(new
+                {
+                    op = "run.get",
+                    authToken = "agent-token",
+                    runId = "agent-tcp",
+                    clientId = "companion",
+                });
+                if (detail.GetProperty("run").GetProperty("phase").GetString() == "awaiting_approval") break;
+                await Task.Delay(20);
+            }
+            Assert.Equal("awaiting_approval", detail.GetProperty("run").GetProperty("phase").GetString());
+            string approvalId = Assert.IsType<string>(detail.GetProperty("approvalRequest").GetProperty("approvalId").GetString());
+
+            await ExchangeAsync(new
+            {
+                op = "approval.respond",
+                authToken = "agent-token",
+                runId = "agent-tcp",
+                clientId = "companion",
+                approvalId,
+                decision = "approve",
+            });
+            JsonElement claim = await ExchangeAsync(new
+            {
+                op = "workspace.executeTool",
+                authToken = "agent-token",
+                runId = "agent-tcp",
+                clientId = "companion",
+                sessionId = "desktop-session",
+            });
+            Assert.Equal("dispatched", claim.GetProperty("disposition").GetString());
+            string callId = Assert.IsType<string>(claim.GetProperty("toolCall").GetProperty("callId").GetString());
+
+            await ExchangeAsync(new
+            {
+                op = "workspace.toolResult",
+                authToken = "agent-token",
+                runId = "agent-tcp",
+                clientId = "companion",
+                sessionId = "desktop-session",
+                callId,
+                succeeded = true,
+                output = new { changed = true },
+            });
+            for (int attempt = 0; attempt < 100; attempt++)
+            {
+                detail = await ExchangeAsync(new
+                {
+                    op = "run.get",
+                    authToken = "agent-token",
+                    runId = "agent-tcp",
+                    clientId = "companion",
+                });
+                if (detail.GetProperty("run").GetProperty("phase").GetString() == "completed") break;
+                await Task.Delay(20);
+            }
+            Assert.Equal("completed", detail.GetProperty("run").GetProperty("phase").GetString());
+            Assert.Equal(2, completionCalls);
+        }
+        finally
+        {
+            File.Delete(path);
+            File.Delete(path + ".dag");
+        }
+    }
+
+    [Fact]
     public async Task Server_ExecutesLocalMissionDagOverAuthenticatedLoopback()
     {
         string path = Path.Combine(Path.GetTempPath(), "obb-cli-live-mission-" + Path.GetRandomFileName());
@@ -144,6 +298,25 @@ public sealed class CompanionCliServerTests
         string line = "{\"op\":\"ping\",\"payload\":\"" + new string('x', CompanionCliServer.MaxLineBytes) + "\"}";
         string response = await CompanionCliServer.HandleLineAsync(line, null);
         Assert.Contains("request_too_large", response, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Server_DiscardsOversizedLineAndKeepsConnectionUsable()
+    {
+        await using var server = new CompanionCliServer(0);
+        server.Start();
+        using var client = new TcpClient();
+        await client.ConnectAsync(System.Net.IPAddress.Loopback, server.Port);
+        await using NetworkStream stream = client.GetStream();
+        using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+
+        await writer.WriteLineAsync(new string('x', CompanionCliServer.MaxLineBytes + 1));
+        string oversized = Assert.IsType<string>(await reader.ReadLineAsync());
+        Assert.Contains("request_too_large", oversized, StringComparison.Ordinal);
+        await writer.WriteLineAsync("{\"op\":\"ping\"}");
+        string ping = Assert.IsType<string>(await reader.ReadLineAsync());
+        Assert.Contains("pong", ping, StringComparison.Ordinal);
     }
 
     [Fact]

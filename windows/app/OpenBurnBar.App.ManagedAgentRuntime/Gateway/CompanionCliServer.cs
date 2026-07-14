@@ -12,6 +12,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.App.ManagedAgentRuntime.Planning;
+using OpenBurnBar.App.ManagedAgentRuntime.Run;
 
 namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 
@@ -21,7 +22,7 @@ namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 /// </summary>
 public sealed class CompanionCliServer : IAsyncDisposable
 {
-    public const int MaxLineBytes = 64 * 1024;
+    public const int MaxLineBytes = 512 * 1024;
 
     private readonly TcpListener _listener;
     private readonly ConcurrentDictionary<Guid, ClientConnection> _clients = new();
@@ -120,17 +121,18 @@ public sealed class CompanionCliServer : IAsyncDisposable
         {
             using var reader = new StreamReader(conn.Stream, Encoding.UTF8);
             using var writer = new StreamWriter(conn.Stream, Encoding.UTF8) { AutoFlush = true };
+            var boundedReader = new BoundedLineReader(reader);
             while (!cancellationToken.IsCancellationRequested)
             {
-                string? line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                if (line is null)
+                BoundedLine line = await boundedReader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                if (line.Value is null && !line.TooLarge)
                 {
                     break;
                 }
 
-                string response = Encoding.UTF8.GetByteCount(line) > MaxLineBytes
+                string response = line.TooLarge
                     ? JsonSerializer.Serialize(new { ok = false, error = "request_too_large" })
-                    : await HandleLineAsync(line, _handler, cancellationToken, _accessToken).ConfigureAwait(false);
+                    : await HandleLineAsync(line.Value!, _handler, cancellationToken, _accessToken).ConfigureAwait(false);
                 await writer.WriteLineAsync(response.AsMemory(), cancellationToken).ConfigureAwait(false);
             }
         }
@@ -142,6 +144,65 @@ public sealed class CompanionCliServer : IAsyncDisposable
         {
             _clients.TryRemove(conn.Id, out _);
             conn.Dispose();
+        }
+    }
+
+    private static BoundedLine FinishBoundedLine(StringBuilder builder, bool tooLarge)
+    {
+        string value = builder.ToString();
+        return new BoundedLine(
+            value,
+            tooLarge || Encoding.UTF8.GetByteCount(value) > MaxLineBytes);
+    }
+
+    private readonly record struct BoundedLine(string? Value, bool TooLarge);
+
+    private sealed class BoundedLineReader
+    {
+        private readonly StreamReader _reader;
+        private readonly char[] _buffer = new char[4096];
+        private readonly StringBuilder _builder = new(capacity: 1024);
+        private int _offset;
+        private int _count;
+        private bool _tooLarge;
+
+        public BoundedLineReader(StreamReader reader)
+        {
+            _reader = reader;
+        }
+
+        public async Task<BoundedLine> ReadAsync(CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                if (_offset >= _count)
+                {
+                    _count = await _reader.ReadAsync(_buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+                    _offset = 0;
+                    if (_count == 0)
+                    {
+                        if (_builder.Length == 0 && !_tooLarge) return new BoundedLine(null, false);
+                        return FinishLine();
+                    }
+                }
+
+                while (_offset < _count)
+                {
+                    char character = _buffer[_offset++];
+                    if (character == '\n') return FinishLine();
+                    if (character == '\r') continue;
+                    if (_builder.Length < MaxLineBytes) _builder.Append(character);
+                    else _tooLarge = true;
+                }
+            }
+        }
+
+        private BoundedLine FinishLine()
+        {
+            BoundedLine line = FinishBoundedLine(_builder, _tooLarge);
+            _builder.Clear();
+            _tooLarge = false;
+            return line;
         }
     }
 
@@ -296,6 +357,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _missionResume;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _plan;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _policy;
+    private readonly CompanionCliAgentRunHandler? _agentRuns;
 
     public CompanionCliCommandRouter(
         ModelProxyRouter? router = null,
@@ -307,7 +369,8 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
         Func<JsonElement, CancellationToken, Task<object?>>? missionSubmit = null,
         Func<JsonElement, CancellationToken, Task<object?>>? missionResume = null,
         Func<JsonElement, CancellationToken, Task<object?>>? plan = null,
-        Func<JsonElement, CancellationToken, Task<object?>>? policy = null)
+        Func<JsonElement, CancellationToken, Task<object?>>? policy = null,
+        CompanionCliAgentRunHandler? agentRuns = null)
     {
         _router = router;
         _submit = submit;
@@ -319,6 +382,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
         _missionResume = missionResume;
         _plan = plan;
         _policy = policy;
+        _agentRuns = agentRuns;
     }
 
     public async Task<string> HandleAsync(string line, CancellationToken cancellationToken)
@@ -350,6 +414,13 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 "run.submit" => await InvokeRunAsync(_submit, root, cancellationToken).ConfigureAwait(false),
                 "run.resume" => await InvokeRunAsync(_resume, root, cancellationToken).ConfigureAwait(false),
                 "run.recover" => await InvokeRunAsync(_recover, root, cancellationToken).ConfigureAwait(false),
+                "run.get" => await InvokeAgentAsync(_agentRuns, static (handler, request, token) => handler.GetAsync(request, token), root, cancellationToken).ConfigureAwait(false),
+                "run.poll" => await InvokeAgentAsync(_agentRuns, static (handler, request, token) => handler.PollAsync(request, token), root, cancellationToken).ConfigureAwait(false),
+                "run.cancel" => await InvokeAgentAsync(_agentRuns, static (handler, request, token) => handler.CancelAsync(request, token), root, cancellationToken).ConfigureAwait(false),
+                "run.retry" => await InvokeAgentAsync(_agentRuns, static (handler, request, token) => handler.RetryAsync(request, token), root, cancellationToken).ConfigureAwait(false),
+                "workspace.executeTool" => await InvokeAgentAsync(_agentRuns, static (handler, request, token) => handler.ClaimToolAsync(request, token), root, cancellationToken).ConfigureAwait(false),
+                "workspace.toolResult" => await InvokeAgentAsync(_agentRuns, static (handler, request, token) => handler.SubmitToolResultAsync(request, token), root, cancellationToken).ConfigureAwait(false),
+                "approval.respond" => await InvokeAgentAsync(_agentRuns, static (handler, request, token) => handler.RespondToApprovalAsync(request, token), root, cancellationToken).ConfigureAwait(false),
                 "mission.submit" => await InvokeRunAsync(_missionSubmit, root, cancellationToken).ConfigureAwait(false),
                 "mission.resume" => await InvokeRunAsync(_missionResume, root, cancellationToken).ConfigureAwait(false),
                 "planner.plan" => await InvokeRunAsync(_plan, root, cancellationToken).ConfigureAwait(false),
@@ -358,7 +429,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 "code.index" or "code.search" or "code.symbol" or "code.status" or "code.context_pack" or "code.references" or "code.call_graph" or "code.semantic_search" =>
                     await InvokeRunAsync(_code, root, cancellationToken).ConfigureAwait(false),
                 "ping" => JsonSerializer.Serialize(new { ok = true, pong = true }),
-                "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-7" }),
+                "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-8" }),
                 _ => JsonSerializer.Serialize(new { ok = false, error = "unknown_op", op }),
             };
         }
@@ -392,6 +463,15 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 message = exception.Message,
             });
         }
+        catch (HeadlessAgentRunException exception)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                ok = false,
+                error = exception.Code,
+                message = exception.Message,
+            });
+        }
         catch (ArgumentException exception)
         {
             return JsonSerializer.Serialize(new
@@ -402,4 +482,16 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
             });
         }
     }
+
+    private static Task<string> InvokeAgentAsync(
+        CompanionCliAgentRunHandler? handler,
+        Func<CompanionCliAgentRunHandler, JsonElement, CancellationToken, Task<object?>> operation,
+        JsonElement request,
+        CancellationToken cancellationToken) =>
+        InvokeRunAsync(
+            handler is null
+                ? null
+                : (input, token) => operation(handler, input, token),
+            request,
+            cancellationToken);
 }
