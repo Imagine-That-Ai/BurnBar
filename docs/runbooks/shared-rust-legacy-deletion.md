@@ -149,7 +149,12 @@ python3 scripts/ops/create-domain-core-promotion-receipt.py \
    endpoint directly serves the exact release tag, commit, and CloudVault Rust
    profile identity. The publisher signs
    `OpenBurnBar-<version>-console-deployment.json`, publishes its attestation
-   bundle first, and refuses to replace different existing bytes. Apple,
+   bundle first, and refuses to replace different existing bytes. Both evidence
+   workflows use `publish-domain-core-release-evidence.mjs`, a fail-closed
+   publisher designed for every release producer: it verifies every local
+   bundle, preflights all existing assets before mutation, uploads every bundle
+   before its artifact, handles concurrent identical uploads, and freshly
+   downloads and verifies the final release state. Apple,
    Android, and Windows still do not publish every canonical asset and exact
    custom attestation required by this contract. Do not create a stable receipt
    from an Actions artifact or unsigned deployment summary.

@@ -137,6 +137,8 @@ on:
       - "scripts/ops/create-domain-core-deletion-plan.py"
       - "scripts/ci/create-domain-core-release-evidence.mjs"
       - "scripts/ci/create-domain-core-release-evidence.test.mjs"
+      - "scripts/ci/publish-domain-core-release-evidence.mjs"
+      - "scripts/ci/publish-domain-core-release-evidence.test.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.test.mjs"
       - "scripts/ci/hosting-smoke.sh"
@@ -280,6 +282,8 @@ on:
       - "scripts/ops/create-domain-core-deletion-plan.py"
       - "scripts/ci/create-domain-core-release-evidence.mjs"
       - "scripts/ci/create-domain-core-release-evidence.test.mjs"
+      - "scripts/ci/publish-domain-core-release-evidence.mjs"
+      - "scripts/ci/publish-domain-core-release-evidence.test.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.test.mjs"
       - "scripts/ci/hosting-smoke.sh"
@@ -356,6 +360,7 @@ jobs:
           scripts/ci/resolve-domain-core-build-profile.test.mjs
           scripts/lib/domain-core-shadow-enrollment.test.mjs
           scripts/ci/create-domain-core-release-evidence.test.mjs
+          scripts/ci/publish-domain-core-release-evidence.test.mjs
           scripts/ci/create-domain-core-deployment-identity.test.mjs
 
       - name: Test release evidence workflow contracts

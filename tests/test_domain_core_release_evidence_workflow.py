@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEPLOY_WORKFLOW = ROOT / ".github/workflows/deploy-production.yml"
 EVIDENCE_WORKFLOW = ROOT / ".github/workflows/domain-core-functions-release-evidence.yml"
 DOMAIN_WORKFLOW = ROOT / ".github/workflows/domain-core.yml"
+PUBLISHER = ROOT / "scripts/ci/publish-domain-core-release-evidence.mjs"
 
 
 class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
@@ -14,7 +15,7 @@ class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
         source = DEPLOY_WORKFLOW.read_text(encoding="utf-8")
         required = (
             "stable_release: ${{ steps.tag.outputs.stable_release }}",
-            '(\\+[0-9A-Za-z.-]+)?$ ]] && echo true || echo false)',
+            "(\\+[0-9A-Za-z.-]+)?$ ]] && echo true || echo false)",
             "dispatch-domain-core-functions-evidence:",
             "needs: [deploy-functions, functions-health-gate]",
             "needs.functions-health-gate.result == 'success'",
@@ -44,7 +45,7 @@ class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
             "id-token: write",
             "attestations: write",
             "artifact-metadata: write",
-            "run.get(\"path\") != \".github/workflows/deploy-production.yml\"",
+            'run.get("path") != ".github/workflows/deploy-production.yml"',
             'run.get("head_sha") != commit',
             'run.get("head_branch") != tag',
             '("deploy-functions", "functions-health-gate")',
@@ -52,7 +53,7 @@ class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
             '--name "deploy-health-$RELEASE_TAG"',
             'git rev-parse "refs/tags/$release_tag^{commit}"',
             "scripts/ci/create-domain-core-release-evidence.mjs",
-            "--health-artifact \"$RUNNER_TEMP/deploy-health/deploy-health.json\"",
+            '--health-artifact "$RUNNER_TEMP/deploy-health/deploy-health.json"',
         )
         for value in required:
             self.assertIn(value, source, f"Functions evidence workflow is missing {value}")
@@ -63,25 +64,32 @@ class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
             "actions/attest@a1948c3f048ba23858d222213b7c278aabede763",
             "predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1",
             "predicate-path: ${{ steps.evidence.outputs.predicate }}",
-            "gh attestation verify",
-            "domain-core-functions-release-evidence.yml",
-            '--source-ref "refs/tags/$RELEASE_TAG"',
-            "verified attestation does not contain the exact release predicate",
-            "Refusing to replace non-identical immutable release asset",
-            "Published Functions evidence bytes differ from the signed local artifact",
-            'release.draft ? "draft" : "ready"',
-            'gh release upload "$RELEASE_TAG" "$staged_bundle"',
-            'gh release upload "$RELEASE_TAG" "$ARTIFACT_PATH"',
+            'consumer: "functions"',
+            'signerWorkflow: ".github/workflows/domain-core-functions-release-evidence.yml"',
+            "artifactPath,",
+            'bundles: [{ domain: "pricing", assetName, bundlePath, predicatePath }]',
+            "scripts/ci/publish-domain-core-release-evidence.mjs",
+            '--manifest "$manifest"',
         )
         for value in required:
             self.assertIn(value, source, f"Functions evidence workflow is missing {value}")
-        self.assertNotIn("--clobber", source)
-        self.assertNotIn("gh release create", source)
-        self.assertNotIn("gh release edit", source)
-        self.assertLess(
-            source.index('gh release upload "$RELEASE_TAG" "$staged_bundle"'),
-            source.index('gh release upload "$RELEASE_TAG" "$ARTIFACT_PATH"'),
-        )
+
+        publisher = PUBLISHER.read_text(encoding="utf-8")
+        for value in (
+            '"--signer-workflow"',
+            '"--source-digest"',
+            '"--source-ref"',
+            '"--signer-digest"',
+            '"--cert-oidc-issuer"',
+            '"--deny-self-hosted-runners"',
+            '"--predicate-type"',
+            "refusing to replace non-identical immutable release asset",
+            "published artifact bytes differ from the signed local artifact",
+        ):
+            self.assertIn(value, publisher)
+        self.assertNotIn('"--clobber"', publisher)
+        self.assertNotIn('["release", "create"', publisher)
+        self.assertNotIn('["release", "edit"', publisher)
 
     def test_release_evidence_schemas_are_strict_and_accept_stable_build_metadata(self) -> None:
         predicate = json.loads((ROOT / "config/domain-core-release-predicate.schema.json").read_text())
@@ -95,8 +103,7 @@ class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
         self.assertIn("healthChecks", receipt["properties"]["deployment"]["required"])
 
         predicate_contracts = {
-            rule["if"]["properties"]["consumer"]["const"]: rule["then"]["properties"]
-            for rule in predicate["allOf"]
+            rule["if"]["properties"]["consumer"]["const"]: rule["then"]["properties"] for rule in predicate["allOf"]
         }
         self.assertEqual(
             predicate_contracts["console"],
@@ -107,8 +114,7 @@ class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
         )
 
         receipt_contracts = {
-            rule["if"]["properties"]["consumer"]["const"]: rule["then"]["properties"]
-            for rule in receipt["allOf"]
+            rule["if"]["properties"]["consumer"]["const"]: rule["then"]["properties"] for rule in receipt["allOf"]
         }
         console = receipt_contracts["console"]
         self.assertEqual(console["artifactKind"]["const"], "console-deployment-receipt")
@@ -118,10 +124,7 @@ class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
             "firebase-hosting",
         )
         self.assertEqual(
-            [
-                item["const"]
-                for item in console["deployment"]["properties"]["healthChecks"]["prefixItems"]
-            ],
+            [item["const"] for item in console["deployment"]["properties"]["healthChecks"]["prefixItems"]],
             ["marketing", "console", "deploymentIdentity"],
         )
 
@@ -130,16 +133,17 @@ class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
         required = (
             '".github/workflows/domain-core-functions-release-evidence.yml"',
             '"scripts/ci/create-domain-core-release-evidence.test.mjs"',
+            '"scripts/ci/publish-domain-core-release-evidence.mjs"',
+            '"scripts/ci/publish-domain-core-release-evidence.test.mjs"',
             '"tests/test_domain_core_release_evidence_workflow.py"',
             '"scripts/ci/post-deploy-health-gate.test.sh"',
             "python3 tests/test_domain_core_release_evidence_workflow.py",
+            "scripts/ci/publish-domain-core-release-evidence.test.mjs",
             "bash scripts/ci/post-deploy-health-gate.test.sh",
         )
         for value in required:
             self.assertIn(value, source)
-        gate_source = (ROOT / "scripts/ci/verify-domain-core-legacy-deletion.py").read_text(
-            encoding="utf-8"
-        )
+        gate_source = (ROOT / "scripts/ci/verify-domain-core-legacy-deletion.py").read_text(encoding="utf-8")
         self.assertIn(
             '"functions": ".github/workflows/domain-core-functions-release-evidence.yml"',
             gate_source,

@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEPLOY_WORKFLOW = ROOT / ".github/workflows/deploy-hosting.yml"
 EVIDENCE_WORKFLOW = ROOT / ".github/workflows/domain-core-console-release-evidence.yml"
 DOMAIN_WORKFLOW = ROOT / ".github/workflows/domain-core.yml"
+PUBLISHER = ROOT / "scripts/ci/publish-domain-core-release-evidence.mjs"
 
 
 class DomainCoreConsoleReleaseEvidenceWorkflowTests(unittest.TestCase):
@@ -70,43 +71,49 @@ class DomainCoreConsoleReleaseEvidenceWorkflowTests(unittest.TestCase):
             "actions/attest@a1948c3f048ba23858d222213b7c278aabede763",
             "predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1",
             "predicate-path: ${{ steps.evidence.outputs.predicate }}",
-            "gh attestation verify",
-            "domain-core-console-release-evidence.yml",
-            '--source-digest "$GITHUB_SHA"',
-            '--source-ref "refs/tags/$RELEASE_TAG"',
-            '--signer-digest "$GITHUB_SHA"',
-            "verified attestation does not contain the exact release predicate",
-            "Refusing to replace non-identical immutable release asset",
-            "Published Console evidence bytes differ from the signed local artifact",
-            'release.draft ? "draft" : "ready"',
-            'gh release upload "$RELEASE_TAG" "$staged_bundle"',
-            'gh release upload "$RELEASE_TAG" "$ARTIFACT_PATH"',
+            'consumer: "console"',
+            'signerWorkflow: ".github/workflows/domain-core-console-release-evidence.yml"',
+            "artifactPath,",
+            'bundles: [{ domain: "cloudVault", assetName, bundlePath, predicatePath }]',
+            "scripts/ci/publish-domain-core-release-evidence.mjs",
+            '--manifest "$manifest"',
         )
         for value in required:
             self.assertIn(value, source, f"Console evidence workflow is missing {value}")
-        self.assertNotIn("--clobber", source)
-        self.assertNotIn("gh release create", source)
-        self.assertNotIn("gh release edit", source)
-        self.assertLess(
-            source.index('gh release upload "$RELEASE_TAG" "$staged_bundle"'),
-            source.index('gh release upload "$RELEASE_TAG" "$ARTIFACT_PATH"'),
-        )
+
+        publisher = PUBLISHER.read_text(encoding="utf-8")
+        for value in (
+            '"--signer-workflow"',
+            '"--source-digest"',
+            '"--source-ref"',
+            '"--signer-digest"',
+            '"--cert-oidc-issuer"',
+            '"--deny-self-hosted-runners"',
+            '"--predicate-type"',
+            "refusing to replace non-identical immutable release asset",
+            "published artifact bytes differ from the signed local artifact",
+        ):
+            self.assertIn(value, publisher)
+        self.assertNotIn('"--clobber"', publisher)
+        self.assertNotIn('["release", "create"', publisher)
+        self.assertNotIn('["release", "edit"', publisher)
 
     def test_domain_core_ci_and_deletion_gate_use_console_publisher(self) -> None:
         source = DOMAIN_WORKFLOW.read_text(encoding="utf-8")
         required = (
             '".github/workflows/domain-core-console-release-evidence.yml"',
             '"scripts/ci/create-domain-core-deployment-identity.test.mjs"',
+            '"scripts/ci/publish-domain-core-release-evidence.mjs"',
+            '"scripts/ci/publish-domain-core-release-evidence.test.mjs"',
             '"scripts/ci/hosting-smoke-domain-core.test.sh"',
             '"tests/test_domain_core_console_release_evidence_workflow.py"',
             "python3 tests/test_domain_core_console_release_evidence_workflow.py",
+            "scripts/ci/publish-domain-core-release-evidence.test.mjs",
             "bash scripts/ci/hosting-smoke-domain-core.test.sh",
         )
         for value in required:
             self.assertIn(value, source)
-        gate_source = (ROOT / "scripts/ci/verify-domain-core-legacy-deletion.py").read_text(
-            encoding="utf-8"
-        )
+        gate_source = (ROOT / "scripts/ci/verify-domain-core-legacy-deletion.py").read_text(encoding="utf-8")
         self.assertIn(
             '"console": ".github/workflows/domain-core-console-release-evidence.yml"',
             gate_source,
