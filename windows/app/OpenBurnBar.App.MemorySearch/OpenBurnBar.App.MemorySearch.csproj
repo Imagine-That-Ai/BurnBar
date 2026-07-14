@@ -60,12 +60,12 @@
     <!--
       Link (do NOT duplicate) the committed secret/PII corpus as an embedded resource so the gate
       loads the SAME bytes the macOS/daemon gate loads — single source of truth,
-      OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/secret-pattern-corpus.json. It is text (JSON),
+      OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/secret-pattern-corpus.json. It is text (JSON),
       so it does not trip the no-tracked-binaries tripwire, and it lives outside windows/ so it is not
       counted by the Windows tree-size budget. MemoryGateCorpus.LoadEmbedded resolves it by the
       LogicalName suffix.
     -->
-    <EmbeddedResource Include="../../../OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/secret-pattern-corpus.json">
+    <EmbeddedResource Include="../../../OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/secret-pattern-corpus.json">
       <LogicalName>OpenBurnBar.App.MemorySearch.secret-pattern-corpus.json</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
