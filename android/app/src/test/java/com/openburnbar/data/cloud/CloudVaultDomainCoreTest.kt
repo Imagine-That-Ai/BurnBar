@@ -112,7 +112,9 @@ class CloudVaultDomainCoreTest {
     @Test
     fun shadowReturnsLegacyAndReportsOnlySanitizedDimensions() {
         val diagnostics = mutableListOf<CloudVaultDomainCoreDiagnostic>()
+        val comparisons = mutableListOf<CloudVaultShadowComparison>()
         CloudVaultDomainCore.diagnosticOverride = diagnostics::add
+        CloudVaultDomainCore.comparisonOverride = comparisons::add
         var legacyCalls = 0
         var rustCalls = 0
 
@@ -136,6 +138,12 @@ class CloudVaultDomainCoreTest {
             listOf(CloudVaultDomainCoreDiagnostic("session_body", 3, "mismatch", 1)),
             diagnostics,
         )
+        assertEquals(1, comparisons.size)
+        assertEquals("cloudvault", comparisons.single().domain)
+        assertEquals("foundation", comparisons.single().slice)
+        assertEquals("android", comparisons.single().consumer)
+        assertEquals("result_mismatch", comparisons.single().mismatchCategory)
+        assertEquals("mismatch", comparisons.single().outcome)
     }
 
     @Test

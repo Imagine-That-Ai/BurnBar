@@ -2,7 +2,11 @@ import { createRequire } from "node:module";
 import type * as DomainCore from "@openburnbar/domain-core-wasm";
 
 import { logWarn } from "./logging.js";
-import { resolveDomainCoreRuntimeMode } from "./domainCoreBuildProfile.js";
+import { resolveDomainCoreEvidenceChannel, resolveDomainCoreRuntimeMode } from "./domainCoreBuildProfile.js";
+import {
+  buildDomainCoreShadowSampleV2,
+  type DomainCoreShadowSampleV2,
+} from "./domainCoreShadowEvidence.js";
 
 export type DomainCorePricingMode = "legacy" | "shadow" | "rust";
 
@@ -43,6 +47,13 @@ let unavailableLogged = false;
 let domainCore: typeof DomainCore | undefined;
 let rustVersion = "unknown";
 let rustLegacyKimiModel = "";
+let shadowEvidenceSink: ((sample: DomainCoreShadowSampleV2) => void) | undefined;
+
+export function configureDomainCorePricingShadowEvidenceSink(
+  sink: ((sample: DomainCoreShadowSampleV2) => void) | undefined,
+): void {
+  shadowEvidenceSink = sink;
+}
 
 export function resolveDomainCorePricingMode(environment: NodeJS.ProcessEnv = process.env): DomainCorePricingMode {
   return resolveDomainCoreRuntimeMode("pricing", environment);
@@ -60,23 +71,32 @@ export function calculateTokenCost(
   try {
     const encodedRates = encodeRates(rates);
     const encodedBuckets = encodeBuckets(buckets);
+    const rustStarted = process.hrtime.bigint();
     const rustNanoUsd = requireDomainCore().calculateTokenCostNanoUsd(
       encodedRates.values,
       encodedBuckets,
       encodedRates.hasCacheCreationRate,
     );
+    const rustMicros = elapsedMicros(rustStarted);
     const rustUsd = nanoUsdToUsd(rustNanoUsd);
     if (mode === "rust") return rustUsd;
 
+    const legacyStarted = process.hrtime.bigint();
     const typescript = legacy();
-    if (!withinShadowBound(typescript, rustNanoUsd)) {
+    const legacyMicros = elapsedMicros(legacyStarted);
+    const equivalent = withinShadowBound(typescript, rustNanoUsd);
+    if (!equivalent) {
       logWarn({ event: "domain_core.pricing.shadow_mismatch", core_version: rustVersion });
     }
+    recordShadowComparison("token-cost", "calculate_token_cost", equivalent, equivalent ? null : "result_mismatch", legacyMicros, rustMicros, environment);
     return typescript;
   } catch {
     if (mode === "shadow") {
       logWarn({ event: "domain_core.pricing.shadow_rejected", core_version: rustVersion });
-      return legacy();
+      const legacyStarted = process.hrtime.bigint();
+      const value = legacy();
+      recordShadowComparison("token-cost", "calculate_token_cost", false, "native_error", elapsedMicros(legacyStarted), 0, environment);
+      return value;
     }
     throw new DomainCorePricingError();
   }
@@ -93,6 +113,7 @@ export function priceLegacyKimiUsage(
   if (mode === "legacy") return legacy();
 
   try {
+    const rustStarted = process.hrtime.bigint();
     const core = requireDomainCore();
     let rust: LegacyKimiPricing = { isLegacy: false };
     if (core.isLegacyKimiWireEvent(provider, model)) {
@@ -105,17 +126,25 @@ export function priceLegacyKimiUsage(
         costUsd: nanoUsdToUsd(result[1]),
       };
     }
+    const rustMicros = elapsedMicros(rustStarted);
     if (mode === "rust") return rust;
 
+    const legacyStarted = process.hrtime.bigint();
     const typescript = legacy();
-    if (!equivalentKimi(typescript, rust)) {
+    const legacyMicros = elapsedMicros(legacyStarted);
+    const equivalent = equivalentKimi(typescript, rust);
+    if (!equivalent) {
       logWarn({ event: "domain_core.pricing.kimi_shadow_mismatch", core_version: rustVersion });
     }
+    recordShadowComparison("legacy-kimi", "price_legacy_kimi", equivalent, equivalent ? null : "result_mismatch", legacyMicros, rustMicros, environment);
     return typescript;
   } catch {
     if (mode === "shadow") {
       logWarn({ event: "domain_core.pricing.kimi_shadow_rejected", core_version: rustVersion });
-      return legacy();
+      const legacyStarted = process.hrtime.bigint();
+      const value = legacy();
+      recordShadowComparison("legacy-kimi", "price_legacy_kimi", false, "native_error", elapsedMicros(legacyStarted), 0, environment);
+      return value;
     }
     throw new DomainCorePricingError();
   }
@@ -201,4 +230,57 @@ function equivalentKimi(left: LegacyKimiPricing, right: LegacyKimiPricing): bool
   }
   if (left.costUsd === undefined || right.costUsd === undefined) return left.costUsd === right.costUsd;
   return Math.abs(left.costUsd - right.costUsd) * NANO_USD_PER_USD <= SHADOW_MAX_DELTA_NANO_USD;
+}
+
+function elapsedMicros(started: bigint): number {
+  const micros = (process.hrtime.bigint() - started) / 1_000n;
+  return Number(micros > 600_000_000n ? 600_000_000n : micros);
+}
+
+function recordShadowComparison(
+  slice: "token-cost" | "legacy-kimi",
+  operation: string,
+  equivalent: boolean,
+  mismatchCategory: "result_mismatch" | "native_error" | null,
+  legacyMicros: number,
+  rustMicros: number,
+  environment: NodeJS.ProcessEnv,
+): void {
+  const channel = resolveDomainCoreEvidenceChannel(environment);
+  if (!channel || rustVersion === "unknown") return;
+  try {
+    const sample = buildDomainCoreShadowSampleV2({
+      domain: "pricing",
+      slice,
+      consumer: "functions",
+      channel,
+      operation,
+      coreVersion: rustVersion,
+      outcome: equivalent ? "match" : "mismatch",
+      mismatchCategory,
+      legacyMicros,
+      rustMicros,
+    });
+    if (shadowEvidenceSink) {
+      shadowEvidenceSink(sample);
+    } else if (environment.K_SERVICE || environment.FUNCTION_TARGET) {
+      persistProductionShadowSample(sample);
+    }
+  } catch {
+    logWarn({ event: "domain_core.pricing.shadow_evidence_rejected" });
+  }
+}
+
+function persistProductionShadowSample(sample: DomainCoreShadowSampleV2): void {
+  void Promise.all([
+    import("./adminRuntime.js"),
+    import("./resilienceHelpers.js"),
+  ]).then(([{ db }, { firestoreWithResilience }]) =>
+    firestoreWithResilience("persistDomainCorePricingShadowSample", async () => {
+      const { persistDomainCoreShadowSamples } = await import("./domainCoreShadowEvidence.js");
+      await persistDomainCoreShadowSamples(db, [sample], Date.now());
+    }),
+  ).catch(() => {
+    logWarn({ event: "domain_core.pricing.shadow_evidence_persist_failed" });
+  });
 }

@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { HttpsError } from "firebase-functions/v2/https";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 
 import { isRecord } from "./guards.js";
 
-export const DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION = 1;
+export const DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION = 2;
+export const DOMAIN_CORE_SHADOW_SAMPLE_LEGACY_SCHEMA_VERSION = 1;
 export const DOMAIN_CORE_SHADOW_MAX_BATCH = 100;
 export const DOMAIN_CORE_SHADOW_RETENTION_MS = 60 * 24 * 60 * 60 * 1000;
 export const DOMAIN_CORE_SHADOW_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1000;
@@ -11,7 +13,7 @@ export const DOMAIN_CORE_SHADOW_FUTURE_SKEW_MS = 5 * 60 * 1000;
 export const DOMAIN_CORE_SHADOW_COLLECTION = "domain_core_shadow_samples";
 const DOMAIN_CORE_SHADOW_CLAIM_CONSUMERS = new Set(["apple", "windows", "android", "console", "functions"]);
 
-const SAMPLE_KEYS = [
+const SAMPLE_V1_KEYS = [
   "channel",
   "consumer",
   "coreVersion",
@@ -25,16 +27,50 @@ const SAMPLE_KEYS = [
   "sampleId",
   "schemaVersion",
 ] as const;
+const SAMPLE_V2_KEYS = [...SAMPLE_V1_KEYS, "slice"] as const;
 const REQUEST_KEYS = ["samples"] as const;
-const CONSUMERS = new Set(["apple", "windows"]);
+const V1_CONSUMERS = new Set(["apple", "windows"]);
 const CHANNELS = new Set(["internal", "beta"]);
-const OPERATIONS = new Set(["claude_quota", "codex_quota", "cursor_quota", "anthropic_quota"]);
+const V1_OPERATIONS = new Set(["claude_quota", "codex_quota", "cursor_quota", "anthropic_quota"]);
+const QUOTA_OPERATION_SLICES = new Map([
+  ["claude_quota", "claude"],
+  ["codex_quota", "codex"],
+  ["cursor_quota", "cursor"],
+  ["anthropic_quota", "anthropic"],
+]);
+const REQUIRED_COVERAGE: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  quota: {
+    claude: ["apple", "windows"],
+    codex: ["apple", "windows"],
+    cursor: ["apple", "windows"],
+    anthropic: ["apple", "windows"],
+  },
+  cloudvault: {
+    foundation: ["apple", "android", "windows", "console"],
+    aes: ["apple", "android", "windows", "console"],
+    recovery: ["apple", "android", "windows"],
+    escrow: ["apple", "android", "windows", "console"],
+    "document-rewrap": ["apple", "android"],
+    search: ["apple", "android"],
+  },
+  hermes: {
+    aad: ["apple", "android"],
+    "payload-keywrap": ["apple", "android"],
+    "hpke-info": ["apple", "android"],
+    ratchet: ["apple", "android"],
+  },
+  pricing: {
+    "token-cost": ["apple", "functions"],
+    "legacy-kimi": ["functions"],
+  },
+};
 const MISMATCH_CATEGORIES = new Set(["result_mismatch", "native_unavailable", "native_error", "invalid_result"]);
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const CORE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 
 export type DomainCoreShadowConsumer = "apple" | "windows";
+export type DomainCoreShadowConsumerV2 = "apple" | "android" | "windows" | "console" | "functions";
 export type DomainCoreShadowChannel = "internal" | "beta";
 export type DomainCoreShadowOperation = "claude_quota" | "codex_quota" | "cursor_quota" | "anthropic_quota";
 export type DomainCoreShadowOutcome = "match" | "mismatch";
@@ -53,6 +89,37 @@ export interface DomainCoreShadowSampleV1 {
   operation: DomainCoreShadowOperation;
   coreVersion: string;
   observedAt: string;
+  outcome: DomainCoreShadowOutcome;
+  mismatchCategory: DomainCoreShadowMismatchCategory | null;
+  legacyMicros: number;
+  rustMicros: number;
+}
+
+export interface DomainCoreShadowSampleV2 {
+  schemaVersion: 2;
+  sampleId: string;
+  domain: "quota" | "cloudvault" | "hermes" | "pricing";
+  slice: string;
+  consumer: DomainCoreShadowConsumerV2;
+  channel: DomainCoreShadowChannel;
+  operation: string;
+  coreVersion: string;
+  observedAt: string;
+  outcome: DomainCoreShadowOutcome;
+  mismatchCategory: DomainCoreShadowMismatchCategory | null;
+  legacyMicros: number;
+  rustMicros: number;
+}
+
+export type DomainCoreShadowSample = DomainCoreShadowSampleV1 | DomainCoreShadowSampleV2;
+
+export interface DomainCoreShadowComparisonV2 {
+  domain: DomainCoreShadowSampleV2["domain"];
+  slice: string;
+  consumer: DomainCoreShadowConsumerV2;
+  channel: DomainCoreShadowChannel;
+  operation: string;
+  coreVersion: string;
   outcome: DomainCoreShadowOutcome;
   mismatchCategory: DomainCoreShadowMismatchCategory | null;
   legacyMicros: number;
@@ -109,22 +176,31 @@ function parseOutcome(
   };
 }
 
-function parseSample(raw: unknown, nowMillis: number, index: number): DomainCoreShadowSampleV1 {
+function validV2Identity(domain: unknown, slice: unknown, consumer: unknown): boolean {
+  return (
+    typeof domain === "string" &&
+    typeof slice === "string" &&
+    typeof consumer === "string" &&
+    REQUIRED_COVERAGE[domain]?.[slice]?.includes(consumer) === true
+  );
+}
+
+function parseSample(raw: unknown, nowMillis: number, index: number): DomainCoreShadowSample {
   if (!isRecord(raw)) throw new HttpsError("invalid-argument", `samples[${index}] must be an object.`);
-  exactKeys(raw, SAMPLE_KEYS, `samples[${index}]`);
-  if (raw.schemaVersion !== DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION || raw.domain !== "quota") {
+  if (raw.schemaVersion === DOMAIN_CORE_SHADOW_SAMPLE_LEGACY_SCHEMA_VERSION) {
+    exactKeys(raw, SAMPLE_V1_KEYS, `samples[${index}]`);
+  } else if (raw.schemaVersion === DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION) {
+    exactKeys(raw, SAMPLE_V2_KEYS, `samples[${index}]`);
+  } else {
     throw new HttpsError("invalid-argument", `samples[${index}] has an unsupported schema or domain.`);
   }
   if (typeof raw.sampleId !== "string" || !UUID_V4.test(raw.sampleId)) {
     throw new HttpsError("invalid-argument", `samples[${index}].sampleId is invalid.`);
   }
-  if (typeof raw.consumer !== "string" || !CONSUMERS.has(raw.consumer)) {
-    throw new HttpsError("invalid-argument", `samples[${index}].consumer is invalid.`);
-  }
   if (typeof raw.channel !== "string" || !CHANNELS.has(raw.channel)) {
     throw new HttpsError("permission-denied", "Shadow evidence is accepted only from internal or beta channels.");
   }
-  if (typeof raw.operation !== "string" || !OPERATIONS.has(raw.operation)) {
+  if (typeof raw.operation !== "string" || !/^[a-z][a-z0-9_.-]{0,63}$/u.test(raw.operation)) {
     throw new HttpsError("invalid-argument", `samples[${index}].operation is invalid.`);
   }
   if (typeof raw.coreVersion !== "string" || raw.coreVersion.length > 64 || !CORE_VERSION.test(raw.coreVersion)) {
@@ -133,13 +209,9 @@ function parseSample(raw: unknown, nowMillis: number, index: number): DomainCore
   const observedAt = parseObservedAt(raw.observedAt, nowMillis, index);
   const outcome = parseOutcome(raw.outcome, raw.mismatchCategory, index);
 
-  return {
-    schemaVersion: 1,
+  const common = {
     sampleId: raw.sampleId,
-    domain: "quota",
-    consumer: raw.consumer as DomainCoreShadowConsumer,
     channel: raw.channel as DomainCoreShadowChannel,
-    operation: raw.operation as DomainCoreShadowOperation,
     coreVersion: raw.coreVersion,
     observedAt: observedAt.iso,
     outcome: outcome.outcome,
@@ -147,9 +219,54 @@ function parseSample(raw: unknown, nowMillis: number, index: number): DomainCore
     legacyMicros: boundedMicros(raw.legacyMicros, `samples[${index}].legacyMicros`),
     rustMicros: boundedMicros(raw.rustMicros, `samples[${index}].rustMicros`),
   };
+  if (raw.schemaVersion === DOMAIN_CORE_SHADOW_SAMPLE_LEGACY_SCHEMA_VERSION) {
+    if (raw.domain !== "quota" || typeof raw.consumer !== "string" || !V1_CONSUMERS.has(raw.consumer) || !V1_OPERATIONS.has(raw.operation)) {
+      throw new HttpsError("invalid-argument", `samples[${index}] has an unsupported v1 identity.`);
+    }
+    return {
+      schemaVersion: 1,
+      domain: "quota",
+      consumer: raw.consumer as DomainCoreShadowConsumer,
+      operation: raw.operation as DomainCoreShadowOperation,
+      ...common,
+    };
+  }
+  if (!validV2Identity(raw.domain, raw.slice, raw.consumer)) {
+    throw new HttpsError("invalid-argument", `samples[${index}] has an invalid domain, slice, or consumer.`);
+  }
+  if (raw.domain === "quota" && QUOTA_OPERATION_SLICES.get(raw.operation) !== raw.slice) {
+    throw new HttpsError("invalid-argument", `samples[${index}] has an inconsistent quota operation and slice.`);
+  }
+  return {
+    schemaVersion: 2,
+    domain: raw.domain as DomainCoreShadowSampleV2["domain"],
+    slice: raw.slice as string,
+    consumer: raw.consumer as DomainCoreShadowConsumerV2,
+    operation: raw.operation,
+    ...common,
+  };
 }
 
-export function parseDomainCoreShadowSampleRequest(raw: unknown, nowMillis = Date.now()): DomainCoreShadowSampleV1[] {
+export function buildDomainCoreShadowSampleV2(
+  comparison: DomainCoreShadowComparisonV2,
+  options: { nowMillis?: number; sampleId?: string } = {},
+): DomainCoreShadowSampleV2 {
+  const nowMillis = options.nowMillis ?? Date.now();
+  const parsed = parseSample(
+    {
+      schemaVersion: 2,
+      sampleId: options.sampleId ?? randomUUID(),
+      observedAt: new Date(nowMillis).toISOString(),
+      ...comparison,
+    },
+    nowMillis,
+    0,
+  );
+  if (parsed.schemaVersion !== 2) throw new Error("V2 shadow sample builder returned an unexpected schema.");
+  return parsed;
+}
+
+export function parseDomainCoreShadowSampleRequest(raw: unknown, nowMillis = Date.now()): DomainCoreShadowSample[] {
   if (!isRecord(raw)) throw new HttpsError("invalid-argument", "Request data must be an object.");
   exactKeys(raw, REQUEST_KEYS, "request data");
   if (!Array.isArray(raw.samples) || raw.samples.length === 0 || raw.samples.length > DOMAIN_CORE_SHADOW_MAX_BATCH) {
@@ -164,7 +281,7 @@ export function parseDomainCoreShadowSampleRequest(raw: unknown, nowMillis = Dat
 
 export function enforceDomainCoreShadowChannelClaim(
   token: Record<string, unknown>,
-  samples: DomainCoreShadowSampleV1[],
+  samples: DomainCoreShadowSample[],
 ): void {
   const claimedChannel = token.domainCoreShadowChannel;
   const claimedConsumers = token.domainCoreShadowConsumers;
@@ -183,11 +300,12 @@ export function enforceDomainCoreShadowChannelClaim(
   }
 }
 
-export function storedDomainCoreShadowSample(sample: DomainCoreShadowSampleV1, nowMillis: number) {
+export function storedDomainCoreShadowSample(sample: DomainCoreShadowSample, nowMillis: number) {
   return {
     schemaVersion: sample.schemaVersion,
     sampleId: sample.sampleId,
     domain: sample.domain,
+    ...(sample.schemaVersion === 2 ? { slice: sample.slice } : {}),
     consumer: sample.consumer,
     channel: sample.channel,
     operation: sample.operation,
@@ -202,12 +320,13 @@ export function storedDomainCoreShadowSample(sample: DomainCoreShadowSampleV1, n
   };
 }
 
-export function storedDomainCoreShadowSampleMatches(stored: unknown, sample: DomainCoreShadowSampleV1): boolean {
+export function storedDomainCoreShadowSampleMatches(stored: unknown, sample: DomainCoreShadowSample): boolean {
   if (!isRecord(stored) || !(stored.observedAt instanceof Timestamp)) return false;
   return (
     stored.schemaVersion === sample.schemaVersion &&
     stored.sampleId === sample.sampleId &&
     stored.domain === sample.domain &&
+    (sample.schemaVersion === 1 || stored.slice === sample.slice) &&
     stored.consumer === sample.consumer &&
     stored.channel === sample.channel &&
     stored.operation === sample.operation &&
@@ -222,7 +341,7 @@ export function storedDomainCoreShadowSampleMatches(stored: unknown, sample: Dom
 
 export async function persistDomainCoreShadowSamples(
   firestore: Firestore,
-  samples: DomainCoreShadowSampleV1[],
+  samples: DomainCoreShadowSample[],
   nowMillis: number,
 ): Promise<{ accepted: number; duplicates: number }> {
   return firestore.runTransaction(async (transaction) => {

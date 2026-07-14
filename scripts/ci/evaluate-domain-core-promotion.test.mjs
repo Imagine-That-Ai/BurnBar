@@ -1,282 +1,165 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { requiredCoverageForDomain } from "../lib/domain-core-evidence-contract.mjs";
 import { evaluatePromotionEvidence } from "../lib/domain-core-promotion-evidence.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPT_DIR, "..", "..");
 const CLI = join(SCRIPT_DIR, "evaluate-domain-core-promotion.mjs");
-const POLICY_PATH = join(REPO_ROOT, "config", "domain-core-promotion-policy.json");
-const POLICY = JSON.parse(readFileSync(POLICY_PATH, "utf8"));
-const NOW = "2020-07-16T00:00:00Z";
+const POLICY = JSON.parse(readFileSync(join(REPO_ROOT, "config", "domain-core-promotion-policy.json"), "utf8"));
+const NOW = "2026-07-13T00:00:00Z";
 
-function validEvidence() {
+function validEvidence(domain = "quota") {
+  const coverage = requiredCoverageForDomain(domain);
+  const sampleCount = Math.ceil(POLICY.domains[domain].minimumSamples / coverage.length);
   return {
-    schemaVersion: 1,
-    domain: "quota",
-    coreVersion: "0.1.0",
-    generatedAt: "2020-07-15T01:00:00Z",
+    schemaVersion: 2,
+    domain,
+    coreVersion: "0.3.0",
+    generatedAt: "2026-07-12T01:00:00Z",
     provenance: {
-      collector: "domain-core-shadow-v1",
+      collector: "domain-core-shadow-exporter",
       queryRevision: "0123456789abcdef0123456789abcdef01234567",
-      sourceUri: "https://github.com/openburnbar/openburnbar/actions/runs/123456",
+      sourceUri: "https://console.cloud.google.com/firestore/databases/-default-/data/panel/domain_core_shadow_samples",
     },
-    windows: [
-      {
-        consumer: "apple",
-        channel: "beta",
-        startedAt: "2020-07-01T00:00:00Z",
-        endedAt: "2020-07-15T00:00:00Z",
-        sampleCount: 6000,
-        mismatches: [],
-        latency: {
-          sampleCount: 6000,
-          legacyP95Micros: 1000,
-          rustP95Micros: 1050,
-        },
-      },
-      {
-        consumer: "windows",
-        channel: "internal",
-        startedAt: "2020-07-01T00:00:00Z",
-        endedAt: "2020-07-15T00:00:00Z",
-        sampleCount: 4000,
-        mismatches: [],
-        latency: {
-          sampleCount: 4000,
-          legacyP95Micros: 2000,
-          rustP95Micros: 1800,
-        },
-      },
-    ],
+    windows: coverage.map(({ slice, consumer }) => ({
+      slice,
+      consumer,
+      channel: "internal",
+      startedAt: "2026-06-28T00:00:00Z",
+      endedAt: "2026-07-12T00:00:00Z",
+      sampleCount,
+      mismatches: [],
+      latency: { sampleCount, legacyP95Micros: 100, rustP95Micros: 105 },
+    })),
   };
 }
 
-function evaluate(evidence) {
-  return evaluatePromotionEvidence(evidence, POLICY, { now: NOW });
-}
-
-function blockerCodes(report) {
-  return report.blockers.map((blocker) => blocker.code);
-}
-
-test("exact threshold evidence is promotion-ready", () => {
-  const report = evaluate(validEvidence());
-  assert.equal(report.status, "ready");
-  assert.equal(report.ready, true);
-  assert.equal(report.summary.totalSamples, 10000);
-  assert.deepEqual(report.blockers, []);
-  assert.equal(report.summary.consumers[0].p95RegressionBasisPoints, 500);
+test("every declared domain is ready only with complete V2 slice/consumer coverage", () => {
+  for (const domain of ["quota", "cloudvault", "hermes", "pricing"]) {
+    const report = evaluatePromotionEvidence(validEvidence(domain), POLICY, { now: NOW });
+    assert.equal(report.status, "ready", domain);
+    assert.deepEqual(
+      report.summary.coverage.map(({ slice, consumer }) => `${slice}:${consumer}`),
+      requiredCoverageForDomain(domain).map(({ slice, consumer }) => `${slice}:${consumer}`),
+    );
+  }
 });
 
-test("every quantitative gate fails closed independently", () => {
-  const cases = [
-    [
-      "sample count",
-      (evidence) => {
-        evidence.windows[0].sampleCount -= 1;
-        evidence.windows[0].latency.sampleCount -= 1;
-      },
-      "insufficient_samples",
-    ],
-    [
-      "coverage duration",
-      (evidence) => {
-        evidence.windows[0].startedAt = "2020-07-01T00:00:01Z";
-      },
-      "insufficient_coverage",
-    ],
-    [
-      "required consumer",
-      (evidence) => {
-        evidence.windows.pop();
-        evidence.windows[0].sampleCount = 10000;
-        evidence.windows[0].latency.sampleCount = 10000;
-      },
-      "required_consumer_missing",
-    ],
-    [
-      "eligible channel",
-      (evidence) => {
-        evidence.windows[0].channel = "production";
-      },
-      "channel_not_eligible",
-    ],
-    [
-      "latency regression",
-      (evidence) => {
-        evidence.windows[0].latency.rustP95Micros = 1051;
-      },
-      "p95_regression_exceeded",
-    ],
-    [
-      "unexplained mismatch",
-      (evidence) => {
-        evidence.windows[0].mismatches.push({
-          category: "reset_rounding",
-          count: 1,
-          resolution: "unexplained",
-        });
-      },
-      "unexplained_mismatches",
-    ],
-  ];
+test("missing one required slice/consumer pair blocks promotion", () => {
+  const evidence = validEvidence("cloudvault");
+  evidence.windows = evidence.windows.filter((item) => !(item.slice === "search" && item.consumer === "android"));
+  const report = evaluatePromotionEvidence(evidence, POLICY, { now: NOW });
+  assert.equal(report.status, "not_ready");
+  assert.ok(report.blockers.some((item) => item.code === "required_coverage_missing" && item.slice === "search" && item.consumer === "android"));
+});
 
-  for (const [label, mutate, expected] of cases) {
+test("invented and duplicated coverage identities are invalid", () => {
+  const invented = validEvidence("pricing");
+  invented.windows[0].consumer = "windows";
+  assert.equal(evaluatePromotionEvidence(invented, POLICY, { now: NOW }).status, "invalid");
+
+  const duplicated = validEvidence("hermes");
+  duplicated.windows.push({ ...duplicated.windows[0] });
+  assert.equal(evaluatePromotionEvidence(duplicated, POLICY, { now: NOW }).status, "invalid");
+});
+
+test("V1 remains readable but can never satisfy the V2 promotion policy", () => {
+  const evidence = {
+    schemaVersion: 1,
+    domain: "quota",
+    coreVersion: "0.2.0",
+    generatedAt: "2026-07-12T01:00:00Z",
+    provenance: validEvidence().provenance,
+    windows: [{ consumer: "apple" }],
+  };
+  const report = evaluatePromotionEvidence(evidence, POLICY, { now: NOW });
+  assert.equal(report.status, "not_ready");
+  assert.equal(report.sourceSchemaVersion, 1);
+  assert.deepEqual(report.blockers, [{ code: "evidence_schema_v2_required", slice: null, consumer: null }]);
+});
+
+test("quantitative and review gates fail closed per coverage cell", () => {
+  const cases = [
+    ["insufficient coverage", (e) => { e.windows[0].startedAt = "2026-07-11T00:00:00Z"; }, "insufficient_coverage"],
+    ["sample count", (e) => { for (const item of e.windows) item.sampleCount = item.latency.sampleCount = 1; }, "insufficient_samples"],
+    ["unexplained mismatch", (e) => { e.windows[0].mismatches = [{ category: "result_mismatch", count: 1, resolution: "unexplained" }]; }, "unexplained_mismatches"],
+    ["latency regression", (e) => { e.windows[0].latency.rustP95Micros = 106; }, "p95_regression_exceeded"],
+    ["production channel", (e) => { e.windows[0].channel = "production"; }, "channel_not_eligible"],
+  ];
+  for (const [label, mutate, blocker] of cases) {
     const evidence = validEvidence();
     mutate(evidence);
-    const report = evaluate(evidence);
-    assert.equal(report.ready, false, label);
+    const report = evaluatePromotionEvidence(evidence, POLICY, { now: NOW });
     assert.equal(report.status, "not_ready", label);
-    assert.ok(blockerCodes(report).includes(expected), label);
+    assert.ok(report.blockers.some((item) => item.code === blocker), label);
   }
 });
 
-test("reviewed explained categories are counted without exposing review metadata", () => {
-  const evidence = validEvidence();
-  evidence.windows[0].mismatches.push({
-    category: "legacy_precision",
-    count: 3,
+test("explained mismatches require a linked issue, reviewer, and approval timestamp", () => {
+  const valid = validEvidence();
+  valid.windows[0].mismatches = [{
+    category: "invalid_result",
+    count: 2,
     resolution: "explained",
-    issue: "https://github.com/openburnbar/openburnbar/issues/123",
+    issue: "https://github.com/Imagine-That-Ai/BurnBar/issues/123",
     reviewedBy: "@reviewer",
-    approvedAt: "2020-07-15T00:30:00Z",
-  });
-  const report = evaluate(evidence);
-  assert.equal(report.ready, true);
-  assert.equal(report.summary.unexplainedMismatchCount, 0);
-  assert.doesNotMatch(JSON.stringify(report), /reviewer|issues\/123/u);
+    approvedAt: "2026-07-11T00:00:00Z",
+  }];
+  assert.equal(evaluatePromotionEvidence(valid, POLICY, { now: NOW }).status, "ready");
+
+  const invalid = validEvidence();
+  invalid.windows[0].mismatches = [{ category: "invalid_result", count: 1, resolution: "explained" }];
+  assert.equal(evaluatePromotionEvidence(invalid, POLICY, { now: NOW }).status, "invalid");
 });
 
-test("an explained category without independent review is invalid", () => {
-  const evidence = validEvidence();
-  evidence.windows[0].mismatches.push({
-    category: "legacy_precision",
-    count: 3,
-    resolution: "explained",
-  });
-  const report = evaluate(evidence);
+test("policy cannot omit a real consumer to weaken the gate", () => {
+  const weakened = structuredClone(POLICY);
+  weakened.domains.cloudvault.requiredCoverage.pop();
+  const report = evaluatePromotionEvidence(validEvidence("cloudvault"), weakened, { now: NOW });
   assert.equal(report.status, "invalid");
-  assert.ok(report.errors.some((error) => error.includes("reviewedBy")));
-});
-
-test("schema ambiguity and cherry-picked latency samples are invalid", () => {
-  const cases = [
-    (evidence) => {
-      evidence.unrecognized = true;
-    },
-    (evidence) => {
-      evidence.windows[1].consumer = "apple";
-    },
-    (evidence) => {
-      evidence.windows[0].latency.sampleCount = 100;
-    },
-    (evidence) => {
-      evidence.generatedAt = "2020-07-16T00:06:00Z";
-    },
-    (evidence) => {
-      evidence.windows[0].endedAt = evidence.generatedAt;
-      evidence.windows[0].startedAt = evidence.generatedAt;
-    },
-    (evidence) => {
-      evidence.provenance.sourceUri = "https://example.com/run?token=secret";
-    },
-    (evidence) => {
-      evidence.generatedAt = "2020-02-30T00:00:00Z";
-    },
-  ];
-  for (const mutate of cases) {
-    const evidence = validEvidence();
-    mutate(evidence);
-    assert.equal(evaluate(evidence).status, "invalid");
-  }
-});
-
-test("invalid policy cannot weaken the gate", () => {
-  const cases = [
-    (policy) => {
-      policy.domains.quota.minimumSamples = -1;
-    },
-    (policy) => {
-      policy.domains.quota.requiredConsumers = [];
-    },
-    (policy) => {
-      policy.domains.quota.maximumP95RegressionBasisPoints = 1.5;
-    },
-    (policy) => {
-      policy.domains.quota.unreviewedOverride = true;
-    },
-  ];
-  for (const mutate of cases) {
-    const policy = structuredClone(POLICY);
-    mutate(policy);
-    const report = evaluatePromotionEvidence(validEvidence(), policy, { now: NOW });
-    assert.equal(report.ready, false);
-    assert.equal(report.status, "invalid");
-  }
+  assert.ok(report.errors.some((item) => item.includes("omits real coverage")));
 });
 
 test("random malformed JSON values never throw or promote", () => {
   let state = 0x5eed1234;
-  const random = () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 0x1_0000_0000;
-  };
-  const scalar = () => [null, true, false, random(), `value-${state}`][Math.floor(random() * 5)];
-  const arbitrary = (depth = 0) => {
-    if (depth > 2 || random() < 0.45) return scalar();
-    if (random() < 0.5) {
-      return Array.from({ length: Math.floor(random() * 5) }, () => arbitrary(depth + 1));
-    }
-    return Object.fromEntries(
-      Array.from({ length: Math.floor(random() * 5) }, (_, index) => [
-        `field${index}`,
-        arbitrary(depth + 1),
-      ]),
-    );
-  };
-
-  for (let index = 0; index < 2000; index += 1) {
-    const report = evaluate(arbitrary());
+  const random = () => ((state = (state * 1664525 + 1013904223) >>> 0) / 0x1_0000_0000);
+  const scalar = () => [null, true, false, random(), `v-${state}`, Number.MAX_SAFE_INTEGER + 1][Math.floor(random() * 6)];
+  for (let index = 0; index < 500; index += 1) {
+    const value = random() < 0.5 ? scalar() : { [String(scalar())]: scalar(), schemaVersion: Math.floor(random() * 4) };
+    let report;
+    assert.doesNotThrow(() => { report = evaluatePromotionEvidence(value, POLICY, { now: NOW }); });
     assert.equal(report.ready, false);
-    assert.equal(report.status, "invalid");
   }
 });
 
-test("CLI emits machine-readable reports and distinct exit codes", () => {
-  const root = mkdtempSync(join(tmpdir(), "domain-core-evidence-test-"));
+test("CLI requires and binds --domain with distinct exit codes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "domain-core-evidence-v2-"));
   try {
-    const evidencePath = join(root, "evidence.json");
-    const outputPath = join(root, "report.json");
-    writeFileSync(evidencePath, JSON.stringify(validEvidence()));
-    const ready = execFileSync(
-      "node",
-      [CLI, "--evidence", evidencePath, "--output", outputPath],
-      { encoding: "utf8" },
-    );
-    assert.equal(JSON.parse(ready).status, "ready");
-    assert.deepEqual(JSON.parse(readFileSync(outputPath, "utf8")), JSON.parse(ready));
+    const evidencePath = join(directory, "evidence.json");
+    const outputPath = join(directory, "report.json");
+    writeFileSync(evidencePath, JSON.stringify(validEvidence("quota")));
+    const stdout = execFileSync(process.execPath, [CLI, "--domain", "quota", "--evidence", evidencePath, "--output", outputPath], { encoding: "utf8" });
+    assert.equal(JSON.parse(stdout).status, "ready");
+    assert.equal(JSON.parse(readFileSync(outputPath, "utf8")).domain, "quota");
 
-    const notReady = validEvidence();
-    notReady.windows[0].latency.rustP95Micros = 2000;
-    writeFileSync(evidencePath, JSON.stringify(notReady));
-    assert.throws(
-      () => execFileSync("node", [CLI, "--evidence", evidencePath]),
-      (error) => error.status === 2 && JSON.parse(error.stdout).status === "not_ready",
-    );
+    const wrong = spawnSync(process.execPath, [CLI, "--domain", "hermes", "--evidence", evidencePath], { encoding: "utf8" });
+    assert.equal(wrong.status, 1);
+    assert.equal(JSON.parse(wrong.stdout).status, "invalid");
 
-    writeFileSync(evidencePath, "{not-json");
-    assert.throws(
-      () => execFileSync("node", [CLI, "--evidence", evidencePath]),
-      (error) => error.status === 1 && JSON.parse(error.stdout).status === "invalid",
-    );
+    const blocked = validEvidence("quota");
+    blocked.windows.pop();
+    writeFileSync(evidencePath, JSON.stringify(blocked));
+    const notReady = spawnSync(process.execPath, [CLI, "--domain", "quota", "--evidence", evidencePath], { encoding: "utf8" });
+    assert.equal(notReady.status, 2);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
   }
 });

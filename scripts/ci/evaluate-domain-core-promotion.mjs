@@ -11,7 +11,7 @@ const DEFAULT_POLICY = join(REPO_ROOT, "config", "domain-core-promotion-policy.j
 function usage(message) {
   if (message) console.error(message);
   console.error(
-    "usage: evaluate-domain-core-promotion.mjs --evidence <path> [--output <path>]",
+    "usage: evaluate-domain-core-promotion.mjs --domain <quota|cloudvault|hermes|pricing> --evidence <path> [--output <path>]",
   );
   process.exit(1);
 }
@@ -21,11 +21,12 @@ function parseArguments(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!value || !new Set(["--evidence", "--output"]).has(flag)) {
+    if (!value || !new Set(["--domain", "--evidence", "--output"]).has(flag)) {
       usage(`invalid argument: ${flag ?? "<missing>"}`);
     }
     result[flag.slice(2)] = value;
   }
+  if (!result.domain) usage("--domain is required");
   if (!result.evidence) usage("--evidence is required");
   return result;
 }
@@ -57,7 +58,16 @@ function writeAtomically(path, contents) {
 const args = parseArguments(process.argv.slice(2));
 const evidence = loadJson(args.evidence, "evidence");
 const policy = loadJson(DEFAULT_POLICY, "policy");
-const report = evaluatePromotionEvidence(evidence, policy);
+const report = evidence?.domain === args.domain
+  ? evaluatePromotionEvidence(evidence, policy)
+  : {
+      schemaVersion: 2,
+      domain: args.domain,
+      status: "invalid",
+      ready: false,
+      errors: [`evidence.domain must equal requested domain ${args.domain}`],
+      blockers: [{ code: "invalid_evidence", slice: null, consumer: null }],
+    };
 const serialized = `${JSON.stringify(report, null, 2)}\n`;
 if (args.output) writeAtomically(args.output, serialized);
 process.stdout.write(serialized);

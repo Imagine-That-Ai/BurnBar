@@ -286,7 +286,7 @@ object HermesRatchetCrypto {
         val combined =
             decodeBase64(envelope.ciphertextBase64, "ciphertext").also {
                 if (it.size <= GCM_IV_BYTES) {
-                    throw HermesRatchetException(HermesRatchetError.INVALID_ENVELOPE, "ciphertext too short")
+                    invalidCiphertextLength()
                 }
             }
         return try {
@@ -300,11 +300,11 @@ object HermesRatchetCrypto {
                 cipher.doFinal(body)
             }
         } catch (error: GeneralSecurityException) {
-            throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)
+            authenticationFailure(error)
         } catch (error: HermesFfiException.InvalidCiphertext) {
-            throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)
+            authenticationFailure(error)
         } catch (error: HermesFfiException.AuthenticationFailed) {
-            throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)
+            authenticationFailure(error)
         }
     }
 
@@ -453,3 +453,8 @@ object HermesRatchetCrypto {
 
     private data class ChainDerivation(val chainKey: ByteArray, val messageKey: ByteArray)
 }
+
+private fun invalidCiphertextLength(): Nothing = throw HermesRatchetException(HermesRatchetError.INVALID_ENVELOPE, "ciphertext too short")
+
+private fun authenticationFailure(error: Exception): Nothing =
+    throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)

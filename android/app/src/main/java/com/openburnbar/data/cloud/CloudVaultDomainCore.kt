@@ -30,6 +30,7 @@ import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrapVaultKey
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrappingKey
 import uniffi.openburnbar_domain_ffi.cloudVaultSha256Hex
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
+import uniffi.openburnbar_domain_ffi.domainCoreVersion
 
 internal enum class CloudVaultDomainCoreMode(val wireValue: String) {
     LEGACY("legacy"),
@@ -57,6 +58,18 @@ internal data class CloudVaultDomainCoreDiagnostic(
     val count: Long,
 )
 
+internal data class CloudVaultShadowComparison(
+    val domain: String = "cloudvault",
+    val slice: String,
+    val consumer: String = "android",
+    val operation: String,
+    val coreVersion: String,
+    val outcome: String,
+    val mismatchCategory: String?,
+    val legacyMicros: Long,
+    val rustMicros: Long,
+)
+
 internal data class CloudVaultAesDetachedBox(
     val nonce: ByteArray,
     val ciphertext: ByteArray,
@@ -73,21 +86,21 @@ internal data class CloudVaultEscrowParts(
     val aesGcmCombined: ByteArray,
 )
 
+private const val ABI_VERSION = 3
+private const val GCM_AUTH_TAG_BITS = 128
+private const val GCM_NONCE_BYTES = 12
+private const val GCM_TAG_BYTES = 16
+private const val KEY_BYTES = 32
+private const val BYTE_MASK = 0xff
+private const val HMAC_SALT = "OpenBurnBar-CloudVault-HMAC-Salt-v1"
+private const val HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1"
+private const val LOG_TAG = "CloudVaultDomainCore"
+private val diagnosticCounts = ConcurrentHashMap<String, AtomicLong>()
+
+@Volatile
+private var cachedAbiVersion: UInt? = null
+
 internal object CloudVaultDomainCore {
-    private const val ABI_VERSION = 3
-    private const val GCM_AUTH_TAG_BITS = 128
-    private const val GCM_NONCE_BYTES = 12
-    private const val GCM_TAG_BYTES = 16
-    private const val KEY_BYTES = 32
-    private const val BYTE_MASK = 0xff
-    private const val HMAC_SALT = "OpenBurnBar-CloudVault-HMAC-Salt-v1"
-    private const val HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1"
-    private const val LOG_TAG = "CloudVaultDomainCore"
-    private val diagnosticCounts = ConcurrentHashMap<String, AtomicLong>()
-
-    @Volatile
-    private var cachedAbiVersion: UInt? = null
-
     @Volatile
     internal var modeOverride: CloudVaultDomainCoreMode? = null
 
@@ -95,10 +108,10 @@ internal object CloudVaultDomainCore {
     internal var diagnosticOverride: ((CloudVaultDomainCoreDiagnostic) -> Unit)? = null
 
     @Volatile
-    internal var abiVersionOverride: (() -> UInt)? = null
+    internal var comparisonOverride: ((CloudVaultShadowComparison) -> Unit)? = null
 
-    private val mode: CloudVaultDomainCoreMode
-        get() = modeOverride ?: CloudVaultDomainCoreMode.parse(BuildConfig.CLOUDVAULT_DOMAIN_CORE_MODE)
+    @Volatile
+    internal var abiVersionOverride: (() -> UInt)? = null
 
     fun aadV1(uid: String, collection: String, docId: String, field: String): String = dispatch(
         operation = "aad_v1",
@@ -264,153 +277,185 @@ internal object CloudVaultDomainCore {
     internal fun <T> dispatchForTest(selectedMode: CloudVaultDomainCoreMode, operation: String, legacy: () -> T, rust: () -> T): T =
         dispatch(selectedMode, operation, legacy, rust)
 
-    internal fun resetTestOverrides() {
+    internal val resetTestOverrides = {
         modeOverride = null
         diagnosticOverride = null
+        comparisonOverride = null
         abiVersionOverride = null
         cachedAbiVersion = null
         diagnosticCounts.clear()
     }
+}
 
-    private fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean = { left, right -> left == right }): T = dispatch(
-        mode,
-        operation,
-        legacy,
-        rust = {
-            requireCompatibleAbi()
-            rust()
-        },
-        equivalent = equivalent,
+private fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean = { left, right -> left == right }): T = dispatch(
+    CloudVaultDomainCore.modeOverride ?: CloudVaultDomainCoreMode.parse(BuildConfig.CLOUDVAULT_DOMAIN_CORE_MODE),
+    operation,
+    legacy,
+    rust = {
+        requireCompatibleAbi()
+        rust()
+    },
+    equivalent = equivalent,
+)
+
+private fun <T> dispatch(
+    selectedMode: CloudVaultDomainCoreMode,
+    operation: String,
+    legacy: () -> T,
+    rust: () -> T,
+    equivalent: (T, T) -> Boolean = { left, right -> left == right },
+): T = when (selectedMode) {
+    CloudVaultDomainCoreMode.LEGACY -> legacy()
+    CloudVaultDomainCoreMode.RUST -> rust()
+    CloudVaultDomainCoreMode.SHADOW -> {
+        val legacyStarted = System.nanoTime()
+        val legacyResult = legacy()
+        val legacyMicros = elapsedMicros(legacyStarted)
+        val rustStarted = System.nanoTime()
+        val rustResult = runCatching(rust)
+        val rustMicros = elapsedMicros(rustStarted)
+        val matches = rustResult.isSuccess && equivalent(legacyResult, rustResult.getOrThrow())
+        when {
+            rustResult.isFailure -> record(operation, "rust_error")
+            !matches -> record(operation, "mismatch")
+        }
+        CloudVaultDomainCore.comparisonOverride?.invoke(
+            CloudVaultShadowComparison(
+                slice = sliceFor(operation),
+                operation = operation,
+                coreVersion = runCatching(::domainCoreVersion).getOrDefault("0.0.0-native-unavailable"),
+                outcome = if (matches) "match" else "mismatch",
+                mismatchCategory = when {
+                    matches -> null
+                    rustResult.isFailure -> "native_error"
+                    else -> "result_mismatch"
+                },
+                legacyMicros = legacyMicros,
+                rustMicros = rustMicros,
+            ),
+        )
+        legacyResult
+    }
+}
+
+private fun dispatchBytes(operation: String, legacy: () -> ByteArray, rust: () -> ByteArray): ByteArray =
+    dispatch(operation, legacy, rust, ByteArray::contentEquals)
+
+private fun legacyAesSealDetached(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): CloudVaultAesDetachedBox {
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+    cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+    if (aad.isNotEmpty()) cipher.updateAAD(aad)
+    val ciphertextAndTag = cipher.doFinal(plaintext)
+    val split = ciphertextAndTag.size - GCM_TAG_BYTES
+    return CloudVaultAesDetachedBox(
+        nonce = nonce.copyOf(),
+        ciphertext = ciphertextAndTag.copyOfRange(0, split),
+        tag = ciphertextAndTag.copyOfRange(split, ciphertextAndTag.size),
     )
+}
 
-    private fun <T> dispatch(
-        selectedMode: CloudVaultDomainCoreMode,
-        operation: String,
-        legacy: () -> T,
-        rust: () -> T,
-        equivalent: (T, T) -> Boolean = { left, right -> left == right },
-    ): T = when (selectedMode) {
-        CloudVaultDomainCoreMode.LEGACY -> legacy()
-        CloudVaultDomainCoreMode.RUST -> rust()
-        CloudVaultDomainCoreMode.SHADOW -> {
-            val legacyResult = legacy()
-            val rustResult = runCatching(rust)
-            when {
-                rustResult.isFailure -> record(operation, "rust_error")
-                !equivalent(legacyResult, rustResult.getOrThrow()) -> record(operation, "mismatch")
-            }
-            legacyResult
-        }
-    }
+private fun legacyAesOpenCombined(combined: ByteArray, key: ByteArray, aad: ByteArray): ByteArray {
+    require(combined.size >= GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid AES-GCM combined envelope length" }
+    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+    cipher.init(
+        Cipher.DECRYPT_MODE,
+        SecretKeySpec(key, "AES"),
+        GCMParameterSpec(GCM_AUTH_TAG_BITS, combined.copyOfRange(0, GCM_NONCE_BYTES)),
+    )
+    if (aad.isNotEmpty()) cipher.updateAAD(aad)
+    return cipher.doFinal(combined.copyOfRange(GCM_NONCE_BYTES, combined.size))
+}
 
-    private fun dispatchBytes(operation: String, legacy: () -> ByteArray, rust: () -> ByteArray): ByteArray =
-        dispatch(operation, legacy, rust, ByteArray::contentEquals)
+private fun requireAesInputs(key: ByteArray, nonce: ByteArray) {
+    require(key.size == KEY_BYTES) { "Invalid vault key length" }
+    require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
+}
 
-    private fun legacyAesSealDetached(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): CloudVaultAesDetachedBox {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        if (aad.isNotEmpty()) cipher.updateAAD(aad)
-        val ciphertextAndTag = cipher.doFinal(plaintext)
-        val split = ciphertextAndTag.size - GCM_TAG_BYTES
-        return CloudVaultAesDetachedBox(
-            nonce = nonce.copyOf(),
-            ciphertext = ciphertextAndTag.copyOfRange(0, split),
-            tag = ciphertextAndTag.copyOfRange(split, ciphertextAndTag.size),
+private fun requireCompatibleAbi() {
+    val abi = cachedAbiVersion ?: (CloudVaultDomainCore.abiVersionOverride?.invoke() ?: domainCoreAbiVersion())
+        .also { cachedAbiVersion = it }
+    check(abi == ABI_VERSION.toUInt()) { "CloudVault domain-core ABI mismatch" }
+}
+
+private fun record(operation: String, category: String) {
+    val counter = diagnosticCounts.computeIfAbsent("$operation:$category") { AtomicLong() }
+    val diagnostic = CloudVaultDomainCoreDiagnostic(operation, ABI_VERSION, category, counter.incrementAndGet())
+    CloudVaultDomainCore.diagnosticOverride?.invoke(diagnostic) ?: runCatching {
+        Log.w(
+            LOG_TAG,
+            "operation=${diagnostic.operation} version=${diagnostic.abiVersion} " +
+                "category=${diagnostic.category} count=${diagnostic.count}",
         )
     }
+}
 
-    private fun legacyAesOpenCombined(combined: ByteArray, key: ByteArray, aad: ByteArray): ByteArray {
-        require(combined.size >= GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid AES-GCM combined envelope length" }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(
-            Cipher.DECRYPT_MODE,
-            SecretKeySpec(key, "AES"),
-            GCMParameterSpec(GCM_AUTH_TAG_BITS, combined.copyOfRange(0, GCM_NONCE_BYTES)),
-        )
-        if (aad.isNotEmpty()) cipher.updateAAD(aad)
-        return cipher.doFinal(combined.copyOfRange(GCM_NONCE_BYTES, combined.size))
+private fun legacyAadV1(uid: String, collection: String, docId: String, field: String): String {
+    listOf(uid, collection, docId, field).forEach(::requireValidAadPart)
+    return "${CloudVaultCrypto.LEGACY_AAD_CONTEXT_PREFIX}|$uid|$collection|$docId|$field"
+}
+
+private fun legacyAadV2(uid: String, collection: String, docId: String, field: String, schemaVersion: Int, purpose: String): String {
+    require(schemaVersion >= 2) { "Invalid CloudVault AAD context" }
+    listOf(uid, collection, docId, field, purpose).forEach(::requireValidAadPart)
+    return "${CloudVaultCrypto.AAD_CONTEXT_PREFIX}|$uid|$collection|$docId|$field|$schemaVersion|$purpose"
+}
+
+private fun requireValidAadPart(value: String) {
+    require(value.isNotEmpty() && value.none { it == '|' || it.code < 0x20 || it.code == 0x7f }) {
+        "Invalid CloudVault AAD context"
+    }
+}
+
+private fun legacyVaultKeyId(key: ByteArray): String {
+    requireVaultKey(key)
+    return "v1_${legacySha256Hex(key).take(32)}"
+}
+
+private fun legacyExpectedSessionBodyHash(data: ByteArray, key: ByteArray, bodyHashVersion: Int): String = when (bodyHashVersion) {
+    CloudVaultCrypto.SESSION_BODY_HASH_VERSION -> legacyKeyedHashHex(data, key, CloudVaultHashPurpose.SESSION_BODY)
+    0, 1 -> legacySha256Hex(data)
+    else -> error("Unsupported session body hash version")
+}
+
+private fun legacyKeyedHashHex(data: ByteArray, key: ByteArray, purpose: CloudVaultHashPurpose): String {
+    requireVaultKey(key)
+    val derivedKey = CloudVaultCryptoSearch.hkdfSha256(
+        key,
+        HMAC_SALT.toByteArray(Charsets.UTF_8),
+        "$HMAC_INFO_PREFIX|${purpose.wireValue}".toByteArray(Charsets.UTF_8),
+        KEY_BYTES,
+    )
+    return try {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(derivedKey, "HmacSHA256"))
+        mac.doFinal(data).toHex()
+    } finally {
+        derivedKey.fill(0)
+    }
+}
+
+private fun requireVaultKey(key: ByteArray) {
+    require(key.size == KEY_BYTES) { "Invalid vault key length" }
+}
+
+private fun legacySha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).toHex()
+
+private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
+
+private val CloudVaultHashPurpose.ffiValue: FfiHashPurpose
+    get() = when (this) {
+        CloudVaultHashPurpose.BLOB_INTEGRITY -> FfiHashPurpose.BLOB_INTEGRITY
+        CloudVaultHashPurpose.SESSION_BODY -> FfiHashPurpose.SESSION_BODY
+        CloudVaultHashPurpose.SESSION_CHUNK -> FfiHashPurpose.SESSION_CHUNK
+        CloudVaultHashPurpose.PROJECT_MEMORY_CONTENT -> FfiHashPurpose.PROJECT_MEMORY_CONTENT
     }
 
-    private fun requireAesInputs(key: ByteArray, nonce: ByteArray) {
-        require(key.size == KEY_BYTES) { "Invalid vault key length" }
-        require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
-    }
+private fun elapsedMicros(startedNanos: Long): Long = ((System.nanoTime() - startedNanos) / 1_000)
+    .coerceIn(0, 600_000_000)
 
-    private fun requireCompatibleAbi() {
-        val abi = cachedAbiVersion ?: (abiVersionOverride?.invoke() ?: domainCoreAbiVersion()).also { cachedAbiVersion = it }
-        check(abi == ABI_VERSION.toUInt()) { "CloudVault domain-core ABI mismatch" }
-    }
-
-    private fun record(operation: String, category: String) {
-        val counter = diagnosticCounts.computeIfAbsent("$operation:$category") { AtomicLong() }
-        val diagnostic = CloudVaultDomainCoreDiagnostic(operation, ABI_VERSION, category, counter.incrementAndGet())
-        diagnosticOverride?.invoke(diagnostic) ?: runCatching {
-            Log.w(
-                LOG_TAG,
-                "operation=${diagnostic.operation} version=${diagnostic.abiVersion} " +
-                    "category=${diagnostic.category} count=${diagnostic.count}",
-            )
-        }
-    }
-
-    private fun legacyAadV1(uid: String, collection: String, docId: String, field: String): String {
-        listOf(uid, collection, docId, field).forEach(::requireValidAadPart)
-        return "${CloudVaultCrypto.LEGACY_AAD_CONTEXT_PREFIX}|$uid|$collection|$docId|$field"
-    }
-
-    private fun legacyAadV2(uid: String, collection: String, docId: String, field: String, schemaVersion: Int, purpose: String): String {
-        require(schemaVersion >= 2) { "Invalid CloudVault AAD context" }
-        listOf(uid, collection, docId, field, purpose).forEach(::requireValidAadPart)
-        return "${CloudVaultCrypto.AAD_CONTEXT_PREFIX}|$uid|$collection|$docId|$field|$schemaVersion|$purpose"
-    }
-
-    private fun requireValidAadPart(value: String) {
-        require(value.isNotEmpty() && value.none { it == '|' || it.code < 0x20 || it.code == 0x7f }) {
-            "Invalid CloudVault AAD context"
-        }
-    }
-
-    private fun legacyVaultKeyId(key: ByteArray): String {
-        requireVaultKey(key)
-        return "v1_${legacySha256Hex(key).take(32)}"
-    }
-
-    private fun legacyExpectedSessionBodyHash(data: ByteArray, key: ByteArray, bodyHashVersion: Int): String = when (bodyHashVersion) {
-        CloudVaultCrypto.SESSION_BODY_HASH_VERSION -> legacyKeyedHashHex(data, key, CloudVaultHashPurpose.SESSION_BODY)
-        0, 1 -> legacySha256Hex(data)
-        else -> error("Unsupported session body hash version")
-    }
-
-    private fun legacyKeyedHashHex(data: ByteArray, key: ByteArray, purpose: CloudVaultHashPurpose): String {
-        requireVaultKey(key)
-        val derivedKey = CloudVaultCryptoSearch.hkdfSha256(
-            key,
-            HMAC_SALT.toByteArray(Charsets.UTF_8),
-            "$HMAC_INFO_PREFIX|${purpose.wireValue}".toByteArray(Charsets.UTF_8),
-            KEY_BYTES,
-        )
-        return try {
-            val mac = Mac.getInstance("HmacSHA256")
-            mac.init(SecretKeySpec(derivedKey, "HmacSHA256"))
-            mac.doFinal(data).toHex()
-        } finally {
-            derivedKey.fill(0)
-        }
-    }
-
-    private fun requireVaultKey(key: ByteArray) {
-        require(key.size == KEY_BYTES) { "Invalid vault key length" }
-    }
-
-    private fun legacySha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).toHex()
-
-    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
-
-    private val CloudVaultHashPurpose.ffiValue: FfiHashPurpose
-        get() = when (this) {
-            CloudVaultHashPurpose.BLOB_INTEGRITY -> FfiHashPurpose.BLOB_INTEGRITY
-            CloudVaultHashPurpose.SESSION_BODY -> FfiHashPurpose.SESSION_BODY
-            CloudVaultHashPurpose.SESSION_CHUNK -> FfiHashPurpose.SESSION_CHUNK
-            CloudVaultHashPurpose.PROJECT_MEMORY_CONTENT -> FfiHashPurpose.PROJECT_MEMORY_CONTENT
-        }
+private fun sliceFor(operation: String): String = when {
+    operation.contains("escrow") -> "escrow"
+    operation.contains("recovery") -> "recovery"
+    operation.contains("aes") || operation.contains("seal") || operation.contains("open") -> "aes"
+    else -> "foundation"
 }

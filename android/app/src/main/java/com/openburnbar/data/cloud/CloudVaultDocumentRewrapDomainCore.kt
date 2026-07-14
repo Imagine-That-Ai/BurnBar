@@ -70,6 +70,9 @@ internal object CloudVaultDocumentRewrapDomainCore {
     @Volatile
     internal var diagnosticOverride: ((CloudVaultDocumentRewrapDiagnostic) -> Unit)? = null
 
+    @Volatile
+    internal var comparisonOverride: ((CloudVaultShadowComparison) -> Unit)? = null
+
     private val mode: CloudVaultDocumentRewrapMode
         get() = modeOverride ?: CloudVaultDocumentRewrapMode.parse(BuildConfig.CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE)
 
@@ -103,30 +106,68 @@ internal object CloudVaultDocumentRewrapDomainCore {
                     envelopes,
                     noncePlan,
                 )
-            CloudVaultDocumentRewrapMode.SHADOW -> {
-                val legacyResult = legacy(noncePlan)
-                val rustResult = runCatching {
-                    rustRewrap(
-                        data,
-                        uid,
-                        collection,
-                        docID,
-                        oldKey,
-                        newKey,
-                        newVaultKeyID,
-                        vaultGeneration,
-                        rotationJobId,
-                        envelopes,
-                        noncePlan,
-                    )
-                }
-                when {
-                    rustResult.isFailure -> record("rust_error")
-                    !equivalent(legacyResult, rustResult.getOrThrow()) -> record("mismatch")
-                }
-                legacyResult
-            }
+            CloudVaultDocumentRewrapMode.SHADOW -> shadowRewrap(
+                data, uid, collection, docID, oldKey, newKey, newVaultKeyID,
+                vaultGeneration, rotationJobId, envelopes, noncePlan, legacy,
+            )
         }
+    }
+
+    private fun shadowRewrap(
+        data: Map<String, Any?>,
+        uid: String,
+        collection: String,
+        docID: String,
+        oldKey: ByteArray,
+        newKey: ByteArray,
+        newVaultKeyID: String,
+        vaultGeneration: Int?,
+        rotationJobId: String?,
+        envelopes: List<FfiEnvelope>,
+        noncePlan: List<CloudVaultDocumentRewrapNonce>,
+        legacy: (List<CloudVaultDocumentRewrapNonce>) -> CloudVaultDocumentRewrapResult,
+    ): CloudVaultDocumentRewrapResult {
+        val legacyStarted = System.nanoTime()
+        val legacyResult = legacy(noncePlan)
+        val legacyMicros = elapsedMicros(legacyStarted)
+        val rustStarted = System.nanoTime()
+        val rustResult = runCatching {
+            rustRewrap(
+                data, uid, collection, docID, oldKey, newKey, newVaultKeyID,
+                vaultGeneration, rotationJobId, envelopes, noncePlan,
+            )
+        }
+        emitShadowComparison(legacyResult, rustResult, legacyMicros, elapsedMicros(rustStarted))
+        return legacyResult
+    }
+
+    private fun emitShadowComparison(
+        legacyResult: CloudVaultDocumentRewrapResult,
+        rustResult: Result<CloudVaultDocumentRewrapResult>,
+        legacyMicros: Long,
+        rustMicros: Long,
+    ) {
+        val matches = rustResult.isSuccess && equivalent(legacyResult, rustResult.getOrThrow())
+        when {
+            rustResult.isFailure -> record("rust_error")
+            !matches -> record("mismatch")
+        }
+        comparisonOverride?.invoke(
+            CloudVaultShadowComparison(
+                slice = "document-rewrap",
+                operation = OPERATION,
+                coreVersion = runCatching { coreVersionOverride?.invoke() ?: domainCoreVersion() }
+                    .getOrDefault("0.0.0-native-unavailable"),
+                outcome = if (matches) "match" else "mismatch",
+                mismatchCategory = when {
+                    matches -> null
+                    rustResult.isFailure -> "native_error"
+                    else -> "result_mismatch"
+                },
+                legacyMicros = legacyMicros,
+                rustMicros = rustMicros,
+            ),
+        )
     }
 
     internal fun resetTestOverrides() {
@@ -136,6 +177,7 @@ internal object CloudVaultDocumentRewrapDomainCore {
         coreVersionOverride = null
         nonceOverride = null
         diagnosticOverride = null
+        comparisonOverride = null
         cachedAbiVersion = null
         diagnosticCounts.clear()
     }
@@ -203,62 +245,65 @@ internal object CloudVaultDocumentRewrapDomainCore {
         val algorithm = optionalString(raw, "algorithm") ?: CloudVaultCrypto.AES_GCM_ALGORITHM
         val keyVersion = optionalUInt(raw, "keyVersion") ?: CloudVaultCrypto.CURRENT_KEY_VERSION.toUInt()
         return when {
-            payloadCandidate ->
-                FfiEnvelope(
-                    kind = FfiEnvelopeKind.SEALED_PAYLOAD,
-                    fieldName = field,
-                    schemaVersion = optionalUInt(raw, "schemaVersion") ?: 1u,
-                    algorithm = algorithm,
-                    keyVersion = keyVersion,
-                    vaultKeyId = requiredString(raw, "vaultKeyID"),
-                    nonce = null,
-                    ciphertext = null,
-                    tag = null,
-                    sealedBoxBase64 = requiredString(raw, "sealedBoxBase64"),
-                    plaintextSha256 = null,
-                    plaintextHmac = null,
-                    integrityHashVersion = null,
-                    aad = optionalString(raw, "aad"),
-                    hasCreatedAt = false,
-                )
-            textCandidate ->
-                FfiEnvelope(
-                    kind = FfiEnvelopeKind.SEALED_TEXT,
-                    fieldName = field,
-                    schemaVersion = optionalUInt(raw, "schemaVersion"),
-                    algorithm = algorithm,
-                    keyVersion = keyVersion,
-                    vaultKeyId = null,
-                    nonce = requiredString(raw, "nonce"),
-                    ciphertext = requiredString(raw, "ciphertext"),
-                    tag = requiredString(raw, "tag"),
-                    sealedBoxBase64 = null,
-                    plaintextSha256 = null,
-                    plaintextHmac = null,
-                    integrityHashVersion = null,
-                    aad = optionalString(raw, "aad"),
-                    hasCreatedAt = false,
-                )
-            else ->
-                FfiEnvelope(
-                    kind = FfiEnvelopeKind.BLOB,
-                    fieldName = field,
-                    schemaVersion = requiredUInt(raw, "schemaVersion"),
-                    algorithm = algorithm,
-                    keyVersion = keyVersion,
-                    vaultKeyId = null,
-                    nonce = null,
-                    ciphertext = null,
-                    tag = null,
-                    sealedBoxBase64 = requiredString(raw, "sealedBoxBase64"),
-                    plaintextSha256 = optionalString(raw, "plaintextSHA256"),
-                    plaintextHmac = optionalString(raw, "plaintextHMAC"),
-                    integrityHashVersion = optionalUInt(raw, "integrityHashVersion"),
-                    aad = optionalString(raw, "aad"),
-                    hasCreatedAt = raw.containsKey("createdAt"),
-                )
+            payloadCandidate -> lowerPayloadEnvelope(field, raw, algorithm, keyVersion)
+            textCandidate -> lowerTextEnvelope(field, raw, algorithm, keyVersion)
+            else -> lowerBlobEnvelope(field, raw, algorithm, keyVersion)
         }
     }
+
+    private fun lowerPayloadEnvelope(field: String, raw: Map<*, *>, algorithm: String, keyVersion: UInt) = FfiEnvelope(
+        kind = FfiEnvelopeKind.SEALED_PAYLOAD,
+        fieldName = field,
+        schemaVersion = optionalUInt(raw, "schemaVersion") ?: 1u,
+        algorithm = algorithm,
+        keyVersion = keyVersion,
+        vaultKeyId = requiredString(raw, "vaultKeyID"),
+        nonce = null,
+        ciphertext = null,
+        tag = null,
+        sealedBoxBase64 = requiredString(raw, "sealedBoxBase64"),
+        plaintextSha256 = null,
+        plaintextHmac = null,
+        integrityHashVersion = null,
+        aad = optionalString(raw, "aad"),
+        hasCreatedAt = false,
+    )
+
+    private fun lowerTextEnvelope(field: String, raw: Map<*, *>, algorithm: String, keyVersion: UInt) = FfiEnvelope(
+        kind = FfiEnvelopeKind.SEALED_TEXT,
+        fieldName = field,
+        schemaVersion = optionalUInt(raw, "schemaVersion"),
+        algorithm = algorithm,
+        keyVersion = keyVersion,
+        vaultKeyId = null,
+        nonce = requiredString(raw, "nonce"),
+        ciphertext = requiredString(raw, "ciphertext"),
+        tag = requiredString(raw, "tag"),
+        sealedBoxBase64 = null,
+        plaintextSha256 = null,
+        plaintextHmac = null,
+        integrityHashVersion = null,
+        aad = optionalString(raw, "aad"),
+        hasCreatedAt = false,
+    )
+
+    private fun lowerBlobEnvelope(field: String, raw: Map<*, *>, algorithm: String, keyVersion: UInt) = FfiEnvelope(
+        kind = FfiEnvelopeKind.BLOB,
+        fieldName = field,
+        schemaVersion = requiredUInt(raw, "schemaVersion"),
+        algorithm = algorithm,
+        keyVersion = keyVersion,
+        vaultKeyId = null,
+        nonce = null,
+        ciphertext = null,
+        tag = null,
+        sealedBoxBase64 = requiredString(raw, "sealedBoxBase64"),
+        plaintextSha256 = optionalString(raw, "plaintextSHA256"),
+        plaintextHmac = optionalString(raw, "plaintextHMAC"),
+        integrityHashVersion = optionalUInt(raw, "integrityHashVersion"),
+        aad = optionalString(raw, "aad"),
+        hasCreatedAt = raw.containsKey("createdAt"),
+    )
 
     private fun createNoncePlan(envelopes: List<FfiEnvelope>, newVaultKeyID: String): List<CloudVaultDocumentRewrapNonce> {
         val seen = mutableSetOf<List<Byte>>()
@@ -405,3 +450,6 @@ internal object CloudVaultDocumentRewrapDomainCore {
         return asLong.toUInt()
     }
 }
+
+private fun elapsedMicros(startedNanos: Long): Long = ((System.nanoTime() - startedNanos) / 1_000)
+    .coerceIn(0, 600_000_000)

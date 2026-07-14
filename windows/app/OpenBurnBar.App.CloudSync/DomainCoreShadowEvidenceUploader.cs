@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using OpenBurnBar.App.Presentation.Quota;
+using OpenBurnBar.CloudSync.Crypto;
 
 namespace OpenBurnBar.App.CloudSync;
 
@@ -25,5 +26,15 @@ internal static class DomainCoreShadowEvidenceUploader
                 throw new InvalidDataException("Domain-core shadow sample acknowledgement count is invalid.");
             }
         });
+        DomainCoreCloudVaultShadowEvidence.Configure(comparison =>
+            DomainCoreQuotaShadowEvidence.RecordComparison(
+                comparison.Domain,
+                comparison.Slice,
+                comparison.Operation,
+                comparison.CoreVersion,
+                comparison.Outcome == "match",
+                comparison.MismatchCategory,
+                comparison.LegacyMicros,
+                comparison.RustMicros));
     }
 }

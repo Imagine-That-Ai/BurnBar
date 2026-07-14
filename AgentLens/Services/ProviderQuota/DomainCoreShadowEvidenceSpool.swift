@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarKernel
 
 #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
 @preconcurrency import FirebaseAuth
@@ -15,18 +16,34 @@ enum DomainCoreShadowEvidenceError: Error {
     case signedOut
 }
 
-struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
-    static let schemaVersion = 1
+struct DomainCoreShadowSampleV2: Codable, Equatable, Sendable {
+    static let schemaVersion = 2
     static let allowedOperations = Set([
         "claude_quota",
         "codex_quota",
         "cursor_quota",
         "anthropic_quota"
     ])
+    static let requiredCoverage: [String: [String: Set<String>]] = [
+        "quota": [
+            "claude": ["apple"], "codex": ["apple"],
+            "cursor": ["apple"], "anthropic": ["apple"]
+        ],
+        "cloudvault": [
+            "foundation": ["apple"], "aes": ["apple"], "recovery": ["apple"],
+            "escrow": ["apple"], "document-rewrap": ["apple"], "search": ["apple"]
+        ],
+        "hermes": [
+            "aad": ["apple"], "payload-keywrap": ["apple"],
+            "hpke-info": ["apple"], "ratchet": ["apple"]
+        ],
+        "pricing": ["token-cost": ["apple"]]
+    ]
 
     let schemaVersion: Int
     let sampleId: String
     let domain: String
+    let slice: String
     let consumer: String
     let channel: String
     let operation: String
@@ -50,6 +67,7 @@ struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
         self.schemaVersion = Self.schemaVersion
         self.sampleId = UUID().uuidString.lowercased()
         self.domain = "quota"
+        self.slice = comparison.operation.replacingOccurrences(of: "_quota", with: "")
         self.consumer = "apple"
         self.channel = channel
         self.operation = comparison.operation
@@ -61,10 +79,37 @@ struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
         self.rustMicros = comparison.rustMicros
     }
 
+    init?(comparison: DomainCoreShadowComparison, channel: String) {
+        guard channel == "internal" || channel == "beta",
+              Self.requiredCoverage[comparison.domain]?[comparison.slice]?.contains("apple") == true,
+              !comparison.operation.isEmpty,
+              (comparison.outcome == "match") == (comparison.mismatchCategory == nil),
+              comparison.legacyMicros <= 600_000_000,
+              comparison.rustMicros <= 600_000_000 else {
+            return nil
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        self.schemaVersion = Self.schemaVersion
+        self.sampleId = UUID().uuidString.lowercased()
+        self.domain = comparison.domain
+        self.slice = comparison.slice
+        self.consumer = "apple"
+        self.channel = channel
+        self.operation = comparison.operation
+        self.coreVersion = comparison.coreVersion
+        self.observedAt = formatter.string(from: Date())
+        self.outcome = comparison.outcome
+        self.mismatchCategory = comparison.mismatchCategory
+        self.legacyMicros = comparison.legacyMicros
+        self.rustMicros = comparison.rustMicros
+    }
+
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion
         case sampleId
         case domain
+        case slice
         case consumer
         case channel
         case operation
@@ -81,6 +126,7 @@ struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(sampleId, forKey: .sampleId)
         try container.encode(domain, forKey: .domain)
+        try container.encode(slice, forKey: .slice)
         try container.encode(consumer, forKey: .consumer)
         try container.encode(channel, forKey: .channel)
         try container.encode(operation, forKey: .operation)
@@ -100,7 +146,7 @@ struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
 final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
     struct ReadyBatch: Sendable {
         let token: String
-        let samples: [DomainCoreShadowSampleV1]
+        let samples: [DomainCoreShadowSampleV2]
     }
 
     private let directory: URL
@@ -130,7 +176,7 @@ final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
     }
 
-    func append(_ sample: DomainCoreShadowSampleV1) throws {
+    func append(_ sample: DomainCoreShadowSampleV2) throws {
         var line = try encoder.encode(sample)
         line.append(0x0A)
         guard line.count <= maxFileBytes else { throw DomainCoreShadowEvidenceError.oversizedSample }
@@ -159,9 +205,9 @@ final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
         }
         guard let url = readyFilesLocked().first else { return nil }
         let data = try Data(contentsOf: url)
-        let samples = try data.split(separator: 0x0A).map { line -> DomainCoreShadowSampleV1 in
+        let samples = try data.split(separator: 0x0A).map { line -> DomainCoreShadowSampleV2 in
             guard !line.isEmpty else { throw DomainCoreShadowEvidenceError.invalidSample }
-            return try decoder.decode(DomainCoreShadowSampleV1.self, from: Data(line))
+            return try decoder.decode(DomainCoreShadowSampleV2.self, from: Data(line))
         }
         guard !samples.isEmpty, samples.count <= maxSamplesPerFile else {
             throw DomainCoreShadowEvidenceError.invalidSample
@@ -228,7 +274,7 @@ final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
 }
 
 protocol DomainCoreShadowSampleSubmitting: Sendable {
-    func submit(_ samples: [DomainCoreShadowSampleV1]) async throws
+    func submit(_ samples: [DomainCoreShadowSampleV2]) async throws
 }
 
 actor DomainCoreShadowEvidenceUploadCoordinator {
@@ -288,7 +334,7 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
 
 #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
 final class FirebaseDomainCoreShadowSampleSubmitter: DomainCoreShadowSampleSubmitting, @unchecked Sendable {
-    func submit(_ samples: [DomainCoreShadowSampleV1]) async throws {
+    func submit(_ samples: [DomainCoreShadowSampleV2]) async throws {
         guard FirebaseApp.app() != nil, Auth.auth().currentUser != nil else {
             throw DomainCoreShadowEvidenceError.signedOut
         }
@@ -339,11 +385,29 @@ final class MacDomainCoreShadowEvidenceRecorder: @unchecked Sendable {
         if let coordinator {
             Task { await coordinator.flush() }
         }
+        DomainCoreShadowComparisonCollector.configure { [weak self] comparison in
+            self?.record(comparison)
+        }
     }
 
     func record(_ comparison: DomainCoreQuotaShadowComparison) {
         guard let channel, let spool,
-              let sample = DomainCoreShadowSampleV1(comparison: comparison, channel: channel) else {
+              let sample = DomainCoreShadowSampleV2(comparison: comparison, channel: channel) else {
+            return
+        }
+        do {
+            try spool.append(sample)
+            if let coordinator {
+                Task { await coordinator.scheduleFlush() }
+            }
+        } catch {
+            AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "append_failed"])
+        }
+    }
+
+    private func record(_ comparison: DomainCoreShadowComparison) {
+        guard let channel, let spool,
+              let sample = DomainCoreShadowSampleV2(comparison: comparison, channel: channel) else {
             return
         }
         do {

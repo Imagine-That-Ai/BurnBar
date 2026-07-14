@@ -15,6 +15,22 @@ const domainKeys = {
 
 export type DomainCoreWebDomain = keyof typeof domainKeys;
 
+export function resolveDomainCoreEvidenceChannel(
+  environment: PublicEnvironment = process.env,
+): "internal" | "beta" | undefined {
+  const channel = environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL;
+  if (
+    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY !== "signed" ||
+    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED !== "1" ||
+    (channel !== "internal" && channel !== "beta") ||
+    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE !== channel ||
+    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION !== channel
+  ) {
+    return undefined;
+  }
+  return channel;
+}
+
 export function resolveDomainCoreWebMode(
   domain: DomainCoreWebDomain,
   environment: PublicEnvironment = process.env,
