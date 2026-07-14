@@ -18,6 +18,7 @@ import {
   inspectNativePackageMetadata,
   verifySignedNativePackage
 } from './lib/linux-native-package.mjs';
+import { replaceRpmAttestationFromPayload } from './lib/linux-rpm-attestation.mjs';
 import {
   embedLinuxAppImagePayload,
   prepareLinuxAppImagePeerManifest
@@ -123,6 +124,10 @@ function bundleRpmFromDeb(debArtifact) {
       env: childEnvironment
     }).stdout;
     extractPreflightedArchiveBytes(dataArchive, extractedRoot, { env: childEnvironment });
+    replaceRpmAttestationFromPayload({
+      extractedRoot,
+      payloadAttestation
+    });
 
     const entries = collectRpmFileEntries(extractedRoot);
     const spec = path.join(top, 'SPECS/open-burn-bar.spec');
