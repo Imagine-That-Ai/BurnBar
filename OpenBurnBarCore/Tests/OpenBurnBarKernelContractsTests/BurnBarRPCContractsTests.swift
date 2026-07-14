@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
 
 /// Wire-contract tests for `BurnBarRPCContracts.swift`. Complements
 /// `BurnBarMissionControlContractsTests` (which spot-checks the controller

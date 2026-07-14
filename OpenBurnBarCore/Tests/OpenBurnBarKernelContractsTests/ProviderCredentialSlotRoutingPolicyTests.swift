@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
 
 final class ProviderCredentialSlotRoutingPolicyTests: XCTestCase {
     func testPastResetMessageRecoversExhaustedSlot() {

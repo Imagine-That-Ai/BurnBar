@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
 
 // MARK: - Hermes Square Motion Tests
 //

@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
 
 final class ClientTelemetrySanitizerTests: XCTestCase {
     func testSanitizesNestedSensitiveFields() {

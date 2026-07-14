@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
 
 /// Contract tests for `BurnBarCustomModel` and the `BurnBarProviderSettings`
 /// custom-model surface. Custom models are the user escape hatch for

@@ -1,5 +1,11 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
+// Phase-2 WS-B packet B2: the tool-bridge wire types reference PUBLIC value types
+// (BurnBar{Client,Session,Run}ID, BurnBarJSONValue) owned by the sibling
+// OpenBurnBarKernelPlatform sub-target, not KernelContracts. The KernelContractsTests
+// target already depends on KernelPlatform (declared at B0), so a plain import resolves
+// them (acyclic edge).
+import OpenBurnBarKernelPlatform
 
 final class BurnBarContractsToolBridgeTests: XCTestCase {
     func testToolExecutionRequestRoundTripCodable() throws {

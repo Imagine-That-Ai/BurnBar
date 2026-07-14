@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
 
 final class BurnBarRunStateMachineTests: XCTestCase {
     func test_runStateMachine_allowsReviewedTransitions() {

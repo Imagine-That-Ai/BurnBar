@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
 
 /// Contract tests for the M2 `daemon.mission.authorizeRemote` wire types in
 /// `OpenBurnBarMissionControlMissionsContracts.swift`. Mirrors the

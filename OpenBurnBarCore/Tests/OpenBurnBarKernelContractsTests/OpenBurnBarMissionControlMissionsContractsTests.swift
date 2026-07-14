@@ -1,5 +1,11 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
+// Phase-2 WS-B packet B2: the mission-control wire types reference PUBLIC ID value
+// types (BurnBar{Run,Mission,MissionPacket,MissionResult,Question,Followup,
+// SimulatorRun,ControllerEvent}ID) that live in the sibling OpenBurnBarKernelPlatform
+// sub-target, not KernelContracts. The KernelContractsTests target already depends on
+// KernelPlatform (declared at B0), so a plain import resolves them (acyclic edge).
+import OpenBurnBarKernelPlatform
 
 /// Contract tests for the perf-round-2 (macos-007) additions in
 /// `OpenBurnBarMissionControlMissionsContracts.swift`: the aggregated

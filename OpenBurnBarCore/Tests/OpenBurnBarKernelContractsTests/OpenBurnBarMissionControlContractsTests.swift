@@ -1,5 +1,14 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
+// Phase-2 WS-B packet B2: the mission-control wire types reference PUBLIC ID value
+// types (BurnBar{Client,Session,Run,Mission,MissionPacket,MissionResult,Question,
+// Followup,SimulatorRun,ControllerEvent,ProjectionCheckpoint}ID) owned by the sibling
+// OpenBurnBarKernelPlatform sub-target, not KernelContracts. The KernelContractsTests
+// target already depends on KernelPlatform (declared at B0), so a plain import resolves
+// them (acyclic edge). The card's "weak Insights/TextExpansion hits" were string-literal
+// false positives (this cross-platform target takes no Apple-only dep) — confirmed by the
+// compiler: no Insights/TextExpansion import is needed.
+import OpenBurnBarKernelPlatform
 
 final class BurnBarMissionControlContractsTests: XCTestCase {
     func testRPCMethods_includeMissionControlSurface() {

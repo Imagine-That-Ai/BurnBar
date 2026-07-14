@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
 
 /// Coverage for bulk advertisement muting — the provider-level "turn them all
 /// off, then cherry-pick a few back on" flow.

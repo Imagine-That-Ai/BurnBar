@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelContracts
 
 /// Contract coverage for `BurnBarModelDisplayOverride` and the
 /// `BurnBarProviderSettings` accessors that store verbatim model renames.
