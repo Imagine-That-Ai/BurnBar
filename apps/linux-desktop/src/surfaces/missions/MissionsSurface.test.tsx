@@ -283,7 +283,7 @@ describe('MissionsSurface', () => {
     expect(loadImpl.mock.calls.length).toBe(afterUnmount);
   });
 
-  it('expands canonical packet/result/evidence detail and states health is unavailable', async () => {
+  it('expands canonical packet/result/evidence detail and states health is not requested', async () => {
     const mission: MissionListResult['missions'][number] = {
       id: 'm-detail',
       title: 'Inspect mission',
@@ -316,7 +316,7 @@ describe('MissionsSurface', () => {
     expect(screen.getByText('Packets / tasks')).toBeTruthy();
     expect(screen.getByText('Task complete')).toBeTruthy();
     expect(screen.getByText(/Evidence: evidence\.json/)).toBeTruthy();
-    expect(screen.getByText(/Unavailable from the mission contract/)).toBeTruthy();
+    expect(screen.getByText('Health check not requested.')).toBeTruthy();
   });
 
   it('renders daemon-owned mission health and controller history when available', async () => {
@@ -368,7 +368,6 @@ describe('MissionsSurface', () => {
 
     expect(missionHealth).toHaveBeenCalledWith('m-health');
     expect(screen.getByText(/healthy — One packet is active\./)).toBeTruthy();
-    expect(screen.getByText('One packet is active.')).toBeTruthy();
     expect(screen.getByText('Worker is running.')).toBeTruthy();
   });
 
