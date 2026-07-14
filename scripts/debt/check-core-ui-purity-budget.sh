@@ -59,6 +59,15 @@ const pureTargets = [
   "OpenBurnBarHermes",
   "OpenBurnBarPretext",
   "OpenBurnBarEngine",
+  // Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): the 4
+  // OpenBurnBarKernel sub-targets. Assert-zero SwiftUI/AppKit from birth —
+  // OpenBurnBarKernel is UI-free today, so every slice carved out of it stays
+  // UI-free (the RGBA SwiftUI Color bridge already lives in OpenBurnBarUI, not
+  // the Kernel; KernelModels/RGBA.swift is the Foundation-only raw components).
+  "OpenBurnBarKernelPlatform",
+  "OpenBurnBarKernelModels",
+  "OpenBurnBarKernelCrypto",
+  "OpenBurnBarKernelContracts",
 ];
 const importPattern =
   /^\s*(?:(?:@_[A-Za-z0-9_]+|@[A-Za-z0-9_]+)(?:\([^)]*\))?\s+)*import\s+(?:(?:class|struct|enum|protocol|typealias|func|var|let)\s+)?(SwiftUI|AppKit)(?:\b|\.)/;

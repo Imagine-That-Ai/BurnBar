@@ -46,6 +46,14 @@ const mainTarget = "OpenBurnBarCore";
 // dirs are not Swift-source targets and are skipped.
 const siblingTargets = [
   "OpenBurnBarKernel",
+  // Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): the 4
+  // sub-targets carved from OpenBurnBarKernel. Each has a PLANNED end-state
+  // ceiling below (a --update never ratchets those down; a slice growing past
+  // its planned end-state still FAILS).
+  "OpenBurnBarKernelPlatform",
+  "OpenBurnBarKernelModels",
+  "OpenBurnBarKernelCrypto",
+  "OpenBurnBarKernelContracts",
   "OpenBurnBarSQLiteReader",
   "OpenBurnBarLogParsers",
   "OpenBurnBarQuota",
@@ -113,12 +121,32 @@ const mainLive = scanTarget(mainTarget);
 // siblings (Kernel's peers that are NOT decomposition targets — Media, IrohRelay,
 // SignalCore, etc.) keep the measured 1.25x ceiling.
 //
-// Kernel IS a decomposition destination (P-02/P-03/P-04a/P-04b/P-11 move ~35
-// files + several thousand LOC into it); its marker-era measured ceiling
-// (133 files / 35955 LOC) has ZERO headroom for those moves, so it is seeded
-// from the ~37k end-state (1.25x = 46250 LOC) with file headroom.
+// Kernel WAS a phase-1 decomposition destination (P-02/P-03/P-04a/P-04b/P-11
+// moved ~35 files + several thousand LOC into it), seeded from the ~37k
+// end-state (1.25x = 46250 LOC) with file headroom. Phase-2 WS-K (Kernel diet)
+// now SPLITS the Kernel into 4 sub-targets. At K0 (scaffold) NO files have moved
+// out of the Kernel yet, so its ceiling STAYS 185/46250 (the umbrella file
+// KernelUmbrella.swift is +1 file, well under). The FINAL WS-K move packet
+// reduces OpenBurnBarKernel to the umbrella file only and drops this ceiling to
+// 3 files / 200 LOC in that same PR.
 const PLANNED_CEILINGS = {
   OpenBurnBarKernel: { maxFiles: 185, maxLines: 46250 },
+  // Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): the 4 Kernel
+  // sub-targets, seeded at ~1.12x their measured K0-mapping end-state size
+  // (Platform 12f/2430L, Models 90f/23785L, Crypto 12f/5172L, Contracts
+  // 30f/11678L) so the FILLING packet (K1–K4) passes while a slice growing past
+  // its end-state still FAILS. Models carries the widest headroom because it is
+  // the largest AE-IMPORT sink (moved files gain `import OpenBurnBarKernelPlatform`
+  // lines). Mapping is proven ACYCLIC (Platform < Models < Crypto, and
+  // {Models, Crypto} < Contracts): CLILaunchAdapter/CLITerminalSessionSupervisor/
+  // LinuxSubstrateSupport landed in Models (they consume SwitcherProfile/RGBA/
+  // SubstrateFamily); BurnBarRunCreateMetadata/FusionSessionSpend/
+  // CLIAgentResumePresentation landed in Contracts (they consume Contracts types).
+  // A --update never ratchets these down (planned wins).
+  OpenBurnBarKernelPlatform: { maxFiles: 14, maxLines: 2900 },
+  OpenBurnBarKernelModels: { maxFiles: 95, maxLines: 24600 },
+  OpenBurnBarKernelCrypto: { maxFiles: 14, maxLines: 5900 },
+  OpenBurnBarKernelContracts: { maxFiles: 34, maxLines: 13100 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11700 },
   OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
@@ -126,12 +154,16 @@ const PLANNED_CEILINGS = {
   // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers
   // SearchContracts too.
   OpenBurnBarVectorKit: { maxFiles: 12, maxLines: 5800 },
-  OpenBurnBarInsights: { maxFiles: 100, maxLines: 20000 },
+  // Phase-2 WS-K: trimmed from 100/20000 to ~1.1x the measured 83f/16528L
+  // actual now that phase-1 Insights extraction has fully landed.
+  OpenBurnBarInsights: { maxFiles: 90, maxLines: 18200 },
   OpenBurnBarHermes: { maxFiles: 10, maxLines: 1800 },
   OpenBurnBarPretext: { maxFiles: 5, maxLines: 850 },
   OpenBurnBarTextExpansion: { maxFiles: 8, maxLines: 1100 },
   OpenBurnBarLaunchServices: { maxFiles: 12, maxLines: 6100 },
-  OpenBurnBarUI: { maxFiles: 160, maxLines: 40000 },
+  // Phase-2 WS-K: trimmed from 160/40000 to ~1.1x the measured 130f/33710L
+  // actual now that phase-1 UI (K4) extraction has fully landed.
+  OpenBurnBarUI: { maxFiles: 145, maxLines: 37000 },
   OpenBurnBarEngine: { maxFiles: 3, maxLines: 60 },
 };
 

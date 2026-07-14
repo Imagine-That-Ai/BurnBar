@@ -118,6 +118,32 @@ var packageProductsBase: [Product] = [
         name: "OpenBurnBarKernel",
         targets: ["OpenBurnBarKernel"]
     ),
+    // Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): the 4
+    // sub-targets carved out of the OpenBurnBarKernel monolith (144 files /
+    // 43,065 LOC on main). Layering is Platform < Models < Crypto, and
+    // Contracts < {Models, Crypto}. At S0 each holds only a ModuleMarker.swift
+    // placeholder (SwiftPM rejects a product whose target has no sources); the
+    // move packets (K1/K2/K3/K4) fill them via `git mv`. OpenBurnBarKernel
+    // `@_exported import`s each one (KernelUmbrella.swift) so every existing
+    // `import OpenBurnBarKernel` / `import OpenBurnBarCore` consumer keeps
+    // compiling with zero call-site changes. These are cross-platform
+    // (Apple + Linux + Windows), never pruned off-Apple.
+    .library(
+        name: "OpenBurnBarKernelPlatform",
+        targets: ["OpenBurnBarKernelPlatform"]
+    ),
+    .library(
+        name: "OpenBurnBarKernelModels",
+        targets: ["OpenBurnBarKernelModels"]
+    ),
+    .library(
+        name: "OpenBurnBarKernelCrypto",
+        targets: ["OpenBurnBarKernelCrypto"]
+    ),
+    .library(
+        name: "OpenBurnBarKernelContracts",
+        targets: ["OpenBurnBarKernelContracts"]
+    ),
     // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): the cross-platform
     // (Apple + Linux + Windows) engine-layer targets carved out of the
     // OpenBurnBarCore monolith. At S0 each holds only a `ModuleMarker.swift`
@@ -655,6 +681,16 @@ let openBurnBarVectorKitExcludes: [String] = []
 let openBurnBarHermesExcludes: [String] = []
 let openBurnBarPretextExcludes: [String] = []
 let openBurnBarEngineExcludes: [String] = []
+// Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): per-sibling
+// off-Apple exclude seams for the 4 Kernel sub-targets. EMPTY at S0 (no files
+// have moved yet). The Kernel is fully cross-platform (Foundation +
+// swiftCryptoNonAppleDependency), so its sub-targets compile whole off-Apple
+// too — these arrays exist only for symmetry/future Apple-only stragglers and
+// stay empty on every host.
+let openBurnBarKernelPlatformExcludes: [String] = []
+let openBurnBarKernelModelsExcludes: [String] = []
+let openBurnBarKernelCryptoExcludes: [String] = []
+let openBurnBarKernelContractsExcludes: [String] = []
 // UI/Insights/TextExpansion/LaunchServices are pruned WHOLE off-Apple (like
 // OpenBurnBarData) rather than file-excluded, so their exclude arrays exist only
 // for symmetry and stay empty on every host.
@@ -774,6 +810,12 @@ let openBurnBarVectorKitExcludes: [String] = []
 let openBurnBarHermesExcludes: [String] = []
 let openBurnBarPretextExcludes: [String] = []
 let openBurnBarEngineExcludes: [String] = []
+// Phase-2 WS-K (Kernel diet): Apple-side (empty) defaults for the 4 Kernel
+// sub-targets' off-Apple exclude seams. On Apple every target compiles whole.
+let openBurnBarKernelPlatformExcludes: [String] = []
+let openBurnBarKernelModelsExcludes: [String] = []
+let openBurnBarKernelCryptoExcludes: [String] = []
+let openBurnBarKernelContractsExcludes: [String] = []
 let openBurnBarInsightsExcludes: [String] = []
 let openBurnBarUIExcludes: [String] = []
 let openBurnBarTextExpansionExcludes: [String] = []
@@ -923,9 +965,64 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarKernel",
             dependencies: [
                 "OpenBurnBarFirestoreModels",
-                swiftCryptoNonAppleDependency
+                swiftCryptoNonAppleDependency,
+                // Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): the
+                // 4 sub-targets the Kernel is splitting into. KernelUmbrella.swift
+                // `@_exported import`s all 4 so consumers of `import OpenBurnBarKernel`
+                // (and transitively `import OpenBurnBarCore`) keep resolving every
+                // public symbol as the move packets (K1–K4) carry files out. At S0
+                // each sub-target holds only a ModuleMarker; the umbrella re-exports
+                // are harmless no-ops that compile beside the ~144 in-place files.
+                "OpenBurnBarKernelPlatform",
+                "OpenBurnBarKernelModels",
+                "OpenBurnBarKernelCrypto",
+                "OpenBurnBarKernelContracts"
             ],
             resources: [.process("Resources")]
+        ),
+        // Phase-2 WS-K (Kernel diet): the 4 sub-targets of OpenBurnBarKernel. At S0
+        // each holds only `Sources/<Target>/ModuleMarker.swift`; the move packets
+        // (K1/K2/K3/K4) fill them via `git mv`. Layering (edges point downward),
+        // proven ACYCLIC by a full K0 reference scan (12/90/12/30 files respectively):
+        //   OpenBurnBarKernelPlatform  (leaf; Foundation + swift-crypto conditional)
+        //   OpenBurnBarKernelModels    -> Platform
+        //   OpenBurnBarKernelCrypto    -> Platform, Models
+        //   OpenBurnBarKernelContracts -> Models, Crypto
+        // The Contracts->Crypto edge is a compile-closure necessity proven at K0
+        // (Contracts/MissionGroupContracts.swift + CLIAgentSessionRecord call
+        // CloudVaultCrypto.sealPayload/.openPayload). All 4 are UI-free (pureTargets
+        // assert-zero) and fully cross-platform, so none is pruned off-Apple.
+        // KernelModels owns the Resources bundle once K2 moves Resources/ in (K2
+        // bundle-name transition — see K2-models.md).
+        .target(
+            name: "OpenBurnBarKernelPlatform",
+            dependencies: [swiftCryptoNonAppleDependency],
+            exclude: openBurnBarKernelPlatformExcludes
+        ),
+        .target(
+            name: "OpenBurnBarKernelModels",
+            dependencies: [
+                "OpenBurnBarKernelPlatform",
+                swiftCryptoNonAppleDependency
+            ],
+            exclude: openBurnBarKernelModelsExcludes
+        ),
+        .target(
+            name: "OpenBurnBarKernelCrypto",
+            dependencies: [
+                "OpenBurnBarKernelPlatform",
+                "OpenBurnBarKernelModels",
+                swiftCryptoNonAppleDependency
+            ],
+            exclude: openBurnBarKernelCryptoExcludes
+        ),
+        .target(
+            name: "OpenBurnBarKernelContracts",
+            dependencies: [
+                "OpenBurnBarKernelModels",
+                "OpenBurnBarKernelCrypto"
+            ],
+            exclude: openBurnBarKernelContractsExcludes
         ),
         // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): cross-platform
         // engine-layer targets carved from the OpenBurnBarCore monolith. At S0 each

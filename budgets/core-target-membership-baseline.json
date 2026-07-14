@@ -37,6 +37,26 @@
       "maxLines": 46250,
       "planned": true
     },
+    "OpenBurnBarKernelPlatform": {
+      "maxFiles": 14,
+      "maxLines": 2900,
+      "planned": true
+    },
+    "OpenBurnBarKernelModels": {
+      "maxFiles": 95,
+      "maxLines": 24600,
+      "planned": true
+    },
+    "OpenBurnBarKernelCrypto": {
+      "maxFiles": 14,
+      "maxLines": 5900,
+      "planned": true
+    },
+    "OpenBurnBarKernelContracts": {
+      "maxFiles": 34,
+      "maxLines": 13100,
+      "planned": true
+    },
     "OpenBurnBarSQLiteReader": {
       "maxFiles": 3,
       "maxLines": 450,
@@ -58,8 +78,8 @@
       "planned": true
     },
     "OpenBurnBarInsights": {
-      "maxFiles": 100,
-      "maxLines": 20000,
+      "maxFiles": 90,
+      "maxLines": 18200,
       "planned": true
     },
     "OpenBurnBarHermes": {
@@ -83,8 +103,8 @@
       "planned": true
     },
     "OpenBurnBarUI": {
-      "maxFiles": 160,
-      "maxLines": 40000,
+      "maxFiles": 145,
+      "maxLines": 37000,
       "planned": true
     },
     "OpenBurnBarEngine": {
@@ -125,8 +145,8 @@
       "maxLines": 2934
     },
     "OpenBurnBarData": {
-      "maxFiles": 18,
-      "maxLines": 4742
+      "maxFiles": 19,
+      "maxLines": 4875
     },
     "BurnBarRemoteEngine": {
       "maxFiles": 2,

@@ -1,5 +1,5 @@
 {
-  "originHash" : "9c73d43754edfe24061adcd03ab50c66751ecfde306e2bfd794b0068466d864e",
+  "originHash" : "5148534ac17def218eb423d17c47537008cd90472c47398d49496f9d16051d91",
   "pins" : [
     {
       "identity" : "sqlcipher.swift",

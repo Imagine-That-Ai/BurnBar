@@ -701,3 +701,52 @@ change) is fully met.
   PR behind **PR #1559** (S0, base=`main`). The factory merges the stack in order
   (S0 → wave2 → wave3/P-17 → wave4 → this close-out). Nothing here has reached `main`; the
   merge to `main` is the factory's job, gated by Codex review + branch protection.
+
+---
+
+## Phase 2 — WS-K Kernel diet (split OpenBurnBarKernel into 4 sub-targets)
+
+Phase-1 floored the Core main target to 11 shims, but it left **OpenBurnBarKernel** as
+a 144-file / 43,065-LOC target (ceiling 185/46,250) — the new heaviest module. Phase-2
+WS-K splits it into 4 coherent sub-targets under a thin `@_exported` umbrella so NO
+existing consumer changes any manifest or import.
+
+**End-state (edges point downward; proven acyclic by a K0 whole-tree reference scan):**
+
+| Sub-target | Files/LOC (K0 map) | Contents | Deps |
+|---|---|---|---|
+| `OpenBurnBarKernelPlatform` | 12 / 2,430 | leaf host/runtime: PlatformSupport, CLILaunchRedactor, OpenBurnBarIdentity, LinuxPaths, LinuxLocalPeerDiscovery, SendableFileSystem, JSON/string/formatter/identifier utils | Foundation (+swift-crypto off-Apple) |
+| `OpenBurnBarKernelModels` | 90 / 23,785 | pure-data SharedModels, Budget/Entitlements/Membership/Metrics/Errors/Memory (incl. MemorySecretPIIGate), catalog loader+models, **Resources bundle** (catalog.json + secret-pattern-corpus.json), CLILaunchAdapter/CLITerminalSessionSupervisor/LinuxSubstrateSupport | Platform |
+| `OpenBurnBarKernelCrypto` | 12 / 5,172 | CloudVault/Escrow/Hermes-relay crypto chains, PiConnectionTypes, SignalEnvelopeAAD, RoamingProfilePayload, CLIAgentSessionRecord (CloudVaultCrypto consumer) | Platform, Models |
+| `OpenBurnBarKernelContracts` | 30 / 11,678 | Contracts/ (incl. BurnBarRPCContracts + canon), OpenBurnBarAgentContracts, root mission contracts, TraceContext, ClientTelemetrySanitizer, BurnBarRunCreateMetadata, FusionSessionSpend, CLIAgentResumePresentation | Models, Crypto |
+
+**Compile-closure decisions (deviations from the initial task sketch, all proven at K0):**
+- The **Contracts→Crypto** edge is real: `Contracts/MissionGroupContracts.swift` and
+  `CLIAgentSessionRecord` call `CloudVaultCrypto.sealPayload/.openPayload`.
+- `CLILaunchAdapter` / `CLITerminalSessionSupervisor` / `LinuxSubstrateSupport` are
+  **Models, not Platform** — they consume `SwitcherProfile`/`RGBA`/`SubstrateFamily`
+  (Models types), so the leaf can't hold them without a cycle.
+- `BurnBarRunCreateMetadata` / `FusionSessionSpend` / `CLIAgentResumePresentation` are
+  **Contracts, not Models/Crypto** — they consume Contracts types (BurnBarAgentIntent /
+  BurnBarUsageEvent / BurnBarRunResumeResponse).
+- ONE documented leaf-boundary micro-edit remains for K2: `TokenUsage.swift` (Models)
+  references `FusionUsageRow.fusionParentPrefix = "elderwand-"` (FusionUsageRow → Contracts);
+  inline the literal to keep Models independent of Contracts.
+
+**Packets (cards in `plans/core-decomposition2/packets/`):** K0 scaffold (this PR — 4
+targets + products + markers + `KernelUmbrella.swift` + ceilings + gate wiring, NO file
+moves), then K1 Platform → K2 Models (owns the Resources bundle; stages the
+`OpenBurnBarCore_OpenBurnBarKernelModels.bundle` name IN ADDITION to the old during
+transition) → K3 Crypto (updates the `.github/CODEOWNERS` CloudVaultCrypto pin) → K4
+Contracts (CANON-FLAGGED: repoints the 3 canon path-pins in
+`tools/ipc/generate-burnbarrpc-canon.mjs` + `.swiftlint.yml`; empties Kernel to the
+umbrella and drops its ceiling to 3/200). K5-warts collects 4 exposed cleanups
+(BufferedLineSequence→Platform + drop Quota→LogParsers edge; RGBA-bridge verify-no-op;
+FileManager Sendable wrapper; SwitcherCLILAunchService→SwitcherCLILaunchService rename).
+
+**Regrowth gates (extended in K0):** all 4 sub-targets added to `pureTargets`
+(assert-zero SwiftUI/AppKit) in `check-core-ui-purity-budget.sh`, and to
+`siblingTargets` + `PLANNED_CEILINGS` in `check-core-target-membership-budget.sh` with
+end-state ceilings a `--update` never ratchets down. Same PR trims the now-landed
+OpenBurnBarUI (160→145/37,000) and OpenBurnBarInsights (100→90/18,200) ceilings to
+~1.1× their measured actuals. No new budget FILES → no `docs/LINT_RATIONALE.md` edit.
