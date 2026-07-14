@@ -620,3 +620,32 @@ regexes = [
 paths = [
   '''OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto\.swift''',
 ]
+
+[[allowlists]]
+description = "Historical Windows storage certification receipts contain SHA-256 key fingerprints, not encryption keys; exception is pinned to the two evidence commits and exact receipt filenames"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''[a-f0-9]{64}''',
+]
+commits = [
+  '''aec23de64e0a09e0dc78e6c788616934076a2374''',
+  '''abfc12cef4c7cfef08cbf795e21ab31bacdf4592''',
+]
+paths = [
+  '''docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/[^/]+/openburnbar\.sqlite\.(key-provenance|windows-migration-journal)\.json''',
+]
+
+[[allowlists]]
+description = "Historical Windows AppConfiguration test used one fixed base64 canary to prove legacy VaultKey migration; exception is pinned to its introducing commit and test path"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''bGVnYWN5LXZhdWx0LWtleS1jYW5hcnk=''',
+]
+commits = [
+  '''567ac2217cd644713d0d3360b2344326f9e135bf''',
+]
+paths = [
+  '''windows/tests/configuration/AppConfigurationTests\.cs''',
+]
