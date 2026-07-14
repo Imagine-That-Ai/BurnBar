@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelCrypto
 
 /// Stream 6 — proves the cross-device safety code is identical on both ends and
 /// stays fail-closed (no plausible-looking code from junk input). Crypto is

@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelCrypto
 
 final class HermesRatchetCryptoTests: XCTestCase {
     func test_roundTrip_andReply_performDHRatchet() throws {

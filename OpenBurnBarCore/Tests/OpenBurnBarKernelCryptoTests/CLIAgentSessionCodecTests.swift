@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
-@testable import OpenBurnBarCore
+import OpenBurnBarKernelModels
+@testable import OpenBurnBarKernelCrypto
 
 final class CLIAgentSessionCodecTests: XCTestCase {
 

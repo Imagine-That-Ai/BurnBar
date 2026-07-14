@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelCrypto
 
 final class EscrowCredentialMetadataBindingTests: XCTestCase {
     func testAssociatedDataChangesWhenCredentialMetadataChanges() {

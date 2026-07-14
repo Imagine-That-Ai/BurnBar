@@ -1537,8 +1537,28 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarKernelCrypto",
                 "OpenBurnBarKernelModels",
-                "OpenBurnBarKernelPlatform"
+                "OpenBurnBarKernelPlatform",
+                // B3 VALVE (AE-DEP): CloudVaultAADParityTests exercises the PUBLIC
+                // `PensieveKnowledgeChunker` (a `public enum` in OpenBurnBarVectorKit,
+                // Sources/OpenBurnBarVectorKit/SharedModels/PensieveKnowledgeChunker.swift)
+                // — the B3 card's "VectorKit(1) hit — likely a false positive" proved
+                // REAL, and the card pre-authorized this AE-dep ("VectorKit is
+                // cross-platform, so an AE-dep on OpenBurnBarVectorKit is also
+                // acceptable"). VectorKit depends only on the OpenBurnBarKernel
+                // umbrella; adding it to a TEST target creates no product cycle. The
+                // test uses public API only, so its import is plain (not @testable).
+                "OpenBurnBarVectorKit"
             ] + swiftTestingAppleDependencies,
+            // B3 co-moved two cross-language byte-parity fixtures
+            // (SignalBindingAADVectors.json, SignalTransportBindingAADVectors.json)
+            // out of OpenBurnBarCoreTests/Fixtures with their owning tests. The
+            // tests read them via `#file`-relative URLs (mirroring
+            // BurnBarHpkeV3CrossPlatformVectorTests), but any file living inside a
+            // SwiftPM target dir must be declared or SwiftPM fails with "unhandled
+            // files"; `.process("Fixtures")` satisfies that rule.
+            resources: [
+                .process("Fixtures")
+            ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
