@@ -40,6 +40,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             .filter { $0.lastPathComponent.hasPrefix("ready-") }
         XCTAssertEqual(readyFiles.count, 2)
         XCTAssertEqual(batch.samples.single?.legacyMicros, 2)
+        XCTAssertEqual(batch.token, "ready-00000000000000000001.jsonl")
     }
 
     func testUnacknowledgedBatchIsReturnedForRetryUntilAcknowledged() throws {
@@ -66,20 +67,35 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         let coordinator = DomainCoreShadowEvidenceUploadCoordinator(
             spool: spool,
             submitter: submitter,
-            debounceNanoseconds: 20_000_000
+            debounceNanoseconds: 1_000_000_000
         )
 
         try spool.append(try XCTUnwrap(makeSample(micros: 1)))
         await coordinator.scheduleFlush()
+        try await Task.sleep(nanoseconds: 100_000_000)
         try spool.append(try XCTUnwrap(makeSample(micros: 2)))
         await coordinator.scheduleFlush()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let earlyBatchSizes = await submitter.batchSizes()
+        XCTAssertEqual(earlyBatchSizes, [], "debounce must run from the most recent sample")
+
         try spool.append(try XCTUnwrap(makeSample(micros: 3)))
         await coordinator.scheduleFlush()
-        try await Task.sleep(nanoseconds: 200_000_000)
+        try await Task.sleep(nanoseconds: 1_200_000_000)
 
         let batchSizes = await submitter.batchSizes()
         XCTAssertEqual(batchSizes, [3])
         XCTAssertEqual(try spool.pendingSampleCount(), 0)
+    }
+
+    func testMalformedReadyFilenameFailsClosed() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try Data("{}\n".utf8).write(to: directory.appendingPathComponent("ready-not-an-ordinal.jsonl"))
+
+        XCTAssertThrowsError(try spool.nextBatch(sealActive: false))
     }
 
     private func makeSample(micros: UInt64 = 120) -> DomainCoreShadowSampleV1? {
