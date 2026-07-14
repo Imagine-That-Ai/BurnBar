@@ -27,6 +27,7 @@ import {
   calculateTokenCost,
   configureDomainCorePricingShadowEvidenceSink,
   DomainCorePricingError,
+  flushDomainCorePricingShadowEvidence,
   resolveDomainCorePricingMode,
 } from "../domainCorePricing.js";
 import { isRecord } from "../guards.js";
@@ -190,7 +191,10 @@ function loadPricingFixture(): PricingFixture {
 describe("shared domain-core pricing", () => {
   const fixture = loadPricingFixture();
 
-  afterEach(() => configureDomainCorePricingShadowEvidenceSink(undefined));
+  afterEach(async () => {
+    configureDomainCorePricingShadowEvidenceSink(undefined);
+    await flushDomainCorePricingShadowEvidence();
+  });
 
   it.each(["legacy", "shadow", "rust"] as const)("matches canonical vectors in %s mode", (mode) => {
     for (const vector of fixture.costVectors) {
@@ -285,7 +289,9 @@ describe("shared domain-core pricing", () => {
 
   it("emits one generic V2 whole-call comparison to the configured sink", () => {
     const samples: unknown[] = [];
-    configureDomainCorePricingShadowEvidenceSink((sample) => samples.push(sample));
+    configureDomainCorePricingShadowEvidenceSink((sample) => {
+      samples.push(sample);
+    });
     expect(
       calculateTokenCost(
         { inputPerMToken: 3, outputPerMToken: 15, cacheReadPerMToken: 0.5 },
@@ -316,5 +322,78 @@ describe("shared domain-core pricing", () => {
       outcome: "match",
       mismatchCategory: null,
     });
+  });
+
+  it("drains async evidence added while a flush is already in progress", async () => {
+    const releases: (() => void)[] = [];
+    const persisted: string[] = [];
+    configureDomainCorePricingShadowEvidenceSink(async (sample) => {
+      await new Promise<void>((resolve) => releases.push(resolve));
+      persisted.push(sample.operation);
+    });
+    const environment = {
+      OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY: "signed",
+      OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE: "internal",
+      OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION: "internal",
+      OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED: "1",
+      OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "shadow",
+      OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE: "shadow",
+      OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE: "shadow",
+      OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE: "shadow",
+      OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE: "shadow",
+      OPENBURNBAR_DOMAIN_CORE_HERMES_MODE: "shadow",
+      OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL: "internal",
+    };
+    const calculate = () =>
+      calculateTokenCost(
+        { inputPerMToken: 3, outputPerMToken: 15, cacheReadPerMToken: 0.5 },
+        { inputTokens: 1_000_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+        () => 3,
+        environment,
+      );
+
+    calculate();
+    let flushed = false;
+    const drain = flushDomainCorePricingShadowEvidence().then(() => {
+      flushed = true;
+    });
+    calculate();
+    expect(releases).toHaveLength(2);
+
+    releases[0]();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(flushed).toBe(false);
+
+    releases[1]();
+    await drain;
+    expect(flushed).toBe(true);
+    expect(persisted).toEqual(["calculate_token_cost", "calculate_token_cost"]);
+  });
+
+  it("contains async evidence sink failures without rejecting the flush", async () => {
+    configureDomainCorePricingShadowEvidenceSink(async () => {
+      throw new Error("sink unavailable");
+    });
+    calculateTokenCost(
+      { inputPerMToken: 3, outputPerMToken: 15, cacheReadPerMToken: 0.5 },
+      { inputTokens: 1_000_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      () => 3,
+      {
+        OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY: "signed",
+        OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE: "internal",
+        OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION: "internal",
+        OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED: "1",
+        OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_HERMES_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL: "internal",
+      },
+    );
+
+    await expect(flushDomainCorePricingShadowEvidence()).resolves.toBeUndefined();
   });
 });

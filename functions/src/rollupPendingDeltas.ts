@@ -32,6 +32,7 @@ import { type Firestore } from "firebase-admin/firestore";
 import type { UsageEventDoc } from "./types.js";
 import { isRecord, recordOrUndefined } from "./guards.js";
 import { logInfo } from "./logging.js";
+import { flushDomainCorePricingShadowEvidence } from "./pricing.js";
 import {
   COUNTER_SCHEMA_VERSION,
   addContribution,
@@ -162,7 +163,12 @@ export async function enqueueUsageCounterDelta(
   after: UsageEventDoc | undefined,
 ): Promise<boolean> {
   const enqueuedAt = new Date().toISOString();
-  const delta = buildPendingCounterDelta(usageDoc, before, after, enqueuedAt);
+  let delta: PendingCounterDelta | undefined;
+  try {
+    delta = buildPendingCounterDelta(usageDoc, before, after, enqueuedAt);
+  } finally {
+    await flushDomainCorePricingShadowEvidence();
+  }
   if (!delta) return false;
   const ref = db.collection(`users/${uid}/pending_counter_deltas`).doc(pendingCounterDeltaDocID(enqueuedAt, delta));
   await ref.set(stripUndefinedDocument(delta), { merge: false });
