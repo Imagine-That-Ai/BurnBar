@@ -263,7 +263,7 @@
 <p><strong>Verdict:</strong> <strong>NO-GO for a full-parity claim or stable Linux promotion</strong></p>
 <h2>Latest verification delta — 2026-07-14</h2>
 <ul>
-<li><strong>Source:</strong> parity implementation is integrated on <code>95cd65c235</code>; focused gates previously passed at 287 Swift, 95 Tauri Rust, and 693 frontend tests. The release toolchain pins Node <code>22.23.1</code> with per-architecture SHA-256 verification. These are engineering signals, not product attestations.</li>
+<li><strong>Source:</strong> parity implementation is integrated on <code>95cd65c235</code>; focused gates previously passed at 287 Swift, 95 Tauri Rust, and 693 frontend tests, and the current release/evidence contract slice passes 34/34 tests (receipt: <code>evidence/parity-audit-2026-07-10/linux-source-tests-2026-07-14.json</code>). The release toolchain pins Node <code>22.23.1</code> with per-architecture SHA-256 verification. These are engineering signals, not product attestations.</li>
 <li><strong>UTM:</strong> installed Ubuntu 24.04.4 aarch64 GNOME/X11 DEB smoke passed with authenticated daemon health and clean shutdown; the receipt is tied to an earlier source commit and is non-certifying. Corrected RPM construction and signed-manifest extraction also pass.</li>
 <li><strong>Candidate:</strong> run <code>29342758329</code> failed at native package preparation because Tauri's RPM was rejected by <code>rpm2cpio</code>; fix <code>b325c76eb8</code> is queued in the next exact-head candidate.</li>
 <li><strong>iPad:</strong> the focused physical-iPad suite produced 46 passes and one XCTest infrastructure crash with no app/fake-provider frame; approval execution remains blocked.</li>
