@@ -16,6 +16,11 @@ enum DomainCorePricingMigrationMode: String, Sendable {
 }
 
 enum DomainCorePricingAdapter {
+    struct LegacyMeasurement {
+        let value: Double
+        let micros: UInt64
+    }
+
     static let runtimeEnvironment = ProcessInfo.processInfo.environment
 
     private static let nanoUsdPerUsd = 1_000_000_000.0
@@ -44,11 +49,19 @@ enum DomainCorePricingAdapter {
     ) -> Double? {
         let mode = DomainCorePricingMigrationMode.resolve(environment: environment)
         guard mode != .legacy else { return legacy() }
+        let legacyMeasurement = mode == .shadow ? measure(legacy) : nil
 
         #if canImport(OpenBurnBarDomainCoreFFI)
         guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
-            return rejected(mode: mode, event: "domain_core.pricing.abi_mismatch", legacy: legacy)
+            return rejected(
+                mode: mode,
+                event: "domain_core.pricing.abi_mismatch",
+                category: "native_error",
+                coreVersion: "0.0.0-abi-mismatch",
+                legacyMeasurement: legacyMeasurement
+            )
         }
+        let coreVersion = OpenBurnBarDomainCoreFFI.domainCoreVersion()
         guard let rates = encodeRates(
             inputPerMToken: inputPerMToken,
             outputPerMToken: outputPerMToken,
@@ -60,7 +73,13 @@ enum DomainCorePricingAdapter {
             cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: cacheReadTokens
         ) else {
-            return rejected(mode: mode, event: "domain_core.pricing.invalid_input", legacy: legacy)
+            return rejected(
+                mode: mode,
+                event: "domain_core.pricing.invalid_input",
+                category: "invalid_result",
+                coreVersion: coreVersion,
+                legacyMeasurement: legacyMeasurement
+            )
         }
         do {
             let rustStarted = Date.timeIntervalSinceReferenceDate
@@ -69,13 +88,19 @@ enum DomainCorePricingAdapter {
                 buckets: buckets
             )
             guard nanoUsd <= UInt64(maximumExactlyRepresentableInteger) else {
-                return rejected(mode: mode, event: "domain_core.pricing.inexact_output", legacy: legacy)
+                return rejected(
+                    mode: mode,
+                    event: "domain_core.pricing.inexact_output",
+                    category: "invalid_result",
+                    coreVersion: coreVersion,
+                    legacyMeasurement: legacyMeasurement
+                )
             }
             let rust = Double(nanoUsd) / nanoUsdPerUsd
             if mode == .rust { return rust }
             let rustMicros = elapsedMicros(since: rustStarted)
-            let legacyStarted = Date.timeIntervalSinceReferenceDate
-            let swift = legacy()
+            guard let legacyMeasurement else { return nil }
+            let swift = legacyMeasurement.value
             let matches = withinShadowBound(legacyUsd: swift, rustNanoUsd: nanoUsd)
             if !matches {
                 ParserDiagnostics.silentFailure("domain_core.pricing.shadow_mismatch")
@@ -83,26 +108,30 @@ enum DomainCorePricingAdapter {
             record(
                 matches: matches,
                 category: matches ? nil : "result_mismatch",
-                legacyMicros: elapsedMicros(since: legacyStarted),
-                rustMicros: rustMicros
+                coreVersion: coreVersion,
+                legacyMicros: legacyMeasurement.micros,
+                rustMicros: rustMicros,
+                recordComparison: DomainCoreShadowComparisonCollector.record
             )
             return swift
         } catch {
-            if mode == .shadow {
-                let started = Date.timeIntervalSinceReferenceDate
-                let value = legacy()
-                record(
-                    matches: false,
-                    category: "native_error",
-                    legacyMicros: elapsedMicros(since: started),
-                    rustMicros: 0
-                )
-                return value
-            }
-            return rejected(mode: mode, event: "domain_core.pricing.arithmetic_rejected", legacy: legacy)
+            return rejected(
+                mode: mode,
+                event: "domain_core.pricing.arithmetic_rejected",
+                category: "native_error",
+                coreVersion: coreVersion,
+                legacyMeasurement: legacyMeasurement,
+                rustMicros: elapsedMicros(since: rustStarted)
+            )
         }
         #else
-        return rejected(mode: mode, event: "domain_core.pricing.native_unavailable", legacy: legacy)
+        return rejected(
+            mode: mode,
+            event: "domain_core.pricing.native_unavailable",
+            category: "native_unavailable",
+            coreVersion: "0.0.0-native-unavailable",
+            legacyMeasurement: legacyMeasurement
+        )
         #endif
     }
 
@@ -166,27 +195,50 @@ enum DomainCorePricingAdapter {
         UInt64(min(600_000_000, max(0, ((Date.timeIntervalSinceReferenceDate - started) * 1_000_000).rounded())))
     }
 
-    private static func record(matches: Bool, category: String?, legacyMicros: UInt64, rustMicros: UInt64) {
-        #if canImport(OpenBurnBarDomainCoreFFI)
-        DomainCoreShadowComparisonCollector.record(.init(
+    static func record(
+        matches: Bool,
+        category: String?,
+        coreVersion: String,
+        legacyMicros: UInt64,
+        rustMicros: UInt64,
+        recordComparison: (DomainCoreShadowComparison) -> Void
+    ) {
+        recordComparison(.init(
             domain: "pricing",
             slice: "token-cost",
             operation: "calculate_token_cost",
-            coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
+            coreVersion: coreVersion,
             outcome: matches ? "match" : "mismatch",
             mismatchCategory: category,
             legacyMicros: legacyMicros,
             rustMicros: rustMicros
         ))
-        #endif
     }
 
-    private static func rejected(
+    static func rejected(
         mode: DomainCorePricingMigrationMode,
         event: String,
-        legacy: () -> Double
+        category: String,
+        coreVersion: String,
+        legacyMeasurement: LegacyMeasurement?,
+        rustMicros: UInt64 = 0,
+        recordComparison: (DomainCoreShadowComparison) -> Void = DomainCoreShadowComparisonCollector.record
     ) -> Double? {
         ParserDiagnostics.silentFailure(event)
-        return mode == .shadow ? legacy() : nil
+        guard mode == .shadow, let legacyMeasurement else { return nil }
+        record(
+            matches: false,
+            category: category,
+            coreVersion: coreVersion,
+            legacyMicros: legacyMeasurement.micros,
+            rustMicros: rustMicros,
+            recordComparison: recordComparison
+        )
+        return legacyMeasurement.value
+    }
+
+    static func measure(_ legacy: () -> Double) -> LegacyMeasurement {
+        let started = Date.timeIntervalSinceReferenceDate
+        return LegacyMeasurement(value: legacy(), micros: elapsedMicros(since: started))
     }
 }

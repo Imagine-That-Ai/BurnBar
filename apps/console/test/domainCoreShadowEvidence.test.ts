@@ -52,4 +52,36 @@ describe("console domain-core shadow evidence", () => {
     });
     expect(pendingConsoleShadowEvidenceForTests()).toEqual([]);
   });
+
+  it("queues a sanitized native-unavailable V2 sample with the canonical version sentinel", () => {
+    recordConsoleCloudVaultShadowComparison({
+      domain: "cloudvault",
+      slice: "foundation",
+      consumer: "console",
+      operation: "base64_encode",
+      coreVersion: "0.0.0-native-unavailable",
+      outcome: "mismatch",
+      mismatchCategory: "native_unavailable",
+      legacyMicros: 12,
+      rustMicros: 0,
+    });
+
+    expect(pendingConsoleShadowEvidenceForTests()).toEqual([
+      {
+        schemaVersion: 2,
+        sampleId: expect.any(String),
+        channel: "internal",
+        observedAt: expect.any(String),
+        domain: "cloudvault",
+        slice: "foundation",
+        consumer: "console",
+        operation: "base64_encode",
+        coreVersion: "0.0.0-native-unavailable",
+        outcome: "mismatch",
+        mismatchCategory: "native_unavailable",
+        legacyMicros: 12,
+        rustMicros: 0,
+      },
+    ]);
+  });
 });

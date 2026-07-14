@@ -100,12 +100,55 @@ final class DomainCorePricingAdapterTests: XCTestCase {
         )
     }
 
+    func testABIMismatchRejectionEmitsSanitizedShadowEvidence() {
+        assertRejectedShadowEvidence(
+            category: "native_error",
+            coreVersion: "0.0.0-abi-mismatch"
+        )
+    }
+
+    func testMissingNativeRejectionEmitsSanitizedShadowEvidence() {
+        assertRejectedShadowEvidence(
+            category: "native_unavailable",
+            coreVersion: "0.0.0-native-unavailable"
+        )
+    }
+
     private var availableModes: [DomainCorePricingMigrationMode] {
         DomainCorePricingAdapter.isNativeAvailable ? [.legacy, .shadow, .rust] : [.legacy]
     }
 
     private func migrationEnvironment(_ mode: DomainCorePricingMigrationMode) -> [String: String] {
         ["OPENBURNBAR_DOMAIN_CORE_PRICING_MODE": mode.rawValue]
+    }
+
+    private func assertRejectedShadowEvidence(category: String, coreVersion: String) {
+        var legacyCalls = 0
+        let measurement = DomainCorePricingAdapter.measure {
+            legacyCalls += 1
+            return 42.125
+        }
+        var comparisons: [DomainCoreShadowComparison] = []
+
+        let result = DomainCorePricingAdapter.rejected(
+            mode: .shadow,
+            event: "domain_core.pricing.test_rejection",
+            category: category,
+            coreVersion: coreVersion,
+            legacyMeasurement: measurement,
+            recordComparison: { comparisons.append($0) }
+        )
+
+        XCTAssertEqual(result, 42.125)
+        XCTAssertEqual(legacyCalls, 1)
+        XCTAssertEqual(comparisons.count, 1)
+        XCTAssertEqual(comparisons.first?.domain, "pricing")
+        XCTAssertEqual(comparisons.first?.slice, "token-cost")
+        XCTAssertEqual(comparisons.first?.operation, "calculate_token_cost")
+        XCTAssertEqual(comparisons.first?.outcome, "mismatch")
+        XCTAssertEqual(comparisons.first?.mismatchCategory, category)
+        XCTAssertEqual(comparisons.first?.coreVersion, coreVersion)
+        XCTAssertEqual(comparisons.first?.rustMicros, 0)
     }
 
     private func loadFixture() throws -> PricingFixture {

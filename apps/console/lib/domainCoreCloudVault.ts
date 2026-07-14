@@ -26,6 +26,8 @@ let testMode: CloudVaultDomainCoreMode | undefined;
 let requireCoreForTests = false;
 let shadowCollector: ((comparison: CloudVaultShadowComparison) => void) | undefined;
 
+const NATIVE_UNAVAILABLE_CORE_VERSION = "0.0.0-native-unavailable";
+
 export interface CloudVaultShadowComparison {
   domain: "cloudvault";
   slice: "foundation" | "aes" | "escrow";
@@ -83,12 +85,23 @@ export async function applyCloudVaultDomainCore<T>(
   const mode = configuredMode();
   if (mode === "legacy") return legacy();
 
+  const initializationStarted = performance.now();
   try {
     await ensureInitialized();
   } catch (error) {
     if (mode === "rust" || requireCoreForTests) throw error;
     warn(operation, "native_unavailable");
-    return legacy();
+    const legacyStarted = performance.now();
+    const legacyValue = await legacy();
+    collect(
+      operation,
+      false,
+      "native_unavailable",
+      elapsedMicros(legacyStarted),
+      elapsedMicros(initializationStarted),
+      NATIVE_UNAVAILABLE_CORE_VERSION,
+    );
+    return legacyValue;
   }
 
   if (mode === "rust") return rust();
@@ -126,7 +139,17 @@ export function applyCloudVaultDomainCoreSync<T>(
     }
     void ensureInitialized().catch(() => undefined);
     warn(operation, "native_unavailable");
-    return legacy();
+    const legacyStarted = performance.now();
+    const legacyValue = legacy();
+    collect(
+      operation,
+      false,
+      "native_unavailable",
+      elapsedMicros(legacyStarted),
+      0,
+      NATIVE_UNAVAILABLE_CORE_VERSION,
+    );
+    return legacyValue;
   }
   if (mode === "rust") return rust();
   const legacyStarted = performance.now();
@@ -164,13 +187,14 @@ function collect(
   mismatchCategory: CloudVaultShadowComparison["mismatchCategory"],
   legacyMicros: number,
   rustMicros: number,
+  coreVersion = safeCoreVersion(),
 ): void {
   const comparison: CloudVaultShadowComparison = {
     domain: "cloudvault",
     slice: sliceFor(operation),
     consumer: "console",
     operation,
-    coreVersion: domainCoreVersion(),
+    coreVersion,
     outcome: matches ? "match" : "mismatch",
     mismatchCategory,
     legacyMicros,
@@ -180,6 +204,15 @@ function collect(
     (shadowCollector ?? recordConsoleCloudVaultShadowComparison)(comparison);
   } catch {
     warn(operation, "rust_error");
+  }
+}
+
+function safeCoreVersion(): string {
+  if (!initialized) return NATIVE_UNAVAILABLE_CORE_VERSION;
+  try {
+    return domainCoreVersion();
+  } catch {
+    return NATIVE_UNAVAILABLE_CORE_VERSION;
   }
 }
 

@@ -79,6 +79,25 @@ final class HermesRatchetCryptoTests: XCTestCase {
         XCTAssertEqual(comparisons.first?.mismatchCategory, "result_mismatch")
     }
 
+    func test_shadowDomainCoreBytes_recordsABIMismatchWithoutCallingAdditionalNativeSymbols() throws {
+        try assertUnavailableRatchetBoundary(
+            status: .unavailable(coreVersion: "0.0.0-abi-mismatch", mismatchCategory: "native_error"),
+            expectedCategory: "native_error",
+            expectedCoreVersion: "0.0.0-abi-mismatch"
+        )
+    }
+
+    func test_shadowDomainCoreBytes_recordsMissingNativeWithoutCallingRust() throws {
+        try assertUnavailableRatchetBoundary(
+            status: .unavailable(
+                coreVersion: "0.0.0-native-unavailable",
+                mismatchCategory: "native_unavailable"
+            ),
+            expectedCategory: "native_unavailable",
+            expectedCoreVersion: "0.0.0-native-unavailable"
+        )
+    }
+
     func test_roundTrip_andReply_performDHRatchet() throws {
         var alice = try makeInitiator()
         var bob = try makeResponder()
@@ -265,6 +284,50 @@ final class HermesRatchetCryptoTests: XCTestCase {
     }
 
     private static var cachedResponderInitialKeyPair: HermesRatchetKeyPair?
+
+    private func assertUnavailableRatchetBoundary(
+        status: HermesRatchetCrypto.DomainCoreNativeStatus,
+        expectedCategory: String,
+        expectedCoreVersion: String
+    ) throws {
+        var calls: [String] = []
+        var comparisons: [DomainCoreShadowComparison] = []
+        let legacy = Data([0x00, 0xFF, 0x10])
+
+        let result = try HermesRatchetCrypto.selectDomainCoreBytes(
+            operation: "ratchet_test",
+            mode: "shadow",
+            nativeStatus: {
+                calls.append("native_status")
+                return status
+            },
+            coreVersion: {
+                XCTFail("core version must not be queried after native rejection")
+                calls.append("core_version")
+                return "9.9.9"
+            },
+            legacy: {
+                calls.append("legacy")
+                return legacy
+            },
+            rust: {
+                XCTFail("Rust must not run after native rejection")
+                calls.append("rust")
+                return Data()
+            },
+            record: { comparisons.append($0) }
+        )
+
+        XCTAssertEqual(result, legacy)
+        XCTAssertEqual(calls, ["legacy", "native_status"])
+        XCTAssertEqual(comparisons.count, 1)
+        XCTAssertEqual(comparisons.first?.domain, "hermes")
+        XCTAssertEqual(comparisons.first?.slice, "ratchet")
+        XCTAssertEqual(comparisons.first?.outcome, "mismatch")
+        XCTAssertEqual(comparisons.first?.mismatchCategory, expectedCategory)
+        XCTAssertEqual(comparisons.first?.coreVersion, expectedCoreVersion)
+        XCTAssertEqual(comparisons.first?.rustMicros, 0)
+    }
 }
 
 private extension Data {
