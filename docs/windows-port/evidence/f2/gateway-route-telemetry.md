@@ -36,7 +36,8 @@ route metadata.
 ## Validation
 
 `dotnet test windows/tests/managed-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj --no-restore`
-passes **172/172** locally. Focused tests cover OpenAI and Anthropic usage,
+passes **178/178** locally. Focused tests cover OpenAI, Anthropic, and native
+Ollama usage,
 authoritative final SSE usage, cache/reasoning separation, persistence reload,
 corrupt rows, 5,000-row retention, recent-read bounds, oversized files, invalid
 records, and the live authenticated metrics projection.

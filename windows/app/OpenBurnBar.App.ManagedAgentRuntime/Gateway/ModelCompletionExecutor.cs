@@ -63,6 +63,8 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
 
         bool anthropic = AnthropicProviderAdapter.IsAnthropic(route);
         bool anthropicStreaming = false;
+        bool ollamaNative = OllamaNativeProviderAdapter.IsNative(route);
+        bool ollamaStreaming = false;
         byte[] outboundBody;
         try
         {
@@ -70,9 +72,20 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
             {
                 anthropicStreaming = AnthropicProviderAdapter.IsStreamingRequest(requestBody);
             }
-            outboundBody = anthropic
-                ? AnthropicProviderAdapter.ToMessagesRequest(requestBody, route.Model)
-                : requestBody;
+            if (anthropic)
+            {
+                outboundBody = AnthropicProviderAdapter.ToMessagesRequest(requestBody, route.Model);
+            }
+            else if (ollamaNative)
+            {
+                (outboundBody, ollamaStreaming) = OllamaNativeProviderAdapter.ToNativeRequest(
+                    requestBody,
+                    route.Model);
+            }
+            else
+            {
+                outboundBody = requestBody;
+            }
         }
         catch (ProviderWireFormatException error)
         {
@@ -83,7 +96,10 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             timeout.Token);
-        using var request = new HttpRequestMessage(HttpMethod.Post, route.Endpoint)
+        Uri endpoint = ollamaNative
+            ? OllamaNativeProviderAdapter.ChatEndpoint(route.Endpoint)
+            : route.Endpoint;
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = new ByteArrayContent(outboundBody),
         };
@@ -137,6 +153,20 @@ public sealed class HttpModelCompletionExecutor : IModelCompletionExecutor
                         body = AnthropicProviderAdapter.ToOpenAiResponse(body, route.Model);
                         contentType = "application/json";
                     }
+                }
+                catch (ProviderWireFormatException)
+                {
+                    return new ModelCompletionResult(502, Array.Empty<byte>(), "application/json", false);
+                }
+            }
+            else if (ollamaNative && status is >= 200 and <= 299)
+            {
+                try
+                {
+                    return OllamaNativeProviderAdapter.ToOpenAiResponse(
+                        body,
+                        route.Model,
+                        ollamaStreaming);
                 }
                 catch (ProviderWireFormatException)
                 {

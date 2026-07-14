@@ -170,6 +170,13 @@ unproven host behavior to certification:
   telemetry persistence failures cannot fail a provider request. The
   authenticated metrics endpoint exposes aggregate counters and at most 50
   recent route records.
+- Ollama-local routes whose configured base URL does not select the `/v1`
+  compatibility API now execute through Ollama's native `/api/chat` transport.
+  The adapter maps OpenAI messages, tool arguments, JSON schemas, sampling
+  options, and reasoning effort; converts buffered and NDJSON streaming text,
+  tool calls, finish reasons, and exact usage back to OpenAI shapes; and rejects
+  malformed or truncated streams before reporting success. `/v1` Ollama routes
+  remain byte-preserving OpenAI-compatible transports.
 - Cloud startup now restores a non-expired OAuth session from the protected
   session store without opening a browser; only a signed-out or expired session
   falls back to the explicit dev-host path. When
@@ -376,7 +383,7 @@ unproven host behavior to certification:
   size, and SHA-256, including the resource bundle, before an artifact can be
   signed or zipped.
 
-These changes are covered by focused managed-runtime (172/172 planner, policy,
+These changes are covered by focused managed-runtime (178/178 planner, policy,
 mission, gateway, and recovery tests plus 41/41 managed-agent-runtime tests),
 CloudSync (61/61), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
@@ -384,7 +391,8 @@ Computer Use (114 passed plus a separately executed live Chromium test),
 settings (179/179), configuration (39/39), distribution (98/98), bridge-policy,
 and provider-boundary tests. They are an implementation increment, not a claim
 that the F2 workstreams are all complete: production composition of the
-remaining F2 provider-executor, approval-resolution, and tool-execution services, physical
+remaining Codex/Factory provider executors and discovery, approval-resolution,
+and tool-execution services, physical
 Computer Use/media safety, and host evidence still remain. The ledger's 50/50 `Real`
 result is the scoped F1 source/product gate; WPD-0009 continues to define F2
 True 1:1 as the actual 100% parity endpoint.
