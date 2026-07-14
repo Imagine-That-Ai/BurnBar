@@ -118,7 +118,7 @@ function run(command, args, options = {}) {
   return result;
 }
 
-function findSingle(root, suffix) {
+function findFiles(root, suffix) {
   const found = [];
   const pending = [root];
   while (pending.length > 0) {
@@ -130,8 +130,44 @@ function findSingle(root, suffix) {
       else if (entry.isFile() && entry.name.endsWith(suffix)) found.push(full);
     }
   }
+  return found.sort();
+}
+
+function findSingle(root, suffix) {
+  const found = findFiles(root, suffix);
   if (found.length !== 1) throw new Error(`expected exactly one ${suffix} input, found ${found.length}`);
   return found[0];
+}
+
+export function selectArchPackageArtifact(packageDir, { version, architecture }) {
+  if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u.test(version)) {
+    throw new Error(`Arch package artifact version is invalid: ${version}`);
+  }
+  if (!['aarch64', 'x86_64'].includes(architecture)) {
+    throw new Error(`Arch package artifact architecture is invalid: ${architecture}`);
+  }
+  const artifacts = findFiles(packageDir, '.pkg.tar.zst');
+  const canonicalName = `openburnbar-${version}-1-${architecture}.pkg.tar.zst`;
+  const canonical = artifacts.filter((file) => path.basename(file) === canonicalName);
+  if (canonical.length !== 1) {
+    throw new Error(
+      `expected exactly one canonical Arch package input ${canonicalName}, found ${canonical.length}`
+    );
+  }
+  const debugName = `openburnbar-debug-${version}-1-${architecture}.pkg.tar.zst`;
+  const extras = artifacts.filter((file) => path.basename(file) !== canonicalName);
+  const unexpected = extras.filter((file) => path.basename(file) !== debugName);
+  if (unexpected.length > 0) {
+    throw new Error(`unexpected Arch package outputs: ${unexpected.map((file) => path.basename(file)).join(', ')}`);
+  }
+  for (const debugFile of extras) {
+    const stat = fs.lstatSync(debugFile);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      throw new Error(`Arch debug package output is not a regular file: ${debugFile}`);
+    }
+    fs.rmSync(debugFile);
+  }
+  return canonical[0];
 }
 
 function sourceInputs({ version, architecture, manifestBytes, signatureBytes }) {
@@ -198,7 +234,7 @@ function buildArchPackage({ version, architecture, manifestBytes, signatureBytes
       `HOME=${home}`, `SRCDEST=${sourceDir}`, `PKGDEST=${packageDir}`,
       'makepkg', '--config', makepkgConfig, '--cleanbuild', '--force', '--nodeps', '--noconfirm'
     ], { cwd: buildDir });
-    const artifact = findSingle(packageDir, '.pkg.tar.zst');
+    const artifact = selectArchPackageArtifact(packageDir, { version, architecture });
     const destination = path.join(root, path.basename(artifact));
     fs.copyFileSync(artifact, destination);
     return { root, artifact: destination };

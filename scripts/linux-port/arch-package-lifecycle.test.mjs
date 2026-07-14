@@ -8,7 +8,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   extendSigningIndex,
-  renderReleasePkgbuild
+  renderReleasePkgbuild,
+  selectArchPackageArtifact
 } from './build-signed-arch-package.mjs';
 import {
   canonicalJsonBytes,
@@ -40,6 +41,35 @@ const checksumSlots = [
   'COMPUTER_USE_POLKIT_POLICY', 'PLAYWRIGHT_BRIDGE', 'BROWSER_RUNTIME_PROBE',
   'BROWSER_RUNTIME_REQUIREMENTS', 'RELEASE_PUBLIC_KEY'
 ];
+
+test('Arch package selection removes only the known debug companion', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-arch-artifacts-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const canonical = path.join(root, 'openburnbar-1.2.3-1-x86_64.pkg.tar.zst');
+  const debug = path.join(root, 'openburnbar-debug-1.2.3-1-x86_64.pkg.tar.zst');
+  fs.writeFileSync(canonical, 'canonical');
+  fs.writeFileSync(debug, 'debug');
+  assert.equal(
+    selectArchPackageArtifact(root, { version: '1.2.3', architecture: 'x86_64' }),
+    canonical
+  );
+  assert.equal(fs.existsSync(debug), false);
+  assert.equal(fs.readFileSync(canonical, 'utf8'), 'canonical');
+});
+
+test('Arch package selection rejects unexpected extra package outputs', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-arch-artifacts-invalid-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const canonical = path.join(root, 'openburnbar-1.2.3-1-x86_64.pkg.tar.zst');
+  const extra = path.join(root, 'other-1.2.3-1-x86_64.pkg.tar.zst');
+  fs.writeFileSync(canonical, 'canonical');
+  fs.writeFileSync(extra, 'extra');
+  assert.throws(
+    () => selectArchPackageArtifact(root, { version: '1.2.3', architecture: 'x86_64' }),
+    /unexpected Arch package outputs/u
+  );
+  assert.equal(fs.existsSync(extra), true);
+});
 
 test('release PKGBUILD rendering fills every checksum slot without bypasses', () => {
   const template = fs.readFileSync(new URL('../../packaging/linux/aur/PKGBUILD.in', import.meta.url), 'utf8');
