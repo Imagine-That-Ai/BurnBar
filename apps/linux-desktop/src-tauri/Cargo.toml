@@ -1,6 +1,6 @@
 [package]
 name = "openburnbar-linux-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "OpenBurnBar Linux desktop shell"
 authors = ["OpenBurnBar"]
 edition = "2021"
