@@ -1,6 +1,6 @@
 import SwiftUI
 import WidgetKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct InlineLockScreenView: View {
     let snap: BurnBarWidgetSnapshot?

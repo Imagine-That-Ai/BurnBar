@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarKernel
 
 final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
     private let oldKey = Data(repeating: 0x71, count: 32)

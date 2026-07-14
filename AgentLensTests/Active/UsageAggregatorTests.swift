@@ -2,6 +2,12 @@ import XCTest
 import GRDB
 @testable import OpenBurnBarCore
 @testable import OpenBurnBar
+// Core-decomposition: reaches the INTERNAL OpenBurnBarError.database(...) factory (moved into
+// OpenBurnBarKernel) plus internal TokenUsage bucket helpers (hasExplicitPrimaryBucket,
+// hasNoExplicitBuckets — moved into OpenBurnBarLogParsers). The umbrella shim re-exports only public
+// API, so direct @testable imports are required (the app target now links both explicitly).
+@testable import OpenBurnBarKernel
+@testable import OpenBurnBarLogParsers
 
 // MARK: - UsageAggregator Tests
 

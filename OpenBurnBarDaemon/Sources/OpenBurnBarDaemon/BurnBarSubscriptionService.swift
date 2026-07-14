@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 public enum BurnBarSubscriptionServiceError: Error, LocalizedError, Equatable {
     case invalidTopic(String)

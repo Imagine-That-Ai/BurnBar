@@ -250,7 +250,8 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
             return "OpenBurnBarDaemon binary failed code-signature verification at \(path): \(reason)"
         case .daemonResourceBundleUnavailable(let expectedPath):
             return """
-            OpenBurnBarDaemon resources are missing (OpenBurnBarCore_OpenBurnBarCore.bundle).
+            OpenBurnBarDaemon resources are missing (OpenBurnBarCore_OpenBurnBarCore.bundle \
+            and/or OpenBurnBarCore_OpenBurnBarKernel.bundle).
             Expected bundle at: \(expectedPath)
             Rebuild OpenBurnBar and run Install again.
             """
@@ -683,6 +684,11 @@ final class OpenBurnBarDaemonManager {
     }
 
     nonisolated static let resourceBundleName = "OpenBurnBarCore_OpenBurnBarCore.bundle"
+    // Core-decomposition P-02: the Kernel target gained its own resource bundle
+    // (catalog.json + secret-pattern-corpus.json moved into OpenBurnBarKernel). This
+    // bundle is staged IN ADDITION to the Core bundle (which still carries the
+    // MiningPickIcon SVGs), never instead of it.
+    nonisolated static let kernelResourceBundleName = "OpenBurnBarCore_OpenBurnBarKernel.bundle"
     nonisolated static let legacyResourceBundleNames = ["BurnBarCore_BurnBarCore.bundle"]
     nonisolated static let projectCodeMemoryResourceDirectoryName = "ProjectCodeMemory"
     nonisolated static let projectCodeMemorySecretCorpusFileName = "secret-pattern-corpus.json"

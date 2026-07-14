@@ -1,6 +1,14 @@
 #if os(macOS)
 import XCTest
 @testable import OpenBurnBarCore
+// P-15b: CLILaunchAdapter's Foundation-pure resolution surface (and its internal
+// test seams environmentProvider/homeDirectoryProvider/trustedExecutableSearchDirectories/
+// allowsAmbientUserManagedExecutableFallback/ambientFallbackExecutableSearchDirectories)
+// moved to OpenBurnBarKernel; @testable reaches those internals (public members flow via
+// the @_exported umbrella). OpenBurnBarLaunchServices stays for the launch-coordinator
+// half also exercised here.
+@testable import OpenBurnBarKernel
+@testable import OpenBurnBarLaunchServices
 
 final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
     private var temporaryRoots: [URL] = []

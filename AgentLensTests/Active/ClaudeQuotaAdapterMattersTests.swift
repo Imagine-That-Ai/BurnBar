@@ -1,6 +1,10 @@
 import XCTest
 @testable import OpenBurnBarCore
 @testable import OpenBurnBar
+// Core-decomposition: reaches the INTERNAL ClaudeQuotaAdapter.scopedClaudeProfileMatchesDefaultLogin,
+// which moved from the Core monolith into OpenBurnBarQuota. The umbrella shim re-exports only Quota's
+// public API, so a direct @testable import is required.
+@testable import OpenBurnBarQuota
 final class ClaudeQuotaAdapterMattersTests: XCTestCase {
 
     private var tempRoot: URL!

@@ -1,5 +1,6 @@
 import Foundation
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarQuota
 import XCTest
 
 final class DomainCoreQuotaConsumerTests: XCTestCase {

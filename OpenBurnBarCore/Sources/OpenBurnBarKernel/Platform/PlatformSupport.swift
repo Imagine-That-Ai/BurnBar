@@ -29,6 +29,24 @@ public typealias PlatformCurve25519AgreementMaterial =
     Curve25519.KeyAgreement.PrivateKey
 public typealias PlatformCurve25519KeyAgreementPublicKey = Curve25519.KeyAgreement.PublicKey
 
+// Core-decomposition P-12 follow-up (docs/CORE_DECOMPOSITION_PROGRAM.md): the
+// `FileManager` `Sendable` shim is homed in the Kernel — the common ancestor of
+// every target that stores a `FileManager` in a `Sendable` type — so it is visible
+// wherever the conformance is required WITHOUT depending on a sibling leaf. P-12
+// moved the shim out of Core into `OpenBurnBarLogParsers/ParserDiskCache.swift`, so
+// Core's `ProviderQuotaAdapterContext` (`public let fileManager: FileManager` in a
+// `Sendable` struct) only saw the conformance transitively via Core's
+// `@_exported import OpenBurnBarLogParsers` re-export — a split-brain that fails
+// Swift-6 Sendable checking in build modes where the re-exported retroactive
+// conformance is not propagated, and would break outright when P-13 moves the Quota
+// adapters into `OpenBurnBarQuota` (which does not depend on LogParsers). Homing it
+// in the Kernel resolves it for Core (via `@_exported import OpenBurnBarKernel`),
+// LogParsers, and the future Quota target alike. Unlike the crypto shims below,
+// `FileManager` is not `Sendable` on ANY platform, so this conformance is unguarded.
+// AUDIT(@unchecked Sendable): Foundation documents `FileManager` as safe for
+// concurrent use.
+extension FileManager: @retroactive @unchecked Sendable {} // sendable-allowlist: foundation-sdk-shim
+
 #if os(Linux) || os(Windows)
 extension SymmetricKey: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material
 extension SharedSecret: @retroactive @unchecked Sendable {} // AUDIT sendable-allowlist: swift-crypto-key-material

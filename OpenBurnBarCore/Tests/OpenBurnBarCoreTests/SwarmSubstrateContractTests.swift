@@ -1,5 +1,13 @@
 import XCTest
 @testable import OpenBurnBarCore
+// P-16a (Core→OpenBurnBarUI, K4 Substrate): the substrate system moved to
+// OpenBurnBarUI. This reaches its INTERNAL members (`MeshPatchSubstrate.targetCellPx`,
+// `.maximumPaintedPaneWidth`) so it stays a @testable import. `SubstrateCatalog`
+// references below are module-qualified to `OpenBurnBarUI.SubstrateCatalog` because
+// the Kernel carries an off-Apple `SubstrateCatalog` stub (LinuxSubstrateSupport.swift)
+// that Core re-exports on Apple too; qualifying selects the real Apple catalog and
+// removes the (harmless, name-only) cross-module ambiguity the move surfaced.
+@testable import OpenBurnBarUI
 
 /// Contract tests for the native swarm-substrate system: the catalog shape, the
 /// kernel→family coupling table, selection resolution, and the plain default.
@@ -9,9 +17,9 @@ final class SwarmSubstrateContractTests: XCTestCase {
     // MARK: Catalog shape
 
     func testCatalogHasSixPlainPlusTwentyFourBespoke() {
-        let list = SubstrateCatalog.substrateList
-        let plain = list.filter { $0.id == SubstrateCatalog.plainID }
-        let bespoke = list.filter { $0.id != SubstrateCatalog.plainID }
+        let list = OpenBurnBarUI.SubstrateCatalog.substrateList
+        let plain = list.filter { $0.id == OpenBurnBarUI.SubstrateCatalog.plainID }
+        let bespoke = list.filter { $0.id != OpenBurnBarUI.SubstrateCatalog.plainID }
         XCTAssertEqual(plain.count, 6, "one Plain·DOTS descriptor per family")
         XCTAssertEqual(bespoke.count, 24, "24 bespoke substrates")
         XCTAssertEqual(list.count, 30)
@@ -19,9 +27,9 @@ final class SwarmSubstrateContractTests: XCTestCase {
 
     func testEveryFamilyOffersExactlyFiveStylesPlainFirst() {
         for fam in SubstrateFamily.allCases {
-            let entries = SubstrateCatalog.entries(in: fam)
+            let entries = OpenBurnBarUI.SubstrateCatalog.entries(in: fam)
             XCTAssertEqual(entries.count, 5, "\(fam) should offer plain + 4 bespoke")
-            XCTAssertEqual(entries.first?.id, SubstrateCatalog.plainID, "\(fam): plain is first")
+            XCTAssertEqual(entries.first?.id, OpenBurnBarUI.SubstrateCatalog.plainID, "\(fam): plain is first")
             XCTAssertEqual(entries.first?.family, fam)
             for e in entries.dropFirst() {
                 XCTAssertEqual(e.family, fam, "\(e.id) must belong to \(fam)")
@@ -30,7 +38,7 @@ final class SwarmSubstrateContractTests: XCTestCase {
     }
 
     func testBespokeIdsAreUniqueAndNamespaced() {
-        let bespoke = SubstrateCatalog.substrateList.filter { $0.id != SubstrateCatalog.plainID }
+        let bespoke = OpenBurnBarUI.SubstrateCatalog.substrateList.filter { $0.id != OpenBurnBarUI.SubstrateCatalog.plainID }
         let ids = bespoke.map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count, "bespoke ids unique")
         for d in bespoke {
@@ -40,11 +48,11 @@ final class SwarmSubstrateContractTests: XCTestCase {
     }
 
     func testByIDLookupResolvesEveryBespoke() {
-        for d in SubstrateCatalog.substrateList where d.id != SubstrateCatalog.plainID {
-            XCTAssertNotNil(SubstrateCatalog.byID[d.id], "byID missing \(d.id)")
-            XCTAssertEqual(SubstrateCatalog.byID[d.id]?.family, d.family)
+        for d in OpenBurnBarUI.SubstrateCatalog.substrateList where d.id != OpenBurnBarUI.SubstrateCatalog.plainID {
+            XCTAssertNotNil(OpenBurnBarUI.SubstrateCatalog.byID[d.id], "byID missing \(d.id)")
+            XCTAssertEqual(OpenBurnBarUI.SubstrateCatalog.byID[d.id]?.family, d.family)
         }
-        XCTAssertNotNil(SubstrateCatalog.byID[SubstrateCatalog.plainID])
+        XCTAssertNotNil(OpenBurnBarUI.SubstrateCatalog.byID[OpenBurnBarUI.SubstrateCatalog.plainID])
     }
 
     // MARK: Kernel → family coupling
@@ -85,9 +93,9 @@ final class SwarmSubstrateContractTests: XCTestCase {
     func testEveryRealKernelResolvesToAFamilyWithFiveStyles() {
         // The picker must never show an empty suite for any shipped kernel.
         for kernel in KnownKernelIDs.all {
-            let styles = SubstrateCatalog.styles(forKernel: kernel)
+            let styles = OpenBurnBarUI.SubstrateCatalog.styles(forKernel: kernel)
             XCTAssertEqual(styles.count, 5, "kernel \(kernel) should offer 5 substrate styles")
-            XCTAssertEqual(styles.first?.id, SubstrateCatalog.plainID)
+            XCTAssertEqual(styles.first?.id, OpenBurnBarUI.SubstrateCatalog.plainID)
         }
     }
 
@@ -96,24 +104,24 @@ final class SwarmSubstrateContractTests: XCTestCase {
     func testSelectedBespokeOnlyLightsUpOnItsOwnFamilyKernel() {
         let starfire = "constellation.starfire"
         // On a constellation-family kernel → the pick resolves.
-        let onConstellation = SubstrateCatalog.resolved(forKernel: "constellation", selectedID: starfire)
+        let onConstellation = OpenBurnBarUI.SubstrateCatalog.resolved(forKernel: "constellation", selectedID: starfire)
         XCTAssertEqual(onConstellation.id, starfire)
         // On a flow-family kernel → falls back to that family's plain.
-        let onFlow = SubstrateCatalog.resolved(forKernel: "flow", selectedID: starfire)
-        XCTAssertEqual(onFlow.id, SubstrateCatalog.plainID)
+        let onFlow = OpenBurnBarUI.SubstrateCatalog.resolved(forKernel: "flow", selectedID: starfire)
+        XCTAssertEqual(onFlow.id, OpenBurnBarUI.SubstrateCatalog.plainID)
         XCTAssertEqual(onFlow.family, .flow)
     }
 
     func testResolvedAlwaysReturnsPlainForUnknownSelection() {
-        let r = SubstrateCatalog.resolved(forKernel: "mesh", selectedID: "does.not.exist")
-        XCTAssertEqual(r.id, SubstrateCatalog.plainID)
+        let r = OpenBurnBarUI.SubstrateCatalog.resolved(forKernel: "mesh", selectedID: "does.not.exist")
+        XCTAssertEqual(r.id, OpenBurnBarUI.SubstrateCatalog.plainID)
         XCTAssertEqual(r.family, .mesh)
     }
 
     func testPlainPerFamilyIsAlwaysAvailable() {
         for fam in SubstrateFamily.allCases {
-            let p = SubstrateCatalog.plain(for: fam)
-            XCTAssertEqual(p.id, SubstrateCatalog.plainID)
+            let p = OpenBurnBarUI.SubstrateCatalog.plain(for: fam)
+            XCTAssertEqual(p.id, OpenBurnBarUI.SubstrateCatalog.plainID)
             XCTAssertEqual(p.family, fam)
         }
     }
@@ -121,16 +129,16 @@ final class SwarmSubstrateContractTests: XCTestCase {
     // MARK: Plain default = today's behavior
 
     func testPlainDescriptorBuildsPlainDotsSubstrate() {
-        let made = SubstrateCatalog.plain(for: .aurora).make()
+        let made = OpenBurnBarUI.SubstrateCatalog.plain(for: .aurora).make()
         XCTAssertTrue(made is PlainDotsSubstrate)
     }
 
     func testEveryDescriptorFactoryBuildsItsType() {
         // No factory should crash; each returns a SwarmSubstrate.
-        for d in SubstrateCatalog.substrateList {
+        for d in OpenBurnBarUI.SubstrateCatalog.substrateList {
             let made = d.make()
             _ = made // built without crashing
-            if d.id == SubstrateCatalog.plainID {
+            if d.id == OpenBurnBarUI.SubstrateCatalog.plainID {
                 XCTAssertTrue(made is PlainDotsSubstrate)
             }
         }
@@ -177,8 +185,8 @@ final class SwarmSubstrateContractTests: XCTestCase {
         }
         std.set(false, forKey: SwarmSubstratePreferences.enabledKey)
         std.set("constellation.starfire", forKey: SwarmSubstratePreferences.substrateKey)
-        let r = SubstrateCatalog.resolvedCurrent(forKernel: "constellation")
-        XCTAssertEqual(r.id, SubstrateCatalog.plainID, "disabled ⇒ plain regardless of stored pick")
+        let r = OpenBurnBarUI.SubstrateCatalog.resolvedCurrent(forKernel: "constellation")
+        XCTAssertEqual(r.id, OpenBurnBarUI.SubstrateCatalog.plainID, "disabled ⇒ plain regardless of stored pick")
     }
 
     // MARK: Structure provider safety (the crash-risk root)

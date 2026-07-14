@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarKernel
 
 final class CloudVaultSearchContractTests: XCTestCase {
     func test_tokenizationAndSemanticFeaturesMatchSharedContract() throws {
