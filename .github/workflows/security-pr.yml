@@ -83,21 +83,27 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           GITLEAKS_CONFIG_PATH=".gitleaks.toml"
+          GITLEAKS_IGNORE_PATH=".gitleaksignore"
           if [[ "${EVENT_NAME}" != "push" ]]; then
             if [[ -z "${BASE_SHA}" || "${BASE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
-              echo "::error::Cannot resolve trusted base SHA for ${EVENT_NAME}. Refusing to use head .gitleaks.toml." >&2
+              echo "::error::Cannot resolve trusted base SHA for ${EVENT_NAME}. Refusing to use head gitleaks policy." >&2
               exit 1
             fi
             GITLEAKS_CONFIG_PATH="${RUNNER_TEMP}/gitleaks-base.toml"
+            GITLEAKS_IGNORE_PATH="${RUNNER_TEMP}/gitleaks-base.ignore"
             git show "${BASE_SHA}:.gitleaks.toml" > "${GITLEAKS_CONFIG_PATH}" || {
               echo "::error::Cannot read trusted base .gitleaks.toml from ${BASE_SHA}. Refusing to use head .gitleaks.toml." >&2
               exit 1
             }
+            git show "${BASE_SHA}:.gitleaksignore" > "${GITLEAKS_IGNORE_PATH}" || {
+              echo "::error::Cannot read trusted base .gitleaksignore from ${BASE_SHA}. Refusing to use head .gitleaksignore." >&2
+              exit 1
+            }
           fi
           if [[ -z "${BASE_SHA}" || "${BASE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
-            "$HOME/go/bin/gitleaks" detect --config "${GITLEAKS_CONFIG_PATH}" --source . --redact --verbose
+            "$HOME/go/bin/gitleaks" detect --config "${GITLEAKS_CONFIG_PATH}" --gitleaks-ignore-path "${GITLEAKS_IGNORE_PATH}" --source . --redact --verbose
           else
-            "$HOME/go/bin/gitleaks" detect --config "${GITLEAKS_CONFIG_PATH}" --source . --redact --verbose --log-opts "${BASE_SHA}..HEAD"
+            "$HOME/go/bin/gitleaks" detect --config "${GITLEAKS_CONFIG_PATH}" --gitleaks-ignore-path "${GITLEAKS_IGNORE_PATH}" --source . --redact --verbose --log-opts "${BASE_SHA}..HEAD"
           fi
 
   dependency-review:
