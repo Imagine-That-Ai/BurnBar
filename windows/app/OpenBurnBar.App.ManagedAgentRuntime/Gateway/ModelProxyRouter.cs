@@ -196,7 +196,8 @@ public sealed record ModelRoute(
     /// <summary>Whether this route can accept a completion request now.</summary>
     public bool IsExecutable => Healthy
         && Endpoint is not null
-        && GatewayRouteConfiguration.IsEndpointAllowed(Endpoint);
+        && (GatewayRouteConfiguration.IsEndpointAllowed(Endpoint)
+            || GatewayRouteConfiguration.IsCliEndpointAllowed(Endpoint, Vendor));
 
     public bool IsAvailable()
     {

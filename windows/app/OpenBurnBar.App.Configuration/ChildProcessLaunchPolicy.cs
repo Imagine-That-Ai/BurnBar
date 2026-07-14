@@ -30,6 +30,7 @@ public static class ChildProcessLaunchPolicy
             new ChildProcessLaunchReview("cloud.oauth-browser", ChildProcessProfile.BrowserActivation, "SystemBrowserLauncher", true),
             new ChildProcessLaunchReview("computer-use.playwright-bridge", ChildProcessProfile.ComputerUse, "WindowsBrowserComputerUseService", false),
             new ChildProcessLaunchReview("data.swift-engine-interim", ChildProcessProfile.ReleaseTool, "SwiftEngineInterim", false),
+            new ChildProcessLaunchReview("gateway.provider-cli", ChildProcessProfile.Gateway, "WindowsProviderCliProcessRunner", false),
             new ChildProcessLaunchReview("project-code.language-server", ChildProcessProfile.ProjectTool, "LanguageServerProjectCodeParserClient", false),
             new ChildProcessLaunchReview("project-code.static-parser", ChildProcessProfile.ProjectTool, "JsonLinesProjectCodeStaticParserClient", false),
             new ChildProcessLaunchReview("quota.claude-statusline-forwarder", ChildProcessProfile.Chat, "ClaudeStatuslineHookInstaller", false),
@@ -124,7 +125,8 @@ public static class ChildProcessLaunchPolicy
 
         foreach (string name in startInfo.Environment.Keys)
         {
-            if (ChildProcessEnvironment.IsForbidden(name))
+            if (ChildProcessEnvironment.IsForbidden(name)
+                && !ChildProcessEnvironment.IsRequiredSecretAllowed(expectedProfile, name))
             {
                 throw new SecretStoreException(
                     SecretStoreFailureKind.WriteDenied,

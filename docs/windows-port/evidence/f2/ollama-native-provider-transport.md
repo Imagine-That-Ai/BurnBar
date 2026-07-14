@@ -38,6 +38,7 @@ and exact usage, truncation rejection, and the real HTTP executor boundary.
 
 ## Boundary
 
-This advances WPD-0006 row 7 through all configured HTTP transports. It does not
-claim Codex CLI, Factory Droid CLI, proactive provider discovery, or live local
-Ollama hardware/runtime acceptance.
+This advances WPD-0006 row 7 through all configured HTTP transports. The
+separate `provider-cli-executors.md` evidence covers Codex and Factory. This
+document does not claim proactive provider discovery or live local Ollama
+hardware/runtime acceptance.

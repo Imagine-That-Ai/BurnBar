@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Gateway;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.Settings.ViewModels;
 using OpenBurnBar.App.TextExpansion;
@@ -121,7 +122,8 @@ internal static class WindowsSettingsComposition
                 "gateway-model-health.json")),
             new GatewayRouteTelemetryStore(Path.Combine(
                 Persistence.DirectoryPath,
-                "gateway-route-events.jsonl")));
+                "gateway-route-events.jsonl")),
+            new WindowsProviderCliProcessRunner());
     }
 
     public static ProjectCodeRootSettingsViewModel CreateProjectCodeRootSettingsViewModel() =>

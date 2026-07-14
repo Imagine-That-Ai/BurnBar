@@ -151,8 +151,8 @@ unproven host behavior to certification:
   block key is provider/account/format/model; expiry or a success restores the
   route. The authenticated model and metrics endpoints expose health metadata,
   while provider bodies and credentials never enter the health file. Live
-  provider traffic, proactive local-model discovery, and the remaining provider
-  executors remain staging/F2 evidence gates.
+  provider traffic and proactive local-model discovery remain staging/F2
+  evidence gates.
 - Cross-vendor degradation is now off by default and cannot be enabled by an
   untrusted request alone. The operator must explicitly enable the policy, and
   the request must separately opt in. Candidates are restricted to a bounded
@@ -177,6 +177,15 @@ unproven host behavior to certification:
   tool calls, finish reasons, and exact usage back to OpenAI shapes; and rejects
   malformed or truncated streams before reporting success. `/v1` Ollama routes
   remain byte-preserving OpenAI-compatible transports.
+- Explicit `cli://codex` and `cli://factory` routes now execute through guarded
+  provider adapters that match the macOS contracts. Codex receives its request
+  on stdin under a read-only, ephemeral invocation; Factory receives a guarded
+  prompt in a random temporary directory with mutating tools disabled and
+  strict Standard-tier enforcement. The production runner resolves only
+  protected, hash-approved executable identities, uses no shell, bounds each
+  output stream, scrubs ambient secrets, kills the process tree on cancellation
+  or timeout, and removes temporary inputs after every outcome. CLI failures are
+  classified without returning raw provider output or credentials.
 - Cloud startup now restores a non-expired OAuth session from the protected
   session store without opening a browser; only a signed-out or expired session
   falls back to the explicit dev-host path. When
@@ -383,15 +392,15 @@ unproven host behavior to certification:
   size, and SHA-256, including the resource bundle, before an artifact can be
   signed or zipped.
 
-These changes are covered by focused managed-runtime (178/178 planner, policy,
+These changes are covered by focused managed-runtime (195/195 planner, policy,
 mission, gateway, and recovery tests plus 41/41 managed-agent-runtime tests),
 CloudSync (61/61), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
 Computer Use (114 passed plus a separately executed live Chromium test),
-settings (179/179), configuration (39/39), distribution (98/98), bridge-policy,
+settings (179/179), configuration (45/45), distribution (98/98), bridge-policy,
 and provider-boundary tests. They are an implementation increment, not a claim
 that the F2 workstreams are all complete: production composition of the
-remaining Codex/Factory provider executors and discovery, approval-resolution,
+remaining proactive provider discovery, approval-resolution,
 and tool-execution services, physical
 Computer Use/media safety, and host evidence still remain. The ledger's 50/50 `Real`
 result is the scoped F1 source/product gate; WPD-0009 continues to define F2

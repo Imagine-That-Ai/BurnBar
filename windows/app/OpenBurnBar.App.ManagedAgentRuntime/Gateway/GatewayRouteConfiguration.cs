@@ -78,10 +78,10 @@ public sealed record GatewayRouteConfiguration(
         Routing?.Validate();
 
         if (!Uri.TryCreate(Endpoint.Trim(), UriKind.Absolute, out Uri? endpoint)
-            || !IsEndpointAllowed(endpoint))
+            || !(IsEndpointAllowed(endpoint) || IsCliEndpointAllowed(endpoint, Vendor)))
         {
             throw new ArgumentException(
-                "Route endpoint must be HTTPS, or HTTP on loopback, without credentials or a fragment.",
+                "Route endpoint must be HTTPS, HTTP on loopback, or a matching cli://codex or cli://factory endpoint, without credentials or a fragment.",
                 nameof(Endpoint));
         }
 
@@ -100,6 +100,27 @@ public sealed record GatewayRouteConfiguration(
             && string.IsNullOrEmpty(endpoint.UserInfo)
             && string.IsNullOrEmpty(endpoint.Fragment)
             && (isHttps || IsLoopback(endpoint.Host));
+    }
+
+    public static bool IsCliEndpointAllowed(Uri endpoint, string vendor)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        string normalizedVendor = vendor?.Trim().ToLowerInvariant() ?? string.Empty;
+        string expectedHost = normalizedVendor switch
+        {
+            "codex" => "codex",
+            "factory" or "factory-droid" => "factory",
+            _ => string.Empty,
+        };
+        string path = endpoint.AbsolutePath.Trim('/');
+        return expectedHost.Length > 0
+            && endpoint.IsAbsoluteUri
+            && string.Equals(endpoint.Scheme, "cli", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(endpoint.Host, expectedHost, StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrEmpty(path)
+            && string.IsNullOrEmpty(endpoint.UserInfo)
+            && string.IsNullOrEmpty(endpoint.Fragment)
+            && endpoint.Query.Length == 0;
     }
 
     private static bool IsLoopback(string host)

@@ -74,6 +74,7 @@ public static class ChildProcessEnvironment
         "AUTH",
         "CANARY",
         "CREDENTIAL",
+        "FACTORY_API_KEY",
         "FIREBASE",
         "GOOGLE_SERVICES",
         "ID_TOKEN",
@@ -135,7 +136,7 @@ public static class ChildProcessEnvironment
                     continue;
                 }
 
-                if (IsForbidden(pair.Key))
+                if (IsForbidden(pair.Key) && !IsRequiredSecretAllowed(profile, pair.Key))
                 {
                     throw new SecretStoreException(
                         SecretStoreFailureKind.WriteDenied,
@@ -171,6 +172,11 @@ public static class ChildProcessEnvironment
         string normalized = name.Replace("-", "_", StringComparison.Ordinal).ToUpperInvariant();
         return ForbiddenNameFragments.Any(fragment => normalized.Contains(fragment, StringComparison.Ordinal));
     }
+
+    public static bool IsRequiredSecretAllowed(ChildProcessProfile profile, string name) =>
+        profile == ChildProcessProfile.Gateway
+        && (string.Equals(name, "OPENAI_API_KEY", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "FACTORY_API_KEY", StringComparison.OrdinalIgnoreCase));
 
     public static IReadOnlyList<string> AllowedEnvironmentVariableNames(
         ChildProcessProfile profile,

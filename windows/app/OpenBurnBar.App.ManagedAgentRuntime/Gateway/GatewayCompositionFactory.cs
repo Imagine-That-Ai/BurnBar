@@ -46,7 +46,8 @@ public static class GatewayCompositionFactory
         IReadOnlyList<GatewayRouteConfiguration> configurations,
         Func<string, string?> protectedCredentialResolver,
         ModelRouteHealthStore? healthStore = null,
-        GatewayRouteTelemetryStore? telemetryStore = null)
+        GatewayRouteTelemetryStore? telemetryStore = null,
+        IProviderCliProcessRunner? cliProcessRunner = null)
     {
         ArgumentNullException.ThrowIfNull(configurations);
         ArgumentNullException.ThrowIfNull(protectedCredentialResolver);
@@ -76,13 +77,19 @@ public static class GatewayCompositionFactory
         }
 
         var client = new HttpClient();
+        IModelCompletionExecutor httpExecutor = new HttpModelCompletionExecutor(client);
+        IModelCompletionExecutor executor = cliProcessRunner is null
+            ? httpExecutor
+            : new CompositeModelCompletionExecutor(
+                httpExecutor,
+                new ProviderCliModelCompletionExecutor(cliProcessRunner));
         return new GatewayComposition(
             new ModelProxyRouter(
                 routes.Count == 0 ? DefaultRoutes() : routes,
                 healthStore,
                 CrossVendorDegradePolicy.FromEnvironment(),
                 telemetryStore),
-            new HttpModelCompletionExecutor(client),
+            executor,
             client);
     }
 
