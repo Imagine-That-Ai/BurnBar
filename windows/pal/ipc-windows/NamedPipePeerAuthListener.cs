@@ -220,26 +220,33 @@ public sealed class NamedPipePeerAuthListener
     {
         INonceSigner signer = _policy.SelfSignerFactory();
         INonceVerifier peerVerifier = _policy.PeerVerifierFactory();
-
-        var endpoint = new MutualHandshakeEndpoint(HandshakeRole.Responder, signer, peerVerifier);
-
-        // Direction A: we challenge the peer.
-        NonceChallenge ourChallenge = endpoint.Verifier.IssueChallenge();
-        await HandshakeWire.WriteChallengeAsync(pipe, ourChallenge, cancellationToken).ConfigureAwait(false);
-        SignedNonceResponse peerAnswer =
-            await HandshakeWire.ReadResponseAsync(pipe, cancellationToken).ConfigureAwait(false);
-        if (endpoint.Verifier.Verify(peerAnswer) != HandshakeVerdict.Accepted)
+        try
         {
-            return false;
+            var endpoint = new MutualHandshakeEndpoint(HandshakeRole.Responder, signer, peerVerifier);
+
+            // Direction A: we challenge the peer.
+            NonceChallenge ourChallenge = endpoint.Verifier.IssueChallenge();
+            await HandshakeWire.WriteChallengeAsync(pipe, ourChallenge, cancellationToken).ConfigureAwait(false);
+            SignedNonceResponse peerAnswer =
+                await HandshakeWire.ReadResponseAsync(pipe, cancellationToken).ConfigureAwait(false);
+            if (endpoint.Verifier.Verify(peerAnswer) != HandshakeVerdict.Accepted)
+            {
+                return false;
+            }
+
+            // Direction B: the peer challenges us; we answer.
+            NonceChallenge peerChallenge =
+                await HandshakeWire.ReadChallengeAsync(pipe, cancellationToken).ConfigureAwait(false);
+            SignedNonceResponse ourAnswer = endpoint.Responder.Respond(peerChallenge);
+            await HandshakeWire.WriteResponseAsync(pipe, ourAnswer, cancellationToken).ConfigureAwait(false);
+
+            return true;
         }
-
-        // Direction B: the peer challenges us; we answer.
-        NonceChallenge peerChallenge =
-            await HandshakeWire.ReadChallengeAsync(pipe, cancellationToken).ConfigureAwait(false);
-        SignedNonceResponse ourAnswer = endpoint.Responder.Respond(peerChallenge);
-        await HandshakeWire.WriteResponseAsync(pipe, ourAnswer, cancellationToken).ConfigureAwait(false);
-
-        return true;
+        finally
+        {
+            (signer as IDisposable)?.Dispose();
+            (peerVerifier as IDisposable)?.Dispose();
+        }
     }
 
     /// <summary>

@@ -12,6 +12,7 @@ public enum ChildProcessProfile
     Gateway,
     Mission,
     ComputerUse,
+    Watchdog,
     ProjectTool,
     ReleaseTool,
     Diagnostics,

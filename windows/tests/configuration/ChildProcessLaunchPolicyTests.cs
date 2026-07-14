@@ -19,6 +19,7 @@ public sealed class ChildProcessLaunchPolicyTests
             "chat.conpty-cli",
             "chat.direct-cli",
             "cloud.oauth-browser",
+            "computer-use.kill-switch-watchdog",
             "computer-use.playwright-bridge",
             "data.swift-engine-interim",
             "gateway.provider-cli",
@@ -171,6 +172,28 @@ public sealed class ChildProcessLaunchPolicyTests
         Assert.Equal(@"C:\profiles\work", environment["CODEX_HOME"]);
         Assert.Equal("xterm-256color", environment["TERM"]);
         Assert.False(environment.ContainsKey("OPENAI_API_KEY"));
+    }
+
+    [Fact]
+    public void WatchdogProfileCarriesRuntimeStateButNoProductSecrets()
+    {
+        var source = new[]
+        {
+            new KeyValuePair<string, string?>("LOCALAPPDATA", @"C:\Users\a\AppData\Local"),
+            new KeyValuePair<string, string?>("PATH", @"C:\Windows\System32"),
+            new KeyValuePair<string, string?>("OPENAI_API_KEY", "ambient-secret"),
+            new KeyValuePair<string, string?>("OPENBURNBAR_SQLCIPHER_PASSPHRASE", "ambient-secret"),
+        };
+
+        IReadOnlyDictionary<string, string> environment = ChildProcessEnvironment.CreateAllowlisted(
+            ChildProcessProfile.Watchdog,
+            source,
+            host: ChildProcessHost.Windows);
+
+        Assert.Equal(@"C:\Users\a\AppData\Local", environment["LOCALAPPDATA"]);
+        Assert.Equal(@"C:\Windows\System32", environment["PATH"]);
+        Assert.False(environment.ContainsKey("OPENAI_API_KEY"));
+        Assert.False(environment.ContainsKey("OPENBURNBAR_SQLCIPHER_PASSPHRASE"));
     }
 
     [Theory]
