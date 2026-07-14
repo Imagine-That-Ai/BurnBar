@@ -91,7 +91,17 @@ let hasBurnBarRemoteXCFramework = !disableBurnBarRemoteXCFramework && FileManage
 )
 #endif
 
-let packageProductsBase: [Product] = [
+// Assembled incrementally (seed literal + `append(contentsOf:)` per host-gated
+// block) rather than as one `[…] + (cond ? […] : []) + …` concatenation
+// expression: the Core-decomposition products (LogParsers/Quota/VectorKit/Hermes/
+// Pretext/Engine + the Apple-only Insights/TextExpansion/LaunchServices/UI block)
+// grew the single literal past what the Linux SwiftPM manifest compiler
+// (swift-tools 6.0) can type-check in reasonable time — it aborts with "unable to
+// type-check this expression in reasonable time" on the whole `let` even though
+// macOS/Xcode's newer type-checker accepts it. Splitting into statements keeps the
+// emitted product SET byte-for-byte identical while giving the checker small,
+// independently-solvable sub-expressions. Do NOT collapse back into one literal.
+var packageProductsBase: [Product] = [
     .library(
         name: "OpenBurnBarCore",
         targets: ["OpenBurnBarCore"]
@@ -208,46 +218,61 @@ let packageProductsBase: [Product] = [
         name: "OpenBurnBarSignalSessionTransport",
         targets: ["OpenBurnBarSignalSessionTransport"]
     )
-] + (buildForLinuxBoundary ? [] : [
-    .library(
-        name: "OpenBurnBarData",
-        targets: ["OpenBurnBarData"]
+]
+if !buildForLinuxBoundary {
+    packageProductsBase.append(
+        .library(
+            name: "OpenBurnBarData",
+            targets: ["OpenBurnBarData"]
+        )
     )
-]) + (buildApplePrunedDecompositionTargets ? [
+}
+if buildApplePrunedDecompositionTargets {
     // Core-decomposition S0: Apple-only presentation/insights products, pruned off
     // the non-Apple graph like OpenBurnBarData. Populated by S11/S12/S13/S14.
-    .library(
-        name: "OpenBurnBarInsights",
-        targets: ["OpenBurnBarInsights"]
-    ),
-    .library(
-        name: "OpenBurnBarTextExpansion",
-        targets: ["OpenBurnBarTextExpansion"]
-    ),
-    .library(
-        name: "OpenBurnBarLaunchServices",
-        targets: ["OpenBurnBarLaunchServices"]
-    ),
-    .library(
-        name: "OpenBurnBarUI",
-        targets: ["OpenBurnBarUI"]
+    packageProductsBase.append(contentsOf: [
+        .library(
+            name: "OpenBurnBarInsights",
+            targets: ["OpenBurnBarInsights"]
+        ),
+        .library(
+            name: "OpenBurnBarTextExpansion",
+            targets: ["OpenBurnBarTextExpansion"]
+        ),
+        .library(
+            name: "OpenBurnBarLaunchServices",
+            targets: ["OpenBurnBarLaunchServices"]
+        ),
+        .library(
+            name: "OpenBurnBarUI",
+            targets: ["OpenBurnBarUI"]
+        )
+    ])
+}
+if hasIrohXCFramework {
+    packageProductsBase.append(
+        .library(
+            name: "OpenBurnBarIrohFFI",
+            targets: ["OpenBurnBarIrohFFI"]
+        )
     )
-] : []) + (hasIrohXCFramework ? [
-    .library(
-        name: "OpenBurnBarIrohFFI",
-        targets: ["OpenBurnBarIrohFFI"]
+}
+if hasBurnBarRemoteXCFramework {
+    packageProductsBase.append(
+        .library(
+            name: "BurnBarRemoteFFI",
+            targets: ["BurnBarRemoteFFI"]
+        )
     )
-] : []) + (hasBurnBarRemoteXCFramework ? [
-    .library(
-        name: "BurnBarRemoteFFI",
-        targets: ["BurnBarRemoteFFI"]
+}
+if hasDomainCoreXCFramework {
+    packageProductsBase.append(
+        .executable(
+            name: "OpenBurnBarDomainCoreFFISmoke",
+            targets: ["OpenBurnBarDomainCoreFFISmoke"]
+        )
     )
-] : []) + (hasDomainCoreXCFramework ? [
-    .executable(
-        name: "OpenBurnBarDomainCoreFFISmoke",
-        targets: ["OpenBurnBarDomainCoreFFISmoke"]
-    )
-] : [])
+}
 
 let packageProducts: [Product] = buildLinuxSecurityOnly ? [
     .library(
