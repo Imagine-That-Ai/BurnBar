@@ -24,8 +24,8 @@ public sealed class DaemonSubstitutionMatrixTests
     [Fact]
     public void PrimaryDispositionCounts_MatchTheCurrentDecisionSummary()
     {
-        Assert.Equal(28, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
-        Assert.Equal(2, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
+        Assert.Equal(29, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
+        Assert.Equal(1, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
         Assert.Equal(0, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
         Assert.Equal(4, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.NotApplicable));
 
@@ -80,7 +80,7 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(32, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(33, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(26, DaemonSubstitutionDisposition.SubstituteToBuild)]
-    [InlineData(30, DaemonSubstitutionDisposition.SubstituteToBuild)]
+    [InlineData(30, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(31, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(10, DaemonSubstitutionDisposition.NotApplicable)]
     [InlineData(17, DaemonSubstitutionDisposition.NotApplicable)]
@@ -141,6 +141,11 @@ public sealed class DaemonSubstitutionMatrixTests
         var row29 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 29);
         Assert.Equal("authenticated standalone client", row29.Qualifier);
         Assert.Equal("SUB-DONE (authenticated standalone client)", row29.DispositionBadge);
+
+        // Row 30 is "SUB-DONE (guarded ConPTY profile shell)".
+        var row30 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 30);
+        Assert.Equal("guarded ConPTY profile shell", row30.Qualifier);
+        Assert.Equal("SUB-DONE (guarded ConPTY profile shell)", row30.DispositionBadge);
 
         // Row 19 is "SUB-DONE (durable source-free semantic store)".
         var row19 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 19);

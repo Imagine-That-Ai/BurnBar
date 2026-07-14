@@ -160,7 +160,7 @@ unless prefixed; all Windows paths under `windows/`.
 | 27 | Kill-switch watchdog | `Sources/OpenBurnBarPrivilegedInputKillSwitchWatchdog/PrivilegedInputKillSwitchWatchdogMain.swift` | **SUB-DONE** (protocol) / **SUB-BUILD** (process) | Protocol/core landed (`computeruse/OpenBurnBar.ComputerUse.Core/KillSwitch/KillSwitch.cs`, `Watchdog/WatchdogProtocol.cs`); the independent watchdog *process* + signed local kill channel is **Wave 4 item 1** (R17). | Wave 4 item 1 |
 | 28 | Remote access agent (+Core) and privileged-socket red-team probe | `Sources/OpenBurnBarRemoteAccessAgent/`, `Sources/OpenBurnBarRemoteAccessAgentCore/`, `Sources/OpenBurnBarPrivilegedSocketRedTeamProbe/` | **N/A** (as separate v1 processes) | Their duties (input/screen/attestation plumbing) are absorbed by the in-process computer-use adapters; a separate agent process only returns if WS-D demands isolation (trigger 2), at which point the red-team probe pattern is re-authored against named pipes. | Revisit trigger 2 |
 | 29 | Companion CLI (`OpenBurnBarCLI`) | `Sources/OpenBurnBarCLI/OpenBurnBarCLIMain.swift`, `OpenBurnBarCLI.swift` | **SUB-DONE** (authenticated standalone client) | WPD-0009's headless/multi-client trigger fired. `app/OpenBurnBar.Cli` drives the production companion plane over bounded loopback JSON lines, injects the gateway token only from current-user DPAPI storage, exposes typed run/mission/planner/policy/fusion/project operations, and is staged by the signed RID workflow with an MSIX `openburnbar.exe` alias. | `docs/windows-port/evidence/f2/companion-cli-client.md` |
-| 30 | Switcher shell (account-switched shells/profiles) | `OpenBurnBarSwitcherShell.swift` (`#if os(macOS)`, Linux-excluded) | **SUB-BUILD** | Profile persistence seam already landed (`storage/OpenBurnBar.Storage/SwitcherProfileWriteSeam.cs`); the switcher surface converts sample → Real in **Wave 3 item 1**, spawn path via CreateProcess/ConPTY. | Wave 3 item 1 |
+| 30 | Switcher shell (account-switched shells/profiles) | `OpenBurnBarSwitcherShell.swift` (`#if os(macOS)`, Linux-excluded) | **SUB-DONE** (guarded ConPTY profile shell) | The production Switcher surface converts a persisted profile into a validated, shell-free launch plan. It selects a fixed executable by profile type, preserves argv through Windows `CreateProcessW` quoting, confines config/environment overrides, applies the central child-process policy, and embeds the real ConPTY stream with cancellation and visible failures. | [F2 switcher-shell evidence](../evidence/f2/switcher-shell-production-composition.md) |
 | 31 | Indexed search service | `OpenBurnBarIndexedSearchService.swift` | **SUB-DONE** (app-side encrypted index) | `SettingsSearchEngine` provides weighted settings search. The command palette queries the encrypted conversation FTS index through `StorageSessionLogReadSource`, applies deterministic bounded metadata fallback in `SessionLogSearch`, cancels stale work, exposes loading/empty/error states, and deep-links the selected session. | [F2 indexed-search evidence](../evidence/f2/indexed-search-plane.md) |
 | 32 | Elder Wand orchestration (fusion orchestrator, tool loop, web tools) | `ElderWandFusionOrchestrator.swift` (Linux-excluded), `ElderWandToolLoop.swift`, `ElderWandWebTools.swift` | **SUB-DONE** (parallel fusion pipeline) | The production gateway and authenticated companion plane compose the saved/explicit 1...8-model panel in parallel, partial-failure degradation, strict judge comparison, originating-model synthesis, bounded DNS-pinned web tools, recursion prevention, metadata/digest-only journaling, and route/token telemetry. | `docs/windows-port/evidence/f2/elder-wand-fusion.md` |
 | 33 | Connector plane + connector secret store; tooling proxy; workspace bridge broker; context selector | `OpenBurnBarConnectorPlaneService.swift`, `OpenBurnBarConnectorSecretStore.swift`, `OpenBurnBarToolingProxyService.swift`, `OpenBurnBarWorkspaceBridgeBroker.swift`, `OpenBurnBarContextSelector.swift` | **SUB-DONE** (authenticated tooling plane) | The production app composes DPAPI-backed connector credentials, secret-free durable configuration, DNS-pinned HTTPS actions, the tooling facade, single-call workspace broker, and read-before-patch context selector. The authenticated companion plane is the concrete external consumer. | `docs/windows-port/evidence/f2/connector-tooling-plane.md` |
@@ -170,17 +170,17 @@ unless prefixed; all Windows paths under `windows/`.
 
 Counting each row by its current primary disposition (rows 24 and 27 count as
 SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1; rows 1-4,
-6-8, 14, 16, 18-22, 25, 29, and 32 are WPD-0009 F2 promotions):
+6-8, 14, 16, 18-22, 25, 29-33 are WPD-0009 F2 promotions):
 
 | Disposition | Rows | Count |
 |---|---|---|
-| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25, 27, 29, 31, 32, 33 | **28** |
-| C#-substitute-to-build (SUB-BUILD) | 26 (Wave 4), 30 (Wave 3) | **2** |
+| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25, 27, 29, 30, 31, 32, 33 | **29** |
+| C#-substitute-to-build (SUB-BUILD) | 26 (Wave 4) | **1** |
 | v1.1-deferred (DEFER) | - | **0** |
 | Not-applicable-on-Windows (N/A) | 10, 17, 28, 34 | **4** |
 
-Every SUB-BUILD row is owned by a named remediation-plan wave (Wave 3 item 1;
-Wave 4 item 1). No row is unowned; no capability is silently dropped —
+The remaining SUB-BUILD row is owned by remediation-plan Wave 4 item 1. No row
+is unowned; no capability is silently dropped —
 deferrals are recorded in the bundle as drift **D14** per the §15.1 no-trapdoor
 discipline.
 

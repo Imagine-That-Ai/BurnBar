@@ -11,12 +11,12 @@ public sealed class DaemonSettingsViewModelTests
     {
         var vm = new DaemonSettingsViewModel();
 
-        Assert.Equal(28, vm.Summary.SubstitutedAlready);
-        Assert.Equal(2, vm.Summary.SubstituteToBuild);
+        Assert.Equal(29, vm.Summary.SubstitutedAlready);
+        Assert.Equal(1, vm.Summary.SubstituteToBuild);
         Assert.Equal(0, vm.Summary.Deferred);
         Assert.Equal(4, vm.Summary.NotApplicable);
         Assert.Equal(34, vm.Summary.Total);
-        Assert.Equal(28, vm.Summary.LiveOnV1);
+        Assert.Equal(29, vm.Summary.LiveOnV1);
     }
 
     [Fact]
@@ -24,8 +24,8 @@ public sealed class DaemonSettingsViewModelTests
     {
         var vm = new DaemonSettingsViewModel();
         Assert.Contains("34 daemon duties", vm.Summary.HeaderLine);
-        Assert.Contains("28 substituted", vm.Summary.HeaderLine);
-        Assert.Contains("2 to build", vm.Summary.HeaderLine);
+        Assert.Contains("29 substituted", vm.Summary.HeaderLine);
+        Assert.Contains("1 to build", vm.Summary.HeaderLine);
         Assert.Contains("0 deferred", vm.Summary.HeaderLine);
         Assert.Contains("4 N/A", vm.Summary.HeaderLine);
     }
@@ -72,7 +72,7 @@ public sealed class DaemonSettingsViewModelTests
     {
         var vm = new DaemonSettingsViewModel { Filter = DaemonSubstitutionDisposition.SubstitutedAlready };
 
-        Assert.Equal(28, vm.VisibleCount);
+        Assert.Equal(29, vm.VisibleCount);
         Assert.All(vm.VisibleRows, r => Assert.Equal(DaemonSubstitutionDisposition.SubstitutedAlready, r.Disposition));
         Assert.Equal("Substituted already", vm.FilterLabel);
     }
@@ -99,8 +99,8 @@ public sealed class DaemonSettingsViewModelTests
         var all = vm.FilterOptions.Single(o => o.Disposition is null);
         Assert.Equal(34, all.Count);
 
-        Assert.Equal(28, vm.FilterOptions.Single(o => o.Disposition == DaemonSubstitutionDisposition.SubstitutedAlready).Count);
-        Assert.Equal(2, vm.FilterOptions.Single(o => o.Disposition == DaemonSubstitutionDisposition.SubstituteToBuild).Count);
+        Assert.Equal(29, vm.FilterOptions.Single(o => o.Disposition == DaemonSubstitutionDisposition.SubstitutedAlready).Count);
+        Assert.Equal(1, vm.FilterOptions.Single(o => o.Disposition == DaemonSubstitutionDisposition.SubstituteToBuild).Count);
         Assert.Equal(0, vm.FilterOptions.Single(o => o.Disposition == DaemonSubstitutionDisposition.Deferred).Count);
         Assert.Equal(4, vm.FilterOptions.Single(o => o.Disposition == DaemonSubstitutionDisposition.NotApplicable).Count);
     }

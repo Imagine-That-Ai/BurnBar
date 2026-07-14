@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -19,14 +18,28 @@ public sealed class ElderWandFusionOrchestratorTests
     public async Task RunAsync_RunsParallelPanelJudgeAndSynthesisInStableOrder()
     {
         var calls = new ConcurrentQueue<FusionToolCall>();
+        var bothPanelCallsStarted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        int activePanelCalls = 0;
+        int maximumConcurrentPanelCalls = 0;
         var orchestrator = new ElderWandFusionOrchestrator(async (call, token) =>
         {
             calls.Enqueue(call);
-            if (call.Kind == "panel") await Task.Delay(call.Model == "slow" ? 80 : 10, token);
+            if (call.Kind == "panel")
+            {
+                int active = Interlocked.Increment(ref activePanelCalls);
+                UpdateMaximum(ref maximumConcurrentPanelCalls, active);
+                if (active == 2)
+                {
+                    bothPanelCallsStarted.TrySetResult(true);
+                }
+
+                await bothPanelCallsStarted.Task.WaitAsync(TimeSpan.FromSeconds(2), token);
+                Interlocked.Decrement(ref activePanelCalls);
+            }
             return FusionToolResult.Done(call.Kind + ":" + call.Model, Raw(call.Kind));
         });
 
-        var timer = Stopwatch.StartNew();
         FusionRunResult result = await orchestrator.RunAsync(new FusionRunRequest(
             "explain it",
             AnalysisModels: new[] { "slow", "fast" },
@@ -36,9 +49,23 @@ public sealed class ElderWandFusionOrchestratorTests
         Assert.True(result.Succeeded);
         Assert.Equal("synthesis:origin", result.Output);
         Assert.Equal(new[] { "slow", "fast", "judge", "origin" }, result.Steps.Select(step => step.Call.Model));
-        Assert.True(timer.Elapsed < TimeSpan.FromMilliseconds(150), "panel calls should overlap");
+        Assert.Equal(2, maximumConcurrentPanelCalls);
         Assert.Contains(calls, call => call.Kind == "judge" && call.Payload.Contains("Analysis answer 2", StringComparison.Ordinal));
         Assert.Contains(calls, call => call.Kind == "synthesis" && call.Payload.Contains("Judge verdict", StringComparison.Ordinal));
+    }
+
+    private static void UpdateMaximum(ref int target, int value)
+    {
+        int observed;
+        do
+        {
+            observed = Volatile.Read(ref target);
+            if (observed >= value)
+            {
+                return;
+            }
+        }
+        while (Interlocked.CompareExchange(ref target, value, observed) != observed);
     }
 
     [Fact]

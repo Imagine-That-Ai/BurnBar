@@ -3,7 +3,7 @@
 //
 // Row order, capability names, dispositions, qualifiers, and the SUB-DONE/SUB-BUILD
 // hybrids (rows 24, 27) match the doc exactly. The disposition-summary constants match
-// the current disposition summary (28 SUB-DONE, 2 SUB-BUILD, 0 DEFER, 4 N/A).
+// the current disposition summary (29 SUB-DONE, 1 SUB-BUILD, 0 DEFER, 4 N/A).
 // A test cross-checks both against those figures so the tab can never drift from the
 // accepted decision without a red build.
 
@@ -142,9 +142,9 @@ public static class DaemonSubstitutionMatrix
             "OpenBurnBar.Cli drives the bounded loopback companion plane, injects authentication from current-user DPAPI storage, and is staged for signed x64/ARM64 packages with an app-execution alias.",
             "F2 authenticated companion CLI evidence", Qualifier: "authenticated standalone client"),
         new(30, "Switcher shell (account-switched shells/profiles)",
-            D.SubstituteToBuild,
-            "Profile persistence seam already landed (SwitcherProfileWriteSeam); the switcher surface converts sample → Real in Wave 3 item 1, spawn path via CreateProcess/ConPTY.",
-            "Wave 3 item 1"),
+            D.SubstitutedAlready,
+            "The production Switcher surface launches validated account profiles through a fixed executable allowlist, argv-preserving CreateProcess quoting, the central child-process policy, and an embedded ConPTY stream without a shell or ambient-secret inheritance.",
+            "F2 switcher-shell evidence", Qualifier: "guarded ConPTY profile shell"),
         new(31, "Indexed search service",
             D.SubstitutedAlready,
             "SettingsSearchEngine provides weighted settings search; the command palette queries the encrypted conversation FTS index with deterministic bounded metadata fallback, cancellation, explicit states, and direct session deep links.",
@@ -169,10 +169,10 @@ public static class DaemonSubstitutionMatrix
     // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
     /// <summary>SUB-DONE count from the current summary.</summary>
-    public const int SubstitutedAlreadyCount = 28;
+    public const int SubstitutedAlreadyCount = 29;
 
-    /// <summary>SUB-BUILD count from the doc's summary (rows 26 and 30).</summary>
-    public const int SubstituteToBuildCount = 2;
+    /// <summary>SUB-BUILD count from the doc's summary (row 26).</summary>
+    public const int SubstituteToBuildCount = 1;
 
     /// <summary>DEFER count from the current summary.</summary>
     public const int DeferredCount = 0;
