@@ -2,15 +2,15 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-13 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-14 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the corrected pinned Linux aggregate (**277 Swift selectors + 87 Rust tests**, `NATIVE_EXIT=0`), and follow-on source slices through `1ddc8bc33a` are linked below |
+| Remediation evidence | `codex/linux-parity-integration-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the corrected pinned Linux aggregate (**277 Swift selectors + 87 Rust tests**, `NATIVE_EXIT=0`), and follow-on source slices through `39af947e02` are linked below |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
-## Execution Status — 2026-07-13
+## Execution Status — 2026-07-14
 
 The audit remains the source of truth for the parity claim. The current Linux
 ledger is still **0/40 product requirements ready** and **0/7 environment
@@ -140,12 +140,13 @@ rejection terminates immediately. Poll delays are capped at
 device to 16 challenge requests in the first hour under the public 20/hour quota.
 
 The remaining availability boundary is operational and must not be blurred:
-the dedicated Google **Desktop app** OAuth client has not been created, its
-public client ID and the Firebase public values are not yet populated as GitHub
-release variables. Specifically, `OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID`,
-`OPENBURNBAR_FIREBASE_API_KEY`, and
-`OPENBURNBAR_LINUX_APP_CHECK_APP_ID` are absent. The new Functions callables are
-not deployed, and no signed
+the dedicated Google **Desktop app** OAuth client has not been created, so its
+public client ID is still absent from GitHub release variables. The Linux
+Firebase API key and dedicated Linux App Check app ID were populated as public
+repository variables on 2026-07-14; the exact-candidate build has not yet been
+rerun with them. The latest hosted attempt (`29296876215`) failed before native
+compilation because all three values were absent at dispatch time. The new
+Functions callables are not deployed, and no signed
 candidate has completed the installed Linux plus physical-iPad flow. The iPad
 approval surface is implemented against the exact nonce-bound trusted-device
 signature contract. Earlier generic iOS build-for-testing coverage passes, but
@@ -1611,8 +1612,9 @@ the identity, configuration, and artifact bytes established by the earlier one:
 
 1. Create a dedicated Google **Desktop app** OAuth client for Linux; do not
    reuse the web app client.
-2. Set the public Linux Firebase/OAuth/App Check release variables and validate
-   that release packaging fails closed when any required value is absent.
+2. Set the remaining public Linux OAuth release variable and validate that
+   release packaging fails closed when any required value is absent. The Linux
+   Firebase API key and App Check app ID variables are already populated.
 3. Deploy the Linux App Check enrollment, challenge, mint, list, approve, revoke,
    and policy callables/rules; verify the dedicated Linux Firebase app ID.
 4. Run the focused approval tests on the physical iPad. Generic iOS

@@ -222,10 +222,11 @@ explicit approve or revoke mutation.
 Full parity remains **NO-GO** until all of these gates are met in order:
 
 1. Provision the dedicated Google Desktop OAuth client.
-2. Set and validate `OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID`,
-   `OPENBURNBAR_FIREBASE_API_KEY`, and
-   `OPENBURNBAR_LINUX_APP_CHECK_APP_ID`; all three public release variables are
-   currently absent.
+2. Set and validate the remaining `OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID`; the
+   `OPENBURNBAR_FIREBASE_API_KEY` and
+   `OPENBURNBAR_LINUX_APP_CHECK_APP_ID` public repository variables were set on
+   2026-07-14. Release validation must continue to fail closed when any value is
+   absent or malformed.
 3. Deploy the Linux App Check callables, policy, and Firestore rules.
 4. Run the focused approval tests on the physical iPad. Generic iOS
    build-for-testing has passed, but it does not satisfy physical-device execution.

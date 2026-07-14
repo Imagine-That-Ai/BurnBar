@@ -240,7 +240,7 @@
 <tbody>
 <tr>
 <td>Date</td>
-<td>Baseline audit: 2026-07-09; remediation evidence through 2026-07-12 UTC</td>
+<td>Baseline audit: 2026-07-09; remediation evidence through 2026-07-14 UTC</td>
 </tr>
 <tr>
 <td>Gold standard</td>
@@ -256,7 +256,7 @@
 </tr>
 <tr>
 <td>Remediation evidence</td>
-<td><code>codex/linux-parity-final</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code>; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, and the 2026-07-12 full Linux-native aggregate on <code>codex/linux-parity-controller-credentials</code></td>
+<td><code>codex/linux-parity-integration-final</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code>; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the corrected pinned Linux aggregate, and follow-on source slices through <code>39af947e02</code></td>
 </tr>
 </tbody>
 </table>
@@ -327,12 +327,13 @@ rejection terminates immediately. Poll delays are capped at
 15/30/60/120/300 seconds and then five minutes, limiting a continuously pending
 device to 16 challenge requests in the first hour under the public 20/hour quota.</p>
 <p>The remaining availability boundary is operational and must not be blurred:
-the dedicated Google <strong>Desktop app</strong> OAuth client has not been created, its
-public client ID and the Firebase public values are not yet populated as GitHub
-release variables. Specifically, <code>OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID</code>,
-<code>OPENBURNBAR_FIREBASE_API_KEY</code>, and
-<code>OPENBURNBAR_LINUX_APP_CHECK_APP_ID</code> are absent. The new Functions callables are
-not deployed, and no signed
+the dedicated Google <strong>Desktop app</strong> OAuth client has not been created, so its
+public client ID is still absent from GitHub release variables. The Linux
+Firebase API key and dedicated Linux App Check app ID were populated as public
+repository variables on 2026-07-14; the exact-candidate build has not yet been
+rerun with them. The latest hosted attempt (<code>29296876215</code>) failed before native
+compilation because all three values were absent at dispatch time. The new
+Functions callables are not deployed, and no signed
 candidate has completed the installed Linux plus physical-iPad flow. The iPad
 approval surface is implemented against the exact nonce-bound trusted-device
 signature contract. Earlier generic iOS build-for-testing coverage passes, but
@@ -2670,8 +2671,9 @@ the identity, configuration, and artifact bytes established by the earlier one:<
 <ol>
 <li>Create a dedicated Google <strong>Desktop app</strong> OAuth client for Linux; do not
 reuse the web app client.</li>
-<li>Set the public Linux Firebase/OAuth/App Check release variables and validate
-that release packaging fails closed when any required value is absent.</li>
+<li>Set the remaining public Linux OAuth release variable and validate that
+release packaging fails closed when any required value is absent. The Linux
+Firebase API key and App Check app ID variables are already populated.</li>
 <li>Deploy the Linux App Check enrollment, challenge, mint, list, approve, revoke,
 and policy callables/rules; verify the dedicated Linux Firebase app ID.</li>
 <li>Run the focused approval tests on the physical iPad. Generic iOS
