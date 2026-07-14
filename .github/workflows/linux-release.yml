@@ -152,6 +152,17 @@ jobs:
           --phase prepare
           --version '${{ needs.resolve-release.outputs.version }}'"
 
+      - name: Dump native artifact preparation logs on failure
+        if: failure()
+        run: |
+          set -euo pipefail
+          for log in .linux-shard/logs/daemon-build.log .linux-shard/logs/package-build.log; do
+            if [[ -f "$log" ]]; then
+              echo "===== $log ====="
+              cat "$log"
+            fi
+          done
+
       - name: Prepare unsigned Arch installed-manifest request
         run: |
           set -euo pipefail
