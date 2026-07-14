@@ -110,6 +110,12 @@ package() {
   fi
   install -d "${pkgdir}/usr/lib/openburnbar/appdir"
   cp -a "${srcdir}/squashfs-root/." "${pkgdir}/usr/lib/openburnbar/appdir/"
+  # The AppImage-only peer attestation is added after Arch's signed manifest
+  # is prepared. Keep it out of the Arch AppDir so rebuilding from the final
+  # AppImage remains byte-for-byte bound to the Arch installed manifest.
+  rm -f \
+    "${pkgdir}/usr/lib/openburnbar/appdir/usr/share/openburnbar/appimage-peer-manifest.json" \
+    "${pkgdir}/usr/lib/openburnbar/appdir/usr/share/openburnbar/appimage-peer-manifest.ed25519.sig"
   install -Dm755 "${srcdir}/openburnbar-linux-desktop" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
   install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
   install -d "${pkgdir}/usr/lib/openburnbar"

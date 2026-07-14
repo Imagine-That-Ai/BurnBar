@@ -65,6 +65,16 @@ test('RPM release packaging is rebuilt from the validated DEB filesystem', () =>
   assert.doesNotMatch(source, /bundleFormat\('rpm'\)/u);
 });
 
+test('Arch preparation embeds the native payload before makepkg without unsigned peer files', () => {
+  const source = read('scripts/linux-port/bundle-signed-linux-packages.mjs');
+  assert.match(source, /const packagePayloadRoot =/u);
+  assert.match(source, /const intermediateEnvironment = \{ \.\.\.childEnvironment \}/u);
+  assert.match(source, /delete intermediateEnvironment\.OPENBURNBAR_LINUX_RELEASE_BUILD/u);
+  assert.match(source, /peerManifestBytes: null/u);
+  assert.match(source, /peerSignature: null/u);
+  assert.match(source, /embedLinuxAppImagePayload\(/u);
+});
+
 test('release workflow isolates the signer from mutable build tools and the network', () => {
   const workflow = read('.github/workflows/linux-release.yml');
   const signerStart = workflow.indexOf('Materialize exact-commit isolated signer');

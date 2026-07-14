@@ -87,9 +87,12 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     'ln -s usr/bin/openburnbar-linux-desktop squashfs-root/AppRun',
     'mkdir -p squashfs-root/usr/lib/openburnbar/native',
     'mkdir -p squashfs-root/usr/lib/openburnbar/swift/linux',
+    'mkdir -p squashfs-root/usr/share/openburnbar',
     'printf iroh >squashfs-root/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
     'printf sqlcipher >squashfs-root/usr/lib/openburnbar/native/libsqlcipher.so.0',
-    'printf swift >squashfs-root/usr/lib/openburnbar/swift/linux/libswiftCore.so'
+    'printf swift >squashfs-root/usr/lib/openburnbar/swift/linux/libswiftCore.so',
+    'printf peer >squashfs-root/usr/share/openburnbar/appimage-peer-manifest.json',
+    'printf sig >squashfs-root/usr/share/openburnbar/appimage-peer-manifest.ed25519.sig'
   ].join('\n'));
   fs.chmodSync(appImage, 0o755);
   fs.writeFileSync(path.join(srcdir, 'openburnbar-daemon-REPLACE_WITH_RELEASE_VERSION-x86_64'), 'daemon\n');
@@ -152,6 +155,14 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     assert.equal(fs.lstatSync(appRun).isSymbolicLink(), true);
     assert.match(fs.readFileSync(path.join(pkgdir, 'usr/bin/openburnbar-linux-desktop'), 'utf8'),
       /exec "\$\{APPDIR\}\/AppRun" "\$@"/u);
+    assert.equal(
+      fs.existsSync(path.join(pkgdir, 'usr/lib/openburnbar/appdir/usr/share/openburnbar/appimage-peer-manifest.json')),
+      false
+    );
+    assert.equal(
+      fs.existsSync(path.join(pkgdir, 'usr/lib/openburnbar/appdir/usr/share/openburnbar/appimage-peer-manifest.ed25519.sig')),
+      false
+    );
 
     // A failing AppImage must expose the runtime's stderr instead of leaving
     // makepkg with only its generic "package()" message. This reproduces the
@@ -201,6 +212,8 @@ test('AUR PKGBUILD remains valid Bash and does not bypass source verification', 
   assert.match(pkgbuild, /Arch package\(\) failed .*BASH_COMMAND/u);
   assert.match(pkgbuild, /AppImage extraction failed/u);
   assert.match(pkgbuild, /extracted AppImage is missing required path/u);
+  assert.match(pkgbuild, /appimage-peer-manifest\.json/u);
+  assert.match(pkgbuild, /appimage-peer-manifest\.ed25519\.sig/u);
   assert.doesNotMatch(pkgbuild, /install -Dm755 "\$\{appimage\}" "\$\{pkgdir\}\/usr\/bin\/openburnbar-linux-desktop"/u);
   assert.match(pkgbuild, /usr\/lib\/openburnbar\/appdir/u);
   assert.match(pkgbuild, /dev\.openburnbar\.OpenBurnBar\.png/u);

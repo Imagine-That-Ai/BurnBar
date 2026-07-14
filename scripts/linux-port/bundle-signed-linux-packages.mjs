@@ -30,6 +30,7 @@ const appDir = path.join(repoRoot, 'apps/linux-desktop');
 const bundleRoot = path.join(appDir, 'src-tauri/target/release/bundle');
 const payloadAttestation = path.join(appDir, 'src-tauri/target/openburnbar-package-payload/attestation');
 const publicKeyFile = path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem');
+const packagePayloadRoot = path.join(appDir, 'src-tauri/target/openburnbar-package-payload');
 const phase = requiredArgument('--phase');
 const version = requiredArgument('--version');
 const gitCommit = requiredArgument('--git-commit');
@@ -287,6 +288,21 @@ function prepareSigningRequests() {
     path.join(requestsDir, `appimage-${architecture}.peer-manifest.json`),
     peer.manifestBytes
   ));
+  // Arch's makepkg lifecycle runs after this prepare phase but before the
+  // isolated signer can provide the AppImage peer signature. Give the Arch
+  // recipe the exact runtime payload now, while keeping peer attestation out
+  // of the intermediate image. Finalize rewrites the same image with the
+  // signed peer files before publication; the PKGBUILD deliberately strips
+  // those AppImage-only files from the Arch AppDir.
+  const intermediateEnvironment = { ...childEnvironment };
+  delete intermediateEnvironment.OPENBURNBAR_LINUX_RELEASE_BUILD;
+  embedLinuxAppImagePayload({
+    appImage,
+    payloadRoot: packagePayloadRoot,
+    peerManifestBytes: null,
+    peerSignature: null,
+    env: intermediateEnvironment
+  });
   const index = {
     schemaVersion: 1,
     product: 'OpenBurnBar',
@@ -427,7 +443,7 @@ function finalizeSignedPackages() {
   const appImage = bundleFormat('appimage');
   const appImageReport = embedLinuxAppImagePayload({
     appImage,
-    payloadRoot: path.join(appDir, 'src-tauri/target/openburnbar-package-payload'),
+    payloadRoot: packagePayloadRoot,
     peerManifestBytes: appImageSigned.manifestBytes,
     peerSignature: appImageSigned.signatureBytes,
     env: childEnvironment
