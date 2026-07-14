@@ -169,7 +169,7 @@ public final class GrokParser: LogParser, Sendable {
         guard tokenBreakdown.totalTokens > 0 || tokenBreakdown.isExact else { return nil }
 
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: tokenBreakdown.inputTokens,
             outputTokens: tokenBreakdown.outputTokens + tokenBreakdown.reasoningTokens,
             cacheCreationTokens: 0,

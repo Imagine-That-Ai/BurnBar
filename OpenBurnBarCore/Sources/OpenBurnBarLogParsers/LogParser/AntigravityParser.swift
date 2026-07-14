@@ -75,7 +75,7 @@ public final class AntigravityParser: LogParser, Sendable {
                 continue
             }
 
-            if let pair = parseSession(
+            if let pair = try parseSession(
                 transcriptFile: transcriptFile,
                 sessionId: sessionId,
                 fallbackModel: fallbackModelName
@@ -97,7 +97,7 @@ public final class AntigravityParser: LogParser, Sendable {
         transcriptFile: URL,
         sessionId: String,
         fallbackModel: String
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: transcriptFile) else { return nil } // try?-ok(open read, guard-return-nil)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
@@ -308,7 +308,7 @@ public final class AntigravityParser: LogParser, Sendable {
 
         let model = acc.sessionModel ?? fallbackModel
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,

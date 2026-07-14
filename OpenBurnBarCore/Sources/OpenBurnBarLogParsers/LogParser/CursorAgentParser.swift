@@ -60,14 +60,14 @@ public final class CursorAgentParser: LogParser, Sendable {
                 guard let file = transcriptFile else { continue }
                 let summaryURL = item.appendingPathComponent("summary.json")
 
-                if let pair = parseSession(file: file, sessionId: sessionId, summaryURL: summaryURL) {
+                if let pair = try parseSession(file: file, sessionId: sessionId, summaryURL: summaryURL) {
                     if let usage = pair.usage { usages.append(usage) }
                     if let conv = pair.conversation { conversations.append(conv) }
                 }
             } else if item.pathExtension == "jsonl" {
                 // Scenario 2: Flat File Mode
                 let sessionId = item.deletingPathExtension().lastPathComponent
-                if let pair = parseSession(file: item, sessionId: sessionId, summaryURL: nil) {
+                if let pair = try parseSession(file: item, sessionId: sessionId, summaryURL: nil) {
                     if let usage = pair.usage { usages.append(usage) }
                     if let conv = pair.conversation { conversations.append(conv) }
                 }
@@ -83,7 +83,7 @@ public final class CursorAgentParser: LogParser, Sendable {
         file: URL,
         sessionId: String,
         summaryURL: URL?
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(open fail skip session)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
@@ -288,7 +288,7 @@ public final class CursorAgentParser: LogParser, Sendable {
 
         let model = summaryModel ?? acc.sessionModel ?? "cursor-agent-pro"
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,

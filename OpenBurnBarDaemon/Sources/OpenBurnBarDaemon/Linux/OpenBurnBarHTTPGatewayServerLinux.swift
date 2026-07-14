@@ -782,7 +782,7 @@ public actor BurnBarHTTPGatewayServer {
             cacheCreationTokens: usage.cacheCreationTokens,
             cacheReadTokens: usage.cacheReadTokens,
             reasoningTokens: usage.reasoningTokens,
-            cost: route.pricing.cost(
+            cost: try route.pricing.cost(
                 inputTokens: usage.inputTokens,
                 outputTokens: usage.outputTokens,
                 cacheCreationTokens: usage.cacheCreationTokens,
@@ -916,7 +916,7 @@ public actor BurnBarHTTPGatewayServer {
             cacheCreationTokens: usage.cacheCreationTokens,
             cacheReadTokens: usage.cacheReadTokens,
             reasoningTokens: usage.reasoningTokens,
-            cost: route.pricing.cost(
+            cost: try route.pricing.cost(
                 inputTokens: usage.inputTokens,
                 outputTokens: usage.outputTokens,
                 cacheCreationTokens: usage.cacheCreationTokens,

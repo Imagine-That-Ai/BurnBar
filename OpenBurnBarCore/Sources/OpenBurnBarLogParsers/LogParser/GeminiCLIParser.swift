@@ -54,14 +54,14 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
                 let pair: (usage: TokenUsage?, conversation: ConversationRecord?)?
                 if chatFile.pathExtension == "jsonl" {
-                    pair = parseJsonlSession(
+                    pair = try parseJsonlSession(
                         file: chatFile,
                         sessionId: sessionId,
                         projectName: projectName,
                         includeConversationBodies: options.includeConversationBodies
                     )
                 } else {
-                    pair = parseJsonSession(
+                    pair = try parseJsonSession(
                         file: chatFile,
                         sessionId: sessionId,
                         projectName: projectName,
@@ -88,7 +88,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
         sessionId: String,
         projectName: String,
         includeConversationBodies: Bool
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(open file, guard nil)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
@@ -103,7 +103,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
             ingestLine(json, into: &acc)
         }
 
-        return buildResult(
+        return try buildResult(
             acc: acc,
             sessionId: sessionId,
             projectName: projectName,
@@ -119,7 +119,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
         sessionId: String,
         projectName: String,
         includeConversationBodies: Bool
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let data = try? Data(contentsOf: file) else { return nil } // try?-ok(file read, guard nil)
 
         let mtime = modificationDate(of: file)
@@ -139,7 +139,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
             }
         }
 
-        return buildResult(
+        return try buildResult(
             acc: acc,
             sessionId: sessionId,
             projectName: projectName,
@@ -260,7 +260,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
         projectName: String,
         mtime: Date?,
         includeConversationBodies: Bool
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         var inputTokens = acc.inputTokens
         var outputTokens = acc.outputTokens
 
@@ -284,7 +284,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
         let model = acc.model ?? "gemini"
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheReadTokens: acc.cacheReadTokens

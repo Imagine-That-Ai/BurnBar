@@ -373,7 +373,7 @@ final class JunieParser: LogParser, Sendable {
         let projectName = displayProjectName(projectPath)
 
         let pricing = ModelPricing.lookup(model: tokenData.model, providerID: "junie")
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: tokenData.input,
             outputTokens: tokenData.output,
             cacheCreationTokens: tokenData.cacheCreation,

@@ -85,6 +85,7 @@ public static class WinAppCloudSyncHost
                 requireAppCheckOnFirestore: string.IsNullOrEmpty(appCheckToken));
             _memory = new CloudSyncMemoryStore(_root.Gateway, firebaseUid, vaultKey);
             _quotaSnapshots = new CloudSyncQuotaSnapshotStore(_root.Gateway, firebaseUid);
+            DomainCoreShadowEvidenceUploader.Configure(_root);
         }
     }
 
@@ -119,6 +120,7 @@ public static class WinAppCloudSyncHost
                 appCheckAttestationProducer: appCheckAttestationProducer);
             _memory = new CloudSyncMemoryStore(_root.Gateway, firebaseUid, vaultKey);
             _quotaSnapshots = new CloudSyncQuotaSnapshotStore(_root.Gateway, firebaseUid);
+            DomainCoreShadowEvidenceUploader.Configure(_root);
         }
     }
 

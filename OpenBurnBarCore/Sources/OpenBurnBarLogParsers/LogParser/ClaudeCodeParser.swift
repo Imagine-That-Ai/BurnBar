@@ -313,7 +313,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
 
         let model = acc.models.first ?? "claude"
         let pricing = ModelPricing.lookup(model: model)
-        acc.totalCost = pricing.cost(
+        acc.totalCost = try pricing.cost(
             inputTokens: acc.inputTokens,
             outputTokens: acc.outputTokens,
             cacheCreationTokens: acc.cacheCreationTokens,

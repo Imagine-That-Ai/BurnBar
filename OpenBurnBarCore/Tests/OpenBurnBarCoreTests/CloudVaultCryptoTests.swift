@@ -48,6 +48,32 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(try CloudVaultCrypto.openBlob(legacyBlob, keyData: key), body)
     }
 
+    func test_openTextRejectsFutureSchemaBeforeDecrypting() throws {
+        let key = Data(repeating: 0x42, count: 32)
+        let context = try CloudVaultAADContext(
+            uid: "user",
+            collection: "session_logs",
+            docID: "doc",
+            field: "sealedTitle"
+        )
+        let sealed = try CloudVaultCrypto.sealText("future", keyData: key, aadContext: context)
+        let future = CloudVaultSealedText(
+            schemaVersion: CloudVaultCrypto.currentSealedTextSchemaVersion + 1,
+            algorithm: sealed.algorithm,
+            keyVersion: sealed.keyVersion,
+            nonce: sealed.nonce,
+            ciphertext: sealed.ciphertext,
+            tag: sealed.tag,
+            aad: sealed.aad
+        )
+
+        XCTAssertThrowsError(try CloudVaultCrypto.openText(future, keyData: key, aadContext: context)) { error in
+            guard case CloudVaultCryptoError.invalidEnvelope = error else {
+                return XCTFail("Expected invalidEnvelope, got \(error)")
+            }
+        }
+    }
+
     func test_cloudVaultBodyAndChunkHashesAreVaultKeyedHMACs() throws {
         let key = Data(repeating: 0x62, count: 32)
         let otherKey = Data(repeating: 0x63, count: 32)
@@ -684,6 +710,49 @@ final class CloudVaultCryptoTests: XCTestCase {
         let unwrapped = try CloudVaultCrypto.unwrapVaultKey(wrapped, privateKey: recipient)
 
         XCTAssertEqual(unwrapped, vaultKey)
+    }
+
+    func test_escrowPayloadRoundTrip_preservesAssociatedDataAndVariableLengthPayloads() throws {
+        let recipient = P256.KeyAgreement.PrivateKey()
+        let plaintext = Data("provider-secret-with-variable-length".utf8)
+        let aad = Data("grant-id|device-id|provider-id".utf8)
+        let wire = try CloudVaultCrypto.sealEscrowPayload(
+            plaintext,
+            recipientPublicKey: recipient.publicKey.x963Representation,
+            authenticating: aad
+        )
+        XCTAssertEqual(
+            try CloudVaultCrypto.openEscrowPayload(wire, privateKey: recipient, authenticating: aad),
+            plaintext
+        )
+        XCTAssertThrowsError(
+            try CloudVaultCrypto.openEscrowPayload(
+                wire,
+                privateKey: recipient,
+                authenticating: Data("wrong-context".utf8)
+            )
+        )
+    }
+
+    func test_escrowPayloadRejectsMalformedP256KeysAndWire() throws {
+        XCTAssertThrowsError(
+            try CloudVaultCrypto.sealEscrowPayload(
+                Data("secret".utf8),
+                recipientPublicKey: Data(repeating: 0, count: 65)
+            )
+        ) { error in
+            guard case CloudVaultCryptoError.invalidPublicKey = error else {
+                return XCTFail("Expected invalidPublicKey, got \(error)")
+            }
+        }
+        let recipient = P256.KeyAgreement.PrivateKey()
+        XCTAssertThrowsError(
+            try CloudVaultCrypto.openEscrowPayload(Data(repeating: 0, count: 92), privateKey: recipient)
+        ) { error in
+            guard case CloudVaultCryptoError.invalidEnvelope = error else {
+                return XCTFail("Expected invalidEnvelope, got \(error)")
+            }
+        }
     }
 
     func test_recoveryWrappedVaultKeyRoundTrip_usesSymmetricRecoveryEnvelope() throws {

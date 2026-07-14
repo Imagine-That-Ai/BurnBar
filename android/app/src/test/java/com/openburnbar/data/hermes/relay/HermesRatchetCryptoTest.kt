@@ -3,7 +3,9 @@
 package com.openburnbar.data.hermes.relay
 
 import io.mockk.every
+import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.unmockkObject
 import io.mockk.unmockkStatic
 import java.util.Base64
 import org.junit.After
@@ -12,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import uniffi.openburnbar_domain_ffi.HermesFfiException
 
 class HermesRatchetCryptoTest {
     private var cachedResponderInitialKeyPair: HermesRatchetKeyPair? = null
@@ -126,6 +129,30 @@ class HermesRatchetCryptoTest {
 
         assertRatchetError(HermesRatchetError.AUTHENTICATION_FAILED) {
             HermesRatchetCrypto.decrypt(envelope, bob, "destination=other".toByteArray(Charsets.UTF_8))
+        }
+    }
+
+    @Test
+    fun `domain core invalid ciphertext is normalized to authentication failure`() {
+        val alice = makeInitiator()
+        val bob = makeResponder()
+        val envelope = HermesRatchetCrypto.encrypt("secret".toByteArray(Charsets.UTF_8), alice)
+        mockkObject(HermesDomainCoreAdapter)
+        try {
+            every {
+                HermesDomainCoreAdapter.openCombined(
+                    any(),
+                    any(),
+                    any(),
+                    any<() -> ByteArray>(),
+                )
+            } throws HermesFfiException.InvalidCiphertext()
+
+            assertRatchetError(HermesRatchetError.AUTHENTICATION_FAILED) {
+                HermesRatchetCrypto.decrypt(envelope, bob)
+            }
+        } finally {
+            unmockkObject(HermesDomainCoreAdapter)
         }
     }
 
