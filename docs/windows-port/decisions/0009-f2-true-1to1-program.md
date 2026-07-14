@@ -41,6 +41,10 @@ Closed under this decision:
   `docs/windows-port/evidence/f2/gateway-rate-limiter.md`. The production host
   now enforces the macOS token-bucket contract and the shared stricter
   unauthenticated-loopback ceiling before provider execution.
+- Telegram notification bridge: promoted by
+  `docs/windows-port/evidence/f2/telegram-bridge.md`. Protected live settings,
+  bounded send/getUpdates transport, durable offsets, due followups, inbound
+  commands, and real daily/weekly review launches are app-lifecycle composed.
 
 ## Product language
 

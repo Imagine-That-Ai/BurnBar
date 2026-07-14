@@ -146,7 +146,7 @@ unless prefixed; all Windows paths under `windows/`.
 | 13 | Mission dispatch client (write mission requests, status polling) | `AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift` (consumer side); envelope shared with daemon Mission Control | **SUB-DONE** | `app/OpenBurnBar.App/MissionControl/FirestoreMissionDispatchHost.cs` writes the same `cli_agent_mission_requests` envelope through `cloudsync/OpenBurnBar.CloudSync/Offline/OfflineWriteQueue.cs`; hardened status polling per #1272. Execution stays on the Mac host. | Landed (#1267 + #1272); surface → Real in Wave 3 |
 | 14 | Mission Control execution: DAG scheduler, journal repository, projection reducer, state merger, store | `MissionControl/BurnBarParallelDAGScheduler.swift`, `MissionControlJournalRepository.swift`, `MissionControlProjectionReducer.swift`, `MissionControlMissionStateMerger.swift`, `MissionControlService.swift`, `MissionControlStore.swift` | **SUB-DONE** (local DAG execution) | WPD-0009 fired the local-execution trigger. The authenticated companion plane composes `LocalMissionDagExecutor` with deterministic planning, bounded policy, shared rate limiting, metadata-only journaling, and resume/recovery. Broader intent planning and provider tools remain rows 20/21. | `docs/windows-port/evidence/f2/local-mission-production-composition.md` |
 | 15 | Notification bridge: local notifications | `MissionControl/Bridges/LocalNotificationBridge.swift` | **SUB-DONE** (seam) | `app/OpenBurnBar.App/Budget/BudgetToastNotifier.cs` is the landed WinRT AppNotification seam; mission notifications ride it if/when local execution revives. | Landed; live toast proof Wave 4/5 pass |
-| 16 | Notification bridge: Telegram | `MissionControl/Bridges/TelegramBotBridge.swift` | **DEFER** | Pure-HTTP portable code, but only fires from local mission execution (row 14). Deferred with it. | With row 14 |
+| 16 | Notification bridge: Telegram | `MissionControl/Bridges/TelegramBotBridge.swift` | **SUB-DONE** (protected live command bridge) | The app lifecycle production-composes fixed-origin bounded send/getUpdates transport, durable ordered offsets, configured-chat isolation, due-followup delivery, the macOS command vocabulary, DPAPI-protected followup/question state, and real headless daily/weekly review launches. | `docs/windows-port/evidence/f2/telegram-bridge.md` |
 | 17 | Notification bridge: EventKit (calendar/reminders) | `MissionControl/Bridges/EventKitBridge.swift` | **N/A** | EventKit is Apple-only; no Windows analog in scope (a Graph-calendar substitute would be a new feature, not parity). | Bundle drift D14 |
 | 18 | Pensieve knowledge watcher | `PensieveKnowledgeWatcher.swift` | **DEFER** | Excluded even from the daemon's Linux build; the Windows memory surface already reads/writes `memory_facts` via `app/OpenBurnBar.App.CloudSync/CloudSyncMemoryStore.cs` (B4). Local knowledge *watching* is a v1.1 capability. | Bundle drift D14 |
 | 19 | Project-code memory store + embeddings | `ProjectCodeMemory/BurnBarProjectCodeMemoryStore*.swift`, `ProjectCodeMemory/BurnBarCodeEmbedding.swift` | **SUB-DONE** (durable source-free semantic store) | WPD-0003's parser trigger fired. `ProjectCodeMemoryStore` production-composes encrypted SQLite project/artifact/symbol/reference/call-edge/checkpoint metadata, bounded AST-aware chunks, versioned deterministic or protected OpenAI embeddings, restart hydration, call-graph traversal, and semantic search without persisting source text. | `docs/windows-port/evidence/f2/project-code-memory-store.md`; WPD-0003 revival addendum |
@@ -170,13 +170,13 @@ unless prefixed; all Windows paths under `windows/`.
 
 Counting each row by its current primary disposition (rows 24 and 27 count as
 SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1; rows 1-4,
-6-8, 14, 19-22, 25, and 29 are WPD-0009 F2 promotions):
+6-8, 14, 16, 19-22, 25, and 29 are WPD-0009 F2 promotions):
 
 | Disposition | Rows | Count |
 |---|---|---|
-| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 19, 20, 21, 22, 23, 24, 25, 27, 29 | **23** |
+| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 27, 29 | **24** |
 | C#-substitute-to-build (SUB-BUILD) | 26 (Wave 4), 30 (Wave 3), 31 (Wave 3) | **3** |
-| v1.1-deferred (DEFER) | 16, 18, 32, 33 | **4** |
+| v1.1-deferred (DEFER) | 18, 32, 33 | **3** |
 | Not-applicable-on-Windows (N/A) | 10, 17, 28, 34 | **4** |
 
 Every SUB-BUILD row is owned by a named remediation-plan wave (Wave 3 item 1;

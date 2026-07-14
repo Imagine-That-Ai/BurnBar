@@ -24,9 +24,9 @@ public sealed class DaemonSubstitutionMatrixTests
     [Fact]
     public void PrimaryDispositionCounts_MatchTheCurrentDecisionSummary()
     {
-        Assert.Equal(23, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
+        Assert.Equal(24, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
         Assert.Equal(3, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
-        Assert.Equal(4, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
+        Assert.Equal(3, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
         Assert.Equal(4, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.NotApplicable));
 
         // Published constants agree with the live count.
@@ -66,6 +66,7 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(13, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(14, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(15, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(16, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(19, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(20, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(21, DaemonSubstitutionDisposition.SubstitutedAlready)]
@@ -96,7 +97,7 @@ public sealed class DaemonSubstitutionMatrixTests
             .Select(r => r.Number)
             .OrderBy(n => n)
             .ToArray();
-        Assert.Equal(new[] { 16, 18, 32, 33 }, deferred);
+        Assert.Equal(new[] { 18, 32, 33 }, deferred);
     }
 
     [Fact]
@@ -148,6 +149,11 @@ public sealed class DaemonSubstitutionMatrixTests
         var row22 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 22);
         Assert.Equal("per-client token bucket", row22.Qualifier);
         Assert.Equal("SUB-DONE (per-client token bucket)", row22.DispositionBadge);
+
+        // Row 16 is "SUB-DONE (protected live command bridge)".
+        var row16 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 16);
+        Assert.Equal("protected live command bridge", row16.Qualifier);
+        Assert.Equal("SUB-DONE (protected live command bridge)", row16.DispositionBadge);
     }
 
     [Fact]

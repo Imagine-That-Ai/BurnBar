@@ -76,6 +76,7 @@ public partial class App
                     rateLimiter: new MissionRateLimiter(60, TimeSpan.FromMinutes(1))));
             var plannerHandler = new CompanionCliPlannerHandler(new BurnBarPlannerService());
             var policyHandler = new CompanionCliPolicyHandler(new BurnBarPlannerService(), new BurnBarPolicyEngine());
+            TelegramMissionCommandHandler telegramCommands = CreateTelegramCommandHandler();
             _ = ReportRecoverableHeadlessRunsAsync(headlessRuns);
             string fusionJournalPath = Environment.GetEnvironmentVariable("OPENBURNBAR_FUSION_JOURNAL_PATH")
                 ?? Path.Combine(localData, "elder-wand-runs.jsonl");
@@ -94,9 +95,11 @@ public partial class App
                 missionHandler.ResumeAsync,
                 plannerHandler.PlanAsync,
                 policyHandler.EvaluateAsync,
-                agentHandler);
+                agentHandler,
+                new CompanionCliTelegramHandler(telegramCommands));
             _companionCli = new CompanionCliServer(port, router, _localAccessToken);
             _companionCli.Start();
+            StartTelegramRuntime(localData, telegramCommands);
             AppDiagnostics.LogEvent("companion-cli.started", $"127.0.0.1:{port}");
         }
         catch (Exception ex)

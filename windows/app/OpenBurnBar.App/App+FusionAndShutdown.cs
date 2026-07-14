@@ -231,6 +231,13 @@ public partial class App
 
     private async Task StopLocalRuntimeAsync()
     {
+        if (_telegramPolling is not null)
+        {
+            await _telegramPolling.DisposeAsync();
+            _telegramPolling = null;
+        }
+        _telegramClient?.Dispose();
+        _telegramClient = null;
         if (_companionCli is not null)
         {
             await _companionCli.DisposeAsync();

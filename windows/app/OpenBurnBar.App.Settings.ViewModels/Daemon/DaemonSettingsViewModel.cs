@@ -28,7 +28,7 @@ public sealed record DaemonSubstitutionSummary(
     /// <summary>Rows that are live (or partly live) on Windows v1 today (SUB-DONE).</summary>
     public int LiveOnV1 => SubstitutedAlready;
 
-    /// <summary>The header tally line, e.g. "34 daemon duties · 23 substituted · 3 to build · 4 deferred · 4 N/A".</summary>
+    /// <summary>The header tally line, e.g. "34 daemon duties · 24 substituted · 3 to build · 3 deferred · 4 N/A".</summary>
     public string HeaderLine =>
         $"{Total} daemon duties · {SubstitutedAlready} substituted · {SubstituteToBuild} to build · " +
         $"{Deferred} deferred · {NotApplicable} N/A";

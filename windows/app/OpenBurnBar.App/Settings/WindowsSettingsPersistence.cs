@@ -111,6 +111,9 @@ internal static class WindowsSettingsComposition
     public static GatewayEndpointSettings LoadGatewayEndpointSettings() =>
         new GatewayStore(Persistence).Load();
 
+    public static NotificationSettingsSnapshot LoadNotificationSettings() =>
+        new NotificationStore(Persistence).Load();
+
     public static GatewayComposition CreateGatewayComposition()
     {
         var store = new GatewayRouteStore(Persistence);

@@ -40,7 +40,8 @@ passes **85/85**. The suite includes:
 
 ## Boundary
 
-This closes the WPD-0009 local Mission DAG execution trigger. It does not claim
-the broader macOS intent-normalization planner, arbitrary provider/tool
-execution, Telegram delivery, or physical/staging release certification; those
-remain independently tracked and must not inherit this row's status.
+This closes the WPD-0009 local Mission DAG execution trigger. The broader
+intent-normalization planner, policy/provider execution, and Telegram bridge
+were subsequently promoted by their own evidence documents; physical/staging
+release certification remains independently tracked and must not inherit this
+row's status.

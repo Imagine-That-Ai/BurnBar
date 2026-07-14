@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.App.ManagedAgentRuntime.Planning;
 using OpenBurnBar.App.ManagedAgentRuntime.Run;
+using OpenBurnBar.App.ManagedAgentRuntime.Mission;
 
 namespace OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 
@@ -359,6 +360,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _plan;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _policy;
     private readonly CompanionCliAgentRunHandler? _agentRuns;
+    private readonly CompanionCliTelegramHandler? _telegram;
 
     public CompanionCliCommandRouter(
         ModelProxyRouter? router = null,
@@ -371,7 +373,8 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
         Func<JsonElement, CancellationToken, Task<object?>>? missionResume = null,
         Func<JsonElement, CancellationToken, Task<object?>>? plan = null,
         Func<JsonElement, CancellationToken, Task<object?>>? policy = null,
-        CompanionCliAgentRunHandler? agentRuns = null)
+        CompanionCliAgentRunHandler? agentRuns = null,
+        CompanionCliTelegramHandler? telegram = null)
     {
         _router = router;
         _submit = submit;
@@ -384,6 +387,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
         _plan = plan;
         _policy = policy;
         _agentRuns = agentRuns;
+        _telegram = telegram;
     }
 
     public async Task<string> HandleAsync(string line, CancellationToken cancellationToken)
@@ -426,6 +430,18 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 "mission.resume" => await InvokeRunAsync(_missionResume, root, cancellationToken).ConfigureAwait(false),
                 "planner.plan" => await InvokeRunAsync(_plan, root, cancellationToken).ConfigureAwait(false),
                 "policy.evaluate" => await InvokeRunAsync(_policy, root, cancellationToken).ConfigureAwait(false),
+                "notification.followup.record" => await InvokeTelegramAsync(
+                    static (handler, request, token) => handler.RecordFollowupAsync(request, token),
+                    root,
+                    cancellationToken).ConfigureAwait(false),
+                "notification.question.record" => await InvokeTelegramAsync(
+                    static (handler, request, token) => handler.RecordQuestionAsync(request, token),
+                    root,
+                    cancellationToken).ConfigureAwait(false),
+                "notification.command" => await InvokeTelegramAsync(
+                    static (handler, request, token) => handler.ExecuteCommandAsync(request, token),
+                    root,
+                    cancellationToken).ConfigureAwait(false),
                 "fusion.run" => await InvokeRunAsync(_fusion, root, cancellationToken).ConfigureAwait(false),
                 "code.index" or "code.search" or "code.symbol" or "code.status" or "code.context_pack" or "code.references" or "code.call_graph" or "code.semantic_search" =>
                     await InvokeRunAsync(_code, root, cancellationToken).ConfigureAwait(false),
@@ -493,6 +509,17 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
             handler is null
                 ? null
                 : (input, token) => operation(handler, input, token),
+            request,
+            cancellationToken);
+
+    private Task<string> InvokeTelegramAsync(
+        Func<CompanionCliTelegramHandler, JsonElement, CancellationToken, Task<object?>> operation,
+        JsonElement request,
+        CancellationToken cancellationToken) =>
+        InvokeRunAsync(
+            _telegram is null
+                ? null
+                : (input, token) => operation(_telegram, input, token),
             request,
             cancellationToken);
 }

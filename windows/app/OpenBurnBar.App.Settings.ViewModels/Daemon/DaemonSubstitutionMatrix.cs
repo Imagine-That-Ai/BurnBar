@@ -3,7 +3,7 @@
 //
 // Row order, capability names, dispositions, qualifiers, and the SUB-DONE/SUB-BUILD
 // hybrids (rows 24, 27) match the doc exactly. The disposition-summary constants match
-// the current disposition summary (23 SUB-DONE, 3 SUB-BUILD, 4 DEFER, 4 N/A).
+// the current disposition summary (24 SUB-DONE, 3 SUB-BUILD, 3 DEFER, 4 N/A).
 // A test cross-checks both against those figures so the tab can never drift from the
 // accepted decision without a red build.
 
@@ -86,9 +86,9 @@ public static class DaemonSubstitutionMatrix
             "BudgetToastNotifier is the landed WinRT AppNotification seam; mission notifications ride it if/when local execution revives.",
             "Landed; live toast proof Wave 4/5 pass", Qualifier: "seam"),
         new(16, "Notification bridge: Telegram",
-            D.Deferred,
-            "Pure-HTTP portable code, but only fires from local mission execution (row 14). Deferred with it.",
-            "With row 14"),
+            D.SubstitutedAlready,
+            "The app lifecycle composes bounded fixed-origin Telegram transport, protected settings/state, durable offsets, configured-chat command polling, due-followup delivery, and real headless review launches.",
+            "F2 Telegram bridge evidence", Qualifier: "protected live command bridge"),
         new(17, "Notification bridge: EventKit (calendar/reminders)",
             D.NotApplicable,
             "EventKit is Apple-only; no Windows analog in scope (a Graph-calendar substitute would be a new feature, not parity).",
@@ -169,13 +169,13 @@ public static class DaemonSubstitutionMatrix
     // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
     /// <summary>SUB-DONE count from the current summary.</summary>
-    public const int SubstitutedAlreadyCount = 23;
+    public const int SubstitutedAlreadyCount = 24;
 
     /// <summary>SUB-BUILD count from the doc's summary (rows 26, 30, 31).</summary>
     public const int SubstituteToBuildCount = 3;
 
     /// <summary>DEFER count from the current summary.</summary>
-    public const int DeferredCount = 4;
+    public const int DeferredCount = 3;
 
     /// <summary>N/A count from the doc's summary (rows 10, 17, 28, 34).</summary>
     public const int NotApplicableCount = 4;
