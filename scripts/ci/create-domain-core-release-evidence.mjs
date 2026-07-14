@@ -12,7 +12,7 @@ export const RELEASE_PREDICATE_TYPE =
 const CONSUMERS = Object.freeze({
   apple: {
     artifactKind: "macos-dmg",
-    target: "macos-universal",
+    target: "macos-arm64",
     domains: [
       "quota",
       "cloudVault",

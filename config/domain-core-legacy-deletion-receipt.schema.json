@@ -118,7 +118,7 @@
       "properties": {
         "consumer": { "enum": ["apple", "android", "windows", "console", "functions"] },
         "artifactKind": { "enum": ["macos-dmg", "android-aab", "windows-release-bundle", "console-deployment-receipt", "functions-deployment-receipt"] },
-        "target": { "enum": ["macos-universal", "android-universal", "windows-x64-arm64", "firebase-hosting-production", "firebase-functions-production"] },
+        "target": { "enum": ["macos-arm64", "android-universal", "windows-x64-arm64", "firebase-hosting-production", "firebase-functions-production"] },
         "version": { "$ref": "#/$defs/version" },
         "tag": { "type": "string", "pattern": "^(?:windows-)?v\\d+\\.\\d+\\.\\d+(?:\\+[0-9A-Za-z.-]+)?$" },
         "commit": { "$ref": "#/$defs/commit" },

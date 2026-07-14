@@ -139,7 +139,7 @@ RELEASE_PREDICATE_TYPES = {
     for consumer in RELEASE_SIGNER_WORKFLOWS
 }
 RELEASE_ARTIFACT_IDENTITIES = {
-    "apple": ("macos-dmg", "macos-universal"),
+    "apple": ("macos-dmg", "macos-arm64"),
     "android": ("android-aab", "android-universal"),
     "windows": ("windows-release-bundle", "windows-x64-arm64"),
     "console": ("console-deployment-receipt", "firebase-hosting-production"),

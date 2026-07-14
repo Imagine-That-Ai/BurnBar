@@ -139,6 +139,12 @@ on:
       - "scripts/ci/create-domain-core-release-evidence.test.mjs"
       - "scripts/ci/publish-domain-core-release-evidence.mjs"
       - "scripts/ci/publish-domain-core-release-evidence.test.mjs"
+      - "scripts/ci/create-domain-core-native-release-evidence.mjs"
+      - "scripts/ci/create-domain-core-native-release-evidence.test.mjs"
+      - "scripts/ci/verify-domain-core-native-release-artifact.sh"
+      - "scripts/ci/verify-domain-core-native-release-artifact.test.sh"
+      - "scripts/ci/publish-domain-core-native-release-evidence.sh"
+      - "scripts/ci/publish-domain-core-native-release-evidence.test.sh"
       - "scripts/ci/create-domain-core-deployment-identity.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.test.mjs"
       - "scripts/ci/hosting-smoke.sh"
@@ -149,6 +155,7 @@ on:
       - "tests/test_domain_core_legacy_deletion_workflow.py"
       - "tests/test_domain_core_release_evidence_workflow.py"
       - "tests/test_domain_core_console_release_evidence_workflow.py"
+      - "tests/test_domain_core_native_release_evidence_workflow.py"
       - ".github/workflows/domain-core.yml"
   pull_request:
     paths:
@@ -284,6 +291,12 @@ on:
       - "scripts/ci/create-domain-core-release-evidence.test.mjs"
       - "scripts/ci/publish-domain-core-release-evidence.mjs"
       - "scripts/ci/publish-domain-core-release-evidence.test.mjs"
+      - "scripts/ci/create-domain-core-native-release-evidence.mjs"
+      - "scripts/ci/create-domain-core-native-release-evidence.test.mjs"
+      - "scripts/ci/verify-domain-core-native-release-artifact.sh"
+      - "scripts/ci/verify-domain-core-native-release-artifact.test.sh"
+      - "scripts/ci/publish-domain-core-native-release-evidence.sh"
+      - "scripts/ci/publish-domain-core-native-release-evidence.test.sh"
       - "scripts/ci/create-domain-core-deployment-identity.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.test.mjs"
       - "scripts/ci/hosting-smoke.sh"
@@ -294,6 +307,7 @@ on:
       - "tests/test_domain_core_legacy_deletion_workflow.py"
       - "tests/test_domain_core_release_evidence_workflow.py"
       - "tests/test_domain_core_console_release_evidence_workflow.py"
+      - "tests/test_domain_core_native_release_evidence_workflow.py"
       - ".github/workflows/domain-core.yml"
   workflow_dispatch:
 
@@ -361,14 +375,18 @@ jobs:
           scripts/lib/domain-core-shadow-enrollment.test.mjs
           scripts/ci/create-domain-core-release-evidence.test.mjs
           scripts/ci/publish-domain-core-release-evidence.test.mjs
+          scripts/ci/create-domain-core-native-release-evidence.test.mjs
           scripts/ci/create-domain-core-deployment-identity.test.mjs
 
       - name: Test release evidence workflow contracts
         run: |
           python3 tests/test_domain_core_release_evidence_workflow.py
           python3 tests/test_domain_core_console_release_evidence_workflow.py
+          python3 tests/test_domain_core_native_release_evidence_workflow.py
           bash scripts/ci/post-deploy-health-gate.test.sh
           bash scripts/ci/hosting-smoke-domain-core.test.sh
+          bash scripts/ci/verify-domain-core-native-release-artifact.test.sh
+          bash scripts/ci/publish-domain-core-native-release-evidence.test.sh
 
       - name: Verify shadow evidence retention declaration
         run: bash scripts/ci/check-firestore-ttl-declared.sh

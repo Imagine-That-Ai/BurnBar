@@ -28,7 +28,7 @@
     },
     "target": {
       "enum": [
-        "macos-universal",
+        "macos-arm64",
         "android-universal",
         "windows-x64-arm64",
         "firebase-hosting-production",
@@ -52,7 +52,7 @@
       "then": {
         "properties": {
           "artifactKind": { "const": "macos-dmg" },
-          "target": { "const": "macos-universal" }
+          "target": { "const": "macos-arm64" }
         }
       }
     },

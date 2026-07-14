@@ -57,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that verifies exact signer, tag, commit, OIDC issuer, predicate, artifact
   bytes, collision behavior, and bundle-before-artifact ordering without
   creating, editing, or overwriting a release.
+- **Signed Shared Rust Apple and Android release evidence** — stable releases
+  now publish the exact notarized arm64 DMG and signed four-ABI AAB with
+  domain-specific GitHub attestations for every Rust-authoritative public mode.
+  Custom bundles publish before immutable native artifacts; reruns verify the
+  existing bytes, exact tag, commit, signer workflow, and embedded profile.
 - **Launch-readiness hardening** — added durable account-erasure barriers,
   resumable oldest-first reconciliation with poison-record quarantine, and
   privacy-safe retained audit receipts across Functions, Firestore, and Storage.
