@@ -5,6 +5,8 @@ is the authority for shared Rust rollout settings. Signed release artifacts embe
 one exact catalog profile. Runtime environment variables are development/test
 overrides only; signed consumers ignore them and fail closed to `legacy` with
 evidence disabled when embedded metadata is incomplete or inconsistent.
+Only a missing or explicit `development` authority enables development overrides;
+unknown, misspelled, or unexpanded authority markers fail closed.
 
 | Profile | Distribution | Evidence channel | Required behavior |
 | --- | --- | --- | --- |
@@ -51,6 +53,11 @@ node scripts/ops/manage-domain-core-shadow-enrollment.mjs \
 
 The callable verifies both claims against every sample. A matching client build
 profile alone never grants upload permission.
+
+Durable client evidence is bound to the artifact's validated channel. Public or
+otherwise disabled profiles discard queued evidence, and an internal/beta channel
+transition drops samples from the previous channel instead of uploading or
+retrying them under the new profile.
 
 ## Artifact verification
 

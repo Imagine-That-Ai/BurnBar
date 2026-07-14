@@ -18,6 +18,20 @@ function signed(name: "public-production" | "internal" | "beta", mode: "legacy" 
 describe("domain-core Functions profile", () => {
   it("keeps development/test overrides", () => {
     expect(resolveDomainCoreRuntimeMode("pricing", { OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "rust" })).toBe("rust");
+    expect(resolveDomainCoreRuntimeMode("pricing", {
+      OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY: "development",
+      OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "rust",
+    })).toBe("rust");
+  });
+
+  it("fails closed for unknown or unexpanded authority markers", () => {
+    for (const authority of ["sigend", "${DOMAIN_CORE_BUILD_AUTHORITY}"]) {
+      const environment = signed("internal", "shadow");
+      environment.OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY = authority;
+      environment.OPENBURNBAR_DOMAIN_CORE_PRICING_MODE = "rust";
+      expect(resolveDomainCoreRuntimeMode("pricing", environment)).toBe("legacy");
+      expect(resolveDomainCoreEvidenceChannel(environment)).toBeUndefined();
+    }
   });
 
   it("accepts valid public metadata and fails closed on shadow mutation", () => {

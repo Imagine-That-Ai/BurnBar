@@ -38,9 +38,11 @@ export function resolveDomainCoreRuntimeMode(
   domain: DomainCoreRuntimeDomain,
   environment: NodeJS.ProcessEnv = process.env,
 ): DomainCoreRuntimeMode {
-  if (environment.OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY !== "signed") {
+  const authority = environment.OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY?.trim();
+  if (authority === undefined || authority === "" || authority === "development") {
     return mode(environment[domainKeys[domain]]) ?? "legacy";
   }
+  if (authority !== "signed") return "legacy";
   const modes: Record<DomainCoreRuntimeDomain, DomainCoreRuntimeMode | undefined> = {
     quota: mode(environment[domainKeys.quota]),
     cloudVault: mode(environment[domainKeys.cloudVault]),

@@ -47,7 +47,7 @@ public static class DomainCoreBuildProfileResolver
         Func<string, string?> environment)
     {
         var authority = Value(metadata, "BuildAuthority") ?? "development";
-        if (authority != "signed")
+        if (authority is "" or "development")
         {
             var developmentModes = Domains.ToDictionary(
                 domain => domain,
@@ -55,6 +55,7 @@ public static class DomainCoreBuildProfileResolver
                 StringComparer.Ordinal);
             return new("developer", "development", "development", null, false, developmentModes, true);
         }
+        if (authority != "signed") return FailClosedUntrusted(authority);
 
         var modes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var domain in Domains)
@@ -98,6 +99,15 @@ public static class DomainCoreBuildProfileResolver
     private static DomainCoreBuildProfile FailClosedSigned() => new(
         "invalid-signed-profile",
         "signed",
+        "invalid",
+        null,
+        false,
+        Domains.ToDictionary(domain => domain, _ => "legacy", StringComparer.Ordinal),
+        false);
+
+    private static DomainCoreBuildProfile FailClosedUntrusted(string authority) => new(
+        "invalid-signed-profile",
+        authority,
         "invalid",
         null,
         false,

@@ -206,22 +206,44 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
         }
     }
 
-    func nextBatch(sealActive: Bool = true) throws -> ReadyBatch? {
+    func nextBatch(sealActive: Bool = true, matchingChannel: String? = nil) throws -> ReadyBatch? {
         try fileAccess.withLockUnchecked { _ in
             if sealActive {
                 try sealActiveLocked()
             }
-            guard let url = try readyFilesLocked().first else { return nil }
-            let data = try Data(contentsOf: url)
-            let decoder = JSONDecoder()
-            let samples = try data.split(separator: 0x0A).map { line -> DomainCoreShadowSampleV2 in
-                guard !line.isEmpty else { throw DomainCoreShadowEvidenceError.invalidSample }
-                return try decoder.decode(DomainCoreShadowSampleV2.self, from: Data(line))
+            while let url = try readyFilesLocked().first {
+                let data = try Data(contentsOf: url)
+                let decoder = JSONDecoder()
+                let samples = try data.split(separator: 0x0A).map { line -> DomainCoreShadowSampleV2 in
+                    guard !line.isEmpty else { throw DomainCoreShadowEvidenceError.invalidSample }
+                    return try decoder.decode(DomainCoreShadowSampleV2.self, from: Data(line))
+                }
+                guard !samples.isEmpty, samples.count <= maxSamplesPerFile else {
+                    throw DomainCoreShadowEvidenceError.invalidSample
+                }
+                guard let matchingChannel else {
+                    return ReadyBatch(token: url.lastPathComponent, samples: samples)
+                }
+                let matchingSamples = samples.filter { $0.channel == matchingChannel }
+                if matchingSamples.isEmpty {
+                    try FileManager.default.removeItem(at: url)
+                    continue
+                }
+                return ReadyBatch(token: url.lastPathComponent, samples: matchingSamples)
             }
-            guard !samples.isEmpty, samples.count <= maxSamplesPerFile else {
-                throw DomainCoreShadowEvidenceError.invalidSample
+            return nil
+        }
+    }
+
+    func discardAll() throws {
+        try fileAccess.withLockUnchecked { _ in
+            let ready = try readyFilesLocked()
+            for url in ready {
+                try FileManager.default.removeItem(at: url)
             }
-            return ReadyBatch(token: url.lastPathComponent, samples: samples)
+            if FileManager.default.fileExists(atPath: activeURL.path) {
+                try FileManager.default.removeItem(at: activeURL)
+            }
         }
     }
 
@@ -321,6 +343,7 @@ protocol DomainCoreShadowSampleSubmitting: Sendable {
 actor DomainCoreShadowEvidenceUploadCoordinator {
     private let spool: DomainCoreShadowEvidenceSpool
     private let submitter: any DomainCoreShadowSampleSubmitting
+    private let activeChannel: String
     private var flushing = false
     private var scheduledFlush: Task<Void, Never>?
     private let debounceNanoseconds: UInt64
@@ -328,10 +351,13 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
     init(
         spool: DomainCoreShadowEvidenceSpool,
         submitter: any DomainCoreShadowSampleSubmitting,
+        activeChannel: String,
         debounceNanoseconds: UInt64 = 5_000_000_000
     ) {
+        precondition(activeChannel == "internal" || activeChannel == "beta")
         self.spool = spool
         self.submitter = submitter
+        self.activeChannel = activeChannel
         self.debounceNanoseconds = debounceNanoseconds
     }
 
@@ -360,7 +386,7 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
         flushing = true
         do {
             var sealActive = true
-            while let batch = try spool.nextBatch(sealActive: sealActive) {
+            while let batch = try spool.nextBatch(sealActive: sealActive, matchingChannel: activeChannel) {
                 sealActive = false
                 try await submitter.submit(batch.samples)
                 try spool.acknowledge(batch.token)
@@ -411,11 +437,13 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
+        info: [String: Any] = Bundle.main.infoDictionary ?? [:],
         directory: URL? = nil,
         submitter: (any DomainCoreShadowSampleSubmitting)? = nil,
         debounceNanoseconds: UInt64 = 5_000_000_000
     ) {
-        self.channel = DomainCoreBuildProfileResolver.evidenceChannel(environment: environment)
+        let resolvedChannel = DomainCoreBuildProfileResolver.evidenceChannel(environment: environment, info: info)
+        self.channel = resolvedChannel
         let resolvedSpool: DomainCoreShadowEvidenceSpool?
         do {
             let resolvedDirectory: URL
@@ -435,21 +463,30 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
             resolvedSpool = nil
         }
         self.spool = resolvedSpool
-        if let spool = self.spool, let submitter {
+        if resolvedChannel == nil {
+            do {
+                try self.spool?.discardAll()
+            } catch {
+                AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "disabled_profile_cleanup_failed"])
+            }
+        }
+        if let resolvedChannel, let spool = resolvedSpool, let submitter {
             self.coordinator = DomainCoreShadowEvidenceUploadCoordinator(
                 spool: spool,
                 submitter: submitter,
+                activeChannel: resolvedChannel,
                 debounceNanoseconds: debounceNanoseconds
             )
         } else {
             #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
-                self.coordinator = self.spool.map {
+                self.coordinator = resolvedChannel.flatMap { activeChannel in resolvedSpool.map {
                     DomainCoreShadowEvidenceUploadCoordinator(
                         spool: $0,
                         submitter: FirebaseDomainCoreShadowSampleSubmitter(),
+                        activeChannel: activeChannel,
                         debounceNanoseconds: debounceNanoseconds
-                )
-            }
+                    )
+                } }
             #else
             self.coordinator = nil
             #endif

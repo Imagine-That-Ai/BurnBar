@@ -47,6 +47,23 @@ public sealed class DomainCoreBuildProfileResolverTests
         Assert.False(DomainCoreBuildProfileResolver.Resolve(metadata, _ => null).IsValid);
     }
 
+    [Theory]
+    [InlineData("sigend")]
+    [InlineData("$(DOMAIN_CORE_BUILD_AUTHORITY)")]
+    public void Unknown_authority_fails_closed_and_ignores_environment(string authority)
+    {
+        var metadata = Signed("internal", "internal", "internal", true, "shadow");
+        metadata["OpenBurnBar.DomainCore.BuildAuthority"] = authority;
+
+        var profile = DomainCoreBuildProfileResolver.Resolve(metadata, _ => "rust");
+
+        Assert.False(profile.IsValid);
+        Assert.Equal(authority, profile.ArtifactAuthority);
+        Assert.False(profile.EvidenceEnabled);
+        Assert.Null(profile.RolloutChannel);
+        Assert.All(profile.Modes.Values, mode => Assert.Equal("legacy", mode));
+    }
+
     private static Dictionary<string, string> Signed(
         string name,
         string distribution,

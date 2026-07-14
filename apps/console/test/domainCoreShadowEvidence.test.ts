@@ -2,6 +2,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const callable = vi.fn();
+const domains = [
+  "QUOTA",
+  "CLOUDVAULT",
+  "CLOUDVAULT_REWRAP",
+  "CLOUDVAULT_SEARCH",
+  "HERMES",
+  "PRICING",
+];
 vi.mock("firebase/auth", () => ({ onAuthStateChanged: vi.fn() }));
 vi.mock("firebase/functions", () => ({ httpsCallable: () => callable }));
 vi.mock("../lib/firebaseClient", () => ({
@@ -23,6 +31,9 @@ describe("console domain-core shadow evidence", () => {
     vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION", "internal");
     vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL", "internal");
     vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED", "1");
+    for (const domain of domains) {
+      vi.stubEnv(`NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_${domain}_MODE`, "shadow");
+    }
     callable.mockResolvedValue({ data: { accepted: 1, duplicates: 0 } });
   });
 
@@ -82,6 +93,57 @@ describe("console domain-core shadow evidence", () => {
         legacyMicros: 12,
         rustMicros: 0,
       },
+    ]);
+  });
+
+  it("rejects evidence when any signed mode is malformed", () => {
+    vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "invalid");
+
+    recordConsoleCloudVaultShadowComparison({
+      domain: "cloudvault",
+      slice: "aes",
+      consumer: "console",
+      operation: "cloudvault_aes_open",
+      coreVersion: "0.1.0",
+      outcome: "match",
+      mismatchCategory: null,
+      legacyMicros: 12,
+      rustMicros: 8,
+    });
+
+    expect(pendingConsoleShadowEvidenceForTests()).toEqual([]);
+  });
+
+  it("drops evidence from a different signed rollout channel", () => {
+    recordConsoleCloudVaultShadowComparison({
+      domain: "cloudvault",
+      slice: "aes",
+      consumer: "console",
+      operation: "cloudvault_aes_open",
+      coreVersion: "0.1.0",
+      outcome: "match",
+      mismatchCategory: null,
+      legacyMicros: 12,
+      rustMicros: 8,
+    });
+    vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE", "beta");
+    vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION", "beta");
+    vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL", "beta");
+
+    recordConsoleCloudVaultShadowComparison({
+      domain: "cloudvault",
+      slice: "aes",
+      consumer: "console",
+      operation: "cloudvault_aes_open",
+      coreVersion: "0.1.0",
+      outcome: "match",
+      mismatchCategory: null,
+      legacyMicros: 15,
+      rustMicros: 9,
+    });
+
+    expect(pendingConsoleShadowEvidenceForTests()).toEqual([
+      expect.objectContaining({ channel: "beta", legacyMicros: 15 }),
     ]);
   });
 });

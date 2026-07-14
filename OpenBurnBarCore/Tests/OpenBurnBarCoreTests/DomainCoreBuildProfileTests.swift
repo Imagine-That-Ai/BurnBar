@@ -51,6 +51,19 @@ final class DomainCoreBuildProfileTests: XCTestCase {
         XCTAssertTrue(profile.modes.values.allSatisfy { $0 == .legacy })
     }
 
+    func testUnknownAuthorityFailsClosedAndIgnoresEnvironment() {
+        let profile = DomainCoreBuildProfileResolver.current(
+            environment: ["OPENBURNBAR_DOMAIN_CORE_HERMES_MODE": "rust"],
+            info: ["OpenBurnBarDomainCoreBuildAuthority": "sigend"]
+        )
+
+        XCTAssertFalse(profile.isValid)
+        XCTAssertEqual(profile.artifactAuthority, "sigend")
+        XCTAssertFalse(profile.evidenceEnabled)
+        XCTAssertNil(profile.rolloutChannel)
+        XCTAssertTrue(profile.modes.values.allSatisfy { $0 == .legacy })
+    }
+
     private func signedInfo(
         name: String,
         distribution: String,
@@ -62,7 +75,7 @@ final class DomainCoreBuildProfileTests: XCTestCase {
             "OpenBurnBarDomainCoreBuildProfile": name,
             "OpenBurnBarDomainCoreDistribution": distribution,
             "OpenBurnBarDomainCoreRolloutChannel": channel,
-            "OpenBurnBarDomainCoreEvidenceEnabled": evidence,
+            "OpenBurnBarDomainCoreEvidenceEnabled": evidence
         ]
         for domain in DomainCoreBuildDomain.allCases {
             let key = switch domain {

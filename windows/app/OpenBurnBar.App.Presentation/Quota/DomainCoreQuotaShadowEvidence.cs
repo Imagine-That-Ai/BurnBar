@@ -122,23 +122,44 @@ public sealed class DomainCoreQuotaShadowEvidenceSpool
         }
     }
 
-    public ReadyBatch? NextBatch(bool sealActive = true)
+    public ReadyBatch? NextBatch(bool sealActive = true, string? matchingChannel = null)
     {
         lock (_gate)
         {
             if (sealActive) SealActive();
-            string? path = ReadyFiles().FirstOrDefault();
-            if (path is null) return null;
-            var samples = File.ReadLines(path)
-                .Where(line => line.Length > 0)
-                .Select(line => JsonSerializer.Deserialize<DomainCoreShadowSampleV2>(line, JsonOptions)
-                    ?? throw new InvalidDataException("Shadow spool contains a null sample."))
-                .ToArray();
-            if (samples.Length == 0 || samples.Length > _maxSamplesPerFile)
+            while (ReadyFiles().FirstOrDefault() is { } path)
             {
-                throw new InvalidDataException("Shadow spool batch violates its sample bound.");
+                var samples = File.ReadLines(path)
+                    .Where(line => line.Length > 0)
+                    .Select(line => JsonSerializer.Deserialize<DomainCoreShadowSampleV2>(line, JsonOptions)
+                        ?? throw new InvalidDataException("Shadow spool contains a null sample."))
+                    .ToArray();
+                if (samples.Length == 0 || samples.Length > _maxSamplesPerFile)
+                {
+                    throw new InvalidDataException("Shadow spool batch violates its sample bound.");
+                }
+                if (matchingChannel is null)
+                {
+                    return new ReadyBatch(Path.GetFileName(path), samples);
+                }
+                var matchingSamples = samples.Where(sample => sample.Channel == matchingChannel).ToArray();
+                if (matchingSamples.Length == 0)
+                {
+                    File.Delete(path);
+                    continue;
+                }
+                return new ReadyBatch(Path.GetFileName(path), matchingSamples);
             }
-            return new ReadyBatch(Path.GetFileName(path), samples);
+            return null;
+        }
+    }
+
+    public void DiscardAll()
+    {
+        lock (_gate)
+        {
+            foreach (string path in ReadyFiles()) File.Delete(path);
+            if (File.Exists(_activePath)) File.Delete(_activePath);
         }
     }
 
@@ -199,6 +220,7 @@ internal sealed class DomainCoreQuotaShadowUploadCoordinator
     private readonly SemaphoreSlim _flushGate = new(1, 1);
     private readonly DomainCoreQuotaShadowEvidenceSpool _spool;
     private readonly Func<IReadOnlyList<DomainCoreShadowSampleV2>, CancellationToken, Task> _uploader;
+    private readonly string _activeChannel;
     private readonly Func<TimeSpan, Task> _delay;
     private readonly TimeSpan _debounce;
     private Task? _scheduledFlush;
@@ -207,11 +229,14 @@ internal sealed class DomainCoreQuotaShadowUploadCoordinator
     internal DomainCoreQuotaShadowUploadCoordinator(
         DomainCoreQuotaShadowEvidenceSpool spool,
         Func<IReadOnlyList<DomainCoreShadowSampleV2>, CancellationToken, Task> uploader,
+        string activeChannel,
         TimeSpan? debounce = null,
         Func<TimeSpan, Task>? delay = null)
     {
         _spool = spool ?? throw new ArgumentNullException(nameof(spool));
         _uploader = uploader ?? throw new ArgumentNullException(nameof(uploader));
+        if (activeChannel is not ("internal" or "beta")) throw new ArgumentOutOfRangeException(nameof(activeChannel));
+        _activeChannel = activeChannel;
         _delay = delay ?? (duration => Task.Delay(duration));
         _debounce = debounce ?? TimeSpan.FromSeconds(5);
         if (_debounce < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(debounce));
@@ -269,7 +294,7 @@ internal sealed class DomainCoreQuotaShadowUploadCoordinator
         try
         {
             bool sealActive = true;
-            while (_spool.NextBatch(sealActive) is { } batch)
+            while (_spool.NextBatch(sealActive, _activeChannel) is { } batch)
             {
                 sealActive = false;
                 await _uploader(batch.Samples, cancellationToken).ConfigureAwait(false);
@@ -324,9 +349,17 @@ public static class DomainCoreQuotaShadowEvidence
     public static void ConfigureUploader(
         Func<IReadOnlyList<DomainCoreShadowSampleV2>, CancellationToken, Task> uploader)
     {
+        string? channel = DomainCoreBuildProfileResolver.EvidenceChannel();
+        if (channel is not ("internal" or "beta"))
+        {
+            DefaultSpool.Value.DiscardAll();
+            _coordinator = null;
+            return;
+        }
         _coordinator = new DomainCoreQuotaShadowUploadCoordinator(
             DefaultSpool.Value,
-            uploader ?? throw new ArgumentNullException(nameof(uploader)));
+            uploader ?? throw new ArgumentNullException(nameof(uploader)),
+            channel);
         _coordinator.FlushNow();
     }
 
