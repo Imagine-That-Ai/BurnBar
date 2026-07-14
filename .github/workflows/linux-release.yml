@@ -57,6 +57,13 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         run: node scripts/linux-port/resolve-linux-release-version.mjs --github-output
 
+      - name: Validate public Linux release configuration
+        env:
+          OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID: ${{ vars.OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID }}
+          OPENBURNBAR_FIREBASE_API_KEY: ${{ vars.OPENBURNBAR_FIREBASE_API_KEY }}
+          OPENBURNBAR_LINUX_APP_CHECK_APP_ID: ${{ vars.OPENBURNBAR_LINUX_APP_CHECK_APP_ID }}
+        run: node scripts/linux-port/validate-linux-release-public-config.mjs
+
       - name: Resolve signed update channel
         id: channel
         env:

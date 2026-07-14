@@ -129,6 +129,7 @@ jobs:
           scripts/linux-port/linux-package-session.test.mjs
           scripts/linux-port/arch-lifecycle-authentication.test.mjs
           scripts/linux-port/prepare-linux-package-payload.test.mjs
+          scripts/linux-port/validate-linux-release-public-config.test.mjs
           scripts/linux-port/sign-linux-release-requests.test.mjs
           scripts/linux-port/sign-product-proof-closure.test.mjs
           scripts/linux-port/signed-installed-package-wiring.test.mjs

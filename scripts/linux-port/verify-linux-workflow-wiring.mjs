@@ -108,6 +108,18 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.release, '- "linux-v*"', 'release tag trigger');
   if (input.release.includes('- "v*"')) failures.push('legacy v* tag trigger is forbidden in the Linux release workflow.');
   requireText(input.release, 'resolve-linux-release-version.mjs --github-output', 'release version resolver');
+  requireText(
+    input.release,
+    'validate-linux-release-public-config.mjs',
+    'public Linux release configuration preflight'
+  );
+  for (const variable of [
+    'OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID',
+    'OPENBURNBAR_FIREBASE_API_KEY',
+    'OPENBURNBAR_LINUX_APP_CHECK_APP_ID'
+  ]) {
+    requireText(input.release, `vars.${variable}`, `public Linux release configuration preflight ${variable}`);
+  }
   requireText(input.release, 'OPENBURNBAR_LINUX_RELEASE_OUT', 'canonical release output');
   requireText(input.release, 'OPENBURNBAR_LINUX_EVIDENCE_OUT', 'canonical evidence output');
   requireText(input.release, '--candidate', 'candidate-only release assembly');
@@ -235,6 +247,11 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'linux-installed-manifest.test.mjs', 'PR installed manifest mutation suite');
   requireText(input.pr, 'linux-appimage-peer-manifest.test.mjs', 'PR AppImage peer manifest suite');
   requireText(input.pr, 'linux-native-package-real-tools.test.mjs', 'PR real native package suite');
+  requireText(
+    input.pr,
+    'validate-linux-release-public-config.test.mjs',
+    'PR public Linux release configuration preflight suite'
+  );
   requireText(input.pr, 'sign-linux-release-requests.test.mjs', 'PR isolated signer mutation suite');
   requireText(input.pr, 'sign-product-proof-closure.test.mjs', 'PR product-proof closure signer suite');
   requireText(input.pr, 'signed-installed-package-wiring.test.mjs', 'PR signed package wiring suite');
@@ -421,6 +438,7 @@ export function verifyLinuxWorkflowWiring(input) {
 
   requireOrder(input.release, [
     'Resolve and validate Linux release version',
+    'Validate public Linux release configuration',
     'Assert native runner architecture',
     'Prepare unsigned native architecture artifacts',
     'Prepare unsigned Arch installed-manifest request',
