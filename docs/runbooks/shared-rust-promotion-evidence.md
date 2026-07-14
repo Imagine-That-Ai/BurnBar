@@ -161,9 +161,12 @@ without copying review metadata.
    the rows to `rust_authoritative_with_rollback`.
    Functions now has a tag-bound producer for its canonical healthy-deployment
    receipt and exact custom predicate; it stays dormant while the public pricing
-   profile remains legacy-authoritative. This remains
-   blocked for domains that require Apple, Android, Windows, or Console until
-   those producer workflows land the equivalent evidence.
+   profile remains legacy-authoritative. Console has the equivalent producer
+   for CloudVault, gated by a direct live check of its tag-, commit-, and
+   profile-bound deployment identity. It stays dormant while public CloudVault
+   remains legacy-authoritative. Domains that require Apple, Android, or
+   Windows remain blocked until those producer workflows land equivalent
+   evidence.
 5. Run source/compile gates proving the inventory's named deletion targets are
    absent before marking that row complete.
 

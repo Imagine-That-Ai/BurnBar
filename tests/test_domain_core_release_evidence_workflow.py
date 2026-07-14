@@ -92,6 +92,38 @@ class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
         self.assertEqual(receipt["properties"]["schemaVersion"]["const"], 1)
         self.assertIn("\\+", predicate["$defs"]["release"]["properties"]["version"]["pattern"])
         self.assertIn("\\+", receipt["properties"]["release"]["properties"]["version"]["pattern"])
+        self.assertIn("healthChecks", receipt["properties"]["deployment"]["required"])
+
+        predicate_contracts = {
+            rule["if"]["properties"]["consumer"]["const"]: rule["then"]["properties"]
+            for rule in predicate["allOf"]
+        }
+        self.assertEqual(
+            predicate_contracts["console"],
+            {
+                "artifactKind": {"const": "console-deployment-receipt"},
+                "target": {"const": "firebase-hosting-production"},
+            },
+        )
+
+        receipt_contracts = {
+            rule["if"]["properties"]["consumer"]["const"]: rule["then"]["properties"]
+            for rule in receipt["allOf"]
+        }
+        console = receipt_contracts["console"]
+        self.assertEqual(console["artifactKind"]["const"], "console-deployment-receipt")
+        self.assertEqual(console["target"]["const"], "firebase-hosting-production")
+        self.assertEqual(
+            console["deployment"]["properties"]["provider"]["const"],
+            "firebase-hosting",
+        )
+        self.assertEqual(
+            [
+                item["const"]
+                for item in console["deployment"]["properties"]["healthChecks"]["prefixItems"]
+            ],
+            ["marketing", "console", "deploymentIdentity"],
+        )
 
     def test_domain_core_ci_runs_release_evidence_contracts(self) -> None:
         source = DOMAIN_WORKFLOW.read_text(encoding="utf-8")
