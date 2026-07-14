@@ -336,9 +336,9 @@ compilation because all three values were absent at dispatch time. The new
 Functions callables are not deployed, and no signed
 candidate has completed the installed Linux plus physical-iPad flow. The iPad
 approval surface is implemented against the exact nonce-bound trusted-device
-signature contract. Earlier generic iOS build-for-testing coverage passes, but
-the currently assigned physical iPad is unavailable and no current
-physical-device execution or exact-candidate approval proof exists. Real
+signature contract. Earlier generic iOS build-for-testing coverage passes, and
+the assigned physical iPad now has a current-branch launch/liveness/console
+receipt; approval execution and exact-candidate proof remain open. Real
 installed browser actions, grant/approval/panic/audit/restart certification,
 Agent Watch, Linux system capture/input, and the supported-desktop matrix remain
 open.</p>
@@ -399,9 +399,9 @@ Android debug Kotlin compilation passes and Detekt reports zero findings
 without suppressions. The
 canonical <code>HermesRealtimeRelaySessionGrantChallenge</code> schema/codegen packet
 passes <strong>18/18</strong> checks across generated Swift and Kotlin. Strict SwiftLint is
-clean and earlier generic iOS build-for-testing coverage passed; the current
-physical iPad is listed by CoreDevice as unavailable, so there is no current
-physical-iPad execution claim. The earlier focused Linux daemon suite passed
+clean and earlier generic iOS build-for-testing coverage passed; the assigned
+physical iPad now has a current-branch launch/liveness/console receipt, while
+approval execution remains unverified. The earlier focused Linux daemon suite passed
 <strong>32/32</strong> tests: <strong>13</strong> grant broker, <strong>3</strong> panic authority, <strong>4</strong> directory,
 <strong>8</strong> runtime, <strong>2</strong> Mercury teardown, and <strong>2</strong> service lifecycle tests. The
 final macOS focused host aggregate passed <strong>34/34</strong> tests: <strong>16</strong> callable-security
@@ -579,10 +579,9 @@ Linux managed-run binding was acquired.</li>
 Android <strong>1,315</strong> unit tests with <strong>1</strong> skipped passed; Android debug Kotlin
 compilation and strict Detekt pass with no suppressions. Canonical Hermes relay
 schema/codegen checks passed <strong>18/18</strong>, strict SwiftLint passed, and earlier
-generic iOS build-for-testing coverage passed. On 2026-07-12 CoreDevice listed
-the assigned physical iPad <code>&lt;IOS_DEVICE_ID&gt;</code> as
-unavailable, while an iPhone and simulator were visible but explicitly not
-accepted for this gate. There is no current physical-iPad execution claim. The
+generic iOS build-for-testing coverage passed. The assigned physical iPad now has
+a current-branch launch/liveness/console receipt; approval execution remains
+unverified and an iPhone or simulator is not accepted as a substitute. The
 earlier Linux daemon packet passed
 <strong>32/32</strong>. That total comprises <strong>13</strong> grant broker, <strong>3</strong> panic
 authority, <strong>4</strong> directory, <strong>8</strong> runtime, <strong>2</strong> Mercury teardown, and <strong>2</strong>
@@ -2191,7 +2190,7 @@ queueing, locked keyring, and redaction.</li>
 <tr>
 <td>LNX-CU-BROWSER-001</td>
 <td>Source authority/runtime complete; mobile approval source present; installed proof blocked</td>
-<td>Exact run/call/generation authority, controller-route v2, mobile renewal, macOS lifecycle policy, Linux native iroh composition, durable replay, polkit owner gate, root-owned Playwright runtime, daemon credential authority, signed AppImage peer admission, and redacted Tauri/account UI are implemented. The active worktree also contains iPad list/approve/revoke UI, canonical device-ID/fingerprint validation, nonce-bound mutation descriptors, stale-load protection, serialized mutations, and focused store/parser tests. The canonical relay challenge is generated consistently for Swift/Kotlin, Android compile/static-analysis and focused tests pass, and earlier generic iOS build-for-testing coverage passes; current physical-iPad execution is blocked because CoreDevice lists the assigned physical iPad as unavailable, and installed certification remains a separate gate</td>
+<td>Exact run/call/generation authority, controller-route v2, mobile renewal, macOS lifecycle policy, Linux native iroh composition, durable replay, polkit owner gate, root-owned Playwright runtime, daemon credential authority, signed AppImage peer admission, and redacted Tauri/account UI are implemented. The active worktree also contains iPad list/approve/revoke UI, canonical device-ID/fingerprint validation, nonce-bound mutation descriptors, stale-load protection, serialized mutations, and focused store/parser tests. The canonical relay challenge is generated consistently for Swift/Kotlin, Android compile/static-analysis and focused tests pass, and earlier generic iOS build-for-testing coverage passes; the assigned physical iPad now has a current-branch launch/liveness/console receipt, while approval execution and installed certification remain separate gates</td>
 <td>Run focused tests on the physical iPad without substituting an iPhone or simulator; then use that iPad to approve the exact Linux install and prove real browser actions, grant/approval/deny/panic, audit/tamper, credential expiry, account switch, and restart behavior</td>
 </tr>
 <tr>
@@ -2677,9 +2676,9 @@ Firebase API key and App Check app ID variables are already populated.</li>
 <li>Deploy the Linux App Check enrollment, challenge, mint, list, approve, revoke,
 and policy callables/rules; verify the dedicated Linux Firebase app ID.</li>
 <li>Run the focused approval tests on the physical iPad. Generic iOS
-build-for-testing already passes, but the final authority proof must use the
-physical iPad, not an iPhone or simulator. On 2026-07-12 CoreDevice listed
-the assigned physical iPad as unavailable, so this gate remains blocked.</li>
+build-for-testing already passes, and current-branch launch/liveness/console
+proof is recorded; the final authority proof must still use the physical iPad,
+not an iPhone or simulator.</li>
 <li>Build and sign the exact deb/rpm/AppImage candidate, including the AppImage
 peer manifest over the final repacked GUI bytes.</li>
 <li>Install that exact candidate on Linux and complete PKCE sign-in, device
