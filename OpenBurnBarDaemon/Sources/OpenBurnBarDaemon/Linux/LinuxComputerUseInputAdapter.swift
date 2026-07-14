@@ -152,10 +152,11 @@ public struct LinuxComputerUseInputAdapter: Sendable {
 
     /// State returned by the consent-backed RemoteDesktop session contract.
     ///
-    /// `active` means the portal granted a RemoteDesktop session. It does not
-    /// imply that BurnBar can inject events: this adapter intentionally has no
-    /// libei/EIS event sink yet, so callers must keep input dispatch disabled
-    /// until a concrete executor is provisioned.
+    /// `active` means the portal granted a RemoteDesktop session.  The
+    /// `portalNotify` executor is available for that receipt because all
+    /// events remain scoped to the broker-issued session handle.  A caller
+    /// must still use `dispatchWaylandRemoteDesktop(_:session:)`; the generic
+    /// `dispatch(_:)` path never guesses at a Wayland session.
     public enum WaylandRemoteDesktopSessionState: String, Codable, Equatable, Sendable {
         case active
         case denied
@@ -163,6 +164,39 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         case cancelled
         case stopped
         case unavailable
+    }
+
+    /// The concrete event path used after the portal grants a session.
+    ///
+    /// `portalNotify` is the v1/v2 RemoteDesktop Notify* path.  It is a
+    /// consent-scoped executor and does not read evdev, install a global
+    /// hook, or require a privileged helper.  `libei` and `uinput` are named
+    /// explicitly so a Linux host can report an unavailable provisioned
+    /// backend instead of silently falling back to an unsafe one.
+    public enum WaylandInputExecutorKind: String, Codable, Equatable, Sendable {
+        case portalNotify = "portal_notify"
+        case libei
+        case uinput
+        case unavailable
+    }
+
+    public struct WaylandInputExecutorStatus: Codable, Equatable, Sendable {
+        public let kind: WaylandInputExecutorKind
+        public let available: Bool
+        public let requiresConsent: Bool
+        public let reason: String
+
+        public init(
+            kind: WaylandInputExecutorKind,
+            available: Bool,
+            requiresConsent: Bool = true,
+            reason: String
+        ) {
+            self.kind = kind
+            self.available = available
+            self.requiresConsent = requiresConsent
+            self.reason = reason
+        }
     }
 
     public struct WaylandRemoteDesktopSession: Codable, Equatable, Sendable {
@@ -174,7 +208,8 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         /// was involved. Request output is never surfaced to callers.
         public let requestHandle: String?
         public let consentGranted: Bool
-        /// Always false until a concrete libei/EIS/uinput executor is wired.
+        /// Whether a consent-scoped event executor was provisioned for this
+        /// receipt.  This is not a global-input capability.
         public let inputExecutorAvailable: Bool
         /// Fixed, non-sensitive status text suitable for telemetry/UI.
         public let reason: String
@@ -215,6 +250,7 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         case portalDenied(String)
         case portalTimedOut
         case portalCancelled
+        case inputExecutorUnavailable(String)
 
         public var description: String {
             switch self {
@@ -238,6 +274,8 @@ public struct LinuxComputerUseInputAdapter: Sendable {
                 return "linux_input_portal_timed_out"
             case .portalCancelled:
                 return "linux_input_portal_cancelled"
+            case .inputExecutorUnavailable(let detail):
+                return "linux_input_executor_unavailable: \(detail)"
             }
         }
     }
@@ -420,9 +458,9 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     }
 
     /// Starts a RemoteDesktop portal session and waits for every broker
-    /// consent response (CreateSession, SelectDevices, and Start). The
-    /// returned session is a capability record only: no input events are sent
-    /// because this source slice does not yet own a libei/EIS executor.
+    /// consent response (CreateSession, SelectDevices, and Start).  The
+    /// returned receipt authorizes only the portal-scoped Notify* executor;
+    /// callers must pass it to `dispatchWaylandRemoteDesktop(_:session:)`.
     public func startWaylandRemoteDesktopSession() async throws -> WaylandRemoteDesktopSession {
         try Task.checkCancellation()
         try assertKillSwitchNotActive()
@@ -491,8 +529,8 @@ public struct LinuxComputerUseInputAdapter: Sendable {
                 sessionHandle: sessionHandle,
                 requestHandle: startRequest,
                 consentGranted: true,
-                inputExecutorAvailable: false,
-                reason: "remote_desktop_consent_granted_libei_executor_pending"
+                inputExecutorAvailable: true,
+                reason: "remote_desktop_consent_granted_portal_notify_executor"
             )
         } catch {
             if let sessionHandleForCleanup {
@@ -545,6 +583,425 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         _ session: WaylandRemoteDesktopSession
     ) -> WaylandRemoteDesktopSessionState {
         session.state
+    }
+
+    /// Reports the executor that can be used with a live portal receipt.
+    ///
+    /// The optional environment override is intentionally a deny-only
+    /// control for packaging and emergency rollout.  Selecting `libei` or
+    /// `uinput` does not pretend that either backend exists; it reports an
+    /// unavailable status until a provisioned helper is present.  The
+    /// consent-scoped RemoteDesktop Notify* path remains the default and is
+    /// the only backend implemented in this source slice.
+    public func waylandRemoteDesktopInputExecutorStatus(
+        _ session: WaylandRemoteDesktopSession
+    ) -> WaylandInputExecutorStatus {
+        guard session.isActive else {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "remote_desktop_session_not_active"
+            )
+        }
+        guard session.inputExecutorAvailable else {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "remote_desktop_input_executor_unavailable"
+            )
+        }
+        if LinuxPrivilegedInputKillFlag.isActive(environment: environment)
+            || LinuxPrivilegedInputKillFlag.environmentKillSwitchActive(environment: environment) {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "computer_use_kill_switch_active"
+            )
+        }
+        switch nonEmptyEnvironment("OPENBURNBAR_LINUX_CU_INPUT_EXECUTOR")?.lowercased() {
+        case "unsupported", "none", "disabled":
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "linux_input_executor_disabled"
+            )
+        case "libei":
+            return WaylandInputExecutorStatus(
+                kind: .libei,
+                available: false,
+                reason: "libei_executor_not_provisioned"
+            )
+        case "uinput":
+            return WaylandInputExecutorStatus(
+                kind: .uinput,
+                available: false,
+                reason: "uinput_executor_not_provisioned"
+            )
+        default:
+            break
+        }
+        guard isWaylandSession() else {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "wayland_session_not_detected"
+            )
+        }
+        guard nonEmptyEnvironment("DBUS_SESSION_BUS_ADDRESS") != nil else {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "session_bus_unavailable"
+            )
+        }
+        guard resolveExecutable("gdbus") != nil else {
+            return WaylandInputExecutorStatus(
+                kind: .unavailable,
+                available: false,
+                reason: "gdbus_unavailable"
+            )
+        }
+        return WaylandInputExecutorStatus(
+            kind: .portalNotify,
+            available: true,
+            reason: "remote_desktop_notify_methods_available"
+        )
+    }
+
+    /// Dispatches an action through a consent-backed RemoteDesktop session.
+    ///
+    /// This method is deliberately separate from `dispatch(_:)`: callers must
+    /// hold the exact session receipt returned by
+    /// `startWaylandRemoteDesktopSession()`.  Every event is sent via a fixed
+    /// `gdbus` argument vector, never a shell, and the broker session handle is
+    /// validated before it reaches the command runner.  If a deployment asks
+    /// for a libei/uinput backend that is not provisioned, this returns a
+    /// typed unsupported error rather than falling back to global input.
+    public func dispatchWaylandRemoteDesktop(
+        _ action: MacInputAction,
+        session: WaylandRemoteDesktopSession
+    ) async throws -> BurnBarJSONValue {
+        try Task.checkCancellation()
+        try assertKillSwitchNotActive()
+        guard session.isActive,
+              let sessionHandle = session.sessionHandle,
+              let validatedSessionHandle = parsePortalObjectPath(
+                  sessionHandle,
+                  requiredComponent: "session"
+              ) else {
+            throw AdapterError.inputExecutorUnavailable("remote_desktop_session_not_active")
+        }
+        let status = waylandRemoteDesktopInputExecutorStatus(session)
+        guard status.available, status.kind == .portalNotify else {
+            throw AdapterError.inputExecutorUnavailable(status.reason)
+        }
+
+        let commands = try portalNotifyCommands(
+            for: action,
+            sessionHandle: validatedSessionHandle
+        )
+        let startedAt = Date()
+        for command in commands {
+            let result = try runFixedPortalCommand(
+                command,
+                timeoutMillis: portalProbeTimeoutMillis
+            )
+            guard result.exitCode == 0 else {
+                throw portalCommandError(operation: "notify_input", exitCode: result.exitCode)
+            }
+        }
+        try Task.checkCancellation()
+        try assertKillSwitchNotActive()
+        return .object([
+            "platform": .string("linux"),
+            "adapter": .string(AdapterID.waylandPortal.rawValue),
+            "executor": .string(WaylandInputExecutorKind.portalNotify.rawValue),
+            "kind": .string(action.kind.rawValue),
+            "eventCount": .number(Double(commands.count)),
+            "durationMs": .number(Date().timeIntervalSince(startedAt) * 1000),
+            "textLength": action.text.map { .number(Double($0.count)) } ?? .null,
+            "displayX": action.displayX.map { .number(Double($0)) } ?? .null,
+            "displayY": action.displayY.map { .number(Double($0)) } ?? .null
+        ])
+    }
+
+    private func portalNotifyCommands(
+        for action: MacInputAction,
+        sessionHandle: String
+    ) throws -> [[String]] {
+        switch action.kind {
+        case .click, .pointerClick:
+            var commands: [[String]] = []
+            if action.kind == .click {
+                guard let x = action.displayX, let y = action.displayY else {
+                    throw AdapterError.missingCoordinate("portal click requires displayX and displayY")
+                }
+                commands.append(portalNotifyAbsoluteMotion(
+                    sessionHandle: sessionHandle,
+                    x: x,
+                    y: y
+                ))
+            }
+            let button = portalButtonCode(action.mouseButton)
+            commands.append(portalNotifyButton(
+                sessionHandle: sessionHandle,
+                button: button,
+                state: 1
+            ))
+            commands.append(portalNotifyButton(
+                sessionHandle: sessionHandle,
+                button: button,
+                state: 0
+            ))
+            return commands
+
+        case .pointerMove:
+            if action.deltaX != nil || action.deltaY != nil {
+                return [portalNotifyRelativeMotion(
+                    sessionHandle: sessionHandle,
+                    deltaX: action.deltaX ?? 0,
+                    deltaY: action.deltaY ?? 0
+                )]
+            }
+            guard let x = action.displayX, let y = action.displayY else {
+                throw AdapterError.missingCoordinate("portal pointer_move requires displayX and displayY")
+            }
+            return [portalNotifyAbsoluteMotion(
+                sessionHandle: sessionHandle,
+                x: x,
+                y: y
+            )]
+
+        case .scroll:
+            var commands: [[String]] = []
+            if let x = action.displayX, let y = action.displayY {
+                commands.append(portalNotifyAbsoluteMotion(
+                    sessionHandle: sessionHandle,
+                    x: x,
+                    y: y
+                ))
+            }
+            let deltaX = action.deltaX ?? 0
+            let deltaY = action.deltaY ?? 0
+            guard deltaX != 0 || deltaY != 0 else {
+                throw AdapterError.unsupportedAction("portal scroll requires non-zero deltaX or deltaY")
+            }
+            commands.append(portalNotifyAxis(
+                sessionHandle: sessionHandle,
+                deltaX: deltaX,
+                deltaY: deltaY
+            ))
+            return commands
+
+        case .dragDrop:
+            guard let startX = action.displayX,
+                  let startY = action.displayY,
+                  let endX = action.dragEndX,
+                  let endY = action.dragEndY else {
+                throw AdapterError.missingCoordinate("portal drag_drop requires displayX, displayY, dragEndX, and dragEndY")
+            }
+            let button = portalButtonCode(action.mouseButton)
+            return [
+                portalNotifyAbsoluteMotion(sessionHandle: sessionHandle, x: startX, y: startY),
+                portalNotifyButton(sessionHandle: sessionHandle, button: button, state: 1),
+                portalNotifyAbsoluteMotion(sessionHandle: sessionHandle, x: endX, y: endY),
+                portalNotifyButton(sessionHandle: sessionHandle, button: button, state: 0)
+            ]
+
+        case .key:
+            guard let key = action.key,
+                  !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw AdapterError.unsupportedAction("portal key requires key")
+            }
+            let keysym = try portalKeysym(for: key)
+            return portalKeyCommands(sessionHandle: sessionHandle, keysyms: [keysym])
+
+        case .shortcut:
+            guard let key = action.key,
+                  !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw AdapterError.unsupportedAction("portal shortcut requires key")
+            }
+            let modifiers = try (action.modifiers ?? []).map(portalKeysym(for:))
+            let keySym = try portalKeysym(for: key)
+            return portalKeyCommands(
+                sessionHandle: sessionHandle,
+                keysyms: modifiers + [keySym]
+            )
+
+        case .type:
+            guard let text = action.text, !text.isEmpty else {
+                throw AdapterError.unsupportedAction("portal type requires non-empty text")
+            }
+            guard text.count <= 4_096 else {
+                throw AdapterError.unsupportedAction("portal type exceeds the 4096-character event bound")
+            }
+            var commands: [[String]] = []
+            for scalar in text.unicodeScalars {
+                let keysym = try portalKeysym(for: String(scalar))
+                commands.append(contentsOf: portalKeyCommands(
+                    sessionHandle: sessionHandle,
+                    keysyms: [keysym]
+                ))
+            }
+            return commands
+        }
+    }
+
+    private func portalNotifyAbsoluteMotion(
+        sessionHandle: String,
+        x: Int,
+        y: Int
+    ) -> [String] {
+        portalCall(
+            method: "NotifyPointerMotionAbsolute",
+            sessionHandle: sessionHandle,
+            arguments: ["{}", portalStreamID(), String(x), String(y)]
+        )
+    }
+
+    private func portalNotifyRelativeMotion(
+        sessionHandle: String,
+        deltaX: Int,
+        deltaY: Int
+    ) -> [String] {
+        portalCall(
+            method: "NotifyPointerMotion",
+            sessionHandle: sessionHandle,
+            arguments: ["{}", String(deltaX), String(deltaY)]
+        )
+    }
+
+    private func portalNotifyButton(
+        sessionHandle: String,
+        button: Int,
+        state: Int
+    ) -> [String] {
+        portalCall(
+            method: "NotifyPointerButton",
+            sessionHandle: sessionHandle,
+            arguments: ["{}", String(button), String(state)]
+        )
+    }
+
+    private func portalNotifyAxis(
+        sessionHandle: String,
+        deltaX: Int,
+        deltaY: Int
+    ) -> [String] {
+        portalCall(
+            method: "NotifyPointerAxis",
+            sessionHandle: sessionHandle,
+            arguments: ["{}", String(deltaX), String(deltaY)]
+        )
+    }
+
+    private func portalKeyCommands(
+        sessionHandle: String,
+        keysyms: [Int]
+    ) -> [[String]] {
+        var commands: [[String]] = []
+        for keysym in keysyms {
+            commands.append(portalCall(
+                method: "NotifyKeyboardKeysym",
+                sessionHandle: sessionHandle,
+                arguments: ["{}", String(keysym), "1"]
+            ))
+        }
+        for keysym in keysyms.reversed() {
+            commands.append(portalCall(
+                method: "NotifyKeyboardKeysym",
+                sessionHandle: sessionHandle,
+                arguments: ["{}", String(keysym), "0"]
+            ))
+        }
+        return commands
+    }
+
+    private func portalCall(
+        method: String,
+        sessionHandle: String,
+        arguments: [String]
+    ) -> [String] {
+        [
+            "call", "--session",
+            "--dest", Self.portalBusName,
+            "--object-path", sessionHandle,
+            "--method", "\(Self.remoteDesktopInterface).\(method)",
+            sessionHandle
+        ] + arguments
+    }
+
+    private func portalStreamID() -> String {
+        guard let raw = nonEmptyEnvironment("OPENBURNBAR_LINUX_CU_PORTAL_STREAM_ID"),
+              let stream = UInt32(raw) else {
+            return "0"
+        }
+        return String(stream)
+    }
+
+    private func portalButtonCode(_ mouseButton: Int) -> Int {
+        switch mouseButton {
+        case 1: return 0x111 // BTN_RIGHT
+        case 2: return 0x112 // BTN_MIDDLE
+        default: return 0x110 // BTN_LEFT
+        }
+    }
+
+    private func portalKeysym(for rawKey: String) throws -> Int {
+        if rawKey.unicodeScalars.count == 1,
+           let scalar = rawKey.unicodeScalars.first {
+            switch scalar.value {
+            case 0x09: return 0xff09 // tab
+            case 0x0a: return 0xff0a // line feed
+            case 0x0d: return 0xff0d // carriage return
+            default:
+                if scalar.value <= 0x7f {
+                    return Int(scalar.value)
+                }
+                return 0x0100_0000 | Int(scalar.value)
+            }
+        }
+        let normalized = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            throw AdapterError.unsupportedAction("portal key is empty")
+        }
+        switch normalized.lowercased() {
+        case "return", "enter": return 0xff0d
+        case "escape", "esc": return 0xff1b
+        case "delete": return 0xffff
+        case "backspace": return 0xff08
+        case "tab": return 0xff09
+        case "space": return 0x20
+        case "left", "arrowleft": return 0xff51
+        case "up", "arrowup": return 0xff52
+        case "right", "arrowright": return 0xff53
+        case "down", "arrowdown": return 0xff54
+        case "home": return 0xff50
+        case "end": return 0xff57
+        case "pageup": return 0xff55
+        case "pagedown": return 0xff56
+        case "insert": return 0xff63
+        case "control", "ctrl": return 0xffe3
+        case "command", "cmd", "super", "meta": return 0xffeb
+        case "alternate", "option", "alt": return 0xffe9
+        case "shift": return 0xffe1
+        default:
+            let uppercased = normalized.uppercased()
+            if let functionNumber = Int(uppercased.dropFirst()),
+               uppercased.first == "F",
+               (1...24).contains(functionNumber) {
+                return 0xffbe + functionNumber - 1
+            }
+            guard normalized.unicodeScalars.count == 1,
+                  let scalar = normalized.unicodeScalars.first else {
+                throw AdapterError.unsupportedAction("portal key is not a supported keysym")
+            }
+            // X11's Unicode keysym encoding keeps non-ASCII input
+            // deterministic without consulting a keyboard layout.
+            return scalar.value <= 0x7f
+                ? Int(scalar.value)
+                : 0x0100_0000 | Int(scalar.value)
+        }
     }
 
     private struct PortalResponse: Sendable {
