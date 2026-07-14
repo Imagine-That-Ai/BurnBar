@@ -100,6 +100,8 @@ test('live producer uses the installed authorized CLI peer', () => {
   assert.match(PRODUCER_SOURCE, /OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE/u);
   assert.doesNotMatch(PRODUCER_SOURCE, /net\.createConnection/u);
   assert.doesNotMatch(PRODUCER_SOURCE, /daemon\.health/u);
+  assert.match(PRODUCER_SOURCE, /activeGnomeShellEnvironment/u);
+  assert.match(PRODUCER_SOURCE, /XDG_CURRENT_DESKTOP/u);
 });
 
 test('session builder emits exactly the redacted live P-40 schema', () => {

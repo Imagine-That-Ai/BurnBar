@@ -260,6 +260,28 @@ function readOSRelease() {
   return values;
 }
 
+function processEnvironment(pid) {
+  try {
+    const bytes = fs.readFileSync(`/proc/${pid}/environ`);
+    return Object.fromEntries(bytes.toString('utf8').split('\0').map((entry) => entry.split('=', 2))
+      .filter(([key, value]) => key && value !== undefined));
+  } catch {
+    return null;
+  }
+}
+
+function activeGnomeShellEnvironment(uid) {
+  const listed = spawnSync('pgrep', ['-u', uid, '-x', 'gnome-shell'], {
+    encoding: 'utf8', timeout: 10_000, maxBuffer: 64 * 1024
+  });
+  if (listed.status !== 0) return null;
+  for (const pid of listed.stdout.split(/\s+/u).filter(Boolean)) {
+    const environment = processEnvironment(pid);
+    if (environment) return environment;
+  }
+  return null;
+}
+
 function verifyDesktopSession(expected) {
   const osRelease = readOSRelease();
   assert(osRelease.ID === expected.os.id, 'running OS id does not match support environment');
@@ -290,11 +312,24 @@ function verifyDesktopSession(expected) {
     ], { encoding: 'utf8', timeout: 10_000, maxBuffer: 64 * 1024 });
     if (detail.status !== 0) continue;
     const fields = Object.fromEntries(detail.stdout.split('\n').map((line) => line.split('=', 2)).filter(([key, value]) => key && value));
-    if (fields.Type === expected.session.toLowerCase()
-      && (fields.Desktop || '').toUpperCase().includes(expected.desktop.toUpperCase())
+    const sessionIsActive = fields.Type === expected.session.toLowerCase()
       && fields.Class === 'user' && fields.Active === 'yes' && fields.Remote === 'no'
-      && ['active', 'online'].includes((fields.State || '').toLowerCase())) {
+      && ['active', 'online'].includes((fields.State || '').toLowerCase());
+    const desktop = (fields.Desktop || '').toUpperCase();
+    if (sessionIsActive && desktop.includes(expected.desktop.toUpperCase())) {
       return { session: expected.session };
+    }
+    // Ubuntu's gdm session can leave logind's Desktop field empty. In that
+    // case, bind the active X11 session to the user's actual GNOME shell
+    // environment rather than rejecting a valid local desktop over SSH.
+    if (sessionIsActive && !desktop && expected.desktop.toUpperCase() === 'GNOME') {
+      const shell = activeGnomeShellEnvironment(uid);
+      const shellType = (shell?.XDG_SESSION_TYPE || '').toLowerCase();
+      const shellDesktop = [shell?.XDG_CURRENT_DESKTOP, shell?.XDG_SESSION_DESKTOP]
+        .filter(Boolean).join(':').toUpperCase();
+      if (shellType === expected.session.toLowerCase() && shellDesktop.includes(expected.desktop.toUpperCase())) {
+        return { session: expected.session };
+      }
     }
   }
   fail('no active local desktop session matches the support environment');
