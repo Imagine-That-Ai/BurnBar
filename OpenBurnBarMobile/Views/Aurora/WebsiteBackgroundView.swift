@@ -24,7 +24,7 @@ struct WebsiteBackgroundView: View {
     @StateObject private var substrateBox = SwarmSubstrateBox()
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(MobileBackdropKernel.storageKey) private var mobileBackdropKernel: String = MobileBackdropKernel.defaultKernel.rawValue
 
     private var substrate: SwarmSubstrate {
@@ -172,7 +172,7 @@ struct WebsiteBackgroundView: View {
         // Dark by default; light for the editorial/paper skin or a light scheme.
         let theme = (appSkin == .editorial || colorScheme == .light) ? "light" : "dark"
         let providerGlyphsSelected = !prefs.selectedGlyphs.isEmpty
-        let substrateSelected = substrateEnabled && substrateID != SubstrateCatalog.plainID
+        let substrateSelected = substrateEnabled && substrateID != OpenBurnBarUI.SubstrateCatalog.plainID
 
         ZStack {
             // WebGL kernel base — same `KernelBackdrop` bundle as macOS/web,

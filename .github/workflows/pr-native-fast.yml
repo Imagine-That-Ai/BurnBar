@@ -127,6 +127,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Verify macOS Engine closure is UI-free
+        run: bash scripts/debt/check-engine-closure-ui-purity.sh
+
       - name: Cache Swift Package Manager dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:

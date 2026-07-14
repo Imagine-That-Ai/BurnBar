@@ -1269,6 +1269,20 @@ jobs:
       - name: Mission split-brain budget (shrink-only ratchet)
         run: ./scripts/debt/check-mission-splitbrain-budget.sh
 
+      # Core-decomposition regrowth gates (docs/CORE_DECOMPOSITION_PROGRAM.md).
+      # Membership: no NEW .swift file may land in the dissolving OpenBurnBarCore
+      # main target, its totals may only shrink, and no extracted sibling may
+      # exceed its 1.25x ceiling. Umbrella imports: no NEW file may import the
+      # OpenBurnBarCore umbrella in a tracked consumer root (privileged roots
+      # ratchet to zero after their repoint packets). This job runs a full
+      # actions/checkout, so OpenBurnBarCore/Sources, budgets/, and every consumer
+      # root the scripts read are present.
+      - name: Core target-membership budget (deny-gate + shrink-only ratchet)
+        run: ./scripts/debt/check-core-target-membership-budget.sh
+
+      - name: Core umbrella-imports budget (shrink-only ratchet)
+        run: ./scripts/debt/check-core-umbrella-imports-budget.sh
+
       # Windows per-tree size ratchet (rooted at windows/, partitioned by
       # app/pal/native/tests). Blocking Windows check on every PR — a red
       # Windows budget fails HERE at merge time. Pure bash + python3.

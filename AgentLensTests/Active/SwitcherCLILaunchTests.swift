@@ -1,6 +1,11 @@
 import XCTest
 @preconcurrency @testable import OpenBurnBarCore
 @preconcurrency @testable import OpenBurnBar
+// Core-decomposition: mutates INTERNAL CLILaunchAdapter seams (environmentProvider,
+// homeDirectoryProvider), which moved from the Core monolith into OpenBurnBarKernel (P-15b
+// CLILaunchAdapter extraction). The umbrella shim re-exports only Kernel's public API, so a direct
+// @testable import is required (the app target already links OpenBurnBarKernel).
+@preconcurrency @testable import OpenBurnBarKernel
 
 // MARK: - Test Seam Helpers
 

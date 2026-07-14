@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarEngine
 @testable import OpenBurnBarDaemon
 import XCTest
 
@@ -375,7 +375,9 @@ final class ComputerUseCapabilityStateIntegrationTests: XCTestCase {
 
     func testFailedSessionFactoryReleasesStartReservation() async throws {
         let store = makeStore()
-        let attempts = OpenBurnBarCore.Locked(0)
+        // S17 repoint: `Locked` is a Kernel type, re-exported by the UI-free Engine
+        // umbrella the daemon now links. The module qualifier follows the import.
+        let attempts = OpenBurnBarEngine.Locked(0)
         let service = makeService(
             store: store,
             playwrightDriverFactory: { _ in
