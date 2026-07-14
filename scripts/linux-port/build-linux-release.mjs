@@ -107,6 +107,21 @@ function writeLog(name, steps) {
   fs.writeFileSync(path.join(logsDir, name), `${body}\n`, 'utf8');
 }
 
+// Keep release failures diagnosable in hosted jobs even when the mounted shard
+// directory is unavailable to the failure-reporting step.
+function printFailedSteps(steps) {
+  for (const step of steps) {
+    if (step.exitCode === 0) continue;
+    console.error(`linux release step failed: ${step.command}`);
+    for (const [label, output] of [['stdout', step.stdout], ['stderr', step.stderr]]) {
+      const text = String(output ?? '');
+      if (!text) continue;
+      console.error(`--- ${label} (tail) ---`);
+      console.error(text.slice(-20000));
+    }
+  }
+}
+
 const blockers = [];
 const daemonSteps = [];
 if (phase === 'prepare' && !args.has('--skip-daemon')) {
@@ -236,6 +251,7 @@ for (const step of buildSteps) {
     });
   }
 }
+if (blockers.length > 0) printFailedSteps([...daemonSteps, ...buildSteps]);
 
 if (phase === 'prepare') {
   const preparation = {
