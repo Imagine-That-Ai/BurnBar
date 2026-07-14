@@ -211,7 +211,13 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         .codeSearch,
         .codeIndexStatus,
         .runCreate,
-        .runResume
+        .runResume,
+        .linuxPrivacyInventory,
+        .linuxPrivacyDeletionPreview,
+        .linuxPrivacyDeletionExecute,
+        .linuxPrivacyExport,
+        .linuxPrivacyRetentionStatus,
+        .linuxPrivacyRetentionApply
     ])
 
     /// Intersect with `other` so a peer can only ever be FURTHER attenuated,

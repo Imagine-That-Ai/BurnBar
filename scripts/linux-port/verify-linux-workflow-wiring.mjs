@@ -312,6 +312,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'Capture P-38 release automation verification',
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
+    'run-p40-privacy-rpc-session.mjs',
+    'Capture P-40 installed privacy proof',
     "if: inputs.requirement == 'P-02'",
     "if: inputs.requirement == 'P-34'",
     'Preserve non-promotable P-02 diagnostic evidence',

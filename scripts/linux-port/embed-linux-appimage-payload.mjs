@@ -17,6 +17,7 @@ import {
 import { withoutLinuxReleasePrivateKey } from './lib/linux-signing-environment.mjs';
 
 export const requiredPayloadPaths = [
+  'openburnbar-cli',
   'openburnbar-daemon',
   'swift',
   'native/libsqlcipher.so.0',
@@ -50,6 +51,11 @@ export function validatePayload(payloadRoot) {
   for (const entry of requiredPayloadPaths) {
     requirePath(path.join(root, entry), `AppImage payload ${entry}`, entry === 'swift' ? 'directory' : 'file');
   }
+  requireRegularResource(
+    path.join(root, 'openburnbar-cli'),
+    'AppImage OpenBurnBar CLI',
+    0o755
+  );
   requireRegularResource(
     path.join(root, 'native/libopenburnbar_iroh.so'),
     'AppImage iroh native runtime',
@@ -111,6 +117,7 @@ function copyFileRange(source, destination, bytes = null) {
 
 function assertEmbeddedPayload(appDir, { requirePeerManifest }) {
   const required = [
+    'usr/bin/openburnbar-cli',
     'usr/bin/openburnbar-daemon',
     'usr/libexec/openburnbar-daemon-launch',
     'usr/lib/openburnbar/swift',
@@ -252,6 +259,8 @@ export function embedLinuxAppImagePayload({
     requirePath(appDir, 'extracted AppImage root', 'directory');
 
     fs.mkdirSync(path.join(appDir, 'usr/bin'), { recursive: true });
+    fs.copyFileSync(path.join(payload, 'openburnbar-cli'), path.join(appDir, 'usr/bin/openburnbar-cli'));
+    fs.chmodSync(path.join(appDir, 'usr/bin/openburnbar-cli'), 0o755);
     fs.copyFileSync(path.join(payload, 'openburnbar-daemon'), path.join(appDir, 'usr/bin/openburnbar-daemon'));
     fs.chmodSync(path.join(appDir, 'usr/bin/openburnbar-daemon'), 0o755);
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/swift'), { recursive: true, force: true });

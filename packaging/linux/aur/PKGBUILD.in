@@ -98,6 +98,7 @@ package() {
   }
   for required in \
     AppRun \
+    usr/bin/openburnbar-cli \
     usr/lib/openburnbar/native/libopenburnbar_iroh.so \
     usr/lib/openburnbar/native/libsqlcipher.so.0 \
     usr/lib/openburnbar/swift; do
@@ -117,6 +118,7 @@ package() {
     "${pkgdir}/usr/lib/openburnbar/appdir/usr/share/openburnbar/appimage-peer-manifest.json" \
     "${pkgdir}/usr/lib/openburnbar/appdir/usr/share/openburnbar/appimage-peer-manifest.ed25519.sig"
   install -Dm755 "${srcdir}/openburnbar-linux-desktop" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
+  install -Dm755 "${srcdir}/squashfs-root/usr/bin/openburnbar-cli" "${pkgdir}/usr/bin/openburnbar-cli"
   install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
   install -d "${pkgdir}/usr/lib/openburnbar"
   cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/native" "${pkgdir}/usr/lib/openburnbar/"

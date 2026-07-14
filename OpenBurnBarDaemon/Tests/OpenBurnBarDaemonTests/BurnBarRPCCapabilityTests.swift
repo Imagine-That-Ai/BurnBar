@@ -107,6 +107,12 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.codeIndexStatus))
         XCTAssertTrue(profile.permits(.runCreate))
         XCTAssertTrue(profile.permits(.runResume))
+        XCTAssertTrue(profile.permits(.linuxPrivacyInventory))
+        XCTAssertTrue(profile.permits(.linuxPrivacyDeletionPreview))
+        XCTAssertTrue(profile.permits(.linuxPrivacyDeletionExecute))
+        XCTAssertTrue(profile.permits(.linuxPrivacyExport))
+        XCTAssertTrue(profile.permits(.linuxPrivacyRetentionStatus))
+        XCTAssertTrue(profile.permits(.linuxPrivacyRetentionApply))
 
         // The CLI must not inherit whole capability groups just because one
         // supported command lives there.

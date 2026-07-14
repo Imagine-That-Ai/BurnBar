@@ -11,6 +11,8 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const daemonBinary = process.env.OPENBURNBAR_LINUX_DAEMON_BIN?.trim()
   || path.join(repoRoot, 'OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon');
+const cliBinary = process.env.OPENBURNBAR_LINUX_CLI_BIN?.trim()
+  || path.join(repoRoot, 'OpenBurnBarDaemon/.build/release/OpenBurnBarCLI');
 const playwrightBridge = path.join(
   repoRoot,
   'OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js'
@@ -33,6 +35,7 @@ const payloadRoot = process.env.OPENBURNBAR_LINUX_PACKAGE_PAYLOAD?.trim()
 try {
   const report = stageLinuxPackagePayload({
     daemonBinary,
+    cliBinary,
     playwrightBridge,
     browserRuntimeProbe,
     browserRuntimeRequirements,

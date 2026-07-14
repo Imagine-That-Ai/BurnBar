@@ -217,17 +217,20 @@ regular files and may not contain `fixture`, `mock`, `synthetic`, or `xvfb`.
 Never include a token, passphrase, path, raw contents, or RPC response that
 contains one.
 
-**Important:** this repository currently contains the strict validator and
-capture command, but no checked-in P-40 live-session producer. The parity
-workflow currently only checks `test -f p40-live-session.json`; it does not
-run the six RPCs. Until a real producer is added (or an equivalent operator
-script is supplied to the self-hosted runner), the P-40 gate must remain
-blocked. Do not satisfy it by copying `scripts/linux-port/p40-privacy-proof.test.mjs`
-or any fixture into the input root.
+The checked-in producer is
+`scripts/linux-port/run-p40-privacy-rpc-session.mjs`. It has no test/fixture
+mode and refuses to run against an existing store or a mismatched installed
+manifest. The product-parity workflow invokes this producer after installing
+the exact downloaded Debian candidate; do not substitute
+`scripts/linux-port/p40-privacy-proof.test.mjs` or any fixture into the input
+root. The workflow wiring is intentionally guarded to
+`ubuntu-24.04-gnome-x11-aarch64`, which is the available UTM proof surface;
+the other six P-40 matrix environments remain unclosed until equivalent
+installed producers exist for their package/session combinations.
 
-Once the producer exists, copy the exact-target helper to the VM and invoke it
+For a manual UTM run, copy the exact-target helper to the VM and invoke it
 there. The helper must be source-audited before use; it must not be copied from
-another branch or from a fixture-only test:
+another branch:
 
 ```bash
 scp -i "$VM_KEY" scripts/linux-port/run-p40-privacy-rpc-session.mjs \

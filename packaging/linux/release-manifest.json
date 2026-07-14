@@ -26,6 +26,7 @@
     "customXdgDropInExample": "packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
   },
   "installPaths": {
+    "cliBinary": "/usr/bin/openburnbar-cli",
     "daemonLaunch": "/usr/libexec/openburnbar-daemon-launch",
     "daemonBinary": "/usr/bin/openburnbar-daemon",
     "swiftRuntime": "/usr/lib/openburnbar/swift",

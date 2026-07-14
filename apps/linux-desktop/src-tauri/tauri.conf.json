@@ -32,6 +32,7 @@
         "recommends": ["gnome-keyring | libkf5wallet-bin | libkf6wallet-bin"],
         "files": {
           "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
+          "/usr/bin/openburnbar-cli": "target/openburnbar-package-payload/openburnbar-cli",
           "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
           "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
           "/usr/lib/openburnbar/playwright": "target/openburnbar-package-payload/playwright",
@@ -51,6 +52,7 @@
         "depends": ["libsecret"],
         "files": {
           "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
+          "/usr/bin/openburnbar-cli": "target/openburnbar-package-payload/openburnbar-cli",
           "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
           "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
           "/usr/lib/openburnbar/playwright": "target/openburnbar-package-payload/playwright",

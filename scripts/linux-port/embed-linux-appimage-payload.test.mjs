@@ -16,9 +16,16 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
+function writeCliFixture(root) {
+  const cli = path.join(root, 'openburnbar-cli');
+  fs.writeFileSync(cli, 'cli');
+  fs.chmodSync(cli, 0o755);
+}
+
 test('AppImage payload validator requires daemon, runtimes, and Browser CU resources', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-payload-'));
   fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
+  writeCliFixture(root);
   fs.mkdirSync(path.join(root, 'swift'));
   fs.mkdirSync(path.join(root, 'native'));
   fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');
@@ -30,6 +37,7 @@ test('AppImage payload validator requires daemon, runtimes, and Browser CU resou
   fs.writeFileSync(path.join(root, 'cloud-auth.json'), '{"schemaVersion":1,"configured":true}');
 
   assert.deepEqual(requiredPayloadPaths, [
+    'openburnbar-cli',
     'openburnbar-daemon',
     'swift',
     'native/libsqlcipher.so.0',
@@ -93,6 +101,8 @@ test('AppImage launcher routes cloud auth to the mounted package payload', () =>
 test('AppImage payload validator fails closed when a runtime is absent', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-payload-missing-'));
   fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
+  writeCliFixture(root);
+  fs.writeFileSync(path.join(root, 'openburnbar-cli'), 'cli');
   fs.mkdirSync(path.join(root, 'swift'));
 
   assert.throws(() => validatePayload(root), /native\/libsqlcipher\.so\.0/);
@@ -102,6 +112,8 @@ test('AppImage payload validator fails closed when a runtime is absent', () => {
 test('AppImage payload validator fails closed when the packaged bridge is absent', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-bridge-missing-'));
   fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
+  writeCliFixture(root);
+  fs.writeFileSync(path.join(root, 'openburnbar-cli'), 'cli');
   fs.mkdirSync(path.join(root, 'swift'));
   fs.mkdirSync(path.join(root, 'native'));
   fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');
@@ -118,6 +130,8 @@ test('AppImage payload validator fails closed when the packaged bridge is absent
 test('AppImage payload validator rejects a symlinked bridge', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-bridge-symlink-'));
   fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
+  writeCliFixture(root);
+  fs.writeFileSync(path.join(root, 'openburnbar-cli'), 'cli');
   fs.mkdirSync(path.join(root, 'swift'));
   fs.mkdirSync(path.join(root, 'native'));
   fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');
@@ -136,6 +150,8 @@ test('AppImage payload validator rejects a symlinked bridge', () => {
 test('AppImage payload validator rejects a symlinked iroh runtime', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-iroh-symlink-'));
   fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
+  writeCliFixture(root);
+  fs.writeFileSync(path.join(root, 'openburnbar-cli'), 'cli');
   fs.mkdirSync(path.join(root, 'swift'));
   fs.mkdirSync(path.join(root, 'native'));
   fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');

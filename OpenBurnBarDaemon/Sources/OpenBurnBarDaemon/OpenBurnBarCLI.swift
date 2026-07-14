@@ -38,6 +38,12 @@ public protocol BurnBarCLIClient: Sendable {
         targetModel: String?,
         mode: BurnBarResumeMode
     ) throws -> BurnBarRunResumeResponse
+    func linuxPrivacyInventory() throws -> BurnBarLinuxPrivacyInventoryResponse
+    func linuxPrivacyDeletionPreview(_ request: BurnBarLinuxPrivacyDeletionPreviewRequest) throws -> BurnBarLinuxPrivacyDeletionPreviewResponse
+    func linuxPrivacyDeletionExecute(_ request: BurnBarLinuxPrivacyDeletionExecuteRequest) throws -> BurnBarLinuxPrivacyDeletionExecuteResponse
+    func linuxPrivacyExport(_ request: BurnBarLinuxPrivacyExportRequest) throws -> BurnBarLinuxPrivacyExportResponse
+    func linuxPrivacyRetentionStatus() throws -> BurnBarLinuxPrivacyRetentionStatusResponse
+    func linuxPrivacyRetentionApply(_ request: BurnBarLinuxPrivacyRetentionApplyRequest) throws -> BurnBarLinuxPrivacyRetentionApplyResponse
 }
 
 public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
@@ -374,6 +380,46 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         )
     }
 
+    public func linuxPrivacyInventory() throws -> BurnBarLinuxPrivacyInventoryResponse {
+        try requestResult(BurnBarRPCRequestEnvelope(method: .linuxPrivacyInventory, authToken: authToken))
+    }
+
+    public func linuxPrivacyDeletionPreview(_ request: BurnBarLinuxPrivacyDeletionPreviewRequest) throws -> BurnBarLinuxPrivacyDeletionPreviewResponse {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(
+            method: .linuxPrivacyDeletionPreview,
+            authToken: authToken,
+            params: request
+        ))
+    }
+
+    public func linuxPrivacyDeletionExecute(_ request: BurnBarLinuxPrivacyDeletionExecuteRequest) throws -> BurnBarLinuxPrivacyDeletionExecuteResponse {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(
+            method: .linuxPrivacyDeletionExecute,
+            authToken: authToken,
+            params: request
+        ))
+    }
+
+    public func linuxPrivacyExport(_ request: BurnBarLinuxPrivacyExportRequest) throws -> BurnBarLinuxPrivacyExportResponse {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(
+            method: .linuxPrivacyExport,
+            authToken: authToken,
+            params: request
+        ))
+    }
+
+    public func linuxPrivacyRetentionStatus() throws -> BurnBarLinuxPrivacyRetentionStatusResponse {
+        try requestResult(BurnBarRPCRequestEnvelope(method: .linuxPrivacyRetentionStatus, authToken: authToken))
+    }
+
+    public func linuxPrivacyRetentionApply(_ request: BurnBarLinuxPrivacyRetentionApplyRequest) throws -> BurnBarLinuxPrivacyRetentionApplyResponse {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(
+            method: .linuxPrivacyRetentionApply,
+            authToken: authToken,
+            params: request
+        ))
+    }
+
     public func upsertProviderCredentialSlot(
         _ request: BurnBarProviderCredentialSlotUpsertRequest
     ) throws -> BurnBarProviderCredentialSlotMutationResponse {
@@ -398,6 +444,13 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
 
     private func requestResult<Params: Codable & Sendable, Response: Codable & Sendable>(
         _ request: BurnBarRPCRequestEnvelopeWithParams<Params>
+    ) throws -> Response {
+        let envelope: BurnBarRPCResponseEnvelope<Response> = try send(request)
+        return try unwrap(envelope)
+    }
+
+    private func requestResult<Response: Codable & Sendable>(
+        _ request: BurnBarRPCRequestEnvelope
     ) throws -> Response {
         let envelope: BurnBarRPCResponseEnvelope<Response> = try send(request)
         return try unwrap(envelope)
@@ -720,6 +773,64 @@ public struct BurnBarCLIRunner {
         return BurnBarCLIInvocationResult(output: try run(arguments: arguments), exitCode: EXIT_SUCCESS)
     }
 
+    /// Execute the bounded Linux privacy RPC set through this installed,
+    /// first-party CLI peer. The request is read from stdin so sensitive
+    /// export passphrases never appear in process arguments or shell history.
+    public func runPrivacyRPC(input: Data) throws -> String {
+        let object = try JSONSerialization.jsonObject(with: input)
+        guard let dictionary = object as? [String: Any],
+              Set(dictionary.keys).isSubset(of: ["method", "params"]),
+              let methodRaw = dictionary["method"] as? String,
+              let method = BurnBarRPCMethod(rawValue: methodRaw) else {
+            throw BurnBarCLIError.missingArgument("privacy-rpc input must contain a supported method and params object")
+        }
+        let allowed: Set<BurnBarRPCMethod> = [
+            .linuxPrivacyInventory,
+            .linuxPrivacyDeletionPreview,
+            .linuxPrivacyDeletionExecute,
+            .linuxPrivacyExport,
+            .linuxPrivacyRetentionStatus,
+            .linuxPrivacyRetentionApply
+        ]
+        guard allowed.contains(method) else {
+            throw BurnBarCLIError.invalidCommand("privacy-rpc (methodRaw)")
+        }
+        let paramsObject = dictionary["params"] ?? [:]
+        guard JSONSerialization.isValidJSONObject(paramsObject) else {
+            throw BurnBarCLIError.missingArgument("privacy-rpc params must be a JSON object")
+        }
+        let paramsData = try JSONSerialization.data(withJSONObject: paramsObject)
+        let decoder = JSONDecoder()
+        do {
+            switch method {
+            case .linuxPrivacyInventory:
+                return try Self.jsonString(client.linuxPrivacyInventory())
+            case .linuxPrivacyDeletionPreview:
+                return try Self.jsonString(client.linuxPrivacyDeletionPreview(
+                    try decoder.decode(BurnBarLinuxPrivacyDeletionPreviewRequest.self, from: paramsData)
+                ))
+            case .linuxPrivacyDeletionExecute:
+                return try Self.jsonString(client.linuxPrivacyDeletionExecute(
+                    try decoder.decode(BurnBarLinuxPrivacyDeletionExecuteRequest.self, from: paramsData)
+                ))
+            case .linuxPrivacyExport:
+                return try Self.jsonString(client.linuxPrivacyExport(
+                    try decoder.decode(BurnBarLinuxPrivacyExportRequest.self, from: paramsData)
+                ))
+            case .linuxPrivacyRetentionStatus:
+                return try Self.jsonString(client.linuxPrivacyRetentionStatus())
+            case .linuxPrivacyRetentionApply:
+                return try Self.jsonString(client.linuxPrivacyRetentionApply(
+                    try decoder.decode(BurnBarLinuxPrivacyRetentionApplyRequest.self, from: paramsData)
+                ))
+            default:
+                throw BurnBarCLIError.invalidCommand("privacy-rpc (methodRaw)")
+            }
+        } catch let error as NSError where error.domain == "OpenBurnBarCLI" {
+            throw BurnBarCLIError.privacyRPCError(code: error.code, message: error.localizedDescription)
+        }
+    }
+
     private func runComputerUseCommand(_ arguments: [String]) throws -> BurnBarCLIInvocationResult {
         guard arguments.first == "panic-halt" else {
             return try BurnBarCLIComputerUseLiveSurface.run(arguments: arguments)
@@ -1040,6 +1151,12 @@ public struct BurnBarCLIRunner {
         return String(data: data, encoding: .utf8) ?? "{}"
     }
 
+    private static func jsonString<Value: Encodable>(_ value: Value) throws -> String {
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(value)
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
     /// Part B1 handoff: dispatches a task into a genuine interactive `claude`
     /// session (no `-p`) in the user's terminal of choice, recording a companion
     /// session so the subscription-window token delta can be reconciled later.
@@ -1300,6 +1417,7 @@ public struct BurnBarCLIRunner {
       exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
       claude-handoff <dispatch|reconcile|list> [args]
       provider-bootstrap-claude
+      privacy-rpc (stdin JSON; installed Linux privacy peer)
       install-shell-shims
     """
 
@@ -1346,6 +1464,7 @@ public struct BurnBarCLIRunner {
         "exec",
         "claude-handoff",
         "provider-bootstrap-claude",
+        "privacy-rpc",
         "install-shell-shims"
     ]
 

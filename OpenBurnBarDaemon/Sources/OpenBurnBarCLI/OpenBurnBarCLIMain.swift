@@ -19,10 +19,34 @@ struct BurnBarCLIExecutable {
         }
 
         let environment = ProcessInfo.processInfo.environment
-        let socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
-            ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
+        let socketAuthToken: String?
+        do {
+            if let direct = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
+                ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"] {
+                socketAuthToken = direct
+            } else if let tokenFile = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE"]
+                ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE"] {
+                socketAuthToken = try readTokenFile(tokenFile)
+            } else {
+                socketAuthToken = nil
+            }
+        } catch {
+            writeLine(Self.message(for: error), toStandardError: true)
+            exit(EXIT_FAILURE)
+        }
         let socketURL = BurnBarCLISocketClient.resolvedSocketURL(environment: environment)
         let client = BurnBarCLISocketClient(socketURL: socketURL, authToken: socketAuthToken)
+
+        if arguments == ["privacy-rpc"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                writeLine(try BurnBarCLIRunner(client: client).runPrivacyRPC(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
 
         if BurnBarCLIRunner.shouldUseHealthFastPath(
             arguments: arguments,

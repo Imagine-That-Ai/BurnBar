@@ -61,6 +61,8 @@ function valid() {
       'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
       'capture-parity-certification-preflight.mjs',
       'capture-p34-credential-security-proof.mjs',
+      'run-p40-privacy-rpc-session.mjs',
+      'Capture P-40 installed privacy proof',
       "if: inputs.requirement == 'P-02'",
       "if: inputs.requirement == 'P-34'",
       "if: always() && inputs.requirement == 'P-02'",

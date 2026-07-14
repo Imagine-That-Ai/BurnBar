@@ -48,6 +48,7 @@ if (!manifest.installPaths?.daemonLaunch) {
   failures.push('manifest.installPaths.daemonLaunch is required');
 }
 const expectedInstallPaths = {
+  cliBinary: '/usr/bin/openburnbar-cli',
   daemonBinary: '/usr/bin/openburnbar-daemon',
   swiftRuntime: '/usr/lib/openburnbar/swift',
   nativeRuntime: '/usr/lib/openburnbar/native',
@@ -70,6 +71,7 @@ if (manifest.tailMetadata?.computerUsePolkitPolicy !== 'packaging/linux/com.open
 
 const tauri = readJson(path.join(repoRoot, 'apps/linux-desktop/src-tauri/tauri.conf.json'));
 const packageSources = {
+  '/usr/bin/openburnbar-cli': 'target/openburnbar-package-payload/openburnbar-cli',
   '/usr/bin/openburnbar-daemon': 'target/openburnbar-package-payload/openburnbar-daemon',
   '/usr/lib/openburnbar/swift': 'target/openburnbar-package-payload/swift',
   '/usr/lib/openburnbar/native': 'target/openburnbar-package-payload/native',
@@ -163,6 +165,7 @@ const aurPkgbuild = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/PKG
 if (!aurPkgbuild.includes('--appimage-extract >"${extraction_log}" 2>&1')
     || !aurPkgbuild.includes('usr/lib/openburnbar/native/libopenburnbar_iroh.so')
     || !aurPkgbuild.includes('cp -a "${srcdir}/squashfs-root/." "${pkgdir}/usr/lib/openburnbar/appdir/"')
+    || !aurPkgbuild.includes('openburnbar-cli" "${pkgdir}/usr/bin/openburnbar-cli"')
     || !aurPkgbuild.includes('openburnbar-linux-desktop" "${pkgdir}/usr/bin/openburnbar-linux-desktop"')
     || !aurPkgbuild.includes('dev.openburnbar.OpenBurnBar.png')) {
   failures.push('Arch release template must install the native AppDir, fixed launcher, icon, and iroh runtime from checksum-pinned sources');

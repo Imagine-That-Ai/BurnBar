@@ -183,6 +183,7 @@ function runRuntimeProbe(daemon, swiftDir, nativeDir, env) {
 
 export function stageLinuxPackagePayload({
   daemonBinary,
+  cliBinary = null,
   playwrightBridge,
   browserRuntimeProbe,
   browserRuntimeRequirements,
@@ -195,6 +196,7 @@ export function stageLinuxPackagePayload({
   probe = true
 }) {
   const daemonSource = requireFile(daemonBinary, 'OpenBurnBar daemon');
+  const cliSource = cliBinary ? requireFile(cliBinary, 'OpenBurnBar CLI') : null;
   const bridgeSource = requireFile(playwrightBridge, 'Playwright bridge');
   const browserRuntimeProbeSource = requireFile(browserRuntimeProbe, 'browser runtime probe');
   const browserRuntimeRequirementsSource = requireFile(
@@ -207,6 +209,7 @@ export function stageLinuxPackagePayload({
   const irohNativeSource = requireRegularFile(irohNativeLibrary, 'Linux iroh native runtime');
   const root = path.resolve(payloadRoot);
   const daemonDestination = path.join(root, 'openburnbar-daemon');
+  const cliDestination = path.join(root, 'openburnbar-cli');
   const swiftDestination = path.join(root, 'swift');
   const nativeDestination = path.join(root, 'native');
   const playwrightDestination = path.join(root, 'playwright');
@@ -217,6 +220,10 @@ export function stageLinuxPackagePayload({
   fs.mkdirSync(root, { recursive: true });
   fs.copyFileSync(daemonSource, daemonDestination);
   fs.chmodSync(daemonDestination, 0o755);
+  if (cliSource) {
+    fs.copyFileSync(cliSource, cliDestination);
+    fs.chmodSync(cliDestination, 0o755);
+  }
   fs.cpSync(swiftSource, swiftDestination, {
     recursive: true,
     dereference: false,
@@ -274,6 +281,7 @@ export function stageLinuxPackagePayload({
     schemaVersion: 1,
     architecture: process.arch === 'arm64' ? 'aarch64' : process.arch === 'x64' ? 'x86_64' : process.arch,
     daemon: daemonDestination,
+    cli: cliSource ? cliDestination : null,
     swiftRuntime: swiftDestination,
     nativeRuntime: nativeDestination,
     irohNativeLibrary: irohNativeDestination,

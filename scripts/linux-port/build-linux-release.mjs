@@ -66,6 +66,7 @@ const artifactsDir = path.join(outDir, 'artifacts');
 const installedManifestsDir = path.join(outDir, 'installed-manifests');
 const signingStateDir = path.join(outDir, 'signing-state');
 const daemonBinary = path.join(repoRoot, 'OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon');
+const cliBinary = path.join(repoRoot, 'OpenBurnBarDaemon/.build/release/OpenBurnBarCLI');
 const irohManifest = path.join(repoRoot, 'crates/openburnbar-iroh/Cargo.toml');
 const irohTargetDirectory = path.join(repoRoot, 'crates/openburnbar-iroh/target-linux-release');
 const irohNativeLibraryDirectory = path.join(irohTargetDirectory, 'release');
@@ -84,6 +85,7 @@ const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() ||
 const packageBuildEnv = withoutLinuxReleasePrivateKey(process.env);
 Object.assign(packageBuildEnv, {
   OPENBURNBAR_LINUX_RELEASE_BUILD: '1',
+  OPENBURNBAR_LINUX_CLI_BIN: cliBinary,
   CARGO_BUILD_JOBS: cargoBuildJobs,
   OPENBURNBAR_LINUX_IROH_LIBRARY_DIR: irohNativeLibraryDirectory,
   // linuxdeploy (Tauri's AppImage bundler) is itself an AppImage and needs FUSE
@@ -155,6 +157,22 @@ if (phase === 'prepare' && !args.has('--skip-daemon') && daemonSteps.every((step
     '-Xlinker',
     '--allow-shlib-undefined'
   ]));
+  if (daemonSteps.every((step) => step.exitCode === 0)) {
+    daemonSteps.push(runStep('swift', [
+      'build',
+      '--disable-automatic-resolution',
+      '--jobs',
+      swiftBuildJobs,
+      '--package-path',
+      'OpenBurnBarDaemon',
+      '-c',
+      'release',
+      '--product',
+      'OpenBurnBarCLI',
+      '-Xlinker',
+      '--allow-shlib-undefined'
+    ]));
+  }
 }
 writeLog('daemon-build.log', daemonSteps);
 for (const step of daemonSteps) {
@@ -170,12 +188,22 @@ for (const step of daemonSteps) {
 const daemonBuildPassed = daemonSteps.every((step) => step.exitCode === 0);
 const irohNativeReady = fs.existsSync(irohNativeLibrary);
 const daemonReady = daemonBuildPassed && fs.existsSync(daemonBinary);
+const cliReady = daemonBuildPassed && fs.existsSync(cliBinary);
 if (!daemonReady) {
   blockers.push({
     kind: 'missing-daemon-artifact',
     message: args.has('--skip-daemon')
       ? 'Required Linux daemon executable is missing at OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon (stage a native binary when using --skip-daemon).'
       : 'Required native Linux daemon executable was not produced by swift build.',
+    log: 'logs/daemon-build.log'
+  });
+}
+if (!cliReady) {
+  blockers.push({
+    kind: 'missing-cli-artifact',
+    message: args.has('--skip-daemon')
+      ? 'Required Linux OpenBurnBarCLI executable is missing at OpenBurnBarDaemon/.build/release/OpenBurnBarCLI (stage it when using --skip-daemon).'
+      : 'Required native Linux OpenBurnBarCLI executable was not produced by swift build.',
     log: 'logs/daemon-build.log'
   });
 }
@@ -195,7 +223,7 @@ const buildSteps = [];
 if (phase === 'prepare') {
   fs.rmSync(path.join(appDir, 'src-tauri/target/release/bundle'), { recursive: true, force: true });
 }
-if (daemonReady && irohNativeReady) {
+if (daemonReady && cliReady && irohNativeReady) {
   // Never let an artifact from an earlier architecture/version satisfy this shard.
   const prepareCommands = [
     ['npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir, env: packageBuildEnv }],

@@ -264,6 +264,19 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertEqual(result.output?.contains("session_id=session-123"), true)
         XCTAssertEqual(result.output?.contains("source=hotkey"), true)
     }
+
+    func testPrivacyRPCReadsJSONAndReturnsOnlyTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runPrivacyRPC(input: Data(#"{"method":"daemon.privacy.inventory","params":{}}"#.utf8))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+        XCTAssertEqual((object["stores"] as? [[String: Any]])?.count, 2)
+        XCTAssertNil(object["token"])
+    }
+
+    func testPrivacyRPCRejectsNonPrivacyMethods() {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        XCTAssertThrowsError(try runner.runPrivacyRPC(input: Data(#"{"method":"daemon.health","params":{}}"#.utf8)))
+    }
 }
 
 struct FakeCLIClient: BurnBarCLIClient {
@@ -645,6 +658,63 @@ struct FakeCLIClient: BurnBarCLIClient {
             argv: ["codex", "resume", sessionID],
             targetHarness: targetHarness,
             workingDirectory: "/tmp/fixture"
+        )
+    }
+
+    func linuxPrivacyInventory() throws -> BurnBarLinuxPrivacyInventoryResponse {
+        BurnBarLinuxPrivacyInventoryResponse(
+            stores: BurnBarLinuxPrivacyStoreID.allCases.map {
+                BurnBarLinuxPrivacyStoreInventory(store: $0, state: .ready, bytes: 1, reason: "ready")
+            },
+            generatedAt: Date(timeIntervalSince1970: 1_780_000_000)
+        )
+    }
+
+    func linuxPrivacyDeletionPreview(_ request: BurnBarLinuxPrivacyDeletionPreviewRequest) throws -> BurnBarLinuxPrivacyDeletionPreviewResponse {
+        BurnBarLinuxPrivacyDeletionPreviewResponse(
+            token: "preview-token",
+            stores: request.stores,
+            entries: request.stores.map {
+                BurnBarLinuxPrivacyStoreInventory(store: $0, state: .ready, bytes: 1, reason: "ready")
+            },
+            expiresAt: Date(timeIntervalSince1970: 1_780_000_300),
+            confirmationPhrase: "DELETE LOCAL DATA"
+        )
+    }
+
+    func linuxPrivacyDeletionExecute(_ request: BurnBarLinuxPrivacyDeletionExecuteRequest) throws -> BurnBarLinuxPrivacyDeletionExecuteResponse {
+        BurnBarLinuxPrivacyDeletionExecuteResponse(
+            stores: request.stores,
+            deleted: request.stores,
+            alreadyAbsent: [],
+            bytesRemoved: 1,
+            idempotent: false
+        )
+    }
+
+    func linuxPrivacyExport(_ request: BurnBarLinuxPrivacyExportRequest) throws -> BurnBarLinuxPrivacyExportResponse {
+        BurnBarLinuxPrivacyExportResponse(
+            stores: request.stores,
+            destinationPath: request.destinationPath,
+            byteCount: 8,
+            formatVersion: 1
+        )
+    }
+
+    func linuxPrivacyRetentionStatus() throws -> BurnBarLinuxPrivacyRetentionStatusResponse {
+        BurnBarLinuxPrivacyRetentionStatusResponse(
+            policyState: .defaults,
+            rules: [],
+            stores: [],
+            evaluatedAt: Date(timeIntervalSince1970: 1_780_000_000)
+        )
+    }
+
+    func linuxPrivacyRetentionApply(_ request: BurnBarLinuxPrivacyRetentionApplyRequest) throws -> BurnBarLinuxPrivacyRetentionApplyResponse {
+        BurnBarLinuxPrivacyRetentionApplyResponse(
+            status: try linuxPrivacyRetentionStatus(),
+            removedBytes: 0,
+            removedEntries: 0
         )
     }
 }

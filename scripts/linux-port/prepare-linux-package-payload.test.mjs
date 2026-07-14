@@ -42,6 +42,7 @@ test('runtime discovery honors explicit architecture-local directories', () => {
 test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-package-payload-'));
   const daemon = path.join(root, 'OpenBurnBarDaemon');
+  const cli = path.join(root, 'OpenBurnBarCLI');
   const bridge = path.join(root, 'openburnbar-playwright-bridge.js');
   const browserProbe = path.join(root, 'openburnbar-browser-runtime-probe');
   const browserRequirements = path.join(root, 'browser-runtime-requirements.json');
@@ -51,10 +52,12 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
   const payload = path.join(root, 'payload');
   fs.writeFileSync(daemon, '#!/bin/sh\nexit 0\n');
+  fs.writeFileSync(cli, '#!/bin/sh\nexit 0\n');
   fs.writeFileSync(bridge, 'bridge');
   fs.writeFileSync(browserProbe, '#!/bin/sh\nexit 0\n');
   fs.writeFileSync(browserRequirements, '{"schemaVersion":1}\n');
   fs.chmodSync(daemon, 0o755);
+  fs.chmodSync(cli, 0o755);
   fs.mkdirSync(swift);
   fs.writeFileSync(path.join(swift, 'libswiftCore.so'), 'swift');
   fs.mkdirSync(sqlcipher);
@@ -65,6 +68,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
 
   const report = stageLinuxPackagePayload({
     daemonBinary: daemon,
+    cliBinary: cli,
     playwrightBridge: bridge,
     browserRuntimeProbe: browserProbe,
     browserRuntimeRequirements: browserRequirements,
@@ -77,6 +81,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   });
 
   assert.ok(fs.statSync(report.daemon).mode & 0o100);
+  assert.ok(fs.statSync(report.cli).mode & 0o100);
   assert.equal(fs.readFileSync(path.join(report.swiftRuntime, 'libswiftCore.so'), 'utf8'), 'swift');
   assert.equal(fs.readFileSync(path.join(report.nativeRuntime, 'libsqlcipher.so.0'), 'utf8'), 'sqlcipher');
   assert.deepEqual(report.sqlcipherFiles, ['libsqlcipher.so', 'libsqlcipher.so.0']);
@@ -101,6 +106,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
 test('payload staging dereferences SQLCipher SONAME links', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-package-payload-links-'));
   const daemon = path.join(root, 'daemon');
+  const cli = path.join(root, 'OpenBurnBarCLI');
   const bridge = path.join(root, 'bridge');
   const browserProbe = path.join(root, 'probe');
   const browserRequirements = path.join(root, 'requirements');
@@ -111,6 +117,7 @@ test('payload staging dereferences SQLCipher SONAME links', () => {
   const payload = path.join(root, 'payload');
   const sqlcipherBinary = path.join(sqlcipher, 'libsqlcipher.so.0.8.6');
   fs.writeFileSync(daemon, 'daemon');
+  fs.writeFileSync(cli, 'cli');
   fs.writeFileSync(bridge, 'bridge');
   fs.writeFileSync(browserProbe, 'probe');
   fs.writeFileSync(browserRequirements, '{}');
@@ -124,6 +131,7 @@ test('payload staging dereferences SQLCipher SONAME links', () => {
 
   const report = stageLinuxPackagePayload({
     daemonBinary: daemon,
+    cliBinary: cli,
     playwrightBridge: bridge,
     browserRuntimeProbe: browserProbe,
     browserRuntimeRequirements: browserRequirements,
@@ -149,6 +157,7 @@ test('payload staging dereferences SQLCipher SONAME links', () => {
 test('payload staging rejects SQLCipher links outside the runtime directory', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-package-payload-links-invalid-'));
   const daemon = path.join(root, 'daemon');
+  const cli = path.join(root, 'OpenBurnBarCLI');
   const bridge = path.join(root, 'bridge');
   const browserProbe = path.join(root, 'probe');
   const browserRequirements = path.join(root, 'requirements');
@@ -158,6 +167,7 @@ test('payload staging rejects SQLCipher links outside the runtime directory', ()
   const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
   const outside = path.join(root, 'outside.so');
   fs.writeFileSync(daemon, 'daemon');
+  fs.writeFileSync(cli, 'cli');
   fs.writeFileSync(bridge, 'bridge');
   fs.writeFileSync(browserProbe, 'probe');
   fs.writeFileSync(browserRequirements, '{}');
@@ -171,6 +181,7 @@ test('payload staging rejects SQLCipher links outside the runtime directory', ()
 
   assert.throws(() => stageLinuxPackagePayload({
     daemonBinary: daemon,
+    cliBinary: cli,
     playwrightBridge: bridge,
     browserRuntimeProbe: browserProbe,
     browserRuntimeRequirements: browserRequirements,
@@ -187,6 +198,7 @@ test('payload staging rejects SQLCipher links outside the runtime directory', ()
 test('payload staging rejects SQLCipher trees without the required SONAME', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-package-payload-invalid-'));
   const daemon = path.join(root, 'daemon');
+  const cli = path.join(root, 'OpenBurnBarCLI');
   const bridge = path.join(root, 'bridge');
   const browserProbe = path.join(root, 'probe');
   const browserRequirements = path.join(root, 'requirements');
@@ -195,6 +207,7 @@ test('payload staging rejects SQLCipher trees without the required SONAME', () =
   const iroh = path.join(root, 'libopenburnbar_iroh.so');
   const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
   fs.writeFileSync(daemon, 'daemon');
+  fs.writeFileSync(cli, 'cli');
   fs.writeFileSync(bridge, 'bridge');
   fs.writeFileSync(browserProbe, 'probe');
   fs.writeFileSync(browserRequirements, '{}');
@@ -206,6 +219,7 @@ test('payload staging rejects SQLCipher trees without the required SONAME', () =
 
   assert.throws(() => stageLinuxPackagePayload({
     daemonBinary: daemon,
+    cliBinary: cli,
     playwrightBridge: bridge,
     browserRuntimeProbe: browserProbe,
     browserRuntimeRequirements: browserRequirements,
