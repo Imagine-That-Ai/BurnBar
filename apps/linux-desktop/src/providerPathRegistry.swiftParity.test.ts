@@ -14,7 +14,7 @@ import { LINUX_PROVIDER_PATH_REGISTRY } from './providerPathRegistry';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const swiftPath = path.resolve(
   here,
-  '../../../OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProviderLogDiscovery.swift'
+  '../../../OpenBurnBarCore/Sources/OpenBurnBarLogParsers/AgentProviderLogDiscovery.swift'
 );
 const swift = fs.readFileSync(swiftPath, 'utf8');
 

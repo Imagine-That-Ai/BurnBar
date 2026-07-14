@@ -1,7 +1,8 @@
 import ActivityKit
 import SwiftUI
 import WidgetKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Live Activity Widget
 

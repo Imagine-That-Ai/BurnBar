@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarKernel
 
 final class CloudVaultSearchDomainCoreAdapterTests: XCTestCase {
     private let key = Data((0..<32).map(UInt8.init))

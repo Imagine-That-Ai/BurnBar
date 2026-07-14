@@ -1,5 +1,8 @@
 import XCTest
 @testable import OpenBurnBarCore
+// P-13: `ZAIQuotaAdapter` (and its internal `zaiUsageQueryItems(now:)`) moved to
+// OpenBurnBarQuota. @testable reaches the internal helper this test asserts on.
+@testable import OpenBurnBarQuota
 
 final class ZAIQuotaAdapterTests: XCTestCase {
 

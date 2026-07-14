@@ -9,7 +9,7 @@ import Darwin
 import Glibc
 #endif
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 extension BurnBarProjectCodeMemoryStore {
     static func projectIndexSignature(root: URL, maxFiles: Int) -> String {

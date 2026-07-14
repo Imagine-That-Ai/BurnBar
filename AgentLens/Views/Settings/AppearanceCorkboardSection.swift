@@ -866,11 +866,18 @@ private struct KernelBackdropSettingsRow: View {
 /// `swarmSubstrate` key honored by the dashboard, wallpaper, and iOS.
 private struct SwarmSubstrateSettingsRow: View {
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    // cov:ignore-start -- Core-decomposition merge: pure module qualification of a SwiftUI default.
+    @AppStorage(SwarmSubstratePreferences.substrateKey)
+    private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
+    // cov:ignore-end
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
     private var family: SubstrateFamily { SubstrateFamily.forKernel(backdropKernel) }
-    private var styles: [SubstrateDescriptor] { SubstrateCatalog.styles(forKernel: backdropKernel) }
+    // cov:ignore-start -- Core-decomposition merge: pure module qualification in a SwiftUI property.
+    private var styles: [SubstrateDescriptor] {
+        OpenBurnBarUI.SubstrateCatalog.styles(forKernel: backdropKernel)
+    }
+    // cov:ignore-end
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {

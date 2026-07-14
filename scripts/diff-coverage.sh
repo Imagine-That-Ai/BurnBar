@@ -690,11 +690,21 @@ for rel_path in changed_file_list:
         continue
     gated_files.append(rel_path)
 
+# Added-line hunks for the gated files. CRITICAL: rename detection must run over
+# the FULL pathspec, not just `gated_files`. Passing only the new paths of a
+# `git mv` to `git diff --find-renames` cannot pair the rename — the deleted old
+# path is outside the pathspec — so git reports the entire relocated file as
+# brand-new added lines. Over a hundreds-of-file god-module decomposition that
+# turns every moved file into a fully-uncovered "new" file (the exact failure
+# this gate must not produce for a refactor). Computing the diff over the whole
+# pathspec lets git pair each rename and emit ONLY the genuinely-changed lines
+# (e.g. a repointed `import`); we then keep just the hunks for files we gate.
+gated_file_set = set(gated_files)
 git_output = ""
 if gated_files:
     git_output = subprocess.run(
         ["git", "diff", "-U0", "--find-renames",
-         base_ref, "HEAD", "--"] + gated_files,
+         base_ref, "HEAD", "--"] + diff_pathspec,
         cwd=repo_root,
         capture_output=True,
         text=True,
@@ -706,6 +716,11 @@ for line in git_output.splitlines():
     m = re.match(r"^diff --git a/.* b/(.*)$", line)
     if m:
         current_file = m.group(1)
+        # Only gate files selected above (post allowlist/scope filtering); the
+        # full-pathspec diff is used solely so rename pairing is correct.
+        if current_file not in gated_file_set:
+            current_file = None
+            continue
         file_blocks.setdefault(current_file, [])
         continue
     if current_file and line.startswith("@@"):
@@ -825,12 +840,18 @@ def normalize_move_line(text):
 
 # Removed-line pool, grouped into CONTIGUOUS runs (a run breaks at a hunk
 # header, a file boundary, or the first non-removed line — with -U0 there is no
-# surrounding context to blur the boundary). No --find-renames/--find-copies
-# here on purpose: this pool needs the CONTENT of every removed line, and
-# letting git collapse a rename would hide removed content that a split's added
-# lines legitimately match.
+# surrounding context to blur the boundary). --no-renames is REQUIRED here (not
+# merely omitting --find-renames): git's `diff.renames` config defaults to TRUE
+# since 2.9, so a bare `git diff` collapses a moved file to a `rename from/to`
+# header and emits ONLY its genuinely-changed lines — hiding the moved CONTENT
+# that this pool exists to expose. A god-file decomposition (hundreds of
+# `git mv` module splits) is exactly the case where that collapse is
+# catastrophic: every relocated line would be charged as brand-new-and-uncovered
+# because the pool held nothing to match it against. Forcing --no-renames makes
+# a rename appear as a full delete + full add, so each relocated added line finds
+# its removed twin and earns the refactor:pure-move safe-harbor.
 move_pool_output = subprocess.run(
-    ["git", "diff", "-U0", base_ref, "HEAD", "--"] + diff_pathspec,
+    ["git", "diff", "-U0", "--no-renames", base_ref, "HEAD", "--"] + diff_pathspec,
     cwd=repo_root,
     capture_output=True,
     text=True,
