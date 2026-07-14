@@ -1014,7 +1014,14 @@ fn lock_windows_audit_file(audit_path: &Path) -> Result<WindowsAuditFileLock, Au
                     file: Some(file),
                 });
             }
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    ErrorKind::AlreadyExists | ErrorKind::PermissionDenied
+                ) =>
+            {
+                // Windows reports an open create-new sentinel as either
+                // AlreadyExists or PermissionDenied depending on share mode.
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(error) => return Err(AuthorizationError::AuditChain(error.to_string())),
