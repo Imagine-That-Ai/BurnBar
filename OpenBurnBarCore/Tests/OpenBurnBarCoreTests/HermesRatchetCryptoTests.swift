@@ -4,6 +4,81 @@ import XCTest
 @testable import OpenBurnBarCore
 
 final class HermesRatchetCryptoTests: XCTestCase {
+    private enum BoundaryError: Error, Equatable {
+        case legacyFailure
+        case rustFailure
+    }
+
+    func test_shadowDomainCoreBytes_preservesLegacyFailureWithoutCallingRust() {
+        var rustWasCalled = false
+        var coreVersionWasCalled = false
+        var comparisons: [DomainCoreShadowComparison] = []
+
+        XCTAssertThrowsError(
+            try HermesRatchetCrypto.selectDomainCoreBytesWhenNativeAvailable(
+                operation: "ratchet_test",
+                mode: "shadow",
+                coreVersion: {
+                    coreVersionWasCalled = true
+                    return "test-core"
+                },
+                legacy: { throw BoundaryError.legacyFailure },
+                rust: {
+                    rustWasCalled = true
+                    return Data("rust".utf8)
+                },
+                record: { comparisons.append($0) }
+            )
+        ) { error in
+            XCTAssertEqual(error as? BoundaryError, .legacyFailure)
+        }
+        XCTAssertFalse(rustWasCalled)
+        XCTAssertFalse(coreVersionWasCalled)
+        XCTAssertTrue(comparisons.isEmpty)
+    }
+
+    func test_shadowDomainCoreBytes_containsRustFailureAndReturnsExactLegacyResult() throws {
+        let legacy = Data([0x00, 0xFF, 0x10, 0x00])
+        var comparisons: [DomainCoreShadowComparison] = []
+
+        let result = try HermesRatchetCrypto.selectDomainCoreBytesWhenNativeAvailable(
+            operation: "ratchet_test",
+            mode: "shadow",
+            coreVersion: { "test-core" },
+            legacy: { legacy },
+            rust: { throw BoundaryError.rustFailure },
+            record: { comparisons.append($0) }
+        )
+
+        XCTAssertEqual(result, legacy)
+        XCTAssertEqual(comparisons.count, 1)
+        XCTAssertEqual(comparisons.first?.domain, "hermes")
+        XCTAssertEqual(comparisons.first?.slice, "ratchet")
+        XCTAssertEqual(comparisons.first?.operation, "ratchet_test")
+        XCTAssertEqual(comparisons.first?.coreVersion, "test-core")
+        XCTAssertEqual(comparisons.first?.outcome, "mismatch")
+        XCTAssertEqual(comparisons.first?.mismatchCategory, "native_error")
+    }
+
+    func test_shadowDomainCoreBytes_recordsResultMismatchAndReturnsLegacy() throws {
+        let legacy = Data("legacy".utf8)
+        var comparisons: [DomainCoreShadowComparison] = []
+
+        let result = try HermesRatchetCrypto.selectDomainCoreBytesWhenNativeAvailable(
+            operation: "ratchet_test",
+            mode: "shadow",
+            coreVersion: { "test-core" },
+            legacy: { legacy },
+            rust: { Data("rust".utf8) },
+            record: { comparisons.append($0) }
+        )
+
+        XCTAssertEqual(result, legacy)
+        XCTAssertEqual(comparisons.count, 1)
+        XCTAssertEqual(comparisons.first?.outcome, "mismatch")
+        XCTAssertEqual(comparisons.first?.mismatchCategory, "result_mismatch")
+    }
+
     func test_roundTrip_andReply_performDHRatchet() throws {
         var alice = try makeInitiator()
         var bob = try makeResponder()
