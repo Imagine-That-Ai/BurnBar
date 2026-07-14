@@ -3,7 +3,7 @@
 //
 // Row order, capability names, dispositions, qualifiers, and the SUB-DONE/SUB-BUILD
 // hybrids (rows 24, 27) match the doc exactly. The disposition-summary constants match
-// the current disposition summary (13 SUB-DONE, 3 SUB-BUILD, 14 DEFER, 4 N/A).
+// the current disposition summary (21 SUB-DONE, 3 SUB-BUILD, 6 DEFER, 4 N/A).
 // A test cross-checks both against those figures so the tab can never drift from the
 // accepted decision without a red build.
 
@@ -26,31 +26,37 @@ public static class DaemonSubstitutionMatrix
     private static readonly DaemonSubstitutionRow[] MatrixRows =
     {
         new(1, "HTTP gateway server (routing pipeline, endpoints, transport, connection mgmt)",
-            D.Deferred,
-            "No Windows v1 surface consumes the local proxy; excluded even from the daemon's Linux build. Revive trigger 3.",
-            "WPD-0006 deferral ledger; bundle drift D14"),
+            D.SubstitutedAlready,
+            "LocalHttpGatewayHost is production-composed with bounded authenticated loopback transport, health/models/metrics/completions endpoints, provider routing, and explicit unavailable behavior.",
+            "F2 Model Proxy settings/live catalog evidence", Qualifier: "authenticated local transport"),
         new(2, "Gateway model catalog + model health",
-            D.Deferred, "Rides the gateway (row 1).", "With row 1"),
+            D.SubstitutedAlready,
+            "The production catalog exposes route eligibility, cooldown health, and proactive bounded local model discovery.",
+            "F2 gateway health/local discovery evidence", Qualifier: "live health + local discovery"),
         new(3, "Cross-vendor degrade policy",
-            D.Deferred, "Rides the gateway (row 1).", "With row 1"),
+            D.SubstitutedAlready,
+            "Cross-vendor degrade is default-off, requires operator and request consent, and applies bounded allow-list, scorecard, health, and upstream-model rewrite policy.",
+            "F2 cross-vendor degrade evidence", Qualifier: "opt-in bounded policy"),
         new(4, "Gateway metrics / route logging / streaming usage accumulation",
-            D.Deferred, "Rides the gateway (row 1).", "With row 1"),
+            D.SubstitutedAlready,
+            "Gateway route telemetry is bounded, durable, metadata-only, and separates cached, uncached, reasoning, and output usage while failing open on telemetry persistence faults.",
+            "F2 gateway route telemetry evidence", Qualifier: "bounded durable telemetry"),
         new(5, "Usage recording (durable token-usage rows in the shared DB)",
             D.SubstitutedAlready,
             "TokenUsageWriteSeam + TokenUsageReadSeam write/read the same byte-compat DB (WPD-0004).",
             "Landed (#1251/#1267)"),
         new(6, "Provider router (+ quota-drain ranking/metadata)",
-            D.Deferred,
-            "Serves gateway + headless runs, neither in v1. Compiles off-macOS today — revives via the Linux boundary build.",
-            "Revisit triggers 1/3", Qualifier: "SWIFT-REUSE on revive"),
+            D.SubstitutedAlready,
+            "ModelProxyRouter consumes the macOS five-factor scorecard, strict quota-drain pools, deterministic ties, live health/discovery, and route telemetry.",
+            "F2 provider-router scorecard evidence", Qualifier: "production scorecard"),
         new(7, "Provider executors (Anthropic, Codex, FactoryDroid, Ollama-native, OpenAI-compatible bridges)",
-            D.Deferred,
-            "Windows v1 chat executes agent CLIs directly (row 9), not via daemon API executors.",
-            "Revisit triggers 1/3", Qualifier: "SWIFT-REUSE on revive"),
+            D.SubstitutedAlready,
+            "Production composition covers guarded OpenAI-compatible, Anthropic Messages, Ollama-native, Codex, and Factory Droid transports with bounded I/O and process-tree cancellation.",
+            "F2 provider transport evidence", Qualifier: "all configured transports"),
         new(8, "Headless run service: run/resume/recovery/journal, agent loop, tool dispatch",
-            D.Deferred,
-            "Headless runs that outlive the app are exactly revisit trigger 1. In-app interactive sessions are covered (row 9).",
-            "Revisit trigger 1", Qualifier: "SWIFT-REUSE on revive"),
+            D.SubstitutedAlready,
+            "HeadlessAgentRunService owns socket-independent model work, DPAPI checkpoints, metadata-only journaling, startup recovery, approvals, and leased companion tool dispatch.",
+            "F2 headless run/recovery evidence", Qualifier: "accepted in-process runtime"),
         new(9, "Interactive CLI/PTY session execution",
             D.SubstitutedAlready,
             "ConPtyCliStream over ConPtySession (B1); live-host proof rides the WS-D pass.",
@@ -130,9 +136,9 @@ public static class DaemonSubstitutionMatrix
             "Their duties (input/screen/attestation plumbing) are absorbed by the in-process computer-use adapters; a separate agent process only returns if WS-D demands isolation (trigger 2).",
             "Revisit trigger 2", Qualifier: "as separate v1 processes"),
         new(29, "Companion CLI (OpenBurnBarCLI)",
-            D.Deferred,
-            "The CLI is a daemon-socket client; with no daemon there is nothing to drive. Revives with trigger 1 (headless).",
-            "Revisit trigger 1"),
+            D.SubstitutedAlready,
+            "OpenBurnBar.Cli drives the bounded loopback companion plane, injects authentication from current-user DPAPI storage, and is staged for signed x64/ARM64 packages with an app-execution alias.",
+            "F2 authenticated companion CLI evidence", Qualifier: "authenticated standalone client"),
         new(30, "Switcher shell (account-switched shells/profiles)",
             D.SubstituteToBuild,
             "Profile persistence seam already landed (SwitcherProfileWriteSeam); the switcher surface converts sample → Real in Wave 3 item 1, spawn path via CreateProcess/ConPTY.",
@@ -161,13 +167,13 @@ public static class DaemonSubstitutionMatrix
     // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
     /// <summary>SUB-DONE count from the current summary.</summary>
-    public const int SubstitutedAlreadyCount = 13;
+    public const int SubstitutedAlreadyCount = 21;
 
     /// <summary>SUB-BUILD count from the doc's summary (rows 26, 30, 31).</summary>
     public const int SubstituteToBuildCount = 3;
 
     /// <summary>DEFER count from the current summary.</summary>
-    public const int DeferredCount = 14;
+    public const int DeferredCount = 6;
 
     /// <summary>N/A count from the doc's summary (rows 10, 17, 28, 34).</summary>
     public const int NotApplicableCount = 4;

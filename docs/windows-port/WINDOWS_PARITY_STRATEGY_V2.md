@@ -127,11 +127,17 @@ What *this* document claims at high confidence:
 
 ---
 
-### L6 — Mission Control “surface Real” ≠ local execution
+### L6 — Mission Control “surface Real” ≠ local execution (closed for F2)
 
-**Loophole:** Mac can schedule/execute missions via daemon DAG; Windows F1 is **Firestore dispatch + console client** (WPD-0006 rows 13 SUB-DONE, 14 DEFER). Calling that “full Mission Control parity” is false.
+**Original loophole:** Mac can schedule/execute missions via daemon DAG while
+Windows F1 initially shipped only **Firestore dispatch + console client**.
+Calling that “full Mission Control parity” was false.
 
-**Fix:** Ledger/docs language: **Mission Control (dispatch client)**. Local execution = F2 / revisit trigger 1. Console UI can still be Real as a **dispatch console**.
+**Resolution:** WPD-0009 fired the F2 trigger and WPD-0006 row 14 is now
+`SUB-DONE`: the authenticated companion plane production-composes deterministic
+local DAG planning/execution, policy, rate limiting, metadata-only journaling,
+and resume/recovery. F1 remains accurately described as a dispatch client;
+local execution is the separately evidenced F2 capability.
 
 ---
 

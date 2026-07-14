@@ -406,7 +406,7 @@ managed-agent-runtime tests),
 CloudSync (61/61), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
 Computer Use (114 passed plus a separately executed live Chromium test),
-settings (179/179), configuration (48/48), distribution (101/101), bridge-policy,
+settings (186/186), configuration (48/48), distribution (101/101), bridge-policy,
 and provider-boundary tests. They are an implementation increment, not a claim
 that the F2 workstreams or release certification are all complete: the
 remaining connector/watcher/fusion depth,

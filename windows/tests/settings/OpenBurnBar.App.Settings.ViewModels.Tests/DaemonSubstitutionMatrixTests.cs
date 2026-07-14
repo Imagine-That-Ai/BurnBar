@@ -24,9 +24,9 @@ public sealed class DaemonSubstitutionMatrixTests
     [Fact]
     public void PrimaryDispositionCounts_MatchTheCurrentDecisionSummary()
     {
-        Assert.Equal(13, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
+        Assert.Equal(21, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
         Assert.Equal(3, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
-        Assert.Equal(14, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
+        Assert.Equal(6, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
         Assert.Equal(4, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.NotApplicable));
 
         // Published constants agree with the live count.
@@ -51,8 +51,15 @@ public sealed class DaemonSubstitutionMatrixTests
     }
 
     [Theory]
-    // WPD-0006 dispositions plus the WPD-0009 row 25 promotion.
+    // WPD-0006 dispositions after the accepted WPD-0009 promotions.
+    [InlineData(1, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(2, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(3, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(4, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(5, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(6, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(7, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(8, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(9, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(11, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(12, DaemonSubstitutionDisposition.SubstitutedAlready)]
@@ -65,6 +72,7 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(24, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(25, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(27, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(29, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(26, DaemonSubstitutionDisposition.SubstituteToBuild)]
     [InlineData(30, DaemonSubstitutionDisposition.SubstituteToBuild)]
     [InlineData(31, DaemonSubstitutionDisposition.SubstituteToBuild)]
@@ -72,7 +80,6 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(17, DaemonSubstitutionDisposition.NotApplicable)]
     [InlineData(28, DaemonSubstitutionDisposition.NotApplicable)]
     [InlineData(34, DaemonSubstitutionDisposition.NotApplicable)]
-    [InlineData(1, DaemonSubstitutionDisposition.Deferred)]
     [InlineData(32, DaemonSubstitutionDisposition.Deferred)]
     public void Row_HasExpectedDisposition(int number, DaemonSubstitutionDisposition expected)
     {
@@ -87,7 +94,7 @@ public sealed class DaemonSubstitutionMatrixTests
             .Select(r => r.Number)
             .OrderBy(n => n)
             .ToArray();
-        Assert.Equal(new[] { 1, 2, 3, 4, 6, 7, 8, 16, 18, 19, 22, 29, 32, 33 }, deferred);
+        Assert.Equal(new[] { 16, 18, 19, 22, 32, 33 }, deferred);
     }
 
     [Fact]
@@ -120,10 +127,15 @@ public sealed class DaemonSubstitutionMatrixTests
         Assert.Equal("transport primitive", row11.Qualifier);
         Assert.Equal("SUB-DONE (transport primitive)", row11.DispositionBadge);
 
-        // Row 6 is a SWIFT-REUSE-on-revive DEFER.
+        // Row 6 is "SUB-DONE (production scorecard)".
         var row6 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 6);
-        Assert.Equal("SWIFT-REUSE on revive", row6.Qualifier);
-        Assert.Equal("DEFER (SWIFT-REUSE on revive)", row6.DispositionBadge);
+        Assert.Equal("production scorecard", row6.Qualifier);
+        Assert.Equal("SUB-DONE (production scorecard)", row6.DispositionBadge);
+
+        // Row 29 is "SUB-DONE (authenticated standalone client)".
+        var row29 = DaemonSubstitutionMatrix.Rows.Single(r => r.Number == 29);
+        Assert.Equal("authenticated standalone client", row29.Qualifier);
+        Assert.Equal("SUB-DONE (authenticated standalone client)", row29.DispositionBadge);
     }
 
     [Fact]
