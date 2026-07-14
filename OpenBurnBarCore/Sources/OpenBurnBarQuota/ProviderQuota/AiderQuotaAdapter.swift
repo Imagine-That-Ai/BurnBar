@@ -1,6 +1,8 @@
 import Foundation
 import OpenBurnBarKernel
-import OpenBurnBarLogParsers
+// Phase-2 WS-K W1: `readAllUTF8Lines()` (this file's only ex-`OpenBurnBarLogParsers`
+// symbol) moved to OpenBurnBarKernelPlatform and now resolves through the
+// `OpenBurnBarKernel` umbrella, so the direct LogParsers import is dropped here.
 
 // MARK: - Aider Quota Adapter
 

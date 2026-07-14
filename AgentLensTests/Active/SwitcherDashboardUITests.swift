@@ -15,7 +15,7 @@ final class SwitcherDashboardUITests: XCTestCase {
 
     private var store: SwitcherProfileStore!
     private var browserLaunchService: SwitcherBrowserLaunchService!
-    private var cliLaunchService: SwitcherCLILAunchService!
+    private var cliLaunchService: SwitcherCLILaunchService!
     private var dbQueue: DatabaseQueue!
 
     // MARK: - Lifecycle
@@ -29,7 +29,7 @@ final class SwitcherDashboardUITests: XCTestCase {
         // Create adapter for launch services
         let adapter = ProdSwitcherProfileStoreAdapter(store: store)
         browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
-        cliLaunchService = SwitcherCLILAunchService(profileStore: adapter)
+        cliLaunchService = SwitcherCLILaunchService(profileStore: adapter)
     }
 
     override func tearDown() {

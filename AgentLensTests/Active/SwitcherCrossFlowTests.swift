@@ -2853,7 +2853,7 @@ extension SwitcherCrossFlowTests {
 
         // VAL-CROSS-009: Create CLI launch service to verify invocation traces
         let adapter = SpySwitcherProfileStoreAdapter(store: localStore)
-        let cliService = SwitcherCLILAunchService(profileStore: adapter)
+        let cliService = SwitcherCLILaunchService(profileStore: adapter)
         CLILaunchAdapter.executableResolver = { _ in nil }
         defer { CLILaunchAdapter.executableResolver = nil }
 

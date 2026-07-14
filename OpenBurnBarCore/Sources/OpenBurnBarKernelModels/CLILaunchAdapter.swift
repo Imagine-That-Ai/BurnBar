@@ -5,7 +5,7 @@ import OpenBurnBarKernelPlatform
 //
 // Core-decomposition P-15b (docs/CORE_DECOMPOSITION_PROGRAM.md): the pure
 // executable-resolution + allowlisted-environment surface of the CLI launch stack,
-// extracted DOWN from `OpenBurnBarLaunchServices/SwitcherCLILAunchService.swift` into
+// extracted DOWN from `OpenBurnBarLaunchServices/SwitcherCLILaunchService.swift` into
 // the cross-platform Kernel so two consumers can use it WITHOUT linking the
 // AppKit-tainted (Apple-only) OpenBurnBarLaunchServices target:
 //   1. the daemon repoint (P-18) — `OpenBurnBarSwitcherShell.shellConfiguration(...)`
@@ -15,7 +15,7 @@ import OpenBurnBarKernelPlatform
 //      `trustedExecutableEnvironmentPath` with `SwitcherCLIProfileType` `.codex`/`.omp`.
 //
 // Pure code motion, zero behavior change. The launch coordinator/invoker/store-coupled
-// halves (`SwitcherCLILAunchService`, `CLILaunchInvoker`, `CLILaunchCoordinator`,
+// halves (`SwitcherCLILaunchService`, `CLILaunchInvoker`, `CLILaunchCoordinator`,
 // `CLIFallback*`, `CLILaunchOutcome`) STAY in LaunchServices; they reach these types
 // via LaunchServices' declared Kernel dependency. (`CLILaunchRedactor` — pure
 // Foundation, and reached by the daemon repoint — subsequently moved DOWN to
