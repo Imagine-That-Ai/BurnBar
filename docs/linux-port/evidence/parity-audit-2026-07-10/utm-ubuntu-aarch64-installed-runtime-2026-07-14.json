@@ -14,7 +14,7 @@
   },
   "installedPaths": {
     "gui": "/usr/bin/openburnbar-linux-desktop",
-    "daemon": "/usr/local/bin/openburnbar-daemon",
+    "daemon": "/usr/bin/openburnbar-daemon",
     "launcher": "/usr/libexec/openburnbar-daemon-launch"
   },
   "sha256": {

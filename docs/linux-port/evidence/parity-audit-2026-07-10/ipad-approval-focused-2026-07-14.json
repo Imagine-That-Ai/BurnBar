@@ -1,0 +1,23 @@
+{
+  "schema": "openburnbar.parity.mobile-focused-test-receipt.v1",
+  "capturedAt": "2026-07-14",
+  "certificationScope": "non-certifying focused physical-iPad test receipt",
+  "device": {
+    "xcodebuildIdentifier": "00008132-001158191E9A401C",
+    "platform": "iPadOS"
+  },
+  "focusedSuite": "OpenBurnBarMobileTests",
+  "result": {
+    "passed": 46,
+    "failed": 0,
+    "infrastructureCrashes": 1,
+    "appFailures": 0
+  },
+  "blockedSelector": "OpenBurnBarMobileTests.testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds",
+  "failureClass": "XCTest async infrastructure crash",
+  "failureStackSummary": "swift_Concurrency_fatalErrorv -> _swift_task_dealloc_specific -> XCTSwiftErrorObservation._observeErrors -> XCTFailableInvocation",
+  "limitations": [
+    "The failing selector crashed before an app or fake-provider frame and is not counted as an application failure.",
+    "Approval execution, trusted-device enrollment, and cross-device action certification remain unverified."
+  ]
+}

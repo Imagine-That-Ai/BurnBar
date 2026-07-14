@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the corrected pinned Linux aggregate (**277 Swift selectors + 90 Rust tests**, `NATIVE_EXIT=0`), and follow-on source slices through `ea82fe5140`, `274f67fba0`, `d2dbbe8df8`, `bf0eb36294`, `bd9d6a5173`, `a5571694bb`, `7c8a214ce6`, `825e081bda`, `cba9266277`, `a5485fe238`, `814749c8be`, and current branch commit `5a80e82b89` are linked below |
+| Remediation evidence | `codex/linux-parity-integration-final` at `95cd65c235`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, and the Node 22 release-toolchain pin are linked below. The release lane now rebuilds RPM from the validated DEB filesystem with `rpmbuild` after the Tauri RPM extractor failed on run `29342758329`. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -16,6 +16,14 @@ The audit remains the source of truth for the parity claim. The current Linux
 ledger is still **0/40 product requirements ready** and **0/7 environment
 receipts complete**; implementation progress must not be reported as a release
 percentage. The active remediation stack now contains these reviewable slices:
+
+### Latest verification delta — 2026-07-14
+
+- **Source implementation:** the Linux parity wave is integrated on `95cd65c235`; the focused source gates previously passed at **287 Swift**, **95 Tauri Rust**, and **693 frontend** tests. The release toolchain now pins Node `22.23.1` with per-architecture SHA-256 verification. These are engineering signals, not product attestations.
+- **UTM Linux:** Ubuntu 24.04.4 aarch64 GNOME/X11 installed `.deb` smoke passed with authenticated daemon health and clean shutdown. The receipt is tied to an earlier source commit and remains explicitly non-certifying. The corrected RPM path was separately reproduced with valid metadata, `Requires: libsecret`, `rpm2cpio` exit 0, and signed-manifest extraction.
+- **Release candidate:** run `29342758329` failed in native package preparation on both architectures because Tauri's generated RPM was rejected by `rpm2cpio`. The fix is `b325c76eb8`; the failure receipt is `evidence/parity-audit-2026-07-10/linux-release-candidate-29342758329.json`. A fresh exact-head candidate is required before any release claim.
+- **Physical iPad:** the connected iPad focused suite produced **46 passes** and **one XCTest infrastructure crash**, with no app/fake-provider frame. The approval selector is therefore blocked by test infrastructure, not counted as an app pass; see `evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-14.json`.
+- **Certification:** strict status remains **0/40 product** and **0/7 environment**, with `productParityClaim=false`. Current-head installed evidence, deployed production callables, approval execution, Browser Computer Use, Mercury, SmartHub, IBus/Fcitx, accessibility, performance, reliability, and the seven-environment matrix are still required.
 
 | Slice | Current state | Scope and limit |
 |---|---|---|
