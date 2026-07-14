@@ -1257,6 +1257,23 @@ export type TextExpansionEngineStartRequest = {
 export type TextExpansionEngineStopRequest = {
   timeoutMillis?: number;
 };
+export type TextExpansionSecureFieldContext = {
+  inspectable: boolean;
+  isSecureField?: boolean | null;
+  applicationID?: string | null;
+  role?: string | null;
+  inputPurpose?: string | null;
+};
+export type TextExpansionEngineExpandRequest = {
+  trigger: string;
+  context: TextExpansionSecureFieldContext;
+  timeoutMillis?: number;
+  requestID?: string;
+};
+export type TextExpansionEngineExpandResponse = {
+  expanded: boolean;
+  replacement?: string | null;
+};
 
 // ─────────────────────────── P40: local privacy ───────────────────────────
 // The daemon exposes only allowlisted local stores. Absolute paths and store
@@ -1541,6 +1558,7 @@ export interface LinuxShellBridge {
   textExpansionEngineStatus?(): Promise<TextExpansionEngineRuntimeStatus>;
   textExpansionEngineStart?(request: TextExpansionEngineStartRequest): Promise<TextExpansionEngineRuntimeStatus>;
   textExpansionEngineStop?(request?: TextExpansionEngineStopRequest): Promise<TextExpansionEngineRuntimeStatus>;
+  textExpansionEngineExpand?(request: TextExpansionEngineExpandRequest): Promise<TextExpansionEngineExpandResponse>;
   toolApprovalRespond?(
     approvalId: string,
     decision: 'approve' | 'reject' | 'cancel',
@@ -4863,6 +4881,27 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         request: { timeoutMillis: request.timeoutMillis ?? 500 }
       });
       return mapTextExpansionEngineRuntimeStatus(raw);
+    },
+    textExpansionEngineExpand: async (request) => {
+      const raw = await invoke<RawJsonValue>('text_expansion_engine_expand', {
+        request: {
+          trigger: request.trigger,
+          context: {
+            inspectable: request.context.inspectable,
+            isSecureField: request.context.isSecureField ?? null,
+            applicationID: request.context.applicationID ?? null,
+            role: request.context.role ?? null,
+            inputPurpose: request.context.inputPurpose ?? null
+          },
+          timeoutMillis: request.timeoutMillis ?? 1_000,
+          requestID: request.requestID ?? globalThis.crypto?.randomUUID?.() ?? `text-expansion-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        }
+      });
+      const value = obj(raw);
+      return {
+        expanded: Boolean(pick(value, 'expanded')),
+        replacement: typeof pick(value, 'replacement') === 'string' ? String(pick(value, 'replacement')) : null
+      };
     },
     // P07 — derived from daemon.config.get + daemon.health
     dbStatus: async () => {

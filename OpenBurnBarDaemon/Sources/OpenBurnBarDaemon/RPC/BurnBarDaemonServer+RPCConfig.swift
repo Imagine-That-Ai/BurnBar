@@ -149,6 +149,24 @@ extension BurnBarDaemonServer {
                     result: try await textExpansionService.stopExternalEngine(typedRequest.params)
                 )
             )
+        case .textExpansionEngineExpand:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarTextExpansionEngineExpandRequest>.self,
+                from: requestData
+            )
+            guard let textExpansionService else {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: "Native text expansion storage is unavailable."
+                )
+            }
+            return encode(
+                BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    result: try await textExpansionService.expandExternalEngine(typedRequest.params)
+                )
+            )
         case .linuxOnboardingAction:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarLinuxOnboardingActionRequest>.self,

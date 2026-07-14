@@ -1302,6 +1302,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.text_expansion.engine.expand",
+    "caseName": "textExpansionEngineExpand",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarTextExpansionEngineExpandRequest",
+    "result": "BurnBarTextExpansionEngineExpandResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.text_expansion.engine.start",
     "caseName": "textExpansionEngineStart",
     "domain": "config",

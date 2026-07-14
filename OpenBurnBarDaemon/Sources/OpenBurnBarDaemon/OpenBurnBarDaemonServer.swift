@@ -1188,6 +1188,7 @@ public actor BurnBarDaemonServer {
             case .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
                  .textExpansionGet, .textExpansionUpsert, .textExpansionDelete, .textExpansionConsentUpdate,
                  .textExpansionEngineStatus, .textExpansionEngineStart, .textExpansionEngineStop,
+                 .textExpansionEngineExpand,
                  .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
                  .providerModelVariantUpsert, .providerModelVariantRemove,
                  .providerModelAliasUpsert, .providerModelAliasRemove,

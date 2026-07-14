@@ -123,6 +123,37 @@ final class BurnBarTextExpansionServiceTests: XCTestCase {
         }
     }
 
+    func testRPCExpansionRequestKeepsSecureFieldContextTextFreeAndRequiresConsent() async throws {
+        let service = makeService()
+        let request = BurnBarTextExpansionEngineExpandRequest(
+            trigger: "&&Reply",
+            context: BurnBarTextExpansionSecureFieldContext(
+                inspectable: true,
+                isSecureField: false,
+                applicationID: "org.example.editor",
+                role: "entry",
+                inputPurpose: "free-form"
+            ),
+            requestID: "request-1"
+        )
+
+        do {
+            _ = try await service.expandExternalEngine(request)
+            XCTFail("RPC expansion must require persisted consent")
+        } catch let error as BurnBarTextExpansionService.ServiceError {
+            XCTAssertEqual(error, .invalidConsent)
+        }
+
+        let encoded = try JSONEncoder().encode(request)
+        let payload = String(decoding: encoded, as: UTF8.self)
+        XCTAssertTrue(payload.contains("trigger"))
+        XCTAssertTrue(payload.contains("inspectable"))
+        XCTAssertFalse(payload.contains("clipboard"))
+        XCTAssertFalse(payload.contains("surrounding"))
+        XCTAssertFalse(payload.contains("fieldText"))
+        XCTAssertFalse(payload.contains("keyboard"))
+    }
+
     private func makeService() -> BurnBarTextExpansionService {
         BurnBarTextExpansionService(
             fileURL: directory.appendingPathComponent("text-expansion.obbsealed"),

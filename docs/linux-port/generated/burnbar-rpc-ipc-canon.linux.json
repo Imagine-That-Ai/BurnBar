@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 150,
+  "methodCount": 151,
   "methods": [
     {
       "id": "approval.respond",
@@ -1290,6 +1290,16 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarTextExpansionDeleteRequest",
       "result": "BurnBarTextExpansionSnapshot",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.text_expansion.engine.expand",
+      "caseName": "textExpansionEngineExpand",
+      "domain": "config",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarTextExpansionEngineExpandRequest",
+      "result": "BurnBarTextExpansionEngineExpandResponse",
       "error": "BurnBarRPCError"
     },
     {

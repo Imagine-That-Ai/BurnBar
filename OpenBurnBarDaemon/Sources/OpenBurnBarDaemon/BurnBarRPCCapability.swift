@@ -68,6 +68,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
              .textExpansionGet, .textExpansionUpsert, .textExpansionDelete, .textExpansionConsentUpdate,
              .textExpansionEngineStatus, .textExpansionEngineStart, .textExpansionEngineStop,
+             .textExpansionEngineExpand,
              .linuxPrivacyInventory, .linuxPrivacyDeletionPreview, .linuxPrivacyDeletionExecute,
              .linuxPrivacyExport, .linuxPrivacyRetentionStatus, .linuxPrivacyRetentionApply,
              .providerCredentialSlotUpsert, .providerCredentialSlotRemove,

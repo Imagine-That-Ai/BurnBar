@@ -29,6 +29,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         .textExpansionEngineStatus,
         .textExpansionEngineStart,
         .textExpansionEngineStop,
+        .textExpansionEngineExpand,
         .linuxPrivacyInventory,
         .linuxPrivacyDeletionPreview,
         .linuxPrivacyDeletionExecute,

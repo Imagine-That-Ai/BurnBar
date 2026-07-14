@@ -36,6 +36,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case textExpansionEngineStatus = "daemon.text_expansion.engine.status"
     case textExpansionEngineStart = "daemon.text_expansion.engine.start"
     case textExpansionEngineStop = "daemon.text_expansion.engine.stop"
+    case textExpansionEngineExpand = "daemon.text_expansion.engine.expand"
     case providerCredentialSlotUpsert = "daemon.provider.credential_slot.upsert"
     case providerCredentialSlotRemove = "daemon.provider.credential_slot.remove"
     case providerModelVariantUpsert = "daemon.provider.model_variant.upsert"

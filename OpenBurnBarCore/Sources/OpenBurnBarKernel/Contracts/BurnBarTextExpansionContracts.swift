@@ -228,3 +228,61 @@ public struct BurnBarTextExpansionEngineStopRequest: Codable, Hashable, Sendable
         self.timeoutMillis = timeoutMillis
     }
 }
+
+/// Accessibility metadata supplied by an input-method bridge for one
+/// trigger-only expansion request. The contract intentionally has no field
+/// contents, surrounding text, keyboard events, or clipboard fields.
+public struct BurnBarTextExpansionSecureFieldContext: Codable, Hashable, Sendable {
+    public let inspectable: Bool
+    public let isSecureField: Bool?
+    public let applicationID: String?
+    public let role: String?
+    public let inputPurpose: String?
+
+    public init(
+        inspectable: Bool,
+        isSecureField: Bool? = nil,
+        applicationID: String? = nil,
+        role: String? = nil,
+        inputPurpose: String? = nil
+    ) {
+        self.inspectable = inspectable
+        self.isSecureField = isSecureField
+        self.applicationID = applicationID
+        self.role = role
+        self.inputPurpose = inputPurpose
+    }
+}
+
+/// Requests one bounded, trigger-only expansion from the daemon-owned Linux
+/// engine. Consent and secure-field policy remain daemon-authoritative.
+public struct BurnBarTextExpansionEngineExpandRequest: Codable, Hashable, Sendable {
+    public let trigger: String
+    public let context: BurnBarTextExpansionSecureFieldContext
+    public let timeoutMillis: Int
+    public let requestID: String
+
+    public init(
+        trigger: String,
+        context: BurnBarTextExpansionSecureFieldContext,
+        timeoutMillis: Int = 1_000,
+        requestID: String = UUID().uuidString
+    ) {
+        self.trigger = trigger
+        self.context = context
+        self.timeoutMillis = timeoutMillis
+        self.requestID = requestID
+    }
+}
+
+/// Result of one trigger-only expansion. `replacement == nil` means the
+/// engine did not find a matching snippet; no input text is ever returned.
+public struct BurnBarTextExpansionEngineExpandResponse: Codable, Hashable, Sendable {
+    public let expanded: Bool
+    public let replacement: String?
+
+    public init(replacement: String?) {
+        self.expanded = replacement != nil
+        self.replacement = replacement
+    }
+}

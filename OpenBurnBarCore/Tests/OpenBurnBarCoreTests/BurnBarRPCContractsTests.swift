@@ -33,6 +33,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .textExpansionEngineStatus: "daemon.text_expansion.engine.status",
         .textExpansionEngineStart: "daemon.text_expansion.engine.start",
         .textExpansionEngineStop: "daemon.text_expansion.engine.stop",
+        .textExpansionEngineExpand: "daemon.text_expansion.engine.expand",
         .linuxPrivacyInventory: "daemon.privacy.inventory",
         .linuxPrivacyDeletionPreview: "daemon.privacy.deletion.preview",
         .linuxPrivacyDeletionExecute: "daemon.privacy.deletion.execute",

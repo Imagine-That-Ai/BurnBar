@@ -119,6 +119,7 @@ const explicitTypes = {
   "daemon.text_expansion.upsert": ["BurnBarTextExpansionUpsertRequest", "BurnBarTextExpansionWireSnippet"],
   "daemon.text_expansion.delete": ["BurnBarTextExpansionDeleteRequest", "BurnBarTextExpansionSnapshot"],
   "daemon.text_expansion.consent.update": ["BurnBarTextExpansionConsentUpdateRequest", "BurnBarTextExpansionConsentResponse"],
+  "daemon.text_expansion.engine.expand": ["BurnBarTextExpansionEngineExpandRequest", "BurnBarTextExpansionEngineExpandResponse"],
   "daemon.privacy.inventory": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxPrivacyInventoryResponse"],
   "daemon.privacy.deletion.preview": ["BurnBarLinuxPrivacyDeletionPreviewRequest", "BurnBarLinuxPrivacyDeletionPreviewResponse"],
   "daemon.privacy.deletion.execute": ["BurnBarLinuxPrivacyDeletionExecuteRequest", "BurnBarLinuxPrivacyDeletionExecuteResponse"],

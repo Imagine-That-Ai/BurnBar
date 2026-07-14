@@ -3879,6 +3879,11 @@ fn text_expansion_engine_stop(request: serde_json::Value) -> Result<serde_json::
     call_daemon_method("daemon.text_expansion.engine.stop", Some(request))
 }
 
+#[tauri::command]
+fn text_expansion_engine_expand(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.text_expansion.engine.expand", Some(request))
+}
+
 // ───────────────── P11: session env ─────────────────
 // Reads XDG env vars for real pet-tier detection (not hardcoded).
 #[tauri::command]
@@ -6382,6 +6387,7 @@ pub fn run() {
             text_expansion_engine_status,
             text_expansion_engine_start,
             text_expansion_engine_stop,
+            text_expansion_engine_expand,
             session_env,
             pet_companion_status,
             media_status,

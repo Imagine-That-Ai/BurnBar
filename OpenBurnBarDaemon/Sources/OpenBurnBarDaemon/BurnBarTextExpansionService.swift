@@ -373,11 +373,34 @@ public final class BurnBarTextExpansionService: @unchecked Sendable {
 #endif
     }
 
-#if os(Linux)
     /// Requests one trigger-only expansion from the signed external engine.
     /// Consent remains daemon-owned, secure-field metadata is evaluated here,
     /// and no keyboard, clipboard, surrounding-text, or field payload can be
     /// forwarded through this API.
+    public func expandExternalEngine(
+        _ request: BurnBarTextExpansionEngineExpandRequest
+    ) async throws -> BurnBarTextExpansionEngineExpandResponse {
+#if os(Linux)
+        let context = BurnBarLinuxTextExpansionAdapter.SecureFieldContext(
+            inspectable: request.context.inspectable,
+            isSecureField: request.context.isSecureField,
+            applicationID: request.context.applicationID,
+            role: request.context.role,
+            inputPurpose: request.context.inputPurpose
+        )
+        let replacement = try await expandExternalEngine(
+            trigger: request.trigger,
+            context: context,
+            timeoutMillis: request.timeoutMillis,
+            requestID: request.requestID
+        )
+        return BurnBarTextExpansionEngineExpandResponse(replacement: replacement)
+#else
+        throw ServiceError.unsupportedPlatform
+#endif
+    }
+
+#if os(Linux)
     public func expandExternalEngine(
         trigger: String,
         context: BurnBarLinuxTextExpansionAdapter.SecureFieldContext,
