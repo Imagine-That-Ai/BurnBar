@@ -71,6 +71,20 @@ test('Arch package selection rejects unexpected extra package outputs', (t) => {
   assert.equal(fs.existsSync(extra), true);
 });
 
+test('Arch package selection rejects a symlinked debug companion', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-arch-artifacts-symlink-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const canonical = path.join(root, 'openburnbar-1.2.3-1-x86_64.pkg.tar.zst');
+  const debug = path.join(root, 'openburnbar-debug-1.2.3-1-x86_64.pkg.tar.zst');
+  fs.writeFileSync(canonical, 'canonical');
+  fs.symlinkSync(canonical, debug);
+  assert.throws(
+    () => selectArchPackageArtifact(root, { version: '1.2.3', architecture: 'x86_64' }),
+    /Arch debug package output is not a regular file/u
+  );
+  assert.equal(fs.readlinkSync(debug), canonical);
+});
+
 test('release PKGBUILD rendering fills every checksum slot without bypasses', () => {
   const template = fs.readFileSync(new URL('../../packaging/linux/aur/PKGBUILD.in', import.meta.url), 'utf8');
   const checksums = Object.fromEntries(checksumSlots.map((slot, index) => [

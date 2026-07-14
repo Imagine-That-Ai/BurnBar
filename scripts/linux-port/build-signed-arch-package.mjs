@@ -139,6 +139,22 @@ function findSingle(root, suffix) {
   return found[0];
 }
 
+function findPackageArtifacts(root) {
+  const found = [];
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!fs.existsSync(current)) continue;
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      const stat = fs.lstatSync(full);
+      if (stat.isDirectory() && !stat.isSymbolicLink()) pending.push(full);
+      else if (entry.name.endsWith('.pkg.tar.zst')) found.push(full);
+    }
+  }
+  return found.sort();
+}
+
 export function selectArchPackageArtifact(packageDir, { version, architecture }) {
   if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u.test(version)) {
     throw new Error(`Arch package artifact version is invalid: ${version}`);
@@ -146,13 +162,17 @@ export function selectArchPackageArtifact(packageDir, { version, architecture })
   if (!['aarch64', 'x86_64'].includes(architecture)) {
     throw new Error(`Arch package artifact architecture is invalid: ${architecture}`);
   }
-  const artifacts = findFiles(packageDir, '.pkg.tar.zst');
+  const artifacts = findPackageArtifacts(packageDir);
   const canonicalName = `openburnbar-${version}-1-${architecture}.pkg.tar.zst`;
   const canonical = artifacts.filter((file) => path.basename(file) === canonicalName);
   if (canonical.length !== 1) {
     throw new Error(
       `expected exactly one canonical Arch package input ${canonicalName}, found ${canonical.length}`
     );
+  }
+  const canonicalStat = fs.lstatSync(canonical[0]);
+  if (!canonicalStat.isFile() || canonicalStat.isSymbolicLink()) {
+    throw new Error(`canonical Arch package output is not a regular file: ${canonical[0]}`);
   }
   const debugName = `openburnbar-debug-${version}-1-${architecture}.pkg.tar.zst`;
   const extras = artifacts.filter((file) => path.basename(file) !== canonicalName);
