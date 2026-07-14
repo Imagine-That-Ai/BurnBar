@@ -2,10 +2,11 @@
 
 This slice closes the Linux settings gap where consent flags were displayed as
 read-only values even though the daemon already exposes the typed
-`daemon.config.update` contract. It deliberately does not pretend that Linux
-has account erasure, destructive local deletion, full-data export, retention,
-or recovery-key workflows: those actions remain visibly unavailable until the
-daemon owns an audited scope, confirmation, receipt, and retry contract.
+`daemon.config.update` contract. It also adds a deliberately narrow daemon-owned
+local deletion contract: the UI can inventory, preview, and delete only the
+proxy-route log and encrypted text-expansion store after an exact confirmation.
+Account erasure, full-data export, retention, and recovery-key workflows remain
+unavailable and are not implied by this local action.
 
 ## Delivered
 
@@ -16,12 +17,24 @@ daemon owns an audited scope, confirmation, receipt, and retry contract.
   committed only after the daemon returns it.
 - A missing packaged bridge fails closed with an actionable error. No
   localStorage or other renderer-only persistence is used for privacy choices.
+- `BurnBarLinuxPrivacyService` exposes metadata-only inventory for two
+  allowlisted stores. It rejects traversal, symlinks, unsafe owner/perms, and
+  unknown stores; it never returns file paths or contents.
+- Preview tokens bind the selected stores to fingerprints, owner/perms, and a
+  five-minute expiry. Execute requires the exact phrase `DELETE LOCAL DATA`,
+  revalidates the token and scope, unlinks only the allowlisted files, and
+  returns an idempotent typed receipt.
+- Typed daemon RPCs and the Tauri bridge expose inventory/preview/execute; the
+  Settings surface shows store state/bytes, requires scope selection and
+  confirmation, refreshes inventory after success, and preserves an explicit
+  unavailable state when the packaged bridge lacks the contract.
 - The current daemon response may omit path/status envelope fields; the store
   preserves the already-loaded daemon facts until an explicit config refresh,
   while consent/provider fields come from the returned canonical snapshot.
-- Full-data export, local deletion, account erasure, and recovery/retention are
+- Full-data export, account erasure, retention, and recovery/retention are
   presented as unavailable capability states. The existing redacted support
-  diagnostics export remains linked separately.
+  diagnostics export remains linked separately. The local deletion control does
+  not touch transcripts, credentials, account data, or arbitrary files.
 
 ## Validation
 
@@ -42,15 +55,16 @@ not claimed by this slice.
 
 ## Follow-up contract
 
-To move the unavailable rows to an actionable state, add canonical daemon RPCs
-with explicit scope and policy before changing this UI:
+To move the remaining unavailable rows to an actionable state, add canonical
+daemon RPCs with explicit scope and policy before changing this UI:
 
-1. Preview and execute local/account deletion with confirmation, audit receipt,
-   retry/partial-failure handling, and offline behavior.
+1. Extend the existing local preview/execute pattern to account deletion only
+   after backend erasure authority, audit receipts, retry/partial-failure
+   handling, and offline behavior are specified.
 2. Export selected scopes with native save destination, encryption policy, and
    import/restore validation.
 3. Define retention expiry and recovery-key custody, including locked keyring
    and cross-device propagation states.
 
-Until those contracts exist, the Linux shell must keep the controls disabled and
-must not infer completion from renderer state.
+Until those contracts exist, the Linux shell must keep the remaining controls
+disabled and must not infer completion from renderer state.

@@ -40,8 +40,11 @@ refs, persisted activity body replay/native resume, actionable native
 notifications/shortcut status, SQLCipher-gated encrypted snapshot/atomic
 restore, and macOS-compatible passphrase recovery bundles. The latest source
 wave adds `274f67fba0` (explicitly opted-in, signed IBus/Fcitx engine
-registration) and `ea82fe5140` (bounded Wayland portal capability probing and
-an X11-only native pet companion window). The
+registration), `ea82fe5140` (bounded Wayland portal capability probing and
+an X11-only native pet companion window), and `9598c0b9e8` (typed text-engine
+lifecycle RPCs, Mission Control checkpoint/tombstone replay protection, and
+daemon-owned local privacy inventory/preview/execute deletion with a Settings
+control). The
 authoritative promotion ledger remains 0/40 ready and 0/7 environment receipts;
 no PR in this checkpoint may be treated as full parity or as evidence that the
 Linux release candidate is shippable.
@@ -61,7 +64,10 @@ bounds/timeout/cancellation (`2dcd7e3abc`), and daemon-owned text expansion with
 AES-GCM sealed storage, native Secret Service/KWallet custody, consent RPC, and
 in-app-only Composer expansion (`227d7e3c49`, `46aa7f3c91`, `6cc09bc2c0`,
 `930125a53e`, `83ef8e8edf`, `09860849c7`). These improve source parity without
-changing the 0/40 product or 0/7 environment certification state.
+changing the 0/40 product or 0/7 environment certification state. The current
+source commit is `9598c0b9e8`; focused changed-surface UI/bridge tests and the
+isolated pet/text-expansion suites are green, while the broad Vitest run remains
+a non-gating host-contention signal until it can run on a quiet Linux host.
 After the code stack is review-clean, rerun
 the strict ledger on the exact candidate and collect the installed GNOME
 X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
@@ -105,7 +111,7 @@ The integration branch now includes the next bounded source slices:
   typed consent/denial/timeout/cancellation states and an X11-only Tauri pet
   companion window with explicit click-through control.
 
-The combined frontend suite is **78 files / 684 tests**, the Tauri Rust suite
+The combined frontend suite is **78 files / 685 tests**, the Tauri Rust suite
 is **90/90**, TypeScript and the production bundle verifier pass (303
 modules), and the
 daemon target builds. These are source gates only. The promotion ledger remains
@@ -189,14 +195,18 @@ commits remain separately inspectable in the branch history:
 | 7 | Chat citations and tool approvals | Existing chat thread/gateway contracts, approval.respond, citation source identity | Bounded citation metadata is normalized with thread/message validation and source-unavailable fail-closed behavior; daemon-issued approval IDs route approve/reject/cancel with single-flight terminal state; focused chat tests pass | Unloaded-history export/resume, pop-out, remaining backends, and installed reconnect/offline evidence remain open |
 | 8 | SmartHub command safety | Existing typed CLI bridge and capability probe | Allowlisted discovery/status/test/cast/device/parity operations validate request IDs and bounded JSON, drain output concurrently, time out at 8 seconds, support cancellation, and expose degraded renderer state; focused TS/Rust tests pass | Real devices, Avahi/DBus, auth, offline/reconnect, and desktop matrix remain open |
 | 9 | Daemon-owned text expansion | Existing text expansion surface/Composer, daemon RPC canon, native secret custodian | AES-GCM sealed snapshot with native Secret Service/KWallet key custody, owner-only permissions, consent RPC, in-app-only expansion, no renderer localStorage/global capture, and corruption/missing-key fail-closed tests | Linux keyring runtime, IBus/Fcitx external integration, secure-field exclusions, sync/conflict policy, and Wayland/X11 evidence remain open |
+| 10 | Signed text-engine lifecycle | Slice 9 storage/consent boundary, signed engine manifest, daemon RPC canon, Tauri bridge | Registration remains owner/path/permission/session checked; typed status/start/stop RPCs enforce consent, exact executable/session binding, bounded handshake timeout, restricted environment, kill-switch cancellation, and no keyboard/clipboard/surrounding-text capture; Swift/bridge tests pass | Linux Secret Service/KWallet, real IBus/Fcitx engine execution, secure-field matrix, and installed receipt remain open |
+| 11 | Wayland Computer Use portal session | Existing Computer Use authority/kill-switch boundary, `org.freedesktop.portal.RemoteDesktop` | Create/select/start/stop consent flow returns typed active/denied/timed-out/cancelled/unavailable state, validates portal responses, never claims global input without an executor, and tests timeout/cancel/kill-switch/error paths | Linux GNOME/KDE/wlroots portal receipts and a real input executor remain open |
+| 12 | Mission Control replay and privacy deletion | Existing project journal/checkpoint and daemon-owned local-data stores, RPC canon, Settings wiring | Projection checkpoint/tail mismatch rebuilds without resurrecting deleted IDs; local privacy inventory exposes metadata only; preview tokens expire and bind owner/perms/fingerprints; exact confirmation performs idempotent allowlisted unlink and returns a typed receipt; no account/transcript/credential deletion claim; Swift/Rust/bridge/Settings tests pass | Installed restart/crash replay, locked keyring, account erasure/full export/retention/recovery policy, and Linux runtime proof remain open |
 
 Recommended engineering order after these source slices is: (a) land and
 rebase the integration PR; (b) run Linux SQLCipher, Secret Service/KWallet,
 notification, and attachment round-trips on a real host; (c) implement
 recovery key-loss/device-transfer and remaining chat provider contracts; (d)
 certify full chat/activity/database/notification flows in installed packages;
-and (e) only then close the P-14/P-17/P-22/P-27 ledger rows with exact-candidate
-receipts.
+and (e) exercise the new text-engine, portal, Mission Control replay, and
+privacy deletion boundaries on the installed candidate before closing the
+P-14/P-17/P-22/P-27/P-29/P-40 ledger rows with exact-candidate receipts.
 
 Linux has a real desktop shell, a broad set of route surfaces, a Swift daemon
 path, AF_UNIX RPC, a provider gateway, package metadata, Linux-specific
