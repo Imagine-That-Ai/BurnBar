@@ -149,3 +149,108 @@ public struct BurnBarLinuxPrivacyExportResponse: Codable, Hashable, Sendable {
         self.formatVersion = formatVersion
     }
 }
+
+public enum BurnBarLinuxPrivacyRetentionPolicyState: String, Codable, Hashable, Sendable {
+    case defaults
+    case configured
+    case blocked
+}
+
+public struct BurnBarLinuxPrivacyRetentionRule: Codable, Hashable, Sendable {
+    public let store: BurnBarLinuxPrivacyStoreID
+    public let maxAgeSeconds: Int64
+    public let maxBytes: Int64
+
+    public init(
+        store: BurnBarLinuxPrivacyStoreID,
+        maxAgeSeconds: Int64,
+        maxBytes: Int64
+    ) {
+        self.store = store
+        self.maxAgeSeconds = maxAgeSeconds
+        self.maxBytes = maxBytes
+    }
+}
+
+public struct BurnBarLinuxPrivacyRetentionStoreStatus: Codable, Hashable, Sendable {
+    public let store: BurnBarLinuxPrivacyStoreID
+    public let state: BurnBarLinuxPrivacyStoreState
+    public let bytes: Int64
+    public let ageSeconds: Int64?
+    public let maxAgeSeconds: Int64
+    public let maxBytes: Int64
+    public let wouldPurge: Bool
+    public let reason: String
+
+    public init(
+        store: BurnBarLinuxPrivacyStoreID,
+        state: BurnBarLinuxPrivacyStoreState,
+        bytes: Int64,
+        ageSeconds: Int64?,
+        maxAgeSeconds: Int64,
+        maxBytes: Int64,
+        wouldPurge: Bool,
+        reason: String
+    ) {
+        self.store = store
+        self.state = state
+        self.bytes = bytes
+        self.ageSeconds = ageSeconds
+        self.maxAgeSeconds = maxAgeSeconds
+        self.maxBytes = maxBytes
+        self.wouldPurge = wouldPurge
+        self.reason = reason
+    }
+}
+
+public struct BurnBarLinuxPrivacyRetentionStatusRequest: Codable, Hashable, Sendable {
+    public init() {}
+}
+
+public struct BurnBarLinuxPrivacyRetentionStatusResponse: Codable, Hashable, Sendable {
+    public let policyState: BurnBarLinuxPrivacyRetentionPolicyState
+    public let rules: [BurnBarLinuxPrivacyRetentionRule]
+    public let stores: [BurnBarLinuxPrivacyRetentionStoreStatus]
+    public let evaluatedAt: Date
+
+    public init(
+        policyState: BurnBarLinuxPrivacyRetentionPolicyState,
+        rules: [BurnBarLinuxPrivacyRetentionRule],
+        stores: [BurnBarLinuxPrivacyRetentionStoreStatus],
+        evaluatedAt: Date
+    ) {
+        self.policyState = policyState
+        self.rules = rules
+        self.stores = stores
+        self.evaluatedAt = evaluatedAt
+    }
+}
+
+public struct BurnBarLinuxPrivacyRetentionApplyRequest: Codable, Hashable, Sendable {
+    public let rules: [BurnBarLinuxPrivacyRetentionRule]
+    public let confirmation: String
+
+    public init(
+        rules: [BurnBarLinuxPrivacyRetentionRule],
+        confirmation: String
+    ) {
+        self.rules = rules
+        self.confirmation = confirmation
+    }
+}
+
+public struct BurnBarLinuxPrivacyRetentionApplyResponse: Codable, Hashable, Sendable {
+    public let status: BurnBarLinuxPrivacyRetentionStatusResponse
+    public let removedBytes: Int64
+    public let removedEntries: Int
+
+    public init(
+        status: BurnBarLinuxPrivacyRetentionStatusResponse,
+        removedBytes: Int64,
+        removedEntries: Int
+    ) {
+        self.status = status
+        self.removedBytes = removedBytes
+        self.removedEntries = removedEntries
+    }
+}

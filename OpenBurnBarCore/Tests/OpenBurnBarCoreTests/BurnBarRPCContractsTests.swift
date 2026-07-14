@@ -37,6 +37,8 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .linuxPrivacyDeletionPreview: "daemon.privacy.deletion.preview",
         .linuxPrivacyDeletionExecute: "daemon.privacy.deletion.execute",
         .linuxPrivacyExport: "daemon.privacy.export",
+        .linuxPrivacyRetentionStatus: "daemon.privacy.retention.status",
+        .linuxPrivacyRetentionApply: "daemon.privacy.retention.apply",
         .providerCredentialSlotUpsert: "daemon.provider.credential_slot.upsert",
         .providerCredentialSlotRemove: "daemon.provider.credential_slot.remove",
         .providerModelVariantUpsert: "daemon.provider.model_variant.upsert",

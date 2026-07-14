@@ -5,6 +5,7 @@ import type {
   ConfigSnapshot,
   LinuxPrivacyStoreID,
   LinuxShellBridge,
+  LinuxPrivacyRetentionRule,
   NotificationConfig,
   ProviderSettings
 } from '../../tauriBridge.js';
@@ -435,6 +436,137 @@ function PrivacyExportControl({ fixtureMode }: { fixtureMode: boolean }) {
       </label>
       {exportState.status === 'success' ? <Banner tone="ok" role="status">{exportState.message}</Banner> : null}
       {exportState.status === 'error' ? <Banner tone="degraded" role="alert">{exportState.message}</Banner> : null}
+    </>
+  );
+}
+
+const RETENTION_CONFIRMATION = 'APPLY RETENTION POLICY';
+const RETENTION_AGE_OPTIONS = [1, 7, 30, 90, 365];
+const RETENTION_SIZE_OPTIONS = [1, 4, 8, 16, 64];
+
+function PrivacyRetentionControl({ fixtureMode }: { fixtureMode: boolean }) {
+  const bridge = useShellStore((state) => state.bridge);
+  const busy = useSettingsWiringStore((state) => state.busy);
+  const retention = useSettingsWiringStore((state) => state.privacyRetention);
+  const loadPrivacyRetention = useSettingsWiringStore((state) => state.loadPrivacyRetention);
+  const applyPrivacyRetention = useSettingsWiringStore((state) => state.applyPrivacyRetention);
+  const [limits, setLimits] = useState<Record<LinuxPrivacyStoreID, { days: number; megabytes: number }>>({
+    proxy_route_log: { days: 30, megabytes: 8 },
+    text_expansion_store: { days: 365, megabytes: 4 }
+  });
+  const [confirmation, setConfirmation] = useState('');
+  const supported = !fixtureMode && typeof bridge?.linuxPrivacyRetentionStatus === 'function' && typeof bridge?.linuxPrivacyRetentionApply === 'function';
+
+  useEffect(() => {
+    if (supported) void loadPrivacyRetention();
+  }, [loadPrivacyRetention, supported]);
+
+  if (!supported) {
+    return (
+      <SettingRow
+        iconGlyph="◷"
+        label="Automatic local retention"
+        description="Apply daemon-owned age and size limits to the proxy route log and encrypted text-expansion store."
+        control={<span className="muted" role="status">Unavailable</span>}
+        readOnlyNote="The packaged daemon must expose the audited retention policy contract."
+      />
+    );
+  }
+
+  const disabled = Boolean(busy) || retention.status === 'loading' || retention.status === 'applying';
+  const rules: LinuxPrivacyRetentionRule[] = (Object.keys(limits) as LinuxPrivacyStoreID[]).map((store) => ({
+    store,
+    maxAgeSeconds: limits[store].days * 24 * 60 * 60,
+    maxBytes: limits[store].megabytes * 1024 * 1024
+  }));
+  const canApply = confirmation === RETENTION_CONFIRMATION && !disabled;
+  const updateLimit = (store: LinuxPrivacyStoreID, field: 'days' | 'megabytes', value: number) => {
+    setLimits((current) => ({ ...current, [store]: { ...current[store], [field]: value } }));
+  };
+
+  return (
+    <>
+      <SettingRow
+        iconGlyph="◷"
+        label="Automatic local retention"
+        description="The daemon evaluates and atomically trims only the two allowlisted local stores. Account erasure, cloud data, and recovery receipts remain separate workflows."
+        control={
+          <span className="settings-verification-value">
+            <span className="muted" role="status">
+              {retention.status === 'loading' ? 'Loading…' : retention.data?.policyState ?? 'Unknown'}
+            </span>
+            <button type="button" className="ghost" disabled={disabled} onClick={() => void loadPrivacyRetention()}>
+              Refresh
+            </button>
+          </span>
+        }
+      />
+      <fieldset className="privacy-store-picker" disabled={disabled}>
+        <legend className="muted">Retention limits</legend>
+        {(Object.keys(PRIVACY_STORE_LABELS) as LinuxPrivacyStoreID[]).map((store) => {
+          const status = retention.data?.stores.find((item) => item.store === store);
+          return (
+            <div key={store} className="settings-verification-value">
+              <strong>{PRIVACY_STORE_LABELS[store]}</strong>
+              <label className="setting-field">
+                <span>Max age</span>
+                <select
+                  value={limits[store].days}
+                  aria-label={`${PRIVACY_STORE_LABELS[store]} maximum age`}
+                  onChange={(event) => updateLimit(store, 'days', Number(event.currentTarget.value))}
+                >
+                  {RETENTION_AGE_OPTIONS.map((days) => <option key={days} value={days}>{days} days</option>)}
+                </select>
+              </label>
+              <label className="setting-field">
+                <span>Max size</span>
+                <select
+                  value={limits[store].megabytes}
+                  aria-label={`${PRIVACY_STORE_LABELS[store]} maximum size`}
+                  onChange={(event) => updateLimit(store, 'megabytes', Number(event.currentTarget.value))}
+                >
+                  {RETENTION_SIZE_OPTIONS.map((megabytes) => <option key={megabytes} value={megabytes}>{megabytes} MB</option>)}
+                </select>
+              </label>
+              <span className="muted" role="status">
+                {status?.state === 'blocked'
+                  ? `Blocked: ${status.reason}`
+                  : status?.wouldPurge
+                    ? `Over limit (${status.bytes.toLocaleString()} bytes)`
+                    : status?.state === 'absent'
+                      ? 'No local store'
+                      : `${status?.bytes.toLocaleString() ?? 0} bytes within limit`}
+              </span>
+            </div>
+          );
+        })}
+      </fieldset>
+      <label className="setting-field">
+        <span>Type {RETENTION_CONFIRMATION} to apply</span>
+        <input
+          type="text"
+          value={confirmation}
+          aria-label="Retention policy confirmation"
+          autoComplete="off"
+          onChange={(event) => setConfirmation(event.currentTarget.value)}
+        />
+      </label>
+      <div className="actions">
+        <button
+          type="button"
+          className="danger"
+          disabled={!canApply}
+          aria-busy={retention.status === 'applying'}
+          onClick={() => {
+            setConfirmation('');
+            void applyPrivacyRetention({ rules, confirmation: RETENTION_CONFIRMATION });
+          }}
+        >
+          {retention.status === 'applying' ? 'Applying…' : 'Apply retention policy'}
+        </button>
+      </div>
+      {retention.status === 'success' ? <Banner tone="ok" role="status">{retention.message}</Banner> : null}
+      {retention.status === 'error' ? <Banner tone="degraded" role="alert">{retention.message}</Banner> : null}
     </>
   );
 }
@@ -1576,6 +1708,7 @@ export function SettingsDetailPane({
               <PrivacyExportControl fixtureMode={fixtureMode} />
               <PrivacyDeletionControl fixtureMode={fixtureMode} />
               <ProxyRouteRetentionControl fixtureMode={fixtureMode} />
+              <PrivacyRetentionControl fixtureMode={fixtureMode} />
               <SettingRow
                 iconGlyph="◎"
                 label="Account erasure"
@@ -1585,8 +1718,8 @@ export function SettingsDetailPane({
               />
               <SettingRow
                 iconGlyph="↺"
-                label="Recovery and retention"
-                description="Recovery keys, retention expiry, and restore receipts are not available from the current daemon contract."
+                label="Recovery and restore receipts"
+                description="Recovery keys, account erasure, cloud propagation, and restore receipts remain outside this local retention control."
                 control={<span className="muted" role="status">Unavailable</span>}
                 readOnlyNote="No renderer-only fallback or local recovery state is stored."
               />

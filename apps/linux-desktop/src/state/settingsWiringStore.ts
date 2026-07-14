@@ -23,6 +23,9 @@ import type {
   LinuxPrivacyExportRequest,
   LinuxPrivacyExportResult,
   LinuxPrivacyInventory,
+  LinuxPrivacyRetentionApplyRequest,
+  LinuxPrivacyRetentionApplyResult,
+  LinuxPrivacyRetentionStatus,
   LinuxPrivacyStoreID
 } from '../tauriBridge.js';
 import { useShellStore } from './shellStore.js';
@@ -53,6 +56,15 @@ export type PrivacyExportState = {
   message: string | null;
 };
 
+export type PrivacyRetentionStatus = 'idle' | 'loading' | 'ready' | 'applying' | 'success' | 'error';
+
+export type PrivacyRetentionState = {
+  status: PrivacyRetentionStatus;
+  data: LinuxPrivacyRetentionStatus | null;
+  result: LinuxPrivacyRetentionApplyResult | null;
+  message: string | null;
+};
+
 export type PrivacySettingsPatch = Partial<
   Pick<ConfigSnapshot, 'telemetryEnabled' | 'privacyOptIn' | 'cloudSyncEnabled'>
 >;
@@ -71,6 +83,7 @@ export type SettingsWiringState = {
   privacyMutation: PrivacyMutationState;
   privacyDeletion: PrivacyDeletionState;
   privacyExport: PrivacyExportState;
+  privacyRetention: PrivacyRetentionState;
   loadRouteLog(): Promise<void>;
   clearRouteLog(): Promise<void>;
   loadNotifications(): Promise<void>;
@@ -81,6 +94,8 @@ export type SettingsWiringState = {
   previewPrivacyDeletion(stores: LinuxPrivacyStoreID[]): Promise<void>;
   executePrivacyDeletion(confirmation: string): Promise<void>;
   exportPrivacyData(request: LinuxPrivacyExportRequest): Promise<void>;
+  loadPrivacyRetention(): Promise<void>;
+  applyPrivacyRetention(request: LinuxPrivacyRetentionApplyRequest): Promise<void>;
   clearPrivacyDeletionPreview(): void;
   replaceSnapshot(snapshot: ConfigSnapshot): Promise<void>;
   upsertCredentialSlot(params: {
@@ -147,6 +162,7 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
   privacyMutation: { status: 'idle', message: null },
   privacyDeletion: { status: 'idle', inventory: null, preview: null, result: null, message: null },
   privacyExport: { status: 'idle', result: null, message: null },
+  privacyRetention: { status: 'idle', data: null, result: null, message: null },
 
   async loadRouteLog() {
     const { fixtureMode, bridge } = useShellStore.getState();
@@ -368,6 +384,43 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
     } catch (e) {
       const failure = message(e, 'Privacy export failed.');
       set({ busy: null, privacyExport: { status: 'error', result: null, message: failure } });
+    }
+  },
+
+  async loadPrivacyRetention() {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    set({ privacyRetention: { ...get().privacyRetention, status: 'loading', message: null } });
+    try {
+      if (fixtureMode) throw new Error('Privacy retention requires the packaged Linux daemon.');
+      if (!bridge?.linuxPrivacyRetentionStatus) throw new Error('Privacy retention status RPC bridge is unavailable.');
+      const data = await bridge.linuxPrivacyRetentionStatus();
+      set({ privacyRetention: { status: 'ready', data, result: null, message: null } });
+    } catch (e) {
+      set({ privacyRetention: { ...get().privacyRetention, status: 'error', message: message(e, 'Privacy retention status failed.') } });
+    }
+  },
+
+  async applyPrivacyRetention(request) {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    set({ busy: 'privacy.retention.apply', privacyRetention: { ...get().privacyRetention, status: 'applying', message: null } });
+    try {
+      if (fixtureMode) throw new Error('Privacy retention requires the packaged Linux daemon.');
+      if (!bridge?.linuxPrivacyRetentionApply) throw new Error('Privacy retention apply RPC bridge is unavailable.');
+      if (request.confirmation !== 'APPLY RETENTION POLICY') throw new Error('Type the exact retention confirmation phrase.');
+      if (request.rules.length !== 2) throw new Error('Retention policy must cover both local stores.');
+      const result = await bridge.linuxPrivacyRetentionApply(request);
+      set({
+        busy: null,
+        privacyRetention: {
+          status: 'success',
+          data: result.status,
+          result,
+          message: `Retention policy applied; removed ${result.removedEntries} store entr${result.removedEntries === 1 ? 'y' : 'ies'}.`
+        }
+      });
+    } catch (e) {
+      const failure = message(e, 'Privacy retention apply failed.');
+      set({ busy: null, privacyRetention: { ...get().privacyRetention, status: 'error', message: failure } });
     }
   },
 

@@ -3055,6 +3055,59 @@ fn linux_privacy_export(request: serde_json::Value) -> Result<serde_json::Value,
 }
 
 #[tauri::command]
+fn linux_privacy_retention_status() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.privacy.retention.status", None)
+}
+
+#[tauri::command]
+fn linux_privacy_retention_apply(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    let object = request
+        .as_object()
+        .ok_or_else(|| "privacy retention request must be an object".to_string())?;
+    let rules = object
+        .get("rules")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| "privacy retention rules are required".to_string())?;
+    if rules.len() != 2 {
+        return Err("privacy retention must cover both supported stores".to_string());
+    }
+    let confirmation = object
+        .get("confirmation")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "privacy retention confirmation is required".to_string())?;
+    if confirmation != "APPLY RETENTION POLICY" {
+        return Err("privacy retention confirmation is invalid".to_string());
+    }
+    let mut stores = std::collections::HashSet::new();
+    for rule in rules {
+        let rule = rule
+            .as_object()
+            .ok_or_else(|| "privacy retention rule must be an object".to_string())?;
+        let store = rule
+            .get("store")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| "privacy retention rule store is required".to_string())?;
+        if !matches!(store, "proxy_route_log" | "text_expansion_store") || !stores.insert(store) {
+            return Err("privacy retention rules must cover each supported store once".to_string());
+        }
+        let max_age_seconds = rule
+            .get("maxAgeSeconds")
+            .and_then(|value| value.as_i64())
+            .ok_or_else(|| "privacy retention maxAgeSeconds is required".to_string())?;
+        let max_bytes = rule
+            .get("maxBytes")
+            .and_then(|value| value.as_i64())
+            .ok_or_else(|| "privacy retention maxBytes is required".to_string())?;
+        if !(3_600..=31_536_000).contains(&max_age_seconds)
+            || !(65_536..=67_108_864).contains(&max_bytes)
+        {
+            return Err("privacy retention rule is outside safe bounds".to_string());
+        }
+    }
+    call_daemon_method("daemon.privacy.retention.apply", Some(request))
+}
+
+#[tauri::command]
 fn notification_config_get() -> Result<serde_json::Value, String> {
     call_daemon_method(
         "daemon.notification.config.get",
@@ -6283,6 +6336,8 @@ pub fn run() {
             linux_privacy_deletion_preview,
             linux_privacy_deletion_execute,
             linux_privacy_export,
+            linux_privacy_retention_status,
+            linux_privacy_retention_apply,
             notification_config_get,
             notification_config_update,
             notification_health,

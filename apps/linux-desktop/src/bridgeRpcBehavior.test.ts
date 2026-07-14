@@ -266,6 +266,34 @@ describe('VAL-RPC-002 bridge behavior', () => {
         destinationPath: '/tmp/privacy-export.obb',
         byteCount: 192,
         formatVersion: 1
+      })
+      .mockResolvedValueOnce({
+        policyState: 'defaults',
+        rules: [
+          { store: 'proxy_route_log', maxAgeSeconds: 2592000, maxBytes: 8388608 },
+          { store: 'text_expansion_store', maxAgeSeconds: 31536000, maxBytes: 4194304 }
+        ],
+        stores: [
+          { store: 'proxy_route_log', state: 'ready', bytes: 24, ageSeconds: 10, maxAgeSeconds: 2592000, maxBytes: 8388608, wouldPurge: false, reason: 'within_policy' },
+          { store: 'text_expansion_store', state: 'absent', bytes: 0, ageSeconds: null, maxAgeSeconds: 31536000, maxBytes: 4194304, wouldPurge: false, reason: 'missing' }
+        ],
+        evaluatedAt: '2026-07-14T00:00:00Z'
+      })
+      .mockResolvedValueOnce({
+        status: {
+          policyState: 'configured',
+          rules: [
+            { store: 'proxy_route_log', maxAgeSeconds: 86400, maxBytes: 1048576 },
+            { store: 'text_expansion_store', maxAgeSeconds: 86400, maxBytes: 1048576 }
+          ],
+          stores: [
+            { store: 'proxy_route_log', state: 'ready', bytes: 0, ageSeconds: null, maxAgeSeconds: 86400, maxBytes: 1048576, wouldPurge: false, reason: 'within_policy' },
+            { store: 'text_expansion_store', state: 'absent', bytes: 0, ageSeconds: null, maxAgeSeconds: 86400, maxBytes: 1048576, wouldPurge: false, reason: 'missing' }
+          ],
+          evaluatedAt: '2026-07-14T00:00:00Z'
+        },
+        removedBytes: 24,
+        removedEntries: 1
       });
     const b = await bridge();
     await expect(b.linuxPrivacyInventory?.()).resolves.toMatchObject({
@@ -288,6 +316,20 @@ describe('VAL-RPC-002 bridge behavior', () => {
       destinationPath: '/tmp/privacy-export.obb',
       passphrase: 'correct horse battery'
     })).resolves.toMatchObject({ destinationPath: '/tmp/privacy-export.obb', byteCount: 192, formatVersion: 1 });
+    await expect(b.linuxPrivacyRetentionStatus?.()).resolves.toMatchObject({
+      policyState: 'defaults',
+      stores: [
+        { store: 'proxy_route_log', wouldPurge: false },
+        { store: 'text_expansion_store', wouldPurge: false }
+      ]
+    });
+    await expect(b.linuxPrivacyRetentionApply?.({
+      rules: [
+        { store: 'proxy_route_log', maxAgeSeconds: 86_400, maxBytes: 1_048_576 },
+        { store: 'text_expansion_store', maxAgeSeconds: 86_400, maxBytes: 1_048_576 }
+      ],
+      confirmation: 'APPLY RETENTION POLICY'
+    })).resolves.toMatchObject({ removedBytes: 24, removedEntries: 1, status: { policyState: 'configured' } });
     expect(invoke).toHaveBeenNthCalledWith(1, 'linux_privacy_inventory');
     expect(invoke).toHaveBeenNthCalledWith(2, 'linux_privacy_deletion_preview', { stores: ['proxy_route_log'] });
     expect(invoke).toHaveBeenNthCalledWith(3, 'linux_privacy_deletion_execute', {
@@ -298,6 +340,16 @@ describe('VAL-RPC-002 bridge behavior', () => {
         stores: ['proxy_route_log'],
         destinationPath: '/tmp/privacy-export.obb',
         passphrase: 'correct horse battery'
+      }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(5, 'linux_privacy_retention_status');
+    expect(invoke).toHaveBeenNthCalledWith(6, 'linux_privacy_retention_apply', {
+      request: {
+        rules: [
+          { store: 'proxy_route_log', maxAgeSeconds: 86_400, maxBytes: 1_048_576 },
+          { store: 'text_expansion_store', maxAgeSeconds: 86_400, maxBytes: 1_048_576 }
+        ],
+        confirmation: 'APPLY RETENTION POLICY'
       }
     });
   });

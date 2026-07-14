@@ -1303,6 +1303,37 @@ export type LinuxPrivacyExportResult = {
   byteCount: number;
   formatVersion: number;
 };
+export type LinuxPrivacyRetentionPolicyState = 'defaults' | 'configured' | 'blocked';
+export type LinuxPrivacyRetentionRule = {
+  store: LinuxPrivacyStoreID;
+  maxAgeSeconds: number;
+  maxBytes: number;
+};
+export type LinuxPrivacyRetentionStoreStatus = {
+  store: LinuxPrivacyStoreID;
+  state: LinuxPrivacyStoreState;
+  bytes: number;
+  ageSeconds?: number;
+  maxAgeSeconds: number;
+  maxBytes: number;
+  wouldPurge: boolean;
+  reason: string;
+};
+export type LinuxPrivacyRetentionStatus = {
+  policyState: LinuxPrivacyRetentionPolicyState;
+  rules: LinuxPrivacyRetentionRule[];
+  stores: LinuxPrivacyRetentionStoreStatus[];
+  evaluatedAt: string;
+};
+export type LinuxPrivacyRetentionApplyRequest = {
+  rules: LinuxPrivacyRetentionRule[];
+  confirmation: string;
+};
+export type LinuxPrivacyRetentionApplyResult = {
+  status: LinuxPrivacyRetentionStatus;
+  removedBytes: number;
+  removedEntries: number;
+};
 
 export type GatewayProxyMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -1492,6 +1523,8 @@ export interface LinuxShellBridge {
   linuxPrivacyDeletionPreview?(stores: LinuxPrivacyStoreID[]): Promise<LinuxPrivacyDeletionPreview>;
   linuxPrivacyDeletionExecute?(request: LinuxPrivacyDeletionRequest): Promise<LinuxPrivacyDeletionResult>;
   linuxPrivacyExport?(request: LinuxPrivacyExportRequest): Promise<LinuxPrivacyExportResult>;
+  linuxPrivacyRetentionStatus?(): Promise<LinuxPrivacyRetentionStatus>;
+  linuxPrivacyRetentionApply?(request: LinuxPrivacyRetentionApplyRequest): Promise<LinuxPrivacyRetentionApplyResult>;
   notificationConfigGet?(): Promise<NotificationConfig>;
   notificationConfigUpdate?(config: NotificationConfig): Promise<NotificationConfig>;
   notificationHealth?(): Promise<NotificationHealth>;
@@ -3891,6 +3924,11 @@ function mapProxyRouteLog(raw: RawJsonValue): ProxyRouteLogEntry[] {
 
 const LINUX_PRIVACY_STORES = new Set<LinuxPrivacyStoreID>(['proxy_route_log', 'text_expansion_store']);
 const LINUX_PRIVACY_STATES = new Set<LinuxPrivacyStoreState>(['absent', 'ready', 'blocked']);
+const LINUX_PRIVACY_RETENTION_STATES = new Set<LinuxPrivacyRetentionPolicyState>(['defaults', 'configured', 'blocked']);
+const LINUX_PRIVACY_RETENTION_MIN_AGE_SECONDS = 60 * 60;
+const LINUX_PRIVACY_RETENTION_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
+const LINUX_PRIVACY_RETENTION_MIN_BYTES = 64 * 1024;
+const LINUX_PRIVACY_RETENTION_MAX_BYTES = 64 * 1024 * 1024;
 
 function mapLinuxPrivacyStoreInventory(raw: RawJsonValue): LinuxPrivacyStoreInventory {
   const value = obj(raw);
@@ -3965,6 +4003,93 @@ function mapLinuxPrivacyExport(raw: RawJsonValue): LinuxPrivacyExportResult {
     destinationPath: requireString(pick(value, 'destinationPath', 'destination_path'), 'privacy export.destinationPath'),
     byteCount,
     formatVersion
+  };
+}
+
+function mapLinuxPrivacyRetentionRule(raw: RawJsonValue): LinuxPrivacyRetentionRule {
+  const value = obj(raw);
+  const store = str(pick(value, 'store')) as LinuxPrivacyStoreID;
+  const maxAgeSeconds = Math.trunc(num(pick(value, 'maxAgeSeconds', 'max_age_seconds')));
+  const maxBytes = Math.trunc(num(pick(value, 'maxBytes', 'max_bytes')));
+  if (
+    !LINUX_PRIVACY_STORES.has(store) ||
+    maxAgeSeconds < LINUX_PRIVACY_RETENTION_MIN_AGE_SECONDS ||
+    maxAgeSeconds > LINUX_PRIVACY_RETENTION_MAX_AGE_SECONDS ||
+    maxBytes < LINUX_PRIVACY_RETENTION_MIN_BYTES ||
+    maxBytes > LINUX_PRIVACY_RETENTION_MAX_BYTES
+  ) {
+    throw new Error('Native privacy retention returned an invalid rule.');
+  }
+  return { store, maxAgeSeconds, maxBytes };
+}
+
+function mapLinuxPrivacyRetentionStoreStatus(raw: RawJsonValue): LinuxPrivacyRetentionStoreStatus {
+  const value = obj(raw);
+  const store = str(pick(value, 'store')) as LinuxPrivacyStoreID;
+  const state = str(pick(value, 'state')) as LinuxPrivacyStoreState;
+  const bytes = Math.trunc(num(pick(value, 'bytes')));
+  const maxAgeSeconds = Math.trunc(num(pick(value, 'maxAgeSeconds', 'max_age_seconds')));
+  const maxBytes = Math.trunc(num(pick(value, 'maxBytes', 'max_bytes')));
+  const rawAge = pick(value, 'ageSeconds', 'age_seconds');
+  const ageSeconds = rawAge == null ? undefined : Math.max(0, Math.trunc(num(rawAge)));
+  if (
+    !LINUX_PRIVACY_STORES.has(store) ||
+    !LINUX_PRIVACY_STATES.has(state) ||
+    bytes < 0 ||
+    maxAgeSeconds < LINUX_PRIVACY_RETENTION_MIN_AGE_SECONDS ||
+    maxAgeSeconds > LINUX_PRIVACY_RETENTION_MAX_AGE_SECONDS ||
+    maxBytes < LINUX_PRIVACY_RETENTION_MIN_BYTES ||
+    maxBytes > LINUX_PRIVACY_RETENTION_MAX_BYTES
+  ) {
+    throw new Error('Native privacy retention returned invalid store status.');
+  }
+  return {
+    store,
+    state,
+    bytes,
+    ageSeconds,
+    maxAgeSeconds,
+    maxBytes,
+    wouldPurge: Boolean(pick(value, 'wouldPurge', 'would_purge')),
+    reason: str(pick(value, 'reason'), 'unavailable')
+  };
+}
+
+function mapLinuxPrivacyRetentionStatus(raw: RawJsonValue): LinuxPrivacyRetentionStatus {
+  const value = obj(pick(raw, 'result') ?? raw);
+  const policyState = str(pick(value, 'policyState', 'policy_state')) as LinuxPrivacyRetentionPolicyState;
+  const rules = arr(pick(value, 'rules')).map(mapLinuxPrivacyRetentionRule);
+  const stores = arr(pick(value, 'stores')).map(mapLinuxPrivacyRetentionStoreStatus);
+  if (!LINUX_PRIVACY_RETENTION_STATES.has(policyState)) {
+    throw new Error('Native privacy retention returned an unsupported policy state.');
+  }
+  if (
+    rules.length !== LINUX_PRIVACY_STORES.size ||
+    stores.length !== LINUX_PRIVACY_STORES.size ||
+    new Set(rules.map((rule) => rule.store)).size !== LINUX_PRIVACY_STORES.size ||
+    new Set(stores.map((store) => store.store)).size !== LINUX_PRIVACY_STORES.size
+  ) {
+    throw new Error('Native privacy retention returned an incomplete store set.');
+  }
+  return {
+    policyState,
+    rules,
+    stores,
+    evaluatedAt: requireTimestamp(pick(value, 'evaluatedAt', 'evaluated_at'), 'privacy retention.evaluatedAt')
+  };
+}
+
+function mapLinuxPrivacyRetentionApply(raw: RawJsonValue): LinuxPrivacyRetentionApplyResult {
+  const value = obj(pick(raw, 'result') ?? raw);
+  const removedBytes = Math.trunc(num(pick(value, 'removedBytes', 'removed_bytes')));
+  const removedEntries = Math.trunc(num(pick(value, 'removedEntries', 'removed_entries')));
+  if (removedBytes < 0 || removedEntries < 0) {
+    throw new Error('Native privacy retention returned invalid removal metadata.');
+  }
+  return {
+    status: mapLinuxPrivacyRetentionStatus(pick(value, 'status')),
+    removedBytes,
+    removedEntries
   };
 }
 
@@ -4673,6 +4798,14 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     linuxPrivacyExport: async (request) => {
       const raw = await invoke<RawJsonValue>('linux_privacy_export', { request });
       return mapLinuxPrivacyExport(raw);
+    },
+    linuxPrivacyRetentionStatus: async () => {
+      const raw = await invoke<RawJsonValue>('linux_privacy_retention_status');
+      return mapLinuxPrivacyRetentionStatus(raw);
+    },
+    linuxPrivacyRetentionApply: async (request) => {
+      const raw = await invoke<RawJsonValue>('linux_privacy_retention_apply', { request });
+      return mapLinuxPrivacyRetentionApply(raw);
     },
     notificationConfigGet: async () => {
       const raw = await invoke<RawJsonValue>('notification_config_get');

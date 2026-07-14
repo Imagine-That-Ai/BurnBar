@@ -1032,6 +1032,26 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.privacy.retention.apply",
+    "caseName": "linuxPrivacyRetentionApply",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxPrivacyRetentionApplyRequest",
+    "result": "BurnBarLinuxPrivacyRetentionApplyResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.privacy.retention.status",
+    "caseName": "linuxPrivacyRetentionStatus",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxPrivacyRetentionStatusRequest",
+    "result": "BurnBarLinuxPrivacyRetentionStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.projection.rebuild",
     "caseName": "projectionRebuild",
     "domain": "mission_control",

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 #if os(Linux)
 import Glibc
@@ -109,6 +110,12 @@ public actor BurnBarLinuxPrivacyService {
         case exportEncodingFailed
         case exportWriteFailed
         case exportCrypto(BurnBarLinuxPrivacyExportCrypto.Error)
+        case retentionConfirmationRequired
+        case retentionInvalidPolicy
+        case retentionPolicyUnavailable
+        case retentionStoreCorrupt
+        case retentionRecordTooLarge
+        case retentionApplyFailed
 
         public var errorDescription: String? {
             switch self {
@@ -126,12 +133,36 @@ public actor BurnBarLinuxPrivacyService {
             case .exportEncodingFailed: return "The daemon could not encode the selected local privacy data."
             case .exportWriteFailed: return "The daemon could not write the encrypted privacy export."
             case .exportCrypto(let error): return "The privacy export could not be encrypted: \(error)."
+            case .retentionConfirmationRequired: return "Type the exact confirmation phrase to apply the retention policy."
+            case .retentionInvalidPolicy: return "The retention policy must cover each supported store exactly once within safe bounds."
+            case .retentionPolicyUnavailable: return "The saved retention policy is unavailable or unsafe; no local data was changed."
+            case .retentionStoreCorrupt: return "A local privacy store is malformed; retention stopped without deleting data."
+            case .retentionRecordTooLarge: return "A local privacy record exceeds the configured retention size bound."
+            case .retentionApplyFailed: return "The daemon could not apply the retention policy atomically."
             }
         }
     }
 
     public static let confirmationPhrase = "DELETE LOCAL DATA"
+    public static let retentionConfirmationPhrase = "APPLY RETENTION POLICY"
     public static let defaultPreviewLifetime: TimeInterval = 5 * 60
+    public static let minimumRetentionAgeSeconds: Int64 = 60 * 60
+    public static let maximumRetentionAgeSeconds: Int64 = 365 * 24 * 60 * 60
+    public static let minimumRetentionBytes: Int64 = 64 * 1024
+    public static let maximumRetentionBytes: Int64 = 64 * 1024 * 1024
+
+    public static let defaultRetentionRules: [BurnBarLinuxPrivacyRetentionRule] = [
+        BurnBarLinuxPrivacyRetentionRule(
+            store: .proxyRouteLog,
+            maxAgeSeconds: 30 * 24 * 60 * 60,
+            maxBytes: 8 * 1024 * 1024
+        ),
+        BurnBarLinuxPrivacyRetentionRule(
+            store: .textExpansionStore,
+            maxAgeSeconds: 365 * 24 * 60 * 60,
+            maxBytes: 4 * 1024 * 1024
+        )
+    ]
 
     private struct FileFingerprint: Hashable, Sendable {
         let size: Int64
@@ -161,7 +192,25 @@ public actor BurnBarLinuxPrivacyService {
         let contents: Data?
     }
 
+    private struct StoredRetentionPolicy: Codable, Sendable {
+        let version: Int
+        let rules: [BurnBarLinuxPrivacyRetentionRule]
+        let updatedAt: Date
+    }
+
+    private struct LoadedRetentionPolicy: Sendable {
+        let state: BurnBarLinuxPrivacyRetentionPolicyState
+        let rules: [BurnBarLinuxPrivacyRetentionRule]
+    }
+
+    private struct RouteLogEvaluation: Sendable {
+        let entries: [BurnBarProxyRouteLogEntry]
+        let originalBytes: Int64
+        let oldestAgeSeconds: Int64?
+    }
+
     private let supportDirectory: URL
+    private let retentionPolicyURL: URL
     private let previewLifetime: TimeInterval
     private var pending: [String: PendingPreview] = [:]
     private let fileManager = FileManager.default
@@ -171,6 +220,10 @@ public actor BurnBarLinuxPrivacyService {
         previewLifetime: TimeInterval = BurnBarLinuxPrivacyService.defaultPreviewLifetime
     ) {
         self.supportDirectory = supportDirectory.standardizedFileURL
+        self.retentionPolicyURL = self.supportDirectory.appendingPathComponent(
+            "privacy-retention-policy.json",
+            isDirectory: false
+        )
         self.previewLifetime = max(1, previewLifetime)
     }
 
@@ -294,6 +347,115 @@ public actor BurnBarLinuxPrivacyService {
         return result
     }
 
+    /// Returns the daemon-owned retention policy and a metadata-only evaluation
+    /// of both allowlisted stores. A malformed saved policy is reported as
+    /// blocked and never replaced with defaults.
+    public func retentionStatus(
+        now: Date = Date()
+    ) throws -> BurnBarLinuxPrivacyRetentionStatusResponse {
+        let loaded: LoadedRetentionPolicy
+        do {
+            loaded = try loadRetentionPolicy()
+        } catch {
+            return blockedRetentionStatus(now: now)
+        }
+
+        let stores = StoreID.allCases.map { store in
+            retentionStoreStatus(store: store, rule: loaded.rules.first { $0.store == store }!, now: now)
+        }
+        return BurnBarLinuxPrivacyRetentionStatusResponse(
+            policyState: loaded.state,
+            rules: loaded.rules,
+            stores: stores,
+            evaluatedAt: now
+        )
+    }
+
+    /// Applies a normalized, bounded policy. Store content is either safely
+    /// rewritten atomically or left untouched; malformed route-log data and
+    /// unsafe paths fail closed before any mutation.
+    public func applyRetention(
+        _ request: BurnBarLinuxPrivacyRetentionApplyRequest,
+        now: Date = Date()
+    ) throws -> BurnBarLinuxPrivacyRetentionApplyResponse {
+        guard request.confirmation == Self.retentionConfirmationPhrase else {
+            throw ServiceError.retentionConfirmationRequired
+        }
+        let rules = try normalizedRetentionRules(request.rules)
+        // Reading a corrupt existing policy must not be papered over by an
+        // apply request. The first apply is allowed only when no policy exists.
+        let existing = try loadRetentionPolicy()
+        _ = existing
+        var removedBytes: Int64 = 0
+        var removedEntries = 0
+
+        try ensureSafeSupportDirectory()
+        let evaluations = try StoreID.allCases.map { store -> (StoreID, URL, FileFingerprint?, BurnBarLinuxPrivacyRetentionRule) in
+            let path = try allowlistedURL(for: store)
+            let fingerprint = fingerprint(at: path)
+            if fileManager.fileExists(atPath: path.path) && fingerprint == nil {
+                throw ServiceError.unsafeFile
+            }
+            return (store, path, fingerprint, rules.first { $0.store == store }!)
+        }
+
+        // Parse all structured stores before persisting the new policy or
+        // touching either file. A corrupt route log therefore leaves both the
+        // data and the prior policy unchanged.
+        for (store, path, before, _) in evaluations where store == .proxyRouteLog {
+            if let before {
+                _ = try routeLogEvaluation(at: path, before: before, now: now)
+            }
+        }
+
+        // Persist the requested policy before mutations so a crash cannot
+        // silently revert the user's chosen bounds.
+        try persistRetentionPolicy(rules: rules, updatedAt: now)
+
+        do {
+            for (store, path, before, rule) in evaluations {
+                guard let before else { continue }
+                guard isSafeStoreFile(path), fingerprint(at: path) == before else {
+                    throw ServiceError.stalePreview
+                }
+                switch store {
+                case .proxyRouteLog:
+                    let evaluation = try routeLogEvaluation(at: path, before: before, now: now)
+                    var kept = evaluation.entries.filter {
+                        now.timeIntervalSince($0.occurredAt) <= TimeInterval(rule.maxAgeSeconds)
+                    }
+                    kept = try trimRouteEntries(kept, maxBytes: rule.maxBytes)
+                    let rewritten = try encodedRouteEntries(kept)
+                    if rewritten.count == 0 {
+                        guard unlink(path.path) == 0 else { throw ServiceError.retentionApplyFailed }
+                    } else if Int64(rewritten.count) != before.size || rewritten != (try Data(contentsOf: path)) {
+                        try atomicRewrite(rewritten, at: path, expected: before)
+                    }
+                    removedBytes += max(0, before.size - Int64(rewritten.count))
+                    removedEntries += evaluation.entries.count - kept.count
+                case .textExpansionStore:
+                    let age = max(0, now.timeIntervalSince1970 - Double(before.modificationSeconds))
+                    if age > TimeInterval(rule.maxAgeSeconds) || before.size > rule.maxBytes {
+                        guard unlink(path.path) == 0 else { throw ServiceError.retentionApplyFailed }
+                        removedBytes += before.size
+                        removedEntries += 1
+                    }
+                }
+            }
+        } catch let error as ServiceError {
+            throw error
+        } catch {
+            throw ServiceError.retentionApplyFailed
+        }
+
+        let status = try retentionStatus(now: now)
+        return BurnBarLinuxPrivacyRetentionApplyResponse(
+            status: status,
+            removedBytes: removedBytes,
+            removedEntries: removedEntries
+        )
+    }
+
     /// Export only the explicitly selected allowlisted stores into a
     /// passphrase-encrypted bundle. The renderer supplies a destination and
     /// passphrase, but the daemon validates the path, reads the stores, and
@@ -387,6 +549,252 @@ public actor BurnBarLinuxPrivacyService {
         let stores = Array(Set(requested)).sorted { $0.rawValue < $1.rawValue }
         guard stores.isEmpty == false else { throw ServiceError.emptyScope }
         return stores
+    }
+
+    private func normalizedRetentionRules(
+        _ requested: [BurnBarLinuxPrivacyRetentionRule]
+    ) throws -> [BurnBarLinuxPrivacyRetentionRule] {
+        guard requested.count == StoreID.allCases.count else { throw ServiceError.retentionInvalidPolicy }
+        let sorted = requested.sorted { $0.store.rawValue < $1.store.rawValue }
+        guard Set(sorted.map(\.store)) == Set(StoreID.allCases),
+              sorted.allSatisfy({
+                  $0.maxAgeSeconds >= Self.minimumRetentionAgeSeconds
+                      && $0.maxAgeSeconds <= Self.maximumRetentionAgeSeconds
+                      && $0.maxBytes >= Self.minimumRetentionBytes
+                      && $0.maxBytes <= Self.maximumRetentionBytes
+              }) else {
+            throw ServiceError.retentionInvalidPolicy
+        }
+        return sorted
+    }
+
+    private func loadRetentionPolicy() throws -> LoadedRetentionPolicy {
+        guard fileManager.fileExists(atPath: retentionPolicyURL.path) else {
+            return LoadedRetentionPolicy(state: .defaults, rules: try normalizedRetentionRules(Self.defaultRetentionRules))
+        }
+        guard isSafePolicyFile(retentionPolicyURL) else { throw ServiceError.retentionPolicyUnavailable }
+        do {
+            let stored = try JSONDecoder().decode(
+                StoredRetentionPolicy.self,
+                from: Data(contentsOf: retentionPolicyURL, options: .mappedIfSafe)
+            )
+            guard stored.version == 1 else { throw ServiceError.retentionPolicyUnavailable }
+            return LoadedRetentionPolicy(state: .configured, rules: try normalizedRetentionRules(stored.rules))
+        } catch let error as ServiceError {
+            throw error
+        } catch {
+            throw ServiceError.retentionPolicyUnavailable
+        }
+    }
+
+    private func persistRetentionPolicy(
+        rules: [BurnBarLinuxPrivacyRetentionRule],
+        updatedAt: Date
+    ) throws {
+        let stored = StoredRetentionPolicy(version: 1, rules: rules, updatedAt: updatedAt)
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(stored)
+        } catch {
+            throw ServiceError.retentionApplyFailed
+        }
+        do {
+            try ensureSafeSupportDirectory()
+            try data.write(to: retentionPolicyURL, options: .atomic)
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: retentionPolicyURL.path)
+            guard isSafePolicyFile(retentionPolicyURL) else { throw ServiceError.unsafeFile }
+        } catch let error as ServiceError {
+            throw error
+        } catch {
+            throw ServiceError.retentionApplyFailed
+        }
+    }
+
+    private func blockedRetentionStatus(now: Date) -> BurnBarLinuxPrivacyRetentionStatusResponse {
+        let rules = Self.defaultRetentionRules
+        let stores = StoreID.allCases.map { store in
+            BurnBarLinuxPrivacyRetentionStoreStatus(
+                store: store,
+                state: .blocked,
+                bytes: 0,
+                ageSeconds: nil,
+                maxAgeSeconds: rules.first { $0.store == store }!.maxAgeSeconds,
+                maxBytes: rules.first { $0.store == store }!.maxBytes,
+                wouldPurge: false,
+                reason: "policy_unavailable"
+            )
+        }
+        return BurnBarLinuxPrivacyRetentionStatusResponse(
+            policyState: .blocked,
+            rules: rules,
+            stores: stores,
+            evaluatedAt: now
+        )
+    }
+
+    private func retentionStoreStatus(
+        store: StoreID,
+        rule: BurnBarLinuxPrivacyRetentionRule,
+        now: Date
+    ) -> BurnBarLinuxPrivacyRetentionStoreStatus {
+        do {
+            let path = try allowlistedURL(for: store)
+            guard fileManager.fileExists(atPath: path.path) else {
+                return BurnBarLinuxPrivacyRetentionStoreStatus(
+                    store: store, state: .absent, bytes: 0, ageSeconds: nil,
+                    maxAgeSeconds: rule.maxAgeSeconds, maxBytes: rule.maxBytes,
+                    wouldPurge: false, reason: "missing"
+                )
+            }
+            guard let before = fingerprint(at: path) else {
+                return BurnBarLinuxPrivacyRetentionStoreStatus(
+                    store: store, state: .blocked, bytes: 0, ageSeconds: nil,
+                    maxAgeSeconds: rule.maxAgeSeconds, maxBytes: rule.maxBytes,
+                    wouldPurge: false, reason: "unsafe_file"
+                )
+            }
+            switch store {
+            case .proxyRouteLog:
+                let evaluation = try routeLogEvaluation(at: path, before: before, now: now)
+                let tooOld = evaluation.entries.contains {
+                    now.timeIntervalSince($0.occurredAt) > TimeInterval(rule.maxAgeSeconds)
+                }
+                let tooLarge = before.size > rule.maxBytes
+                return BurnBarLinuxPrivacyRetentionStoreStatus(
+                    store: store, state: .ready, bytes: before.size,
+                    ageSeconds: evaluation.oldestAgeSeconds,
+                    maxAgeSeconds: rule.maxAgeSeconds, maxBytes: rule.maxBytes,
+                    wouldPurge: tooOld || tooLarge,
+                    reason: tooOld || tooLarge ? "over_policy" : "within_policy"
+                )
+            case .textExpansionStore:
+                let age = max(0, now.timeIntervalSince1970 - Double(before.modificationSeconds))
+                let tooOld = age > TimeInterval(rule.maxAgeSeconds)
+                let tooLarge = before.size > rule.maxBytes
+                return BurnBarLinuxPrivacyRetentionStoreStatus(
+                    store: store, state: .ready, bytes: before.size,
+                    ageSeconds: Int64(age.rounded(.down)),
+                    maxAgeSeconds: rule.maxAgeSeconds, maxBytes: rule.maxBytes,
+                    wouldPurge: tooOld || tooLarge,
+                    reason: tooOld || tooLarge ? "over_policy" : "within_policy"
+                )
+            }
+        } catch ServiceError.retentionStoreCorrupt {
+            return BurnBarLinuxPrivacyRetentionStoreStatus(
+                store: store, state: .blocked, bytes: 0, ageSeconds: nil,
+                maxAgeSeconds: rule.maxAgeSeconds, maxBytes: rule.maxBytes,
+                wouldPurge: false, reason: "corrupt_store"
+            )
+        } catch {
+            return BurnBarLinuxPrivacyRetentionStoreStatus(
+                store: store, state: .blocked, bytes: 0, ageSeconds: nil,
+                maxAgeSeconds: rule.maxAgeSeconds, maxBytes: rule.maxBytes,
+                wouldPurge: false, reason: "unsafe_location"
+            )
+        }
+    }
+
+    private func routeLogEvaluation(
+        at path: URL,
+        before: FileFingerprint,
+        now: Date
+    ) throws -> RouteLogEvaluation {
+        guard let current = fingerprint(at: path), current == before else { throw ServiceError.stalePreview }
+        let contents: Data
+        do {
+            contents = try Data(contentsOf: path, options: .mappedIfSafe)
+        } catch {
+            throw ServiceError.retentionStoreCorrupt
+        }
+        var entries: [BurnBarProxyRouteLogEntry] = []
+        for line in contents.split(whereSeparator: { $0 == 0x0A || $0 == 0x0D }) where line.isEmpty == false {
+            do {
+                entries.append(try JSONDecoder().decode(BurnBarProxyRouteLogEntry.self, from: Data(line)))
+            } catch {
+                throw ServiceError.retentionStoreCorrupt
+            }
+        }
+        let oldestAge = entries.map { max(0, now.timeIntervalSince($0.occurredAt)) }.max().map { Int64($0.rounded(.down)) }
+        return RouteLogEvaluation(entries: entries, originalBytes: before.size, oldestAgeSeconds: oldestAge)
+    }
+
+    private func trimRouteEntries(
+        _ entries: [BurnBarProxyRouteLogEntry],
+        maxBytes: Int64
+    ) throws -> [BurnBarProxyRouteLogEntry] {
+        var kept = entries
+        while kept.isEmpty == false {
+            let data = try encodedRouteEntries(kept)
+            if Int64(data.count) <= maxBytes { return kept }
+            if kept.count == 1 { throw ServiceError.retentionRecordTooLarge }
+            kept.removeFirst()
+        }
+        return kept
+    }
+
+    private func encodedRouteEntries(_ entries: [BurnBarProxyRouteLogEntry]) throws -> Data {
+        do {
+            return try entries.reduce(into: Data()) { data, entry in
+                data.append(try JSONEncoder().encode(entry))
+                data.append(0x0A)
+            }
+        } catch {
+            throw ServiceError.retentionStoreCorrupt
+        }
+    }
+
+    private func atomicRewrite(
+        _ data: Data,
+        at path: URL,
+        expected: FileFingerprint
+    ) throws {
+        guard isAllowlisted(path, for: .proxyRouteLog), isSafeStoreFile(path), fingerprint(at: path) == expected else {
+            throw ServiceError.stalePreview
+        }
+        let temporary = supportDirectory.appendingPathComponent(
+            ".privacy-retention-\(UUID().uuidString).tmp",
+            isDirectory: false
+        )
+        defer { try? fileManager.removeItem(at: temporary) }
+        do {
+            try data.write(to: temporary, options: .atomic)
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporary.path)
+            guard pathHasNoSymlinks(temporary) else { throw ServiceError.unsafeFile }
+            let renamed = temporary.path.withCString { source in
+                path.path.withCString { destination in
+                    Glibc.rename(source, destination)
+                }
+            }
+            guard renamed == 0 else { throw ServiceError.retentionApplyFailed }
+            guard isSafeStoreFile(path) else { throw ServiceError.unsafeFile }
+        } catch let error as ServiceError {
+            throw error
+        } catch {
+            throw ServiceError.retentionApplyFailed
+        }
+    }
+
+    private func ensureSafeSupportDirectory() throws {
+        if fileManager.fileExists(atPath: supportDirectory.path) {
+            guard isSafeSupportDirectory() else { throw ServiceError.unsafeLocation }
+            return
+        }
+        let parent = supportDirectory.deletingLastPathComponent()
+        guard let metadata = lstatMetadata(at: parent), metadata.isDirectory,
+              metadata.ownerUID == geteuid(), metadata.mode & 0o022 == 0,
+              pathHasNoSymlinks(parent) else { throw ServiceError.unsafeLocation }
+        do {
+            try fileManager.createDirectory(at: supportDirectory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        } catch {
+            throw ServiceError.unsafeLocation
+        }
+        guard isSafeSupportDirectory() else { throw ServiceError.unsafeLocation }
+    }
+
+    private func isSafePolicyFile(_ path: URL) -> Bool {
+        guard let metadata = lstatMetadata(at: path), metadata.isRegular,
+              metadata.ownerUID == geteuid(), metadata.mode & 0o077 == 0 else { return false }
+        return pathHasNoSymlinks(path)
     }
 
     private func inventoryEntry(for store: StoreID) -> InventoryEntry {

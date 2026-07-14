@@ -1200,7 +1200,8 @@ public actor BurnBarDaemonServer {
                 )
 #if os(Linux)
             case .linuxPrivacyInventory, .linuxPrivacyDeletionPreview,
-                 .linuxPrivacyDeletionExecute, .linuxPrivacyExport:
+                 .linuxPrivacyDeletionExecute, .linuxPrivacyExport,
+                 .linuxPrivacyRetentionStatus, .linuxPrivacyRetentionApply:
                 return try await handleLinuxPrivacyRPC(
                     method: method,
                     decoder: decoder,
@@ -1208,7 +1209,8 @@ public actor BurnBarDaemonServer {
                 )
 #else
             case .linuxPrivacyInventory, .linuxPrivacyDeletionPreview,
-                 .linuxPrivacyDeletionExecute, .linuxPrivacyExport:
+                 .linuxPrivacyDeletionExecute, .linuxPrivacyExport,
+                 .linuxPrivacyRetentionStatus, .linuxPrivacyRetentionApply:
                 return encodeErrorResponse(
                     id: request.id,
                     code: BurnBarRPCErrorCode.methodNotFound,

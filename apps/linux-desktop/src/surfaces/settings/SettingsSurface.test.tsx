@@ -7,7 +7,7 @@ import { useIntegrationsStore } from '../../state/integrationsStore.js';
 import { useSettingsWiringStore } from '../../state/settingsWiringStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
-import type { LinuxShellBridge } from '../../tauriBridge.js';
+import type { LinuxPrivacyRetentionApplyResult, LinuxPrivacyRetentionStatus, LinuxShellBridge } from '../../tauriBridge.js';
 import { SettingsSurface } from './SettingsSurface.js';
 
 function resetStores(): void {
@@ -44,7 +44,8 @@ function resetStores(): void {
     error: null,
     privacyMutation: { status: 'idle', message: null },
     privacyDeletion: { status: 'idle', inventory: null, preview: null, result: null, message: null },
-    privacyExport: { status: 'idle', result: null, message: null }
+    privacyExport: { status: 'idle', result: null, message: null },
+    privacyRetention: { status: 'idle', data: null, result: null, message: null }
   });
 }
 
@@ -269,6 +270,49 @@ describe('SettingsSurface', () => {
     }));
     expect(await screen.findByText('Encrypted local privacy export written.')).toBeTruthy();
     expect((passphrase as HTMLInputElement).value).toBe('');
+  });
+
+  it('loads and applies bounded daemon-owned retention rules with exact confirmation', async () => {
+    const status: LinuxPrivacyRetentionStatus = {
+      policyState: 'defaults',
+      rules: [
+        { store: 'proxy_route_log', maxAgeSeconds: 2_592_000, maxBytes: 8_388_608 },
+        { store: 'text_expansion_store', maxAgeSeconds: 31_536_000, maxBytes: 4_194_304 }
+      ],
+      stores: [
+        { store: 'proxy_route_log', state: 'ready', bytes: 24, ageSeconds: 10, maxAgeSeconds: 2_592_000, maxBytes: 8_388_608, wouldPurge: false, reason: 'within_policy' },
+        { store: 'text_expansion_store', state: 'absent', bytes: 0, maxAgeSeconds: 31_536_000, maxBytes: 4_194_304, wouldPurge: false, reason: 'missing' }
+      ],
+      evaluatedAt: '2026-07-14T00:00:00Z'
+    };
+    const applied: LinuxPrivacyRetentionApplyResult = {
+      status: { ...status, policyState: 'configured' },
+      removedBytes: 24,
+      removedEntries: 1
+    };
+    const linuxPrivacyRetentionStatus = vi.fn(async () => status);
+    const linuxPrivacyRetentionApply = vi.fn(async () => applied);
+    useShellStore.setState({
+      bridge: bridge({ linuxPrivacyRetentionStatus, linuxPrivacyRetentionApply }),
+      fixtureMode: false
+    });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getAllByRole('button', { name: /Data & Privacy/i })[0]!);
+    await waitFor(() => expect(linuxPrivacyRetentionStatus).toHaveBeenCalled());
+    expect(screen.getByText(/24 bytes within limit/i)).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Retention policy confirmation' }), {
+      target: { value: 'APPLY RETENTION POLICY' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply retention policy' }));
+    await waitFor(() => expect(linuxPrivacyRetentionApply).toHaveBeenCalledWith({
+      rules: [
+        { store: 'proxy_route_log', maxAgeSeconds: 2_592_000, maxBytes: 8_388_608 },
+        { store: 'text_expansion_store', maxAgeSeconds: 31_536_000, maxBytes: 4_194_304 }
+      ],
+      confirmation: 'APPLY RETENTION POLICY'
+    }));
+    expect(await screen.findByText(/Retention policy applied/i)).toBeTruthy();
   });
 
   it('shows loading skeleton without fixture', () => {

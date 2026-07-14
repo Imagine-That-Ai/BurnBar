@@ -31,6 +31,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case linuxPrivacyDeletionPreview = "daemon.privacy.deletion.preview"
     case linuxPrivacyDeletionExecute = "daemon.privacy.deletion.execute"
     case linuxPrivacyExport = "daemon.privacy.export"
+    case linuxPrivacyRetentionStatus = "daemon.privacy.retention.status"
+    case linuxPrivacyRetentionApply = "daemon.privacy.retention.apply"
     case textExpansionEngineStatus = "daemon.text_expansion.engine.status"
     case textExpansionEngineStart = "daemon.text_expansion.engine.start"
     case textExpansionEngineStop = "daemon.text_expansion.engine.stop"

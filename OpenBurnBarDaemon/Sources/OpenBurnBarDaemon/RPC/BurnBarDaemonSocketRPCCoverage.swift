@@ -33,6 +33,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         .linuxPrivacyDeletionPreview,
         .linuxPrivacyDeletionExecute,
         .linuxPrivacyExport,
+        .linuxPrivacyRetentionStatus,
+        .linuxPrivacyRetentionApply,
         .linuxOnboardingAction,
         .linuxOnboardingReset,
         .providerCredentialSlotUpsert,

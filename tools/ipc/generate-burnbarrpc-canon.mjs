@@ -123,6 +123,8 @@ const explicitTypes = {
   "daemon.privacy.deletion.preview": ["BurnBarLinuxPrivacyDeletionPreviewRequest", "BurnBarLinuxPrivacyDeletionPreviewResponse"],
   "daemon.privacy.deletion.execute": ["BurnBarLinuxPrivacyDeletionExecuteRequest", "BurnBarLinuxPrivacyDeletionExecuteResponse"],
   "daemon.privacy.export": ["BurnBarLinuxPrivacyExportRequest", "BurnBarLinuxPrivacyExportResponse"],
+  "daemon.privacy.retention.status": ["BurnBarLinuxPrivacyRetentionStatusRequest", "BurnBarLinuxPrivacyRetentionStatusResponse"],
+  "daemon.privacy.retention.apply": ["BurnBarLinuxPrivacyRetentionApplyRequest", "BurnBarLinuxPrivacyRetentionApplyResponse"],
   "daemon.media.session.state": ["BurnBarRPCRequestEnvelope", "DaemonMediaSessionStateResponse"],
   "daemon.media.call.accept": ["DaemonMediaCallAcceptRequest", "DaemonMediaCallActionResponse"],
   "daemon.media.call.decline": ["DaemonMediaCallDeclineRequest", "DaemonMediaCallActionResponse"],
