@@ -14,20 +14,13 @@ namespace OpenBurnBar.CloudSync.AppCheck.Windows;
 /// The REAL Windows TPM attestation producer: it creates a TPM-backed key inside
 /// the Microsoft Platform Crypto Provider and attests it with CNG
 /// <c>NCryptCreateClaim(NCRYPT_CLAIM_PLATFORM)</c>, binding a single-use nonce, to
-/// prove the client is a genuine, unmodified app on genuine hardware.
+/// prove possession of a hardware-backed installation key.
 /// </summary>
 /// <remarks>
-/// STATUS — R14 / AC-013 / DEV-HOST DEFERRED. This adapter Roslyn-compiles on the
-/// macOS authoring host (<c>EnableWindowsTargeting</c>) and is the seam the WinUI
-/// app wires in place of <see cref="MockAttestationProducer"/>, but it RUNS only on
-/// a Windows host with a TPM: the CNG P/Invokes here need a real Platform Crypto
-/// Provider. The end-to-end TPM verify also needs AC-013's server-side TPM verifier
-/// (the server today registers ONLY the mock verifier; its production registry has
-/// a reserved <c>verifiers.set("tpm", ...)</c> slot). Until AC-013 lands the server
-/// verifier + finalizes the claim wire encoding, the <see cref="WindowsAttestationClaim.Mac"/>
-/// field carries a PROVISIONAL base64 of the raw platform-claim blob. THIS DOES NOT
-/// WEAKEN THE GATE: the server only mints when an accepting verifier proves the
-/// claim; a provisional/unverifiable claim mints nothing.
+/// This adapter cross-compiles on the macOS authoring host but runs only on a
+/// Windows host with a TPM. It binds the server challenge, exports the public
+/// half of the non-exportable TPM-backed subject key, and sends both to the
+/// Windows-hosted <c>NCryptVerifyClaim</c> service through the mint backend.
 ///
 /// Fail-closed: any failure to reach the TPM / produce a claim throws
 /// <see cref="AppCheckMintException"/> with <see cref="AppCheckMintFailure.AttestationUnavailable"/>
@@ -43,21 +36,23 @@ public sealed class TpmAttestationProducer : IAttestationProducer
     public const string TpmKind = "tpm";
 
     private readonly string _keyName;
-    private readonly INonceSource _nonceSource;
 
-    public TpmAttestationProducer(string? keyName = null, INonceSource? nonceSource = null)
+    public TpmAttestationProducer(string? keyName = null)
     {
         _keyName = string.IsNullOrWhiteSpace(keyName) ? DefaultKeyName : keyName!;
-        _nonceSource = nonceSource ?? new RandomNonceSource();
     }
 
     /// <inheritdoc />
     public string Kind => TpmKind;
 
     /// <inheritdoc />
+    public bool RequiresServerChallenge => true;
+
+    /// <inheritdoc />
     public ValueTask<WindowsAttestationClaim> ProduceAsync(
         string appId,
         long nowMillis,
+        AttestationChallenge? challenge = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(appId))
@@ -66,6 +61,16 @@ public sealed class TpmAttestationProducer : IAttestationProducer
         }
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (challenge is null || string.IsNullOrWhiteSpace(challenge.ChallengeId) || string.IsNullOrWhiteSpace(challenge.Nonce))
+        {
+            throw AppCheckMintException.AttestationUnavailable(
+                "TPM attestation requires a server-issued one-time challenge.");
+        }
+        if (challenge.ExpiresAtMs <= nowMillis)
+        {
+            throw AppCheckMintException.AttestationUnavailable("The App Check attestation challenge expired.");
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             // Fail closed on the wrong platform rather than fabricate a claim.
@@ -73,8 +78,8 @@ public sealed class TpmAttestationProducer : IAttestationProducer
                 "TPM attestation requires a Windows host with a Platform Crypto Provider.");
         }
 
-        var nonce = _nonceSource.NextNonce();
-        var claimBlob = CreatePlatformClaim(nonce, cancellationToken);
+        var nonce = challenge.Nonce;
+        var (claimBlob, subjectPublicKey) = CreatePlatformClaim(nonce, cancellationToken);
         var mac = Convert.ToBase64String(claimBlob);
 
         var claim = new WindowsAttestationClaim
@@ -83,7 +88,9 @@ public sealed class TpmAttestationProducer : IAttestationProducer
             AppId = appId,
             Nonce = nonce,
             IssuedAtMs = nowMillis,
-            Mac = mac, // PROVISIONAL: raw platform-claim blob, base64. Finalized by AC-013.
+            Mac = mac, // Base64 raw CNG platform-claim blob; verified only on the Windows service.
+            ChallengeId = challenge.ChallengeId,
+            SubjectPublicKey = Convert.ToBase64String(subjectPublicKey),
         };
         return new ValueTask<WindowsAttestationClaim>(claim);
     }
@@ -93,7 +100,9 @@ public sealed class TpmAttestationProducer : IAttestationProducer
     /// Every native handle is released in reverse order; any CNG failure fails
     /// closed as <see cref="AppCheckMintFailure.AttestationUnavailable"/>.
     /// </summary>
-    private byte[] CreatePlatformClaim(string nonce, CancellationToken cancellationToken)
+    private (byte[] ClaimBlob, byte[] SubjectPublicKey) CreatePlatformClaim(
+        string nonce,
+        CancellationToken cancellationToken)
     {
         var provider = IntPtr.Zero;
         var subjectKey = IntPtr.Zero;
@@ -158,7 +167,31 @@ public sealed class TpmAttestationProducer : IAttestationProducer
                 out _,
                 0), "NCryptCreateClaim(fill)");
 
-            return claimBlob;
+            Check(NCryptNative.NCryptExportKey(
+                subjectKey,
+                IntPtr.Zero,
+                NCryptNative.BCRYPT_ECCPUBLIC_BLOB,
+                IntPtr.Zero,
+                null,
+                0,
+                out var publicKeySize,
+                0), "NCryptExportKey(size)");
+            if (publicKeySize <= 0)
+            {
+                throw AppCheckMintException.AttestationUnavailable("TPM returned an empty public key size.");
+            }
+            var subjectPublicKey = new byte[publicKeySize];
+            Check(NCryptNative.NCryptExportKey(
+                subjectKey,
+                IntPtr.Zero,
+                NCryptNative.BCRYPT_ECCPUBLIC_BLOB,
+                IntPtr.Zero,
+                subjectPublicKey,
+                subjectPublicKey.Length,
+                out _,
+                0), "NCryptExportKey(fill)");
+
+            return (claimBlob, subjectPublicKey);
         }
         catch (AppCheckMintException)
         {

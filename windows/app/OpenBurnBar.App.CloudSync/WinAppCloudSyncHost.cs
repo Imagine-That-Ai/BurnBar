@@ -8,9 +8,9 @@ using OpenBurnBar.CloudSync.Crypto;
 namespace OpenBurnBar.App.CloudSync;
 
 /// <summary>
-/// Desktop composition singleton: live OAuth roots are restored from the
-/// protected session store when available; static tokens remain an explicit
-/// dev-host fallback.
+/// Process-wide composition root, memory store, and callable hub accessors.
+/// Shipping WinUI code enters through the mandatory OAuth + TPM App Check path;
+/// <see cref="ConfigureForDevHost"/> is retained for deterministic host tooling.
 /// </summary>
 public static class WinAppCloudSyncHost
 {
@@ -92,22 +92,18 @@ public static class WinAppCloudSyncHost
     /// <summary>
     /// Live root wiring backed by a signed-in desktop OAuth provider (real Firebase
     /// id token). Flips <see cref="Root"/> to the OAuth-authenticated gateway so the
-    /// seam-ready surfaces read live Firestore data. App Check stays optional via
-    /// <paramref name="appCheckMintTransport"/>.
+    /// seam-ready surfaces read live Firestore data. TPM App Check is mandatory.
     /// </summary>
     public static void ConfigureWithOAuth(
         DesktopOAuthCredentialsProvider oauth,
         string firebaseProjectId,
         string firebaseUid,
         byte[] vaultKey,
-        IAppCheckMintTransport? appCheckMintTransport = null,
-        IAttestationProducer? appCheckAttestationProducer = null)
+        IAttestationProducer attestationProducer,
+        IAppCheckMintTransport appCheckMintTransport,
+        string appCheckAppId)
     {
         if (oauth is null) throw new ArgumentNullException(nameof(oauth));
-        if (appCheckMintTransport is null && appCheckAttestationProducer is null)
-        {
-            (appCheckMintTransport, appCheckAttestationProducer) = TryCreatePlatformAppCheck();
-        }
         lock (Gate)
         {
             _vaultKey = vaultKey;
@@ -116,8 +112,9 @@ public static class WinAppCloudSyncHost
                 oauth,
                 firebaseProjectId,
                 firebaseUid,
+                attestationProducer,
                 appCheckMintTransport,
-                appCheckAttestationProducer: appCheckAttestationProducer);
+                appCheckAppId);
             _memory = new CloudSyncMemoryStore(_root.Gateway, firebaseUid, vaultKey);
             _quotaSnapshots = new CloudSyncQuotaSnapshotStore(_root.Gateway, firebaseUid);
             DomainCoreShadowEvidenceUploader.Configure(_root);
@@ -133,8 +130,9 @@ public static class WinAppCloudSyncHost
         DesktopOAuthCredentialsProvider oauth,
         string firebaseProjectId,
         byte[] vaultKey,
-        IAppCheckMintTransport? appCheckMintTransport = null,
-        IAttestationProducer? appCheckAttestationProducer = null,
+        IAttestationProducer attestationProducer,
+        IAppCheckMintTransport appCheckMintTransport,
+        string appCheckAppId,
         CancellationToken cancellationToken = default)
     {
         if (oauth is null) throw new ArgumentNullException(nameof(oauth));
@@ -145,8 +143,9 @@ public static class WinAppCloudSyncHost
             firebaseProjectId,
             session.Uid,
             vaultKey,
+            attestationProducer,
             appCheckMintTransport,
-            appCheckAttestationProducer);
+            appCheckAppId);
         return session.Uid;
     }
 
@@ -168,10 +167,21 @@ public static class WinAppCloudSyncHost
         FirebaseOAuthSession? session = SelectRestorableSession(
             oauth?.CurrentSession,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        if (oauth is not null && session is not null)
+        if (oauth is not null && session is not null && CloudAuthProductionComposition.IsAppCheckConfigured())
         {
-            ConfigureWithOAuth(oauth, project, session.Uid, vaultKey);
-            return;
+            (IAppCheckMintTransport? transport, IAttestationProducer? producer) = TryCreatePlatformAppCheck();
+            if (transport is not null && producer is not null)
+            {
+                ConfigureWithOAuth(
+                    oauth,
+                    project,
+                    session.Uid,
+                    vaultKey,
+                    producer,
+                    transport,
+                    CloudAuthProductionComposition.RequireAppCheckAppId());
+                return;
+            }
         }
 
         string? uid = config.EffectiveFirebaseUid();
@@ -219,7 +229,6 @@ public static class WinAppCloudSyncHost
 
         return (transportFactory(), producerFactory());
     }
-
     public static DataControlCenterViewModel CreateDataControlViewModel()
     {
         CloudSyncCompositionRoot? root = Root;
