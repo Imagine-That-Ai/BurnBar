@@ -303,12 +303,11 @@ object HermesRatchetCrypto {
         }
     }
 
-    private fun decodedCiphertext(envelope: HermesRatchetEnvelope): ByteArray =
-        decodeBase64(envelope.ciphertextBase64, "ciphertext").also {
-            if (it.size <= GCM_IV_BYTES) {
-                throw HermesRatchetException(HermesRatchetError.INVALID_ENVELOPE, "ciphertext too short")
-            }
+    private fun decodedCiphertext(envelope: HermesRatchetEnvelope): ByteArray = decodeBase64(envelope.ciphertextBase64, "ciphertext").also {
+        if (it.size <= GCM_IV_BYTES) {
+            throw HermesRatchetException(HermesRatchetError.INVALID_ENVELOPE, "ciphertext too short")
         }
+    }
 
     private fun authenticationFailure(error: Throwable): Nothing =
         throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)

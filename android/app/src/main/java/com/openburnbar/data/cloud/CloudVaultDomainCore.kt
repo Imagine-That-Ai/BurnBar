@@ -209,16 +209,17 @@ internal object CloudVaultDomainCore {
         diagnosticCounts.clear()
     }
 
-    internal fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean = { left, right -> left == right }): T = dispatch(
-        mode,
-        operation,
-        legacy,
-        rust = {
-            requireCompatibleAbi()
-            rust()
-        },
-        equivalent = equivalent,
-    )
+    internal fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean = { left, right -> left == right }): T =
+        dispatch(
+            mode,
+            operation,
+            legacy,
+            rust = {
+                requireCompatibleAbi()
+                rust()
+            },
+            equivalent = equivalent,
+        )
 
     private fun <T> dispatch(
         selectedMode: CloudVaultDomainCoreMode,
@@ -260,7 +261,6 @@ internal object CloudVaultDomainCore {
         }
     }
 
-
     private val CloudVaultHashPurpose.ffiValue: FfiHashPurpose
         get() = when (this) {
             CloudVaultHashPurpose.BLOB_INTEGRITY -> FfiHashPurpose.BLOB_INTEGRITY
@@ -271,76 +271,62 @@ internal object CloudVaultDomainCore {
 }
 
 internal object CloudVaultRecoveryDomainCore {
-    fun recoveryWrappingKey(recoveryKey: String, legacy: () -> ByteArray): ByteArray =
-        CloudVaultDomainCore.dispatchBytes(
-            operation = "recovery_wrapping_key",
-            legacy = legacy,
-            rust = { cloudVaultRecoveryWrappingKey(recoveryKey) },
-        )
-
-    fun recoveryVerificationHash(recoveryKey: String, legacy: () -> String): String =
-        CloudVaultDomainCore.dispatch(
-            operation = "recovery_verification_hash",
-            legacy = legacy,
-            rust = { cloudVaultRecoveryVerificationHash(recoveryKey) },
-        )
-
-    fun recoveryWrapVaultKey(
-        vaultKey: ByteArray,
-        recoveryKey: String,
-        nonce: ByteArray,
-        legacy: () -> CloudVaultRecoveryBox,
-    ): CloudVaultRecoveryBox = CloudVaultDomainCore.dispatch(
-        operation = "recovery_wrap_vault_key",
+    fun recoveryWrappingKey(recoveryKey: String, legacy: () -> ByteArray): ByteArray = CloudVaultDomainCore.dispatchBytes(
+        operation = "recovery_wrapping_key",
         legacy = legacy,
-        rust = {
-            val wrapped = cloudVaultRecoveryWrapVaultKey(vaultKey, recoveryKey, nonce)
-            CloudVaultRecoveryBox(wrapped.combined, wrapped.verificationHash)
-        },
-        equivalent = { left, right ->
-            left.combined.contentEquals(right.combined) && left.verificationHash == right.verificationHash
-        },
+        rust = { cloudVaultRecoveryWrappingKey(recoveryKey) },
     )
 
-    fun recoveryOpenVaultKey(combined: ByteArray, recoveryKey: String, legacy: () -> ByteArray): ByteArray =
-        CloudVaultDomainCore.dispatchBytes(
-            operation = "recovery_open_vault_key",
-            legacy = legacy,
-            rust = { cloudVaultRecoveryOpenVaultKey(combined, recoveryKey) },
-        )
+    fun recoveryVerificationHash(recoveryKey: String, legacy: () -> String): String = CloudVaultDomainCore.dispatch(
+        operation = "recovery_verification_hash",
+        legacy = legacy,
+        rust = { cloudVaultRecoveryVerificationHash(recoveryKey) },
+    )
 
-    fun escrowSplitWire(wire: ByteArray, legacy: () -> CloudVaultEscrowParts): CloudVaultEscrowParts =
+    fun recoveryWrapVaultKey(vaultKey: ByteArray, recoveryKey: String, nonce: ByteArray, legacy: () -> CloudVaultRecoveryBox): CloudVaultRecoveryBox =
         CloudVaultDomainCore.dispatch(
-            operation = "escrow_split_wire",
+            operation = "recovery_wrap_vault_key",
             legacy = legacy,
             rust = {
-                val parts = cloudVaultEscrowSplitWire(wire)
-                CloudVaultEscrowParts(parts.ephemeralPublicKey, parts.aesGcmCombined)
+                val wrapped = cloudVaultRecoveryWrapVaultKey(vaultKey, recoveryKey, nonce)
+                CloudVaultRecoveryBox(wrapped.combined, wrapped.verificationHash)
             },
             equivalent = { left, right ->
-                left.ephemeralPublicKey.contentEquals(right.ephemeralPublicKey) &&
-                    left.aesGcmCombined.contentEquals(right.aesGcmCombined)
+                left.combined.contentEquals(right.combined) && left.verificationHash == right.verificationHash
             },
         )
 
-    fun escrowSeal(
-        plaintext: ByteArray,
-        ephemeralPublicKey: ByteArray,
-        sharedSecret: ByteArray,
-        nonce: ByteArray,
-        legacy: () -> ByteArray,
-    ): ByteArray = CloudVaultDomainCore.dispatchBytes(
-        operation = "escrow_seal",
+    fun recoveryOpenVaultKey(combined: ByteArray, recoveryKey: String, legacy: () -> ByteArray): ByteArray = CloudVaultDomainCore.dispatchBytes(
+        operation = "recovery_open_vault_key",
         legacy = legacy,
-        rust = { cloudVaultEscrowSeal(plaintext, ephemeralPublicKey, sharedSecret, nonce) },
+        rust = { cloudVaultRecoveryOpenVaultKey(combined, recoveryKey) },
     )
 
-    fun escrowOpen(wire: ByteArray, sharedSecret: ByteArray, legacy: () -> ByteArray): ByteArray =
+    fun escrowSplitWire(wire: ByteArray, legacy: () -> CloudVaultEscrowParts): CloudVaultEscrowParts = CloudVaultDomainCore.dispatch(
+        operation = "escrow_split_wire",
+        legacy = legacy,
+        rust = {
+            val parts = cloudVaultEscrowSplitWire(wire)
+            CloudVaultEscrowParts(parts.ephemeralPublicKey, parts.aesGcmCombined)
+        },
+        equivalent = { left, right ->
+            left.ephemeralPublicKey.contentEquals(right.ephemeralPublicKey) &&
+                left.aesGcmCombined.contentEquals(right.aesGcmCombined)
+        },
+    )
+
+    fun escrowSeal(plaintext: ByteArray, ephemeralPublicKey: ByteArray, sharedSecret: ByteArray, nonce: ByteArray, legacy: () -> ByteArray): ByteArray =
         CloudVaultDomainCore.dispatchBytes(
-            operation = "escrow_open",
+            operation = "escrow_seal",
             legacy = legacy,
-            rust = { cloudVaultEscrowOpen(wire, sharedSecret) },
+            rust = { cloudVaultEscrowSeal(plaintext, ephemeralPublicKey, sharedSecret, nonce) },
         )
+
+    fun escrowOpen(wire: ByteArray, sharedSecret: ByteArray, legacy: () -> ByteArray): ByteArray = CloudVaultDomainCore.dispatchBytes(
+        operation = "escrow_open",
+        legacy = legacy,
+        rust = { cloudVaultEscrowOpen(wire, sharedSecret) },
+    )
 }
 
 private object CloudVaultLegacyCrypto {
