@@ -159,24 +159,24 @@ unless prefixed; all Windows paths under `windows/`.
 | 26 | Privileged input execution + virtual HID bridge | `Sources/OpenBurnBarPrivilegedInputExecution/`, `Sources/OpenBurnBarVirtualHIDBridge/` | **SUB-BUILD** | Windows path = ViGEm + the watchdog process, **Wave 4 item 1** (R17/D11). Secure-desktop/lock-screen injection stays the §15.1 v1.1 non-goal (signed driver). | Wave 4 item 1; §15.1 |
 | 27 | Kill-switch watchdog | `Sources/OpenBurnBarPrivilegedInputKillSwitchWatchdog/PrivilegedInputKillSwitchWatchdogMain.swift` | **SUB-DONE** (protocol) / **SUB-BUILD** (process) | Protocol/core landed (`computeruse/OpenBurnBar.ComputerUse.Core/KillSwitch/KillSwitch.cs`, `Watchdog/WatchdogProtocol.cs`); the independent watchdog *process* + signed local kill channel is **Wave 4 item 1** (R17). | Wave 4 item 1 |
 | 28 | Remote access agent (+Core) and privileged-socket red-team probe | `Sources/OpenBurnBarRemoteAccessAgent/`, `Sources/OpenBurnBarRemoteAccessAgentCore/`, `Sources/OpenBurnBarPrivilegedSocketRedTeamProbe/` | **N/A** (as separate v1 processes) | Their duties (input/screen/attestation plumbing) are absorbed by the in-process computer-use adapters; a separate agent process only returns if WS-D demands isolation (trigger 2), at which point the red-team probe pattern is re-authored against named pipes. | Revisit trigger 2 |
-| 29 | Companion CLI (`OpenBurnBarCLI`) | `Sources/OpenBurnBarCLI/OpenBurnBarCLIMain.swift`, `OpenBurnBarCLI.swift` | **DEFER** | The CLI is a daemon-socket client; with no daemon there is nothing to drive. Revives with trigger 1 (headless). | Revisit trigger 1 |
+| 29 | Companion CLI (`OpenBurnBarCLI`) | `Sources/OpenBurnBarCLI/OpenBurnBarCLIMain.swift`, `OpenBurnBarCLI.swift` | **SUB-DONE** (authenticated standalone client) | WPD-0009's headless/multi-client trigger fired. `app/OpenBurnBar.Cli` drives the production companion plane over bounded loopback JSON lines, injects the gateway token only from current-user DPAPI storage, exposes typed run/mission/planner/policy/fusion/project operations, and is staged by the signed RID workflow with an MSIX `openburnbar.exe` alias. | `docs/windows-port/evidence/f2/companion-cli-client.md` |
 | 30 | Switcher shell (account-switched shells/profiles) | `OpenBurnBarSwitcherShell.swift` (`#if os(macOS)`, Linux-excluded) | **SUB-BUILD** | Profile persistence seam already landed (`storage/OpenBurnBar.Storage/SwitcherProfileWriteSeam.cs`); the switcher surface converts sample → Real in **Wave 3 item 1**, spawn path via CreateProcess/ConPTY. | Wave 3 item 1 |
 | 31 | Indexed search service | `OpenBurnBarIndexedSearchService.swift` | **SUB-BUILD** | Windows search is app-side: `app/OpenBurnBar.App.Settings/SettingsSearchEngine.cs` (landed) + the command-palette stub search called out in **Wave 3 item 1**; session-log search rides the storage read seam. | Wave 3 item 1 |
 | 32 | Elder Wand orchestration (fusion orchestrator, tool loop, web tools) | `ElderWandFusionOrchestrator.swift` (Linux-excluded), `ElderWandToolLoop.swift`, `ElderWandWebTools.swift` | **DEFER** | Orchestrated multi-model fusion is gateway/run-service-coupled. The Windows Elder Wand *surface* + preset persistence (`storage/OpenBurnBar.Storage/ElderWandPresetWriteSeam.cs`) convert in **Wave 3 item 1** (bundle D8 covers reachability drift). | Wave 3 (surface); orchestration with rows 1/8 |
-| 33 | Connector plane + connector secret store; tooling proxy; workspace bridge broker; context selector | `OpenBurnBarConnectorPlaneService.swift`, `OpenBurnBarConnectorSecretStore.swift`, `OpenBurnBarToolingProxyService.swift`, `OpenBurnBarWorkspaceBridgeBroker.swift`, `OpenBurnBarContextSelector.swift` | **DEFER** | Adjuncts of the headless run/gateway plane (rows 1/8); no v1 consumer. | With rows 1/8 |
+| 33 | Connector plane + connector secret store; tooling proxy; workspace bridge broker; context selector | `OpenBurnBarConnectorPlaneService.swift`, `OpenBurnBarConnectorSecretStore.swift`, `OpenBurnBarToolingProxyService.swift`, `OpenBurnBarWorkspaceBridgeBroker.swift`, `OpenBurnBarContextSelector.swift` | **DEFER** | Row 29 now provides the authenticated standalone CLI consumer, but it does not implement these connector-specific brokers, selectors, or secret contracts. No external connector consumer currently requires them. | Revive with a concrete connector consumer |
 | 34 | Daemon lifecycle glue: heartbeat, client registry, logger, DB cipher bootstrap, Keychain interaction gate, phone-key pin store | `BurnBarDaemonHeartbeat.swift`, `OpenBurnBarClientRegistry.swift`, `OpenBurnBarDaemonLogger.swift`, `BurnBarDaemonDatabaseCipher.swift`, `SecKeychainInteractionGate.swift`, `DaemonPhoneKeyPinStore.swift` | **N/A** | Process-lifecycle plumbing for a process that doesn't exist on Windows v1. DB cipher duty is already served by the WPD-0004 seam (`storage/OpenBurnBar.Storage/SqlCipherConnection.cs`); secrets follow R15 (TPM/CNG, Wave 2), not Keychain semantics. | Revives with any trigger |
 
 ### Disposition summary
 
 Counting each row by its current primary disposition (rows 24 and 27 count as
 SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1; rows 1-4,
-6-8, 14, 20, 21, and 25 are WPD-0009 F2 promotions):
+6-8, 14, 20, 21, 25, and 29 are WPD-0009 F2 promotions):
 
 | Disposition | Rows | Count |
 |---|---|---|
-| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 20, 21, 23, 24, 25, 27 | **20** |
+| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 20, 21, 23, 24, 25, 27, 29 | **21** |
 | C#-substitute-to-build (SUB-BUILD) | 26 (Wave 4), 30 (Wave 3), 31 (Wave 3) | **3** |
-| v1.1-deferred (DEFER) | 16, 18, 19, 22, 29, 32, 33 | **7** |
+| v1.1-deferred (DEFER) | 16, 18, 19, 22, 32, 33 | **6** |
 | Not-applicable-on-Windows (N/A) | 10, 17, 28, 34 | **4** |
 
 Every SUB-BUILD row is owned by a named remediation-plan wave (Wave 3 item 1;

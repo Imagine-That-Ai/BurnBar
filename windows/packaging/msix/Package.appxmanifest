@@ -155,6 +155,20 @@
         </uap5:Extension>
 
         <!--
+          Authenticated companion CLI. The alias makes the signed package's
+          OpenBurnBar.Cli.exe available as `openburnbar` without exposing its
+          DPAPI token in arguments, environment variables, or package metadata.
+        -->
+        <uap5:Extension
+            Category="windows.appExecutionAlias"
+            Executable="OpenBurnBar.Cli.exe"
+            EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias>
+            <uap5:ExecutionAlias Alias="openburnbar.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+
+        <!--
           Toast activation — lets background/tray toasts (session-finished, quota,
           update-ready) reactivate the app with their argument payload. The
           ToastActivatorCLSID is stable and MUST match the COM activator the app

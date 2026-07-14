@@ -23,13 +23,16 @@ ledger row(s) to `Real` and remove the corresponding deferral line.
 | Full project-code static parser | WPD-0003 revive + parser evidence |
 | Browser Computer Use / Playwright | Host browser CU lifecycle evidence |
 | Elder Wand fusion orchestrator | Fusion tool loop live (presets-only is F1) |
-| Connector plane / companion CLI / daemon-client core | Live connector/CLI client evidence |
+| Connector plane / tooling proxy / workspace broker | Live external connector consumer evidence |
 
 Closed under this decision:
 
 - Headless run service + protected checkpoints + metadata journal + recovery,
   approval, and leased tool dispatch: promoted by
   `docs/windows-port/evidence/f2/headless-run-recovery.md`.
+- Standalone companion CLI + authenticated daemon-client core: promoted by
+  `docs/windows-port/evidence/f2/companion-cli-client.md`. The separate
+  connector plane remains deferred under WPD-0006 row 33.
 
 ## Product language
 

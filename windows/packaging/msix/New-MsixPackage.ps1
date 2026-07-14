@@ -102,6 +102,10 @@ try {
     if (-not $executable -or -not (Test-Path -LiteralPath (Join-Path $stage $executable) -PathType Leaf)) {
         throw "Manifest executable '$executable' is missing from publish output $publish."
     }
+    $companionCli = Join-Path $stage "OpenBurnBar.Cli.exe"
+    if (-not (Test-Path -LiteralPath $companionCli -PathType Leaf)) {
+        throw "Authenticated companion CLI is missing from publish output $publish."
+    }
 
     $manifestOutput = Join-Path $stage "AppxManifest.xml"
     $settings = [System.Xml.XmlWriterSettings]::new()

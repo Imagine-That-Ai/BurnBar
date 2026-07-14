@@ -119,8 +119,9 @@ public sealed class CompanionCliServer : IAsyncDisposable
     {
         try
         {
-            using var reader = new StreamReader(conn.Stream, Encoding.UTF8);
-            using var writer = new StreamWriter(conn.Stream, Encoding.UTF8) { AutoFlush = true };
+            var utf8WithoutBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+            using var reader = new StreamReader(conn.Stream, utf8WithoutBom);
+            using var writer = new StreamWriter(conn.Stream, utf8WithoutBom) { AutoFlush = true };
             var boundedReader = new BoundedLineReader(reader);
             while (!cancellationToken.IsCancellationRequested)
             {

@@ -513,7 +513,9 @@ F2 workstreams:
 6. Pensieve watcher, project-code memory store, and full static parser.
 7. Browser Computer Use/Playwright lifecycle and browser target policy.
 8. Elder Wand fusion orchestrator and tool loop.
-9. Connector plane, companion CLI, and any revived RPC/client surface.
+9. Connector plane and any revived connector-specific broker/client surface.
+   The standalone authenticated companion CLI and daemon-client core are closed
+   by `docs/windows-port/evidence/f2/companion-cli-client.md`.
 
 F2 done when:
 

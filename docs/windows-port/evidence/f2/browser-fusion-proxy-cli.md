@@ -9,8 +9,10 @@
    and terminal/fail-closed outcomes.
 3. **Model proxy router:** ModelProxyRouter selects healthy routes, degrades across
    vendors, records metrics, fails closed when none healthy.
-4. **Companion CLI:** CompanionCliServer multi-client loopback TCP JSON-line plane
-   (ping/version ops).
+4. **Companion CLI:** the server-side proof is superseded by
+   `companion-cli-client.md`, which covers the authenticated standalone client,
+   full production operation catalog, signed RID packaging, and MSIX alias.
 
 **Tests:** BrowserLifecycleTests, ElderWandFusionOrchestratorTests,
-ModelProxyRouterTests, CompanionCliServerTests.
+ModelProxyRouterTests, CompanionCliServerTests, CompanionCliClientTests,
+CompanionCliApplicationTests, CompanionCliPackagingTests.

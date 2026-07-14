@@ -331,6 +331,7 @@ jobs:
         run: |
           set -euo pipefail
           app="windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj"
+          cli="windows/app/OpenBurnBar.Cli/OpenBurnBar.Cli.csproj"
           pin="windows/packaging/updater/feed/pinned-update-key.pub"
           printf '%s\n' "$WINDOWS_UPDATE_PUBLIC_KEY" > "$pin"
           for rid in win-x64 win-arm64; do
@@ -345,6 +346,19 @@ jobs:
               -p:OpenBurnBarProjectCodeParserPath="$GITHUB_WORKSPACE/project-code-parser/$rid/project-code-static-parser.exe" \
               -p:OpenBurnBarRequireProjectCodeParser=true \
               -o "publish/$rid"
+            cli_out="cli-publish/$rid"
+            dotnet publish "$cli" -c Release -r "$rid" --self-contained true \
+              -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
+              -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
+              -o "$cli_out"
+            for cli_file in \
+              OpenBurnBar.Cli.exe \
+              OpenBurnBar.Cli.dll \
+              OpenBurnBar.Cli.deps.json \
+              OpenBurnBar.Cli.runtimeconfig.json; do
+              test -f "$cli_out/$cli_file"
+              cp "$cli_out/$cli_file" "publish/$rid/$cli_file"
+            done
           done
 
       - name: Validate published native-engine layouts

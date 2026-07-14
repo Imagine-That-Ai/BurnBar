@@ -115,6 +115,10 @@ try {
     if (-not (Test-Path -LiteralPath $entry)) {
         throw "Entry point '$($layout.entryPoint)' missing from staged output (is PublishDir a self-contained publish?)."
     }
+    $companionCli = Join-Path $root 'OpenBurnBar.Cli.exe'
+    if (-not (Test-Path -LiteralPath $companionCli)) {
+        throw "Authenticated companion CLI 'OpenBurnBar.Cli.exe' is missing from staged output."
+    }
 
     # Generated files (.portable marker, README.txt, ...).
     if ($layout.PSObject.Properties.Name -contains 'generatedFiles') {
