@@ -40,8 +40,7 @@ test('package preparation and finalization never receive the private key', () =>
   for (const marker of [
     "for (const format of ['deb', 'rpm'])",
     "phase === 'prepare'",
-    'const artifact = bundleFormat(format)',
-    'const artifact = bundleFormat(format)',
+    "bundleFormat(format, format === 'rpm' ? { debArtifact } : undefined)",
     'verifySignedNativePackage',
     'withoutLinuxReleasePrivateKey',
     'must not receive OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM'
@@ -53,6 +52,17 @@ test('package preparation and finalization never receive the private key', () =>
   assert.match(arch, /must not receive the Linux release private key/u);
   assert.match(arch, /verifySignedNativePackage/u);
   assert.match(arch, /makepkg/u);
+});
+
+test('RPM release packaging is rebuilt from the validated DEB filesystem', () => {
+  const source = read('scripts/linux-port/bundle-signed-linux-packages.mjs');
+  assert.match(source, /function bundleRpmFromDeb\(debArtifact\)/u);
+  assert.match(source, /run\('dpkg-deb', \['--fsys-tarfile', debArtifact\]/u);
+  assert.match(source, /extractPreflightedArchiveBytes\(dataArchive, extractedRoot/u);
+  assert.match(source, /run\('rpmbuild'/u);
+  assert.match(source, /Requires: libsecret/u);
+  assert.match(source, /Tauri's RPM bundler can emit an archive/u);
+  assert.doesNotMatch(source, /bundleFormat\('rpm'\)/u);
 });
 
 test('release workflow isolates the signer from mutable build tools and the network', () => {

@@ -14,6 +14,7 @@ import {
 } from './lib/linux-installed-manifest.mjs';
 import {
   extractNativePackage,
+  extractPreflightedArchiveBytes,
   inspectNativePackageMetadata,
   verifySignedNativePackage
 } from './lib/linux-native-package.mjs';
@@ -80,11 +81,121 @@ function run(command, args, options = {}) {
   return result;
 }
 
-function bundleFormat(format) {
+function bundleFormat(format, options = {}) {
+  if (format === 'rpm') {
+    return bundleRpmFromDeb(options.debArtifact);
+  }
   const output = path.join(bundleRoot, format);
   fs.rmSync(output, { recursive: true, force: true });
   run('npm', ['run', 'tauri:bundle', '--', '--bundles', format], { cwd: appDir });
   return findSingleArtifact(output, format);
+}
+
+/**
+ * Tauri's RPM bundler can emit an archive that rpm2cpio rejects after it has
+ * already written the payload. Build the RPM from the known-good Tauri DEB
+ * data archive instead, so both native package formats own the same files.
+ */
+function bundleRpmFromDeb(debArtifact) {
+  if (!debArtifact || !path.isAbsolute(debArtifact)) {
+    throw new Error('RPM bundling requires the absolute Tauri DEB artifact path');
+  }
+  const debMetadata = inspectNativePackageMetadata('deb', debArtifact, { env: childEnvironment });
+  if (debMetadata.packageName !== 'open-burn-bar'
+      || debMetadata.packageVersion !== version
+      || debMetadata.packageArchitecture !== architecture) {
+    throw new Error('RPM source DEB metadata does not match requested release identity');
+  }
+
+  const output = path.join(bundleRoot, 'rpm');
+  fs.rmSync(output, { recursive: true, force: true });
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-rpm-from-deb-'));
+  const extractedRoot = path.join(temporary, 'root');
+  const top = path.join(temporary, 'rpmbuild');
+  for (const directory of ['BUILD', 'BUILDROOT', 'RPMS', 'SOURCES', 'SPECS', 'SRPMS']) {
+    fs.mkdirSync(path.join(top, directory), { recursive: true });
+  }
+
+  try {
+    const dataArchive = run('dpkg-deb', ['--fsys-tarfile', debArtifact], {
+      encoding: 'buffer',
+      env: childEnvironment
+    }).stdout;
+    extractPreflightedArchiveBytes(dataArchive, extractedRoot, { env: childEnvironment });
+
+    const entries = collectRpmFileEntries(extractedRoot);
+    const spec = path.join(top, 'SPECS/open-burn-bar.spec');
+    fs.writeFileSync(spec, [
+      'Name: open-burn-bar',
+      `Version: ${rpmSpecToken(version, 'version')}`,
+      'Release: 1',
+      'Summary: OpenBurnBar Linux desktop client',
+      'License: Proprietary',
+      `BuildArch: ${rpmSpecToken(architecture, 'architecture')}`,
+      'Requires: libsecret',
+      '%description',
+      'OpenBurnBar Linux desktop client and daemon.',
+      '%install',
+      'mkdir -p %{buildroot}',
+      `cp -a ${shellQuote(extractedRoot)}/. %{buildroot}/`,
+      '%files',
+      '%defattr(-,root,root,-)',
+      ...entries,
+      ''
+    ].join('\n'));
+
+    run('rpmbuild', ['--define', `_topdir ${top}`, '-bb', spec], {
+      env: childEnvironment
+    });
+    const built = findSingleArtifact(path.join(top, 'RPMS'), 'rpm');
+    fs.mkdirSync(output, { recursive: true });
+    const destination = path.join(output, `OpenBurnBar-${version}-1.${architecture}.rpm`);
+    fs.copyFileSync(built, destination);
+    fs.chmodSync(destination, 0o644);
+    return destination;
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+function collectRpmFileEntries(root) {
+  const entries = [];
+  const walk = (current, relative) => {
+    const stat = fs.lstatSync(current);
+    if (stat.isDirectory()) {
+      if (relative) entries.push(`%dir ${rpmSpecPath(`/${relative}`)}`);
+      for (const name of fs.readdirSync(current).sort()) {
+        walk(path.join(current, name), relative ? path.posix.join(relative, name) : name);
+      }
+      return;
+    }
+    if (stat.isFile() || stat.isSymbolicLink()) {
+      entries.push(rpmSpecPath(`/${relative}`));
+      return;
+    }
+    throw new Error(`RPM source DEB contains unsupported file type: /${relative}`);
+  };
+  walk(root, '');
+  return [...new Set(entries)].sort();
+}
+
+function rpmSpecPath(value) {
+  if ((value !== '/usr' && !value.startsWith('/usr/'))
+      || /[\u0000-\u001f\u007f\s]/u.test(value)) {
+    throw new Error(`RPM source DEB contains an unsafe payload path: ${JSON.stringify(value)}`);
+  }
+  return value.replaceAll('%', '%%');
+}
+
+function rpmSpecToken(value, label) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9.+_]*$/u.test(value)) {
+    throw new Error(`RPM ${label} is not representable in the package spec: ${value}`);
+  }
+  return value;
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
 function findSingleArtifact(root, format) {
@@ -135,10 +246,12 @@ function prepareSigningRequests() {
   writeProbeAttestation();
   const requests = [];
   const packages = [];
+  let debArtifact = null;
   for (const format of ['deb', 'rpm']) {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), `openburnbar-${format}-request-`));
     try {
-      const artifact = bundleFormat(format);
+      const artifact = bundleFormat(format, format === 'rpm' ? { debArtifact } : undefined);
+      if (format === 'deb') debArtifact = artifact;
       const packageMetadata = inspectNativePackageMetadata(format, artifact, { env: childEnvironment });
       if (packageMetadata.packageName !== 'open-burn-bar'
           || packageMetadata.packageVersion !== version
@@ -272,6 +385,7 @@ function finalizeSignedPackages() {
   readSigningResponse(index);
   const publicKeyPem = fs.readFileSync(publicKeyFile);
   const reports = [];
+  let debArtifact = null;
   for (const format of ['deb', 'rpm']) {
     const signed = signedRequest(index, 'installed-manifest', format);
     if (!crypto.verify(null, signed.manifestBytes, crypto.createPublicKey(publicKeyPem), signed.signatureBytes)) {
@@ -283,7 +397,8 @@ function finalizeSignedPackages() {
       throw new Error(`${format} signed manifest identity does not match final package`);
     }
     writeAttestation(signed.manifestBytes, signed.signatureBytes);
-    const artifact = bundleFormat(format);
+    const artifact = bundleFormat(format, format === 'rpm' ? { debArtifact } : undefined);
+    if (format === 'deb') debArtifact = artifact;
     const manifest = verifySignedNativePackage({
       format,
       artifact,
