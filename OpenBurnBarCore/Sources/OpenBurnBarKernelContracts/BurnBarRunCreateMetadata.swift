@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 // MARK: - Run create metadata (typed keys, wire-compatible JSON object)
 

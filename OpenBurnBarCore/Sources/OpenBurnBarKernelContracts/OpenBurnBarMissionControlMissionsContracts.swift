@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 public struct BurnBarMissionApprovalSnapshot: Codable, Hashable, Sendable {
     public let approved: Bool

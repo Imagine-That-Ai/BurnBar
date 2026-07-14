@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 public struct BurnBarRunStateSnapshot: Codable, Hashable, Sendable {
     public let runID: BurnBarRunID

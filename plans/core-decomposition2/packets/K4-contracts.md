@@ -1,9 +1,32 @@
 # Packet K4: extract OpenBurnBarKernelContracts (RPC/IPC + mission contracts) — FINAL Kernel-emptying
-STATE: DRAFT  LANE: Kernel-diet  DEPENDS-ON: K0, K1, K2, K3 (Platform+Models+Crypto exist)
+STATE: CONVERGED  LANE: Kernel-diet  DEPENDS-ON: K0, K1, K2, K3 (Platform+Models+Crypto exist)
 BASELINE-TOUCHING: YES — this packet EMPTIES OpenBurnBarKernel to the umbrella file
 only, so it lands the Kernel ceiling drop (185/46250 → 3/200) as a same-PR JSON edit.
-BASE: origin/main (after K3 merges)
+BASE: origin/core-decomp2/k3 (branch core-decomp2/k4; PR base core-decomp2/k3 — K0–K3
+are chained, not yet on main).
 **CANON-FLAGGED** (moves the canon sources — see canon handling below).
+
+## CONVERGENCE LOG (K4 executed)
+- 30 `git mv` OpenBurnBarKernel/* -> OpenBurnBarKernelContracts/* (subdirs preserved:
+  Contracts/, SharedModels/, top-level) + `git rm` ModuleMarker.swift. OpenBurnBarKernel
+  now = KernelUmbrella.swift ONLY (1 file / 26 LOC).
+- AE-IMPORT (compiler-demanded, 17 files): 11× `import OpenBurnBarKernelPlatform`
+  (BurnBar*ID typealiases + BurnBarJSONValue live in Platform), 8× `import
+  OpenBurnBarKernelModels`, 2× `import OpenBurnBarKernelCrypto` (MissionGroupContracts,
+  CLIAgentResumePresentation — the named crypto consumers). ZERO `import OpenBurnBarKernel`
+  / `import OpenBurnBarCore`. Contracts declared deps = [Models, Crypto]; Platform reached
+  transitively (Contracts→Models→Platform), so the Platform imports resolve. Full per-file
+  list in the PR body.
+- CANON: repointed 3 card-named pins (generate-burnbarrpc-canon.mjs contracts+swift,
+  .swiftlint.yml) PLUS 4 additional load-bearing old-path references the pre-flight grep
+  surfaced (tools/schema-sync/manifest.json BurnBarProviderContracts, apps/linux-desktop
+  bridgeRpcContract.test.ts, scripts/linux-port/run-ipc-cli-gateway-evidence.sh ×2). Regen
+  = 116 methods, all 3 generated outputs BYTE-IDENTICAL (sha256 unchanged, git diff empty),
+  `--check` exit 0. capability/coverage generator pins left untouched (per card).
+- Membership: PLANNED_CEILINGS.OpenBurnBarKernel 185/46250 → 3/200 in the script + `--update`
+  regenerated the baseline; check PASSES (Kernel live 1f/26L under 3/200).
+- Actual Contracts size: 30 files / ~11.6k LOC (ceiling 34/13100). Matches "Expected size".
+- Package.resolved churn from local boundary/daemon resolves was reverted (not part of packet).
 
 Moves the 30 contract-tier files into `OpenBurnBarKernelContracts` and deletes its
 `ModuleMarker.swift`. Deps: `OpenBurnBarKernelModels`, `OpenBurnBarKernelCrypto` (the

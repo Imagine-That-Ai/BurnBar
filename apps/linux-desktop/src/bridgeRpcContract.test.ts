@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const rustBridge = fs.readFileSync(path.join(here, '../src-tauri/src/lib.rs'), 'utf8');
 const tsBridge = fs.readFileSync(path.join(here, 'tauriBridge.ts'), 'utf8');
 const canonicalRpc = fs.readFileSync(
-  path.join(here, '../../../OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCIPCCanon.generated.swift'),
+  path.join(here, '../../../OpenBurnBarCore/Sources/OpenBurnBarKernelContracts/Contracts/BurnBarRPCIPCCanon.generated.swift'),
   'utf8'
 );
 

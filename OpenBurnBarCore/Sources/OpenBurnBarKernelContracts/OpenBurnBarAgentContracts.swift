@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 public enum BurnBarAgentIntentKind: String, Codable, CaseIterable, Hashable, Sendable {
     case replaceStringInFile = "replace_string_in_file"

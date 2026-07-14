@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 public struct BurnBarClientAttachRequest: Codable, Hashable, Sendable {
     public let clientID: BurnBarClientID

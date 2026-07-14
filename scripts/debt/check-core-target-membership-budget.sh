@@ -130,7 +130,10 @@ const mainLive = scanTarget(mainTarget);
 // reduces OpenBurnBarKernel to the umbrella file only and drops this ceiling to
 // 3 files / 200 LOC in that same PR.
 const PLANNED_CEILINGS = {
-  OpenBurnBarKernel: { maxFiles: 185, maxLines: 46250 },
+  // Phase-2 WS-K FINAL move packet (K4) emptied OpenBurnBarKernel into the 4 sub-
+  // targets; the Kernel is now the umbrella file (KernelUmbrella.swift) ONLY, so its
+  // ceiling drops from the phase-1 185/46250 end-state to 3 files / 200 LOC.
+  OpenBurnBarKernel: { maxFiles: 3, maxLines: 200 },
   // Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): the 4 Kernel
   // sub-targets, seeded at ~1.12x their measured K0-mapping end-state size
   // (Platform 12f/2430L, Models 90f/23785L, Crypto 12f/5172L, Contracts

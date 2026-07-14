@@ -7,10 +7,10 @@ const scriptPath = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(scriptPath), "../..");
 
 const files = {
-  contracts: path.join(root, "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift"),
+  contracts: path.join(root, "OpenBurnBarCore/Sources/OpenBurnBarKernelContracts/Contracts/BurnBarRPCContracts.swift"),
   capability: path.join(root, "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift"),
   coverage: path.join(root, "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonSocketRPCCoverage.swift"),
-  swift: path.join(root, "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCIPCCanon.generated.swift"),
+  swift: path.join(root, "OpenBurnBarCore/Sources/OpenBurnBarKernelContracts/Contracts/BurnBarRPCIPCCanon.generated.swift"),
   typescript: path.join(root, "extensions/openburnbar/src/generated/burnbar-rpc-ipc-canon.generated.ts"),
   json: path.join(root, "docs/linux-port/generated/burnbar-rpc-ipc-canon.linux.json")
 };

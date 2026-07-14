@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelModels
 
 // MARK: - Persona Scope Envelope (Hermes Square §6.5)
 //

@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarKernelModels
+import OpenBurnBarKernelPlatform
 
 public enum BurnBarProviderCredentialSlotStatus: String, Codable, CaseIterable, Hashable, Sendable {
     case ready

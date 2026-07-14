@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarKernelCrypto
+import OpenBurnBarKernelModels
 
 // MARK: - CLI Agent Resume / Handoff presentation layer
 //
