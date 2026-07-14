@@ -160,7 +160,7 @@ if (process.env.OPENBURNBAR_LINUX_APP_CHECK_APP_ID
   failures.push('Linux release App Check app id must match the Functions production app id');
 }
 const aurPkgbuild = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/PKGBUILD.in'), 'utf8');
-if (!aurPkgbuild.includes('--appimage-extract >/dev/null')
+if (!aurPkgbuild.includes('--appimage-extract >"${extraction_log}" 2>&1')
     || !aurPkgbuild.includes('usr/lib/openburnbar/native/libopenburnbar_iroh.so')
     || !aurPkgbuild.includes('cp -a "${srcdir}/squashfs-root/." "${pkgdir}/usr/lib/openburnbar/appdir/"')
     || !aurPkgbuild.includes('openburnbar-linux-desktop" "${pkgdir}/usr/bin/openburnbar-linux-desktop"')

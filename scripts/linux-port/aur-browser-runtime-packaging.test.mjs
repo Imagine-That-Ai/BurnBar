@@ -152,6 +152,36 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     assert.equal(fs.lstatSync(appRun).isSymbolicLink(), true);
     assert.match(fs.readFileSync(path.join(pkgdir, 'usr/bin/openburnbar-linux-desktop'), 'utf8'),
       /exec "\$\{APPDIR\}\/AppRun" "\$@"/u);
+
+    // A failing AppImage must expose the runtime's stderr instead of leaving
+    // makepkg with only its generic "package()" message. This reproduces the
+    // exact failure shape seen in the release candidate.
+    fs.writeFileSync(appImage, [
+      '#!/bin/bash',
+      'printf "simulated AppImage extraction failure\\n" >&2',
+      'exit 37'
+    ].join('\n'));
+    const failed = spawnSync('bash', ['-c', [
+      'set -euo pipefail',
+      'CARCH=x86_64',
+      'source "$1"',
+      'srcdir="$2"',
+      'pkgdir="$3"',
+      'install() {',
+      '  if [[ "$1" == -d ]]; then mkdir -p "$2"; return; fi',
+      '  local mode="${1#-Dm}" input="$2" output="$3"',
+      '  mkdir -p "$(dirname "${output}")"',
+      '  cp "${input}" "${output}"',
+      '  chmod "${mode}" "${output}"',
+      '}',
+      'package'
+    ].join('\n'), 'bash', pkgbuildRelativePath, srcdir, path.join(root, 'failed-pkg')], {
+      cwd: repoRoot,
+      encoding: 'utf8'
+    });
+    assert.notEqual(failed.status, 0);
+    assert.match(`${failed.stdout}${failed.stderr}`, /AppImage extraction failed/u);
+    assert.match(`${failed.stdout}${failed.stderr}`, /simulated AppImage extraction failure/u);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -166,8 +196,11 @@ test('AUR PKGBUILD remains valid Bash and does not bypass source verification', 
   assert.doesNotMatch(pkgbuild, /noextract/);
   assert.match(
     pkgbuild,
-    /--appimage-extract >\/dev\/null/u
+    /--appimage-extract >"\$\{extraction_log\}" 2>&1/u
   );
+  assert.match(pkgbuild, /Arch package\(\) failed .*BASH_COMMAND/u);
+  assert.match(pkgbuild, /AppImage extraction failed/u);
+  assert.match(pkgbuild, /extracted AppImage is missing required path/u);
   assert.doesNotMatch(pkgbuild, /install -Dm755 "\$\{appimage\}" "\$\{pkgdir\}\/usr\/bin\/openburnbar-linux-desktop"/u);
   assert.match(pkgbuild, /usr\/lib\/openburnbar\/appdir/u);
   assert.match(pkgbuild, /dev\.openburnbar\.OpenBurnBar\.png/u);

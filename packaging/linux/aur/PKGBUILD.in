@@ -63,25 +63,51 @@ sha256sums_aarch64=(
 )
 
 package() {
+  # makepkg only reports a generic package() failure unless the recipe emits
+  # the failing command itself. Keep this trap local to package() so release
+  # logs identify the exact path/mode/copy operation without weakening
+  # makepkg's fail-closed behavior.
+  set -E
+  trap 'status=$?; printf "openburnbar: Arch package() failed (status %d) at %s:%d: %s\n" "${status}" "${BASH_SOURCE[0]}" "${LINENO}" "${BASH_COMMAND}" >&2' ERR
+  local extraction_log="${srcdir}/openburnbar-appimage-extract.log"
   local appimage_arch="${CARCH}"
   if [[ "${CARCH}" == "x86_64" ]]; then appimage_arch="amd64"; fi
   local appimage="${srcdir}/OpenBurnBar_${pkgver}_${appimage_arch}.AppImage"
 
   chmod 755 "${appimage}"
   rm -rf "${srcdir}/squashfs-root"
-  (
+  if ! (
     cd "${srcdir}"
-    "${appimage}" --appimage-extract >/dev/null
-  )
+    "${appimage}" --appimage-extract >"${extraction_log}" 2>&1
+  ); then
+    printf 'openburnbar: AppImage extraction failed for %s (see %s)\n' "${appimage}" "${extraction_log}" >&2
+    cat "${extraction_log}" >&2 || true
+    return 1
+  fi
+  if [[ ! -d "${srcdir}/squashfs-root" ]]; then
+    printf 'openburnbar: AppImage extraction produced no squashfs-root (see %s)\n' "${extraction_log}" >&2
+    cat "${extraction_log}" >&2 || true
+    return 1
+  fi
+  require_payload_path() {
+    local required="$1"
+    if [[ ! -e "${srcdir}/squashfs-root/${required}" ]]; then
+      printf 'openburnbar: extracted AppImage is missing required path: %s\n' "${required}" >&2
+      return 1
+    fi
+  }
   for required in \
     AppRun \
     usr/lib/openburnbar/native/libopenburnbar_iroh.so \
     usr/lib/openburnbar/native/libsqlcipher.so.0 \
     usr/lib/openburnbar/swift; do
-    test -e "${srcdir}/squashfs-root/${required}"
+    require_payload_path "${required}"
   done
 
-  test -x "${srcdir}/squashfs-root/AppRun"
+  if [[ ! -x "${srcdir}/squashfs-root/AppRun" ]]; then
+    printf 'openburnbar: extracted AppRun is not executable: %s\n' "${srcdir}/squashfs-root/AppRun" >&2
+    return 1
+  fi
   install -d "${pkgdir}/usr/lib/openburnbar/appdir"
   cp -a "${srcdir}/squashfs-root/." "${pkgdir}/usr/lib/openburnbar/appdir/"
   install -Dm755 "${srcdir}/openburnbar-linux-desktop" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
@@ -102,4 +128,5 @@ package() {
   install -Dm644 "${srcdir}/installed-manifest.ed25519" "${pkgdir}/usr/share/openburnbar/attestation/installed-manifest.json.sig"
   install -Dm644 "${srcdir}/release-ed25519.pub.pem" "${pkgdir}/usr/share/openburnbar/attestation/release-ed25519.pub.pem"
   rm -rf "${srcdir}/squashfs-root"
+  trap - ERR
 }
