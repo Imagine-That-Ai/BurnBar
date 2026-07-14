@@ -170,6 +170,16 @@ class CloudVaultDomainCoreTest {
         assertEquals(1, rustCalls)
     }
 
+    @Test
+    fun schemaVersionConversionRejectsValuesThatWouldWrapAcrossUniFFI() {
+        assertEquals(2u, CloudVaultDomainCore.checkedSchemaVersion(2))
+        listOf(Int.MIN_VALUE, -1, 0, 1).forEach { invalid ->
+            assertThrows(IllegalArgumentException::class.java) {
+                CloudVaultDomainCore.checkedSchemaVersion(invalid)
+            }
+        }
+    }
+
     private fun canonicalFixture(): JsonObject {
         val resource = checkNotNull(javaClass.classLoader?.getResourceAsStream("cloudvault-deterministic-kat.json"))
         return resource.bufferedReader().use { Json.parseToJsonElement(it.readText()).jsonObject }

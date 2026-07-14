@@ -102,7 +102,7 @@ internal object CloudVaultDomainCore {
     fun aadV2(uid: String, collection: String, docId: String, field: String, schemaVersion: Int, purpose: String): String = dispatch(
         operation = "aad_v2",
         legacy = { CloudVaultLegacyCrypto.aadV2(uid, collection, docId, field, schemaVersion, purpose) },
-        rust = { cloudVaultAadV2(uid, collection, docId, field, schemaVersion.toUInt(), purpose) },
+        rust = { cloudVaultAadV2(uid, collection, docId, field, checkedSchemaVersion(schemaVersion), purpose) },
     )
 
     fun sha256Hex(data: ByteArray): String = dispatch(
@@ -207,6 +207,11 @@ internal object CloudVaultDomainCore {
         abiVersionOverride = null
         cachedAbiVersion = null
         diagnosticCounts.clear()
+    }
+
+    internal fun checkedSchemaVersion(schemaVersion: Int): UInt {
+        require(schemaVersion >= 2) { "CloudVault schema versions must be at least 2" }
+        return schemaVersion.toUInt()
     }
 
     internal fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean = { left, right -> left == right }): T =

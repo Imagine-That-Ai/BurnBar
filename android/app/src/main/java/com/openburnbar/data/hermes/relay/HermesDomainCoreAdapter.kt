@@ -43,7 +43,7 @@ internal object HermesDomainCoreAdapter {
         }
 
     fun hkdf(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int, legacy: () -> ByteArray): ByteArray = selectBytes("hkdf", legacy) {
-        hermesHkdfSha256(ikm, salt, info, length.toUInt())
+        hermesHkdfSha256(ikm, salt, info, checkedHkdfLength(length))
     }
 
     fun seal(plaintext: ByteArray, key: ByteArray, aad: ByteArray, legacy: () -> String): String {
@@ -151,6 +151,11 @@ internal object HermesDomainCoreAdapter {
             return old
         }
         return rust()
+    }
+
+    internal fun checkedHkdfLength(length: Int): UInt {
+        require(length in 1..(255 * 32)) { "Hermes HKDF output length is invalid" }
+        return length.toUInt()
     }
 
     private fun nativeReady(): Boolean = runCatching { domainCoreAbiVersion() == 3u }.getOrDefault(false)
