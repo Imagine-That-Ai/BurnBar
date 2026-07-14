@@ -149,10 +149,16 @@ python3 scripts/ops/create-domain-core-promotion-receipt.py \
    endpoint directly serves the exact release tag, commit, and CloudVault Rust
    profile identity. The publisher signs
    `OpenBurnBar-<version>-console-deployment.json`, publishes its attestation
-   bundle first, and refuses to replace different existing bytes. Apple,
-   Android, and Windows still do not publish every canonical asset and exact
-   custom attestation required by this contract. Do not create a stable receipt
-   from an Actions artifact or unsigned deployment summary.
+   bundle first, and refuses to replace different existing bytes. Stable Apple
+   releases publish `OpenBurnBar-<version>-macOS.dmg` as an arm64 notarized and
+   stapled artifact with separate quota, CloudVault, rewrap, search, Hermes,
+   and pricing predicates. Stable Android releases publish the signed
+   `OpenBurnBar-<version>-Android.aab` with CloudVault, rewrap, search, and
+   Hermes predicates after verifying the embedded public profile and all four
+   native ABIs. Their custom bundles publish before the immutable DMG/AAB and
+   reruns verify existing release bytes and bundles without replacing them.
+   Windows exact artifact evidence remains outstanding. Do not create a stable
+   receipt from an Actions artifact or unsigned deployment summary.
 7. Commit active `stable_release` receipts and advance the observed rows to
    `rust_authoritative_with_rollback`. The stable receipt must identify the
    actually published release commit and hash the promotion receipt and public
