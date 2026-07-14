@@ -94,6 +94,7 @@
 		07ECFD238A168FF132D1441E /* SmartHubCastButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95D69535FF1B751D91047638 /* SmartHubCastButton.swift */; };
 		0804BC8092E8EF9D18CC5D30 /* OpenBurnBarProviderExecutor+AnthropicMessagesBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6219DEE3B29C2E79DDABF8B /* OpenBurnBarProviderExecutor+AnthropicMessagesBridge.swift */; };
 		082526A38D02C2DFFF8BCB33 /* KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAD6FF38854FDE960210F394 /* KeyboardView.swift */; };
+		082603DB54CAB86A60A26DB7 /* ProviderUsageAPIPricingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8910572CE6D8E4BE90FF811 /* ProviderUsageAPIPricingTests.swift */; };
 		0830A1331D1BFCA7EE0D03D7 /* ElderWandJudgeSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41755F2AC03C8EBB4FD24EF /* ElderWandJudgeSection.swift */; };
 		083FBB35AC36B3ED80BCEFBB /* ParserCheckpointStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD102A0B0BA6134E8FCEDE4F /* ParserCheckpointStore.swift */; };
 		0855EB757FF66653CE2B1D13 /* CloudSyncFirestoreGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C704A1057C125246A6BFB8 /* CloudSyncFirestoreGateway.swift */; };
@@ -1546,6 +1547,7 @@
 		AAFC18FB534917E2066A184A /* FirefighterHelmet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F94266D9162293F8F5ED997 /* FirefighterHelmet.swift */; };
 		AB1C3223589166F6F6BC5DB5 /* BurnBarDaemonServer+RPCMembership.swift in Sources */ = {isa = PBXBuildFile; fileRef = D23C8984120A3D60578791B3 /* BurnBarDaemonServer+RPCMembership.swift */; };
 		AB477A3D4DFD4C7B5BCDCFBB /* MirrorControlPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0006BEA83F9336C63CCBAD9A /* MirrorControlPanel.swift */; };
+		AB76FC23FE34EFBD5661D1E9 /* CloudVaultRotationRewrapWorkerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5D70D8AC43FBD4EE5B095DA /* CloudVaultRotationRewrapWorkerTests.swift */; };
 		AB899FFFFB211D0C50AA7B1D /* OpenBurnBarBrowserToolService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14E673D1109A651C490AEEB /* OpenBurnBarBrowserToolService.swift */; };
 		AB9E150EB357960BB7485943 /* VirtualHIDKeyboardEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB96BFF3BE6EFCA2256C3FF3 /* VirtualHIDKeyboardEngine.swift */; };
 		ABECB349E64F591DEBF330BB /* PeriodCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325AA47B74D543EC6F879758 /* PeriodCard.swift */; };
@@ -4385,6 +4387,7 @@
 		D597D091C96C2CE36EB625AA /* CLIAssistantConsentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAssistantConsentSheet.swift; sourceTree = "<group>"; };
 		D5B49AB5F85BD60854302239 /* PhoneControlReplayCounterStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneControlReplayCounterStore.swift; sourceTree = "<group>"; };
 		D5C781CF62813771937898CF /* BurnBarDaemonServer+RPCObservability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BurnBarDaemonServer+RPCObservability.swift"; sourceTree = "<group>"; };
+		D5D70D8AC43FBD4EE5B095DA /* CloudVaultRotationRewrapWorkerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudVaultRotationRewrapWorkerTests.swift; sourceTree = "<group>"; };
 		D5E14E61BD25FAE61D6225C0 /* CloudUpsellBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudUpsellBanner.swift; sourceTree = "<group>"; };
 		D5E1E750C1F65C710DA3FBA4 /* test_hermesToolCard_expanded.hermesToolCard-expanded-light.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_hermesToolCard_expanded.hermesToolCard-expanded-light.png"; sourceTree = "<group>"; };
 		D5E27227A0428CA0BABCFD30 /* HermesSettingsView+GatewayStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HermesSettingsView+GatewayStore.swift"; sourceTree = "<group>"; };
@@ -4708,6 +4711,7 @@
 		F7A095CEBFAE57CD46B2DED5 /* SmartHubBridgePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartHubBridgePage.swift; sourceTree = "<group>"; };
 		F7CB65CAE4902772488D1016 /* InsightTodayWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightTodayWidgetView.swift; sourceTree = "<group>"; };
 		F87E03E80D1E31EADA4663F7 /* NestHubSettingsCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NestHubSettingsCard.swift; sourceTree = "<group>"; };
+		F8910572CE6D8E4BE90FF811 /* ProviderUsageAPIPricingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderUsageAPIPricingTests.swift; sourceTree = "<group>"; };
 		F8BB74277CD7B9338A1FB1C9 /* AgentIdentityRegistryMacURITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentIdentityRegistryMacURITests.swift; sourceTree = "<group>"; };
 		F8C3D8DBEF4CE7A0E5F91746 /* StreamsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamsView.swift; sourceTree = "<group>"; };
 		F8C97D14ADFF28962BC50D0F /* OpenBurnBarMissionControlDAGSchedulerRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarMissionControlDAGSchedulerRegressionTests.swift; sourceTree = "<group>"; };
@@ -7334,6 +7338,7 @@
 				853B0E0A43E3B6BC22214035 /* ProviderQuotaServiceCumulativeAndContextTests.swift */,
 				641A55D41C6E2219C9C614AB /* ProviderQuotaServiceMattersTests.swift */,
 				C55ACE182159D7EE9EC7D61F /* ProviderQuotaServiceTests.swift */,
+				F8910572CE6D8E4BE90FF811 /* ProviderUsageAPIPricingTests.swift */,
 				8EA351D9B3FD37B5ACA3F8B7 /* ProviderUsageAPIServiceCredentialReadTests.swift */,
 				559D8B9003765076A296F962 /* ProxyProviderLogoResolutionTests.swift */,
 				6298D624C07677202C7A39C9 /* QuotaRefreshActorCredentialReadTests.swift */,
@@ -8312,6 +8317,7 @@
 			isa = PBXGroup;
 			children = (
 				173A2EA3618200B21A80F95D /* CloudVaultRotationPickupTests.swift */,
+				D5D70D8AC43FBD4EE5B095DA /* CloudVaultRotationRewrapWorkerTests.swift */,
 				EEF550BF445B792C02F70B0A /* LLMSafeWrapVectorTests.swift */,
 				07DB75A3B7CA0F2754BB198D /* MacEscrowCredentialProducerTests.swift */,
 				C28EA46B37EF03CA472F3786 /* MacFileTransferSecurityTests.swift */,
@@ -10928,6 +10934,7 @@
 				61EBCFD6F05102EB8AC25C9B /* CloudSyncTestSupport.swift in Sources */,
 				F94CE320C24223C98BAB2C4E /* CloudVaultKeyAccessMattersTests.swift in Sources */,
 				66561B69B891E1DD7A5C968F /* CloudVaultRotationPickupTests.swift in Sources */,
+				AB76FC23FE34EFBD5661D1E9 /* CloudVaultRotationRewrapWorkerTests.swift in Sources */,
 				A7DC2C1C81C2CFD6292D45E5 /* CodexTokenAccountingRegressionTests.swift in Sources */,
 				D1AF1DC5112A2D0417E7ECE5 /* ComputerUseBudgetStatusStoreTests.swift in Sources */,
 				9D7DC203467BC1E1A92DABC8 /* ComputerUseCloudMeteringServiceTests.swift in Sources */,
@@ -11125,6 +11132,7 @@
 				BB9711F597E7E11A5C73ADBC /* ProviderQuotaServiceCumulativeAndContextTests.swift in Sources */,
 				4AF8759CF79E7ED2C16F8DF2 /* ProviderQuotaServiceMattersTests.swift in Sources */,
 				5B2567F2870DF9EF6F2259BD /* ProviderQuotaServiceTests.swift in Sources */,
+				082603DB54CAB86A60A26DB7 /* ProviderUsageAPIPricingTests.swift in Sources */,
 				BE8FD5CE4B9CFAD6DCBB1341 /* ProviderUsageAPIServiceCredentialReadTests.swift in Sources */,
 				EAB46A48CE872AEECEE20BE2 /* ProxyProviderLogoResolutionTests.swift in Sources */,
 				5E25A3257EF85320E5859A3E /* QuotaPopoverBarStateTests.swift in Sources */,

@@ -2043,3 +2043,103 @@ final class SummaryQueueItemTests: XCTestCase {
         XCTAssertEqual(item.status, .failed)
     }
 }
+
+// MARK: - Pricing Parser Success Tests
+
+final class PricingParserSuccessTests: XCTestCase {
+    private var tempHome: URL!
+    private var originalFixedUserHome: String?
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        originalFixedUserHome = getenv("CFFIXED_USER_HOME").map { String(cString: $0) }
+        tempHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-pricing-parsers-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true)
+        setenv("CFFIXED_USER_HOME", tempHome.path, 1)
+    }
+
+    override func tearDownWithError() throws {
+        if let originalFixedUserHome {
+            setenv("CFFIXED_USER_HOME", originalFixedUserHome, 1)
+        } else {
+            unsetenv("CFFIXED_USER_HOME")
+        }
+        try? FileManager.default.removeItem(at: tempHome)
+        try super.tearDownWithError()
+    }
+
+    func testCopilotParser_exactUsageComputesPositiveCatalogCost() async throws {
+        try writeFixture(
+            """
+            {"type":"user_message","role":"user","content":"Price this Copilot session.","timestamp":"2026-07-13T12:00:00Z"}
+            {"type":"assistant.usage","model":"claude-sonnet-4-20250514","usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":200},"timestamp":"2026-07-13T12:00:01Z"}
+            {"type":"assistant_message","role":"assistant","content":"Done.","timestamp":"2026-07-13T12:00:02Z"}
+            """,
+            relativePath: ".copilot/session-state/pricing-session/events.jsonl"
+        )
+
+        let result = try await CopilotParser().parse()
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(usage.model, "claude-sonnet-4-20250514")
+        XCTAssertEqual(usage.inputTokens, 1_000)
+        XCTAssertEqual(usage.outputTokens, 500)
+        XCTAssertEqual(usage.cacheReadTokens, 200)
+        XCTAssertEqual(usage.costUSD, 0.01056, accuracy: 0.000_000_001)
+        XCTAssertGreaterThan(usage.costUSD, 0)
+    }
+
+    func testAiderParser_zeroReportedCostComputesPositiveCatalogCost() async throws {
+        try writeFixture(
+            """
+            {"event":"launched","time":1752408000,"properties":{"main_model":"claude-sonnet-4-20250514"}}
+            {"event":"message_send","time":1752408001,"properties":{"prompt_tokens":1000,"completion_tokens":500,"cost":0,"main_model":"claude-sonnet-4-20250514"}}
+            {"event":"exit","time":1752408002,"properties":{}}
+            """,
+            relativePath: ".aider/analytics.jsonl"
+        )
+
+        let result = try await AiderParser().parse()
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(usage.model, "claude-sonnet-4-20250514")
+        XCTAssertEqual(usage.inputTokens, 1_000)
+        XCTAssertEqual(usage.outputTokens, 500)
+        XCTAssertEqual(usage.costUSD, 0.0105, accuracy: 0.000_000_001)
+        XCTAssertGreaterThan(usage.costUSD, 0)
+    }
+
+    func testPiAgentParser_exactUsageComputesPositiveCatalogCost() async throws {
+        try writeFixture(
+            """
+            {"timestamp":"2026-07-13T12:00:00Z","cwd":"/tmp/pricing-project","message":{"role":"user","content":"Price this Pi session."}}
+            {"timestamp":"2026-07-13T12:00:01Z","model":"claude-sonnet-4-20250514","message":{"role":"assistant","content":"Done.","usage":{"input_tokens":1000,"output_tokens":500,"cache_creation_input_tokens":100,"cache_read_input_tokens":200}}}
+            """,
+            relativePath: ".pi/sessions/pricing-session.jsonl"
+        )
+
+        let result = try await PiAgentParser().parse()
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(usage.model, "claude-sonnet-4-20250514")
+        XCTAssertEqual(usage.inputTokens, 1_000)
+        XCTAssertEqual(usage.outputTokens, 500)
+        XCTAssertEqual(usage.cacheCreationTokens, 100)
+        XCTAssertEqual(usage.cacheReadTokens, 200)
+        XCTAssertEqual(usage.costUSD, 0.010935, accuracy: 0.000_000_001)
+        XCTAssertGreaterThan(usage.costUSD, 0)
+    }
+
+    private func writeFixture(_ contents: String, relativePath: String) throws {
+        let file = tempHome.appendingPathComponent(relativePath)
+        try FileManager.default.createDirectory(
+            at: file.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data(contents.utf8).write(to: file)
+    }
+}

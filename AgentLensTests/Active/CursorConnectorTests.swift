@@ -162,6 +162,49 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertEqual(normalized.totalTokens, 275)
     }
 
+    func test_usageLogPolling_pricesAndPersistsRoutedUsage() async throws {
+        let supportRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cursor-connector-pricing-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: supportRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: supportRoot) }
+
+        let previousSupportRoot = ProcessInfo.processInfo.environment["OPENBURNBAR_SUPPORT_ROOT"]
+        setenv("OPENBURNBAR_SUPPORT_ROOT", supportRoot.path, 1)
+        defer {
+            if let previousSupportRoot {
+                setenv("OPENBURNBAR_SUPPORT_ROOT", previousSupportRoot, 1)
+            } else {
+                unsetenv("OPENBURNBAR_SUPPORT_ROOT")
+            }
+        }
+
+        let manager = CursorConnectorManager()
+        let dataStore = try makeDiscoveryInMemoryStore()
+        let usageLogURL = supportRoot
+            .appendingPathComponent("OpenBurnBar", isDirectory: true)
+            .appendingPathComponent("cursor_connector_usage.jsonl")
+        try Data("""
+        {"request_id":"pricing-request","provider":"zai","model":"glm-5","prompt_tokens":1000000,"completion_tokens":1000000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"total_tokens":2000000,"timestamp":"2025-07-14T12:00:00Z"}
+        """.utf8).write(to: usageLogURL, options: .atomic)
+
+        manager.attach(dataStore: dataStore)
+
+        let deadline = Date().addingTimeInterval(2)
+        while manager.recentUsageEvents.isEmpty, Date() < deadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        let event = try XCTUnwrap(manager.recentUsageEvents.first)
+        XCTAssertEqual(event.provider, .zai)
+        XCTAssertEqual(event.model, "glm-5")
+        XCTAssertEqual(event.cost, 0.14, accuracy: 0.000_001)
+
+        let persisted = try await dataStore.fetchAllUsage()
+        XCTAssertEqual(persisted.count, 1)
+        XCTAssertEqual(persisted.first?.sessionId, "pricing-request")
+        XCTAssertEqual(persisted.first?.costUSD ?? -1, 0.14, accuracy: 0.000_001)
+    }
+
     // MARK: - Reasoning Token Extraction Tests (VAL-TOKEN-006)
 
     func test_normalizeUsageEvent_extractsReasoningTokens_fromFlatPayload() {
