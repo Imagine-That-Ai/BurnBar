@@ -2,6 +2,11 @@ import XCTest
 import GRDB
 @testable import OpenBurnBarCore
 @testable import OpenBurnBar
+// Core-decomposition: reaches the INTERNAL OpenBurnBarError.database(...) factory, which moved from
+// the Core monolith into OpenBurnBarKernel. The umbrella shim re-exports only Kernel's public API,
+// so a direct @testable import is required (same AE-TESTABLE pattern as the adapter-test fixes; the
+// app target now links OpenBurnBarKernel explicitly).
+@testable import OpenBurnBarKernel
 
 // MARK: - UsageAggregator Tests
 

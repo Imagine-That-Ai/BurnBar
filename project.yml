@@ -426,13 +426,20 @@ targets:
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
         product: OpenBurnBarSignalCore
-      # Core-decomposition: explicit OpenBurnBarQuota product so the OpenBurnBarTests app test
-      # target can `@testable import OpenBurnBarQuota` to reach WarpQuotaAdapter's INTERNAL
-      # candidateLogFiles (moved out of the Core monolith). Redundant for runtime — the linked
-      # OpenBurnBarCore umbrella already `@_exported import`s Quota — but required for internal
-      # test access, mirroring the other explicitly-linked-yet-re-exported siblings above.
+      # Core-decomposition: explicit sibling products so the OpenBurnBarTests app test target can
+      # `@testable import` them to reach INTERNAL symbols that moved out of the Core monolith
+      # (Quota: WarpQuotaAdapter.candidateLogFiles, AntigravityQuotaAdapter.referenceDate*,
+      # XAIQuotaAdapter.superGrokLogURL, ClaudeOAuthUsageFetcher.scopedCacheURL,
+      # FactoryQuotaAdapter.inferPlanTier; Kernel: OpenBurnBarError.database; LogParsers:
+      # TimestampNormalizationUtility.firestoreMaxEpochSeconds). Redundant for runtime — the linked
+      # OpenBurnBarCore umbrella already `@_exported import`s all three — but required for internal
+      # @testable access, mirroring the other explicitly-linked-yet-re-exported siblings above.
       - package: OpenBurnBarCore
         product: OpenBurnBarQuota
+      - package: OpenBurnBarCore
+        product: OpenBurnBarKernel
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLogParsers
       - package: GRDB
         product: GRDB
       - package: SQLCipher
