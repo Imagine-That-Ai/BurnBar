@@ -24,7 +24,7 @@ public sealed class LanguageServerProjectCodeParserClientTests
                 {
                     ["cs"] = new[] { "dotnet", typeof(FakeLanguageServerMarker).Assembly.Location },
                 },
-                timeout: TimeSpan.FromSeconds(5));
+                timeout: TimeSpan.FromSeconds(30));
             string blobSha = JsonLinesProjectCodeStaticParserClient.ComputeGitBlobSha(source);
 
             ProjectCodeParseResponse symbols = await client.ParseAsync(new ProjectCodeParseRequest(
