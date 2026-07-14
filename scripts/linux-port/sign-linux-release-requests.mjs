@@ -124,7 +124,7 @@ function validateRequest({
   const requestKeys = Object.keys(request ?? {}).sort();
   if (JSON.stringify(requestKeys) !== JSON.stringify(['file', 'id', 'kind', 'sha256', 'size'])
       || !['installed-manifest', 'appimage-peer-manifest'].includes(request.kind)
-      || !/^[a-z0-9-]+$/u.test(request.id ?? '')
+      || !/^[a-z0-9_-]+$/u.test(request.id ?? '')
       || !/^[a-f0-9]{64}$/u.test(request.sha256 ?? '')
       || !Number.isSafeInteger(request.size) || request.size <= 0 || request.size > 16 * 1024 * 1024) {
     throw new Error('invalid Linux release signing request');

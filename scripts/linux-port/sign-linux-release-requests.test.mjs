@@ -38,6 +38,11 @@ test('isolated signer signs the exact canonical release request set', (t) => {
   }
 });
 
+test('isolated signer accepts x86_64 request subjects', (t) => {
+  const value = fixture(t, 'x86_64');
+  assert.equal(sign(value).signed.length, 4);
+});
+
 for (const [name, mutate, pattern] of [
   ['workflow identity drift', () => ({ expectedVersion: '9.9.9' }), /invalid Linux release signing request index/u],
   ['non-canonical index', (value) => {
@@ -97,7 +102,7 @@ for (const [name, mutate, pattern] of [
   });
 }
 
-function fixture(t) {
+function fixture(t, architecture = 'aarch64') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-release-signer-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const requestsDir = path.join(root, 'requests');
@@ -108,7 +113,6 @@ function fixture(t) {
   const keyId = sha256Bytes(publicKey.export({ type: 'spki', format: 'der' }));
   const version = '1.2.3';
   const gitCommit = 'a'.repeat(40);
-  const architecture = 'aarch64';
   const files = [
     file('/usr/bin/openburnbar-daemon', 'daemon', '0755'),
     file('/usr/bin/openburnbar-linux-desktop', 'desktop', '0755'),
