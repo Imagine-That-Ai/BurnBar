@@ -1,5 +1,5 @@
 import XCTest
-import OpenBurnBarCore
+import OpenBurnBarEngine
 @testable import OpenBurnBarDaemon
 
 /// End-to-end coverage for the aggregated controller-runtime RPC

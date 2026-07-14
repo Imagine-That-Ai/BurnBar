@@ -1,0 +1,99 @@
+name: Headless App Build (K4 precursor)
+
+# PR-triggerable, build-only proof that the macOS AgentLens app (scheme
+# OpenBurnBar) still COMPILES headlessly — the declared precondition for the
+# Core-decomposition UI extraction (packet P-16 / K4, docs/CORE_DECOMPOSITION_PROGRAM.md).
+#
+# WHY A SEPARATE LANE (not just app-pr-gate.yml):
+#   app-pr-gate.yml's `app-build-test` runs `xcodebuild test` — it launches the
+#   XCTest host and the app's Firestore/daemon lifecycle, capped at 120 min.
+#   P-16 (Views -> OpenBurnBarUI) does not need the app TESTS to run to be
+#   proven safe; it needs proof the app GRAPH still builds after a UI move. This
+#   lane runs `xcodebuild build` only (scripts/ci/headless-app-build.sh), so a
+#   UI-extraction compile break is caught by a fast, focused, merge-blocking
+#   signal without paying for the full app test suite. Each P-16 sub-packet PR
+#   body names THIS job as a required gate.
+#
+# PATH FILTER: only the surfaces a UI extraction can break — OpenBurnBarCore/**
+# (the source of the moved Views) and AgentLens/** (the app target that consumes
+# them). Package/project shape changes that alter the app graph ride along via
+# the manifest/pbxproj entries under those trees.
+#
+# The known-good headless recipe (repo memory "Headless xcodebuild blocked
+# (Xcode 27 Beta)") is encoded in the script: a fresh CI runner checks out
+# OUTSIDE ~/Documents, so the Xcode-27 sandbox/TCC blockers that bite a local
+# ~/Documents checkout do not apply and a normal in-tree resolve + build works.
+# The script also supports a local cache-reuse mode for developers reproducing
+# the gate on a ~/Documents checkout.
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "OpenBurnBarCore/**"
+      - "AgentLens/**"
+      - "OpenBurnBar.xcodeproj/**"
+      - "project.yml"
+      - "scripts/ci/headless-app-build.sh"
+      - ".github/workflows/headless-app-build.yml"
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+
+concurrency:
+  group: headless-app-build-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  headless-app-build:
+    name: Headless macOS app build (scheme OpenBurnBar)
+    runs-on: macos-26
+    # Build-only (no XCTest host launch), so far lighter than the 120-min
+    # app-build-test lane; the cap still covers a cold SPM cache + libsignal FFI
+    # build on a hosted runner.
+    timeout-minutes: 90
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          submodules: false
+
+      - name: Initialize libsignal submodule with retry
+        run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
+
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            .spm-cache
+            .derived-data
+          key: ${{ runner.os }}-headless-app-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-headless-app-spm-
+            ${{ runner.os }}-app-spm-
+            ${{ runner.os }}-spm-
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Install protobuf for libsignal Swift FFI
+        run: |
+          if ! command -v protoc >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+          protoc --version
+
+      - name: Build the AgentLens app headless (scheme OpenBurnBar, build-only)
+        # scripts/ci/headless-app-build.sh runs `xcodebuild build -scheme
+        # OpenBurnBar` for platform=macOS with code signing off. On a fresh CI
+        # runner it builds in-tree (checkout is outside ~/Documents, so no
+        # sandbox/TCC hit). FIREBASE_SOURCE_FIRESTORE=1 is forced inside the
+        # script (iOS 27 gRPC/Firestore source-build guard on the resolve path).
+        run: ./scripts/ci/headless-app-build.sh

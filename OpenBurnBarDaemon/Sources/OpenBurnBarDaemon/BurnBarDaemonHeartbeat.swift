@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Periodic on-disk liveness signal written by the OpenBurnBar daemon process.
 /// The Mac app reads this file to distinguish "daemon hung" from "daemon not running".

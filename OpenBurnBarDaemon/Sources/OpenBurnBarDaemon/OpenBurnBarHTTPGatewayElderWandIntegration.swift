@@ -1,6 +1,6 @@
 import Foundation
 import Network
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 // MARK: - The Elder Wand — model-fusion integration
 

@@ -1,6 +1,11 @@
 import XCTest
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
+// Core-decomposition: reaches INTERNAL SwarmCanvasView members (sanitizedFrameRate,
+// animationFrameScale, shouldDrawGlyphParticle) that moved from the Core monolith into
+// OpenBurnBarUI. The umbrella shim re-exports only UI's public API, so a direct @testable import is
+// required (the OpenBurnBar app target now links OpenBurnBarUI explicitly for this).
+@testable import OpenBurnBarUI
 
 final class SwarmCanvasFrameRateTests: XCTestCase {
 

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// First-launch installer + version check for the Playwright bridge.
 /// Phase 9. See `plans/2026-05-16-computer-use-master-plan.md` § B.3.

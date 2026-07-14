@@ -1,7 +1,7 @@
 #if os(Linux)
 import Foundation
 import Glibc
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Linux-local source kinds (Core Pensieve chunker/seal path is excluded on Linux).
 public enum PensieveSourceKind: String, Codable, Sendable {

@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 /// Builds controller summaries and enriched project snapshots from mission control projection state.

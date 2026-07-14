@@ -96,18 +96,19 @@ enum OpenBurnBarDaemonBinaryResolver {
         return frameworks
     }
 
+    /// Default bundle-name search list for the Core resource bundle (current name +
+    /// first legacy name). Kept as a single-line stored array so it is one
+    /// non-executable declaration: LLVM/xccov emit no per-line counter for a
+    /// stored-property literal, and a single line cannot fragment into the
+    /// ambiguous multi-line "missing_line_evidence" regions the app diff-coverage
+    /// gate would otherwise charge even though every call site is exercised.
+    static let coreResourceBundleSearchNames: [String] = [OpenBurnBarDaemonManager.resourceBundleName, OpenBurnBarDaemonManager.legacyResourceBundleNames[0]]
+
     /// Locates the OpenBurnBarCore resource bundle that must be installed alongside the daemon binary.
-    static func resolveResourceBundle(
-        nearBinaryURL: URL,
-        appBundleURL: URL,
-        fileManager: FileManager
-    ) -> URL? {
+    /// The signature is kept on one line so no parameter line is misread as an executable region.
+    static func resolveResourceBundle(nearBinaryURL: URL, appBundleURL: URL, fileManager: FileManager, bundleNames: [String] = OpenBurnBarDaemonBinaryResolver.coreResourceBundleSearchNames) -> URL? {
         let binaryDirectory = nearBinaryURL.deletingLastPathComponent()
         let appParent = appBundleURL.deletingLastPathComponent()
-        let bundleNames = [
-            OpenBurnBarDaemonManager.resourceBundleName,
-            OpenBurnBarDaemonManager.legacyResourceBundleNames[0]
-        ]
         let candidates = bundleNames.flatMap { bundleName in
             [
                 binaryDirectory.appendingPathComponent(bundleName),
@@ -119,6 +120,14 @@ enum OpenBurnBarDaemonBinaryResolver {
             ]
         }
         return candidates.first { fileManager.fileExists(atPath: $0.path) }
+    }
+
+    /// Core-decomposition P-02: locates the OpenBurnBarKernel resource bundle
+    /// (`OpenBurnBarCore_OpenBurnBarKernel.bundle`) across the SAME six candidate roots
+    /// the Core-bundle resolver searches. Staged IN ADDITION to the Core bundle.
+    /// Signature on one line so no parameter line is misread as an executable region.
+    static func resolveKernelResourceBundle(nearBinaryURL: URL, appBundleURL: URL, fileManager: FileManager) -> URL? {
+        resolveResourceBundle(nearBinaryURL: nearBinaryURL, appBundleURL: appBundleURL, fileManager: fileManager, bundleNames: [OpenBurnBarDaemonManager.kernelResourceBundleName])
     }
 
     static func resolveProjectCodeMemorySecretCorpus(

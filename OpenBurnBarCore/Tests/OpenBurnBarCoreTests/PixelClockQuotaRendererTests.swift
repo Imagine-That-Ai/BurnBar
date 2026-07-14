@@ -1,5 +1,10 @@
 import XCTest
 @testable import OpenBurnBarCore
+// AE-TESTABLE (P-16d): PixelClockQuotaRenderer + PixelClockProviderLogo moved to
+// OpenBurnBarUI; this test reaches internal members (PixelClockProviderLogo.sourceName/
+// rows, PixelClockQuotaRenderer.providerLogoPattern) that the @_exported umbrella does
+// not carry, so it @testable-imports the new target for internal-symbol access.
+@testable import OpenBurnBarUI
 
 final class PixelClockQuotaRendererTests: XCTestCase {
     func testRenderQuotaCarouselBuildsStableHeaderAndProviderPages() {
