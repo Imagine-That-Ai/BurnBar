@@ -3,7 +3,7 @@
 //
 // Row order, capability names, dispositions, qualifiers, and the SUB-DONE/SUB-BUILD
 // hybrids (rows 24, 27) match the doc exactly. The disposition-summary constants match
-// the current disposition summary (12 SUB-DONE, 3 SUB-BUILD, 15 DEFER, 4 N/A).
+// the current disposition summary (13 SUB-DONE, 3 SUB-BUILD, 14 DEFER, 4 N/A).
 // A test cross-checks both against those figures so the tab can never drift from the
 // accepted decision without a red build.
 
@@ -100,9 +100,9 @@ public static class DaemonSubstitutionMatrix
             "The production companion plane composes the macOS intent-normalization and typed-plan contract with deterministic precedence, exact plan outlines, bounded inputs, and no execution side effects.",
             "F2 planner evidence", Qualifier: "intent normalization + outline"),
         new(21, "Policy engine (run/tool approval)",
-            D.Deferred,
-            "Gates daemon-executed runs (row 8). The computer-use policy core is separately substituted (row 24).",
-            "With row 8"),
+            D.SubstitutedAlready,
+            "The authenticated companion plane exposes the macOS risk, approval-descriptor, retryability, progress, and model-approval decision core without executing tools.",
+            "F2 policy evidence", Qualifier: "decision core"),
         new(22, "Rate limiter",
             D.Deferred, "Gateway-scoped (row 1).", "With row 1"),
         new(23, "Config store / daemon configuration",
@@ -161,13 +161,13 @@ public static class DaemonSubstitutionMatrix
     // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
     /// <summary>SUB-DONE count from the current summary.</summary>
-    public const int SubstitutedAlreadyCount = 12;
+    public const int SubstitutedAlreadyCount = 13;
 
     /// <summary>SUB-BUILD count from the doc's summary (rows 26, 30, 31).</summary>
     public const int SubstituteToBuildCount = 3;
 
     /// <summary>DEFER count from the current summary.</summary>
-    public const int DeferredCount = 15;
+    public const int DeferredCount = 14;
 
     /// <summary>N/A count from the doc's summary (rows 10, 17, 28, 34).</summary>
     public const int NotApplicableCount = 4;

@@ -151,7 +151,7 @@ unless prefixed; all Windows paths under `windows/`.
 | 18 | Pensieve knowledge watcher | `PensieveKnowledgeWatcher.swift` | **DEFER** | Excluded even from the daemon's Linux build; the Windows memory surface already reads/writes `memory_facts` via `app/OpenBurnBar.App.CloudSync/CloudSyncMemoryStore.cs` (B4). Local knowledge *watching* is a v1.1 capability. | Bundle drift D14 |
 | 19 | Project-code memory store + embeddings | `ProjectCodeMemory/BurnBarProjectCodeMemoryStore*.swift`, `ProjectCodeMemory/BurnBarCodeEmbedding.swift` | **DEFER** | Already governed by WPD-0003 (static parser deferred; lexical fallback = bundle drift D13). Store follows the parser. | WPD-0003; D13 |
 | 20 | Planner service | `OpenBurnBarPlannerService.swift` | **SUB-DONE** (intent normalization + outline) | WPD-0009 fired the planner trigger. The production authenticated companion plane exposes `planner.plan` with the same explicit-intent → workflow → tool → prompt → generic precedence, typed constraints/risk/desired outputs, exact three-step outlines, schema validation, bounded input, and no execution side effects. | `docs/windows-port/evidence/f2/planner-production-composition.md` |
-| 21 | Policy engine (run/tool approval) | `OpenBurnBarPolicyEngine.swift` | **DEFER** | Gates daemon-executed runs (row 8). The *computer-use* policy core is separately substituted (row 24). | With row 8 |
+| 21 | Policy engine (run/tool approval) | `OpenBurnBarPolicyEngine.swift` | **SUB-DONE** (decision core) | The production authenticated companion plane exposes bounded, side-effect-free `policy.evaluate` with the same risk matrix, approval descriptors, retryability, progress detection, and model-requested-approval behavior. Tool execution and approval persistence/resolution remain separately gated. | `docs/windows-port/evidence/f2/policy-engine-production-composition.md` |
 | 22 | Rate limiter | `BurnBarRateLimiter.swift` | **DEFER** | Gateway-scoped (row 1). | With row 1 |
 | 23 | Config store / daemon configuration | `OpenBurnBarConfigStore.swift`, `OpenBurnBarDaemonConfiguration.swift` | **SUB-DONE** (app-scoped) | `app/OpenBurnBar.App.Configuration/AppConfiguration.cs` owns Windows app/runtime config; daemon-endpoint config has no consumer without a daemon. | Landed; gateway config revives with row 1 |
 | 24 | Computer-use policy/capability/audit core + service coordination | `ComputerUse/ComputerUseService.swift`, `ComputerUse/ComputerUseRunCoordinator.swift`, `ComputerUse/BurnBarCLIAuditVerify.swift` | **SUB-DONE** (core) / **SUB-BUILD** (full loop) | Core substituted: `computeruse/OpenBurnBar.ComputerUse.Core/` (Capability/Gate/Scope/Audit, ~100 tests) + Windows adapters (`SendInputInputSynthesizer.cs`, `UiaInspector.cs`, `WindowsGraphicsCaptureScreenCapturer.cs`, `NamedPipeDaemonApprovalChannel.cs`). Full loop on real hardware = **Wave 4 item 1** (G4). | Wave 4 item 1 |
@@ -170,13 +170,13 @@ unless prefixed; all Windows paths under `windows/`.
 
 Counting each row by its current primary disposition (rows 24 and 27 count as
 SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1; rows 14,
-20, and 25 are WPD-0009 F2 promotions):
+20, 21, and 25 are WPD-0009 F2 promotions):
 
 | Disposition | Rows | Count |
 |---|---|---|
-| C#-substituted-already (SUB-DONE) | 5, 9, 11, 12, 13, 14, 15, 20, 23, 24, 25, 27 | **12** |
+| C#-substituted-already (SUB-DONE) | 5, 9, 11, 12, 13, 14, 15, 20, 21, 23, 24, 25, 27 | **13** |
 | C#-substitute-to-build (SUB-BUILD) | 26 (Wave 4), 30 (Wave 3), 31 (Wave 3) | **3** |
-| v1.1-deferred (DEFER; Swift-engine-reuse remains a revive path for 6, 7, and 8) | 1, 2, 3, 4, 6, 7, 8, 16, 18, 19, 21, 22, 29, 32, 33 | **15** |
+| v1.1-deferred (DEFER; Swift-engine-reuse remains a revive path for 6, 7, and 8) | 1, 2, 3, 4, 6, 7, 8, 16, 18, 19, 22, 29, 32, 33 | **14** |
 | Not-applicable-on-Windows (N/A) | 10, 17, 28, 34 | **4** |
 
 Every SUB-BUILD row is owned by a named remediation-plan wave (Wave 3 item 1;

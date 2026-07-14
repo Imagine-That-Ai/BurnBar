@@ -295,6 +295,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _missionSubmit;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _missionResume;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _plan;
+    private readonly Func<JsonElement, CancellationToken, Task<object?>>? _policy;
 
     public CompanionCliCommandRouter(
         ModelProxyRouter? router = null,
@@ -305,7 +306,8 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
         Func<JsonElement, CancellationToken, Task<object?>>? recover = null,
         Func<JsonElement, CancellationToken, Task<object?>>? missionSubmit = null,
         Func<JsonElement, CancellationToken, Task<object?>>? missionResume = null,
-        Func<JsonElement, CancellationToken, Task<object?>>? plan = null)
+        Func<JsonElement, CancellationToken, Task<object?>>? plan = null,
+        Func<JsonElement, CancellationToken, Task<object?>>? policy = null)
     {
         _router = router;
         _submit = submit;
@@ -316,6 +318,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
         _missionSubmit = missionSubmit;
         _missionResume = missionResume;
         _plan = plan;
+        _policy = policy;
     }
 
     public async Task<string> HandleAsync(string line, CancellationToken cancellationToken)
@@ -343,11 +346,12 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 "mission.submit" => await InvokeRunAsync(_missionSubmit, root, cancellationToken).ConfigureAwait(false),
                 "mission.resume" => await InvokeRunAsync(_missionResume, root, cancellationToken).ConfigureAwait(false),
                 "planner.plan" => await InvokeRunAsync(_plan, root, cancellationToken).ConfigureAwait(false),
+                "policy.evaluate" => await InvokeRunAsync(_policy, root, cancellationToken).ConfigureAwait(false),
                 "fusion.run" => await InvokeRunAsync(_fusion, root, cancellationToken).ConfigureAwait(false),
                 "code.index" or "code.search" or "code.symbol" or "code.status" or "code.context_pack" or "code.references" or "code.call_graph" or "code.semantic_search" =>
                     await InvokeRunAsync(_code, root, cancellationToken).ConfigureAwait(false),
                 "ping" => JsonSerializer.Serialize(new { ok = true, pong = true }),
-                "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-6" }),
+                "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-7" }),
                 _ => JsonSerializer.Serialize(new { ok = false, error = "unknown_op", op }),
             };
         }

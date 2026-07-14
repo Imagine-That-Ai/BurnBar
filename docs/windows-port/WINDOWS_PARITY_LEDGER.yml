@@ -710,6 +710,22 @@ rows:
   owner_lane: f2
   windows_route: planner
   macos_route: planner
+- id: f2-policy-engine
+  macos_capability: Run and tool approval policy decisions
+  windows_capability: Authenticated side-effect-free policy evaluation
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/policy-engine-production-composition.md
+  tests:
+  - windows/tests/managed-runtime/BurnBarPolicyEngineTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Planning/BurnBarPolicyEngine.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Planning/CompanionCliPolicyHandler.cs
+  - windows/app/OpenBurnBar.App/App.xaml.cs
+  notes: F2 policy decision core is production-composed; approval resolution and execution remain separate.
+  owner_lane: f2
+  windows_route: policy
+  macos_route: policy
 - id: f2-browser-computer-use
   status: Real
   owner_lane: f2
@@ -828,8 +844,8 @@ f1_coverage_register:
   windows_status: Real
   note: IA-4 ProjectsPage
 finish_line_note: >-
-  100% parity under the named finish line is F2_True_1to1. The current 49-row
-  histogram is the scoped F1 Ship Peer source/product gate: 49 Real / 0
+  100% parity under the named finish line is F2_True_1to1. The current 50-row
+  histogram is the scoped F1 Ship Peer source/product gate: 50 Real / 0
   DeferredApproved / 0 Blocked / 0 Substituted. WPD-0009 governs promotion of
   F2 workstreams to full parity; production composition and host evidence remain
   explicit requirements. Operational residuals outside the ledger gate

@@ -9,7 +9,7 @@
 
 At the time of this certification update, the remediation plan's F1
 source/product ledger reported 46 rows as Real, with zero DeferredApproved,
-Blocked, or Substituted rows. The current ledger is 49/49 Real. Both are scoped
+Blocked, or Substituted rows. The current ledger is 50/50 Real. Both are scoped
 F1 Ship Peer results, not proof that the F2 True 1:1 workstreams or the public
 release gates are complete.
 
@@ -166,6 +166,11 @@ unproven host behavior to certification:
   typed constraints/risk/desired outputs; and exact deterministic outlines.
   Unsupported workflows and schema versions fail closed before execution. This
   is intent planning only: provider/tool policy and execution remain separate.
+- The companion plane also exposes side-effect-free `policy.evaluate` with the
+  macOS tool-risk matrix, approval descriptors, retryability, progress
+  detection, and model-requested-approval rules. Windows-specific system-control
+  copy replaces Mac wording. Approval resolution and tool execution remain
+  separate, fail-closed gates.
 - Browser Computer Use process mode now uses a direct executable plus a
   JSON-line bridge with no shell interpolation, bounded responses, serialized
   commands, cancellation, and process-tree cleanup. The bridge now accepts the
@@ -342,15 +347,16 @@ unproven host behavior to certification:
   size, and SHA-256, including the resource bundle, before an artifact can be
   signed or zipped.
 
-These changes are covered by focused managed-runtime (100/100 planner,
-mission, gateway, and recovery tests plus 41/41 managed-agent-runtime tests), CloudSync (61/61), connector
+These changes are covered by focused managed-runtime (135/135 planner, policy,
+mission, gateway, and recovery tests plus 41/41 managed-agent-runtime tests),
+CloudSync (61/61), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
 Computer Use (114 passed plus a separately executed live Chromium test),
-settings (175/175), configuration (39/39), distribution (98/98), bridge-policy,
+settings (177/177), configuration (39/39), distribution (98/98), bridge-policy,
 and provider-boundary tests. They are an implementation increment, not a claim
 that the F2 workstreams are all complete: production composition of the
-remaining F2 provider, policy, and tool-execution services, physical
-Computer Use/media safety, and host evidence still remain. The ledger's 49/49 `Real`
+remaining F2 provider, approval-resolution, and tool-execution services, physical
+Computer Use/media safety, and host evidence still remain. The ledger's 50/50 `Real`
 result is the scoped F1 source/product gate; WPD-0009 continues to define F2
 True 1:1 as the actual 100% parity endpoint.
 

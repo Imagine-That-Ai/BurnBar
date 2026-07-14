@@ -478,6 +478,7 @@ public partial class App : Application
                     headlessRuns,
                     rateLimiter: new MissionRateLimiter(60, TimeSpan.FromMinutes(1))));
             var plannerHandler = new CompanionCliPlannerHandler(new BurnBarPlannerService());
+            var policyHandler = new CompanionCliPolicyHandler(new BurnBarPlannerService(), new BurnBarPolicyEngine());
             _ = ReportRecoverableHeadlessRunsAsync(headlessRuns);
             string fusionJournalPath = Environment.GetEnvironmentVariable("OPENBURNBAR_FUSION_JOURNAL_PATH")
                 ?? Path.Combine(
@@ -517,7 +518,8 @@ public partial class App : Application
                 runHandler.RecoverAsync,
                 missionHandler.SubmitAsync,
                 missionHandler.ResumeAsync,
-                plannerHandler.PlanAsync);
+                plannerHandler.PlanAsync,
+                policyHandler.EvaluateAsync);
             _companionCli = new CompanionCliServer(port, router, _localAccessToken);
             _companionCli.Start();
             AppDiagnostics.LogEvent("companion-cli.started", $"127.0.0.1:{port}");

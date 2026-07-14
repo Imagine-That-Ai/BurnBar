@@ -97,6 +97,9 @@ public sealed partial class BurnBarPlannerService
             desiredOutputs);
     }
 
+    public BurnBarAgentIntent ParseNormalizedIntent(JsonElement intent) =>
+        ParseIntent(intent, inferRequestedTools: true);
+
     private static BurnBarAgentIntent NormalizeIntent(string prompt, JsonElement metadata)
     {
         if (metadata.TryGetProperty("agentIntent", out JsonElement explicitIntent))

@@ -86,8 +86,13 @@ The production companion plane now also exposes side-effect-free
 `planner.plan`. Its contract matches macOS intent precedence, requested-tool
 inference, typed constraint/risk/desired-output preservation, schema and
 workflow rejection, and deterministic outlines. The superseding managed-runtime
-suite is **100/100**, including real authenticated TCP and exact wire-name proof.
-Execution and policy remain separately unclaimed.
+suite was **100/100**, including real authenticated TCP and exact wire-name proof.
+
+The companion plane now also exposes side-effect-free `policy.evaluate` with
+the macOS risk, approval-descriptor, retryability, progress, and model-approval
+rules. The superseding managed-runtime suite is **135/135**, including exact
+wire and authenticated TCP coverage. Approval resolution and tool execution
+remain separately unclaimed.
 
 Validation commands:
 
@@ -121,7 +126,7 @@ authoritative XAML validation surface.
 The presentation suite is now 761/761 after durable project-code store,
 inventory-fallback, and AST-range chunking coverage;
 the focused chat runtime suite is 24/24; the Rust parser suite is 19/19. The
-F1 parity ledger remains the machine-scanned 49-row source/product gate.
+F1 parity ledger remains the machine-scanned 50-row source/product gate.
 WPD-0009 still defines F2 True 1:1 as the full parity finish line and requires
 production composition plus host evidence before these rows can be promoted.
 
