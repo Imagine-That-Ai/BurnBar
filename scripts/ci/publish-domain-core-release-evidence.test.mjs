@@ -466,6 +466,78 @@ test("native publication may populate its exact draft release", () => {
   }
 });
 
+test("Windows publication binds its dual-architecture artifact and tag train", () => {
+  const root = mkdtempSync(
+    join(tmpdir(), "domain-core-windows-publisher-test-"),
+  );
+  try {
+    const artifact = join(root, "OpenBurnBar-1.2.3-windows-release.zip");
+    writeFileSync(artifact, "signed x64 and arm64 release bytes\n");
+    const domain = "cloudVault";
+    const predicate = {
+      schemaVersion: 1,
+      consumer: "windows",
+      artifactKind: "windows-release-bundle",
+      target: "windows-x64-arm64",
+      artifact: {
+        fileName: basename(artifact),
+        sha256: sha256File(artifact),
+      },
+      release: {
+        version: "1.2.3",
+        tag: "windows-v1.2.3",
+        commit: COMMIT,
+        publicProfileSha256: canonicalSha256({
+          artifactAuthority: "signed",
+          distribution: "public",
+          rolloutChannel: null,
+          evidenceEnabled: false,
+          domain,
+          mode: "rust",
+        }),
+      },
+    };
+    const predicatePath = join(root, "cloudvault.predicate.json");
+    const bundlePath = join(root, "cloudvault.bundle.json");
+    writeJson(predicatePath, predicate);
+    writeJson(bundlePath, { valid: true, predicate });
+    const manifest = {
+      schemaVersion: 1,
+      repository: "Imagine-That-Ai/BurnBar",
+      tag: "windows-v1.2.3",
+      commit: COMMIT,
+      consumer: "windows",
+      signerWorkflow: ".github/workflows/openburnbar-release-windows.yml",
+      releaseAvailability: "published",
+      artifactPath: artifact,
+      bundles: [
+        {
+          domain,
+          assetName:
+            "OpenBurnBar-1.2.3-windows-release-cloudvault.sigstore.json",
+          bundlePath,
+          predicatePath,
+        },
+      ],
+    };
+    assert.equal(validateManifest(manifest).consumer, "windows");
+    assert.throws(
+      () => validateManifest({ ...manifest, tag: "v1.2.3" }),
+      /tag train/,
+    );
+    assert.throws(
+      () =>
+        validateManifest({
+          ...manifest,
+          releaseAvailability: "draft-or-published",
+        }),
+      /releaseAvailability/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("manifest validation rejects unsafe identity and asset substitution", () => {
   const fixture = setup({ bundleCount: 1 });
   try {

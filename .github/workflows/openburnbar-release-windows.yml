@@ -885,10 +885,9 @@ jobs:
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
           predicate-path: ${{ steps.cloudvault-evidence.outputs.predicate }}
 
-      - name: Publish bundles first and immutable canonical artifact last
+      - name: Prepare immutable Windows publication manifest
         if: steps.quota-evidence.outputs.enabled == 'true' || steps.cloudvault-evidence.outputs.enabled == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
           ARTIFACT: ${{ steps.canonical.outputs.artifact }}
           QUOTA_ENABLED: ${{ steps.quota-evidence.outputs.enabled }}
           QUOTA_PREDICATE: ${{ steps.quota-evidence.outputs.predicate }}
@@ -900,16 +899,58 @@ jobs:
           CLOUDVAULT_BUNDLE_ASSET: ${{ steps.cloudvault-evidence.outputs.bundle_asset }}
         run: |
           set -euo pipefail
-          evidence=()
-          if [[ "$QUOTA_ENABLED" == "true" ]]; then
-            evidence+=(--evidence quota "$QUOTA_PREDICATE" "$QUOTA_BUNDLE" "$QUOTA_BUNDLE_ASSET")
-          fi
-          if [[ "$CLOUDVAULT_ENABLED" == "true" ]]; then
-            evidence+=(--evidence cloudVault "$CLOUDVAULT_PREDICATE" "$CLOUDVAULT_BUNDLE" "$CLOUDVAULT_BUNDLE_ASSET")
-          fi
-          python3 scripts/ci/publish-windows-domain-core-release-evidence.py \
+          manifest="$RUNNER_TEMP/domain-core-windows-publication.json"
+          MANIFEST="$manifest" node <<'NODE'
+          const fs = require("fs");
+          const candidates = [
+            {
+              enabled: process.env.QUOTA_ENABLED,
+              domain: "quota",
+              assetName: process.env.QUOTA_BUNDLE_ASSET,
+              bundlePath: process.env.QUOTA_BUNDLE,
+              predicatePath: process.env.QUOTA_PREDICATE,
+            },
+            {
+              enabled: process.env.CLOUDVAULT_ENABLED,
+              domain: "cloudVault",
+              assetName: process.env.CLOUDVAULT_BUNDLE_ASSET,
+              bundlePath: process.env.CLOUDVAULT_BUNDLE,
+              predicatePath: process.env.CLOUDVAULT_PREDICATE,
+            },
+          ];
+          const manifest = {
+            schemaVersion: 1,
+            repository: process.env.GITHUB_REPOSITORY,
+            tag: process.env.RELEASE_TAG,
+            commit: process.env.RELEASE_COMMIT,
+            consumer: "windows",
+            signerWorkflow: ".github/workflows/openburnbar-release-windows.yml",
+            releaseAvailability: "published",
+            artifactPath: process.env.ARTIFACT,
+            bundles: candidates
+              .filter(({ enabled }) => enabled === "true")
+              .map(({ enabled: _, ...bundle }) => bundle),
+          };
+          fs.writeFileSync(process.env.MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
+          NODE
+          echo "DOMAIN_CORE_PUBLICATION_MANIFEST=$manifest" >> "$GITHUB_ENV"
+
+      - name: Ensure exact published Windows GitHub Release
+        if: steps.quota-evidence.outputs.enabled == 'true' || steps.cloudvault-evidence.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/ensure-windows-domain-core-release.mjs \
             --repository "$GITHUB_REPOSITORY" \
             --tag "$RELEASE_TAG" \
-            --commit "$RELEASE_COMMIT" \
-            --artifact "$ARTIFACT" \
-            "${evidence[@]}"
+            --commit "$RELEASE_COMMIT"
+
+      - name: Publish bundles first and immutable canonical artifact last
+        if: steps.quota-evidence.outputs.enabled == 'true' || steps.cloudvault-evidence.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/publish-domain-core-release-evidence.mjs \
+            --manifest "$DOMAIN_CORE_PUBLICATION_MANIFEST"

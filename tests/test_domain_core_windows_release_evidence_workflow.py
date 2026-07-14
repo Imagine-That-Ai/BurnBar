@@ -5,7 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/openburnbar-release-windows.yml"
 ARCHIVE_HELPER = ROOT / "scripts/ci/create-windows-domain-core-release-bundle.py"
-PUBLISH_HELPER = ROOT / "scripts/ci/publish-windows-domain-core-release-evidence.py"
+ENSURE_HELPER = ROOT / "scripts/ci/ensure-windows-domain-core-release.mjs"
+PUBLISH_HELPER = ROOT / "scripts/ci/publish-domain-core-release-evidence.mjs"
 
 
 class DomainCoreWindowsReleaseEvidenceWorkflowTests(unittest.TestCase):
@@ -66,12 +67,14 @@ class DomainCoreWindowsReleaseEvidenceWorkflowTests(unittest.TestCase):
             source.count("predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1"),
             2,
         )
-        self.assertIn("scripts/ci/publish-windows-domain-core-release-evidence.py", source)
+        self.assertIn("scripts/ci/ensure-windows-domain-core-release.mjs", source)
+        self.assertIn("scripts/ci/publish-domain-core-release-evidence.mjs", source)
         self.assertIn("Publish bundles first and immutable canonical artifact last", source)
         self.assertNotIn("--clobber", source)
 
     def test_helpers_encode_exact_identity_and_fail_closed_publication(self) -> None:
         archive = ARCHIVE_HELPER.read_text(encoding="utf-8")
+        ensure = ENSURE_HELPER.read_text(encoding="utf-8")
         publisher = PUBLISH_HELPER.read_text(encoding="utf-8")
         for value in (
             '"target": "windows-x64-arm64"',
@@ -83,19 +86,46 @@ class DomainCoreWindowsReleaseEvidenceWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(value, archive)
         for value in (
-            'SIGNER_WORKFLOW = ".github/workflows/openburnbar-release-windows.yml"',
+            'signerWorkflow: ".github/workflows/openburnbar-release-windows.yml"',
+            'releaseAvailability: "published"',
+            'consumer: "windows"',
+            "node scripts/ci/publish-domain-core-release-evidence.mjs",
+        ):
+            self.assertIn(value, WORKFLOW.read_text(encoding="utf-8"))
+        for value in (
             '"--source-digest"',
             '"--source-ref"',
             '"--signer-digest"',
             '"--deny-self-hosted-runners"',
-            "cannot be published to a draft release",
-            "cannot be published to a prerelease",
             "refusing to replace non-identical immutable release asset",
-            "Bundles are intentionally public before their subject",
+            "published artifact bytes differ from the signed local artifact",
         ):
             self.assertIn(value, publisher)
-        self.assertNotIn("--clobber", publisher)
-        self.assertNotIn('release", "edit', publisher)
+        for value in (
+            "cannot use a draft release",
+            "cannot use a prerelease",
+            '"--verify-tag"',
+            '"--latest=false"',
+        ):
+            self.assertIn(value, ensure)
+        for source in (ensure, publisher):
+            self.assertNotIn("--clobber", source)
+            self.assertNotIn('"edit"', source)
+
+    def test_domain_core_ci_runs_windows_release_contracts(self) -> None:
+        source = (ROOT / ".github/workflows/domain-core.yml").read_text(encoding="utf-8")
+        for value in (
+            '"scripts/ci/create-windows-domain-core-release-bundle.py"',
+            '"scripts/ci/create-windows-domain-core-release-evidence.test.mjs"',
+            '"scripts/ci/ensure-windows-domain-core-release.mjs"',
+            '"scripts/ci/ensure-windows-domain-core-release.test.mjs"',
+            '"tests/test_windows_domain_core_release_bundle.py"',
+            '"tests/test_domain_core_windows_release_evidence_workflow.py"',
+            "scripts/ci/ensure-windows-domain-core-release.test.mjs",
+            "tests/test_windows_domain_core_release_bundle.py",
+            "tests/test_domain_core_windows_release_evidence_workflow.py",
+        ):
+            self.assertIn(value, source)
 
 
 if __name__ == "__main__":

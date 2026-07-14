@@ -253,8 +253,12 @@ not into `main`, and does not mean production promotion.
   AAB, emits six Apple and four Android custom domain attestations as the
   applicable public modes become Rust-authoritative, and uses the same shared,
   fail-closed publisher as Functions and Console to publish every custom bundle
-  before its immutable artifact. Windows exact artifact evidence remains to be
-  landed before its mapped rows can satisfy stable authority.
+  before its immutable artifact. The stable Windows train deterministically
+  packages its signed x64 and ARM64 artifacts and update metadata into one
+  canonical release bundle, emits quota and CloudVault attestations as those
+  modes become Rust-authoritative, and routes them through that same publisher.
+  A separate fail-closed step creates the exact published Windows release only
+  when absent; it never edits an existing, draft, or prerelease release.
 
 ## Required CI
 

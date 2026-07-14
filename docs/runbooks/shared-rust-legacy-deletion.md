@@ -164,8 +164,14 @@ python3 scripts/ops/create-domain-core-promotion-receipt.py \
    shared publisher manifest used by Functions and Console. Their custom bundles
    publish before the immutable DMG/AAB, and reruns verify existing release
    bytes and bundles without replacing them.
-   Windows exact artifact evidence remains outstanding. Do not create a stable
-   receipt from an Actions artifact or unsigned deployment summary.
+   Stable Windows releases build
+   `OpenBurnBar-<version>-windows-release.zip` deterministically from the signed
+   x64 and ARM64 packages plus the exact checksums, feed, appcast, and latest
+   metadata. Quota and CloudVault predicates bind that canonical artifact and
+   use the same shared publisher. The workflow creates the exact normal release
+   only when absent and refuses draft, prerelease, wrong-tag, or non-identical
+   existing assets. Do not create a stable receipt from an Actions artifact or
+   unsigned deployment summary.
 7. Commit active `stable_release` receipts and advance the observed rows to
    `rust_authoritative_with_rollback`. The stable receipt must identify the
    actually published release commit and hash the promotion receipt and public
