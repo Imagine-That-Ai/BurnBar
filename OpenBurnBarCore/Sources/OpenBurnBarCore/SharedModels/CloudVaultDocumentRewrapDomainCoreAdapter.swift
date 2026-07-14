@@ -2,6 +2,11 @@ import Foundation
 #if canImport(CoreFoundation)
 import CoreFoundation
 #endif
+#if canImport(os)
+import os
+#else
+import Synchronization
+#endif
 
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI
@@ -881,17 +886,28 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
     #endif
 }
 
-private final class DiagnosticCounter: @unchecked Sendable {
+private final class DiagnosticCounter: Sendable {
     static let shared = DiagnosticCounter()
 
-    private let lock = NSLock()
-    private var counts: [String: UInt64] = [:]
+    #if canImport(os)
+    private let counts = OSAllocatedUnfairLock(initialState: [String: UInt64]())
+    #else
+    private let counts = Mutex<[String: UInt64]>([:])
+    #endif
 
     func next(category: String) -> UInt64 {
-        lock.lock()
-        defer { lock.unlock() }
-        let next = (counts[category] ?? 0) + 1
-        counts[category] = next
-        return next
+        #if canImport(os)
+        counts.withLockUnchecked { counts in
+            let next = (counts[category] ?? 0) + 1
+            counts[category] = next
+            return next
+        }
+        #else
+        counts.withLock { counts in
+            let next = (counts[category] ?? 0) + 1
+            counts[category] = next
+            return next
+        }
+        #endif
     }
 }

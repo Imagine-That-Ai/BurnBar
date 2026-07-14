@@ -64,7 +64,7 @@ interface DomainCoreShadowTransaction {
   create(reference: DomainCoreShadowDocumentReference, data: ReturnType<typeof storedDomainCoreShadowSample>): void;
 }
 
-export interface DomainCoreShadowStore {
+interface DomainCoreShadowStore {
   doc(path: string): DomainCoreShadowDocumentReference;
   runTransaction<T>(update: (transaction: DomainCoreShadowTransaction) => Promise<T>): Promise<T>;
 }

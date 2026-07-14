@@ -2,13 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   DOMAIN_CORE_SHADOW_RETENTION_MS,
-  type DomainCoreShadowStore,
   enforceDomainCoreShadowChannelClaim,
   parseDomainCoreShadowSampleRequest,
   persistDomainCoreShadowSamples,
   storedDomainCoreShadowSample,
   storedDomainCoreShadowSampleMatches,
 } from "../domainCoreShadowEvidence.js";
+
+type DomainCoreShadowStore = Parameters<typeof persistDomainCoreShadowSamples>[0];
 
 type DomainCoreShadowSampleV1 = ReturnType<typeof parseDomainCoreShadowSampleRequest>[number];
 

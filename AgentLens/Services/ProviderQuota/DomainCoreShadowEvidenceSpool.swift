@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import os
 
 #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
 @preconcurrency import FirebaseAuth
@@ -97,7 +98,7 @@ struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
     }
 }
 
-final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
+final class DomainCoreShadowEvidenceSpool: Sendable {
     struct ReadyBatch: Sendable {
         let token: String
         let samples: [DomainCoreShadowSampleV1]
@@ -108,9 +109,7 @@ final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
     private let maxFileBytes: Int
     private let maxReadyFiles: Int
     private let maxSamplesPerFile: Int
-    private let lock = NSLock()
-    private let encoder: JSONEncoder
-    private let decoder = JSONDecoder()
+    private let fileAccess = OSAllocatedUnfairLock(initialState: ())
 
     init(
         directory: URL,
@@ -124,79 +123,81 @@ final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
         self.maxFileBytes = maxFileBytes
         self.maxReadyFiles = maxReadyFiles
         self.maxSamplesPerFile = maxSamplesPerFile
-        self.encoder = JSONEncoder()
-        self.encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
     }
 
     func append(_ sample: DomainCoreShadowSampleV1) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         var line = try encoder.encode(sample)
         line.append(0x0A)
         guard line.count <= maxFileBytes else { throw DomainCoreShadowEvidenceError.oversizedSample }
 
-        lock.lock()
-        defer { lock.unlock() }
-        let activeSize = try activeSizeLocked()
-        let activeSampleCount = try activeSampleCountLocked()
-        if activeSize + line.count > maxFileBytes || activeSampleCount >= maxSamplesPerFile {
-            try sealActiveLocked()
-        }
-        if !FileManager.default.fileExists(atPath: activeURL.path) {
-            guard FileManager.default.createFile(atPath: activeURL.path, contents: nil) else {
-                throw CocoaError(.fileWriteUnknown)
+        try fileAccess.withLockUnchecked { _ in
+            let activeSize = try activeSizeLocked()
+            let activeSampleCount = try activeSampleCountLocked()
+            if activeSize + line.count > maxFileBytes || activeSampleCount >= maxSamplesPerFile {
+                try sealActiveLocked()
             }
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: activeURL.path)
-        }
-        let handle = try FileHandle(forWritingTo: activeURL)
-        defer {
-            do {
-                try handle.close()
-            } catch {
-                AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "close_failed"])
+            if !FileManager.default.fileExists(atPath: activeURL.path) {
+                guard FileManager.default.createFile(atPath: activeURL.path, contents: nil) else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: activeURL.path)
             }
+            let handle = try FileHandle(forWritingTo: activeURL)
+            defer {
+                do {
+                    try handle.close()
+                } catch {
+                    AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "close_failed"])
+                }
+            }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: line)
+            try handle.synchronize()
         }
-        try handle.seekToEnd()
-        try handle.write(contentsOf: line)
-        try handle.synchronize()
     }
 
     func nextBatch(sealActive: Bool = true) throws -> ReadyBatch? {
-        lock.lock()
-        defer { lock.unlock() }
-        if sealActive {
-            try sealActiveLocked()
+        try fileAccess.withLockUnchecked { _ in
+            if sealActive {
+                try sealActiveLocked()
+            }
+            guard let url = try readyFilesLocked().first else { return nil }
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            let samples = try data.split(separator: 0x0A).map { line -> DomainCoreShadowSampleV1 in
+                guard !line.isEmpty else { throw DomainCoreShadowEvidenceError.invalidSample }
+                return try decoder.decode(DomainCoreShadowSampleV1.self, from: Data(line))
+            }
+            guard !samples.isEmpty, samples.count <= maxSamplesPerFile else {
+                throw DomainCoreShadowEvidenceError.invalidSample
+            }
+            return ReadyBatch(token: url.lastPathComponent, samples: samples)
         }
-        guard let url = try readyFilesLocked().first else { return nil }
-        let data = try Data(contentsOf: url)
-        let samples = try data.split(separator: 0x0A).map { line -> DomainCoreShadowSampleV1 in
-            guard !line.isEmpty else { throw DomainCoreShadowEvidenceError.invalidSample }
-            return try decoder.decode(DomainCoreShadowSampleV1.self, from: Data(line))
-        }
-        guard !samples.isEmpty, samples.count <= maxSamplesPerFile else {
-            throw DomainCoreShadowEvidenceError.invalidSample
-        }
-        return ReadyBatch(token: url.lastPathComponent, samples: samples)
     }
 
     func acknowledge(_ token: String) throws {
         guard Self.readyOrdinal(from: token) != nil, !token.contains("/") else {
             throw DomainCoreShadowEvidenceError.invalidSample
         }
-        lock.lock()
-        defer { lock.unlock() }
-        let url = directory.appendingPathComponent(token, isDirectory: false)
-        if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.removeItem(at: url)
+        try fileAccess.withLockUnchecked { _ in
+            let url = directory.appendingPathComponent(token, isDirectory: false)
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
         }
     }
 
     func pendingSampleCount() throws -> Int {
-        lock.lock()
-        defer { lock.unlock() }
-        let urls = try readyFilesLocked() + (FileManager.default.fileExists(atPath: activeURL.path) ? [activeURL] : [])
-        return try urls.reduce(into: 0) { count, url in
-            count += try Data(contentsOf: url).split(separator: 0x0A).count
+        try fileAccess.withLockUnchecked { _ in
+            let urls = try readyFilesLocked()
+                + (FileManager.default.fileExists(atPath: activeURL.path) ? [activeURL] : [])
+            return try urls.reduce(into: 0) { count, url in
+                count += try Data(contentsOf: url).split(separator: 0x0A).count
+            }
         }
     }
 
@@ -333,7 +334,7 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
 }
 
 #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
-final class FirebaseDomainCoreShadowSampleSubmitter: DomainCoreShadowSampleSubmitting, @unchecked Sendable {
+final class FirebaseDomainCoreShadowSampleSubmitter: DomainCoreShadowSampleSubmitting, Sendable {
     private struct SubmitResponse: Decodable {
         let accepted: Int
         let duplicates: Int
@@ -357,7 +358,7 @@ final class FirebaseDomainCoreShadowSampleSubmitter: DomainCoreShadowSampleSubmi
 }
 #endif
 
-final class MacDomainCoreShadowEvidenceRecorder: @unchecked Sendable {
+final class MacDomainCoreShadowEvidenceRecorder: Sendable {
     private let channel: String?
     private let spool: DomainCoreShadowEvidenceSpool?
     private let coordinator: DomainCoreShadowEvidenceUploadCoordinator?
