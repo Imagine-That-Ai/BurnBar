@@ -715,8 +715,6 @@ let computerUseCoreExcludes = [
 ]
 let openBurnBarCoreTestExcludes = [
     "AgentProviderLogoBackdropTests.swift",
-    "Insights/BurnBarHostedAdapterWireTests.swift",
-    "Insights/InsightLiveProviderSmokeTests.swift",
     "MissionConsoleTests.swift",
     "SmartHubDisplaySettingsModelTests.swift",
     "SwitcherCLIPostLaunchFallbackTests.swift",
@@ -934,7 +932,15 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
         name: "OpenBurnBarInsightsTests",
         dependencies: [
             "OpenBurnBarInsights",
-            "OpenBurnBarKernel"
+            "OpenBurnBarKernel",
+            // WS-B B4: AgentInsightsViewModelTests exercises the PUBLIC
+            // AgentInsightsViewModel / AgentInsightsBundleProducer /
+            // StaticAgentInsightsBundleProducer, which live in OpenBurnBarUI (the
+            // view-model layer sits above the Insights domain). UI already depends on
+            // Insights at the product level; a TEST target depending on BOTH closes no
+            // product cycle (UI→Insights is the only module edge). Public API only, so
+            // the test file uses a plain `import OpenBurnBarUI`, not @testable.
+            "OpenBurnBarUI"
         ] + swiftTestingAppleDependencies,
         // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
         // checker has known gaps (Task hand-off) that would contort correct tests.

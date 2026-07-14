@@ -1,6 +1,40 @@
 # Packet B4: move Insights-owned tests → OpenBurnBarInsightsTests (29 files)
-STATE: READY  LANE: Test-decomposition (WS-B)  DEPENDS-ON: B0
+STATE: EXECUTED (branch core-decomp2/b4-insights-tests, base core-decomp2/b3-kernel-crypto-tests)
+LANE: Test-decomposition (WS-B)  DEPENDS-ON: B0
 Shared conventions + reassignment valve: see B0-mapping.md.
+
+## Execution outcome (this PR)
+29 files `git mv`'d CoreTests → OpenBurnBarInsightsTests (git detected all 29 as renames,
+97-99% similarity — the only content delta per file is its import block). PlaceholderTests.swift
+deleted. Whole-package `swift test`: 2052 → 2051 enumerated tests; the sole delta is the removed
+`OpenBurnBarInsightsTestsPlaceholder` scaffold stub (the identity diff `comm -23 base moved` shows
+ZERO real tests dropped). OpenBurnBarInsightsTests now runs 223 tests (2 skipped, 0 failures).
+Import rewrites applied:
+- Default `@testable import OpenBurnBarCore` → `@testable import OpenBurnBarInsights` on 25 files.
+- BurnBarHostedAdapterWireTests / InsightCanvasStoreTests / RuleBasedVerdictEngineTests: dropped
+  the redundant Core umbrella line, kept the pre-existing `@testable import OpenBurnBarInsights`.
+- AgentInsightsViewModelTests: `@testable import OpenBurnBarInsights` + plain `import OpenBurnBarUI`
+  (for the PUBLIC AgentInsightsViewModel / AgentInsightsBundleProducer /
+  StaticAgentInsightsBundleProducer, which live in OpenBurnBarUI) + `import OpenBurnBarKernel`
+  (for AgentProvider). Added "OpenBurnBarUI" to the OpenBurnBarInsightsTests target deps — UI→Insights
+  is the only module edge, so a TEST target depending on both closes NO product cycle.
+- AgentInsightsScopeTests + AgentInsightsBundleAssemblerTests: added plain `import OpenBurnBarKernel`
+  (both reference AgentProvider, a KernelModels type reached via the Kernel umbrella; NOT re-exported
+  by @testable Insights). The card's VectorKit/Quota "weak 1-hit" signals for
+  AgentInsightsBundleAssemblerTests / InsightFoundationTests / AgentInsightsScopeTests were all
+  confirmed FALSE POSITIVES (string-literal / lowercase-var / nested-type `Kind`/`Window` tokens) —
+  no VectorKit or Quota dep added.
+- InsightAnalysisTests: added plain `import OpenBurnBarUI` (it exercises the PUBLIC
+  IntelligenceBriefFormatting enum, which lives in OpenBurnBarUI) — surfaced by the compiler, beyond
+  the card's enumerated deviations. Covered by the same OpenBurnBarUI target dep.
+No `Bundle.module` fixture reads (verified) — InsightTestFixtures is pure in-code and moved with its
+consumers. coretests-file baseline intentionally NOT ratcheted here (integrator ratchets the stack at
+the end); the shrink-only gate passes non-fatally. Daemon build green; whole-package build/test green;
+all scripts/debt gates + no-suppressions + canon --check pass vs base b3. NB: the macOS
+OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD=1 build fails identically on the CLEAN base tree
+(`unable to resolve module dependency: 'CSQLite'`) — a pre-existing host/toolchain issue, not this
+packet (this change touches zero SQLite/daemon-graph code, and off-Apple `buildApplePrunedDecompositionTargets`
+is compile-time false on Linux so the boundary graph never sees OpenBurnBarInsightsTests).
 
 Destination: `OpenBurnBarCore/Tests/OpenBurnBarInsightsTests/` — an APPLE-PRUNED test target
 (declared inside `applePrunedDecompositionTargets`, like the OpenBurnBarInsights module).
