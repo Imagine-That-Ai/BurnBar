@@ -77,16 +77,22 @@ Expected macOS boundary: every referenced managed assembly compiled, then the
 host could not execute Windows XamlCompiler.exe. One existing Win2D AnyCPU copy
 warning preceded the boundary; no C# or project-reference error did.
 
-PR Windows Fast Gate run 29296822629 at commit
-daa7dbc047611d24065138fe221cdb8a54eb8bc7
+PR Windows Fast Gate run 29299426816 at commit
+6c5abc8bd81cb9a87003f4a029d87acac293a88e
 Windows x64 restore: PASS
 Transitive NuGet vulnerability audit: PASS
 Full Windows solution build, including WinUI XAML: PASS
-Windows test suite: PASS (37 projects; 3,303 passed, 14 skipped, 3,317 total)
+Windows test suite: PASS (37 projects; 3,315 passed, 14 skipped, 3,329 total)
 Parity ledger and aggregate Windows gate: PASS
+PR Windows Full Suite run 29299426779: PASS on x64 and native-hosted ARM64
+with the same 37-project result on each architecture.
+Project Code Static Parser run 29299426836: PASS for x64 tests/build/smoke and
+ARM64 MSVC build.
 ```
 
-Authoritative run: [PR Windows Fast Gate 29296822629](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29296822629).
+Authoritative runs: [PR Windows Fast Gate 29299426816](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29299426816),
+[PR Windows Full Suite 29299426779](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29299426779),
+and [Project Code Static Parser 29299426836](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29299426836).
 The skipped tests remain explicitly reported; this evidence does not relabel
 them as passes.
 
