@@ -1,3 +1,4 @@
+use num_traits::ToPrimitive;
 use openburnbar_domain_core::cloudvault::{
     self, CloudVaultAadContext, CloudVaultError, CloudVaultHashPurpose as CoreHashPurpose,
 };
@@ -530,7 +531,9 @@ fn checked_schema_version(value: f64) -> Result<u32, JsError> {
             "invalid_schema_version: expected an integer from 2 through 4294967295",
         ));
     }
-    Ok(value as u32)
+    value.to_u32().ok_or_else(|| {
+        JsError::new("invalid_schema_version: expected an integer from 2 through 4294967295")
+    })
 }
 
 fn js_error(error: CloudVaultError) -> JsError {

@@ -18,11 +18,15 @@ enum DomainCoreQuotaConsumerSupport {
         #endif
     }
 
-    #if canImport(OpenBurnBarDomainCoreFFI)
     static func safeCoreVersion() -> String {
+        #if canImport(OpenBurnBarDomainCoreFFI)
         (try? SafeQuotaFFI.domainCoreVersion()) ?? "0.0.0-unavailable"
+        #else
+        "0.0.0-unavailable"
+        #endif
     }
 
+    #if canImport(OpenBurnBarDomainCoreFFI)
     static func snapshot(
         from snapshot: OpenBurnBarDomainCoreFFI.QuotaSnapshot,
         fetchedAt: Date,

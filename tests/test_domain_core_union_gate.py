@@ -42,7 +42,30 @@ def materialize_abi_surfaces(root: pathlib.Path, manifest: dict[str, object]) ->
         path.write_text(contents, encoding="utf-8")
 
 
+def materialize_android_toolchain_pins(root: pathlib.Path) -> None:
+    crate = root / "crates/openburnbar-domain-core"
+    crate.mkdir(parents=True, exist_ok=True)
+    (crate / "rust-toolchain.toml").write_text(
+        '[toolchain]\nchannel = "1.96.0"\n',
+        encoding="ascii",
+    )
+    config = root / "config"
+    config.mkdir(parents=True, exist_ok=True)
+    (config / "domain-core-android-ndk-version.txt").write_text(
+        "26.3.11579264\n",
+        encoding="ascii",
+    )
+
+
 class DomainCoreUnionGateTests(unittest.TestCase):
+    def test_workflow_routes_canonical_android_toolchain_changes(self) -> None:
+        workflow = (ROOT / ".github/workflows/domain-core.yml").read_text(encoding="utf-8")
+        self.assertEqual(
+            workflow.count('"config/domain-core-android-ndk-version.txt"'),
+            2,
+            "push and pull-request path filters must both cover the canonical NDK pin",
+        )
+
     def test_repository_manifest_matches_source(self) -> None:
         _, manifest = GATE.load_manifest(ROOT)
         fingerprint = GATE.verified_source_fingerprint(ROOT, manifest)
@@ -162,6 +185,7 @@ class DomainCoreUnionGateTests(unittest.TestCase):
         fingerprint = "a" * 64
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
+            materialize_android_toolchain_pins(root)
             aar = root / "Vendor/openburnbar-domain-core.aar"
             aar.parent.mkdir(parents=True)
             with zipfile.ZipFile(aar, "w") as archive:
@@ -169,8 +193,50 @@ class DomainCoreUnionGateTests(unittest.TestCase):
                     f"META-INF/{GATE.FINGERPRINT_NAME}",
                     "b" * 64 + "\n",
                 )
+                archive.writestr(
+                    f"META-INF/{GATE.ANDROID_TOOLCHAIN_PROVENANCE_NAME}",
+                    "rust=1.96.0\nndk=26.3.11579264\n",
+                )
             with self.assertRaisesRegex(GATE.GateError, "aar provenance is stale"):
                 GATE.check_provenance(root, fingerprint, ["aar"])
+
+    def test_stale_aar_toolchain_provenance_fails_closed(self) -> None:
+        fingerprint = "a" * 64
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            materialize_android_toolchain_pins(root)
+            aar = root / "Vendor/openburnbar-domain-core.aar"
+            aar.parent.mkdir(parents=True)
+            with zipfile.ZipFile(aar, "w") as archive:
+                archive.writestr(
+                    f"META-INF/{GATE.FINGERPRINT_NAME}",
+                    fingerprint + "\n",
+                )
+                archive.writestr(
+                    f"META-INF/{GATE.ANDROID_TOOLCHAIN_PROVENANCE_NAME}",
+                    "rust=1.96.0\nndk=29.0.14206865\n",
+                )
+            with self.assertRaisesRegex(GATE.GateError, "toolchain provenance is stale"):
+                GATE.check_provenance(root, fingerprint, ["aar"])
+
+    def test_canonical_aar_toolchain_provenance_passes(self) -> None:
+        fingerprint = "a" * 64
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            materialize_android_toolchain_pins(root)
+            aar = root / "Vendor/openburnbar-domain-core.aar"
+            aar.parent.mkdir(parents=True)
+            with zipfile.ZipFile(aar, "w") as archive:
+                archive.writestr(
+                    f"META-INF/{GATE.FINGERPRINT_NAME}",
+                    fingerprint + "\n",
+                )
+                archive.writestr(
+                    f"META-INF/{GATE.ANDROID_TOOLCHAIN_PROVENANCE_NAME}",
+                    "rust=1.96.0\nndk=26.3.11579264\n",
+                )
+
+            GATE.check_provenance(root, fingerprint, ["aar"])
 
     def test_unknown_provenance_surface_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

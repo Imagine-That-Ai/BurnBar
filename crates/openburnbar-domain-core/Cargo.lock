@@ -621,6 +621,7 @@ dependencies = [
 name = "openburnbar-domain-wasm"
 version = "0.1.0"
 dependencies = [
+ "num-traits",
  "openburnbar-domain-core",
  "serde_json",
  "wasm-bindgen",

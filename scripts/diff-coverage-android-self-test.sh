@@ -77,6 +77,30 @@ check "missing JaCoCo report fails closed" "1" "$rc"
 check "missing report error names JaCoCo" \
   "True" "$(grep -q 'JaCoCo report not found' "$tmp_root/missing.err" && echo True || echo False)"
 
+# Generated UniFFI bindings are verified by binding drift/ABI gates, not app-module JaCoCo.
+repo="$tmp_root/generated-uniffi"
+new_repo "$repo"
+mkdir -p "$repo/android/openburnbar-domain-core/src/main/java/uniffi/generated"
+printf 'package uniffi.generated\nfun generatedValue(): Int = 1\n' \
+  > "$repo/android/openburnbar-domain-core/src/main/java/uniffi/generated/Bindings.kt"
+base="$(commit_change "$repo")"
+rc="$(run_gate "$repo" "$base" "$repo/does-not-exist.xml" "$tmp_root/generated.json" "$tmp_root/generated.err")"
+check "generated UniFFI Kotlin does not require app JaCoCo" "0" "$rc"
+check "generated-only change reports no production Kotlin" \
+  "no_production_kotlin" "$(json_get "$tmp_root/generated.json" 'v["diffCoverage"]["method"]')"
+
+# A similarly named directory in any other module is handwritten production code.
+repo="$tmp_root/handwritten-uniffi"
+new_repo "$repo"
+add_kotlin "$repo" uniffi/handwritten Handwritten 1
+base="$(commit_change "$repo")"
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/handwritten.json" "$tmp_root/handwritten.err")"
+check "handwritten UniFFI namespace remains coverage-gated" "1" "$rc"
+check "handwritten UniFFI namespace requires its own evidence" \
+  "no_jacoco_source" "$(json_get "$tmp_root/handwritten.json" 'v["details"][0]["method"]')"
+
 # One executable changed line is gated; there is no minimum-line exemption.
 repo="$tmp_root/one-line"
 new_repo "$repo"

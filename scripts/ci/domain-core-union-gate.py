@@ -10,6 +10,7 @@ import os
 import pathlib
 import re
 import sys
+import tomllib
 import zipfile
 
 
@@ -24,6 +25,7 @@ REQUIRED_DOMAINS = {
     "encryptedSearch",
 }
 FINGERPRINT_NAME = "openburnbar-domain-core-source.sha256"
+ANDROID_TOOLCHAIN_PROVENANCE_NAME = "openburnbar-domain-core-android-toolchain.env"
 
 
 class GateError(RuntimeError):
@@ -250,6 +252,32 @@ def read_sidecar(path: pathlib.Path) -> str:
     return value
 
 
+def expected_android_toolchain_provenance(root: pathlib.Path) -> bytes:
+    rust_path = root / "crates/openburnbar-domain-core/rust-toolchain.toml"
+    try:
+        with rust_path.open("rb") as handle:
+            rust_config = tomllib.load(handle)
+        rust_channel = rust_config["toolchain"]["channel"]
+    except (OSError, KeyError, tomllib.TOMLDecodeError, TypeError) as error:
+        raise GateError(f"cannot read canonical Rust toolchain: {error}") from error
+    if not isinstance(rust_channel, str) or not re.fullmatch(r"\d+\.\d+\.\d+", rust_channel):
+        raise GateError(f"invalid canonical Rust toolchain channel: {rust_channel!r}")
+
+    ndk_path = root / "config/domain-core-android-ndk-version.txt"
+    try:
+        ndk_config = ndk_path.read_text(encoding="ascii")
+    except (OSError, UnicodeDecodeError) as error:
+        raise GateError(f"cannot read canonical Android toolchain: {error}") from error
+    match = re.fullmatch(
+        r"(\d+(?:\.\d+)+)\n?",
+        ndk_config,
+    )
+    if match is None:
+        raise GateError(f"invalid canonical Android toolchain config: {ndk_path}")
+
+    return f"rust={rust_channel}\nndk={match.group(1)}\n".encode("ascii")
+
+
 def check_provenance(root: pathlib.Path, fingerprint: str, surfaces: list[str]) -> None:
     sidecars = {
         "swift": root / "crates/openburnbar-domain-core/artifact-provenance/swift.sha256",
@@ -270,8 +298,18 @@ def check_provenance(root: pathlib.Path, fingerprint: str, surfaces: list[str]) 
             try:
                 with zipfile.ZipFile(aar) as archive:
                     value = archive.read(f"META-INF/{FINGERPRINT_NAME}").decode("ascii").strip()
+                    actual_toolchain = archive.read(
+                        f"META-INF/{ANDROID_TOOLCHAIN_PROVENANCE_NAME}"
+                    )
             except (OSError, KeyError, UnicodeDecodeError, zipfile.BadZipFile) as error:
-                raise GateError(f"cannot read AAR source provenance: {error}") from error
+                raise GateError(f"cannot read AAR provenance: {error}") from error
+            expected_toolchain = expected_android_toolchain_provenance(root)
+            if actual_toolchain != expected_toolchain:
+                raise GateError(
+                    "aar toolchain provenance is stale: "
+                    f"artifact={actual_toolchain.decode('ascii', errors='replace')!r} "
+                    f"source={expected_toolchain.decode('ascii')!r}"
+                )
         else:
             value = read_sidecar(sidecars[surface])
         if value != fingerprint:

@@ -130,6 +130,9 @@ Use this atomic process for every source change:
 4. Commit the generated set together. Source fingerprints live in
    `crates/openburnbar-domain-core/artifact-provenance/{swift,kotlin,csharp}.sha256`
    and are embedded in the XCFramework, AAR, and both Wasm packages.
+   The canonical Android NDK version lives in
+   `config/domain-core-android-ndk-version.txt`; the AAR also embeds the exact
+   Rust and NDK versions used to build its native libraries.
 5. Run `python3 scripts/ci/domain-core-union-gate.py --check-abi` and the normal
    gate. CI also rebuilds/compares the generated surfaces and rejects missing,
    stale, mixed-source, or undeclared exports.

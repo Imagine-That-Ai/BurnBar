@@ -131,6 +131,7 @@ jobs:
         if: matrix.mode == 'runnable'
         run: >
           docker run --rm -v "$PWD:/workspace" -w /workspace
+          --env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/workspace/.linux-evidence/linux-swift-tests
           openburnbar-linux-toolchain:mission-001
           bash scripts/linux-port/run-linux-swift-tests.sh
 

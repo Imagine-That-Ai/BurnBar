@@ -79,6 +79,7 @@ on:
       - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
+      - "config/domain-core-android-ndk-version.txt"
       - "config/domain-core-promotion-policy.json"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
@@ -159,6 +160,7 @@ on:
       - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
+      - "config/domain-core-android-ndk-version.txt"
       - "config/domain-core-promotion-policy.json"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
@@ -398,13 +400,20 @@ jobs:
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
-    env:
-      DOMAIN_CORE_ANDROID_NDK_VERSION: "26.3.11579264"
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           persist-credentials: false
+
+      - name: Load canonical Android toolchain
+        shell: bash
+        run: |
+          ndk_version="$(sed -nE \
+            's/^([0-9]+(\.[0-9]+)+)$/\1/p' \
+            config/domain-core-android-ndk-version.txt)"
+          [[ "${ndk_version}" =~ ^[0-9]+(\.[0-9]+)+$ ]]
+          printf 'DOMAIN_CORE_ANDROID_NDK_VERSION=%s\n' "${ndk_version}" >> "${GITHUB_ENV}"
 
       - name: Set up JDK 21
         uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0

@@ -151,6 +151,7 @@ fn cloudvault_search_fuzz_smoke() -> Result<(), Box<dyn Error>> {
     let strategy = (unicode_text(1_024), any::<[u8; 32]>(), 0_i32..=128_i32);
     runner(0x22).run(&strategy, |(text, key, limit)| {
         let analysis = cloud_vault_search_analyze(text.clone()).map_err(case_error)?;
+        let limit_usize = usize::try_from(limit).map_err(case_error)?;
         prop_assert!(analysis.normalized_tokens.len() <= 4_096);
         prop_assert!(analysis.exact_phrase_tokens.len() <= 4_096);
 
@@ -169,7 +170,7 @@ fn cloudvault_search_fuzz_smoke() -> Result<(), Box<dyn Error>> {
             let first = cloud_vault_search(request.clone()).map_err(case_error)?;
             let second = cloud_vault_search(request).map_err(case_error)?;
             prop_assert_eq!(&first.hashes, &second.hashes);
-            prop_assert!(first.hashes.len() <= limit as usize);
+            prop_assert!(first.hashes.len() <= limit_usize);
             for hash in first.hashes {
                 prop_assert_eq!(hash.len(), 32);
                 prop_assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));

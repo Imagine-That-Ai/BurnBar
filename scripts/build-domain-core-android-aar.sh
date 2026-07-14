@@ -22,7 +22,33 @@ PROVENANCE_DIR="${CRATE_DIR}/artifact-provenance"
 BUILD_DIR="${ROOT_DIR}/build/domain-core-aar"
 JNI_DIR="${BUILD_DIR}/jni"
 HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-domain-core-kotlin-helper"
+ANDROID_TOOLCHAIN_CONFIG="${ROOT_DIR}/config/domain-core-android-ndk-version.txt"
+RUST_TOOLCHAIN_CONFIG="${CRATE_DIR}/rust-toolchain.toml"
 ZIP_TIME="${DOMAIN_CORE_AAR_ZIP_TIME:-202401010000.00}"
+
+[[ -f "${ANDROID_TOOLCHAIN_CONFIG}" ]] || {
+  echo "missing Android toolchain config: ${ANDROID_TOOLCHAIN_CONFIG}" >&2
+  exit 1
+}
+CANONICAL_NDK_VERSION="$(sed -nE \
+  's/^([0-9]+(\.[0-9]+)+)$/\1/p' \
+  "${ANDROID_TOOLCHAIN_CONFIG}")"
+[[ "${CANONICAL_NDK_VERSION}" =~ ^[0-9]+(\.[0-9]+)+$ ]] || {
+  echo "invalid canonical Android NDK version in ${ANDROID_TOOLCHAIN_CONFIG}" >&2
+  exit 1
+}
+RUST_TOOLCHAIN="$(sed -nE \
+  's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+)"[[:space:]]*$/\1/p' \
+  "${RUST_TOOLCHAIN_CONFIG}")"
+[[ "${RUST_TOOLCHAIN}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+  echo "invalid pinned Rust channel in ${RUST_TOOLCHAIN_CONFIG}" >&2
+  exit 1
+}
+NDK_VERSION="${DOMAIN_CORE_ANDROID_NDK_VERSION:-${ANDROID_NDK_VERSION:-${CANONICAL_NDK_VERSION}}}"
+[[ "${NDK_VERSION}" =~ ^[0-9]+(\.[0-9]+)+$ ]] || {
+  echo "invalid Android NDK version: ${NDK_VERSION}" >&2
+  exit 1
+}
 
 PROFILE="${DOMAIN_CORE_BUILD_PROFILE:-release}"
 case "${PROFILE}" in
@@ -131,6 +157,15 @@ RUSTUP_BIN="${HOME}/.cargo/bin/rustup"
 CARGO_BIN="${HOME}/.cargo/bin/cargo"
 [[ -x "${CARGO_BIN}" ]] || CARGO_BIN="$(command -v cargo || true)"
 [[ -x "${CARGO_BIN}" ]] || abort "cargo not found"
+RUSTC_BIN="${HOME}/.cargo/bin/rustc"
+[[ -x "${RUSTC_BIN}" ]] || RUSTC_BIN="$(command -v rustc || true)"
+[[ -x "${RUSTC_BIN}" ]] || abort "rustc not found"
+ACTUAL_RUST_TOOLCHAIN="$(
+  cd "${CRATE_DIR}"
+  "${RUSTC_BIN}" --version | awk 'NR == 1 { print $2 }'
+)"
+[[ "${ACTUAL_RUST_TOOLCHAIN}" == "${RUST_TOOLCHAIN}" ]] || \
+  abort "selected Rust ${ACTUAL_RUST_TOOLCHAIN:-unknown} does not match pinned ${RUST_TOOLCHAIN}"
 
 SOURCE_FINGERPRINT="$(source_fingerprint)"
 if [[ "${CHECK_SOURCE}" -eq 1 ]]; then
@@ -148,7 +183,25 @@ PY
 )"
   [[ "${COMMITTED_FINGERPRINT}" == "${SOURCE_FINGERPRINT}" ]] || \
     abort "committed AAR source fingerprint is stale"
-  log "committed AAR matches domain-core source ${SOURCE_FINGERPRINT}"
+  COMMITTED_TOOLCHAIN="$(python3 - "${AAR_PATH}" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    try:
+        print(
+            archive.read("META-INF/openburnbar-domain-core-android-toolchain.env")
+            .decode("ascii"),
+            end="",
+        )
+    except KeyError:
+        raise SystemExit("committed AAR has no Android toolchain provenance")
+PY
+)"
+  EXPECTED_TOOLCHAIN="$(printf 'rust=%s\nndk=%s' "${ACTUAL_RUST_TOOLCHAIN}" "${NDK_VERSION}")"
+  [[ "${COMMITTED_TOOLCHAIN}" == "${EXPECTED_TOOLCHAIN}" ]] || \
+    abort "committed AAR Android toolchain provenance is stale"
+  log "committed AAR matches domain-core source ${SOURCE_FINGERPRINT} and Rust ${ACTUAL_RUST_TOOLCHAIN}/NDK ${NDK_VERSION}"
   exit 0
 fi
 
@@ -168,7 +221,6 @@ fi
 
 ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 [[ -d "${ANDROID_SDK}" ]] || abort "Android SDK not found at ${ANDROID_SDK}; export ANDROID_HOME"
-NDK_VERSION="${DOMAIN_CORE_ANDROID_NDK_VERSION:-${ANDROID_NDK_VERSION:-29.0.14206865}}"
 NDK_HOME="${ANDROID_SDK}/ndk/${NDK_VERSION}"
 
 if [[ "${DRY_RUN}" -eq 1 ]]; then
@@ -346,6 +398,8 @@ write_stored_zip "${STAGING}/classes.jar" "${BUILD_DIR}/empty-classes" META-INF/
 mkdir -p "${STAGING}/META-INF"
 printf '%s\n' "${SOURCE_FINGERPRINT}" > \
   "${STAGING}/META-INF/openburnbar-domain-core-source.sha256"
+printf 'rust=%s\nndk=%s\n' "${ACTUAL_RUST_TOOLCHAIN}" "${NDK_VERSION}" > \
+  "${STAGING}/META-INF/openburnbar-domain-core-android-toolchain.env"
 
 find "${STAGING}" -exec touch -h -t "${ZIP_TIME}" {} +
 AAR_ENTRIES=()

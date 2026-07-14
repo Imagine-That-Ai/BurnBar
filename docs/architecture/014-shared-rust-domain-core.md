@@ -136,7 +136,9 @@ tree and committed as one set.
 
 Generated-source fingerprints are recorded centrally under
 `crates/openburnbar-domain-core/artifact-provenance/` and embedded in the
-XCFramework, AAR, and both Wasm packages. The union gate checks required exports
+XCFramework, AAR, and both Wasm packages. Android's canonical NDK version is
+stored in `config/domain-core-android-ndk-version.txt`, and the AAR additionally
+embeds its exact Rust and NDK versions. The union gate checks required exports
 for all converged domains, source identity, and selected artifact provenance;
 language-specific drift jobs rebuild and compare generated output. A PR may not
 independently merge one regenerated artifact if doing so creates mixed-source

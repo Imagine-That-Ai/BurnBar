@@ -50,6 +50,10 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
+  const linuxSwiftResults =
+    'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/workspace/.linux-evidence/linux-swift-tests';
+  requireText(input.pr, linuxSwiftResults, 'PR Linux Swift evidence routing');
+  requireText(input.nightly, linuxSwiftResults, 'nightly Linux Swift evidence routing');
   for (const command of [
     'macos-matched-performance',
     'run-matched-performance.mjs',

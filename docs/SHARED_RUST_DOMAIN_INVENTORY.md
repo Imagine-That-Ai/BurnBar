@@ -139,7 +139,7 @@ The generated surfaces are a single source-coherent set:
 | Surface | Provenance proof |
 |---|---|
 | Swift binding/XCFramework | `artifact-provenance/swift.sha256` plus fingerprint embedded at the XCFramework root |
-| Kotlin binding/four-ABI AAR | `artifact-provenance/kotlin.sha256` plus `META-INF/openburnbar-domain-core-source.sha256` inside the AAR |
+| Kotlin binding/four-ABI AAR | `artifact-provenance/kotlin.sha256` plus source and Rust/NDK toolchain provenance under `META-INF/` inside the AAR |
 | C# binding/native DLL | `artifact-provenance/csharp.sha256` plus generated binding drift/native load checks |
 | Browser and Node Wasm | `openburnbar-domain-core-source.sha256` inside each vendored package plus exact tree comparison |
 
