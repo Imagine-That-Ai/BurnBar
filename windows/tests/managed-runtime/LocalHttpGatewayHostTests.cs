@@ -97,15 +97,26 @@ public sealed class LocalHttpGatewayHostTests
     public async Task CompletionEndpoint_DegradesOnlyWhenAllowed()
     {
         int port = 20765 + System.Environment.ProcessId % 1000;
-        var router = new ModelProxyRouter(new[]
-        {
-            new ModelRoute("fallback", "openai", "gpt", 2, true),
-            new ModelRoute("preferred", "anthropic", "claude", 1, false),
-        });
+        var router = new ModelProxyRouter(
+            new[]
+            {
+                new ModelRoute("fallback", "openai", "gpt", 2, true),
+                new ModelRoute("preferred", "anthropic", "claude", 1, false),
+            },
+            degradePolicy: CrossVendorDegradePolicy.Create(
+                true,
+                new[] { "openai" },
+                new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["openai"] = "gpt",
+                }));
         string? selected = null;
-        var executor = new DelegateModelCompletionExecutor((route, _, _) =>
+        string? upstreamModel = null;
+        var executor = new DelegateModelCompletionExecutor((route, body, _) =>
         {
             selected = route.Id;
+            using JsonDocument forwarded = JsonDocument.Parse(body);
+            upstreamModel = forwarded.RootElement.GetProperty("model").GetString();
             return Task.FromResult(new ModelCompletionResult(
                 200,
                 Encoding.UTF8.GetBytes("{}"),
@@ -124,6 +135,7 @@ public sealed class LocalHttpGatewayHostTests
         HttpResponseMessage degraded = await client.PostAsync("v1/chat/completions", allow);
         Assert.Equal(200, (int)degraded.StatusCode);
         Assert.Equal("fallback", selected);
+        Assert.Equal("gpt", upstreamModel);
 
         using var deny = new StringContent(
             "{\"model\":\"claude\",\"messages\":[],\"openburnbar_allow_degrade\":false}",

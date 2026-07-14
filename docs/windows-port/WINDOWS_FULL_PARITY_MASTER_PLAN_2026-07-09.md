@@ -102,7 +102,7 @@ F2 means Windows reaches Mac feature completeness, including everything F1
 excludes:
 
 - local HTTP gateway and Model Proxy as live Windows capabilities;
-- provider router/executors and gateway metrics/degrade policy;
+- provider executors and durable gateway route/streaming-usage telemetry;
 - headless run service, local Mission Control DAG execution, planner, and policy engine;
 - Pensieve watcher and full project-code static parser;
 - browser Computer Use/Playwright path;
@@ -491,10 +491,12 @@ F2 workstreams:
 2. Model catalog, health, route logging, cross-vendor degrade, and gateway
    metrics.
 3. Provider executors, proactive local-model discovery, and streaming route
-   telemetry. The production provider-router scorecard, quota-drain core, and
-   failure-driven model health are closed by
+   telemetry. The production authenticated gateway, provider-router scorecard,
+   quota-drain core, failure-driven model health, and opt-in cross-vendor
+   degrade policy are closed by
    `docs/windows-port/evidence/f2/provider-router-scorecard.md` and
-   `docs/windows-port/evidence/f2/gateway-model-health.md`.
+   `docs/windows-port/evidence/f2/gateway-model-health.md` and
+   `docs/windows-port/evidence/f2/cross-vendor-degrade-policy.md`.
 4. Headless run service, resume/recovery, journal, and tool dispatch.
 5. Local Mission Control execution: DAG scheduler, journal repository,
    projection reducer, planner, policy engine, rate limiter.

@@ -30,7 +30,9 @@ public static class GatewayCompositionFactory
         IReadOnlyList<ModelRoute> routes = ParseRoutes(
             Environment.GetEnvironmentVariable(RoutesEnvironmentVariable));
         return new GatewayComposition(
-            new ModelProxyRouter(routes),
+            new ModelProxyRouter(
+                routes,
+                degradePolicy: CrossVendorDegradePolicy.FromEnvironment()),
             new HttpModelCompletionExecutor(client),
             client);
     }
@@ -74,7 +76,10 @@ public static class GatewayCompositionFactory
 
         var client = new HttpClient();
         return new GatewayComposition(
-            new ModelProxyRouter(routes.Count == 0 ? DefaultRoutes() : routes, healthStore),
+            new ModelProxyRouter(
+                routes.Count == 0 ? DefaultRoutes() : routes,
+                healthStore,
+                CrossVendorDegradePolicy.FromEnvironment()),
             new HttpModelCompletionExecutor(client),
             client);
     }

@@ -12,12 +12,14 @@ public sealed class ModelProxyRouter
 {
     private readonly IReadOnlyList<ModelRoute> _routes;
     private readonly ModelRouteHealthStore _healthStore;
+    private readonly CrossVendorDegradePolicy _degradePolicy;
     private readonly object _gate = new();
     private readonly Dictionary<string, RouteMetrics> _metrics = new(StringComparer.Ordinal);
 
     public ModelProxyRouter(
         IReadOnlyList<ModelRoute> routes,
-        ModelRouteHealthStore? healthStore = null)
+        ModelRouteHealthStore? healthStore = null,
+        CrossVendorDegradePolicy? degradePolicy = null)
     {
         _routes = routes ?? throw new ArgumentNullException(nameof(routes));
         if (_routes.Count == 0)
@@ -25,6 +27,7 @@ public sealed class ModelProxyRouter
             throw new ArgumentException("At least one route is required.", nameof(routes));
         }
         _healthStore = healthStore ?? new ModelRouteHealthStore();
+        _degradePolicy = degradePolicy ?? CrossVendorDegradePolicy.Disabled;
     }
 
     /// <summary>Immutable route view used by gateway model discovery.</summary>
@@ -91,7 +94,7 @@ public sealed class ModelProxyRouter
                 Score: healthyExact.Breakdown);
         }
 
-        if (!allowDegrade)
+        if (!allowDegrade || !_degradePolicy.IsEnabled)
         {
             ModelRoute failed = exact.FirstOrDefault()
                 ?? _routes.OrderBy(route => route.Priority).First();
@@ -99,8 +102,21 @@ public sealed class ModelProxyRouter
             return new ModelRouteDecision(failed, Degraded: false, FailedClosed: true);
         }
 
-        ModelRouteDecision decision = SelectCore(null, recordSelection: false);
-        return decision with { Degraded = true };
+        RankedModelRoute? degraded = ModelRouteScorecard.Rank(
+                _routes.Where(IsRouteEligible).Where(_degradePolicy.Allows))
+            .Take(_degradePolicy.MaxCandidates)
+            .FirstOrDefault();
+        if (degraded is null)
+        {
+            ModelRoute failed = exact.FirstOrDefault()
+                ?? _routes.OrderBy(route => route.Priority).First();
+            Record(failed.Id, success: false, degraded: false);
+            return new ModelRouteDecision(failed, Degraded: false, FailedClosed: true);
+        }
+        return new ModelRouteDecision(
+            degraded.Route,
+            Degraded: true,
+            Score: degraded.Breakdown);
     }
 
     /// <summary>Records the final outcome of a forwarded request.</summary>

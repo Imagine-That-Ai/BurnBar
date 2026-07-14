@@ -770,15 +770,17 @@ rows:
   - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
   - docs/windows-port/evidence/f2/provider-router-scorecard.md
   - docs/windows-port/evidence/f2/gateway-model-health.md
+  - docs/windows-port/evidence/f2/cross-vendor-degrade-policy.md
   tests:
   - windows/tests/managed-runtime/ModelProxyRouterTests.cs
   - windows/tests/managed-runtime/ModelRouteHealthStoreTests.cs
   - windows/tests/managed-runtime/LocalHttpGatewayHostTests.cs
+  - windows/tests/managed-runtime/CrossVendorDegradePolicyTests.cs
   blocking_paths:
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelProxyRouter.cs
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelRouteScorecard.cs
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelRouteHealthStore.cs
-  notes: F2 production router Real with five-factor scoring, strict quota-drain pools, and failure-driven live health; provider transports and streaming telemetry remain separate WPD-0006 rows.
+  notes: F2 production gateway/router Real with authenticated transport, five-factor scoring, strict quota-drain pools, failure-driven health, and opt-in bounded cross-vendor degrade; provider transports and streaming telemetry remain separate WPD-0006 rows.
 - id: f2-companion-cli
   status: Real
   owner_lane: f2

@@ -66,6 +66,44 @@ public sealed class ModelProxyRouterTests
     }
 
     [Fact]
+    public void SelectForModel_RequestOptInCannotBypassDisabledOperatorPolicy()
+    {
+        var router = new ModelProxyRouter(new[]
+        {
+            new ModelRoute("fallback", "openai", "gpt", 0, true),
+        });
+
+        ModelRouteDecision decision = router.SelectForModel("claude", allowDegrade: true);
+
+        Assert.True(decision.FailedClosed);
+        Assert.False(decision.Degraded);
+    }
+
+    [Fact]
+    public void SelectForModel_DegradesOnlyToAllowlistedPreferredWireCompatibleRoute()
+    {
+        CrossVendorDegradePolicy policy = CrossVendorDegradePolicy.Create(
+            true,
+            new[] { "openai", "anthropic" },
+            new Dictionary<string, string> { ["openai"] = "gpt-safe" });
+        var router = new ModelProxyRouter(
+            new[]
+            {
+                new ModelRoute("wrong-model", "openai", "gpt-other", 0, true),
+                new ModelRoute("wrong-wire", "anthropic", "claude", 0, true,
+                    Routing: new ModelRouteRoutingMetadata(FormatFamily: "anthropic")),
+                new ModelRoute("allowed", "openai", "gpt-safe", 0, true),
+            },
+            degradePolicy: policy);
+
+        ModelRouteDecision decision = router.SelectForModel("unavailable", allowDegrade: true);
+
+        Assert.False(decision.FailedClosed);
+        Assert.True(decision.Degraded);
+        Assert.Equal("allowed", decision.Route.Id);
+    }
+
+    [Fact]
     public void Scorecard_UsesMacOSFiveFactorWeightsAndClampsDimensions()
     {
         var route = new ModelRoute(

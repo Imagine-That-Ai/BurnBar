@@ -6,6 +6,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -277,7 +278,10 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         }
 
         ModelCompletionResult result = await _executor
-            .ExecuteAsync(decision.Route, requestBody, cancellationToken)
+            .ExecuteAsync(
+                decision.Route,
+                decision.Degraded ? RewriteModel(requestBody, decision.Route.Model) : requestBody,
+                cancellationToken)
             .ConfigureAwait(false);
         _router.RecordOutcome(decision.Route, result, decision.Degraded);
 
@@ -298,6 +302,23 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
 
         await WriteBytesAsync(context.Response, result.StatusCode, result.ContentType, result.Body)
             .ConfigureAwait(false);
+    }
+
+    private byte[] RewriteModel(byte[] requestBody, string model)
+    {
+        JsonNode? parsed = JsonNode.Parse(requestBody);
+        if (parsed is not JsonObject request)
+        {
+            throw new JsonException("Completion request must be a JSON object.");
+        }
+        request["model"] = model;
+        byte[] rewritten = JsonSerializer.SerializeToUtf8Bytes(request);
+        if (rewritten.Length > _maxRequestBytes)
+        {
+            throw new RequestTooLargeException(
+                $"Request body exceeds the {_maxRequestBytes}-byte gateway limit after model substitution.");
+        }
+        return rewritten;
     }
 
     private bool IsAuthorized(HttpListenerRequest request)

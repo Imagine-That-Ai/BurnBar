@@ -153,6 +153,14 @@ unproven host behavior to certification:
   while provider bodies and credentials never enter the health file. Live
   provider traffic, streaming telemetry, proactive local-model discovery, and
   the remaining provider executors remain staging/F2 evidence gates.
+- Cross-vendor degradation is now off by default and cannot be enabled by an
+  untrusted request alone. The operator must explicitly enable the policy, and
+  the request must separately opt in. Candidates are restricted to a bounded
+  allow-list of OpenAI-compatible vendors and preferred models, pass the shared
+  scorecard and live-health filters, and are capped per request. The gateway
+  rewrites `model` to the selected fallback before transport, so it does not
+  replay an unavailable model name to the substitute provider. Anthropic wire
+  routes and non-allow-listed paid providers cannot be selected.
 - Cloud startup now restores a non-expired OAuth session from the protected
   session store without opening a browser; only a signed-out or expired session
   falls back to the explicit dev-host path. When
@@ -359,7 +367,7 @@ unproven host behavior to certification:
   size, and SHA-256, including the resource bundle, before an artifact can be
   signed or zipped.
 
-These changes are covered by focused managed-runtime (156/156 planner, policy,
+These changes are covered by focused managed-runtime (165/165 planner, policy,
 mission, gateway, and recovery tests plus 41/41 managed-agent-runtime tests),
 CloudSync (61/61), connector
 (99/99), presentation (778/778), General settings (166/166), storage (18/18),
