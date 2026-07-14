@@ -228,10 +228,18 @@ pub fn cloud_vault_aad_v2(
     collection: &str,
     doc_id: &str,
     field: &str,
-    schema_version: u32,
+    schema_version: f64,
     purpose: Option<String>,
 ) -> Result<String, JsError> {
-    Ok(context(uid, collection, doc_id, field, schema_version, purpose)?.v2_string())
+    Ok(context(
+        uid,
+        collection,
+        doc_id,
+        field,
+        checked_schema_version(schema_version)?,
+        purpose,
+    )?
+    .v2_string())
 }
 
 #[wasm_bindgen(js_name = cloudVaultAadV1)]
@@ -240,10 +248,18 @@ pub fn cloud_vault_aad_v1(
     collection: &str,
     doc_id: &str,
     field: &str,
-    schema_version: u32,
+    schema_version: f64,
     purpose: Option<String>,
 ) -> Result<String, JsError> {
-    Ok(context(uid, collection, doc_id, field, schema_version, purpose)?.v1_string())
+    Ok(context(
+        uid,
+        collection,
+        doc_id,
+        field,
+        checked_schema_version(schema_version)?,
+        purpose,
+    )?
+    .v1_string())
 }
 
 #[wasm_bindgen(js_name = cloudVaultSha256Hex)]
@@ -437,8 +453,8 @@ pub fn cloud_vault_escrow_open(
 #[wasm_bindgen(js_name = cloudVaultRewrapDocumentJson)]
 pub fn cloud_vault_rewrap_document_json(
     request_json: &str,
-    old_key: &[u8],
-    new_key: &[u8],
+    old_key: Vec<u8>,
+    new_key: Vec<u8>,
     new_vault_key_id: &str,
 ) -> Result<String, JsError> {
     if request_json.len() > cloudvault_rewrap::MAX_REWRAP_JSON_BYTES {
@@ -448,9 +464,9 @@ pub fn cloud_vault_rewrap_document_json(
     }
     let request: CloudVaultDocumentRewrapRequest = serde_json::from_str(request_json)
         .map_err(|error| JsError::new(&format!("invalid_rewrap_request: {error}")))?;
-    let old_key_copy = Zeroizing::new(old_key.to_vec());
-    let new_key_copy = Zeroizing::new(new_key.to_vec());
-    cloudvault_rewrap::rewrap_document(&request, &old_key_copy, &new_key_copy, new_vault_key_id)
+    let old_key = Zeroizing::new(old_key);
+    let new_key = Zeroizing::new(new_key);
+    cloudvault_rewrap::rewrap_document(&request, &old_key, &new_key, new_vault_key_id)
         .map_err(js_rewrap_error)
         .and_then(|value| {
             serde_json::to_string(&value)
@@ -459,29 +475,32 @@ pub fn cloud_vault_rewrap_document_json(
 }
 
 #[wasm_bindgen(js_name = cloudVaultSearchAnalyze)]
-pub fn cloud_vault_search_analyze(text: &str) -> Result<CloudVaultSearchAnalysis, JsError> {
-    cloudvault_search::analyze(text)
+pub fn cloud_vault_search_analyze(mut text: String) -> Result<CloudVaultSearchAnalysis, JsError> {
+    let result = cloudvault_search::analyze(&text)
         .map(|analysis| CloudVaultSearchAnalysis {
             normalized_tokens: analysis.normalized_tokens,
             exact_phrase_tokens: analysis.exact_phrase_tokens,
             semantic_features: analysis.semantic_features,
         })
-        .map_err(search_js_error)
+        .map_err(search_js_error);
+    text.zeroize();
+    result
 }
 
 #[wasm_bindgen(js_name = cloudVaultSearch)]
 pub fn cloud_vault_search(
     operation: CloudVaultSearchOperation,
-    text: &str,
+    mut text: String,
     mut vault_key: Vec<u8>,
     limit: i32,
 ) -> Result<CloudVaultSearchResult, JsError> {
-    let result = cloudvault_search::search(operation.into(), text, &vault_key, limit)
+    let result = cloudvault_search::search(operation.into(), &text, &vault_key, limit)
         .map(|result| CloudVaultSearchResult {
             operation,
             hashes: result.hashes,
         })
         .map_err(search_js_error);
+    text.zeroize();
     vault_key.zeroize();
     result
 }
@@ -503,6 +522,15 @@ fn context(
         purpose.as_deref(),
     )
     .map_err(js_error)
+}
+
+fn checked_schema_version(value: f64) -> Result<u32, JsError> {
+    if !value.is_finite() || value.fract() != 0.0 || value < 2.0 || value > f64::from(u32::MAX) {
+        return Err(JsError::new(
+            "invalid_schema_version: expected an integer from 2 through 4294967295",
+        ));
+    }
+    Ok(value as u32)
 }
 
 fn js_error(error: CloudVaultError) -> JsError {

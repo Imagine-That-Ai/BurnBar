@@ -308,6 +308,29 @@ final class CloudVaultDomainCoreAdapterTests: XCTestCase {
         XCTAssertFalse(diagnostic.contains("legacy-result"))
     }
 
+    func testShadowPreservesLegacyFailureBeforeRustValidation() {
+        let logger = RecordingCloudVaultDomainCoreLogger()
+
+        XCTAssertThrowsError(
+            try CloudVaultDomainCoreAdapter.aadV2(
+                uid: "user",
+                collection: "sessions",
+                docID: "document",
+                field: "body",
+                schemaVersion: -1,
+                purpose: "body",
+                environment: ["OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE": "shadow"],
+                logger: logger,
+                legacy: { throw FixtureError.unexpectedLegacy }
+            )
+        ) { error in
+            guard case FixtureError.unexpectedLegacy = error else {
+                return XCTFail("Expected exact legacy failure, got \(error)")
+            }
+        }
+        XCTAssertTrue(logger.messages.isEmpty)
+    }
+
     func testLegacyModeDoesNotRequireNativeAndEvaluatesOnlyLegacy() throws {
         var evaluations = 0
         let result = try CloudVaultDomainCoreAdapter.sha256Hex(
