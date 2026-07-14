@@ -454,7 +454,6 @@ let openBurnBarCoreExcludes = [
     // the prior partial set that left model files referencing excluded types.
     "AgentInsights",
     "Demo/InsightVerdictDemoFixture.swift",
-    "Services/Insights",
     "SwitcherBrowserLaunchService.swift",
     // TextExpansion is an Apple keyboard-extension feature (App Group stores); not
     // in the Engine subset and not referenced outside its own directory.
@@ -473,7 +472,16 @@ let openBurnBarCoreExcludes = [
     "SharedModels/HermesRatchetCrypto.swift",
     // Uses HermesRelayCrypto plus authenticated-request trust/runtime types outside the Engine subset.
     "SharedModels/HermesRelayAuthenticatedRequest.swift",
-    "SharedModels/Insights",
+    // The Linux daemon's usage-insights RPC shares the same bounded digest,
+    // citation, and rule-based analysis contracts as macOS. Keep those
+    // Foundation-only models/engines in the non-Apple target; only the
+    // platform graphics/cache helpers below remain pruned.
+    "Services/Insights/Share/InsightShareCardRenderer.swift",
+    "Services/Insights/Verdict/VerdictCache.swift",
+    // The verdict composer is an app-shell cache coordinator and depends on
+    // the excluded platform cache/demo fixture; the daemon RPC uses the
+    // digest builder and deterministic analysis engine directly.
+    "Services/Insights/Verdict/VerdictComposer.swift",
     "SharedModels/InsightVerdictWidgetSnapshot.swift",
     "SharedModels/PensieveKnowledgeChunker.swift",
     "SharedModels/PensieveVectorCloak.swift",

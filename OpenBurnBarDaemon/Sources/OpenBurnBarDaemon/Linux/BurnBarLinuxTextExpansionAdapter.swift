@@ -1272,7 +1272,9 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
         guard manifest.schemaVersion == 1,
               !manifest.engineID.isEmpty,
               manifest.engineID.count <= Self.maxEngineIDLength,
-              manifest.engineID.unicodeScalars.allSatisfy({ !$0.properties.isWhitespace && !$0.properties.isControl }),
+              manifest.engineID.unicodeScalars.allSatisfy({
+                  !$0.properties.isWhitespace && !CharacterSet.controlCharacters.contains($0)
+              }),
               manifest.executablePath.hasPrefix("/"),
               !manifest.executablePath.contains("\n"),
               manifest.noGlobalCapture,

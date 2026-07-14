@@ -428,8 +428,11 @@ public actor BurnBarLinuxPrivacyService {
                     let rewritten = try encodedRouteEntries(kept)
                     if rewritten.count == 0 {
                         guard unlink(path.path) == 0 else { throw ServiceError.retentionApplyFailed }
-                    } else if Int64(rewritten.count) != before.size || rewritten != (try Data(contentsOf: path)) {
-                        try atomicRewrite(rewritten, at: path, expected: before)
+                    } else {
+                        let current = try Data(contentsOf: path)
+                        if Int64(rewritten.count) != before.size || rewritten != current {
+                            try atomicRewrite(rewritten, at: path, expected: before)
+                        }
                     }
                     removedBytes += max(0, before.size - Int64(rewritten.count))
                     removedEntries += evaluation.entries.count - kept.count
@@ -914,7 +917,9 @@ public actor BurnBarLinuxPrivacyService {
             mode: metadata.st_mode,
             ownerUID: metadata.st_uid,
             size: Int64(metadata.st_size),
-            modificationSeconds: Int64(metadata.st_mtime),
+            // glibc exposes the nanosecond timestamp as `st_mtim.tv_sec`;
+            // Darwin's `st_mtime` spelling is not available in Swift Linux.
+            modificationSeconds: Int64(metadata.st_mtim.tv_sec),
             inode: UInt64(metadata.st_ino),
             isRegular: kind == mode_t(S_IFREG),
             isDirectory: kind == mode_t(S_IFDIR),

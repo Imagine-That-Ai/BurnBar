@@ -73,7 +73,9 @@ public struct BurnBarHostedInsightAdapter: InsightModelGateway {
         self.timeout = timeout
     }
 
+    #if canImport(os.log)
     private static let log = Logger(subsystem: "com.openburnbar.core", category: "BurnBarHostedInsightAdapter")
+    #endif
 
     // MARK: - InsightModelGateway
 
@@ -266,7 +268,9 @@ public struct BurnBarHostedInsightAdapter: InsightModelGateway {
         do {
             (data, response) = try await urlSession.data(for: urlRequest)
         } catch {
+            #if canImport(os.log)
             Self.log.error("hosted POST transport error: \(error.localizedDescription, privacy: .public)")
+            #endif
             throw InsightGatewayError.requestRejected(
                 modelID: modelID,
                 reason: "transport: \(error.localizedDescription)"
@@ -283,7 +287,9 @@ public struct BurnBarHostedInsightAdapter: InsightModelGateway {
             if let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let error = parsed["error"] as? [String: Any] {
                 let message = (error["message"] as? String) ?? "HTTP \(http.statusCode)"
+                #if canImport(os.log)
                 Self.log.error("hosted POST HTTP \(http.statusCode, privacy: .public): \(message, privacy: .public)")
+                #endif
 
                 // Route the BurnBar Pro paywall response to a dedicated
                 // error case so the orchestrator can degrade to local
