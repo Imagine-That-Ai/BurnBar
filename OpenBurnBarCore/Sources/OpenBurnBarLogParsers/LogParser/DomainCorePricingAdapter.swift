@@ -81,8 +81,8 @@ enum DomainCorePricingAdapter {
                 legacyMeasurement: legacyMeasurement
             )
         }
+        let rustStarted = Date.timeIntervalSinceReferenceDate
         do {
-            let rustStarted = Date.timeIntervalSinceReferenceDate
             let nanoUsd = try OpenBurnBarDomainCoreFFI.calculateTokenCostNanoUsd(
                 rates: rates,
                 buckets: buckets
