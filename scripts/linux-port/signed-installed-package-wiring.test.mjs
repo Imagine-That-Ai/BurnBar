@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -6,6 +7,22 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+
+test('release Cargo target is ignored exactly without masking adjacent checkout paths', () => {
+  const gitignore = read('.gitignore');
+  assert.match(gitignore, /^crates\/openburnbar-iroh\/target-linux-release\/$/mu);
+
+  const checkIgnore = (candidate) => spawnSync(
+    'git',
+    ['check-ignore', '--no-index', '--stdin'],
+    { cwd: root, input: `${candidate}\n`, encoding: 'utf8' }
+  );
+  const generated = checkIgnore('crates/openburnbar-iroh/target-linux-release/release/libopenburnbar_iroh.so');
+  assert.equal(generated.status, 0, generated.stderr || generated.stdout);
+
+  const nearMiss = checkIgnore('crates/openburnbar-iroh/target-linux-release-not-generated/release/libopenburnbar_iroh.so');
+  assert.notEqual(nearMiss.status, 0, nearMiss.stdout || nearMiss.stderr);
+});
 
 test('deb, rpm, and Arch package exact installed attestation subjects', () => {
   const config = JSON.parse(read('apps/linux-desktop/src-tauri/tauri.conf.json'));
