@@ -18,7 +18,7 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
-### Execution checkpoint — 2026-07-13
+### Execution checkpoint — 2026-07-14
 
 The implementation stack is now split into reviewable, dependency-ordered
 PRs rather than one blended progress number: P26 tray/deep links (#1649), P27
@@ -38,7 +38,10 @@ migration, and deleted-slug tombstones. Local integration slices now add
 typed chat model/thinking-level selection, bounded daemon-owned attachment
 refs, persisted activity body replay/native resume, actionable native
 notifications/shortcut status, SQLCipher-gated encrypted snapshot/atomic
-restore, and macOS-compatible passphrase recovery bundles. The
+restore, and macOS-compatible passphrase recovery bundles. The latest source
+wave adds `274f67fba0` (explicitly opted-in, signed IBus/Fcitx engine
+registration) and `ea82fe5140` (bounded Wayland portal capability probing and
+an X11-only native pet companion window). The
 authoritative promotion ledger remains 0/40 ready and 0/7 environment receipts;
 no PR in this checkpoint may be treated as full parity or as evidence that the
 Linux release candidate is shippable.
@@ -51,7 +54,7 @@ restore, and recovery bundles can land as
 independently reviewable source slices because each preserves an explicit
 installed-proof boundary.
 
-The 2026-07-13 integration checkpoint adds three bounded source slices to PR
+The 2026-07-14 integration checkpoint adds three bounded source slices to PR
 [#1691](https://github.com/Imagine-That-Ai/BurnBar/pull/1691): chat citations and
 daemon-issued tool approvals (`55e2e2ac23`), SmartHub typed allowlisting with
 bounds/timeout/cancellation (`2dcd7e3abc`), and daemon-owned text expansion with
@@ -64,7 +67,7 @@ the strict ledger on the exact candidate and collect the installed GNOME
 X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
 update/rollback, and physical-device receipts listed below.
 
-### Follow-on source checkpoint — 2026-07-13
+### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:
 
@@ -95,9 +98,16 @@ The integration branch now includes the next bounded source slices:
 - `fcf4667682` and `e4827a4090`: serialized text-expansion mutations with
   stale-generation fencing, plus isolated Linux SwiftPM scratch state for
   deterministic native test runs.
+- `274f67fba0`: bounded, signed external IBus/Fcitx engine registration with
+  explicit opt-in, owner/path/permission/session checks, and secure-field
+  fail-closed policy.
+- `ea82fe5140`: bounded Wayland/XDG RemoteDesktop capability probing with
+  typed consent/denial/timeout/cancellation states and an X11-only Tauri pet
+  companion window with explicit click-through control.
 
-The combined frontend suite is **75 files / 648 tests**, the Tauri Rust suite
-is **87/87**, TypeScript and the production bundle verifier pass, and the
+The combined frontend suite is **78 files / 684 tests**, the Tauri Rust suite
+is **90/90**, TypeScript and the production bundle verifier pass (303
+modules), and the
 daemon target builds. These are source gates only. The promotion ledger remains
 0/40 product rows and 0/7 environment receipts until the exact signed
 candidate, installed matrix, Linux keyring/portal/D-Bus evidence, update/
