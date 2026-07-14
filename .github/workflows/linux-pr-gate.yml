@@ -175,3 +175,4 @@ jobs:
           name: linux-pr-gate-evidence
           path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
           if-no-files-found: warn
+          include-hidden-files: true
