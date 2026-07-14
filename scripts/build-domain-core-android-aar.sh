@@ -25,6 +25,7 @@ HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-domain-core-kotlin-helper"
 ANDROID_TOOLCHAIN_CONFIG="${ROOT_DIR}/config/domain-core-android-ndk-version.txt"
 RUST_TOOLCHAIN_CONFIG="${CRATE_DIR}/rust-toolchain.toml"
 ZIP_TIME="${DOMAIN_CORE_AAR_ZIP_TIME:-202401010000.00}"
+ARTIFACT_EXPORT_DIR="${DOMAIN_CORE_ARTIFACT_EXPORT_DIR:-}"
 
 [[ -f "${ANDROID_TOOLCHAIN_CONFIG}" ]] || {
   echo "missing Android toolchain config: ${ANDROID_TOOLCHAIN_CONFIG}" >&2
@@ -426,6 +427,18 @@ for abi in "${ABIS[@]}"; do
   done <<< "${alignments}"
   log "${abi}: 16 KB compatible"
 done
+
+if [[ -n "${ARTIFACT_EXPORT_DIR}" ]]; then
+  rm -rf "${ARTIFACT_EXPORT_DIR}"
+  mkdir -p \
+    "${ARTIFACT_EXPORT_DIR}/generated-kotlin" \
+    "${ARTIFACT_EXPORT_DIR}/artifact-provenance"
+  cp "${AAR_PATH}" "${ARTIFACT_EXPORT_DIR}/openburnbar-domain-core.aar"
+  cp -R "${GENERATED_DIR}/." "${ARTIFACT_EXPORT_DIR}/generated-kotlin/"
+  cp "${PROVENANCE_DIR}/kotlin.sha256" \
+    "${ARTIFACT_EXPORT_DIR}/artifact-provenance/kotlin.sha256"
+  log "exported rebuilt AAR and bindings to ${ARTIFACT_EXPORT_DIR}"
+fi
 
 if [[ "${CHECK_ARTIFACT}" -eq 1 ]]; then
   compare_aar_entries "${EXPECTED_AAR}" "${AAR_PATH}" || \

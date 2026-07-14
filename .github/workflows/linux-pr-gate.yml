@@ -135,11 +135,15 @@ jobs:
         run: docker run --rm -v "$PWD:/workspace" -w /workspace openburnbar-linux-toolchain:mission-001 bash tools/linux-toolchain/smoke.sh
 
       - name: Run Linux Swift package tests
-        run: >
-          docker run --rm -v "$PWD:/workspace" -w /workspace
-          --env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/workspace/.linux-evidence/linux-swift-tests
-          openburnbar-linux-toolchain:mission-001
-          bash scripts/linux-port/run-linux-swift-tests.sh
+        run: |
+          mkdir -p "$OPENBURNBAR_LINUX_EVIDENCE_OUT"
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence" \
+            -w /workspace \
+            --env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests \
+            openburnbar-linux-toolchain:mission-001 \
+            bash scripts/linux-port/run-linux-swift-tests.sh
 
       - name: Download macOS matched performance reference
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)

@@ -44,7 +44,11 @@ final class ClaudeQuotaDomainCoreAdapterTests: XCTestCase {
         } else {
             XCTAssertEqual(logger.messages.count, 1)
             XCTAssertTrue(logger.messages[0].contains("native_unavailable"))
-            XCTAssertEqual(logger.comparisons, [])
+            XCTAssertEqual(logger.comparisons.count, 1)
+            XCTAssertEqual(logger.comparisons.first?.operation, "claude_quota")
+            XCTAssertEqual(logger.comparisons.first?.outcome, .mismatch)
+            XCTAssertEqual(logger.comparisons.first?.mismatchCategory, .nativeUnavailable)
+            XCTAssertEqual(logger.comparisons.first?.coreVersion, "0.0.0-unavailable")
         }
     }
 

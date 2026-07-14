@@ -94,20 +94,40 @@ enum ClaudeQuotaDomainCoreAdapter {
         let result = OpenBurnBarDomainCoreFFI.parseClaudeStatuslineQuota(payload: payload)
         return result.status == .parsed ? result.snapshot.buckets.map(mapBucket) : []
         #else
-        quotaLogger.log("domain_core.claude_quota.native_unavailable mode=\(mode.rawValue)")
         if mode == .shadow {
-            let legacyMeasurement = DomainCoreQuotaShadowTiming.measure { legacyBuckets(from: rateLimits) }
+            let legacyMeasurement = DomainCoreQuotaShadowTiming.measure {
+                shadowLegacyProbe?() ?? legacyBuckets(from: rateLimits)
+            }
+            let rustMeasurement = DomainCoreQuotaShadowTiming.measureResult {
+                guard let shadowRustProbe else {
+                    throw DomainCoreQuotaShadowProbeError.nativeUnavailable
+                }
+                return try shadowRustProbe()
+            }
+            var rustCount = 0
+            let category = DomainCoreQuotaShadowCategory.classify(rustMeasurement.result) { rustBuckets in
+                rustCount = rustBuckets.count
+                return equivalent(legacyMeasurement.value, rustBuckets)
+            }
+            if category == .nativeUnavailable {
+                quotaLogger.log("domain_core.claude_quota.native_unavailable mode=shadow")
+            } else if category != nil {
+                quotaLogger.log(
+                    "domain_core.claude_quota.shadow_mismatch core=0.0.0-unavailable legacy_count=\(legacyMeasurement.value.count) rust_count=\(rustCount)"
+                )
+            }
             quotaLogger.recordDomainCoreShadowComparison(DomainCoreQuotaShadowComparison(
                 operation: "claude_quota",
                 coreVersion: "0.0.0-unavailable",
                 observedAt: Date(),
-                outcome: .mismatch,
-                mismatchCategory: .nativeUnavailable,
+                outcome: category == nil ? .match : .mismatch,
+                mismatchCategory: category,
                 legacyMicros: legacyMeasurement.micros,
-                rustMicros: 0
+                rustMicros: rustMeasurement.micros
             ))
             return legacyMeasurement.value
         }
+        quotaLogger.log("domain_core.claude_quota.native_unavailable mode=\(mode.rawValue)")
         return []
         #endif
     }

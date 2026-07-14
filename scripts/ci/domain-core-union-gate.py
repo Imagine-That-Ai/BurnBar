@@ -298,9 +298,7 @@ def check_provenance(root: pathlib.Path, fingerprint: str, surfaces: list[str]) 
             try:
                 with zipfile.ZipFile(aar) as archive:
                     value = archive.read(f"META-INF/{FINGERPRINT_NAME}").decode("ascii").strip()
-                    actual_toolchain = archive.read(
-                        f"META-INF/{ANDROID_TOOLCHAIN_PROVENANCE_NAME}"
-                    )
+                    actual_toolchain = archive.read(f"META-INF/{ANDROID_TOOLCHAIN_PROVENANCE_NAME}")
             except (OSError, KeyError, UnicodeDecodeError, zipfile.BadZipFile) as error:
                 raise GateError(f"cannot read AAR provenance: {error}") from error
             expected_toolchain = expected_android_toolchain_provenance(root)

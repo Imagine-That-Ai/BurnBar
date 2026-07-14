@@ -933,10 +933,10 @@ mod tests {
         let key = [0x5a; 32];
         for length in 0..512_usize {
             let plaintext = (0..length)
-                .map(|index| (index.wrapping_mul(31).wrapping_add(length)) as u8)
+                .map(|index| index.wrapping_mul(31).wrapping_add(length).to_le_bytes()[0])
                 .collect::<Vec<_>>();
             let mut nonce = [0_u8; 12];
-            nonce[4..].copy_from_slice(&(length as u64).to_be_bytes());
+            nonce[4..].copy_from_slice(&u64::try_from(length).unwrap_or(u64::MAX).to_be_bytes());
             let aad = format!("property|{length}");
             let sealed = aes_gcm_seal_combined(&plaintext, &key, &nonce, aad.as_bytes())?;
             assert_eq!(

@@ -19,6 +19,7 @@ TOOL_ROOT="${ROOT_DIR}/build/domain-core-wasm-tools/wasm-bindgen-${WASM_BINDGEN_
 WASM_BINDGEN_BIN="${TOOL_ROOT}/bin/wasm-bindgen"
 MODE="${1:-build}"
 FINGERPRINT_NAME="openburnbar-domain-core-source.sha256"
+ARTIFACT_EXPORT_DIR="${DOMAIN_CORE_ARTIFACT_EXPORT_DIR:-}"
 
 if [[ "${MODE}" != "build" && "${MODE}" != "--check" ]]; then
   printf 'usage: %s [--check]\n' "$0" >&2
@@ -146,6 +147,14 @@ done
 log "running generated-package smoke test"
 node "${PACKAGE_DIR}/tests/package-smoke.mjs" "${STAGING_DIR}"
 node "${PACKAGE_DIR}/tests/node-package-equivalence.cjs" "${NODE_STAGING_DIR}" "${NODE_STAGING_DIR}"
+
+if [[ -n "${ARTIFACT_EXPORT_DIR}" ]]; then
+  rm -rf "${ARTIFACT_EXPORT_DIR}"
+  mkdir -p "${ARTIFACT_EXPORT_DIR}/browser" "${ARTIFACT_EXPORT_DIR}/node"
+  cp -R "${STAGING_DIR}/." "${ARTIFACT_EXPORT_DIR}/browser/"
+  cp -R "${NODE_STAGING_DIR}/." "${ARTIFACT_EXPORT_DIR}/node/"
+  log "exported rebuilt packages to ${ARTIFACT_EXPORT_DIR}"
+fi
 
 if [[ "${MODE}" == "--check" ]]; then
   node "${PACKAGE_DIR}/tests/package-equivalence.mjs" \

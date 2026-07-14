@@ -157,11 +157,17 @@ final class DomainCoreQuotaConsumerTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let expectedComparisonCount = mode == .shadow && DomainCoreQuotaConsumerSupport.isNativeAvailable ? 1 : 0
+        let expectedComparisonCount = mode == .shadow ? 1 : 0
         XCTAssertEqual(logger.comparisons.count, expectedComparisonCount, file: file, line: line)
         if let comparison = logger.comparisons.single {
-            XCTAssertEqual(comparison.outcome, .match, file: file, line: line)
-            XCTAssertNil(comparison.mismatchCategory, file: file, line: line)
+            if DomainCoreQuotaConsumerSupport.isNativeAvailable {
+                XCTAssertEqual(comparison.outcome, .match, file: file, line: line)
+                XCTAssertNil(comparison.mismatchCategory, file: file, line: line)
+            } else {
+                XCTAssertEqual(comparison.outcome, .mismatch, file: file, line: line)
+                XCTAssertEqual(comparison.mismatchCategory, .nativeUnavailable, file: file, line: line)
+                XCTAssertEqual(comparison.coreVersion, "0.0.0-unavailable", file: file, line: line)
+            }
             XCTAssertGreaterThanOrEqual(comparison.legacyMicros, 0, file: file, line: line)
             XCTAssertGreaterThanOrEqual(comparison.rustMicros, 0, file: file, line: line)
         }

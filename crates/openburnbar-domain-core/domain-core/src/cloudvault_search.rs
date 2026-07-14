@@ -677,7 +677,7 @@ mod tests {
                 let first = search(operation, text, &primary, limit)?;
                 let second = search(operation, text, &primary, limit)?;
                 assert_eq!(first, second);
-                assert!(first.hashes.len() <= limit as usize);
+                assert!(first.hashes.len() <= usize::try_from(limit).unwrap_or(usize::MAX));
                 assert_eq!(
                     first.hashes.len(),
                     first.hashes.iter().collect::<HashSet<_>>().len()
@@ -704,7 +704,9 @@ mod tests {
                 state = state
                     .wrapping_mul(6_364_136_223_846_793_005)
                     .wrapping_add(1_442_695_040_888_963_407);
-                text.push(alphabet[(state as usize) % alphabet.len()]);
+                let alphabet_len = u64::try_from(alphabet.len()).unwrap_or(u64::MAX);
+                let alphabet_index = usize::try_from(state % alphabet_len).unwrap_or_default();
+                text.push(alphabet[alphabet_index]);
             }
             let analysis = analyze(&text)?;
             assert!(analysis.normalized_tokens.len() <= MAX_SEARCH_TOKENS);

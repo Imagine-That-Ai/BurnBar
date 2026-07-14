@@ -129,11 +129,15 @@ jobs:
 
       - name: Run Linux Swift package tests
         if: matrix.mode == 'runnable'
-        run: >
-          docker run --rm -v "$PWD:/workspace" -w /workspace
-          --env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/workspace/.linux-evidence/linux-swift-tests
-          openburnbar-linux-toolchain:mission-001
-          bash scripts/linux-port/run-linux-swift-tests.sh
+        run: |
+          mkdir -p "$OPENBURNBAR_LINUX_EVIDENCE_OUT"
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence" \
+            -w /workspace \
+            --env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests \
+            openburnbar-linux-toolchain:mission-001 \
+            bash scripts/linux-port/run-linux-swift-tests.sh
 
       - name: Download nightly matched performance evidence
         if: matrix.mode == 'runnable'

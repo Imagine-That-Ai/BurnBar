@@ -45,7 +45,7 @@ mod property_tests {
                 state ^= state << 13;
                 state ^= state >> 17;
                 state ^= state << 5;
-                *byte = state as u8;
+                *byte = state.to_le_bytes()[0];
             }
             assert_finite(&parse_claude_statusline_quota(&payload));
             assert_finite(&parse_codex_usage_quota(&payload, i64::MAX));

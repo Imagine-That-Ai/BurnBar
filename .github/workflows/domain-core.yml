@@ -352,7 +352,18 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Verify generated Wasm package drift
+        env:
+          DOMAIN_CORE_ARTIFACT_EXPORT_DIR: ${{ runner.temp }}/domain-core-wasm-rebuilt
         run: ./scripts/build-domain-core-wasm.sh --check
+
+      - name: Upload rebuilt Wasm packages
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        with:
+          name: domain-core-wasm-rebuilt
+          path: ${{ runner.temp }}/domain-core-wasm-rebuilt/
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Verify browser and Node Wasm provenance
         run: >-
@@ -445,7 +456,18 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Rebuild and byte-compare four-ABI Android AAR
+        env:
+          DOMAIN_CORE_ARTIFACT_EXPORT_DIR: ${{ runner.temp }}/domain-core-android-rebuilt
         run: ./scripts/build-domain-core-android-aar.sh --check-artifact
+
+      - name: Upload rebuilt Android AAR and bindings
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        with:
+          name: domain-core-android-rebuilt
+          path: ${{ runner.temp }}/domain-core-android-rebuilt/
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Reject Android binding and provenance drift
         run: |
