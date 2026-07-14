@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarUI
 
 /// Locks the shared **DashboardLayout** contract that the macOS overview (and
 /// any future iOS/Android parity) keys off of:

@@ -1,9 +1,10 @@
 import XCTest
 import SwiftUI
-@testable import OpenBurnBarCore
+import OpenBurnBarKernelModels
 // P-16a (Core→OpenBurnBarUI, K4 Substrate): substrate system moved to OpenBurnBarUI.
 // @testable to reach substrate internals; `SubstrateCatalog` sites are qualified to
 // `OpenBurnBarUI.SubstrateCatalog` to skip the Kernel off-Apple stub Core re-exports.
+// The `RGBA(...)` dot color model type lives in OpenBurnBarKernelModels (WS-B B5).
 @testable import OpenBurnBarUI
 
 #if canImport(AppKit)

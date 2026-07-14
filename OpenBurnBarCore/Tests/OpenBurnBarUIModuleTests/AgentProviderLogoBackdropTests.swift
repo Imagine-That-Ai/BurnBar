@@ -1,6 +1,10 @@
 import XCTest
 import SwiftUI
-@testable import OpenBurnBarCore
+// The AgentProvider / AssistantRuntimeID enums this test drives live in
+// OpenBurnBarKernelModels; @testable import OpenBurnBarUI does not re-export them,
+// so import the model module directly (WS-B B5).
+import OpenBurnBarKernelModels
+@testable import OpenBurnBarUI
 
 final class AgentProviderLogoBackdropTests: XCTestCase {
 

@@ -1,12 +1,14 @@
 import XCTest
-@testable import OpenBurnBarCore
+import OpenBurnBarKernelModels
 // P-16a (Core→OpenBurnBarUI, K4 Substrate): the substrate system moved to
 // OpenBurnBarUI. This reaches its INTERNAL members (`MeshPatchSubstrate.targetCellPx`,
 // `.maximumPaintedPaneWidth`) so it stays a @testable import. `SubstrateCatalog`
 // references below are module-qualified to `OpenBurnBarUI.SubstrateCatalog` because
 // the Kernel carries an off-Apple `SubstrateCatalog` stub (LinuxSubstrateSupport.swift)
 // that Core re-exports on Apple too; qualifying selects the real Apple catalog and
-// removes the (harmless, name-only) cross-module ambiguity the move surfaced.
+// removes the (harmless, name-only) cross-module ambiguity the move surfaced. The
+// SwarmSubstrateDot `rgba: RGBA(...)` model type lives in OpenBurnBarKernelModels,
+// imported directly (WS-B B5).
 @testable import OpenBurnBarUI
 
 /// Contract tests for the native swarm-substrate system: the catalog shape, the

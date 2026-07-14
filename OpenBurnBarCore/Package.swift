@@ -714,20 +714,16 @@ let computerUseCoreExcludes = [
     "RemoteUnlockSystemScreenSharingProbe.swift"
 ]
 let openBurnBarCoreTestExcludes = [
-    "AgentProviderLogoBackdropTests.swift",
+    // WS-B B5 (plans/core-decomposition2/packets/B5-ui-module-tests.md) carried the 7
+    // OpenBurnBarUI-owned tests that used to be listed here out to
+    // OpenBurnBarUIModuleTests (an Apple-pruned test target that off-Apple graphs never
+    // see): AgentProviderLogoBackdrop, SmartHubDisplaySettingsModel, SwarmLogoShape,
+    // SwarmSubstrateContract, SwarmSubstratePreviewRender, UnifiedQuotaSignalCurrency,
+    // UnifiedToolCallAccordion (the P-16f comment block moved with the last two). The two
+    // remaining entries stay in OpenBurnBarCoreTests: MissionConsoleTests is INTEGRATION
+    // (KernelModels+Insights+UI), SwitcherCLIPostLaunchFallbackTests is B7's future move.
     "MissionConsoleTests.swift",
-    "SmartHubDisplaySettingsModelTests.swift",
-    "SwitcherCLIPostLaunchFallbackTests.swift",
-    "SwarmLogoShapeTests.swift",
-    "SwarmSubstrateContractTests.swift",
-    "SwarmSubstratePreviewRenderTests.swift",
-    // P-16f (S14 UI): these two tests reach OpenBurnBarUI view types now that
-    // UnifiedQuotaSignalView / UnifiedToolCallAccordion moved Core→OpenBurnBarUI
-    // (UnifiedQuotaSignalCurrencyTests additionally @testable-imports the UI target for the
-    // internal fullRemainingText render helper). OpenBurnBarUI is pruned WHOLE off-Apple, so
-    // both are excluded off-Apple exactly like the Swarm/SmartHub/MissionConsole UI tests above.
-    "UnifiedQuotaSignalCurrencyTests.swift",
-    "UnifiedToolCallAccordionTests.swift"
+    "SwitcherCLIPostLaunchFallbackTests.swift"
 ]
 let computerUseCoreTestExcludes = [
     "ComputerUseOpenTimestampsClientTests.swift",

@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarUI
 
 /// Locks the shared **Editorial / Paper** skin foundation that every native
 /// platform (iOS, iPad, macOS, Android) keys off of:
