@@ -436,13 +436,12 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
     private let coordinator: DomainCoreShadowEvidenceUploadCoordinator?
 
     init(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        info: [String: Any] = Bundle.main.infoDictionary ?? [:],
+        profile: DomainCoreBuildProfile = DomainCoreBuildProfileResolver.current(),
         directory: URL? = nil,
         submitter: (any DomainCoreShadowSampleSubmitting)? = nil,
         debounceNanoseconds: UInt64 = 5_000_000_000
     ) {
-        let resolvedChannel = DomainCoreBuildProfileResolver.evidenceChannel(environment: environment, info: info)
+        let resolvedChannel = profile.isValid && profile.evidenceEnabled ? profile.rolloutChannel : nil
         self.channel = resolvedChannel
         let resolvedSpool: DomainCoreShadowEvidenceSpool?
         do {

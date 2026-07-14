@@ -8,13 +8,13 @@ import {
   persistDomainCoreShadowSamples,
   storedDomainCoreShadowSample,
   storedDomainCoreShadowSampleMatches,
-  type DomainCoreShadowSampleV2,
 } from "../domainCoreShadowEvidence.js";
 
 type DomainCoreShadowStore = Parameters<typeof persistDomainCoreShadowSamples>[0];
 
 type DomainCoreShadowSample = ReturnType<typeof parseDomainCoreShadowSampleRequest>[number];
 type DomainCoreShadowSampleV1 = Extract<DomainCoreShadowSample, { schemaVersion: 1 }>;
+type DomainCoreShadowSampleV2 = ReturnType<typeof buildDomainCoreShadowSampleV2>;
 
 const NOW = Date.parse("2026-07-13T12:00:00.000Z");
 
@@ -71,7 +71,7 @@ describe("domain-core shadow evidence contract", () => {
     const parsed = parseDomainCoreShadowSampleRequest({ samples: [legacy] }, NOW);
 
     expect(parsed).toEqual([legacy]);
-    expect("slice" in (parsed[0] as DomainCoreShadowSample)).toBe(false);
+    expect(parsed[0]).not.toHaveProperty("slice");
   });
 
   it.each([

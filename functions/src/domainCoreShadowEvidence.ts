@@ -106,7 +106,7 @@ interface DomainCoreShadowStore {
   runTransaction<T>(update: (transaction: DomainCoreShadowTransaction) => Promise<T>): Promise<T>;
 }
 
-export interface DomainCoreShadowSampleV2 {
+interface DomainCoreShadowSampleV2 {
   schemaVersion: 2;
   sampleId: string;
   domain: "quota" | "cloudvault" | "hermes" | "pricing";
@@ -124,7 +124,7 @@ export interface DomainCoreShadowSampleV2 {
 
 type DomainCoreShadowSample = DomainCoreShadowSampleV1 | DomainCoreShadowSampleV2;
 
-export interface DomainCoreShadowComparisonV2 {
+interface DomainCoreShadowComparisonV2 {
   domain: DomainCoreShadowSampleV2["domain"];
   slice: string;
   consumer: DomainCoreShadowConsumerV2;
@@ -205,13 +205,12 @@ function parseOutcome(
   throw new HttpsError("invalid-argument", `samples[${index}].mismatchCategory is inconsistent.`);
 }
 
-function validV2Identity(domain: unknown, slice: unknown, consumer: unknown): boolean {
-  return (
-    typeof domain === "string" &&
-    typeof slice === "string" &&
-    typeof consumer === "string" &&
-    REQUIRED_COVERAGE[domain]?.[slice]?.includes(consumer) === true
-  );
+function isV2Domain(value: unknown): value is DomainCoreShadowSampleV2["domain"] {
+  return value === "quota" || value === "cloudvault" || value === "hermes" || value === "pricing";
+}
+
+function isV2Consumer(value: unknown): value is DomainCoreShadowConsumerV2 {
+  return typeof value === "string" && DOMAIN_CORE_SHADOW_CLAIM_CONSUMERS.has(value);
 }
 
 function parseSample(raw: unknown, nowMillis: number, index: number): DomainCoreShadowSample {
@@ -260,7 +259,12 @@ function parseSample(raw: unknown, nowMillis: number, index: number): DomainCore
       ...common,
     };
   }
-  if (!validV2Identity(raw.domain, raw.slice, raw.consumer)) {
+  if (
+    !isV2Domain(raw.domain) ||
+    typeof raw.slice !== "string" ||
+    !isV2Consumer(raw.consumer) ||
+    REQUIRED_COVERAGE[raw.domain]?.[raw.slice]?.includes(raw.consumer) !== true
+  ) {
     throw new HttpsError("invalid-argument", `samples[${index}] has an invalid domain, slice, or consumer.`);
   }
   if (raw.domain === "quota" && QUOTA_OPERATION_SLICES.get(raw.operation) !== raw.slice) {
@@ -268,9 +272,9 @@ function parseSample(raw: unknown, nowMillis: number, index: number): DomainCore
   }
   return {
     schemaVersion: 2,
-    domain: raw.domain as DomainCoreShadowSampleV2["domain"],
-    slice: raw.slice as string,
-    consumer: raw.consumer as DomainCoreShadowConsumerV2,
+    domain: raw.domain,
+    slice: raw.slice,
+    consumer: raw.consumer,
     operation: raw.operation,
     ...common,
   };
