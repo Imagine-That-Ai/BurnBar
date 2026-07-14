@@ -1,6 +1,27 @@
-# Packet B1: move KernelModels-owned tests → OpenBurnBarKernelModelsTests (39 files)
-STATE: READY  LANE: Test-decomposition (WS-B)  DEPENDS-ON: B0 (scaffold on core-decomp2/b0)
+# Packet B1: move KernelModels-owned tests → OpenBurnBarKernelModelsTests (38 files moved; 1 valved)
+STATE: EXECUTED (branch core-decomp2/b1-kernel-models-tests, base core-decomp2/b0)
+LANE: Test-decomposition (WS-B)  DEPENDS-ON: B0 (scaffold on core-decomp2/b0)
 Shared conventions + reassignment valve: see B0-mapping.md.
+
+## EXECUTION NOTES
+- REASSIGNMENT VALVE fired on `HermesSquarePhaseATests.swift`: its
+  `HermesSquareUnifiedSearchTests` class exercises `OpenBurnBarUI.UnifiedSearchIndex`
+  (a `public actor` in the Apple-only UI module). The cross-platform
+  OpenBurnBarKernelModelsTests target must NOT depend on OpenBurnBarUI, so the file
+  stays in OpenBurnBarCoreTests (INTEGRATION: KernelModels + Contracts + Crypto + UI)
+  with its original `@testable import OpenBurnBarCore`. Net moves = 38 (39 planned − 1).
+  It was NOT in `openBurnBarCoreTestExcludes` and remains in the coretests baseline
+  (which already lists it) — no baseline/exclude edit needed for the reassigned file.
+- Cross-sub Kernel plain imports the compiler required (matches the B0 hit evidence):
+  HermesRelayContractTests → Crypto + Contracts; HermesSquarePhaseB/Remediation →
+  Contracts; Plan2SharedModels / OMPProvider / OpenClaude → Crypto. Added
+  OpenBurnBarKernelCrypto + OpenBurnBarKernelContracts to the target dep list (acyclic).
+- The B1-card "weak UI/Insights hits" all proved to be string/substring false positives
+  (Pixel/Read/Presentation/Corpus/Identity/Pace/Snapshot/Provider) — the target takes NO
+  UI/Insights dependency; whole-package `swift test` compiles every moved file green.
+- coretests-file baseline NOT ratcheted here (shrink is non-fatal; the WS-B integrator
+  ratchets `budgets/coretests-file-baseline.json` once after the B-chain lands, keeping
+  the baseline stable for stacked B2..B8). The gate prints a non-fatal NOTICE and passes.
 
 Destination: `OpenBurnBarCore/Tests/OpenBurnBarKernelModelsTests/` (target deps at B0:
 OpenBurnBarKernelModels, OpenBurnBarKernelPlatform). Delete `PlaceholderTests.swift` here.

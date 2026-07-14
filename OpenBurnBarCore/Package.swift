@@ -691,6 +691,13 @@ let openBurnBarKernelPlatformExcludes: [String] = []
 let openBurnBarKernelModelsExcludes: [String] = []
 let openBurnBarKernelCryptoExcludes: [String] = []
 let openBurnBarKernelContractsExcludes: [String] = []
+// Phase-2 WS-B packet B1: off-Apple exclusions for OpenBurnBarKernelModelsTests.
+// CLITerminalSessionSupervisorTests exercises the Apple-only
+// OpenBurnBarKernelModels.CLITerminalSessionSupervisor, so it stays out of the Linux
+// graph — the same exclusion it carried in openBurnBarCoreTestExcludes before B1.
+let openBurnBarKernelModelsTestsExcludes = [
+    "CLITerminalSessionSupervisorTests.swift"
+]
 // UI/Insights/TextExpansion/LaunchServices are pruned WHOLE off-Apple (like
 // OpenBurnBarData) rather than file-excluded, so their exclude arrays exist only
 // for symmetry and stay empty on every host.
@@ -708,7 +715,6 @@ let computerUseCoreExcludes = [
 ]
 let openBurnBarCoreTestExcludes = [
     "AgentProviderLogoBackdropTests.swift",
-    "CLITerminalSessionSupervisorTests.swift",
     "Insights/BurnBarHostedAdapterWireTests.swift",
     "Insights/InsightLiveProviderSmokeTests.swift",
     "MissionConsoleTests.swift",
@@ -816,6 +822,9 @@ let openBurnBarKernelPlatformExcludes: [String] = []
 let openBurnBarKernelModelsExcludes: [String] = []
 let openBurnBarKernelCryptoExcludes: [String] = []
 let openBurnBarKernelContractsExcludes: [String] = []
+// Phase-2 WS-B packet B1: Apple-side (empty) default for OpenBurnBarKernelModelsTests'
+// off-Apple exclude seam. On Apple CLITerminalSessionSupervisorTests compiles.
+let openBurnBarKernelModelsTestsExcludes: [String] = []
 let openBurnBarInsightsExcludes: [String] = []
 let openBurnBarUIExcludes: [String] = []
 let openBurnBarTextExpansionExcludes: [String] = []
@@ -1490,8 +1499,25 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarKernelModelsTests",
             dependencies: [
                 "OpenBurnBarKernelModels",
-                "OpenBurnBarKernelPlatform"
+                "OpenBurnBarKernelPlatform",
+                // Phase-2 WS-B packet B1: a few moved KernelModels tests also exercise
+                // PUBLIC symbols from the sibling Kernel sub-targets (HermesRelayContractTests
+                // reaches Crypto+Contracts; the HermesSquare* / Plan2SharedModels / OMP /
+                // OpenClaude provider tests reach Contracts/Crypto). The edges are acyclic
+                // (test target → siblings) and let those files use plain `import` lines.
+                "OpenBurnBarKernelCrypto",
+                "OpenBurnBarKernelContracts"
             ] + swiftTestingAppleDependencies,
+            // CLITerminalSessionSupervisorTests is excluded off-Apple (its production type
+            // OpenBurnBarKernelModels.CLITerminalSessionSupervisor is Apple-only); it followed
+            // that exclusion out of OpenBurnBarCoreTests into this target at B1.
+            exclude: openBurnBarKernelModelsTestsExcludes,
+            // Packet B1 co-moved three CoreTests fixtures whose tests load via Bundle.module
+            // (quota-refresh-policy-fixtures, budget-enforcement-vectors) or a #file-relative
+            // Fixtures/ path (HermesStreamEventVector); the resource bundle carries them.
+            resources: [
+                .process("Fixtures")
+            ],
             // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
             // checker has known gaps (Task hand-off) that would contort correct tests.
             swiftSettings: [.swiftLanguageMode(.v5)]
