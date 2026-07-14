@@ -93,6 +93,22 @@ test('Arch preparation embeds the native payload before makepkg without unsigned
   assert.match(source, /embedLinuxAppImagePayload\(/u);
 });
 
+test('signed AppImage finalization reuses the attested prepare artifact', () => {
+  const source = read('scripts/linux-port/bundle-signed-linux-packages.mjs');
+  const finalizeStart = source.indexOf('function finalizeSignedPackages()');
+  assert.ok(finalizeStart > 0, 'finalization function must remain explicit');
+  const finalize = source.slice(finalizeStart);
+  assert.match(
+    finalize,
+    /findSingleArtifact\(path\.join\(bundleRoot, 'appimage'\), 'appimage'\)/u
+  );
+  assert.doesNotMatch(finalize, /bundleFormat\('appimage'\)/u);
+  assert.match(
+    finalize,
+    /embedLinuxAppImagePayload\([\s\S]*peerManifestBytes: appImageSigned\.manifestBytes/u
+  );
+});
+
 test('release workflow isolates the signer from mutable build tools and the network', () => {
   const workflow = read('.github/workflows/linux-release.yml');
   const signerStart = workflow.indexOf('Materialize exact-commit isolated signer');

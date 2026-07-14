@@ -445,7 +445,13 @@ function finalizeSignedPackages() {
     });
   }
   const appImageSigned = signedRequest(index, 'appimage-peer-manifest');
-  const appImage = bundleFormat('appimage');
+  // The prepare phase created the AppImage whose GUI executable was hashed in
+  // the signed peer request, then embedded the unsigned runtime payload into
+  // that same image. Re-running Tauri's AppImage bundler here can rewrite the
+  // GUI binary (for example through linuxdeploy/strip), invalidating the
+  // signer-bound digest. Finalization must consume the prepared image and let
+  // embedLinuxAppImagePayload perform the final signed-payload verification.
+  const appImage = findSingleArtifact(path.join(bundleRoot, 'appimage'), 'appimage');
   const appImageReport = embedLinuxAppImagePayload({
     appImage,
     payloadRoot: packagePayloadRoot,
