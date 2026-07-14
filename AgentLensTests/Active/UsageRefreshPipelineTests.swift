@@ -151,7 +151,7 @@ final class UsageRefreshPipelineTests: XCTestCase {
                 outputTokens: 2,
                 startTime: now,
                 endTime: now
-            ),
+            )
         ])
         let pipeline = UsageRefreshPipeline(
             parsers: [.codex: DeletionParser()],

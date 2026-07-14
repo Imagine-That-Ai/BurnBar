@@ -404,7 +404,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                 outputTokens = nextHighWater.output
                 cacheReadTokens = nextHighWater.cacheRead
                 foundCumulative = true
-                if let eventDate = codexEventDate(from: json) {
+                if let eventDate = codexEventDate(from: json["timestamp"] as? String) {
                     let rawInputDelta = nextHighWater.input - cumulativeHighWater.input
                     let outputDelta = nextHighWater.output - cumulativeHighWater.output
                     let cacheReadDelta = nextHighWater.cacheRead - cumulativeHighWater.cacheRead
@@ -432,7 +432,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                 inputTokens += max(deltaInput - deltaCacheRead, 0)
                 outputTokens += lastUsage["output_tokens"] as? Int ?? 0
                 cacheReadTokens += deltaCacheRead
-                if let eventDate = codexEventDate(from: json) {
+                if let eventDate = codexEventDate(from: json["timestamp"] as? String) {
                     recordCodexDailyUsage(
                         eventDate: eventDate,
                         input: max(deltaInput - deltaCacheRead, 0),
@@ -465,8 +465,8 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
             : nil
     }
 
-    private func codexEventDate(from json: [String: Any]) -> Date? {
-        guard let timestamp = json["timestamp"] as? String else { return nil }
+    private func codexEventDate(from timestamp: String?) -> Date? {
+        guard let timestamp else { return nil }
         return OpenBurnBarCore.ThreadSafeISO8601DateFormatter.parse(timestamp)
     }
 
@@ -498,7 +498,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         guard let handle = FileHandle(forReadingAtPath: path) else { return false }
         defer { try? handle.close() } // try?-ok(handle teardown)
 
-        guard let prefix = try? handle.read(upToCount: 256 * 1024),
+        guard let prefix = try? handle.read(upToCount: 256 * 1024), // try?-ok(optional bounded rollout probe)
               !prefix.isEmpty else {
             return false
         }
@@ -506,13 +506,11 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         let text = String(decoding: prefix, as: UTF8.self)
         for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
             guard let data = String(line).data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  json["type"] as? String == "session_meta",
-                  let payload = json["payload"] as? [String: Any],
-                  let source = payload["source"] as? [String: Any] else {
+                  let record = try? JSONDecoder().decode(CodexSessionMetaProbe.self, from: data), // try?-ok(per-line bounded probe)
+                  record.type == "session_meta" else {
                 continue
             }
-            return source["subagent"] != nil
+            return record.payload?.source?.subagent != nil
         }
         return false
     }
@@ -634,6 +632,21 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(optional mtime)
     }
 
+}
+
+private struct CodexSessionMetaProbe: Decodable {
+    struct Payload: Decodable {
+        struct Source: Decodable {
+            struct Subagent: Decodable {}
+
+            let subagent: Subagent?
+        }
+
+        let source: Source?
+    }
+
+    let type: String
+    let payload: Payload?
 }
 
 /// Parses OpenClaw JSON/JSONL session history from `~/.openclaw/sessions`.
