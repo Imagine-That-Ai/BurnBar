@@ -42,8 +42,11 @@ enum HermesDomainCoreAdapter {
             if mode == .rust { throw HermesDomainCoreAdapterError.nativeUnavailable }
             return legacy()
         }
+        let legacyStarted = Date.timeIntervalSinceReferenceDate
         let old = mode == .shadow ? legacy() : nil
+        let legacyMicros = mode == .shadow ? elapsedMicros(since: legacyStarted) : 0
         let rust: Data
+        let rustStarted = Date.timeIntervalSinceReferenceDate
         do {
             rust = try OpenBurnBarDomainCoreFFI.hermesRelayAad(
                 kind: kind.ffi,
@@ -52,11 +55,17 @@ enum HermesDomainCoreAdapter {
         } catch {
             diagnostic("aad", "native_unavailable")
             if mode == .rust { throw error }
+            if old != nil {
+                record("aad", "aad", false, "native_error", legacyMicros, elapsedMicros(since: rustStarted))
+            }
             return old ?? legacy()
         }
         guard mode == .shadow else { return rust }
         guard let old else { return legacy() }
-        if old != rust { diagnostic("aad", "shadow_mismatch") }
+        let rustMicros = elapsedMicros(since: rustStarted)
+        let matches = old == rust
+        if !matches { diagnostic("aad", "shadow_mismatch") }
+        record("aad", "aad", matches, matches ? nil : "result_mismatch", legacyMicros, rustMicros)
         return old
         #else
         diagnostic("aad", "native_unavailable")
@@ -286,20 +295,66 @@ enum HermesDomainCoreAdapter {
         guard mode != .legacy else { return try legacy() }
         guard mode == .shadow else { return try rust() }
 
+        let legacyStarted = Date.timeIntervalSinceReferenceDate
         let old = try legacy()
+        let legacyMicros = elapsedMicros(since: legacyStarted)
         let value: Data
+        let rustStarted = Date.timeIntervalSinceReferenceDate
         do {
             value = try rust()
         } catch {
             diagnostic(operation, "native_error")
+            record(
+                operation,
+                operation.contains("hpke") ? "hpke-info" : "payload-keywrap",
+                false,
+                "native_error",
+                legacyMicros,
+                elapsedMicros(since: rustStarted)
+            )
             return old
         }
-        if old != value { diagnostic(operation, "shadow_mismatch") }
+        let matches = old == value
+        if !matches { diagnostic(operation, "shadow_mismatch") }
+        record(
+            operation,
+            operation.contains("hpke") ? "hpke-info" : "payload-keywrap",
+            matches,
+            matches ? nil : "result_mismatch",
+            legacyMicros,
+            elapsedMicros(since: rustStarted)
+        )
         return old
     }
 
     private static func diagnostic(_ operation: String, _ outcome: String) {
         NSLog("domain_core.hermes.%@ %@", operation, outcome)
+    }
+
+    private static func elapsedMicros(since started: TimeInterval) -> UInt64 {
+        UInt64(min(600_000_000, max(0, ((Date.timeIntervalSinceReferenceDate - started) * 1_000_000).rounded())))
+    }
+
+    private static func record(
+        _ operation: String,
+        _ slice: String,
+        _ matches: Bool,
+        _ category: String?,
+        _ legacyMicros: UInt64,
+        _ rustMicros: UInt64
+    ) {
+        #if canImport(OpenBurnBarDomainCoreFFI)
+        DomainCoreShadowComparisonCollector.record(.init(
+            domain: "hermes",
+            slice: slice,
+            operation: operation,
+            coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
+            outcome: matches ? "match" : "mismatch",
+            mismatchCategory: category,
+            legacyMicros: legacyMicros,
+            rustMicros: rustMicros
+        ))
+        #endif
     }
 }
 

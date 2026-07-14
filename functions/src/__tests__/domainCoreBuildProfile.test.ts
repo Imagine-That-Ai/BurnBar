@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveDomainCoreRuntimeMode } from "../domainCoreBuildProfile.js";
+import { resolveDomainCoreEvidenceChannel, resolveDomainCoreRuntimeMode } from "../domainCoreBuildProfile.js";
 
 const keys = ["QUOTA", "CLOUDVAULT", "CLOUDVAULT_REWRAP", "CLOUDVAULT_SEARCH", "HERMES", "PRICING"];
 
@@ -31,7 +31,9 @@ describe("domain-core Functions profile", () => {
   it.each(["internal", "beta"] as const)("requires matching %s enrollment metadata", (name) => {
     const environment = signed(name, "shadow");
     expect(resolveDomainCoreRuntimeMode("pricing", environment)).toBe("shadow");
+    expect(resolveDomainCoreEvidenceChannel(environment)).toBe(name);
     environment.OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL = name === "internal" ? "beta" : "internal";
     expect(resolveDomainCoreRuntimeMode("pricing", environment)).toBe("legacy");
+    expect(resolveDomainCoreEvidenceChannel(environment)).toBeUndefined();
   });
 });

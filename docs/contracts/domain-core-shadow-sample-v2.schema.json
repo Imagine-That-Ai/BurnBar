@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.com/contracts/domain-core-shadow-sample-v2.schema.json",
+  "title": "OpenBurnBar domain-core shadow sample v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sampleId",
+    "domain",
+    "slice",
+    "consumer",
+    "channel",
+    "operation",
+    "coreVersion",
+    "observedAt",
+    "outcome",
+    "mismatchCategory",
+    "legacyMicros",
+    "rustMicros"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "sampleId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "domain": { "enum": ["quota", "cloudvault", "hermes", "pricing"] },
+    "slice": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
+    "consumer": { "enum": ["apple", "android", "windows", "console", "functions"] },
+    "channel": { "enum": ["internal", "beta"] },
+    "operation": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$" },
+    "coreVersion": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "outcome": { "enum": ["match", "mismatch"] },
+    "mismatchCategory": {
+      "type": ["string", "null"],
+      "enum": ["result_mismatch", "native_unavailable", "native_error", "invalid_result", null]
+    },
+    "legacyMicros": { "type": "integer", "minimum": 0, "maximum": 600000000 },
+    "rustMicros": { "type": "integer", "minimum": 0, "maximum": 600000000 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "outcome": { "const": "match" } } },
+      "then": { "properties": { "mismatchCategory": { "const": null } } },
+      "else": {
+        "properties": {
+          "mismatchCategory": {
+            "enum": ["result_mismatch", "native_unavailable", "native_error", "invalid_result"]
+          }
+        }
+      }
+    },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "domain": { "const": "quota" },
+            "slice": { "enum": ["claude", "codex", "cursor", "anthropic"] },
+            "consumer": { "enum": ["apple", "windows"] }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "enum": ["foundation", "aes", "escrow"] },
+            "consumer": { "enum": ["apple", "android", "windows", "console"] }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "recovery" },
+            "consumer": { "enum": ["apple", "android", "windows"] }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "enum": ["document-rewrap", "search"] },
+            "consumer": { "enum": ["apple", "android"] }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "hermes" },
+            "slice": { "enum": ["aad", "payload-keywrap", "hpke-info", "ratchet"] },
+            "consumer": { "enum": ["apple", "android"] }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "pricing" },
+            "slice": { "const": "token-cost" },
+            "consumer": { "enum": ["apple", "functions"] }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "pricing" },
+            "slice": { "const": "legacy-kimi" },
+            "consumer": { "const": "functions" }
+          }
+        }
+      ]
+    },
+    {
+      "if": { "properties": { "domain": { "const": "quota" } } },
+      "then": {
+        "oneOf": [
+          { "properties": { "slice": { "const": "claude" }, "operation": { "const": "claude_quota" } } },
+          { "properties": { "slice": { "const": "codex" }, "operation": { "const": "codex_quota" } } },
+          { "properties": { "slice": { "const": "cursor" }, "operation": { "const": "cursor_quota" } } },
+          { "properties": { "slice": { "const": "anthropic" }, "operation": { "const": "anthropic_quota" } } }
+        ]
+      }
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import io.mockk.unmockkStatic
 import io.mockk.verify
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -15,6 +16,7 @@ import org.junit.Test
 class HermesDomainCoreAdapterTest {
     @After
     fun restoreAndroidLog() {
+        HermesDomainCoreAdapter.comparisonOverride = null
         unmockkStatic(Log::class)
     }
 
@@ -23,6 +25,8 @@ class HermesDomainCoreAdapterTest {
         mockkStatic(Log::class)
         every { Log.w(any(), any<String>()) } returns 0
         val expected = byteArrayOf(0x00, 0x7f, 0xff.toByte())
+        val comparisons = mutableListOf<HermesShadowComparison>()
+        HermesDomainCoreAdapter.comparisonOverride = comparisons::add
 
         val actual = HermesDomainCoreAdapter.selectValueWhenNativeAvailable(
             operation = "bounded_input",
@@ -36,6 +40,11 @@ class HermesDomainCoreAdapterTest {
         verify(exactly = 1) {
             Log.w("OpenBurnBarDomainCore", "domain_core.hermes.bounded_input native_error")
         }
+        assertEquals(1, comparisons.size)
+        assertEquals("hermes", comparisons.single().domain)
+        assertEquals("payload-keywrap", comparisons.single().slice)
+        assertEquals("android", comparisons.single().consumer)
+        assertEquals("native_error", comparisons.single().mismatchCategory)
     }
 
     @Test

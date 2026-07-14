@@ -7,6 +7,23 @@ export type DomainCoreRuntimeDomain =
   | "hermes"
   | "pricing";
 
+export function resolveDomainCoreEvidenceChannel(
+  environment: NodeJS.ProcessEnv = process.env,
+): "internal" | "beta" | undefined {
+  const channel = environment.OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL;
+  if (
+    environment.OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY !== "signed" ||
+    environment.OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED !== "1" ||
+    (channel !== "internal" && channel !== "beta") ||
+    environment.OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE !== channel ||
+    environment.OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION !== channel
+  ) return undefined;
+  for (const key of Object.values(domainKeys)) {
+    if (!mode(environment[key])) return undefined;
+  }
+  return mode(environment.OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE) === "shadow" ? channel : undefined;
+}
+
 const domainKeys: Record<DomainCoreRuntimeDomain, string> = {
   quota: "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE",
   cloudVault: "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE",

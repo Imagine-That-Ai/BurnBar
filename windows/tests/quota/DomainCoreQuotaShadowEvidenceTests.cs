@@ -24,7 +24,7 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
         Assert.Equal(new[]
         {
             "channel", "consumer", "coreVersion", "domain", "legacyMicros", "mismatchCategory",
-            "observedAt", "operation", "outcome", "rustMicros", "sampleId", "schemaVersion",
+            "observedAt", "operation", "outcome", "rustMicros", "sampleId", "schemaVersion", "slice",
         }, keys);
         Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("mismatchCategory").ValueKind);
         Assert.DoesNotContain("uid", json, StringComparison.OrdinalIgnoreCase);
@@ -126,10 +126,11 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
         if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
     }
 
-    private static DomainCoreQuotaShadowSampleV1 Sample(int suffix) => new()
+    private static DomainCoreShadowSampleV2 Sample(int suffix) => new()
     {
         SampleId = $"00000000-0000-4000-8000-{suffix:D12}",
         Channel = "internal",
+        Slice = "claude",
         Operation = "claude_quota",
         CoreVersion = "0.3.0",
         ObservedAt = "2026-07-13T12:00:00.000Z",
