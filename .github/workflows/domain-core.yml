@@ -16,6 +16,7 @@ on:
       - ".github/workflows/openburnbar-release-windows.yml"
       - ".github/workflows/deploy-hosting.yml"
       - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/domain-core-promotion-observation.yml"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
@@ -108,6 +109,16 @@ on:
       - "config/domain-core-legacy-deletion.schema.json"
       - "config/domain-core-legacy-deletion-receipt.schema.json"
       - "config/domain-core-legacy-deletion-receipts/**"
+      - "config/domain-core-deletion-plan.schema.json"
+      - "config/domain-core-deletion-plans/**"
+      - "config/domain-core-deletion-reviewers.json"
+      - "config/domain-core-deletion-reviewers.schema.json"
+      - "config/domain-core-promotion-attestation.schema.json"
+      - "config/domain-core-promotion-report.schema.json"
+      - "config/domain-core-promotion-attestations/**"
+      - "config/domain-core-promotion-reports/**"
+      - "config/domain-core-promotion-provenance/**"
+      - "config/domain-core-release-provenance/**"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/SHARED_RUST_DOMAIN_INVENTORY.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
@@ -117,6 +128,8 @@ on:
       - "docs/contracts/domain-core-shadow-sample-v2.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - "scripts/ci/verify-domain-core-legacy-deletion.py"
+      - "scripts/ops/create-domain-core-promotion-receipt.py"
+      - "scripts/ops/create-domain-core-deletion-plan.py"
       - "tests/test_domain_core_legacy_deletion_gate.py"
       - "tests/test_domain_core_legacy_deletion_workflow.py"
       - ".github/workflows/domain-core.yml"
@@ -131,6 +144,7 @@ on:
       - ".github/workflows/openburnbar-release-windows.yml"
       - ".github/workflows/deploy-hosting.yml"
       - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/domain-core-promotion-observation.yml"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
@@ -223,6 +237,16 @@ on:
       - "config/domain-core-legacy-deletion.schema.json"
       - "config/domain-core-legacy-deletion-receipt.schema.json"
       - "config/domain-core-legacy-deletion-receipts/**"
+      - "config/domain-core-deletion-plan.schema.json"
+      - "config/domain-core-deletion-plans/**"
+      - "config/domain-core-deletion-reviewers.json"
+      - "config/domain-core-deletion-reviewers.schema.json"
+      - "config/domain-core-promotion-attestation.schema.json"
+      - "config/domain-core-promotion-report.schema.json"
+      - "config/domain-core-promotion-attestations/**"
+      - "config/domain-core-promotion-reports/**"
+      - "config/domain-core-promotion-provenance/**"
+      - "config/domain-core-release-provenance/**"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/SHARED_RUST_DOMAIN_INVENTORY.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
@@ -232,6 +256,8 @@ on:
       - "docs/contracts/domain-core-shadow-sample-v2.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - "scripts/ci/verify-domain-core-legacy-deletion.py"
+      - "scripts/ops/create-domain-core-promotion-receipt.py"
+      - "scripts/ops/create-domain-core-deletion-plan.py"
       - "tests/test_domain_core_legacy_deletion_gate.py"
       - "tests/test_domain_core_legacy_deletion_workflow.py"
       - ".github/workflows/domain-core.yml"
@@ -245,11 +271,15 @@ jobs:
   legacy-deletion-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Test fail-closed legacy deletion governance
         run: |
@@ -257,7 +287,27 @@ jobs:
           python3 tests/test_domain_core_legacy_deletion_workflow.py
 
       - name: Verify legacy source ledger
-        run: python3 scripts/ci/verify-domain-core-legacy-deletion.py
+        env:
+          DOMAIN_CORE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          DOMAIN_CORE_EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$DOMAIN_CORE_EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+              echo "Manual governance verification may run only from main." >&2
+              exit 1
+            fi
+            DOMAIN_CORE_BASE_REF="$(git rev-parse HEAD^1)"
+          fi
+          if [[ "$DOMAIN_CORE_EVENT_NAME" == "pull_request" || "$DOMAIN_CORE_EVENT_NAME" == "push" || "$DOMAIN_CORE_EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ ! "$DOMAIN_CORE_BASE_REF" =~ ^[0-9a-f]{40}$ || "$DOMAIN_CORE_BASE_REF" == "0000000000000000000000000000000000000000" ]]; then
+              echo "A trustworthy base SHA is required for append-only governance." >&2
+              exit 1
+            fi
+            python3 scripts/ci/verify-domain-core-legacy-deletion.py \
+              --base-ref "$DOMAIN_CORE_BASE_REF" \
+              --verify-signed-evidence
+          fi
 
   promotion-evidence-gate:
     runs-on: ubuntu-latest

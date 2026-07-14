@@ -70,6 +70,25 @@ identity, is excluded by the V2 exporter, and always receives the
 
 ## Export collected evidence
 
+Production promotion evidence must be exported by the protected
+`Shared Rust promotion observation` workflow. Dispatch it only from `main` and
+provide an exact candidate commit already reachable from that trusted branch.
+The workflow reads
+Firestore with GitHub OIDC, runs the candidate's exporter and pinned policy,
+attests only a ready report, and retains the aggregate evidence, report,
+Sigstore bundle, and hash manifest as one Actions artifact. A local export is
+useful for diagnosis but cannot authorize promotion.
+
+The GitHub `domain-core-promotion` environment is a required-review boundary,
+not a naming convention. Keep at least one release owner configured as an
+environment reviewer, restrict its deployment branch policy to `main`, and do not move the OIDC
+credentials into an unprotected job. The workflow also requires its dispatch
+SHA, checked-out SHA, attestation source SHA, and requested candidate SHA to be
+identical. The candidate must already be reachable from the trusted `main`
+builder. The signed report records the candidate as `provenance.queryRevision`;
+the gate separately pins the builder with `--source-ref refs/heads/main`,
+`--source-digest`, and `--signer-digest`.
+
 ```bash
 node scripts/ops/export-domain-core-promotion-evidence.mjs \
   --project burnbar \
@@ -122,12 +141,39 @@ without copying review metadata.
 
 ## Promotion and deletion
 
-1. Retain source evidence and the generated report with the rollout review.
+1. Retain the protected workflow's aggregate evidence artifact and generated
+   report with the rollout review.
 2. Confirm every non-quantitative roadmap gate independently.
-3. Change only the reviewed consumer mode to `rust`; keep explicit rollback.
-4. Observe one stable release before proposing legacy deletion.
+3. Use `scripts/ops/create-domain-core-promotion-receipt.py` to commit the
+   aggregate readiness report, its generation-scoped attestation, and receipts.
+   The gate revalidates the complete report and binds its review URI and SHA-256,
+   pinned domain policy, candidate-commit Rust fingerprint, core version, and
+   real candidate commit. The gate verifies the committed report's GitHub OIDC
+   provenance against the protected workflow and exact candidate commit.
+   Runtime samples remain outside Git; only the aggregate evaluator output and
+   its Sigstore bundle are committed. Record both the rollout candidate SHA and
+   the trusted `main` builder SHA when generating the receipt. Advance the complete mapped row set to
+   `promotion_approved`, and change only the reviewed public build-profile mode
+   to `rust`; keep explicit rollback.
+4. Observe one stable release for every applicable consumer, then commit
+   stable-release receipts containing each consumer's tag, release commit,
+   artifact digest, and signed-provenance digest, and advance
+   the rows to `rust_authoritative_with_rollback`.
+   This remains blocked until the Android, Windows, Console, and Functions
+   producer workflows publish the canonical release/deployment artifact and
+   exact custom signed predicate required by the deletion gate.
 5. Run source/compile gates proving the inventory's named deletion targets are
    absent before marking that row complete.
+
+If Rust is rolled back after promotion or deletion approval, add an explicit `rollback` receipt and
+move the whole mapped domain to `rollback_active`. Restoring Rust starts a new
+authority generation whose promotion receipt must bind the previous rollback.
+Old stable-release receipts can never authorize deletion after a rollback. A
+new generation must start every coverage window after the prior rollback's
+actual activation time, so copying an older signed report cannot re-authorize
+Rust.
+Any existing deletion review remains immutable and attached to the rolled-back
+generation, but it cannot authorize deletion after the new generation begins.
 
 The source gate and receipt procedure are defined in the
 [Shared Rust Legacy Deletion Runbook](shared-rust-legacy-deletion.md). Promotion

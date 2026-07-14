@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.com/schemas/domain-core-promotion-report-v2.json",
+  "title": "OpenBurnBar shared Rust ready promotion report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "domain", "coreVersion", "generatedAt", "provenance", "status", "ready", "policy", "summary", "blockers"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "domain": { "enum": ["quota", "cloudvault", "hermes", "pricing"] },
+    "coreVersion": { "$ref": "#/$defs/version" },
+    "generatedAt": { "$ref": "#/$defs/timestamp" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "status": { "const": "ready" },
+    "ready": { "const": true },
+    "policy": { "$ref": "#/$defs/policy" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "blockers": { "type": "array", "maxItems": 0 }
+  },
+  "$defs": {
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collector", "queryRevision", "sourceUri"],
+      "properties": {
+        "collector": { "const": "domain-core-shadow-exporter" },
+        "queryRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "sourceUri": { "type": "string", "pattern": "^https://(?![^/?#]*@)[^/?#]+(?:/[^?#]*)?$" }
+      }
+    },
+    "coverageIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slice", "consumer"],
+      "properties": {
+        "slice": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$" },
+        "consumer": { "enum": ["apple", "android", "windows", "console", "functions"] }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimumCoverageSeconds", "minimumSamples", "maximumP95RegressionBasisPoints", "requiredCoverage", "allowedChannels"],
+      "properties": {
+        "minimumCoverageSeconds": { "const": 1209600 },
+        "minimumSamples": { "const": 10000 },
+        "maximumP95RegressionBasisPoints": { "const": 500 },
+        "requiredCoverage": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/coverageIdentity" }
+        },
+        "allowedChannels": {
+          "type": "array",
+          "prefixItems": [{ "const": "internal" }, { "const": "beta" }],
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "coverageResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slice", "consumer", "channel", "startedAt", "endedAt", "coverageSeconds", "sampleCount", "unexplainedMismatchCount", "p95RegressionBasisPoints"],
+      "properties": {
+        "slice": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$" },
+        "consumer": { "enum": ["apple", "android", "windows", "console", "functions"] },
+        "channel": { "enum": ["internal", "beta"] },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "endedAt": { "$ref": "#/$defs/timestamp" },
+        "coverageSeconds": { "type": "integer", "minimum": 1209600 },
+        "sampleCount": { "type": "integer", "minimum": 1 },
+        "unexplainedMismatchCount": { "const": 0 },
+        "p95RegressionBasisPoints": { "type": "integer", "maximum": 500 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["totalSamples", "unexplainedMismatchCount", "coverage"],
+      "properties": {
+        "totalSamples": { "type": "integer", "minimum": 10000 },
+        "unexplainedMismatchCount": { "const": 0 },
+        "coverage": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/coverageResult" }
+        }
+      }
+    }
+  }
+}

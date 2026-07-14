@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.com/schemas/domain-core-promotion-attestation-v1.json",
+  "title": "OpenBurnBar shared Rust promotion attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "domain",
+    "authorityScope",
+    "authorityGeneration",
+    "reportPath",
+    "reportUri",
+    "reportSha256",
+    "reportProvenancePath",
+    "reportProvenanceSha256",
+    "coreVersion",
+    "candidateCommit",
+    "builderCommit",
+    "sourceFingerprint",
+    "policySha256",
+    "status",
+    "generatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "domain": { "enum": ["quota", "cloudvault", "hermes", "pricing"] },
+    "authorityScope": { "enum": ["quota", "cloudvault", "cloudvault-rewrap", "cloudvault-search", "hermes", "pricing"] },
+    "authorityGeneration": { "type": "integer", "minimum": 1 },
+    "reportPath": { "type": "string", "pattern": "^config/domain-core-promotion-reports/(?:quota|cloudvault|cloudvault-rewrap|cloudvault-search|hermes|pricing)/[1-9][0-9]*\\.json$" },
+    "reportUri": { "$ref": "#/$defs/httpsUri" },
+    "reportSha256": { "$ref": "#/$defs/digest" },
+    "reportProvenancePath": { "type": "string", "pattern": "^config/domain-core-promotion-provenance/(?:quota|cloudvault|cloudvault-rewrap|cloudvault-search|hermes|pricing)/[1-9][0-9]*\\.json$" },
+    "reportProvenanceSha256": { "$ref": "#/$defs/digest" },
+    "coreVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$" },
+    "candidateCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "builderCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sourceFingerprint": { "$ref": "#/$defs/digest" },
+    "policySha256": { "$ref": "#/$defs/digest" },
+    "status": { "const": "ready" },
+    "generatedAt": { "type": "string", "format": "date-time", "pattern": "Z$" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "httpsUri": { "type": "string", "pattern": "^https://(?![^/?#]*@)[^/?#]+(?:/[^?#]*)?$" }
+  }
+}

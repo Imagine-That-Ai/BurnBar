@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openburnbar.com/schemas/domain-core-legacy-deletion-v1.json",
+  "$id": "https://openburnbar.com/schemas/domain-core-legacy-deletion-v2.json",
   "title": "OpenBurnBar shared Rust legacy deletion ledger",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "sourceRoots", "rows", "sharedTargets"],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "sourceRoots": {
       "type": "object",
       "minProperties": 1,
@@ -31,14 +31,14 @@
       "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)[^/]+(?:/[^/]+)*$"
     },
     "state": {
-      "enum": ["rollout", "rust_authoritative_with_rollback", "legacy_deleted"]
+      "enum": ["rollout", "promotion_approved", "rust_authoritative_with_rollback", "rollback_active", "deletion_approved", "legacy_deleted"]
     },
     "receiptPath": {
       "allOf": [
         { "$ref": "#/$defs/repositoryPath" },
         {
           "type": "string",
-          "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/(?:promotion|stable_release|deletion_review)\\.json$"
+          "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/[1-9][0-9]*/(?:promotion|stable_release|rollback|deletion_review)\\.json$"
         }
       ]
     },
@@ -48,15 +48,17 @@
       "properties": {
         "promotion": { "$ref": "#/$defs/receiptPath" },
         "stableRelease": { "$ref": "#/$defs/receiptPath" },
+        "rollback": { "$ref": "#/$defs/receiptPath" },
         "deletionReview": { "$ref": "#/$defs/receiptPath" }
       }
     },
     "sourceSymbolTarget": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "root", "path", "symbol"],
+      "required": ["kind", "role", "root", "path", "symbol"],
       "properties": {
         "kind": { "const": "source_symbol" },
+        "role": { "$ref": "#/$defs/targetRole" },
         "root": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
         "path": { "$ref": "#/$defs/repositoryPath" },
         "symbol": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
@@ -65,9 +67,10 @@
     "modeLiteralTarget": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "root", "path", "literal"],
+      "required": ["kind", "role", "root", "path", "literal"],
       "properties": {
         "kind": { "const": "mode_literal" },
+        "role": { "$ref": "#/$defs/targetRole" },
         "root": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
         "path": { "$ref": "#/$defs/repositoryPath" },
         "literal": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,127}$" }
@@ -76,9 +79,10 @@
     "pathTarget": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "root", "path"],
+      "required": ["kind", "role", "root", "path"],
       "properties": {
         "kind": { "const": "path" },
+        "role": { "$ref": "#/$defs/targetRole" },
         "root": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
         "path": { "$ref": "#/$defs/repositoryPath" }
       }
@@ -90,10 +94,13 @@
         { "$ref": "#/$defs/pathTarget" }
       ]
     },
+    "targetRole": {
+      "enum": ["legacy_implementation", "rollback_control"]
+    },
     "row": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "state", "receipts", "targets"],
+      "required": ["id", "state", "authorityGeneration", "receipts", "targets"],
       "properties": {
         "id": {
           "enum": [
@@ -111,6 +118,7 @@
           ]
         },
         "state": { "$ref": "#/$defs/state" },
+        "authorityGeneration": { "type": "integer", "minimum": 0 },
         "receipts": { "$ref": "#/$defs/receipts" },
         "targets": {
           "type": "array",
@@ -121,12 +129,31 @@
       "allOf": [
         {
           "if": { "properties": { "state": { "const": "rollout" } }, "required": ["state"] },
-          "then": { "properties": { "receipts": { "maxProperties": 0 } } }
+          "then": {
+            "properties": {
+              "authorityGeneration": { "const": 0 },
+              "receipts": { "maxProperties": 0 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "promotion_approved" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "authorityGeneration": { "minimum": 1 },
+              "receipts": {
+                "required": ["promotion"],
+                "minProperties": 1,
+                "maxProperties": 1
+              }
+            }
+          }
         },
         {
           "if": { "properties": { "state": { "const": "rust_authoritative_with_rollback" } }, "required": ["state"] },
           "then": {
             "properties": {
+              "authorityGeneration": { "minimum": 1 },
               "receipts": {
                 "required": ["promotion", "stableRelease"],
                 "minProperties": 2,
@@ -136,9 +163,36 @@
           }
         },
         {
+          "if": { "properties": { "state": { "const": "rollback_active" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "authorityGeneration": { "minimum": 1 },
+              "receipts": {
+                "required": ["promotion", "stableRelease", "rollback"],
+                "minProperties": 3,
+                "maxProperties": 4
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "deletion_approved" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "authorityGeneration": { "minimum": 1 },
+              "receipts": {
+                "required": ["promotion", "stableRelease", "deletionReview"],
+                "minProperties": 3,
+                "maxProperties": 3
+              }
+            }
+          }
+        },
+        {
           "if": { "properties": { "state": { "const": "legacy_deleted" } }, "required": ["state"] },
           "then": {
             "properties": {
+              "authorityGeneration": { "minimum": 1 },
               "receipts": {
                 "required": ["promotion", "stableRelease", "deletionReview"],
                 "minProperties": 3,

@@ -179,17 +179,22 @@ after the cause is fixed.
 
 [`config/domain-core-legacy-deletion.json`](../config/domain-core-legacy-deletion.json)
 pins the exact eleven migration rows, source roots, legacy symbols/files, mode
-literals, and shared rollback selectors. The only states are `rollout`,
-`rust_authoritative_with_rollback`, and `legacy_deleted`.
+literals, and shared rollback selectors. The six states are `rollout`,
+`promotion_approved`, `rust_authoritative_with_rollback`, `rollback_active`,
+`deletion_approved`, and `legacy_deleted`.
 
 `scripts/ci/verify-domain-core-legacy-deletion.py` is fail-closed:
 
-- a target must exist while its row is `rollout` or
-  `rust_authoritative_with_rollback`;
+- a target must exist in every state except `legacy_deleted`;
 - a target must be absent when its row is `legacy_deleted`;
 - shared targets remain present until every member row is deleted; and
-- authoritative/deleted states require committed active receipts for promotion,
-  stable-release observation, and deletion review as applicable.
+- promoted states require generation-scoped receipts for promotion,
+  stable-release observation, rollback, and independently reviewed deletion as
+  applicable. A rollback after deletion approval retains the immutable review
+  but cannot reuse it after a new authority generation begins.
+- deletion reviewers must be prequalified by class in the trusted-base
+  `config/domain-core-deletion-reviewers.json`; a deletion PR cannot add its
+  own approver.
 
 CI validates the manifest before expensive domain-core builds. A missing root,
 unknown row/state/field/target kind, duplicate JSON key/row/root/target/receipt,

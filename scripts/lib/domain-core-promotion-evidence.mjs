@@ -631,6 +631,8 @@ function evaluateV2PromotionEvidence(evidence, policy, options = {}) {
       slice: window.slice,
       consumer: window.consumer,
       channel: window.channel,
+      startedAt: new Date(window.startedAt).toISOString(),
+      endedAt: new Date(window.endedAt).toISOString(),
       coverageSeconds,
       sampleCount: window.sampleCount,
       unexplainedMismatchCount: unexplained,
@@ -650,6 +652,7 @@ function evaluateV2PromotionEvidence(evidence, policy, options = {}) {
     domain: evidence.domain,
     coreVersion: evidence.coreVersion,
     generatedAt: evidence.generatedAt,
+    provenance: { ...evidence.provenance },
     status: blockers.length === 0 ? "ready" : "not_ready",
     ready: blockers.length === 0,
     policy: {
