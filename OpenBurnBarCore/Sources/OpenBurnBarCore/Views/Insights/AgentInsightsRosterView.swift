@@ -81,13 +81,11 @@ public struct AgentInsightsRosterView: View {
                     .font(.system(size: 13, weight: .semibold))
             }
             .padding(UnifiedDesignSystem.Spacing.md)
-            .background(
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md)
-                    .fill(UnifiedDesignSystem.Colors.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md)
-                            .strokeBorder(UnifiedDesignSystem.Colors.ember.opacity(0.2), lineWidth: 0.75)
-                    )
+            .glassCardSurface(
+                cornerRadius: UnifiedDesignSystem.Radius.md,
+                live: usesLiveBackground,
+                stroke: UnifiedDesignSystem.Colors.ember.opacity(0.2),
+                lineWidth: 0.75
             )
         }
         .buttonStyle(.plain)
@@ -119,13 +117,11 @@ public struct AgentInsightsRosterView: View {
                     )
                 }
             }
-            .background(
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md)
-                    .fill(UnifiedDesignSystem.Colors.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md)
-                    .strokeBorder(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+            .glassCardSurface(
+                cornerRadius: UnifiedDesignSystem.Radius.md,
+                live: usesLiveBackground,
+                stroke: UnifiedDesignSystem.Colors.borderSubtle,
+                lineWidth: 0.5
             )
         }
     }

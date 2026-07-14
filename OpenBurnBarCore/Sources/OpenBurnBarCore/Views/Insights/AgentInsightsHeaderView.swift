@@ -13,6 +13,13 @@ public struct AgentInsightsHeaderView: View {
     public let presentation: AgentInsightsView.Presentation
     public var onTap: (() -> Void)?
 
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+    @AppStorage("useKernelBackdrop") private var useKernelBackdrop: Bool = false
+
+    private var usesLiveBackground: Bool {
+        useWebsiteBackground || useKernelBackdrop
+    }
+
     public init(
         header: AgentInsightsHeader,
         presentation: AgentInsightsView.Presentation,
@@ -66,13 +73,11 @@ public struct AgentInsightsHeaderView: View {
             }
         }
         .padding(headerPadding)
-        .background(
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg)
-                .fill(UnifiedDesignSystem.Colors.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg)
-                        .strokeBorder(borderTint, lineWidth: 0.75)
-                )
+        .glassCardSurface(
+            cornerRadius: UnifiedDesignSystem.Radius.lg,
+            live: usesLiveBackground,
+            stroke: borderTint,
+            lineWidth: 0.75
         )
     }
 

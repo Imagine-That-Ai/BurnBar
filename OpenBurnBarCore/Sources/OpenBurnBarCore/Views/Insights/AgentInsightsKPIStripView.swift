@@ -7,6 +7,13 @@ public struct AgentInsightsKPIStripView: View {
     public let strip: AgentInsightsKPIStrip
     public let presentation: AgentInsightsView.Presentation
 
+    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+    @AppStorage("useKernelBackdrop") private var useKernelBackdrop: Bool = false
+
+    private var usesLiveBackground: Bool {
+        useWebsiteBackground || useKernelBackdrop
+    }
+
     public init(strip: AgentInsightsKPIStrip, presentation: AgentInsightsView.Presentation) {
         self.strip = strip
         self.presentation = presentation
@@ -19,7 +26,7 @@ public struct AgentInsightsKPIStripView: View {
 
         LazyVGrid(columns: columns, spacing: UnifiedDesignSystem.Spacing.md) {
             ForEach(strip.ordered) { kpi in
-                AgentInsightsKPITile(kpi: kpi)
+                AgentInsightsKPITile(kpi: kpi, live: usesLiveBackground)
             }
         }
     }
@@ -27,6 +34,7 @@ public struct AgentInsightsKPIStripView: View {
 
 private struct AgentInsightsKPITile: View {
     let kpi: AgentInsightsKPIStrip.KPI
+    let live: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
@@ -58,13 +66,11 @@ private struct AgentInsightsKPITile: View {
         }
         .padding(UnifiedDesignSystem.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md)
-                .fill(UnifiedDesignSystem.Colors.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md)
-                        .strokeBorder(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                )
+        .glassCardSurface(
+            cornerRadius: UnifiedDesignSystem.Radius.md,
+            live: live,
+            stroke: UnifiedDesignSystem.Colors.borderSubtle,
+            lineWidth: 0.5
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(kpi.label): \(kpi.valueText). \(kpi.trendText ?? "")")

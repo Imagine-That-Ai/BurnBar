@@ -22,6 +22,10 @@ struct MacAgentInsightsWorkspace: View {
     let dataStore: DataStore
     let settingsManager: SettingsManager
     let chatController: ChatSessionController?
+    /// Dashboard time-range selection (the top-rail "TODAY / 7D / …" control).
+    /// Threaded into every scope's window so the KPI strip + header track the
+    /// same range the rest of the dashboard does.
+    var selectedTimeRange: TimeRange = .today
 
     @State private var environment: InsightsMacEnvironment?
     @State private var producer: MacAgentInsightsProducer?
@@ -36,6 +40,11 @@ struct MacAgentInsightsWorkspace: View {
 
     private let shortcutProviders: [AgentProvider] = Array(AgentProvider.allCases.prefix(9))
 
+    /// The dashboard `TimeRange` mapped onto the Insights producer's window.
+    private var insightWindow: InsightTimeWindow {
+        InsightTimeWindow(timeRange: selectedTimeRange)
+    }
+
     var body: some View {
         Group {
             if let environment {
@@ -46,6 +55,7 @@ struct MacAgentInsightsWorkspace: View {
             }
         }
         .task { await prepare() }
+        .onChange(of: selectedTimeRange) { _, _ in applyWindow() }
         .sheet(isPresented: $showLegacyWorkspace) {
             LegacyWorkspaceSheet(
                 dataStore: dataStore,
@@ -106,7 +116,7 @@ struct MacAgentInsightsWorkspace: View {
             statusProvider: { rosterStatus[$0] ?? .unconfigured },
             lastSeenProvider: { rosterLastSeen[$0] },
             onSelectProvider: { provider in
-                let scope = AgentInsightsScope.agent(provider)
+                let scope = AgentInsightsScope.agent(provider, window: insightWindow)
                 if isComparing {
                     toggleCompareScope(scope)
                 } else {
@@ -114,7 +124,7 @@ struct MacAgentInsightsWorkspace: View {
                 }
             },
             onSelectAggregate: {
-                let scope = AgentInsightsScope.aggregate
+                let scope = AgentInsightsScope(window: insightWindow)
                 if isComparing {
                     toggleCompareScope(scope)
                 } else {
@@ -211,6 +221,24 @@ struct MacAgentInsightsWorkspace: View {
         }
     }
 
+    /// Re-scopes the current detail (and any compare columns) to the newly
+    /// selected dashboard time range without changing which agent is selected.
+    private func applyWindow() {
+        let window = insightWindow
+        guard selectedScope.window != window || compareScopes.contains(where: { $0.window != window }) else { return }
+        selectedScope.window = window
+        if !compareScopes.isEmpty {
+            compareScopes = compareScopes.map { scope in
+                var scoped = scope
+                scoped.window = window
+                return scoped
+            }
+        }
+        if let viewModel {
+            Task { await viewModel.setScope(selectedScope) }
+        }
+    }
+
     @MainActor
     private func prepare() async {
         if environment == nil {
@@ -221,6 +249,7 @@ struct MacAgentInsightsWorkspace: View {
                 environment = env
                 let producer = MacAgentInsightsProducer(environment: env)
                 self.producer = producer
+                selectedScope.window = insightWindow
                 viewModel = AgentInsightsViewModel(scope: selectedScope, producer: producer)
             }
         }
@@ -263,6 +292,31 @@ struct MacAgentInsightsWorkspace: View {
             .opacity(0)
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
+        }
+    }
+}
+
+// MARK: - Time range bridge
+
+private extension InsightTimeWindow {
+    /// Maps the dashboard's `TimeRange` selector onto the Insights producer's
+    /// query window. `.thisMonth` has no direct enum case, so it resolves to a
+    /// custom `[start-of-month, now]` window.
+    init(timeRange: TimeRange) {
+        switch timeRange {
+        case .today:
+            self = .today
+        case .last7Days:
+            self = .last7d
+        case .last30Days:
+            self = .last30d
+        case .thisMonth:
+            let calendar = Calendar.current
+            let now = Date()
+            let start = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
+            self = .custom(start: start, end: now)
+        case .allTime:
+            self = .allTime
         }
     }
 }

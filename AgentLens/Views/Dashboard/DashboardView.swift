@@ -10,7 +10,7 @@ struct DashboardView: View {
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
     @Bindable var settingsManager: SettingsManager
     @Environment(NavigationCoordinator.self) var navigationCoordinator
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorScheme) var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var easterEggController = EasterEggController()
     @State private var didLogScreenView = false
@@ -577,7 +577,8 @@ struct DashboardView: View {
                     MacAgentInsightsWorkspace(
                         dataStore: dataStore,
                         settingsManager: settingsManager,
-                        chatController: chatController
+                        chatController: chatController,
+                        selectedTimeRange: selectedTimeRange
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .charts:
