@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Process-wide RPC counters surfaced on `GET /metrics`.
 ///

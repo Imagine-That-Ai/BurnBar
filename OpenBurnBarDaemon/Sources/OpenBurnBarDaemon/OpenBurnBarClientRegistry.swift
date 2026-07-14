@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 public enum BurnBarClientRegistryError: Error, LocalizedError {

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Delivers controller nudges by broadcasting to the OpenBurnBar app. The app posts a real
 /// `UserNotifications` banner (same as the previous `osascript display notification` behavior,

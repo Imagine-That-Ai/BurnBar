@@ -13,7 +13,7 @@
 //
 // All public types remain accessible under their original names within the OpenBurnBarDaemon module.
 // This file is kept as a placeholder to preserve source compatibility.
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 public protocol BurnBarMissionControlServing: AnyObject, Sendable {
     func startBackgroundLoops() async

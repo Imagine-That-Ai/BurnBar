@@ -448,6 +448,24 @@ targets:
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
         product: OpenBurnBarSignalCore
+      # Core-decomposition: explicit sibling products so the OpenBurnBarTests app test target can
+      # `@testable import` them to reach INTERNAL symbols that moved out of the Core monolith
+      # (Quota: WarpQuotaAdapter.candidateLogFiles, AntigravityQuotaAdapter.referenceDate*,
+      # XAIQuotaAdapter.superGrokLogURL, ClaudeOAuthUsageFetcher.scopedCacheURL,
+      # FactoryQuotaAdapter.inferPlanTier, AnthropicCredentialProbe.{parse,isHealthy,rateLimitHeaders},
+      # ClaudeQuotaAdapter.scopedClaudeProfileMatchesDefaultLogin; Kernel: OpenBurnBarError.database;
+      # LogParsers: TimestampNormalizationUtility.firestoreMaxEpochSeconds, TokenUsage bucket helpers;
+      # UI: SwarmCanvasView.{sanitizedFrameRate,animationFrameScale,shouldDrawGlyphParticle}). Redundant
+      # for runtime — the linked OpenBurnBarCore umbrella already `@_exported import`s all of them — but
+      # required for internal @testable access, mirroring the other explicitly-linked siblings above.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarQuota
+      - package: OpenBurnBarCore
+        product: OpenBurnBarKernel
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLogParsers
+      - package: OpenBurnBarCore
+        product: OpenBurnBarUI
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -517,11 +535,22 @@ targets:
             done
           fi
     dependencies:
+      # Core-decomposition P-18 (S17): the app-side OpenBurnBarDaemon target
+      # mirrors OpenBurnBarDaemon/Package.swift — its 133 source files import the
+      # UI-free OpenBurnBarEngine umbrella (+ ComputerUseCore/IrohRelay/Media/
+      # LinuxSecurity), NEVER the SwiftUI/AppKit OpenBurnBarCore monolith, so this
+      # binary has no path to the UI. See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarEngine
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarIrohRelay
+        link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
@@ -549,11 +578,18 @@ targets:
         OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.daemon --options runtime,library
         SKIP_INSTALL: true
     dependencies:
+      # Core-decomposition P-18 (S17): OpenBurnBarDaemonMain imports OpenBurnBarEngine
+      # (the UI-free umbrella), matching OpenBurnBarDaemon/Package.swift; no path to
+      # the OpenBurnBarCore UI monolith. See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - target: OpenBurnBarDaemon
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarEngine
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarIrohRelay
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
 
@@ -763,12 +799,16 @@ targets:
         PRODUCT_NAME: OpenBurnBarDaemonTests
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.daemon.tests
     dependencies:
+      # Core-decomposition P-18 (S17): the daemon test bundle links the UI-free
+      # OpenBurnBarEngine umbrella (58 test files import it; ZERO import
+      # OpenBurnBarCore), matching the OpenBurnBarDaemon target under test.
+      # See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - target: OpenBurnBarDaemon
       - target: OpenBurnBarDaemonExecutable
         link: false
         embed: false
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarEngine
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
@@ -1163,8 +1203,15 @@ targets:
     dependencies:
       - sdk: SwiftUI.framework
       - sdk: WidgetKit.framework
+      # Core-decomposition P-19 (S18): repointed off the OpenBurnBarCore umbrella
+      # onto the narrow products the widget's 17 source files actually import
+      # (Kernel + Insights + UI). See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarKernel
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
+      - package: OpenBurnBarCore
+        product: OpenBurnBarUI
       - package: OpenBurnBarCore
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
@@ -1214,8 +1261,15 @@ targets:
 
     dependencies:
       - sdk: UIKit.framework
+      # Core-decomposition P-20 (S19): repointed off the OpenBurnBarCore umbrella
+      # onto the narrow products the keyboard's 2 source files import —
+      # OpenBurnBarTextExpansion (matcher/snippet/composer/usage+snapshot stores)
+      # and OpenBurnBarUI (UnifiedDesignSystem.Colors, 7 sites in KeyboardView).
+      # See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarTextExpansion
+      - package: OpenBurnBarCore
+        product: OpenBurnBarUI
       - package: OpenBurnBarCore
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift

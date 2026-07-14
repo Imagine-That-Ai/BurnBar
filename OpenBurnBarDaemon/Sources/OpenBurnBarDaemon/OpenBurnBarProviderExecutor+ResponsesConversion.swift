@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 // OpenAI Responses API <-> Chat Completions request/response/stream conversion.

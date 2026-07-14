@@ -1,6 +1,5 @@
 import SwiftUI
 import WidgetKit
-import OpenBurnBarCore
 
 struct BurnBarWidgetView: View {
     var entry: BurnBarEntry

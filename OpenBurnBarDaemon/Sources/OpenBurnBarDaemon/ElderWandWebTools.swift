@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 // MARK: - Elder Wand Web Tools
 //

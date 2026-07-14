@@ -2,6 +2,11 @@ import XCTest
 import GRDB
 @testable import OpenBurnBarCore
 @testable import OpenBurnBar
+// Core-decomposition: reaches the INTERNAL TimestampNormalizationUtility.firestoreMaxEpochSeconds,
+// which moved from the Core monolith into OpenBurnBarLogParsers. The umbrella shim re-exports only
+// LogParsers' public API, so a direct @testable import is required (same AE-TESTABLE pattern as the
+// adapter-test fixes; the app target now links OpenBurnBarLogParsers explicitly).
+@testable import OpenBurnBarLogParsers
 @MainActor
 final class ProjectionPipelineServiceTests: XCTestCase {
     func test_projectionWorker_recoversExpiredRunningJob_afterCrash() async throws {

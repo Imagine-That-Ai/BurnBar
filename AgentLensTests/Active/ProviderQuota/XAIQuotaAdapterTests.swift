@@ -2,6 +2,11 @@ import XCTest
 import Security
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
+// Core-decomposition: XAIQuotaAdapter (incl. its INTERNAL static superGrokLogURL) moved from the
+// Core monolith into OpenBurnBarQuota; the umbrella shim re-exports only Quota's public API, so
+// reaching the internal member needs a direct @testable import (same AE-TESTABLE pattern as the
+// WarpQuota/Antigravity test fixes; the app target already links OpenBurnBarQuota).
+@testable import OpenBurnBarQuota
 
 final class XAIQuotaAdapterTests: XCTestCase {
     private var tempDirectoryURL: URL!

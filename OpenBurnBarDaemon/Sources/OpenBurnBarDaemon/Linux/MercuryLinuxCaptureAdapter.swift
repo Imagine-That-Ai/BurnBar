@@ -1,7 +1,7 @@
 #if os(Linux)
 import COpenBurnBarPortal
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import OpenBurnBarMedia
 
 public protocol MercuryLinuxScreenCastPortalClient: Sendable {

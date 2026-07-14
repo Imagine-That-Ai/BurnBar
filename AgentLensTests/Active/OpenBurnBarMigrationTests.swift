@@ -3,6 +3,11 @@ import GRDB
 import XCTest
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
+// Core-decomposition: constructs OpenBurnBarFilesystemMigration / OpenBurnBarDefaultsMigration, whose
+// INTERNAL initializers moved from the Core monolith into OpenBurnBarKernel. The umbrella shim
+// re-exports only Kernel's public API, so the internal inits need a direct @testable import (same
+// AE-TESTABLE pattern as the other test fixes; the app target already links OpenBurnBarKernel).
+@testable import OpenBurnBarKernel
 
 final class OpenBurnBarMigrationTests: XCTestCase {
 

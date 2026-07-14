@@ -47,6 +47,18 @@ const pureTargets = [
   "OpenBurnBarData",
   "BurnBarRemoteEngine",
   "OpenBurnBarCoreCAbi",
+  // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): UI-free engine-layer
+  // targets. Assert-zero SwiftUI/AppKit from birth. OpenBurnBarUI, and the mixed
+  // OpenBurnBarTextExpansion / OpenBurnBarLaunchServices (each carries at least one
+  // SwiftUI/AppKit file), are deliberately NOT listed here.
+  "OpenBurnBarSQLiteReader",
+  "OpenBurnBarLogParsers",
+  "OpenBurnBarQuota",
+  "OpenBurnBarVectorKit",
+  "OpenBurnBarInsights",
+  "OpenBurnBarHermes",
+  "OpenBurnBarPretext",
+  "OpenBurnBarEngine",
 ];
 const importPattern =
   /^\s*(?:(?:@_[A-Za-z0-9_]+|@[A-Za-z0-9_]+)(?:\([^)]*\))?\s+)*import\s+(?:(?:class|struct|enum|protocol|typealias|func|var|let)\s+)?(SwiftUI|AppKit)(?:\b|\.)/;
