@@ -1490,6 +1490,49 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(resolved?.standardizedFileURL, resourcesBundleURL.standardizedFileURL)
     }
 
+    // Core-decomposition P-02: catalog.json moved into OpenBurnBarKernel, so the daemon must also
+    // locate the Kernel resource bundle. Covers the resolveKernelResourceBundle wrapper across the
+    // sibling-Resources candidate root (mirrors the Core-bundle resolver test above).
+    func test_kernelResourceBundleResolverFindsBundleInSiblingResourcesDirectory() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BurnBarDaemonKernelResolver-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let productsURL = rootURL.appendingPathComponent("Build/Products/Debug", isDirectory: true)
+        let daemonURL = productsURL.appendingPathComponent("OpenBurnBarDaemon", isDirectory: false)
+        let kernelBundleURL = productsURL
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent(OpenBurnBarDaemonManager.kernelResourceBundleName, isDirectory: true)
+        let fakeAppBundleURL = productsURL.appendingPathComponent("OpenBurnBar.app", isDirectory: true)
+
+        try FileManager.default.createDirectory(at: kernelBundleURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: fakeAppBundleURL, withIntermediateDirectories: true)
+        try "#!/bin/sh\nexit 0\n".write(to: daemonURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: daemonURL.path)
+
+        let resolved = OpenBurnBarDaemonBinaryResolver.resolveKernelResourceBundle(
+            nearBinaryURL: daemonURL,
+            appBundleURL: fakeAppBundleURL,
+            fileManager: .default
+        )
+
+        XCTAssertEqual(resolved?.standardizedFileURL, kernelBundleURL.standardizedFileURL)
+
+        // A tree with no Kernel bundle staged resolves to nil (fail-open, not a crash).
+        let emptyRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BurnBarDaemonKernelResolverEmpty-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: emptyRoot) }
+        let emptyDaemonURL = emptyRoot.appendingPathComponent("OpenBurnBarDaemon", isDirectory: false)
+        try FileManager.default.createDirectory(at: emptyRoot, withIntermediateDirectories: true)
+        try "#!/bin/sh\nexit 0\n".write(to: emptyDaemonURL, atomically: true, encoding: .utf8)
+        let unresolved = OpenBurnBarDaemonBinaryResolver.resolveKernelResourceBundle(
+            nearBinaryURL: emptyDaemonURL,
+            appBundleURL: emptyRoot.appendingPathComponent("OpenBurnBar.app", isDirectory: true),
+            fileManager: .default
+        )
+        XCTAssertNil(unresolved)
+    }
+
     @MainActor
     func test_installFilesMirrorsAppFrameworksForInstalledDaemonRpath() async throws {
         let harness = try makeRuntimePathsHarness(name: "installed-daemon-frameworks")

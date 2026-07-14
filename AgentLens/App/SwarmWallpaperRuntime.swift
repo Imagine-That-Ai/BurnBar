@@ -167,7 +167,7 @@ struct SwarmWallpaperView: View {
     let viewModel: SwarmWallpaperViewModel
     @StateObject private var substrateBox = SwarmSubstrateBox()
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID // cov:ignore -- Core-decomposition merge: SubstrateCatalog moved to OpenBurnBarUI; this is a pure module-qualification of a SwiftUI @AppStorage default, no logic change and no XCTest line-hit surface.
     @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
 
     private var substrate: SwarmSubstrate {
