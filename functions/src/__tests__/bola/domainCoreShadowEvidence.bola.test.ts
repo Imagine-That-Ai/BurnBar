@@ -2,6 +2,7 @@
 import { describe, it, vi } from "vitest";
 
 import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callableBolaHarness.js";
+import { isRecord } from "../../guards.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -21,9 +22,11 @@ describe("BOLA - domain-core shadow evidence", () => {
     const mod = await import("../../callables/domainCoreShadowEvidence.js");
     const rawRun = callableRunner(mod.submitDomainCoreShadowSamples);
     const run = (request: unknown) => {
-      const authenticated = request as { auth: { token: Record<string, unknown> } };
-      authenticated.auth.token.domainCoreShadowChannel = "internal";
-      return rawRun(authenticated);
+      if (!isRecord(request) || !isRecord(request.auth) || !isRecord(request.auth.token)) {
+        throw new Error("BOLA harness did not provide an authenticated request.");
+      }
+      request.auth.token.domainCoreShadowChannel = "internal";
+      return rawRun(request);
     };
 
     await tier2CallableProof(bolaStore, {

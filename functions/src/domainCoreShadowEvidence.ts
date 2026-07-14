@@ -25,10 +25,6 @@ const SAMPLE_KEYS = [
   "schemaVersion",
 ] as const;
 const REQUEST_KEYS = ["samples"] as const;
-const CONSUMERS = new Set(["apple", "windows"]);
-const CHANNELS = new Set(["internal", "beta"]);
-const OPERATIONS = new Set(["claude_quota", "codex_quota", "cursor_quota", "anthropic_quota"]);
-const MISMATCH_CATEGORIES = new Set(["result_mismatch", "native_unavailable", "native_error", "invalid_result"]);
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const CORE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
@@ -37,11 +33,7 @@ type DomainCoreShadowConsumer = "apple" | "windows";
 type DomainCoreShadowChannel = "internal" | "beta";
 type DomainCoreShadowOperation = "claude_quota" | "codex_quota" | "cursor_quota" | "anthropic_quota";
 type DomainCoreShadowOutcome = "match" | "mismatch";
-type DomainCoreShadowMismatchCategory =
-  | "result_mismatch"
-  | "native_unavailable"
-  | "native_error"
-  | "invalid_result";
+type DomainCoreShadowMismatchCategory = "result_mismatch" | "native_unavailable" | "native_error" | "invalid_result";
 
 interface DomainCoreShadowSampleV1 {
   schemaVersion: 1;
@@ -58,6 +50,25 @@ interface DomainCoreShadowSampleV1 {
   rustMicros: number;
 }
 
+interface DomainCoreShadowDocumentReference {
+  path: string;
+}
+
+interface DomainCoreShadowDocumentSnapshot {
+  exists: boolean;
+  data(): unknown;
+}
+
+interface DomainCoreShadowTransaction {
+  get(reference: DomainCoreShadowDocumentReference): Promise<DomainCoreShadowDocumentSnapshot>;
+  create(reference: DomainCoreShadowDocumentReference, data: ReturnType<typeof storedDomainCoreShadowSample>): void;
+}
+
+export interface DomainCoreShadowStore {
+  doc(path: string): DomainCoreShadowDocumentReference;
+  runTransaction<T>(update: (transaction: DomainCoreShadowTransaction) => Promise<T>): Promise<T>;
+}
+
 function exactKeys(record: Record<string, unknown>, expected: readonly string[], label: string): void {
   const actual = Object.keys(record).sort();
   const wanted = [...expected].sort();
@@ -67,10 +78,31 @@ function exactKeys(record: Record<string, unknown>, expected: readonly string[],
 }
 
 function boundedMicros(value: unknown, label: string): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > 600_000_000) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > 600_000_000) {
     throw new HttpsError("invalid-argument", `${label} is invalid.`);
   }
-  return value as number;
+  return value;
+}
+
+function isConsumer(value: unknown): value is DomainCoreShadowConsumer {
+  return value === "apple" || value === "windows";
+}
+
+function isChannel(value: unknown): value is DomainCoreShadowChannel {
+  return value === "internal" || value === "beta";
+}
+
+function isOperation(value: unknown): value is DomainCoreShadowOperation {
+  return value === "claude_quota" || value === "codex_quota" || value === "cursor_quota" || value === "anthropic_quota";
+}
+
+function isMismatchCategory(value: unknown): value is DomainCoreShadowMismatchCategory {
+  return (
+    value === "result_mismatch" ||
+    value === "native_unavailable" ||
+    value === "native_error" ||
+    value === "invalid_result"
+  );
 }
 
 function parseObservedAt(value: unknown, nowMillis: number, index: number): { iso: string; millis: number } {
@@ -96,16 +128,13 @@ function parseOutcome(
   if (outcome !== "match" && outcome !== "mismatch") {
     throw new HttpsError("invalid-argument", `samples[${index}].outcome is invalid.`);
   }
-  if (
-    (outcome === "match" && mismatchCategory !== null) ||
-    (outcome === "mismatch" && !MISMATCH_CATEGORIES.has(mismatchCategory as string))
-  ) {
-    throw new HttpsError("invalid-argument", `samples[${index}].mismatchCategory is inconsistent.`);
+  if (outcome === "match" && mismatchCategory === null) {
+    return { outcome, mismatchCategory };
   }
-  return {
-    outcome,
-    mismatchCategory: mismatchCategory as DomainCoreShadowMismatchCategory | null,
-  };
+  if (outcome === "mismatch" && isMismatchCategory(mismatchCategory)) {
+    return { outcome, mismatchCategory };
+  }
+  throw new HttpsError("invalid-argument", `samples[${index}].mismatchCategory is inconsistent.`);
 }
 
 function parseSample(raw: unknown, nowMillis: number, index: number): DomainCoreShadowSampleV1 {
@@ -117,13 +146,13 @@ function parseSample(raw: unknown, nowMillis: number, index: number): DomainCore
   if (typeof raw.sampleId !== "string" || !UUID_V4.test(raw.sampleId)) {
     throw new HttpsError("invalid-argument", `samples[${index}].sampleId is invalid.`);
   }
-  if (typeof raw.consumer !== "string" || !CONSUMERS.has(raw.consumer)) {
+  if (!isConsumer(raw.consumer)) {
     throw new HttpsError("invalid-argument", `samples[${index}].consumer is invalid.`);
   }
-  if (typeof raw.channel !== "string" || !CHANNELS.has(raw.channel)) {
+  if (!isChannel(raw.channel)) {
     throw new HttpsError("permission-denied", "Shadow evidence is accepted only from internal or beta channels.");
   }
-  if (typeof raw.operation !== "string" || !OPERATIONS.has(raw.operation)) {
+  if (!isOperation(raw.operation)) {
     throw new HttpsError("invalid-argument", `samples[${index}].operation is invalid.`);
   }
   if (typeof raw.coreVersion !== "string" || raw.coreVersion.length > 64 || !CORE_VERSION.test(raw.coreVersion)) {
@@ -136,9 +165,9 @@ function parseSample(raw: unknown, nowMillis: number, index: number): DomainCore
     schemaVersion: 1,
     sampleId: raw.sampleId,
     domain: "quota",
-    consumer: raw.consumer as DomainCoreShadowConsumer,
-    channel: raw.channel as DomainCoreShadowChannel,
-    operation: raw.operation as DomainCoreShadowOperation,
+    consumer: raw.consumer,
+    channel: raw.channel,
+    operation: raw.operation,
     coreVersion: raw.coreVersion,
     observedAt: observedAt.iso,
     outcome: outcome.outcome,
@@ -214,8 +243,26 @@ export function storedDomainCoreShadowSampleMatches(stored: unknown, sample: Dom
   );
 }
 
+export function domainCoreShadowStore(firestore: Firestore): DomainCoreShadowStore {
+  return {
+    doc: (path) => ({ path }),
+    runTransaction: (update) =>
+      firestore.runTransaction((transaction) =>
+        update({
+          get: async (reference) => {
+            const snapshot = await transaction.get(firestore.doc(reference.path));
+            return { exists: snapshot.exists, data: () => snapshot.data() };
+          },
+          create: (reference, data) => {
+            transaction.create(firestore.doc(reference.path), data);
+          },
+        }),
+      ),
+  };
+}
+
 export async function persistDomainCoreShadowSamples(
-  firestore: Firestore,
+  firestore: DomainCoreShadowStore,
   samples: DomainCoreShadowSampleV1[],
   nowMillis: number,
 ): Promise<{ accepted: number; duplicates: number }> {

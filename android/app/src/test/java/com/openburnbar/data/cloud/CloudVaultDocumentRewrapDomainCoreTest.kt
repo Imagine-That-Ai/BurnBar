@@ -89,7 +89,9 @@ class CloudVaultDocumentRewrapDomainCoreTest {
         assertEquals(newVaultKeyID, result.data["vaultKeyID"])
         assertEquals(9, result.data["vaultGeneration"])
         assertEquals("job-9", result.data["rewrapJobId"])
-        assertSame(createdAt, (result.data["sealedBlobA"] as Map<*, *>)["createdAt"])
+        val sealedBlob = result.data["sealedBlobA"]
+        if (sealedBlob !is Map<*, *>) throw AssertionError("sealedBlobA must remain an envelope map")
+        assertSame(createdAt, sealedBlob["createdAt"])
         assertTrue(requireNotNull(loweredOldKey).all { it == 0.toByte() })
         assertTrue(requireNotNull(loweredNewKey).all { it == 0.toByte() })
         assertTrue(oldKey.all { it == 0x31.toByte() })
@@ -280,7 +282,8 @@ class CloudVaultDocumentRewrapDomainCoreTest {
         CloudVaultDocumentRewrapDomainCore.modeOverride = CloudVaultDocumentRewrapMode.LEGACY
         CloudVaultDocumentRewrapDomainCore.nonceOverride = { ByteArray(12) { 0x55.toByte() } }
         val expected = CloudVaultCrypto.rewrapCloudVaultDocument(source, "uid", "collection", "doc", oldKey, newKey, keyID)
-        val expectedEnvelope = expected.data["sealedLabel"] as Map<*, *>
+        val expectedEnvelope = expected.data["sealedLabel"]
+        if (expectedEnvelope !is Map<*, *>) throw AssertionError("sealedLabel must remain an envelope map")
 
         CloudVaultDocumentRewrapDomainCore.resetTestOverrides()
         val diagnostics = mutableListOf<CloudVaultDocumentRewrapDiagnostic>()

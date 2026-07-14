@@ -1,8 +1,8 @@
-import type { Firestore } from "firebase-admin/firestore";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   DOMAIN_CORE_SHADOW_RETENTION_MS,
+  type DomainCoreShadowStore,
   enforceDomainCoreShadowChannelClaim,
   parseDomainCoreShadowSampleRequest,
   persistDomainCoreShadowSamples,
@@ -56,7 +56,7 @@ describe("domain-core shadow evidence contract", () => {
   it.each([
     ["extra request field", { samples: [sample()], uid: "must-not-be-accepted" }],
     ["extra sample field", { samples: [{ ...sample(), payload: "secret" }] }],
-    ["production channel", { samples: [sample({ channel: "production" as "internal" })] }],
+    ["production channel", { samples: [{ ...sample(), channel: "production" }] }],
     ["inconsistent category", { samples: [sample({ mismatchCategory: "result_mismatch" })] }],
     ["unsafe timing", { samples: [sample({ rustMicros: Number.MAX_SAFE_INTEGER + 1 })] }],
     ["non-UTC timestamp", { samples: [sample({ observedAt: "2026-07-13T11:59:59+00:00" })] }],
@@ -96,21 +96,23 @@ describe("domain-core shadow evidence contract", () => {
   it("creates new IDs immutably and treats existing IDs as idempotent duplicates", async () => {
     const create = vi.fn();
     const refs = new Map<string, { path: string }>();
-    const firestore = {
+    const firestore: DomainCoreShadowStore = {
       doc: (path: string) => {
         const ref = { path };
         refs.set(path, ref);
         return ref;
       },
-      runTransaction: async (body: (transaction: unknown) => Promise<unknown>) =>
+      runTransaction: async (body) =>
         body({
           get: async (ref: { path: string }) => ({
             exists: ref.path.endsWith("0002"),
             data: () => storedDomainCoreShadowSample(sample({ sampleId: "00000000-0000-4000-8000-000000000002" }), NOW),
           }),
-          create,
+          create: (ref, data) => {
+            create(ref, data);
+          },
         }),
-    } as unknown as Firestore;
+    };
     const result = await persistDomainCoreShadowSamples(
       firestore,
       [sample(), sample({ sampleId: "00000000-0000-4000-8000-000000000002" })],
@@ -125,14 +127,14 @@ describe("domain-core shadow evidence contract", () => {
   it("rejects an existing UUID whose immutable evidence differs", async () => {
     const existing = sample({ outcome: "mismatch", mismatchCategory: "result_mismatch", rustMicros: 81 });
     expect(storedDomainCoreShadowSampleMatches(storedDomainCoreShadowSample(existing, NOW), sample())).toBe(false);
-    const firestore = {
+    const firestore: DomainCoreShadowStore = {
       doc: (path: string) => ({ path }),
-      runTransaction: async (body: (transaction: unknown) => Promise<unknown>) =>
+      runTransaction: async (body) =>
         body({
           get: async () => ({ exists: true, data: () => storedDomainCoreShadowSample(existing, NOW) }),
-          create: vi.fn(),
+          create: () => undefined,
         }),
-    } as unknown as Firestore;
+    };
 
     await expect(persistDomainCoreShadowSamples(firestore, [sample()], NOW)).rejects.toThrow(
       "conflicts with immutable stored evidence",

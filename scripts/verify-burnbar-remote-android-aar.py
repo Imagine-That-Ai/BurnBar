@@ -152,7 +152,8 @@ def exported_symbols(library: pathlib.Path, nm: str) -> list[str]:
     symbols = sorted(
         line.split()[-1]
         for line in completed.stdout.splitlines()
-        if line.split() and (line.split()[-1].startswith("uniffi_") or line.split()[-1].startswith("ffi_burnbar_remote_"))
+        if line.split()
+        and (line.split()[-1].startswith("uniffi_") or line.split()[-1].startswith("ffi_burnbar_remote_"))
     )
     if not symbols:
         raise VerificationError(f"{library}: no UniFFI exports found")

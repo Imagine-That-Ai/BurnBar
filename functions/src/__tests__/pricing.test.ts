@@ -24,6 +24,7 @@ import {
   priceLegacyKimiEvent,
 } from "../pricing.js";
 import { calculateTokenCost, DomainCorePricingError, resolveDomainCorePricingMode } from "../domainCorePricing.js";
+import { isRecord } from "../guards.js";
 
 const CATALOG_PATH = resolve(__dirname, "../../..", "OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/catalog.json");
 
@@ -116,14 +117,67 @@ type PricingFixture = {
       cacheReadTokens: number;
     };
     isLegacy: boolean;
-    expected?: { model: string; totalTokens: number; costNanoUsd: number };
+    expected?: { model: string; totalTokens: number; costNanoUsd: number } | null;
   }[];
 };
 
+function isTokenBuckets(value: unknown): value is PricingFixture["costVectors"][number]["buckets"] {
+  return (
+    isRecord(value) &&
+    typeof value.inputTokens === "number" &&
+    typeof value.outputTokens === "number" &&
+    typeof value.cacheCreationTokens === "number" &&
+    typeof value.cacheReadTokens === "number"
+  );
+}
+
+function isPricingRates(value: unknown): value is PricingFixture["costVectors"][number]["rates"] {
+  return (
+    isRecord(value) &&
+    typeof value.inputNanoUsdPerMToken === "number" &&
+    typeof value.outputNanoUsdPerMToken === "number" &&
+    (value.cacheCreationNanoUsdPerMToken === null || typeof value.cacheCreationNanoUsdPerMToken === "number") &&
+    typeof value.cacheReadNanoUsdPerMToken === "number"
+  );
+}
+
+function isPricingFixture(value: unknown): value is PricingFixture {
+  if (!isRecord(value) || typeof value.schema !== "string") return false;
+  if (!Array.isArray(value.costVectors) || !Array.isArray(value.legacyKimiVectors)) return false;
+  const validCostVectors = value.costVectors.every(
+    (vector) =>
+      isRecord(vector) &&
+      isPricingRates(vector.rates) &&
+      isTokenBuckets(vector.buckets) &&
+      typeof vector.expectedCostNanoUsd === "number",
+  );
+  const validLegacyVectors = value.legacyKimiVectors.every((vector) => {
+    if (
+      !isRecord(vector) ||
+      typeof vector.provider !== "string" ||
+      typeof vector.model !== "string" ||
+      !isTokenBuckets(vector.buckets) ||
+      typeof vector.isLegacy !== "boolean"
+    ) {
+      return false;
+    }
+    if (vector.expected === undefined || vector.expected === null) return true;
+    return (
+      isRecord(vector.expected) &&
+      typeof vector.expected.model === "string" &&
+      typeof vector.expected.totalTokens === "number" &&
+      typeof vector.expected.costNanoUsd === "number"
+    );
+  });
+  return validCostVectors && validLegacyVectors;
+}
+
 function loadPricingFixture(): PricingFixture {
-  return JSON.parse(
+  const parsed: unknown = JSON.parse(
     readFileSync(resolve(__dirname, "../../..", "tests/fixtures/domain-core/pricing/v2/pricing-kat.json"), "utf8"),
-  ) as PricingFixture;
+  );
+  if (!isPricingFixture(parsed)) throw new Error("invalid domain-core pricing fixture");
+  return parsed;
 }
 
 describe("shared domain-core pricing", () => {
@@ -132,18 +186,18 @@ describe("shared domain-core pricing", () => {
   it.each(["legacy", "shadow", "rust"] as const)("matches canonical vectors in %s mode", (mode) => {
     for (const vector of fixture.costVectors) {
       const actual = estimateTokenCost(
-          {
-            inputPerMToken: vector.rates.inputNanoUsdPerMToken / 1_000_000_000,
-            outputPerMToken: vector.rates.outputNanoUsdPerMToken / 1_000_000_000,
-            cacheCreationPerMToken:
-              vector.rates.cacheCreationNanoUsdPerMToken === null
-                ? undefined
-                : vector.rates.cacheCreationNanoUsdPerMToken / 1_000_000_000,
-            cacheReadPerMToken: vector.rates.cacheReadNanoUsdPerMToken / 1_000_000_000,
-          },
-          vector.buckets,
-          { OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: mode },
-        );
+        {
+          inputPerMToken: vector.rates.inputNanoUsdPerMToken / 1_000_000_000,
+          outputPerMToken: vector.rates.outputNanoUsdPerMToken / 1_000_000_000,
+          cacheCreationPerMToken:
+            vector.rates.cacheCreationNanoUsdPerMToken === null
+              ? undefined
+              : vector.rates.cacheCreationNanoUsdPerMToken / 1_000_000_000,
+          cacheReadPerMToken: vector.rates.cacheReadNanoUsdPerMToken / 1_000_000_000,
+        },
+        vector.buckets,
+        { OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: mode },
+      );
       expect(Math.abs(actual * 1_000_000_000 - vector.expectedCostNanoUsd)).toBeLessThanOrEqual(0.500_001);
     }
   });
@@ -189,7 +243,10 @@ describe("shared domain-core pricing", () => {
     { rates: { inputPerMToken: Number.NaN, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
     { rates: { inputPerMToken: 0.0000000001, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
     { rates: { inputPerMToken: 1, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: Number.MAX_SAFE_INTEGER },
-    { rates: { inputPerMToken: 9_007_199.25474099, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: Number.MAX_SAFE_INTEGER },
+    {
+      rates: { inputPerMToken: 9_007_199.25474099, outputPerMToken: 1, cacheReadPerMToken: 0 },
+      inputTokens: Number.MAX_SAFE_INTEGER,
+    },
   ])("rejects invalid or overflowing fixed-point input in rust mode", ({ rates, inputTokens }) => {
     let legacyCalls = 0;
     expect(() =>

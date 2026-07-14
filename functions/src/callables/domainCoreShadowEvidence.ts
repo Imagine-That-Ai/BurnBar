@@ -4,6 +4,7 @@ import { db } from "../adminRuntime.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import {
+  domainCoreShadowStore,
   enforceDomainCoreShadowChannelClaim,
   persistDomainCoreShadowSamples,
   parseDomainCoreShadowSampleRequest,
@@ -27,7 +28,7 @@ export const submitDomainCoreShadowSamples = onCallProduction(
     const samples = parseDomainCoreShadowSampleRequest(request.data, nowMillis);
     enforceDomainCoreShadowChannelClaim(auth.token, samples);
     return firestoreWithResilience("submitDomainCoreShadowSamples", () =>
-      persistDomainCoreShadowSamples(db, samples, nowMillis),
+      persistDomainCoreShadowSamples(domainCoreShadowStore(db), samples, nowMillis),
     );
   },
 );

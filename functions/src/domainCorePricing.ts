@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
-import type * as DomainCore from "@openburnbar/domain-core-wasm";
 
+import { isRecord } from "./guards.js";
 import { logWarn } from "./logging.js";
 
 type DomainCorePricingMode = "legacy" | "shadow" | "rust";
@@ -26,6 +26,19 @@ type LegacyKimiPricing = {
   costUsd?: number;
 };
 
+interface DomainCorePricingModule {
+  calculateTokenCostNanoUsd(rates: BigUint64Array, buckets: BigUint64Array, hasCacheCreationRate: boolean): bigint;
+  domainCoreVersion(): string;
+  isLegacyKimiWireEvent(provider: string, model: string): boolean;
+  legacyKimiWireModel(): string;
+  priceLegacyKimiWireEvent(
+    inputTokens: bigint,
+    outputTokens: bigint,
+    cacheCreationTokens: bigint,
+    cacheReadTokens: bigint,
+  ): BigUint64Array;
+}
+
 export class DomainCorePricingError extends Error {
   constructor() {
     super("domain-core pricing rejected invalid or overflowing input");
@@ -39,7 +52,7 @@ const SHADOW_MAX_DELTA_NANO_USD = 0.500_001;
 let wasmInitialized = false;
 let wasmUnavailable = false;
 let unavailableLogged = false;
-let domainCore: typeof DomainCore | undefined;
+let domainCore: DomainCorePricingModule | undefined;
 let rustVersion = "unknown";
 let rustLegacyKimiModel = "";
 
@@ -126,7 +139,9 @@ function initializeDomainCore(): void {
   if (wasmUnavailable) throw new DomainCorePricingError();
   try {
     const require = createRequire(__filename);
-    domainCore = require("@openburnbar/domain-core-wasm") as typeof DomainCore;
+    const loaded: unknown = require("@openburnbar/domain-core-wasm");
+    if (!isDomainCorePricingModule(loaded)) throw new DomainCorePricingError();
+    domainCore = loaded;
     rustVersion = domainCore.domainCoreVersion();
     rustLegacyKimiModel = domainCore.legacyKimiWireModel();
     wasmInitialized = true;
@@ -140,7 +155,18 @@ function initializeDomainCore(): void {
   }
 }
 
-function requireDomainCore(): typeof DomainCore {
+function isDomainCorePricingModule(value: unknown): value is DomainCorePricingModule {
+  return (
+    isRecord(value) &&
+    typeof value.calculateTokenCostNanoUsd === "function" &&
+    typeof value.domainCoreVersion === "function" &&
+    typeof value.isLegacyKimiWireEvent === "function" &&
+    typeof value.legacyKimiWireModel === "function" &&
+    typeof value.priceLegacyKimiWireEvent === "function"
+  );
+}
+
+function requireDomainCore(): DomainCorePricingModule {
   initializeDomainCore();
   if (!domainCore) throw new DomainCorePricingError();
   return domainCore;

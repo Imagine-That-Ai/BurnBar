@@ -56,11 +56,7 @@ def source_files(crate_root: pathlib.Path, manifest: dict[str, object]) -> list[
         if candidate.is_file():
             files.add(candidate)
         else:
-            files.update(
-                path
-                for path in candidate.rglob("*")
-                if path.is_file() and "target" not in path.parts
-            )
+            files.update(path for path in candidate.rglob("*") if path.is_file() and "target" not in path.parts)
     if not files:
         raise GateError("sourceRoots resolved to no files")
     return sorted(files, key=lambda path: path.relative_to(crate_root).as_posix())
@@ -92,9 +88,7 @@ def verified_source_fingerprint(root: pathlib.Path, manifest: dict[str, object])
     return actual
 
 
-def update_source_fingerprint(
-    root: pathlib.Path, manifest_path: pathlib.Path, manifest: dict[str, object]
-) -> str:
+def update_source_fingerprint(root: pathlib.Path, manifest_path: pathlib.Path, manifest: dict[str, object]) -> str:
     actual = calculate_source_fingerprint(root, manifest)
     updated = dict(manifest)
     updated["sourceSha256"] = actual
@@ -127,17 +121,13 @@ def extract_uniffi_exports(contents: str) -> list[str]:
             continue
         if stripped.startswith("#[") or stripped.startswith("//") or not stripped:
             continue
-        raise GateError(
-            "canonical UniFFI source has an export attribute not followed by a public function"
-        )
+        raise GateError("canonical UniFFI source has an export attribute not followed by a public function")
     if awaiting_function:
         raise GateError("canonical UniFFI source ends after an export attribute")
     return exports
 
 
-def require_exact_uniffi_exports(
-    manifest: dict[str, object], surface_contents: dict[str, str]
-) -> None:
+def require_exact_uniffi_exports(manifest: dict[str, object], surface_contents: dict[str, str]) -> None:
     expected = manifest.get("uniffiExports")
     if (
         not isinstance(expected, list)
@@ -182,8 +172,7 @@ def check_abi(root: pathlib.Path, manifest: dict[str, object]) -> None:
     surfaces = manifest.get("abiSurfaces")
     if not isinstance(domains, dict) or set(domains) != REQUIRED_DOMAINS:
         raise GateError(
-            "domains must contain exactly the required convergence domains: "
-            + ", ".join(sorted(REQUIRED_DOMAINS))
+            "domains must contain exactly the required convergence domains: " + ", ".join(sorted(REQUIRED_DOMAINS))
         )
     if not isinstance(surfaces, list) or not surfaces:
         raise GateError("abiSurfaces must be a non-empty list")
@@ -229,13 +218,10 @@ def check_abi(root: pathlib.Path, manifest: dict[str, object]) -> None:
                     f"{name}: {domain_name} is absent or incomplete in {raw_path}; "
                     f"missing named symbol(s): {', '.join(str(symbol) for symbol in missing)}"
                 )
-        missing_surface_symbols = [
-            symbol for symbol in required_symbols if symbol not in contents
-        ]
+        missing_surface_symbols = [symbol for symbol in required_symbols if symbol not in contents]
         if missing_surface_symbols:
             raise GateError(
-                f"{name}: {raw_path} is missing surface-specific symbol(s): "
-                + ", ".join(missing_surface_symbols)
+                f"{name}: {raw_path} is missing surface-specific symbol(s): " + ", ".join(missing_surface_symbols)
             )
         if set(required) == REQUIRED_DOMAINS:
             full_union_surfaces.add(str(name))
@@ -249,8 +235,7 @@ def check_abi(root: pathlib.Path, manifest: dict[str, object]) -> None:
     }
     if full_union_surfaces != required_full_surfaces:
         raise GateError(
-            "full union coverage must be asserted exactly for canonical UniFFI and generated "
-            "Swift/Kotlin/C# bindings"
+            "full union coverage must be asserted exactly for canonical UniFFI and generated Swift/Kotlin/C# bindings"
         )
     require_exact_uniffi_exports(manifest, surface_contents)
 
@@ -290,9 +275,7 @@ def check_provenance(root: pathlib.Path, fingerprint: str, surfaces: list[str]) 
         else:
             value = read_sidecar(sidecars[surface])
         if value != fingerprint:
-            raise GateError(
-                f"{surface} provenance is stale: artifact={value} source={fingerprint}"
-            )
+            raise GateError(f"{surface} provenance is stale: artifact={value} source={fingerprint}")
 
 
 def main() -> int:
@@ -326,8 +309,7 @@ def main() -> int:
             print(fingerprint)
         if not (args.source_fingerprint or args.check_abi or args.check_provenance):
             raise GateError(
-                "select --source-fingerprint, --update-source-fingerprint, --check-abi, "
-                "or --check-provenance"
+                "select --source-fingerprint, --update-source-fingerprint, --check-abi, or --check-provenance"
             )
     except GateError as error:
         print(f"domain-core-union-gate: ERROR: {error}", file=sys.stderr)
