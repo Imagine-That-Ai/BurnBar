@@ -76,7 +76,19 @@ dotnet build windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj --nologo -v:mini
 Expected macOS boundary: every referenced managed assembly compiled, then the
 host could not execute Windows XamlCompiler.exe. One existing Win2D AnyCPU copy
 warning preceded the boundary; no C# or project-reference error did.
+
+PR Windows Fast Gate run 29296822629 at commit
+daa7dbc047611d24065138fe221cdb8a54eb8bc7
+Windows x64 restore: PASS
+Transitive NuGet vulnerability audit: PASS
+Full Windows solution build, including WinUI XAML: PASS
+Windows test suite: PASS (37 projects; 3,303 passed, 14 skipped, 3,317 total)
+Parity ledger and aggregate Windows gate: PASS
 ```
+
+Authoritative run: [PR Windows Fast Gate 29296822629](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29296822629).
+The skipped tests remain explicitly reported; this evidence does not relabel
+them as passes.
 
 The new tests prove durable selection and repair, unavailable-folder honesty,
 filesystem-root and reparse-root rejection, nested/stale reparse traversal denial,
@@ -85,11 +97,12 @@ waiting for an active parser refresh.
 
 ## Boundary
 
-This is portable implementation and structural XAML evidence, not a Windows UI
-host claim. A Windows x64/ARM64 build must compile the new adaptive XAML, and a
-signed installed build must exercise choose, persist, restart, unavailable,
-clear, keyboard, Narrator, high-contrast, and DPI behavior before the host gate
-can be promoted. Live language-server availability, learned macOS
+The exact current branch now has authoritative Windows x64 compile and automated
+test evidence for the adaptive XAML and code-behind. It is not a Windows UI
+interaction claim. A signed installed build must still exercise choose, persist,
+restart, unavailable, clear, keyboard, Narrator, high-contrast, and DPI behavior;
+the current Project Code increment also needs an ARM64 compile before those host
+gates can be promoted. Live language-server availability, learned macOS
 NaturalLanguage/BGE embedding quality, physical performance, staging cloud,
 advanced Computer Use/media safety, and Store/update certification remain
 separate gates.
