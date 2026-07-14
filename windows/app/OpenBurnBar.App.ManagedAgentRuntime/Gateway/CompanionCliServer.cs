@@ -359,6 +359,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _missionResume;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _plan;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _policy;
+    private readonly Func<JsonElement, CancellationToken, Task<object?>>? _tooling;
     private readonly CompanionCliAgentRunHandler? _agentRuns;
     private readonly CompanionCliTelegramHandler? _telegram;
 
@@ -374,7 +375,8 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
         Func<JsonElement, CancellationToken, Task<object?>>? plan = null,
         Func<JsonElement, CancellationToken, Task<object?>>? policy = null,
         CompanionCliAgentRunHandler? agentRuns = null,
-        CompanionCliTelegramHandler? telegram = null)
+        CompanionCliTelegramHandler? telegram = null,
+        Func<JsonElement, CancellationToken, Task<object?>>? tooling = null)
     {
         _router = router;
         _submit = submit;
@@ -388,6 +390,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
         _policy = policy;
         _agentRuns = agentRuns;
         _telegram = telegram;
+        _tooling = tooling;
     }
 
     public async Task<string> HandleAsync(string line, CancellationToken cancellationToken)
@@ -430,6 +433,10 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 "mission.resume" => await InvokeRunAsync(_missionResume, root, cancellationToken).ConfigureAwait(false),
                 "planner.plan" => await InvokeRunAsync(_plan, root, cancellationToken).ConfigureAwait(false),
                 "policy.evaluate" => await InvokeRunAsync(_policy, root, cancellationToken).ConfigureAwait(false),
+                "connector.get" or "connector.update" or "connector.action"
+                    or "workspace.bridge.enqueue" or "workspace.bridge.claim" or "workspace.bridge.result"
+                    or "workspace.bridge.clear" or "workspace.bridge.cancel" or "context.next" or "context.snapshot" =>
+                    await InvokeRunAsync(_tooling, root, cancellationToken).ConfigureAwait(false),
                 "notification.followup.record" => await InvokeTelegramAsync(
                     static (handler, request, token) => handler.RecordFollowupAsync(request, token),
                     root,
@@ -446,7 +453,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 "code.index" or "code.search" or "code.symbol" or "code.status" or "code.context_pack" or "code.references" or "code.call_graph" or "code.semantic_search" =>
                     await InvokeRunAsync(_code, root, cancellationToken).ConfigureAwait(false),
                 "ping" => JsonSerializer.Serialize(new { ok = true, pong = true }),
-                "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-8" }),
+                "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-9" }),
                 _ => JsonSerializer.Serialize(new { ok = false, error = "unknown_op", op }),
             };
         }

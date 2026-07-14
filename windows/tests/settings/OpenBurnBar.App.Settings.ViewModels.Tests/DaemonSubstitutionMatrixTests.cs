@@ -24,9 +24,9 @@ public sealed class DaemonSubstitutionMatrixTests
     [Fact]
     public void PrimaryDispositionCounts_MatchTheCurrentDecisionSummary()
     {
-        Assert.Equal(26, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
+        Assert.Equal(27, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstitutedAlready));
         Assert.Equal(3, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.SubstituteToBuild));
-        Assert.Equal(1, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
+        Assert.Equal(0, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.Deferred));
         Assert.Equal(4, DaemonSubstitutionMatrix.CountByPrimaryDisposition(DaemonSubstitutionDisposition.NotApplicable));
 
         // Published constants agree with the live count.
@@ -78,6 +78,7 @@ public sealed class DaemonSubstitutionMatrixTests
     [InlineData(27, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(29, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(32, DaemonSubstitutionDisposition.SubstitutedAlready)]
+    [InlineData(33, DaemonSubstitutionDisposition.SubstitutedAlready)]
     [InlineData(26, DaemonSubstitutionDisposition.SubstituteToBuild)]
     [InlineData(30, DaemonSubstitutionDisposition.SubstituteToBuild)]
     [InlineData(31, DaemonSubstitutionDisposition.SubstituteToBuild)]
@@ -92,13 +93,13 @@ public sealed class DaemonSubstitutionMatrixTests
     }
 
     [Fact]
-    public void DeferredRows_ExcludePromotedWpd0009Workstreams()
+    public void DeferredRows_AreEmptyAfterFinalWpd0009Promotion()
     {
         var deferred = DaemonSubstitutionMatrix.RowsWith(DaemonSubstitutionDisposition.Deferred)
             .Select(r => r.Number)
             .OrderBy(n => n)
             .ToArray();
-        Assert.Equal(new[] { 33 }, deferred);
+        Assert.Empty(deferred);
     }
 
     [Fact]

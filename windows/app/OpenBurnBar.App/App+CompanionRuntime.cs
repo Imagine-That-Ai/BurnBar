@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.CursorConnector;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.ManagedAgentRuntime.Mission;
@@ -23,6 +24,7 @@ public partial class App
     private CompanionCliServer? _companionCli;
     private HeadlessRunService? _headlessRuns;
     private HeadlessAgentRunService? _headlessAgentRuns;
+    private ToolingProxyService? _toolingProxy;
 
     private void StartCompanionCli()
     {
@@ -80,6 +82,7 @@ public partial class App
             _ = ReportRecoverableHeadlessRunsAsync(headlessRuns);
             EnsureFusionRuntime();
             EnsureProjectCodeMemoryStarted();
+            _toolingProxy ??= new ToolingProxyService(ConnectorPlaneComposition.CreateDefault());
             var router = new CompanionCliCommandRouter(
                 _gatewayComposition?.Router,
                 runHandler.SubmitAsync,
@@ -92,7 +95,8 @@ public partial class App
                 plannerHandler.PlanAsync,
                 policyHandler.EvaluateAsync,
                 agentHandler,
-                new CompanionCliTelegramHandler(telegramCommands));
+                new CompanionCliTelegramHandler(telegramCommands),
+                HandleToolingAsync);
             _companionCli = new CompanionCliServer(port, router, _localAccessToken);
             _companionCli.Start();
             StartTelegramRuntime(localData, telegramCommands);

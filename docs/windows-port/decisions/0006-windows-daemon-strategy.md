@@ -163,7 +163,7 @@ unless prefixed; all Windows paths under `windows/`.
 | 30 | Switcher shell (account-switched shells/profiles) | `OpenBurnBarSwitcherShell.swift` (`#if os(macOS)`, Linux-excluded) | **SUB-BUILD** | Profile persistence seam already landed (`storage/OpenBurnBar.Storage/SwitcherProfileWriteSeam.cs`); the switcher surface converts sample → Real in **Wave 3 item 1**, spawn path via CreateProcess/ConPTY. | Wave 3 item 1 |
 | 31 | Indexed search service | `OpenBurnBarIndexedSearchService.swift` | **SUB-BUILD** | Windows search is app-side: `app/OpenBurnBar.App.Settings/SettingsSearchEngine.cs` (landed) + the command-palette stub search called out in **Wave 3 item 1**; session-log search rides the storage read seam. | Wave 3 item 1 |
 | 32 | Elder Wand orchestration (fusion orchestrator, tool loop, web tools) | `ElderWandFusionOrchestrator.swift` (Linux-excluded), `ElderWandToolLoop.swift`, `ElderWandWebTools.swift` | **SUB-DONE** (parallel fusion pipeline) | The production gateway and authenticated companion plane compose the saved/explicit 1...8-model panel in parallel, partial-failure degradation, strict judge comparison, originating-model synthesis, bounded DNS-pinned web tools, recursion prevention, metadata/digest-only journaling, and route/token telemetry. | `docs/windows-port/evidence/f2/elder-wand-fusion.md` |
-| 33 | Connector plane + connector secret store; tooling proxy; workspace bridge broker; context selector | `OpenBurnBarConnectorPlaneService.swift`, `OpenBurnBarConnectorSecretStore.swift`, `OpenBurnBarToolingProxyService.swift`, `OpenBurnBarWorkspaceBridgeBroker.swift`, `OpenBurnBarContextSelector.swift` | **DEFER** | Row 29 now provides the authenticated standalone CLI consumer, but it does not implement these connector-specific brokers, selectors, or secret contracts. No external connector consumer currently requires them. | Revive with a concrete connector consumer |
+| 33 | Connector plane + connector secret store; tooling proxy; workspace bridge broker; context selector | `OpenBurnBarConnectorPlaneService.swift`, `OpenBurnBarConnectorSecretStore.swift`, `OpenBurnBarToolingProxyService.swift`, `OpenBurnBarWorkspaceBridgeBroker.swift`, `OpenBurnBarContextSelector.swift` | **SUB-DONE** (authenticated tooling plane) | The production app composes DPAPI-backed connector credentials, secret-free durable configuration, DNS-pinned HTTPS actions, the tooling facade, single-call workspace broker, and read-before-patch context selector. The authenticated companion plane is the concrete external consumer. | `docs/windows-port/evidence/f2/connector-tooling-plane.md` |
 | 34 | Daemon lifecycle glue: heartbeat, client registry, logger, DB cipher bootstrap, Keychain interaction gate, phone-key pin store | `BurnBarDaemonHeartbeat.swift`, `OpenBurnBarClientRegistry.swift`, `OpenBurnBarDaemonLogger.swift`, `BurnBarDaemonDatabaseCipher.swift`, `SecKeychainInteractionGate.swift`, `DaemonPhoneKeyPinStore.swift` | **N/A** | Process-lifecycle plumbing for a process that doesn't exist on Windows v1. DB cipher duty is already served by the WPD-0004 seam (`storage/OpenBurnBar.Storage/SqlCipherConnection.cs`); secrets follow R15 (TPM/CNG, Wave 2), not Keychain semantics. | Revives with any trigger |
 
 ### Disposition summary
@@ -174,9 +174,9 @@ SUB-DONE core with a named SUB-BUILD remainder inside Wave 4 item 1; rows 1-4,
 
 | Disposition | Rows | Count |
 |---|---|---|
-| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25, 27, 29, 32 | **26** |
+| C#-substituted-already (SUB-DONE) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25, 27, 29, 32, 33 | **27** |
 | C#-substitute-to-build (SUB-BUILD) | 26 (Wave 4), 30 (Wave 3), 31 (Wave 3) | **3** |
-| v1.1-deferred (DEFER) | 33 | **1** |
+| v1.1-deferred (DEFER) | - | **0** |
 | Not-applicable-on-Windows (N/A) | 10, 17, 28, 34 | **4** |
 
 Every SUB-BUILD row is owned by a named remediation-plan wave (Wave 3 item 1;

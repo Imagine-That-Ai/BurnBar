@@ -22,7 +22,6 @@ ledger row(s) to `Real` and remove the corresponding deferral line.
 | Pensieve knowledge watcher | Live repo-docs/notes/session-end watcher + sealed queue on Windows |
 | Browser Computer Use / Playwright | Host browser CU lifecycle evidence |
 | Elder Wand fusion orchestrator | Fusion tool loop live (presets-only is F1) |
-| Connector plane / tooling proxy / workspace broker | Live external connector consumer evidence |
 
 Closed under this decision:
 
@@ -30,8 +29,11 @@ Closed under this decision:
   approval, and leased tool dispatch: promoted by
   `docs/windows-port/evidence/f2/headless-run-recovery.md`.
 - Standalone companion CLI + authenticated daemon-client core: promoted by
-  `docs/windows-port/evidence/f2/companion-cli-client.md`. The separate
-  connector plane remains deferred under WPD-0006 row 33.
+  `docs/windows-port/evidence/f2/companion-cli-client.md`.
+- Connector plane, protected secret store, tooling proxy, workspace broker, and
+  context selector: promoted by
+  `docs/windows-port/evidence/f2/connector-tooling-plane.md`. The authenticated
+  companion plane is the concrete external consumer.
 - Project-code memory store, embeddings, and full static parser: promoted by
   `docs/windows-port/evidence/f2/project-code-memory-store.md`,
   `docs/windows-port/evidence/f2/live-lsp-parser-client.md`, and the WPD-0003

@@ -461,4 +461,30 @@ public sealed class CompanionCliServerTests
             CancellationToken.None);
         Assert.Contains("code.semantic_search", semantic, System.StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData("connector.get")]
+    [InlineData("connector.update")]
+    [InlineData("connector.action")]
+    [InlineData("workspace.bridge.enqueue")]
+    [InlineData("workspace.bridge.claim")]
+    [InlineData("workspace.bridge.result")]
+    [InlineData("context.next")]
+    [InlineData("context.snapshot")]
+    public async Task CommandRouter_ExposesAuthenticatedToolingHook(string operation)
+    {
+        var router = new CompanionCliCommandRouter(
+            tooling: (request, _) => Task.FromResult<object?>(new
+            {
+                operation = request.GetProperty("op").GetString(),
+                accepted = true,
+            }));
+
+        string response = await router.HandleAsync(
+            JsonSerializer.Serialize(new { op = operation }),
+            CancellationToken.None);
+
+        Assert.Contains(operation, response, StringComparison.Ordinal);
+        Assert.Contains("accepted", response, StringComparison.Ordinal);
+    }
 }

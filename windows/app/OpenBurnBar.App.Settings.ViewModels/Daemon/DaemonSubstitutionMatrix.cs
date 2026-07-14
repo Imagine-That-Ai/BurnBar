@@ -3,7 +3,7 @@
 //
 // Row order, capability names, dispositions, qualifiers, and the SUB-DONE/SUB-BUILD
 // hybrids (rows 24, 27) match the doc exactly. The disposition-summary constants match
-// the current disposition summary (26 SUB-DONE, 3 SUB-BUILD, 1 DEFER, 4 N/A).
+// the current disposition summary (27 SUB-DONE, 3 SUB-BUILD, 0 DEFER, 4 N/A).
 // A test cross-checks both against those figures so the tab can never drift from the
 // accepted decision without a red build.
 
@@ -154,9 +154,9 @@ public static class DaemonSubstitutionMatrix
             "The production gateway and companion plane run the saved or explicit 1-8 model panel in parallel, degrade failed members, compare through the judge, synthesize through the originating model, execute bounded DNS-pinned web tools, journal only metadata/digests, and record per-route usage telemetry.",
             "F2 Elder Wand fusion evidence", Qualifier: "parallel fusion pipeline"),
         new(33, "Connector plane + connector secret store; tooling proxy; workspace bridge broker; context selector",
-            D.Deferred,
-            "Adjuncts of the headless run/gateway plane (rows 1/8); no v1 consumer.",
-            "With rows 1/8"),
+            D.SubstitutedAlready,
+            "The authenticated companion plane consumes DPAPI-backed connector credentials, secret-free durable config, DNS-pinned HTTPS actions, the tooling facade, single-call workspace broker, and read-before-patch context selector.",
+            "F2 connector tooling plane evidence", Qualifier: "authenticated tooling plane"),
         new(34, "Daemon lifecycle glue: heartbeat, client registry, logger, DB cipher bootstrap, Keychain interaction gate, phone-key pin store",
             D.NotApplicable,
             "Process-lifecycle plumbing for a process that doesn't exist on Windows v1. DB cipher duty is already served by the WPD-0004 seam; secrets follow R15 (TPM/CNG, Wave 2), not Keychain semantics.",
@@ -169,13 +169,13 @@ public static class DaemonSubstitutionMatrix
     // ── WPD-0006 summary after WPD-0009 workstream promotions ──────────────────
 
     /// <summary>SUB-DONE count from the current summary.</summary>
-    public const int SubstitutedAlreadyCount = 26;
+    public const int SubstitutedAlreadyCount = 27;
 
     /// <summary>SUB-BUILD count from the doc's summary (rows 26, 30, 31).</summary>
     public const int SubstituteToBuildCount = 3;
 
     /// <summary>DEFER count from the current summary.</summary>
-    public const int DeferredCount = 1;
+    public const int DeferredCount = 0;
 
     /// <summary>N/A count from the doc's summary (rows 10, 17, 28, 34).</summary>
     public const int NotApplicableCount = 4;
