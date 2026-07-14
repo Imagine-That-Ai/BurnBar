@@ -122,7 +122,7 @@ private struct HashCase: Decodable {
 
     func resolvedText() throws -> String {
         if let text { return text }
-        guard let input, input.kind == "numberedTokens", input.count >= 0 else {
+        guard let input, input.kind == "numberedTokens", input.count.signum() >= 0 else {
             throw FixtureError.invalidInput
         }
         return (0..<input.count).map { "\(input.prefix)\($0)" }.joined(separator: " ")

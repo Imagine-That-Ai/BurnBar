@@ -128,11 +128,11 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
         guard input > 0 || output > 0 else { return nil }
 
         let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-        guard let cost = try? pricing.cost(
+        guard let cost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try pricing.cost(
             inputTokens: uncachedInput,
             outputTokens: output,
             cacheReadTokens: cached
-        ) else { return nil }
+        )) else { return nil }
 
         return ProviderUsageRecord(
             providerName: "OpenAI",

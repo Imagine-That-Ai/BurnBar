@@ -105,10 +105,10 @@ final class OpenRouterUsageAPI: ProviderUsageAPI, Sendable {
             finalCost = cost
         } else {
             let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-            guard let computedCost = try? pricing.cost(
+            guard let computedCost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try pricing.cost(
                 inputTokens: finalInput,
                 outputTokens: finalOutput
-            ) else { return nil }
+            )) else { return nil }
             finalCost = computedCost
         }
 

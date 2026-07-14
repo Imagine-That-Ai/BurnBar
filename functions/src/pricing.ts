@@ -12,10 +12,11 @@
 import {
   calculateTokenCost,
   priceLegacyKimiUsage,
-  type LegacyKimiPricing,
-  type TokenPricingBuckets,
-  type TokenPricingRates,
 } from "./domainCorePricing.js";
+
+type TokenPricingRates = Parameters<typeof calculateTokenCost>[0];
+type TokenPricingBuckets = Parameters<typeof calculateTokenCost>[1];
+type LegacyKimiPricing = ReturnType<typeof priceLegacyKimiUsage>;
 
 /**
  * Model id substituted for legacy Kimi wire events whose `model` field carries

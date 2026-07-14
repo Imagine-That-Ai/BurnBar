@@ -203,62 +203,68 @@ internal object CloudVaultDocumentRewrapDomainCore {
         val algorithm = optionalString(raw, "algorithm") ?: CloudVaultCrypto.AES_GCM_ALGORITHM
         val keyVersion = optionalUInt(raw, "keyVersion") ?: CloudVaultCrypto.CURRENT_KEY_VERSION.toUInt()
         return when {
-            payloadCandidate ->
-                FfiEnvelope(
-                    kind = FfiEnvelopeKind.SEALED_PAYLOAD,
-                    fieldName = field,
-                    schemaVersion = optionalUInt(raw, "schemaVersion") ?: 1u,
-                    algorithm = algorithm,
-                    keyVersion = keyVersion,
-                    vaultKeyId = requiredString(raw, "vaultKeyID"),
-                    nonce = null,
-                    ciphertext = null,
-                    tag = null,
-                    sealedBoxBase64 = requiredString(raw, "sealedBoxBase64"),
-                    plaintextSha256 = null,
-                    plaintextHmac = null,
-                    integrityHashVersion = null,
-                    aad = optionalString(raw, "aad"),
-                    hasCreatedAt = false,
-                )
-            textCandidate ->
-                FfiEnvelope(
-                    kind = FfiEnvelopeKind.SEALED_TEXT,
-                    fieldName = field,
-                    schemaVersion = optionalUInt(raw, "schemaVersion"),
-                    algorithm = algorithm,
-                    keyVersion = keyVersion,
-                    vaultKeyId = null,
-                    nonce = requiredString(raw, "nonce"),
-                    ciphertext = requiredString(raw, "ciphertext"),
-                    tag = requiredString(raw, "tag"),
-                    sealedBoxBase64 = null,
-                    plaintextSha256 = null,
-                    plaintextHmac = null,
-                    integrityHashVersion = null,
-                    aad = optionalString(raw, "aad"),
-                    hasCreatedAt = false,
-                )
-            else ->
-                FfiEnvelope(
-                    kind = FfiEnvelopeKind.BLOB,
-                    fieldName = field,
-                    schemaVersion = requiredUInt(raw, "schemaVersion"),
-                    algorithm = algorithm,
-                    keyVersion = keyVersion,
-                    vaultKeyId = null,
-                    nonce = null,
-                    ciphertext = null,
-                    tag = null,
-                    sealedBoxBase64 = requiredString(raw, "sealedBoxBase64"),
-                    plaintextSha256 = optionalString(raw, "plaintextSHA256"),
-                    plaintextHmac = optionalString(raw, "plaintextHMAC"),
-                    integrityHashVersion = optionalUInt(raw, "integrityHashVersion"),
-                    aad = optionalString(raw, "aad"),
-                    hasCreatedAt = raw.containsKey("createdAt"),
-                )
+            payloadCandidate -> lowerPayloadEnvelope(field, raw, algorithm, keyVersion)
+            textCandidate -> lowerTextEnvelope(field, raw, algorithm, keyVersion)
+            else -> lowerBlobEnvelope(field, raw, algorithm, keyVersion)
         }
     }
+
+    private fun lowerPayloadEnvelope(field: String, raw: Map<*, *>, algorithm: String, keyVersion: UInt) =
+        FfiEnvelope(
+            kind = FfiEnvelopeKind.SEALED_PAYLOAD,
+            fieldName = field,
+            schemaVersion = optionalUInt(raw, "schemaVersion") ?: 1u,
+            algorithm = algorithm,
+            keyVersion = keyVersion,
+            vaultKeyId = requiredString(raw, "vaultKeyID"),
+            nonce = null,
+            ciphertext = null,
+            tag = null,
+            sealedBoxBase64 = requiredString(raw, "sealedBoxBase64"),
+            plaintextSha256 = null,
+            plaintextHmac = null,
+            integrityHashVersion = null,
+            aad = optionalString(raw, "aad"),
+            hasCreatedAt = false,
+        )
+
+    private fun lowerTextEnvelope(field: String, raw: Map<*, *>, algorithm: String, keyVersion: UInt) =
+        FfiEnvelope(
+            kind = FfiEnvelopeKind.SEALED_TEXT,
+            fieldName = field,
+            schemaVersion = optionalUInt(raw, "schemaVersion"),
+            algorithm = algorithm,
+            keyVersion = keyVersion,
+            vaultKeyId = null,
+            nonce = requiredString(raw, "nonce"),
+            ciphertext = requiredString(raw, "ciphertext"),
+            tag = requiredString(raw, "tag"),
+            sealedBoxBase64 = null,
+            plaintextSha256 = null,
+            plaintextHmac = null,
+            integrityHashVersion = null,
+            aad = optionalString(raw, "aad"),
+            hasCreatedAt = false,
+        )
+
+    private fun lowerBlobEnvelope(field: String, raw: Map<*, *>, algorithm: String, keyVersion: UInt) =
+        FfiEnvelope(
+            kind = FfiEnvelopeKind.BLOB,
+            fieldName = field,
+            schemaVersion = requiredUInt(raw, "schemaVersion"),
+            algorithm = algorithm,
+            keyVersion = keyVersion,
+            vaultKeyId = null,
+            nonce = null,
+            ciphertext = null,
+            tag = null,
+            sealedBoxBase64 = requiredString(raw, "sealedBoxBase64"),
+            plaintextSha256 = optionalString(raw, "plaintextSHA256"),
+            plaintextHmac = optionalString(raw, "plaintextHMAC"),
+            integrityHashVersion = optionalUInt(raw, "integrityHashVersion"),
+            aad = optionalString(raw, "aad"),
+            hasCreatedAt = raw.containsKey("createdAt"),
+        )
 
     private fun createNoncePlan(envelopes: List<FfiEnvelope>, newVaultKeyID: String): List<CloudVaultDocumentRewrapNonce> {
         val seen = mutableSetOf<List<Byte>>()

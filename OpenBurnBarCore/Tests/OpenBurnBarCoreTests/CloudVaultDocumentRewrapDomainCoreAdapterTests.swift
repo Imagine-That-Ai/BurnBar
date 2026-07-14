@@ -28,13 +28,14 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
             nonceGenerator: {
                 nonceByte += 1
                 return Data(repeating: nonceByte, count: 12)
+            },
+            legacy: { plan in
+                recorder.legacyCalls += 1
+                XCTAssertEqual(plan.map(\.fieldName), ["sealedBlobA", "sealedPayload", "sealedTextZ"])
+                XCTAssertEqual(plan.map { $0.bytes.first }, [0x21, 0x22, 0x23])
+                return expected
             }
-        ) { plan in
-            recorder.legacyCalls += 1
-            XCTAssertEqual(plan.map(\.fieldName), ["sealedBlobA", "sealedPayload", "sealedTextZ"])
-            XCTAssertEqual(plan.map { $0.bytes.first }, [0x21, 0x22, 0x23])
-            return expected
-        }
+        )
 
         XCTAssertEqual(result.changedFields, expected.changedFields)
         XCTAssertEqual(result.data["legacy"] as? Bool, true)
@@ -137,11 +138,12 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
             nonceGenerator: {
                 nonceByte += 1
                 return Data(repeating: nonceByte, count: 12)
+            },
+            legacy: { _ in
+                recorder.legacyCalls += 1
+                throw TestError.legacy
             }
-        ) { _ in
-            recorder.legacyCalls += 1
-            throw TestError.legacy
-        }
+        )
 
         XCTAssertEqual(recorder.nativeCalls, 1)
         XCTAssertEqual(recorder.legacyCalls, 0)
@@ -151,7 +153,7 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
         XCTAssertEqual(result.data["vaultGeneration"] as? Int, 9)
         XCTAssertEqual(result.data["rewrapJobId"] as? String, "job-9")
         let blob = try XCTUnwrap(result.data["sealedBlobA"] as? [String: Any])
-        XCTAssertTrue(blob["createdAt"] as AnyObject === createdAt)
+        XCTAssertIdentical(blob["createdAt"] as AnyObject, createdAt)
     }
 
     func testDocumentPermutationKeepsEnvelopeAndNamedNonceOrderingStable() throws {
@@ -309,7 +311,7 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
             return legacy
         }
 
-        XCTAssertTrue(result.data["legacy"] as AnyObject === token)
+        XCTAssertIdentical(result.data["legacy"] as AnyObject, token)
         XCTAssertEqual(result.changedFields, legacy.changedFields)
         XCTAssertEqual(legacyPlan, nativePlan)
         XCTAssertEqual(recorder.nativeCalls, 1)
@@ -478,9 +480,7 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
 
         XCTAssertEqual(result.changedFields, fixture.expected.changedFields)
         let blobField = try XCTUnwrap(fixture.request.envelopes.first { $0.kind == "blob" }?.fieldName)
-        XCTAssertTrue(
-            (result.data[blobField] as? [String: Any])?["createdAt"] as AnyObject? === createdAt
-        )
+        XCTAssertIdentical((result.data[blobField] as? [String: Any])?["createdAt"] as AnyObject?, createdAt)
     }
     #endif
 

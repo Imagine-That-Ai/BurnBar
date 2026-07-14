@@ -157,7 +157,7 @@ do {
             CloudVaultResealNonce(
                 fieldName: "sealedPayload",
                 nonce: Data(repeating: 0x22, count: 12)
-            ),
+            )
         ],
         vaultGeneration: 7,
         rotationJobId: "job-7"

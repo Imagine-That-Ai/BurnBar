@@ -592,11 +592,11 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
             outputTokens = OpenBurnBarCore.TokenExtractionUtility.estimatedTokenCount(for: assistantText.joined(separator: "\n").count, charsPerToken: 3.5)
         }
 
-        let cost = try? OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
+        let cost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheReadTokens: cacheReadTokens
-        )
+        ))
         let usage: TokenUsage? = (inputTokens > 0 || outputTokens > 0) ? cost.map { computedCost in TokenUsage(
             provider: .openClaw,
             sessionId: sessionId,

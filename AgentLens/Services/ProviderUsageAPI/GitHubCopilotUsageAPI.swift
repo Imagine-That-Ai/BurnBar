@@ -156,7 +156,10 @@ final class GitHubCopilotUsageAPI: ProviderUsageAPI, Sendable {
                     let outputTokens = max(totalTokens - inputTokens, 0)
 
                     let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-                    guard let cost = try? pricing.cost(inputTokens: inputTokens, outputTokens: outputTokens) else {
+                    guard let cost = AppLogger.shared.silentlyOptional(
+                        "domain_core_pricing_cost",
+                        try pricing.cost(inputTokens: inputTokens, outputTokens: outputTokens)
+                    ) else {
                         continue
                     }
 
@@ -182,7 +185,10 @@ final class GitHubCopilotUsageAPI: ProviderUsageAPI, Sendable {
                 let outputTokens = max(totalTokens - inputTokens, 0)
 
                 let pricing = OpenBurnBarCore.ModelPricing.lookup(model: "copilot")
-                guard let cost = try? pricing.cost(inputTokens: inputTokens, outputTokens: outputTokens) else {
+                guard let cost = AppLogger.shared.silentlyOptional(
+                    "domain_core_pricing_cost",
+                    try pricing.cost(inputTokens: inputTokens, outputTokens: outputTokens)
+                ) else {
                     continue
                 }
 

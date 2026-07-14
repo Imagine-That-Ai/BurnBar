@@ -89,18 +89,19 @@ pub fn search(
             hashes: Vec::new(),
         });
     }
+    let limit = usize::try_from(limit).map_err(|_| CloudVaultSearchError::LimitTooLarge)?;
 
     let hashes = match operation {
         CloudVaultSearchOperation::Token => {
             let tokens = Zeroizing::new(tokenize(text, false)?);
-            token_hashes(&tokens, vault_key, limit as usize)?
+            token_hashes(&tokens, vault_key, limit)?
         }
         CloudVaultSearchOperation::Index => {
             let tokens = Zeroizing::new(unique(tokenize(text, false)?));
             let mut terms = Zeroizing::new(tokens.to_vec());
             terms.extend(search_index_prefix_terms(&tokens));
             terms.extend(exact_phrase_terms(text)?);
-            token_hashes(&terms, vault_key, limit as usize)?
+            token_hashes(&terms, vault_key, limit)?
         }
         CloudVaultSearchOperation::Query => {
             let tokens = Zeroizing::new(unique(tokenize(text, false)?));
@@ -111,9 +112,9 @@ pub fn search(
                     .filter_map(|token| search_query_prefix_term(token)),
             );
             terms.extend(exact_phrase_terms(text)?);
-            token_hashes(&terms, vault_key, limit as usize)?
+            token_hashes(&terms, vault_key, limit)?
         }
-        CloudVaultSearchOperation::Semantic => semantic_hashes(text, vault_key, limit as usize)?,
+        CloudVaultSearchOperation::Semantic => semantic_hashes(text, vault_key, limit)?,
     };
 
     Ok(CloudVaultSearchResult { operation, hashes })

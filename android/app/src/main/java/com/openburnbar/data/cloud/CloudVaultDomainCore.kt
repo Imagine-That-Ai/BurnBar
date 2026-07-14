@@ -75,13 +75,6 @@ internal data class CloudVaultEscrowParts(
 
 internal object CloudVaultDomainCore {
     private const val ABI_VERSION = 3
-    private const val GCM_AUTH_TAG_BITS = 128
-    private const val GCM_NONCE_BYTES = 12
-    private const val GCM_TAG_BYTES = 16
-    private const val KEY_BYTES = 32
-    private const val BYTE_MASK = 0xff
-    private const val HMAC_SALT = "OpenBurnBar-CloudVault-HMAC-Salt-v1"
-    private const val HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1"
     private const val LOG_TAG = "CloudVaultDomainCore"
     private val diagnosticCounts = ConcurrentHashMap<String, AtomicLong>()
 
@@ -102,43 +95,43 @@ internal object CloudVaultDomainCore {
 
     fun aadV1(uid: String, collection: String, docId: String, field: String): String = dispatch(
         operation = "aad_v1",
-        legacy = { legacyAadV1(uid, collection, docId, field) },
+        legacy = { CloudVaultLegacyCrypto.aadV1(uid, collection, docId, field) },
         rust = { cloudVaultAadV1(uid, collection, docId, field) },
     )
 
     fun aadV2(uid: String, collection: String, docId: String, field: String, schemaVersion: Int, purpose: String): String = dispatch(
         operation = "aad_v2",
-        legacy = { legacyAadV2(uid, collection, docId, field, schemaVersion, purpose) },
+        legacy = { CloudVaultLegacyCrypto.aadV2(uid, collection, docId, field, schemaVersion, purpose) },
         rust = { cloudVaultAadV2(uid, collection, docId, field, schemaVersion.toUInt(), purpose) },
     )
 
     fun sha256Hex(data: ByteArray): String = dispatch(
         operation = "sha256_hex",
-        legacy = { legacySha256Hex(data) },
+        legacy = { CloudVaultLegacyCrypto.sha256Hex(data) },
         rust = { cloudVaultSha256Hex(data) },
     )
 
     fun vaultKeyId(key: ByteArray): String {
-        requireVaultKey(key)
+        CloudVaultLegacyCrypto.requireVaultKey(key)
         return dispatch(
             operation = "vault_key_id",
-            legacy = { legacyVaultKeyId(key) },
+            legacy = { CloudVaultLegacyCrypto.vaultKeyId(key) },
             rust = { cloudVaultKeyId(key) },
         )
     }
 
     fun keyedHashHex(data: ByteArray, key: ByteArray, purpose: CloudVaultHashPurpose): String {
-        requireVaultKey(key)
+        CloudVaultLegacyCrypto.requireVaultKey(key)
         return dispatch(
             operation = purpose.wireValue.replace('-', '_'),
-            legacy = { legacyKeyedHashHex(data, key, purpose) },
+            legacy = { CloudVaultLegacyCrypto.keyedHashHex(data, key, purpose) },
             rust = { cloudVaultKeyedHashHex(data, key, purpose.ffiValue) },
         )
     }
 
     fun expectedSessionBodyHash(data: ByteArray, key: ByteArray, bodyHashVersion: Int): String = dispatch(
         operation = "expected_session_body_hash_v$bodyHashVersion",
-        legacy = { legacyExpectedSessionBodyHash(data, key, bodyHashVersion) },
+        legacy = { CloudVaultLegacyCrypto.expectedSessionBodyHash(data, key, bodyHashVersion) },
         rust = {
             require(bodyHashVersion >= 0) { "Unsupported session body hash version" }
             cloudVaultExpectedSessionBodyHash(data, key, bodyHashVersion.toUInt())
@@ -146,10 +139,10 @@ internal object CloudVaultDomainCore {
     )
 
     fun aesSealDetached(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): CloudVaultAesDetachedBox {
-        requireAesInputs(key, nonce)
+        CloudVaultLegacyCrypto.requireAesInputs(key, nonce)
         return dispatch(
             operation = "aes_seal_detached",
-            legacy = { legacyAesSealDetached(plaintext, key, nonce, aad) },
+            legacy = { CloudVaultLegacyCrypto.aesSealDetached(plaintext, key, nonce, aad) },
             rust = {
                 val sealed = cloudVaultAesGcmSealDetached(plaintext, key, nonce, aad)
                 CloudVaultAesDetachedBox(sealed.nonce, sealed.ciphertext, sealed.tag)
@@ -163,11 +156,11 @@ internal object CloudVaultDomainCore {
     }
 
     fun aesSealCombined(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): ByteArray {
-        requireAesInputs(key, nonce)
+        CloudVaultLegacyCrypto.requireAesInputs(key, nonce)
         return dispatchBytes(
             operation = "aes_seal_combined",
             legacy = {
-                val sealed = legacyAesSealDetached(plaintext, key, nonce, aad)
+                val sealed = CloudVaultLegacyCrypto.aesSealDetached(plaintext, key, nonce, aad)
                 sealed.nonce + sealed.ciphertext + sealed.tag
             },
             rust = { cloudVaultAesGcmSealCombined(plaintext, key, nonce, aad) },
@@ -175,20 +168,20 @@ internal object CloudVaultDomainCore {
     }
 
     fun aesOpenCombined(combined: ByteArray, key: ByteArray, aad: ByteArray): ByteArray {
-        require(key.size == KEY_BYTES) { "Invalid vault key length" }
+        CloudVaultLegacyCrypto.requireVaultKey(key)
         return dispatchBytes(
             operation = "aes_open_combined",
-            legacy = { legacyAesOpenCombined(combined, key, aad) },
+            legacy = { CloudVaultLegacyCrypto.aesOpenCombined(combined, key, aad) },
             rust = { cloudVaultAesGcmOpenCombined(combined, key, aad) },
         )
     }
 
     fun aesOpenTextDetached(nonce: ByteArray, ciphertext: ByteArray, tag: ByteArray, key: ByteArray, aad: ByteArray): String {
-        requireAesInputs(key, nonce)
-        require(tag.size == GCM_TAG_BYTES) { "Invalid AES-GCM authentication tag length" }
+        CloudVaultLegacyCrypto.requireAesInputs(key, nonce)
+        CloudVaultLegacyCrypto.requireTag(tag)
         return dispatch(
             operation = "aes_open_text",
-            legacy = { legacyAesOpenCombined(nonce + ciphertext + tag, key, aad).toString(Charsets.UTF_8) },
+            legacy = { CloudVaultLegacyCrypto.aesOpenCombined(nonce + ciphertext + tag, key, aad).toString(Charsets.UTF_8) },
             rust = { cloudVaultAesGcmOpenTextDetached(nonce, ciphertext, tag, key, aad) },
         )
     }
@@ -205,62 +198,6 @@ internal object CloudVaultDomainCore {
         rust = { cloudVaultBase64DecodeStrict(value) },
     )
 
-    fun recoveryWrappingKey(recoveryKey: String, legacy: () -> ByteArray): ByteArray = dispatchBytes(
-        operation = "recovery_wrapping_key",
-        legacy = legacy,
-        rust = { cloudVaultRecoveryWrappingKey(recoveryKey) },
-    )
-
-    fun recoveryVerificationHash(recoveryKey: String, legacy: () -> String): String = dispatch(
-        operation = "recovery_verification_hash",
-        legacy = legacy,
-        rust = { cloudVaultRecoveryVerificationHash(recoveryKey) },
-    )
-
-    fun recoveryWrapVaultKey(vaultKey: ByteArray, recoveryKey: String, nonce: ByteArray, legacy: () -> CloudVaultRecoveryBox): CloudVaultRecoveryBox = dispatch(
-        operation = "recovery_wrap_vault_key",
-        legacy = legacy,
-        rust = {
-            val wrapped = cloudVaultRecoveryWrapVaultKey(vaultKey, recoveryKey, nonce)
-            CloudVaultRecoveryBox(wrapped.combined, wrapped.verificationHash)
-        },
-        equivalent = { left, right ->
-            left.combined.contentEquals(right.combined) && left.verificationHash == right.verificationHash
-        },
-    )
-
-    fun recoveryOpenVaultKey(combined: ByteArray, recoveryKey: String, legacy: () -> ByteArray): ByteArray = dispatchBytes(
-        operation = "recovery_open_vault_key",
-        legacy = legacy,
-        rust = { cloudVaultRecoveryOpenVaultKey(combined, recoveryKey) },
-    )
-
-    fun escrowSplitWire(wire: ByteArray, legacy: () -> CloudVaultEscrowParts): CloudVaultEscrowParts = dispatch(
-        operation = "escrow_split_wire",
-        legacy = legacy,
-        rust = {
-            val parts = cloudVaultEscrowSplitWire(wire)
-            CloudVaultEscrowParts(parts.ephemeralPublicKey, parts.aesGcmCombined)
-        },
-        equivalent = { left, right ->
-            left.ephemeralPublicKey.contentEquals(right.ephemeralPublicKey) &&
-                left.aesGcmCombined.contentEquals(right.aesGcmCombined)
-        },
-    )
-
-    fun escrowSeal(plaintext: ByteArray, ephemeralPublicKey: ByteArray, sharedSecret: ByteArray, nonce: ByteArray, legacy: () -> ByteArray): ByteArray =
-        dispatchBytes(
-            operation = "escrow_seal",
-            legacy = legacy,
-            rust = { cloudVaultEscrowSeal(plaintext, ephemeralPublicKey, sharedSecret, nonce) },
-        )
-
-    fun escrowOpen(wire: ByteArray, sharedSecret: ByteArray, legacy: () -> ByteArray): ByteArray = dispatchBytes(
-        operation = "escrow_open",
-        legacy = legacy,
-        rust = { cloudVaultEscrowOpen(wire, sharedSecret) },
-    )
-
     internal fun <T> dispatchForTest(selectedMode: CloudVaultDomainCoreMode, operation: String, legacy: () -> T, rust: () -> T): T =
         dispatch(selectedMode, operation, legacy, rust)
 
@@ -272,7 +209,7 @@ internal object CloudVaultDomainCore {
         diagnosticCounts.clear()
     }
 
-    private fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean = { left, right -> left == right }): T = dispatch(
+    internal fun <T> dispatch(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean = { left, right -> left == right }): T = dispatch(
         mode,
         operation,
         legacy,
@@ -303,38 +240,8 @@ internal object CloudVaultDomainCore {
         }
     }
 
-    private fun dispatchBytes(operation: String, legacy: () -> ByteArray, rust: () -> ByteArray): ByteArray =
+    internal fun dispatchBytes(operation: String, legacy: () -> ByteArray, rust: () -> ByteArray): ByteArray =
         dispatch(operation, legacy, rust, ByteArray::contentEquals)
-
-    private fun legacyAesSealDetached(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): CloudVaultAesDetachedBox {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        if (aad.isNotEmpty()) cipher.updateAAD(aad)
-        val ciphertextAndTag = cipher.doFinal(plaintext)
-        val split = ciphertextAndTag.size - GCM_TAG_BYTES
-        return CloudVaultAesDetachedBox(
-            nonce = nonce.copyOf(),
-            ciphertext = ciphertextAndTag.copyOfRange(0, split),
-            tag = ciphertextAndTag.copyOfRange(split, ciphertextAndTag.size),
-        )
-    }
-
-    private fun legacyAesOpenCombined(combined: ByteArray, key: ByteArray, aad: ByteArray): ByteArray {
-        require(combined.size >= GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid AES-GCM combined envelope length" }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(
-            Cipher.DECRYPT_MODE,
-            SecretKeySpec(key, "AES"),
-            GCMParameterSpec(GCM_AUTH_TAG_BITS, combined.copyOfRange(0, GCM_NONCE_BYTES)),
-        )
-        if (aad.isNotEmpty()) cipher.updateAAD(aad)
-        return cipher.doFinal(combined.copyOfRange(GCM_NONCE_BYTES, combined.size))
-    }
-
-    private fun requireAesInputs(key: ByteArray, nonce: ByteArray) {
-        require(key.size == KEY_BYTES) { "Invalid vault key length" }
-        require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
-    }
 
     private fun requireCompatibleAbi() {
         val abi = cachedAbiVersion ?: (abiVersionOverride?.invoke() ?: domainCoreAbiVersion()).also { cachedAbiVersion = it }
@@ -353,35 +260,117 @@ internal object CloudVaultDomainCore {
         }
     }
 
-    private fun legacyAadV1(uid: String, collection: String, docId: String, field: String): String {
+
+    private val CloudVaultHashPurpose.ffiValue: FfiHashPurpose
+        get() = when (this) {
+            CloudVaultHashPurpose.BLOB_INTEGRITY -> FfiHashPurpose.BLOB_INTEGRITY
+            CloudVaultHashPurpose.SESSION_BODY -> FfiHashPurpose.SESSION_BODY
+            CloudVaultHashPurpose.SESSION_CHUNK -> FfiHashPurpose.SESSION_CHUNK
+            CloudVaultHashPurpose.PROJECT_MEMORY_CONTENT -> FfiHashPurpose.PROJECT_MEMORY_CONTENT
+        }
+}
+
+internal object CloudVaultRecoveryDomainCore {
+    fun recoveryWrappingKey(recoveryKey: String, legacy: () -> ByteArray): ByteArray =
+        CloudVaultDomainCore.dispatchBytes(
+            operation = "recovery_wrapping_key",
+            legacy = legacy,
+            rust = { cloudVaultRecoveryWrappingKey(recoveryKey) },
+        )
+
+    fun recoveryVerificationHash(recoveryKey: String, legacy: () -> String): String =
+        CloudVaultDomainCore.dispatch(
+            operation = "recovery_verification_hash",
+            legacy = legacy,
+            rust = { cloudVaultRecoveryVerificationHash(recoveryKey) },
+        )
+
+    fun recoveryWrapVaultKey(
+        vaultKey: ByteArray,
+        recoveryKey: String,
+        nonce: ByteArray,
+        legacy: () -> CloudVaultRecoveryBox,
+    ): CloudVaultRecoveryBox = CloudVaultDomainCore.dispatch(
+        operation = "recovery_wrap_vault_key",
+        legacy = legacy,
+        rust = {
+            val wrapped = cloudVaultRecoveryWrapVaultKey(vaultKey, recoveryKey, nonce)
+            CloudVaultRecoveryBox(wrapped.combined, wrapped.verificationHash)
+        },
+        equivalent = { left, right ->
+            left.combined.contentEquals(right.combined) && left.verificationHash == right.verificationHash
+        },
+    )
+
+    fun recoveryOpenVaultKey(combined: ByteArray, recoveryKey: String, legacy: () -> ByteArray): ByteArray =
+        CloudVaultDomainCore.dispatchBytes(
+            operation = "recovery_open_vault_key",
+            legacy = legacy,
+            rust = { cloudVaultRecoveryOpenVaultKey(combined, recoveryKey) },
+        )
+
+    fun escrowSplitWire(wire: ByteArray, legacy: () -> CloudVaultEscrowParts): CloudVaultEscrowParts =
+        CloudVaultDomainCore.dispatch(
+            operation = "escrow_split_wire",
+            legacy = legacy,
+            rust = {
+                val parts = cloudVaultEscrowSplitWire(wire)
+                CloudVaultEscrowParts(parts.ephemeralPublicKey, parts.aesGcmCombined)
+            },
+            equivalent = { left, right ->
+                left.ephemeralPublicKey.contentEquals(right.ephemeralPublicKey) &&
+                    left.aesGcmCombined.contentEquals(right.aesGcmCombined)
+            },
+        )
+
+    fun escrowSeal(
+        plaintext: ByteArray,
+        ephemeralPublicKey: ByteArray,
+        sharedSecret: ByteArray,
+        nonce: ByteArray,
+        legacy: () -> ByteArray,
+    ): ByteArray = CloudVaultDomainCore.dispatchBytes(
+        operation = "escrow_seal",
+        legacy = legacy,
+        rust = { cloudVaultEscrowSeal(plaintext, ephemeralPublicKey, sharedSecret, nonce) },
+    )
+
+    fun escrowOpen(wire: ByteArray, sharedSecret: ByteArray, legacy: () -> ByteArray): ByteArray =
+        CloudVaultDomainCore.dispatchBytes(
+            operation = "escrow_open",
+            legacy = legacy,
+            rust = { cloudVaultEscrowOpen(wire, sharedSecret) },
+        )
+}
+
+private object CloudVaultLegacyCrypto {
+    private const val GCM_AUTH_TAG_BITS = 128
+    private const val GCM_NONCE_BYTES = 12
+    private const val GCM_TAG_BYTES = 16
+    private const val KEY_BYTES = 32
+    private const val BYTE_MASK = 0xff
+    private const val HMAC_SALT = "OpenBurnBar-CloudVault-HMAC-Salt-v1"
+    private const val HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1"
+
+    fun aadV1(uid: String, collection: String, docId: String, field: String): String {
         listOf(uid, collection, docId, field).forEach(::requireValidAadPart)
         return "${CloudVaultCrypto.LEGACY_AAD_CONTEXT_PREFIX}|$uid|$collection|$docId|$field"
     }
 
-    private fun legacyAadV2(uid: String, collection: String, docId: String, field: String, schemaVersion: Int, purpose: String): String {
+    fun aadV2(uid: String, collection: String, docId: String, field: String, schemaVersion: Int, purpose: String): String {
         require(schemaVersion >= 2) { "Invalid CloudVault AAD context" }
         listOf(uid, collection, docId, field, purpose).forEach(::requireValidAadPart)
         return "${CloudVaultCrypto.AAD_CONTEXT_PREFIX}|$uid|$collection|$docId|$field|$schemaVersion|$purpose"
     }
 
-    private fun requireValidAadPart(value: String) {
-        require(value.isNotEmpty() && value.none { it == '|' || it.code < 0x20 || it.code == 0x7f }) {
-            "Invalid CloudVault AAD context"
-        }
-    }
+    fun sha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).toHex()
 
-    private fun legacyVaultKeyId(key: ByteArray): String {
+    fun vaultKeyId(key: ByteArray): String {
         requireVaultKey(key)
-        return "v1_${legacySha256Hex(key).take(32)}"
+        return "v1_${sha256Hex(key).take(32)}"
     }
 
-    private fun legacyExpectedSessionBodyHash(data: ByteArray, key: ByteArray, bodyHashVersion: Int): String = when (bodyHashVersion) {
-        CloudVaultCrypto.SESSION_BODY_HASH_VERSION -> legacyKeyedHashHex(data, key, CloudVaultHashPurpose.SESSION_BODY)
-        0, 1 -> legacySha256Hex(data)
-        else -> error("Unsupported session body hash version")
-    }
-
-    private fun legacyKeyedHashHex(data: ByteArray, key: ByteArray, purpose: CloudVaultHashPurpose): String {
+    fun keyedHashHex(data: ByteArray, key: ByteArray, purpose: CloudVaultHashPurpose): String {
         requireVaultKey(key)
         val derivedKey = CloudVaultCryptoSearch.hkdfSha256(
             key,
@@ -398,19 +387,55 @@ internal object CloudVaultDomainCore {
         }
     }
 
-    private fun requireVaultKey(key: ByteArray) {
+    fun expectedSessionBodyHash(data: ByteArray, key: ByteArray, bodyHashVersion: Int): String = when (bodyHashVersion) {
+        CloudVaultCrypto.SESSION_BODY_HASH_VERSION -> keyedHashHex(data, key, CloudVaultHashPurpose.SESSION_BODY)
+        0, 1 -> sha256Hex(data)
+        else -> error("Unsupported session body hash version")
+    }
+
+    fun aesSealDetached(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): CloudVaultAesDetachedBox {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
+        if (aad.isNotEmpty()) cipher.updateAAD(aad)
+        val ciphertextAndTag = cipher.doFinal(plaintext)
+        val split = ciphertextAndTag.size - GCM_TAG_BYTES
+        return CloudVaultAesDetachedBox(
+            nonce = nonce.copyOf(),
+            ciphertext = ciphertextAndTag.copyOfRange(0, split),
+            tag = ciphertextAndTag.copyOfRange(split, ciphertextAndTag.size),
+        )
+    }
+
+    fun aesOpenCombined(combined: ByteArray, key: ByteArray, aad: ByteArray): ByteArray {
+        require(combined.size >= GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid AES-GCM combined envelope length" }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            SecretKeySpec(key, "AES"),
+            GCMParameterSpec(GCM_AUTH_TAG_BITS, combined.copyOfRange(0, GCM_NONCE_BYTES)),
+        )
+        if (aad.isNotEmpty()) cipher.updateAAD(aad)
+        return cipher.doFinal(combined.copyOfRange(GCM_NONCE_BYTES, combined.size))
+    }
+
+    fun requireAesInputs(key: ByteArray, nonce: ByteArray) {
+        requireVaultKey(key)
+        require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
+    }
+
+    fun requireTag(tag: ByteArray) {
+        require(tag.size == GCM_TAG_BYTES) { "Invalid AES-GCM authentication tag length" }
+    }
+
+    fun requireVaultKey(key: ByteArray) {
         require(key.size == KEY_BYTES) { "Invalid vault key length" }
     }
 
-    private fun legacySha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).toHex()
+    private fun requireValidAadPart(value: String) {
+        require(value.isNotEmpty() && value.none { it == '|' || it.code < 0x20 || it.code == 0x7f }) {
+            "Invalid CloudVault AAD context"
+        }
+    }
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
-
-    private val CloudVaultHashPurpose.ffiValue: FfiHashPurpose
-        get() = when (this) {
-            CloudVaultHashPurpose.BLOB_INTEGRITY -> FfiHashPurpose.BLOB_INTEGRITY
-            CloudVaultHashPurpose.SESSION_BODY -> FfiHashPurpose.SESSION_BODY
-            CloudVaultHashPurpose.SESSION_CHUNK -> FfiHashPurpose.SESSION_CHUNK
-            CloudVaultHashPurpose.PROJECT_MEMORY_CONTENT -> FfiHashPurpose.PROJECT_MEMORY_CONTENT
-        }
 }

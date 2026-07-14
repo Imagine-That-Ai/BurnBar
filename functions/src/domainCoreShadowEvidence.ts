@@ -3,12 +3,12 @@ import { Timestamp, type Firestore } from "firebase-admin/firestore";
 
 import { isRecord } from "./guards.js";
 
-export const DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION = 1;
-export const DOMAIN_CORE_SHADOW_MAX_BATCH = 100;
+const DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION = 1;
+const DOMAIN_CORE_SHADOW_MAX_BATCH = 100;
 export const DOMAIN_CORE_SHADOW_RETENTION_MS = 60 * 24 * 60 * 60 * 1000;
-export const DOMAIN_CORE_SHADOW_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1000;
-export const DOMAIN_CORE_SHADOW_FUTURE_SKEW_MS = 5 * 60 * 1000;
-export const DOMAIN_CORE_SHADOW_COLLECTION = "domain_core_shadow_samples";
+const DOMAIN_CORE_SHADOW_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1000;
+const DOMAIN_CORE_SHADOW_FUTURE_SKEW_MS = 5 * 60 * 1000;
+const DOMAIN_CORE_SHADOW_COLLECTION = "domain_core_shadow_samples";
 
 const SAMPLE_KEYS = [
   "channel",
@@ -33,17 +33,17 @@ const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 const CORE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 
-export type DomainCoreShadowConsumer = "apple" | "windows";
-export type DomainCoreShadowChannel = "internal" | "beta";
-export type DomainCoreShadowOperation = "claude_quota" | "codex_quota" | "cursor_quota" | "anthropic_quota";
-export type DomainCoreShadowOutcome = "match" | "mismatch";
-export type DomainCoreShadowMismatchCategory =
+type DomainCoreShadowConsumer = "apple" | "windows";
+type DomainCoreShadowChannel = "internal" | "beta";
+type DomainCoreShadowOperation = "claude_quota" | "codex_quota" | "cursor_quota" | "anthropic_quota";
+type DomainCoreShadowOutcome = "match" | "mismatch";
+type DomainCoreShadowMismatchCategory =
   | "result_mismatch"
   | "native_unavailable"
   | "native_error"
   | "invalid_result";
 
-export interface DomainCoreShadowSampleV1 {
+interface DomainCoreShadowSampleV1 {
   schemaVersion: 1;
   sampleId: string;
   domain: "quota";

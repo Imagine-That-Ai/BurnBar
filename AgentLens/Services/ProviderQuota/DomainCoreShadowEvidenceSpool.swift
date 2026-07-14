@@ -127,7 +127,7 @@ final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
         self.encoder = JSONEncoder()
         self.encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
     }
 
     func append(_ sample: DomainCoreShadowSampleV1) throws {
@@ -137,15 +137,25 @@ final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
 
         lock.lock()
         defer { lock.unlock() }
-        if activeSizeLocked() + line.count > maxFileBytes || activeSampleCountLocked() >= maxSamplesPerFile {
+        let activeSize = try activeSizeLocked()
+        let activeSampleCount = try activeSampleCountLocked()
+        if activeSize + line.count > maxFileBytes || activeSampleCount >= maxSamplesPerFile {
             try sealActiveLocked()
         }
         if !FileManager.default.fileExists(atPath: activeURL.path) {
-            FileManager.default.createFile(atPath: activeURL.path, contents: nil)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: activeURL.path)
+            guard FileManager.default.createFile(atPath: activeURL.path, contents: nil) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: activeURL.path)
         }
         let handle = try FileHandle(forWritingTo: activeURL)
-        defer { try? handle.close() }
+        defer {
+            do {
+                try handle.close()
+            } catch {
+                AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "close_failed"])
+            }
+        }
         try handle.seekToEnd()
         try handle.write(contentsOf: line)
         try handle.synchronize()
@@ -157,7 +167,7 @@ final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
         if sealActive {
             try sealActiveLocked()
         }
-        guard let url = readyFilesLocked().first else { return nil }
+        guard let url = try readyFilesLocked().first else { return nil }
         let data = try Data(contentsOf: url)
         let samples = try data.split(separator: 0x0A).map { line -> DomainCoreShadowSampleV1 in
             guard !line.isEmpty else { throw DomainCoreShadowEvidenceError.invalidSample }
@@ -170,7 +180,7 @@ final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
     }
 
     func acknowledge(_ token: String) throws {
-        guard token.hasPrefix("ready-"), token.hasSuffix(".jsonl"), !token.contains("/") else {
+        guard Self.readyOrdinal(from: token) != nil, !token.contains("/") else {
             throw DomainCoreShadowEvidenceError.invalidSample
         }
         lock.lock()
@@ -184,45 +194,75 @@ final class DomainCoreShadowEvidenceSpool: @unchecked Sendable {
     func pendingSampleCount() throws -> Int {
         lock.lock()
         defer { lock.unlock() }
-        let urls = readyFilesLocked() + (FileManager.default.fileExists(atPath: activeURL.path) ? [activeURL] : [])
+        let urls = try readyFilesLocked() + (FileManager.default.fileExists(atPath: activeURL.path) ? [activeURL] : [])
         return try urls.reduce(into: 0) { count, url in
             count += try Data(contentsOf: url).split(separator: 0x0A).count
         }
     }
 
     private func sealActiveLocked() throws {
-        guard activeSizeLocked() > 0 else { return }
-        var ready = readyFilesLocked()
+        guard try activeSizeLocked() > 0 else { return }
+        var ready = try readyFilesLocked()
         while ready.count >= maxReadyFiles, let oldest = ready.first {
             try FileManager.default.removeItem(at: oldest)
             ready.removeFirst()
         }
-        let millis = UInt64(Date().timeIntervalSince1970 * 1_000)
-        let token = "ready-\(String(format: "%013llu", millis))-\(UUID().uuidString.lowercased()).jsonl"
+        let ordinal: UInt64
+        if let last = ready.last.flatMap({ Self.readyOrdinal(from: $0.lastPathComponent) }) {
+            let increment = last.addingReportingOverflow(1)
+            guard !increment.overflow else { throw DomainCoreShadowEvidenceError.invalidSample }
+            ordinal = increment.partialValue
+        } else {
+            ordinal = 0
+        }
+        let token = "ready-\(String(format: "%020llu", ordinal)).jsonl"
         try FileManager.default.moveItem(
             at: activeURL,
             to: directory.appendingPathComponent(token, isDirectory: false)
         )
     }
 
-    private func readyFilesLocked() -> [URL] {
-        let urls = (try? FileManager.default.contentsOfDirectory(
+    private func readyFilesLocked() throws -> [URL] {
+        let urls = try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
-        )) ?? []
-        return urls
+        )
+        return try urls
             .filter { $0.lastPathComponent.hasPrefix("ready-") && $0.pathExtension == "jsonl" }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .map { url -> (ordinal: UInt64, url: URL) in
+                guard let ordinal = Self.readyOrdinal(from: url.lastPathComponent) else {
+                    throw DomainCoreShadowEvidenceError.invalidSample
+                }
+                return (ordinal, url)
+            }
+            .sorted { $0.ordinal < $1.ordinal }
+            .map(\.url)
     }
 
-    private func activeSizeLocked() -> Int {
-        let attributes = try? FileManager.default.attributesOfItem(atPath: activeURL.path)
-        return (attributes?[.size] as? NSNumber)?.intValue ?? 0
+    private static func readyOrdinal(from token: String) -> UInt64? {
+        let prefix = "ready-"
+        let suffix = ".jsonl"
+        guard token.hasPrefix(prefix), token.hasSuffix(suffix) else { return nil }
+        let start = token.index(token.startIndex, offsetBy: prefix.count)
+        let end = token.index(token.endIndex, offsetBy: -suffix.count)
+        let digits = token[start..<end]
+        guard digits.count == 20, digits.allSatisfy(\.isNumber) else { return nil }
+        return UInt64(digits)
     }
 
-    private func activeSampleCountLocked() -> Int {
-        guard let data = try? Data(contentsOf: activeURL) else { return 0 }
+    private func activeSizeLocked() throws -> Int {
+        guard FileManager.default.fileExists(atPath: activeURL.path) else { return 0 }
+        let attributes = try FileManager.default.attributesOfItem(atPath: activeURL.path)
+        guard let size = attributes[.size] as? NSNumber else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return size.intValue
+    }
+
+    private func activeSampleCountLocked() throws -> Int {
+        guard FileManager.default.fileExists(atPath: activeURL.path) else { return 0 }
+        let data = try Data(contentsOf: activeURL)
         return data.split(separator: 0x0A).count
     }
 }
@@ -249,9 +289,13 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
     }
 
     func scheduleFlush() {
-        guard scheduledFlush == nil else { return }
+        scheduledFlush?.cancel()
         scheduledFlush = Task { [debounceNanoseconds] in
-            try? await Task.sleep(nanoseconds: debounceNanoseconds)
+            do {
+                try await Task.sleep(nanoseconds: debounceNanoseconds)
+            } catch {
+                return
+            }
             guard !Task.isCancelled else { return }
             await self.runScheduledFlush()
         }
@@ -267,12 +311,6 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
         scheduledFlush?.cancel()
         scheduledFlush = nil
         flushing = true
-        defer {
-            flushing = false
-            if ((try? spool.pendingSampleCount()) ?? 0) > 0 {
-                scheduleFlush()
-            }
-        }
         do {
             var sealActive = true
             while let batch = try spool.nextBatch(sealActive: sealActive) {
@@ -283,29 +321,36 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
         } catch {
             AppLogger.shared.error("domain_core_shadow_upload", metadata: ["status": "retry_pending"])
         }
+        flushing = false
+        do {
+            if try spool.pendingSampleCount() > 0 {
+                scheduleFlush()
+            }
+        } catch {
+            AppLogger.shared.error("domain_core_shadow_upload", metadata: ["status": "pending_count_failed"])
+        }
     }
 }
 
 #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
 final class FirebaseDomainCoreShadowSampleSubmitter: DomainCoreShadowSampleSubmitting, @unchecked Sendable {
+    private struct SubmitResponse: Decodable {
+        let accepted: Int
+        let duplicates: Int
+    }
+
     func submit(_ samples: [DomainCoreShadowSampleV1]) async throws {
         guard FirebaseApp.app() != nil, Auth.auth().currentUser != nil else {
             throw DomainCoreShadowEvidenceError.signedOut
         }
-        let dictionaries = try samples.map { sample -> [String: Any] in
-            let data = try JSONEncoder().encode(sample)
-            guard let value = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw DomainCoreShadowEvidenceError.invalidSample
-            }
-            return value
-        }
+        let encodedSamples = try JSONEncoder().encode(samples)
+        let sampleObjects = try JSONSerialization.jsonObject(with: encodedSamples)
         let result = try await Functions.functions(region: "us-central1")
             .httpsCallable("submitDomainCoreShadowSamples")
-            .call(["samples": dictionaries])
-        guard let response = result.data as? [String: Any],
-              let accepted = response["accepted"] as? NSNumber,
-              let duplicates = response["duplicates"] as? NSNumber,
-              accepted.intValue + duplicates.intValue == samples.count else {
+            .call(["samples": sampleObjects])
+        let responseData = try JSONSerialization.data(withJSONObject: result.data)
+        let response = try JSONDecoder().decode(SubmitResponse.self, from: responseData)
+        guard response.accepted + response.duplicates == samples.count else {
             throw DomainCoreShadowEvidenceError.invalidCallableResponse
         }
     }
@@ -321,13 +366,20 @@ final class MacDomainCoreShadowEvidenceRecorder: @unchecked Sendable {
         let configured = environment["OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL"]
             ?? Bundle.main.object(forInfoDictionaryKey: "OpenBurnBarDomainCoreRolloutChannel") as? String
         self.channel = configured == "internal" || configured == "beta" ? configured : nil
-        let directory = (try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        ))?.appendingPathComponent("OpenBurnBar/DomainCoreShadow", isDirectory: true)
-        self.spool = directory.flatMap { try? DomainCoreShadowEvidenceSpool(directory: $0) }
+        let resolvedSpool: DomainCoreShadowEvidenceSpool?
+        do {
+            let directory = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            ).appendingPathComponent("OpenBurnBar/DomainCoreShadow", isDirectory: true)
+            resolvedSpool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        } catch {
+            AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "initialization_failed"])
+            resolvedSpool = nil
+        }
+        self.spool = resolvedSpool
         #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
         self.coordinator = self.spool.map {
             DomainCoreShadowEvidenceUploadCoordinator(

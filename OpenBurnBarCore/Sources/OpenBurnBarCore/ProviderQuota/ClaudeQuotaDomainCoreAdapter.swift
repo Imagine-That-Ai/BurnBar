@@ -62,8 +62,7 @@ enum ClaudeQuotaDomainCoreAdapter {
                 return (buckets, result.status == .malformed)
             }
             var rustCount = 0
-            let category = DomainCoreQuotaShadowCategory.classify(rustMeasurement.result) {
-                (rustBuckets: [ProviderQuotaBucket]) in
+            let category = DomainCoreQuotaShadowCategory.classify(rustMeasurement.result) { rustBuckets in
                 rustCount = rustBuckets.count
                 return equivalent(legacyMeasurement.value, rustBuckets)
             }

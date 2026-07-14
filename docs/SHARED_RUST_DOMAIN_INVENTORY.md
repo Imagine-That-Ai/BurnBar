@@ -21,7 +21,7 @@ consumer, contract, deletion target, or rollout state changes.
 | C# (Windows) | Claude, Codex, Cursor, Anthropic | AAD/AES/recovery/escrow subsets | No | No; injected calculator defaults to zero | No production owner |
 | Kotlin (Android) | No local provider quota parsing | Yes | Yes | No canonical catalog calculator | Yes |
 | Browser TypeScript (Console) | No | Yes, with non-extractable WebCrypto keys | No | No | Consumes encrypted search data; no duplicate native analyzer |
-| Cloud Functions TypeScript | Separate Cursor dashboard mechanism only | Zero-knowledge coordination only | Envelope validation/coordination only | Yes | Persistence/query coordination only |
+| Cloud Functions TypeScript | Separate Cursor dashboard mechanism only | Encrypted-record coordination only | Envelope validation/coordination only | Yes | Persistence/query coordination only |
 | Tauri/Linux UI | Displays daemon-produced values | No separate implementation | No separate implementation | No separate implementation | No separate implementation |
 
 Provider log parsers remain in `OpenBurnBarCore`. macOS, iOS, and Linux use that

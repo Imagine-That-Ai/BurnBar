@@ -3,23 +3,23 @@ import type * as DomainCore from "@openburnbar/domain-core-wasm";
 
 import { logWarn } from "./logging.js";
 
-export type DomainCorePricingMode = "legacy" | "shadow" | "rust";
+type DomainCorePricingMode = "legacy" | "shadow" | "rust";
 
-export type TokenPricingRates = {
+type TokenPricingRates = {
   inputPerMToken: number;
   outputPerMToken: number;
   cacheCreationPerMToken?: number;
   cacheReadPerMToken: number;
 };
 
-export type TokenPricingBuckets = {
+type TokenPricingBuckets = {
   inputTokens: number;
   outputTokens: number;
   cacheCreationTokens: number;
   cacheReadTokens: number;
 };
 
-export type LegacyKimiPricing = {
+type LegacyKimiPricing = {
   isLegacy: boolean;
   model?: string;
   totalTokens?: number;

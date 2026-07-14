@@ -283,12 +283,7 @@ object HermesRatchetCrypto {
     }
 
     private fun open(envelope: HermesRatchetEnvelope, messageKey: ByteArray, associatedData: ByteArray): ByteArray {
-        val combined =
-            decodeBase64(envelope.ciphertextBase64, "ciphertext").also {
-                if (it.size <= GCM_IV_BYTES) {
-                    throw HermesRatchetException(HermesRatchetError.INVALID_ENVELOPE, "ciphertext too short")
-                }
-            }
+        val combined = decodedCiphertext(envelope)
         return try {
             val aad = envelopeAAD(envelope.header, associatedData)
             HermesDomainCoreAdapter.openCombined(combined, messageKey, aad) {
@@ -300,13 +295,23 @@ object HermesRatchetCrypto {
                 cipher.doFinal(body)
             }
         } catch (error: GeneralSecurityException) {
-            throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)
+            authenticationFailure(error)
         } catch (error: HermesFfiException.InvalidCiphertext) {
-            throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)
+            authenticationFailure(error)
         } catch (error: HermesFfiException.AuthenticationFailed) {
-            throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)
+            authenticationFailure(error)
         }
     }
+
+    private fun decodedCiphertext(envelope: HermesRatchetEnvelope): ByteArray =
+        decodeBase64(envelope.ciphertextBase64, "ciphertext").also {
+            if (it.size <= GCM_IV_BYTES) {
+                throw HermesRatchetException(HermesRatchetError.INVALID_ENVELOPE, "ciphertext too short")
+            }
+        }
+
+    private fun authenticationFailure(error: Throwable): Nothing =
+        throw HermesRatchetException(HermesRatchetError.AUTHENTICATION_FAILED, "ratchet authentication failed", error)
 
     private fun validateHeader(header: HermesRatchetHeader, state: HermesRatchetSessionState) {
         val valid =

@@ -216,11 +216,11 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
         guard inputTokens > 0 || outputTokens > 0 else { return nil }
 
         let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-        guard let cost = try? pricing.cost(
+        guard let cost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheReadTokens: cacheReadTokens
-        ) else { return nil }
+        )) else { return nil }
 
         let usage = TokenUsage(
             provider: .copilot,
@@ -442,10 +442,10 @@ final class AiderParser: OpenBurnBarCore.LogParser, Sendable {
                 cost = session.totalCost
             } else {
                 let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-                guard let computedCost = try? pricing.cost(
+                guard let computedCost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try pricing.cost(
                     inputTokens: session.inputTokens,
                     outputTokens: session.outputTokens
-                ) else { continue }
+                )) else { continue }
                 cost = computedCost
             }
 

@@ -8,8 +8,9 @@ import {
   persistDomainCoreShadowSamples,
   storedDomainCoreShadowSample,
   storedDomainCoreShadowSampleMatches,
-  type DomainCoreShadowSampleV1,
 } from "../domainCoreShadowEvidence.js";
+
+type DomainCoreShadowSampleV1 = ReturnType<typeof parseDomainCoreShadowSampleRequest>[number];
 
 const NOW = Date.parse("2026-07-13T12:00:00.000Z");
 

@@ -92,25 +92,25 @@ class CloudVaultDomainCoreInstrumentedTest {
         val recoveryVaultKey = recovery.hex("vaultKeyHex")
         assertArrayEquals(
             recovery.hex("wrappingKeyHex"),
-            CloudVaultDomainCore.recoveryWrappingKey(recoveryKey) { error("legacy must remain lazy") },
+            CloudVaultRecoveryDomainCore.recoveryWrappingKey(recoveryKey) { error("legacy must remain lazy") },
         )
         assertEquals(
             recovery.string("verificationHash"),
-            CloudVaultDomainCore.recoveryVerificationHash(recoveryKey) { error("legacy must remain lazy") },
+            CloudVaultRecoveryDomainCore.recoveryVerificationHash(recoveryKey) { error("legacy must remain lazy") },
         )
-        val recoveryWrapped = CloudVaultDomainCore.recoveryWrapVaultKey(recoveryVaultKey, recoveryKey, recoveryNonce) {
+        val recoveryWrapped = CloudVaultRecoveryDomainCore.recoveryWrapVaultKey(recoveryVaultKey, recoveryKey, recoveryNonce) {
             error("legacy must remain lazy")
         }
         assertArrayEquals(recovery.hex("combinedHex"), recoveryWrapped.combined)
         assertArrayEquals(
             recoveryVaultKey,
-            CloudVaultDomainCore.recoveryOpenVaultKey(recoveryWrapped.combined, recoveryKey) {
+            CloudVaultRecoveryDomainCore.recoveryOpenVaultKey(recoveryWrapped.combined, recoveryKey) {
                 error("legacy must remain lazy")
             },
         )
 
         val escrow = fixture.getValue("p256Escrow").jsonObject
-        val escrowWire = CloudVaultDomainCore.escrowSeal(
+        val escrowWire = CloudVaultRecoveryDomainCore.escrowSeal(
             escrow.hex("plaintextHex"),
             escrow.hex("ephemeralPublicKeyHex"),
             escrow.hex("sharedSecretHex"),
@@ -119,7 +119,7 @@ class CloudVaultDomainCoreInstrumentedTest {
         assertArrayEquals(escrow.hex("wireHex"), escrowWire)
         assertArrayEquals(
             escrow.hex("plaintextHex"),
-            CloudVaultDomainCore.escrowOpen(escrowWire, escrow.hex("sharedSecretHex")) {
+            CloudVaultRecoveryDomainCore.escrowOpen(escrowWire, escrow.hex("sharedSecretHex")) {
                 error("legacy must remain lazy")
             },
         )
