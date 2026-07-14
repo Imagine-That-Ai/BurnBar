@@ -233,6 +233,8 @@ jobs:
         shell: bash
     env:
       VERSION: ${{ needs.resolve-release.outputs.version }}
+    outputs:
+      deletion_grade_release: ${{ steps.release-ready.outputs.enabled }}
     steps:
       - name: Check out authorized release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -556,6 +558,11 @@ jobs:
             --created-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --pub-date "$(date -u '+%a, %d %b %Y %H:%M:%S GMT')"
 
+      - name: Authorize deletion-grade release publication
+        id: release-ready
+        if: steps.config.outputs.codesign == 'true' && steps.config.outputs.updatekey == 'true'
+        run: echo "enabled=true" >> "$GITHUB_OUTPUT"
+
       - name: Upload Windows release artifacts
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
@@ -732,3 +739,177 @@ jobs:
             provenance-windows-v${{ needs.resolve-release.outputs.version }}/
           if-no-files-found: error
           retention-days: 7
+
+  # The legacy-deletion gate accepts only a public, immutable, custom-attested artifact whose
+  # signer identity is this exact workflow. Keep these attestations here rather than delegating
+  # them to a second workflow: the workflow path, tag, source SHA, and signer SHA are all pinned.
+  publish-domain-core-release-evidence:
+    name: Publish Shared Rust Windows release evidence
+    needs:
+      - resolve-release
+      - build-sign
+      - supply-chain
+    if: needs.build-sign.outputs.deletion_grade_release == 'true'
+    runs-on: ubuntu-latest
+    environment: windows-release
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.resolve-release.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+      RELEASE_TAG_REF: ${{ needs.resolve-release.outputs.tag_ref }}
+    steps:
+      - name: Check out the exact authorized release commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Revalidate immutable tag, source, and workflow identity
+        run: |
+          set -euo pipefail
+          expected_tag="windows-v${VERSION}"
+          if [[ "$GITHUB_REF" != "$RELEASE_TAG_REF" ]]; then
+            echo "::error::Windows evidence ref does not match the authorized release ref."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/tags/$expected_tag" ]]; then
+            echo "::error::Windows evidence must run from the exact authorized stable tag."
+            exit 1
+          fi
+          if [[ "$GITHUB_SHA" != "$RELEASE_COMMIT" || "$(git rev-parse HEAD)" != "$RELEASE_COMMIT" ]]; then
+            echo "::error::Windows evidence checkout does not match the authorized release commit."
+            exit 1
+          fi
+          git fetch --force --tags origin "+$RELEASE_TAG_REF:$RELEASE_TAG_REF"
+          if [[ "$(git rev-parse "$RELEASE_TAG_REF^{commit}")" != "$RELEASE_COMMIT" ]]; then
+            echo "::error::Windows release tag moved after authorization."
+            exit 1
+          fi
+          echo "RELEASE_TAG=$expected_tag" >> "$GITHUB_ENV"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Download exact signed Windows release inputs
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: windows-release-v${{ needs.resolve-release.outputs.version }}
+          path: ${{ runner.temp }}/windows-release-input
+
+      - name: Build deterministic x64 + ARM64 canonical release bundle
+        id: canonical
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/OpenBurnBar-${VERSION}-windows-release.zip"
+          python3 scripts/ci/create-windows-domain-core-release-bundle.py \
+            --source-dir "$RUNNER_TEMP/windows-release-input" \
+            --output "$artifact" \
+            --version "$VERSION" \
+            --commit "$RELEASE_COMMIT"
+          test -s "$artifact"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+
+      - name: Generate exact quota release predicate
+        id: quota-evidence
+        env:
+          ARTIFACT: ${{ steps.canonical.outputs.artifact }}
+        run: |
+          set -euo pipefail
+          predicate="$RUNNER_TEMP/OpenBurnBar-${VERSION}-windows-release-quota.predicate.json"
+          result="$RUNNER_TEMP/OpenBurnBar-${VERSION}-windows-release-quota.result.json"
+          node scripts/ci/create-domain-core-release-evidence.mjs \
+            --consumer windows \
+            --domain quota \
+            --version "$VERSION" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --artifact "$ARTIFACT" \
+            --predicate "$predicate" > "$result"
+          enabled="$(node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(String(value.enabled));' "$result")"
+          {
+            echo "enabled=$enabled"
+            echo "predicate=$predicate"
+            echo "bundle_asset=OpenBurnBar-${VERSION}-windows-release-quota.sigstore.json"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate exact CloudVault release predicate
+        id: cloudvault-evidence
+        env:
+          ARTIFACT: ${{ steps.canonical.outputs.artifact }}
+        run: |
+          set -euo pipefail
+          predicate="$RUNNER_TEMP/OpenBurnBar-${VERSION}-windows-release-cloudvault.predicate.json"
+          result="$RUNNER_TEMP/OpenBurnBar-${VERSION}-windows-release-cloudvault.result.json"
+          node scripts/ci/create-domain-core-release-evidence.mjs \
+            --consumer windows \
+            --domain cloudVault \
+            --version "$VERSION" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --artifact "$ARTIFACT" \
+            --predicate "$predicate" > "$result"
+          enabled="$(node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(String(value.enabled));' "$result")"
+          {
+            echo "enabled=$enabled"
+            echo "predicate=$predicate"
+            echo "bundle_asset=OpenBurnBar-${VERSION}-windows-release-cloudvault.sigstore.json"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Attest exact quota artifact identity
+        id: attest-quota
+        if: steps.quota-evidence.outputs.enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ steps.canonical.outputs.artifact }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.quota-evidence.outputs.predicate }}
+
+      - name: Attest exact CloudVault artifact identity
+        id: attest-cloudvault
+        if: steps.cloudvault-evidence.outputs.enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ steps.canonical.outputs.artifact }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.cloudvault-evidence.outputs.predicate }}
+
+      - name: Publish bundles first and immutable canonical artifact last
+        if: steps.quota-evidence.outputs.enabled == 'true' || steps.cloudvault-evidence.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ${{ steps.canonical.outputs.artifact }}
+          QUOTA_ENABLED: ${{ steps.quota-evidence.outputs.enabled }}
+          QUOTA_PREDICATE: ${{ steps.quota-evidence.outputs.predicate }}
+          QUOTA_BUNDLE: ${{ steps.attest-quota.outputs.bundle-path }}
+          QUOTA_BUNDLE_ASSET: ${{ steps.quota-evidence.outputs.bundle_asset }}
+          CLOUDVAULT_ENABLED: ${{ steps.cloudvault-evidence.outputs.enabled }}
+          CLOUDVAULT_PREDICATE: ${{ steps.cloudvault-evidence.outputs.predicate }}
+          CLOUDVAULT_BUNDLE: ${{ steps.attest-cloudvault.outputs.bundle-path }}
+          CLOUDVAULT_BUNDLE_ASSET: ${{ steps.cloudvault-evidence.outputs.bundle_asset }}
+        run: |
+          set -euo pipefail
+          evidence=()
+          if [[ "$QUOTA_ENABLED" == "true" ]]; then
+            evidence+=(--evidence quota "$QUOTA_PREDICATE" "$QUOTA_BUNDLE" "$QUOTA_BUNDLE_ASSET")
+          fi
+          if [[ "$CLOUDVAULT_ENABLED" == "true" ]]; then
+            evidence+=(--evidence cloudVault "$CLOUDVAULT_PREDICATE" "$CLOUDVAULT_BUNDLE" "$CLOUDVAULT_BUNDLE_ASSET")
+          fi
+          python3 scripts/ci/publish-windows-domain-core-release-evidence.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --artifact "$ARTIFACT" \
+            "${evidence[@]}"
