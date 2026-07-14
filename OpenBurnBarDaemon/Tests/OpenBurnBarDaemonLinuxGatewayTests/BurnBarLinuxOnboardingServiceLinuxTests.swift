@@ -29,6 +29,65 @@ final class BurnBarLinuxOnboardingServiceLinuxTests: XCTestCase {
                 .contains("session wallet unavailable"),
             true
         )
+        XCTAssertEqual(
+            blocked.steps.first(where: { $0.id == .secretStore })?.repairAction,
+            .unlockSecretStore
+        )
+    }
+
+    func testLinuxOptionalProbePersistsRepairAndRecoversAfterRestart() async throws {
+        let stateURL = makeStateURL()
+        let failing = BurnBarLinuxOnboardingService(
+            stateURL: stateURL,
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerPathsProbe: { "paths and first data verified" },
+            portalInputProbe: {
+                throw BurnBarLinuxOnboardingError.probeUnavailable(
+                    step: .portalInput,
+                    detail: "user denied portal consent"
+                )
+            }
+        )
+
+        _ = try await verify(.daemon, using: failing)
+        _ = try await verify(.secretStore, using: failing)
+        _ = try await verify(.providerPaths, using: failing)
+        _ = try await acknowledge(.cloudIdentity, using: failing)
+        let blocked = try await verify(.portalInput, using: failing)
+        XCTAssertEqual(blocked.currentStepID, .portalInput)
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .portalInput })?.state, .blocked)
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .portalInput })?.repairAction, .grantPortal)
+
+        let recovered = BurnBarLinuxOnboardingService(
+            stateURL: stateURL,
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerPathsProbe: { "paths and first data verified" },
+            portalInputProbe: { "portal consent read back" }
+        )
+        let resumed = try await recovered.snapshot()
+        XCTAssertEqual(resumed.steps.first(where: { $0.id == .portalInput })?.state, .blocked)
+        let verified = try await verify(.portalInput, using: recovered)
+        XCTAssertEqual(verified.steps.first(where: { $0.id == .portalInput })?.state, .verified)
+        XCTAssertEqual(verified.steps.first(where: { $0.id == .portalInput })?.attemptCount, 2)
+        XCTAssertNil(verified.steps.first(where: { $0.id == .portalInput })?.repairAction)
+    }
+
+    func testLinuxUnavailableOptionalProbeCanOnlyCompleteByExplicitSkip() async throws {
+        let service = makeService(stateURL: makeStateURL())
+        _ = try await verify(.daemon, using: service)
+        _ = try await verify(.secretStore, using: service)
+        _ = try await verify(.providerPaths, using: service)
+        _ = try await acknowledge(.cloudIdentity, using: service)
+        _ = try await acknowledge(.portalInput, using: service)
+        let blocked = try await verify(.tray, using: service)
+
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .tray })?.state, .blocked)
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .tray })?.repairAction, .enableTray)
+        let skipped = try await skip(.tray, using: service)
+        XCTAssertEqual(skipped.steps.first(where: { $0.id == .tray })?.state, .skipped)
+        XCTAssertNil(skipped.steps.first(where: { $0.id == .tray })?.repairAction)
     }
 
     func testLinuxServicePersistsPrivateStateAndResumes() async throws {
@@ -82,5 +141,32 @@ final class BurnBarLinuxOnboardingServiceLinuxTests: XCTestCase {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-linux-onboarding-\(UUID().uuidString)", isDirectory: true)
             .appendingPathComponent("state.json", isDirectory: false)
+    }
+
+    private func verify(
+        _ stepID: BurnBarLinuxOnboardingStepID,
+        using service: BurnBarLinuxOnboardingService
+    ) async throws -> BurnBarLinuxOnboardingSnapshot {
+        try await service.perform(
+            BurnBarLinuxOnboardingActionRequest(stepID: stepID, action: .verify)
+        )
+    }
+
+    private func acknowledge(
+        _ stepID: BurnBarLinuxOnboardingStepID,
+        using service: BurnBarLinuxOnboardingService
+    ) async throws -> BurnBarLinuxOnboardingSnapshot {
+        try await service.perform(
+            BurnBarLinuxOnboardingActionRequest(stepID: stepID, action: .acknowledge)
+        )
+    }
+
+    private func skip(
+        _ stepID: BurnBarLinuxOnboardingStepID,
+        using service: BurnBarLinuxOnboardingService
+    ) async throws -> BurnBarLinuxOnboardingSnapshot {
+        try await service.perform(
+            BurnBarLinuxOnboardingActionRequest(stepID: stepID, action: .skip)
+        )
     }
 }

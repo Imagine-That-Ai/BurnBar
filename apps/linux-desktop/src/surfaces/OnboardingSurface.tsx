@@ -6,6 +6,7 @@ import {
   readOnboarding,
   type LinuxOnboardingActionRequest,
   type LinuxOnboardingPrivacyChoices,
+  type LinuxOnboardingRepairAction,
   type LinuxOnboardingSnapshot
 } from '../onboardingStore.js';
 import type { ConfigSnapshot, ProviderCatalog } from '../tauriBridge.js';
@@ -13,6 +14,18 @@ import { useShellStore } from '../state/shellStore.js';
 import './onboarding.css';
 
 const OPENBURNBAR_LOGO = '/provider-logos/openburnbar.png';
+
+const REPAIR_COPY: Record<LinuxOnboardingRepairAction, string> = {
+  start_daemon: 'Start the packaged daemon, then retry the authenticated socket check.',
+  unlock_secret_store: 'Unlock Secret Service or KWallet, then retry the ephemeral readback.',
+  repair_provider_data: 'Check the XDG data directory and provider catalog, then retry first-data verification.',
+  sign_in: 'Open the native account flow and finish cloud sign-in before retrying.',
+  grant_portal: 'Approve the requested desktop portal permission, then retry the capability check.',
+  enable_tray: 'Run inside a desktop session with a supported tray host, then retry the shell check.',
+  open_updates: 'Install or select a signed package channel, then retry update verification.',
+  choose_privacy: 'Choose both privacy controls and save them through the daemon.',
+  retry: 'Retry the daemon-owned check.'
+};
 
 function isTerminal(state: LinuxOnboardingSnapshot['steps'][number]['state']): boolean {
   return state === 'verified' || state === 'acknowledged' || state === 'skipped';
@@ -395,7 +408,10 @@ export function OnboardingSurface() {
             tone={stepSnapshot.state === 'blocked' || error ? 'degraded' : 'ok'}
             role={stepSnapshot.state === 'blocked' || error ? 'alert' : 'status'}
           >
-            <span className="retry-feedback">{error ?? stepSnapshot.detail}</span>
+            <span className="retry-feedback">
+              {error ?? stepSnapshot.detail}
+              {!error && stepSnapshot.repairAction ? REPAIR_COPY[stepSnapshot.repairAction] : ''}
+            </span>
           </Banner>
         ) : null}
 
@@ -412,14 +428,24 @@ export function OnboardingSurface() {
               </button>
             ) : null}
             {step.requirement === 'optional' ? (
-              <button
-                type="button"
-                className="onboarding-btn-ghost"
-                disabled={busy}
-                onClick={() => void perform({ stepID: step.id, action: 'skip' })}
-              >
-                Skip for now
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="onboarding-btn-ghost"
+                  disabled={busy}
+                  onClick={() => void perform({ stepID: step.id, action: 'verify' })}
+                >
+                  {stepSnapshot.state === 'blocked' ? 'Retry check' : 'Check integration'}
+                </button>
+                <button
+                  type="button"
+                  className="onboarding-btn-ghost"
+                  disabled={busy}
+                  onClick={() => void perform({ stepID: step.id, action: 'skip' })}
+                >
+                  Skip for now
+                </button>
+              </>
             ) : null}
           </div>
           <button type="button" className="onboarding-btn-primary" disabled={busy} onClick={advance}>

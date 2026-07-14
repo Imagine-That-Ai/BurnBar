@@ -10,6 +10,7 @@ public enum BurnBarLinuxOnboardingError: Error, LocalizedError, Equatable {
     )
     case invalidPrivacyChoices
     case invalidPersistedState(String)
+    case probeUnavailable(step: BurnBarLinuxOnboardingStepID, detail: String)
     case secretStoreUnavailable(String)
     case providerPathsUnavailable(String)
 
@@ -23,6 +24,8 @@ public enum BurnBarLinuxOnboardingError: Error, LocalizedError, Equatable {
             return "Choose both telemetry and cloud-sync preferences before continuing."
         case .invalidPersistedState(let detail):
             return "The daemon-owned onboarding state is invalid: \(detail)"
+        case .probeUnavailable(let step, let detail):
+            return "The \(step.rawValue) onboarding probe is unavailable: \(detail)"
         case .secretStoreUnavailable(let detail):
             return "Secret Service verification failed: \(detail)"
         case .providerPathsUnavailable(let detail):
@@ -51,6 +54,7 @@ public actor BurnBarLinuxOnboardingService {
     private let daemonProbe: Probe
     private let secretStoreProbe: Probe
     private let providerPathsProbe: Probe
+    private let optionalProbes: [BurnBarLinuxOnboardingStepID: Probe]
     private let configStore: BurnBarConfigStore?
 
     public init(
@@ -62,6 +66,10 @@ public actor BurnBarLinuxOnboardingService {
         },
         secretStoreProbe: @escaping Probe = BurnBarLinuxOnboardingService.verifyProductionSecretStore,
         providerPathsProbe: Probe? = nil,
+        cloudIdentityProbe: Probe? = nil,
+        portalInputProbe: Probe? = nil,
+        trayProbe: Probe? = nil,
+        updatesProbe: Probe? = nil,
         configStore: BurnBarConfigStore? = nil
     ) {
         self.stateURL = stateURL
@@ -70,6 +78,32 @@ public actor BurnBarLinuxOnboardingService {
         self.daemonProbe = daemonProbe
         self.secretStoreProbe = secretStoreProbe
         self.configStore = configStore
+        var optionalProbes: [BurnBarLinuxOnboardingStepID: Probe] = [:]
+        optionalProbes[.cloudIdentity] = cloudIdentityProbe ?? {
+            throw BurnBarLinuxOnboardingError.probeUnavailable(
+                step: .cloudIdentity,
+                detail: "native cloud sign-in must be completed from the account flow"
+            )
+        }
+        optionalProbes[.portalInput] = portalInputProbe ?? {
+            throw BurnBarLinuxOnboardingError.probeUnavailable(
+                step: .portalInput,
+                detail: "portal consent is granted only by a live desktop session"
+            )
+        }
+        optionalProbes[.tray] = trayProbe ?? {
+            throw BurnBarLinuxOnboardingError.probeUnavailable(
+                step: .tray,
+                detail: "tray availability must be confirmed by the native shell"
+            )
+        }
+        optionalProbes[.updates] = updatesProbe ?? {
+            throw BurnBarLinuxOnboardingError.probeUnavailable(
+                step: .updates,
+                detail: "a signed package channel is required before update verification"
+            )
+        }
+        self.optionalProbes = optionalProbes
         self.providerPathsProbe = providerPathsProbe ?? {
             try BurnBarLinuxOnboardingService.verifyWritableDirectory(
                 stateURL.deletingLastPathComponent(),
@@ -124,6 +158,14 @@ public actor BurnBarLinuxOnboardingService {
                 probe = secretStoreProbe
             case .providerPaths:
                 probe = providerPathsProbe
+            case .cloudIdentity, .portalInput, .tray, .updates:
+                guard let optionalProbe = optionalProbes[request.stepID] else {
+                    throw BurnBarLinuxOnboardingError.probeUnavailable(
+                        step: request.stepID,
+                        detail: "no daemon probe is registered"
+                    )
+                }
+                probe = optionalProbe
             default:
                 throw BurnBarLinuxOnboardingError.invalidAction(step: request.stepID, action: request.action)
             }
@@ -137,7 +179,8 @@ public actor BurnBarLinuxOnboardingService {
                     state: .blocked,
                     attemptCount: step.attemptCount + 1,
                     detail: boundedErrorDetail(error),
-                    verifiedAt: nil
+                    verifiedAt: nil,
+                    repairAction: Self.repairAction(for: step.id)
                 )
             }
         case .acknowledge:
@@ -223,6 +266,29 @@ public actor BurnBarLinuxOnboardingService {
             step.state == .verified
         case .optional:
             step.state == .verified || step.state == .acknowledged || step.state == .skipped
+        }
+    }
+
+    private nonisolated static func repairAction(
+        for stepID: BurnBarLinuxOnboardingStepID
+    ) -> BurnBarLinuxOnboardingRepairAction {
+        switch stepID {
+        case .daemon:
+            return .startDaemon
+        case .secretStore:
+            return .unlockSecretStore
+        case .providerPaths:
+            return .repairProviderData
+        case .cloudIdentity:
+            return .signIn
+        case .portalInput:
+            return .grantPortal
+        case .tray:
+            return .enableTray
+        case .updates:
+            return .openUpdates
+        case .privacy:
+            return .choosePrivacy
         }
     }
 
@@ -312,7 +378,8 @@ public actor BurnBarLinuxOnboardingService {
             state: state,
             attemptCount: step.attemptCount + 1,
             detail: detail,
-            verifiedAt: timestamp()
+            verifiedAt: timestamp(),
+            repairAction: nil
         )
     }
 

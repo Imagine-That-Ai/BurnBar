@@ -178,6 +178,57 @@ describe('App shell', () => {
     expect(await screen.findByText('Step 2 of 8')).toBeTruthy();
   });
 
+  it('routes optional integration checks through the daemon and keeps skip explicit', async () => {
+    const base = defaultLinuxOnboardingSnapshot();
+    const initial = {
+      ...base,
+      currentStepID: 'cloud_identity' as const,
+      steps: base.steps.map((step) =>
+        ['daemon', 'secret_store', 'provider_paths'].includes(step.id)
+          ? { ...step, state: 'verified' as const, attemptCount: 1, detail: 'verified' }
+          : step
+      )
+    };
+    const afterCheck = {
+      ...initial,
+      revision: 4,
+      steps: initial.steps.map((step) =>
+        step.id === 'cloud_identity'
+          ? {
+              ...step,
+              state: 'blocked' as const,
+              attemptCount: 1,
+              detail: 'native cloud sign-in is required',
+              repairAction: 'sign_in' as const
+            }
+          : step
+      )
+    };
+    const onboardingSnapshot = vi.fn().mockResolvedValue(initial);
+    const onboardingAction = vi.fn().mockResolvedValue(afterCheck);
+    useShellStore.setState({
+      bridge: {
+        onboardingSnapshot,
+        onboardingAction,
+        onboardingReset: vi.fn()
+      } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByRole('heading', { name: 'Cloud identity & sync trust' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Check integration' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Skip for now' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check integration' }));
+
+    await waitFor(() => {
+      expect(onboardingAction).toHaveBeenCalledWith({ stepID: 'cloud_identity', action: 'verify' });
+    });
+    expect(await screen.findByText(/native cloud sign-in is required/i)).toBeTruthy();
+    expect(screen.getByText(/Open the native account flow/i)).toBeTruthy();
+  });
+
   it('stores an onboarding provider credential through the daemon without caching the secret', async () => {
     const initial = {
       ...defaultLinuxOnboardingSnapshot(),

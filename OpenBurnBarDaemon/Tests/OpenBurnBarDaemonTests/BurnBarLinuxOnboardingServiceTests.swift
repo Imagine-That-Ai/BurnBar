@@ -72,6 +72,7 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         XCTAssertEqual(blockedStep.state, .blocked)
         XCTAssertEqual(blockedStep.attemptCount, 1)
         XCTAssertEqual(blockedStep.detail?.contains("wallet locked"), true)
+        XCTAssertEqual(blockedStep.repairAction, .unlockSecretStore)
         XCTAssertEqual(blocked.currentStepID, .secretStore)
 
         let recovered = makeService(stateURL: stateURL)
@@ -81,6 +82,65 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         XCTAssertEqual(verified.steps.first(where: { $0.id == .secretStore })?.state, .verified)
         XCTAssertEqual(verified.steps.first(where: { $0.id == .secretStore })?.attemptCount, 2)
         XCTAssertEqual(verified.currentStepID, .providerPaths)
+    }
+
+    func testOptionalProbeFailurePersistsRepairAndFreshServiceCanRecover() async throws {
+        let stateURL = makeStateURL()
+        let failing = BurnBarLinuxOnboardingService(
+            stateURL: stateURL,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) },
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerPathsProbe: { "paths and first data verified" },
+            portalInputProbe: {
+                throw BurnBarLinuxOnboardingError.probeUnavailable(
+                    step: .portalInput,
+                    detail: "user denied portal consent"
+                )
+            }
+        )
+
+        _ = try await verify(.daemon, using: failing)
+        _ = try await verify(.secretStore, using: failing)
+        _ = try await verify(.providerPaths, using: failing)
+        _ = try await acknowledge(.cloudIdentity, using: failing)
+        let blocked = try await verify(.portalInput, using: failing)
+
+        XCTAssertEqual(blocked.currentStepID, .portalInput)
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .portalInput })?.state, .blocked)
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .portalInput })?.repairAction, .grantPortal)
+
+        let recovered = BurnBarLinuxOnboardingService(
+            stateURL: stateURL,
+            now: { Date(timeIntervalSince1970: 1_700_000_001) },
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerPathsProbe: { "paths and first data verified" },
+            portalInputProbe: { "portal consent read back" }
+        )
+        let resumed = try await recovered.snapshot()
+        XCTAssertEqual(resumed.steps.first(where: { $0.id == .portalInput })?.state, .blocked)
+        let verified = try await verify(.portalInput, using: recovered)
+        XCTAssertEqual(verified.steps.first(where: { $0.id == .portalInput })?.state, .verified)
+        XCTAssertEqual(verified.steps.first(where: { $0.id == .portalInput })?.attemptCount, 2)
+        XCTAssertNil(verified.steps.first(where: { $0.id == .portalInput })?.repairAction)
+    }
+
+    func testUnavailableOptionalProbeIsBlockedUntilExplicitlySkipped() async throws {
+        let service = makeService(stateURL: makeStateURL())
+        _ = try await verify(.daemon, using: service)
+        _ = try await verify(.secretStore, using: service)
+        _ = try await verify(.providerPaths, using: service)
+        _ = try await acknowledge(.cloudIdentity, using: service)
+        _ = try await acknowledge(.portalInput, using: service)
+        let blocked = try await verify(.tray, using: service)
+
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .tray })?.state, .blocked)
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .tray })?.repairAction, .enableTray)
+
+        let skipped = try await skip(.tray, using: service)
+        XCTAssertEqual(skipped.steps.first(where: { $0.id == .tray })?.state, .skipped)
+        XCTAssertNil(skipped.steps.first(where: { $0.id == .tray })?.repairAction)
     }
 
     func testFutureStepsCannotBeMutatedOrNavigatedBeforePrerequisites() async throws {
