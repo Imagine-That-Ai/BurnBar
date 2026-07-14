@@ -65,7 +65,7 @@ AES-GCM sealed storage, native Secret Service/KWallet custody, consent RPC, and
 in-app-only Composer expansion (`227d7e3c49`, `46aa7f3c91`, `6cc09bc2c0`,
 `930125a53e`, `83ef8e8edf`, `09860849c7`). These improve source parity without
 changing the 0/40 product or 0/7 environment certification state. The current
-source commit is `bd9d6a5173`; focused changed-surface UI/bridge tests and the
+source commit is `ffc0c58cd9`; focused changed-surface UI/bridge tests and the
 isolated pet/text-expansion suites are green, while the broad Vitest run remains
 a non-gating host-contention signal until it can run on a quiet Linux host.
 After the code stack is review-clean, rerun
