@@ -478,11 +478,17 @@ jobs:
       - name: Assemble signed two-architecture closure and feed
         env:
           OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
-        run: >
-          node scripts/linux-port/assemble-linux-release.mjs
-          --candidate
-          --version '${{ needs.resolve-release.outputs.version }}'
-          --channel '${{ needs.resolve-release.outputs.channel }}'
+        run: |
+          set -euo pipefail
+          args=(
+            --candidate
+            --version '${{ needs.resolve-release.outputs.version }}'
+            --channel '${{ needs.resolve-release.outputs.channel }}'
+          )
+          if [[ '${{ needs.resolve-release.outputs.channel }}' != 'stable' ]]; then
+            args+=(--allow-blocked-lifecycle)
+          fi
+          node scripts/linux-port/assemble-linux-release.mjs "${args[@]}"
 
       - name: Pre-attestation Linux release verification
         run: >

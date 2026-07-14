@@ -18,6 +18,7 @@ import { validateFeedDocument } from './lib/linux-update-feed.mjs';
 import { validateArchitectureShardSet } from './lib/linux-release-shards.mjs';
 import {
   aggregateArchitectureLifecycle,
+  isArchitectureSessionBaselineBlocked,
   validateArchitectureSessionSet
 } from './lib/linux-package-session.mjs';
 import {
@@ -29,6 +30,7 @@ import { materializeArchReleaseMetadata } from './lib/linux-arch-pkgbuild.mjs';
 const versionIndex = process.argv.indexOf('--version');
 const channelIndex = process.argv.indexOf('--channel');
 const candidate = process.argv.includes('--candidate');
+const allowBlockedLifecycle = process.argv.includes('--allow-blocked-lifecycle');
 const version = versionIndex >= 0 ? process.argv[versionIndex + 1]?.trim() : null;
 const channel = channelIndex >= 0 ? process.argv[channelIndex + 1]?.trim() : 'prerelease';
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-release'));
@@ -44,6 +46,14 @@ const dirtyEntries = rawGit.dirtyEntries.filter((entry) => {
 });
 const git = { ...rawGit, dirty: dirtyEntries.length > 0, dirtyEntries };
 const blockers = [];
+const candidateWarnings = [];
+
+if (allowBlockedLifecycle && (!candidate || channel === 'stable')) {
+  blockers.push({
+    kind: 'blocked-lifecycle-flag',
+    message: '--allow-blocked-lifecycle is permitted only for prerelease or nightly candidates.'
+  });
+}
 
 if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version ?? '')) {
   blockers.push({ kind: 'version', message: 'Assembly requires --version with strict X.Y.Z semver.' });
@@ -212,8 +222,20 @@ const architectureSessionFailures = validateArchitectureSessionSet({
   version,
   commit: git.commit
 });
-for (const message of architectureSessionFailures) {
-  blockers.push({ kind: 'architecture-session', message });
+const baselineBlocked = isArchitectureSessionBaselineBlocked({
+  manifest,
+  sessions: architectureSessions
+});
+const lifecycleWarningAllowed = allowBlockedLifecycle && baselineBlocked;
+if (architectureSessionFailures.length > 0 && !lifecycleWarningAllowed) {
+  for (const message of architectureSessionFailures) {
+    blockers.push({ kind: 'architecture-session', message });
+  }
+} else if (lifecycleWarningAllowed) {
+  candidateWarnings.push({
+    kind: 'blocked-lifecycle-baseline',
+    message: 'One or more architectures lack an older signed baseline; update, rollback, and data-preservation proof remains blocked for this non-stable candidate.'
+  });
 }
 const architectureSessionFile = path.join(smokeDir, 'architecture-sessions.json');
 writeJson(architectureSessionFile, {
@@ -229,7 +251,9 @@ writeJson(packageSmokeFile, {
   schemaVersion: 2,
   generatedAt: new Date().toISOString(),
   architectures: manifest.supportedArchitectures,
-  ...packageLifecycle
+  ...packageLifecycle,
+  promotionBlocked: lifecycleWarningAllowed || packageLifecycle.passed !== true,
+  candidateWarnings
 });
 
 let archRelease = null;
@@ -397,7 +421,8 @@ const provenance = {
     }
   } : null,
   promotionBlocked: blockers.length > 0,
-  blockers
+  blockers,
+  candidateWarnings
 };
 const provenanceFile = path.join(sidecarsDir, `OpenBurnBar-${version}-linux.provenance-predicate.json`);
 writeJson(provenanceFile, provenance);
@@ -430,7 +455,9 @@ writeJson(path.join(outDir, 'package-closure.json'), {
     updateFeed: closureRecord(feedFile),
     updateFeedSignature: closureRecord(feedSignatureFile)
   },
-  blockers
+  blockers,
+  allowBlockedLifecycle: lifecycleWarningAllowed,
+  candidateWarnings
 });
 
 writeJson(path.join(smokeDir, 'architecture-smoke-summary.json'), {

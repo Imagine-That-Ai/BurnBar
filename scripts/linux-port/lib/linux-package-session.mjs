@@ -361,6 +361,30 @@ export function validateArchitectureSessionSet({ manifest, sessions, version, co
   return [...new Set(failures)];
 }
 
+const baselineBlockedReason = /No previous same-architecture (?:Linux \.deb|Arch package) was supplied/u;
+
+/**
+ * A prerelease may be assembled before every architecture has an older signed
+ * baseline.  This is deliberately narrower than a general lifecycle bypass:
+ * startup/version proof must be green and only update/rollback/preservation
+ * may be blocked for the explicit missing-baseline reason.
+ */
+export function isArchitectureSessionBaselineBlocked({ manifest, sessions }) {
+  if (!Array.isArray(sessions) || sessions.length !== manifest.supportedArchitectures.length) return false;
+  return manifest.supportedArchitectures.every((architecture) => {
+    const session = sessions.find((candidate) => candidate?.architecture === architecture);
+    if (!session) return false;
+    for (const step of ['guiLaunch', 'daemonLaunch', 'versionReadback']) {
+      if (session.lifecycle?.[step]?.status !== 'passed') return false;
+    }
+    for (const step of ['update', 'rollback', 'dataPreservation']) {
+      const row = session.lifecycle?.[step];
+      if (row?.status !== 'blocked' || !baselineBlockedReason.test(row.reason ?? '')) return false;
+    }
+    return true;
+  });
+}
+
 export function aggregateArchitectureLifecycle({ manifest, sessions }) {
   const lifecycle = {};
   for (const step of requiredLifecycleSteps) {

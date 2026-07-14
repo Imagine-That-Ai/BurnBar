@@ -44,6 +44,18 @@ export function verifyLinuxReleaseCandidate(input) {
   } = input;
   const failures = [];
   const fail = (message, detail = {}) => failures.push({ message, ...detail });
+  const allowBlockedLifecycle = !requireParity && closure?.allowBlockedLifecycle === true;
+  if (requireParity && closure?.allowBlockedLifecycle === true) {
+    fail('promotion closure cannot carry a blocked-lifecycle candidate exception.');
+  }
+  const allowedLifecycleBlock = (step) => {
+    if (!allowBlockedLifecycle || !['update', 'rollback', 'dataPreservation'].includes(step)) return false;
+    const row = smokeSummary?.lifecycle?.[step];
+    return row?.status === 'blocked'
+      && Array.isArray(row.blockers)
+      && row.blockers.length === (manifest.supportedArchitectures?.length ?? 0)
+      && row.blockers.every((blocker) => /No previous same-architecture (?:Linux \.deb|Arch package) was supplied/u.test(blocker.reason ?? ''));
+  };
   const read = (relPath, label) => {
     const full = confinedFile(repoRoot, relPath);
     if (!full) {
@@ -298,10 +310,14 @@ export function verifyLinuxReleaseCandidate(input) {
   }
   const requiredLifecycle = ['guiLaunch', 'daemonLaunch', 'versionReadback', 'update', 'rollback', 'dataPreservation'];
   if (smokeSummary?.passed !== true || (smokeSummary?.failedCount ?? 1) !== 0) {
-    fail('package smoke summary is not green.');
+    if (!allowBlockedLifecycle || smokeSummary?.promotionBlocked !== true
+        || ['guiLaunch', 'daemonLaunch', 'versionReadback'].some((step) => smokeSummary?.lifecycle?.[step]?.status !== 'passed')
+        || ['update', 'rollback', 'dataPreservation'].some((step) => !allowedLifecycleBlock(step))) {
+      fail('package smoke summary is not green.');
+    }
   }
   for (const step of requiredLifecycle) {
-    if (smokeSummary?.lifecycle?.[step]?.status !== 'passed') {
+    if (smokeSummary?.lifecycle?.[step]?.status !== 'passed' && !allowedLifecycleBlock(step)) {
       fail(`package lifecycle proof is not passed: ${step}`);
     }
   }
