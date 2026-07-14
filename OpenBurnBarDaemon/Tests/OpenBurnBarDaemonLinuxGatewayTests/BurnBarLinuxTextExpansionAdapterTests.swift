@@ -148,8 +148,8 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
             environment: { name in ["XDG_SESSION_TYPE": "wayland", "GTK_IM_MODULE": "ibus"][name] },
             resolveExecutable: { name in name == "ibus" ? "/usr/bin/ibus" : nil },
             runCommand: { _, _ in .init(exitCode: 0) },
-            externalExpansionEnabled: true,
             manifestPath: "/tmp/engine.json",
+            externalExpansionEnabled: true,
             allowedManifestRoots: ["/trusted"],
             allowedExecutableRoots: ["/trusted"],
             trustedOwnerUIDs: [0],
@@ -383,7 +383,8 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
         } catch let error as BurnBarLinuxTextExpansionAdapter.EngineRuntimeError {
             XCTAssertEqual(error, .expansionResponseInvalid)
         }
-        XCTAssertEqual((await session.status()).state, .stopped)
+        let finalState = await session.status().state
+        XCTAssertEqual(finalState, .stopped)
     }
 
     func testExternalEngineExpansionTimeoutTerminatesSession() async throws {
@@ -417,7 +418,8 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
         } catch let error as BurnBarLinuxTextExpansionAdapter.EngineRuntimeError {
             XCTAssertEqual(error, .expansionTimedOut)
         }
-        XCTAssertEqual((await session.status()).state, .timedOut)
+        let finalState = await session.status().state
+        XCTAssertEqual(finalState, .timedOut)
     }
 
     func testExternalEngineExpansionCancellationTerminatesSession() async throws {
@@ -456,7 +458,8 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
         } catch let error as BurnBarLinuxTextExpansionAdapter.EngineRuntimeError {
             XCTAssertEqual(error, .expansionCancelled)
         }
-        XCTAssertEqual((await session.status()).state, .cancelled)
+        let finalState = await session.status().state
+        XCTAssertEqual(finalState, .cancelled)
     }
 
     func testExternalEngineHandshakeTimeoutTerminatesWithoutDiagnostics() async throws {
@@ -548,8 +551,8 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
             environment: { name in environment[name] },
             resolveExecutable: { name in executables[name] },
             runCommand: { _, _ in BurnBarLinuxTextExpansionAdapter.CommandResult(exitCode: exitCode) },
-            externalExpansionEnabled: externalExpansionEnabled,
-            manifestPath: manifestPath
+            manifestPath: manifestPath,
+            externalExpansionEnabled: externalExpansionEnabled
         )
     }
 
@@ -566,8 +569,8 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
             environment: { name in environment[name] },
             resolveExecutable: { name in executables[name] },
             runCommand: { _, _ in .init(exitCode: 0) },
-            externalExpansionEnabled: true,
             manifestPath: manifestPath,
+            externalExpansionEnabled: true,
             allowedManifestRoots: allowedRoots,
             allowedExecutableRoots: allowedRoots,
             trustedOwnerUIDs: [0],

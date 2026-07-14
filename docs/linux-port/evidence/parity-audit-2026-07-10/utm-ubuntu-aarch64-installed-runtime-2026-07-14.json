@@ -1,0 +1,45 @@
+{
+  "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
+  "capturedAt": "2026-07-14T13:07:18Z",
+  "certificationScope": "non-certifying installed runtime smoke receipt",
+  "sourceCommit": "a5485fe2383d359ba1f43efa76e96feca835ef41",
+  "environment": {
+    "vm": "OpenBurnBar Linux",
+    "utmUUID": "7923D0DD-6367-45EA-9064-152EECC1AC65",
+    "os": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME",
+    "session": "X11",
+    "ip": "192.168.64.5"
+  },
+  "installedPaths": {
+    "gui": "/usr/bin/openburnbar-linux-desktop",
+    "daemon": "/usr/local/bin/openburnbar-daemon",
+    "launcher": "/usr/libexec/openburnbar-daemon-launch"
+  },
+  "sha256": {
+    "gui": "8c1bede3064ad7a96dc8cbe8526e633b647866667491d1381bb9414749b282a7",
+    "daemon": "84d3d58416fcdb5d9fd3b3cec13e5dd36379cd7c72d6535e7ba07db3bc8c8017",
+    "launcher": "f1bc55c14523d36bba0dbf8a013abaadd4a7f1f77cfc8abe7c121dc6bdf30f9a"
+  },
+  "ownershipAndMode": "root:root 0755 for GUI, daemon, and launcher",
+  "checks": {
+    "guiLaunch": true,
+    "daemonSpawnedByTrustedLauncher": true,
+    "authenticatedDaemonReadiness": true,
+    "daemonHealthRequestsObserved": 3,
+    "daemonHealthResponseBytes": 224,
+    "runDurationSeconds": 20,
+    "normalTimeoutExit": true,
+    "daemonSIGTERMShutdown": true,
+    "temporaryRuntimeCleaned": true
+  },
+  "expectedCapabilityStates": [
+    "Mercury media socket was unavailable and reported as a capability error.",
+    "Mission notification keychain was unavailable on this Linux guest and remained fail-closed."
+  ],
+  "limitations": [
+    "This is an installed aarch64 GNOME/X11 smoke receipt, not the signed release candidate.",
+    "It does not certify OAuth, keyring round-trip, Browser Computer Use approval, Mercury two-device media, or the remaining desktop matrix."
+  ]
+}

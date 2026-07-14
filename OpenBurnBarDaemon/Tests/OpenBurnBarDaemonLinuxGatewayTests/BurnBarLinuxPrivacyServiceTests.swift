@@ -99,7 +99,7 @@ final class BurnBarLinuxPrivacyServiceTests: XCTestCase {
         let service = BurnBarLinuxPrivacyService(supportDirectory: directory)
         let inventory = await service.inventory()
         XCTAssertEqual(inventory.stores.first(where: { $0.store == .proxyRouteLog })?.state, .blocked)
-        XCTAssertThrowsError(try await service.previewDeletion(stores: [.proxyRouteLog])) {
+        await XCTAssertThrowsErrorAsync(try await service.previewDeletion(stores: [.proxyRouteLog])) {
             XCTAssertEqual($0 as? BurnBarLinuxPrivacyService.ServiceError, .unsafeFile)
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: outside.path))
@@ -118,7 +118,7 @@ final class BurnBarLinuxPrivacyServiceTests: XCTestCase {
             stores: preview.stores,
             confirmation: preview.confirmationPhrase
         )
-        XCTAssertThrowsError(
+        await XCTAssertThrowsErrorAsync(
             try await service.executeDeletion(changedRequest, now: Date(timeIntervalSince1970: 101))
         ) { XCTAssertEqual($0 as? BurnBarLinuxPrivacyService.ServiceError, .stalePreview) }
         XCTAssertEqual(try String(contentsOf: routeURL), "after")
@@ -129,7 +129,7 @@ final class BurnBarLinuxPrivacyServiceTests: XCTestCase {
             stores: expiring.stores,
             confirmation: expiring.confirmationPhrase
         )
-        XCTAssertThrowsError(
+        await XCTAssertThrowsErrorAsync(
             try await service.executeDeletion(request, now: Date(timeIntervalSince1970: 203))
         ) { XCTAssertEqual($0 as? BurnBarLinuxPrivacyService.ServiceError, .expiredPreview) }
         XCTAssertTrue(FileManager.default.fileExists(atPath: routeURL.path))
@@ -163,7 +163,14 @@ final class BurnBarLinuxPrivacyServiceTests: XCTestCase {
         XCTAssertFalse(raw.contains(routeSecret))
         XCTAssertFalse(raw.contains("sealed-expansion-secret"))
         let payload = try BurnBarLinuxPrivacyExportCrypto.open(bundle: bundle, passphrase: "correct horse battery")
-        let plaintext = String(decoding: payload, as: UTF8.self)
+        let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
+        let stores = try XCTUnwrap(envelope["stores"] as? [[String: Any]])
+        let plaintext = stores.compactMap { store -> Data? in
+            guard let encoded = store["contents"] as? String else { return nil }
+            return Data(base64Encoded: encoded)
+        }
+        .map { String(decoding: $0, as: UTF8.self) }
+        .joined()
         XCTAssertTrue(plaintext.contains(routeSecret))
         XCTAssertTrue(plaintext.contains("sealed-expansion-secret"))
     }
@@ -195,7 +202,7 @@ final class BurnBarLinuxPrivacyServiceTests: XCTestCase {
 
     func testRetentionStatusAndApplyTrimOnlyOutOfPolicyData() async throws {
         let now = Date(timeIntervalSince1970: 1_000_000)
-        let old = makeRouteEntry(id: "old", occurredAt: now.addingTimeInterval(-7_200))
+        let old = makeRouteEntry(id: "old", occurredAt: now.addingTimeInterval(-(31 * 24 * 60 * 60)))
         let fresh = makeRouteEntry(id: "fresh", occurredAt: now.addingTimeInterval(-60))
         var routeData = Data()
         routeData.append(try JSONEncoder().encode(old))
@@ -207,7 +214,7 @@ final class BurnBarLinuxPrivacyServiceTests: XCTestCase {
         try setPrivate(routeURL)
         try setPrivate(expansionURL)
         try FileManager.default.setAttributes(
-            [.modificationDate: now.addingTimeInterval(-7_200), .posixPermissions: 0o600],
+            [.modificationDate: now.addingTimeInterval(-(366 * 24 * 60 * 60)), .posixPermissions: 0o600],
             ofItemAtPath: expansionURL.path
         )
 

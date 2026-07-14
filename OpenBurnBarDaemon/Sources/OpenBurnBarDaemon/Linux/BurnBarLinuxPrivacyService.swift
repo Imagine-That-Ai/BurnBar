@@ -274,12 +274,14 @@ public actor BurnBarLinuxPrivacyService {
         _ request: DeletionRequest,
         now: Date = Date()
     ) throws -> DeletionResult {
-        purgeExpiredPreviews(now: now)
         guard var preview = pending[request.token] else { throw ServiceError.invalidToken }
         guard now <= preview.expiresAt else {
             pending.removeValue(forKey: request.token)
             throw ServiceError.expiredPreview
         }
+        // Keep the requested preview visible long enough to return the
+        // specific expiry error; then discard unrelated expired previews.
+        purgeExpiredPreviews(now: now)
         let stores = try normalizedScope(request.stores)
         guard stores == preview.stores else { throw ServiceError.scopeMismatch }
         guard request.confirmation == Self.confirmationPhrase else {
