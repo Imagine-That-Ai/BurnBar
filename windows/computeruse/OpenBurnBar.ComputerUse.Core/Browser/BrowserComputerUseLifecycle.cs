@@ -153,18 +153,9 @@ public sealed class ProcessBrowserDriver : IBrowserDriver
         }
 
         string id = "brp-" + Guid.NewGuid().ToString("N")[..12];
-        var psi = new ProcessStartInfo
-        {
-            FileName = executable.Trim(),
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        foreach (string argument in ParseArguments(Environment.GetEnvironmentVariable(ArgumentsEnv)))
-        {
-            psi.ArgumentList.Add(argument);
-        }
+        ProcessStartInfo psi = CreateStartInfo(
+            executable.Trim(),
+            Environment.GetEnvironmentVariable(ArgumentsEnv));
 
         Process process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start browser CU process.");
@@ -186,6 +177,25 @@ public sealed class ProcessBrowserDriver : IBrowserDriver
             CloseProcess(id, browser);
             throw;
         }
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(string executable, string? argumentsJson)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (string argument in ParseArguments(argumentsJson))
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return startInfo;
     }
 
     public Task NavigateAsync(string sessionId, string url, CancellationToken cancellationToken)

@@ -78,7 +78,7 @@ public sealed class ModelProxyRouter
     /// is true. This keeps an unavailable model from silently becoming a
     /// different model unless the caller explicitly opted into degradation.
     /// </summary>
-    public ModelRouteDecision SelectForModel(string model, bool allowDegrade = true)
+    public ModelRouteDecision SelectForModel(string model, bool allowDegrade = false)
     {
         if (string.IsNullOrWhiteSpace(model))
         {

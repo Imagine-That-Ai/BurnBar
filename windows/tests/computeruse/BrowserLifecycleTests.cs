@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using OpenBurnBar.ComputerUse.Core.Browser;
 using Xunit;
@@ -25,5 +27,19 @@ public sealed class BrowserLifecycleTests
         BrowserSessionResult result = await life.RunSessionAsync(new BrowserSessionRequest(""));
         Assert.False(result.Succeeded);
         Assert.Equal("start_url_required", result.Error);
+    }
+
+    [Fact]
+    public void ProcessDriver_StartInfoRedirectsJsonLineProtocolStreams()
+    {
+        ProcessStartInfo startInfo = ProcessBrowserDriver.CreateStartInfo(
+            "browser-bridge",
+            "[\"--stdio\",\"jsonl\"]");
+
+        Assert.False(startInfo.UseShellExecute);
+        Assert.True(startInfo.RedirectStandardInput);
+        Assert.True(startInfo.RedirectStandardOutput);
+        Assert.True(startInfo.RedirectStandardError);
+        Assert.Equal(new[] { "--stdio", "jsonl" }, startInfo.ArgumentList.ToArray());
     }
 }

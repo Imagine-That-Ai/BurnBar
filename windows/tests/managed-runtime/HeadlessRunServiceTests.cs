@@ -109,6 +109,32 @@ public sealed class HeadlessRunServiceTests
     }
 
     [Fact]
+    public async Task RecoverAsync_DoesNotRecoverCleanlyFailedStep()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"obb-run-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var service = new HeadlessRunService(new JsonLinesHeadlessRunJournal(path));
+            var definition = new HeadlessRunDefinition("run-failed", new[]
+            {
+                new HeadlessRunStep("compile", "compile", "payload"),
+            });
+
+            HeadlessRunResult result = await service.ExecuteAsync(
+                definition,
+                (_, _) => Task.FromResult(HeadlessRunStepResult.Fail("compiler_failed")));
+
+            Assert.Equal(HeadlessRunState.Failed, result.State);
+            Assert.Equal("compile", result.FailedStepId);
+            Assert.Empty(await service.RecoverAsync());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task JsonJournal_RejectsCorruptLines()
     {
         string path = Path.Combine(Path.GetTempPath(), $"obb-run-{Guid.NewGuid():N}.jsonl");

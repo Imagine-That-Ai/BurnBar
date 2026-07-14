@@ -131,6 +131,13 @@ public sealed class LocalHttpGatewayHostTests
             "application/json");
         HttpResponseMessage failed = await client.PostAsync("v1/chat/completions", deny);
         Assert.Equal(503, (int)failed.StatusCode);
+
+        using var omitted = new StringContent(
+            "{\"model\":\"claude\",\"messages\":[]}",
+            Encoding.UTF8,
+            "application/json");
+        HttpResponseMessage defaulted = await client.PostAsync("v1/chat/completions", omitted);
+        Assert.Equal(503, (int)defaulted.StatusCode);
     }
 
     [Fact]

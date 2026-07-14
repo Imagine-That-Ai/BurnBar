@@ -220,10 +220,8 @@ public sealed class HeadlessRunService
         foreach (IGrouping<string, HeadlessRunJournalEntry> group in entries.GroupBy(entry => entry.RunId))
         {
             bool hasTerminalEntry = group.Any(entry =>
-                entry.StepId is null
-                && entry.State is (HeadlessRunState.Succeeded
-                    or HeadlessRunState.Failed
-                    or HeadlessRunState.Cancelled));
+                (entry.State == HeadlessRunState.Succeeded && entry.StepId is null)
+                || entry.State is HeadlessRunState.Failed or HeadlessRunState.Cancelled);
             if (hasTerminalEntry || !group.Any(entry => entry.State is HeadlessRunState.Running or HeadlessRunState.Queued))
             {
                 continue;

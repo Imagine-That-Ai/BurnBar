@@ -256,8 +256,8 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
         }
 
         string model = modelElement.GetString()!;
-        bool allowDegrade = !root.TryGetProperty("openburnbar_allow_degrade", out JsonElement degrade)
-            || degrade.ValueKind != JsonValueKind.False;
+        bool allowDegrade = root.TryGetProperty("openburnbar_allow_degrade", out JsonElement degrade)
+            && degrade.ValueKind == JsonValueKind.True;
         ModelRouteDecision decision = _router.SelectForModel(model, allowDegrade);
         if (decision.FailedClosed)
         {

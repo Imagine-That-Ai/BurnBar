@@ -43,4 +43,20 @@ public sealed class ModelProxyRouterTests
         Assert.True(d.FailedClosed);
         Assert.Equal(1, router.SnapshotMetrics()["a"].Attempts);
     }
+
+    [Fact]
+    public void SelectForModel_DefaultsToFailClosedInsteadOfCrossModelDegradation()
+    {
+        var router = new ModelProxyRouter(new[]
+        {
+            new ModelRoute("fallback", "openai", "gpt", Priority: 2, Healthy: true),
+            new ModelRoute("preferred", "anthropic", "claude", Priority: 1, Healthy: false),
+        });
+
+        ModelRouteDecision decision = router.SelectForModel("claude");
+
+        Assert.True(decision.FailedClosed);
+        Assert.False(decision.Degraded);
+        Assert.Equal("preferred", decision.Route.Id);
+    }
 }
