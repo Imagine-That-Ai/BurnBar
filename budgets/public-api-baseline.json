@@ -1,0 +1,81 @@
+{
+  "note": "Per-module public-API surface counts (publicTypes = public|open struct/class/enum/protocol/actor/typealias; publicMembers = public|open func/var/let/init/subscript) for the WS-A curation modules (docs/CORE_DECOMPOSITION_PROGRAM.md, docs/API_CURATION_REPORT.md). Shrink-only ratchet: growth past a module's count (or plannedCeiling, which --update never ratchets down) fails CI; shrink is non-fatal (run scripts/debt/check-public-api-budget.sh --update to ratchet down).",
+  "modules": {
+    "OpenBurnBarKernelPlatform": {
+      "publicTypes": 62,
+      "publicMembers": 291
+    },
+    "OpenBurnBarKernelModels": {
+      "publicTypes": 438,
+      "publicMembers": 2543
+    },
+    "OpenBurnBarKernelCrypto": {
+      "publicTypes": 88,
+      "publicMembers": 593
+    },
+    "OpenBurnBarKernelContracts": {
+      "publicTypes": 435,
+      "publicMembers": 2129
+    },
+    "OpenBurnBarLogParsers": {
+      "publicTypes": 44,
+      "publicMembers": 189
+    },
+    "OpenBurnBarQuota": {
+      "publicTypes": 93,
+      "publicMembers": 201
+    },
+    "OpenBurnBarInsights": {
+      "publicTypes": 269,
+      "publicMembers": 1289
+    },
+    "OpenBurnBarUI": {
+      "publicTypes": 218,
+      "publicMembers": 1142
+    },
+    "OpenBurnBarHermes": {
+      "publicTypes": 15,
+      "publicMembers": 45
+    },
+    "OpenBurnBarPretext": {
+      "publicTypes": 14,
+      "publicMembers": 50
+    },
+    "OpenBurnBarVectorKit": {
+      "publicTypes": 49,
+      "publicMembers": 244
+    },
+    "OpenBurnBarLaunchServices": {
+      "publicTypes": 25,
+      "publicMembers": 98
+    },
+    "OpenBurnBarTextExpansion": {
+      "publicTypes": 24,
+      "publicMembers": 100
+    },
+    "OpenBurnBarSQLiteReader": {
+      "publicTypes": 6,
+      "publicMembers": 19
+    },
+    "OpenBurnBarEngine": {
+      "publicTypes": 0,
+      "publicMembers": 0
+    },
+    "OpenBurnBarMedia": {
+      "publicTypes": 85,
+      "publicMembers": 347
+    },
+    "OpenBurnBarComputerUseCore": {
+      "publicTypes": 207,
+      "publicMembers": 1013
+    },
+    "OpenBurnBarIrohRelay": {
+      "publicTypes": 48,
+      "publicMembers": 114
+    },
+    "OpenBurnBarAnalytics": {
+      "publicTypes": 13,
+      "publicMembers": 48
+    }
+  }
+}

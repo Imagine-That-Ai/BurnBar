@@ -1283,6 +1283,14 @@ jobs:
       - name: Core umbrella-imports budget (shrink-only ratchet)
         run: ./scripts/debt/check-core-umbrella-imports-budget.sh
 
+      # Phase-2 WS-A (public-API curation, docs/API_CURATION_REPORT.md): per-
+      # module {publicTypes, publicMembers} counts may only shrink; growth past
+      # a module's baseline (or plannedCeiling) fails. Reads
+      # OpenBurnBarCore/Sources + budgets/ — both present in this job's full
+      # actions/checkout.
+      - name: Public-API budget (shrink-only ratchet)
+        run: ./scripts/debt/check-public-api-budget.sh
+
       # Windows per-tree size ratchet (rooted at windows/, partitioned by
       # app/pal/native/tests). Blocking Windows check on every PR — a red
       # Windows budget fails HERE at merge time. Pure bash + python3.
