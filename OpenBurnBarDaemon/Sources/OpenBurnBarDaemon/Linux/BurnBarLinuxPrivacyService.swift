@@ -104,6 +104,11 @@ public actor BurnBarLinuxPrivacyService {
         case unsafeFile
         case stalePreview
         case deletionFailed
+        case exportTooLarge
+        case exportReadFailed
+        case exportEncodingFailed
+        case exportWriteFailed
+        case exportCrypto(BurnBarLinuxPrivacyExportCrypto.Error)
 
         public var errorDescription: String? {
             switch self {
@@ -116,6 +121,11 @@ public actor BurnBarLinuxPrivacyService {
             case .unsafeFile: return "A local privacy store failed ownership, type, or permission checks."
             case .stalePreview: return "A local privacy store changed after preview; refresh before confirming."
             case .deletionFailed: return "The daemon could not remove the approved local privacy store."
+            case .exportTooLarge: return "The selected local data is too large for a bounded privacy export."
+            case .exportReadFailed: return "The daemon could not read the selected local privacy store safely."
+            case .exportEncodingFailed: return "The daemon could not encode the selected local privacy data."
+            case .exportWriteFailed: return "The daemon could not write the encrypted privacy export."
+            case .exportCrypto(let error): return "The privacy export could not be encrypted: \(error)."
             }
         }
     }
@@ -135,6 +145,20 @@ public actor BurnBarLinuxPrivacyService {
         let fingerprints: [StoreID: FileFingerprint?]
         let expiresAt: Date
         var completed: DeletionResult?
+    }
+
+    private struct ExportPayload: Codable, Sendable {
+        let schemaVersion: Int
+        let generatedAt: Date
+        let stores: [ExportStore]
+    }
+
+    private struct ExportStore: Codable, Sendable {
+        let store: StoreID
+        let state: StoreState
+        let bytes: Int64
+        let sha256: String?
+        let contents: Data?
     }
 
     private let supportDirectory: URL
@@ -270,6 +294,95 @@ public actor BurnBarLinuxPrivacyService {
         return result
     }
 
+    /// Export only the explicitly selected allowlisted stores into a
+    /// passphrase-encrypted bundle. The renderer supplies a destination and
+    /// passphrase, but the daemon validates the path, reads the stores, and
+    /// writes the owner-only bundle without returning their contents.
+    public func export(
+        _ request: BurnBarLinuxPrivacyExportRequest,
+        now: Date = Date()
+    ) throws -> BurnBarLinuxPrivacyExportResponse {
+        let stores = try normalizedScope(request.stores)
+        let destination = try validatedExportDestination(request.destinationPath)
+        let descriptors = try stores.reduce(into: [StoreID: URL]()) { result, store in
+            result[store] = try allowlistedURL(for: store)
+        }
+
+        var exportedStores: [ExportStore] = []
+        var payloadByteCount = 0
+        for store in stores {
+            let path = descriptors[store]!
+            let entry = inventoryEntry(for: store)
+            guard entry.state != .blocked else { throw ServiceError.unsafeFile }
+            guard let before = fingerprint(at: path) else {
+                exportedStores.append(
+                    ExportStore(store: store, state: .absent, bytes: 0, sha256: nil, contents: nil)
+                )
+                continue
+            }
+            guard before.size <= Int64(BurnBarLinuxPrivacyExportCrypto.maximumPayloadByteCount) else {
+                throw ServiceError.exportTooLarge
+            }
+            let contents: Data
+            do {
+                contents = try Data(contentsOf: path, options: .mappedIfSafe)
+            } catch {
+                throw ServiceError.exportReadFailed
+            }
+            guard contents.count <= BurnBarLinuxPrivacyExportCrypto.maximumPayloadByteCount,
+                  let after = fingerprint(at: path), after == before,
+                  isSafeStoreFile(path) else {
+                throw ServiceError.stalePreview
+            }
+            payloadByteCount += contents.count
+            guard payloadByteCount <= BurnBarLinuxPrivacyExportCrypto.maximumPayloadByteCount else {
+                throw ServiceError.exportTooLarge
+            }
+            exportedStores.append(
+                ExportStore(
+                    store: store,
+                    state: .ready,
+                    bytes: Int64(contents.count),
+                    sha256: PlatformCrypto.sha256Hex(contents),
+                    contents: contents
+                )
+            )
+        }
+
+        let payload: Data
+        do {
+            payload = try JSONEncoder().encode(
+                ExportPayload(schemaVersion: 1, generatedAt: now, stores: exportedStores)
+            )
+        } catch {
+            throw ServiceError.exportEncodingFailed
+        }
+        guard payload.count <= BurnBarLinuxPrivacyExportCrypto.maximumPayloadByteCount else {
+            throw ServiceError.exportTooLarge
+        }
+        let bundle: Data
+        do {
+            bundle = try BurnBarLinuxPrivacyExportCrypto.seal(payload: payload, passphrase: request.passphrase)
+        } catch let error as BurnBarLinuxPrivacyExportCrypto.Error {
+            throw ServiceError.exportCrypto(error)
+        } catch {
+            throw ServiceError.exportCrypto(.authenticationFailed)
+        }
+        do {
+            try bundle.write(to: destination, options: .atomic)
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+        } catch {
+            try? fileManager.removeItem(at: destination)
+            throw ServiceError.exportWriteFailed
+        }
+        return BurnBarLinuxPrivacyExportResponse(
+            stores: stores,
+            destinationPath: destination.path,
+            byteCount: Int64(bundle.count),
+            formatVersion: Int(BurnBarLinuxPrivacyExportCrypto.formatVersion)
+        )
+    }
+
     private func normalizedScope(_ requested: [StoreID]) throws -> [StoreID] {
         let stores = Array(Set(requested)).sorted { $0.rawValue < $1.rawValue }
         guard stores.isEmpty == false else { throw ServiceError.emptyScope }
@@ -289,6 +402,29 @@ public actor BurnBarLinuxPrivacyService {
         } catch {
             return InventoryEntry(store: store, state: .blocked, bytes: 0, reason: "unsafe_location")
         }
+    }
+
+    private func validatedExportDestination(_ rawPath: String) throws -> URL {
+        let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false,
+              trimmed.utf8.count <= 4_096,
+              trimmed.hasPrefix("/"),
+              trimmed.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7f }) else {
+            throw ServiceError.unsafeLocation
+        }
+        let destination = URL(fileURLWithPath: trimmed).standardizedFileURL
+        guard destination.path != supportDirectory.path,
+              fileManager.fileExists(atPath: destination.path) == false,
+              pathHasNoSymlinks(destination) else {
+            throw ServiceError.unsafeLocation
+        }
+        let parent = destination.deletingLastPathComponent()
+        guard let metadata = lstatMetadata(at: parent), metadata.isDirectory,
+              metadata.ownerUID == geteuid(), metadata.mode & 0o022 == 0,
+              pathHasNoSymlinks(parent) else {
+            throw ServiceError.unsafeLocation
+        }
+        return destination
     }
 
     private func allowlistedURL(for store: StoreID) throws -> URL {

@@ -43,7 +43,8 @@ function resetStores(): void {
     busy: null,
     error: null,
     privacyMutation: { status: 'idle', message: null },
-    privacyDeletion: { status: 'idle', inventory: null, preview: null, result: null, message: null }
+    privacyDeletion: { status: 'idle', inventory: null, preview: null, result: null, message: null },
+    privacyExport: { status: 'idle', result: null, message: null }
   });
 }
 
@@ -240,6 +241,34 @@ describe('SettingsSurface', () => {
       confirmation: 'DELETE LOCAL DATA'
     }));
     expect(await screen.findByText('Selected local stores deleted.')).toBeTruthy();
+  });
+
+  it('exports selected local privacy stores through the daemon with an ephemeral passphrase', async () => {
+    const linuxPrivacyExport = vi.fn(async () => ({
+      stores: ['proxy_route_log' as const],
+      destinationPath: '/tmp/privacy-export.obb',
+      byteCount: 192,
+      formatVersion: 1
+    }));
+    useShellStore.setState({
+      bridge: bridge({ linuxPrivacyExport }),
+      fixtureMode: false
+    });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getAllByRole('button', { name: /Data & Privacy/i })[0]!);
+    const destination = screen.getByRole('textbox', { name: 'Privacy export destination path' });
+    const passphrase = screen.getByLabelText('Privacy export passphrase');
+    fireEvent.change(destination, { target: { value: '/tmp/privacy-export.obb' } });
+    fireEvent.change(passphrase, { target: { value: 'correct horse battery' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Export selected data' }));
+    await waitFor(() => expect(linuxPrivacyExport).toHaveBeenCalledWith({
+      stores: ['proxy_route_log', 'text_expansion_store'],
+      destinationPath: '/tmp/privacy-export.obb',
+      passphrase: 'correct horse battery'
+    }));
+    expect(await screen.findByText('Encrypted local privacy export written.')).toBeTruthy();
+    expect((passphrase as HTMLInputElement).value).toBe('');
   });
 
   it('shows loading skeleton without fixture', () => {

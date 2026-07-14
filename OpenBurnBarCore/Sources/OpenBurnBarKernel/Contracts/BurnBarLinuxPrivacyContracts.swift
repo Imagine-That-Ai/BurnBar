@@ -111,3 +111,41 @@ public struct BurnBarLinuxPrivacyDeletionExecuteResponse: Codable, Hashable, Sen
         self.idempotent = idempotent
     }
 }
+
+/// Daemon-owned encrypted export of the explicitly selected local privacy
+/// stores. The path and passphrase are consumed by the native daemon only;
+/// neither is persisted in the renderer or returned in diagnostics.
+public struct BurnBarLinuxPrivacyExportRequest: Codable, Hashable, Sendable {
+    public let stores: [BurnBarLinuxPrivacyStoreID]
+    public let destinationPath: String
+    public let passphrase: String
+
+    public init(
+        stores: [BurnBarLinuxPrivacyStoreID],
+        destinationPath: String,
+        passphrase: String
+    ) {
+        self.stores = stores
+        self.destinationPath = destinationPath
+        self.passphrase = passphrase
+    }
+}
+
+public struct BurnBarLinuxPrivacyExportResponse: Codable, Hashable, Sendable {
+    public let stores: [BurnBarLinuxPrivacyStoreID]
+    public let destinationPath: String
+    public let byteCount: Int64
+    public let formatVersion: Int
+
+    public init(
+        stores: [BurnBarLinuxPrivacyStoreID],
+        destinationPath: String,
+        byteCount: Int64,
+        formatVersion: Int
+    ) {
+        self.stores = stores
+        self.destinationPath = destinationPath
+        self.byteCount = byteCount
+        self.formatVersion = formatVersion
+    }
+}

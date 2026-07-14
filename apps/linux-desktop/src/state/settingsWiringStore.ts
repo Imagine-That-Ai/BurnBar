@@ -20,6 +20,8 @@ import type {
   ProxyRouteLogEntry,
   LinuxPrivacyDeletionPreview,
   LinuxPrivacyDeletionResult,
+  LinuxPrivacyExportRequest,
+  LinuxPrivacyExportResult,
   LinuxPrivacyInventory,
   LinuxPrivacyStoreID
 } from '../tauriBridge.js';
@@ -45,6 +47,12 @@ export type PrivacyDeletionState = {
   message: string | null;
 };
 
+export type PrivacyExportState = {
+  status: PrivacyMutationStatus;
+  result: LinuxPrivacyExportResult | null;
+  message: string | null;
+};
+
 export type PrivacySettingsPatch = Partial<
   Pick<ConfigSnapshot, 'telemetryEnabled' | 'privacyOptIn' | 'cloudSyncEnabled'>
 >;
@@ -62,6 +70,7 @@ export type SettingsWiringState = {
   error: string | null;
   privacyMutation: PrivacyMutationState;
   privacyDeletion: PrivacyDeletionState;
+  privacyExport: PrivacyExportState;
   loadRouteLog(): Promise<void>;
   clearRouteLog(): Promise<void>;
   loadNotifications(): Promise<void>;
@@ -71,6 +80,7 @@ export type SettingsWiringState = {
   loadPrivacyInventory(): Promise<void>;
   previewPrivacyDeletion(stores: LinuxPrivacyStoreID[]): Promise<void>;
   executePrivacyDeletion(confirmation: string): Promise<void>;
+  exportPrivacyData(request: LinuxPrivacyExportRequest): Promise<void>;
   clearPrivacyDeletionPreview(): void;
   replaceSnapshot(snapshot: ConfigSnapshot): Promise<void>;
   upsertCredentialSlot(params: {
@@ -136,6 +146,7 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
   error: null,
   privacyMutation: { status: 'idle', message: null },
   privacyDeletion: { status: 'idle', inventory: null, preview: null, result: null, message: null },
+  privacyExport: { status: 'idle', result: null, message: null },
 
   async loadRouteLog() {
     const { fixtureMode, bridge } = useShellStore.getState();
@@ -340,6 +351,23 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
       set({ busy: null, privacyDeletion: { status: 'success', inventory, preview: null, result, message: 'Selected local stores deleted.' } });
     } catch (e) {
       set({ busy: null, privacyDeletion: { ...get().privacyDeletion, status: 'error', message: message(e, 'Privacy deletion failed.') } });
+    }
+  },
+
+  async exportPrivacyData(request) {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    set({ busy: 'privacy.export', privacyExport: { status: 'pending', result: null, message: null } });
+    try {
+      if (fixtureMode) throw new Error('Privacy export requires the packaged Linux daemon.');
+      if (!bridge?.linuxPrivacyExport) throw new Error('Privacy export RPC bridge is unavailable.');
+      if (request.stores.length === 0) throw new Error('Choose at least one local store to export.');
+      if (request.destinationPath.trim().length === 0) throw new Error('Choose an export destination.');
+      if (request.passphrase.length < 8) throw new Error('Use an export passphrase of at least 8 characters.');
+      const result = await bridge.linuxPrivacyExport(request);
+      set({ busy: null, privacyExport: { status: 'success', result, message: 'Encrypted local privacy export written.' } });
+    } catch (e) {
+      const failure = message(e, 'Privacy export failed.');
+      set({ busy: null, privacyExport: { status: 'error', result: null, message: failure } });
     }
   },
 

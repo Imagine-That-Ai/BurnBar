@@ -134,6 +134,64 @@ final class BurnBarLinuxPrivacyServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: routeURL.path))
     }
 
+    func testEncryptedExportIsBoundedOwnerOnlyAndContainsNoPlaintextOnDisk() async throws {
+        let routeSecret = "route-secret-that-must-not-be-plain"
+        try Data("{\"secret\":\"\(routeSecret)\"}\n".utf8).write(to: routeURL)
+        try Data("sealed-expansion-secret".utf8).write(to: expansionURL)
+        try setPrivate(routeURL)
+        try setPrivate(expansionURL)
+        let destination = directory.appendingPathComponent("privacy-export.obb")
+        let service = BurnBarLinuxPrivacyService(supportDirectory: directory)
+        let response = try await service.export(
+            BurnBarLinuxPrivacyExportRequest(
+                stores: [.proxyRouteLog, .textExpansionStore],
+                destinationPath: destination.path,
+                passphrase: "correct horse battery"
+            ),
+            now: Date(timeIntervalSince1970: 50)
+        )
+
+        XCTAssertEqual(response.stores, [.proxyRouteLog, .textExpansionStore])
+        XCTAssertEqual(response.formatVersion, Int(BurnBarLinuxPrivacyExportCrypto.formatVersion))
+        XCTAssertEqual(response.byteCount, Int64(try Data(contentsOf: destination).count))
+        let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
+        let mode = (attributes[.posixPermissions] as? NSNumber)?.intValue
+        XCTAssertEqual(mode, 0o600)
+        let bundle = try Data(contentsOf: destination)
+        let raw = String(decoding: bundle, as: UTF8.self)
+        XCTAssertFalse(raw.contains(routeSecret))
+        XCTAssertFalse(raw.contains("sealed-expansion-secret"))
+        let payload = try BurnBarLinuxPrivacyExportCrypto.open(bundle: bundle, passphrase: "correct horse battery")
+        let plaintext = String(decoding: payload, as: UTF8.self)
+        XCTAssertTrue(plaintext.contains(routeSecret))
+        XCTAssertTrue(plaintext.contains("sealed-expansion-secret"))
+    }
+
+    func testExportRejectsUnsafeDestinationAndWeakPassphrase() async throws {
+        try Data("route".utf8).write(to: routeURL)
+        try setPrivate(routeURL)
+        let service = BurnBarLinuxPrivacyService(supportDirectory: directory)
+        let unsafe = BurnBarLinuxPrivacyExportRequest(
+            stores: [.proxyRouteLog],
+            destinationPath: "/tmp/../etc/privacy-export.obb",
+            passphrase: "correct horse battery"
+        )
+        await XCTAssertThrowsErrorAsync(try await service.export(unsafe)) {
+            XCTAssertEqual($0 as? BurnBarLinuxPrivacyService.ServiceError, .unsafeLocation)
+        }
+
+        let weak = BurnBarLinuxPrivacyExportRequest(
+            stores: [.proxyRouteLog],
+            destinationPath: directory.appendingPathComponent("weak.obb").path,
+            passphrase: "short"
+        )
+        await XCTAssertThrowsErrorAsync(try await service.export(weak)) {
+            guard case .exportCrypto(.passphraseTooShort) = $0 as? BurnBarLinuxPrivacyService.ServiceError else {
+                return XCTFail("unexpected error: \($0)")
+            }
+        }
+    }
+
     private func setPrivate(_ url: URL) throws {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }

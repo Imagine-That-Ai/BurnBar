@@ -69,6 +69,13 @@ extension BurnBarDaemonServer {
                     )
                 )
             )
+        case .linuxPrivacyExport:
+            let request = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarLinuxPrivacyExportRequest>.self,
+                from: requestData
+            )
+            let result = try await linuxPrivacyService.export(request.params)
+            return encode(BurnBarRPCResponseEnvelope(id: request.id, result: result))
         default:
             preconditionFailure("Unhandled Linux privacy RPC method: \(method.rawValue)")
         }

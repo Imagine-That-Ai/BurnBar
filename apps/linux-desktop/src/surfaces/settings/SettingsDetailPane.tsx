@@ -345,6 +345,100 @@ function PrivacyDeletionControl({ fixtureMode }: { fixtureMode: boolean }) {
   );
 }
 
+function PrivacyExportControl({ fixtureMode }: { fixtureMode: boolean }) {
+  const bridge = useShellStore((state) => state.bridge);
+  const busy = useSettingsWiringStore((state) => state.busy);
+  const exportState = useSettingsWiringStore((state) => state.privacyExport);
+  const exportPrivacyData = useSettingsWiringStore((state) => state.exportPrivacyData);
+  const [selectedStores, setSelectedStores] = useState<LinuxPrivacyStoreID[]>([
+    'proxy_route_log',
+    'text_expansion_store'
+  ]);
+  const [destinationPath, setDestinationPath] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+  const supported = !fixtureMode && typeof bridge?.linuxPrivacyExport === 'function';
+
+  if (!supported) {
+    return (
+      <SettingRow
+        iconGlyph="⇩"
+        label="Encrypted local export"
+        description="Export selected daemon-owned local privacy stores with a passphrase."
+        control={<span className="muted" role="status">Unavailable</span>}
+        readOnlyNote="The packaged daemon must expose the encrypted privacy export contract."
+      />
+    );
+  }
+
+  const disabled = Boolean(busy) || exportState.status === 'pending';
+  const canExport = selectedStores.length > 0 && destinationPath.trim().startsWith('/') && passphrase.length >= 8;
+  const toggleStore = (store: LinuxPrivacyStoreID, checked: boolean) => {
+    setSelectedStores((current) => checked
+      ? Array.from(new Set([...current, store]))
+      : current.filter((item) => item !== store));
+  };
+
+  return (
+    <>
+      <SettingRow
+        iconGlyph="⇩"
+        label="Encrypted local export"
+        description="Export selected daemon-owned local stores into a passphrase-encrypted 0600 bundle. Contents never return through the renderer bridge."
+        control={
+          <button
+            type="button"
+            className="ghost"
+            disabled={disabled || !canExport}
+            aria-busy={exportState.status === 'pending'}
+            onClick={() => {
+              const request = { stores: selectedStores, destinationPath: destinationPath.trim(), passphrase };
+              setPassphrase('');
+              void exportPrivacyData(request);
+            }}
+          >
+            {exportState.status === 'pending' ? 'Encrypting…' : 'Export selected data'}
+          </button>
+        }
+      />
+      <fieldset className="privacy-store-picker" disabled={disabled}>
+        <legend className="muted">Stores included in the encrypted export</legend>
+        {(Object.keys(PRIVACY_STORE_LABELS) as LinuxPrivacyStoreID[]).map((store) => (
+          <label key={store} className="setting-toggle">
+            <input
+              type="checkbox"
+              checked={selectedStores.includes(store)}
+              onChange={(event) => toggleStore(store, event.currentTarget.checked)}
+            />
+            <span>{PRIVACY_STORE_LABELS[store]}</span>
+          </label>
+        ))}
+      </fieldset>
+      <label className="setting-field">
+        <span>Absolute destination path</span>
+        <input
+          type="text"
+          value={destinationPath}
+          aria-label="Privacy export destination path"
+          autoComplete="off"
+          onChange={(event) => setDestinationPath(event.currentTarget.value)}
+        />
+      </label>
+      <label className="setting-field">
+        <span>Export passphrase (8+ characters)</span>
+        <input
+          type="password"
+          value={passphrase}
+          aria-label="Privacy export passphrase"
+          autoComplete="new-password"
+          onChange={(event) => setPassphrase(event.currentTarget.value)}
+        />
+      </label>
+      {exportState.status === 'success' ? <Banner tone="ok" role="status">{exportState.message}</Banner> : null}
+      {exportState.status === 'error' ? <Banner tone="degraded" role="alert">{exportState.message}</Banner> : null}
+    </>
+  );
+}
+
 function cloneConfig(config: ConfigSnapshot): ConfigSnapshot {
   return JSON.parse(JSON.stringify(config)) as ConfigSnapshot;
 }
@@ -1475,10 +1569,11 @@ export function SettingsDetailPane({
               <SettingRow
                 iconGlyph="⇩"
                 label="Full data export"
-                description="Export of transcripts, memories, credentials, and account data is not available from this Linux shell."
+                description="Full export of transcripts, memories, credentials, and account data is not available from this Linux shell."
                 control={<span className="muted" role="status">Unavailable</span>}
                 readOnlyNote="No canonical daemon export RPC for this scope. Support diagnostics export remains available below."
               />
+              <PrivacyExportControl fixtureMode={fixtureMode} />
               <PrivacyDeletionControl fixtureMode={fixtureMode} />
               <ProxyRouteRetentionControl fixtureMode={fixtureMode} />
               <SettingRow
