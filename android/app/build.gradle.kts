@@ -57,6 +57,15 @@ val domainCoreEvidenceEnabled = domainCoreProfile["evidenceEnabled"] as? Boolean
 val canonicalDomainCoreModes = domainCoreProfile["modes"].asJsonMap().mapKeys { it.key as String }.mapValues { it.value as String }
 require(canonicalDomainCoreModes.keys == domainCoreDomains.toSet()) { "Domain-core profile modes must exactly cover catalog domains" }
 require(canonicalDomainCoreModes.values.all { it in setOf("legacy", "shadow", "rust") }) { "Invalid domain-core mode" }
+val canonicalDomainCoreIdentity = mapOf(
+    "developer" to ("development" to "development"),
+    "public-production" to ("signed" to "public"),
+    "internal" to ("signed" to "internal"),
+    "beta" to ("signed" to "beta"),
+)[domainCoreProfileName] ?: error("Unknown domain-core profile identity")
+require(domainCoreAuthority == canonicalDomainCoreIdentity.first && domainCoreDistribution == canonicalDomainCoreIdentity.second) {
+    "Domain-core profile authority/distribution does not match its canonical identity"
+}
 if (domainCoreAuthority == "signed" && domainCoreDistribution == "public") {
     require(!domainCoreEvidenceEnabled && domainCoreChannel.isEmpty() && "shadow" !in canonicalDomainCoreModes.values) {
         "Public domain-core profile cannot enable evidence, rollout channel, or shadow mode"

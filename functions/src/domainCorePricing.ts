@@ -3,10 +3,7 @@ import { createRequire } from "node:module";
 import { isRecord } from "./guards.js";
 import { logWarn } from "./logging.js";
 import { resolveDomainCoreEvidenceChannel, resolveDomainCoreRuntimeMode } from "./domainCoreBuildProfile.js";
-import {
-  buildDomainCoreShadowSampleV2,
-  type DomainCoreShadowSampleV2,
-} from "./domainCoreShadowEvidence.js";
+import { buildDomainCoreShadowSampleV2, type DomainCoreShadowSampleV2 } from "./domainCoreShadowEvidence.js";
 
 type DomainCorePricingMode = "legacy" | "shadow" | "rust";
 
@@ -60,12 +57,33 @@ let unavailableLogged = false;
 let domainCore: DomainCorePricingModule | undefined;
 let rustVersion = "unknown";
 let rustLegacyKimiModel = "";
-let shadowEvidenceSink: ((sample: DomainCoreShadowSampleV2) => void) | undefined;
+type DomainCorePricingShadowEvidenceSink = (sample: DomainCoreShadowSampleV2) => unknown;
+
+let shadowEvidenceSink: DomainCorePricingShadowEvidenceSink | undefined;
+const pendingShadowEvidenceTasks = new Set<Promise<void>>();
+const pendingProductionShadowSamples: DomainCoreShadowSampleV2[] = [];
+const PRODUCTION_SHADOW_EVIDENCE_BATCH_SIZE = 100;
+let productionShadowEvidenceFlush: Promise<void> | undefined;
 
 export function configureDomainCorePricingShadowEvidenceSink(
   sink: ((sample: DomainCoreShadowSampleV2) => void) | undefined,
 ): void {
   shadowEvidenceSink = sink;
+}
+
+/** Waits for every pricing shadow-evidence write observed before the drain settles. */
+export async function flushDomainCorePricingShadowEvidence(): Promise<void> {
+  while (
+    pendingShadowEvidenceTasks.size > 0 ||
+    pendingProductionShadowSamples.length > 0 ||
+    productionShadowEvidenceFlush
+  ) {
+    const pending = [...pendingShadowEvidenceTasks];
+    if (pendingProductionShadowSamples.length > 0 || productionShadowEvidenceFlush) {
+      pending.push(flushProductionShadowSamples());
+    }
+    await Promise.all(pending);
+  }
 }
 
 export function resolveDomainCorePricingMode(environment: NodeJS.ProcessEnv = process.env): DomainCorePricingMode {
@@ -101,14 +119,30 @@ export function calculateTokenCost(
     if (!equivalent) {
       logWarn({ event: "domain_core.pricing.shadow_mismatch", core_version: rustVersion });
     }
-    recordShadowComparison("token-cost", "calculate_token_cost", equivalent, equivalent ? null : "result_mismatch", legacyMicros, rustMicros, environment);
+    recordShadowComparison(
+      "token-cost",
+      "calculate_token_cost",
+      equivalent,
+      equivalent ? null : "result_mismatch",
+      legacyMicros,
+      rustMicros,
+      environment,
+    );
     return typescript;
   } catch {
     if (mode === "shadow") {
       logWarn({ event: "domain_core.pricing.shadow_rejected", core_version: rustVersion });
       const legacyStarted = process.hrtime.bigint();
       const value = legacy();
-      recordShadowComparison("token-cost", "calculate_token_cost", false, "native_error", elapsedMicros(legacyStarted), 0, environment);
+      recordShadowComparison(
+        "token-cost",
+        "calculate_token_cost",
+        false,
+        "native_error",
+        elapsedMicros(legacyStarted),
+        0,
+        environment,
+      );
       return value;
     }
     throw new DomainCorePricingError();
@@ -149,14 +183,30 @@ export function priceLegacyKimiUsage(
     if (!equivalent) {
       logWarn({ event: "domain_core.pricing.kimi_shadow_mismatch", core_version: rustVersion });
     }
-    recordShadowComparison("legacy-kimi", "price_legacy_kimi", equivalent, equivalent ? null : "result_mismatch", legacyMicros, rustMicros, environment);
+    recordShadowComparison(
+      "legacy-kimi",
+      "price_legacy_kimi",
+      equivalent,
+      equivalent ? null : "result_mismatch",
+      legacyMicros,
+      rustMicros,
+      environment,
+    );
     return typescript;
   } catch {
     if (mode === "shadow") {
       logWarn({ event: "domain_core.pricing.kimi_shadow_rejected", core_version: rustVersion });
       const legacyStarted = process.hrtime.bigint();
       const value = legacy();
-      recordShadowComparison("legacy-kimi", "price_legacy_kimi", false, "native_error", elapsedMicros(legacyStarted), 0, environment);
+      recordShadowComparison(
+        "legacy-kimi",
+        "price_legacy_kimi",
+        false,
+        "native_error",
+        elapsedMicros(legacyStarted),
+        0,
+        environment,
+      );
       return value;
     }
     throw new DomainCorePricingError();
@@ -288,25 +338,66 @@ function recordShadowComparison(
       rustMicros,
     });
     if (shadowEvidenceSink) {
-      shadowEvidenceSink(sample);
+      trackShadowEvidenceTask(
+        Promise.resolve(shadowEvidenceSink(sample)).then(() => undefined),
+        "domain_core.pricing.shadow_evidence_rejected",
+      );
     } else if (environment.K_SERVICE || environment.FUNCTION_TARGET) {
-      persistProductionShadowSample(sample);
+      pendingProductionShadowSamples.push(sample);
     }
   } catch {
     logWarn({ event: "domain_core.pricing.shadow_evidence_rejected" });
   }
 }
 
-function persistProductionShadowSample(sample: DomainCoreShadowSampleV2): void {
-  void Promise.all([
+function trackShadowEvidenceTask(task: Promise<void>, failureEvent: string): void {
+  let tracked: Promise<void>;
+  tracked = task
+    .catch(() => {
+      logWarn({ event: failureEvent });
+    })
+    .finally(() => {
+      pendingShadowEvidenceTasks.delete(tracked);
+    });
+  pendingShadowEvidenceTasks.add(tracked);
+}
+
+function flushProductionShadowSamples(): Promise<void> {
+  if (!productionShadowEvidenceFlush) {
+    productionShadowEvidenceFlush = persistQueuedProductionShadowSamples().finally(() => {
+      productionShadowEvidenceFlush = undefined;
+    });
+  }
+  return productionShadowEvidenceFlush;
+}
+
+async function persistQueuedProductionShadowSamples(): Promise<void> {
+  let dependencies: Awaited<ReturnType<typeof loadProductionShadowDependencies>>;
+  try {
+    dependencies = await loadProductionShadowDependencies();
+  } catch {
+    const dropped = pendingProductionShadowSamples.splice(0);
+    logWarn({ event: "domain_core.pricing.shadow_evidence_persist_failed", sample_count: dropped.length });
+    return;
+  }
+  const [{ db }, { firestoreWithResilience }, { domainCoreShadowStore, persistDomainCoreShadowSamples }] = dependencies;
+  const store = domainCoreShadowStore(db);
+  while (pendingProductionShadowSamples.length > 0) {
+    const batch = pendingProductionShadowSamples.splice(0, PRODUCTION_SHADOW_EVIDENCE_BATCH_SIZE);
+    try {
+      await firestoreWithResilience("persistDomainCorePricingShadowSamples", async () => {
+        await persistDomainCoreShadowSamples(store, batch, Date.now());
+      });
+    } catch {
+      logWarn({ event: "domain_core.pricing.shadow_evidence_persist_failed", sample_count: batch.length });
+    }
+  }
+}
+
+function loadProductionShadowDependencies() {
+  return Promise.all([
     import("./adminRuntime.js"),
     import("./resilienceHelpers.js"),
-  ]).then(([{ db }, { firestoreWithResilience }]) =>
-    firestoreWithResilience("persistDomainCorePricingShadowSample", async () => {
-      const { domainCoreShadowStore, persistDomainCoreShadowSamples } = await import("./domainCoreShadowEvidence.js");
-      await persistDomainCoreShadowSamples(domainCoreShadowStore(db), [sample], Date.now());
-    }),
-  ).catch(() => {
-    logWarn({ event: "domain_core.pricing.shadow_evidence_persist_failed" });
-  });
+    import("./domainCoreShadowEvidence.js"),
+  ] as const);
 }

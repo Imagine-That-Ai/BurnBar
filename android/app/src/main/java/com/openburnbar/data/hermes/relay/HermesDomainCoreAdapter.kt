@@ -9,6 +9,7 @@ import uniffi.openburnbar_domain_ffi.domainCoreVersion
 import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
 import uniffi.openburnbar_domain_ffi.hermesHkdfSha256
 import uniffi.openburnbar_domain_ffi.hermesHmacSha256
+import uniffi.openburnbar_domain_ffi.hermesHpkeV3Info
 import uniffi.openburnbar_domain_ffi.hermesKeyWrapInfoV1
 import uniffi.openburnbar_domain_ffi.hermesKeyWrapInfoV2
 import uniffi.openburnbar_domain_ffi.hermesOpenBase64
@@ -60,6 +61,8 @@ internal object HermesDomainCoreAdapter {
         selectBytes("key_wrap_info_v2", legacy) {
             hermesKeyWrapInfoV2(aad, enc, recipient, sender)
         }
+
+    fun hpkeV3Info(aad: ByteArray, legacy: () -> ByteArray): ByteArray = selectBytes("hpke_v3_info", legacy) { hermesHpkeV3Info(aad) }
 
     fun hkdf(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int, legacy: () -> ByteArray): ByteArray = selectBytes("hkdf", legacy) {
         hermesHkdfSha256(ikm, salt, info, checkedHkdfLength(length))
@@ -160,9 +163,12 @@ internal object HermesDomainCoreAdapter {
         val mode = HermesDomainCoreMode.resolve()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
         if (mode == HermesDomainCoreMode.SHADOW) {
+            val legacyStarted = System.nanoTime()
             val old = legacy()
+            val legacyMicros = elapsedMicros(legacyStarted)
             if (!nativeReady()) {
                 diagnostic(operation, "native_unavailable")
+                collect(operation, false, "native_unavailable", legacyMicros, 0)
                 return old
             }
             return selectValueWhenNativeAvailable(operation, mode, { old }, rust, equivalent)
