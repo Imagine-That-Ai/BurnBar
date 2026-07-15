@@ -27,6 +27,8 @@ import {
 } from "../lib/domain-core-release-evidence.mjs";
 
 const POSITIVE_INTEGER = /^[1-9]\d*$/u;
+const FULL_SHA = /^[0-9a-f]{40}$/u;
+const SHA256 = /^[0-9a-f]{64}$/u;
 const DEPLOYMENT_CONSUMERS = new Set(["console", "functions"]);
 
 function readJson(path, label) {
@@ -132,7 +134,7 @@ function lstatExists(path) {
   }
 }
 
-function validateDeployment(raw, consumer) {
+function validateDeployment(raw, consumer, release) {
   const value = exactObject(
     raw,
     [
@@ -142,6 +144,8 @@ function validateDeployment(raw, consumer) {
       "status",
       "healthChecks",
       "deployedArtifact",
+      "deployRun",
+      "healthArtifactSha256",
     ],
     "deployment evidence",
   );
@@ -188,6 +192,42 @@ function validateDeployment(raw, consumer) {
     throw new Error(
       `${consumer} deployment provider must be ${expectedProvider}`,
     );
+  }
+  const deployRun = exactObject(
+    value.deployRun,
+    [
+      "repository",
+      "workflowPath",
+      "runId",
+      "runAttempt",
+      "event",
+      "ref",
+      "headSha",
+      "jobSetSha256",
+    ],
+    "deployment evidence deployRun",
+  );
+  const expectedWorkflow =
+    consumer === "console"
+      ? ".github/workflows/deploy-hosting.yml"
+      : ".github/workflows/deploy-production.yml";
+  if (
+    deployRun.repository !== "Imagine-That-Ai/BurnBar" ||
+    deployRun.workflowPath !== expectedWorkflow ||
+    !Number.isSafeInteger(deployRun.runId) ||
+    deployRun.runId < 1 ||
+    !Number.isSafeInteger(deployRun.runAttempt) ||
+    deployRun.runAttempt < 1 ||
+    !new Set(["push", "workflow_dispatch"]).has(deployRun.event) ||
+    deployRun.ref !== `refs/tags/${release.tag}` ||
+    !FULL_SHA.test(deployRun.headSha) ||
+    deployRun.headSha !== release.commit ||
+    !SHA256.test(deployRun.jobSetSha256)
+  ) {
+    throw new Error("deployment run does not bind the exact release attempt");
+  }
+  if (!SHA256.test(value.healthArtifactSha256)) {
+    throw new Error("deployment health artifact must be bound by SHA-256");
   }
   return structuredClone(value);
 }
@@ -274,7 +314,7 @@ export function buildReleaseEvidence({
     }
     deploymentReceipt = {
       ...common,
-      deployment: validateDeployment(deployment, consumer),
+      deployment: validateDeployment(deployment, consumer, release),
     };
   } else {
     if (deployment)
