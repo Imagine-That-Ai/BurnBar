@@ -119,7 +119,7 @@ export function verifyFunctionsDeployRun({
     run?.repository?.full_name !== REPOSITORY ||
     run?.path !== WORKFLOW_PATH ||
     run?.head_sha !== commit ||
-    run?.head_branch !== tag ||
+    (run?.head_branch !== tag && run?.head_branch !== null) ||
     !new Set(["push", "workflow_dispatch"]).has(run?.event) ||
     (expectedEvent !== undefined && run?.event !== expectedEvent) ||
     run?.run_attempt !== runAttempt ||
