@@ -81,10 +81,11 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
         return decoded?.isEmpty == false ? decoded : nil
 #elseif os(Linux)
         do {
-            return try linuxSecretCustodian.requireHighValueSecret(
+            let secret = try linuxSecretCustodian.requireHighValueSecret(
                 id: linuxSecretID,
                 secretClass: .connectorCredential
-            ).secret
+            ).secret.trimmingCharacters(in: .whitespacesAndNewlines)
+            return secret.isEmpty ? nil : secret
         } catch LinuxSecretStoreError.missingSecret(_) {
             return nil
         }
