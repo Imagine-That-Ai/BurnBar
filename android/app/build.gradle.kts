@@ -1,8 +1,30 @@
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import java.util.Properties
+import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
+
+abstract class GenerateDomainCoreBuildProfileAsset : DefaultTask() {
+    @get:Input
+    abstract val profileJson: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val file = outputDirectory.file("domain-core-build-profile.json").get().asFile
+        file.parentFile.mkdirs()
+        file.writeText(profileJson.get())
+    }
+}
 
 plugins {
     id("com.android.application")
@@ -38,29 +60,76 @@ val openBurnBarUseDebugAppCheck =
 val openBurnBarDebugAppCheckToken =
     providers.environmentVariable("OPENBURNBAR_APP_CHECK_DEBUG_TOKEN")
         .orElse("")
-val cloudVaultSearchDomainCoreMode =
-    providers.environmentVariable("OPENBURNBAR_CLOUDVAULT_SEARCH_MODE")
-        .map { it.trim().lowercase() }
-        .map { mode -> if (mode in setOf("legacy", "shadow", "rust")) mode else "legacy" }
-        .orElse("legacy")
-val cloudVaultDocumentRewrapMode =
-    providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE")
-        .map { it.trim().lowercase() }
-        .map { mode -> if (mode in setOf("legacy", "shadow", "rust")) mode else "legacy" }
-        .orElse("legacy")
-val cloudVaultDomainCoreMode =
-    providers.environmentVariable("OPENBURNBAR_CLOUDVAULT_DOMAIN_MODE")
-        .map { it.trim().lowercase() }
-        .orElse("legacy")
+fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
+fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
 
-cloudVaultDomainCoreMode.get().also { mode ->
-    require(mode in setOf("legacy", "shadow", "rust")) {
-        "OPENBURNBAR_CLOUDVAULT_DOMAIN_MODE must be legacy, shadow, or rust"
+val domainCoreProfileCatalogFile = rootProject.projectDir.resolve("../config/domain-core-build-profiles.json")
+val domainCoreProfileCatalog = JsonSlurper().parse(domainCoreProfileCatalogFile).asJsonMap()
+require((domainCoreProfileCatalog["schemaVersion"] as? Number)?.toInt() == 1) { "Unsupported domain-core profile schema" }
+val domainCoreDomains = domainCoreProfileCatalog["domains"].asJsonList().map { it as? String ?: error("Invalid domain-core domain") }
+val domainCoreProfiles = domainCoreProfileCatalog["profiles"].asJsonMap()
+val domainCoreProfileName = providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE").orElse("developer").get()
+val domainCoreProfile = domainCoreProfiles[domainCoreProfileName].asJsonMap()
+require(domainCoreProfile.isNotEmpty()) { "Unknown domain-core build profile: $domainCoreProfileName" }
+val domainCoreAuthority = domainCoreProfile["artifactAuthority"] as? String ?: error("Missing domain-core artifact authority")
+val domainCoreDistribution = domainCoreProfile["distribution"] as? String ?: error("Missing domain-core distribution")
+val domainCoreChannel = domainCoreProfile["rolloutChannel"] as? String ?: ""
+val domainCoreEvidenceEnabled = domainCoreProfile["evidenceEnabled"] as? Boolean ?: error("Missing domain-core evidence policy")
+val canonicalDomainCoreModes = domainCoreProfile["modes"].asJsonMap().mapKeys { it.key as String }.mapValues { it.value as String }
+require(canonicalDomainCoreModes.keys == domainCoreDomains.toSet()) { "Domain-core profile modes must exactly cover catalog domains" }
+require(canonicalDomainCoreModes.values.all { it in setOf("legacy", "shadow", "rust") }) { "Invalid domain-core mode" }
+val canonicalDomainCoreIdentity = mapOf(
+    "developer" to ("development" to "development"),
+    "public-production" to ("signed" to "public"),
+    "internal" to ("signed" to "internal"),
+    "beta" to ("signed" to "beta")
+)[domainCoreProfileName] ?: error("Unknown domain-core profile identity")
+require(domainCoreAuthority == canonicalDomainCoreIdentity.first && domainCoreDistribution == canonicalDomainCoreIdentity.second) {
+    "Domain-core profile authority/distribution does not match its canonical identity"
+}
+if (domainCoreAuthority == "signed" && domainCoreDistribution == "public") {
+    require(!domainCoreEvidenceEnabled && domainCoreChannel.isEmpty() && "shadow" !in canonicalDomainCoreModes.values) {
+        "Public domain-core profile cannot enable evidence, rollout channel, or shadow mode"
+    }
+}
+if (domainCoreAuthority == "signed" && domainCoreDistribution in setOf("internal", "beta")) {
+    require(domainCoreEvidenceEnabled && domainCoreChannel == domainCoreDistribution && canonicalDomainCoreModes["quota"] == "shadow") {
+        "Internal/beta domain-core profile must enable the matching channel and quota shadow"
     }
 }
 
-fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
-fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
+fun developerDomainCoreMode(domain: String, vararg environmentKeys: String): String {
+    if (domainCoreAuthority != "development") return canonicalDomainCoreModes.getValue(domain)
+    val raw = environmentKeys.firstNotNullOfOrNull { providers.environmentVariable(it).orNull }?.trim()?.lowercase()
+    return if (raw in setOf("legacy", "shadow", "rust")) raw!! else canonicalDomainCoreModes.getValue(domain)
+}
+
+val cloudVaultSearchDomainCoreMode = developerDomainCoreMode(
+    "cloudVaultSearch",
+    "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE",
+    "OPENBURNBAR_CLOUDVAULT_SEARCH_MODE"
+)
+val cloudVaultDocumentRewrapMode = developerDomainCoreMode("cloudVaultRewrap", "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE")
+val cloudVaultDomainCoreMode = developerDomainCoreMode(
+    "cloudVault",
+    "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE",
+    "OPENBURNBAR_CLOUDVAULT_DOMAIN_MODE"
+)
+val hermesDomainCoreMode = developerDomainCoreMode("hermes", "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE")
+val generatedDomainCoreProfileAssetsDir = layout.buildDirectory.dir("generated/domainCoreProfile/assets")
+val resolvedDomainCoreProfileArtifact = mapOf(
+    "schemaVersion" to 1,
+    "name" to domainCoreProfileName,
+    "artifactAuthority" to domainCoreAuthority,
+    "distribution" to domainCoreDistribution,
+    "rolloutChannel" to domainCoreChannel.ifEmpty { null },
+    "evidenceEnabled" to domainCoreEvidenceEnabled,
+    "modes" to canonicalDomainCoreModes
+)
+val generateDomainCoreBuildProfileAsset = tasks.register<GenerateDomainCoreBuildProfileAsset>("generateDomainCoreBuildProfileAsset") {
+    profileJson.set(JsonOutput.prettyPrint(JsonOutput.toJson(resolvedDomainCoreProfileArtifact)) + "\n")
+    outputDirectory.set(generatedDomainCoreProfileAssetsDir)
+}
 
 /**
  * Resolve a build-time secret/config value from the environment first, then the
@@ -87,7 +156,13 @@ fun resolveAmplitudeConfig(envVar: String, localPropertyKey: String): String {
 gradle.taskGraph.whenReady {
     val releaseTask =
         allTasks.firstOrNull { task ->
-            task.path.startsWith("${project.path}:") && task.name.contains("Release")
+            val artifactTask =
+                listOf("assemble", "bundle", "package", "install").any(task.name::startsWith) &&
+                    task.name.endsWith("Release")
+            val distributionTask =
+                listOf("publish", "upload").any(task.name::startsWith) && task.name.contains("Release")
+            task.path.startsWith("${project.path}:") &&
+                (artifactTask || distributionTask)
         }
     if (releaseTask != null) {
         if (openBurnBarUseDebugAppCheck.get()) {
@@ -100,6 +175,12 @@ gradle.taskGraph.whenReady {
             throw GradleException(
                 "OPENBURNBAR_APP_CHECK_DEBUG_TOKEN is forbidden for Android release variant task ${releaseTask.path}. " +
                     "Unset it before assembling, bundling, signing, or uploading a release artifact."
+            )
+        }
+        if (domainCoreAuthority != "signed") {
+            throw GradleException(
+                "Android release artifact task ${releaseTask.path} requires " +
+                    "OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE to resolve to a signed profile"
             )
         }
     }
@@ -154,14 +235,22 @@ android {
         buildConfigField(
             "String",
             "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE",
-            "\"" + cloudVaultSearchDomainCoreMode.get() + "\""
+            "\"$cloudVaultSearchDomainCoreMode\""
         )
         buildConfigField(
             "String",
             "CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE",
-            "\"" + cloudVaultDocumentRewrapMode.get() + "\""
+            "\"$cloudVaultDocumentRewrapMode\""
         )
-        buildConfigField("String", "CLOUDVAULT_DOMAIN_CORE_MODE", "\"" + cloudVaultDomainCoreMode.get() + "\"")
+        buildConfigField("String", "CLOUDVAULT_DOMAIN_CORE_MODE", "\"$cloudVaultDomainCoreMode\"")
+        buildConfigField("String", "HERMES_DOMAIN_CORE_MODE", "\"$hermesDomainCoreMode\"")
+        buildConfigField("String", "QUOTA_DOMAIN_CORE_MODE", "\"${canonicalDomainCoreModes.getValue("quota")}\"")
+        buildConfigField("String", "PRICING_DOMAIN_CORE_MODE", "\"${canonicalDomainCoreModes.getValue("pricing")}\"")
+        buildConfigField("String", "DOMAIN_CORE_BUILD_PROFILE", "\"$domainCoreProfileName\"")
+        buildConfigField("String", "DOMAIN_CORE_BUILD_AUTHORITY", "\"$domainCoreAuthority\"")
+        buildConfigField("String", "DOMAIN_CORE_DISTRIBUTION", "\"$domainCoreDistribution\"")
+        buildConfigField("String", "DOMAIN_CORE_ROLLOUT_CHANNEL", "\"$domainCoreChannel\"")
+        buildConfigField("boolean", "DOMAIN_CORE_EVIDENCE_ENABLED", domainCoreEvidenceEnabled.toString())
 
         // Sentry DSN injected at build time — empty string disables Sentry.
         // CI sets OPENBURNBAR_ANDROID_SENTRY_DSN from the GitHub secret.
@@ -260,6 +349,15 @@ android {
         )
         getByName("androidTest").assets.directories.add(
             rootProject.layout.projectDirectory.dir("../tests/fixtures/domain-core/cloudvault/v1").asFile.absolutePath
+        )
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            generateDomainCoreBuildProfileAsset,
+            GenerateDomainCoreBuildProfileAsset::outputDirectory
         )
     }
 }

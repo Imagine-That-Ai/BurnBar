@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 import OpenBurnBarQuota
 import os
 
@@ -16,18 +17,34 @@ enum DomainCoreShadowEvidenceError: Error {
     case signedOut
 }
 
-struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
-    static let schemaVersion = 1
+struct DomainCoreShadowSampleV2: Codable, Equatable, Sendable {
+    static let schemaVersion = 2
     static let allowedOperations = Set([
         "claude_quota",
         "codex_quota",
         "cursor_quota",
         "anthropic_quota"
     ])
+    static let requiredCoverage: [String: [String: Set<String>]] = [
+        "quota": [
+            "claude": ["apple"], "codex": ["apple"],
+            "cursor": ["apple"], "anthropic": ["apple"]
+        ],
+        "cloudvault": [
+            "foundation": ["apple"], "aes": ["apple"], "recovery": ["apple"],
+            "escrow": ["apple"], "document-rewrap": ["apple"], "search": ["apple"]
+        ],
+        "hermes": [
+            "aad": ["apple"], "payload-keywrap": ["apple"],
+            "hpke-info": ["apple"], "ratchet": ["apple"]
+        ],
+        "pricing": ["token-cost": ["apple"]]
+    ]
 
     let schemaVersion: Int
     let sampleId: String
     let domain: String
+    let slice: String
     let consumer: String
     let channel: String
     let operation: String
@@ -51,6 +68,7 @@ struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
         self.schemaVersion = Self.schemaVersion
         self.sampleId = UUID().uuidString.lowercased()
         self.domain = "quota"
+        self.slice = comparison.operation.replacingOccurrences(of: "_quota", with: "")
         self.consumer = "apple"
         self.channel = channel
         self.operation = comparison.operation
@@ -62,10 +80,37 @@ struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
         self.rustMicros = comparison.rustMicros
     }
 
+    init?(comparison: DomainCoreShadowComparison, channel: String) {
+        guard channel == "internal" || channel == "beta",
+              Self.requiredCoverage[comparison.domain]?[comparison.slice]?.contains("apple") == true,
+              !comparison.operation.isEmpty,
+              (comparison.outcome == "match") == (comparison.mismatchCategory == nil),
+              comparison.legacyMicros <= 600_000_000,
+              comparison.rustMicros <= 600_000_000 else {
+            return nil
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        self.schemaVersion = Self.schemaVersion
+        self.sampleId = UUID().uuidString.lowercased()
+        self.domain = comparison.domain
+        self.slice = comparison.slice
+        self.consumer = "apple"
+        self.channel = channel
+        self.operation = comparison.operation
+        self.coreVersion = comparison.coreVersion
+        self.observedAt = formatter.string(from: Date())
+        self.outcome = comparison.outcome
+        self.mismatchCategory = comparison.mismatchCategory
+        self.legacyMicros = comparison.legacyMicros
+        self.rustMicros = comparison.rustMicros
+    }
+
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion
         case sampleId
         case domain
+        case slice
         case consumer
         case channel
         case operation
@@ -82,6 +127,7 @@ struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(sampleId, forKey: .sampleId)
         try container.encode(domain, forKey: .domain)
+        try container.encode(slice, forKey: .slice)
         try container.encode(consumer, forKey: .consumer)
         try container.encode(channel, forKey: .channel)
         try container.encode(operation, forKey: .operation)
@@ -101,7 +147,7 @@ struct DomainCoreShadowSampleV1: Codable, Equatable, Sendable {
 final class DomainCoreShadowEvidenceSpool: Sendable {
     struct ReadyBatch: Sendable {
         let token: String
-        let samples: [DomainCoreShadowSampleV1]
+        let samples: [DomainCoreShadowSampleV2]
     }
 
     private let directory: URL
@@ -127,7 +173,7 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
     }
 
-    func append(_ sample: DomainCoreShadowSampleV1) throws {
+    func append(_ sample: DomainCoreShadowSampleV2) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         var line = try encoder.encode(sample)
@@ -160,22 +206,44 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
         }
     }
 
-    func nextBatch(sealActive: Bool = true) throws -> ReadyBatch? {
+    func nextBatch(sealActive: Bool = true, matchingChannel: String? = nil) throws -> ReadyBatch? {
         try fileAccess.withLockUnchecked { _ in
             if sealActive {
                 try sealActiveLocked()
             }
-            guard let url = try readyFilesLocked().first else { return nil }
-            let data = try Data(contentsOf: url)
-            let decoder = JSONDecoder()
-            let samples = try data.split(separator: 0x0A).map { line -> DomainCoreShadowSampleV1 in
-                guard !line.isEmpty else { throw DomainCoreShadowEvidenceError.invalidSample }
-                return try decoder.decode(DomainCoreShadowSampleV1.self, from: Data(line))
+            while let url = try readyFilesLocked().first {
+                let data = try Data(contentsOf: url)
+                let decoder = JSONDecoder()
+                let samples = try data.split(separator: 0x0A).map { line -> DomainCoreShadowSampleV2 in
+                    guard !line.isEmpty else { throw DomainCoreShadowEvidenceError.invalidSample }
+                    return try decoder.decode(DomainCoreShadowSampleV2.self, from: Data(line))
+                }
+                guard !samples.isEmpty, samples.count <= maxSamplesPerFile else {
+                    throw DomainCoreShadowEvidenceError.invalidSample
+                }
+                guard let matchingChannel else {
+                    return ReadyBatch(token: url.lastPathComponent, samples: samples)
+                }
+                let matchingSamples = samples.filter { $0.channel == matchingChannel }
+                if matchingSamples.isEmpty {
+                    try FileManager.default.removeItem(at: url)
+                    continue
+                }
+                return ReadyBatch(token: url.lastPathComponent, samples: matchingSamples)
             }
-            guard !samples.isEmpty, samples.count <= maxSamplesPerFile else {
-                throw DomainCoreShadowEvidenceError.invalidSample
+            return nil
+        }
+    }
+
+    func discardAll() throws {
+        try fileAccess.withLockUnchecked { _ in
+            let ready = try readyFilesLocked()
+            for url in ready {
+                try FileManager.default.removeItem(at: url)
             }
-            return ReadyBatch(token: url.lastPathComponent, samples: samples)
+            if FileManager.default.fileExists(atPath: activeURL.path) {
+                try FileManager.default.removeItem(at: activeURL)
+            }
         }
     }
 
@@ -269,12 +337,13 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
 }
 
 protocol DomainCoreShadowSampleSubmitting: Sendable {
-    func submit(_ samples: [DomainCoreShadowSampleV1]) async throws
+    func submit(_ samples: [DomainCoreShadowSampleV2]) async throws
 }
 
 actor DomainCoreShadowEvidenceUploadCoordinator {
     private let spool: DomainCoreShadowEvidenceSpool
     private let submitter: any DomainCoreShadowSampleSubmitting
+    private let activeChannel: String
     private var flushing = false
     private var scheduledFlush: Task<Void, Never>?
     private let debounceNanoseconds: UInt64
@@ -282,10 +351,13 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
     init(
         spool: DomainCoreShadowEvidenceSpool,
         submitter: any DomainCoreShadowSampleSubmitting,
+        activeChannel: String,
         debounceNanoseconds: UInt64 = 5_000_000_000
     ) {
+        precondition(activeChannel == "internal" || activeChannel == "beta")
         self.spool = spool
         self.submitter = submitter
+        self.activeChannel = activeChannel
         self.debounceNanoseconds = debounceNanoseconds
     }
 
@@ -314,7 +386,7 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
         flushing = true
         do {
             var sealActive = true
-            while let batch = try spool.nextBatch(sealActive: sealActive) {
+            while let batch = try spool.nextBatch(sealActive: sealActive, matchingChannel: activeChannel) {
                 sealActive = false
                 try await submitter.submit(batch.samples)
                 try spool.acknowledge(batch.token)
@@ -340,7 +412,7 @@ final class FirebaseDomainCoreShadowSampleSubmitter: DomainCoreShadowSampleSubmi
         let duplicates: Int
     }
 
-    func submit(_ samples: [DomainCoreShadowSampleV1]) async throws {
+    func submit(_ samples: [DomainCoreShadowSampleV2]) async throws {
         guard FirebaseApp.app() != nil, Auth.auth().currentUser != nil else {
             throw DomainCoreShadowEvidenceError.signedOut
         }
@@ -364,14 +436,13 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
     private let coordinator: DomainCoreShadowEvidenceUploadCoordinator?
 
     init(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
+        profile: DomainCoreBuildProfile = DomainCoreBuildProfileResolver.current(),
         directory: URL? = nil,
         submitter: (any DomainCoreShadowSampleSubmitting)? = nil,
         debounceNanoseconds: UInt64 = 5_000_000_000
     ) {
-        let configured = environment["OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL"]
-            ?? Bundle.main.object(forInfoDictionaryKey: "OpenBurnBarDomainCoreRolloutChannel") as? String
-        self.channel = configured == "internal" || configured == "beta" ? configured : nil
+        let resolvedChannel = profile.isValid && profile.evidenceEnabled ? profile.rolloutChannel : nil
+        self.channel = resolvedChannel
         let resolvedSpool: DomainCoreShadowEvidenceSpool?
         do {
             let resolvedDirectory: URL
@@ -391,21 +462,30 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
             resolvedSpool = nil
         }
         self.spool = resolvedSpool
-        if let spool = self.spool, let submitter {
+        if resolvedChannel == nil {
+            do {
+                try self.spool?.discardAll()
+            } catch {
+                AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "disabled_profile_cleanup_failed"])
+            }
+        }
+        if let resolvedChannel, let spool = resolvedSpool, let submitter {
             self.coordinator = DomainCoreShadowEvidenceUploadCoordinator(
                 spool: spool,
                 submitter: submitter,
+                activeChannel: resolvedChannel,
                 debounceNanoseconds: debounceNanoseconds
             )
         } else {
             #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
-                self.coordinator = self.spool.map {
+                self.coordinator = resolvedChannel.flatMap { activeChannel in resolvedSpool.map {
                     DomainCoreShadowEvidenceUploadCoordinator(
                         spool: $0,
                         submitter: FirebaseDomainCoreShadowSampleSubmitter(),
+                        activeChannel: activeChannel,
                         debounceNanoseconds: debounceNanoseconds
-                )
-            }
+                    )
+                } }
             #else
             self.coordinator = nil
             #endif
@@ -413,11 +493,29 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
         if let coordinator {
             Task { await coordinator.flush() }
         }
+        DomainCoreShadowComparisonCollector.configure { [weak self] comparison in
+            self?.record(comparison)
+        }
     }
 
     func record(_ comparison: DomainCoreQuotaShadowComparison) {
         guard let channel, let spool,
-              let sample = DomainCoreShadowSampleV1(comparison: comparison, channel: channel) else {
+              let sample = DomainCoreShadowSampleV2(comparison: comparison, channel: channel) else {
+            return
+        }
+        do {
+            try spool.append(sample)
+            if let coordinator {
+                Task { await coordinator.scheduleFlush() }
+            }
+        } catch {
+            AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "append_failed"])
+        }
+    }
+
+    private func record(_ comparison: DomainCoreShadowComparison) {
+        guard let channel, let spool,
+              let sample = DomainCoreShadowSampleV2(comparison: comparison, channel: channel) else {
             return
         }
         do {

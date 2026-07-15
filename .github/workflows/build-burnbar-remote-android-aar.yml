@@ -145,12 +145,20 @@ jobs:
         run: ./gradlew :burnbar-remote:assembleDebugAndroidTest --no-daemon --stacktrace
         working-directory: android
 
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Execute committed AAR smoke on x86_64 emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
+          disk-size: 4G
           script: cd android && ./gradlew :burnbar-remote:connectedDebugAndroidTest --no-daemon --stacktrace
 
       - name: Build host UniFFI library for JVM smoke

@@ -1,0 +1,30 @@
+<Project>
+  <Import Project="$(DomainCoreBuildProfileProps)"
+          Condition="'$(DomainCoreBuildProfileProps)' != '' and Exists('$(DomainCoreBuildProfileProps)')" />
+  <PropertyGroup>
+    <DomainCoreBuildProfile Condition="'$(DomainCoreBuildProfile)' == ''">developer</DomainCoreBuildProfile>
+    <DomainCoreBuildAuthority Condition="'$(DomainCoreBuildAuthority)' == ''">development</DomainCoreBuildAuthority>
+    <DomainCoreDistribution Condition="'$(DomainCoreDistribution)' == ''">development</DomainCoreDistribution>
+    <DomainCoreRolloutChannel Condition="'$(DomainCoreRolloutChannel)' == ''"></DomainCoreRolloutChannel>
+    <DomainCoreEvidenceEnabled Condition="'$(DomainCoreEvidenceEnabled)' == ''">false</DomainCoreEvidenceEnabled>
+    <DomainCoreQuotaMode Condition="'$(DomainCoreQuotaMode)' == ''">legacy</DomainCoreQuotaMode>
+    <DomainCoreCloudVaultMode Condition="'$(DomainCoreCloudVaultMode)' == ''">legacy</DomainCoreCloudVaultMode>
+    <DomainCoreCloudVaultRewrapMode Condition="'$(DomainCoreCloudVaultRewrapMode)' == ''">legacy</DomainCoreCloudVaultRewrapMode>
+    <DomainCoreCloudVaultSearchMode Condition="'$(DomainCoreCloudVaultSearchMode)' == ''">legacy</DomainCoreCloudVaultSearchMode>
+    <DomainCoreHermesMode Condition="'$(DomainCoreHermesMode)' == ''">legacy</DomainCoreHermesMode>
+    <DomainCorePricingMode Condition="'$(DomainCorePricingMode)' == ''">legacy</DomainCorePricingMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.BuildProfile" Value="$(DomainCoreBuildProfile)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.BuildAuthority" Value="$(DomainCoreBuildAuthority)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Distribution" Value="$(DomainCoreDistribution)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.RolloutChannel" Value="$(DomainCoreRolloutChannel)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.EvidenceEnabled" Value="$(DomainCoreEvidenceEnabled)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.quota" Value="$(DomainCoreQuotaMode)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.cloudVault" Value="$(DomainCoreCloudVaultMode)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.cloudVaultRewrap" Value="$(DomainCoreCloudVaultRewrapMode)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.cloudVaultSearch" Value="$(DomainCoreCloudVaultSearchMode)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.hermes" Value="$(DomainCoreHermesMode)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.pricing" Value="$(DomainCorePricingMode)" />
+  </ItemGroup>
+</Project>

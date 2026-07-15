@@ -1,8 +1,71 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "domains": {
     "quota": {
-      "requiredConsumers": ["apple", "windows"],
+      "requiredCoverage": [
+        { "slice": "claude", "consumer": "apple" },
+        { "slice": "claude", "consumer": "windows" },
+        { "slice": "codex", "consumer": "apple" },
+        { "slice": "codex", "consumer": "windows" },
+        { "slice": "cursor", "consumer": "apple" },
+        { "slice": "cursor", "consumer": "windows" },
+        { "slice": "anthropic", "consumer": "apple" },
+        { "slice": "anthropic", "consumer": "windows" }
+      ],
+      "allowedChannels": ["internal", "beta"],
+      "minimumCoverageSeconds": 1209600,
+      "minimumSamples": 10000,
+      "maximumP95RegressionBasisPoints": 500
+    },
+    "cloudvault": {
+      "requiredCoverage": [
+        { "slice": "foundation", "consumer": "apple" },
+        { "slice": "foundation", "consumer": "android" },
+        { "slice": "foundation", "consumer": "windows" },
+        { "slice": "foundation", "consumer": "console" },
+        { "slice": "aes", "consumer": "apple" },
+        { "slice": "aes", "consumer": "android" },
+        { "slice": "aes", "consumer": "windows" },
+        { "slice": "aes", "consumer": "console" },
+        { "slice": "recovery", "consumer": "apple" },
+        { "slice": "recovery", "consumer": "android" },
+        { "slice": "recovery", "consumer": "windows" },
+        { "slice": "escrow", "consumer": "apple" },
+        { "slice": "escrow", "consumer": "android" },
+        { "slice": "escrow", "consumer": "windows" },
+        { "slice": "escrow", "consumer": "console" },
+        { "slice": "document-rewrap", "consumer": "apple" },
+        { "slice": "document-rewrap", "consumer": "android" },
+        { "slice": "search", "consumer": "apple" },
+        { "slice": "search", "consumer": "android" }
+      ],
+      "allowedChannels": ["internal", "beta"],
+      "minimumCoverageSeconds": 1209600,
+      "minimumSamples": 10000,
+      "maximumP95RegressionBasisPoints": 500
+    },
+    "hermes": {
+      "requiredCoverage": [
+        { "slice": "aad", "consumer": "apple" },
+        { "slice": "aad", "consumer": "android" },
+        { "slice": "payload-keywrap", "consumer": "apple" },
+        { "slice": "payload-keywrap", "consumer": "android" },
+        { "slice": "hpke-info", "consumer": "apple" },
+        { "slice": "hpke-info", "consumer": "android" },
+        { "slice": "ratchet", "consumer": "apple" },
+        { "slice": "ratchet", "consumer": "android" }
+      ],
+      "allowedChannels": ["internal", "beta"],
+      "minimumCoverageSeconds": 1209600,
+      "minimumSamples": 10000,
+      "maximumP95RegressionBasisPoints": 500
+    },
+    "pricing": {
+      "requiredCoverage": [
+        { "slice": "token-cost", "consumer": "apple" },
+        { "slice": "token-cost", "consumer": "functions" },
+        { "slice": "legacy-kimi", "consumer": "functions" }
+      ],
       "allowedChannels": ["internal", "beta"],
       "minimumCoverageSeconds": 1209600,
       "minimumSamples": 10000,

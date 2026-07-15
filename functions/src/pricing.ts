@@ -9,10 +9,9 @@
  * price change fails CI instead of silently drifting historical recomputes.
  */
 
-import {
-  calculateTokenCost,
-  priceLegacyKimiUsage,
-} from "./domainCorePricing.js";
+import { calculateTokenCost, flushDomainCorePricingShadowEvidence, priceLegacyKimiUsage } from "./domainCorePricing.js";
+
+export { flushDomainCorePricingShadowEvidence };
 
 type TokenPricingRates = Parameters<typeof calculateTokenCost>[0];
 type TokenPricingBuckets = Parameters<typeof calculateTokenCost>[1];

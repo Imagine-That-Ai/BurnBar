@@ -241,6 +241,7 @@ jobs:
           {
             cat "$PROD_CONFIG"
             echo ""
+            node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env
             echo "FUNCTION_VERSION=${TAG}"
             echo "OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT}"
             echo "SENTRY_DSN=${SENTRY_DSN}"

@@ -24,7 +24,7 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
         Assert.Equal(new[]
         {
             "channel", "consumer", "coreVersion", "domain", "legacyMicros", "mismatchCategory",
-            "observedAt", "operation", "outcome", "rustMicros", "sampleId", "schemaVersion",
+            "observedAt", "operation", "outcome", "rustMicros", "sampleId", "schemaVersion", "slice",
         }, keys);
         Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("mismatchCategory").ValueKind);
         Assert.DoesNotContain("uid", json, StringComparison.OrdinalIgnoreCase);
@@ -97,6 +97,7 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
                 uploaded.SetResult();
                 return Task.CompletedTask;
             },
+            "internal",
             TimeSpan.FromSeconds(5),
             ControlledDelay);
 
@@ -121,15 +122,43 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
         Assert.Equal(0, spool.PendingSampleCount());
     }
 
+    [Fact]
+    public void ChannelTransitionDropsStaleSamplesAndReturnsOnlyActiveChannel()
+    {
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, maxSamplesPerFile: 1);
+        spool.Append(Sample(1, "internal"));
+        spool.Append(Sample(2, "beta"));
+
+        DomainCoreQuotaShadowEvidenceSpool.ReadyBatch batch = Assert.IsType<DomainCoreQuotaShadowEvidenceSpool.ReadyBatch>(
+            spool.NextBatch(matchingChannel: "beta"));
+
+        Assert.All(batch.Samples, sample => Assert.Equal("beta", sample.Channel));
+        spool.Acknowledge(batch.Token);
+        Assert.Null(spool.NextBatch(matchingChannel: "beta"));
+        Assert.Equal(0, spool.PendingSampleCount());
+    }
+
+    [Fact]
+    public void DisabledProfileCleanupDiscardsDurableEvidence()
+    {
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory);
+        spool.Append(Sample(1));
+
+        spool.DiscardAll();
+
+        Assert.Equal(0, spool.PendingSampleCount());
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
     }
 
-    private static DomainCoreQuotaShadowSampleV1 Sample(int suffix) => new()
+    private static DomainCoreShadowSampleV2 Sample(int suffix, string channel = "internal") => new()
     {
         SampleId = $"00000000-0000-4000-8000-{suffix:D12}",
-        Channel = "internal",
+        Channel = channel,
+        Slice = "claude",
         Operation = "claude_quota",
         CoreVersion = "0.3.0",
         ObservedAt = "2026-07-13T12:00:00.000Z",
