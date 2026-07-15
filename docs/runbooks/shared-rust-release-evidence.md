@@ -37,7 +37,7 @@ profile, then run:
 node scripts/ci/verify-domain-core-release-gate.mjs \
   --candidate-bundle "$RUNNER_TEMP/domain-core-candidate-bundle.json" \
   --promotion-attestation "$RUNNER_TEMP/promotion.sigstore.json" \
-  --rollback-artifact "$RUNNER_TEMP/domain-core-legacy-rollback.json" \
+  --rollback-artifact "$RUNNER_TEMP/domain-core-public-production-rollback.json" \
   --candidate-commit "$CANDIDATE_COMMIT" \
   --core-version "$CORE_VERSION" \
   --abi-version "$ABI_VERSION" \
@@ -60,6 +60,37 @@ is idempotent.
 Native, Console, and Functions release workflows should call this command before
 their first signing or deployment mutation whenever the public profile selects
 Rust. Workflow-specific wiring is deliberately separate from this substrate.
+
+## Console and Hosting lane
+
+[`deploy-hosting.yml`](../../.github/workflows/deploy-hosting.yml) always uses
+`public-production` for automatic `main` and stable-tag deploys. A main deploy
+may omit protected proof only while Console CloudVault remains `legacy`; a
+stable tag or Rust-authoritative build fails closed without the exact protected
+candidate bundle, signer run and attempt, source run and attempt, Sigstore
+bundle, and candidate-matched rollback artifact.
+
+`public-production-rollback` is manual-only. It must target an existing stable
+tag and pass the separate `domain-core-promotion` protected environment before
+the ordinary `production` deployment environment. Automatic pushes cannot
+select it.
+
+Every build embeds `domain-core-deployment-identity.json`. The live smoke reads
+that file from the canonical Console origin without following redirects and
+compares its exact commit, tag, profile digest, candidate, signer proof, and
+rollback digest with the deployed immutable artifact. Stable-tag health
+evidence hashes those verified live bytes. The release predicate uses the
+canonical per-domain public-profile digest consumed by the deletion gate; the
+identity separately retains the complete resolved profile receipt digest.
+
+After a healthy stable deployment,
+[`domain-core-console-release-evidence.yml`](../../.github/workflows/domain-core-console-release-evidence.yml)
+revalidates the exact deploy run and attempt, reruns the protected release gate,
+creates the v2 Console receipt and predicate, and signs them. Normal evidence is
+published through the create-only shared GitHub release publisher. Rollback
+evidence is retained as a unique Actions artifact named with the deploy run and
+attempt; a replay fails closed. The workflow references the signer's retained
+rollback artifact and never uploads a duplicate copy.
 
 ## Generate release evidence
 

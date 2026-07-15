@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Shared Rust Console release evidence
+
+- Stable and Rust-authoritative Hosting deploys now consume the exact protected
+  Shared Rust candidate proof and rollback bytes. Live smoke verifies a
+  no-redirect deployment identity, normal evidence publishes immutably, and
+  explicit rollback is separately review-gated and replay-resistant.
+
 ### Added — Liquid dashboard command deck
 
 - **A live, customizable command deck for the dashboard**: Added a dominant
