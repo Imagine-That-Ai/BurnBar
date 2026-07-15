@@ -92,8 +92,12 @@ The publisher:
 6. freshly downloads and verifies every final asset.
 
 It never creates, edits, or deletes a release, and never uses `--clobber`.
-Byte-identical retries and concurrent winners are accepted. A non-identical
-collision or final-state mutation fails the run.
+Artifact retries and concurrent winners must be byte-identical. Existing or
+concurrently published Sigstore bundles may use a different valid encoding,
+but they are reused only after verification against the exact artifact,
+predicate, signer workflow, repository, tag, and commit. A substituted bundle,
+non-identical artifact collision, or semantic final-state mutation fails the
+run.
 
 ## Ownership boundary
 

@@ -114,11 +114,21 @@ class FakeClient {
     this.calls = [];
     this.uploadHook = undefined;
     this.downloadHook = undefined;
+    this.attestationHook = undefined;
+    this.attestationInputs = [];
   }
 
   run(args, { allowFailure = false } = {}) {
     this.calls.push([...args]);
     if (args[0] === "attestation" && args[1] === "verify") {
+      this.attestationInputs.push({
+        artifactSha256: sha(readFileSync(args[2])),
+        bundlePath: args[args.indexOf("--bundle") + 1],
+      });
+      if (this.attestationHook) {
+        const hooked = this.attestationHook(args, this.calls);
+        if (hooked) return hooked;
+      }
       return {
         status: 0,
         stdout: JSON.stringify([
@@ -288,7 +298,7 @@ test("an all-identical rerun is idempotent", () => {
   }
 });
 
-test("rejects a valid but byte-different existing attestation bundle before mutation", () => {
+test("recovers after a bundle-only partial publication by reusing the semantically identical official bundle", () => {
   const files = fixture();
   try {
     const manifest = validateManifest(files.manifest);
@@ -297,13 +307,122 @@ test("rejects a valid but byte-different existing attestation bundle before muta
       files.manifest.bundles[0].assetName,
       Buffer.from("different-valid-attestation-encoding"),
     );
-    assert.throws(
-      () => publishManifest(manifest, { client }),
-      /refusing non-identical attestation bundle/u,
+    assert.deepEqual(publishManifest(manifest, { client }), {
+      uploaded: [basename(files.artifact)],
+    });
+    assert.deepEqual(
+      uploads(client).map((args) => basename(args[3])),
+      [basename(files.artifact)],
     );
-    assert.equal(uploads(client).length, 0);
+    const officialBundleVerifications = client.calls.filter((args) => {
+      if (args[0] !== "attestation" || args[1] !== "verify") return false;
+      const bundlePath = args[args.indexOf("--bundle") + 1];
+      return (
+        bundlePath.includes("/preflight/") || bundlePath.includes("/final/")
+      );
+    });
+    assert.equal(officialBundleVerifications.length, 2);
+    for (const args of officialBundleVerifications) {
+      assert.equal(args[args.indexOf("--repo") + 1], "Imagine-That-Ai/BurnBar");
+      assert.equal(
+        args[args.indexOf("--signer-workflow") + 1],
+        "Imagine-That-Ai/BurnBar/.github/workflows/release.yml",
+      );
+      assert.equal(args[args.indexOf("--source-ref") + 1], "refs/tags/v1.2.3");
+      assert.equal(
+        args[args.indexOf("--source-digest") + 1],
+        CANDIDATE.candidateCommit,
+      );
+      assert.equal(
+        args[args.indexOf("--signer-digest") + 1],
+        CANDIDATE.candidateCommit,
+      );
+      assert.equal(
+        args[args.indexOf("--predicate-type") + 1],
+        files.predicate.predicateType,
+      );
+      assert.equal(
+        args[args.indexOf("--cert-oidc-issuer") + 1],
+        "https://token.actions.githubusercontent.com",
+      );
+      assert.equal(args.includes("--deny-self-hosted-runners"), true);
+    }
+    const officialInputs = client.attestationInputs.filter(
+      ({ bundlePath }) =>
+        bundlePath.includes("/preflight/") || bundlePath.includes("/final/"),
+    );
+    assert.deepEqual(
+      officialInputs.map(({ artifactSha256 }) => artifactSha256),
+      [files.predicate.artifact.sha256, files.predicate.artifact.sha256],
+    );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects adversarial existing bundles before publication mutation", () => {
+  const cases = [
+    {
+      name: "predicate substitution",
+      result: (files) => ({
+        status: 0,
+        stdout: JSON.stringify([
+          {
+            verificationResult: {
+              statement: {
+                predicate: {
+                  ...files.predicate,
+                  artifact: {
+                    ...files.predicate.artifact,
+                    sha256: "9".repeat(64),
+                  },
+                },
+              },
+            },
+          },
+        ]),
+        stderr: "",
+      }),
+      error: /does not contain its exact predicate/u,
+    },
+    {
+      name: "wrong signer identity",
+      result: () => {
+        throw new Error("attestation signer workflow does not match");
+      },
+      error: /signer workflow does not match/u,
+    },
+    {
+      name: "wrong artifact subject",
+      result: () => {
+        throw new Error("attestation subject digest does not match artifact");
+      },
+      error: /subject digest does not match artifact/u,
+    },
+  ];
+  for (const scenario of cases) {
+    const files = fixture();
+    try {
+      const manifest = validateManifest(files.manifest);
+      const client = new FakeClient(files.predicate);
+      client.assets.set(
+        files.manifest.bundles[0].assetName,
+        Buffer.from(`adversarial-${scenario.name}`),
+      );
+      client.attestationHook = (args) => {
+        const bundlePath = args[args.indexOf("--bundle") + 1];
+        if (!bundlePath.includes("/preflight/")) return undefined;
+        return scenario.result(files);
+      };
+      assert.throws(
+        () => publishManifest(manifest, { client }),
+        scenario.error,
+        scenario.name,
+      );
+      assert.equal(uploads(client).length, 0, scenario.name);
+    } finally {
+      rmSync(files.directory, { recursive: true, force: true });
+    }
   }
 });
 
@@ -327,7 +446,7 @@ test("accepts a byte-identical concurrent bundle upload", () => {
   }
 });
 
-test("rejects a byte-different concurrent attestation bundle", () => {
+test("accepts a byte-different concurrent semantically identical attestation bundle", () => {
   const files = fixture();
   try {
     const manifest = validateManifest(files.manifest);
@@ -342,10 +461,9 @@ test("rejects a byte-different concurrent attestation bundle", () => {
       }
       return undefined;
     };
-    assert.throws(
-      () => publishManifest(manifest, { client }),
-      /refusing non-identical attestation bundle/u,
-    );
+    assert.deepEqual(publishManifest(manifest, { client }), {
+      uploaded: [basename(files.artifact)],
+    });
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
   }
@@ -489,20 +607,21 @@ test("detects a release tag moved after create-only uploads", () => {
   }
 });
 
-test("detects final attestation bundle mutation after successful uploads", () => {
+test("detects semantic final attestation bundle mutation after successful uploads", () => {
   const files = fixture();
   try {
     const manifest = validateManifest(files.manifest);
     const client = new FakeClient(files.predicate);
-    client.downloadHook = (name, contents) => {
-      if (name === files.manifest.bundles[0].assetName) {
-        return Buffer.from("mutated-valid-attestation-encoding");
+    client.attestationHook = (args) => {
+      const bundlePath = args[args.indexOf("--bundle") + 1];
+      if (bundlePath.includes("/final/")) {
+        throw new Error("attestation subject digest does not match artifact");
       }
-      return contents;
+      return undefined;
     };
     assert.throws(
       () => publishManifest(manifest, { client }),
-      /refusing non-identical attestation bundle/u,
+      /subject digest does not match artifact/u,
     );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
