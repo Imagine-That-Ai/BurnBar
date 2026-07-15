@@ -64,6 +64,8 @@ on:
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
       - "scripts/ci/verify-libsignal-submodule-delta.sh"
+      - "scripts/ci/verify-scanner-governance.test.mjs"
+      - "scripts/ci/verify-codeowners-security-trees.test.sh"
       - "third_party/hermes-agent/manifest.json"
       - "third_party/libsignal/manifest.json"
       - "tools/qa/run-functional-qa.sh"
@@ -128,6 +130,8 @@ on:
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
       - "scripts/ci/verify-libsignal-submodule-delta.sh"
+      - "scripts/ci/verify-scanner-governance.test.mjs"
+      - "scripts/ci/verify-codeowners-security-trees.test.sh"
       - "third_party/hermes-agent/manifest.json"
       - "third_party/libsignal/manifest.json"
       - "tools/qa/run-functional-qa.sh"
@@ -288,3 +292,9 @@ jobs:
 
       - name: Verify gitleaks workflow boundary
         run: node scripts/ci/verify-gitleaks-workflow-boundary.mjs
+
+      - name: Self-test scanner governance regression suite
+        run: node scripts/ci/verify-scanner-governance.test.mjs
+
+      - name: Self-test CODEOWNERS security trees verifier
+        run: bash scripts/ci/verify-codeowners-security-trees.test.sh
