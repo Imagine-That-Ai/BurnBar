@@ -6,13 +6,17 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
+import { pathKeyedFirestore } from "./bola/callableBolaHarness.js";
+
 const state = vi.hoisted(
   (): {
     Timestamp: typeof import("firebase-admin/firestore").Timestamp | undefined;
     storedReplies: Array<{ id: string; data: Record<string, unknown> }>;
+    rateLimitStore: Map<string, Record<string, unknown>>;
   } => ({
     Timestamp: undefined,
     storedReplies: [],
+    rateLimitStore: new Map(),
   }),
 );
 
@@ -91,6 +95,8 @@ vi.mock("../logging.js", async () => {
   };
 });
 
+vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(state.rateLimitStore) }));
+
 import { submitAgentNotificationReply } from "../callables/agentNotifications.js";
 
 function timestamp(): typeof import("firebase-admin/firestore").Timestamp {
@@ -146,6 +152,7 @@ const sealedPayloadV1 = {
 describe("submitAgentNotificationReply — F-RR10-027 schema version", () => {
   beforeEach(() => {
     state.storedReplies.length = 0;
+    state.rateLimitStore.clear();
   });
 
   it("writes sealedSchemaVersion 2 for a v2 sealed payload", async () => {
