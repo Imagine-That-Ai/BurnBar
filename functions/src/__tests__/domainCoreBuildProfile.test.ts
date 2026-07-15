@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  domainCoreDeploymentIdentity,
   resolveDomainCoreCandidateIdentity,
   resolveDomainCoreEvidenceChannel,
   resolveDomainCoreRuntimeMode,
@@ -124,6 +125,16 @@ describe("domain-core Functions profile", () => {
       modes: { ...receipt.modes, pricing: "rust" },
     };
     expect(resolveDomainCoreRuntimeMode("pricing", environment, invalidReceipt)).toBe("legacy");
+  });
+
+  it("exposes the immutable non-secret receipt identity for deployment health", () => {
+    const receipt = signedReceipt("public-production", "rust");
+    expect(domainCoreDeploymentIdentity(receipt)).toEqual({
+      profile: "public-production",
+      candidateIdentity: candidateIdentity(),
+      pricingMode: "rust",
+    });
+    expect(domainCoreDeploymentIdentity({})).toBeUndefined();
   });
 
   it.each(["internal", "beta"] as const)("requires matching %s enrollment metadata in the bundled receipt", (name) => {
