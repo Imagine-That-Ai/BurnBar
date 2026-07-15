@@ -101,6 +101,7 @@ const ARTIFACT_KEYS = new Set([
   "runId",
   "runAttempt",
   "artifactSha256",
+  "identityReportSha256",
   "loadedIdentity",
   "loadSuiteIds",
 ]);
@@ -186,7 +187,7 @@ export const DOMAIN_CORE_REQUIRED_ARTIFACTS = Object.freeze([
   Object.freeze({
     id: "swift-xcframework",
     consumer: "swift",
-    jobId: "apple",
+    jobId: "apple-native-smoke",
     requiredLoadSuiteIds: Object.freeze(["swift-native-load"]),
   }),
   Object.freeze({
@@ -221,6 +222,24 @@ export const DOMAIN_CORE_REQUIRED_ARTIFACTS = Object.freeze([
       "wasm-node-kat",
       "functions-pricing-contracts",
     ]),
+  }),
+  Object.freeze({
+    id: "windows-native-x64-binary",
+    consumer: "csharp",
+    jobId: "windows-native",
+    requiredLoadSuiteIds: Object.freeze(["windows-native-x64"]),
+  }),
+  Object.freeze({
+    id: "windows-native-arm64-binary",
+    consumer: "csharp",
+    jobId: "windows-native",
+    requiredLoadSuiteIds: Object.freeze(["windows-native-arm64"]),
+  }),
+  Object.freeze({
+    id: "linux-arm64-native-binary",
+    consumer: "csharp",
+    jobId: "linux-arm64-native",
+    requiredLoadSuiteIds: Object.freeze(["linux-arm64-native"]),
   }),
 ]);
 
@@ -701,6 +720,7 @@ function validateArtifacts(
     }
     validateRunIdentity(artifact, workflow, path, errors);
     validateDigest(artifact.artifactSha256, `${path}.artifactSha256`, errors);
+    validateDigest(artifact.identityReportSha256, `${path}.identityReportSha256`, errors);
     sameCandidate(artifact.loadedIdentity, expectedCandidate, `${path}.loadedIdentity`, errors);
   });
   for (const id of expected.keys()) {

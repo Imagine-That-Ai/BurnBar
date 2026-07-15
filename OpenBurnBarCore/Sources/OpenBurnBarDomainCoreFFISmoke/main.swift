@@ -7,6 +7,13 @@ struct UnionManifest: Decodable {
     let sourceSha256: String
 }
 
+struct ObservedIdentity: Encodable {
+    let candidateCommit: String
+    let coreVersion: String
+    let abiVersion: UInt32
+    let sourceSha256: String
+}
+
 func require(_ condition: @autoclosure () -> Bool, _ message: String) {
     guard condition() else {
         FileHandle.standardError.write(Data("domain-core smoke failed: \(message)\n".utf8))
@@ -84,6 +91,23 @@ require(
     "XCFramework source fingerprint does not match union manifest"
 )
 require(sourceFingerprint == expectedSourceFingerprint, "loaded XCFramework source fingerprint mismatch")
+
+if let reportPath = ProcessInfo.processInfo.environment["DOMAIN_CORE_OBSERVED_IDENTITY_REPORT"] {
+    let identity = ObservedIdentity(
+        candidateCommit: ProcessInfo.processInfo.environment["GITHUB_SHA"] ?? "",
+        coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
+        abiVersion: OpenBurnBarDomainCoreFFI.domainCoreAbiVersion(),
+        sourceSha256: sourceFingerprint
+    )
+    do {
+        var encoded = try JSONEncoder().encode(identity)
+        encoded.append(0x0A)
+        try encoded.write(to: URL(fileURLWithPath: reportPath), options: .atomic)
+    } catch {
+        FileHandle.standardError.write(Data("domain-core smoke failed: cannot write observed identity: \(error)\n".utf8))
+        exit(1)
+    }
+}
 
 let safetyCode = try OpenBurnBarDomainCoreFFI.hermesGatewayRelaySafetyCode(
     agentPublicKey: Data(base64Encoded: "BGsX0fLhLEJH+Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT+NC4v4af5uO5+tKfA+eFivOM1drMV7Oy7ZAaDe/UfU=")!,

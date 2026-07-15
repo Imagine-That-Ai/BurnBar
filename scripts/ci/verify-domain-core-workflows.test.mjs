@@ -10,6 +10,14 @@ const signer = readFileSync(
 const policy = JSON.parse(
   readFileSync(new URL("../../config/domain-core-promotion-policy.json", import.meta.url)),
 );
+const linuxCargo = readFileSync(
+  new URL("../../apps/linux-desktop/src-tauri/Cargo.toml", import.meta.url),
+  "utf8",
+);
+const inventory = readFileSync(
+  new URL("../../docs/SHARED_RUST_DOMAIN_INVENTORY.md", import.meta.url),
+  "utf8",
+);
 
 test("deterministic workflow implements every exact policy job and a fail-closed final bundle", () => {
   for (const id of policy.workflow.requiredJobIds) {
@@ -23,6 +31,21 @@ test("deterministic workflow implements every exact policy job and a fail-closed
   assert.match(core, /domain-core-candidate-bundle-\$\{\{ github\.sha \}\}-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u);
 });
 
+test("Linux Tauri remains display-only while the Linux daemon stays under Swift ownership", () => {
+  assert.doesNotMatch(linuxCargo, /openburnbar-domain-core|openburnbar_domain_core/u);
+  assert.match(
+    inventory,
+    /\| Tauri\/Linux UI \| Displays daemon-produced values \| No separate implementation/u,
+  );
+  assert.deepEqual(
+    policy.requiredArtifacts
+      .filter(({ id }) => id.includes("wasm"))
+      .map(({ consumer }) => consumer)
+      .sort(),
+    ["browser-wasm", "node-wasm"],
+  );
+});
+
 test("protected signer has no user-supplied evidence surface and revalidates trusted API data", () => {
   assert.match(signer, /^    environment: domain-core-promotion$/mu);
   assert.match(signer, /^  actions: read$/mu);
@@ -34,6 +57,11 @@ test("protected signer has no user-supplied evidence surface and revalidates tru
   assert.match(signer, /required_reviewers/u);
   assert.match(signer, /deployment-branch-policies/u);
   assert.match(signer, /verify-domain-core-protected-attestation\.mjs/u);
+  assert.match(signer, /gh api --paginate --slurp/u);
+  assert.match(signer, /\.total_count == \(\.branch_policies \| length\)/u);
+  assert.match(signer, /\.total_count == \(\.workflow_runs \| length\)/u);
+  assert.match(signer, /\.total_count == \(\.jobs \| length\)/u);
+  assert.match(signer, /verify-domain-core-control-plane\.mjs/u);
   assert.match(signer, /actions\/attest-build-provenance@[0-9a-f]{40}/u);
   assert.doesNotMatch(signer, /jobs_json|bundle_json|run_json|eligible_for_attestation.*==/iu);
   assert.deepEqual(policy.workflow.allowedEvents, ["push"]);

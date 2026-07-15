@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -22,6 +22,19 @@ assert.equal(domainCore.domainCoreAbiVersion(), 3);
 assert.equal(domainCore.domainCoreVersion(), "0.1.0");
 assert.match(unionManifest.sourceSha256, /^[0-9a-f]{64}$/);
 assert.equal(domainCore.domainCoreSourceFingerprint(), unionManifest.sourceSha256);
+if (process.env.DOMAIN_CORE_OBSERVED_IDENTITY_REPORT) {
+  const identity = {
+    candidateCommit: process.env.GITHUB_SHA,
+    coreVersion: domainCore.domainCoreVersion(),
+    abiVersion: domainCore.domainCoreAbiVersion(),
+    sourceSha256: domainCore.domainCoreSourceFingerprint(),
+  };
+  await writeFile(
+    process.env.DOMAIN_CORE_OBSERVED_IDENTITY_REPORT,
+    `${JSON.stringify(identity)}\n`,
+    { mode: 0o600 },
+  );
+}
 
 const fixturePath = path.resolve(
   testDirectory,

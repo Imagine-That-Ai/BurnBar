@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
+using System.Text.Json;
 using OpenBurnBar.App.Presentation.Quota;
 using Xunit;
 using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
@@ -9,6 +11,27 @@ namespace OpenBurnBar.App.Quota.Tests;
 
 public sealed class DomainCoreQuotaBridgeTests
 {
+    [Fact]
+    public void Loaded_native_identity_is_observed_for_attestation()
+    {
+        var identity = new
+        {
+            candidateCommit = Environment.GetEnvironmentVariable("GITHUB_SHA") ?? new string('0', 40),
+            coreVersion = DomainCore.DomainCoreVersion(),
+            abiVersion = DomainCore.DomainCoreAbiVersion(),
+            sourceSha256 = DomainCore.DomainCoreSourceFingerprint(),
+        };
+        Assert.Matches("^[0-9a-f]{40}$", identity.candidateCommit);
+        Assert.False(string.IsNullOrWhiteSpace(identity.coreVersion));
+        Assert.Equal(3u, identity.abiVersion);
+        Assert.Matches("^[0-9a-f]{64}$", identity.sourceSha256);
+        var reportPath = Environment.GetEnvironmentVariable("DOMAIN_CORE_OBSERVED_IDENTITY_REPORT");
+        if (!string.IsNullOrWhiteSpace(reportPath))
+        {
+            File.WriteAllText(reportPath, JsonSerializer.Serialize(identity) + Environment.NewLine);
+        }
+    }
+
     [Fact]
     public void Apply_ShadowOperationLoadError_RetainsLoadedIdentityAndFallsBackToLegacy()
     {

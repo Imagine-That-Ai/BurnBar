@@ -226,6 +226,45 @@ class DomainCoreUnionGateTests(unittest.TestCase):
                     with self.assertRaisesRegex(GATE.GateError, "sourceSha256"):
                         GATE.verified_source_fingerprint(root, mutated)
 
+    def test_source_roots_cannot_escape_or_use_noncanonical_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            crate = root / "crates/openburnbar-domain-core"
+            crate.mkdir(parents=True)
+            (crate / "source.rs").write_text("source\n", encoding="utf-8")
+            source_roots = (
+                "/etc/passwd",
+                "../outside",
+                "./source.rs",
+                "nested/../source.rs",
+                "nested\\source.rs",
+            )
+            for source_root in source_roots:
+                with self.subTest(source_root=source_root):
+                    with self.assertRaisesRegex(GATE.GateError, "normalized relative|POSIX"):
+                        GATE.calculate_source_fingerprint(root, {"sourceRoots": [source_root]})
+
+    def test_source_roots_reject_symlinks_and_special_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            crate = root / "crates/openburnbar-domain-core"
+            source = crate / "source"
+            source.mkdir(parents=True)
+            outside = root / "outside.rs"
+            outside.write_text("outside\n", encoding="utf-8")
+            (source / "link.rs").symlink_to(outside)
+            with self.assertRaisesRegex(GATE.GateError, "symlink"):
+                GATE.calculate_source_fingerprint(root, {"sourceRoots": ["source"]})
+
+            (source / "link.rs").unlink()
+            fifo = source / "special"
+            os.mkfifo(fifo)
+            try:
+                with self.assertRaisesRegex(GATE.GateError, "special file"):
+                    GATE.calculate_source_fingerprint(root, {"sourceRoots": ["source"]})
+            finally:
+                fifo.unlink(missing_ok=True)
+
     def test_compile_time_identity_helper_rejects_missing_or_malformed_fingerprint(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
