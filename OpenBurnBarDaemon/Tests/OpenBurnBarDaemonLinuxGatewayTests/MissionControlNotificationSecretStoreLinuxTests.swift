@@ -55,7 +55,7 @@ final class MissionControlNotificationSecretStoreLinuxTests: XCTestCase {
             )
         }
 
-        let id = secretIDFor(service: service)
+        let id = Self.secretIDFor(service: service)
         let plaintextKey = id
             .uppercased()
             .replacingOccurrences(of: "-", with: "_")
