@@ -208,7 +208,7 @@ namespace OpenBurnBar.CloudSync.Crypto
             return left.Length == right.Length && CryptographicOperations.FixedTimeEquals(left, right);
         }
 
-        private static string PensieveKeyedHmacHex(byte[] data, byte[] keyData, string label)
+        internal static string PensieveKeyedHmacHex(byte[] data, byte[] keyData, string label)
         {
             RequireVaultKey(keyData);
             var subKey = HkdfDerive(keyData, Empty, Encoding.UTF8.GetBytes($"pensieve-dedup:{label}"));
