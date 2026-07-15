@@ -1,5 +1,6 @@
 import {
   coverageKey,
+  DOMAIN_CORE_REQUIRED_COVERAGE,
   isValidDomainSliceConsumer,
   requiredCoverageForDomain,
 } from "./domain-core-evidence-contract.mjs";
@@ -132,6 +133,24 @@ const HARD_MISMATCH_CATEGORIES = new Set([
   "native_error",
   "loaded_identity_mismatch",
 ]);
+const DIAGNOSTIC_POLICY_KEYS = new Set([
+  "schemaVersion",
+  "authority",
+  "promotionAuthority",
+  "description",
+  "domains",
+]);
+const DIAGNOSTIC_DOMAIN_KEYS = new Set([
+  "requiredCoverage",
+  "allowedChannels",
+  "mismatchAlertCategories",
+  "performanceAlertBasisPoints",
+]);
+const DIAGNOSTIC_MISMATCH_CATEGORIES = new Set([
+  ...HARD_MISMATCH_CATEGORIES,
+  "result_mismatch",
+  "invalid_result",
+]);
 
 function invalidV3Report(domain, errors) {
   return {
@@ -141,6 +160,89 @@ function invalidV3Report(domain, errors) {
     ready: false,
     errors,
     blockers: [{ code: "invalid_evidence", slice: null, consumer: null }],
+  };
+}
+
+function diagnosticPolicy(policy) {
+  const errors = [];
+  if (!exactKeys(policy, DIAGNOSTIC_POLICY_KEYS, "policy", errors)) {
+    return { errors, normalized: null };
+  }
+  for (const key of DIAGNOSTIC_POLICY_KEYS) {
+    if (!Object.hasOwn(policy, key)) errors.push(`policy.${key} is required`);
+  }
+  if (policy.schemaVersion !== 1) errors.push("policy.schemaVersion must be 1");
+  if (policy.authority !== "diagnostic-only") {
+    errors.push("policy.authority must be diagnostic-only");
+  }
+  if (policy.promotionAuthority !== false) {
+    errors.push("policy.promotionAuthority must be false");
+  }
+  if (typeof policy.description !== "string" || policy.description.length === 0) {
+    errors.push("policy.description must be a non-empty string");
+  }
+  const requiredDomains = Object.keys(DOMAIN_CORE_REQUIRED_COVERAGE);
+  if (!isRecord(policy.domains)) {
+    errors.push("policy.domains must be an object");
+    return { errors, normalized: null };
+  }
+  for (const domain of Object.keys(policy.domains)) {
+    if (!requiredDomains.includes(domain)) {
+      errors.push(`policy.domains contains unexpected ${domain}`);
+    }
+  }
+  for (const domain of requiredDomains) {
+    if (!Object.hasOwn(policy.domains, domain)) {
+      errors.push(`policy.domains omits ${domain}`);
+      continue;
+    }
+    const value = policy.domains[domain];
+    const path = `policy.domains.${domain}`;
+    if (!exactKeys(value, DIAGNOSTIC_DOMAIN_KEYS, path, errors)) continue;
+    for (const key of DIAGNOSTIC_DOMAIN_KEYS) {
+      if (!Object.hasOwn(value, key)) errors.push(`${path}.${key} is required`);
+    }
+    if (!Array.isArray(value.mismatchAlertCategories)) {
+      errors.push(`${path}.mismatchAlertCategories must be an array`);
+    } else {
+      const categories = new Set(value.mismatchAlertCategories);
+      if (categories.size !== value.mismatchAlertCategories.length) {
+        errors.push(`${path}.mismatchAlertCategories must not contain duplicates`);
+      }
+      for (const category of DIAGNOSTIC_MISMATCH_CATEGORIES) {
+        if (!categories.has(category)) {
+          errors.push(`${path}.mismatchAlertCategories omits ${category}`);
+        }
+      }
+      for (const category of categories) {
+        if (!DIAGNOSTIC_MISMATCH_CATEGORIES.has(category)) {
+          errors.push(`${path}.mismatchAlertCategories contains unexpected ${String(category)}`);
+        }
+      }
+    }
+    if (value.performanceAlertBasisPoints !== 500) {
+      errors.push(`${path}.performanceAlertBasisPoints must be 500`);
+    }
+  }
+  if (errors.length > 0) return { errors, normalized: null };
+  return {
+    errors,
+    normalized: {
+      schemaVersion: 2,
+      domains: Object.fromEntries(
+        requiredDomains.map((domain) => [
+          domain,
+          {
+            requiredCoverage: policy.domains[domain].requiredCoverage,
+            allowedChannels: policy.domains[domain].allowedChannels,
+            minimumCoverageSeconds: 1,
+            minimumSamples: 1,
+            maximumP95RegressionBasisPoints:
+              policy.domains[domain].performanceAlertBasisPoints,
+          },
+        ]),
+      ),
+    },
   };
 }
 
@@ -765,5 +867,37 @@ export function evaluatePromotionEvidence(evidence, policy, options = {}) {
       ],
     };
   }
-  return evaluateV3PromotionEvidence(evidence, policy, options);
+  const diagnostic = diagnosticPolicy(policy);
+  if (diagnostic.errors.length > 0) {
+    return invalidV3Report(evidence?.domain, diagnostic.errors);
+  }
+  const report = evaluateV3PromotionEvidence(
+    evidence,
+    diagnostic.normalized,
+    options,
+  );
+  if (report.status === "invalid") return report;
+  return {
+    ...report,
+    status: "diagnostic",
+    ready: false,
+    authority: "diagnostic-only",
+    policy: {
+      authority: "diagnostic-only",
+      promotionAuthority: false,
+      performanceAlertBasisPoints:
+        policy.domains[evidence.domain].performanceAlertBasisPoints,
+      mismatchAlertCategories: [
+        ...policy.domains[evidence.domain].mismatchAlertCategories,
+      ],
+      requiredCoverage: policy.domains[evidence.domain].requiredCoverage.map(
+        (item) => ({ ...item }),
+      ),
+      allowedChannels: [...policy.domains[evidence.domain].allowedChannels],
+    },
+    blockers: [
+      ...report.blockers,
+      { code: "deterministic_proof_required", slice: null, consumer: null },
+    ],
+  };
 }
