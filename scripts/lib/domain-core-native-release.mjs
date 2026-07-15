@@ -5,6 +5,7 @@ import {
   DOMAIN_CORE_REPOSITORY,
   RELEASE_CONSUMERS,
   canonicalSha256,
+  exactObject,
   validateCandidateBundle,
   validateDomainCoreCandidateIdentity,
 } from "./domain-core-release-evidence.mjs";
@@ -23,6 +24,8 @@ const RUN_INVOCATION = new RegExp(
   `^https://github\\.com/${DOMAIN_CORE_REPOSITORY.replace("/", "\\/")}/actions/runs/([1-9]\\d*)/attempts/([1-9]\\d*)$`,
   "u",
 );
+const EMPTY_CHANGED_PATHS_SHA256 =
+  "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945";
 
 export function resolveNativeReleaseProfile({ eventName, requestedProfile }) {
   if (eventName !== "push" && eventName !== "workflow_dispatch") {
@@ -156,6 +159,148 @@ export function publicProfileSha256(profile, profileName, candidate) {
   return canonicalSha256(
     validateResolvedProfile(profile, profileName, candidate),
   );
+}
+
+export function publicDomainProfileSha256(profile, domain) {
+  if (
+    profile?.name !== DOMAIN_CORE_PUBLIC_PROFILE ||
+    profile?.artifactAuthority !== "signed" ||
+    profile?.distribution !== "public" ||
+    profile?.modes?.[domain] !== "rust"
+  ) {
+    throw new Error(`${String(domain)} is not active in public-production`);
+  }
+  return canonicalSha256({
+    artifactAuthority: profile.artifactAuthority,
+    distribution: profile.distribution,
+    rolloutChannel: profile.rolloutChannel,
+    evidenceEnabled: profile.evidenceEnabled,
+    domain,
+    mode: "rust",
+  });
+}
+
+export function validateNativeActivationSelector(
+  raw,
+  { candidate, releaseCommit, profile, profileName },
+) {
+  const expectedCandidate = validateDomainCoreCandidateIdentity(candidate);
+  const selector = exactObject(
+    raw,
+    [
+      "active",
+      "candidateCommit",
+      "activationCommit",
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+      "changedPathsSha256",
+      "domains",
+    ],
+    "release activation selector",
+  );
+  if (
+    typeof selector.active !== "boolean" ||
+    selector.candidateCommit !== expectedCandidate.candidateCommit ||
+    selector.activationCommit !== releaseCommit ||
+    selector.coreVersion !== expectedCandidate.coreVersion ||
+    selector.abiVersion !== expectedCandidate.abiVersion ||
+    selector.sourceSha256 !== expectedCandidate.sourceSha256 ||
+    !/^[0-9a-f]{64}$/u.test(selector.changedPathsSha256) ||
+    !Array.isArray(selector.domains)
+  ) {
+    throw new Error(
+      "release activation selector does not bind C and P exactly",
+    );
+  }
+  const domains = new Map();
+  for (const rawDomain of selector.domains) {
+    const entry = exactObject(
+      rawDomain,
+      [
+        "domain",
+        "rowId",
+        "promotionReceiptPath",
+        "attestationPath",
+        "bundlePath",
+        "provenancePath",
+        "signerRunId",
+        "signerRunAttempt",
+        "publicProfileSha256",
+      ],
+      "release activation domain",
+    );
+    if (
+      typeof entry.domain !== "string" ||
+      domains.has(entry.domain) ||
+      ![
+        entry.rowId,
+        entry.promotionReceiptPath,
+        entry.attestationPath,
+        entry.bundlePath,
+        entry.provenancePath,
+      ].every((value) => typeof value === "string" && value.length > 0) ||
+      !Number.isSafeInteger(entry.signerRunId) ||
+      entry.signerRunId < 1 ||
+      !Number.isSafeInteger(entry.signerRunAttempt) ||
+      entry.signerRunAttempt < 1 ||
+      !/^[0-9a-f]{64}$/u.test(entry.publicProfileSha256)
+    ) {
+      throw new Error("release activation contains an invalid domain binding");
+    }
+    domains.set(entry.domain, structuredClone(entry));
+  }
+  if (
+    !selector.active &&
+    (selector.candidateCommit !== selector.activationCommit ||
+      selector.changedPathsSha256 !== EMPTY_CHANGED_PATHS_SHA256 ||
+      domains.size !== 0)
+  ) {
+    throw new Error(
+      "inactive release activation must be the exact empty C=P selector",
+    );
+  }
+  if (profileName === DOMAIN_CORE_PUBLIC_PROFILE) {
+    const expectedDomains = Object.entries(profile.modes)
+      .filter(([, mode]) => mode === "rust")
+      .map(([domain]) => domain)
+      .sort();
+    if (
+      selector.active !== expectedDomains.length > 0 ||
+      (selector.active &&
+        selector.candidateCommit === selector.activationCommit) ||
+      (!selector.active &&
+        selector.candidateCommit !== selector.activationCommit) ||
+      JSON.stringify([...domains.keys()].sort()) !==
+        JSON.stringify(expectedDomains)
+    ) {
+      throw new Error(
+        "public-production does not match its canonical activation domains",
+      );
+    }
+    for (const domain of expectedDomains) {
+      if (
+        domains.get(domain).publicProfileSha256 !==
+        publicDomainProfileSha256(profile, domain)
+      ) {
+        throw new Error(
+          `${domain} public profile digest does not match activation`,
+        );
+      }
+    }
+  }
+  return {
+    active: selector.active,
+    activation: {
+      candidateCommit: selector.candidateCommit,
+      activationCommit: selector.activationCommit,
+      coreVersion: selector.coreVersion,
+      abiVersion: selector.abiVersion,
+      sourceSha256: selector.sourceSha256,
+      changedPathsSha256: selector.changedPathsSha256,
+    },
+    domains,
+  };
 }
 
 export function nativeEvidenceDomains(consumer, profile, profileName) {

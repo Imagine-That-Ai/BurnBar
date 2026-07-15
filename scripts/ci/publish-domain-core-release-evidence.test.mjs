@@ -22,6 +22,15 @@ const CANDIDATE = Object.freeze({
   abiVersion: 3,
   sourceSha256: "b".repeat(64),
 });
+const ACTIVATION_COMMIT = "8".repeat(40);
+const ACTIVATION = Object.freeze({
+  candidateCommit: CANDIDATE.candidateCommit,
+  activationCommit: ACTIVATION_COMMIT,
+  coreVersion: CANDIDATE.coreVersion,
+  abiVersion: CANDIDATE.abiVersion,
+  sourceSha256: CANDIDATE.sourceSha256,
+  changedPathsSha256: "9".repeat(64),
+});
 
 function sha(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -67,6 +76,7 @@ function fixture() {
       sha256: "e".repeat(64),
       candidate: CANDIDATE,
     },
+    activation: ACTIVATION,
     publicProfile: {
       profile: "public-production",
       domain: "quota",
@@ -80,7 +90,7 @@ function fixture() {
     release: {
       version: "1.2.3",
       tag: "v1.2.3",
-      commit: CANDIDATE.candidateCommit,
+      commit: ACTIVATION_COMMIT,
       publicProfileSha256: "f".repeat(64),
     },
   };
@@ -89,7 +99,7 @@ function fixture() {
     schemaVersion: 2,
     repository: "Imagine-That-Ai/BurnBar",
     tag: "v1.2.3",
-    commit: CANDIDATE.candidateCommit,
+    commit: ACTIVATION_COMMIT,
     consumer: "apple",
     signerWorkflow: ".github/workflows/release.yml",
     artifactPath: artifact,
@@ -163,7 +173,7 @@ function windowsFixture({ artifactOnly = false } = {}) {
 class FakeClient {
   constructor(
     predicate,
-    { tag = "v1.2.3", draft = false, commit = CANDIDATE.candidateCommit } = {},
+    { tag = "v1.2.3", draft = false, commit = ACTIVATION_COMMIT } = {},
   ) {
     this.predicate = predicate;
     this.tag = tag;
@@ -598,11 +608,11 @@ test("recovers after a bundle-only partial publication by reusing the semantical
       assert.equal(args[args.indexOf("--source-ref") + 1], "refs/tags/v1.2.3");
       assert.equal(
         args[args.indexOf("--source-digest") + 1],
-        CANDIDATE.candidateCommit,
+        ACTIVATION_COMMIT,
       );
       assert.equal(
         args[args.indexOf("--signer-digest") + 1],
-        CANDIDATE.candidateCommit,
+        ACTIVATION_COMMIT,
       );
       assert.equal(
         args[args.indexOf("--predicate-type") + 1],
@@ -775,19 +785,17 @@ test("rejects predicate substitution even when gh reports a valid signature", ()
   }
 });
 
-test("rejects a later release commit even with the same version ABI and source digest", () => {
+test("accepts P after C and rejects an activation-commit substitution", () => {
   const files = fixture();
   try {
+    assert.doesNotThrow(() => validateManifest(files.manifest));
     const predicate = {
       ...files.predicate,
-      release: { ...files.predicate.release, commit: "8".repeat(40) },
+      release: { ...files.predicate.release, commit: "7".repeat(40) },
     };
     writeFileSync(files.predicatePath, `${JSON.stringify(predicate)}\n`);
-    const manifest = { ...files.manifest, commit: "8".repeat(40) };
-    assert.throws(
-      () => validateManifest(manifest),
-      /exact candidate tag commit/u,
-    );
+    const manifest = { ...files.manifest, commit: "7".repeat(40) };
+    assert.throws(() => validateManifest(manifest), /activation commit/u);
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
   }

@@ -49,6 +49,7 @@ function parseArguments(argv) {
     "--artifact",
     "--predicate",
     "--public-profile-sha256",
+    "--activation",
     "--candidate-bundle",
     "--promotion-attestation",
     "--protected-signer-run-id",
@@ -207,6 +208,7 @@ export function buildReleaseEvidence({
   protectedSignerRunAttempt,
   rollbackArtifactPath,
   publicProfileSha256,
+  activation,
   deployment,
   promotionVerifier = verifyProtectedPromotionAttestation,
 }) {
@@ -221,6 +223,7 @@ export function buildReleaseEvidence({
     tag,
     commit,
     candidate,
+    activation,
   });
   promotionVerifier({
     candidateBundlePath,
@@ -266,6 +269,7 @@ export function buildReleaseEvidence({
     sourceRun,
     promotionProof,
     rollbackArtifact,
+    activation: contract.activation,
     publicProfile,
     release,
   };
@@ -323,6 +327,7 @@ export function run(argv, { promotionVerifier } = {}) {
     ),
     rollbackArtifactPath: resolve(args["--rollback-artifact"]),
     publicProfileSha256: args["--public-profile-sha256"],
+    activation: readJson(args["--activation"], "release activation"),
     deployment,
     promotionVerifier,
   });

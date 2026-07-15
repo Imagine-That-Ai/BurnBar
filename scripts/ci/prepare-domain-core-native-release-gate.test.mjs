@@ -10,8 +10,14 @@ import {
   selectExactSourceRun,
   validateProtectedSignerRun,
 } from "./prepare-domain-core-native-release-gate.mjs";
+import {
+  loadDomainCoreBuildProfiles,
+  resolveDomainCoreBuildProfile,
+} from "../lib/domain-core-build-profile.mjs";
+import { publicDomainProfileSha256 } from "../lib/domain-core-native-release.mjs";
 
 const COMMIT = "a".repeat(40);
+const RELEASE_COMMIT = "c".repeat(40);
 const CANDIDATE = Object.freeze({
   candidateCommit: COMMIT,
   coreVersion: "0.3.0",
@@ -113,6 +119,44 @@ test("signer lookup binds exact successful protected workflow attempt on main", 
 
 test("full gate resolves the signed public profile against the exact candidate", () => {
   const outputDirectory = mkdtempSync(join(tmpdir(), "native-gate-run-"));
+  const profileCatalogPath = join(outputDirectory, "profiles.json");
+  const profileCatalog = JSON.parse(
+    readFileSync("config/domain-core-build-profiles.json", "utf8"),
+  );
+  profileCatalog.profiles["public-production"].modes.quota = "rust";
+  writeFileSync(profileCatalogPath, `${JSON.stringify(profileCatalog)}\n`);
+  const profile = resolveDomainCoreBuildProfile(
+    loadDomainCoreBuildProfiles(profileCatalogPath),
+    "public-production",
+    CANDIDATE,
+  );
+  const activationPath = join(outputDirectory, "domain-core-activation.json");
+  const activeDomains = Object.entries(profile.modes)
+    .filter(([, mode]) => mode === "rust")
+    .map(([domain]) => domain);
+  writeFileSync(
+    activationPath,
+    `${JSON.stringify({
+      active: true,
+      candidateCommit: COMMIT,
+      activationCommit: RELEASE_COMMIT,
+      coreVersion: CANDIDATE.coreVersion,
+      abiVersion: CANDIDATE.abiVersion,
+      sourceSha256: CANDIDATE.sourceSha256,
+      changedPathsSha256: "d".repeat(64),
+      domains: activeDomains.map((domain, index) => ({
+        domain,
+        rowId: `${domain}.row`,
+        promotionReceiptPath: `receipts/${domain}.json`,
+        attestationPath: `attestations/${domain}.json`,
+        bundlePath: `bundles/${domain}.json`,
+        provenancePath: `provenance/${domain}.json`,
+        signerRunId: 100 + index,
+        signerRunAttempt: 1,
+        publicProfileSha256: publicDomainProfileSha256(profile, domain),
+      })),
+    })}\n`,
+  );
   const candidate = `${JSON.stringify({
     schemaVersion: 1,
     bundleKind: "unsigned-domain-core-candidate",
@@ -218,17 +262,24 @@ test("full gate resolves the signed public profile against the exact candidate",
       [
         "--candidate-commit",
         COMMIT,
+        "--release-commit",
+        RELEASE_COMMIT,
+        "--activation",
+        activationPath,
         "--event-name",
         "push",
         "--requested-profile",
         "public-production",
         "--output-dir",
         outputDirectory,
+        "--profile-catalog",
+        profileCatalogPath,
       ],
       { command },
     );
     assert.equal(result.profileName, "public-production");
     assert.deepEqual(result.candidate, CANDIDATE);
+    assert.equal(result.activation.activationCommit, RELEASE_COMMIT);
     assert.equal(
       JSON.parse(readFileSync(result.profilePath, "utf8")).candidateIdentity
         .candidateCommit,

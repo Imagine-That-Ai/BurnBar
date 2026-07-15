@@ -18,6 +18,15 @@ const CANDIDATE = Object.freeze({
   sourceSha256: "b".repeat(64),
 });
 const PROFILE_SHA = "c".repeat(64);
+const ACTIVATION_COMMIT = "d".repeat(40);
+const ACTIVATION = Object.freeze({
+  candidateCommit: CANDIDATE.candidateCommit,
+  activationCommit: ACTIVATION_COMMIT,
+  coreVersion: CANDIDATE.coreVersion,
+  abiVersion: CANDIDATE.abiVersion,
+  sourceSha256: CANDIDATE.sourceSha256,
+  changedPathsSha256: "e".repeat(64),
+});
 
 function sha(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -28,6 +37,7 @@ function workspace() {
   const candidateBundle = join(directory, "domain-core-candidate-bundle.json");
   const promotionAttestation = join(directory, "promotion.sigstore.json");
   const rollbackArtifact = join(directory, "domain-core-legacy-rollback.json");
+  const activation = join(directory, "domain-core-activation.json");
   writeFileSync(
     candidateBundle,
     `${JSON.stringify({
@@ -65,7 +75,14 @@ function workspace() {
       modes: { quota: "legacy", cloudVault: "legacy" },
     })}\n`,
   );
-  return { directory, candidateBundle, promotionAttestation, rollbackArtifact };
+  writeFileSync(activation, `${JSON.stringify(ACTIVATION)}\n`);
+  return {
+    directory,
+    candidateBundle,
+    promotionAttestation,
+    rollbackArtifact,
+    activation,
+  };
 }
 
 function baseOptions(files, artifactPath) {
@@ -76,7 +93,7 @@ function baseOptions(files, artifactPath) {
     target: "macos-arm64",
     version: "1.2.3",
     tag: "v1.2.3",
-    commit: CANDIDATE.candidateCommit,
+    commit: ACTIVATION_COMMIT,
     artifactPath,
     candidateBundlePath: files.candidateBundle,
     promotionAttestationPath: files.promotionAttestation,
@@ -84,6 +101,7 @@ function baseOptions(files, artifactPath) {
     protectedSignerRunAttempt: 3,
     rollbackArtifactPath: files.rollbackArtifact,
     publicProfileSha256: PROFILE_SHA,
+    activation: ACTIVATION,
     promotionVerifier: () => [],
   };
 }
@@ -255,19 +273,27 @@ test("rejects a protected signature from a different signer run attempt", () => 
   }
 });
 
-test("rejects a later release commit even when the source tuple is unchanged", () => {
+test("accepts a later activation commit and rejects C/P substitutions", () => {
   const files = workspace();
   try {
     const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
     writeFileSync(artifact, "signed-native-bytes");
-    assert.throws(
-      () =>
-        buildReleaseEvidence({
-          ...baseOptions(files, artifact),
-          commit: "d".repeat(40),
-        }),
-      /must equal the exact protected candidate commit/u,
-    );
+    const result = buildReleaseEvidence(baseOptions(files, artifact));
+    assert.deepEqual(result.common.activation, ACTIVATION);
+    for (const [field, value] of [
+      ["candidateCommit", "9".repeat(40)],
+      ["activationCommit", "8".repeat(40)],
+      ["changedPathsSha256", "7".repeat(63)],
+    ]) {
+      assert.throws(
+        () =>
+          buildReleaseEvidence({
+            ...baseOptions(files, artifact),
+            activation: { ...ACTIVATION, [field]: value },
+          }),
+        /activation|path set/u,
+      );
+    }
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
   }
@@ -353,13 +379,15 @@ test("writes a deployment receipt and predicate with both artifact digests", () 
         "--tag",
         "v1.2.3",
         "--commit",
-        CANDIDATE.candidateCommit,
+        ACTIVATION_COMMIT,
         "--artifact",
         artifact,
         "--predicate",
         predicate,
         "--public-profile-sha256",
         PROFILE_SHA,
+        "--activation",
+        files.activation,
         "--candidate-bundle",
         files.candidateBundle,
         "--promotion-attestation",
@@ -413,13 +441,15 @@ test("refuses to rewrite an immutable predicate with different bytes", () => {
             "--tag",
             "v1.2.3",
             "--commit",
-            CANDIDATE.candidateCommit,
+            ACTIVATION_COMMIT,
             "--artifact",
             artifact,
             "--predicate",
             predicate,
             "--public-profile-sha256",
             PROFILE_SHA,
+            "--activation",
+            files.activation,
             "--candidate-bundle",
             files.candidateBundle,
             "--promotion-attestation",
