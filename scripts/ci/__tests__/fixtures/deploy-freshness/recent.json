@@ -1,0 +1,21 @@
+{
+  "now": "2026-07-14T12:00:00.000Z",
+  "cloudFunctions": [
+    {
+      "name": "projects/burnbar/locations/us-central1/functions/healthLive",
+      "updateTime": "2026-07-12T10:30:00.000Z"
+    },
+    {
+      "name": "projects/burnbar/locations/us-central1/functions/healthReady",
+      "updateTime": "2026-07-12T10:30:00.000Z"
+    },
+    {
+      "name": "projects/burnbar/locations/us-central1/functions/appStoreServerNotificationsV2",
+      "updateTime": "2026-07-10T08:00:00.000Z"
+    }
+  ],
+  "cloudRun": {
+    "name": "projects/burnbar/locations/us-central1/services/openburnbar-hosted-mcp",
+    "updateTime": "2026-07-11T14:00:00.000Z"
+  }
+}
