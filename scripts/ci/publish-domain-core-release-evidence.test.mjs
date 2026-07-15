@@ -627,3 +627,318 @@ test("detects semantic final attestation bundle mutation after successful upload
     rmSync(files.directory, { recursive: true, force: true });
   }
 });
+
+function buildPredicate(overrides, basePredicate) {
+  return { ...basePredicate, ...overrides };
+}
+
+function writePredicate(directory, name, predicate) {
+  const path = join(directory, name);
+  writeFileSync(path, `${JSON.stringify(predicate, null, 2)}\n`);
+  return path;
+}
+
+test("rejects two bundles with the same release commit but different candidate coreVersion", () => {
+  const directory = mkdtempSync(join(tmpdir(), "domain-core-publisher-test-"));
+  try {
+    const artifact = join(directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-release-bytes");
+    const bundlePath = join(directory, "quota.sigstore.json");
+    const bundle2Path = join(directory, "cloudVault.sigstore.json");
+    writeFileSync(bundlePath, "signed-attestation-bundle");
+    writeFileSync(bundle2Path, "signed-attestation-bundle-2");
+    const basePredicate = {
+      schemaVersion: 2,
+      predicateType:
+        "https://openburnbar.dev/attestations/domain-core-release-artifact/v2",
+      consumer: "apple",
+      artifactKind: "macos-dmg",
+      target: "macos-arm64",
+      candidate: CANDIDATE,
+      sourceRun: {
+        repository: "Imagine-That-Ai/BurnBar",
+        workflowPath: ".github/workflows/domain-core.yml",
+        runId: 101,
+        runAttempt: 2,
+        event: "push",
+        ref: "refs/heads/main",
+        headSha: CANDIDATE.candidateCommit,
+      },
+      promotionProof: {
+        signerWorkflow: ".github/workflows/domain-core-promotion-proof.yml",
+        predicateType: "https://slsa.dev/provenance/v1",
+        signerRun: { runId: 202, runAttempt: 3 },
+        attestationSubject: {
+          fileName: "domain-core-candidate-bundle.json",
+          sha256: "c".repeat(64),
+        },
+        attestationBundleSha256: "d".repeat(64),
+      },
+      rollbackArtifact: {
+        fileName: "domain-core-legacy-rollback.json",
+        sha256: "e".repeat(64),
+        candidate: CANDIDATE,
+      },
+      artifact: {
+        fileName: basename(artifact),
+        sha256: sha(readFileSync(artifact)),
+      },
+      release: {
+        version: "1.2.3",
+        tag: "v1.2.3",
+        commit: CANDIDATE.candidateCommit,
+        publicProfileSha256: "f".repeat(64),
+      },
+    };
+    const predicate1 = writePredicate(
+      directory,
+      "quota.predicate.json",
+      buildPredicate({ domain: "quota" }, basePredicate),
+    );
+    const divergentCandidate = {
+      ...CANDIDATE,
+      coreVersion: "0.4.0",
+      sourceSha256: "1".repeat(64),
+    };
+    const predicate2 = writePredicate(
+      directory,
+      "cloudVault.predicate.json",
+      buildPredicate(
+        {
+          domain: "cloudVault",
+          candidate: divergentCandidate,
+          rollbackArtifact: {
+            fileName: "domain-core-legacy-rollback.json",
+            sha256: "e".repeat(64),
+            candidate: divergentCandidate,
+          },
+        },
+        basePredicate,
+      ),
+    );
+    const manifest = {
+      schemaVersion: 2,
+      repository: "Imagine-That-Ai/BurnBar",
+      tag: "v1.2.3",
+      commit: CANDIDATE.candidateCommit,
+      consumer: "apple",
+      signerWorkflow: ".github/workflows/release.yml",
+      artifactPath: artifact,
+      bundles: [
+        {
+          domain: "quota",
+          assetName:
+            "OpenBurnBar-1.2.3-macOS-quota-domain-core-attestation.sigstore.json",
+          bundlePath,
+          predicatePath: predicate1,
+        },
+        {
+          domain: "cloudVault",
+          assetName:
+            "OpenBurnBar-1.2.3-macOS-cloudVault-domain-core-attestation.sigstore.json",
+          bundlePath: bundle2Path,
+          predicatePath: predicate2,
+        },
+      ],
+    };
+    assert.throws(
+      () => validateManifest(manifest),
+      /candidate tuple that differs from the first validated predicate/u,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+function consoleDeploymentReceipt(overrides = {}) {
+  return {
+    schemaVersion: 2,
+    consumer: "console",
+    domain: "cloudVault",
+    artifactKind: "console-deployment-receipt",
+    target: "firebase-hosting-production",
+    candidate: CANDIDATE,
+    sourceRun: {
+      repository: "Imagine-That-Ai/BurnBar",
+      workflowPath: ".github/workflows/domain-core.yml",
+      runId: 101,
+      runAttempt: 2,
+      event: "push",
+      ref: "refs/heads/main",
+      headSha: CANDIDATE.candidateCommit,
+    },
+    promotionProof: {
+      signerWorkflow: ".github/workflows/domain-core-promotion-proof.yml",
+      predicateType: "https://slsa.dev/provenance/v1",
+      signerRun: { runId: 202, runAttempt: 3 },
+      attestationSubject: {
+        fileName: "domain-core-candidate-bundle.json",
+        sha256: "c".repeat(64),
+      },
+      attestationBundleSha256: "d".repeat(64),
+    },
+    rollbackArtifact: {
+      fileName: "domain-core-legacy-rollback.json",
+      sha256: "e".repeat(64),
+      candidate: CANDIDATE,
+    },
+    release: {
+      version: "1.2.3",
+      tag: "v1.2.3",
+      commit: CANDIDATE.candidateCommit,
+      publicProfileSha256: "f".repeat(64),
+    },
+    deployment: {
+      provider: "firebase-hosting",
+      project: "openburnbar-prod",
+      environment: "production",
+      status: "healthy",
+      healthChecks: ["firebase-hosting-rewrite"],
+      deployedArtifact: {
+        fileName: "OpenBurnBar-1.2.3-console-deployment.json",
+        sha256: "a".repeat(64),
+      },
+      deployRun: {
+        repository: "Imagine-That-Ai/BurnBar",
+        workflowPath: ".github/workflows/deploy-hosting.yml",
+        runId: 301,
+        runAttempt: 1,
+        event: "push",
+        ref: "refs/tags/v1.2.3",
+        headSha: CANDIDATE.candidateCommit,
+        jobSetSha256: "g".repeat(64),
+      },
+      healthArtifactSha256: "h".repeat(64),
+    },
+    ...overrides,
+  };
+}
+
+function consoleFixture(receiptContents = null) {
+  const directory = mkdtempSync(join(tmpdir(), "domain-core-publisher-test-"));
+  const artifact = join(directory, "OpenBurnBar-1.2.3-console-deployment.json");
+  const receipt = receiptContents ?? consoleDeploymentReceipt();
+  writeFileSync(artifact, `${JSON.stringify(receipt, null, 2)}\n`);
+  const predicatePath = join(directory, "cloudVault.predicate.json");
+  const bundlePath = join(directory, "cloudVault.sigstore.json");
+  writeFileSync(bundlePath, "signed-attestation-bundle");
+  const predicate = {
+    schemaVersion: 2,
+    predicateType:
+      "https://openburnbar.dev/attestations/domain-core-release-artifact/v2",
+    consumer: "console",
+    domain: "cloudVault",
+    artifactKind: "console-deployment-receipt",
+    target: "firebase-hosting-production",
+    candidate: CANDIDATE,
+    sourceRun: {
+      repository: "Imagine-That-Ai/BurnBar",
+      workflowPath: ".github/workflows/domain-core.yml",
+      runId: 101,
+      runAttempt: 2,
+      event: "push",
+      ref: "refs/heads/main",
+      headSha: CANDIDATE.candidateCommit,
+    },
+    promotionProof: {
+      signerWorkflow: ".github/workflows/domain-core-promotion-proof.yml",
+      predicateType: "https://slsa.dev/provenance/v1",
+      signerRun: { runId: 202, runAttempt: 3 },
+      attestationSubject: {
+        fileName: "domain-core-candidate-bundle.json",
+        sha256: "c".repeat(64),
+      },
+      attestationBundleSha256: "d".repeat(64),
+    },
+    rollbackArtifact: {
+      fileName: "domain-core-legacy-rollback.json",
+      sha256: "e".repeat(64),
+      candidate: CANDIDATE,
+    },
+    artifact: {
+      fileName: basename(artifact),
+      sha256: sha(readFileSync(artifact)),
+    },
+    release: {
+      version: "1.2.3",
+      tag: "v1.2.3",
+      commit: CANDIDATE.candidateCommit,
+      publicProfileSha256: "f".repeat(64),
+    },
+  };
+  writeFileSync(predicatePath, `${JSON.stringify(predicate, null, 2)}\n`);
+  const manifest = {
+    schemaVersion: 2,
+    repository: "Imagine-That-Ai/BurnBar",
+    tag: "v1.2.3",
+    commit: CANDIDATE.candidateCommit,
+    consumer: "console",
+    signerWorkflow:
+      ".github/workflows/domain-core-console-release-evidence.yml",
+    artifactPath: artifact,
+    bundles: [
+      {
+        domain: "cloudVault",
+        assetName:
+          "OpenBurnBar-1.2.3-console-deployment-cloudVault-domain-core-attestation.sigstore.json",
+        bundlePath,
+        predicatePath,
+      },
+    ],
+  };
+  return { directory, artifact, predicate, predicatePath, bundlePath, manifest };
+}
+
+test("rejects a malformed deployment receipt for deployment consumers", () => {
+  const files = consoleFixture({ not: "a-valid-deployment-receipt" });
+  try {
+    assert.throws(
+      () => validateManifest(files.manifest),
+      /deployment receipt for cloudVault is missing required field/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects an empty deployment receipt for deployment consumers", () => {
+  const files = consoleFixture({});
+  try {
+    assert.throws(
+      () => validateManifest(files.manifest),
+      /deployment receipt for cloudVault is missing required field/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a deployment receipt with unhealthy deployment status", () => {
+  const files = consoleFixture(
+    consoleDeploymentReceipt({
+      deployment: {
+        ...consoleDeploymentReceipt().deployment,
+        status: "unhealthy",
+      },
+    }),
+  );
+  try {
+    assert.throws(
+      () => validateManifest(files.manifest),
+      /deployment receipt for cloudVault must report a healthy deployment status/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("accepts a well-formed deployment receipt for deployment consumers", () => {
+  const files = consoleFixture();
+  try {
+    const manifest = validateManifest(files.manifest);
+    assert.equal(manifest.consumer, "console");
+    assert.equal(manifest.bundles.length, 1);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});

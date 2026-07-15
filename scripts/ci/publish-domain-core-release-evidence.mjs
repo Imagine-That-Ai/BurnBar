@@ -61,6 +61,104 @@ function digest(value, label) {
   return value;
 }
 
+const DEPLOYMENT_RECEIPT_REQUIRED_FIELDS = [
+  "schemaVersion",
+  "consumer",
+  "domain",
+  "artifactKind",
+  "target",
+  "candidate",
+  "sourceRun",
+  "promotionProof",
+  "rollbackArtifact",
+  "release",
+  "deployment",
+];
+
+const DEPLOYMENT_REQUIRED_FIELDS = [
+  "provider",
+  "project",
+  "environment",
+  "status",
+  "healthChecks",
+  "deployedArtifact",
+  "deployRun",
+  "healthArtifactSha256",
+];
+
+function validateDeploymentReceiptContents(artifactPath, manifest, domain) {
+  let receipt;
+  try {
+    receipt = JSON.parse(readFileSync(artifactPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `deployment receipt for ${domain} is not valid JSON: ${error.message}`,
+    );
+  }
+  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) {
+    throw new Error(`deployment receipt for ${domain} must be a JSON object`);
+  }
+  for (const field of DEPLOYMENT_RECEIPT_REQUIRED_FIELDS) {
+    if (!(field in receipt)) {
+      throw new Error(
+        `deployment receipt for ${domain} is missing required field: ${field}`,
+      );
+    }
+  }
+  if (receipt.schemaVersion !== 2) {
+    throw new Error(
+      `deployment receipt for ${domain} must declare schemaVersion 2`,
+    );
+  }
+  if (receipt.consumer !== manifest.consumer) {
+    throw new Error(
+      `deployment receipt for ${domain} does not match its publication consumer`,
+    );
+  }
+  if (receipt.domain !== domain) {
+    throw new Error(
+      `deployment receipt for ${domain} does not match its predicate domain`,
+    );
+  }
+  const deployment = receipt.deployment;
+  if (!deployment || typeof deployment !== "object" || Array.isArray(deployment)) {
+    throw new Error(
+      `deployment receipt for ${domain} must contain a deployment object`,
+    );
+  }
+  for (const field of DEPLOYMENT_REQUIRED_FIELDS) {
+    if (!(field in deployment)) {
+      throw new Error(
+        `deployment receipt for ${domain} is missing deployment field: ${field}`,
+      );
+    }
+  }
+  if (deployment.status !== "healthy") {
+    throw new Error(
+      `deployment receipt for ${domain} must report a healthy deployment status`,
+    );
+  }
+  if (
+    !Array.isArray(deployment.healthChecks) ||
+    deployment.healthChecks.length === 0
+  ) {
+    throw new Error(
+      `deployment receipt for ${domain} must report at least one health check`,
+    );
+  }
+  const release = receipt.release;
+  if (
+    !release ||
+    typeof release !== "object" ||
+    Array.isArray(release) ||
+    release.commit !== manifest.commit
+  ) {
+    throw new Error(
+      `deployment receipt for ${domain} does not bind the exact release commit`,
+    );
+  }
+}
+
 function validatePredicate(
   predicate,
   manifest,
@@ -228,6 +326,9 @@ function validatePredicate(
       `predicate for ${domain} does not bind the exact release artifact bytes`,
     );
   }
+  if (manifest.consumer === "console" || manifest.consumer === "functions") {
+    validateDeploymentReceiptContents(artifactPath, manifest, domain);
+  }
   return value;
 }
 
@@ -289,6 +390,7 @@ export function validateManifest(raw) {
   }
   const seenAssets = new Set([artifactAssetName]);
   const seenDomains = new Set();
+  let canonicalCandidate = null;
   const bundles = manifest.bundles.map((rawBundle, index) => {
     const bundle = exactObject(
       rawBundle,
@@ -332,6 +434,19 @@ export function validateManifest(raw) {
       bundle.domain,
       artifactPath,
     );
+    const candidateTuple = {
+      coreVersion: predicate.candidate.coreVersion,
+      abiVersion: predicate.candidate.abiVersion,
+      sourceSha256: predicate.candidate.sourceSha256,
+      candidateCommit: predicate.candidate.candidateCommit,
+    };
+    if (canonicalCandidate === null) {
+      canonicalCandidate = candidateTuple;
+    } else if (!isDeepStrictEqual(candidateTuple, canonicalCandidate)) {
+      throw new Error(
+        `predicate for ${bundle.domain} has a candidate tuple that differs from the first validated predicate for commit ${manifest.commit}`,
+      );
+    }
     return {
       domain: bundle.domain,
       assetName,
