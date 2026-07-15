@@ -481,27 +481,6 @@ jobs:
             node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.resolve-release.outputs.release_commit }}" --windows-dir "publish/$rid"
           done
 
-      - name: Install Rust toolchain for loaded domain-core identity proof
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
-        with:
-          toolchain: "1.96.0"
-
-      - name: Execute and record loaded Windows Rust identity
-        shell: pwsh
-        env:
-          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/domain-core-windows-observed-identity.json
-        run: |
-          $ErrorActionPreference = "Stop"
-          cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime win-x64 `
-            --filter FullyQualifiedName=OpenBurnBar.App.Quota.Tests.DomainCoreQuotaBridgeTests.Loaded_native_identity_is_observed_for_attestation
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node scripts/ci/verify-domain-core-observed-identity.mjs `
-            --profile "$env:RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" `
-            --observed-identity "$env:DOMAIN_CORE_OBSERVED_IDENTITY_REPORT"
-
       - name: Authenticode sign (Azure Artifact Signing — no staple analog)
         if: steps.config.outputs.codesign == 'true'
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
@@ -513,7 +492,7 @@ jobs:
           azure-client-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
           azure-client-secret: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
           files-folder: ${{ github.workspace }}/publish
-          files-folder-filter: OpenBurnBar*.exe,OpenBurnBar*.dll,project-code-static-parser.exe
+          files-folder-filter: OpenBurnBar*.exe,OpenBurnBar*.dll,project-code-static-parser.exe,openburnbar_domain_ffi.dll
           files-folder-recurse: true
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
@@ -535,7 +514,8 @@ jobs:
               Where-Object {
                 $_.Name -like "OpenBurnBar*.exe" -or
                 $_.Name -like "OpenBurnBar*.dll" -or
-                $_.Name -eq "project-code-static-parser.exe"
+                $_.Name -eq "project-code-static-parser.exe" -or
+                $_.Name -ceq "openburnbar_domain_ffi.dll"
               }
           }
 
@@ -595,6 +575,30 @@ jobs:
             ( cd "publish/$rid" && 7z a -tzip -bd "../../$zip" . >/dev/null )
             ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-${rid}.zip" >> "checksums-windows-v${VERSION}.txt" )
           done
+
+      - name: Execute signed domain core from final x64 ZIP and record identity
+        shell: pwsh
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/domain-core-windows-observed-identity.json
+        run: |
+          $ErrorActionPreference = "Stop"
+          $package = Join-Path $env:GITHUB_WORKSPACE "artifacts/OpenBurnBar-${env:VERSION}-win-x64.zip"
+          $extracted = Join-Path $env:RUNNER_TEMP "domain-core-windows-final-x64"
+          Expand-Archive -LiteralPath $package -DestinationPath $extracted
+          $nativeLibrary = Join-Path $extracted "openburnbar_domain_ffi.dll"
+          if (-not (Test-Path -LiteralPath $nativeLibrary -PathType Leaf)) {
+            throw "Final x64 release ZIP is missing openburnbar_domain_ffi.dll"
+          }
+          $env:DOMAIN_CORE_NATIVE_LIBRARY_PATH = $nativeLibrary
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime win-x64 `
+            --filter FullyQualifiedName=OpenBurnBar.App.Quota.Tests.DomainCoreQuotaBridgeTests.Loaded_native_identity_is_observed_for_attestation
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/ci/verify-domain-core-observed-identity.mjs `
+            --profile "$env:RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" `
+            --observed-identity "$env:DOMAIN_CORE_OBSERVED_IDENTITY_REPORT" `
+            --binary "$nativeLibrary"
 
       - name: Build MSIX (MakeAppx — Store + sideload channel)
         # The MSIX is the Store + sideload channel; the portable zip above is the
@@ -1024,7 +1028,8 @@ jobs:
           done
           node scripts/ci/verify-domain-core-observed-identity.mjs \
             --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
-            --observed-identity "$RUNNER_TEMP/domain-core-windows-identity/domain-core-windows-observed-identity.json"
+            --observed-identity "$RUNNER_TEMP/domain-core-windows-identity/domain-core-windows-observed-identity.json" \
+            --binary "$RUNNER_TEMP/windows-profile-win-x64/openburnbar_domain_ffi.dll"
 
       - name: Build deterministic x64 and ARM64 canonical release bundle
         id: bundle
@@ -1075,7 +1080,6 @@ jobs:
           predicate-path: ${{ runner.temp }}/domain-core-windows-evidence/OpenBurnBar-${{ needs.resolve-release.outputs.version }}-windows-cloudVault-domain-core.predicate.json
 
       - name: Stage deterministic attestation bundle names
-        if: steps.windows-plan.outputs.evidence_count != '0'
         env:
           QUOTA_BUNDLE: ${{ steps.attest-windows-quota.outputs.bundle-path }}
           CLOUD_VAULT_BUNDLE: ${{ steps.attest-windows-cloud-vault.outputs.bundle-path }}
@@ -1091,19 +1095,14 @@ jobs:
           fi
 
       - name: Prepare exact stable Windows GitHub release
-        if: steps.windows-plan.outputs.evidence_count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           node scripts/ci/ensure-windows-domain-core-release.mjs \
             --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
             --commit "$RELEASE_COMMIT" --phase prepare
-          node scripts/ci/ensure-windows-domain-core-release.mjs \
-            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
-            --commit "$RELEASE_COMMIT" --phase publish
 
       - name: Publish create-only Windows evidence
-        if: steps.windows-plan.outputs.evidence_count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

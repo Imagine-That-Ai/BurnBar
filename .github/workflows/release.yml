@@ -241,6 +241,10 @@ jobs:
             echo "::error::Unable to resolve ${tag_ref} to a commit."
             exit 1
           fi
+          node scripts/ci/verify-domain-core-native-event-commit.mjs \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --event-commit "$GITHUB_SHA" \
+            --release-commit "$release_commit"
           if ! git merge-base --is-ancestor "$release_commit" origin/main; then
             echo "::error::Release tag ${TAG_NAME} points at ${release_commit}, which is not reachable from origin/main."
             exit 1
@@ -970,6 +974,19 @@ jobs:
             echo "::error::Missing required release secrets: ${missing[*]}"
             exit 1
           fi
+          if [[ ! "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error::APPLE_TEAM_ID must be exactly ten uppercase letters or digits."
+            exit 1
+          fi
+          if [[ "$APPLE_SIGNING_IDENTITY" != "Developer ID Application: "* ]]; then
+            echo "::error::APPLE_SIGNING_IDENTITY must be a Developer ID Application identity."
+            exit 1
+          fi
+          jq -n \
+            --arg teamIdentifier "$APPLE_TEAM_ID" \
+            --arg authority "$APPLE_SIGNING_IDENTITY" \
+            '{teamIdentifier: $teamIdentifier, authority: $authority}' \
+            > "$RUNNER_TEMP/domain-core-apple-signing-policy.json"
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
@@ -1088,15 +1105,8 @@ jobs:
       - name: Verify shared domain core release artifact
         run: test -d Vendor/OpenBurnBarDomainCore.xcframework
 
-      - name: Execute and record loaded Apple Rust identity
-        env:
-          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/domain-core-apple-observed-identity.json
-        run: |
-          set -euo pipefail
-          swift run --package-path OpenBurnBarCore -c release OpenBurnBarDomainCoreFFISmoke
-          node scripts/ci/verify-domain-core-observed-identity.mjs \
-            --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
-            --observed-identity "$DOMAIN_CORE_OBSERVED_IDENTITY_REPORT"
+      - name: Build shipped Apple Rust identity probe
+        run: swift build --package-path OpenBurnBarCore -c release --product OpenBurnBarDomainCoreIdentityProbe
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
@@ -1180,9 +1190,15 @@ jobs:
 
       - name: Verify loaded Android Rust identity
         run: |
+          set -euo pipefail
+          packaged_library="$RUNNER_TEMP/domain-core-android-packaged-libopenburnbar_domain_ffi.so"
+          unzip -p "${{ steps.android.outputs.aab_path }}" \
+            base/lib/arm64-v8a/libopenburnbar_domain_ffi.so > "$packaged_library"
+          test -s "$packaged_library"
           node scripts/ci/verify-domain-core-observed-identity.mjs \
             --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
-            --observed-identity "$RUNNER_TEMP/domain-core-android-observed-identity.json"
+            --observed-identity "$RUNNER_TEMP/domain-core-android-observed-identity.json" \
+            --binary "$packaged_library"
 
       - name: Upload Android release bundle artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -1314,6 +1330,15 @@ jobs:
             echo "No daemon support dylib found at $DAEMON_CORE_DYLIB; daemon is statically linked."
           fi
           chmod +x "$HELPERS_DIR/OpenBurnBarDaemon" "$HELPERS_DIR/OpenBurnBarCLI"
+          IDENTITY_PROBE="OpenBurnBarCore/.build/release/OpenBurnBarDomainCoreIdentityProbe"
+          if [[ ! -f "$IDENTITY_PROBE" || -L "$IDENTITY_PROBE" ]]; then
+            echo "::error::Domain-core identity probe missing or unsafe at $IDENTITY_PROBE"
+            exit 1
+          fi
+          cp "$IDENTITY_PROBE" "$HELPERS_DIR/OpenBurnBarDomainCoreIdentityProbe"
+          chmod +x "$HELPERS_DIR/OpenBurnBarDomainCoreIdentityProbe"
+          install_name_tool -add_rpath "@executable_path/../Frameworks" \
+            "$HELPERS_DIR/OpenBurnBarDomainCoreIdentityProbe"
           DAEMON_RESOURCE_BUNDLE="$APP_PATH/Contents/Resources/OpenBurnBarCore_OpenBurnBarCore.bundle"
           DAEMON_HELPER_RESOURCE_BUNDLE="$HELPERS_DIR/OpenBurnBarCore_OpenBurnBarCore.bundle"
           # Core-decomposition P-02: the Kernel target gained its own resource bundle
@@ -1556,6 +1581,7 @@ jobs:
           fi
 
           sign_one "$HELPERS_DIR/libOpenBurnBarCore.dylib"
+          sign_one "$HELPERS_DIR/OpenBurnBarDomainCoreIdentityProbe" "runtime,library" "com.openburnbar.domain-core-identity-probe"
           sign_one "$HELPERS_DIR/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"
           sign_one "$HELPERS_DIR/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"
           sign_one_with_entitlements \
@@ -1581,6 +1607,7 @@ jobs:
 
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           assert_peer_signature "$APP_PATH" "com.openburnbar.app"
+          assert_peer_signature "$HELPERS_DIR/OpenBurnBarDomainCoreIdentityProbe" "com.openburnbar.domain-core-identity-probe"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.daemon"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarCLI" "com.openburnbar.cli"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
@@ -2208,13 +2235,13 @@ jobs:
           path: ${{ steps.sigstore-provenance.outputs.provenance_dir }}
           if-no-files-found: error
 
-      - name: Upload observed native Rust identities
+      - name: Upload observed Android Rust identity and protected Apple signer policy
         uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/domain-core-apple-observed-identity.json
             ${{ runner.temp }}/domain-core-android-observed-identity.json
+            ${{ runner.temp }}/domain-core-apple-signing-policy.json
           if-no-files-found: error
           retention-days: 90
 
@@ -2300,6 +2327,7 @@ jobs:
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
           TAG_NAME: ${{ needs.release-preflight.outputs.version }}
           VERSION: ${{ needs.release-preflight.outputs.version }}
           DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
@@ -2342,14 +2370,18 @@ jobs:
             cp CHANGELOG.md "$NOTES_FILE"
           fi
 
-          ASSETS=("$DMG_PATH" "$ZIP_PATH")
-          for asset in "${ASSETS[@]}"; do
+          for asset in "$DMG_PATH" "$ZIP_PATH"; do
             if [[ ! -f "$asset" ]]; then
               echo "::error::Release asset missing after artifact download: $asset"
               exit 1
             fi
           done
           bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$DMG_PATH" "$ZIP_PATH"
+          node scripts/ci/publish-create-only-release-asset.mjs \
+            --phase preflight --repository "$GITHUB_REPOSITORY" \
+            --tag "v${VERSION}" --commit "$RELEASE_COMMIT" \
+            --artifact "$DMG_PATH" --expected-prerelease "$IS_PRERELEASE"
+          ASSETS=("$ZIP_PATH")
           [[ -n "$CHECKSUMS_PATH" && -f "$CHECKSUMS_PATH" ]] && ASSETS+=("$CHECKSUMS_PATH")
           [[ -n "$APPCAST_PATH" && -f "$APPCAST_PATH" ]] && ASSETS+=("$APPCAST_PATH")
           [[ -n "$LATEST_PATH" && -f "$LATEST_PATH" ]] && ASSETS+=("$LATEST_PATH")
@@ -2391,15 +2423,23 @@ jobs:
 
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
             gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
-            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" "$PRERELEASE_FLAG" "$LATEST_FLAG"
+            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" \
+              --target "$RELEASE_COMMIT" "$PRERELEASE_FLAG" "$LATEST_FLAG"
           else
             gh release create "v${VERSION}" \
               "${ASSETS[@]}" \
               --title "OpenBurnBar $VERSION" \
+              --target "$RELEASE_COMMIT" \
               --verify-tag \
               "$PRERELEASE_FLAG" \
               "$LATEST_FLAG" \
               --notes-file "$NOTES_FILE"
+          fi
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            node scripts/ci/publish-create-only-release-asset.mjs \
+              --phase publish --repository "$GITHUB_REPOSITORY" \
+              --tag "v${VERSION}" --commit "$RELEASE_COMMIT" \
+              --artifact "$DMG_PATH" --expected-prerelease true
           fi
 
       - name: Notify Sentry of new release
@@ -2491,7 +2531,8 @@ jobs:
           profile="$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json"
           bash scripts/ci/verify-domain-core-native-release-artifact.sh \
             apple "$DMG_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
-            "$RUNNER_TEMP/domain-core-native-identities/domain-core-apple-observed-identity.json"
+            "$RUNNER_TEMP/domain-core-native-identities/domain-core-apple-observed-identity.json" \
+            "$RUNNER_TEMP/domain-core-native-identities/domain-core-apple-signing-policy.json"
           bash scripts/ci/verify-domain-core-native-release-artifact.sh \
             android "$AAB_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
             "$RUNNER_TEMP/domain-core-native-identities/domain-core-android-observed-identity.json"
@@ -2670,7 +2711,6 @@ jobs:
           stage "$ANDROID_HERMES" "OpenBurnBar-${VERSION}-android-hermes-domain-core.sigstore.json"
 
       - name: Publish create-only Apple evidence
-        if: steps.apple-plan.outputs.evidence_count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -2682,7 +2722,6 @@ jobs:
           node scripts/ci/publish-domain-core-release-evidence.mjs --manifest "$manifest"
 
       - name: Publish create-only Android evidence
-        if: steps.android-plan.outputs.evidence_count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
