@@ -30,7 +30,10 @@ import {
 
 const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const SHA256 = /^[0-9a-f]{64}$/u;
-const STABLE_VERSION = /^\d+\.\d+\.\d+(?:\+[0-9A-Za-z.-]+)?$/u;
+const STABLE_VERSION =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
+const APPLE_ANDROID_VERSION =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const NATIVE_CONSUMERS = new Set(["apple", "android", "windows"]);
 const RELEASE_STATES = new Set(["published", "draft-then-publish"]);
 
@@ -107,8 +110,11 @@ function validatePredicate(
     `predicate release for ${domain}`,
   );
   const version = manifest.tag.replace(/^(?:windows-)?v/u, "");
+  const versionPattern = new Set(["apple", "android"]).has(manifest.consumer)
+    ? APPLE_ANDROID_VERSION
+    : STABLE_VERSION;
   if (
-    !STABLE_VERSION.test(release.version) ||
+    !versionPattern.test(release.version) ||
     release.version !== version ||
     release.tag !== manifest.tag ||
     release.commit !== manifest.commit ||
@@ -279,7 +285,7 @@ export function validateManifest(raw) {
   }
   if (
     (releaseState === "draft-then-publish" &&
-      manifest.consumer !== "windows") ||
+      !NATIVE_CONSUMERS.has(manifest.consumer)) ||
     (nativeArtifactOnly && !NATIVE_CONSUMERS.has(manifest.consumer))
   ) {
     throw new Error(
@@ -405,7 +411,13 @@ export function createGhClient(runner = spawnSync) {
   };
 }
 
-function verifyBundle(client, manifest, bundle, artifactPath, bundlePath) {
+export function verifyBundle(
+  client,
+  manifest,
+  bundle,
+  artifactPath,
+  bundlePath,
+) {
   const result = client.run([
     "attestation",
     "verify",

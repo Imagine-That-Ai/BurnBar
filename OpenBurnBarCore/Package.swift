@@ -270,16 +270,12 @@ if hasBurnBarRemoteXCFramework {
     )
 }
 if hasDomainCoreXCFramework {
-    packageProductsBase.append(contentsOf: [
+    packageProductsBase.append(
         .executable(
             name: "OpenBurnBarDomainCoreFFISmoke",
             targets: ["OpenBurnBarDomainCoreFFISmoke"]
-        ),
-        .executable(
-            name: "OpenBurnBarDomainCoreIdentityProbe",
-            targets: ["OpenBurnBarDomainCoreIdentityProbe"]
         )
-    ])
+    )
 }
 
 let packageProducts: [Product] = buildLinuxSecurityOnly ? [
@@ -346,13 +342,6 @@ let domainCoreSmokeTargets: [Target] = hasDomainCoreXCFramework ? [
         name: "OpenBurnBarDomainCoreFFISmoke",
         dependencies: ["OpenBurnBarDomainCoreFFI"],
         path: "Sources/OpenBurnBarDomainCoreFFISmoke",
-        swiftSettings: [.swiftLanguageMode(.v5)]
-    ),
-    .executableTarget(
-        name: "OpenBurnBarDomainCoreIdentityProbe",
-        dependencies: ["OpenBurnBarDomainCoreFFI"],
-        // Packaged and signed as a macOS app helper for final-DMG identity proof.
-        path: "Sources/OpenBurnBarDomainCoreIdentityProbe",
         swiftSettings: [.swiftLanguageMode(.v5)]
     )
 ] : []

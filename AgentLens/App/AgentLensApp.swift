@@ -171,6 +171,7 @@ struct OpenBurnBarApp: App {
     @State var didOpenUITestDashboard = false
 
     init() {
+        Self.runDomainCoreReleaseIdentityModeIfRequested()
         StartupProfiler.event("app_init_start")
         if OpenBurnBarRuntime.shouldUseTestStubScene {
             // XCTest host fast path. The developer's real `OpenBurnBar` support
@@ -213,6 +214,31 @@ struct OpenBurnBarApp: App {
             Self.makeStartupState()
         })
         StartupProfiler.event("app_init_end")
+    }
+
+    private static func runDomainCoreReleaseIdentityModeIfRequested() {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains(DomainCoreReleaseIdentityReporter.argument) else { return }
+        guard arguments.count == 3,
+              arguments[1] == DomainCoreReleaseIdentityReporter.argument,
+              let candidateCommit = ProcessInfo.processInfo.environment["DOMAIN_CORE_CANDIDATE_COMMIT"],
+              let executableURL = Bundle.main.executableURL else {
+            FileHandle.standardError.write(Data("invalid domain-core release identity invocation\n".utf8))
+            exit(EXIT_FAILURE)
+        }
+        do {
+            try DomainCoreReleaseIdentityReporter.write(
+                candidateCommit: candidateCommit,
+                reportURL: URL(fileURLWithPath: arguments[2]),
+                executableURL: executableURL
+            )
+            exit(EXIT_SUCCESS)
+        } catch {
+            FileHandle.standardError.write(
+                Data("domain-core release identity failed: \(error.localizedDescription)\n".utf8)
+            )
+            exit(EXIT_FAILURE)
+        }
     }
 
     private static func seedUITestDefaultsIfNeeded() {

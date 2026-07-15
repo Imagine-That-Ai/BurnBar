@@ -15,13 +15,8 @@ if [[ "$consumer" != "apple" && "$consumer" != "android" ]]; then
   echo "usage: $0 <apple|android> <artifact> <version> <profile> <candidate-commit> <selected-profile.json> <observed-identity.json>" >&2
   exit 2
 fi
-if [[ "$consumer" == "apple" ]]; then
-  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?(\+[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
-    echo "invalid Apple release version: $version" >&2
-    exit 2
-  fi
-elif [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
-  echo "invalid stable Android release version: $version" >&2
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?(\+[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+  echo "invalid native release version: $version" >&2
   exit 2
 fi
 if [[ "$profile_name" != "public-production" && "$profile_name" != "public-production-rollback" ]]; then
@@ -105,31 +100,22 @@ verify_apple() {
   hdiutil attach -readonly -nobrowse -mountpoint "$apple_mount_point" "$artifact" >/dev/null
   local app="$apple_mount_point/OpenBurnBar.app"
   local executable="$app/Contents/MacOS/OpenBurnBar"
-  local identity_probe="$app/Contents/Helpers/OpenBurnBarDomainCoreIdentityProbe"
   if [[ ! -d "$app" || ! -f "$executable" || -L "$executable" ]]; then
     echo "notarized DMG does not contain the expected regular OpenBurnBar executable" >&2
     exit 1
   fi
   codesign --verify --deep --strict --verbose=2 "$app"
   spctl --assess --type execute -vv "$app"
-  if [[ ! -f "$identity_probe" || -L "$identity_probe" || ! -x "$identity_probe" ]]; then
-    echo "notarized DMG does not contain the signed executable domain-core identity probe" >&2
-    exit 1
-  fi
-  local dmg_signature app_signature probe_signature
+  local dmg_signature app_signature
   dmg_signature="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-dmg-signature.XXXXXX")"
   app_signature="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-app-signature.XXXXXX")"
-  probe_signature="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-probe-signature.XXXXXX")"
   codesign -d --verbose=4 "$artifact" > "$dmg_signature" 2>&1
   codesign -d --verbose=4 "$app" > "$app_signature" 2>&1
-  codesign -d --verbose=4 "$identity_probe" > "$probe_signature" 2>&1
   node "$repo_root/scripts/ci/verify-domain-core-apple-signing-identity.mjs" \
     --policy "$apple_signing_policy" --signature "$dmg_signature"
   node "$repo_root/scripts/ci/verify-domain-core-apple-signing-identity.mjs" \
     --policy "$apple_signing_policy" --signature "$app_signature"
-  node "$repo_root/scripts/ci/verify-domain-core-apple-signing-identity.mjs" \
-    --policy "$apple_signing_policy" --signature "$probe_signature"
-  rm -f "$dmg_signature" "$app_signature" "$probe_signature"
+  rm -f "$dmg_signature" "$app_signature"
   node "$repo_root/scripts/ci/verify-domain-core-build-profile-artifact.mjs" \
     --profile "$profile_name" \
     --expected-candidate-commit "$candidate_commit" \
@@ -141,17 +127,10 @@ verify_apple() {
     echo "Apple release identity requires an arm64-only app, found: ${architectures:-none}" >&2
     exit 1
   fi
-  architectures="$(lipo -archs "$identity_probe" | xargs)"
-  if [[ "$architectures" != "arm64" ]]; then
-    echo "Apple release identity probe must be arm64-only, found: ${architectures:-none}" >&2
-    exit 1
-  fi
   DOMAIN_CORE_CANDIDATE_COMMIT="$candidate_commit" \
-    DOMAIN_CORE_OBSERVED_IDENTITY_REPORT="$observed_identity" \
-    DOMAIN_CORE_SHIPPED_BINARY="$executable" \
-    "$identity_probe"
+    "$executable" --domain-core-release-identity-report "$observed_identity"
   if [[ ! -f "$observed_identity" || -L "$observed_identity" || ! -s "$observed_identity" ]]; then
-    echo "shipped Apple identity probe did not create a safe nonempty report" >&2
+    echo "shipped Apple app did not create a safe nonempty identity report" >&2
     exit 1
   fi
   verify_selected_identity "$executable"
