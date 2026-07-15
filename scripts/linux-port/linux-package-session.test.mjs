@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import {
   aggregateArchitectureLifecycle,
+  isArchitectureSessionBaselineBlocked,
   requiredLifecycleSteps,
   validateArchUpdateRollbackReport,
   validateArchitectureSessionSet
@@ -126,6 +127,18 @@ test('missing and blocked architecture sessions fail closed', () => {
   const aggregate = aggregateArchitectureLifecycle({ manifest, sessions });
   assert.equal(aggregate.passed, false);
   assert.equal(aggregate.lifecycle.rollback.status, 'blocked');
+});
+
+test('known incompatible legacy Debian baseline is eligible only for prerelease blocking', () => {
+  const reason = 'Previous same-architecture Linux .deb predates the daemon launcher contract; update, rollback, and data-preservation promotion gates remain blocked until a compatible baseline is available.';
+  const sessions = [session('aarch64'), session('x86_64')];
+  for (const candidate of sessions) {
+    for (const step of ['update', 'rollback', 'dataPreservation']) {
+      candidate.lifecycle[step] = { status: 'blocked', reason };
+    }
+    candidate.passed = false;
+  }
+  assert.equal(isArchitectureSessionBaselineBlocked({ manifest, sessions }), true);
 });
 
 test('cross-commit, duplicate, and version drift are rejected', () => {

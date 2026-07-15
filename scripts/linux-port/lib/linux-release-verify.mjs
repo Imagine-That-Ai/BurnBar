@@ -54,7 +54,7 @@ export function verifyLinuxReleaseCandidate(input) {
     return row?.status === 'blocked'
       && Array.isArray(row.blockers)
       && row.blockers.length === (manifest.supportedArchitectures?.length ?? 0)
-      && row.blockers.every((blocker) => /No previous same-architecture (?:Linux \.deb|Arch package) was supplied/u.test(blocker.reason ?? ''));
+      && row.blockers.every((blocker) => /(?:No previous same-architecture (?:Linux \.deb|Arch package) was supplied|Previous same-architecture Linux \.deb predates the daemon launcher contract)/u.test(blocker.reason ?? ''));
   };
   const read = (relPath, label) => {
     const full = confinedFile(repoRoot, relPath);

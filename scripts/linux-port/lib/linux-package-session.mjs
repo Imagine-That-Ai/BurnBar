@@ -361,13 +361,13 @@ export function validateArchitectureSessionSet({ manifest, sessions, version, co
   return [...new Set(failures)];
 }
 
-const baselineBlockedReason = /No previous same-architecture (?:Linux \.deb|Arch package) was supplied/u;
+const baselineBlockedReason = /(?:No previous same-architecture (?:Linux \.deb|Arch package) was supplied|Previous same-architecture Linux \.deb predates the daemon launcher contract)/u;
 
 /**
  * A prerelease may be assembled before every architecture has an older signed
  * baseline.  This is deliberately narrower than a general lifecycle bypass:
  * startup/version proof must be green and only update/rollback/preservation
- * may be blocked for the explicit missing-baseline reason.
+ * may be blocked for an explicit missing/incompatible-baseline reason.
  */
 export function isArchitectureSessionBaselineBlocked({ manifest, sessions }) {
   if (!Array.isArray(sessions) || sessions.length !== manifest.supportedArchitectures.length) return false;

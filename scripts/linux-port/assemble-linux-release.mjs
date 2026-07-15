@@ -234,7 +234,7 @@ if (architectureSessionFailures.length > 0 && !lifecycleWarningAllowed) {
 } else if (lifecycleWarningAllowed) {
   candidateWarnings.push({
     kind: 'blocked-lifecycle-baseline',
-    message: 'One or more architectures lack an older signed baseline; update, rollback, and data-preservation proof remains blocked for this non-stable candidate.'
+    message: 'One or more architectures lack a compatible older signed baseline; update, rollback, and data-preservation proof remains blocked for this non-stable candidate.'
   });
 }
 const architectureSessionFile = path.join(smokeDir, 'architecture-sessions.json');
