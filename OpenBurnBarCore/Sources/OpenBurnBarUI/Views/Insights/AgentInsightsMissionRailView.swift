@@ -6,12 +6,12 @@ import OpenBurnBarInsights
 /// Each card surfaces the lens, priority badge, title, summary, and
 /// expected impact line. Tapping fires the host platform's mission
 /// dispatch flow.
-public struct AgentInsightsMissionRailView: View {
-    public let missions: [InsightMissionCandidate]
-    public let presentation: AgentInsightsView.Presentation
-    public var onTap: ((InsightMissionCandidate) -> Void)?
+struct AgentInsightsMissionRailView: View {
+    let missions: [InsightMissionCandidate]
+    let presentation: AgentInsightsView.Presentation
+    var onTap: ((InsightMissionCandidate) -> Void)?
 
-    public init(
+    init(
         missions: [InsightMissionCandidate],
         presentation: AgentInsightsView.Presentation,
         onTap: ((InsightMissionCandidate) -> Void)? = nil
@@ -21,7 +21,7 @@ public struct AgentInsightsMissionRailView: View {
         self.onTap = onTap
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             HStack(spacing: 6) {
                 Image(systemName: "target")

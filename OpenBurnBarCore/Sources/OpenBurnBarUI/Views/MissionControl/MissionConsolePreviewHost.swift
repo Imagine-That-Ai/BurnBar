@@ -12,17 +12,17 @@ import OpenBurnBarKernel
 
 @MainActor
 @Observable
-public final class MissionConsolePreviewHost: MissionConsoleHost {
-    public var snapshot: MissionConsoleSnapshot
-    public var lastDispatchedMissionID: String?
-    public var isDispatching: Bool = false
-    public var inlineError: String?
+final class MissionConsolePreviewHost: MissionConsoleHost {
+    var snapshot: MissionConsoleSnapshot
+    var lastDispatchedMissionID: String?
+    var isDispatching: Bool = false
+    var inlineError: String?
 
-    public init(snapshot: MissionConsoleSnapshot = .preview) {
+    init(snapshot: MissionConsoleSnapshot = .preview) {
         self.snapshot = snapshot
     }
 
-    public func dispatch(_ request: MissionConsoleDispatchRequest) async -> MissionConsoleDispatchOutcome {
+    func dispatch(_ request: MissionConsoleDispatchRequest) async -> MissionConsoleDispatchOutcome {
         isDispatching = true
         try? await Task.sleep(nanoseconds: 600_000_000)
         let newID = "mock-\(UUID().uuidString.prefix(6))"
@@ -66,7 +66,7 @@ public final class MissionConsolePreviewHost: MissionConsoleHost {
         return .dispatched(missionID: newID)
     }
 
-    public func respond(to ask: MissionConsoleApprovalAsk, approve: Bool) async {
+    func respond(to ask: MissionConsoleApprovalAsk, approve: Bool) async {
         snapshot = MissionConsoleSnapshot(
             health: snapshot.health,
             runtimes: snapshot.runtimes,
@@ -80,11 +80,11 @@ public final class MissionConsolePreviewHost: MissionConsoleHost {
         _ = approve
     }
 
-    public func clearInlineError() {
+    func clearInlineError() {
         inlineError = nil
     }
 
-    public func refresh() async {
+    func refresh() async {
         // no-op for preview
     }
 }

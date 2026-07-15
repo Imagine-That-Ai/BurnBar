@@ -1,11 +1,11 @@
 import SwiftUI
 import OpenBurnBarInsights
 
-public struct InsightUseCaseClusterView: View {
-    public let data: InsightWidgetData.UseCaseCluster
-    public init(data: InsightWidgetData.UseCaseCluster) { self.data = data }
+struct InsightUseCaseClusterView: View {
+    let data: InsightWidgetData.UseCaseCluster
+    init(data: InsightWidgetData.UseCaseCluster) { self.data = data }
 
-    public var body: some View {
+    var body: some View {
         let total = max(1, data.clusters.reduce(0) { $0 + $1.size })
         FlowLayout(spacing: 6) {
             ForEach(data.clusters) { cluster in

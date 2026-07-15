@@ -11,14 +11,14 @@ import SwiftUI
 /// converge into the flame, the flame solidifies inside the glass cube, then
 /// we hand off to the app. Under **Reduce Motion** the splash is skipped
 /// entirely and the app is shown immediately.
-public struct BurnBarLaunchSplashModifier: ViewModifier {
+struct BurnBarLaunchSplashModifier: ViewModifier {
     private let duration: Double
     private let onHaptic: (BurnBarLogoFormationHaptic) -> Void
 
     @State private var finished = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(
+    init(
         duration: Double,
         onHaptic: @escaping (BurnBarLogoFormationHaptic) -> Void = { _ in }
     ) {
@@ -28,7 +28,7 @@ public struct BurnBarLaunchSplashModifier: ViewModifier {
 
     private var showsSplash: Bool { !finished && !reduceMotion }
 
-    public func body(content: Content) -> some View {
+    func body(content: Content) -> some View {
         ZStack {
             content
 

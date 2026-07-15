@@ -323,14 +323,14 @@ public struct CardApprovalView: View {
 
 // MARK: - Mission ref
 
-public struct CardMissionRefView: View {
-    public let payload: CardMissionRef
-    public let accent: Color
-    public init(payload: CardMissionRef, accent: Color) {
+struct CardMissionRefView: View {
+    let payload: CardMissionRef
+    let accent: Color
+    init(payload: CardMissionRef, accent: Color) {
         self.payload = payload
         self.accent = accent
     }
-    public var body: some View {
+    var body: some View {
         // The host wires a live MissionConsoleSnapshot lookup; the
         // package-level stub renders an editorial placeholder.
         HStack(spacing: 10) {
@@ -398,10 +398,10 @@ public struct CardCustomView: View {
 
 // MARK: - Too large
 
-public struct CardTooLargeView: View {
-    public let payload: CardTooLarge
-    public init(payload: CardTooLarge) { self.payload = payload }
-    public var body: some View {
+struct CardTooLargeView: View {
+    let payload: CardTooLarge
+    init(payload: CardTooLarge) { self.payload = payload }
+    var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -429,10 +429,10 @@ public struct CardTooLargeView: View {
 
 // MARK: - Unknown
 
-public struct CardUnknownView: View {
-    public let label: String
-    public init(label: String) { self.label = label }
-    public var body: some View {
+struct CardUnknownView: View {
+    let label: String
+    init(label: String) { self.label = label }
+    var body: some View {
         Text("Unsupported card: \(label)")
             .font(.caption)
             .foregroundStyle(DesignSystemColors.textMuted)

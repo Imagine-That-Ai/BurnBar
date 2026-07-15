@@ -1,11 +1,11 @@
 import SwiftUI
 import OpenBurnBarInsights
 
-public struct InsightFunnelView: View {
-    public let data: InsightWidgetData.Funnel
-    public init(data: InsightWidgetData.Funnel) { self.data = data }
+struct InsightFunnelView: View {
+    let data: InsightWidgetData.Funnel
+    init(data: InsightWidgetData.Funnel) { self.data = data }
 
-    public var body: some View {
+    var body: some View {
         let maxCount = data.steps.map(\.count).max() ?? 1
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
             ForEach(data.steps) { step in

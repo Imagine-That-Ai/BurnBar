@@ -4,14 +4,14 @@ import OpenBurnBarInsights
 /// Renders when an agent has no recorded signal *and* no scoped canvases.
 /// Tells the user exactly which agent is empty and what would change that,
 /// instead of the generic "no data yet".
-public struct AgentInsightsEmptyStateView: View {
-    public let header: AgentInsightsHeader
+struct AgentInsightsEmptyStateView: View {
+    let header: AgentInsightsHeader
 
-    public init(header: AgentInsightsHeader) {
+    init(header: AgentInsightsHeader) {
         self.header = header
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(spacing: UnifiedDesignSystem.Spacing.md) {
             Image(systemName: emptyIcon)
                 .font(.system(size: 36, weight: .light))

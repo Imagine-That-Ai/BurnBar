@@ -8,12 +8,12 @@ import OpenBurnBarInsights
 /// kind (model/tool/cache/prompt/response/retry), a thin axis with cost
 /// ticks, and a `summary` caption to the right. Tap opens the full
 /// session trace view.
-public struct VerdictTraceStripView: View {
+struct VerdictTraceStripView: View {
 
-    public var strip: VerdictTraceStrip
-    public var onTapSession: ((String) -> Void)?
+    var strip: VerdictTraceStrip
+    var onTapSession: ((String) -> Void)?
 
-    public init(
+    init(
         strip: VerdictTraceStrip,
         onTapSession: ((String) -> Void)? = nil
     ) {
@@ -21,7 +21,7 @@ public struct VerdictTraceStripView: View {
         self.onTapSession = onTapSession
     }
 
-    public var body: some View {
+    var body: some View {
         Button {
             onTapSession?(strip.sessionID)
         } label: {

@@ -1,11 +1,11 @@
 import SwiftUI
 import OpenBurnBarInsights
 
-public struct InsightFocusMatrixView: View {
-    public let data: InsightWidgetData.FocusMatrix
-    public init(data: InsightWidgetData.FocusMatrix) { self.data = data }
+struct InsightFocusMatrixView: View {
+    let data: InsightWidgetData.FocusMatrix
+    init(data: InsightWidgetData.FocusMatrix) { self.data = data }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             header
             ForEach(Array(data.rowLabels.enumerated()), id: \.offset) { rIdx, label in

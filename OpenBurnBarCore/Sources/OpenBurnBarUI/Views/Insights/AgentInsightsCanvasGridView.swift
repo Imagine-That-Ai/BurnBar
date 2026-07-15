@@ -3,12 +3,12 @@ import OpenBurnBarInsights
 
 /// Grid of saved canvases scoped to the current agent. Tap a card to
 /// navigate into the canvas detail (mobile sheet, macOS workspace).
-public struct AgentInsightsCanvasGridView: View {
-    public let canvases: [InsightCanvas]
-    public let presentation: AgentInsightsView.Presentation
-    public var onTap: ((InsightCanvas) -> Void)?
+struct AgentInsightsCanvasGridView: View {
+    let canvases: [InsightCanvas]
+    let presentation: AgentInsightsView.Presentation
+    var onTap: ((InsightCanvas) -> Void)?
 
-    public init(
+    init(
         canvases: [InsightCanvas],
         presentation: AgentInsightsView.Presentation,
         onTap: ((InsightCanvas) -> Void)? = nil
@@ -18,7 +18,7 @@ public struct AgentInsightsCanvasGridView: View {
         self.onTap = onTap
     }
 
-    public var body: some View {
+    var body: some View {
         let columns: [GridItem] = presentation == .roomy
             ? Array(repeating: GridItem(.flexible(), spacing: UnifiedDesignSystem.Spacing.md), count: 3)
             : Array(repeating: GridItem(.flexible(), spacing: UnifiedDesignSystem.Spacing.md), count: 2)

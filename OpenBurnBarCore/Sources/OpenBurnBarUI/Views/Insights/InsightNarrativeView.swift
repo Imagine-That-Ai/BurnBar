@@ -1,16 +1,16 @@
 import SwiftUI
 import OpenBurnBarInsights
 
-public struct InsightNarrativeView: View {
-    public let data: InsightWidgetData.Narrative
-    public let onCitationTapped: ((InsightCitation) -> Void)?
-    public init(data: InsightWidgetData.Narrative,
+struct InsightNarrativeView: View {
+    let data: InsightWidgetData.Narrative
+    let onCitationTapped: ((InsightCitation) -> Void)?
+    init(data: InsightWidgetData.Narrative,
                 onCitationTapped: ((InsightCitation) -> Void)? = nil) {
         self.data = data
         self.onCitationTapped = onCitationTapped
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
             HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.xs) {
                 Image(systemName: "text.quote")

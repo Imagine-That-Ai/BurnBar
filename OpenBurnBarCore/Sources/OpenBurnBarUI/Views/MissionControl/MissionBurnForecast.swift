@@ -91,16 +91,16 @@ public struct MissionBurnForecastStrip: View {
 // scales subtly. While dispatching it shows an inline progress spinner; the
 // "lift-off" transition is owned by the parent (the active tile slides in).
 
-public struct MissionDispatchButton: View {
-    public let runtimeAccent: Color
-    public let runtimeName: String
-    public let isEnabled: Bool
-    public let isDispatching: Bool
-    public let action: () -> Void
+struct MissionDispatchButton: View {
+    let runtimeAccent: Color
+    let runtimeName: String
+    let isEnabled: Bool
+    let isDispatching: Bool
+    let action: () -> Void
 
     @State private var pressed = false
 
-    public init(
+    init(
         runtimeAccent: Color,
         runtimeName: String,
         isEnabled: Bool,
@@ -114,7 +114,7 @@ public struct MissionDispatchButton: View {
         self.action = action
     }
 
-    public var body: some View {
+    var body: some View {
         Button(action: action) {
             HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                 if isDispatching {

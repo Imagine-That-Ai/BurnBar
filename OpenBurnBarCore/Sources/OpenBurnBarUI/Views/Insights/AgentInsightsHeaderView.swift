@@ -9,12 +9,12 @@ import OpenBurnBarInsights
 /// presentation widens the band and adds the model lineup row,
 /// `compact` keeps the lineup as a compact chip so the band fits
 /// above the iPhone fold.
-public struct AgentInsightsHeaderView: View {
-    public let header: AgentInsightsHeader
-    public let presentation: AgentInsightsView.Presentation
-    public var onTap: (() -> Void)?
+struct AgentInsightsHeaderView: View {
+    let header: AgentInsightsHeader
+    let presentation: AgentInsightsView.Presentation
+    var onTap: (() -> Void)?
 
-    public init(
+    init(
         header: AgentInsightsHeader,
         presentation: AgentInsightsView.Presentation,
         onTap: (() -> Void)? = nil
@@ -24,7 +24,7 @@ public struct AgentInsightsHeaderView: View {
         self.onTap = onTap
     }
 
-    public var body: some View {
+    var body: some View {
         let band = bandContents
         if let onTap {
             Button(action: onTap) { band }

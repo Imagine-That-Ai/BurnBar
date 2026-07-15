@@ -1,16 +1,16 @@
 import SwiftUI
 import OpenBurnBarInsights
 
-public struct InsightAnomalyTableView: View {
-    public let data: InsightWidgetData.AnomalyTable
-    public let onCitationTapped: ((InsightCitation) -> Void)?
-    public init(data: InsightWidgetData.AnomalyTable,
+struct InsightAnomalyTableView: View {
+    let data: InsightWidgetData.AnomalyTable
+    let onCitationTapped: ((InsightCitation) -> Void)?
+    init(data: InsightWidgetData.AnomalyTable,
                 onCitationTapped: ((InsightCitation) -> Void)? = nil) {
         self.data = data
         self.onCitationTapped = onCitationTapped
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(spacing: 0) {
             if data.rows.isEmpty {
                 InsightEmptyBodyView(message: "No anomalies in this window.")

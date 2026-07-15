@@ -2,11 +2,11 @@ import SwiftUI
 import OpenBurnBarInsights
 import Charts
 
-public struct InsightForecastView: View {
-    public let data: InsightWidgetData.Forecast
-    public init(data: InsightWidgetData.Forecast) { self.data = data }
+struct InsightForecastView: View {
+    let data: InsightWidgetData.Forecast
+    init(data: InsightWidgetData.Forecast) { self.data = data }
 
-    public var body: some View {
+    var body: some View {
         Chart {
             // Actual
             ForEach(data.actual, id: \.date) { point in

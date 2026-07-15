@@ -6,14 +6,14 @@ import OpenBurnBarInsights
 /// Reuses `UnifiedGlassCard` from the design system so widgets feel
 /// continuous with the rest of the app, and centralizes the header /
 /// footer / freshness-pill conventions in one place.
-public struct InsightWidgetChrome<Body: View>: View {
+struct InsightWidgetChrome<Body: View>: View {
 
-    public let widget: InsightWidget
-    public let isSelected: Bool
-    public let onConfigure: (() -> Void)?
+    let widget: InsightWidget
+    let isSelected: Bool
+    let onConfigure: (() -> Void)?
     private let content: () -> Body
 
-    public init(widget: InsightWidget,
+    init(widget: InsightWidget,
                 isSelected: Bool = false,
                 onConfigure: (() -> Void)? = nil,
                 @ViewBuilder body: @escaping () -> Body) {
@@ -23,7 +23,7 @@ public struct InsightWidgetChrome<Body: View>: View {
         self.content = body
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             header
             contentArea
