@@ -1,12 +1,12 @@
 # Shared Rust Promotion Evidence
 
-Use this gate before changing a shared-Rust consumer from `shadow` to `rust`.
-A passing report is necessary, not sufficient: fixture, artifact, security,
-stable-release, and deletion gates in the
-[roadmap](../SHARED_RUST_DOMAIN_CORE_ROADMAP.md) still apply.
+Use this runbook before changing a shared-Rust consumer from `shadow` to `rust`.
+Promotion authority is the protected deterministic GitHub attestation described
+below. Runtime telemetry is optional diagnostic input; it is not a gate and no
+duration, daily continuity, user count, or sample count is required.
 
-No V1 or V2 bundle can authorize promotion or legacy deletion. Candidate-bound
-V3 is the only promotable evidence schema.
+No V1, V2, or V3 telemetry bundle can authorize promotion or legacy deletion.
+V3 is the only candidate-bound diagnostic schema. V1 and V2 are drain-only.
 
 ## Identify one release candidate
 
@@ -22,7 +22,7 @@ The candidate's signed build metadata supplies the expected tuple. The loaded
 native or Wasm module supplies its observed version, ABI, and source fingerprint.
 A sidecar file or matching version string alone is not loaded-module proof.
 
-## Enroll the candidate
+## Optionally enroll the candidate for diagnostics
 
 An enrolled Firebase account has exactly six domain-core custom claims:
 
@@ -80,15 +80,16 @@ Use `--clear --apply` after the observation is retained or immediately when a
 candidate is revoked. Clearing removes all six domain-core claims even if the
 stored enrollment is partial or malformed.
 
-## Collect V3 shadow samples
+## Optionally collect V3 shadow samples
 
 The exact client DTO is
 [`domain-core-shadow-sample-v3.schema.json`](../contracts/domain-core-shadow-sample-v3.schema.json).
 Every V3 sample includes the candidate commit, expected core tuple, and loaded
 core tuple. The server requires its channel, consumer, candidate commit, and
 expected core tuple to match the six enrollment claims, validates the operation
-against its real domain and slice, and stores `promotionEligible: true` only for
-accepted V3 samples.
+against its real domain and slice. The historical `promotionEligible` storage
+field identifies valid V3 diagnostic records; it does not grant promotion
+authority.
 
 A successful comparison requires a complete loaded tuple equal to the expected
 tuple. A different loaded tuple is retained only as
@@ -146,7 +147,7 @@ drain idempotently. The server stores them with `promotionEligible: false`.
 They are never backfilled or translated to V3, and evaluation returns
 `evidence_schema_v3_required`.
 
-## Export one exact cohort
+## Optionally export one exact diagnostic cohort
 
 ```bash
 node scripts/ops/export-domain-core-promotion-evidence.mjs \
@@ -174,19 +175,17 @@ The old `--core-version` and `--query-revision` export flags are rejected. An
 operator cannot relabel one candidate's records as another revision. The output
 preserves the candidate tuple at the report root and in `provenance`.
 
-Each required `(slice, consumer)` window contains server-received daily sample
-counts. Every UTC day touched by the half-open observation interval must have at
-least one accepted V3 sample for every required coverage cell. Earliest/latest
-timestamps alone are not continuity. Missing days, mixed candidates, same
-SemVer with a different source fingerprint, unavailable versions, partial
-loaded identities, unknown operations, duplicate IDs, or missing coverage fail
-closed.
+The export retains server-received daily counts and real `(slice, consumer)`
+dimensions so sparse coverage, mixed candidates, unavailable versions, partial
+loaded identities, unknown operations, and duplicate IDs remain visible. Those
+conditions are diagnostic alerts. The exporter never relabels or fabricates
+records, but a complete export is still not promotion authority.
 
 The command uses Application Default Credentials and writes owner-only output.
 `source-uri` is provenance, not a credential; queries, fragments, usernames,
 and passwords are rejected.
 
-## Evaluate the report
+## Evaluate optional diagnostics
 
 ```bash
 node scripts/ci/evaluate-domain-core-promotion.mjs \
@@ -195,14 +194,14 @@ node scripts/ci/evaluate-domain-core-promotion.mjs \
   --output /absolute/path/to/promotion-readiness.json
 ```
 
-Exit status `0` means `ready`, `2` means valid evidence that is `not_ready`,
-and `1` means invalid input or policy. Automation must require both status `0`
-and `ready: true`; a report file's existence is not success.
+Exit status `2` with `status: diagnostic`, `ready: false`, and
+`authority: diagnostic-only` means the candidate-bound diagnostic report was
+validly evaluated. Exit status `1` means invalid input or policy. This command
+never exits with promotion success and no report-file state grants authority.
 
-The committed
-[`config/domain-core-promotion-policy.json`](../../config/domain-core-promotion-policy.json)
-is the only policy accepted by the CLI. It intentionally has no policy override.
-The policy covers only the real owners in the inventory:
+The CLI accepts only the committed
+[`config/domain-core-shadow-diagnostic-policy.json`](../../config/domain-core-shadow-diagnostic-policy.json)
+and has no policy override. It covers only the real owners in the inventory:
 
 - quota: Claude, Codex, Cursor, and Anthropic on Apple and Windows;
 - CloudVault: foundation/AES/escrow on Apple, Android, Windows, and Console;
@@ -210,10 +209,9 @@ The policy covers only the real owners in the inventory:
 - Hermes: AAD, payload/key-wrap, HPKE info, and ratchet on Apple and Android;
 - pricing: token cost on Apple and Functions, plus legacy Kimi in Functions.
 
-The evaluator requires one common candidate observation window, complete daily
-continuity, all real coverage cells, at least 14 days, at least 10,000 aggregate
-samples, eligible channels, complete latency sampling, safe integer arithmetic,
-and p95 Rust latency no more than five percent above legacy.
+The diagnostic evaluator checks candidate identity, real coverage cells,
+channels, mismatch categories, and latency when samples exist. It intentionally
+has no minimum duration or sample target and always reports `ready: false`.
 
 Ordinary result mismatches may be marked `explained` only with a GitHub issue or
 PR, named reviewer, and approval timestamp. Unexplained mismatches always block.
@@ -221,27 +219,64 @@ Native-unavailable, native-error, and loaded-identity mismatches are hard
 blockers even if review metadata is attached; `loaded_identity_mismatch` must
 remain explicitly unexplained.
 
-An implementation having a Rust export is not evidence. A domain remains
-blocked until every real consumer submits actual candidate-bound comparisons.
-The exporter never fabricates an empty, continuous, or passing window.
+An implementation having a Rust export is not proof. The exporter never
+fabricates an empty, continuous, or passing window, and telemetry volume never
+substitutes for the deterministic workflow below.
+
+## Create and attest deterministic proof
+
+1. Merge the exact candidate to `main`. A PR merge ref, dispatch checkout, or
+   unmerged commit is ineligible.
+2. Require the `Shared Rust domain core` `push` run at that commit to succeed.
+   Its 12 exact policy job IDs expand to 14 exact GitHub API jobs because Windows
+   runs x64 and ARM64 separately and the final `candidate-bundle` job aggregates
+   them. Any failed, skipped, missing, duplicate, extra, mixed-run, or
+   mixed-candidate job fails closed.
+3. The jobs emit suite reports and artifact hashes tied to the exact run ID,
+   attempt, commit, version, ABI, and source fingerprint. Required native/Wasm
+   load suites prove Swift, Kotlin, C#, browser Wasm, and Node Wasm artifacts.
+   The same run executes all 38 policy coverage cells, deterministic KATs and
+   fuzz/property suites, the paired five-percent performance ceiling, and the
+   real signed-legacy rollback drill.
+4. The final job creates
+   `domain-core-candidate-bundle-COMMIT-RUN-ATTEMPT`. It is unsigned and says
+   only `eligible_for_attestation`; it is not promotion authority.
+5. Dispatch `Shared Rust domain core promotion proof` with the full candidate
+   commit. The workflow runs under the protected `domain-core-promotion`
+   environment, checks out the evaluator and policy from trusted `main`, proves
+   the candidate is reachable from `main`, queries GitHub for the exact
+   successful push run, downloads its immutable bundle, and independently
+   verifies the API run/jobs, policy, bundle, and candidate checkout.
+6. Only the GitHub provenance attestation produced after that trusted-main
+   verification authorizes the reviewed promotion. The uploaded
+   `protected-verification.json` receipt remains non-authoritative; it is an
+   audit record, not a signature or shortcut.
+
+The GitHub environment is a live security control. It must retain at least one
+required reviewer and a deployment branch policy allowing only `main`; the
+signer verifies both through the GitHub API before attesting. Operator
+verification on 2026-07-14 confirmed required reviewer `Ajnunezg` and only the
+`main` branch. If those settings drift, stop and repair the environment rather
+than weakening the workflow.
 
 ## Promotion and deletion sequence
 
-1. Retain the raw V3 export, readiness report, candidate identity, and review
-   links as immutable rollout evidence.
-2. Confirm `ready: true` and independently satisfy fixtures, artifact-load,
-   ABI/source provenance, security, release, and consumer-specific gates.
-3. Promote only the reviewed domain/consumer to `rust`. Keep the explicit
+1. Retain the protected provenance attestation, unsigned candidate bundle,
+   candidate identity, workflow run/attempt, and review links. Retain any V3
+   export only as optional diagnostic evidence.
+2. Verify the attestation and independently satisfy security and
+   consumer-specific release gates.
+3. Promote only the attested domain/consumer to `rust`. Keep the explicit
    `legacy` rollback setting; do not delete the old implementation in this PR.
-4. Observe one stable signed release with Rust authoritative. Any mismatch,
-   missing day, latency regression, loaded-identity failure, rollback, or new
-   candidate commit invalidates the applicable observation and restarts it.
+4. Observe one stable signed release with Rust authoritative and rollback still
+   available. Any mismatch, performance regression, loaded-identity failure,
+   rollback, or new candidate commit requires a new exact deterministic proof.
 5. Open a separate legacy-deletion PR only after the stable-release gate. Bind
-   its deletion proof to the same candidate/core tuple and retained V3 report.
+   its deletion proof to the same attested candidate/core tuple.
 6. Run source-absence and compile gates proving the named legacy transforms,
    selectors, and fallback calls are gone while Rust-only builds still pass.
 7. Clear candidate enrollment when collection is no longer authorized. Retain
    the evidence and rollback/deletion review records according to release policy.
 
-Never commit runtime telemetry or synthetic passing evidence. Tests construct
+Never commit runtime telemetry or synthetic passing proof. Tests construct
 synthetic bundles solely to prove fail-closed evaluator behavior.
