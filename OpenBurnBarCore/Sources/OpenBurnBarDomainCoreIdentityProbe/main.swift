@@ -23,15 +23,18 @@ guard let candidateCommit = environment["DOMAIN_CORE_CANDIDATE_COMMIT"],
 guard let reportPath = environment["DOMAIN_CORE_OBSERVED_IDENTITY_REPORT"], !reportPath.isEmpty else {
     fail("DOMAIN_CORE_OBSERVED_IDENTITY_REPORT is required")
 }
-
-let executableURL = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
-let executableData: Data
-do {
-    executableData = try Data(contentsOf: executableURL, options: .mappedIfSafe)
-} catch {
-    fail("cannot read executing binary: \(error)")
+guard let shippedBinaryPath = environment["DOMAIN_CORE_SHIPPED_BINARY"], !shippedBinaryPath.isEmpty else {
+    fail("DOMAIN_CORE_SHIPPED_BINARY is required")
 }
-let binarySha256 = SHA256.hash(data: executableData).map { String(format: "%02x", $0) }.joined()
+
+let shippedBinaryURL = URL(fileURLWithPath: shippedBinaryPath).standardizedFileURL
+let shippedBinaryData: Data
+do {
+    shippedBinaryData = try Data(contentsOf: shippedBinaryURL, options: .mappedIfSafe)
+} catch {
+    fail("cannot read shipped binary: \(error)")
+}
+let binarySha256 = SHA256.hash(data: shippedBinaryData).map { String(format: "%02x", $0) }.joined()
 let sourceSha256 = OpenBurnBarDomainCoreFFI.domainCoreSourceFingerprint()
 guard sourceSha256.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil else {
     fail("loaded source fingerprint is invalid")

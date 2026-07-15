@@ -33,18 +33,27 @@ test("tag push accepts only the release commit at GITHUB_SHA", () => {
   );
 });
 
-test("workflow_dispatch may resolve an explicitly selected release commit", () => {
+test("workflow_dispatch also requires the tag commit at GITHUB_SHA", () => {
   assert.deepEqual(
     validateNativeReleaseEventCommit({
       eventName: "workflow_dispatch",
       eventCommit: EVENT_COMMIT,
-      releaseCommit: OTHER_COMMIT,
+      releaseCommit: EVENT_COMMIT,
     }),
     {
       eventName: "workflow_dispatch",
       eventCommit: EVENT_COMMIT,
-      releaseCommit: OTHER_COMMIT,
+      releaseCommit: EVENT_COMMIT,
     },
+  );
+  assert.throws(
+    () =>
+      validateNativeReleaseEventCommit({
+        eventName: "workflow_dispatch",
+        eventCommit: EVENT_COMMIT,
+        releaseCommit: OTHER_COMMIT,
+      }),
+    /must equal GITHUB_SHA/,
   );
 });
 
