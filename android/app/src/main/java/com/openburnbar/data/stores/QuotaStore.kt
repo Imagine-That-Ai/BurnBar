@@ -175,27 +175,36 @@ class QuotaStore(
 
         if (accountsToRefresh.isEmpty()) return
         viewModelScope.launch {
-            for (account in accountsToRefresh) {
-                try {
-                    if (account.storageScope == "local_only" &&
-                        account.providerId in setOf("claude-code", "codex")
-                    ) {
-                        refreshSelfHostedRunner(account)
-                    } else {
-                        functions.refreshProviderAccountQuota(account.id)
+            try {
+                for (account in accountsToRefresh) {
+                    try {
+                        if (account.storageScope == "local_only" &&
+                            account.providerId in setOf("claude-code", "codex")
+                        ) {
+                            refreshSelfHostedRunner(account)
+                        } else {
+                            functions.refreshProviderAccountQuota(account.id)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // Firestore remains the source of truth; refresh failures
+                        // are reflected by provider account and snapshot docs.
+                    } finally {
+                        staleRefreshInFlight.remove(account.id)
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    // Firestore remains the source of truth; refresh failures
-                    // are reflected by provider account and snapshot docs.
-                } finally {
+                }
+                runCatching {
+                    _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
+                    _accounts.value = repo.fetchProviderAccounts()
+                }
+            } finally {
+                // If cancellation exits the loop early, remaining queued ids
+                // that never reached their per-account finally must be cleared
+                // so they are not stuck in staleRefreshInFlight forever.
+                for (account in accountsToRefresh) {
                     staleRefreshInFlight.remove(account.id)
                 }
-            }
-            runCatching {
-                _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
-                _accounts.value = repo.fetchProviderAccounts()
             }
         }
     }
@@ -224,15 +233,59 @@ class QuotaStore(
         val request = requestBuilder.build()
         withContext(Dispatchers.IO) {
             httpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    // Re-fetch from Firestore after the runner uploads its snapshot.
-                    _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
-                    _accounts.value = repo.fetchProviderAccounts()
-                } else {
+                if (!response.isSuccessful) {
                     _error.value = "Self-hosted runner returned HTTP ${response.code}"
+                    return@use
                 }
+                val raw = response.body?.string().orEmpty()
+                if (raw.isBlank()) {
+                    _error.value = "Self-hosted runner returned an empty response body."
+                    return@use
+                }
+                // The runner returns a sanitized quota snapshot, either at the
+                // top level or nested under "snapshot" (iOS pattern). Enrich
+                // it with the account context the runner doesn't know, then
+                // upload via the callable so Firestore is the single source of
+                // truth — mirroring SelfHostedQuotaRunnerStore.refresh on iOS.
+                var payload = JSONObject(raw)
+                if (payload.has("snapshot") && payload.optJSONObject("snapshot") != null) {
+                    payload = payload.getJSONObject("snapshot")
+                }
+                val now = Instant.now().toString()
+                payload.put("provider", account.providerId)
+                payload.put("providerID", account.providerId)
+                payload.put("accountID", account.id)
+                payload.put("accountLabel", account.label)
+                payload.put("accountStorageScope", "local_only")
+                payload.put("sourceKind", "provider")
+                payload.put("sourceId", payload.optString("sourceId").ifBlank { "self-hosted-runner" })
+                payload.put("fetchedAt", payload.optString("fetchedAt").ifBlank { now })
+                payload.put("source", payload.optString("source").ifBlank { "Self-hosted quota runner" })
+                payload.put("confidence", payload.optString("confidence").ifBlank { "high" })
+                payload.put("schemaVersion", payload.optInt("schemaVersion", 2))
+                payload.put("updatedAt", now)
+                functions.uploadProviderQuotaSnapshot(jsonToMap(payload))
+                // Re-fetch from Firestore after the snapshot is uploaded so
+                // the UI reflects the server-sanitized document.
+                _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
+                _accounts.value = repo.fetchProviderAccounts()
             }
         }
+    }
+
+    /**
+     * Converts a [JSONObject] to a [Map] using only the Android SDK's
+     * [JSONObject.keys] and [JSONObject.get] — the standalone org.json
+     * [JSONObject.toMap] is not available on the Android compile classpath.
+     */
+    private fun jsonToMap(json: JSONObject): Map<String, Any> {
+        val map = mutableMapOf<String, Any>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            map[key] = json.get(key)
+        }
+        return map
     }
 
     companion object {

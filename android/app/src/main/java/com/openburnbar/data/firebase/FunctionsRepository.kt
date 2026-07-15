@@ -235,6 +235,16 @@ class FunctionsRepository {
         return result.getData().asStringAnyMap() ?: emptyMap()
     }
 
+    /**
+     * Uploads a sanitized quota snapshot returned by a self-hosted runner to
+     * Firestore via the `uploadProviderQuotaSnapshot` callable. Mirrors the
+     * iOS `FunctionsRepository.uploadProviderQuotaSnapshot` — the runner
+     * returns a snapshot, the client uploads it, and Firestore becomes the
+     * single source of truth.
+     */
+    suspend fun uploadProviderQuotaSnapshot(snapshot: Map<String, Any>): Map<String, Any> =
+        callMap("uploadProviderQuotaSnapshot", snapshot)
+
     suspend fun deleteProviderAccount(accountId: String) {
         val subjectId = securityClient.providerAccountSubjectId("account", accountId)
         securityClient.callHighRiskOwnerAction(

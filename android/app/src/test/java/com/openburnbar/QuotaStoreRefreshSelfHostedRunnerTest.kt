@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.openburnbar.data.firebase.FirestoreRepository
+import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.models.ProviderAccount
 import com.openburnbar.data.stores.QuotaStore
 import io.mockk.coEvery
@@ -225,6 +226,117 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
         }
 
     // ─────────────────────────────────────────────────────────────────────
+    //  Test 5: staleRefreshInFlight cleared for ALL accounts on cancellation
+    //           (P2 #3585849626 — outer finally leak fix)
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `refreshStaleCloudQuotaIfPossible clears all queued account IDs from staleRefreshInFlight on cancellation`(): TestResult =
+        runTest(testDispatcher) {
+            val account1 = ProviderAccount(id = "acc-1", providerId = "codex", status = "stale", storageScope = "local_only")
+            val account2 = ProviderAccount(id = "acc-2", providerId = "codex", status = "stale", storageScope = "local_only")
+
+            val latch = CountDownLatch(1)
+            // Interceptor throws CancellationException on the FIRST account.
+            // The second account never gets its turn because the loop is
+            // cancelled.
+            val client = okHttpClient(Interceptor { chain ->
+                latch.countDown()
+                throw CancellationException("test-cancellation")
+            })
+
+            val mockRepo = mockRepoWithAccounts(account1, account2)
+            val store = QuotaStore(stubApp(), mockRepo, null, client)
+            store.load()
+            advanceUntilIdle()
+            awaitIoAndAdvance(latch)
+
+            // Post-fix: the outer `finally` iterates ALL accountsToRefresh
+            // and removes every id, so staleRefreshInFlight is empty.
+            //
+            // Pre-fix: only the per-account `finally` at line 194 runs for
+            // account-1 (the one that threw).  account-2's id is never
+            // removed → staleRefreshInFlight still contains "acc-2" → the
+            // assertion fails.
+            val inFlight = staleRefreshInFlightOf(store)
+            assertTrue(
+                "staleRefreshInFlight should be empty after cancellation, but still contains: $inFlight",
+                inFlight.isEmpty(),
+            )
+        }
+
+    // ─────────────────────────────────────────────────────────────────────
+    //  Test 6: refreshSelfHostedRunner uploads the parsed runner response
+    //           via uploadProviderQuotaSnapshot (P2 #3585849634)
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `refreshSelfHostedRunner uploads the parsed runner response via uploadProviderQuotaSnapshot`(): TestResult =
+        runTest(testDispatcher) {
+            val account = ProviderAccount(
+                id = "acc-1",
+                providerId = "codex",
+                label = "My Codex Account",
+                status = "stale",
+                storageScope = "local_only",
+            )
+            // Runner returns a snapshot nested under "snapshot" (iOS pattern).
+            val runnerResponse = JSONObject().apply {
+                put("snapshot", JSONObject().apply {
+                    put("buckets", org.json.JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("name", "daily")
+                            put("remaining", 5000.0)
+                        })
+                    })
+                    put("confidence", "high")
+                })
+            }.toString()
+
+            val latch = CountDownLatch(1)
+            val client = okHttpClient(Interceptor { chain ->
+                latch.countDown()
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(runnerResponse.toResponseBody("application/json".toMediaType()))
+                    .build()
+            })
+
+            val mockRepo = mockRepoWithAccount(account)
+            val mockFunctions = mockk<FunctionsRepository>(relaxed = true)
+            coEvery { mockFunctions.uploadProviderQuotaSnapshot(any()) } returns emptyMap()
+
+            val store = QuotaStore(stubApp(), mockRepo, mockFunctions, client)
+            store.load()
+            advanceUntilIdle()
+            awaitIoAndAdvance(latch)
+
+            // Post-fix: the response body is parsed, enriched with account
+            // context, and uploaded via uploadProviderQuotaSnapshot.
+            //
+            // Pre-fix: the success branch just called repo.fetchQuotaSnapshots()
+            // and repo.fetchProviderAccounts() without parsing or uploading
+            // the response — uploadProviderQuotaSnapshot was never called
+            // (and didn't even exist on FunctionsRepository).
+            coVerify {
+                mockFunctions.uploadProviderQuotaSnapshot(match { map ->
+                    map["provider"] == "codex" &&
+                        map["providerID"] == "codex" &&
+                        map["accountID"] == "acc-1" &&
+                        map["accountLabel"] == "My Codex Account" &&
+                        map["sourceKind"] == "provider" &&
+                        map["accountStorageScope"] == "local_only" &&
+                        map["updatedAt"] != null &&
+                        map["confidence"] == "high" &&
+                        (map["buckets"] as? org.json.JSONArray)?.length() == 1
+                })
+            }
+        }
+
+    // ─────────────────────────────────────────────────────────────────────
     //  Helpers
     // ─────────────────────────────────────────────────────────────────────
 
@@ -287,6 +399,25 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
         coEvery { mockRepo.fetchProviderAccounts() } returns listOf(account)
         every { mockRepo.listenToQuotaSnapshots() } returns flowOf(emptyList())
         return mockRepo
+    }
+
+    private fun mockRepoWithAccounts(vararg accounts: ProviderAccount): FirestoreRepository {
+        val mockRepo = mockk<FirestoreRepository>(relaxed = true)
+        coEvery { mockRepo.fetchQuotaSnapshots() } returns emptyList()
+        coEvery { mockRepo.fetchProviderAccounts() } returns accounts.toList()
+        every { mockRepo.listenToQuotaSnapshots() } returns flowOf(emptyList())
+        return mockRepo
+    }
+
+    /**
+     * Reads the private [staleRefreshInFlight] set via reflection so tests
+     * can assert it is empty after cancellation.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun staleRefreshInFlightOf(store: QuotaStore): Set<String> {
+        val field = QuotaStore::class.java.getDeclaredField("staleRefreshInFlight")
+        field.isAccessible = true
+        return field.get(store) as Set<String>
     }
 
     private fun okHttpClient(interceptor: Interceptor): OkHttpClient =
