@@ -13,8 +13,14 @@
  *
  * A mirror "carries" a generated interface when, for every field the generated
  * interface declares, the mirror declares a field with the same name and (for
- * TypeScript mirrors) the same optionality. Native (Swift/Kotlin) mirrors do not
+ * TypeScript and C# mirrors) the same optionality. Swift/Kotlin mirrors do not
  * encode TS `?:` optionality, so for them only field-name presence is checked.
+ *
+ * C# mirrors are scoped per record: each generated interface is matched to the
+ * C# record that mirrors it (`Firestore` + interface name, with a superset
+ * fallback for union variants), and fields are checked against that specific
+ * record. This prevents cross-record masking where a field removed from one
+ * record is silently satisfied by the same field on a sibling record.
  *
  * Pre-existing divergence between the de-facto legacy registry and the thinner
  * generated canon is real drift (the TypeSpec strangler migration backlog). It
@@ -284,9 +290,97 @@ function extractKotlinMirrorFields(kotlinSource) {
   return fields;
 }
 
+/**
+ * Extract C# record fields as a Map<recordName, Map<wireName, isOptional>>.
+ * Each `[JsonPropertyName("wireName")]` property is scoped to the record it
+ * belongs to, and its optionality is parsed from `required` vs nullable `?`:
+ *   - `public required T Prop` → isOptional = false
+ *   - `public T? Prop`         → isOptional = true
+ * The canon defines Firestore wire names (camelCase), and the C# models bind
+ * those exact names via the attribute, so the attribute value is the comparison
+ * key — matching the approach used for Kotlin `@PropertyName` mirrors.
+ * Properties without the attribute are not collected.
+ *
+ * Per-record scoping prevents cross-record masking: a field removed from one
+ * record is no longer satisfied by the same field on a sibling record in the
+ * same file. Optionality extraction lets the gate detect `required` to nullable
+ * drift that a field-name-only check would miss.
+ */
+function extractCsharpMirrorFields(csharpSource) {
+  const source = stripComments(csharpSource);
+  const records = new Map();
+  const recordRegex =
+    /(?:public\s+)?(?:sealed\s+)?(?:record|class)\s+(\w+)\s*(?:\([^)]*\))?\s*\{/g;
+  let recordMatch;
+  while ((recordMatch = recordRegex.exec(source)) !== null) {
+    const recordName = recordMatch[1];
+    const bodyStart = recordMatch.index + recordMatch[0].length;
+    // Find the matching closing brace for this record body.
+    let depth = 1;
+    let bodyEnd = bodyStart;
+    for (let i = bodyStart; i < source.length && depth > 0; i += 1) {
+      if (source[i] === "{") depth += 1;
+      else if (source[i] === "}") depth -= 1;
+      if (depth === 0) {
+        bodyEnd = i;
+        break;
+      }
+    }
+    const body = source.slice(bodyStart, bodyEnd);
+    const fields = new Map();
+    // Match: [JsonPropertyName("wire")] public required? Type? Name { get; init; }
+    const fieldRegex =
+      /\[JsonPropertyName\s*\(\s*"([^"]+)"\s*\)\s*\]\s*public\s+(required\s+)?(\S+)\s+(\w+)\s*\{\s*get;\s*init;\s*\}/g;
+    let fieldMatch;
+    while ((fieldMatch = fieldRegex.exec(body)) !== null) {
+      const wireName = fieldMatch[1];
+      const isRequired = fieldMatch[2] !== undefined;
+      // A field is optional when it is NOT `required`. Nullable `?` without
+      // `required` is the C# idiom for an optional Firestore field; `required`
+      // without `?` is the idiom for a required field. (A `required T?` would
+      // be contradictory, so isOptional follows the `required` keyword.)
+      fields.set(wireName, !isRequired);
+    }
+    records.set(recordName, fields);
+  }
+  return records;
+}
+
+/**
+ * Resolve a generated canon interface name to the C# record that mirrors it.
+ * The primary convention is `Firestore` + interfaceName (e.g. UsageEventDoc →
+ * FirestoreUsageEventDoc). When that record is absent — which happens for union
+ * variants whose canon splits one model into two TS interfaces but the C# port
+ * merges into a single record (e.g. GatewaySignalTransportKeyDeliveryDoc and
+ * GatewaySignalAtRestKeyDeliveryDoc both map to FirestoreGatewaySignalKeyDeliveryDoc)
+ * — fall back to any record whose field set is a superset of the interface's
+ * fields.
+ *
+ * @param records   Map from extractCsharpMirrorFields
+ * @param interfaceName  Generated canon interface name
+ * @param genFields  Map of canon fields for the interface
+ * @returns the matching record's field Map, or null when no record covers it
+ */
+function resolveCsharpRecord(records, interfaceName, genFields) {
+  const primary = `Firestore${interfaceName}`;
+  if (records.has(primary)) return records.get(primary);
+  for (const [, fields] of records) {
+    let covers = true;
+    for (const [field] of genFields) {
+      if (!fields.has(field)) {
+        covers = false;
+        break;
+      }
+    }
+    if (covers) return fields;
+  }
+  return null;
+}
+
 function extractNativeMirrorFields(mirrorSource, language) {
   if (language === "swift") return extractSwiftMirrorFields(mirrorSource);
   if (language === "kotlin") return extractKotlinMirrorFields(mirrorSource);
+  if (language === "csharp") return extractCsharpMirrorFields(mirrorSource);
   throw new Error(`unsupported native mirror language: ${language}`);
 }
 
@@ -298,13 +392,19 @@ function normalizeMirror(entry) {
 /**
  * Diff one mirror against the target generated interfaces.
  * @returns {string[]} drift tokens — `Interface.field` for a missing field,
- *   `Interface.field#opt` for an optionality mismatch (TS mirrors only).
+ *   `Interface.field#opt` for an optionality mismatch (TS and C# mirrors).
  */
 function diffMirror({ generated, mirrorSource, interfaces, compareOptionality, language }) {
   const drift = [];
   const nativeFields = compareOptionality
     ? null
     : extractNativeMirrorFields(mirrorSource, language);
+  // C# mirrors use per-record scoping with optionality even when
+  // compareOptionality is true, because the per-record Map structure (not a
+  // flat Set) is needed to scope fields to the correct record.
+  const csharpRecords = language === "csharp"
+    ? extractCsharpMirrorFields(mirrorSource)
+    : null;
   for (const interfaceName of interfaces) {
     const genFields = extractInterfaceFields(generated, interfaceName);
     if (!genFields) {
@@ -315,13 +415,31 @@ function diffMirror({ generated, mirrorSource, interfaces, compareOptionality, l
     const mirrorFields = compareOptionality
       ? extractInterfaceFields(mirrorSource, interfaceName)
       : null;
-    if (compareOptionality && !mirrorFields) {
+    if (compareOptionality && language === "typescript" && !mirrorFields) {
       throw new Error(
         `TS mirror is registered for "${interfaceName}" but does not re-declare it as an interface`
       );
     }
+    // C# per-record resolution: find the record that mirrors this interface.
+    const csharpRecordFields = csharpRecords
+      ? resolveCsharpRecord(csharpRecords, interfaceName, genFields)
+      : null;
+    if (csharpRecords && !csharpRecordFields) {
+      // No C# record covers this interface's fields — every field is drift.
+      for (const [field] of genFields) {
+        drift.push(`${interfaceName}.${field}`);
+      }
+      continue;
+    }
     for (const [field, optional] of genFields) {
-      if (compareOptionality) {
+      if (csharpRecords) {
+        // C# per-record scoping with optionality comparison.
+        if (!csharpRecordFields.has(field)) {
+          drift.push(`${interfaceName}.${field}`);
+        } else if (csharpRecordFields.get(field) !== optional) {
+          drift.push(`${interfaceName}.${field}#opt`);
+        }
+      } else if (compareOptionality) {
         if (!mirrorFields.has(field)) {
           drift.push(`${interfaceName}.${field}`);
         } else if (mirrorFields.get(field) !== optional) {
@@ -339,12 +457,16 @@ function diffMirror({ generated, mirrorSource, interfaces, compareOptionality, l
  * Resolve which generated interfaces a mirror must carry. Explicit `interfaces`
  * wins; otherwise, for a TS mirror default to every generated interface the
  * mirror file itself re-declares (auto-detected dual definitions), and for a
- * native mirror default to every generated interface in the domain.
+ * native (Swift/Kotlin/C#) mirror default to every generated interface in the
+ * domain. C# mirrors compare optionality via per-record `required`/`?` parsing,
+ * not via `export interface` re-declaration, so they use the full native
+ * auto-detect path even when compareOptionality is true.
  */
-function resolveInterfaces(entry, generated, mirrorSource, compareOptionality) {
+function resolveInterfaces(entry, generated, mirrorSource, compareOptionality, language) {
   if (Array.isArray(entry.interfaces)) return entry.interfaces;
   const all = generatedInterfaceNames(generated);
   if (!compareOptionality) return all;
+  if (language === "csharp") return all;
   return all.filter((name) => extractInterfaceFields(mirrorSource, name));
 }
 
@@ -355,7 +477,8 @@ function checkMirror({ domain, generated, entry, compareOptionality, language })
     mirror,
     generated,
     mirrorSource,
-    compareOptionality
+    compareOptionality,
+    language
   );
   if (interfaces.length === 0) return; // nothing dual-defined to check
 
@@ -416,6 +539,11 @@ function main() {
         compareOptionality: true,
         language: "typescript",
       })),
+      ...(domain.csharpHandMirror ?? []).map((entry) => ({
+        entry,
+        compareOptionality: true,
+        language: "csharp",
+      })),
     ];
 
     for (const { entry, compareOptionality, language } of mirrors) {
@@ -446,10 +574,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
 export {
   diffMirror,
+  extractCsharpMirrorFields,
   extractInterfaceFields,
   extractKotlinMirrorFields,
   extractNativeMirrorFields,
   extractSwiftMirrorFields,
+  resolveCsharpRecord,
   stripComments,
   stripCommentsAndStrings,
 };

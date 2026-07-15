@@ -1,7 +1,7 @@
 {
   "version": 1,
   "canonicalRoot": "tools/schema-sync/typespec",
-  "handMirrorDocs": "Hand mirror entries verify that hand-maintained native/TS schema copies still carry every field the generated canon defines (field name + optionality). check-hand-mirror.mjs loops every domain below. Each mirror entry may be a bare path string or an object { path, interfaces?, knownDrift? }. `interfaces` pins which generated interfaces the mirror must carry; omit it to auto-detect (TS mirrors: every generated interface the mirror file re-declares as `export interface`; native mirrors: every generated interface in the domain). `knownDrift` grandfathers the pre-existing divergences the checker enumerates — each token is `Interface.field` for a field present in generated output but absent from the mirror, or `Interface.field#opt` for an optionality mismatch (TS mirrors only). The gate FAILS closed when live drift exceeds the listed set (new drift) AND when a listed token is no longer real drift (stale grandfather), so the list ratchets down as the TypeSpec strangler migration burns it off. functions/src/types/legacy.ts is registered as a `tsHandMirror` so the doc types it re-declares a second time are field-checked against the canon; do NOT converge it by editing legacy.ts in this gate — burn the list down domain-at-a-time.",
+  "handMirrorDocs": "Hand mirror entries verify that hand-maintained native/TS schema copies still carry every field the generated canon defines (field name + optionality). check-hand-mirror.mjs loops every domain below. Each mirror entry may be a bare path string or an object { path, interfaces?, knownDrift? }. `interfaces` pins which generated interfaces the mirror must carry; omit it to auto-detect (TS mirrors: every generated interface the mirror file re-declares as `export interface`; native mirrors: every generated interface in the domain). `knownDrift` grandfathers the pre-existing divergences the checker enumerates — each token is `Interface.field` for a field present in generated output but absent from the mirror, or `Interface.field#opt` for an optionality mismatch (TS and C# mirrors). The gate FAILS closed when live drift exceeds the listed set (new drift) AND when a listed token is no longer real drift (stale grandfather), so the list ratchets down as the TypeSpec strangler migration burns it off. functions/src/types/legacy.ts is registered as a `tsHandMirror` so the doc types it re-declares a second time are field-checked against the canon; do NOT converge it by editing legacy.ts in this gate — burn the list down domain-at-a-time.",
   "domains": [
     {
       "id": "usage-quota",
@@ -45,6 +45,11 @@
         "ProviderAccountSummary",
         "ModelSummary",
         "DeviceSummary"
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreUsageQuotaModels.cs"
+        }
       ]
     },
     {
@@ -79,6 +84,11 @@
             "ProviderAccountDoc"
           ]
         }
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreProviderAccountModels.cs"
+        }
       ]
     },
     {
@@ -101,6 +111,11 @@
             "HermesRelayChunkDoc"
           ]
         }
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreHermesRelayModels.cs"
+        }
       ]
     },
     {
@@ -117,7 +132,19 @@
         "typescript": "functions/src/types/generated/hermes-gateway.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesGatewayModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesGatewayModels.kt"
-      }
+      },
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreHermesGatewayModels.cs",
+          "knownDrift": [
+            "GatewaySignalTransportKeyDeliveryDoc.signalMessageType#opt",
+            "GatewaySignalTransportKeyDeliveryDoc.signalMessageB64#opt",
+            "GatewaySignalTransportKeyDeliveryDoc.senderIdentityKeyId#opt",
+            "GatewaySignalAtRestKeyDeliveryDoc.wraps#opt",
+            "GatewaySignalAtRestKeyDeliveryDoc.contentKeyLength#opt"
+          ]
+        }
+      ]
     },
     {
       "id": "iroh-pairing",
@@ -133,6 +160,11 @@
       },
       "tspOnlyModels": [
         "DeviceLinkDoc"
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreIrohPairingModels.cs"
+        }
       ]
     },
     {
@@ -157,6 +189,11 @@
       ],
       "tspOnlyModels": [
         "PiAgentPairingDoc"
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestorePiAgentRelayModels.cs"
+        }
       ]
     },
     {
@@ -189,6 +226,11 @@
       ],
       "tspOnlyModels": [
         "ComputerUseAuditExportSignerPublicKeyDoc"
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreComputerUseModels.cs"
+        }
       ]
     },
     {
@@ -213,6 +255,11 @@
       ],
       "tspOnlyModels": [
         "EntitlementEventDoc"
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreHostedQuotaModels.cs"
+        }
       ]
     },
     {
@@ -229,6 +276,11 @@
       },
       "tspOnlyModels": [
         "EscrowEnvelopeDoc"
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreEntitlementModels.cs"
+        }
       ]
     },
     {
@@ -253,6 +305,11 @@
       ],
       "tspOnlyModels": [
         "InsightWidgetDoc"
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreInsightModels.cs"
+        }
       ]
     },
     {
@@ -269,6 +326,11 @@
       },
       "tspOnlyModels": [
         "ApprovalPolicyDoc"
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreMissionModels.cs"
+        }
       ]
     },
     {
@@ -295,6 +357,11 @@
         "MediaSessionDailyFeatureRollup",
         "MediaSessionDailyRollupDoc",
         "MediaSessionPercentileSummary"
+      ],
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreMediaAnalyticsModels.cs"
+        }
       ]
     },
     {
@@ -307,7 +374,12 @@
         "typescript": "functions/src/types/generated/device-links.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/DeviceLinkModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/DeviceLinkModels.kt"
-      }
+      },
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreDeviceLinkModels.cs"
+        }
+      ]
     },
     {
       "id": "model-benchmarks",
@@ -320,7 +392,12 @@
         "typescript": "functions/src/types/generated/model-benchmarks.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ModelBenchmarkModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/ModelBenchmarkModels.kt"
-      }
+      },
+      "csharpHandMirror": [
+        {
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreModelBenchmarkModels.cs"
+        }
+      ]
     }
   ],
   "tspOnlyModelsDocs": "tspOnlyModels lists documentation-only TypeSpec models that are not (yet) wired into emit/generate.mjs. check-tsp-canon.mjs allows them and ratchets the list: an entry that disappears from the .tsp or that becomes emitted fails the gate until removed."
