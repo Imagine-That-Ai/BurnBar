@@ -26,6 +26,31 @@ final class DomainCoreBuildProfileTests: XCTestCase {
         XCTAssertEqual(profile.candidateIdentity?.abiVersion, 3)
     }
 
+    func testSignedRollbackProfilePermanentlySelectsLegacyAcrossEveryDomain() {
+        let environment = Dictionary(
+            uniqueKeysWithValues: DomainCoreBuildDomain.allCases.map { domain in
+                let key = switch domain {
+                case .quota: "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE"
+                case .cloudVault: "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"
+                case .cloudVaultRewrap: "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE"
+                case .cloudVaultSearch: "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE"
+                case .hermes: "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE"
+                case .pricing: "OPENBURNBAR_DOMAIN_CORE_PRICING_MODE"
+                }
+                return (key, "rust")
+            }
+        )
+        let profile = DomainCoreBuildProfileResolver.current(
+            environment: environment,
+            info: signedInfo(name: "public-production-rollback", distribution: "public", channel: "", evidence: false)
+        )
+
+        XCTAssertTrue(profile.isValid)
+        XCTAssertEqual(profile.name, "public-production-rollback")
+        XCTAssertTrue(profile.modes.values.allSatisfy { $0 == .legacy })
+        XCTAssertEqual(profile.candidateIdentity?.candidateCommit, String(repeating: "a", count: 40))
+    }
+
     func testSignedInternalAndBetaProfilesExposeOnlyTheirEmbeddedChannel() {
         for channel in ["internal", "beta"] {
             var info = signedInfo(name: channel, distribution: channel, channel: channel, evidence: true)

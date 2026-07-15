@@ -157,6 +157,8 @@ public enum DomainCoreBuildProfileResolver {
         let valid = switch (name, distribution) {
         case ("public-production", "public"):
             !evidenceEnabled && channel == nil && !modes.values.contains(.shadow)
+        case ("public-production-rollback", "public"):
+            !evidenceEnabled && channel == nil && modes.values.allSatisfy { $0 == .legacy }
         case ("internal", "internal"), ("beta", "beta"):
             evidenceEnabled && channel == distribution && modes[.quota] == .shadow
         default: false

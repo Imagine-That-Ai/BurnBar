@@ -150,6 +150,7 @@ test("schema-3 policy is canonical and covers all 38 real cells", () => {
   assert.equal(POLICY.protectedAttestationRequired, true);
   assert.equal(POLICY.rollbackRequired, true);
   assert.equal(POLICY.oneStableReleaseBeforeDeletion, true);
+  assert.equal(POLICY.stableReleaseRollbackArtifactRequired, true);
 });
 
 test("shadow telemetry is explicitly non-authoritative and has no time or sample targets", () => {
@@ -180,6 +181,7 @@ test("complete deterministic evidence is only eligible for protected attestation
   assert.equal(bundle.promotionAuthorized, false);
   assert.equal(report.coverageCellCount, 38);
   assert.equal(report.stableReleaseRequiredBeforeDeletion, true);
+  assert.equal(report.stableReleaseRollbackArtifactRequiredBeforeDeletion, true);
   assert.deepEqual(report.candidate, CANDIDATE);
 });
 
@@ -219,6 +221,7 @@ test("policy cannot weaken exact jobs, suites, artifacts, cells, rollback, or pe
     (policy) => (policy.maximumPairedRegressionBasisPoints = 501),
     (policy) => (policy.rollbackRequired = false),
     (policy) => (policy.oneStableReleaseBeforeDeletion = false),
+    (policy) => (policy.stableReleaseRollbackArtifactRequired = false),
   ];
   for (const mutate of mutations) {
     const policy = structuredClone(POLICY);

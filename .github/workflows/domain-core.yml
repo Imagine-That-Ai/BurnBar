@@ -1046,22 +1046,22 @@ jobs:
       - name: Resolve the signed legacy rollback artifact
         run: >-
           node scripts/ci/resolve-domain-core-build-profile.mjs
-          --profile public-production
+          --profile public-production-rollback
           --expected-candidate-commit "$GITHUB_SHA"
           --format json
-          --output "$RUNNER_TEMP/domain-core-legacy-rollback.json"
+          --output "$RUNNER_TEMP/domain-core-public-production-rollback.json"
 
-      - name: Exercise the actual Console legacy fallback control
+      - name: Exercise the actual Console signed rollback selector
         working-directory: apps/console
         run: |
           npm ci
           npx vitest run test/domainCoreBuildProfile.test.ts \
-            -t 'accepts a candidate-bound public profile but keeps evidence disabled'
+            -t 'uses the signed rollback profile for legacy even with hostile Rust overrides'
 
       - name: Verify every domain restores the legacy implementation
         run: >-
           node scripts/ci/verify-domain-core-rollback.mjs
-          --artifact "$RUNNER_TEMP/domain-core-legacy-rollback.json"
+          --artifact "$RUNNER_TEMP/domain-core-public-production-rollback.json"
           --report "$RUNNER_TEMP/rollback-drill.log"
           --expected-candidate-commit "$GITHUB_SHA"
 
@@ -1071,8 +1071,16 @@ jobs:
           --expected-candidate-commit "$GITHUB_SHA"
           --job-id rollback-drill
           --suite "rollback-drill=$RUNNER_TEMP/rollback-drill.log"
-          --rollback "$RUNNER_TEMP/rollback-drill.log,$RUNNER_TEMP/domain-core-legacy-rollback.json"
+          --rollback "$RUNNER_TEMP/rollback-drill.log,$RUNNER_TEMP/domain-core-public-production-rollback.json"
           --output "$RUNNER_TEMP/rollback-drill.json"
+
+      - name: Publish the exact candidate-bound rollback artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-public-production-rollback-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-public-production-rollback.json
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Upload rollback proof fragment
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)

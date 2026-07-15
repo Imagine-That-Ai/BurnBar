@@ -23,14 +23,14 @@ const expectedDomains = [
 ];
 if (
   profile.schemaVersion !== 1 ||
-  profile.name !== "public-production" ||
+  profile.name !== "public-production-rollback" ||
   profile.artifactAuthority !== "signed" ||
   profile.distribution !== "public" ||
   profile.evidenceEnabled !== false ||
   profile.rolloutChannel !== null ||
   profile.candidateIdentity?.candidateCommit !== expectedCommit
 ) {
-  throw new Error("rollback artifact is not the signed public-production candidate profile");
+  throw new Error("rollback artifact is not the dedicated signed public-production-rollback candidate profile");
 }
 const actualDomains = Object.keys(profile.modes ?? {}).sort();
 if (
@@ -42,7 +42,8 @@ if (
 }
 const report = {
   schemaVersion: 1,
-  drill: "signed-public-production-profile",
+  drill: "signed-public-production-rollback-profile",
+  artifactProfile: "public-production-rollback",
   candidateCommit: expectedCommit,
   restoredMode: "legacy",
   restoredDomains: actualDomains,
