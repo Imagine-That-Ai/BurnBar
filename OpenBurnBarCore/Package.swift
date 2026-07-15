@@ -698,6 +698,10 @@ let openBurnBarKernelContractsExcludes: [String] = []
 let openBurnBarKernelModelsTestsExcludes = [
     "CLITerminalSessionSupervisorTests.swift"
 ]
+let openBurnBarVectorKitTestsExcludes = [
+    "PensieveKnowledgeChunkerTests.swift",
+    "PensieveVectorCloakTests.swift"
+]
 // UI/Insights/TextExpansion/LaunchServices are pruned WHOLE off-Apple (like
 // OpenBurnBarData) rather than file-excluded, so their exclude arrays exist only
 // for symmetry and stay empty on every host.
@@ -819,6 +823,7 @@ let openBurnBarKernelContractsExcludes: [String] = []
 // Phase-2 WS-B packet B1: Apple-side (empty) default for OpenBurnBarKernelModelsTests'
 // off-Apple exclude seam. On Apple CLITerminalSessionSupervisorTests compiles.
 let openBurnBarKernelModelsTestsExcludes: [String] = []
+let openBurnBarVectorKitTestsExcludes: [String] = []
 let openBurnBarInsightsExcludes: [String] = []
 let openBurnBarUIExcludes: [String] = []
 let openBurnBarTextExpansionExcludes: [String] = []
@@ -1578,6 +1583,7 @@ let firstPartyTargetsBase: [Target] = [
             // link it. VectorKit already depends on it transitively (via the Kernel
             // umbrella), so this stays acyclic.
             dependencies: ["OpenBurnBarVectorKit", "OpenBurnBarKernelCrypto"] + swiftTestingAppleDependencies,
+            exclude: openBurnBarVectorKitTestsExcludes,
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
