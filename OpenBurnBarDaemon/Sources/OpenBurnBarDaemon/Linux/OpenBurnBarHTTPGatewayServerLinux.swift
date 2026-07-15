@@ -7,6 +7,10 @@ public enum BurnBarHTTPGatewayError: Error, LocalizedError {
     case invalidConfiguration(String)
     case listenerCreationFailed(error: Error)
     case invalidHost(String)
+    case malformedRequest(String)
+    case requestTooLarge(maxBytes: Int)
+    case unsupportedTransferEncoding(String)
+    case incompleteRequest
 
     public var errorDescription: String? {
         switch self {
@@ -16,7 +20,89 @@ public enum BurnBarHTTPGatewayError: Error, LocalizedError {
             return "Failed to create gateway listener: \(error.localizedDescription)"
         case .invalidHost(let host):
             return "Invalid gateway host address: \(host)"
+        case .malformedRequest(let detail):
+            return "Malformed gateway request: \(detail)"
+        case .requestTooLarge(let maxBytes):
+            return "Gateway request exceeds the maximum size of \(maxBytes) bytes."
+        case .unsupportedTransferEncoding(let encoding):
+            return "Gateway does not support transfer encoding '\(encoding)'."
+        case .incompleteRequest:
+            return "Gateway request ended before the declared body was received."
         }
+    }
+
+    fileprivate var httpStatus: Int {
+        switch self {
+        case .requestTooLarge:
+            return 413
+        case .unsupportedTransferEncoding:
+            return 501
+        case .malformedRequest, .incompleteRequest:
+            return 400
+        case .invalidConfiguration, .listenerCreationFailed, .invalidHost:
+            return 500
+        }
+    }
+
+    fileprivate var responseCode: String {
+        switch self {
+        case .requestTooLarge: return "request_too_large"
+        case .unsupportedTransferEncoding: return "unsupported_transfer_encoding"
+        case .incompleteRequest: return "incomplete_request"
+        case .malformedRequest: return "malformed_request"
+        case .invalidConfiguration, .listenerCreationFailed, .invalidHost:
+            return "gateway_error"
+        }
+    }
+}
+
+/// Structured, non-secret failure returned when no healthy route remains.
+///
+/// This is deliberately separate from an upstream provider error: callers can
+/// distinguish a local routing/degraded state from a provider response without
+/// receiving credentials, endpoint URLs, or raw upstream payloads.
+public enum BurnBarHTTPGatewayDegradedError: Error, LocalizedError, Sendable {
+    case noEligibleRoute(modelID: String, endpoint: String)
+    case routeCoolingDown(modelID: String, providerID: String, retryAfter: TimeInterval)
+    case upstreamUnavailable(modelID: String, providerID: String?, statusCode: Int?)
+
+    public var code: String {
+        switch self {
+        case .noEligibleRoute: return "no_eligible_route"
+        case .routeCoolingDown: return "route_cooling_down"
+        case .upstreamUnavailable: return "upstream_unavailable"
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .noEligibleRoute(let modelID, let endpoint):
+            return "No healthy route is available for \(modelID) on \(endpoint)."
+        case .routeCoolingDown(let modelID, let providerID, let retryAfter):
+            return "Route \(providerID) for \(modelID) is cooling down; retry in \(max(0, Int(ceil(retryAfter)))) seconds."
+        case .upstreamUnavailable(let modelID, let providerID, let statusCode):
+            let provider = providerID.map { " from \($0)" } ?? ""
+            if let statusCode {
+                return "Upstream route\(provider) for \(modelID) is unavailable (HTTP \(statusCode))."
+            }
+            return "Upstream route\(provider) for \(modelID) is unavailable."
+        }
+    }
+
+    fileprivate var modelID: String {
+        switch self {
+        case .noEligibleRoute(let modelID, _),
+             .routeCoolingDown(let modelID, _, _),
+             .upstreamUnavailable(let modelID, _, _):
+            return modelID
+        }
+    }
+
+    fileprivate var retryAfter: TimeInterval? {
+        if case .routeCoolingDown(_, _, let retryAfter) = self {
+            return retryAfter
+        }
+        return nil
     }
 }
 
@@ -40,9 +126,13 @@ public actor BurnBarHTTPGatewayServer {
     let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
     let anthropicExecutor: BurnBarAnthropicProviderExecutor
     let factoryExecutor: FactoryDroidProviderExecutor
+    let modelHealthStore: BurnBarGatewayModelHealthStore
     let logger: any BurnBarDaemonLogging
     let rateLimiter: BurnBarRateLimiter?
     let unauthenticatedLoopbackRateLimiter: BurnBarRateLimiter?
+
+    private let modelCatalogCacheTTL: TimeInterval
+    private var modelCatalogCache: LinuxModelCatalogCache?
 
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
@@ -56,11 +146,11 @@ public actor BurnBarHTTPGatewayServer {
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
+        modelHealthStore: BurnBarGatewayModelHealthStore = BurnBarGatewayModelHealthStore(),
         modelCatalogCacheTTL: TimeInterval = 0,
         logger: any BurnBarDaemonLogging = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
-        _ = modelCatalogCacheTTL
         self.configuration = configuration
         self.configStore = configStore
         self.usageRecorder = usageRecorder
@@ -69,6 +159,8 @@ public actor BurnBarHTTPGatewayServer {
         self.providerExecutor = providerExecutor
         self.anthropicExecutor = anthropicExecutor
         self.factoryExecutor = factoryExecutor
+        self.modelHealthStore = modelHealthStore
+        self.modelCatalogCacheTTL = max(0, modelCatalogCacheTTL)
         self.logger = logger
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
@@ -211,15 +303,18 @@ public actor BurnBarHTTPGatewayServer {
 
         do {
             let data = try readHTTPRequest(from: fileDescriptor)
-            let request = parseRequest(data)
+            let request = try parseRequest(data)
             switch await handleRequest(request, fileDescriptor: fileDescriptor) {
             case .buffered(let response):
                 try writeAll(response, to: fileDescriptor)
             case .streamed:
                 break
             }
+        } catch let error as BurnBarHTTPGatewayError {
+            let response = typedGatewayErrorResponse(error)
+            try? writeAll(response, to: fileDescriptor)
         } catch {
-            let body = #"{"error":{"message":"bad request"}}"#
+            let body = #"{"error":{"code":"bad_request","message":"bad request"}}"#
             let response = httpResponse(status: 400, headers: ["Content-Type": "application/json"], body: body)
             try? writeAll(response, to: fileDescriptor)
         }
@@ -322,6 +417,7 @@ public actor BurnBarHTTPGatewayServer {
             for formatFamily in formatFamilies {
                 let ranking = try await router.scoreAndRankRoutes(
                     modelName: modelID,
+                    preferredProviderID: resolvedModel.preferredProviderID,
                     requestedFormatFamily: formatFamily
                 )
                 await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
@@ -355,6 +451,11 @@ public actor BurnBarHTTPGatewayServer {
                                     endpoint: endpoint.displayName,
                                     httpStatus: proxyStream.statusCode,
                                     streamed: true
+                                )
+                                await modelHealthStore.recordSuccess(
+                                    modelID: modelID,
+                                    formatFamily: formatFamily,
+                                    route: route
                                 )
                                 attempts.append(routeAttempt(
                                     sequence: attempts.count + 1,
@@ -396,6 +497,11 @@ public actor BurnBarHTTPGatewayServer {
                             endpoint: endpoint.displayName,
                             httpStatus: response.statusCode,
                             streamed: false
+                        )
+                        await modelHealthStore.recordSuccess(
+                            modelID: modelID,
+                            formatFamily: formatFamily,
+                            route: route
                         )
                         await recordUsageIfAvailable(
                             response.usage,
@@ -448,6 +554,12 @@ public actor BurnBarHTTPGatewayServer {
                             httpStatus: Self.httpStatus(from: error),
                             failureMessage: Self.routeLogFailureMessage(from: error)
                         ))
+                        await modelHealthStore.recordFailure(
+                            modelID: modelID,
+                            formatFamily: formatFamily,
+                            route: route,
+                            error: error
+                        )
                         await router.markRouteFailure(route, error: error)
                         if streamCommit.responseStarted {
                             logger.error("gateway_linux_stream_interrupted", metadata: [
@@ -520,7 +632,13 @@ public actor BurnBarHTTPGatewayServer {
                 usage: nil,
                 failureMessage: Self.routeLogFailureMessage(from: error)
             )
-            return .buffered(providerFailureResponse(error, modelID: modelID))
+            return .buffered(typedDegradedResponse(
+                BurnBarHTTPGatewayDegradedError.upstreamUnavailable(
+                    modelID: modelID,
+                    providerID: lastFailedRoute?.providerID,
+                    statusCode: Self.httpStatus(from: error)
+                )
+            ))
         }
     }
 
@@ -537,91 +655,313 @@ public actor BurnBarHTTPGatewayServer {
     private struct LinuxGatewayResolvedModel {
         var modelID: String
         var variant: BurnBarModelVariant?
+        var preferredProviderID: String?
     }
 
-    /// Build OpenAI-compatible `/v1/models` (+ catalog) from configured providers (VAL-DAEMON-002).
+    /// Build OpenAI-compatible `/v1/models` (+ catalog) from one bounded,
+    /// shared static snapshot. Health is deliberately checked outside the cache
+    /// so a cooldown takes effect immediately without rebuilding provider rows.
     private func linuxModelsListResponse(catalog: Bool) async -> Data {
+        guard let models = await linuxModelCatalogModels() else {
+            return typedDegradedResponse(
+                BurnBarHTTPGatewayDegradedError.upstreamUnavailable(
+                    modelID: "catalog",
+                    providerID: nil,
+                    statusCode: nil
+                )
+            )
+        }
+
         var data: [[String: Any]] = []
-        if let configurations = try? await configStore.resolvedConfigurations() {
-            var seen = Set<String>()
-            for configuration in configurations {
-                let owner = configuration.settings.providerID
-                for variant in configuration.settings.modelVariants {
-                    let id = variant.variantID
-                    guard seen.insert(id).inserted else { continue }
-                    var row: [String: Any] = [
-                        "id": id,
-                        "object": "model",
-                        "owned_by": owner,
-                        "created": Int(Date().timeIntervalSince1970)
-                    ]
-                    if catalog {
-                        row["base_model"] = variant.baseModelID
-                        row["provider"] = owner
-                    }
-                    data.append(row)
+        let now = Date()
+        for model in models {
+            let health = await modelHealth(for: model)
+            // A model remains public while at least one account can route it.
+            // An active failure is account-scoped; hiding the model here would
+            // defeat failover when a sibling credential is still healthy.
+            let available = model.isEnabled && model.routeEligible
+            guard catalog || available else { continue }
+
+            var row: [String: Any] = [
+                "id": model.id,
+                "object": "model",
+                "owned_by": model.providerID,
+                "created": Int(now.timeIntervalSince1970)
+            ]
+            if catalog {
+                row["provider"] = model.providerID
+                row["display_name"] = model.displayName
+                row["available"] = available
+                row["route_eligible"] = model.routeEligible
+                row["advertisement_enabled"] = model.advertisementEnabled
+                row["account_ids"] = model.accountIDs
+                row["format_family"] = model.formatFamily.rawValue
+                if let baseModelID = model.baseModelID {
+                    row["base_model"] = baseModelID
                 }
-                for alias in configuration.settings.modelAliases {
-                    let id = alias.aliasID
-                    guard seen.insert(id).inserted else { continue }
-                    var row: [String: Any] = [
-                        "id": id,
-                        "object": "model",
-                        "owned_by": owner,
-                        "created": Int(Date().timeIntervalSince1970)
-                    ]
-                    if catalog {
-                        row["base_model"] = alias.baseModelID
-                        row["provider"] = owner
-                        row["alias"] = true
-                    }
-                    data.append(row)
-                }
-                // Prefer advertised catalog models when variants empty.
-                if configuration.settings.modelVariants.isEmpty {
-                    for model in configuration.preferredModels {
-                        let id = model.id
-                        guard seen.insert(id).inserted else { continue }
-                        data.append([
-                            "id": id,
-                            "object": "model",
-                            "owned_by": owner,
-                            "created": Int(Date().timeIntervalSince1970)
-                        ])
-                    }
+                if model.isAlias { row["alias"] = true }
+                if model.isVariant { row["variant"] = true }
+                if let health {
+                    row["degraded"] = true
+                    row["degraded_until"] = health.blockedUntil.timeIntervalSince1970
+                    row["degraded_status"] = health.statusCode
+                } else {
+                    row["degraded"] = false
                 }
             }
+            data.append(row)
         }
+
         let bodyObj: [String: Any] = [
             "object": "list",
             "data": data,
             "platform": "linux",
-            "catalog": catalog
+            "catalog": catalog,
+            "generated_at": now.timeIntervalSince1970
         ]
         let body = (try? JSONSerialization.data(withJSONObject: bodyObj, options: []))
             .flatMap { String(data: $0, encoding: .utf8) }
-            ?? #"{"object":"list","data":[]}"#
+            ?? #"{"object":"list","data":[],"platform":"linux"}"#
         return httpResponse(status: 200, headers: ["Content-Type": "application/json"], body: body)
+    }
+
+    private func linuxModelCatalogModels() async -> [LinuxGatewayCatalogModel]? {
+        guard let snapshot = try? await configStore.snapshot(),
+              let configurations = try? await configStore.resolvedConfigurations() else {
+            return nil
+        }
+        let configHash = snapshot.hashValue
+        if modelCatalogCacheTTL > 0,
+           let cache = modelCatalogCache,
+           cache.configurationHash == configHash,
+           Date().timeIntervalSince(cache.storedAt) < modelCatalogCacheTTL {
+            return cache.models
+        }
+
+        var models: [LinuxGatewayCatalogModel] = []
+        for configuration in configurations {
+            let settings = configuration.settings
+            let providerID = settings.providerID
+            let accountIDs = routeAccountIDs(for: configuration)
+            let formatFamily = configuration.provider.formatFamily
+            let providerName = configuration.provider.displayName
+            let routeEligible = hasEligibleRoute(for: configuration)
+            let baseModels = configuration.preferredModels
+            let hiddenBaseIDs = Set(settings.modelAliases.filter { alias in
+                alias.hidesBaseModel && settings.isModelAdvertisementEnabled(alias.aliasID)
+            }.map { $0.baseModelID.lowercased() })
+            var seen = Set<String>()
+
+            for model in baseModels {
+                let id = model.id.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !id.isEmpty,
+                      settings.isModelAdvertisementEnabled(id),
+                      !hiddenBaseIDs.contains(id.lowercased()),
+                      seen.insert(id.lowercased()).inserted else { continue }
+                let displayName = settings.modelDisplayOverrides.first {
+                    $0.modelID.caseInsensitiveCompare(id) == .orderedSame
+                }?.displayName ?? model.displayName
+                models.append(LinuxGatewayCatalogModel(
+                    id: id,
+                    displayName: displayName,
+                    providerID: providerID,
+                    providerName: providerName,
+                    baseModelID: nil,
+                    accountIDs: accountIDs,
+                    formatFamily: formatFamily,
+                    isEnabled: settings.isEnabled,
+                    routeEligible: routeEligible,
+                    advertisementEnabled: true,
+                    isAlias: false,
+                    isVariant: false
+                ))
+            }
+
+            for variant in settings.modelVariants {
+                let id = variant.variantID.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !id.isEmpty,
+                      settings.isModelAdvertisementEnabled(id),
+                      seen.insert(id.lowercased()).inserted else { continue }
+                models.append(LinuxGatewayCatalogModel(
+                    id: id,
+                    displayName: variant.label.isEmpty ? id : variant.label,
+                    providerID: providerID,
+                    providerName: providerName,
+                    baseModelID: variant.baseModelID,
+                    accountIDs: accountIDs,
+                    formatFamily: formatFamily,
+                    isEnabled: settings.isEnabled,
+                    routeEligible: routeEligible,
+                    advertisementEnabled: true,
+                    isAlias: false,
+                    isVariant: true
+                ))
+            }
+
+            for alias in settings.modelAliases {
+                let id = alias.aliasID.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !id.isEmpty,
+                      settings.isModelAdvertisementEnabled(id),
+                      seen.insert(id.lowercased()).inserted else { continue }
+                models.append(LinuxGatewayCatalogModel(
+                    id: id,
+                    displayName: alias.displayName.isEmpty ? id : alias.displayName,
+                    providerID: providerID,
+                    providerName: providerName,
+                    baseModelID: alias.baseModelID,
+                    accountIDs: accountIDs,
+                    formatFamily: formatFamily,
+                    isEnabled: settings.isEnabled,
+                    routeEligible: routeEligible,
+                    advertisementEnabled: true,
+                    isAlias: true,
+                    isVariant: false
+                ))
+            }
+        }
+
+        models.sort {
+            let provider = $0.providerName.localizedCaseInsensitiveCompare($1.providerName)
+            if provider != .orderedSame { return provider == .orderedAscending }
+            return $0.id.localizedCaseInsensitiveCompare($1.id) == .orderedAscending
+        }
+        if modelCatalogCacheTTL > 0 {
+            modelCatalogCache = LinuxModelCatalogCache(
+                configurationHash: configHash,
+                storedAt: Date(),
+                models: models
+            )
+        }
+        return models
+    }
+
+    private func routeAccountIDs(
+        for configuration: BurnBarResolvedProviderConfiguration
+    ) -> [String] {
+        if !configuration.credentialSlots.isEmpty {
+            return configuration.credentialSlots.compactMap { resolved in
+                let slot = resolved.slot
+                // Keep configured accounts in the diagnostic catalog even
+                // while cooling/exhausted; route eligibility is calculated
+                // separately so health remains visible during failover.
+                guard slot.isEnabled else { return nil }
+                if configuration.provider.local {
+                    return slot.slotID
+                }
+                guard let apiKey = resolved.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !apiKey.isEmpty else { return nil }
+                return slot.slotID
+            }
+        }
+        if configuration.provider.local || configuration.hasCredential {
+            return ["legacy"]
+        }
+        return []
+    }
+
+    private func hasEligibleRoute(
+        for configuration: BurnBarResolvedProviderConfiguration
+    ) -> Bool {
+        guard configuration.provider.capabilities.contains(.routing),
+              configuration.settings.isEnabled else {
+            return false
+        }
+        if !configuration.credentialSlots.isEmpty {
+            return configuration.credentialSlots.contains { resolved in
+                let hasCredential = configuration.provider.local
+                    || (resolved.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+                guard hasCredential else { return false }
+                return BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(
+                    slot: resolved.slot,
+                    providerID: configuration.provider.id,
+                    hasCredential: hasCredential,
+                    providerEnabled: configuration.settings.isEnabled
+                )
+            }
+        }
+        return configuration.provider.local || configuration.hasCredential
+    }
+
+    private func modelHealth(
+        for model: LinuxGatewayCatalogModel
+    ) async -> BurnBarGatewayModelHealthRecord? {
+        let modelIDs = [model.id, model.baseModelID].compactMap { $0 }
+        for modelID in modelIDs {
+            for accountID in model.accountIDs {
+                if let failure = await modelHealthStore.activeFailure(
+                    modelID: modelID,
+                    providerID: model.providerID,
+                    accountID: accountID,
+                    formatFamily: model.formatFamily
+                ) {
+                    return failure
+                }
+            }
+        }
+        return nil
     }
 
     private func resolveLinuxGatewayModel(_ requested: String) async -> LinuxGatewayResolvedModel {
         let trimmed = requested.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let configurations = try? await configStore.resolvedConfigurations() else {
-            return LinuxGatewayResolvedModel(modelID: trimmed, variant: nil)
+            return LinuxGatewayResolvedModel(modelID: trimmed, variant: nil, preferredProviderID: nil)
         }
-        for configuration in configurations {
+
+        let (providerHint, modelID) = splitProviderQualifiedModelID(trimmed)
+        let candidates = configurations.filter { configuration in
+            providerHint == nil
+                || configuration.provider.id.caseInsensitiveCompare(providerHint!) == .orderedSame
+        }
+        for configuration in candidates {
             if let variant = configuration.settings.modelVariants.first(where: {
-                $0.variantID.caseInsensitiveCompare(trimmed) == .orderedSame
+                $0.variantID.caseInsensitiveCompare(modelID) == .orderedSame
             }) {
-                return LinuxGatewayResolvedModel(modelID: variant.baseModelID, variant: variant)
+                return LinuxGatewayResolvedModel(
+                    modelID: variant.baseModelID,
+                    variant: variant,
+                    preferredProviderID: configuration.provider.id
+                )
             }
             if let alias = configuration.settings.modelAliases.first(where: {
-                $0.aliasID.caseInsensitiveCompare(trimmed) == .orderedSame
+                $0.aliasID.caseInsensitiveCompare(modelID) == .orderedSame
             }) {
-                return LinuxGatewayResolvedModel(modelID: alias.baseModelID, variant: nil)
+                return LinuxGatewayResolvedModel(
+                    modelID: alias.baseModelID,
+                    variant: nil,
+                    preferredProviderID: configuration.provider.id
+                )
+            }
+            if configuration.preferredModels.contains(where: {
+                $0.id.caseInsensitiveCompare(modelID) == .orderedSame
+                    || $0.aliases.contains(where: { $0.caseInsensitiveCompare(modelID) == .orderedSame })
+            }) {
+                return LinuxGatewayResolvedModel(
+                    modelID: modelID,
+                    variant: nil,
+                    preferredProviderID: configuration.provider.id
+                )
+            }
+            if configuration.settings.customModels.contains(where: {
+                $0.modelID.caseInsensitiveCompare(modelID) == .orderedSame
+            }) {
+                return LinuxGatewayResolvedModel(
+                    modelID: modelID,
+                    variant: nil,
+                    preferredProviderID: configuration.provider.id
+                )
             }
         }
-        return LinuxGatewayResolvedModel(modelID: trimmed, variant: nil)
+        return LinuxGatewayResolvedModel(modelID: modelID, variant: nil, preferredProviderID: providerHint)
+    }
+
+    private func splitProviderQualifiedModelID(_ raw: String) -> (String?, String) {
+        let parts = raw.split(separator: "/", maxSplits: 1).map(String.init)
+        guard parts.count == 2,
+              configStore.catalogSupport.provider(id: parts[0]) != nil,
+              !parts[1].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return (nil, raw)
+        }
+        return (parts[0], parts[1])
     }
 
     private func preferredGatewayFormatFamilies(
@@ -945,24 +1285,40 @@ public actor BurnBarHTTPGatewayServer {
     }
 
     private func noEligibleRouteResponse(modelID: String, endpoint: LinuxGatewayEndpoint) -> Data {
-        jsonResponse(
-            status: 503,
-            message: "No eligible route for \(modelID) on \(endpoint.requestPath). Add or enable an account/provider that serves this model."
+        typedDegradedResponse(
+            BurnBarHTTPGatewayDegradedError.noEligibleRoute(
+                modelID: modelID,
+                endpoint: endpoint.requestPath
+            )
         )
     }
 
-    private func providerFailureResponse(_ error: Error, modelID: String) -> Data {
-        if let providerError = error as? BurnBarProviderExecutorError,
-           let statusAndBody = providerError.upstreamStatusAndBody {
-            let statusCode = statusAndBody.statusCode
-            let body = statusAndBody.body
-            let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedBody.isEmpty {
-                return httpResponse(status: statusCode, headers: ["Content-Type": "application/json"], body: trimmedBody)
-            }
-            return jsonResponse(status: statusCode, message: "upstream provider returned HTTP \(statusCode)")
+    private func typedDegradedResponse(
+        _ error: BurnBarHTTPGatewayDegradedError,
+        retryAfter: TimeInterval? = nil
+    ) -> Data {
+        var payload: [String: Any] = [
+            "code": error.code,
+            "message": error.localizedDescription,
+            "type": "degraded",
+            "model": error.modelID
+        ]
+        if let retryAfter {
+            payload["retry_after_seconds"] = max(0, Int(ceil(retryAfter)))
+        } else if let retryAfter = error.retryAfter {
+            payload["retry_after_seconds"] = max(0, Int(ceil(retryAfter)))
         }
-        return jsonResponse(status: 502, message: "routing failed: \(error.localizedDescription)")
+        let bodyObject: [String: Any] = ["error": payload]
+        let body = (try? JSONSerialization.data(withJSONObject: bodyObject, options: []))
+            .flatMap { String(data: $0, encoding: .utf8) }
+            ?? #"{"error":{"code":"degraded","type":"degraded"}}"#
+        var headers = ["Content-Type": "application/json"]
+        if let retryAfter {
+            headers["Retry-After"] = String(max(1, Int(ceil(retryAfter))))
+        } else if let retryAfter = error.retryAfter {
+            headers["Retry-After"] = String(max(1, Int(ceil(retryAfter))))
+        }
+        return httpResponse(status: 503, headers: headers, body: body)
     }
 
     private func jsonResponse(status: Int, message: String) -> Data {
@@ -1082,6 +1438,27 @@ private struct LinuxGatewayModelRequest: Decodable {
     let stream: Bool?
 }
 
+private struct LinuxGatewayCatalogModel: Sendable {
+    let id: String
+    let displayName: String
+    let providerID: String
+    let providerName: String
+    let baseModelID: String?
+    let accountIDs: [String]
+    let formatFamily: BurnBarProviderFormatFamily
+    let isEnabled: Bool
+    let routeEligible: Bool
+    let advertisementEnabled: Bool
+    let isAlias: Bool
+    let isVariant: Bool
+}
+
+private struct LinuxModelCatalogCache {
+    let configurationHash: Int
+    let storedAt: Date
+    let models: [LinuxGatewayCatalogModel]
+}
+
 private struct LinuxHTTPRequest {
     var method: String = "GET"
     var path: String = "/"
@@ -1091,58 +1468,119 @@ private struct LinuxHTTPRequest {
 
 private func readHTTPRequest(
     from fileDescriptor: Int32,
-    maxBytes: Int = BurnBarHTTPGatewayServer.maxRequestBytes
+    maxBytes: Int = BurnBarHTTPGatewayServer.maxRequestBytes,
+    maxHeaderBytes: Int = 16 * 1024
 ) throws -> Data {
     var data = Data()
     var buffer = [UInt8](repeating: 0, count: 4096)
-    while data.count < maxBytes {
+    var expectedTotalBytes: Int?
+    while true {
         let count = read(fileDescriptor, &buffer, buffer.count)
         if count == 0 {
+            guard let expectedTotalBytes else {
+                throw BurnBarHTTPGatewayError.malformedRequest("request headers are incomplete")
+            }
+            guard data.count >= expectedTotalBytes else {
+                throw BurnBarHTTPGatewayError.incompleteRequest
+            }
             break
         }
         if count < 0 {
             if errno == EINTR { continue }
+            if errno == EAGAIN || errno == EWOULDBLOCK {
+                throw BurnBarHTTPGatewayError.incompleteRequest
+            }
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
         data.append(contentsOf: buffer.prefix(count))
+        if data.count > maxBytes {
+            throw BurnBarHTTPGatewayError.requestTooLarge(maxBytes: maxBytes)
+        }
         if let headerEnd = data.range(of: Data("\r\n\r\n".utf8)) {
+            guard headerEnd.upperBound <= maxHeaderBytes else {
+                throw BurnBarHTTPGatewayError.requestTooLarge(maxBytes: maxHeaderBytes)
+            }
             let head = String(decoding: data[..<headerEnd.lowerBound], as: UTF8.self)
-            let contentLength = parsedContentLength(from: head)
+            let contentLength = try parsedContentLength(from: head)
             let bodyStart = headerEnd.upperBound
-            if data.count >= bodyStart + contentLength {
+            guard bodyStart <= maxBytes, contentLength <= maxBytes - bodyStart else {
+                throw BurnBarHTTPGatewayError.requestTooLarge(maxBytes: maxBytes)
+            }
+            let expected = bodyStart + contentLength
+            expectedTotalBytes = expected
+            if data.count == expected {
                 break
+            }
+            if data.count > expected {
+                throw BurnBarHTTPGatewayError.malformedRequest("multiple HTTP frames are not supported")
             }
         }
     }
     return data
 }
 
-private func parsedContentLength(from head: String) -> Int {
-    for line in head.components(separatedBy: "\r\n").dropFirst() {
+private func parsedContentLength(from head: String) throws -> Int {
+    let lines = head.components(separatedBy: "\r\n")
+    guard let requestLine = lines.first else {
+        throw BurnBarHTTPGatewayError.malformedRequest("request line is missing")
+    }
+    let requestParts = requestLine.split(separator: " ", omittingEmptySubsequences: true)
+    guard requestParts.count == 3,
+          requestParts[0].isEmpty == false,
+          requestParts[1].hasPrefix("/"),
+          requestParts[2] == "HTTP/1.1" || requestParts[2] == "HTTP/1.0" else {
+        throw BurnBarHTTPGatewayError.malformedRequest("invalid request line")
+    }
+
+    var contentLength: Int?
+    for line in lines.dropFirst() {
+        guard !line.isEmpty else { continue }
         let parts = line.split(separator: ":", maxSplits: 1).map(String.init)
-        if parts.count == 2, parts[0].lowercased() == "content-length" {
-            return Int(parts[1].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        guard parts.count == 2 else {
+            throw BurnBarHTTPGatewayError.malformedRequest("invalid header line")
+        }
+        let name = parts[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !name.isEmpty,
+              name.unicodeScalars.allSatisfy({ $0.value >= 0x21 && $0.value <= 0x7E }) else {
+            throw BurnBarHTTPGatewayError.malformedRequest("invalid header name")
+        }
+        let value = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        if name == "transfer-encoding" {
+            throw BurnBarHTTPGatewayError.unsupportedTransferEncoding(value)
+        }
+        if name == "content-length" {
+            guard !value.isEmpty, value.allSatisfy({ $0.isNumber }), let parsed = Int(value), parsed >= 0 else {
+                throw BurnBarHTTPGatewayError.malformedRequest("invalid content length")
+            }
+            if let contentLength, contentLength != parsed {
+                throw BurnBarHTTPGatewayError.malformedRequest("conflicting content lengths")
+            }
+            contentLength = parsed
         }
     }
-    return 0
+    return contentLength ?? 0
 }
 
-private func parseRequest(_ data: Data) -> LinuxHTTPRequest {
+private func parseRequest(_ data: Data) throws -> LinuxHTTPRequest {
     guard let headerEnd = data.range(of: Data("\r\n\r\n".utf8)) else {
-        return LinuxHTTPRequest()
+        throw BurnBarHTTPGatewayError.malformedRequest("request headers are incomplete")
     }
     let head = String(decoding: data[..<headerEnd.lowerBound], as: UTF8.self)
+    _ = try parsedContentLength(from: head)
     var lines = head.components(separatedBy: "\r\n")
     let start = lines.isEmpty ? "" : lines.removeFirst()
-    let startParts = start.split(separator: " ").map(String.init)
+    let startParts = start.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
     var request = LinuxHTTPRequest()
-    if startParts.count >= 2 {
-        request.method = startParts[0].uppercased()
-        request.path = startParts[1].split(separator: "?", maxSplits: 1).first.map(String.init) ?? "/"
+    guard startParts.count == 3 else {
+        throw BurnBarHTTPGatewayError.malformedRequest("invalid request line")
     }
+    request.method = startParts[0].uppercased()
+    request.path = startParts[1].split(separator: "?", maxSplits: 1).first.map(String.init) ?? "/"
     for line in lines {
         let parts = line.split(separator: ":", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else { continue }
+        guard parts.count == 2 else {
+            throw BurnBarHTTPGatewayError.malformedRequest("invalid header line")
+        }
         request.headers[parts[0].lowercased()] = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
     }
     request.body = data[headerEnd.upperBound...]
@@ -1169,12 +1607,23 @@ private func httpResponseHead(status: Int, headers: [String: String], contentLen
     return Data(head.utf8)
 }
 
+private func typedGatewayErrorResponse(_ error: BurnBarHTTPGatewayError) -> Data {
+    let message = error.localizedDescription
+        .replacingOccurrences(of: "\\", with: "\\\\")
+        .replacingOccurrences(of: "\"", with: "\\\"")
+        .replacingOccurrences(of: "\n", with: "\\n")
+        .replacingOccurrences(of: "\r", with: "\\r")
+    let body = #"{"error":{"code":"\#(error.responseCode)","message":"\#(message)"}}"#
+    return httpResponse(status: error.httpStatus, headers: ["Content-Type": "application/json"], body: body)
+}
+
 private func statusText(_ status: Int) -> String {
     switch status {
     case 200: return "OK"
     case 204: return "No Content"
     case 400: return "Bad Request"
     case 401: return "Unauthorized"
+    case 413: return "Payload Too Large"
     case 404: return "Not Found"
     case 429: return "Too Many Requests"
     case 501: return "Not Implemented"

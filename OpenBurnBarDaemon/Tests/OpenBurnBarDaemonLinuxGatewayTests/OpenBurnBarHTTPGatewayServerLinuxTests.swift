@@ -225,12 +225,105 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         let routeLog = try await harness.proxyRouteLogStore.recent(limit: 10)
         XCTAssertTrue(routeLog.isEmpty)
     }
+
+    func testModelsCatalogIncludesBaseVariantAliasAndCustomRows() async throws {
+        let harness = try LinuxGatewayHarness()
+        addTeardownBlock { await harness.stop() }
+        try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:1/v1")
+        try await harness.configureModelRows()
+        try await harness.start()
+
+        let catalog = try await LinuxHTTPClient.get(port: harness.port, path: "/v1/models/catalog")
+        XCTAssertEqual(catalog.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(catalog.body.utf8)) as? [String: Any])
+        let rows = try XCTUnwrap(object["data"] as? [[String: Any]])
+        let ids = Set(rows.compactMap { $0["id"] as? String })
+        XCTAssertTrue(ids.contains("glm-5-turbo"), catalog.body)
+        XCTAssertTrue(ids.contains("glm-5-turbo-high"), catalog.body)
+        XCTAssertTrue(ids.contains("team-default"), catalog.body)
+        XCTAssertTrue(ids.contains("custom-linux-model"), catalog.body)
+
+        let publicModels = try await LinuxHTTPClient.get(port: harness.port, path: "/v1/models")
+        XCTAssertEqual(publicModels.statusCode, 200)
+        XCTAssertTrue(publicModels.body.contains("glm-5-turbo-high"))
+        XCTAssertTrue(publicModels.body.contains("team-default"))
+    }
+
+    func testFailoverRecordsModelHealthAndSkipsCoolingRoute() async throws {
+        let upstream = LinuxMockOpenAIStreamServer(response: .openAIChatPrimary429)
+        try upstream.start()
+        defer { upstream.stop() }
+
+        let harness = try LinuxGatewayHarness()
+        addTeardownBlock { await harness.stop() }
+        try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
+        try await harness.configureSecondaryZAICredential()
+        try await harness.start()
+
+        let body = #"{"model":"glm-5-turbo","messages":[{"role":"user","content":"ping"}]}"#
+        let first = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body
+        )
+        XCTAssertEqual(first.statusCode, 200, first.body)
+        let firstRequests = upstream.recordedRequests
+        XCTAssertGreaterThanOrEqual(firstRequests.count, 2)
+        XCTAssertEqual(firstRequests[0].authorization, "Bearer primary-key")
+        XCTAssertEqual(firstRequests[1].authorization, "Bearer secondary-key")
+
+        let failure = await harness.modelHealthStore.activeFailure(
+            modelID: "glm-5-turbo",
+            providerID: "zai",
+            accountID: "primary",
+            formatFamily: .openaiCompat
+        )
+        XCTAssertEqual(failure?.statusCode, 429)
+        XCTAssertNotNil(failure?.blockedUntil)
+
+        let second = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body
+        )
+        XCTAssertEqual(second.statusCode, 200, second.body)
+        let secondRequests = upstream.recordedRequests
+        XCTAssertEqual(secondRequests.last?.authorization, "Bearer secondary-key")
+    }
+
+    func testMalformedAndOversizedHTTPFramesFailWithTypedResponses() async throws {
+        let harness = try LinuxGatewayHarness()
+        addTeardownBlock { await harness.stop() }
+        try await harness.start()
+
+        let oversized = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 16777217\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertEqual(oversized.statusCode, 413, oversized.rawText)
+        XCTAssertTrue(oversized.body.contains("request_too_large"), oversized.body)
+
+        let chunked = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n0\r\n\r\n"
+        )
+        XCTAssertEqual(chunked.statusCode, 501, chunked.rawText)
+        XCTAssertTrue(chunked.body.contains("unsupported_transfer_encoding"), chunked.body)
+
+        let incomplete = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 20\r\nConnection: close\r\n\r\n{}"
+        )
+        XCTAssertEqual(incomplete.statusCode, 400, incomplete.rawText)
+        XCTAssertTrue(incomplete.body.contains("incomplete_request"), incomplete.body)
+    }
 }
 
 private final class LinuxGatewayHarness: @unchecked Sendable {
     let port: Int
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
+    let modelHealthStore: BurnBarGatewayModelHealthStore
     private let configStore: BurnBarConfigStore
     private let server: BurnBarHTTPGatewayServer
     private let tempDirectory: URL
@@ -255,6 +348,10 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
             fileURL: tempDirectory.appendingPathComponent("proxy-route-events.jsonl"),
             logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
         )
+        modelHealthStore = BurnBarGatewayModelHealthStore(
+            fileURL: tempDirectory.appendingPathComponent("model-health.json"),
+            logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
+        )
         server = BurnBarHTTPGatewayServer(
             configuration: BurnBarGatewayConfiguration(
                 isEnabled: true,
@@ -266,6 +363,7 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
             configStore: configStore,
             usageRecorder: usageRecorder,
             proxyRouteLogStore: proxyRouteLogStore,
+            modelHealthStore: modelHealthStore,
             logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
         )
     }
@@ -306,6 +404,37 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
         )
     }
 
+    func configureSecondaryZAICredential() async throws {
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "secondary",
+            label: "Secondary",
+            apiKey: "secondary-key"
+        )
+    }
+
+    func configureModelRows() async throws {
+        var snapshot = try await configStore.snapshot()
+        guard var provider = snapshot.providers.first(where: { $0.providerID == "zai" }) else {
+            XCTFail("zai provider missing")
+            return
+        }
+        provider.modelVariants = [BurnBarModelVariant(
+            variantID: "glm-5-turbo-high",
+            label: "GLM High",
+            baseModelID: "glm-5-turbo",
+            thinkingLevel: .high
+        )]
+        provider.modelAliases = [BurnBarModelAlias(
+            aliasID: "team-default",
+            baseModelID: "glm-5-turbo",
+            displayName: "Team Default"
+        )]
+        provider.customModels = [BurnBarCustomModel(modelID: "custom-linux-model", displayName: "Custom Linux")]
+        snapshot.providers = [provider]
+        try await configStore.replaceSnapshot(snapshot)
+    }
+
     func start() async throws {
         try await server.start()
         try await LinuxSocketSupport.waitForListener(port: port)
@@ -327,6 +456,7 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
 
     enum Response: Sendable {
         case openAIChatStream
+        case openAIChatPrimary429
         case openAIResponsesJSON
         case anthropicMessagesJSON
         case anthropicMessagesStream
@@ -454,6 +584,20 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
                 + #""usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"
             _ = try? LinuxSocketSupport.sendAll(Data(usageChunk.utf8), to: clientFD)
             _ = try? LinuxSocketSupport.sendAll(Data("data: [DONE]\n\n".utf8), to: clientFD)
+        case .openAIChatPrimary429:
+            if request.authorization == "Bearer primary-key" {
+                sendJSON(
+                    #"{"error":{"message":"rate limit"}}"#,
+                    status: 429,
+                    to: clientFD
+                )
+            } else {
+                sendJSON(
+                    #"{"id":"chatcmpl-secondary","object":"chat.completion","model":"glm-5-turbo","choices":[{"index":0,"message":{"role":"assistant","content":"secondary"},"finish_reason":"stop"}]}"#,
+                    status: 200,
+                    to: clientFD
+                )
+            }
         case .openAIResponsesJSON:
             sendJSON(
                 """
@@ -539,9 +683,10 @@ data: {"type":"message_stop"}
         )
     }
 
-    private func sendJSON(_ body: String, to clientFD: Int32) {
+    private func sendJSON(_ body: String, status: Int = 200, to clientFD: Int32) {
         let data = Data(body.utf8)
-        let head = "HTTP/1.1 200 OK\r\n"
+        let reason = status == 429 ? "Too Many Requests" : "OK"
+        let head = "HTTP/1.1 \(status) \(reason)\r\n"
             + "Content-Type: application/json\r\n"
             + "Content-Length: \(data.count)\r\n"
             + "Connection: close\r\n"
@@ -560,21 +705,48 @@ private enum LinuxHTTPClient {
     }
 
     static func post(port: Int, path: String, body: String) async throws -> Response {
+        try await request(
+            method: "POST",
+            port: port,
+            path: path,
+            headers: [
+                "Content-Type": "application/json",
+                "Content-Length": "\(body.utf8.count)"
+            ],
+            body: body
+        )
+    }
+
+    static func get(port: Int, path: String) async throws -> Response {
+        try await request(method: "GET", port: port, path: path, headers: [:], body: "")
+    }
+
+    static func raw(port: Int, request: String) async throws -> Response {
         try await Task.detached(priority: .utility) {
             let socketFD = try LinuxSocketSupport.connectToLoopback(port: port)
             defer { Glibc.close(socketFD) }
-            let request = """
-            POST \(path) HTTP/1.1\r
-            Host: 127.0.0.1:\(port)\r
-            Content-Type: application/json\r
-            Content-Length: \(body.utf8.count)\r
-            Connection: close\r
-            \r
-            \(body)
-            """
             try LinuxSocketSupport.sendAll(Data(request.utf8), to: socketFD)
-            let raw = try LinuxSocketSupport.readUntilEOF(from: socketFD)
-            return try parseResponse(raw)
+            return try parseResponse(try LinuxSocketSupport.readUntilEOF(from: socketFD))
+        }.value
+    }
+
+    private static func request(
+        method: String,
+        port: Int,
+        path: String,
+        headers: [String: String],
+        body: String
+    ) async throws -> Response {
+        try await Task.detached(priority: .utility) {
+            let socketFD = try LinuxSocketSupport.connectToLoopback(port: port)
+            defer { Glibc.close(socketFD) }
+            var request = "\(method) \(path) HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\n"
+            for (name, value) in headers {
+                request += "\(name): \(value)\r\n"
+            }
+            request += "Connection: close\r\n\r\n\(body)"
+            try LinuxSocketSupport.sendAll(Data(request.utf8), to: socketFD)
+            return try parseResponse(try LinuxSocketSupport.readUntilEOF(from: socketFD))
         }.value
     }
 
