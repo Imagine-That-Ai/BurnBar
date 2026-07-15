@@ -179,17 +179,23 @@ jobs:
             --apiIssuer "$APP_STORE_ASC_ISSUER_ID" \
             --output-format json > "$status"
           test -s "$status"
+          python3 scripts/ci/verify-domain-core-app-store-connect-status.py \
+            --status "$status" \
+            --output "$RUNNER_TEMP/ios-release/app-store-connect-status-verification.json"
           activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
           jq -n \
             --arg deliveryId "$delivery_id" \
             --arg archiveSha256 "$(shasum -a 256 "$archive" | awk '{print $1}')" \
             --arg ipaSha256 "$(shasum -a 256 "$ipa" | awk '{print $1}')" \
+            --arg uploadResponseSha256 "$(shasum -a 256 "$upload" | awk '{print $1}')" \
+            --arg statusResponseSha256 "$(jq -er '.statusResponseSha256' "$RUNNER_TEMP/ios-release/app-store-connect-status-verification.json")" \
+            --arg processedStatus "$(jq -er '.processedStatus' "$RUNNER_TEMP/ios-release/app-store-connect-status-verification.json")" \
             --arg version "$VERSION" \
             --arg commit "$RELEASE_COMMIT" \
             --argjson candidate "$(jq '{candidateCommit, coreVersion, abiVersion, sourceSha256}' <<<"$activation")" \
             --argjson activation "$activation" \
             --argjson loaded "$(cat "$RUNNER_TEMP/ios-release/ipa-loaded-rust-identity.json")" \
-            '{schemaVersion:1,status:"processed",deliveryId:$deliveryId,archiveSha256:$archiveSha256,ipaSha256:$ipaSha256,release:{version:$version,tag:("v"+$version),commit:$commit},candidate:$candidate,activation:($activation|del(.active,.domains)),loadedRustIdentity:$loaded}' \
+            '{schemaVersion:1,status:"processed",processedStatus:$processedStatus,deliveryId:$deliveryId,archiveSha256:$archiveSha256,ipaSha256:$ipaSha256,uploadResponseSha256:$uploadResponseSha256,statusResponseSha256:$statusResponseSha256,release:{version:$version,tag:("v"+$version),commit:$commit},candidate:$candidate,activation:($activation|del(.active,.domains)),loadedRustIdentity:$loaded}' \
             > "$RUNNER_TEMP/ios-release/app-store-connect-receipt.json"
 
       - name: Create iOS identity predicates with rollback provenance

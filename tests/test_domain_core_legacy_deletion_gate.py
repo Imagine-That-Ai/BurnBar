@@ -769,9 +769,12 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         receipt = {
             "schemaVersion": 1,
             "status": "processed",
+            "processedStatus": "complete",
             "deliveryId": "delivery-123",
             "archiveSha256": "5" * 64,
             "ipaSha256": "6" * 64,
+            "uploadResponseSha256": "9" * 64,
+            "statusResponseSha256": "a" * 64,
             "release": {
                 "version": "1.2.3",
                 "tag": "v1.2.3",
@@ -809,6 +812,10 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         spoof["loadedRustIdentity"]["observed"]["sourceSha256"] = "8" * 64
         with self.assertRaisesRegex(GATE.GateError, "loaded Rust slice"):
             GATE.validate_ios_app_store_receipt(spoof, item, "5" * 64)
+        spoof = copy.deepcopy(receipt)
+        spoof["statusResponseSha256"] = "not-a-digest"
+        with self.assertRaisesRegex(GATE.GateError, "status response SHA-256"):
+            GATE.validate_ios_app_store_receipt(spoof, item, "5" * 64)
 
     def test_rollback_artifact_verifier_binds_candidate_and_retention(self) -> None:
         verifier = GATE.SignedEvidenceVerifier()
@@ -843,7 +850,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             activation_path = root / "activation.json"
             source_path = root / "legacy-source.tar.gz"
             bundle_path = root / "rollback.zip"
-            profile.write_text(json.dumps({
+            profile_value = {
                 "schemaVersion": 1,
                 "name": "public-production-rollback",
                 "artifactAuthority": "signed",
@@ -852,7 +859,8 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 "evidenceEnabled": False,
                 "modes": {domain: "legacy" for domain in GATE.PROFILE_DOMAIN_ROWS},
                 "candidateIdentity": identity,
-            }))
+            }
+            profile.write_text(json.dumps(profile_value))
             activation_path.write_text(json.dumps(activation))
             with tarfile.open(source_path, "w:gz") as source:
                 for name, value in (
@@ -862,6 +870,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                     info = tarfile.TarInfo(name)
                     info.size = len(value)
                     source.addfile(info, io.BytesIO(value))
+            download_bytes = {}
             ROLLBACK_BUNDLE.create_bundle(
                 profile,
                 activation_path,
@@ -889,19 +898,24 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 "retentionPolicy": "retain_until_legacy_deletion_complete",
             },
         }
-        response = FakeDownloadResponse(contents, "https://objects.githubusercontent.com/rollback.zip")
+        download_bytes[item["artifactUri"]] = contents
         result = [{"verificationResult": {"statement": {"predicate": predicate}}}]
+
+        def download(request, timeout=0):
+            del timeout
+            uri = request.full_url
+            return FakeDownloadResponse(download_bytes[uri], "https://objects.githubusercontent.com/retained")
+
         with (
-            mock.patch.object(GATE, "urlopen", return_value=response),
+            mock.patch.object(GATE, "urlopen", side_effect=download),
             mock.patch.object(verifier, "_verify_bundle", return_value=result) as verify,
         ):
             verifier.verify_rollback_artifact(item, ROOT / "README.md", hashlib.sha256(contents).hexdigest())
         self.assertEqual(verify.call_args.kwargs["predicate_type"], GATE.ROLLBACK_PREDICATE_TYPE)
         wrong = copy.deepcopy(result)
-        wrong[0]["verificationResult"]["statement"]["predicate"]["release"]["retentionPolicy"] = "ephemeral"
-        response = FakeDownloadResponse(contents, "https://objects.githubusercontent.com/rollback.zip")
+        wrong[-1]["verificationResult"]["statement"]["predicate"]["release"]["retentionPolicy"] = "ephemeral"
         with (
-            mock.patch.object(GATE, "urlopen", return_value=response),
+            mock.patch.object(GATE, "urlopen", side_effect=download),
             mock.patch.object(verifier, "_verify_bundle", return_value=wrong),
             self.assertRaisesRegex(GATE.GateError, "does not bind the exact candidate"),
         ):
@@ -920,6 +934,22 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         )
         catalog = GATE.load_deletion_reviewers(ROOT)
         self.assertEqual(set(catalog), {"domain_owner", "security_crypto"})
+        self.assertEqual(catalog["domain_owner"], {"@emilio3435"})
+        self.assertEqual(catalog["security_crypto"], {"@emilio3435"})
+
+    def test_reviewer_catalog_rejects_an_empty_operational_roster(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "config").mkdir()
+            (root / GATE.DELETION_REVIEWERS_PATH).write_text(
+                json.dumps({"schemaVersion": 1, "reviewers": []})
+            )
+            with self.assertRaisesRegex(GATE.GateError, "at least one qualified reviewer"):
+                GATE.load_deletion_reviewers(root)
+            self.assertEqual(
+                GATE.load_deletion_reviewers(root, allow_missing=True),
+                {"domain_owner": set(), "security_crypto": set()},
+            )
 
     def test_reviewer_catalog_rejects_duplicates_and_unknown_classes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

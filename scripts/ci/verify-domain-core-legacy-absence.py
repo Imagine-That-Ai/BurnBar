@@ -23,6 +23,7 @@ sys.modules[SPEC.name] = GATE
 SPEC.loader.exec_module(GATE)
 
 REQUIRED_FINAL_ARTIFACTS = {
+    # Consumer-library proofs catch linkage drift before packaging.
     "swift-xcframework",
     "kotlin-aar",
     "csharp-native",

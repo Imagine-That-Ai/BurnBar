@@ -257,13 +257,16 @@
     "appStoreConnectReceipt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "status", "deliveryId", "archiveSha256", "ipaSha256", "release", "candidate", "activation", "loadedRustIdentity"],
+      "required": ["schemaVersion", "status", "processedStatus", "deliveryId", "archiveSha256", "ipaSha256", "uploadResponseSha256", "statusResponseSha256", "release", "candidate", "activation", "loadedRustIdentity"],
       "properties": {
         "schemaVersion": { "const": 1 },
         "status": { "const": "processed" },
+        "processedStatus": { "enum": ["complete", "completed", "processed", "processing complete", "success", "succeeded"] },
         "deliveryId": { "type": "string", "minLength": 1 },
         "archiveSha256": { "$ref": "#/$defs/sha256" },
         "ipaSha256": { "$ref": "#/$defs/sha256" },
+        "uploadResponseSha256": { "$ref": "#/$defs/sha256" },
+        "statusResponseSha256": { "$ref": "#/$defs/sha256" },
         "release": {
           "type": "object",
           "additionalProperties": false,

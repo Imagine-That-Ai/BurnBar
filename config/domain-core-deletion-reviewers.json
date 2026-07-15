@@ -1,4 +1,9 @@
 {
   "schemaVersion": 1,
-  "reviewers": []
+  "reviewers": [
+    {
+      "handle": "@emilio3435",
+      "reviewClasses": ["domain_owner", "security_crypto"]
+    }
+  ]
 }

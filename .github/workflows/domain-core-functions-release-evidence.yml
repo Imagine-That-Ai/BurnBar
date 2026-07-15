@@ -228,7 +228,8 @@ jobs:
             --protected-signer-run-id "$SIGNER_RUN_ID" \
             --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
             --rollback-artifact "$proof_dir/domain-core-public-production-rollback.json" \
-            --deployment "$RUNNER_TEMP/functions-deployment-evidence.json"
+            --deployment "$RUNNER_TEMP/functions-deployment-evidence.json" \
+            --legacy-absence-root "$proof_dir/functions-lib"
           {
             echo "artifact=$artifact"
             echo "predicate=$predicate"

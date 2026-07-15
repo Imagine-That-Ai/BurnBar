@@ -19,6 +19,7 @@ const TRUSTED_WORKFLOWS = Object.freeze([
   ".github/workflows/openburnbar-release-windows.yml",
   ".github/workflows/linux-release.yml",
   ".github/workflows/domain-core-ios-release-evidence.yml",
+  ".github/workflows/domain-core-post-deletion-completion.yml",
 ]);
 const SEED_PATHS = Object.freeze([
   ...TRUSTED_WORKFLOWS,

@@ -45,6 +45,11 @@ gap, not duplicated pure logic in multiple production languages.
 - Generated Swift, Kotlin, C#, native, and Wasm artifacts are one atomic release
   set. A consumer never mixes bindings or binaries generated from different
   domain-core source trees.
+- Legacy deletion is authorized by Rust-authoritative stable release A. A
+  separate post-deletion stable release B must prove the exact final DMG, IPA,
+  AAB, Windows/Linux bundles, and Console/Functions deployments before the
+  domain is counted operationally complete; PR CI never fabricates those
+  post-merge receipts.
 
 ## Migration mode semantics
 

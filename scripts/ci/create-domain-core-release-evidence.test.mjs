@@ -187,9 +187,12 @@ test("iOS evidence requires processed ASC and loaded Rust slice identity", () =>
     const receipt = {
       schemaVersion: 1,
       status: "processed",
+      processedStatus: "complete",
       deliveryId: "delivery-123",
       archiveSha256: sha(readFileSync(artifact)),
       ipaSha256: "f".repeat(64),
+      uploadResponseSha256: "e".repeat(64),
+      statusResponseSha256: "d".repeat(64),
       release: {
         version: "1.2.3",
         tag: "v1.2.3",

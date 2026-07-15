@@ -61,6 +61,100 @@ PROFILE_DOMAIN_ROWS = {
     "pricing": ("pricing.token_cost", "pricing.kimi_historical"),
 }
 TARGET_KINDS = {"source_symbol", "mode_literal", "path"}
+ATOMIC_DELETION_GROUPS = (
+    frozenset({
+        "quota.claude_statusline",
+        "quota.codex_usage",
+        "quota.cursor_usage",
+        "quota.anthropic_headers",
+    }),
+    frozenset({
+        "cloudvault.portable_primitives",
+        "cloudvault.document_rewrap",
+        "cloudvault.search",
+    }),
+    frozenset({"hermes.relay_crypto", "hermes.ratchet_transforms"}),
+    frozenset({"pricing.token_cost", "pricing.kimi_historical"}),
+)
+POST_DELETION_PRIMITIVE_RULES = (
+    (
+        "swift-cloudvault-crypto",
+        frozenset({
+            "cloudvault.portable_primitives",
+            "cloudvault.document_rewrap",
+            "cloudvault.search",
+        }),
+        "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
+        re.compile(
+            r"PlatformCrypto\.(?:sha256(?:Hex)?|hmacSHA256|deriveHKDFSHA256(?:Key|KeyData)?|sealAESGCM|openAESGCM)|"
+            r"OpenBurnBar-CloudVault-(?:AAD|HMAC|CloudSearch)|\blegacy\s*:\s*\{"
+        ),
+    ),
+    (
+        "android-cloudvault-crypto",
+        frozenset({
+            "cloudvault.portable_primitives",
+            "cloudvault.document_rewrap",
+            "cloudvault.search",
+        }),
+        "android/app/src/main/java/com/openburnbar/data/cloud",
+        re.compile(
+            r"(?:Mac\.getInstance\(\"HmacSHA256\"\)|MessageDigest\.getInstance\(\"SHA-256\"\)|"
+            r"Cipher\.getInstance\(\"AES/GCM|CloudVaultSearchDomainCore\.[A-Za-z0-9_]+\([^\n]*\)\s*\{)"
+        ),
+    ),
+    (
+        "android-subscription-doc-id",
+        frozenset({"cloudvault.portable_primitives", "cloudvault.search"}),
+        "android/app/src/main/java/com/openburnbar/data/square/AgentSubscriptionTopicStore.kt",
+        re.compile(r"CloudVaultCryptoSearch\.hkdfSha256|Mac\.getInstance\(\"HmacSHA256\"\)"),
+    ),
+    (
+        "windows-cloudvault-crypto",
+        frozenset({
+            "cloudvault.portable_primitives",
+            "cloudvault.document_rewrap",
+            "cloudvault.search",
+        }),
+        "windows/cloudsync/OpenBurnBar.CloudSync.Crypto",
+        re.compile(r"SHA256\.HashData|HMACSHA256|HKDF\.DeriveKey|\bAesGcm\b|=>\s*Legacy[A-Za-z0-9_]*\("),
+    ),
+    (
+        "swift-hermes-crypto",
+        frozenset({"hermes.relay_crypto", "hermes.ratchet_transforms"}),
+        "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels",
+        re.compile(
+            r"HermesDomainCoreAdapter\.[A-Za-z0-9_]+\([^)]*\)\s*\{|"
+            r"OpenBurnBar-HermesRelay-v1\||PlatformCrypto\.(?:hmacSHA256|sealAESGCM|openAESGCM)"
+        ),
+    ),
+    (
+        "android-hermes-crypto",
+        frozenset({"hermes.relay_crypto", "hermes.ratchet_transforms"}),
+        "android/app/src/main/java/com/openburnbar/data/hermes/relay",
+        re.compile(
+            r"Mac\.getInstance\(\"HmacSHA256\"\)|Cipher\.getInstance\(\"AES/GCM|"
+            r"HermesDomainCoreAdapter\.[A-Za-z0-9_]+\([^\n]*\)\s*\{"
+        ),
+    ),
+    (
+        "swift-codex-quota-decoder",
+        frozenset({
+            "quota.claude_statusline",
+            "quota.codex_usage",
+            "quota.cursor_usage",
+            "quota.anthropic_headers",
+        }),
+        "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota",
+        re.compile(r"additional_rate_limits|primary_window|secondary_window|used_percent|\blegacy\s*:\s*\{"),
+    ),
+    (
+        "functions-pricing",
+        frozenset({"pricing.token_cost", "pricing.kimi_historical"}),
+        "functions/src/pricing.ts",
+        re.compile(r"legacyTokenCost|priceLegacyKimiEvent|LEGACY_KIMI_WIRE"),
+    ),
+)
 RECEIPT_TRANSITIONS = {
     "promotion": "promotion",
     "stableRelease": "stable_release",
@@ -118,6 +212,15 @@ RELEASE_SIGNER_WORKFLOWS = {
 }
 RELEASE_PREDICATE_TYPES = {consumer: "https://openburnbar.dev/attestations/domain-core-release-artifact/v2" for consumer in RELEASE_SIGNER_WORKFLOWS}
 ROLLBACK_PREDICATE_TYPE = "https://openburnbar.dev/attestations/domain-core-rollback-artifact/v1"
+ROLLBACK_PAYLOAD_IDENTITIES = {
+    "apple": ("apple-rollback-settings", "macos-arm64"),
+    "ios": ("ios-rollback-settings", "ios-universal"),
+    "linux": ("linux-rollback-settings", "linux-x64-arm64"),
+    "android": ("android-rollback-settings", "android-universal"),
+    "windows": ("windows-rollback-settings", "windows-x64-arm64"),
+    "console": ("console-rollback-settings", "firebase-hosting-production"),
+    "functions": ("functions-rollback-settings", "firebase-functions-production"),
+}
 RELEASE_ARTIFACT_IDENTITIES = {
     "apple": ("macos-dmg", "macos-arm64"),
     "ios": ("ios-app-store-archive", "ios-universal"),
@@ -198,6 +301,12 @@ def exact_keys(value: dict[str, Any], allowed: set[str], required: set[str], lab
         raise GateError(f"{label}: unknown fields: {', '.join(unknown)}")
     if missing:
         raise GateError(f"{label}: missing fields: {', '.join(missing)}")
+
+
+def canonical_json_sha256(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(value, separators=(",", ":"), sort_keys=True, ensure_ascii=True).encode()
+    ).hexdigest()
 
 
 def repository_path(value: Any, label: str) -> str:
@@ -382,6 +491,10 @@ def load_deletion_reviewers(
     if catalog["schemaVersion"] != 1 or isinstance(catalog["schemaVersion"], bool):
         raise GateError(f"{label}: schemaVersion must be 1")
     raw_reviewers = require_array(catalog["reviewers"], f"{label}.reviewers")
+    if not raw_reviewers:
+        if allow_missing:
+            return {"domain_owner": set(), "security_crypto": set()}
+        raise GateError(f"{label}.reviewers: at least one qualified reviewer is required")
     reviewers = {"domain_owner": set(), "security_crypto": set()}
     seen_handles: set[str] = set()
     previous: str | None = None
@@ -408,6 +521,11 @@ def load_deletion_reviewers(
             reviewers[review_class].add(normalized)
         seen_handles.add(normalized)
         previous = normalized
+    missing_classes = sorted(review_class for review_class, handles in reviewers.items() if not handles)
+    if missing_classes and not allow_missing:
+        raise GateError(
+            f"{label}: no qualified reviewer covers {', '.join(missing_classes)}"
+        )
     return reviewers
 
 
@@ -731,14 +849,13 @@ class SignedEvidenceVerifier:
         try:
             try:
                 with zipfile.ZipFile(artifact) as archive:
-                    expected_entries = [
+                    base_entries = [
                         "manifest.json",
                         "domain-core-public-production-rollback.json",
                         "rollback.env",
+                        "rollback-payloads.json",
                         "legacy-source.tar.gz",
                     ]
-                    if archive.namelist() != expected_entries:
-                        raise GateError("rollback artifact does not contain the exact restoration payload")
                     if any(info.is_dir() or info.flag_bits & 1 for info in archive.infolist()):
                         raise GateError("rollback artifact contains an unsafe or encrypted entry")
                     manifest = require_object(
@@ -750,7 +867,34 @@ class SignedEvidenceVerifier:
                         "rollback artifact profile",
                     )
                     environment = archive.read("rollback.env")
+                    payload_manifest = require_object(
+                        json.loads(archive.read("rollback-payloads.json")),
+                        "rollback payload manifest",
+                    )
                     source_archive = archive.read("legacy-source.tar.gz")
+                    raw_payloads = require_array(
+                        payload_manifest.get("payloads"),
+                        "rollback payload manifest.payloads",
+                    )
+                    payload_entries: list[str] = []
+                    embedded_payload_bytes: dict[tuple[str, str], bytes] = {}
+                    for payload_value in raw_payloads:
+                        payload = require_object(payload_value, "rollback payload manifest payload")
+                        consumer = payload.get("consumer")
+                        if consumer not in ROLLBACK_PAYLOAD_IDENTITIES:
+                            raise GateError("rollback payload manifest contains an unknown consumer")
+                        for path_key, kind in (("payloadPath", "artifact"), ("provenancePath", "provenance")):
+                            entry = payload.get(path_key)
+                            expected_entry = f"payloads/{consumer}/" + (
+                                "rollback-settings.json" if kind == "artifact" else "provenance.json"
+                            )
+                            if entry != expected_entry:
+                                raise GateError(f"rollback payload {consumer}.{path_key} is not canonical")
+                            payload_entries.append(entry)
+                            embedded_payload_bytes[(consumer, kind)] = archive.read(entry)
+                    expected_entries = base_entries + payload_entries
+                    if archive.namelist() != expected_entries:
+                        raise GateError("rollback artifact does not contain the exact retained restoration payload")
             except (OSError, ValueError, KeyError, json.JSONDecodeError, zipfile.BadZipFile) as error:
                 raise GateError(f"rollback artifact restoration payload is unreadable: {error}") from error
             modes = require_object(profile.get("modes"), "rollback artifact profile.modes")
@@ -766,6 +910,21 @@ class SignedEvidenceVerifier:
             restoration = require_object(manifest.get("restoration"), "rollback artifact restoration")
             source = require_object(restoration.get("sourceArchive"), "rollback artifact source archive")
             settings = require_object(restoration.get("environment"), "rollback artifact environment")
+            payload_inventory = require_object(
+                restoration.get("payloadInventory"),
+                "rollback artifact payload inventory",
+            )
+            profile_identity = {
+                "name": "public-production-rollback",
+                "sha256": canonical_json_sha256(profile),
+            }
+            exact_keys(
+                payload_manifest,
+                {"schemaVersion", "candidate", "profile", "payloads"},
+                {"schemaVersion", "candidate", "profile", "payloads"},
+                "rollback payload manifest",
+            )
+            payloads = require_array(payload_manifest["payloads"], "rollback payload manifest.payloads")
             if (
                 manifest.get("schemaVersion") != 1
                 or manifest.get("artifactKind") != "legacy-rollback-bundle"
@@ -786,8 +945,93 @@ class SignedEvidenceVerifier:
                 or settings.get("path") != "rollback.env"
                 or settings.get("sha256") != hashlib.sha256(environment).hexdigest()
                 or settings.get("allDomainModes") != "legacy"
+                or payload_manifest.get("schemaVersion") != 1
+                or payload_manifest.get("candidate") != item["candidate"]
+                or payload_manifest.get("profile") != profile_identity
+                or payload_inventory.get("path") != "rollback-payloads.json"
+                or payload_inventory.get("sha256") != canonical_json_sha256(payload_manifest)
+                or payload_inventory.get("consumers") != list(ROLLBACK_PAYLOAD_IDENTITIES)
             ):
-                raise GateError("rollback artifact manifest does not bind usable legacy source and settings")
+                raise GateError("rollback artifact manifest does not bind usable legacy source, settings, and payloads")
+            if len(payloads) != len(ROLLBACK_PAYLOAD_IDENTITIES):
+                raise GateError("rollback payload manifest must cover the exact seven consumers")
+            payload_fields = {
+                "consumer",
+                "artifactKind",
+                "target",
+                "payloadPath",
+                "payloadSha256",
+                "size",
+                "provenancePath",
+                "provenanceSha256",
+            }
+            for index, payload_value in enumerate(payloads):
+                payload = require_object(payload_value, f"rollback payloads[{index}]")
+                exact_keys(payload, payload_fields, payload_fields, f"rollback payloads[{index}]")
+                consumer = payload.get("consumer")
+                if consumer != list(ROLLBACK_PAYLOAD_IDENTITIES)[index]:
+                    raise GateError("rollback payloads must cover the exact canonical consumer order")
+                artifact_kind, target = ROLLBACK_PAYLOAD_IDENTITIES[consumer]
+                if payload.get("artifactKind") != artifact_kind or payload.get("target") != target:
+                    raise GateError(f"rollback payload {consumer}: artifact identity is not canonical")
+                payload_sha256 = require_digest(
+                    payload.get("payloadSha256"),
+                    f"rollback payload {consumer}.payloadSha256",
+                )
+                provenance_sha256 = require_digest(
+                    payload.get("provenanceSha256"),
+                    f"rollback payload {consumer}.provenanceSha256",
+                )
+                size = payload.get("size")
+                if isinstance(size, bool) or not isinstance(size, int) or size < 1:
+                    raise GateError(f"rollback payload {consumer}.size must be a positive integer")
+                embedded_artifact = embedded_payload_bytes[(consumer, "artifact")]
+                embedded_provenance = embedded_payload_bytes[(consumer, "provenance")]
+                if (
+                    hashlib.sha256(embedded_artifact).hexdigest() != payload_sha256
+                    or len(embedded_artifact) != size
+                    or hashlib.sha256(embedded_provenance).hexdigest() != provenance_sha256
+                ):
+                    raise GateError(f"rollback payload {consumer}: embedded bytes differ from the manifest")
+                try:
+                    settings_payload = require_object(
+                        json.loads(embedded_artifact), f"rollback payload {consumer} settings"
+                    )
+                    provenance_payload = require_object(
+                        json.loads(embedded_provenance), f"rollback payload {consumer} provenance"
+                    )
+                except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                    raise GateError(f"rollback payload {consumer}: settings or provenance is unreadable") from error
+                expected_release = {
+                    "version": item["version"], "tag": item["tag"], "commit": item["commit"]
+                }
+                expected_settings = {
+                    "schemaVersion": 1,
+                    "action": "rebuild_and_redeploy_legacy",
+                    "consumer": consumer,
+                    "artifactKind": artifact_kind,
+                    "target": target,
+                    "candidate": item["candidate"],
+                    "activation": item["activation"],
+                    "profile": profile_identity,
+                    "release": expected_release,
+                    "environment": environment.decode("ascii").splitlines(),
+                }
+                expected_provenance = {
+                    "schemaVersion": 1,
+                    "predicateType": "https://openburnbar.dev/attestations/domain-core-rollback-settings/v1",
+                    "consumer": consumer,
+                    "subject": {
+                        "path": payload["payloadPath"],
+                        "sha256": payload_sha256,
+                        "size": size,
+                    },
+                    "candidate": item["candidate"],
+                    "profile": profile_identity,
+                    "release": expected_release,
+                }
+                if settings_payload != expected_settings or provenance_payload != expected_provenance:
+                    raise GateError(f"rollback payload {consumer}: bytes do not encode the exact usable legacy settings")
             try:
                 settings_text = environment.decode("ascii")
             except UnicodeDecodeError as error:
@@ -1154,6 +1398,41 @@ class Row:
     targets: list[Target]
 
 
+def validate_atomic_deletion_groups(rows: dict[str, Row]) -> None:
+    deleted = {row_id for row_id, row in rows.items() if row.state == "legacy_deleted"}
+    for group in ATOMIC_DELETION_GROUPS:
+        selected = deleted & group
+        if selected and selected != group:
+            raise GateError(
+                "coupled legacy rows must enter legacy_deleted atomically: "
+                + ", ".join(sorted(group))
+            )
+
+
+def verify_post_deletion_primitives(repo_root: Path, rows: dict[str, Row]) -> None:
+    deleted = {row_id for row_id, row in rows.items() if row.state == "legacy_deleted"}
+    for label, required_rows, relative, pattern in POST_DELETION_PRIMITIVE_RULES:
+        if not required_rows.issubset(deleted):
+            continue
+        path = secure_path(repo_root, relative, label, must_exist=False)
+        if not path.exists():
+            continue
+        sources = [path] if path.is_file() else [
+            child
+            for child in path.rglob("*")
+            if child.is_file() and not child.is_symlink() and child.suffix in {".cs", ".kt", ".swift", ".ts"}
+        ]
+        for source in sources:
+            contents = source.read_text(encoding="utf-8", errors="replace")
+            match = pattern.search(contents)
+            if match is not None:
+                line = contents.count("\n", 0, match.start()) + 1
+                raise GateError(
+                    f"{label}: forbidden hand-ported primitive remains after legacy deletion "
+                    f"at {source.relative_to(repo_root)}:{line}"
+                )
+
+
 def parse_target(raw: Any, label: str, roots: dict[str, str]) -> Target:
     value = require_object(raw, label)
     kind = value.get("kind")
@@ -1306,9 +1585,12 @@ def validate_ios_app_store_receipt(
     fields = {
         "schemaVersion",
         "status",
+        "processedStatus",
         "deliveryId",
         "archiveSha256",
         "ipaSha256",
+        "uploadResponseSha256",
+        "statusResponseSha256",
         "release",
         "candidate",
         "activation",
@@ -1348,10 +1630,15 @@ def validate_ios_app_store_receipt(
     invalid = (
         receipt["schemaVersion"] != 1
         or receipt["status"] != "processed"
+        or receipt["processedStatus"] not in {
+            "complete", "completed", "processed", "processing complete", "success", "succeeded"
+        }
         or not isinstance(receipt["deliveryId"], str)
         or not receipt["deliveryId"]
         or receipt["archiveSha256"] != archive_sha256
         or require_digest(receipt["ipaSha256"], "signed iOS IPA SHA-256") != receipt["ipaSha256"]
+        or require_digest(receipt["uploadResponseSha256"], "signed iOS upload response SHA-256") != receipt["uploadResponseSha256"]
+        or require_digest(receipt["statusResponseSha256"], "signed iOS status response SHA-256") != receipt["statusResponseSha256"]
         or release != {"version": item["version"], "tag": item["tag"], "commit": item["commit"]}
         or receipt["candidate"] != item["candidate"]
         or receipt["activation"] != item["activation"]
@@ -2825,6 +3112,9 @@ def run_gate(
         if unknown_rows:
             details.append("unknown " + ", ".join(unknown_rows))
         raise GateError("manifest.rows must contain the exact stable row set: " + "; ".join(details))
+
+    validate_atomic_deletion_groups(rows)
+    verify_post_deletion_primitives(repo_root, rows)
 
     modes, _ = public_production_profile(repo_root)
     validate_deterministic_promotion_policy(repo_root)

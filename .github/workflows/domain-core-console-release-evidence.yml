@@ -188,7 +188,8 @@ jobs:
             --protected-signer-run-id "$SIGNER_RUN_ID" \
             --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
             --rollback-artifact "$ROLLBACK" \
-            --deployment "$DEPLOYMENT"
+            --deployment "$DEPLOYMENT" \
+            --legacy-absence-root "$RUNNER_TEMP/hosting-artifact/apps/console/out"
           {
             echo "artifact=$artifact"
             echo "predicate=$predicate"
