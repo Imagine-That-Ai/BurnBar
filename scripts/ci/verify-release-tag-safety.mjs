@@ -280,6 +280,16 @@ for (const wf of WORKFLOWS) {
   );
   requireIncludes(
     resolveRun,
+    "git fetch --force --tags origin",
+    `[${label}] dry-run must fetch tags to check if future tag already exists`,
+  );
+  requireIncludes(
+    resolveRun,
+    'if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then',
+    `[${label}] dry-run must reject if future tag already exists`,
+  );
+  requireIncludes(
+    resolveRun,
     'main_sha="$(git rev-parse origin/main)"',
     `[${label}] dry-run must resolve origin/main to a SHA`,
   );
@@ -340,6 +350,16 @@ for (const wf of WORKFLOWS) {
       job,
       "if: steps.tag.outputs.dry_run != 'true'",
       `[${label}] credential/deploy steps must be gated on dry_run != 'true'`,
+    );
+  }
+
+  /* Sentry release step (deploy-production only) must be gated on dry_run != true */
+  const sentryStep = stepBlock(job, "Sentry release (Functions)");
+  if (sentryStep) {
+    requireIncludes(
+      sentryStep,
+      "dry_run != 'true'",
+      `[${label}] Sentry release step must be gated on dry_run != 'true'`,
     );
   }
 }
