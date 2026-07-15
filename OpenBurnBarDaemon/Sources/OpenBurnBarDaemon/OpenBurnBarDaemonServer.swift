@@ -99,7 +99,16 @@ public actor BurnBarDaemonServer {
     let membershipService: any BurnBarMembershipServing
     var chatThreadService: (any BurnBarChatThreadServing)?
     var indexedSearch: BurnBarIndexedSearchService?
-    let projectCodeMemory: BurnBarProjectCodeMemoryStore?
+    /// The code-memory store is opened lazily when a configured database file
+    /// appears. Chat owns first-use database creation on a fresh profile, so
+    /// opening this store only during daemon init would leave code/memory RPCs
+    /// unavailable until the next restart.
+    private var projectCodeMemoryStorage: BurnBarProjectCodeMemoryStore?
+    private var projectCodeMemoryBootstrapAttempted = false
+    private var projectCodeMemoryBootstrapFailure: String?
+    var projectCodeMemory: BurnBarProjectCodeMemoryStore? {
+        ensureProjectCodeMemoryBootstrapped()
+    }
     let databaseRecoveryService: BurnBarDatabaseRecoveryBundleService?
     let textExpansionService: BurnBarTextExpansionService?
     var resumeService: BurnBarResumeService?
@@ -534,24 +543,27 @@ public actor BurnBarDaemonServer {
                     self.resumeService = nil
                 }
                 do {
-                    self.projectCodeMemory = try BurnBarProjectCodeMemoryStore(
+                    self.projectCodeMemoryStorage = try BurnBarProjectCodeMemoryStore(
                         databasePath: path,
                         logger: BurnBarDaemonLogger(category: "project-code-memory")
                     )
+                    self.projectCodeMemoryBootstrapAttempted = true
                 } catch {
                     logger.warning(
                         "project_code_memory_init_failed",
                         metadata: ["path": path, "error": "\(error)"]
                     )
-                    self.projectCodeMemory = nil
+                    self.projectCodeMemoryStorage = nil
+                    self.projectCodeMemoryBootstrapAttempted = true
+                    self.projectCodeMemoryBootstrapFailure = error.localizedDescription
                 }
             } else {
-                // Read-oriented services (search, resume, code memory) genuinely
-                // need an existing indexed database; a fresh profile has nothing
-                // for them to serve yet.
+                // Chat opens the database below with SQLITE_OPEN_CREATE. Leave
+                // code memory unattempted so its first RPC can bootstrap after
+                // chat (or another database owner) creates the file.
                 self.indexedSearch = nil
                 self.resumeService = nil
-                self.projectCodeMemory = nil
+                self.projectCodeMemoryStorage = nil
             }
             // The chat thread store must NOT be gated on the file existing: it
             // opens with SQLITE_OPEN_CREATE so the very first chat on a fresh
@@ -572,7 +584,7 @@ public actor BurnBarDaemonServer {
             }
         } else {
             self.indexedSearch = nil
-            self.projectCodeMemory = nil
+            self.projectCodeMemoryStorage = nil
             self.databaseRecoveryService = nil
             self.resumeService = nil
         }
@@ -602,6 +614,69 @@ public actor BurnBarDaemonServer {
             )
         } else {
             self.gatewayServer = nil
+        }
+    }
+
+    /// Opens the project code-memory store exactly once after the configured
+    /// database path becomes a real file. This method is actor-isolated through
+    /// `BurnBarDaemonServer`, so concurrent RPCs cannot race store construction.
+    ///
+    /// A missing file is deliberately not considered a failed attempt: the
+    /// chat service creates it on first use for a fresh profile. Once a file is
+    /// present, however, any open/schema/key failure is cached and remains
+    /// unavailable until the daemon restarts. That avoids retry storms and
+    /// keeps the RPC surface fail closed without ever opening an unconfigured
+    /// or plaintext fallback database.
+    @discardableResult
+    func ensureProjectCodeMemoryBootstrapped() -> BurnBarProjectCodeMemoryStore? {
+        if let projectCodeMemoryStorage {
+            return projectCodeMemoryStorage
+        }
+        guard projectCodeMemoryBootstrapAttempted == false else {
+            return nil
+        }
+        guard let path = configuration.indexDatabasePath?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            path.isEmpty == false,
+            FileManager.default.fileExists(atPath: path) else {
+            return nil
+        }
+
+        // Only mark the attempt after the configured file exists. The chat
+        // store may create that file after the daemon has initialized.
+        projectCodeMemoryBootstrapAttempted = true
+        do {
+            // Keep the same migration/key ordering as daemon initialization.
+            // The helper never creates an unconfigured plaintext fallback.
+            do {
+                _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
+                    at: path,
+                    logger: BurnBarDaemonLogger(category: "database-cipher")
+                )
+            } catch {
+                logger.warning(
+                    "daemon_database_encrypted_migration_failed",
+                    metadata: ["path": path, "error": "\(error)"]
+                )
+            }
+            let store = try BurnBarProjectCodeMemoryStore(
+                databasePath: path,
+                logger: BurnBarDaemonLogger(category: "project-code-memory")
+            )
+            projectCodeMemoryStorage = store
+            projectCodeMemoryBootstrapFailure = nil
+            logger.info(
+                "project_code_memory_lazy_bootstrap_succeeded",
+                metadata: ["path": path]
+            )
+            return store
+        } catch {
+            projectCodeMemoryBootstrapFailure = error.localizedDescription
+            logger.warning(
+                "project_code_memory_lazy_bootstrap_failed",
+                metadata: ["path": path, "error": error.localizedDescription]
+            )
+            return nil
         }
     }
 
