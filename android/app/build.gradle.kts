@@ -375,6 +375,10 @@ android {
             excludes += setOf("*.dylib", "**/*.dylib")
         }
         jniLibs {
+            // The release identity gate executes this exact AAR library on an
+            // arm64 emulator, then compares its digest with the final AAB.
+            // Preserve identical ELF bytes across debug-test and release packaging.
+            keepDebugSymbols += "**/libopenburnbar_domain_ffi.so"
             // Vendor/openburnbar-iroh.aar ships the same cdylib under two names per ABI;
             // only libopenburnbar_iroh.so is ever loaded (JNA findLibraryName +
             // System.loadLibrary), so drop the byte-identical libuniffi_ duplicate

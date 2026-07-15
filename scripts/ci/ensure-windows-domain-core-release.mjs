@@ -37,8 +37,8 @@ export function validateRequest(raw) {
   if (typeof raw.commit !== "string" || !COMMIT.test(raw.commit)) {
     throw new Error("Windows release commit must be a full lowercase Git SHA");
   }
-  if (raw.phase !== "prepare" && raw.phase !== "publish") {
-    throw new Error("Windows release phase must be prepare or publish");
+  if (raw.phase !== "prepare") {
+    throw new Error("Windows release phase must be prepare");
   }
   return { ...raw, version: match[1] };
 }
@@ -134,23 +134,6 @@ export class GhReleaseClient {
     );
     return result.status === 0;
   }
-
-  publish(request) {
-    const result = this.run(
-      [
-        "release",
-        "edit",
-        request.tag,
-        "--repo",
-        request.repository,
-        "--draft=false",
-        "--prerelease=false",
-        "--latest=false",
-      ],
-      { allowFailure: true },
-    );
-    return result.status === 0;
-  }
 }
 
 function prepareRelease(request, client) {
@@ -169,25 +152,6 @@ function prepareRelease(request, client) {
   return { created: false, draft: concurrent.draft };
 }
 
-function publishRelease(request, client) {
-  const release = client.lookup(request.tag);
-  if (!release) throw new Error("exact Windows GitHub Release is missing");
-  validateRelease(release, request, { allowDraft: true });
-  if (!release.draft) return { published: false, alreadyPublished: true };
-  if (!client.publish(request)) {
-    const concurrent = client.lookup(request.tag);
-    if (!concurrent)
-      throw new Error("Windows GitHub Release publication failed");
-    validateRelease(concurrent, request, { allowDraft: false });
-    return { published: false, alreadyPublished: true };
-  }
-  const published = client.lookup(request.tag);
-  if (!published)
-    throw new Error("published Windows GitHub Release is missing");
-  validateRelease(published, request, { allowDraft: false });
-  return { published: true, alreadyPublished: false };
-}
-
 export function manageRelease(raw, client) {
   const request = validateRequest(raw);
   if (client.resolveTagCommit(request.tag) !== request.commit) {
@@ -195,9 +159,7 @@ export function manageRelease(raw, client) {
       "Windows release tag does not resolve to the requested candidate commit",
     );
   }
-  return request.phase === "prepare"
-    ? prepareRelease(request, client)
-    : publishRelease(request, client);
+  return prepareRelease(request, client);
 }
 
 function parseArguments(argv) {

@@ -32,6 +32,8 @@ import uniffi.openburnbar_domain_ffi.domainCoreSourceFingerprint
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
 import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
 import java.io.File
+import java.io.FileInputStream
+import java.security.MessageDigest
 
 @RunWith(AndroidJUnit4::class)
 class DomainCoreNativeLoadTest {
@@ -52,15 +54,25 @@ class DomainCoreNativeLoadTest {
         assertTrue(expectedSourceFingerprint.matches(Regex("[0-9a-f]{64}")))
         assertEquals(expectedIdentity.getString("sourceSha256"), expectedSourceFingerprint)
         assertEquals(expectedSourceFingerprint, sourceFingerprint)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
         val candidateCommit = InstrumentationRegistry.getArguments().getString("candidateCommit").orEmpty()
         assertTrue(candidateCommit.matches(Regex("[0-9a-f]{40}")))
-        File(InstrumentationRegistry.getInstrumentation().context.filesDir, "domain-core-observed-identity.json")
+        val nativeLibrary =
+            File(
+                instrumentation.context.applicationInfo.nativeLibraryDir,
+                System.mapLibraryName("openburnbar_domain_ffi"),
+            )
+        assertTrue(nativeLibrary.isFile)
+        assertFalse(nativeLibrary.isDirectory)
+        val binarySha256 = sha256(nativeLibrary)
+        File(instrumentation.context.filesDir, "domain-core-observed-identity.json")
             .writeText(
                 JSONObject()
                     .put("candidateCommit", candidateCommit)
                     .put("coreVersion", domainCoreVersion())
                     .put("abiVersion", domainCoreAbiVersion().toLong())
                     .put("sourceSha256", sourceFingerprint)
+                    .put("binarySha256", binarySha256)
                     .toString() + "\n",
             )
         assertEquals(
@@ -215,4 +227,17 @@ class DomainCoreNativeLoadTest {
     ): List<String> = cloudVaultSearch(CloudVaultSearchRequest(operation, text, key, limit)).hashes
 
     private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
 }
