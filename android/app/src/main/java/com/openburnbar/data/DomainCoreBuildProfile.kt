@@ -12,11 +12,19 @@ internal enum class DomainCoreEvidenceChannel(val wireValue: String) {
     BETA("beta"),
 }
 
+internal data class AndroidDomainCoreCandidateIdentity(
+    val candidateCommit: String,
+    val coreVersion: String,
+    val abiVersion: Long,
+    val sourceSha256: String,
+)
+
 internal data class AndroidDomainCoreRuntimeProfile(
     val name: String,
     val artifactAuthority: DomainCoreArtifactAuthority,
     val distribution: String,
     val evidenceChannel: DomainCoreEvidenceChannel?,
+    val candidateIdentity: AndroidDomainCoreCandidateIdentity?,
     val modes: Map<String, String>,
 )
 
@@ -28,6 +36,7 @@ internal object DomainCoreBuildProfile {
         val rolloutChannel: String,
         val evidenceEnabled: Boolean,
         val modes: Map<String, String>,
+        val candidateIdentity: String = "",
     )
 
     private data class CatalogContract(
@@ -39,6 +48,13 @@ internal object DomainCoreBuildProfile {
 
     private val androidDomains = setOf("quota", "cloudVault", "cloudVaultRewrap", "cloudVaultSearch", "hermes", "pricing")
     private val validModes = setOf("legacy", "shadow", "rust")
+    private val gitCommitPattern = Regex("^[0-9a-f]{40}$")
+    private val sourceSha256Pattern = Regex("^[0-9a-f]{64}$")
+    private val canonicalSemVerPattern = Regex(
+        """^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)""" +
+            """(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?""" +
+            """(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?${'$'}""",
+    )
     private val catalogContracts = mapOf(
         "developer" to CatalogContract(
             DomainCoreArtifactAuthority.DEVELOPMENT,
@@ -74,6 +90,7 @@ internal object DomainCoreBuildProfile {
                 distribution = BuildConfig.DOMAIN_CORE_DISTRIBUTION,
                 rolloutChannel = BuildConfig.DOMAIN_CORE_ROLLOUT_CHANNEL,
                 evidenceEnabled = BuildConfig.DOMAIN_CORE_EVIDENCE_ENABLED,
+                candidateIdentity = BuildConfig.DOMAIN_CORE_CANDIDATE_IDENTITY,
                 modes = mapOf(
                     "quota" to BuildConfig.QUOTA_DOMAIN_CORE_MODE,
                     "cloudVault" to BuildConfig.CLOUDVAULT_DOMAIN_CORE_MODE,
@@ -103,6 +120,12 @@ internal object DomainCoreBuildProfile {
         if (input.evidenceEnabled != contract.evidenceEnabled) return null
         if (input.rolloutChannel != contract.evidenceChannel?.wireValue.orEmpty()) return null
         if (input.modes.keys != androidDomains || input.modes.values.any { it !in validModes }) return null
+        val candidateIdentity = if (input.candidateIdentity.isNotEmpty()) {
+            resolveCandidateIdentity(input.candidateIdentity) ?: return null
+        } else {
+            null
+        }
+        if (contract.artifactAuthority == DomainCoreArtifactAuthority.SIGNED && candidateIdentity == null) return null
         if (contract.artifactAuthority == DomainCoreArtifactAuthority.SIGNED) {
             val validSignedModes = when (input.name) {
                 "public-production" -> input.modes.values.none { it == "shadow" }
@@ -117,6 +140,7 @@ internal object DomainCoreBuildProfile {
             artifactAuthority = contract.artifactAuthority,
             distribution = contract.distribution,
             evidenceChannel = contract.evidenceChannel,
+            candidateIdentity = candidateIdentity,
             modes = input.modes.toMap(),
         )
     }
@@ -130,4 +154,28 @@ internal object DomainCoreBuildProfile {
             ?.takeIf { it in validModes }
             ?: embedded
     }
+
+    private fun resolveCandidateIdentity(wireValue: String): AndroidDomainCoreCandidateIdentity? {
+        val parts = wireValue.split('|')
+        if (parts.size != 4) return null
+        val (candidateCommit, coreVersion, abiVersionRaw, sourceSha256) = parts
+        if (!gitCommitPattern.matches(candidateCommit)) return null
+        if (coreVersion.toByteArray().size > 64 ||
+            !canonicalSemVerPattern.matches(coreVersion)
+        ) {
+            return null
+        }
+        if (!Regex("^[1-9]\\d*$").matches(abiVersionRaw)) return null
+        val abiVersion = abiVersionRaw.toLongOrNull() ?: return null
+        if (abiVersion !in 1L..UINT32_MAX) return null
+        if (!sourceSha256Pattern.matches(sourceSha256)) return null
+        return AndroidDomainCoreCandidateIdentity(
+            candidateCommit = candidateCommit,
+            coreVersion = coreVersion,
+            abiVersion = abiVersion,
+            sourceSha256 = sourceSha256,
+        )
+    }
+
+    private const val UINT32_MAX = 4_294_967_295L
 }

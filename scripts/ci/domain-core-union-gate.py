@@ -43,6 +43,40 @@ def load_manifest(root: pathlib.Path) -> tuple[pathlib.Path, dict[str, object]]:
     return path, manifest
 
 
+def verify_build_identity(root: pathlib.Path, manifest: dict[str, object]) -> None:
+    core_version = manifest.get("coreVersion")
+    abi_version = manifest.get("abiVersion")
+    if not isinstance(core_version, str) or re.fullmatch(
+        r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*)|(?:\d*[A-Za-z-][0-9A-Za-z-]*))(?:\.(?:(?:0|[1-9]\d*)|(?:\d*[A-Za-z-][0-9A-Za-z-]*)))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
+        core_version,
+    ) is None:
+        raise GateError("coreVersion must be a canonical SemVer string")
+    if not isinstance(abi_version, int) or isinstance(abi_version, bool) or not 1 <= abi_version <= 0xFFFFFFFF:
+        raise GateError("abiVersion must be an unsigned 32-bit integer greater than zero")
+
+    cargo_path = root / "crates/openburnbar-domain-core/Cargo.toml"
+    try:
+        with cargo_path.open("rb") as handle:
+            cargo = tomllib.load(handle)
+        cargo_version = cargo["workspace"]["package"]["version"]
+    except (OSError, KeyError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise GateError(f"cannot read canonical domain-core Cargo version: {error}") from error
+    if cargo_version != core_version:
+        raise GateError(f"coreVersion drifted: manifest={core_version} cargo={cargo_version}")
+
+    rust_path = root / "crates/openburnbar-domain-core/domain-core/src/lib.rs"
+    try:
+        rust_source = rust_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise GateError(f"cannot read canonical domain-core ABI version: {error}") from error
+    match = re.search(r"^pub const DOMAIN_CORE_ABI_VERSION: u32 = (\d+);$", rust_source, re.MULTILINE)
+    if match is None:
+        raise GateError("cannot locate canonical DOMAIN_CORE_ABI_VERSION constant")
+    rust_abi_version = int(match.group(1))
+    if rust_abi_version != abi_version:
+        raise GateError(f"abiVersion drifted: manifest={abi_version} rust={rust_abi_version}")
+
+
 def source_files(crate_root: pathlib.Path, manifest: dict[str, object]) -> list[pathlib.Path]:
     roots = manifest.get("sourceRoots")
     if not isinstance(roots, list) or not roots:
@@ -324,6 +358,7 @@ def main() -> int:
     parser.add_argument("--source-fingerprint", action="store_true")
     parser.add_argument("--update-source-fingerprint", action="store_true")
     parser.add_argument("--check-abi", action="store_true")
+    parser.add_argument("--check-build-identity", action="store_true")
     parser.add_argument("--check-provenance", nargs="+", default=[])
     args = parser.parse_args()
 
@@ -331,21 +366,23 @@ def main() -> int:
         root = args.root.resolve()
         manifest_path, manifest = load_manifest(root)
         if args.update_source_fingerprint:
-            if args.source_fingerprint or args.check_abi or args.check_provenance:
+            if args.source_fingerprint or args.check_abi or args.check_build_identity or args.check_provenance:
                 raise GateError("--update-source-fingerprint cannot be combined with checks")
             fingerprint = update_source_fingerprint(root, manifest_path, manifest)
             print(fingerprint)
             return 0
         fingerprint = verified_source_fingerprint(root, manifest)
+        if args.check_abi or args.check_build_identity:
+            verify_build_identity(root, manifest)
         if args.check_abi:
             check_abi(root, manifest)
         if args.check_provenance:
             check_provenance(root, fingerprint, args.check_provenance)
         if args.source_fingerprint:
             print(fingerprint)
-        if not (args.source_fingerprint or args.check_abi or args.check_provenance):
+        if not (args.source_fingerprint or args.check_abi or args.check_build_identity or args.check_provenance):
             raise GateError(
-                "select --source-fingerprint, --update-source-fingerprint, --check-abi, or --check-provenance"
+                "select --source-fingerprint, --update-source-fingerprint, --check-abi, --check-build-identity, or --check-provenance"
             )
     except GateError as error:
         print(f"domain-core-union-gate: ERROR: {error}", file=sys.stderr)

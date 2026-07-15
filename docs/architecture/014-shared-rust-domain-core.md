@@ -162,6 +162,17 @@ compare it with the candidate's signed build metadata. A package sidecar alone
 does not prove which library the process loaded, and a version string alone does
 not distinguish two source revisions built with the same semantic version.
 
+Signed builds derive that expected identity once from a clean, exact Git
+checkout. The build receipt contains the candidate commit plus the manifest's
+core version, ABI version, and source fingerprint; the resolver independently
+checks those values against Cargo, the Rust ABI constant, and the complete
+fingerprinted source roots. Apple plist metadata, Android BuildConfig/AAB
+receipt, Windows assembly metadata/publish receipt, Console static values, and
+the compiled Functions module all receive the same tuple. Release verification
+binds the built runtime surface back to the authorized checkout. Runtime
+environment variables are never signed authority, and an expected commit
+argument may assert equality but may not rename the checkout.
+
 ### Promotion evidence
 
 Candidate-bound V3 is the only evidence schema that may authorize a

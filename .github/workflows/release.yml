@@ -894,6 +894,11 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
+      - name: Resolve signed public domain-core profile
+        run: |
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "${{ needs.release-preflight.outputs.release_commit }}" --format github-env >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "${{ needs.release-preflight.outputs.release_commit }}" --format github-env-apple >> "$GITHUB_ENV"
+
       - name: Install Sparkle signing tools
         run: |
           set -euo pipefail
@@ -990,11 +995,6 @@ jobs:
           DOMAIN_CORE_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"
         run: bash scripts/build-domain-core-xcframework.sh
 
-      - name: Resolve signed public domain-core profile
-        run: |
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env >> "$GITHUB_ENV"
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env-apple >> "$GITHUB_ENV"
-
       - name: Verify shared domain core release artifact
         run: test -d Vendor/OpenBurnBarDomainCore.xcframework
 
@@ -1050,7 +1050,7 @@ jobs:
           echo "aab_path=$(pwd)/app/build/outputs/bundle/release/app-release.aab" >> "$GITHUB_OUTPUT"
 
       - name: Verify Android domain-core profile receipt
-        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --android-aab android/app/build/outputs/bundle/release/app-release.aab
+        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "${{ needs.release-preflight.outputs.release_commit }}" --android-aab android/app/build/outputs/bundle/release/app-release.aab
 
       - name: Upload Android release bundle artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -1107,6 +1107,10 @@ jobs:
             DOMAIN_CORE_DISTRIBUTION="$DOMAIN_CORE_DISTRIBUTION" \
             DOMAIN_CORE_ROLLOUT_CHANNEL="$DOMAIN_CORE_ROLLOUT_CHANNEL" \
             DOMAIN_CORE_EVIDENCE_ENABLED="$DOMAIN_CORE_EVIDENCE_ENABLED" \
+            DOMAIN_CORE_CANDIDATE_COMMIT="$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            DOMAIN_CORE_EXPECTED_VERSION="$DOMAIN_CORE_EXPECTED_VERSION" \
+            DOMAIN_CORE_EXPECTED_ABI_VERSION="$DOMAIN_CORE_EXPECTED_ABI_VERSION" \
+            DOMAIN_CORE_EXPECTED_SOURCE_SHA256="$DOMAIN_CORE_EXPECTED_SOURCE_SHA256" \
             DOMAIN_CORE_QUOTA_MODE="$DOMAIN_CORE_QUOTA_MODE" \
             DOMAIN_CORE_CLOUDVAULT_MODE="$DOMAIN_CORE_CLOUDVAULT_MODE" \
             DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE="$DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" \
@@ -1151,7 +1155,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Verify Apple domain-core profile receipt
-        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --apple-app "$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "${{ needs.release-preflight.outputs.release_commit }}" --apple-app "$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
 
       - name: Embed daemon binary in app bundle
         run: |

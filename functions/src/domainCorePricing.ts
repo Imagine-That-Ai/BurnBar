@@ -88,8 +88,11 @@ export async function flushDomainCorePricingShadowEvidence(): Promise<void> {
   }
 }
 
-export function resolveDomainCorePricingMode(environment: NodeJS.ProcessEnv = process.env): DomainCorePricingMode {
-  return resolveDomainCoreRuntimeMode("pricing", environment);
+export function resolveDomainCorePricingMode(
+  environment: NodeJS.ProcessEnv = process.env,
+  receipt?: unknown,
+): DomainCorePricingMode {
+  return resolveDomainCoreRuntimeMode("pricing", environment, testReceiptOverride(receipt));
 }
 
 export function calculateTokenCost(
@@ -97,8 +100,9 @@ export function calculateTokenCost(
   buckets: TokenPricingBuckets,
   legacy: () => number,
   environment: NodeJS.ProcessEnv = process.env,
+  receipt?: unknown,
 ): number {
-  const mode = resolveDomainCorePricingMode(environment);
+  const mode = resolveDomainCorePricingMode(environment, receipt);
   if (mode === "legacy") return legacy();
 
   try {
@@ -129,6 +133,7 @@ export function calculateTokenCost(
       legacyMicros,
       rustMicros,
       environment,
+      receipt,
     );
     return typescript;
   } catch {
@@ -144,6 +149,7 @@ export function calculateTokenCost(
         elapsedMicros(legacyStarted),
         0,
         environment,
+        receipt,
       );
       return value;
     }
@@ -157,8 +163,9 @@ export function priceLegacyKimiUsage(
   buckets: TokenPricingBuckets,
   legacy: () => LegacyKimiPricing,
   environment: NodeJS.ProcessEnv = process.env,
+  receipt?: unknown,
 ): LegacyKimiPricing {
-  const mode = resolveDomainCorePricingMode(environment);
+  const mode = resolveDomainCorePricingMode(environment, receipt);
   if (mode === "legacy") return legacy();
 
   try {
@@ -193,6 +200,7 @@ export function priceLegacyKimiUsage(
       legacyMicros,
       rustMicros,
       environment,
+      receipt,
     );
     return typescript;
   } catch {
@@ -208,6 +216,7 @@ export function priceLegacyKimiUsage(
         elapsedMicros(legacyStarted),
         0,
         environment,
+        receipt,
       );
       return value;
     }
@@ -323,8 +332,9 @@ function recordShadowComparison(
   legacyMicros: number,
   rustMicros: number,
   environment: NodeJS.ProcessEnv,
+  receipt?: unknown,
 ): void {
-  const channel = resolveDomainCoreEvidenceChannel(environment);
+  const channel = resolveDomainCoreEvidenceChannel(environment, testReceiptOverride(receipt));
   if (!channel || rustVersion === "unknown") return;
   try {
     const sample = buildDomainCoreShadowSampleV2({
@@ -350,6 +360,14 @@ function recordShadowComparison(
   } catch {
     logWarn({ event: "domain_core.pricing.shadow_evidence_rejected" });
   }
+}
+
+function testReceiptOverride(receipt: unknown): unknown {
+  if (receipt === undefined) return undefined;
+  if (process.env.NODE_ENV !== "test") {
+    throw new DomainCorePricingError();
+  }
+  return receipt;
 }
 
 function trackShadowEvidenceTask(task: Promise<void>, failureEvent: string): void {

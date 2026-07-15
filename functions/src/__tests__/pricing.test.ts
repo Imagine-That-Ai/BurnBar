@@ -31,6 +31,7 @@ import {
   resolveDomainCorePricingMode,
 } from "../domainCorePricing.js";
 import { isRecord } from "../guards.js";
+import type { DomainCoreBuildReceipt } from "../domainCoreBuildProfile.js";
 
 // Core-decomposition: catalog.json moved from the Core monolith's Resources into
 // OpenBurnBarKernel/Resources (git mv). Repointed after the train ← main merge.
@@ -190,6 +191,28 @@ function loadPricingFixture(): PricingFixture {
 
 describe("shared domain-core pricing", () => {
   const fixture = loadPricingFixture();
+  const signedInternalReceipt = (): DomainCoreBuildReceipt => ({
+    schemaVersion: 1,
+    name: "internal",
+    artifactAuthority: "signed",
+    distribution: "internal",
+    rolloutChannel: "internal",
+    evidenceEnabled: true,
+    candidateIdentity: {
+      candidateCommit: "a".repeat(40),
+      coreVersion: "0.1.0",
+      abiVersion: 3,
+      sourceSha256: "b".repeat(64),
+    },
+    modes: {
+      quota: "shadow",
+      cloudVault: "shadow",
+      cloudVaultRewrap: "shadow",
+      cloudVaultSearch: "shadow",
+      hermes: "shadow",
+      pricing: "shadow",
+    },
+  });
 
   afterEach(async () => {
     configureDomainCorePricingShadowEvidenceSink(undefined);
@@ -251,6 +274,16 @@ describe("shared domain-core pricing", () => {
     expect(resolveDomainCorePricingMode({ OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "surprise" })).toBe("legacy");
   });
 
+  it("rejects explicit receipt injection outside the test runtime", () => {
+    const original = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      expect(() => resolveDomainCorePricingMode({}, signedInternalReceipt())).toThrow(DomainCorePricingError);
+    } finally {
+      process.env.NODE_ENV = original;
+    }
+  });
+
   it.each([
     { rates: { inputPerMToken: -1, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
     { rates: { inputPerMToken: Number.NaN, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
@@ -310,6 +343,7 @@ describe("shared domain-core pricing", () => {
           OPENBURNBAR_DOMAIN_CORE_HERMES_MODE: "shadow",
           OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL: "internal",
         },
+        signedInternalReceipt(),
       ),
     ).toBe(3);
     expect(samples).toHaveLength(1);
@@ -350,6 +384,7 @@ describe("shared domain-core pricing", () => {
         { inputTokens: 1_000_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
         () => 3,
         environment,
+        signedInternalReceipt(),
       );
 
     calculate();
@@ -392,6 +427,7 @@ describe("shared domain-core pricing", () => {
         OPENBURNBAR_DOMAIN_CORE_HERMES_MODE: "shadow",
         OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL: "internal",
       },
+      signedInternalReceipt(),
     );
 
     await expect(flushDomainCorePricingShadowEvidence()).resolves.toBeUndefined();
