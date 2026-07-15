@@ -3,6 +3,18 @@ import { HttpsError } from "firebase-functions/v2/https";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 
 import { isRecord } from "./guards.js";
+import {
+  CANONICAL_CORE_VERSION,
+  GIT_COMMIT,
+  SHA256,
+  UUID_V4,
+  boundedMicros,
+  canonicalCoreVersion,
+  coreAbiVersion,
+  coreVersion,
+  exactKeys,
+  sourceSha256,
+} from "./domainCoreShadowEvidenceScalars.js";
 
 const DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION = 3;
 const DOMAIN_CORE_SHADOW_SAMPLE_DRAIN_SCHEMA_VERSION = 2;
@@ -89,12 +101,6 @@ export const DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE: Readonly<
     "legacy-kimi": ["functions"],
   },
 };
-const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const CORE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
-const CANONICAL_CORE_VERSION =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
-const GIT_COMMIT = /^[0-9a-f]{40}$/u;
-const SHA256 = /^[0-9a-f]{64}$/u;
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 
 type DomainCoreShadowConsumer = "apple" | "windows";
@@ -165,49 +171,6 @@ interface DomainCoreShadowSampleV3 extends DomainCoreShadowSampleCommon {
 type DomainCoreShadowSample = DomainCoreShadowSampleV1 | DomainCoreShadowSampleV2 | DomainCoreShadowSampleV3;
 
 type DomainCoreShadowComparisonV2 = Omit<DomainCoreShadowSampleV2, "schemaVersion" | "sampleId" | "observedAt">;
-
-function exactKeys(record: Record<string, unknown>, expected: readonly string[], label: string): void {
-  const actual = Object.keys(record).sort();
-  const wanted = [...expected].sort();
-  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
-    throw new HttpsError("invalid-argument", `${label} has an invalid field set.`);
-  }
-}
-
-function boundedMicros(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > 600_000_000) {
-    throw new HttpsError("invalid-argument", `${label} is invalid.`);
-  }
-  return value;
-}
-
-function coreAbiVersion(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > 0xffff_ffff) {
-    throw new HttpsError("invalid-argument", `${label} is invalid.`);
-  }
-  return value;
-}
-
-function coreVersion(value: unknown, label: string): string {
-  if (typeof value !== "string" || value.length > 64 || !CORE_VERSION.test(value)) {
-    throw new HttpsError("invalid-argument", `${label} is invalid.`);
-  }
-  return value;
-}
-
-function canonicalCoreVersion(value: unknown, label: string): string {
-  if (typeof value !== "string" || value.length > 64 || !CANONICAL_CORE_VERSION.test(value)) {
-    throw new HttpsError("invalid-argument", `${label} is invalid.`);
-  }
-  return value;
-}
-
-function sourceSha256(value: unknown, label: string): string {
-  if (typeof value !== "string" || !SHA256.test(value)) {
-    throw new HttpsError("invalid-argument", `${label} is invalid.`);
-  }
-  return value;
-}
 
 function isConsumer(value: unknown): value is DomainCoreShadowConsumer {
   return value === "apple" || value === "windows";
