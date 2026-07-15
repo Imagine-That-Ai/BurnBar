@@ -651,6 +651,10 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             "OpenBurnBarDomainCoreDistribution": distribution,
             "OpenBurnBarDomainCoreRolloutChannel": channel,
             "OpenBurnBarDomainCoreEvidenceEnabled": evidenceEnabled,
+            "OpenBurnBarDomainCoreCandidateCommit": candidateCommit,
+            "OpenBurnBarDomainCoreExpectedVersion": "0.3.0",
+            "OpenBurnBarDomainCoreExpectedABIVersion": "3",
+            "OpenBurnBarDomainCoreExpectedSourceSHA256": sourceSHA256,
             "OpenBurnBarDomainCoreModeQuota": quotaMode,
             "OpenBurnBarDomainCoreModeCloudVault": "legacy",
             "OpenBurnBarDomainCoreModeCloudVaultRewrap": "legacy",
@@ -659,6 +663,9 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             "OpenBurnBarDomainCoreModePricing": "legacy"
         ])
     }
+
+    private let candidateCommit = "0123456789abcdef0123456789abcdef01234567"
+    private let sourceSHA256 = String(repeating: "a", count: 64)
 
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
