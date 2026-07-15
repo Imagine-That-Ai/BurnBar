@@ -15,6 +15,7 @@ val stageDomainCoreIdentityForAndroidTest =
             eachFile { path = name }
             includeEmptyDirs = false
         }
+        from(rootProject.file("../crates/openburnbar-domain-core/union-abi-manifest.json"))
         into(generatedDomainCoreAndroidTestAssetsDir)
     }
 
