@@ -9,6 +9,7 @@ import json
 import os
 import pathlib
 import re
+import stat
 import sys
 import tomllib
 import zipfile
@@ -35,7 +36,11 @@ class GateError(RuntimeError):
 def load_manifest(root: pathlib.Path) -> tuple[pathlib.Path, dict[str, object]]:
     path = root / "crates/openburnbar-domain-core/union-abi-manifest.json"
     try:
+        if path.is_symlink() or not stat.S_ISREG(path.lstat().st_mode):
+            raise GateError("union ABI manifest must be a regular file inside the candidate checkout")
         manifest = json.loads(path.read_text(encoding="utf-8"))
+    except GateError:
+        raise
     except (OSError, json.JSONDecodeError) as error:
         raise GateError(f"cannot load {path}: {error}") from error
     if manifest.get("schemaVersion") != 1:
@@ -86,13 +91,60 @@ def source_files(crate_root: pathlib.Path, manifest: dict[str, object]) -> list[
     for raw_path in roots:
         if not isinstance(raw_path, str) or not raw_path:
             raise GateError("sourceRoots entries must be non-empty strings")
-        candidate = crate_root / raw_path
-        if not candidate.exists():
+        if "\\" in raw_path:
+            raise GateError(f"source root must use normalized POSIX separators: {raw_path}")
+        relative = pathlib.PurePosixPath(raw_path)
+        if (
+            relative.is_absolute()
+            or raw_path != relative.as_posix()
+            or any(part in ("", ".", "..") for part in relative.parts)
+        ):
+            raise GateError(f"source root must be a normalized relative path: {raw_path}")
+        candidate = crate_root.joinpath(*relative.parts)
+        try:
+            for parent in [crate_root, *candidate.parents][::-1]:
+                if parent == crate_root.parent:
+                    continue
+                if parent == crate_root or crate_root in parent.parents:
+                    if parent.is_symlink():
+                        raise GateError(f"source root traverses a symlink: {raw_path}")
+            mode = candidate.lstat().st_mode
+        except FileNotFoundError:
             raise GateError(f"source root is missing: {raw_path}")
-        if candidate.is_file():
+        if stat.S_ISLNK(mode):
+            raise GateError(f"source root cannot be a symlink: {raw_path}")
+        if stat.S_ISREG(mode):
             files.add(candidate)
+        elif stat.S_ISDIR(mode):
+            for directory, names, filenames in os.walk(candidate, followlinks=False):
+                directory_path = pathlib.Path(directory)
+                retained_names = []
+                for name in names:
+                    child = directory_path / name
+                    child_mode = child.lstat().st_mode
+                    if stat.S_ISLNK(child_mode):
+                        raise GateError(
+                            "sourceRoots cannot contain symlink directories: "
+                            f"{child.relative_to(crate_root)}"
+                        )
+                    if not stat.S_ISDIR(child_mode):
+                        raise GateError(
+                            "sourceRoots contain a special directory entry: "
+                            f"{child.relative_to(crate_root)}"
+                        )
+                    if name != "target":
+                        retained_names.append(name)
+                names[:] = retained_names
+                for name in filenames:
+                    child = directory_path / name
+                    child_mode = child.lstat().st_mode
+                    if stat.S_ISLNK(child_mode):
+                        raise GateError(f"sourceRoots cannot contain symlink files: {child.relative_to(crate_root)}")
+                    if not stat.S_ISREG(child_mode):
+                        raise GateError(f"sourceRoots contain a special file: {child.relative_to(crate_root)}")
+                    files.add(child)
         else:
-            files.update(path for path in candidate.rglob("*") if path.is_file() and "target" not in path.parts)
+            raise GateError(f"source root must be a regular file or directory: {raw_path}")
     if not files:
         raise GateError("sourceRoots resolved to no files")
     return sorted(files, key=lambda path: path.relative_to(crate_root).as_posix())

@@ -31,6 +31,7 @@ import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.domainCoreSourceFingerprint
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
 import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
+import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class DomainCoreNativeLoadTest {
@@ -51,6 +52,17 @@ class DomainCoreNativeLoadTest {
         assertTrue(expectedSourceFingerprint.matches(Regex("[0-9a-f]{64}")))
         assertEquals(expectedIdentity.getString("sourceSha256"), expectedSourceFingerprint)
         assertEquals(expectedSourceFingerprint, sourceFingerprint)
+        val candidateCommit = InstrumentationRegistry.getArguments().getString("candidateCommit").orEmpty()
+        assertTrue(candidateCommit.matches(Regex("[0-9a-f]{40}")))
+        File(InstrumentationRegistry.getInstrumentation().context.filesDir, "domain-core-observed-identity.json")
+            .writeText(
+                JSONObject()
+                    .put("candidateCommit", candidateCommit)
+                    .put("coreVersion", domainCoreVersion())
+                    .put("abiVersion", domainCoreAbiVersion().toLong())
+                    .put("sourceSha256", sourceFingerprint)
+                    .toString() + "\n",
+            )
         assertEquals(
             "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7",
             hermesGatewayRelaySafetyCode(

@@ -105,6 +105,7 @@ export function resolveDomainCoreCandidateIdentity({
   expectedCandidateCommit,
   requireClean = true,
   verifyArtifactIdentity = true,
+  unionGatePath = join(repoRoot, "scripts/ci/domain-core-union-gate.py"),
 }) {
   if (!repoRoot) throw new Error("repoRoot is required");
   const candidateCommit = git(repoRoot, ["rev-parse", "HEAD"]);
@@ -139,7 +140,7 @@ export function resolveDomainCoreCandidateIdentity({
     const verifiedSourceSha256 = execFileSync(
       "python3",
       [
-        join(repoRoot, "scripts/ci/domain-core-union-gate.py"),
+        unionGatePath,
         "--root",
         repoRoot,
         "--source-fingerprint",
