@@ -28,7 +28,6 @@ final class DataStoreCoordinator {
     nonisolated let actor: DataStoreActor
 
     nonisolated var switcherStore: SwitcherProfileStore { actor.switcherStore }
-    nonisolated var checkpointStore: ParserCheckpointStore { actor.checkpointStore }
 
     /// Presentation-layer view model for dashboard aggregate metrics.
     /// Rebuilt automatically whenever usages change.

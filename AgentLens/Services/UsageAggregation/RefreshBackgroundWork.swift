@@ -167,7 +167,7 @@ enum RefreshBackgroundWork {
         var result = ConversationIndexingResult()
         let startedAt = Date()
         let parserEntries = parsers.sorted { $0.key.rawValue < $1.key.rawValue }
-        let checkpointStore = dataStore.checkpointStore
+        let checkpointStore = dataStore.actor.checkpointStore
 
         for (provider, parser) in parserEntries {
             do {

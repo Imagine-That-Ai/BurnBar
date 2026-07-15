@@ -94,7 +94,7 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(firstResult.indexedConversationChanges, 1)
 
         // Verify a checkpoint was written.
-        let checkpoint = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        let checkpoint = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
         XCTAssertNotNil(checkpoint)
 
         // Second call: SAME conversations (same fileModifiedAt) — checkpoint should filter them out.
@@ -133,7 +133,7 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         XCTAssertEqual(firstResult.changedConversationCount, 2)
 
         // Advance time past the checkpoint watermark.
-        let checkpoint = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        let checkpoint = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
         XCTAssertNotNil(checkpoint)
         let watermark = checkpoint!.lastProcessedAt
 
@@ -200,7 +200,7 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         let orchestrator = makeOrchestrator(store: store)
 
         // Verify no checkpoint exists before the call.
-        let beforeCheckpoint = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        let beforeCheckpoint = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
         XCTAssertNil(beforeCheckpoint)
 
         let result = await RefreshBackgroundWork.runConversationIndexing(
@@ -215,7 +215,7 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         XCTAssertFalse(result.errors[.factory]!.isEmpty)
 
         // The checkpoint should NOT have advanced (no checkpoint row written).
-        let afterCheckpoint = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        let afterCheckpoint = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
         XCTAssertNil(afterCheckpoint)
     }
 
@@ -245,7 +245,7 @@ final class IncrementalConversationIndexingTests: XCTestCase {
 
         // Second tick: same 2 conversations (filtered by watermark) PLUS 1 new
         // conversation with an mtime OLDER than the checkpoint watermark.
-        let checkpoint = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        let checkpoint = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
         XCTAssertNotNil(checkpoint)
         let watermark = checkpoint!.lastProcessedAt
         let newOldMtime = watermark.addingTimeInterval(-100) // older than checkpoint
@@ -297,7 +297,7 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         )
         XCTAssertEqual(firstResult.changedConversationCount, 2)
 
-        let checkpointAfterFirst = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        let checkpointAfterFirst = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
         XCTAssertNotNil(checkpointAfterFirst)
         let watermarkAfterFirst = checkpointAfterFirst!.lastProcessedAt
 
@@ -329,7 +329,7 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         XCTAssertFalse(secondResult.errors[.factory]!.isEmpty)
 
         // The checkpoint should NOT have advanced — same watermark as after the first tick.
-        let checkpointAfterSecond = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        let checkpointAfterSecond = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
         XCTAssertNotNil(checkpointAfterSecond)
         XCTAssertEqual(
             checkpointAfterSecond!.lastProcessedAt,
@@ -380,7 +380,7 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         )
         XCTAssertEqual(firstResult.changedConversationCount, 1)
 
-        let checkpoint = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        let checkpoint = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
         XCTAssertNotNil(checkpoint)
         let watermark = checkpoint!.lastProcessedAt
 
