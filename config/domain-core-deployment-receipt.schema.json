@@ -74,10 +74,10 @@
       "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/rollbackArtifact"
     },
     "activation": {
-      "$ref": "domain-core-release-predicate.schema.json#/$defs/activation"
+      "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/activation"
     },
     "publicProfile": {
-      "$ref": "domain-core-release-predicate.schema.json#/$defs/publicProfile"
+      "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/publicProfile"
     },
     "release": {
       "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/release"

@@ -22,7 +22,10 @@
   ],
   "oneOf": [
     {
-      "not": { "required": ["androidUniversal"] },
+      "not": {
+        "properties": { "androidUniversal": {} },
+        "required": ["androidUniversal"]
+      },
       "properties": {
         "consumer": { "const": "apple" },
         "domain": {
@@ -56,7 +59,10 @@
       }
     },
     {
-      "not": { "required": ["androidUniversal"] },
+      "not": {
+        "properties": { "androidUniversal": {} },
+        "required": ["androidUniversal"]
+      },
       "properties": {
         "consumer": { "const": "windows" },
         "domain": { "enum": ["quota", "cloudVault"] },
@@ -65,7 +71,10 @@
       }
     },
     {
-      "not": { "required": ["androidUniversal"] },
+      "not": {
+        "properties": { "androidUniversal": {} },
+        "required": ["androidUniversal"]
+      },
       "properties": {
         "consumer": { "const": "console" },
         "domain": { "const": "cloudVault" },
@@ -74,7 +83,10 @@
       }
     },
     {
-      "not": { "required": ["androidUniversal"] },
+      "not": {
+        "properties": { "androidUniversal": {} },
+        "required": ["androidUniversal"]
+      },
       "properties": {
         "consumer": { "const": "functions" },
         "domain": { "const": "pricing" },
@@ -92,6 +104,7 @@
       "then": {
         "properties": {
           "release": {
+            "type": "object",
             "properties": {
               "version": { "$ref": "#/$defs/nativeVersion" },
               "tag": { "$ref": "#/$defs/nativeTag" }
@@ -102,6 +115,7 @@
       "else": {
         "properties": {
           "release": {
+            "type": "object",
             "properties": {
               "version": { "$ref": "#/$defs/stableVersion" },
               "tag": { "$ref": "#/$defs/stableTag" }

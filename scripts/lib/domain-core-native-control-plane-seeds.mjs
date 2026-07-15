@@ -89,5 +89,6 @@ export const NATIVE_RELEASE_CONTROL_PLANE_SEEDS = Object.freeze([
   "scripts/verify-version-consistency.sh",
   "scripts/windows-port/refresh-native-engine-manifest.mjs",
   "scripts/windows-port/validate-native-engine-layout.mjs",
+  "scripts/windows-port/write-signed-artifact-manifest.mjs",
   "windows/tests/quota/DomainCoreQuotaBridgeTests.cs",
 ]);

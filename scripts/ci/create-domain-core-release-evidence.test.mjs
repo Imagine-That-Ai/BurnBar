@@ -140,7 +140,7 @@ function consoleDeployment() {
       runAttempt: 4,
       event: "push",
       ref: "refs/tags/v1.2.3",
-      headSha: CANDIDATE.candidateCommit,
+      headSha: ACTIVATION_COMMIT,
       jobSetSha256: "d".repeat(64),
     },
     healthArtifactSha256: "e".repeat(64),

@@ -67,6 +67,17 @@ function common() {
       sha256: "d".repeat(64),
       candidate,
     },
+    activation: {
+      ...candidate,
+      activationCommit: candidate.candidateCommit,
+      changedPathsSha256: "3".repeat(64),
+    },
+    publicProfile: {
+      profile: "public-production",
+      domain: "pricing",
+      mode: "rust",
+      sha256: "4".repeat(64),
+    },
     release: {
       version: "1.2.3",
       tag: "v1.2.3",
@@ -131,6 +142,10 @@ function generatedConsoleReceipt() {
     domain: "cloudVault",
     artifactKind: "console-deployment-receipt",
     target: "firebase-hosting-production",
+    publicProfile: {
+      ...value.publicProfile,
+      domain: "cloudVault",
+    },
     deployment: {
       ...value.deployment,
       provider: "firebase-hosting",
