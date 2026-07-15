@@ -7,6 +7,7 @@ extension DashboardView {
 
     var sidebarView: some View {
         @Bindable var ds = dataStore
+        let adaptiveColors = BackdropAdaptiveColors(profile: dashboardActiveReadabilityProfile)
 
         return ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
@@ -14,18 +15,18 @@ extension DashboardView {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                         Text("Command")
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(adaptiveColors.muted)
                             .textCase(.uppercase)
 
                         Text(viewMode == .agents ? "Agent providers" : "LLM Models")
                             .font(DesignSystem.Typography.title)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .foregroundStyle(adaptiveColors.primary)
 
                         Text(viewMode == .agents
                             ? "Scan, compare spend, and drill into model behavior from one workspace."
                             : "Track spend and token volume across every model your agents use.")
                             .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .foregroundStyle(adaptiveColors.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -34,7 +35,7 @@ extension DashboardView {
                     Button(action: toggleDashboardSidebar) {
                         Image(systemName: "sidebar.left")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .foregroundStyle(adaptiveColors.secondary)
                             .frame(width: 28, height: 28)
                             .contentShape(Rectangle())
                     }
@@ -115,16 +116,16 @@ extension DashboardView {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                         Text("Window")
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(adaptiveColors.muted)
                             .textCase(.uppercase)
 
                         Text(selectedTimeRange.displayName)
                             .font(DesignSystem.Typography.headline)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .foregroundStyle(adaptiveColors.primary)
 
                         Text("\(activeProviderCount) active providers")
                             .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .foregroundStyle(adaptiveColors.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(DesignSystem.Spacing.md)
@@ -134,14 +135,14 @@ extension DashboardView {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                         Text("Cursor")
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(adaptiveColors.muted)
                             .textCase(.uppercase)
 
                         Button(action: openBurnBarCursorExtension) {
                             HStack(spacing: DesignSystem.Spacing.md) {
                                 ZStack {
                                     Circle()
-                                        .fill(DesignSystem.Colors.surfaceElevated)
+                                        .fill(adaptiveColors.primary.opacity(0.08))
                                         .frame(width: 36, height: 36)
 
                                     ProviderLogoView(provider: .cursor, size: 24, useFallbackColor: false)
@@ -150,19 +151,19 @@ extension DashboardView {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Add OpenBurnBar to Cursor")
                                         .font(DesignSystem.Typography.body)
-                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                        .foregroundStyle(adaptiveColors.primary)
                                         .multilineTextAlignment(.leading)
 
                                     Text("Opens the extension install page")
                                         .font(DesignSystem.Typography.tiny)
-                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .foregroundStyle(adaptiveColors.muted)
                                 }
 
                                 Spacer(minLength: 0)
 
                                 Image(systemName: "arrow.up.forward.circle.fill")
                                     .font(.system(size: 20))
-                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    .foregroundStyle(adaptiveColors.secondary)
                             }
                             .contentShape(Rectangle())
                         }
@@ -183,7 +184,7 @@ extension DashboardView {
                 if viewMode == .agents ? dashboardProviderSummaries.isEmpty : dashboardModelSummaries.isEmpty {
                     Text(viewMode == .agents ? "No providers in this window" : "No models in this window")
                         .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(adaptiveColors.muted)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, DesignSystem.Spacing.xl)
                 }

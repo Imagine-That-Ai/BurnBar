@@ -73,6 +73,7 @@ export function KernelSwitcher({ kernelId, onKernelChange, className }: Props) {
                 type="button"
                 role="option"
                 aria-selected={selected}
+                data-kernel-id={kernel.id}
                 className={`kernel-switcher-item${selected ? ' kernel-switcher-item--selected' : ''}`}
                 onClick={() => select(kernel.id)}
               >

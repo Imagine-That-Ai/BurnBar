@@ -31,6 +31,14 @@
   --color-text-base: color-mix(in srgb, var(--macos-text) 92%, transparent);
   --color-text-mute: var(--macos-text-secondary);
   --color-text-dim: var(--macos-text-muted);
+  --surface-text-bright: #ffffff;
+  --surface-text-base: color-mix(in srgb, var(--macos-text) 92%, transparent);
+  --surface-text-mute: var(--macos-text-secondary);
+  --surface-text-dim: var(--macos-text-muted);
+  --surface-ink-elevated: var(--macos-surface);
+  --surface-glass-bg: color-mix(in srgb, var(--macos-surface) 55%, transparent);
+  --surface-glass-bg-elevated: color-mix(in srgb, var(--macos-surface-elevated) 62%, transparent);
+  --surface-glass-input: color-mix(in srgb, var(--macos-bg) 55%, transparent);
   --color-glass-bg: color-mix(in srgb, var(--macos-surface) 55%, transparent);
   --color-glass-bg-elevated: color-mix(in srgb, var(--macos-surface-elevated) 62%, transparent);
   --color-glass-line: color-mix(in srgb, var(--macos-border) 70%, transparent);

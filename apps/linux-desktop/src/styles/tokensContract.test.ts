@@ -7,6 +7,7 @@ const stylesDir = path.dirname(fileURLToPath(import.meta.url));
 const appCss = fs.readFileSync(path.join(stylesDir, 'app.css'), 'utf8');
 const tokensCss = fs.readFileSync(path.join(stylesDir, 'tokens.css'), 'utf8');
 const skinsCss = fs.readFileSync(path.join(stylesDir, 'skins.css'), 'utf8');
+const adaptiveCss = fs.readFileSync(path.join(stylesDir, 'adaptive-foreground.css'), 'utf8');
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(stylesDir, '../../package.json'), 'utf8')
 ) as { dependencies?: Record<string, string> };
@@ -62,5 +63,18 @@ describe('VAL-TOKENS design token contract', () => {
     expect(appCss).toContain('body.reduced-motion *');
     expect(appCss).toContain('animation: none');
     expect(appCss).toContain('transition: none');
+  });
+
+  it('adaptive foregrounds stay explicit, semantic, and accessible', () => {
+    expect(adaptiveCss).toContain('--adaptive-text-primary');
+    expect(adaptiveCss).toContain('--adaptive-text-secondary');
+    expect(adaptiveCss).toContain('--adaptive-text-muted');
+    expect(adaptiveCss).toContain('--adaptive-icon');
+    expect(adaptiveCss).toContain('--adaptive-accent');
+    expect(adaptiveCss).toContain('--adaptive-focus');
+    expect(adaptiveCss).toContain('--adaptive-scrim-opacity');
+    expect(adaptiveCss).toContain('@media (forced-colors: active)');
+    expect(adaptiveCss).toContain('@media (prefers-contrast: more)');
+    expect(adaptiveCss).not.toContain('mix-blend-mode');
   });
 });

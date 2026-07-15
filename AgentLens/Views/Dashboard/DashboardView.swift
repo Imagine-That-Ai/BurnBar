@@ -12,6 +12,8 @@ struct DashboardView: View {
     @Environment(NavigationCoordinator.self) var navigationCoordinator
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var easterEggController = EasterEggController()
     @State private var didLogScreenView = false
     var aggregator: UsageAggregator?
@@ -47,6 +49,7 @@ struct DashboardView: View {
     @State var showContextPackSheet = false
     @AppStorage("dashboardChatPreferMaximized") var preferMaximizedChat = false
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
+    @State private var backdropReadabilityProfile = BackdropReadabilityProfile.darkCanvasFallback
     var chatController: ChatSessionController
     @State var quotaService = ProviderQuotaService.shared
     @State var missionConsoleController: MissionConsoleWindowController?
@@ -247,11 +250,19 @@ struct DashboardView: View {
 
     var body: some View {
         @Bindable var chatController = chatController
+        let activeReadabilityProfile = dashboardActiveReadabilityProfile
+        let adaptiveColors = BackdropAdaptiveColors(profile: activeReadabilityProfile)
         return VStack(spacing: 0) {
             dashboardCommandDeck
 
             NavigationSplitView(columnVisibility: $dashboardSplitVisibility) {
                 sidebarView
+                    .environment(
+                        \.colorScheme,
+                        dashboardLiveBackdropActive
+                            ? activeReadabilityProfile.interfaceColorScheme
+                            : colorScheme
+                    )
                     .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 235)
                     .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
             } detail: {
@@ -271,7 +282,23 @@ struct DashboardView: View {
             )
         }
         .background {
-            DashboardBackdrop(moodBand: dataStore.moodBand)
+            DashboardBackdrop(
+                moodBand: dataStore.moodBand,
+                kernelColorScheme: colorScheme,
+                onReadabilityChange: { profile in
+                    guard dashboardLiveBackdropActive else { return }
+                    backdropReadabilityProfile = profile
+                }
+            )
+            if dashboardLiveBackdropActive {
+                adaptiveColors.scrim
+                    .opacity(dashboardAdaptiveScrimOpacity)
+                    .allowsHitTesting(false)
+                    .animation(
+                        reduceMotion ? nil : .easeInOut(duration: 0.22),
+                        value: activeReadabilityProfile
+                    )
+            }
             DashboardSidebarToolbarItemRemover()
             GeometryReader { geo in
                 Color.clear
@@ -525,6 +552,7 @@ struct DashboardView: View {
             }
         }
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .environment(\.backdropReadabilityProfile, activeReadabilityProfile)
         .environment(\.dashboardLiveBackdropActive, dashboardLiveBackdropActive)
         .environment(settingsManager)
     }
@@ -1062,6 +1090,24 @@ struct DashboardView: View {
             useWebsiteBackground: settingsManager.useWebsiteBackground,
             useKernelBackdrop: useKernelBackdrop
         )
+    }
+
+    var dashboardActiveReadabilityProfile: BackdropReadabilityProfile {
+        guard dashboardLiveBackdropActive else {
+            return BackdropReadabilityProfile.nativeFallback(
+                colorScheme: colorScheme,
+                appearanceSkin: settingsManager.appearanceSkin,
+                liveBackdropActive: false
+            )
+        }
+        return backdropReadabilityProfile
+    }
+
+    var dashboardAdaptiveScrimOpacity: Double {
+        let measured = dashboardActiveReadabilityProfile.scrimOpacity
+        if reduceTransparency { return max(measured, 0.82) }
+        if colorSchemeContrast == .increased { return max(measured, 0.38) }
+        return measured
     }
 
     private func openSessionLogs(_ target: ConversationJumpTarget) {

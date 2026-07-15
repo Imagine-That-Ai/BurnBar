@@ -10,9 +10,14 @@ struct SidebarItem: View {
     let action: () -> Void
 
     @State private var hovering = false
+    @Environment(\.backdropReadabilityProfile) private var readabilityProfile
 
     private var theme: ProviderTheme {
         provider.map { ProviderTheme.theme(for: $0) } ?? ProviderTheme.theme(for: .factory)
+    }
+
+    private var adaptiveColors: BackdropAdaptiveColors {
+        BackdropAdaptiveColors(profile: readabilityProfile)
     }
 
     var body: some View {
@@ -20,7 +25,7 @@ struct SidebarItem: View {
             HStack(spacing: DesignSystem.Spacing.md) {
                 ZStack {
                     Circle()
-                        .fill(isSelected ? theme.primaryColor.opacity(0.18) : DesignSystem.Colors.surfaceElevated)
+                        .fill(isSelected ? theme.primaryColor.opacity(0.18) : adaptiveColors.primary.opacity(0.08))
                         .frame(width: 34, height: 34)
 
                     if let provider {
@@ -28,19 +33,19 @@ struct SidebarItem: View {
                     } else {
                         Image(systemName: "square.grid.2x2")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+                            .foregroundStyle(isSelected ? adaptiveColors.primary : adaptiveColors.secondary)
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(provider?.displayName ?? "All Providers")
                         .font(DesignSystem.Typography.body)
-                        .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+                        .foregroundStyle(isSelected ? adaptiveColors.primary : adaptiveColors.secondary)
                         .lineLimit(1)
 
                     Text("\(sessionCount) session\(sessionCount == 1 ? "" : "s")")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(adaptiveColors.muted)
                 }
                 .layoutPriority(1)
 
@@ -50,11 +55,11 @@ struct SidebarItem: View {
                     if provider?.supportLevel == .unsupported && totalCost == 0 {
                         Text("Not tracked")
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(adaptiveColors.muted)
                     } else {
                         Text(primaryMetric)
                             .font(DesignSystem.Typography.monoSmall)
-                            .foregroundStyle(isSelected ? theme.primaryColor : DesignSystem.Colors.textMuted)
+                            .foregroundStyle(isSelected ? adaptiveColors.accent : adaptiveColors.muted)
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                             .allowsTightening(true)
@@ -62,14 +67,14 @@ struct SidebarItem: View {
 
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(isSelected ? theme.primaryColor.opacity(0.8) : DesignSystem.Colors.textMuted)
+                        .foregroundStyle(isSelected ? adaptiveColors.accent : adaptiveColors.muted)
                 }
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
-                    .fill(isSelected ? theme.primaryColor.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(hovering && !isSelected ? 0.55 : 0.35))
+                    .fill(isSelected ? theme.primaryColor.opacity(0.08) : adaptiveColors.primary.opacity(hovering && !isSelected ? 0.10 : 0.06))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
@@ -92,33 +97,35 @@ struct ModelSidebarItem: View {
     @Environment(SettingsManager.self) private var settingsManager
 
     @State private var hovering = false
+    @Environment(\.backdropReadabilityProfile) private var readabilityProfile
 
     private var theme: ProviderTheme { ProviderTheme.theme(forModel: summary.modelName) }
+    private var adaptiveColors: BackdropAdaptiveColors { BackdropAdaptiveColors(profile: readabilityProfile) }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: DesignSystem.Spacing.md) {
                 ZStack {
                     Circle()
-                        .fill(isSelected ? theme.primaryColor.opacity(0.18) : DesignSystem.Colors.surfaceElevated)
+                        .fill(isSelected ? theme.primaryColor.opacity(0.18) : adaptiveColors.primary.opacity(0.08))
                         .frame(width: 34, height: 34)
 
                     ModelProviderLogoView(
                         modelKey: summary.modelName,
                         size: 22,
-                        fallbackSymbolColor: isSelected ? theme.primaryColor : DesignSystem.Colors.textSecondary
+                        fallbackSymbolColor: isSelected ? theme.primaryColor : adaptiveColors.secondary
                     )
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(summary.displayName)
                         .font(DesignSystem.Typography.body)
-                        .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+                        .foregroundStyle(isSelected ? adaptiveColors.primary : adaptiveColors.secondary)
                         .lineLimit(1)
 
                     Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(adaptiveColors.muted)
                 }
                 .layoutPriority(1)
 
@@ -127,21 +134,21 @@ struct ModelSidebarItem: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens))
                         .font(DesignSystem.Typography.monoSmall)
-                        .foregroundStyle(isSelected ? theme.primaryColor : DesignSystem.Colors.textMuted)
+                        .foregroundStyle(isSelected ? adaptiveColors.accent : adaptiveColors.muted)
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                         .allowsTightening(true)
 
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(isSelected ? theme.primaryColor.opacity(0.8) : DesignSystem.Colors.textMuted)
+                        .foregroundStyle(isSelected ? adaptiveColors.accent : adaptiveColors.muted)
                 }
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
-                    .fill(isSelected ? theme.primaryColor.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(hovering && !isSelected ? 0.55 : 0.35))
+                    .fill(isSelected ? theme.primaryColor.opacity(0.08) : adaptiveColors.primary.opacity(hovering && !isSelected ? 0.10 : 0.06))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
@@ -167,18 +174,21 @@ struct DashboardWorkspaceNavButton: View {
     let action: () -> Void
 
     @State private var hovering = false
+    @Environment(\.backdropReadabilityProfile) private var readabilityProfile
+
+    private var adaptiveColors: BackdropAdaptiveColors { BackdropAdaptiveColors(profile: readabilityProfile) }
 
     var body: some View {
         Button(action: action) {
             HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
                 ZStack {
                     Circle()
-                        .fill(isSelected ? accent.opacity(0.18) : DesignSystem.Colors.surfaceElevated)
+                        .fill(isSelected ? accent.opacity(0.18) : adaptiveColors.primary.opacity(0.08))
                         .frame(width: 30, height: 30)
 
                     Image(systemName: systemImage)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(isSelected ? accent : DesignSystem.Colors.textSecondary)
+                        .foregroundStyle(isSelected ? adaptiveColors.accent : adaptiveColors.secondary)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -186,7 +196,7 @@ struct DashboardWorkspaceNavButton: View {
                         Text(title)
                             .font(DesignSystem.Typography.caption)
                             .fontWeight(.semibold)
-                            .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+                            .foregroundStyle(isSelected ? adaptiveColors.primary : adaptiveColors.secondary)
                             .lineLimit(1)
 
                         if let trailingBadge {
@@ -203,7 +213,7 @@ struct DashboardWorkspaceNavButton: View {
                     if !isCompact {
                         Text(subtitle)
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(adaptiveColors.muted)
                             .multilineTextAlignment(.leading)
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
@@ -222,7 +232,7 @@ struct DashboardWorkspaceNavButton: View {
             )
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                    .fill(isSelected ? accent.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(hovering ? 0.55 : 0.35))
+                    .fill(isSelected ? accent.opacity(0.08) : adaptiveColors.primary.opacity(hovering ? 0.10 : 0.06))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)

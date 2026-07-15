@@ -41,6 +41,9 @@ describe('App shell', () => {
     expect(container.querySelector('main#main')).not.toBeNull();
     expect(container.querySelector('#route-title')).not.toBeNull();
     expect(container.querySelector('.status-pill[role="status"]')).not.toBeNull();
+    expect(container.querySelector('.adaptive-backdrop-scrim[aria-hidden="true"]')).not.toBeNull();
+    expect(document.documentElement.dataset.backdropForeground).toMatch(/light|dark/);
+    expect(document.documentElement.dataset.backdropReadabilitySource).toBe('css-fallback');
   });
 
   it('exposes exactly one aria-current=page tab for primary sections', () => {

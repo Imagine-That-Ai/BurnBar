@@ -33,7 +33,7 @@ export function TopChrome({ onOpenCommandPalette, kernelId, onKernelChange }: To
   useLaneLoad(load);
 
   return (
-    <div className="top-chrome">
+    <div className="top-chrome" data-readability-region="chrome">
       <header className="command-deck top-toolbar" role="banner">
         <DeckBrandMark logoOnly />
 

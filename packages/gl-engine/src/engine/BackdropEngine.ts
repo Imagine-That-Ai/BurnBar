@@ -18,6 +18,11 @@
 import type { GlyphField } from "../glyph/field/glyphField";
 import { detectGlCapabilities, type GlCapabilities } from "./gl/glCapabilities";
 import { resolvePalette } from "./palette";
+import {
+  BackdropReadabilityStabilizer,
+  fallbackReadabilityProfile,
+  type BackdropReadabilityProfile,
+} from "./readability";
 import type { SwarmEmberKernelOptions } from "./kernels/swarmEmberKernel";
 import { createSwarmEmberKernel } from "./kernels/swarmEmberKernel";
 import { DEFAULT_KERNEL_ID, getKernelDescriptor } from "./registry";
@@ -31,6 +36,11 @@ import type {
 } from "./types";
 
 const FADE_MS = 700;
+const READABILITY_SAMPLE_INTERVAL_MS = 500;
+const READABILITY_SAMPLE_POINTS = [0.14, 0.5, 0.86] as const;
+const REGION_SAMPLE_POINTS = [0.18, 0.5, 0.82] as const;
+const READABILITY_BUFFER_WIDTH = 24;
+const READABILITY_BUFFER_HEIGHT = 16;
 // Fragment-shader kernels are soft, full-screen fields — high DPR is wasted
 // detail at real cost, so cap WebGL lower than the crisp 2D particle canvases.
 const DPR_CAP: Record<KernelSubstrate, number> = { "2d": 2, webgl2: 1.2, webgpu: 1 };
@@ -40,6 +50,7 @@ interface Slot {
   canvas: HTMLCanvasElement;
   kernel: Kernel;
   substrate: KernelSubstrate;
+  context: CanvasRenderingContext2D | WebGL2RenderingContext | GPUCanvasContext | null;
   outgoing: boolean;
   disposeTimer: number | null;
 }
@@ -53,6 +64,10 @@ export interface BackdropEngineOptions {
   swarmEmberOptions?: SwarmEmberKernelOptions;
   /** Notified with the kernel actually shown (may differ on GL fallback). */
   onResolve?: (id: KernelId) => void;
+  /** Bounded-cadence WCAG profile derived from the frames actually rendered. */
+  onReadability?: (profile: BackdropReadabilityProfile) => void;
+  /** Viewport-space bounds for text-bearing areas that expose the canvas. */
+  readabilityRegions?: () => readonly DOMRectReadOnly[];
 }
 
 function detectWebgl2(): { supported: boolean; caps: GlCapabilities } {
@@ -79,6 +94,23 @@ export class BackdropEngine {
   private palette: KernelPalette;
   private swarmEmberOptions?: SwarmEmberKernelOptions;
   private onResolve?: (id: KernelId) => void;
+  private onReadability?: (profile: BackdropReadabilityProfile) => void;
+  private readabilityRegions?: () => readonly DOMRectReadOnly[];
+  private readability = new BackdropReadabilityStabilizer();
+  private readabilityCanvas: HTMLCanvasElement | null = null;
+  private readabilityContext: CanvasRenderingContext2D | null = null;
+  private readabilityWorker: Worker | null | undefined;
+  private readabilityWorkerURL: string | null = null;
+  private readabilityWorkerRequest = 0;
+  private readabilityWorkerPending = new Map<
+    number,
+    { resolve: (rgba: Uint8ClampedArray | null) => void; timeout: number }
+  >();
+  private lastReadabilityProfile: BackdropReadabilityProfile | null = null;
+  private lastReadabilitySample = -Infinity;
+  private readabilitySampling = false;
+  private readabilityResampleRequested = false;
+  private destroyed = false;
 
   private width = 0;
   private height = 0;
@@ -88,6 +120,7 @@ export class BackdropEngine {
 
   private visible = true;
   private pageVisible = true;
+  private hostVisible = true;
   private reducedMotion = false;
 
   private pointer = { x: 0, y: 0, active: false };
@@ -107,6 +140,7 @@ export class BackdropEngine {
   // never reference a torn-down engine (matters under React StrictMode remounts).
   private initialHarvestRaf: number | null = null;
   private initialHarvestTimer: number | null = null;
+  private initialReadabilityRaf: number | null = null;
 
   constructor(container: HTMLElement, opts: BackdropEngineOptions) {
     this.container = container;
@@ -117,6 +151,8 @@ export class BackdropEngine {
     this.palette = opts.palette ?? resolvePalette(opts.theme);
     this.swarmEmberOptions = opts.swarmEmberOptions;
     this.onResolve = opts.onResolve;
+    this.onReadability = opts.onReadability;
+    this.readabilityRegions = opts.readabilityRegions;
     this.activeId = opts.initialKernel ?? DEFAULT_KERNEL_ID;
 
     this.reducedMotion =
@@ -129,7 +165,11 @@ export class BackdropEngine {
 
     this.mountInitial();
     this.attachObservers();
-    if (!this.reducedMotion) this.startLoop();
+    if (!this.reducedMotion) {
+      this.startLoop();
+    } else {
+      this.scheduleReadabilitySample();
+    }
   }
 
   // ── Public API ─────────────────────────────────────────────
@@ -151,12 +191,14 @@ export class BackdropEngine {
     this.activeId = slot.id;
     this.onResolve?.(slot.id);
     this.harvestObstacles(true); // a freshly-switched kernel gets current geometry
+    this.emitPaletteReadability();
 
     // Fade the newcomer in on the next frame (lets the transition apply).
     requestAnimationFrame(() => {
       slot.canvas.style.opacity = "1";
     });
     if (this.reducedMotion) slot.kernel.renderStatic?.();
+    this.scheduleReadabilitySample();
   }
 
   setTheme(theme: ThemeName): void {
@@ -167,6 +209,9 @@ export class BackdropEngine {
       slot.kernel.setTheme(theme, this.palette);
       if (this.reducedMotion) slot.kernel.renderStatic?.();
     }
+    this.readability.reset();
+    this.emitPaletteReadability();
+    this.scheduleReadabilitySample();
   }
 
   /**
@@ -180,6 +225,8 @@ export class BackdropEngine {
       slot.kernel.setTheme(this.theme, this.palette);
       if (this.reducedMotion) slot.kernel.renderStatic?.();
     }
+    this.emitPaletteReadability();
+    this.scheduleReadabilitySample();
   }
 
   /**
@@ -198,10 +245,28 @@ export class BackdropEngine {
       slot.kernel.setTheme(this.theme, this.palette);
       if (this.reducedMotion) slot.kernel.renderStatic?.();
     }
+    this.emitPaletteReadability();
+    this.scheduleReadabilitySample();
   }
 
   getResolvedKernel(): KernelId {
     return this.activeId;
+  }
+
+  /** Native hosts use this because WKWebView's document visibility does not
+   * track window occlusion, minimization, or application hiding. */
+  setHostVisible(hostVisible: boolean): void {
+    if (this.hostVisible === hostVisible) return;
+    this.hostVisible = hostVisible;
+    if (!hostVisible) {
+      if (this.raf !== null) {
+        cancelAnimationFrame(this.raf);
+        this.raf = null;
+      }
+    } else if (this.raf === null && !this.reducedMotion) {
+      this.startLoop();
+      this.scheduleReadabilitySample();
+    }
   }
 
   /** A foreground glyph was dragged/thrown through the field — forward to the
@@ -222,9 +287,11 @@ export class BackdropEngine {
   }
 
   destroy(): void {
+    this.destroyed = true;
     if (this.raf !== null) cancelAnimationFrame(this.raf);
     if (this.initialHarvestRaf !== null) cancelAnimationFrame(this.initialHarvestRaf);
     if (this.initialHarvestTimer !== null) clearTimeout(this.initialHarvestTimer);
+    if (this.initialReadabilityRaf !== null) cancelAnimationFrame(this.initialReadabilityRaf);
     this.resizeObs?.disconnect();
     this.intersectionObs?.disconnect();
     document.removeEventListener("visibilitychange", this.onVisibility);
@@ -235,6 +302,17 @@ export class BackdropEngine {
     this.mql?.removeEventListener("change", this.onReducedMotionChange);
     for (const slot of [...this.slots]) this.disposeSlot(slot);
     this.slots = [];
+    this.readabilityCanvas = null;
+    this.readabilityContext = null;
+    this.readabilityWorker?.terminate();
+    if (this.readabilityWorkerURL) URL.revokeObjectURL(this.readabilityWorkerURL);
+    for (const pending of this.readabilityWorkerPending.values()) {
+      clearTimeout(pending.timeout);
+      pending.resolve(null);
+    }
+    this.readabilityWorkerPending.clear();
+    this.readabilityWorker = null;
+    this.readabilityWorkerURL = null;
   }
 
   // ── Slot lifecycle ─────────────────────────────────────────
@@ -303,7 +381,15 @@ export class BackdropEngine {
       `transition:opacity ${FADE_MS}ms ease;will-change:opacity;`;
     this.container.appendChild(canvas);
 
-    const slot: Slot = { id: kernel.id, canvas, kernel, substrate, outgoing: false, disposeTimer: null };
+    const slot: Slot = {
+      id: kernel.id,
+      canvas,
+      kernel,
+      substrate,
+      context: null,
+      outgoing: false,
+      disposeTimer: null,
+    };
     this.sizeCanvas(slot);
     // Track the slot BEFORE init so every failure path can dispose it cleanly
     // (removes the canvas, runs kernel.dispose(), untracks) — no orphans.
@@ -348,6 +434,7 @@ export class BackdropEngine {
       }
     }
 
+    slot.context = ctx;
     kernel.init(ctx, this.frameCtx(substrate));
     // Replay the live field so a newly mounted/crossfading world inherits the
     // active mark (it survives switches — spec §2.2).
@@ -381,7 +468,7 @@ export class BackdropEngine {
     this.lastNow = performance.now();
     const loop = (now: number) => {
       this.raf = requestAnimationFrame(loop);
-      if (!this.visible || !this.pageVisible) {
+      if (!this.visible || !this.pageVisible || !this.hostVisible) {
         this.lastNow = now;
         return;
       }
@@ -411,8 +498,271 @@ export class BackdropEngine {
       for (const slot of this.slots) {
         slot.kernel.frame(this.tMs, dt);
       }
+      if (now - this.lastReadabilitySample >= READABILITY_SAMPLE_INTERVAL_MS) {
+        void this.emitReadability(now);
+      }
     };
     this.raf = requestAnimationFrame(loop);
+  }
+
+  // ── Adaptive foreground sampling ──────────────────────────
+
+  private emitPaletteReadability(): void {
+    if (!this.onReadability) return;
+    const profile = this.readability.update({
+      samples: [this.palette.bg, ...this.palette.accents, this.palette.ink],
+      source: "palette",
+      nowMs: performance.now(),
+    });
+    this.lastReadabilityProfile = profile;
+    this.onReadability(profile);
+  }
+
+  private scheduleReadabilitySample(): void {
+    if (!this.onReadability || this.initialReadabilityRaf !== null) return;
+    this.initialReadabilityRaf = requestAnimationFrame((now) => {
+      this.initialReadabilityRaf = null;
+      void this.emitReadability(now, true);
+    });
+  }
+
+  private async emitReadability(now: number, force = false): Promise<void> {
+    if (!this.onReadability) return;
+    if (!force && now - this.lastReadabilitySample < READABILITY_SAMPLE_INTERVAL_MS) return;
+    if (this.readabilitySampling) {
+      this.readabilityResampleRequested = true;
+      return;
+    }
+    this.readabilitySampling = true;
+    this.lastReadabilitySample = now;
+
+    try {
+      const result = await this.readabilitySamples();
+      if (this.destroyed) return;
+      const baseProfile = result.samples.length > 0
+        ? this.readability.update({ samples: result.samples, source: "canvas", nowMs: now })
+        : fallbackReadabilityProfile(this.palette);
+      const profile = {
+        ...baseProfile,
+        samplingDurationMs: result.blockingDurationMs,
+      };
+
+      const previous = this.lastReadabilityProfile;
+      const materiallyChanged =
+        !previous ||
+        previous.tone !== profile.tone ||
+        previous.source !== profile.source ||
+        Math.abs(previous.scrimOpacity - profile.scrimOpacity) >= 0.0125 ||
+        Math.abs(previous.minLuminance - profile.minLuminance) >= 0.025 ||
+        Math.abs(previous.maxLuminance - profile.maxLuminance) >= 0.025;
+      if (!materiallyChanged) return;
+      this.lastReadabilityProfile = profile;
+      this.onReadability(profile);
+    } finally {
+      this.readabilitySampling = false;
+      if (this.readabilityResampleRequested && !this.destroyed) {
+        this.readabilityResampleRequested = false;
+        this.lastReadabilitySample = -Infinity;
+        this.scheduleReadabilitySample();
+      }
+    }
+  }
+
+  private async readabilitySamples(): Promise<{
+    samples: KernelPalette["accents"];
+    blockingDurationMs: number;
+  }> {
+    const samples: KernelPalette["accents"] = [];
+    const regionPoints = this.readabilityRegionPoints();
+    let blockingDurationMs = 0;
+    for (const slot of this.slots) {
+      const result = await this.readSlotSamples(slot, regionPoints);
+      samples.push(...result.samples);
+      blockingDurationMs += result.blockingDurationMs;
+    }
+    return { samples, blockingDurationMs };
+  }
+
+  private readabilityRegionPoints(): Array<readonly [number, number]> {
+    const regions = this.readabilityRegions?.() ?? [];
+    if (regions.length === 0) {
+      return READABILITY_SAMPLE_POINTS.flatMap((y) =>
+        READABILITY_SAMPLE_POINTS.map((x) => [x, y] as const),
+      );
+    }
+
+    const containerRect = this.container.getBoundingClientRect();
+    const width = Math.max(1, containerRect.width);
+    const height = Math.max(1, containerRect.height);
+    return regions.slice(0, 4).flatMap((region) =>
+      REGION_SAMPLE_POINTS.map((unit, index) => {
+        const crossUnit = REGION_SAMPLE_POINTS[REGION_SAMPLE_POINTS.length - 1 - index];
+        const x = region.left + region.width * unit - containerRect.left;
+        const y = region.top + region.height * crossUnit - containerRect.top;
+        return [Math.min(1, Math.max(0, x / width)), Math.min(1, Math.max(0, y / height))] as const;
+      }),
+    );
+  }
+
+  private async readSlotSamples(
+    slot: Slot,
+    points: Array<readonly [number, number]>,
+  ): Promise<{ samples: KernelPalette["accents"]; blockingDurationMs: number }> {
+    let blockingDurationMs = 0;
+    let bitmap: ImageBitmap | null = null;
+    try {
+      if (!this.readabilityCanvas) {
+        this.readabilityCanvas = document.createElement("canvas");
+        this.readabilityCanvas.width = READABILITY_BUFFER_WIDTH;
+        this.readabilityCanvas.height = READABILITY_BUFFER_HEIGHT;
+        this.readabilityContext = this.readabilityCanvas.getContext("2d", {
+          alpha: true,
+          willReadFrequently: true,
+        });
+      }
+      const context = this.readabilityContext;
+      if (!context) return { samples: [], blockingDurationMs };
+      if (typeof createImageBitmap === "function") {
+        const schedulingStarted = performance.now();
+        const bitmapPromise = createImageBitmap(slot.canvas, {
+          resizeWidth: READABILITY_BUFFER_WIDTH,
+          resizeHeight: READABILITY_BUFFER_HEIGHT,
+          resizeQuality: "low",
+        });
+        blockingDurationMs += performance.now() - schedulingStarted;
+        bitmap = await bitmapPromise;
+      }
+      if (bitmap) {
+        const postingStarted = performance.now();
+        const workerResult = this.readBitmapOffMainThread(bitmap);
+        blockingDurationMs += performance.now() - postingStarted;
+        if (workerResult) {
+          bitmap = null; // ownership transferred to the worker
+          const rgba = await workerResult;
+          if (rgba) {
+            const processingStarted = performance.now();
+            const samples = this.samplesFromRgba(rgba, points);
+            blockingDurationMs += performance.now() - processingStarted;
+            return { samples, blockingDurationMs };
+          }
+        }
+      }
+      const processingStarted = performance.now();
+      context.clearRect(0, 0, READABILITY_BUFFER_WIDTH, READABILITY_BUFFER_HEIGHT);
+      context.drawImage(
+        bitmap ?? slot.canvas,
+        0,
+        0,
+        READABILITY_BUFFER_WIDTH,
+        READABILITY_BUFFER_HEIGHT,
+      );
+      const rgba = context.getImageData(
+        0,
+        0,
+        READABILITY_BUFFER_WIDTH,
+        READABILITY_BUFFER_HEIGHT,
+      ).data;
+      const samples = this.samplesFromRgba(rgba, points);
+      blockingDurationMs += performance.now() - processingStarted;
+      return { samples, blockingDurationMs };
+    } catch {
+      return { samples: [], blockingDurationMs };
+    } finally {
+      bitmap?.close();
+    }
+  }
+
+  private samplesFromRgba(
+    rgba: ArrayLike<number>,
+    points: Array<readonly [number, number]>,
+  ): KernelPalette["accents"] {
+    return points.map(([xUnit, yUnit]) => {
+      const x = Math.min(
+        READABILITY_BUFFER_WIDTH - 1,
+        Math.max(0, Math.round(xUnit * (READABILITY_BUFFER_WIDTH - 1))),
+      );
+      const y = Math.min(
+        READABILITY_BUFFER_HEIGHT - 1,
+        Math.max(0, Math.round(yUnit * (READABILITY_BUFFER_HEIGHT - 1))),
+      );
+      const offset = (y * READABILITY_BUFFER_WIDTH + x) * 4;
+      const alpha = (rgba[offset + 3] ?? 255) / 255;
+      return [
+        (rgba[offset] ?? 0) * alpha + this.palette.bg[0] * (1 - alpha),
+        (rgba[offset + 1] ?? 0) * alpha + this.palette.bg[1] * (1 - alpha),
+        (rgba[offset + 2] ?? 0) * alpha + this.palette.bg[2] * (1 - alpha),
+      ];
+    });
+  }
+
+  private readBitmapOffMainThread(bitmap: ImageBitmap): Promise<Uint8ClampedArray | null> | null {
+    const worker = this.getReadabilityWorker();
+    if (!worker) return null;
+    const id = ++this.readabilityWorkerRequest;
+    return new Promise((resolve) => {
+      const timeout = window.setTimeout(() => {
+        this.readabilityWorkerPending.delete(id);
+        resolve(null);
+      }, 750);
+      this.readabilityWorkerPending.set(id, { resolve, timeout });
+      worker.postMessage({ id, bitmap }, [bitmap]);
+    });
+  }
+
+  private getReadabilityWorker(): Worker | null {
+    if (this.readabilityWorker !== undefined) return this.readabilityWorker;
+    if (
+      typeof Worker === "undefined" ||
+      typeof Blob === "undefined" ||
+      typeof URL === "undefined" ||
+      typeof OffscreenCanvas === "undefined"
+    ) {
+      this.readabilityWorker = null;
+      return null;
+    }
+
+    const source = `
+      const canvas = new OffscreenCanvas(${READABILITY_BUFFER_WIDTH}, ${READABILITY_BUFFER_HEIGHT});
+      const context = canvas.getContext("2d", { alpha: true, willReadFrequently: true });
+      self.onmessage = (event) => {
+        const { id, bitmap } = event.data;
+        try {
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          bitmap.close();
+          const rgba = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          self.postMessage({ id, rgba: rgba.buffer }, [rgba.buffer]);
+        } catch (error) {
+          try { bitmap.close(); } catch (_) {}
+          self.postMessage({ id, rgba: null });
+        }
+      };
+    `;
+    try {
+      this.readabilityWorkerURL = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+      const worker = new Worker(this.readabilityWorkerURL);
+      worker.onmessage = (event: MessageEvent<{ id: number; rgba: ArrayBuffer | null }>) => {
+        const pending = this.readabilityWorkerPending.get(event.data.id);
+        if (!pending) return;
+        clearTimeout(pending.timeout);
+        this.readabilityWorkerPending.delete(event.data.id);
+        pending.resolve(event.data.rgba ? new Uint8ClampedArray(event.data.rgba) : null);
+      };
+      worker.onerror = () => {
+        worker.terminate();
+        this.readabilityWorker = null;
+        for (const pending of this.readabilityWorkerPending.values()) {
+          clearTimeout(pending.timeout);
+          pending.resolve(null);
+        }
+        this.readabilityWorkerPending.clear();
+      };
+      this.readabilityWorker = worker;
+      return worker;
+    } catch {
+      this.readabilityWorker = null;
+      return null;
+    }
   }
 
   // ── Observers / input ──────────────────────────────────────
@@ -430,6 +780,7 @@ export class BackdropEngine {
         slot.kernel.resize(this.frameCtx(slot.substrate));
       }
       this.harvestObstacles(true);
+      this.scheduleReadabilitySample();
     });
     this.resizeObs.observe(this.container);
 
@@ -458,6 +809,7 @@ export class BackdropEngine {
 
   private onVisibility = (): void => {
     this.pageVisible = !document.hidden;
+    if (this.pageVisible) this.scheduleReadabilitySample();
   };
 
   private onPointerMove = (e: PointerEvent): void => {
@@ -553,8 +905,10 @@ export class BackdropEngine {
         this.raf = null;
       }
       for (const slot of this.slots) slot.kernel.renderStatic?.();
+      this.scheduleReadabilitySample();
     } else if (this.raf === null) {
       this.startLoop();
+      this.scheduleReadabilitySample();
     }
   };
 }

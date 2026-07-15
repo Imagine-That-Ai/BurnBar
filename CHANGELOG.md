@@ -40,6 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Adaptive foregrounds for animated desktop backdrops** - macOS and Linux now
+  sample the effective rendered kernel at a bounded cadence and automatically select
+  a WCAG AA light or dark semantic foreground family. Crossfades, both skins, canvas
+  and CSS/native fallbacks, increased contrast, forced colors, and reduced motion use
+  deterministic scrim and hysteresis behavior without full-frame readback.
 - **Launch-readiness hardening** — added durable account-erasure barriers,
   resumable oldest-first reconciliation with poison-record quarantine, and
   privacy-safe retained audit receipts across Functions, Firestore, and Storage.

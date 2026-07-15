@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
 import type { KernelId } from '@openburnbar/gl-engine/engine/types';
+import type { BackdropReadabilityProfile } from '@openburnbar/gl-engine/engine/readability';
 import { CommandPalette } from '../components/CommandPalette.js';
 import { KernelBackdrop } from '../components/KernelBackdrop.js';
 import { TopChrome } from '../components/TopChrome.js';
 import { SurfaceRouter } from '../surfaces/SurfaceRouter.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
+import {
+  applyAdaptiveForeground,
+  fallbackProfileForSkin,
+  readabilityDiagnostic
+} from '../lib/adaptiveForeground.js';
 import { useShellStore } from '../state/shellStore.js';
 
 function isComputerUsePanicHotkey(event: KeyboardEvent): boolean {
@@ -23,6 +29,9 @@ export function App() {
   const skin = useShellStore((s) => s.skin);
   const syncRouteFromHash = useShellStore((s) => s.syncRouteFromHash);
   const bridge = useShellStore((s) => s.bridge);
+  const [readability, setReadability] = useState<BackdropReadabilityProfile>(() =>
+    fallbackProfileForSkin(useShellStore.getState().skin)
+  );
 
   useEffect(() => {
     window.addEventListener('hashchange', syncRouteFromHash);
@@ -62,11 +71,22 @@ export function App() {
     document.documentElement.style.setProperty('--ds-skin', skin);
   }, [skin]);
 
+  useEffect(() => applyAdaptiveForeground(readability), [readability]);
+
   return (
     <>
       {/* Keep the fixed backdrop outside the shell stacking context. */}
-      <KernelBackdrop skin={skin} kernelId={kernelId} />
-      <div className="shell">
+      <KernelBackdrop
+        skin={skin}
+        kernelId={kernelId}
+        onReadability={setReadability}
+      />
+      <div className="adaptive-backdrop-scrim" aria-hidden="true" />
+      <div
+        className="shell"
+        data-foreground-tone={readability.tone}
+        data-readability={readabilityDiagnostic(readability)}
+      >
         <div className="shell-key-capture" tabIndex={0} aria-hidden="true" />
         <a
           className="skip-link"
@@ -87,7 +107,12 @@ export function App() {
           }}
         />
         <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
-        <main className="shell-main shell-main--bleed" id="main" tabIndex={-1}>
+        <main
+          className="shell-main shell-main--bleed"
+          id="main"
+          tabIndex={-1}
+          data-readability-region="content"
+        >
           <SurfaceRouter route={route} />
         </main>
       </div>

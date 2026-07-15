@@ -11,7 +11,7 @@ struct KernelCatalogEntry: Identifiable, Hashable {
     let label: String
 }
 
-/// The 31 bundled kernels, in registry order. Hardcoded (rather than read back
+/// The 32 bundled kernels, in registry order. Hardcoded (rather than read back
 /// from `window.__kernels`) so the picker renders instantly and offline. Keep
 /// in sync with the engine's `KERNEL_META`.
 enum KernelCatalog {
@@ -49,7 +49,8 @@ enum KernelCatalog {
         KernelCatalogEntry(id: "origami", label: "Origami"),
         KernelCatalogEntry(id: "ink-diffusion", label: "Ink Diffusion"),
         KernelCatalogEntry(id: "petroleum-sheen", label: "Petroleum Sheen"),
-        KernelCatalogEntry(id: "boids", label: "Boids")
+        KernelCatalogEntry(id: "boids", label: "Boids"),
+        KernelCatalogEntry(id: "swarmEmber", label: "Swarm Ember")
     ]
 
     /// Whether `id` names a real kernel; guards the JS bridge against junk.
@@ -68,14 +69,32 @@ enum KernelCatalog {
 /// changes. The web view never draws its own background and never intercepts
 /// clicks, so the dashboard content composites cleanly on top.
 struct KernelBackdropView: NSViewRepresentable {
+    static let readabilityMessageName = "backdropReadability"
+
+    var colorSchemeOverride: ColorScheme?
+    var onReadabilityChange: (BackdropReadabilityProfile) -> Void
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
     @Environment(\.colorScheme) private var colorScheme
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    init(
+        colorSchemeOverride: ColorScheme? = nil,
+        onReadabilityChange: @escaping (BackdropReadabilityProfile) -> Void = { _ in }
+    ) {
+        self.colorSchemeOverride = colorSchemeOverride
+        self.onReadabilityChange = onReadabilityChange
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onReadabilityChange: onReadabilityChange)
+    }
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.suppressesIncrementalRendering = false
+        configuration.userContentController.add(
+            context.coordinator,
+            name: Self.readabilityMessageName
+        )
 
         let webView = NonInteractiveWebView(frame: .zero, configuration: configuration)
         // Let the dashboard surface (and any window blur) show through — the
@@ -88,7 +107,7 @@ struct KernelBackdropView: NSViewRepresentable {
         webView.autoresizingMask = [.width, .height]
 
         context.coordinator.requestedKernel = resolvedKernelID
-        context.coordinator.requestedTheme = themeName(for: colorScheme)
+        context.coordinator.requestedTheme = themeName(for: effectiveColorScheme)
         webView.onWindowChange = { [weak coordinator = context.coordinator] in
             coordinator?.hostWindowChanged(for: $0)
         }
@@ -97,9 +116,10 @@ struct KernelBackdropView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.onReadabilityChange = onReadabilityChange
         context.coordinator.apply(
             kernel: resolvedKernelID,
-            theme: themeName(for: colorScheme),
+            theme: themeName(for: effectiveColorScheme),
             to: webView
         )
     }
@@ -108,6 +128,9 @@ struct KernelBackdropView: NSViewRepresentable {
         coordinator.detachOcclusionObserver()
         (webView as? NonInteractiveWebView)?.onWindowChange = nil
         webView.navigationDelegate = nil
+        webView.configuration.userContentController.removeScriptMessageHandler(
+            forName: Self.readabilityMessageName
+        )
         webView.stopLoading()
     }
 
@@ -117,12 +140,17 @@ struct KernelBackdropView: NSViewRepresentable {
         KernelCatalog.isValid(backdropKernel) ? backdropKernel : KernelCatalog.defaultID
     }
 
+    private var effectiveColorScheme: ColorScheme {
+        colorSchemeOverride ?? colorScheme
+    }
+
     private func themeName(for scheme: ColorScheme) -> String {
         scheme == .light ? "light" : "dark"
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        var onReadabilityChange: (BackdropReadabilityProfile) -> Void
         var requestedKernel: String = KernelCatalog.defaultID
         var requestedTheme: String = "dark"
         private var isLoaded = false
@@ -130,6 +158,21 @@ struct KernelBackdropView: NSViewRepresentable {
         private var occlusionObserver: NSObjectProtocol?
         /// Last state pushed to JS, so occlusion churn doesn't spam evaluateJavaScript.
         private var lastReportedActive: Bool?
+
+        init(onReadabilityChange: @escaping (BackdropReadabilityProfile) -> Void) {
+            self.onReadabilityChange = onReadabilityChange
+        }
+
+        func userContentController(
+            _ userContentController: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            guard
+                message.name == KernelBackdropView.readabilityMessageName,
+                let profile = BackdropReadabilityProfile.decode(messageBody: message.body)
+            else { return }
+            onReadabilityChange(profile)
+        }
 
         // MARK: Occlusion → render-loop gating
         //

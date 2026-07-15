@@ -15,9 +15,10 @@
  * through `evaluateJavaScript`.
  */
 
-import { BackdropEngine } from "../../apps/console/lib/gl/engine/BackdropEngine";
-import { KERNELS, isKernelId } from "../../apps/console/lib/gl/engine/registry";
-import type { KernelId, KernelSubstrate } from "../../apps/console/lib/gl/engine/types";
+import { BackdropEngine } from "../../packages/gl-engine/src/engine/BackdropEngine";
+import { KERNELS, isKernelId } from "../../packages/gl-engine/src/engine/registry";
+import type { BackdropReadabilityProfile } from "../../packages/gl-engine/src/engine/readability";
+import type { KernelId, KernelSubstrate } from "../../packages/gl-engine/src/engine/types";
 
 interface KernelBridgeMeta {
   id: KernelId;
@@ -28,6 +29,12 @@ interface KernelBridgeMeta {
 
 declare global {
   interface Window {
+    /** WebKit native-message bridge, absent in ordinary browsers. */
+    webkit?: {
+      messageHandlers?: {
+        backdropReadability?: { postMessage: (profile: BackdropReadabilityProfile) => void };
+      };
+    };
     /** Switch the live kernel. Returns false (and no-ops) for junk ids. */
     __setKernel?: (id: string) => boolean;
     /** Switch the palette theme; anything but "light"/"dark" is ignored. */
@@ -36,6 +43,8 @@ declare global {
     __getKernel?: () => KernelId;
     /** Import-free registry metadata for native pickers. */
     __kernels?: KernelBridgeMeta[];
+    /** Last measured foreground profile for diagnostics and native polling. */
+    __getReadability?: () => BackdropReadabilityProfile | null;
     /**
      * Native occlusion bridge: the host calls `false` when the window is
      * fully occluded/minimized/hidden (document.hidden never fires for mere
@@ -76,7 +85,15 @@ function mount(): void {
   host.style.height = "100%";
   host.style.overflow = "hidden";
 
-  const engine = new BackdropEngine(host, { theme: "dark", initialKernel: initialKernel() });
+  let readability: BackdropReadabilityProfile | null = null;
+  const engine = new BackdropEngine(host, {
+    theme: "dark",
+    initialKernel: initialKernel(),
+    onReadability: (profile) => {
+      readability = profile;
+      window.webkit?.messageHandlers?.backdropReadability?.postMessage(profile);
+    },
+  });
 
   window.__setKernel = (id: string): boolean => {
     if (!isKernelId(id)) return false;
@@ -87,6 +104,7 @@ function mount(): void {
     if (theme === "dark" || theme === "light") engine.setTheme(theme);
   };
   window.__getKernel = (): KernelId => engine.getResolvedKernel();
+  window.__getReadability = (): BackdropReadabilityProfile | null => readability;
   window.__setBackdropActive = (active: boolean): void => {
     engine.setHostVisible(active === true);
   };
