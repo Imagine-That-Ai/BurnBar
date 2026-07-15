@@ -75,7 +75,9 @@
         "environment",
         "status",
         "healthChecks",
-        "deployedArtifact"
+        "deployedArtifact",
+        "deployRun",
+        "healthArtifactSha256"
       ],
       "properties": {
         "provider": { "enum": ["firebase-hosting", "firebase-functions"] },
@@ -90,6 +92,45 @@
         },
         "deployedArtifact": {
           "$ref": "domain-core-release-predicate.schema.json#/$defs/artifact"
+        },
+        "deployRun": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "workflowPath",
+            "runId",
+            "runAttempt",
+            "event",
+            "ref",
+            "headSha",
+            "jobSetSha256"
+          ],
+          "properties": {
+            "repository": { "const": "Imagine-That-Ai/BurnBar" },
+            "workflowPath": {
+              "enum": [
+                ".github/workflows/deploy-hosting.yml",
+                ".github/workflows/deploy-production.yml"
+              ]
+            },
+            "runId": { "type": "integer", "minimum": 1 },
+            "runAttempt": { "type": "integer", "minimum": 1 },
+            "event": { "enum": ["push", "workflow_dispatch"] },
+            "ref": {
+              "type": "string",
+              "pattern": "^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
+            },
+            "headSha": {
+              "$ref": "domain-core-release-predicate.schema.json#/$defs/gitSha"
+            },
+            "jobSetSha256": {
+              "$ref": "domain-core-release-predicate.schema.json#/$defs/sha256"
+            }
+          }
+        },
+        "healthArtifactSha256": {
+          "$ref": "domain-core-release-predicate.schema.json#/$defs/sha256"
         }
       }
     }
