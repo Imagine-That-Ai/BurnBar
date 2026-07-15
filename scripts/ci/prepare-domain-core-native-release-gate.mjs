@@ -232,7 +232,10 @@ function promotionVerificationArguments(
   ];
 }
 
-export function run(argv, { command = createCommandRunner() } = {}) {
+export function run(
+  argv,
+  { command = createCommandRunner(), activationVerifier } = {},
+) {
   const args = parseArguments(argv);
   const candidateCommit = args.get("--candidate-commit");
   if (!FULL_SHA.test(candidateCommit)) {
@@ -410,6 +413,7 @@ export function run(argv, { command = createCommandRunner() } = {}) {
     protectedSignerRunAttempt: signerRun.runAttempt,
     expectedRollbackSha256: sha256File(rollbackPath),
     promotionVerifier: () => verified,
+    activationVerifier,
   });
 
   const profilePath = join(

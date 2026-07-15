@@ -1266,6 +1266,16 @@ jobs:
         with:
           packages: "platforms;android-35 build-tools;36.0.0"
 
+      - name: Rebuild and byte-compare checked-in Android AAR
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: 0000000000000000000000000000000000000000
+        run: ./scripts/build-domain-core-android-aar.sh --check-artifact
+
+      - name: Build candidate-bound four-ABI Android AAR
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
+        run: ./scripts/build-domain-core-android-aar.sh
+
       - name: Inject Android Firebase config
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}

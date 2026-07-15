@@ -212,6 +212,9 @@ jobs:
           artifact="$RUNNER_TEMP/OpenBurnBar-${RELEASE_VERSION}-functions-deployment.json"
           predicate="$RUNNER_TEMP/OpenBurnBar-${RELEASE_VERSION}-functions-deployment.predicate.json"
           proof_dir="$RUNNER_TEMP/functions-deploy-proof"
+          activation="$proof_dir/domain-core-functions-release-activation.json"
+          jq -e '.activation | {candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
+            "$proof_dir/domain-core-release-gate.json" > "$activation"
           node scripts/ci/create-domain-core-release-evidence.mjs \
             --consumer functions \
             --domain pricing \
@@ -223,6 +226,7 @@ jobs:
             --artifact "$artifact" \
             --predicate "$predicate" \
             --public-profile-sha256 "$PUBLIC_PROFILE_SHA256" \
+            --activation "$activation" \
             --candidate-bundle "$proof_dir/domain-core-candidate-bundle.json" \
             --promotion-attestation "$proof_dir/domain-core-promotion.sigstore.jsonl" \
             --protected-signer-run-id "$SIGNER_RUN_ID" \

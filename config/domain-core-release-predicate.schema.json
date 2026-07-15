@@ -253,11 +253,33 @@
     "appStoreConnectReceipt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schemaVersion", "status", "processedStatus", "deliveryId", "archiveSha256", "ipaSha256", "uploadResponseSha256", "statusResponseSha256", "release", "candidate", "activation", "loadedRustIdentity"],
+      "required": [
+        "schemaVersion",
+        "status",
+        "processedStatus",
+        "deliveryId",
+        "archiveSha256",
+        "ipaSha256",
+        "uploadResponseSha256",
+        "statusResponseSha256",
+        "release",
+        "candidate",
+        "activation",
+        "loadedRustIdentity"
+      ],
       "properties": {
         "schemaVersion": { "const": 1 },
         "status": { "const": "processed" },
-        "processedStatus": { "enum": ["complete", "completed", "processed", "processing complete", "success", "succeeded"] },
+        "processedStatus": {
+          "enum": [
+            "complete",
+            "completed",
+            "processed",
+            "processing complete",
+            "success",
+            "succeeded"
+          ]
+        },
         "deliveryId": { "type": "string", "minLength": 1 },
         "archiveSha256": { "$ref": "#/$defs/sha256" },
         "ipaSha256": { "$ref": "#/$defs/sha256" },
@@ -269,7 +291,10 @@
           "required": ["version", "tag", "commit"],
           "properties": {
             "version": { "$ref": "#/$defs/stableVersion" },
-            "tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$" },
+            "tag": {
+              "type": "string",
+              "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
+            },
             "commit": { "$ref": "#/$defs/gitSha" }
           }
         },
@@ -278,7 +303,20 @@
         "loadedRustIdentity": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["schemaVersion", "verificationKind", "bundleId", "version", "buildNumber", "executable", "architectures", "candidate", "observed", "executableSha256", "identitySectionSha256", "identitySymbols"],
+          "required": [
+            "schemaVersion",
+            "verificationKind",
+            "bundleId",
+            "version",
+            "buildNumber",
+            "executable",
+            "architectures",
+            "candidate",
+            "observed",
+            "executableSha256",
+            "identitySectionSha256",
+            "identitySymbols"
+          ],
           "properties": {
             "schemaVersion": { "const": 1 },
             "verificationKind": { "const": "ios-loaded-rust-slice-identity" },
@@ -291,7 +329,12 @@
             "observed": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["candidateCommit", "coreVersion", "abiVersion", "sourceSha256"],
+              "required": [
+                "candidateCommit",
+                "coreVersion",
+                "abiVersion",
+                "sourceSha256"
+              ],
               "properties": {
                 "candidateCommit": { "$ref": "#/$defs/gitSha" },
                 "coreVersion": { "$ref": "#/$defs/nativeVersion" },
@@ -305,6 +348,7 @@
               "const": [
                 "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
                 "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+                "uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit",
                 "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
                 "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version"
               ]

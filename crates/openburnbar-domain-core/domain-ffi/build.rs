@@ -36,22 +36,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wire = format!(
         "openburnbar-domain-core-identity-v1|candidateCommit={candidate_commit}|coreVersion={core_version}|abiVersion={abi_version}|sourceSha256={source_sha256}"
     );
-    let output = std::path::PathBuf::from(std::env::var("OUT_DIR")?)
-        .join("openburnbar_domain_core_identity.c");
-    std::fs::write(
-        &output,
-        format!(
-            "#if defined(_MSC_VER)\n#pragma section(\".obb_core_id\", read)\n__declspec(allocate(\".obb_core_id\")) __declspec(dllexport)\n#elif defined(__APPLE__)\n__attribute__((used, retain, section(\"__TEXT,__obb_core_id\"), visibility(\"default\")))\n#else\n__attribute__((used, visibility(\"default\")))\n#endif\nconst unsigned char OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1[] = \"{wire}\";\n"
-        ),
-    )?;
-    cc::Build::new()
-        .cargo_metadata(false)
-        .file(output)
-        .compile("openburnbar_domain_core_identity");
-    println!(
-        "cargo:rustc-link-search=native={}",
-        std::env::var("OUT_DIR")?
-    );
-    println!("cargo:rustc-link-lib=static:+whole-archive=openburnbar_domain_core_identity");
+    println!("cargo:rustc-env=OPENBURNBAR_DOMAIN_CORE_IDENTITY_WIRE={wire}");
+    let target_vendor = std::env::var("CARGO_CFG_TARGET_VENDOR")?;
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS")?;
+    if target_vendor == "apple" || target_os == "windows" {
+        let output = std::path::PathBuf::from(std::env::var("OUT_DIR")?)
+            .join("openburnbar_domain_core_identity.c");
+        std::fs::write(
+            &output,
+            format!(
+                "#if defined(_MSC_VER)\n#pragma section(\".obb_core_id\", read)\n__declspec(allocate(\".obb_core_id\")) __declspec(dllexport)\n#else\n__attribute__((used, retain, section(\"__TEXT,__obb_core_id\"), visibility(\"default\")))\n#endif\nconst unsigned char OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1[] = \"{wire}\";\n"
+            ),
+        )?;
+        cc::Build::new()
+            .cargo_metadata(false)
+            .file(output)
+            .compile("openburnbar_domain_core_identity");
+        println!(
+            "cargo:rustc-link-search=native={}",
+            std::env::var("OUT_DIR")?
+        );
+        println!("cargo:rustc-link-lib=static:+whole-archive=openburnbar_domain_core_identity");
+    }
     Ok(())
 }

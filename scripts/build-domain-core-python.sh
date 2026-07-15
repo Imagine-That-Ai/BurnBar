@@ -74,6 +74,11 @@ fn main() -> anyhow::Result<()> {
 }
 EOF
 
+if [[ -n "${DOMAIN_CORE_OBSERVED_IDENTITY_REPORT:-}" ]]; then
+  : "${DOMAIN_CORE_CANDIDATE_COMMIT:?DOMAIN_CORE_CANDIDATE_COMMIT is required with DOMAIN_CORE_OBSERVED_IDENTITY_REPORT}"
+  export OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT="${DOMAIN_CORE_CANDIDATE_COMMIT}"
+fi
+
 (
   cd "${CRATE_DIR}"
   cargo build ${PROFILE_FLAG} -p openburnbar-domain-ffi --lib
@@ -152,7 +157,6 @@ cp "${PACKAGE_DIR}/openburnbar_domain_ffi.py" \
   "${HERMES_PACKAGE_DIR}/"
 
 if [[ -n "${DOMAIN_CORE_OBSERVED_IDENTITY_REPORT:-}" ]]; then
-  : "${DOMAIN_CORE_CANDIDATE_COMMIT:?DOMAIN_CORE_CANDIDATE_COMMIT is required with DOMAIN_CORE_OBSERVED_IDENTITY_REPORT}"
   python3 - "${PACKAGE_DIR}" "${DOMAIN_CORE_OBSERVED_IDENTITY_REPORT}" "${DOMAIN_CORE_CANDIDATE_COMMIT}" <<'PY'
 import json
 import sys
@@ -160,7 +164,13 @@ from pathlib import Path
 
 package = Path(sys.argv[1])
 output = Path(sys.argv[2])
-candidate_commit = sys.argv[3]
+expected_candidate_commit = sys.argv[3]
+sys.path.insert(0, str(package))
+import openburnbar_domain_ffi as core
+
+candidate_commit = core.domain_core_candidate_commit()
+if candidate_commit == "0" * 40 or candidate_commit != expected_candidate_commit:
+    raise SystemExit("loaded Rust candidate commit does not match the expected candidate")
 receipt = json.loads((package / "openburnbar-domain-core-package-receipt.json").read_text())
 identity = {
     "candidateCommit": candidate_commit,

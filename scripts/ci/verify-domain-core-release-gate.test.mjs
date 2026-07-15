@@ -34,6 +34,15 @@ function fixture() {
   const promotionAttestation = join(directory, "promotion.sigstore.json");
   const rollbackArtifact = join(directory, "domain-core-legacy-rollback.json");
   const output = join(directory, "release-gate.json");
+  writeFileSync(promotionAttestation, "signed-protected-attestation");
+  writeFileSync(
+    rollbackArtifact,
+    `${JSON.stringify({
+      candidateIdentity: CANDIDATE,
+      modes: { quota: "legacy", cloudVault: "legacy" },
+    })}\n`,
+  );
+  const rollbackArtifactSha256 = sha(readFileSync(rollbackArtifact));
   writeFileSync(
     candidateBundle,
     `${JSON.stringify({
@@ -55,14 +64,16 @@ function fixture() {
         headSha: CANDIDATE.candidateCommit,
         jobs: [],
       },
-    })}\n`,
-  );
-  writeFileSync(promotionAttestation, "signed-protected-attestation");
-  writeFileSync(
-    rollbackArtifact,
-    `${JSON.stringify({
-      candidateIdentity: CANDIDATE,
-      modes: { quota: "legacy", cloudVault: "legacy" },
+      rollback: {
+        jobId: "rollback-drill",
+        suiteId: "rollback-drill",
+        runId: 101,
+        runAttempt: 2,
+        reportSha256: "e".repeat(64),
+        fromCandidateCommit: CANDIDATE.candidateCommit,
+        restoredArtifactSha256: rollbackArtifactSha256,
+        restoredMode: "legacy",
+      },
     })}\n`,
   );
   const args = [
@@ -91,7 +102,7 @@ function fixture() {
     "--protected-signer-run-attempt",
     "3",
     "--rollback-sha256",
-    sha(readFileSync(rollbackArtifact)),
+    rollbackArtifactSha256,
     "--output",
     output,
   ];
@@ -100,6 +111,7 @@ function fixture() {
     candidateBundle,
     promotionAttestation,
     rollbackArtifact,
+    rollbackArtifactSha256,
     output,
     args,
   };
@@ -187,6 +199,31 @@ test("is byte-idempotent and refuses a different existing gate receipt", () => {
           activationVerifier: () => ACTIVATION,
         }),
       /refusing to replace non-identical release gate receipt/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects rollback artifact whose SHA-256 differs from the bundle rollback proof", () => {
+  const files = fixture();
+  try {
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        tampered: true,
+      })}\n`,
+    );
+    const tamperedSha256 = sha(readFileSync(files.rollbackArtifact));
+    assert.throws(
+      () =>
+        run(replaceArgument(files.args, "--rollback-sha256", tamperedSha256), {
+          promotionVerifier: () => [],
+          activationVerifier: () => ACTIVATION,
+        }),
+      /rollback artifact digest does not match the protected candidate bundle rollback proof/u,
     );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
