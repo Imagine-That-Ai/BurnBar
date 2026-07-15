@@ -3,12 +3,8 @@ package com.openburnbar.data.hermes.relay
 import uniffi.openburnbar_domain_ffi.HermesAadKind
 
 internal object HermesRelayCryptoSupport {
-    private const val AAD_PREFIX = "OpenBurnBar-HermesRelay-v1"
-    private const val KEY_WRAP_SHARED_INFO_PREFIX = "OpenBurnBar-HermesRelay-KeyWrap-v1|"
-    private const val KEY_WRAP_SHARED_INFO_PREFIX_V2 = "OpenBurnBar-HermesRelay-KeyWrap-v2|"
-
     fun aad(parts: List<String>): ByteArray {
-        val legacy = { ("$AAD_PREFIX|" + parts.joinToString("|")).toByteArray(Charsets.UTF_8) }
+        val legacy = { HermesRelayLegacyCrypto.aad(parts) }
         val kind = when (parts.firstOrNull()) {
             "request" -> HermesAadKind.REQUEST
             "key" -> HermesAadKind.KEY
@@ -30,7 +26,7 @@ internal object HermesRelayCryptoSupport {
     }
 
     fun keyWrapSharedInfo(aad: ByteArray): ByteArray = HermesDomainCoreAdapter.keyWrapInfoV1(aad) {
-        KEY_WRAP_SHARED_INFO_PREFIX.toByteArray(Charsets.UTF_8) + aad
+        HermesRelayLegacyCrypto.keyWrapInfoV1(aad)
     }
 
     /**
@@ -42,7 +38,7 @@ internal object HermesRelayCryptoSupport {
      */
     fun keyWrapSharedInfoV2(aad: ByteArray, enc: ByteArray, pkR: ByteArray, pkS: ByteArray): ByteArray =
         HermesDomainCoreAdapter.keyWrapInfoV2(aad, enc, pkR, pkS) {
-            KEY_WRAP_SHARED_INFO_PREFIX_V2.toByteArray(Charsets.UTF_8) + aad + enc + pkR + pkS
+            HermesRelayLegacyCrypto.keyWrapInfoV2(aad, enc, pkR, pkS)
         }
 
     fun base64NoWrap(bytes: ByteArray): String = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)

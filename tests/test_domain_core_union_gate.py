@@ -85,6 +85,7 @@ version = "0.0.0"
 edition = "2021"
 
 [build-dependencies]
+cc = "=1.2.67"
 serde_json = "=1.0.150"
 sha2 = "=0.10.9"
 """,
@@ -104,6 +105,7 @@ fn compiled_identity_matches_verified_manifest() {
     )
     return crate, {
         "schemaVersion": 1,
+        "abiVersion": 3,
         "sourceRoots": [
             f"{source_crate}/build.rs",
             f"{source_crate}/src",
@@ -170,8 +172,27 @@ class DomainCoreUnionGateTests(unittest.TestCase):
 
     def test_repository_manifest_matches_source_with_canonical_sha256(self) -> None:
         _, manifest = GATE.load_manifest(ROOT)
+        GATE.verify_build_identity(ROOT, manifest)
         fingerprint = GATE.verified_source_fingerprint(ROOT, manifest)
         self.assertRegex(fingerprint, re.compile(r"\A[0-9a-f]{64}\Z"))
+
+    def test_manifest_build_identity_must_match_canonical_rust_source(self) -> None:
+        _, manifest = GATE.load_manifest(ROOT)
+        with self.assertRaisesRegex(GATE.GateError, "coreVersion drifted"):
+            GATE.verify_build_identity(ROOT, {**manifest, "coreVersion": "9.9.9"})
+        with self.assertRaisesRegex(GATE.GateError, "abiVersion drifted"):
+            GATE.verify_build_identity(ROOT, {**manifest, "abiVersion": manifest["abiVersion"] + 1})
+
+    def test_manifest_build_identity_rejects_malformed_values(self) -> None:
+        _, manifest = GATE.load_manifest(ROOT)
+        for core_version in (None, "01.0.0", "1.0", "1.0.0-"):
+            with self.subTest(core_version=core_version):
+                with self.assertRaisesRegex(GATE.GateError, "coreVersion must be a canonical SemVer"):
+                    GATE.verify_build_identity(ROOT, {**manifest, "coreVersion": core_version})
+        for abi_version in (None, True, 0, -1, 0x1_0000_0000):
+            with self.subTest(abi_version=abi_version):
+                with self.assertRaisesRegex(GATE.GateError, "abiVersion must be an unsigned 32-bit integer"):
+                    GATE.verify_build_identity(ROOT, {**manifest, "abiVersion": abi_version})
 
     def test_native_binding_provenance_sidecars_match_canonical_source(self) -> None:
         _, manifest = GATE.load_manifest(ROOT)
@@ -180,6 +201,7 @@ class DomainCoreUnionGateTests(unittest.TestCase):
         expected_sidecars = {
             "csharp.sha256",
             "kotlin.sha256",
+            "python.sha256",
             "swift.sha256",
         }
         actual_sidecars = {path.name for path in provenance_root.glob("*.sha256")}
@@ -231,6 +253,44 @@ class DomainCoreUnionGateTests(unittest.TestCase):
                     with self.assertRaisesRegex(GATE.GateError, "sourceSha256"):
                         GATE.verified_source_fingerprint(root, mutated)
 
+    def test_source_roots_cannot_escape_or_use_noncanonical_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            crate = root / "crates/openburnbar-domain-core"
+            crate.mkdir(parents=True)
+            (crate / "source.rs").write_text("source\n", encoding="utf-8")
+            source_roots = (
+                "/etc/passwd",
+                "../outside",
+                "./source.rs",
+                "nested/../source.rs",
+                "nested\\source.rs",
+            )
+            for source_root in source_roots:
+                with self.subTest(source_root=source_root):
+                    with self.assertRaisesRegex(GATE.GateError, "normalized relative|POSIX"):
+                        GATE.calculate_source_fingerprint(root, {"sourceRoots": [source_root]})
+
+    def test_source_roots_reject_symlinks_and_special_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            crate = root / "crates/openburnbar-domain-core"
+            source = crate / "source"
+            source.mkdir(parents=True)
+            outside = root / "outside.rs"
+            outside.write_text("outside\n", encoding="utf-8")
+            (source / "link.rs").symlink_to(outside)
+            with self.assertRaisesRegex(GATE.GateError, "symlink"):
+                GATE.calculate_source_fingerprint(root, {"sourceRoots": ["source"]})
+
+            (source / "link.rs").unlink()
+            fifo = source / "special"
+            os.mkfifo(fifo)
+            try:
+                with self.assertRaisesRegex(GATE.GateError, "special file"):
+                    GATE.calculate_source_fingerprint(root, {"sourceRoots": ["source"]})
+            finally:
+                fifo.unlink(missing_ok=True)
     @unittest.skipUnless(CARGO_OFFLINE_AVAILABLE, "cargo --offline with serde_json/sha2 not available")
     def test_compile_time_identity_helper_rejects_missing_or_malformed_fingerprint(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

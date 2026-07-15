@@ -1,11 +1,18 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 
 import { isRecord } from "./guards.js";
 import { logWarn } from "./logging.js";
-import { resolveDomainCoreEvidenceChannel, resolveDomainCoreRuntimeMode } from "./domainCoreBuildProfile.js";
-import { buildDomainCoreShadowSampleV2 } from "./domainCoreShadowEvidence.js";
+import {
+  resolveDomainCoreCandidateIdentity,
+  resolveDomainCoreEvidenceChannel,
+  resolveDomainCoreRuntimeMode,
+} from "./domainCoreBuildProfile.js";
+import { buildDomainCoreShadowSampleV3 } from "./domainCoreShadowEvidence.js";
 
-type DomainCoreShadowSampleV2 = ReturnType<typeof buildDomainCoreShadowSampleV2>;
+type DomainCoreShadowSampleV3 = ReturnType<typeof buildDomainCoreShadowSampleV3>;
 
 type DomainCorePricingMode = "legacy" | "shadow" | "rust";
 
@@ -32,6 +39,8 @@ type LegacyKimiPricing = {
 
 interface DomainCorePricingModule {
   calculateTokenCostNanoUsd(rates: BigUint64Array, buckets: BigUint64Array, hasCacheCreationRate: boolean): bigint;
+  domainCoreAbiVersion(): number;
+  domainCoreSourceFingerprint(): string;
   domainCoreVersion(): string;
   isLegacyKimiWireEvent(provider: string, model: string): boolean;
   legacyKimiWireModel(): string;
@@ -59,16 +68,23 @@ let unavailableLogged = false;
 let domainCore: DomainCorePricingModule | undefined;
 let rustVersion = "unknown";
 let rustLegacyKimiModel = "";
-type DomainCorePricingShadowEvidenceSink = (sample: DomainCoreShadowSampleV2) => unknown;
+interface LoadedDomainCoreIdentity {
+  version: string;
+  abiVersion: number;
+  sourceSha256: string;
+  wasmSha256: string;
+}
+let loadedCoreIdentity: LoadedDomainCoreIdentity | undefined;
+type DomainCorePricingShadowEvidenceSink = (sample: DomainCoreShadowSampleV3) => unknown;
 
 let shadowEvidenceSink: DomainCorePricingShadowEvidenceSink | undefined;
 const pendingShadowEvidenceTasks = new Set<Promise<void>>();
-const pendingProductionShadowSamples: DomainCoreShadowSampleV2[] = [];
+const pendingProductionShadowSamples: DomainCoreShadowSampleV3[] = [];
 const PRODUCTION_SHADOW_EVIDENCE_BATCH_SIZE = 100;
 let productionShadowEvidenceFlush: Promise<void> | undefined;
 
 export function configureDomainCorePricingShadowEvidenceSink(
-  sink: ((sample: DomainCoreShadowSampleV2) => void) | undefined,
+  sink: ((sample: DomainCoreShadowSampleV3) => void) | undefined,
 ): void {
   shadowEvidenceSink = sink;
 }
@@ -88,8 +104,18 @@ export async function flushDomainCorePricingShadowEvidence(): Promise<void> {
   }
 }
 
-export function resolveDomainCorePricingMode(environment: NodeJS.ProcessEnv = process.env): DomainCorePricingMode {
-  return resolveDomainCoreRuntimeMode("pricing", environment);
+/** Loads the exact production WASM package and returns its intrinsic and byte identities. */
+export function loadedDomainCorePricingIdentity(): Readonly<LoadedDomainCoreIdentity> {
+  initializeDomainCore();
+  if (!loadedCoreIdentity) throw new DomainCorePricingError();
+  return { ...loadedCoreIdentity };
+}
+
+export function resolveDomainCorePricingMode(
+  environment: NodeJS.ProcessEnv = process.env,
+  receipt?: unknown,
+): DomainCorePricingMode {
+  return resolveDomainCoreRuntimeMode("pricing", environment, testReceiptOverride(receipt));
 }
 
 export function calculateTokenCost(
@@ -97,14 +123,16 @@ export function calculateTokenCost(
   buckets: TokenPricingBuckets,
   legacy: () => number,
   environment: NodeJS.ProcessEnv = process.env,
+  receipt?: unknown,
 ): number {
-  const mode = resolveDomainCorePricingMode(environment);
+  const mode = resolveDomainCorePricingMode(environment, receipt);
   if (mode === "legacy") return legacy();
 
+  let rustStarted: bigint | undefined;
   try {
     const encodedRates = encodeRates(rates);
     const encodedBuckets = encodeBuckets(buckets);
-    const rustStarted = process.hrtime.bigint();
+    rustStarted = process.hrtime.bigint();
     const rustNanoUsd = requireDomainCore().calculateTokenCostNanoUsd(
       encodedRates.values,
       encodedBuckets,
@@ -129,6 +157,7 @@ export function calculateTokenCost(
       legacyMicros,
       rustMicros,
       environment,
+      receipt,
     );
     return typescript;
   } catch {
@@ -140,10 +169,11 @@ export function calculateTokenCost(
         "token-cost",
         "calculate_token_cost",
         false,
-        "native_error",
+        loadedCoreIdentity ? "native_error" : "native_unavailable",
         elapsedMicros(legacyStarted),
-        0,
+        rustStarted === undefined ? 0 : elapsedMicros(rustStarted),
         environment,
+        receipt,
       );
       return value;
     }
@@ -157,12 +187,14 @@ export function priceLegacyKimiUsage(
   buckets: TokenPricingBuckets,
   legacy: () => LegacyKimiPricing,
   environment: NodeJS.ProcessEnv = process.env,
+  receipt?: unknown,
 ): LegacyKimiPricing {
-  const mode = resolveDomainCorePricingMode(environment);
+  const mode = resolveDomainCorePricingMode(environment, receipt);
   if (mode === "legacy") return legacy();
 
+  let rustStarted: bigint | undefined;
   try {
-    const rustStarted = process.hrtime.bigint();
+    rustStarted = process.hrtime.bigint();
     const core = requireDomainCore();
     let rust: LegacyKimiPricing = { isLegacy: false };
     if (core.isLegacyKimiWireEvent(provider, model)) {
@@ -193,6 +225,7 @@ export function priceLegacyKimiUsage(
       legacyMicros,
       rustMicros,
       environment,
+      receipt,
     );
     return typescript;
   } catch {
@@ -204,10 +237,11 @@ export function priceLegacyKimiUsage(
         "legacy-kimi",
         "price_legacy_kimi",
         false,
-        "native_error",
+        loadedCoreIdentity ? "native_error" : "native_unavailable",
         elapsedMicros(legacyStarted),
-        0,
+        rustStarted === undefined ? 0 : elapsedMicros(rustStarted),
         environment,
+        receipt,
       );
       return value;
     }
@@ -220,10 +254,18 @@ function initializeDomainCore(): void {
   if (wasmUnavailable) throw new DomainCorePricingError();
   try {
     const require = createRequire(__filename);
-    const loaded: unknown = require("@openburnbar/domain-core-wasm");
+    const modulePath = require.resolve("@openburnbar/domain-core-wasm");
+    const loaded: unknown = require(modulePath);
     if (!isDomainCorePricingModule(loaded)) throw new DomainCorePricingError();
     domainCore = loaded;
-    rustVersion = domainCore.domainCoreVersion();
+    const wasmPath = resolve(dirname(modulePath), "openburnbar_domain_core_bg.wasm");
+    loadedCoreIdentity = {
+      version: domainCore.domainCoreVersion(),
+      abiVersion: domainCore.domainCoreAbiVersion(),
+      sourceSha256: domainCore.domainCoreSourceFingerprint(),
+      wasmSha256: createHash("sha256").update(readFileSync(wasmPath)).digest("hex"),
+    };
+    rustVersion = loadedCoreIdentity.version;
     rustLegacyKimiModel = domainCore.legacyKimiWireModel();
     wasmInitialized = true;
   } catch {
@@ -240,6 +282,8 @@ function isDomainCorePricingModule(value: unknown): value is DomainCorePricingMo
   return (
     isRecord(value) &&
     typeof value.calculateTokenCostNanoUsd === "function" &&
+    typeof value.domainCoreAbiVersion === "function" &&
+    typeof value.domainCoreSourceFingerprint === "function" &&
     typeof value.domainCoreVersion === "function" &&
     typeof value.isLegacyKimiWireEvent === "function" &&
     typeof value.legacyKimiWireModel === "function" &&
@@ -319,23 +363,44 @@ function recordShadowComparison(
   slice: "token-cost" | "legacy-kimi",
   operation: string,
   equivalent: boolean,
-  mismatchCategory: "result_mismatch" | "native_error" | null,
+  mismatchCategory: "result_mismatch" | "native_unavailable" | "native_error" | null,
   legacyMicros: number,
   rustMicros: number,
   environment: NodeJS.ProcessEnv,
+  receipt?: unknown,
 ): void {
-  const channel = resolveDomainCoreEvidenceChannel(environment);
-  if (!channel || rustVersion === "unknown") return;
+  const effectiveReceipt = testReceiptOverride(receipt);
+  const channel = resolveDomainCoreEvidenceChannel(environment, effectiveReceipt);
+  const candidateIdentity = resolveDomainCoreCandidateIdentity(environment, effectiveReceipt);
+  if (!channel || !candidateIdentity) return;
   try {
-    const sample = buildDomainCoreShadowSampleV2({
+    const loadedMatchesExpected =
+      loadedCoreIdentity !== undefined &&
+      loadedCoreIdentity.version === candidateIdentity.coreVersion &&
+      loadedCoreIdentity.abiVersion === candidateIdentity.abiVersion &&
+      loadedCoreIdentity.sourceSha256 === candidateIdentity.sourceSha256;
+    const loadedIdentityMismatch = loadedCoreIdentity !== undefined && !loadedMatchesExpected;
+    const effectiveMismatchCategory = loadedIdentityMismatch
+      ? "loaded_identity_mismatch"
+      : loadedCoreIdentity === undefined
+        ? "native_unavailable"
+        : mismatchCategory;
+    const sample = buildDomainCoreShadowSampleV3({
       domain: "pricing",
       slice,
       consumer: "functions",
       channel,
       operation,
-      coreVersion: rustVersion,
-      outcome: equivalent ? "match" : "mismatch",
-      mismatchCategory,
+      candidateCommit: candidateIdentity.candidateCommit,
+      expectedCoreVersion: candidateIdentity.coreVersion,
+      expectedCoreAbiVersion: candidateIdentity.abiVersion,
+      expectedCoreSourceSha256: candidateIdentity.sourceSha256,
+      loadedCoreVersion: loadedCoreIdentity?.version ?? null,
+      loadedCoreAbiVersion: loadedCoreIdentity?.abiVersion ?? null,
+      loadedCoreSourceSha256: loadedCoreIdentity?.sourceSha256 ?? null,
+      outcome:
+        loadedIdentityMismatch || loadedCoreIdentity === undefined ? "mismatch" : equivalent ? "match" : "mismatch",
+      mismatchCategory: effectiveMismatchCategory,
       legacyMicros,
       rustMicros,
     });
@@ -350,6 +415,14 @@ function recordShadowComparison(
   } catch {
     logWarn({ event: "domain_core.pricing.shadow_evidence_rejected" });
   }
+}
+
+function testReceiptOverride(receipt: unknown): unknown {
+  if (receipt === undefined) return undefined;
+  if (process.env.NODE_ENV !== "test") {
+    throw new DomainCorePricingError();
+  }
+  return receipt;
 }
 
 function trackShadowEvidenceTask(task: Promise<void>, failureEvent: string): void {

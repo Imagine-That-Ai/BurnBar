@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.com/schemas/domain-core-promotion-attestation-v2.json",
+  "title": "Protected deterministic domain-core promotion attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "authorityScope", "authorityGeneration", "candidate", "unsignedBundle", "provenance", "status", "generatedAt", "evidenceUri"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "authorityScope": { "enum": ["quota", "cloudvault", "cloudvault-rewrap", "cloudvault-search", "hermes", "pricing"] },
+    "authorityGeneration": { "type": "integer", "minimum": 1 },
+    "candidate": { "$ref": "#/$defs/candidate" },
+    "unsignedBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "sourceRunId", "sourceRunAttempt"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^config/domain-core-promotion-bundles/(?:quota|cloudvault|cloudvault-rewrap|cloudvault-search|hermes|pricing)/[1-9][0-9]*\\.json$" },
+        "sha256": { "$ref": "#/$defs/digest" },
+        "sourceRunId": { "type": "integer", "minimum": 1 },
+        "sourceRunAttempt": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "signerWorkflow", "signerRunId", "signerRunAttempt", "trustedMainCommit", "policySha256", "evaluatorSha256"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^config/domain-core-promotion-provenance/(?:quota|cloudvault|cloudvault-rewrap|cloudvault-search|hermes|pricing)/[1-9][0-9]*\\.json$" },
+        "sha256": { "$ref": "#/$defs/digest" },
+        "signerWorkflow": { "const": ".github/workflows/domain-core-promotion-proof.yml" },
+        "signerRunId": { "type": "integer", "minimum": 1 },
+        "signerRunAttempt": { "type": "integer", "minimum": 1 },
+        "trustedMainCommit": { "$ref": "#/$defs/commit" },
+        "policySha256": { "$ref": "#/$defs/digest" },
+        "evaluatorSha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "status": { "const": "attested" },
+    "generatedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "evidenceUri": { "type": "string", "pattern": "^https://github\\.com/Imagine-That-Ai/BurnBar/attestations/[1-9][0-9]*$" }
+  },
+  "$defs": {
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateCommit", "coreVersion", "abiVersion", "sourceSha256"],
+      "properties": {
+        "candidateCommit": { "$ref": "#/$defs/commit" },
+        "coreVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$" },
+        "abiVersion": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "sourceSha256": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

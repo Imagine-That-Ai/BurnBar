@@ -1,11 +1,62 @@
 using OpenBurnBar.App.CloudSync.Pensieve;
+using OpenBurnBar.CloudSync.Crypto;
 using Xunit;
 
 namespace OpenBurnBar.App.CloudSync.Tests;
 
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class PensieveVectorDomainCoreCollection
+{
+    public const string Name = "Pensieve vector domain core";
+}
+
+[Collection(PensieveVectorDomainCoreCollection.Name)]
 public sealed class PensieveVectorCloakTests
 {
     private static readonly byte[] Key = Enumerable.Repeat((byte)0x42, 32).ToArray();
+
+    [Fact]
+    public void RustAuthority_MatchesPublishedGoldenHead()
+    {
+        const string variable = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        Environment.SetEnvironmentVariable(variable, "rust");
+        try
+        {
+            var basis = new double[PensieveVectorCloak.EmbeddingDimensions];
+            basis[5] = 1;
+            double[] result = PensieveVectorCloak.Cloak(basis, Key, "hashing-bow-v1");
+            Assert.Equal(0.024962057620774702, result[0], precision: 12);
+            Assert.Equal(0.8367944634995997, result[5], precision: 12);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
+    [Fact]
+    public void ShadowEvidence_UsesPensieveVectorSlice()
+    {
+        const string variable = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        DomainCoreCloudVaultShadowComparison? comparison = null;
+        Environment.SetEnvironmentVariable(variable, "shadow");
+        DomainCoreCloudVaultShadowEvidence.Configure(value => comparison = value);
+        try
+        {
+            _ = PensieveVectorCloak.DeterministicEmbed("shadow vector evidence");
+            Assert.NotNull(comparison);
+            Assert.Equal("pensieve-vectors", comparison.Slice);
+            Assert.Equal("windows", comparison.Consumer);
+            Assert.Equal("match", comparison.Outcome);
+        }
+        finally
+        {
+            DomainCoreCloudVaultShadowEvidence.Configure(null);
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
 
     [Fact]
     public void Cloak_MatchesTypeScriptAndSwiftGoldenHeads()

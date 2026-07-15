@@ -12,8 +12,13 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
 
         XCTAssertEqual(Set(object.keys), Set([
             "schemaVersion", "sampleId", "domain", "slice", "consumer", "channel", "operation",
-            "coreVersion", "observedAt", "outcome", "mismatchCategory", "legacyMicros", "rustMicros"
+            "candidateCommit", "expectedCoreVersion", "expectedCoreAbiVersion", "expectedCoreSourceSha256",
+            "loadedCoreVersion", "loadedCoreAbiVersion", "loadedCoreSourceSha256",
+            "observedAt", "outcome", "mismatchCategory", "legacyMicros", "rustMicros"
         ]))
+        XCTAssertEqual(DomainCoreShadowSampleV3.storedKeys.count, 19)
+        XCTAssertEqual(object["schemaVersion"] as? Int, 3)
+        XCTAssertEqual(object["candidateCommit"] as? String, candidateCommit)
         XCTAssertTrue(object["mismatchCategory"] is NSNull)
         let mismatch = try XCTUnwrap(makeSample(
             outcome: .mismatch,
@@ -50,6 +55,112 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertEqual(boundary.mismatchCategory, "native_error")
     }
 
+    func testLoadedIdentityMismatchIsCandidateBoundAndLegacyResultRemainsEvidenceOnly() throws {
+        let mismatchedLoadedIdentity = DomainCoreEvidenceLoadedIdentity(
+            coreVersion: "0.3.1",
+            abiVersion: 3,
+            sourceSha256: sourceSha256
+        )
+        let sample = try XCTUnwrap(makeSample(loadedIdentity: mismatchedLoadedIdentity))
+
+        XCTAssertEqual(sample.outcome, "mismatch")
+        XCTAssertEqual(sample.mismatchCategory, "loaded_identity_mismatch")
+        XCTAssertEqual(sample.expectedCoreVersion, "0.3.0")
+        XCTAssertEqual(sample.loadedCoreVersion, "0.3.1")
+    }
+
+    func testMissingLoadedIdentityNormalizesNativeErrorToUnavailableWithNullTuple() throws {
+        let sample = try XCTUnwrap(makeSample(
+            outcome: .mismatch,
+            mismatchCategory: .nativeError,
+            loadedIdentityAvailable: false
+        ))
+
+        XCTAssertEqual(sample.outcome, "mismatch")
+        XCTAssertEqual(sample.mismatchCategory, "native_unavailable")
+        XCTAssertNil(sample.loadedCoreVersion)
+        XCTAssertNil(sample.loadedCoreAbiVersion)
+        XCTAssertNil(sample.loadedCoreSourceSha256)
+    }
+
+    func testReadableIdentityOverridesUpstreamUnavailableClassification() throws {
+        let matching = try XCTUnwrap(makeSample(
+            outcome: .mismatch,
+            mismatchCategory: .nativeUnavailable
+        ))
+        XCTAssertEqual(matching.mismatchCategory, "native_error")
+        XCTAssertEqual(matching.loadedCoreAbiVersion, 3)
+
+        let wrongABI = try XCTUnwrap(makeSample(
+            outcome: .mismatch,
+            mismatchCategory: .nativeUnavailable,
+            loadedIdentity: DomainCoreEvidenceLoadedIdentity(
+                coreVersion: "0.3.0",
+                abiVersion: 4,
+                sourceSha256: sourceSha256
+            )
+        ))
+        XCTAssertEqual(wrongABI.mismatchCategory, "loaded_identity_mismatch")
+        XCTAssertEqual(wrongABI.loadedCoreAbiVersion, 4)
+    }
+
+    func testSpoolDropsDifferentCandidateAndNeverTraversesSiblingCandidateDirectory() throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let activeCandidate = try XCTUnwrap(signedCandidate())
+        let staleCandidate = try XCTUnwrap(signedCandidate(commit: String(repeating: "c", count: 40)))
+        let activeDirectory = root.appendingPathComponent(
+            MacDomainCoreShadowEvidenceRecorder.candidateNamespace(activeCandidate),
+            isDirectory: true
+        )
+        let staleDirectory = root.appendingPathComponent(
+            MacDomainCoreShadowEvidenceRecorder.candidateNamespace(staleCandidate),
+            isDirectory: true
+        )
+        let staleSpool = try DomainCoreShadowEvidenceSpool(directory: staleDirectory, maxSamplesPerFile: 1)
+        try staleSpool.append(try XCTUnwrap(makeSample(candidate: staleCandidate)))
+        let activeSpool = try DomainCoreShadowEvidenceSpool(directory: activeDirectory, maxSamplesPerFile: 1)
+        try activeSpool.append(try XCTUnwrap(makeSample()))
+
+        let batch = try XCTUnwrap(activeSpool.nextBatch(
+            matchingChannel: "internal",
+            matchingCandidate: activeCandidate
+        ))
+        XCTAssertEqual(batch.samples.map(\.candidateCommit), [activeCandidate.candidateCommit])
+        XCTAssertEqual(try staleSpool.pendingSampleCount(), 1)
+    }
+
+    func testStartupDeletesLegacyQueuesAndStaleCandidateNamespacesWithoutRelabeling() throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("{\"schemaVersion\":2}\n".utf8).write(
+            to: root.appendingPathComponent("active.jsonl")
+        )
+        let staleV2 = root.appendingPathComponent("v2-old-candidate", isDirectory: true)
+        let staleV3 = root.appendingPathComponent("v3-old-candidate", isDirectory: true)
+        try FileManager.default.createDirectory(at: staleV2, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: staleV3, withIntermediateDirectories: true)
+        let candidate = try XCTUnwrap(signedCandidate())
+        let active = root.appendingPathComponent(
+            MacDomainCoreShadowEvidenceRecorder.candidateNamespace(candidate),
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: active, withIntermediateDirectories: true)
+        try Data("keep".utf8).write(to: active.appendingPathComponent("sentinel"))
+
+        let prepared = try MacDomainCoreShadowEvidenceRecorder.prepareCandidateDirectory(
+            base: root,
+            candidate: candidate
+        )
+
+        XCTAssertEqual(prepared, active)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("active.jsonl").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staleV2.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staleV3.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: active.appendingPathComponent("sentinel").path))
+    }
+
     func testRotationBoundsFilesAndDropsOldestWholeBatch() throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -73,13 +184,13 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertEqual(batch.token, "ready-00000000000000000001.jsonl")
     }
 
-    func testGenericCollectorBuildsValidatedV2SamplesForEveryAppleDomain() throws {
+    func testGenericCollectorBuildsValidatedV3SamplesForEveryAppleDomain() throws {
         for (domain, slice, operation) in [
             ("cloudvault", "search", "query"),
             ("hermes", "ratchet", "ratchet_chain_kdf"),
             ("pricing", "token-cost", "calculate_token_cost")
         ] {
-            let sample = try XCTUnwrap(DomainCoreShadowSampleV2(
+            let sample = try XCTUnwrap(DomainCoreShadowSampleV3(
                 comparison: .init(
                     domain: domain,
                     slice: slice,
@@ -90,16 +201,62 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
                     legacyMicros: 10,
                     rustMicros: 8
                 ),
-                channel: "internal"
+                channel: "internal",
+                candidate: try XCTUnwrap(signedCandidate()),
+                loadedIdentity: loadedIdentity
             ))
-            XCTAssertEqual(sample.schemaVersion, 2)
+            XCTAssertEqual(sample.schemaVersion, 3)
             XCTAssertEqual(sample.domain, domain)
             XCTAssertEqual(sample.slice, slice)
             XCTAssertEqual(sample.consumer, "apple")
         }
     }
 
-    func testGenericCollectorRejectsInvalidCoverageOutcomeAndTiming() {
+    func testPensieveVectorOperationsBuildAndSpoolValidatedV3Samples() throws {
+        let operations = [
+            "pensieve_l2_normalize",
+            "pensieve_vector_cloak",
+            "pensieve_deterministic_embed",
+            "pensieve_deterministic_embed_and_cloak"
+        ]
+        let candidate = try XCTUnwrap(signedCandidate())
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+
+        for operation in operations {
+            let sample = try XCTUnwrap(DomainCoreShadowSampleV3(
+                comparison: .init(
+                    domain: "cloudvault",
+                    slice: "pensieve-vectors",
+                    operation: operation,
+                    coreVersion: "0.3.0",
+                    outcome: "match",
+                    mismatchCategory: nil,
+                    legacyMicros: 10,
+                    rustMicros: 8
+                ),
+                channel: "internal",
+                candidate: candidate,
+                loadedIdentity: loadedIdentity
+            ))
+            XCTAssertTrue(sample.isValidStored(
+                matchingChannel: "internal",
+                matchingCandidate: candidate,
+                now: Date()
+            ))
+            try spool.append(sample)
+        }
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            matchingChannel: "internal",
+            matchingCandidate: candidate
+        ))
+        XCTAssertEqual(batch.samples.map(\.operation), operations)
+    }
+
+    func testGenericCollectorRejectsInvalidCoverageOutcomeAndTiming() throws {
+        let candidate = try XCTUnwrap(signedCandidate())
         let valid = DomainCoreShadowComparison(
             domain: "cloudvault",
             slice: "search",
@@ -111,48 +268,65 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             rustMicros: 8
         )
 
-        XCTAssertNil(DomainCoreShadowSampleV2(comparison: valid, channel: "production"))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
+            comparison: valid,
+            channel: "production",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
+        ))
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "unknown", operation: "query", coreVersion: "0.3.0",
                 outcome: "match", mismatchCategory: nil, legacyMicros: 10, rustMicros: 8
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "search", operation: "", coreVersion: "0.3.0",
                 outcome: "match", mismatchCategory: nil, legacyMicros: 10, rustMicros: 8
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
                 outcome: "match", mismatchCategory: "result_mismatch", legacyMicros: 10, rustMicros: 8
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
                 outcome: "mismatch", mismatchCategory: nil, legacyMicros: 10, rustMicros: 8
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
                 outcome: "match", mismatchCategory: nil, legacyMicros: 600_000_001, rustMicros: 8
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
                 outcome: "match", mismatchCategory: nil, legacyMicros: 10, rustMicros: 600_000_001
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
     }
 
@@ -267,6 +441,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             spool: spool,
             submitter: submitter,
             activeChannel: "internal",
+            activeCandidate: try XCTUnwrap(signedCandidate()),
             debounceNanoseconds: 1_000_000_000
         )
 
@@ -289,24 +464,24 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertEqual(try spool.pendingSampleCount(), 0)
     }
 
-    func testMalformedReadyFilenameFailsClosed() throws {
+    func testMalformedReadyFilenameIsDeletedWithoutWedgingQueue() throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
         try Data("{}\n".utf8).write(to: directory.appendingPathComponent("ready-not-an-ordinal.jsonl"))
 
-        XCTAssertThrowsError(try spool.nextBatch(sealActive: false))
+        XCTAssertNil(try spool.nextBatch(sealActive: false))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     }
 
-    func testEmptyAndOversizedReadyBatchesFailClosed() throws {
+    func testEmptyAndOversizedReadyBatchesAreDeletedWithoutRetryLoop() throws {
         let emptyDirectory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: emptyDirectory) }
         let emptySpool = try DomainCoreShadowEvidenceSpool(directory: emptyDirectory)
         try Data().write(to: readyURL(in: emptyDirectory, ordinal: 0))
 
-        assertInvalidSampleError {
-            _ = try emptySpool.nextBatch(sealActive: false)
-        }
+        XCTAssertNil(try emptySpool.nextBatch(sealActive: false))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: emptyDirectory.path).isEmpty)
 
         let oversizedDirectory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: oversizedDirectory) }
@@ -317,9 +492,139 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         let line = try encodedLine(try XCTUnwrap(makeSample()))
         try (line + line).write(to: readyURL(in: oversizedDirectory, ordinal: 0))
 
-        assertInvalidSampleError {
-            _ = try oversizedSpool.nextBatch(sealActive: false)
+        XCTAssertNil(try oversizedSpool.nextBatch(sealActive: false))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: oversizedDirectory.path).isEmpty)
+    }
+
+    func testCorruptAndNonV3OldestFilesCannotBlockValidLaterBatch() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try Data("{not-json}\n".utf8).write(to: readyURL(in: directory, ordinal: 0))
+        var nonV3 = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(try XCTUnwrap(makeSample()))) as? [String: Any]
+        )
+        nonV3["schemaVersion"] = 2
+        var nonV3Data = try JSONSerialization.data(withJSONObject: nonV3, options: [.sortedKeys])
+        nonV3Data.append(0x0A)
+        try nonV3Data.write(to: readyURL(in: directory, ordinal: 1))
+        try spool.append(try XCTUnwrap(makeSample(micros: 42)))
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            matchingChannel: "internal",
+            matchingCandidate: try XCTUnwrap(signedCandidate())
+        ))
+
+        XCTAssertEqual(batch.samples.single?.legacyMicros, 42)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: readyURL(in: directory, ordinal: 0).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: readyURL(in: directory, ordinal: 1).path))
+    }
+
+    func testSemanticInvalidRecordsCannotWedgeFreshSiblingInSameReadyFile() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let freshData = try JSONEncoder().encode(fresh)
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: freshData) as? [String: Any])
+        func replacing(_ key: String, with value: Any) -> [String: Any] {
+            var object = base
+            object[key] = value
+            return object
         }
+        var extraField = base
+        extraField["metadata"] = ["authority": "signed"]
+        let invalidObjects: [[String: Any]] = [
+            replacing("consumer", with: "android"),
+            replacing("operation", with: "codex_quota"),
+            replacing("sampleId", with: "not-a-uuid"),
+            replacing("candidateCommit", with: String(repeating: "A", count: 40)),
+            replacing("expectedCoreVersion", with: "01.0.0"),
+            replacing("loadedCoreAbiVersion", with: NSNull()),
+            replacing("mismatchCategory", with: "native_error"),
+            replacing("legacyMicros", with: 600_000_001),
+            replacing("observedAt", with: "2025-01-01T00:00:00.000Z"),
+            extraField
+        ]
+        var readyData = Data()
+        for object in invalidObjects + [base] {
+            readyData.append(try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
+            readyData.append(0x0A)
+        }
+        try readyData.write(to: readyURL(in: directory, ordinal: 0))
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42])
+        try spool.acknowledge(batch.token)
+        XCTAssertEqual(try spool.pendingSampleCount(), 0)
+    }
+
+    func testAcknowledgementRejectsNegativeFractionalOverboundAndWrongSumCounts() throws {
+        XCTAssertNoThrow(try DomainCoreShadowAcknowledgementValidator.validate(
+            ["accepted": 1, "duplicates": 0],
+            batchSize: 1
+        ))
+        for response: [String: Any] in [
+            ["accepted": -1, "duplicates": 2],
+            ["accepted": 0.5, "duplicates": 0.5],
+            ["accepted": 2, "duplicates": 0],
+            ["accepted": 0, "duplicates": 0]
+        ] {
+            XCTAssertThrowsError(try DomainCoreShadowAcknowledgementValidator.validate(response, batchSize: 1))
+        }
+    }
+
+    func testExpiredAndFutureHeadFilesCannotBlockFreshLaterBatch() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try spool.append(try XCTUnwrap(makeSample(
+            legacyMicros: 1,
+            observedAt: now.addingTimeInterval(-(31 * 24 * 60 * 60) - 1)
+        )))
+        try spool.append(try XCTUnwrap(makeSample(
+            legacyMicros: 2,
+            observedAt: now.addingTimeInterval((5 * 60) + 1)
+        )))
+        try spool.append(try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now)))
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            matchingChannel: "internal",
+            matchingCandidate: try XCTUnwrap(signedCandidate()),
+            now: now
+        ))
+
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42])
+        try spool.acknowledge(batch.token)
+        XCTAssertEqual(try spool.pendingSampleCount(), 0)
+    }
+
+    func testReadyBatchReadFailurePreservesEvidenceForRetry() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let seedSpool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try seedSpool.append(try XCTUnwrap(makeSample(micros: 42)))
+        let failingSpool = try DomainCoreShadowEvidenceSpool(
+            directory: directory,
+            readyBatchReader: { _ in throw CocoaError(.fileReadUnknown) }
+        )
+        let url = readyURL(in: directory, ordinal: 0)
+
+        XCTAssertThrowsError(try failingSpool.nextBatch())
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+
+        let retrySpool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let batch = try XCTUnwrap(retrySpool.nextBatch(sealActive: false))
+        XCTAssertEqual(batch.samples.single?.legacyMicros, 42)
     }
 
     func testAppendRejectsSampleLargerThanFileLimitWithoutCreatingEvidence() throws {
@@ -379,6 +684,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             spool: spool,
             submitter: submitter,
             activeChannel: "internal",
+            activeCandidate: try XCTUnwrap(signedCandidate()),
             debounceNanoseconds: 200_000_000
         )
         try spool.append(try XCTUnwrap(makeSample()))
@@ -403,7 +709,8 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         let coordinator = DomainCoreShadowEvidenceUploadCoordinator(
             spool: spool,
             submitter: RecordingDomainCoreShadowSubmitter(),
-            activeChannel: "internal"
+            activeChannel: "internal",
+            activeCandidate: try XCTUnwrap(signedCandidate())
         )
         try FileManager.default.removeItem(at: directory)
 
@@ -514,7 +821,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
     func testMacRecorderChannelTransitionDropsStaleSamplesAndUploadsOnlyActiveChannel() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory, maxSamplesPerFile: 1)
         try spool.append(try XCTUnwrap(makeSample(channel: "internal", legacyMicros: 1)))
         try spool.append(try XCTUnwrap(makeSample(channel: "beta", legacyMicros: 2)))
         let submitter = RecordingDomainCoreShadowSubmitter()
@@ -587,21 +894,30 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         outcome: DomainCoreQuotaShadowOutcome = .match,
         mismatchCategory: DomainCoreQuotaShadowMismatchCategory? = nil,
         legacyMicros: UInt64 = 120,
-        rustMicros: UInt64 = 80
-    ) -> DomainCoreShadowSampleV2? {
-        DomainCoreShadowSampleV2(
+        rustMicros: UInt64 = 80,
+        observedAt: Date = Date(),
+        candidate: DomainCoreCandidateIdentity? = nil,
+        loadedIdentity: DomainCoreEvidenceLoadedIdentity? = nil,
+        loadedIdentityAvailable: Bool = true
+    ) -> DomainCoreShadowSampleV3? {
+        DomainCoreShadowSampleV3(
             comparison: makeComparison(
                 operation: operation,
                 outcome: outcome,
                 mismatchCategory: mismatchCategory,
                 legacyMicros: legacyMicros,
-                rustMicros: rustMicros
+                rustMicros: rustMicros,
+                observedAt: observedAt
             ),
-            channel: channel
+            channel: channel,
+            candidate: candidate ?? signedCandidate()!,
+            loadedIdentity: !loadedIdentityAvailable
+                ? nil
+                : (loadedIdentity ?? self.loadedIdentity)
         )
     }
 
-    private func makeSample(micros: UInt64) -> DomainCoreShadowSampleV2? {
+    private func makeSample(micros: UInt64) -> DomainCoreShadowSampleV3? {
         makeSample(legacyMicros: micros)
     }
 
@@ -610,12 +926,13 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         outcome: DomainCoreQuotaShadowOutcome = .match,
         mismatchCategory: DomainCoreQuotaShadowMismatchCategory? = nil,
         legacyMicros: UInt64 = 120,
-        rustMicros: UInt64 = 80
+        rustMicros: UInt64 = 80,
+        observedAt: Date = Date()
     ) -> DomainCoreQuotaShadowComparison {
         DomainCoreQuotaShadowComparison(
             operation: operation,
             coreVersion: "0.3.0",
-            observedAt: Date(timeIntervalSince1970: 1_752_408_000),
+            observedAt: observedAt,
             outcome: outcome,
             mismatchCategory: mismatchCategory,
             legacyMicros: legacyMicros,
@@ -623,7 +940,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         )
     }
 
-    private func encodedLine(_ sample: DomainCoreShadowSampleV2) throws -> Data {
+    private func encodedLine(_ sample: DomainCoreShadowSampleV3) throws -> Data {
         var data = try JSONEncoder().encode(sample)
         data.append(0x0A)
         return data
@@ -666,7 +983,8 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         distribution: String,
         channel: String,
         evidenceEnabled: Bool,
-        quotaMode: String = "shadow"
+        quotaMode: String = "shadow",
+        candidateCommit: String? = nil
     ) -> DomainCoreBuildProfile {
         DomainCoreBuildProfileResolver.current(environment: [:], info: [
             "OpenBurnBarDomainCoreBuildAuthority": "signed",
@@ -674,6 +992,10 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             "OpenBurnBarDomainCoreDistribution": distribution,
             "OpenBurnBarDomainCoreRolloutChannel": channel,
             "OpenBurnBarDomainCoreEvidenceEnabled": evidenceEnabled,
+            "OpenBurnBarDomainCoreCandidateCommit": candidateCommit ?? self.candidateCommit,
+            "OpenBurnBarDomainCoreExpectedVersion": "0.3.0",
+            "OpenBurnBarDomainCoreExpectedABIVersion": "3",
+            "OpenBurnBarDomainCoreExpectedSourceSHA256": sourceSha256,
             "OpenBurnBarDomainCoreModeQuota": quotaMode,
             "OpenBurnBarDomainCoreModeCloudVault": "legacy",
             "OpenBurnBarDomainCoreModeCloudVaultRewrap": "legacy",
@@ -682,6 +1004,23 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             "OpenBurnBarDomainCoreModePricing": "legacy"
         ])
     }
+
+    private func signedCandidate(commit: String? = nil) -> DomainCoreCandidateIdentity? {
+        signedProfile(
+            profile: "internal",
+            distribution: "internal",
+            channel: "internal",
+            evidenceEnabled: true,
+            candidateCommit: commit
+        ).candidateIdentity
+    }
+
+    private var loadedIdentity: DomainCoreEvidenceLoadedIdentity {
+        DomainCoreEvidenceLoadedIdentity(coreVersion: "0.3.0", abiVersion: 3, sourceSha256: sourceSha256)
+    }
+
+    private var candidateCommit: String { String(repeating: "a", count: 40) }
+    private var sourceSha256: String { String(repeating: "b", count: 64) }
 
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
@@ -693,7 +1032,7 @@ private actor RecordingDomainCoreShadowSubmitter: DomainCoreShadowSampleSubmitti
     private var sizes: [Int] = []
     private var channels: [[String]] = []
 
-    func submit(_ samples: [DomainCoreShadowSampleV2]) async throws {
+    func submit(_ samples: [DomainCoreShadowSampleV3]) async throws {
         sizes.append(samples.count)
         channels.append(samples.map(\.channel))
     }
@@ -706,7 +1045,7 @@ private actor FailOnceDomainCoreShadowSubmitter: DomainCoreShadowSampleSubmittin
     private var attempts = 0
     private var successes: [Int] = []
 
-    func submit(_ samples: [DomainCoreShadowSampleV2]) async throws {
+    func submit(_ samples: [DomainCoreShadowSampleV3]) async throws {
         attempts += 1
         if attempts == 1 {
             throw Failure.rejected

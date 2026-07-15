@@ -3,6 +3,7 @@ package com.openburnbar.domaincore
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -30,22 +31,50 @@ import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.domainCoreSourceFingerprint
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
 import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
+import java.io.File
+import java.io.FileInputStream
+import java.security.MessageDigest
 
 @RunWith(AndroidJUnit4::class)
 class DomainCoreNativeLoadTest {
     @Test
     fun generatedBindingLoadsAbiVersionThreeNativeLibrary() {
-        assertEquals(3u, domainCoreAbiVersion())
-        assertTrue(domainCoreVersion().isNotBlank())
+        val assets = InstrumentationRegistry.getInstrumentation().context.assets
+        val expectedIdentity =
+            assets.open("union-abi-manifest.json").bufferedReader().use { JSONObject(it.readText()) }
+        assertEquals(expectedIdentity.getLong("abiVersion").toUInt(), domainCoreAbiVersion())
+        assertEquals(expectedIdentity.getString("coreVersion"), domainCoreVersion())
         val sourceFingerprint = domainCoreSourceFingerprint()
         assertTrue(sourceFingerprint.matches(Regex("[0-9a-f]{64}")))
         val expectedSourceFingerprint =
-            InstrumentationRegistry.getInstrumentation().context.assets
+            assets
                 .open("openburnbar-domain-core-source.sha256")
                 .bufferedReader()
                 .use { it.readText().trim() }
         assertTrue(expectedSourceFingerprint.matches(Regex("[0-9a-f]{64}")))
+        assertEquals(expectedIdentity.getString("sourceSha256"), expectedSourceFingerprint)
         assertEquals(expectedSourceFingerprint, sourceFingerprint)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val candidateCommit = InstrumentationRegistry.getArguments().getString("candidateCommit").orEmpty()
+        assertTrue(candidateCommit.matches(Regex("[0-9a-f]{40}")))
+        val nativeLibrary =
+            File(
+                instrumentation.context.applicationInfo.nativeLibraryDir,
+                System.mapLibraryName("openburnbar_domain_ffi"),
+            )
+        assertTrue(nativeLibrary.isFile)
+        assertFalse(nativeLibrary.isDirectory)
+        val binarySha256 = sha256(nativeLibrary)
+        File(instrumentation.context.filesDir, "domain-core-observed-identity.json")
+            .writeText(
+                JSONObject()
+                    .put("candidateCommit", candidateCommit)
+                    .put("coreVersion", domainCoreVersion())
+                    .put("abiVersion", domainCoreAbiVersion().toLong())
+                    .put("sourceSha256", sourceFingerprint)
+                    .put("binarySha256", binarySha256)
+                    .toString() + "\n",
+            )
         assertEquals(
             "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7",
             hermesGatewayRelaySafetyCode(
@@ -198,4 +227,17 @@ class DomainCoreNativeLoadTest {
     ): List<String> = cloudVaultSearch(CloudVaultSearchRequest(operation, text, key, limit)).hashes
 
     private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
 }

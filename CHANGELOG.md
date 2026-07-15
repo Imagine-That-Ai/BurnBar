@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Shared Rust Console release evidence
+
+- Stable and Rust-authoritative Hosting deploys now consume the exact protected
+  Shared Rust candidate proof and rollback bytes. Live smoke verifies a
+  no-redirect deployment identity, normal evidence publishes immutably, and
+  explicit rollback is separately review-gated and every retained result binds
+  the exact deploy and evidence workflow attempts.
+
 ### Added — Liquid dashboard command deck
 
 - **A live, customizable command deck for the dashboard**: Added a dominant
@@ -40,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Candidate-bound Shared Rust Functions releases** - production Functions
+  releases now verify the exact deterministic source run, protected signer run
+  and attempt, rollback bytes, selected compiled receipt, live source/version,
+  domain-core profile, and Sentry state before publishing immutable v2 release
+  evidence; manual legacy rollback uses a separately authorized and retained
+  proof path.
 - **Launch-readiness hardening** — added durable account-erasure barriers,
   resumable oldest-first reconciliation with poison-record quarantine, and
   privacy-safe retained audit receipts across Functions, Firestore, and Storage.
