@@ -127,12 +127,18 @@ jobs:
           if-no-files-found: error
 
   mobile-build-gate:
-    name: Mobile build (compile gate)
+    name: Mobile build + unit test
     runs-on: macos-26
-    # Compile-only: Signal FFI + full mobile app-and-tests compile, no XCTest
-    # execution. Warm-cache runs are far shorter than the 75-minute macOS
-    # build+test lane; the cap covers a cold SPM cache plus the FFI build.
-    timeout-minutes: 75
+    # Compile + unit test execution: Signal FFI + full mobile app-and-tests
+    # compile, THEN run the unit-test bundle on a booted simulator.
+    # Observing-first: build-for-testing first (fail fast on compile errors),
+    # then test-without-building (execute the already-compiled tests).
+    # Cold cache + libsignal FFI + full xcodebuild build-for-testing of the
+    # mobile app target on a hosted runner can exceed 75 minutes; the app
+    # build+test lane (app-build-test above) uses 120 for the same reason.
+    # Match the 120-minute cap so a cold build does not time out before
+    # simulator test execution can start.
+    timeout-minutes: 120
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
       - name: Check out repository
@@ -168,12 +174,12 @@ jobs:
       - name: Prepare Signal FFI XCFramework
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
 
-      - name: Compile mobile app + unit tests (no test execution)
-        # build-for-testing compiles the OpenBurnBarMobile app target AND the
-        # OpenBurnBarMobileTests bundle — full compile coverage of every
-        # mobile-only source file, without simulator test flakiness on the PR
-        # path. FIREBASE_SOURCE_FIRESTORE guards the resolve path if package
-        # resolution runs (iOS 27 grpc-binary tripwire, docs/FIREBASE_IOS27_GRPC.md).
+      - name: Build mobile app + unit tests for testing
+        # Observing-first: build-for-testing compiles the OpenBurnBarMobile
+        # app target AND the OpenBurnBarMobileTests bundle — full compile
+        # coverage of every mobile-only source file. Fail fast here before
+        # booting a simulator. FIREBASE_SOURCE_FIRESTORE guards the resolve
+        # path (iOS 27 grpc-binary tripwire, docs/FIREBASE_IOS27_GRPC.md).
         run: |
           set -euo pipefail
           FIREBASE_SOURCE_FIRESTORE=1 xcodebuild build-for-testing \
@@ -183,7 +189,47 @@ jobs:
             -clonedSourcePackagesDirPath .spm-cache-new \
             -derivedDataPath .derived-data/mobile-pr-gate \
             SWIFT_ENABLE_EXPLICIT_MODULES=NO \
-            SWIFT_COMPILATION_MODE=singlefile \
+            SWIFT_COMPILATION_MODE=wholemodule \
             SWIFT_ENABLE_BATCH_MODE=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO
+
+      - name: Boot simulator for test execution
+        run: |
+          set -euo pipefail
+          # Resolve a concrete booted simulator destination for
+          # test-without-building (build-for-testing used the generic
+          # destination; test execution needs a real booted sim).
+          SIM_NAME="${OPENBURNBAR_MOBILE_SIMULATOR:-iPhone 17 Pro Max}"
+          xcrun simctl list devices available | grep -E "$SIM_NAME \(" | head -1 | sed 's/.*(\([0-9A-F-]*\)).*/\1/' > /tmp/mobile_sim_udid.txt || true
+          SIM_UDID="$(cat /tmp/mobile_sim_udid.txt)"
+          if [ -z "$SIM_UDID" ]; then
+            echo "No available '$SIM_NAME' simulator found; creating one."
+            SIM_UDID="$(xcrun simctl create "CI-Mobile-Test" "iPhone 17 Pro Max" 2>/dev/null || true)"
+          fi
+          echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+
+      - name: Run unit tests (observing-first)
+        # test-without-building executes the already-compiled test bundle
+        # against the booted simulator. This is the merge-blocking signal
+        # that was missing: a compile-only gate lets logic regressions
+        # merge undetected. Keychain-gated tests XCTSkip on the unsigned
+        # CI simulator host (errSecMissingEntitlement) — they count as
+        # skips, not failures.
+        run: |
+          set -euo pipefail
+          FIREBASE_SOURCE_FIRESTORE=1 xcodebuild test-without-building \
+            -project OpenBurnBar.xcodeproj \
+            -scheme OpenBurnBarMobileUnitTests \
+            -destination "id=$SIM_UDID" \
+            -clonedSourcePackagesDirPath .spm-cache-new \
+            -derivedDataPath .derived-data/mobile-pr-gate \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            -resultBundlePath "$RUNNER_TEMP/Mobile_TestResults.xcresult"
+
+      - name: Guard against zero-test false greens
+        run: ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult"
