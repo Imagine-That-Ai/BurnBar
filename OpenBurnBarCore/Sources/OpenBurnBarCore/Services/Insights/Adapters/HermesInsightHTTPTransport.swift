@@ -103,7 +103,7 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
                         }
                         return true
                     }
-#if os(Linux)
+#if os(Linux) || os(Windows)
                     let (data, response) = try await urlSession.data(for: urlRequest)
                     try Self.validate(response: response, modelID: request.modelID)
                     for line in String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline) {
