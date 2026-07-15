@@ -10,7 +10,7 @@ ANDROID_CLOUDVAULT_LEGACY = ROOT / (
     "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyCrypto.kt"
 )
 ANDROID_REWRAP_LEGACY = ROOT / (
-    "android/app/src/main/java/com/openburnbar/data/cloud/Legacy/"
+    "android/app/src/main/java/com/openburnbar/data/cloud/"
     "CloudVaultLegacyDocumentRewrap.kt"
 )
 SWIFT_CLOUDVAULT_FACADE = ROOT / (

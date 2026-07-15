@@ -114,7 +114,7 @@
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyDocumentRewrap.swift" },
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultDocumentRewrapDomainCoreAdapter.swift", "symbol": "makeLegacyNoncePlan" },
         { "kind": "mode_literal", "role": "rollback_control", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultDocumentRewrapDomainCoreAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" },
-        { "kind": "path", "role": "legacy_implementation", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/Legacy/CloudVaultLegacyDocumentRewrap.kt" },
+        { "kind": "path", "role": "legacy_implementation", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyDocumentRewrap.kt" },
         { "kind": "mode_literal", "role": "rollback_control", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDocumentRewrapDomainCore.kt", "literal": "CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE" },
         { "kind": "mode_literal", "role": "rollback_control", "root": "android-build", "path": "android/app/build.gradle.kts", "literal": "CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE" }
       ]
