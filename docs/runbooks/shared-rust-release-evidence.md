@@ -179,9 +179,13 @@ Native release predicates are generated after platform-native verification:
   mounted executable, so no helper executable can substitute for the binary
   users receive.
 - Android verifies the approved upload-certificate fingerprint, JAR signature,
-  bundletool structure, both supported 64-bit native ABIs, the embedded build-profile
-  receipt, and the Rust identity observed on an arm64 emulator. The loaded
-  library digest must match the arm64 library extracted from the final AAB.
+  bundletool structure, the embedded build-profile receipt, and the Rust identity
+  observed on an arm64 emulator. It also extracts a deterministic manifest for
+  exactly the shipped `arm64-v8a` and `x86_64` domain-core libraries. Every final
+  AAB library must be byte-identical to its corresponding library in the
+  candidate `Vendor/openburnbar-domain-core.aar`, and that AAR digest must match
+  the protected candidate bundle's `kotlin-aar` evidence. The manifest and its
+  SHA-256 are embedded in every Android `android-universal` release predicate.
 - Windows verifies both x64 and ARM64 profile receipts and executes the signed
   x64 domain-core DLL extracted from the final portable ZIP. Its observed
   digest must match that exact packaged DLL before the deterministic canonical

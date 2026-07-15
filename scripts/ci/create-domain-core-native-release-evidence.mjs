@@ -94,7 +94,7 @@ function parseArguments(argv) {
     "--rollback-artifact",
     "--output-dir",
   ]);
-  const optional = new Set(["--github-output"]);
+  const optional = new Set(["--github-output", "--android-abi-manifest"]);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
@@ -175,49 +175,60 @@ export function run(argv, { promotionVerifier } = {}) {
   );
   writeCreateOnly(predicateActivationPath, activationSelector.activation);
   const domains = nativeEvidenceDomains(consumer, profile, profileName);
+  const androidAbiManifest = args.get("--android-abi-manifest");
+  if (consumer === "android" && !androidAbiManifest) {
+    throw new Error("android requires --android-abi-manifest");
+  }
+  if (consumer !== "android" && androidAbiManifest) {
+    throw new Error(`${consumer} must not provide --android-abi-manifest`);
+  }
   const entries = [];
   for (const domain of domains) {
     const predicatePath = join(
       outputDirectory,
       nativePredicateName(consumer, version, domain),
     );
-    createReleaseEvidence(
-      [
-        "--consumer",
-        consumer,
-        "--domain",
-        domain,
-        "--artifact-kind",
-        contract.artifactKind,
-        "--target",
-        contract.target,
-        "--version",
-        version,
-        "--tag",
-        tag,
-        "--commit",
-        commit,
-        "--artifact",
-        artifact,
-        "--predicate",
-        predicatePath,
-        "--public-profile-sha256",
-        activationSelector.domains.get(domain).publicProfileSha256,
-        "--activation",
-        predicateActivationPath,
-        "--candidate-bundle",
-        candidateBundle,
-        "--promotion-attestation",
-        resolve(args.get("--promotion-attestation")),
-        "--protected-signer-run-id",
-        String(signerRunId),
-        "--protected-signer-run-attempt",
-        String(signerRunAttempt),
-        "--rollback-artifact",
-        resolve(args.get("--rollback-artifact")),
-      ],
-      { promotionVerifier },
-    );
+    const evidenceArguments = [
+      "--consumer",
+      consumer,
+      "--domain",
+      domain,
+      "--artifact-kind",
+      contract.artifactKind,
+      "--target",
+      contract.target,
+      "--version",
+      version,
+      "--tag",
+      tag,
+      "--commit",
+      commit,
+      "--artifact",
+      artifact,
+      "--predicate",
+      predicatePath,
+      "--public-profile-sha256",
+      activationSelector.domains.get(domain).publicProfileSha256,
+      "--activation",
+      predicateActivationPath,
+      "--candidate-bundle",
+      candidateBundle,
+      "--promotion-attestation",
+      resolve(args.get("--promotion-attestation")),
+      "--protected-signer-run-id",
+      String(signerRunId),
+      "--protected-signer-run-attempt",
+      String(signerRunAttempt),
+      "--rollback-artifact",
+      resolve(args.get("--rollback-artifact")),
+    ];
+    if (androidAbiManifest) {
+      evidenceArguments.push(
+        "--android-abi-manifest",
+        resolve(androidAbiManifest),
+      );
+    }
+    createReleaseEvidence(evidenceArguments, { promotionVerifier });
     entries.push({
       domain,
       publicProfileSha256:
@@ -239,6 +250,9 @@ export function run(argv, { promotionVerifier } = {}) {
     artifactPath: artifact,
     signerWorkflow: contract.signerWorkflow,
     rollback: profileName === "public-production-rollback",
+    ...(androidAbiManifest
+      ? { androidAbiManifestPath: resolve(androidAbiManifest) }
+      : {}),
     domains: entries,
   };
   const planPath = join(

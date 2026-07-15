@@ -28,6 +28,7 @@ import {
   validateDomainCoreCandidateIdentity,
   validateReleaseActivation,
 } from "../lib/domain-core-release-evidence.mjs";
+import { validateAndroidUniversalManifest } from "./verify-domain-core-android-universal-artifact.mjs";
 
 const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const SHA256 = /^[0-9a-f]{64}$/u;
@@ -74,24 +75,26 @@ function validatePredicate(
   domain,
   artifactPath,
 ) {
+  const predicateKeys = [
+    "schemaVersion",
+    "predicateType",
+    "consumer",
+    "domain",
+    "artifactKind",
+    "target",
+    "candidate",
+    "sourceRun",
+    "promotionProof",
+    "rollbackArtifact",
+    "activation",
+    "publicProfile",
+    "artifact",
+    "release",
+  ];
+  if (manifest.consumer === "android") predicateKeys.push("androidUniversal");
   const value = exactObject(
     predicate,
-    [
-      "schemaVersion",
-      "predicateType",
-      "consumer",
-      "domain",
-      "artifactKind",
-      "target",
-      "candidate",
-      "sourceRun",
-      "promotionProof",
-      "rollbackArtifact",
-      "activation",
-      "publicProfile",
-      "artifact",
-      "release",
-    ],
+    predicateKeys,
     `predicate for ${domain}`,
   );
   const candidate = validateDomainCoreCandidateIdentity(value.candidate);
@@ -106,6 +109,27 @@ function validatePredicate(
     throw new Error(
       `predicate for ${domain} does not match its consumer contract`,
     );
+  }
+  if (manifest.consumer === "android") {
+    const androidUniversal = exactObject(
+      value.androidUniversal,
+      [
+        "manifestSha256",
+        "schemaVersion",
+        "target",
+        "library",
+        "candidateAar",
+        "abis",
+      ],
+      `Android universal identity for ${domain}`,
+    );
+    digest(
+      androidUniversal.manifestSha256,
+      `Android universal manifest for ${domain}`,
+    );
+    const abiManifest = structuredClone(androidUniversal);
+    delete abiManifest.manifestSha256;
+    validateAndroidUniversalManifest(abiManifest);
   }
   const release = exactObject(
     value.release,
