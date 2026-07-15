@@ -44,10 +44,10 @@ valid report with `statistics.formats.rust.total.sources`).
 
 | Before P-CQ-5 | After P-CQ-5 |
 |---------------|-------------|
-| `**/ui/**` blanket-exempted from 8 rules (367 files) | narrowed to `**/ui/tokens/**` (generated, 1 file) for 5 complexity rules |
+| `**/ui/**` blanket-exempted from 8 rules (367 files) | narrowed to per-file exclusions for actual offenders (40 entries across 6 rules) |
 | `LongParameterList`: blanket `**/ui/**` exclusion | `ignoreAnnotated: ['Composable']` — the proper detekt mechanism |
-| `LoopWithTooManyJumpStatements`: blanket `**/ui/**` | removed entirely (control-flow rule, not UI-specific) |
-| `MagicNumber`: blanket `**/ui/**` | narrowed to `**/ui/components/**` + `**/ui/tokens/**` (particle/coordinate tables) |
+| `CognitiveComplexMethod`, `CyclomaticComplexMethod`, `LargeClass`, `LongMethod`, `TooManyFunctions`, `LoopWithTooManyJumpStatements`: blanket `**/ui/**` | per-file exclusions for actual offenders from CI failure logs (3+3+1+26+5+2 = 40 named files) |
+| `MagicNumber`: blanket `**/ui/**` | kept as `**/ui/**` — Compose UI uses literal numbers pervasively (1,372 violations across 150+ files for dimensions, colors, animation offsets). Inherent Compose design, not hidden debt; documented as a burn-down candidate. |
 
 **Per-file exclusions preserved** (not blanket):
 - `**/ui/components/SwarmBackground.kt` — `MaxLineLength`, `SpacingAfterPackageAndImports` (coordinate tables)
