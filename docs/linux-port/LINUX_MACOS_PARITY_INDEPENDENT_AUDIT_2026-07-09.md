@@ -137,6 +137,19 @@ percentage. The active remediation stack now contains these reviewable slices:
   certifying receipt was produced. The next fix must add an exact regular-file
   exception to the schema while keeping symlink paths `/usr`-only, then rerun
   aggregate validation.
+- **Exact-head candidate `29448108187` at `ccd9bb3061fc486c06476ccbd75182647927ff41`:**
+  both architecture jobs and aggregate finalization passed with immutable
+  `linux-release-evidence` digest
+  `sha256:f9d44744b153c4ac33bc09fe743b27529cb1300f8e55e8ed4cfd0ac0c36ff017`.
+  The exact arm64 DEB was installed in UTM Ubuntu 24.04 GNOME/X11; its signed
+  manifest SHA-256 is
+  `441a42936344b61a8f63898278efe3a30efc7d3f9d083537f826cc0e5cbac59f`.
+  The corrected live P-40 producer passed all checks, with session receipt hash
+  `ddfac322b43cfde7d743c69ae14e1ed13b546f3281472882063664ecf10101cf`.
+  The candidate-bound artifact digest is the release-evidence digest above,
+  not the package digest. This closes one P-40 installed proof surface only;
+  the strict ledger remains **0/40 product** and **0/7 environment** until all
+  validator and environment receipts are promoted.
 
 - **Onboarding hardening:** `238ee56975` validates every daemon snapshot before
   renderer/cache mutation, preserves the last valid state on malformed or
