@@ -3,7 +3,7 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation is complete; the applicable WPD-0006 F2 source substitutions are complete; exact-head signed promotion and physical/manual/live-staging release gates remain
+**Status:** F1 source/product implementation is complete; the applicable WPD-0006 F2 source substitutions are complete; exact-head signed promotion is verified; physical/manual/live-staging/public-lifecycle release gates remain
 
 ## Certification Update - 2026-07-11
 
@@ -85,6 +85,41 @@ and high-contrast manual protocols; live staging OAuth/App Check/CloudVault and
 cross-device flows; physical Computer Use/media/file-safety validation; and the
 public update/rollback/Store release lifecycle. The QA checklist below remains
 unchecked where a row combines any of these unproven requirements.
+
+## Exact-Head Signed Windows Candidate Update - 2026-07-15
+
+Protected tag `windows-v1.0.31` resolves exactly to merged PR #1800 commit
+`9a280a7d36c52276bba083e6d6906a31d698bee1`. Signed release workflow
+[29423558731](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29423558731)
+completed successfully from that tag with unsigned output forbidden. Both native
+Swift engine legs, the distribution core, WinUI publish, portable and MSIX
+Authenticode signing, portable layout validation, x64 signed-MSIX lifecycle,
+checksums, the signed Ed25519 update feed, SPDX SBOM, OpenVEX, and Sigstore
+provenance passed.
+
+Independent verification of the downloaded release and provenance artifacts
+confirmed all six checksums, both native-engine resource layouts, both
+public-production domain-core layouts, both signed feed entries, and all 15
+Sigstore bundles under the exact tag workflow identity. All 15 detached
+predicates matched their DSSE payloads. The SPDX 2.3 SBOM contains 617 packages
+and 4,573 relationships. The OpenVEX 0.2 document contains one `not_affected`
+statement. The x64 lifecycle receipt records responsive 20-second launches after
+both clean install and reinstall, with zero crash events and no fatal crash log.
+
+Exact distribution hashes:
+
+- x64 portable ZIP: `c19c5f8dfafb6a6ad91b6b010f4f483353fa1fbaddf47ce3b9134b97121a43cd`
+- ARM64 portable ZIP: `3ae17ef85cf784cdf43cf7d84b8c6988e8acdbed8440b37e40644ffa06fe012d`
+- x64 MSIX: `fd5e8215cd2f6d0f01b971e843742ca9ab1cb049e6e0eef317fa87bde85fe585`
+- ARM64 MSIX: `9083b8b08275b72ec1a4ec5a02e20083850a3b8fae35ef58a5e99d8257c013f4`
+
+The machine-readable record and verification boundary are under
+[`evidence/windows-v1.0.31-release/`](evidence/windows-v1.0.31-release/README.md).
+This closes the exact-head signed automated release gate. It does not convert
+hosted lifecycle evidence into physical certification or close manual
+accessibility/display, live staging, advanced safety, or public Store/update
+gates. Physical ARM64 remains an explicit beta limitation until qualifying
+hardware is available.
 
 ## Signed Windows Candidate Update - 2026-07-13
 
@@ -673,9 +708,9 @@ launch holds with zero crash events. The evidence does not yet close every row
 in the QA checklist.
 
 Accordingly, the accurate current claim is: **F1 source/product parity is
-ledger-green; applicable F2 source composition is complete; F2 True 1:1 is not
-release-certified because exact-head signed and physical/manual/live evidence
-is incomplete**.
+ledger-green; applicable F2 source composition is complete; the exact-head
+signed automated release is verified; F2 True 1:1 is not release-certified
+because physical/manual/live/public-lifecycle evidence is incomplete**.
 A public parity release remains gated on the explicitly named
 physical Windows, manual accessibility/display, live staging/cross-device,
 advanced safety, and public lifecycle evidence above.
