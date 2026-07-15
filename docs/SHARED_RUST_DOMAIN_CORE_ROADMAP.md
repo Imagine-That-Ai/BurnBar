@@ -234,6 +234,11 @@ authorize legacy deletion.
 - Candidate-bound V3 ingress, enrollment, export, and evaluation are being
   hardened in the current contract work. They have not yet produced a signed
   internal or beta observation window and must not be cited as promotion proof.
+- Signed candidate receipts are being bound across Apple, Android, Windows,
+  Console, and Functions to one clean checkout and one verified Rust
+  version/ABI/source tuple. This release-integrity work prevents mixed or
+  relabeled evidence, but does not itself supply any V3 samples or authorize a
+  mode promotion.
 - No shared-Rust domain is complete under the inventory's completion rule. No
   legacy implementation should be deleted from this status snapshot.
 

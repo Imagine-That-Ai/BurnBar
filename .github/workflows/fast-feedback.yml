@@ -692,6 +692,11 @@ jobs:
           cache: npm
           cache-dependency-path: apps/console/package-lock.json
 
+      - name: Resolve signed console domain-core candidate
+        run: |
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format github-env-web >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format json --output apps/console/public/domain-core-build-profile.json
+
       - name: Install console dependencies
         run: npm ci --prefix apps/console
 
@@ -708,6 +713,9 @@ jobs:
 
       - name: Static build (next export)
         run: npm run build --prefix apps/console
+
+      - name: Verify signed console runtime artifact
+        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --console-dir apps/console/out
 
   # ── Version consistency ────────────────────────────────────────────────────
   version-consistency:

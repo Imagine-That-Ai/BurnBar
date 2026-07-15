@@ -16,6 +16,7 @@ on:
       - ".github/workflows/openburnbar-release-windows.yml"
       - ".github/workflows/deploy-hosting.yml"
       - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/fast-feedback.yml"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
@@ -26,6 +27,7 @@ on:
       - "AgentLens/Services/CursorConnector/CursorConnectorManager.swift"
       - "AgentLens/Views/Chat/ChatSessionController+Retrieval.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreRuntime/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/DomainCoreBuildProfile.swift"
@@ -67,6 +69,7 @@ on:
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
       - "functions/src/domainCorePricing.ts"
       - "functions/src/domainCoreBuildProfile.ts"
+      - "functions/src/generated/domainCoreCandidateReceipt.ts"
       - "functions/src/__tests__/domainCoreBuildProfile.test.ts"
       - "functions/src/pricing.ts"
       - "functions/src/rollupCounters.ts"
@@ -98,6 +101,8 @@ on:
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
       - "scripts/ci/*domain-core-build-profile*"
       - "scripts/lib/domain-core-build-profile.mjs"
+      - "scripts/lib/domain-core-artifact-profile*.mjs"
+      - "scripts/lib/domain-core-candidate-receipt*.mjs"
       - "scripts/lib/domain-core-shadow-enrollment*.mjs"
       - "scripts/ops/manage-domain-core-shadow-enrollment.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
@@ -123,6 +128,7 @@ on:
       - ".github/workflows/openburnbar-release-windows.yml"
       - ".github/workflows/deploy-hosting.yml"
       - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/fast-feedback.yml"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
@@ -133,6 +139,7 @@ on:
       - "AgentLens/Services/CursorConnector/CursorConnectorManager.swift"
       - "AgentLens/Views/Chat/ChatSessionController+Retrieval.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreRuntime/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/DomainCoreBuildProfile.swift"
@@ -174,6 +181,7 @@ on:
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
       - "functions/src/domainCorePricing.ts"
       - "functions/src/domainCoreBuildProfile.ts"
+      - "functions/src/generated/domainCoreCandidateReceipt.ts"
       - "functions/src/__tests__/domainCoreBuildProfile.test.ts"
       - "functions/src/pricing.ts"
       - "functions/src/rollupCounters.ts"
@@ -205,6 +213,8 @@ on:
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
       - "scripts/ci/*domain-core-build-profile*"
       - "scripts/lib/domain-core-build-profile.mjs"
+      - "scripts/lib/domain-core-artifact-profile*.mjs"
+      - "scripts/lib/domain-core-candidate-receipt*.mjs"
       - "scripts/lib/domain-core-shadow-enrollment*.mjs"
       - "scripts/ops/manage-domain-core-shadow-enrollment.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
@@ -241,6 +251,8 @@ jobs:
           scripts/ci/evaluate-domain-core-promotion.test.mjs
           scripts/lib/export-domain-core-promotion-evidence.test.mjs
           scripts/ci/resolve-domain-core-build-profile.test.mjs
+          scripts/lib/domain-core-artifact-profile.test.mjs
+          scripts/lib/domain-core-candidate-receipt.test.mjs
           scripts/lib/domain-core-shadow-enrollment.test.mjs
 
       - name: Verify shadow evidence retention declaration
@@ -327,6 +339,13 @@ jobs:
 
       - name: Run C# signed profile contracts
         run: dotnet test windows/tests/configuration/OpenBurnBar.App.Configuration.Tests.csproj --nologo
+
+      - name: Build and verify a signed Windows configuration artifact
+        run: |
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format msbuild-props --output "$RUNNER_TEMP/domain-core-profile.props"
+          dotnet build windows/app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj --nologo -c Release -p:DomainCoreBuildProfileProps="$RUNNER_TEMP/domain-core-profile.props"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format json --output windows/app/OpenBurnBar.App.Configuration/bin/Release/domain-core-build-profile.json
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --windows-dir windows/app/OpenBurnBar.App.Configuration/bin/Release
 
   windows-native:
     strategy:
@@ -466,6 +485,11 @@ jobs:
           npm run build
           npm run lint
 
+      - name: Generate and verify the deployed signed Functions receipt
+        run: |
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format functions-js --output functions/lib/generated/domainCoreCandidateReceipt.js
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --functions-dir functions/lib
+
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
@@ -474,6 +498,12 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           persist-credentials: false
+
+      - name: Resolve signed Android domain-core candidate
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format github-env >> "$GITHUB_ENV"
+
+      - name: Install safe Android Firebase build config
+        run: cp android/app/google-services.json.template android/app/google-services.json
 
       - name: Load canonical Android toolchain
         shell: bash
@@ -554,6 +584,13 @@ jobs:
             -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
             -no-boot-anim
           script: cd android && ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon
+
+      - name: Build and verify a signed Android app bundle
+        run: |
+          cd android
+          ./gradlew :app:bundleDebug --no-daemon
+          cd ..
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --android-aab android/app/build/outputs/bundle/debug/app-debug.aab
 
   apple:
     runs-on: macos-15

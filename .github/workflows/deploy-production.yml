@@ -120,6 +120,20 @@ jobs:
         run: |
           npm ci --prefix functions
           npm run build --prefix functions
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production \
+            --expected-candidate-commit "${{ steps.tag.outputs.commit }}" \
+            --format github-env \
+            --output "$RUNNER_TEMP/domain-core-public.env"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production \
+            --expected-candidate-commit "${{ steps.tag.outputs.commit }}" \
+            --format functions-js \
+            --output functions/lib/generated/domainCoreCandidateReceipt.js
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+            --profile public-production \
+            --expected-candidate-commit "${{ steps.tag.outputs.commit }}" \
+            --functions-dir functions/lib
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
           node scripts/ci/check-callable-validation.mjs
@@ -241,7 +255,7 @@ jobs:
           {
             cat "$PROD_CONFIG"
             echo ""
-            node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env
+            cat "$RUNNER_TEMP/domain-core-public.env"
             echo "FUNCTION_VERSION=${TAG}"
             echo "OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT}"
             echo "SENTRY_DSN=${SENTRY_DSN}"

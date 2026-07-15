@@ -10,6 +10,7 @@ final class DomainCoreBuildProfileTests: XCTestCase {
         XCTAssertTrue(profile.isValid)
         XCTAssertEqual(profile.artifactAuthority, "development")
         XCTAssertEqual(profile.modes[.hermes], .rust)
+        XCTAssertNil(profile.candidateIdentity)
         XCTAssertNil(DomainCoreBuildProfileResolver.evidenceChannel(environment: [:], info: [:]))
     }
 
@@ -22,6 +23,7 @@ final class DomainCoreBuildProfileTests: XCTestCase {
         XCTAssertEqual(profile.modes[.quota], .legacy)
         XCTAssertFalse(profile.evidenceEnabled)
         XCTAssertNil(profile.rolloutChannel)
+        XCTAssertEqual(profile.candidateIdentity?.abiVersion, 3)
     }
 
     func testSignedInternalAndBetaProfilesExposeOnlyTheirEmbeddedChannel() {
@@ -51,6 +53,57 @@ final class DomainCoreBuildProfileTests: XCTestCase {
         XCTAssertTrue(profile.modes.values.allSatisfy { $0 == .legacy })
     }
 
+    func testSignedProfilesRequireACompleteCanonicalCandidateIdentity() {
+        let malformed: [[String: Any]] = [
+            signedInternalInfo()
+                .removing("OpenBurnBarDomainCoreCandidateCommit"),
+            signedInternalInfo()
+                .replacing("OpenBurnBarDomainCoreCandidateCommit", with: String(repeating: "A", count: 40)),
+            signedInternalInfo()
+                .replacing("OpenBurnBarDomainCoreExpectedVersion", with: "01.2.3"),
+            signedInternalInfo()
+                .replacing("OpenBurnBarDomainCoreExpectedVersion", with: "1.2.3-01"),
+            signedInternalInfo()
+                .replacing("OpenBurnBarDomainCoreExpectedVersion", with: "1.2.3\n"),
+            signedInternalInfo()
+                .replacing("OpenBurnBarDomainCoreExpectedVersion", with: "1.2.3-" + String(repeating: "a", count: 59)),
+            signedInternalInfo()
+                .replacing("OpenBurnBarDomainCoreExpectedABIVersion", with: "03"),
+            signedInternalInfo()
+                .replacing("OpenBurnBarDomainCoreExpectedABIVersion", with: true),
+            signedInternalInfo()
+                .replacing("OpenBurnBarDomainCoreExpectedABIVersion", with: 4_294_967_296),
+            signedInternalInfo()
+                .replacing("OpenBurnBarDomainCoreExpectedSourceSHA256", with: String(repeating: "B", count: 64)),
+            signedInfo(name: "public-production", distribution: "public", channel: "", evidence: false)
+                .removing("OpenBurnBarDomainCoreCandidateCommit")
+                .removing("OpenBurnBarDomainCoreExpectedVersion")
+                .removing("OpenBurnBarDomainCoreExpectedABIVersion")
+                .removing("OpenBurnBarDomainCoreExpectedSourceSHA256")
+        ]
+
+        for info in malformed {
+            let profile = DomainCoreBuildProfileResolver.current(info: info)
+            XCTAssertFalse(profile.isValid)
+            XCTAssertFalse(profile.evidenceEnabled)
+            XCTAssertNil(profile.candidateIdentity)
+            XCTAssertTrue(profile.modes.values.allSatisfy { $0 == .legacy })
+        }
+    }
+
+    func testDeveloperCandidateIdentityIsOptionalButMustBeCanonicalWhenPresent() {
+        var validInfo = candidateInfo()
+        validInfo["OpenBurnBarDomainCoreBuildAuthority"] = "development"
+        let valid = DomainCoreBuildProfileResolver.current(info: validInfo)
+        XCTAssertTrue(valid.isValid)
+        XCTAssertEqual(valid.candidateIdentity?.candidateCommit, String(repeating: "a", count: 40))
+
+        validInfo.removeValue(forKey: "OpenBurnBarDomainCoreExpectedVersion")
+        let partial = DomainCoreBuildProfileResolver.current(info: validInfo)
+        XCTAssertFalse(partial.isValid)
+        XCTAssertNil(partial.candidateIdentity)
+    }
+
     func testUnknownAuthorityFailsClosedAndIgnoresEnvironment() {
         let profile = DomainCoreBuildProfileResolver.current(
             environment: ["OPENBURNBAR_DOMAIN_CORE_HERMES_MODE": "rust"],
@@ -77,6 +130,7 @@ final class DomainCoreBuildProfileTests: XCTestCase {
             "OpenBurnBarDomainCoreRolloutChannel": channel,
             "OpenBurnBarDomainCoreEvidenceEnabled": evidence
         ]
+        info.merge(candidateInfo()) { _, candidateValue in candidateValue }
         for domain in DomainCoreBuildDomain.allCases {
             let key = switch domain {
             case .quota: "OpenBurnBarDomainCoreModeQuota"
@@ -89,5 +143,34 @@ final class DomainCoreBuildProfileTests: XCTestCase {
             info[key] = "legacy"
         }
         return info
+    }
+
+    private func candidateInfo() -> [String: Any] {
+        [
+            "OpenBurnBarDomainCoreCandidateCommit": String(repeating: "a", count: 40),
+            "OpenBurnBarDomainCoreExpectedVersion": "0.3.0",
+            "OpenBurnBarDomainCoreExpectedABIVersion": 3,
+            "OpenBurnBarDomainCoreExpectedSourceSHA256": String(repeating: "b", count: 64)
+        ]
+    }
+
+    private func signedInternalInfo() -> [String: Any] {
+        var info = signedInfo(name: "internal", distribution: "internal", channel: "internal", evidence: true)
+        info["OpenBurnBarDomainCoreModeQuota"] = "shadow"
+        return info
+    }
+}
+
+private extension Dictionary where Key == String, Value == Any {
+    func removing(_ key: String) -> Self {
+        var copy = self
+        copy.removeValue(forKey: key)
+        return copy
+    }
+
+    func replacing(_ key: String, with value: Any) -> Self {
+        var copy = self
+        copy[key] = value
+        return copy
     }
 }
