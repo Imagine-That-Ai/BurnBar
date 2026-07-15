@@ -40,7 +40,7 @@ const SEED_PATHS = Object.freeze([
   "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs",
 ]);
 const EXECUTABLE_REFERENCE =
-  /(?:^|[\s"'(])((?:scripts|tools)\/[A-Za-z0-9_./-]+\.(?:js|mjs|py|sh))/gmu;
+  /(?:^|[\s"'(])((?:\.\/)?(?:scripts|tools)\/[A-Za-z0-9_./-]+\.(?:js|mjs|py|sh))/gmu;
 const LOCAL_IMPORT = /(?:from\s+|import\s*\()(["'])(\.{1,2}\/[^"']+)\1/gmu;
 
 function fail(message) {
@@ -122,8 +122,9 @@ export function discoverDomainCoreControlPlane(root = SCRIPT_ROOT) {
       regularRepoFile(root, workflow, "trusted workflow"),
       "utf8",
     );
-    for (const match of source.matchAll(EXECUTABLE_REFERENCE))
-      discovered.add(match[1]);
+    for (const match of source.matchAll(EXECUTABLE_REFERENCE)) {
+      discovered.add(match[1].replace(/^\.\//u, ""));
+    }
   }
 
   const pending = [...discovered];

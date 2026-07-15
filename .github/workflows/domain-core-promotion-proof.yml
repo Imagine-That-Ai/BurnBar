@@ -28,7 +28,7 @@ jobs:
       - name: Check out trusted main evaluator
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -38,6 +38,9 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
           environment_json="$RUNNER_TEMP/domain-core-promotion-environment.json"
           branches_json="$RUNNER_TEMP/domain-core-promotion-branches.json"
           branch_pages_json="$RUNNER_TEMP/domain-core-promotion-branch-pages.json"
@@ -148,6 +151,7 @@ jobs:
             --bundle "$RUNNER_TEMP/candidate-bundle/domain-core-candidate-bundle.json" \
             --candidate-repo "$GITHUB_WORKSPACE/candidate" \
             --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-evaluator-commit "$GITHUB_SHA" \
             --jobs "$RUNNER_TEMP/domain-core-jobs.json" \
             --output "$RUNNER_TEMP/candidate-bundle/protected-verification.json" \
             --policy config/domain-core-promotion-policy.json \

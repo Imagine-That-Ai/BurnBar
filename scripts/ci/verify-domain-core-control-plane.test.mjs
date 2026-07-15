@@ -39,10 +39,30 @@ function candidateCopy(context) {
 }
 
 test("control-plane manifest exhaustively covers workflow executables and local imports", () => {
-  assert.deepEqual(
-    Object.keys(MANIFEST.files).sort(),
-    discoverDomainCoreControlPlane(ROOT),
-  );
+  const discovered = discoverDomainCoreControlPlane(ROOT);
+  assert.deepEqual(Object.keys(MANIFEST.files).sort(), discovered);
+  assert.ok(discovered.includes("scripts/test-openburnbar-swift.sh"));
+  assert.ok(discovered.includes("scripts/test-openburnbar-app.sh"));
+});
+
+test("dot-slash workflow executables are normalized into the trusted manifest", (context) => {
+  for (const path of [
+    "scripts/test-openburnbar-swift.sh",
+    "scripts/test-openburnbar-app.sh",
+  ]) {
+    const candidateRoot = candidateCopy(context);
+    writeFileSync(resolve(candidateRoot, path), "untrusted proof driver\n");
+    assert.throws(
+      () =>
+        verifyDomainCoreControlPlane({
+          trustedRoot: ROOT,
+          candidateRoot,
+          manifest: MANIFEST,
+        }),
+      /differs from trusted main/u,
+      path,
+    );
+  }
 });
 
 test("candidate control-plane drift, omission, and an incomplete trusted manifest fail closed", (context) => {
