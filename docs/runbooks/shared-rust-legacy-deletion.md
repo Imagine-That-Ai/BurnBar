@@ -80,7 +80,7 @@ The stable-release receipt must also bind a dedicated `legacy-rollback-bundle`:
 - built and tagged from activation `P` while binding candidate `C`;
 - separately hashed and covered by official release-workflow provenance;
 - targeted to all supported consumers;
-- contains a full `git archive` of candidate `C`, the exact signed all-legacy profile, and a portable `rollback.env` with every domain mode set to `legacy`;
+- contains a full `git archive` of candidate `C`, the exact signed all-legacy profile, a portable `rollback.env` with every domain mode set to `legacy`, and exact embedded rollback-settings plus provenance bytes for Apple, iOS, Linux, Android, Windows, Console, and Functions;
 - rejects missing, encrypted, linked, path-traversing, or digest-mismatched restoration material during stable-receipt verification;
 - retained under `retain_until_legacy_deletion_complete`;
 - listed in stable-release evidence and stored with append-only provenance.
@@ -149,6 +149,33 @@ The `pull_request_target`-based `Domain Core Trusted Deletion Guard` comes from 
 - a deletion PR that is a fork, targets a branch other than official `main`, or lacks qualified approval on its exact current head.
 
 The source-absence gate scans the whole declared source root for deleted symbols and literals, rejects deleted paths still referenced by tracked build graphs, and verifies exact identity receipts against the final XCFramework, AAR, native Windows and Linux binaries, browser WASM, Node WASM, and C# native artifact. Symbol-only absence is not sufficient.
+
+### Two-release completion sequence
+
+Do not collapse deletion authorization and post-deletion release completion into
+one circular gate:
+
+1. Stable release **A** is Rust-authoritative, still contains the reviewed
+   legacy fallback, and retains the signed seven-consumer rollback bundle. Its
+   candidate/activation evidence authorizes the deletion PR.
+2. The deletion PR proves source, build-graph, primitive, and consumer-library
+   absence against release A's authority. It does not claim that post-merge
+   stores or deployments already contain the deletion.
+3. Stable release **B** is built from the merged deletion. The normal Apple,
+   iOS, Android, Windows, Linux, Console, and Functions release/deploy evidence
+   creator adds a signed `legacyAbsence` block to each exact final-artifact
+   predicate. iOS additionally binds and stages the exact processed IPA bytes.
+4. The protected `Domain Core Post-Deletion Completion` workflow aggregates
+   the seven release-B surfaces, requires one candidate/activation/version and
+   exact 11-row coverage, then signs the completion receipt. Until that receipt
+   exists, source deletion may be merged but the structural program is not
+   operationally complete.
+
+The release-B aggregator is
+[`verify-domain-core-final-absence-receipts.py`](../../scripts/ci/verify-domain-core-final-absence-receipts.py).
+It rejects intermediate XCFramework/AAR/DLL/Wasm evidence as a substitute for
+the final DMG, processed IPA, AAB, Windows/Linux bundles, or Console/Functions
+deployment receipts.
 
 The iOS stable predicate is created only after App Store Connect accepts the exact IPA and reports completed processing. Its receipt binds the archive digest, IPA digest, and shipped executable digest. The executable verifier reads candidate commit, core version, ABI, and source fingerprint from the dedicated `__TEXT,__obb_core_id` Mach-O section and also requires the three linked UniFFI identity symbols; unrelated strings in the app cannot satisfy this proof.
 

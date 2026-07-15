@@ -199,6 +199,63 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(marker, verifier)
 
+    def test_post_deletion_completion_is_a_separate_protected_release_b_gate(self) -> None:
+        workflow = (ROOT / ".github/workflows/domain-core-post-deletion-completion.yml").read_text()
+        creator = (ROOT / "scripts/ci/create-domain-core-release-evidence.mjs").read_text()
+        runbook = (ROOT / "docs/runbooks/shared-rust-legacy-deletion.md").read_text()
+        for marker in (
+            "workflow_dispatch:",
+            "environment: domain-core-promotion",
+            "verify-domain-core-final-absence-receipts.py",
+            "post_deletion_release_complete",
+            "actions/attest-build-provenance@",
+            "git merge-base --is-ancestor",
+            "all(.rows[]; .state == \"legacy_deleted\")",
+        ):
+            self.assertIn(marker, workflow)
+        self.assertIn("inspect-domain-core-release-legacy-absence.py", creator)
+        self.assertIn("legacyAbsence", creator)
+        self.assertIn("Stable release **A**", runbook)
+        self.assertIn("Stable release **B**", runbook)
+
+    def test_release_b_scans_each_final_artifact_shape_and_deployed_js_root(self) -> None:
+        scanner = (ROOT / "scripts/ci/scan-domain-core-final-artifact-legacy.py").read_text()
+        creator = (ROOT / "scripts/ci/create-domain-core-release-evidence.mjs").read_text()
+        console = (ROOT / ".github/workflows/domain-core-console-release-evidence.yml").read_text()
+        functions = (ROOT / ".github/workflows/domain-core-functions-release-evidence.yml").read_text()
+        deploy = (ROOT / ".github/workflows/deploy-production.yml").read_text()
+        completion = (ROOT / ".github/workflows/domain-core-post-deletion-completion.yml").read_text()
+
+        for marker in (
+            ".wasm",
+            "hdiutil",
+            "--zstd",
+            "zipfile.ZipFile",
+            "with zipfile.ZipFile(io.BytesIO(data)) as nested",
+        ):
+            self.assertIn(marker, scanner)
+        for marker in (
+            "scan-domain-core-final-artifact-legacy.py",
+            "--legacy-absence-root",
+            "artifactScan",
+            "canonicalSha256(report)",
+        ):
+            self.assertIn(marker, creator)
+        self.assertIn('$RUNNER_TEMP/hosting-artifact/apps/console/out', console)
+        self.assertIn('$proof_dir/functions-lib', functions)
+        self.assertIn('cp -a functions/lib "$stage/functions-lib"', deploy)
+        for marker in (
+            "OpenBurnBar-${version}-macOS.dmg",
+            "OpenBurnBar-${version}-iOS.xcarchive.zip",
+            "OpenBurnBar-${version}-Android.aab",
+            "OpenBurnBar-${version}-windows-release.zip",
+            "OpenBurnBar-${version}-linux-release.tar.zst",
+            "OpenBurnBar-${version}-console-deployment.json",
+            "OpenBurnBar-${version}-functions-deployment.json",
+            "OpenBurnBarMobile\\.ipa",
+        ):
+            self.assertIn(marker, completion)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,115 +18,94 @@ SPEC.loader.exec_module(BUNDLE)
 
 
 class RollbackBundleTests(unittest.TestCase):
-    def test_bundle_has_exact_deterministic_legacy_content(self) -> None:
+    def fixture(self, root: Path, *, rust_mode: bool = False) -> tuple[Path, Path, Path, dict]:
+        candidate = {
+            "candidateCommit": "1" * 40,
+            "coreVersion": "0.3.0",
+            "abiVersion": 3,
+            "sourceSha256": "2" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": "3" * 40,
+            "changedPathsSha256": "4" * 64,
+        }
+        modes = {domain: "legacy" for domain in BUNDLE.DOMAIN_ENV_KEYS}
+        if rust_mode:
+            modes["quota"] = "rust"
+        profile = {
+            "schemaVersion": 1,
+            "name": "public-production-rollback",
+            "artifactAuthority": "signed",
+            "distribution": "public",
+            "rolloutChannel": None,
+            "evidenceEnabled": False,
+            "modes": modes,
+            "candidateIdentity": candidate,
+        }
+        profile_path = root / "profile.json"
+        activation_path = root / "activation.json"
+        source_path = root / "legacy-source.tar.gz"
+        profile_path.write_text(json.dumps(profile))
+        activation_path.write_text(json.dumps(activation))
+        source_path.write_bytes(b"deterministic legacy source archive" * 16)
+        return profile_path, activation_path, source_path, activation
+
+    def test_bundle_has_exact_deterministic_seven_consumer_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            candidate = {
-                "candidateCommit": "1" * 40,
-                "coreVersion": "0.3.0",
-                "abiVersion": 3,
-                "sourceSha256": "2" * 64,
-            }
-            activation = {
-                **candidate,
-                "activationCommit": "3" * 40,
-                "changedPathsSha256": "4" * 64,
-            }
-            profile = {
-                "schemaVersion": 1,
-                "name": "public-production-rollback",
-                "artifactAuthority": "signed",
-                "distribution": "public",
-                "rolloutChannel": None,
-                "evidenceEnabled": False,
-                "modes": {domain: "legacy" for domain in BUNDLE.DOMAIN_ENV_KEYS},
-                "candidateIdentity": candidate,
-            }
-            profile_path = root / "profile.json"
-            activation_path = root / "activation.json"
-            profile_path.write_text(json.dumps(profile))
-            activation_path.write_text(json.dumps(activation))
-            source_archive = root / "legacy-source.tar.gz"
-            source_archive.write_bytes(b"deterministic legacy source archive" * 16)
+            profile, activation_path, source, activation = self.fixture(root)
             outputs = [root / "one.zip", root / "two.zip"]
             for output in outputs:
                 BUNDLE.create_bundle(
-                    profile_path,
+                    profile,
                     activation_path,
                     output,
-                    source_archive,
+                    source,
                     version="1.2.3",
                     tag="v1.2.3",
                     commit=activation["activationCommit"],
                 )
-            self.assertEqual(
-                hashlib.sha256(outputs[0].read_bytes()).digest(),
-                hashlib.sha256(outputs[1].read_bytes()).digest(),
-            )
+            self.assertEqual(outputs[0].read_bytes(), outputs[1].read_bytes())
             with zipfile.ZipFile(outputs[0]) as archive:
-                self.assertEqual(tuple(archive.namelist()), BUNDLE.ENTRIES)
-                embedded_profile = json.loads(archive.read(BUNDLE.ENTRIES[1]))
-                manifest = json.loads(archive.read(BUNDLE.ENTRIES[0]))
-                environment = archive.read("rollback.env").decode()
-                embedded_source = archive.read("legacy-source.tar.gz")
-            self.assertTrue(all(mode == "legacy" for mode in embedded_profile["modes"].values()))
-            self.assertEqual(manifest["candidate"], candidate)
-            self.assertEqual(manifest["activation"], activation)
-            self.assertEqual(manifest["retentionPolicy"], "retain_until_legacy_deletion_complete")
-            self.assertEqual(embedded_source, source_archive.read_bytes())
-            self.assertIn("OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE=public-production-rollback\n", environment)
-            self.assertIn("OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE=legacy\n", environment)
-            self.assertEqual(
-                manifest["restoration"]["sourceArchive"]["sha256"],
-                hashlib.sha256(embedded_source).hexdigest(),
-            )
+                manifest = json.loads(archive.read("manifest.json"))
+                payload_manifest = json.loads(archive.read("rollback-payloads.json"))
+                self.assertEqual(manifest["contents"], archive.namelist())
+                self.assertEqual(
+                    [payload["consumer"] for payload in payload_manifest["payloads"]],
+                    list(BUNDLE.ROLLBACK_CONSUMERS),
+                )
+                for payload in payload_manifest["payloads"]:
+                    settings = archive.read(payload["payloadPath"])
+                    provenance = json.loads(archive.read(payload["provenancePath"]))
+                    self.assertEqual(hashlib.sha256(settings).hexdigest(), payload["payloadSha256"])
+                    self.assertEqual(len(settings), payload["size"])
+                    self.assertEqual(provenance["subject"]["sha256"], payload["payloadSha256"])
+                    decoded = json.loads(settings)
+                    self.assertEqual(decoded["action"], "rebuild_and_redeploy_legacy")
+                    self.assertTrue(all(line.endswith("=legacy") for line in decoded["environment"] if line.endswith("_MODE=legacy")))
 
     def test_rejects_rust_mode_in_rollback_payload(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            candidate = {
-                "candidateCommit": "1" * 40,
-                "coreVersion": "0.3.0",
-                "abiVersion": 3,
-                "sourceSha256": "2" * 64,
-            }
-            profile = root / "profile.json"
-            activation = root / "activation.json"
-            profile.write_text(
-                json.dumps(
-                    {
-                        "schemaVersion": 1,
-                        "name": "public-production-rollback",
-                        "artifactAuthority": "signed",
-                        "distribution": "public",
-                        "rolloutChannel": None,
-                        "evidenceEnabled": False,
-                        "modes": {"quota": "rust"},
-                        "candidateIdentity": candidate,
-                    }
-                )
-            )
-            activation.write_text(
-                json.dumps(
-                    {
-                        **candidate,
-                        "activationCommit": "3" * 40,
-                        "changedPathsSha256": "4" * 64,
-                    }
-                )
-            )
-            source_archive = root / "legacy-source.tar.gz"
-            source_archive.write_bytes(b"legacy source" * 20)
+            profile, activation, source, closure = self.fixture(root, rust_mode=True)
             with self.assertRaisesRegex(ValueError, "every declared domain"):
                 BUNDLE.create_bundle(
                     profile,
                     activation,
                     root / "rollback.zip",
-                    source_archive,
+                    source,
                     version="1.2.3",
                     tag="v1.2.3",
-                    commit="3" * 40,
+                    commit=closure["activationCommit"],
                 )
+
+    def test_payload_generator_is_exact_and_not_caller_replaceable(self) -> None:
+        self.assertEqual(
+            list(BUNDLE.ROLLBACK_CONSUMERS),
+            ["apple", "ios", "linux", "android", "windows", "console", "functions"],
+        )
+        self.assertNotIn("--payload-root", PATH.read_text())
 
 
 if __name__ == "__main__":

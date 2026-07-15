@@ -26,11 +26,15 @@ consumer, contract, deletion target, or rollout state changes.
 | Tauri/Linux UI                 | Displays daemon-produced values          | No separate implementation               | No separate implementation            | No separate implementation               | No separate implementation                                   |
 
 Provider log parsers remain in `OpenBurnBarCore`. macOS and the Linux daemon use
-that single Swift engine, and Windows loads it through the existing Swift C ABI.
-The iOS app links the package but does not execute the local quota adapters;
-Android and Cloud Functions also do not read local provider logs. Provider
-parsers are therefore not duplicated and are not a shared-Rust consolidation
-target.
+that Swift implementation directly. The current Windows parity bridge is
+`SwiftEngineInterim.RunG2ParserParityAsync`, which shells out to
+`swift run --package-path OpenBurnBarCore OpenBurnBarG2ParserParity`; it is not
+an in-process Swift C-ABI consumer. The iOS app links the package but does not
+execute the local quota adapters, while Android and Cloud Functions do not read
+local provider logs. Provider parsing is therefore shared Swift source across
+the desktop parity path rather than five independent hand ports. Moving that
+engine to Rust remains a separate future boundary decision, not part of the
+current quota/crypto/pricing deletion ledger.
 
 ## Q1/Q2 quota operations
 

@@ -19,8 +19,11 @@
 The program consolidates pure business logic that is genuinely implemented in
 more than one language. It does not rewrite every application or move
 platform-owned I/O into Rust. Provider log parsing is specifically out of
-scope: macOS, iOS, Linux, and Windows already consume the one Swift parser
-engine, while Android and Cloud Functions do not read local provider logs.
+scope. macOS and Linux execute the Swift parser engine directly; Windows parity
+currently invokes the same Swift package out of process through
+`SwiftEngineInterim`, not through an in-process C ABI. iOS does not run the
+local quota adapters, and Android and Cloud Functions do not read local
+provider logs.
 
 ## Invariants
 
@@ -43,6 +46,11 @@ engine, while Android and Cloud Functions do not read local provider logs.
 - Generated Swift, Kotlin, C#, native, and Wasm artifacts are one atomic release
   set. A consumer never mixes bindings or binaries generated from different
   domain-core source trees.
+- Legacy deletion is authorized by Rust-authoritative stable release A. A
+  separate post-deletion stable release B must prove the exact final DMG, IPA,
+  AAB, Windows/Linux bundles, and Console/Functions deployments before the
+  domain is counted operationally complete; PR CI never fabricates those
+  post-merge receipts.
 
 ## Migration mode semantics
 

@@ -446,6 +446,7 @@ jobs:
             --output "$stage/domain-core-functions-deploy-proof.json"
           install -m 0600 "${{ steps.domain-core-profile.outputs.profile_path }}" "$stage/domain-core-functions-profile.json"
           install -m 0600 functions/lib/generated/domainCoreCandidateReceipt.js "$stage/domainCoreCandidateReceipt.js"
+          cp -a functions/lib "$stage/functions-lib"
           install -m 0600 "$materials/domain-core-release-gate.json" "$stage/domain-core-release-gate.json"
           install -m 0600 "$materials/candidate/domain-core-candidate-bundle.json" "$stage/domain-core-candidate-bundle.json"
           install -m 0600 "$materials/promotion/domain-core-promotion.sigstore.jsonl" "$stage/domain-core-promotion.sigstore.jsonl"

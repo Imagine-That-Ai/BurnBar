@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import {
   linkSync,
   lstatSync,
@@ -15,6 +16,7 @@ import { validateDomainCoreActivation } from "../lib/domain-core-activation.mjs"
 
 import {
   buildPromotionBinding,
+  canonicalSha256,
   DOMAIN_CORE_RELEASE_PREDICATE_TYPE,
   expectedArtifactName,
   exactObject,
@@ -60,6 +62,8 @@ function parseArguments(argv) {
     "--rollback-profile",
     "--app-store-connect-receipt",
     "--deployment",
+    "--legacy-absence-scan",
+    "--legacy-absence-root",
   ]);
   const result = {};
   for (let index = 0; index < argv.length; index += 2) {
@@ -77,7 +81,9 @@ function parseArguments(argv) {
     (flag) =>
       flag !== "--deployment" &&
       flag !== "--rollback-profile" &&
-      flag !== "--app-store-connect-receipt",
+      flag !== "--app-store-connect-receipt" &&
+      flag !== "--legacy-absence-scan" &&
+      flag !== "--legacy-absence-root",
   );
   for (const flag of required) {
     if (!Object.hasOwn(result, flag)) throw new Error(`${flag} is required`);
@@ -273,7 +279,24 @@ export function buildReleaseEvidence({
     commit,
     candidate,
   });
-  const rawActivation = activationVerifier({
+  const absenceAuthority = JSON.parse(
+    execFileSync(
+      "python3",
+      [
+        "scripts/ci/inspect-domain-core-release-legacy-absence.py",
+        "--consumer",
+        consumer,
+        "--domain",
+        domain,
+        "--commit",
+        commit,
+        "--candidate-json",
+        JSON.stringify(candidate),
+      ],
+      { encoding: "utf8" },
+    ),
+  );
+  const rawActivation = absenceAuthority?.activation ?? activationVerifier({
     repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
     candidateCommit: candidate.candidateCommit,
     activationCommit: commit,
@@ -337,15 +360,21 @@ export function buildReleaseEvidence({
     rollbackArtifact,
     release,
   };
+  if (absenceAuthority !== null) {
+    common.legacyAbsence = absenceAuthority.absence;
+  }
   if (consumer === "ios") {
     const receipt = exactObject(
       appStoreConnectReceipt,
       [
         "schemaVersion",
         "status",
+        "processedStatus",
         "deliveryId",
         "archiveSha256",
         "ipaSha256",
+        "uploadResponseSha256",
+        "statusResponseSha256",
         "release",
         "candidate",
         "activation",
@@ -380,10 +409,20 @@ export function buildReleaseEvidence({
     if (
       receipt.schemaVersion !== 1 ||
       receipt.status !== "processed" ||
+      ![
+        "complete",
+        "completed",
+        "processed",
+        "processing complete",
+        "success",
+        "succeeded",
+      ].includes(receipt.processedStatus) ||
       typeof receipt.deliveryId !== "string" ||
       receipt.deliveryId.length === 0 ||
       receipt.archiveSha256 !== sha256File(artifactPath) ||
       !SHA256.test(receipt.ipaSha256) ||
+      !SHA256.test(receipt.uploadResponseSha256) ||
+      !SHA256.test(receipt.statusResponseSha256) ||
       JSON.stringify(receipt.candidate) !== JSON.stringify(candidate) ||
       JSON.stringify(receipt.activation) !== JSON.stringify(activation) ||
       loaded.schemaVersion !== 1 ||
@@ -479,6 +518,45 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
     );
   }
   const artifact = regularFile(artifactPath, "release evidence subject");
+  const scanPath = args["--legacy-absence-scan"]
+    ? resolve(args["--legacy-absence-scan"])
+    : resolve(dirname(args["--predicate"]), `${basename(args["--predicate"])}.legacy-scan.json`);
+  if (common.legacyAbsence) {
+    if (!args["--legacy-absence-scan"]) {
+      const scanArgs = [
+        "scripts/ci/scan-domain-core-final-artifact-legacy.py",
+        "--consumer", args["--consumer"],
+        "--artifact", artifact,
+        "--output", scanPath,
+      ];
+      if (args["--legacy-absence-root"]) {
+        scanArgs.push("--extracted-root", resolve(args["--legacy-absence-root"]));
+      }
+      execFileSync("python3", scanArgs, { stdio: "inherit" });
+    }
+    const report = exactObject(
+      readJson(scanPath, "final-artifact legacy-absence scan"),
+      ["schemaVersion", "consumer", "artifact", "ruleSetSha256", "inspectedMembers", "matches", "result"],
+      "final-artifact legacy-absence scan",
+    );
+    if (
+      report.schemaVersion !== 1 || report.consumer !== args["--consumer"] ||
+      report.result !== "absent" || !Array.isArray(report.matches) || report.matches.length !== 0 ||
+      !Array.isArray(report.inspectedMembers) || report.inspectedMembers.length === 0 ||
+      report.artifact?.sha256 !== sha256File(artifact) || !SHA256.test(report.ruleSetSha256)
+    ) {
+      throw new Error("final-artifact legacy-absence scan does not bind exact clean release bytes");
+    }
+    common.legacyAbsence.artifactScan = {
+      reportSha256: canonicalSha256(report),
+      artifactSha256: report.artifact.sha256,
+      ruleSetSha256: report.ruleSetSha256,
+      inspectedMemberCount: report.inspectedMembers.length,
+      report,
+    };
+  } else if (args["--legacy-absence-scan"]) {
+    throw new Error("release A must not attach post-deletion absence evidence");
+  }
   const predicate = {
     ...common,
     predicateType: DOMAIN_CORE_RELEASE_PREDICATE_TYPE,

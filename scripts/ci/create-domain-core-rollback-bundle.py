@@ -15,12 +15,23 @@ from typing import Any
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:\+[0-9A-Za-z.-]+)?$")
-ENTRIES = (
+BASE_ENTRIES = (
     "manifest.json",
     "domain-core-public-production-rollback.json",
     "rollback.env",
+    "rollback-payloads.json",
     "legacy-source.tar.gz",
 )
+ROLLBACK_CONSUMERS = {
+    "apple": ("apple-rollback-settings", "macos-arm64"),
+    "ios": ("ios-rollback-settings", "ios-universal"),
+    "linux": ("linux-rollback-settings", "linux-x64-arm64"),
+    "android": ("android-rollback-settings", "android-universal"),
+    "windows": ("windows-rollback-settings", "windows-x64-arm64"),
+    "console": ("console-rollback-settings", "firebase-hosting-production"),
+    "functions": ("functions-rollback-settings", "firebase-functions-production"),
+}
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
 DOMAIN_ENV_KEYS = {
     "quota": "QUOTA",
     "cloudVault": "CLOUDVAULT",
@@ -40,6 +51,79 @@ def load(path: Path, label: str) -> dict[str, Any]:
 
 def canonical(value: dict[str, Any]) -> bytes:
     return (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n").encode()
+
+
+def canonical_sha256(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(value, separators=(",", ":"), sort_keys=True, ensure_ascii=True).encode()
+    ).hexdigest()
+
+
+def rollback_payloads(
+    *,
+    candidate: dict[str, Any],
+    activation: dict[str, Any],
+    profile: dict[str, Any],
+    version: str,
+    tag: str,
+    commit: str,
+) -> tuple[dict[str, Any], list[tuple[str, bytes]]]:
+    profile_identity = {
+        "name": "public-production-rollback",
+        "sha256": canonical_sha256(profile),
+    }
+    release = {"version": version, "tag": tag, "commit": commit}
+    environment = rollback_environment(profile).decode("ascii").splitlines()
+    payload_records: list[dict[str, Any]] = []
+    retained: list[tuple[str, bytes]] = []
+    for consumer, (artifact_kind, target) in ROLLBACK_CONSUMERS.items():
+        payload_path = f"payloads/{consumer}/rollback-settings.json"
+        provenance_path = f"payloads/{consumer}/provenance.json"
+        payload = {
+            "schemaVersion": 1,
+            "action": "rebuild_and_redeploy_legacy",
+            "consumer": consumer,
+            "artifactKind": artifact_kind,
+            "target": target,
+            "candidate": candidate,
+            "activation": activation,
+            "profile": profile_identity,
+            "release": release,
+            "environment": environment,
+        }
+        payload_bytes = canonical(payload)
+        provenance = {
+            "schemaVersion": 1,
+            "predicateType": "https://openburnbar.dev/attestations/domain-core-rollback-settings/v1",
+            "consumer": consumer,
+            "subject": {
+                "path": payload_path,
+                "sha256": hashlib.sha256(payload_bytes).hexdigest(),
+                "size": len(payload_bytes),
+            },
+            "candidate": candidate,
+            "profile": profile_identity,
+            "release": release,
+        }
+        provenance_bytes = canonical(provenance)
+        payload_records.append({
+            "consumer": consumer,
+            "artifactKind": artifact_kind,
+            "target": target,
+            "payloadPath": payload_path,
+            "payloadSha256": hashlib.sha256(payload_bytes).hexdigest(),
+            "size": len(payload_bytes),
+            "provenancePath": provenance_path,
+            "provenanceSha256": hashlib.sha256(provenance_bytes).hexdigest(),
+        })
+        retained.extend(((payload_path, payload_bytes), (provenance_path, provenance_bytes)))
+    manifest = {
+        "schemaVersion": 1,
+        "candidate": candidate,
+        "profile": profile_identity,
+        "payloads": payload_records,
+    }
+    return manifest, retained
 
 
 def rollback_environment(profile: dict[str, Any]) -> bytes:
@@ -107,6 +191,14 @@ def create_bundle(
         raise ValueError("rollback activation must bind exact release commit P")
     if any(activation.get(key) != candidate.get(key) for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256")):
         raise ValueError("rollback profile candidate and activation closure disagree")
+    payload_manifest, payload_entries = rollback_payloads(
+        candidate=candidate,
+        activation=activation,
+        profile=profile,
+        version=version,
+        tag=tag,
+        commit=commit,
+    )
     if not source_archive.is_file() or source_archive.is_symlink():
         raise ValueError("rollback source archive must be a safe regular file")
     source_bytes = source_archive.read_bytes()
@@ -121,7 +213,7 @@ def create_bundle(
         "activation": activation,
         "release": {"version": version, "tag": tag, "commit": commit},
         "retentionPolicy": "retain_until_legacy_deletion_complete",
-        "contents": list(ENTRIES),
+        "contents": list(BASE_ENTRIES) + [name for name, _ in payload_entries],
         "restoration": {
             "sourceCommit": candidate["candidateCommit"],
             "sourceArchive": {
@@ -134,15 +226,22 @@ def create_bundle(
                 "sha256": hashlib.sha256(environment).hexdigest(),
                 "allDomainModes": "legacy",
             },
+            "payloadInventory": {
+                "path": "rollback-payloads.json",
+                "sha256": canonical_sha256(payload_manifest),
+                "consumers": list(ROLLBACK_CONSUMERS),
+            },
         },
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED, strict_timestamps=True) as archive:
         for name, contents in (
-            (ENTRIES[0], canonical(manifest)),
-            (ENTRIES[1], canonical(profile)),
-            (ENTRIES[2], environment),
-            (ENTRIES[3], source_bytes),
+            (BASE_ENTRIES[0], canonical(manifest)),
+            (BASE_ENTRIES[1], canonical(profile)),
+            (BASE_ENTRIES[2], environment),
+            (BASE_ENTRIES[3], canonical(payload_manifest)),
+            (BASE_ENTRIES[4], source_bytes),
+            *payload_entries,
         ):
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.create_system = 3
