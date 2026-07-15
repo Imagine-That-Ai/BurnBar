@@ -72,6 +72,16 @@ const functionsIndex = readFileSync(
   "utf8",
 );
 
+function workflowJob(source, name) {
+  const start = source.indexOf(`  ${name}:\n`);
+  assert.notEqual(start, -1, `missing workflow job ${name}`);
+  const remainder = source.slice(start + 2);
+  const next = remainder.search(/^  [A-Za-z0-9_-]+:\n/mu);
+  return next === -1
+    ? source.slice(start)
+    : source.slice(start, start + 2 + next);
+}
+
 test("deterministic workflow implements every exact policy job and a fail-closed final bundle", () => {
   for (const id of policy.workflow.requiredJobIds) {
     assert.match(core, new RegExp(`^  ${id}:$`, "mu"), id);
@@ -230,10 +240,7 @@ test("stable tag replay is byte-and-provider-identical before any production mut
     /already live but its immutable Functions deployment receipt is missing/u,
   );
   assert.match(functionsDeploy, /gh attestation verify/u);
-  assert.match(
-    functionsDeploy,
-    /domain-core-functions-release-evidence\.yml/u,
-  );
+  assert.match(functionsDeploy, /domain-core-functions-release-evidence\.yml/u);
 
   const hostingReplay = hostingDeploy.indexOf(
     "Refuse non-identical stable-tag redeploy",
@@ -285,11 +292,59 @@ test("stable tag replay is byte-and-provider-identical before any production mut
   );
 });
 
+test("Functions preparation is uncredentialed and deploy consumes only a verified artifact", () => {
+  const prepare = workflowJob(functionsDeploy, "prepare-functions-deploy");
+  const deploy = workflowJob(functionsDeploy, "deploy-functions");
+
+  assert.doesNotMatch(
+    prepare,
+    /environment: production|id-token: write|secrets\.|google-github-actions\/auth@/u,
+  );
+  assert.match(prepare, /Upload immutable prepared deploy artifact/u);
+  assert.match(prepare, /find "\$stage" -type l/u);
+  assert.match(prepare, /find "\$stage" -type f -links \+1/u);
+  assert.match(prepare, /SHA256SUMS/u);
+  assert.match(prepare, /--portable-functions-source/u);
+  assert.match(
+    prepare,
+    /- name: Prepare pinned Sentry CLI\n        if: steps\.tag\.outputs\.dry_run != 'true'/u,
+  );
+
+  assert.match(deploy, /needs: prepare-functions-deploy/u);
+  assert.match(deploy, /environment: production/u);
+  assert.match(deploy, /id-token: write/u);
+  assert.doesNotMatch(deploy, /actions\/checkout@|uses: \\.\//u);
+  const verify = deploy.indexOf("Verify immutable prepared deploy artifact");
+  const install = deploy.indexOf("Select verified deploy tools");
+  const authenticate = deploy.indexOf("Authenticate to Google Cloud");
+  assert.ok(verify > 0);
+  assert.ok(install > verify);
+  assert.ok(authenticate > install);
+  assert.match(deploy, /sha256sum --check --strict SHA256SUMS/u);
+  const restoreSentryMode = deploy.indexOf(
+    "chmod 0700 sentry-cli/node_modules/@sentry/cli/bin/sentry-cli",
+  );
+  assert.ok(restoreSentryMode > verify);
+  assert.ok(authenticate > restoreSentryMode);
+  assert.doesNotMatch(deploy, /\bnpm\s+(?:ci|install|run|exec)\b/u);
+  assert.match(
+    deploy,
+    /functions\/node_modules\/firebase-tools\/lib\/bin\/firebase\.js/u,
+  );
+  assert.match(
+    deploy,
+    /releases set-commits[^\n]+--commit "\$GITHUB_REPOSITORY@\$RELEASE_COMMIT"/u,
+  );
+  assert.doesNotMatch(deploy, /releases set-commits[^\n]+--auto/u);
+});
+
 test("protected Functions inventory covers every pricing execution entry and both runtime observers", () => {
   assert.equal(functionsTargets.schemaVersion, 1);
   assert.deepEqual(
     functionsTargets.targets,
-    deriveDomainCoreFunctionsTargets(new URL("../..", import.meta.url).pathname),
+    deriveDomainCoreFunctionsTargets(
+      new URL("../..", import.meta.url).pathname,
+    ),
   );
   for (const target of functionsTargets.targets) {
     assert.match(functionsIndex, new RegExp(`\\b${target}\\b`, "u"), target);
