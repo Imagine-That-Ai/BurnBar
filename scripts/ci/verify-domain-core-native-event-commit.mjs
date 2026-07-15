@@ -25,9 +25,9 @@ export function validateNativeReleaseEventCommit({
     releaseCommit,
     "resolved release commit",
   );
-  if (eventName === "push" && resolvedReleaseCommit !== eventSha) {
+  if (resolvedReleaseCommit !== eventSha) {
     throw new Error(
-      `tag push release commit must equal GITHUB_SHA: release=${resolvedReleaseCommit} event=${eventSha}`,
+      `release tag commit must equal GITHUB_SHA: release=${resolvedReleaseCommit} event=${eventSha}`,
     );
   }
   return {

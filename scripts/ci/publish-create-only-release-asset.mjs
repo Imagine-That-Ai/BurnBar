@@ -95,11 +95,11 @@ function validateRelease(raw, request) {
   if (
     raw.tag_name !== request.tag ||
     raw.target_commitish !== request.commit ||
-    raw.draft !== false ||
+    typeof raw.draft !== "boolean" ||
     raw.prerelease !== request.expectedPrerelease
   ) {
     throw new Error(
-      "release must have the exact tag, target commit, published state, and prerelease state",
+      "release must have the exact tag, target commit, draft state, and prerelease state",
     );
   }
   if (!Array.isArray(raw.assets)) {
@@ -210,7 +210,7 @@ function releaseState(request, client, { allowAbsent }) {
   const release = client.lookup(request.tag);
   if (!release) {
     if (allowAbsent) return null;
-    throw new Error("exact published GitHub release does not exist");
+    throw new Error("exact GitHub release does not exist");
   }
   return validateRelease(release, request);
 }

@@ -9,7 +9,7 @@ import {
 } from "../lib/domain-core-release-evidence.mjs";
 
 const TEAM_IDENTIFIER = /^[A-Z0-9]{10}$/u;
-const POLICY_KEYS = ["authority", "teamIdentifier"];
+const POLICY_KEYS = ["authority", "schemaVersion", "teamIdentifier"];
 const JSON_OBJECT_KEY =
   /"(?:\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|[^"\\\u0000-\u001f])*"\s*:/gu;
 
@@ -27,6 +27,9 @@ export function parseAppleSigningPolicy(text) {
   }
   const policy = parseJson(text, "Apple signing policy");
   exactObject(policy, POLICY_KEYS, "Apple signing policy");
+  if (policy.schemaVersion !== 1) {
+    throw new Error("Apple signing policy schemaVersion must be 1");
+  }
 
   const serializedKeys = [...text.matchAll(JSON_OBJECT_KEY)].map((match) =>
     JSON.parse(match[0].slice(0, match[0].lastIndexOf(":"))),
@@ -64,6 +67,19 @@ export function parseAppleSigningPolicy(text) {
   }
   if (/[\r\n]/u.test(policy.authority)) {
     throw new Error("Apple signing policy authority must be one line");
+  }
+  return structuredClone(policy);
+}
+
+export function verifyAppleSigningEnvironment(policyText, environment) {
+  const policy = parseAppleSigningPolicy(policyText);
+  if (environment?.APPLE_TEAM_ID !== policy.teamIdentifier) {
+    throw new Error("APPLE_TEAM_ID does not match committed signing policy");
+  }
+  if (environment?.APPLE_SIGNING_IDENTITY !== policy.authority) {
+    throw new Error(
+      "APPLE_SIGNING_IDENTITY does not match committed signing policy",
+    );
   }
   return structuredClone(policy);
 }
@@ -119,19 +135,23 @@ export function verifyAppleCodeSigningIdentity(policyText, codesignOutput) {
 }
 
 export function run(argv) {
-  if (
-    argv.length !== 4 ||
-    argv[0] !== "--policy" ||
-    argv[2] !== "--signature"
-  ) {
-    throw new Error("usage: --policy PATH --signature PATH");
+  if (argv[0] !== "--policy" || argv.length < 3) {
+    throw new Error("usage: --policy PATH (--signature PATH | --environment)");
   }
   const policyPath = regularFile(argv[1], "Apple signing policy");
-  const outputPath = regularFile(argv[3], "codesign output");
-  const identity = verifyAppleCodeSigningIdentity(
-    readFileSync(policyPath, "utf8"),
-    readFileSync(outputPath, "utf8"),
-  );
+  const policyText = readFileSync(policyPath, "utf8");
+  let identity;
+  if (argv.length === 3 && argv[2] === "--environment") {
+    identity = verifyAppleSigningEnvironment(policyText, process.env);
+  } else if (argv.length === 4 && argv[2] === "--signature" && argv[3]) {
+    const outputPath = regularFile(argv[3], "codesign output");
+    identity = verifyAppleCodeSigningIdentity(
+      policyText,
+      readFileSync(outputPath, "utf8"),
+    );
+  } else {
+    throw new Error("usage: --policy PATH (--signature PATH | --environment)");
+  }
   process.stdout.write(`${JSON.stringify({ ok: true, identity })}\n`);
   return identity;
 }

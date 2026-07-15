@@ -908,7 +908,12 @@ jobs:
     if: ${{ always() && needs.release-preflight.result == 'success' && needs.domain-core-native-release-gate.result == 'success' && (needs.authorize-domain-core-rollback.result == 'success' || needs.authorize-domain-core-rollback.result == 'skipped') }}
     environment: release
     name: build-and-release
-    needs: [release-preflight, authorize-domain-core-rollback, domain-core-native-release-gate]
+    needs:
+      [
+        release-preflight,
+        authorize-domain-core-rollback,
+        domain-core-native-release-gate,
+      ]
     # Keep release builds on the same current GA macOS/Xcode image as PR app
     # tests; Xcode 16.4 on macOS 15 crashes in SwiftEmitModule for this target.
     runs-on: macos-26
@@ -974,19 +979,8 @@ jobs:
             echo "::error::Missing required release secrets: ${missing[*]}"
             exit 1
           fi
-          if [[ ! "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
-            echo "::error::APPLE_TEAM_ID must be exactly ten uppercase letters or digits."
-            exit 1
-          fi
-          if [[ "$APPLE_SIGNING_IDENTITY" != "Developer ID Application: "* ]]; then
-            echo "::error::APPLE_SIGNING_IDENTITY must be a Developer ID Application identity."
-            exit 1
-          fi
-          jq -n \
-            --arg teamIdentifier "$APPLE_TEAM_ID" \
-            --arg authority "$APPLE_SIGNING_IDENTITY" \
-            '{teamIdentifier: $teamIdentifier, authority: $authority}' \
-            > "$RUNNER_TEMP/domain-core-apple-signing-policy.json"
+          node scripts/ci/verify-domain-core-apple-signing-identity.mjs \
+            --policy config/apple-release-signing-policy.json --environment
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
@@ -2235,13 +2229,11 @@ jobs:
           path: ${{ steps.sigstore-provenance.outputs.provenance_dir }}
           if-no-files-found: error
 
-      - name: Upload observed Android Rust identity and protected Apple signer policy
+      - name: Upload observed Android Rust identity
         uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/domain-core-android-observed-identity.json
-            ${{ runner.temp }}/domain-core-apple-signing-policy.json
+          path: ${{ runner.temp }}/domain-core-android-observed-identity.json
           if-no-files-found: error
           retention-days: 90
 
@@ -2295,6 +2287,82 @@ jobs:
           bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$DMG_PATH"
           bash scripts/ci/smoke-openburnbar-release-dmg.sh "$DMG_PATH"
 
+  apple-native-prepublication:
+    name: Verify and stage immutable Apple DMG before publication
+    needs:
+      - release-preflight
+      - domain-core-native-release-gate
+      - build-and-release
+      - smoke-test
+    if: ${{ needs.smoke-test.result == 'success' && needs.domain-core-native-release-gate.result == 'success' }}
+    runs-on: macos-26
+    timeout-minutes: 25
+    environment: release
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.release-preflight.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download exact verified release inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: domain-core-native-release-gate-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
+      - name: Download signed Apple DMG
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.build-and-release.outputs.dmg_name }}
+          path: ${{ runner.temp }}/domain-core-apple-prepublication
+
+      - name: Execute final mounted-DMG Rust probe and verify pinned signer
+        env:
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+          COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          DMG_PATH: ${{ runner.temp }}/domain-core-apple-prepublication/${{ needs.build-and-release.outputs.dmg_name }}
+          OBSERVED_IDENTITY: ${{ runner.temp }}/domain-core-apple-prepublication-observed-identity.json
+        run: |
+          set -euo pipefail
+          bash scripts/ci/verify-domain-core-native-release-artifact.sh \
+            apple "$DMG_PATH" "$VERSION" "$PROFILE" "$COMMIT" \
+            "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            "$OBSERVED_IDENTITY"
+
+      - name: Prepare exact draft and publish DMG create-only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-preflight.outputs.tag_name }}
+          COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          DMG_PATH: ${{ runner.temp }}/domain-core-apple-prepublication/${{ needs.build-and-release.outputs.dmg_name }}
+          PRERELEASE: ${{ needs.release-preflight.outputs.is_prerelease }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/publish-create-only-release-asset.mjs \
+            --phase preflight --repository "$GITHUB_REPOSITORY" \
+            --tag "$TAG" --commit "$COMMIT" --artifact "$DMG_PATH" \
+            --expected-prerelease "$PRERELEASE"
+          node scripts/ci/ensure-apple-domain-core-release.mjs \
+            --repository "$GITHUB_REPOSITORY" --tag "$TAG" --commit "$COMMIT"
+          node scripts/ci/publish-create-only-release-asset.mjs \
+            --phase publish --repository "$GITHUB_REPOSITORY" \
+            --tag "$TAG" --commit "$COMMIT" --artifact "$DMG_PATH" \
+            --expected-prerelease "$PRERELEASE"
+
+      - name: Retain prepublication Apple observed identity
+        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-apple-prepublication-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-apple-prepublication-observed-identity.json
+          if-no-files-found: error
+          retention-days: 90
+
   publish:
     # Fail-closed release gate: publish requires every validation lane and the
     # packaging + artifact smoke chain. A skipped gate only occurs through the
@@ -2312,6 +2380,7 @@ jobs:
       - release-supply-chain-gate
       - build-and-release
       - smoke-test
+      - apple-native-prepublication
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -2421,26 +2490,14 @@ jobs:
             fi
           fi
 
-          if gh release view "v${VERSION}" >/dev/null 2>&1; then
-            gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
-            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" \
-              --target "$RELEASE_COMMIT" "$PRERELEASE_FLAG" "$LATEST_FLAG"
-          else
-            gh release create "v${VERSION}" \
-              "${ASSETS[@]}" \
-              --title "OpenBurnBar $VERSION" \
-              --target "$RELEASE_COMMIT" \
-              --verify-tag \
-              "$PRERELEASE_FLAG" \
-              "$LATEST_FLAG" \
-              --notes-file "$NOTES_FILE"
+          if ! gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "::error::Verified Apple prepublication draft is missing."
+            exit 1
           fi
-          if [[ "$IS_PRERELEASE" == "true" ]]; then
-            node scripts/ci/publish-create-only-release-asset.mjs \
-              --phase publish --repository "$GITHUB_REPOSITORY" \
-              --tag "v${VERSION}" --commit "$RELEASE_COMMIT" \
-              --artifact "$DMG_PATH" --expected-prerelease true
-          fi
+          gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
+          gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" \
+            --target "$RELEASE_COMMIT" --notes-file "$NOTES_FILE" \
+            "$PRERELEASE_FLAG" "$LATEST_FLAG"
 
       - name: Notify Sentry of new release
         if: env.SENTRY_AUTH_TOKEN != ''
@@ -2478,6 +2535,7 @@ jobs:
       - release-preflight
       - domain-core-native-release-gate
       - build-and-release
+      - apple-native-prepublication
       - publish
     if: ${{ needs.release-preflight.outputs.is_prerelease == 'false' && needs.publish.result == 'success' }}
     runs-on: macos-26
@@ -2519,6 +2577,12 @@ jobs:
           name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-native-identities
 
+      - name: Download prepublication Apple observed identity
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: domain-core-apple-prepublication-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-apple-prepublication-identity
+
       - name: Reverify signed artifacts, selected profile, and loaded Rust identity
         env:
           VERSION: ${{ needs.release-preflight.outputs.version }}
@@ -2529,10 +2593,10 @@ jobs:
         run: |
           set -euo pipefail
           profile="$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json"
+          mkdir -p "$RUNNER_TEMP/domain-core-native-evidence"
           bash scripts/ci/verify-domain-core-native-release-artifact.sh \
             apple "$DMG_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
-            "$RUNNER_TEMP/domain-core-native-identities/domain-core-apple-observed-identity.json" \
-            "$RUNNER_TEMP/domain-core-native-identities/domain-core-apple-signing-policy.json"
+            "$RUNNER_TEMP/domain-core-native-evidence/apple-stable-reverify-identity.json"
           bash scripts/ci/verify-domain-core-native-release-artifact.sh \
             android "$AAB_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
             "$RUNNER_TEMP/domain-core-native-identities/domain-core-android-observed-identity.json"
@@ -2742,6 +2806,7 @@ jobs:
             ${{ runner.temp }}/domain-core-native-release-gate/domain-core-selected-public-profile.json
             ${{ runner.temp }}/domain-core-native-release-gate/source/domain-core-public-production-rollback.json
             ${{ runner.temp }}/domain-core-native-identities/
+            ${{ runner.temp }}/domain-core-apple-prepublication-identity/
           if-no-files-found: error
           retention-days: 90
 

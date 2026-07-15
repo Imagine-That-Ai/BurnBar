@@ -152,11 +152,17 @@ predicate and its consumer-specific protected signer workflow.
 
 Native release predicates are generated after platform-native verification:
 
-- Apple verifies notarization, the protected TeamIdentifier and leaf signing
-  authority, the arm64 app executable, the embedded build-profile receipt, and
-  the Rust identity reported by a signed probe executed directly from the
-  mounted DMG. The report includes the probe's own SHA-256 and is checked
-  against those mounted bytes.
+- Apple verifies notarization and the committed signing pins in
+  [`config/apple-release-signing-policy.json`](../../config/apple-release-signing-policy.json).
+  `APPLE_TEAM_ID`, `APPLE_SIGNING_IDENTITY`, and the `codesign` output for the
+  outer DMG, mounted app, and embedded probe must all match Team ID
+  `4Y367DF25B` and the exact Developer ID leaf authority. The arm64-only signed
+  probe executes directly from the mounted DMG and calls the loaded Rust
+  identity exports. Its report hashes the mounted app's shipped
+  `Contents/MacOS/OpenBurnBar` executable, and the verifier checks that digest
+  against those exact executable bytes. This keeps Rust execution proof and
+  shipped-artifact identity in one report without substituting the helper for
+  the released app binary.
 - Android verifies the approved upload-certificate fingerprint, JAR signature,
   bundletool structure, both supported 64-bit native ABIs, the embedded build-profile
   receipt, and the Rust identity observed on an arm64 emulator. The loaded
@@ -177,9 +183,9 @@ Pass the artifact and all domain attestation bundles to
 The publisher:
 
 1. validates every predicate and verifies every local attestation bundle;
-2. requires the exact release tag and candidate commit; Apple and Android use
-   an existing published stable release, while Windows uses an exact private
-   draft;
+2. requires the exact release tag and candidate commit; Apple uses an exact
+   draft or published release, Android uses the published stable release, and
+   Windows uses an exact private draft;
 3. downloads and verifies every existing name collision before any upload;
 4. uploads attestation bundles first with create-only GitHub release operations;
 5. uploads the artifact last; and
@@ -251,11 +257,16 @@ not overwrite those stable assets: it retains a uniquely named Actions artifact
 containing the receipt, predicate, official provenance bundle, deploy proof, and
 health evidence keyed by tag, deploy run, and attempt.
 
-The general macOS publisher never includes the DMG in a clobber upload. It
-preflights an existing same-name DMG before any release mutation. Stable DMGs
-are uploaded only by the evidence publisher; prerelease DMGs use the dedicated
-create-only asset publisher and receive the same collision and final-download
-checks.
+The Apple prepublication job applies to both stable and prerelease tags. It
+mounts the final notarized DMG, executes the embedded Rust identity probe,
+verifies the committed signer pins, creates or reuses only the exact GitHub
+release (creating it as a draft when absent), and uploads the DMG create-only
+with a final byte-for-byte download check. Only then may the general publisher
+upload the remaining assets and change the draft's public, prerelease, or latest
+state. The general publisher never includes the DMG in a clobber upload and
+preflights the already published same-name bytes before any release edit.
+Stable evidence runs after publication and independently mounts and reverifies
+the DMG again before generating public predicates.
 
 ## Ownership boundary
 
@@ -270,3 +281,7 @@ workflows and every helper they execute with attestation or publication
 permissions. Regenerate and review that manifest whenever this wiring changes;
 otherwise a candidate commit could change its own verifier. Native workflow
 changes and signer-manifest changes therefore land as one reviewed integration.
+The pre-integration seed list lives in
+[`scripts/lib/domain-core-native-control-plane-seeds.mjs`](../../scripts/lib/domain-core-native-control-plane-seeds.mjs);
+after the release-workflow rebase, import it into the protected control-plane
+verifier and regenerate the committed manifest from that exact tree.
