@@ -8,8 +8,8 @@ import java.security.MessageDigest
 
 /**
  * Mirrors the Swift InsightDigestBuilder with the same 24KB ceiling and
- * the same privacy hashing: project display names are replaced with hashed
- * IDs and inferred task titles are hashed before entering the digest.
+ * the same privacy treatment: project display names are replaced with hashed
+ * IDs and inferred task titles are omitted from the digest entirely.
  *
  * Android-specific note: useCaseHistogram, agentFocusSignals, and modelFocusSignals
  * are left empty because raw session data isn't synced to Android.
@@ -220,22 +220,14 @@ object InsightDigestBuilder {
         return hash.joinToString("") { "%02x".format(it) }
     }
 
-    // Privacy hashing — parity with Swift shortHash(raw,salt:)
-
-    private fun shortHash(raw: String, salt: String): String {
-        val md = MessageDigest.getInstance(HASH_ALGORITHM)
-        val hash = md.digest("$salt:$raw".toByteArray(Charsets.UTF_8))
-        return hash.take(4).joinToString("") { "%02x".format(it) }
-    }
-
     private fun hashProjectSnapshot(snapshot: InsightDigest.ProjectSnapshot): InsightDigest.ProjectSnapshot =
         snapshot.copy(displayName = snapshot.id)
 
     private fun hashProviderSnapshot(snapshot: InsightDigest.ProviderSnapshot): InsightDigest.ProviderSnapshot =
-        snapshot.copy(topInferredTaskTitles = snapshot.topInferredTaskTitles.map { shortHash(it, "title") })
+        snapshot.copy(topInferredTaskTitles = emptyList())
 
     private fun hashModelSnapshot(snapshot: InsightDigest.ModelSnapshot): InsightDigest.ModelSnapshot =
-        snapshot.copy(topInferredTaskTitles = snapshot.topInferredTaskTitles.map { shortHash(it, "title") })
+        snapshot.copy(topInferredTaskTitles = emptyList())
 
     private fun InsightTimeWindow.toInterval(): Pair<String, String> {
         val now = java.time.Instant.now()

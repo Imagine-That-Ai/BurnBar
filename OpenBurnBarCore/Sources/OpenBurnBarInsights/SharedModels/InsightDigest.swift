@@ -8,7 +8,7 @@ import Foundation
 /// guarantees enforced by `InsightDigestBuilder` and unit tests:
 ///
 ///   • No raw file contents, no source code, no secrets.
-///   • No conversation message bodies (only hashed inferred-title fingerprints + counts).
+///   • No conversation message bodies or inferred task titles — only aggregate counts.
 ///   • No API keys, credential labels, OAuth refresh hints.
 ///   • Device names replaced with stable hashed IDs.
 ///   • Project paths replaced with stable `project_xxx` IDs.

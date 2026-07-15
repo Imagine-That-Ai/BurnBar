@@ -4,9 +4,11 @@ import OpenBurnBarKernel
 /// Builds the privacy-bounded `InsightDigest` that gets shipped to a model.
 ///
 /// **Privacy contract** (also enforced by `InsightDigestPrivacyTests`):
-///
+///   • Device names hashed to `device_xxxx` (stable across builds).
 ///   • Project names hashed to `project_xxxx` for export — `displayName`
 ///     uses the same hashed ID, never the cleartext folder name.
+///   • Inferred task titles are omitted from the hosted digest entirely —
+///     32-bit hashes with a public salt remain dictionary-guessable.
 ///   • Encoded payload is trimmed to 24 KB by dropping long-tail entries
 ///     (per-day per-provider extras, low-rank providers/models/projects).
 ///   • No keyFiles or full message text ever appears.
@@ -225,9 +227,10 @@ public struct InsightDigestBuilder: Sendable {
                 let topModels = Array(value.topModels
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(3).map(\.key))
-                let topTitles = Array(value.titles
-                    .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-                    .prefix(5).map { Self.shortHash($0.key, salt: "title") })
+                // Omit inferred task titles from the hosted digest — 32-bit
+                // hashes with a public salt remain dictionary-guessable for
+                // low-entropy inputs (see Codex review r3585472414).
+                let topTitles: [String] = []
                 let topTools = Array(value.tools
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(5).map(\.key))
@@ -273,12 +276,12 @@ public struct InsightDigestBuilder: Sendable {
             }
             .prefix(limit)
             .map { key, value in
+                let cacheRate = value.tokens > 0 ? Double(value.cacheTokens) / Double(value.tokens) : 0
                 let sessionCount = max(1, value.sessions.count)
                 let avgCost = value.cost / Double(sessionCount)
-                let cacheRate = value.tokens > 0 ? Double(value.cacheTokens) / Double(value.tokens) : 0
-                let topTitles = Array(value.titles
-                    .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-                    .prefix(5).map { Self.shortHash($0.key, salt: "title") })
+                // Omit inferred task titles from the hosted digest —
+                // dictionary-guessable (see Codex review r3585472414).
+                let topTitles: [String] = []
                 let topProjects = Array(value.projects
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(3).map(\.key))
