@@ -35,6 +35,10 @@ The exact external blockers are recorded in `blockers/*.md`. The signed MSIX/res
 
 ```text
 node scripts/windows-port/run-local-certification-checks.mjs <bundle-directory>
+pwsh scripts/windows-port/new-physical-hardware-attestation.ps1 `
+  -Operator Alberto `
+  -ExpectedArchitecture x64 `
+  -OutputPath C:\evidence\hardware-attestation.json
 pwsh scripts/windows-port/run-physical-release-certification.ps1 `
   -RepoRoot C:\src\BurnBar `
   -OutputDir C:\src\BurnBar\docs\windows-port\evidence\physical-release-certification-2026-07-11\physical-x64 `
@@ -45,4 +49,4 @@ pwsh scripts/windows-port/run-physical-release-certification.ps1 `
 node scripts/windows-port/validate-release-certification-evidence.mjs <bundle-directory>
 ```
 
-The PowerShell runner requires an explicit hardware attestation and rejects virtualized host fingerprints, missing signed artifact identity, and incomplete supplemental receipts. When an OEM reports a placeholder `SMBIOSAssetTag`, attest the live `Win32_ComputerSystemProduct.IdentifyingNumber` as the inventory `assetTag`; the runner uses that value as its fallback. It invokes the existing Windows UIA profile but keeps the manual Narrator/keyboard protocol as a separate required receipt.
+The PowerShell runner requires an explicit hardware attestation and rejects virtualized host fingerprints, missing signed artifact identity, and incomplete supplemental receipts. Generate the attestation on the target device with `new-physical-hardware-attestation.ps1`; do not hand-author it. When an OEM reports a placeholder `SMBIOSAssetTag`, the helper records the live `Win32_ComputerSystemProduct.IdentifyingNumber` as the inventory `assetTag` and records `assetTagSource` so the runner can revalidate the same live source. It invokes the existing Windows UIA profile but keeps the manual Narrator/keyboard protocol as a separate required receipt.

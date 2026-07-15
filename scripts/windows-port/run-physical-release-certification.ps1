@@ -231,12 +231,19 @@ function Get-DeviceIdentity {
     # Many OEMs expose a placeholder chassis tag. Use the system-product
     # identifying number as the stable inventory identifier fallback, and
     # require the attestation to record that same live value.
-    $assetTag = @([string]$enclosure.SMBIOSAssetTag, [string]$systemProduct.IdentifyingNumber) |
+    $inventoryIdentifier = @(
+        [ordered]@{ value = [string]$enclosure.SMBIOSAssetTag; source = 'Win32_SystemEnclosure.SMBIOSAssetTag' },
+        [ordered]@{ value = [string]$systemProduct.IdentifyingNumber; source = 'Win32_ComputerSystemProduct.IdentifyingNumber' }
+    ) |
         Where-Object {
-            -not [string]::IsNullOrWhiteSpace($_) -and
-            $_ -notmatch '(?i)^(none|unknown|default string|to be filled by o\.e\.m\.|not specified|system asset tag|chassis asset tag)$'
+            -not [string]::IsNullOrWhiteSpace([string]$_.value) -and
+            ([string]$_.value).Trim().Length -le 128 -and
+            ([string]$_.value).Trim() -notmatch '[\x00-\x1f\x7f]' -and
+            ([string]$_.value).Trim() -notmatch '(?i)^(none|unknown|default string|to be filled by o\.e\.m\.|not specified|system asset tag|chassis asset tag)$'
         } |
         Select-Object -First 1
+    $assetTag = if ($null -eq $inventoryIdentifier) { '' } else { ([string]$inventoryIdentifier.value).Trim() }
+    $assetTagSource = if ($null -eq $inventoryIdentifier) { '' } else { [string]$inventoryIdentifier.source }
     if ($PhysicalHardware) {
         $liveIdentity = [ordered]@{
             manufacturer = [string]$computer.Manufacturer
@@ -253,12 +260,18 @@ function Get-DeviceIdentity {
                 throw "Hardware attestation $field does not match the current device."
             }
         }
+        $attestedAssetTagSource = [string]$script:HardwareAttestation.assetTagSource
+        if (-not [string]::IsNullOrWhiteSpace($attestedAssetTagSource) -and
+            -not [string]::Equals($assetTagSource, $attestedAssetTagSource.Trim(), [System.StringComparison]::Ordinal)) {
+            throw 'Hardware attestation assetTagSource does not match the current device identifier source.'
+        }
     }
     $result = [ordered]@{
         kind = if ($PhysicalHardware) { 'physical-windows' } else { 'windows-vm-or-hosted-runner' }
         manufacturer = [string]$computer.Manufacturer
         model = [string]$computer.Model
         assetTag = $assetTag
+        assetTagSource = $assetTagSource
         architecture = $Platform
         osArchitecture = $computerArch
         osBuild = ('{0} {1} build {2}' -f $os.Caption, $os.Version, $os.BuildNumber)
@@ -275,6 +288,7 @@ function Get-DeviceIdentity {
             schema = [string]$script:HardwareAttestation.schema
             operator = [string]$script:HardwareAttestation.operator
             assetTag = [string]$script:HardwareAttestation.assetTag
+            assetTagSource = [string]$script:HardwareAttestation.assetTagSource
             sha256 = [string]$script:HardwareAttestationSha256
         }
     }

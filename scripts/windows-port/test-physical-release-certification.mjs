@@ -7,6 +7,7 @@ import { describeLocalCertificationHost } from "./local-certification-host.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const script = readFileSync(join(root, "run-physical-release-certification.ps1"), "utf8");
+const attestationGenerator = readFileSync(join(root, "new-physical-hardware-attestation.ps1"), "utf8");
 const localRunner = readFileSync(join(root, "run-local-certification-checks.mjs"), "utf8");
 
 assert.match(script, /\$PhysicalHardware/);
@@ -18,6 +19,8 @@ assert.match(script, /Get-CimInstance Win32_SystemEnclosure/);
 assert.match(script, /Get-CimInstance Win32_ComputerSystemProduct/);
 assert.match(script, /placeholder chassis tag/);
 assert.match(script, /systemProduct\.IdentifyingNumber/);
+assert.match(script, /assetTagSource/);
+assert.match(script, /Hardware attestation assetTagSource does not match/);
 assert.match(
   script,
   /system asset tag\|chassis asset tag/,
@@ -29,6 +32,22 @@ assert.match(
 );
 assert.match(script, /Physical hardware architecture mismatch/);
 assert.match(script, /Get-Tpm/);
+
+assert.match(attestationGenerator, /openburnbar\.windows\.physical-hardware-attestation\.v1/);
+assert.match(attestationGenerator, /Get-CimInstance Win32_SystemEnclosure/);
+assert.match(attestationGenerator, /Get-CimInstance Win32_ComputerSystemProduct/);
+assert.match(attestationGenerator, /Win32_SystemEnclosure\.SMBIOSAssetTag/);
+assert.match(attestationGenerator, /Win32_ComputerSystemProduct\.IdentifyingNumber/);
+assert.match(attestationGenerator, /system asset tag\|chassis asset tag/);
+assert.match(attestationGenerator, /assetTagSource/);
+assert.match(attestationGenerator, /Refusing physical hardware attestation for a virtualized host identity/);
+assert.match(attestationGenerator, /Refusing to overwrite existing hardware attestation without -Force/);
+assert.match(attestationGenerator, /\.tmp-/);
+const windowsFastWorkflow = readFileSync(join(root, "../../.github/workflows/pr-windows-fast.yml"), "utf8");
+assert.match(windowsFastWorkflow, /new-physical-hardware-attestation\.ps1/);
+assert.match(windowsFastWorkflow, /run-physical-release-certification\.ps1/);
+assert.match(windowsFastWorkflow, /Language\.Parser\]::ParseFile/);
+
 assert.match(script, /IsPathRooted\(\$Path\)/);
 assert.match(script, /function ConvertTo-WindowsProcessArgument/);
 assert.match(script, /if \(\$null -ne \$startInfo\.PSObject\.Properties\['ArgumentList'\]\)/);
