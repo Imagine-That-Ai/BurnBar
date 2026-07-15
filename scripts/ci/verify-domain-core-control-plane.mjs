@@ -38,6 +38,61 @@ const SEED_PATHS = Object.freeze([
   "windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj",
   "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/OpenBurnBarDomainCore.Ffi.csproj",
   "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs",
+  // Test fixtures read by proof-job tests — a candidate could weaken these
+  // while leaving the seeded harness unchanged, passing the workflow without
+  // the protected signer comparing those bytes.
+  "tests/fixtures/domain-core/cloudvault/v1/cloudvault-document-rewrap-contract.json",
+  "tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat.json",
+  "tests/fixtures/domain-core/cloudvault/v1/cloudvault-search-contract.json",
+  "tests/fixtures/domain-core/quota/v1/codex-usage-expected.json",
+  "tests/fixtures/domain-core/quota/v1/claude-statusline-expected.json",
+  "tests/fixtures/domain-core/quota/v1/cursor-usage-summary-expected.json",
+  "tests/fixtures/domain-core/quota/v1/claude-statusline-input.json",
+  "tests/fixtures/domain-core/quota/v1/cursor-usage-summary-input.json",
+  "tests/fixtures/domain-core/quota/v1/anthropic-ratelimit-headers-input.json",
+  "tests/fixtures/domain-core/quota/v1/anthropic-ratelimit-headers-expected.json",
+  "tests/fixtures/domain-core/quota/v1/codex-usage-input.json",
+  "tests/fixtures/domain-core/hermes/v1/hermes-crypto-kat.json",
+  "tests/fixtures/domain-core/pricing/v2/pricing-kat.json",
+  // Windows dotnet test projects executed by proof jobs
+  "windows/tests/cloudsync/OpenBurnBar.CloudSync.Crypto.Tests.csproj",
+  "windows/tests/configuration/OpenBurnBar.App.Configuration.Tests.csproj",
+  // Functions vitest contract files executed by the functions-pricing proof job
+  "functions/src/__tests__/pricing.test.ts",
+  "functions/src/__tests__/domainCoreBuildProfile.test.ts",
+  "functions/src/__tests__/domainCoreShadowEvidence.test.ts",
+  // Console vitest contract files executed by the console-consumer-contracts proof job
+  "apps/console/test/domainCoreBuildProfile.test.ts",
+  "apps/console/test/domainCoreCloudVault.test.ts",
+  "apps/console/test/domainCoreShadowEvidence.test.ts",
+  "apps/console/test/escrow.test.ts",
+  // Android gradle consumer contract test files executed by the android proof job
+  "android/app/src/test/java/com/openburnbar/data/DomainCoreBuildProfileTest.kt",
+  "android/app/src/test/java/com/openburnbar/data/DomainCoreShadowEvidenceTest.kt",
+  "android/app/src/test/java/com/openburnbar/data/cloud/CloudVaultDocumentRewrapDomainCoreTest.kt",
+  "android/app/src/test/java/com/openburnbar/data/cloud/CloudVaultDomainCoreTest.kt",
+  "android/app/src/test/java/com/openburnbar/data/cloud/CloudVaultSearchDomainCoreTest.kt",
+  "android/app/src/test/java/com/openburnbar/data/cloud/CloudVaultAadParityTest.kt",
+  "android/app/src/test/java/com/openburnbar/data/hermes/relay/HermesDomainCoreAdapterTest.kt",
+  "android/app/src/test/java/com/openburnbar/data/hermes/relay/HermesRatchetCryptoTest.kt",
+  // Swift consumer contract test files executed by the swift-consumer-contracts proof job
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/ClaudeQuotaDomainCoreAdapterTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVaultAADParityTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVaultCryptoTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVaultDocumentRewrapDomainCoreAdapterTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVaultDomainCoreAdapterTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVaultSearchContractTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVaultSearchDomainCoreAdapterTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVaultSignalEnvelopeTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/DomainCoreBuildProfileTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/DomainCorePricingAdapterTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/DomainCoreQuotaConsumerTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/DomainCoreShadowRuntimeTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesDomainCoreAdapterBoundaryTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesDomainCoreMigrationTests.swift",
+  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesRatchetCryptoTests.swift",
+  // AgentLens shadow evidence spool test executed by test-openburnbar-app.sh
+  "AgentLensTests/Active/DomainCoreShadowEvidenceSpoolTests.swift",
 ]);
 const EXECUTABLE_REFERENCE =
   /(?:^|[\s"'(])((?:\.\/)?(?:scripts|tools)\/[A-Za-z0-9_./-]+\.(?:js|mjs|py|sh))/gmu;
