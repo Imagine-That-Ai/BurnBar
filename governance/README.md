@@ -107,6 +107,14 @@ This gate covers the TypeScript surface only. Swift/native diff coverage
 [`openburnbar-pr-harness.yml`](../.github/workflows/openburnbar-pr-harness.yml), which is not a
 `pull_request` gate.
 
+### The `Domain Core Trusted Deletion Guard` Pending Gate
+
+Keep this context pending until the legacy-deletion ledger has landed on `main`
+and the trusted `pull_request_target` workflow has evaluated that ledger
+successfully. For an exact-head deletion approval, rerun the trusted check
+manually after approval; do not add a candidate-controlled
+`pull_request_review` trigger.
+
 ## Drift Check
 
 The scheduled/dispatch ops verification lane runs
