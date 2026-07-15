@@ -1,0 +1,404 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.com/contracts/domain-core-shadow-sample-v3.schema.json",
+  "title": "OpenBurnBar candidate-bound domain-core shadow sample v3",
+  "description": "The server verifies candidate and expected-core fields against enrollment claims, enforces loaded-core equality except for explicit loaded_identity_mismatch telemetry, then stamps receivedAt. Only server receivedAt is authoritative for promotion windows. Tuple inequality for loaded_identity_mismatch is enforced by the server and export parser because JSON Schema cannot compare sibling values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sampleId",
+    "domain",
+    "slice",
+    "consumer",
+    "channel",
+    "operation",
+    "candidateCommit",
+    "expectedCoreVersion",
+    "expectedCoreAbiVersion",
+    "expectedCoreSourceSha256",
+    "loadedCoreVersion",
+    "loadedCoreAbiVersion",
+    "loadedCoreSourceSha256",
+    "observedAt",
+    "outcome",
+    "mismatchCategory",
+    "legacyMicros",
+    "rustMicros"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 3 },
+    "sampleId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "domain": { "enum": ["quota", "cloudvault", "hermes", "pricing"] },
+    "slice": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
+    "consumer": {
+      "enum": ["apple", "android", "windows", "console", "functions"]
+    },
+    "channel": { "enum": ["internal", "beta"] },
+    "operation": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$" },
+    "candidateCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "expectedCoreVersion": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$"
+    },
+    "expectedCoreAbiVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "expectedCoreSourceSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "loadedCoreVersion": {
+      "type": ["string", "null"],
+      "maxLength": 64,
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$"
+    },
+    "loadedCoreAbiVersion": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "loadedCoreSourceSha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "outcome": { "enum": ["match", "mismatch"] },
+    "mismatchCategory": {
+      "type": ["string", "null"],
+      "enum": [
+        "result_mismatch",
+        "native_unavailable",
+        "native_error",
+        "invalid_result",
+        "loaded_identity_mismatch",
+        null
+      ]
+    },
+    "legacyMicros": { "type": "integer", "minimum": 0, "maximum": 600000000 },
+    "rustMicros": { "type": "integer", "minimum": 0, "maximum": 600000000 }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "outcome": { "const": "match" } },
+        "required": ["outcome"]
+      },
+      "then": {
+        "properties": {
+          "mismatchCategory": { "const": null },
+          "loadedCoreVersion": { "type": "string" },
+          "loadedCoreAbiVersion": { "type": "integer" },
+          "loadedCoreSourceSha256": { "type": "string" }
+        }
+      },
+      "else": {
+        "properties": {
+          "mismatchCategory": {
+            "enum": [
+              "result_mismatch",
+              "native_unavailable",
+              "native_error",
+              "invalid_result",
+              "loaded_identity_mismatch"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "loadedCoreVersion": { "type": "string" },
+            "loadedCoreAbiVersion": { "type": "integer" },
+            "loadedCoreSourceSha256": { "type": "string" }
+          }
+        },
+        {
+          "properties": {
+            "loadedCoreVersion": { "const": null },
+            "loadedCoreAbiVersion": { "const": null },
+            "loadedCoreSourceSha256": { "const": null }
+          }
+        }
+      ]
+    },
+    {
+      "if": {
+        "properties": {
+          "mismatchCategory": { "enum": ["result_mismatch", "invalid_result"] }
+        },
+        "required": ["mismatchCategory"]
+      },
+      "then": {
+        "properties": {
+          "loadedCoreVersion": { "type": "string" },
+          "loadedCoreAbiVersion": { "type": "integer" },
+          "loadedCoreSourceSha256": { "type": "string" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "mismatchCategory": { "const": "native_unavailable" } },
+        "required": ["mismatchCategory"]
+      },
+      "then": {
+        "properties": {
+          "loadedCoreVersion": { "const": null },
+          "loadedCoreAbiVersion": { "const": null },
+          "loadedCoreSourceSha256": { "const": null }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mismatchCategory": { "const": "loaded_identity_mismatch" }
+        },
+        "required": ["mismatchCategory"]
+      },
+      "then": {
+        "properties": {
+          "loadedCoreVersion": { "type": "string" },
+          "loadedCoreAbiVersion": { "type": "integer" },
+          "loadedCoreSourceSha256": { "type": "string" }
+        }
+      }
+    },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "domain": { "const": "quota" },
+            "slice": { "const": "claude" },
+            "consumer": { "enum": ["apple", "windows"] },
+            "operation": { "const": "claude_quota" }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "quota" },
+            "slice": { "const": "codex" },
+            "consumer": { "enum": ["apple", "windows"] },
+            "operation": { "const": "codex_quota" }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "quota" },
+            "slice": { "const": "cursor" },
+            "consumer": { "enum": ["apple", "windows"] },
+            "operation": { "const": "cursor_quota" }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "quota" },
+            "slice": { "const": "anthropic" },
+            "consumer": { "enum": ["apple", "windows"] },
+            "operation": { "const": "anthropic_quota" }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "foundation" },
+            "consumer": { "enum": ["apple", "android", "windows", "console"] },
+            "operation": {
+              "enum": [
+                "aad_v1",
+                "aad_v2",
+                "resolve_aad",
+                "sha256",
+                "sha256_hex",
+                "vault_key_id",
+                "blob_integrity",
+                "session_body",
+                "session_chunk",
+                "project_memory_content",
+                "blob_integrity_hash",
+                "session_body_hash",
+                "session_chunk_hash",
+                "project_memory_content_hash",
+                "keyed_hash_blob_integrity",
+                "expected_session_body_hash",
+                "expected_session_body_hash_v0",
+                "expected_session_body_hash_v1",
+                "expected_session_body_hash_v2",
+                "base64_encode",
+                "base64_decode",
+                "base64_decode_strict",
+                "p256_validate_public_key",
+                "initialize",
+                "cloudvault_aad_v1",
+                "cloudvault_aad_v2",
+                "cloudvault_resolve_aad",
+                "cloudvault_sha256",
+                "cloudvault_key_id",
+                "cloudvault_keyed_hash",
+                "cloudvault_base64_encode",
+                "cloudvault_base64_decode",
+                "cloudvault_validate_p256_public_key"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "aes" },
+            "consumer": { "enum": ["apple", "android", "windows", "console"] },
+            "operation": {
+              "enum": [
+                "aes_gcm_seal_detached",
+                "aes_gcm_seal_combined",
+                "aes_gcm_open_detached",
+                "aes_gcm_open_text_detached",
+                "aes_gcm_open_combined",
+                "aes_seal_detached",
+                "aes_seal_combined",
+                "aes_open_detached",
+                "aes_open_text",
+                "aes_open_combined",
+                "cloudvault_aes_seal_detached",
+                "cloudvault_aes_seal_combined",
+                "cloudvault_aes_open_detached",
+                "cloudvault_aes_open_text",
+                "cloudvault_aes_open_combined"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "recovery" },
+            "consumer": { "enum": ["apple", "android", "windows"] },
+            "operation": {
+              "enum": [
+                "recovery_normalize",
+                "recovery_wrapping_key",
+                "recovery_verification_hash",
+                "recovery_wrap_vault_key",
+                "recovery_open_vault_key",
+                "cloudvault_recovery_wrapping_key",
+                "cloudvault_recovery_verification_hash",
+                "cloudvault_recovery_wrap_vault_key",
+                "cloudvault_recovery_open_vault_key"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "escrow" },
+            "consumer": { "enum": ["apple", "android", "windows", "console"] },
+            "operation": {
+              "enum": [
+                "escrow_wrapping_key",
+                "escrow_assemble_wire",
+                "escrow_split_wire",
+                "escrow_seal",
+                "escrow_open",
+                "cloudvault_escrow_split_wire",
+                "cloudvault_escrow_seal",
+                "cloudvault_escrow_open"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "document-rewrap" },
+            "consumer": { "enum": ["apple", "android"] },
+            "operation": { "const": "document_rewrap" }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "search" },
+            "consumer": { "enum": ["apple", "android"] },
+            "operation": { "enum": ["token", "index", "query", "semantic"] }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "hermes" },
+            "slice": { "const": "aad" },
+            "consumer": { "enum": ["apple", "android"] },
+            "operation": { "const": "aad" }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "hermes" },
+            "slice": { "const": "payload-keywrap" },
+            "consumer": { "enum": ["apple", "android"] },
+            "operation": {
+              "enum": [
+                "key_wrap_info_v1",
+                "key_wrap_info_v2",
+                "seal",
+                "open",
+                "safety_code",
+                "hkdf"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "hermes" },
+            "slice": { "const": "hpke-info" },
+            "consumer": { "enum": ["apple", "android"] },
+            "operation": { "const": "hpke_v3_info" }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "hermes" },
+            "slice": { "const": "ratchet" },
+            "consumer": { "enum": ["apple", "android"] },
+            "operation": {
+              "enum": [
+                "ratchet_aad",
+                "ratchet_root_kdf",
+                "ratchet_chain_kdf",
+                "ratchet_message_kdf",
+                "ratchet_seal",
+                "ratchet_open"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "pricing" },
+            "slice": { "const": "token-cost" },
+            "consumer": { "enum": ["apple", "functions"] },
+            "operation": { "const": "calculate_token_cost" }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "pricing" },
+            "slice": { "const": "legacy-kimi" },
+            "consumer": { "const": "functions" },
+            "operation": { "const": "price_legacy_kimi" }
+          }
+        }
+      ]
+    }
+  ]
+}
