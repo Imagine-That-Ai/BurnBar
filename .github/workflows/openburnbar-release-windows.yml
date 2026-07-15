@@ -243,6 +243,9 @@ jobs:
           ref: ${{ needs.resolve-release.outputs.release_commit }}
           fetch-depth: 0
 
+      - name: Resolve signed public domain-core profile
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "${{ needs.resolve-release.outputs.release_commit }}" --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
+
       - name: Set up .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
@@ -323,9 +326,6 @@ jobs:
       - name: Run updater unit tests against committed sample pin
         run: dotnet test windows/tests/updater/OpenBurnBar.Updater.Tests.csproj -c Release
 
-      - name: Resolve signed public domain-core profile
-        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
-
       - name: Publish WinUI app (win-x64 + win-arm64)
         # Real build. Unproven until WINUI-017 lands the full WinUI toolchain build; this only
         # runs on a windows-v* tag, which is not cut until the app builds green.
@@ -388,7 +388,7 @@ jobs:
           set -euo pipefail
           for rid in win-x64 win-arm64; do
             node scripts/windows-port/validate-native-engine-layout.mjs "publish/$rid"
-            node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --windows-dir "publish/$rid"
+            node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "${{ needs.resolve-release.outputs.release_commit }}" --windows-dir "publish/$rid"
           done
 
       - name: Authenticode sign (Azure Artifact Signing — no staple analog)
