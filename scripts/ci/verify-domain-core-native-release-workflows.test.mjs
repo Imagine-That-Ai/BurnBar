@@ -6,6 +6,10 @@ const appleAndroid = readFileSync(
   new URL("../../.github/workflows/release.yml", import.meta.url),
   "utf8",
 );
+const domainCore = readFileSync(
+  new URL("../../.github/workflows/domain-core.yml", import.meta.url),
+  "utf8",
+);
 const windows = readFileSync(
   new URL(
     "../../.github/workflows/openburnbar-release-windows.yml",
@@ -92,12 +96,34 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
   );
   assert.match(build, /--binary "\$packaged_library"/u);
   assert.match(build, /verify-domain-core-android-universal-artifact\.mjs/u);
+  assert.match(build, /run-domain-core-android-native-load\.sh/u);
+  assert.doesNotMatch(build, /run-as com\.openburnbar\.domaincore\.test/u);
   assert.match(build, /--candidate-aar Vendor\/openburnbar-domain-core\.aar/u);
   assert.match(build, /runs-on: macos-26[\s\S]*arch: arm64-v8a/u);
   assert.match(
     androidBuild,
     /keepDebugSymbols \+= "\*\*\/libopenburnbar_domain_ffi\.so"/u,
   );
+});
+
+test("deterministic native smoke resolves candidate C and extracts Android identity before uninstall", () => {
+  const appleSmoke = job(domainCore, "apple-native-smoke", "swift-consumer-contracts");
+  const android = job(domainCore, "android", "apple");
+  assert.match(appleSmoke, /candidate_commit="\$\(git rev-parse HEAD\)"/u);
+  assert.match(
+    appleSmoke,
+    /DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ steps\.candidate\.outputs\.commit \}\}/u,
+  );
+  assert.match(
+    appleSmoke,
+    /--expected-candidate-commit "\$\{\{ steps\.candidate\.outputs\.commit \}\}"/u,
+  );
+  assert.doesNotMatch(
+    appleSmoke,
+    /--expected-candidate-commit "\$GITHUB_SHA"/u,
+  );
+  assert.match(android, /run-domain-core-android-native-load\.sh/u);
+  assert.doesNotMatch(android, /run-as com\.openburnbar\.domaincore\.test/u);
 });
 
 test("native release keeps protected candidate C distinct from activation P", () => {

@@ -93,8 +93,13 @@ require(
 require(sourceFingerprint == expectedSourceFingerprint, "loaded XCFramework source fingerprint mismatch")
 
 if let reportPath = ProcessInfo.processInfo.environment["DOMAIN_CORE_OBSERVED_IDENTITY_REPORT"] {
+    let candidateCommit = ProcessInfo.processInfo.environment["DOMAIN_CORE_CANDIDATE_COMMIT"] ?? ""
+    require(
+        candidateCommit.range(of: #"^[0-9a-f]{40}$"#, options: .regularExpression) != nil,
+        "missing exact candidate commit for observed identity report"
+    )
     let identity = ObservedIdentity(
-        candidateCommit: ProcessInfo.processInfo.environment["GITHUB_SHA"] ?? "",
+        candidateCommit: candidateCommit,
         coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
         abiVersion: OpenBurnBarDomainCoreFFI.domainCoreAbiVersion(),
         sourceSha256: sourceFingerprint
@@ -104,7 +109,9 @@ if let reportPath = ProcessInfo.processInfo.environment["DOMAIN_CORE_OBSERVED_ID
         encoded.append(0x0A)
         try encoded.write(to: URL(fileURLWithPath: reportPath), options: .atomic)
     } catch {
-        FileHandle.standardError.write(Data("domain-core smoke failed: cannot write observed identity: \(error)\n".utf8))
+        FileHandle.standardError.write(
+            Data("domain-core smoke failed: cannot write observed identity: \(error)\n".utf8)
+        )
         exit(1)
     }
 }
