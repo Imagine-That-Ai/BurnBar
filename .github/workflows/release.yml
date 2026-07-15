@@ -1204,6 +1204,11 @@ jobs:
             --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
             --observed-identity "$RUNNER_TEMP/domain-core-android-observed-identity.json" \
             --binary "$packaged_library"
+          node scripts/ci/verify-domain-core-android-universal-artifact.mjs \
+            --aab "${{ steps.android.outputs.aab_path }}" \
+            --candidate-aar Vendor/openburnbar-domain-core.aar \
+            --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
+            --output "$RUNNER_TEMP/domain-core-android-universal-build-manifest.json"
 
       - name: Upload Android release bundle artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -2542,7 +2547,9 @@ jobs:
             "$RUNNER_TEMP/domain-core-native-evidence/apple-final-reverify-identity.json"
           bash scripts/ci/verify-domain-core-native-release-artifact.sh \
             android "$AAB_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
-            "$RUNNER_TEMP/domain-core-native-identities/domain-core-android-observed-identity.json"
+            "$RUNNER_TEMP/domain-core-native-identities/domain-core-android-observed-identity.json" \
+            "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
+            "$RUNNER_TEMP/domain-core-native-evidence/android-universal-abi-manifest.json"
 
       - name: Create Apple v2 release predicates
         id: apple-plan
@@ -2591,6 +2598,7 @@ jobs:
             --protected-signer-run-id "$SIGNER_RUN_ID" \
             --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
             --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json" \
+            --android-abi-manifest "$RUNNER_TEMP/domain-core-native-evidence/android-universal-abi-manifest.json" \
             --output-dir "$RUNNER_TEMP/domain-core-native-evidence/android" \
             --github-output "$GITHUB_OUTPUT"
 

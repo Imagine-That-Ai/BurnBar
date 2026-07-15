@@ -70,6 +70,16 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
     "sourceSha256",
     "changedPathsSha256",
   ]);
+  const android = schema.oneOf.find(
+    (entry) => entry.properties.consumer.const === "android",
+  );
+  assert.ok(android.required.includes("androidUniversal"));
+  assert.deepEqual(
+    schema.$defs.androidUniversal.properties.abis.prefixItems.map(
+      (entry) => entry.properties.abi.const,
+    ),
+    ["arm64-v8a", "x86_64"],
+  );
 });
 
 test("schema and runtime share consumer-specific release version vectors", () => {

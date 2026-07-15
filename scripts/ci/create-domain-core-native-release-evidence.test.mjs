@@ -36,9 +36,34 @@ function fixture({ profileName = "public-production", rust = ["quota"] } = {}) {
     output: join(directory, "evidence"),
     releaseCommit:
       rust.length === 0 ? CANDIDATE.candidateCommit : ACTIVATION_COMMIT,
+    androidAbiManifest: join(directory, "android-universal-abi-manifest.json"),
   };
   writeFileSync(paths.artifact, "signed artifact bytes");
   writeFileSync(paths.promotion, "{}\n");
+  writeFileSync(
+    paths.androidAbiManifest,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      target: "android-universal",
+      library: "libopenburnbar_domain_ffi.so",
+      candidateAar: {
+        fileName: "openburnbar-domain-core.aar",
+        sha256: "d".repeat(64),
+      },
+      abis: [
+        {
+          abi: "arm64-v8a",
+          path: "base/lib/arm64-v8a/libopenburnbar_domain_ffi.so",
+          sha256: "e".repeat(64),
+        },
+        {
+          abi: "x86_64",
+          path: "base/lib/x86_64/libopenburnbar_domain_ffi.so",
+          sha256: "f".repeat(64),
+        },
+      ],
+    })}\n`,
+  );
   writeFileSync(
     paths.candidate,
     `${JSON.stringify({
@@ -280,9 +305,23 @@ test("accepts Apple and Android prereleases but keeps Windows stable-only", () =
       replaceArgument(args, "--artifact", artifact);
       replaceArgument(args, "--version", version);
       replaceArgument(args, "--tag", `v${version}`);
+      if (consumer === "android") {
+        args.push("--android-abi-manifest", paths.androidAbiManifest);
+      }
       const plan = run(args, { promotionVerifier: () => [] });
       assert.equal(plan.consumer, consumer);
       assert.equal(plan.tag, `v${version}`);
+      if (consumer === "android") {
+        const predicate = JSON.parse(
+          readFileSync(plan.domains[0].predicatePath, "utf8"),
+        );
+        assert.equal(predicate.androidUniversal.target, "android-universal");
+        assert.match(
+          predicate.androidUniversal.manifestSha256,
+          /^[0-9a-f]{64}$/u,
+        );
+        assert.equal(predicate.androidUniversal.abis[1].abi, "x86_64");
+      }
     } finally {
       rmSync(paths.directory, { recursive: true, force: true });
     }

@@ -25,6 +25,7 @@ import {
   validateRollbackArtifact,
   verifyProtectedPromotionAttestation,
 } from "../lib/domain-core-release-evidence.mjs";
+import { validateAndroidUniversalManifest } from "./verify-domain-core-android-universal-artifact.mjs";
 
 const POSITIVE_INTEGER = /^[1-9]\d*$/u;
 const FULL_SHA = /^[0-9a-f]{40}$/u;
@@ -58,6 +59,7 @@ function parseArguments(argv) {
     "--protected-signer-run-attempt",
     "--rollback-artifact",
     "--deployment",
+    "--android-abi-manifest",
   ]);
   const result = {};
   for (let index = 0; index < argv.length; index += 2) {
@@ -71,7 +73,9 @@ function parseArguments(argv) {
       throw new Error(`duplicate argument: ${flag}`);
     result[flag] = value;
   }
-  const required = [...allowed].filter((flag) => flag !== "--deployment");
+  const required = [...allowed].filter(
+    (flag) => flag !== "--deployment" && flag !== "--android-abi-manifest",
+  );
   for (const flag of required) {
     if (!Object.hasOwn(result, flag)) throw new Error(`${flag} is required`);
   }
@@ -351,6 +355,8 @@ export function buildReleaseEvidence({
   publicProfileSha256,
   activation,
   deployment,
+  androidAbiManifest,
+  androidAbiManifestSha256,
   promotionVerifier = verifyProtectedPromotionAttestation,
 }) {
   const candidateBundle = readJson(candidateBundlePath, "candidate bundle");
@@ -414,6 +420,20 @@ export function buildReleaseEvidence({
     publicProfile,
     release,
   };
+  if (consumer === "android") {
+    if (!androidAbiManifest) {
+      throw new Error("android requires a universal ABI manifest");
+    }
+    if (!/^[0-9a-f]{64}$/u.test(androidAbiManifestSha256)) {
+      throw new Error("android universal ABI manifest SHA-256 is invalid");
+    }
+    common.androidUniversal = {
+      manifestSha256: androidAbiManifestSha256,
+      ...validateAndroidUniversalManifest(androidAbiManifest),
+    };
+  } else if (androidAbiManifest) {
+    throw new Error(`${consumer} must not provide an Android ABI manifest`);
+  }
 
   let deploymentReceipt;
   if (DEPLOYMENT_CONSUMERS.has(consumer)) {
@@ -447,6 +467,12 @@ export function run(argv, { promotionVerifier } = {}) {
   const deployment = args["--deployment"]
     ? readJson(args["--deployment"], "deployment evidence")
     : undefined;
+  const androidAbiManifest = args["--android-abi-manifest"]
+    ? readJson(args["--android-abi-manifest"], "Android universal ABI manifest")
+    : undefined;
+  const androidAbiManifestPath = args["--android-abi-manifest"]
+    ? resolve(args["--android-abi-manifest"])
+    : undefined;
   const { common, deploymentReceipt } = buildReleaseEvidence({
     consumer: args["--consumer"],
     domain: args["--domain"],
@@ -470,6 +496,12 @@ export function run(argv, { promotionVerifier } = {}) {
     publicProfileSha256: args["--public-profile-sha256"],
     activation: readJson(args["--activation"], "release activation"),
     deployment,
+    androidAbiManifest,
+    androidAbiManifestSha256: androidAbiManifestPath
+      ? sha256File(
+          regularFile(androidAbiManifestPath, "Android universal ABI manifest"),
+        )
+      : undefined,
     promotionVerifier,
   });
   if (deploymentReceipt) {
