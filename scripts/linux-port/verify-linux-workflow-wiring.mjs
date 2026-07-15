@@ -122,6 +122,8 @@ export function verifyLinuxWorkflowWiring(input) {
   }
   requireText(input.release, 'OPENBURNBAR_LINUX_RELEASE_OUT', 'canonical release output');
   requireText(input.release, 'OPENBURNBAR_LINUX_EVIDENCE_OUT', 'canonical evidence output');
+  requireText(input.release, 'COSIGN_MAX_ATTACHMENT_SIZE: 1GiB', 'large release attestation support');
+  requireText(input.release, 'OPENBURNBAR_LINUX_COSIGN_IDENTITY: https://github.com/${{ github.workflow_ref }}', 'candidate cosign identity binding');
   requireText(input.release, '--candidate', 'candidate-only release assembly');
   requireText(
     input.release,

@@ -1,6 +1,51 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { runStep } from './lib/linux-release-common.mjs';
+import { expectedLinuxCosignIdentity, runStep } from './lib/linux-release-common.mjs';
+
+const manifest = {
+  signing: {
+    cosignIdentityTemplate: 'https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v{version}'
+  }
+};
+
+test('candidate cosign identity binds to the exact workflow branch ref', () => {
+  const identity = expectedLinuxCosignIdentity({
+    manifest,
+    version: '0.1.1',
+    candidate: true,
+    env: {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_WORKFLOW_REF: 'Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/heads/codex/linux-parity-integration-final'
+    }
+  });
+  assert.equal(
+    identity,
+    'https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/heads/codex/linux-parity-integration-final'
+  );
+});
+
+test('candidate cosign identity rejects a mismatched or untrusted workflow ref', () => {
+  assert.throws(
+    () => expectedLinuxCosignIdentity({
+      manifest,
+      version: '0.1.1',
+      candidate: true,
+      env: {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_WORKFLOW_REF: 'Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/heads/main',
+        OPENBURNBAR_LINUX_COSIGN_IDENTITY: 'https://github.com/evil/example/.github/workflows/linux-release.yml@refs/heads/main'
+      }
+    }),
+    /outside the trusted workflow|does not match/u
+  );
+});
+
+test('local candidate fixtures fall back to the manifest tag identity', () => {
+  assert.equal(
+    expectedLinuxCosignIdentity({ manifest, version: '0.1.1', candidate: true, env: {} }),
+    'https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v0.1.1'
+  );
+});
 
 test('runStep bounds captured output without changing a successful exit code', () => {
   const step = runStep('node', ['-e', "process.stdout.write('x'.repeat(2 * 1024 * 1024))"], {

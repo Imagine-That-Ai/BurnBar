@@ -159,6 +159,8 @@ function valid() {
     ].join('\n'),
     release: [
       '- "linux-v*"',
+      'COSIGN_MAX_ATTACHMENT_SIZE: 1GiB',
+      'OPENBURNBAR_LINUX_COSIGN_IDENTITY: https://github.com/${{ github.workflow_ref }}',
       'resolve-linux-release-version.mjs --github-output',
       'validate-linux-release-public-config.mjs',
       'vars.OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID',

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   manifestPath,
+  expectedLinuxCosignIdentity,
   readJson,
   relative,
   releaseEvidenceDir,
@@ -66,6 +67,16 @@ const headStep = runStep('git', ['rev-parse', 'HEAD']);
 const expectedHead = process.env.OPENBURNBAR_GIT_COMMIT?.trim() || headStep.stdout.trim();
 if (headStep.exitCode !== 0 && !process.env.OPENBURNBAR_GIT_COMMIT) fail('release verifier cannot determine target git HEAD.');
 const expectedVersion = requestedVersion?.trim() || closure.version;
+let expectedCosignIdentity;
+try {
+  expectedCosignIdentity = expectedLinuxCosignIdentity({
+    manifest,
+    version: expectedVersion,
+    candidate
+  });
+} catch (error) {
+  fail('Linux release cosign identity is invalid.', { error: String(error) });
+}
 
 const pure = verifyLinuxReleaseCandidate({
   repoRoot,
@@ -77,6 +88,7 @@ const pure = verifyLinuxReleaseCandidate({
   publicKeyPem,
   expectedHead,
   expectedVersion,
+  expectedCosignIdentity,
   phase,
   requireParity: !candidate
 });
@@ -125,7 +137,10 @@ if (!candidate) {
 }
 
 if (phase === 'final' && closure.artifacts) {
-  const identity = manifest.signing.cosignIdentityTemplate.replace('{version}', expectedVersion);
+  const identity = expectedCosignIdentity;
+  if (!identity) {
+    fail('Linux release cosign identity is unavailable for final attestation verification.');
+  }
   let attestationSubjects = [];
   try {
     attestationSubjects = deriveReleaseAttestationSubjects(closure, manifest.requiredArtifacts);
@@ -139,6 +154,7 @@ if (phase === 'final' && closure.artifacts) {
       fail('Sigstore bundle is missing for a required release subject.', { artifact: subjectFile, bundle });
       continue;
     }
+    if (!identity) continue;
     const verification = runStep('cosign', [
       'verify-blob-attestation',
       '--bundle',

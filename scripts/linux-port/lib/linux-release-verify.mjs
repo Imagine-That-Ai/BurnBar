@@ -39,6 +39,7 @@ export function verifyLinuxReleaseCandidate(input) {
     publicKeyPem,
     expectedHead,
     expectedVersion,
+    expectedCosignIdentity,
     phase = 'pre-attestation',
     requireParity = true
   } = input;
@@ -322,7 +323,8 @@ export function verifyLinuxReleaseCandidate(input) {
     }
   }
 
-  const expectedIdentity = manifest.signing?.cosignIdentityTemplate?.replace('{version}', version);
+  const expectedIdentity = expectedCosignIdentity
+    ?? manifest.signing?.cosignIdentityTemplate?.replace('{version}', version);
   if (provenance?.expectedCosignIdentity !== expectedIdentity) fail('provenance has the wrong expected cosign identity.');
   if (provenance?.expectedCosignIssuer !== manifest.signing?.cosignIssuer) fail('provenance has the wrong expected cosign issuer.');
   if (phase === 'final') {

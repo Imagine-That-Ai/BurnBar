@@ -184,6 +184,53 @@ export function expectedLinuxReleaseIdentity(ref) {
   return `${linuxReleaseWorkflowIdentity}@${ref}`;
 }
 
+function workflowRefIdentity(workflowRef) {
+  const value = String(workflowRef ?? '').trim();
+  if (!value) return '';
+  const identity = value.startsWith('https://') ? value : `https://github.com/${value}`;
+  const prefix = `${linuxReleaseWorkflowIdentity}@`;
+  if (!identity.startsWith(prefix)) {
+    throw new Error(`Linux release cosign identity is outside the trusted workflow: ${identity}`);
+  }
+  const ref = identity.slice(prefix.length);
+  if (!/^refs\/(?:heads|tags)\/[A-Za-z0-9._/-]+$/u.test(ref)) {
+    throw new Error(`Linux release cosign identity has an invalid workflow ref: ${ref}`);
+  }
+  return identity;
+}
+
+/**
+ * Resolve the identity Fulcio put in the certificate for this workflow run.
+ * Branch candidates are signed by the workflow ref, while published tags use
+ * the immutable linux-vX.Y.Z identity from the release manifest.
+ */
+export function expectedLinuxCosignIdentity({ manifest, version, candidate = false, env = process.env } = {}) {
+  const tagIdentity = manifest?.signing?.cosignIdentityTemplate?.replace('{version}', version ?? '');
+  if (!candidate) return tagIdentity;
+
+  const supplied = String(env.OPENBURNBAR_LINUX_COSIGN_IDENTITY ?? '').trim();
+  const workflowIdentity = workflowRefIdentity(env.GITHUB_WORKFLOW_REF);
+  if (supplied && workflowIdentity && supplied !== workflowIdentity) {
+    throw new Error('Linux release cosign identity does not match GITHUB_WORKFLOW_REF.');
+  }
+  const identity = workflowRefIdentity(supplied || workflowIdentity);
+  if (!identity) {
+    if (env.GITHUB_ACTIONS === 'true') {
+      throw new Error('Linux release candidate cosign identity is missing in GitHub Actions.');
+    }
+    return tagIdentity;
+  }
+  const ref = identity.slice(`${linuxReleaseWorkflowIdentity}@`.length);
+  if (ref.startsWith('refs/tags/')) {
+    const tag = ref.slice('refs/tags/'.length);
+    parseLinuxReleaseTag(tag);
+    if (tag !== `linux-v${version}`) {
+      throw new Error(`Linux release candidate tag identity does not match version ${version}: ${tag}`);
+    }
+  }
+  return identity;
+}
+
 export function runStep(command, args, options = {}) {
   const safeCommand = validateRunStepCommand(command);
   const safeArgs = validateRunStepSudoArgs(

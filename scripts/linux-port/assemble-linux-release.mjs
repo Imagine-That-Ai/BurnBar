@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   fileSize,
   gitInfo,
+  expectedLinuxCosignIdentity,
   manifestPath,
   readJson,
   reanchorEvidenceDir,
@@ -383,7 +384,7 @@ for (const row of metadata) {
 const provenance = {
   predicateType: 'https://openburnbar.dev/attestations/linux-release-artifact/v1',
   generatedAt: new Date().toISOString(),
-  expectedCosignIdentity: manifest.signing.cosignIdentityTemplate.replace('{version}', version ?? ''),
+  expectedCosignIdentity: expectedLinuxCosignIdentity({ manifest, version, candidate }),
   expectedCosignIssuer: manifest.signing.cosignIssuer,
   publicKeySpkiSha256: manifest.signing.publicKeySpkiSha256,
   git,
