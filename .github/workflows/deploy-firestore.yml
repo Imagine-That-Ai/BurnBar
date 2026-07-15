@@ -252,6 +252,7 @@ jobs:
             The Firestore deploy/drift gate failed. This blocks launch posture
             until firestore.rules, firestore.indexes.json, and storage.rules are
             tested, deployed, and drift-clean.
+          paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
 
       - name: Close resolved Firestore deploy failure issue
         if: success()
