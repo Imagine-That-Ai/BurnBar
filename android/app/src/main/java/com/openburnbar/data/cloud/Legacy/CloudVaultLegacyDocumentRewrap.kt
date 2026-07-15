@@ -1,6 +1,8 @@
 package com.openburnbar.data.cloud
 
 internal object CloudVaultLegacyDocumentRewrap {
+    // This deletion target owns document orchestration. AES operations stay in the separately
+    // promoted CloudVault crypto slice and are reached through the typed facade below.
     private const val BLOB_AAD_CONTEXT = "OpenBurnBar-CloudVaultBlob-v2"
     private const val SEALED_PAYLOAD_AAD_CONTEXT = "OpenBurnBar-CloudVaultSealedPayload-v2"
 
