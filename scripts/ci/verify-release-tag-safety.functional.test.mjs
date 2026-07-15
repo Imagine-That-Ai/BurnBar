@@ -134,6 +134,7 @@ function runResolve({ cloneDir, originUrl, env }) {
     ...env,
     GITHUB_OUTPUT: outputFile,
     GITHUB_REF: env.GITHUB_REF || "refs/heads/main",
+    GITHUB_SHA: env.GITHUB_SHA || "",
   };
 
   try {
@@ -271,6 +272,7 @@ const FULL_SHA = mainSha;
       INPUT_CANDIDATE_SHA: FULL_SHA,
       REF_NAME: VALID_TAG,
       GITHUB_REF: `refs/tags/${VALID_TAG}`,
+      GITHUB_SHA: FULL_SHA,
     },
   });
   assert(
@@ -311,6 +313,7 @@ const FULL_SHA = mainSha;
       INPUT_CANDIDATE_SHA: "",
       REF_NAME: VALID_TAG,
       GITHUB_REF: `refs/tags/${VALID_TAG}`,
+      GITHUB_SHA: FULL_SHA,
     },
   });
   const output = readOutput(result.outputFile);
@@ -336,6 +339,7 @@ const FULL_SHA = mainSha;
       INPUT_CANDIDATE_SHA: "",
       REF_NAME: VALID_TAG,
       GITHUB_REF: `refs/tags/${VALID_TAG}`,
+      GITHUB_SHA: FULL_SHA,
     },
   });
   const output = readOutput(result.outputFile);
@@ -347,6 +351,24 @@ const FULL_SHA = mainSha;
     assert("  emits correct tag", output.includes(`tag=${VALID_TAG}`));
     assert("  emits dry_run=false", output.includes("dry_run=false"));
   }
+}
+
+/* ── Tag/event mismatch: fails closed ── */
+{
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "push",
+      INPUT_TAG: "",
+      INPUT_DRY_RUN: "",
+      INPUT_CANDIDATE_SHA: "",
+      REF_NAME: VALID_TAG,
+      GITHUB_REF: `refs/tags/${VALID_TAG}`,
+      GITHUB_SHA: "f".repeat(40),
+    },
+  });
+  assert("tag push rejects a mismatched workflow event SHA", result.exitCode !== 0);
 }
 
 /* ── Dry-run with future tag that doesn't exist yet: succeeds ── */
