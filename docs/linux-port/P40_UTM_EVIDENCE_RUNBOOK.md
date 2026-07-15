@@ -12,13 +12,13 @@ The Linux Release Candidate run must be complete and successful before any
 package is installed:
 
 ```text
-run:        29392339783
-target:     4c6e0a9d5769d76cda836e5d2421c4b01062f574
+run:        29401347808
+target:     a91132e059c3400029cabd1a7e14f63d79006066
 environment: ubuntu-24.04-gnome-x11-aarch64
-artifact:   sha256:b4467e8d4b7841d87a7cbd10d9175c01c7373e41c864dfc05dd409074ddc61c1
-package:    7b739905254126a308d6d287d711157fba895d793a55dcf897fd2f189d3ea220
-manifest:   17405cf1368f41ea9542fa83a76f92b7847f453b47924678e3201d1ef1b2ff2f
-session:    2984c2e6c2b1a1c9b4b0c96603ef86d89ac6bd5967d587a210a19d2f480ea9b1
+artifact:   sha256:73b1a0c638ef58a4b28e310dbdcbd8912515f7693c838118a3aa7b8559ac8f22
+package:    cc841412a6f8ae6aa3601bb3410edf1c6b95d071c75245b63503b6bf7f44c017
+manifest:   14696bbe30e2a2ca2ff93d93004ffe6b9bcf7389bf203f0622f8587d8a27d848
+session:    ea8f8d4ab8aadac1bcbe5e83090f22900c5845052246f652bce3fbeb3556337f
 ```
 
 Stop if any of these are false:
@@ -43,8 +43,8 @@ named work directory; do not use the repository's dirty primary checkout.
 ```bash
 set -euo pipefail
 
-TARGET_HEAD=4c6e0a9d5769d76cda836e5d2421c4b01062f574
-RUN_ID=29392339783
+TARGET_HEAD=a91132e059c3400029cabd1a7e14f63d79006066
+RUN_ID=29401347808
 REPO=Imagine-That-Ai/BurnBar
 ENVIRONMENT_ID=ubuntu-24.04-gnome-x11-aarch64
 WORK_ROOT="/private/tmp/burnbar-p40-${RUN_ID}"
@@ -266,18 +266,22 @@ REMOTE
 The producer's output is the only acceptable source for
 `p40-live-session.json`.
 
-The completed candidate capture recorded the following immutable values:
+The completed candidate capture recorded the following immutable values for run
+`29401347808`:
 
 ```text
 environment: ubuntu-24.04-gnome-x11-aarch64 (Ubuntu 24.04, GNOME, X11, arm64)
-session:     2984c2e6c2b1a1c9b4b0c96603ef86d89ac6bd5967d587a210a19d2f480ea9b1
-package:     7b739905254126a308d6d287d711157fba895d793a55dcf897fd2f189d3ea220
-manifest:    17405cf1368f41ea9542fa83a76f92b7847f453b47924678e3201d1ef1b2ff2f
+session:     ea8f8d4ab8aadac1bcbe5e83090f22900c5845052246f652bce3fbeb3556337f
+package:     cc841412a6f8ae6aa3601bb3410edf1c6b95d071c75245b63503b6bf7f44c017
+manifest:    14696bbe30e2a2ca2ff93d93004ffe6b9bcf7389bf203f0622f8587d8a27d848
 ```
 
 The report passed `validateP40LiveSession` and the checked-in capture emitted a
-passed `data-and-privacy-proof.json`. The other six declared P-40 environment
-rows remain intentionally unclosed until equivalent installed producers exist.
+passed `data-and-privacy-proof.json` with SHA-256
+`154e8afacf314ff8762b2e70207ff687bd06c31b9b3099e016f9e0551e549828`. The
+feature-proof closure was materialized for the same candidate and environment.
+The other six declared P-40 environment rows remain intentionally unclosed until
+equivalent installed producers exist.
 
 ## 5. Run the candidate-bound capture
 

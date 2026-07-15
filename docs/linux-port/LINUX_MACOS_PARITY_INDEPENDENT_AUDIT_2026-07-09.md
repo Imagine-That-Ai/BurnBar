@@ -2,11 +2,11 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-14 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-15 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at `95cd65c235`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, and the Node 22 release-toolchain pin are linked below. The release lane now rebuilds RPM from the validated DEB filesystem with `rpmbuild` after the Tauri RPM extractor failed on run `29342758329`. |
+| Remediation evidence | `codex/linux-parity-integration-final` at `a91132e059`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, and launcher precedence are linked below. Accepted candidate run `29401347808` passed both release architectures and installed-package runtime checks. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -24,6 +24,27 @@ percentage. The active remediation stack now contains these reviewable slices:
 - **Release candidate:** run `29342758329` failed in native package preparation on both architectures because Tauri's generated RPM was rejected by `rpm2cpio`; `b325c76eb8` corrected that path. Follow-up run `29346971968` completed both native builds and DEB/RPM preparation but failed in the Arch `makepkg package()` step on both architectures; its diagnostic receipt is `evidence/parity-audit-2026-07-10/linux-release-candidate-29346971968.json`. An Arch packaging repair and fresh exact-head candidate are required before any release claim.
 - **Physical iPad:** the connected iPad focused suite produced **46 passes** and **one XCTest infrastructure crash**, with no app/fake-provider frame. The approval selector is therefore blocked by test infrastructure, not counted as an app pass; see `evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-14.json`.
 - **Certification:** strict status remains **0/40 product** and **0/7 environment**, with `productParityClaim=false`. Current-head installed evidence, deployed production callables, approval execution, Browser Computer Use, Mercury, SmartHub, IBus/Fcitx, accessibility, performance, reliability, and the seven-environment matrix are still required.
+
+### Latest verification delta - 2026-07-15
+
+- **Release candidate:** first-attempt run `29401347808` passed at exact head
+  `a91132e059c3400029cabd1a7e14f63d79006066`. The resolved immutable
+  `linux-release-evidence` artifact is
+  `sha256:73b1a0c638ef58a4b28e310dbdcbd8912515f7693c838118a3aa7b8559ac8f22`;
+  x86_64 and aarch64 package/runtime/accessibility/tray/route shards passed.
+- **UTM installed proof:** the signed arm64 Debian candidate was installed in
+  Ubuntu 24.04 GNOME/X11 aarch64 UTM. The package-owned launcher selected
+  `/usr/bin/openburnbar-daemon`, the isolated authenticated socket came up,
+  and the real P-40 inventory/deletion/export/retention RPC producer passed.
+  The candidate-bound session is recorded in
+  [`P40_UTM_EVIDENCE_RUNBOOK.md`](P40_UTM_EVIDENCE_RUNBOOK.md) with session
+  SHA `ea8f8d4ab8aadac1bcbe5e83090f22900c5845052246f652bce3fbeb3556337f`.
+- **Certification boundary:** this closes one installed P-40 proof surface,
+  but it does not promote the ledger. The canonical state remains
+  **0/40 product requirements** and **0/7 environment receipts**, because
+  validator receipts must be generated and promoted on a clean current HEAD;
+  the other six P-40 environments and the remaining requirement rows still
+  lack installed evidence.
 
 | Slice | Current state | Scope and limit |
 |---|---|---|
@@ -506,9 +527,9 @@ required gates and were not made green by the Ed25519 result.
 | P-35 | Diagnostics/support | Native export, privacy choices, accurate runtime/package facts | Metadata-only redacted export and support preview are wired; installed support workflow remains open | Partial | Medium |
 | P-36 | Visual/interaction polish | Consistent components, responsive density, animations, native affordances | Nonblack installed route captures now exist; raw diagnostics, interaction polish, and multi-environment regressions remain | Partial | Medium |
 | P-37 | Linux matrix | N/A; macOS supported versions are exercised | Environment-bound fail-closed harness now binds installed/accessibility evidence to exact environment, architecture, session, and desktop identity (`b012a53a6c`); aarch64 X11/XFCE passed, while GNOME Wayland, KDE Wayland, wlroots, x86_64, and real portal/keyring rows remain open | Partial | Critical |
-| P-38 | CI/release automation | Test, sign, package, and promotion jobs fail closed | Strict gates, mutation tests, native architecture shards, sessions, and aggregate closure are implemented; a full hosted two-architecture release run remains unproven | Partial | Critical |
+| P-38 | CI/release automation | Test, sign, package, and promotion jobs fail closed | Strict gates, mutation tests, native architecture shards, sessions, and aggregate closure are implemented; accepted first-attempt run `29401347808` passed the two-architecture release candidate, while promotion receipts remain open | Partial | Critical |
 | P-39 | Cross-platform differential proof | Same contract/corpus compared at the same product version | A bounded evidence comparator is implemented in [PR #1682](https://github.com/Imagine-That-Ai/BurnBar/pull/1682): it normalizes object order, redacts credential values, supports explicit volatile paths, emits path-level differences, and fails closed with machine-readable exit codes. A same-commit macOS/Linux artifact run is still required | Partial | High |
-| P-40 | Data and Privacy | Vault/export/deletion/retention/recovery/consent/telemetry/panic workflows | Telemetry/privacy/cloud-sync consent writes are daemon-backed with explicit pending/error states; database recovery status/export/import is typed and redacted; `4cdc505537` adds a scoped daemon-owned proxy-route-log count/refresh/two-step clear flow. Account/local deletion, retention enforcement beyond that route log, encrypted data export, and backend deletion receipts remain unavailable | Partial | High |
+| P-40 | Data and Privacy | Vault/export/deletion/retention/recovery/consent/telemetry/panic workflows | Daemon-backed telemetry/privacy/cloud-sync consent, allowlisted inventory, preview/execute deletion, selected-scope encrypted export, and bounded age/size retention are implemented. The installed candidate now has a live Ubuntu 24.04 GNOME/X11 aarch64 RPC proof; account erasure, backend deletion receipts, and the other six environment rows remain open | Partial | High |
 
 Every matrix row maps to a detailed record containing all six requested fields:
 
