@@ -116,6 +116,33 @@ test("artifact identity must be observed and cannot be assigned from the candida
   assert.throws(() => fragments(paths), /unreadable/u);
 });
 
+test("native identity binds its separate binary digest without weakening candidate identity", (context) => {
+  const paths = fixture(context);
+  writeFileSync(
+    paths.identityReport,
+    `${JSON.stringify({
+      ...CANDIDATE,
+      binarySha256: sha256Artifact(paths.artifact),
+    })}\n`,
+  );
+  assert.doesNotThrow(() => fragments(paths));
+
+  writeFileSync(
+    paths.identityReport,
+    `${JSON.stringify({ ...CANDIDATE, binarySha256: "c".repeat(64) })}\n`,
+  );
+  assert.throws(
+    () => fragments(paths),
+    /binary digest does not match artifact/u,
+  );
+
+  writeFileSync(
+    paths.identityReport,
+    `${JSON.stringify({ ...CANDIDATE, unexpected: true })}\n`,
+  );
+  assert.throws(() => fragments(paths), /must contain exactly/u);
+});
+
 test("candidate identity comparison is independent of JSON object key order", (context) => {
   const paths = fixture(context);
   writeFileSync(
