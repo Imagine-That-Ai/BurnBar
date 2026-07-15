@@ -18,6 +18,12 @@
 import type { GlyphField } from "../glyph/field/glyphField";
 import { detectGlCapabilities, type GlCapabilities } from "./gl/glCapabilities";
 import { resolvePalette } from "./palette";
+import type { SwarmEmberKernelOptions } from "./kernels/swarmEmberKernel";
+// Eager import: createSlot() is synchronous and must return a Kernel immediately,
+// so the options-override path for swarmEmber can't use a dynamic import(). The
+// registry's lazyKernel path handles the default (no-options) case; this value
+// import is only reached when swarmEmberOptions is set (linux-desktop dashboard).
+import { createSwarmEmberKernel } from "./kernels/swarmEmberKernel";
 import { DEFAULT_KERNEL_ID, getKernelDescriptor } from "./registry";
 import type {
   Kernel,
@@ -45,6 +51,10 @@ interface Slot {
 export interface BackdropEngineOptions {
   theme: ThemeName;
   initialKernel?: KernelId;
+  /** When set, used instead of {@link resolvePalette} (e.g. Linux shell skin accents). */
+  palette?: KernelPalette;
+  /** Host overrides when mounting `swarmEmber` (e.g. Linux dashboard cinematic pace). */
+  swarmEmberOptions?: SwarmEmberKernelOptions;
   /** Notified with the kernel actually shown (may differ on GL fallback). */
   onResolve?: (id: KernelId) => void;
 }
@@ -71,6 +81,7 @@ export class BackdropEngine {
   private activeId: KernelId;
   private theme: ThemeName;
   private palette: KernelPalette;
+  private swarmEmberOptions?: SwarmEmberKernelOptions;
   private onResolve?: (id: KernelId) => void;
 
   private width = 0;
@@ -110,7 +121,8 @@ export class BackdropEngine {
     this.glSupported = detected.supported;
     this.glCaps = detected.caps;
     this.theme = opts.theme;
-    this.palette = resolvePalette(opts.theme);
+    this.palette = opts.palette ?? resolvePalette(opts.theme);
+    this.swarmEmberOptions = opts.swarmEmberOptions;
     this.onResolve = opts.onResolve;
     this.activeId = opts.initialKernel ?? DEFAULT_KERNEL_ID;
 
@@ -171,6 +183,24 @@ export class BackdropEngine {
    */
   refreshPalette(): void {
     this.palette = resolvePalette(this.theme);
+    for (const slot of this.slots) {
+      slot.kernel.setTheme(this.theme, this.palette);
+      if (this.reducedMotion) slot.kernel.renderStatic?.();
+    }
+  }
+
+  /**
+   * Push a resolved palette to every live kernel without touching the global
+   * custom-palette store (shell skin, previews, etc.).
+   */
+  setPalette(palette: KernelPalette): void {
+    this.palette = {
+      theme: this.theme,
+      bg: [...palette.bg] as KernelPalette["bg"],
+      accents: palette.accents.map((a) => [...a] as KernelPalette["accents"][0]),
+      ink: [...palette.ink] as KernelPalette["ink"],
+      intensity: palette.intensity,
+    };
     for (const slot of this.slots) {
       slot.kernel.setTheme(this.theme, this.palette);
       if (this.reducedMotion) slot.kernel.renderStatic?.();
@@ -289,7 +319,10 @@ export class BackdropEngine {
 
   private createSlot(id: KernelId, depth = 0): Slot {
     const desc = getKernelDescriptor(id);
-    const kernel: Kernel = desc.create();
+    const kernel: Kernel =
+      id === "swarmEmber" && this.swarmEmberOptions
+        ? createSwarmEmberKernel(this.swarmEmberOptions)
+        : desc.create();
     const substrate = kernel.substrate;
 
     const canvas = document.createElement("canvas");
