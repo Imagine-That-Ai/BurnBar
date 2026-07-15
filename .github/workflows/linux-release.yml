@@ -449,7 +449,10 @@ jobs:
       - build-architecture
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    environment: release
+    # Stable tags remain behind the protected release environment. Feature
+    # branch prerelease/nightly candidates need an unprotected environment so
+    # exact-head signed evidence can be assembled before promotion.
+    environment: ${{ needs.resolve-release.outputs.channel == 'stable' && 'release' || 'release-candidate' }}
     env:
       OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ github.workspace }}/.linux-evidence
       OPENBURNBAR_LINUX_RELEASE_OUT: ${{ github.workspace }}/.linux-release
