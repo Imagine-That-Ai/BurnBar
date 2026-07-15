@@ -84,6 +84,7 @@
   "rollbackRequired": true,
   "rollback": { "jobId": "rollback-drill", "suiteId": "rollback-drill" },
   "oneStableReleaseBeforeDeletion": true,
+  "stableReleaseRollbackArtifactRequired": true,
   "domains": {
     "quota": {
       "requiredCoverage": [

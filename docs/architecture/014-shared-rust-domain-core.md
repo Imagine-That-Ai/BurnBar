@@ -233,12 +233,15 @@ are retargeted to ABI 3. Consumer changes then move through `legacy`, `shadow`,
 and reviewed `rust` promotion. Merging a consumer into a feature branch is not
 production promotion.
 
-Before legacy deletion, rollback is an explicit configuration change from
-`rust` to `legacy`; it is never an implicit exception handler. A mismatch,
+Before legacy deletion, rollback uses the separate signed, candidate-bound
+`public-production-rollback` artifact. That profile is permanently all-legacy
+and independent of the primary `public-production` modes; it is never an
+implicit exception handler. A mismatch,
 latency regression, ABI/provenance failure, or unresolved security finding
     blocks promotion. After a rollback, retain the evidence, fix the cause, and
     produce a new exact candidate attestation. Legacy code is removed only in a
-separate reviewed change after one stable Rust-authoritative release, and
+separate reviewed change after one stable Rust-authoritative release has
+published and retained that exact rollback artifact, and
 source/compile gates must prove the named legacy implementations and selector
 are absent.
 

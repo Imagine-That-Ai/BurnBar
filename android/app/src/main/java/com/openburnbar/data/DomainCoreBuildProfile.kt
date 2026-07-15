@@ -68,6 +68,12 @@ internal object DomainCoreBuildProfile {
             null,
             false,
         ),
+        "public-production-rollback" to CatalogContract(
+            DomainCoreArtifactAuthority.SIGNED,
+            "public",
+            null,
+            false,
+        ),
         "internal" to CatalogContract(
             DomainCoreArtifactAuthority.SIGNED,
             "internal",
@@ -129,6 +135,7 @@ internal object DomainCoreBuildProfile {
         if (contract.artifactAuthority == DomainCoreArtifactAuthority.SIGNED) {
             val validSignedModes = when (input.name) {
                 "public-production" -> input.modes.values.none { it == "shadow" }
+                "public-production-rollback" -> input.modes.values.all { it == "legacy" }
                 "internal", "beta" -> input.modes["quota"] == "shadow"
                 else -> false
             }

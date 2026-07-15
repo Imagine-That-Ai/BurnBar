@@ -43,6 +43,22 @@ class DomainCoreBuildProfileTest {
     }
 
     @Test
+    fun signedRollbackProfilePermanentlySelectsLegacyAcrossEveryDomain() {
+        val rollback = publicInput().copy(
+            name = "public-production-rollback",
+            modes = publicInput().modes.mapValues { "legacy" },
+        )
+        val profile = requireNotNull(DomainCoreBuildProfile.resolve(rollback))
+
+        assertEquals("public-production-rollback", profile.name)
+        assertEquals(setOf("legacy"), profile.modes.values.toSet())
+        profile.modes.keys.forEach { domain ->
+            assertEquals("legacy", DomainCoreBuildProfile.resolveMode(profile, domain, "rust"))
+        }
+        assertNull(DomainCoreBuildProfile.resolve(rollback.copy(modes = rollback.modes + ("pricing" to "rust"))))
+    }
+
+    @Test
     fun signedBetaProfileIsImmutableAndIgnoresDevelopmentOverrides() {
         val beta = input().copy(
             name = "beta",

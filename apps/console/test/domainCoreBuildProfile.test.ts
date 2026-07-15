@@ -46,18 +46,18 @@ function candidateIdentity(): Record<string, string> {
 }
 
 function signed(
-  name: "public-production" | "internal" | "beta",
+  name: "public-production" | "public-production-rollback" | "internal" | "beta",
   mode: "legacy" | "shadow",
 ): Record<string, string> {
   const environment: Record<string, string> = {
     NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY: "signed",
     NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE: name,
     NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION:
-      name === "public-production" ? "public" : name,
+      name.startsWith("public-production") ? "public" : name,
     NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL:
-      name === "public-production" ? "" : name,
+      name.startsWith("public-production") ? "" : name,
     NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED:
-      name === "public-production" ? "0" : "1",
+      name.startsWith("public-production") ? "0" : "1",
     ...candidateIdentity(),
   };
   for (const domain of domains) {
@@ -118,6 +118,20 @@ describe("domain-core web build profile", () => {
       abiVersion: 3,
       sourceSha256: SOURCE_SHA256,
     });
+  });
+
+  it("uses the signed rollback profile for legacy even with hostile Rust overrides", () => {
+    const environment = signed("public-production-rollback", "legacy");
+    environment.OPENBURNBAR_DOMAIN_CORE_PRICING_MODE = "rust";
+    expect(
+      resolveDomainCoreWebMode(
+        "pricing",
+        environment,
+        "OPENBURNBAR_DOMAIN_CORE_PRICING_MODE",
+      ),
+    ).toBe("legacy");
+    environment.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_PRICING_MODE = "rust";
+    expect(resolveDomainCoreWebMode("pricing", environment)).toBe("legacy");
   });
 
   it("fails closed when public metadata enables shadow evidence", () => {
