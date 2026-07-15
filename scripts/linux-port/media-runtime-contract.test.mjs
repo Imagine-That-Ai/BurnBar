@@ -27,9 +27,6 @@ test('release builds ship the GStreamer Mercury viewer contract', () => {
   }
 
   const tauri = JSON.parse(read('apps/linux-desktop/src-tauri/tauri.conf.json'));
-  for (const dependency of tauri.bundle.linux.deb.depends) {
-    if (dependency.startsWith('gstreamer')) assert.ok(dependency.length > 0);
-  }
   assert.ok(tauri.bundle.linux.deb.depends.includes('gstreamer1.0-pipewire'));
   assert.ok(tauri.bundle.linux.rpm.depends.includes('gstreamer1-plugin-pipewire'));
 
@@ -40,6 +37,12 @@ test('release builds ship the GStreamer Mercury viewer contract', () => {
 
   const manifest = JSON.parse(read('packaging/linux/release-manifest.json'));
   assert.equal(manifest.mediaRuntime.viewerFeature, 'media-gst');
+  for (const dependency of manifest.mediaRuntime.debianDepends) {
+    assert.ok(tauri.bundle.linux.deb.depends.includes(dependency));
+  }
+  for (const dependency of manifest.mediaRuntime.rpmDepends) {
+    assert.ok(tauri.bundle.linux.rpm.depends.includes(dependency));
+  }
   assert.deepEqual(manifest.mediaRuntime.requiredFactories, [
     'vp9dec',
     'autovideosink',
