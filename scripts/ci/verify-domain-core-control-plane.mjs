@@ -12,6 +12,8 @@ const TRUSTED_WORKFLOWS = Object.freeze([
   ".github/workflows/domain-core-promotion-proof.yml",
   ".github/workflows/deploy-production.yml",
   ".github/workflows/domain-core-functions-release-evidence.yml",
+  ".github/workflows/deploy-hosting.yml",
+  ".github/workflows/domain-core-console-release-evidence.yml",
 ]);
 const SEED_PATHS = Object.freeze([
   ...TRUSTED_WORKFLOWS,
