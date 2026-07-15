@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import Security
 import FirebaseAuth
 import FirebaseCore
 import OpenBurnBarCore
@@ -31,6 +32,19 @@ final class HermesServiceToolUseLoopTests: XCTestCase {
             options.projectID = "test"
             options.bundleID = Bundle.main.bundleIdentifier ?? "test"
             FirebaseApp.configure(options: options)
+        }
+    }
+
+    override func setUp() async throws {
+        try await super.setUp()
+        // The HermesService init path touches Keychain-backed stores (escrow
+        // keypair, gateway pin storage) that fail with errSecMissingEntitlement
+        // (-34018) on unsigned simulator test hosts. Skip rather than fail —
+        // the same guard EscrowCryptoRoundTripTests uses (lines 17–18).
+        do {
+            _ = try iOSDeviceKeypair()
+        } catch EscrowCryptoError.keychainError(let status) where status == errSecMissingEntitlement {
+            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
         }
     }
 
