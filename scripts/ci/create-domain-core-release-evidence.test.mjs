@@ -88,6 +88,31 @@ function baseOptions(files, artifactPath) {
   };
 }
 
+function consoleDeployment() {
+  return {
+    provider: "firebase-hosting",
+    project: "burnbar",
+    environment: "production",
+    status: "healthy",
+    healthChecks: ["marketing", "console", "deploymentIdentity"],
+    deployedArtifact: {
+      fileName: "console-static-bundle.tar",
+      sha256: "f".repeat(64),
+    },
+    deployRun: {
+      repository: "Imagine-That-Ai/BurnBar",
+      workflowPath: ".github/workflows/deploy-hosting.yml",
+      runId: 303,
+      runAttempt: 4,
+      event: "push",
+      ref: "refs/tags/v1.2.3",
+      headSha: CANDIDATE.candidateCommit,
+      jobSetSha256: "d".repeat(64),
+    },
+    healthArtifactSha256: "e".repeat(64),
+  };
+}
+
 test("builds an exact candidate-bound native release contract", () => {
   const files = workspace();
   try {
@@ -324,20 +349,7 @@ test("writes a deployment receipt and predicate with both artifact digests", () 
     );
     const predicate = join(files.directory, "console.predicate.json");
     const deployment = join(files.directory, "deployment.json");
-    writeFileSync(
-      deployment,
-      `${JSON.stringify({
-        provider: "firebase-hosting",
-        project: "burnbar",
-        environment: "production",
-        status: "healthy",
-        healthChecks: ["marketing", "console", "deploymentIdentity"],
-        deployedArtifact: {
-          fileName: "console-static-bundle.tar",
-          sha256: "f".repeat(64),
-        },
-      })}\n`,
-    );
+    writeFileSync(deployment, `${JSON.stringify(consoleDeployment())}\n`);
     const result = run(
       [
         "--consumer",
@@ -379,11 +391,58 @@ test("writes a deployment receipt and predicate with both artifact digests", () 
     const writtenPredicate = JSON.parse(readFileSync(predicate, "utf8"));
     assert.equal(receipt.schemaVersion, 2);
     assert.equal(receipt.deployment.deployedArtifact.sha256, "f".repeat(64));
+    assert.equal(receipt.deployment.deployRun.runId, 303);
+    assert.equal(receipt.deployment.deployRun.runAttempt, 4);
+    assert.equal(receipt.deployment.healthArtifactSha256, "e".repeat(64));
     assert.equal(writtenPredicate.artifact.sha256, sha(readFileSync(artifact)));
     assert.equal(
       writtenPredicate.rollbackArtifact.sha256,
       result.predicate.rollbackArtifact.sha256,
     );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects substituted deployment run and health artifact bindings", () => {
+  const files = workspace();
+  try {
+    const artifact = join(
+      files.directory,
+      "OpenBurnBar-1.2.3-console-deployment.json",
+    );
+    const cases = [
+      (deployment) => {
+        deployment.deployRun.workflowPath =
+          ".github/workflows/deploy-production.yml";
+      },
+      (deployment) => {
+        deployment.deployRun.ref = "refs/tags/v1.2.2";
+      },
+      (deployment) => {
+        deployment.deployRun.headSha = "0".repeat(40);
+      },
+      (deployment) => {
+        deployment.deployRun.jobSetSha256 = "invalid";
+      },
+      (deployment) => {
+        deployment.healthArtifactSha256 = "invalid";
+      },
+    ];
+    for (const mutate of cases) {
+      const deployment = consoleDeployment();
+      mutate(deployment);
+      assert.throws(() =>
+        buildReleaseEvidence({
+          ...baseOptions(files, artifact),
+          consumer: "console",
+          domain: "cloudVault",
+          artifactKind: "console-deployment-receipt",
+          target: "firebase-hosting-production",
+          deployment,
+        }),
+      );
+    }
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
   }
