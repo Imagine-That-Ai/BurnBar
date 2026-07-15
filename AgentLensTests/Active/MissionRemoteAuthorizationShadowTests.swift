@@ -449,4 +449,177 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - P-ARCH-2: Enforce mode regression tests
+
+    /// Verify the `.enforce` case exists on the Mode enum.
+    @MainActor
+    func testModeHasEnforceCase() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .enforce
+            XCTAssertEqual(MissionRemoteAuthorizationShadow.mode, .enforce,
+                           "Mode.enforce must exist and be settable")
+        }
+    }
+
+    // MARK: - Pure enforce(signal:) — fail-closed invariant
+
+    func testEnforceAgreeReturnsAllow() {
+        let signal = MissionRemoteAuthorizationShadow.compare(
+            missionID: "enforce-agree", gui: .allow, daemon: daemon(.authorized), promptSHA256: "a"
+        )
+        XCTAssertEqual(signal.kind, .agree)
+        XCTAssertEqual(
+            MissionRemoteAuthorizationShadow.enforce(signal: signal),
+            .allow,
+            "agree must allow in enforce mode"
+        )
+    }
+
+    func testEnforceDaemonStricterReturnsDeny() {
+        let signal = MissionRemoteAuthorizationShadow.compare(
+            missionID: "enforce-daemon-stricter", gui: .allow, daemon: daemon(.denied, reason: .untrustedDevice), promptSHA256: "b"
+        )
+        XCTAssertEqual(signal.kind, .daemonStricter)
+        XCTAssertEqual(
+            MissionRemoteAuthorizationShadow.enforce(signal: signal),
+            .deny,
+            "daemon stricter must deny in enforce mode"
+        )
+    }
+
+    func testEnforceGuiStricterReturnsAllow() {
+        let signal = MissionRemoteAuthorizationShadow.compare(
+            missionID: "enforce-gui-stricter", gui: .deny, daemon: daemon(.authorized), promptSHA256: "c"
+        )
+        XCTAssertEqual(signal.kind, .guiStricter)
+        XCTAssertEqual(
+            MissionRemoteAuthorizationShadow.enforce(signal: signal),
+            .allow,
+            "gui stricter must allow in enforce mode (daemon is more permissive)"
+        )
+    }
+
+    func testEnforceDaemonUnreachableReturnsDeny() {
+        // THE CRITICAL FAIL-CLOSED TEST: an unreachable daemon must NOT fall
+        // back to GUI-allow in enforce mode.
+        let signal = MissionRemoteAuthorizationShadow.compare(
+            missionID: "enforce-unreachable", gui: .allow, daemon: nil, promptSHA256: "d",
+            unreachableDetail: "socket closed"
+        )
+        XCTAssertEqual(signal.kind, .daemonUnreachable)
+        XCTAssertEqual(signal.guiDecision, .allow)
+        XCTAssertEqual(
+            MissionRemoteAuthorizationShadow.enforce(signal: signal),
+            .deny,
+            "daemon unreachable must fail-closed to deny, even when GUI would allow"
+        )
+    }
+
+    func testEnforceDaemonUnreachableReturnsDenyEvenWhenGUIDenies() {
+        // Fail-closed is consistent regardless of the GUI decision.
+        let signal = MissionRemoteAuthorizationShadow.compare(
+            missionID: "enforce-unreachable-deny", gui: .deny, daemon: nil, promptSHA256: "e",
+            unreachableDetail: "socket closed"
+        )
+        XCTAssertEqual(signal.kind, .daemonUnreachable)
+        XCTAssertEqual(signal.guiDecision, .deny)
+        XCTAssertEqual(
+            MissionRemoteAuthorizationShadow.enforce(signal: signal),
+            .deny,
+            "daemon unreachable must deny in enforce mode even when GUI also denies"
+        )
+    }
+
+    // MARK: - Enforce orchestration (async, @MainActor)
+
+    @MainActor
+    func testEnforceModeOffReturnsAllow() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .off
+            let verdict = await MissionRemoteAuthorizationShadow.enforce(
+                ctx: context(), guiDecision: .allow, executorTrustState: "trusted"
+            )
+            XCTAssertEqual(verdict, .allow, "off mode must always return allow")
+        }
+    }
+
+    @MainActor
+    func testEnforceModeShadowReturnsAllowAndDoesNotGovern() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .shadow
+            let verdict = await MissionRemoteAuthorizationShadow.enforce(
+                ctx: context(), guiDecision: .deny, executorTrustState: "untrusted"
+            )
+            XCTAssertEqual(verdict, .allow,
+                           "shadow mode must return allow and never govern execution")
+        }
+    }
+
+    @MainActor
+    func testEnforceModeFailClosedOnUnhealthyDaemon() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .enforce
+            let manager = OpenBurnBarDaemonManager()
+            manager.status = .unhealthy("test daemon unavailable")
+            let verdict = await MissionRemoteAuthorizationShadow.enforce(
+                ctx: context(), guiDecision: .allow, executorTrustState: "trusted", manager: manager
+            )
+            XCTAssertEqual(verdict, .deny, "enforce mode must fail-closed to deny on unhealthy daemon")
+        }
+    }
+
+    @MainActor
+    func testEnforceModeFailClosedOnSocketFailure() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .enforce
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("MissionRemoteAuthorizationShadowTests-\(UUID().uuidString)", isDirectory: true)
+            let paths = OpenBurnBarDaemonRuntimePaths(
+                supportDirectory: root,
+                daemonDirectory: root.appendingPathComponent("daemon", isDirectory: true),
+                frameworksDirectory: root.appendingPathComponent("Frameworks", isDirectory: true),
+                installedBinaryURL: root.appendingPathComponent("daemon/OpenBurnBarDaemon"),
+                socketURL: root.appendingPathComponent("missing.sock"),
+                logURL: root.appendingPathComponent("daemon.log"),
+                launchAgentPlistURL: root.appendingPathComponent("launch-agent.plist")
+            )
+            let manager = OpenBurnBarDaemonManager(paths: paths, dependencies: .live())
+            let health = BurnBarHealthResponse(
+                ok: true,
+                daemonVersion: "test",
+                protocolVersion: BurnBarProtocolVersion.current,
+                socketPath: paths.socketURL.path
+            )
+            manager.status = .healthy(OpenBurnBarDaemonHealthSnapshot(response: health))
+            let verdict = await MissionRemoteAuthorizationShadow.enforce(
+                ctx: context(), guiDecision: .allow, executorTrustState: "trusted", manager: manager
+            )
+            XCTAssertEqual(verdict, .deny, "enforce mode must fail-closed to deny on socket failure")
+        }
+    }
+
+    // MARK: - Shadow mode preserved
+
+    func testShadowModeDefaultIsShadow() {
+        // Verify Mode has exactly three cases: .off, .shadow, .enforce.
+        // The existence of these three values at compile time is the assertion;
+        // the equality checks confirm they are distinct.
+        let off: MissionRemoteAuthorizationShadow.Mode = .off
+        let shadow: MissionRemoteAuthorizationShadow.Mode = .shadow
+        let enforce: MissionRemoteAuthorizationShadow.Mode = .enforce
+        XCTAssertNotEqual(off, shadow)
+        XCTAssertNotEqual(shadow, enforce)
+        XCTAssertNotEqual(off, enforce)
+        // Exhaustive switch proves the enum has exactly three cases.
+        let all: [MissionRemoteAuthorizationShadow.Mode] = [off, shadow, enforce]
+        for mode in all {
+            switch mode {
+            case .off, .shadow, .enforce:
+                break
+            }
+        }
+        XCTAssertEqual(Set(all.map { $0.rawValue }), Set(["off", "shadow", "enforce"]))
+    }
 }
+

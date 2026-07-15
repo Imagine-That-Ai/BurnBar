@@ -94,29 +94,47 @@ struct MissionAuthorizationDivergenceSignal: Equatable, Sendable {
     }
 }
 
+/// The authoritative enforcement verdict returned to the GUI when enforce mode
+/// is active. The daemon's verdict governs; the GUI may proceed only when the
+/// daemon agrees or is more permissive. A `.deny` is returned whenever the
+/// daemon is stricter OR unreachable (fail-closed).
+enum MissionAuthorizationEnforcementVerdict: String, Equatable, Sendable {
+    case allow
+    case deny
+}
+
 /// Pure comparator + request/verdict reducers behind the shadow path. Kept
 /// stateless and synchronous so every branch is table-testable.
 enum MissionRemoteAuthorizationShadow {
 
     /// Reversal flag. `.shadow` (default) observes and telemeters divergence
     /// but lets the GUI decision govern; `.off` disables the shadow call
-    /// entirely. Enforcement is intentionally NOT an option in this phase.
+    /// entirely. `.enforce` (P-ARCH-2) makes the daemon's fail-closed verdict
+    /// authoritative: the GUI may only proceed when the daemon agrees or is
+    /// more permissive; if the daemon is unreachable, the mission is DENIED
+    /// (never GUI-allowed). Ship behind `OBB_MISSION_AUTHORIZE_SHADOW=enforce`;
+    /// flip the default from `.shadow` only after the divergence soak window
+    /// is clean (tracked in `docs/OPERATION_9_SOAK_LEDGER.md`).
     enum Mode: String, Equatable, Sendable {
         case off
         case shadow
+        case enforce
     }
 
     /// Ships defaulting to shadow-mode. A runtime override can force it `.off`
-    /// for a fast rollback without reverting the wiring. `nonisolated(unsafe)`
-    /// is safe here: this is a set-once-at-launch reversal flag, resolved from
-    /// the environment on first access and only ever read afterward on the main
-    /// actor (`observe`) or from tests.
+    /// for a fast rollback without reverting the wiring, or `.enforce` to make
+    /// the daemon authoritative. `nonisolated(unsafe)` is safe here: this is a
+    /// set-once-at-launch reversal flag, resolved from the environment on first
+    /// access and only ever read afterward on the main actor (`observe` /
+    /// `enforce`) or from tests.
     nonisolated(unsafe) static var mode: Mode = {
         switch ProcessInfo.processInfo.environment["OBB_MISSION_AUTHORIZE_SHADOW"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() {
         case "off", "0", "false", "disabled":
             return .off
+        case "enforce", "1", "true", "enabled":
+            return .enforce
         default:
             return .shadow
         }
@@ -280,6 +298,30 @@ enum MissionRemoteAuthorizationShadow {
         }
     }
 
+    // MARK: Enforce verdict (P-ARCH-2)
+
+    /// The authoritative enforcement verdict derived from a divergence signal.
+    /// Pure and synchronous so every branch is table-testable.
+    ///
+    /// In enforce mode the daemon's verdict governs using the existing
+    /// permissiveness ranking:
+    ///   - `.agree` → `.allow` (both authorities reached the same verdict)
+    ///   - `.daemonStricter` → `.deny` (daemon permits LESS; it is authoritative)
+    ///   - `.guiStricter` → `.allow` (daemon permits MORE; it is authoritative,
+    ///     so we loosen to the daemon's permissiveness)
+    ///   - `.daemonUnreachable` → `.deny` (FAIL-CLOSED: an unreachable daemon
+    ///     must NEVER allow a remote mission, regardless of the GUI's decision)
+    static func enforce(
+        signal: MissionAuthorizationDivergenceSignal
+    ) -> MissionAuthorizationEnforcementVerdict {
+        switch signal.kind {
+        case .agree, .guiStricter:
+            return .allow
+        case .daemonStricter, .daemonUnreachable:
+            return .deny
+        }
+    }
+
     // MARK: Shadow orchestration (called from the GUI decision point)
 
     /// SHADOW-mode observation. Builds the daemon request from the decoded
@@ -333,6 +375,80 @@ enum MissionRemoteAuthorizationShadow {
             promptSHA256: promptSHA,
             unreachableDetail: unreachableDetail
         ))
+    }
+
+    // MARK: Enforce orchestration (P-ARCH-2 — called from the GUI decision point)
+
+    /// ENFORCE-mode authorization. Queries the daemon for its authoritative
+    /// verdict, emits the divergence signal through the existing telemetry path
+    /// (`emit`), and returns the enforcement verdict that the GUI must honor.
+    ///
+    /// Mode behavior:
+    ///   - `.off` → returns `.allow` (shadow disabled; GUI decision governs, unchanged)
+    ///   - `.shadow` → delegates to `observe()` and returns `.allow` (shadow
+    ///     NEVER governs — the GUI's existing decision is left entirely in charge)
+    ///   `.enforce` → the daemon verdict is authoritative. The daemon is queried
+    ///     the same way as `observe`; the resulting signal is emitted (telemetry
+    ///     flows through the existing `mission_authorize_shadow` log lines) and
+    ///     `enforce(signal:)` decides. If the daemon is unreachable, the verdict
+    ///     is `.deny` — fail-closed, never GUI-allowed under enforce.
+    @MainActor
+    static func enforce(
+        ctx: ShadowContext,
+        guiDecision: GUIMissionAuthorizationDecision,
+        executorTrustState: String,
+        manager: OpenBurnBarDaemonManager = .shared
+    ) async -> MissionAuthorizationEnforcementVerdict {
+        switch mode {
+        case .off:
+            return .allow
+        case .shadow:
+            await observe(
+                ctx: ctx,
+                guiDecision: guiDecision,
+                executorTrustState: executorTrustState,
+                manager: manager
+            )
+            return .allow
+        case .enforce:
+            let request = makeRequest(ctx: ctx, executorTrustState: executorTrustState)
+            let promptSHA = request.promptSHA256
+
+            // Only reach for the daemon when it is healthy; otherwise fail-closed.
+            guard case .healthy = manager.status else {
+                let signal = compare(
+                    missionID: ctx.missionID,
+                    gui: guiDecision,
+                    daemon: nil,
+                    promptSHA256: promptSHA,
+                    unreachableDetail: "daemon not healthy"
+                )
+                emit(signal)
+                return enforce(signal: signal)
+            }
+
+            let socketURL = manager.paths.socketURL
+            let daemonResponse: BurnBarRemoteMissionAuthorizeResponse?
+            var unreachableDetail: String?
+            do {
+                daemonResponse = try await manager.daemonRPC {
+                    try OpenBurnBarDaemonSocketClient.authorizeRemoteMission(request, at: socketURL)
+                }
+            } catch {
+                daemonResponse = nil
+                unreachableDetail = error.localizedDescription
+            }
+
+            let signal = compare(
+                missionID: ctx.missionID,
+                gui: guiDecision,
+                daemon: daemonResponse,
+                promptSHA256: promptSHA,
+                unreachableDetail: unreachableDetail
+            )
+            emit(signal)
+            return enforce(signal: signal)
+        }
     }
 
     /// Reduce the GUI listener's observable outcome, once trust has passed,
