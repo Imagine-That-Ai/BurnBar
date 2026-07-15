@@ -3,6 +3,7 @@ package com.openburnbar.data.cloud
 import android.util.Log
 import com.openburnbar.BuildConfig
 import java.security.MessageDigest
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import javax.crypto.Cipher
@@ -68,6 +69,7 @@ internal data class CloudVaultShadowComparison(
     val mismatchCategory: String?,
     val legacyMicros: Long,
     val rustMicros: Long,
+    val observedAt: Instant = Instant.now(),
 )
 
 internal data class CloudVaultAesDetachedBox(
