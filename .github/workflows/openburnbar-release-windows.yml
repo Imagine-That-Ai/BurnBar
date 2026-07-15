@@ -514,6 +514,21 @@ jobs:
           echo "Checksums:"
           cat "artifacts/${checksum_file}"
 
+      - name: Package canonical cross-architecture Windows release bundle
+        run: |
+          set -euo pipefail
+          canonical="OpenBurnBar-${VERSION}-windows-release.zip"
+          (
+            cd artifacts
+            7z a -tzip -bd "$canonical" \
+              "OpenBurnBar-${VERSION}-win-x64.zip" \
+              "OpenBurnBar-${VERSION}-win-arm64.zip" \
+              "OpenBurnBar-${VERSION}-x64.msix" \
+              "OpenBurnBar-${VERSION}-arm64.msix" >/dev/null
+            sha256sum "$canonical" >> "checksums-windows-v${VERSION}.txt"
+          )
+          test -s "artifacts/$canonical"
+
       - name: Sign the update feed (pinned Ed25519, independent of Authenticode)
         if: steps.config.outputs.updatekey == 'true'
         env:
@@ -729,6 +744,52 @@ jobs:
             [[ -f "$f" ]] && attest "$f"
           done
 
+      - name: Create candidate-bound Windows v2 domain-core evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          artifact="artifacts/OpenBurnBar-${VERSION}-windows-release.zip"
+          test -s "$artifact"
+          activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
+          rollback="artifacts/OpenBurnBar-${VERSION}-legacy-rollback.zip"
+          gh release download "v${VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "OpenBurnBar-${VERSION}-legacy-rollback.zip" \
+            --output "$rollback"
+          test -s "$rollback"
+          rollback_profile="$RUNNER_TEMP/domain-core-public-production-rollback.json"
+          unzip -p "$rollback" domain-core-public-production-rollback.json > "$rollback_profile"
+          test -s "$rollback_profile"
+          while IFS= read -r encoded; do
+            domain="$(jq -r '.domain' <<<"$encoded")"
+            predicate="provenance-windows-v${VERSION}/domain-core-windows-${domain}.predicate.json"
+            cp "$(jq -r '.bundlePath' <<<"$encoded")" "$RUNNER_TEMP/domain-core-candidate-bundle.json"
+            node scripts/ci/create-domain-core-release-evidence.mjs \
+              --consumer windows \
+              --domain "$domain" \
+              --artifact-kind windows-release-bundle \
+              --target windows-x64-arm64 \
+              --version "$VERSION" \
+              --tag "windows-v${VERSION}" \
+              --commit "$RELEASE_COMMIT" \
+              --artifact "$artifact" \
+              --predicate "$predicate" \
+              --public-profile-sha256 "$(jq -r '.publicProfileSha256' <<<"$encoded")" \
+              --candidate-bundle "$RUNNER_TEMP/domain-core-candidate-bundle.json" \
+              --promotion-attestation "$(jq -r '.provenancePath' <<<"$encoded")" \
+              --protected-signer-run-id "$(jq -r '.signerRunId' <<<"$encoded")" \
+              --protected-signer-run-attempt "$(jq -r '.signerRunAttempt' <<<"$encoded")" \
+              --rollback-artifact "$rollback" \
+              --rollback-profile "$rollback_profile"
+            cosign attest-blob --yes \
+              --type https://openburnbar.dev/attestations/domain-core-release-artifact/v2 \
+              --predicate "$predicate" \
+              --bundle "${predicate}.sigstore.json" \
+              "$artifact"
+          done < <(jq -c '.domains[] | select(.domain == "quota" or .domain == "cloudVault")' <<<"$activation")
+
       - name: Upload provenance bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
@@ -739,3 +800,42 @@ jobs:
             provenance-windows-v${{ needs.resolve-release.outputs.version }}/
           if-no-files-found: error
           retention-days: 7
+
+  publish:
+    name: Publish immutable Windows release
+    needs:
+      - resolve-release
+      - build-sign
+      - supply-chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download signed Windows artifacts and provenance
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/release
+          merge-multiple: true
+
+      - name: Publish exact tag-bound Windows assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve-release.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          tag="windows-v${VERSION}"
+          canonical="$RUNNER_TEMP/release/OpenBurnBar-${VERSION}-windows-release.zip"
+          test -s "$canonical"
+          test "$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "refs/tags/$tag" | cut -f1)" = "$RELEASE_COMMIT"
+          mapfile -d '' assets < <(find "$RUNNER_TEMP/release" -type f -print0 | sort -z)
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "OpenBurnBar Windows ${VERSION}" \
+              --generate-notes
+          fi

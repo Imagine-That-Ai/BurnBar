@@ -26,6 +26,7 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
       "domain",
       "artifactKind",
       "target",
+      "publicProfile",
       "candidate",
       "activation",
       "sourceRun",
@@ -48,6 +49,8 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
   assert.ok(schema.$defs.rollbackArtifact.required.includes("candidate"));
   assert.ok(schema.$defs.rollbackArtifact.required.includes("activation"));
   assert.ok(schema.$defs.rollbackArtifact.required.includes("sha256"));
+  assert.equal(schema.$defs.publicProfile.properties.mode.const, "rust");
+  assert.equal(schema.$defs.appStoreConnectReceipt.properties.status.const, "processed");
   assert.equal(schema.oneOf.length, 7);
 });
 
@@ -55,6 +58,7 @@ test("deployment receipt v2 carries the same proof chain and deployed bytes", ()
   const schema = json("config/domain-core-deployment-receipt.schema.json");
   assert.equal(schema.properties.schemaVersion.const, 2);
   for (const field of [
+    "publicProfile",
     "candidate",
     "activation",
     "sourceRun",

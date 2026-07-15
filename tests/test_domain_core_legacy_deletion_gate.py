@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import importlib.util
 import json
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,6 +37,10 @@ RECEIPT = load_module(
 DELETION_PLAN = load_module(
     "domain_core_deletion_plan",
     ROOT / "scripts/ops/create-domain-core-deletion-plan.py",
+)
+ROLLBACK_BUNDLE = load_module(
+    "domain_core_rollback_bundle",
+    ROOT / "scripts/ci/create-domain-core-rollback-bundle.py",
 )
 
 
@@ -100,6 +106,38 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             self.assertEqual(first.read_bytes(), contents)
             download.assert_called_once()
 
+    def test_attestation_cache_deduplicates_equal_bytes_and_verification_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            artifact_one = root / "artifact-one"
+            artifact_two = root / "artifact-two"
+            bundle_one = root / "bundle-one"
+            bundle_two = root / "bundle-two"
+            artifact_one.write_bytes(b"same artifact")
+            artifact_two.write_bytes(b"same artifact")
+            bundle_one.write_bytes(b"same bundle")
+            bundle_two.write_bytes(b"same bundle")
+            verifier = GATE.SignedEvidenceVerifier(root / "cache")
+            result = subprocess.CompletedProcess(
+                [],
+                0,
+                '[{"verificationResult":{"statement":{"predicate":{}}}}]',
+                "",
+            )
+            arguments = {
+                "signer_workflow": ".github/workflows/release.yml",
+                "source_digest": "1" * 40,
+                "source_ref": "refs/tags/v1.2.3",
+                "predicate_type": GATE.ROLLBACK_PREDICATE_TYPE,
+                "signer_digest": "1" * 40,
+                "label": "release",
+            }
+            with mock.patch.object(GATE.subprocess, "run", return_value=result) as execute:
+                first = verifier._verify_bundle(artifact_one, bundle_one, **arguments)
+                second = verifier._verify_bundle(artifact_two, bundle_two, **arguments)
+            self.assertEqual(first, second)
+            execute.assert_called_once()
+
     def test_current_rollout_ledger_passes(self) -> None:
         GATE.run_gate(ROOT, ROOT / "config/domain-core-legacy-deletion.json")
 
@@ -120,6 +158,27 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             },
         )
 
+    def test_release_consumer_ownership_is_exact_and_exhaustive(self) -> None:
+        self.assertEqual(
+            GATE.ROW_RELEASE_CONSUMERS,
+            {
+                "quota.claude_statusline": {"apple", "linux", "windows"},
+                "quota.codex_usage": {"apple", "linux", "windows"},
+                "quota.cursor_usage": {"apple", "linux", "windows"},
+                "quota.anthropic_headers": {"apple", "linux", "windows"},
+                "cloudvault.portable_primitives": {"apple", "ios", "linux", "android", "windows", "console"},
+                "cloudvault.document_rewrap": {"apple", "ios", "linux", "android"},
+                "cloudvault.search": {"apple", "ios", "linux", "android"},
+                "hermes.relay_crypto": {"apple", "ios", "linux", "android"},
+                "hermes.ratchet_transforms": {"apple", "ios", "linux", "android"},
+                "pricing.token_cost": {"apple", "linux", "functions"},
+                "pricing.kimi_historical": {"functions"},
+            },
+        )
+        declared = set().union(*GATE.ROW_RELEASE_CONSUMERS.values())
+        self.assertEqual(declared, set(GATE.RELEASE_SIGNER_WORKFLOWS))
+        self.assertEqual(declared, set(GATE.RELEASE_ARTIFACT_IDENTITIES))
+
     def test_inventory_and_lifecycle_are_exact(self) -> None:
         ledger = json.loads((ROOT / "config/domain-core-legacy-deletion.json").read_text())
         self.assertEqual(tuple(row["id"] for row in ledger["rows"]), GATE.ROW_IDS)
@@ -137,6 +196,95 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         )
         for row in ledger["rows"]:
             self.assertTrue(any(target["role"] == "legacy_implementation" for target in row["targets"]))
+
+    def test_ledger_transition_inventory_is_monotonic_then_freezes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo, manifest = self.make_minimal_rollout_repo(Path(directory).resolve())
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.email", "test@openburnbar.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "OpenBurnBar Test"], cwd=repo, check=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "immutable deletion inventory"], cwd=repo, check=True)
+            base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+            added = copy.deepcopy(manifest)
+            added["sourceRoots"]["new-source"] = "new-src"
+            added["rows"][0]["targets"].append(
+                {
+                    "kind": "source_symbol",
+                    "role": "legacy_implementation",
+                    "root": "new-source",
+                    "path": "new-src/new-legacy.txt",
+                    "symbol": "newLegacySymbol",
+                }
+            )
+            GATE.validate_ledger_transition(repo, base, added)
+
+            removed = copy.deepcopy(manifest)
+            removed["rows"][0]["targets"].clear()
+            with self.assertRaisesRegex(GATE.GateError, "monotonic"):
+                GATE.validate_ledger_transition(repo, base, removed)
+
+            relabeled = copy.deepcopy(manifest)
+            relabeled["rows"][0]["targets"][0]["symbol"] = "replacementSymbol"
+            with self.assertRaisesRegex(GATE.GateError, "monotonic"):
+                GATE.validate_ledger_transition(repo, base, relabeled)
+
+            remapped = copy.deepcopy(manifest)
+            remapped["sourceRoots"]["source"] = "other"
+            with self.assertRaisesRegex(GATE.GateError, "mapping is immutable"):
+                GATE.validate_ledger_transition(repo, base, remapped)
+
+            unused_root = copy.deepcopy(manifest)
+            unused_root["sourceRoots"]["unused"] = "unused"
+            with self.assertRaisesRegex(GATE.GateError, "introduced exactly"):
+                GATE.validate_ledger_transition(repo, base, unused_root)
+
+            promoted = copy.deepcopy(manifest)
+            promoted["rows"][0]["state"] = "promotion_approved"
+            promoted["rows"][0]["authorityGeneration"] = 1
+            promoted["rows"][0]["receipts"] = {"promotion": "receipts/original.json"}
+            (repo / "config/domain-core-legacy-deletion.json").write_text(json.dumps(promoted))
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "promotion pointer"], cwd=repo, check=True)
+            promoted_base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            substituted = copy.deepcopy(promoted)
+            substituted["rows"][0]["receipts"]["promotion"] = "receipts/substituted.json"
+            with self.assertRaisesRegex(GATE.GateError, "receipt pointer promotion is immutable"):
+                GATE.validate_ledger_transition(repo, promoted_base, substituted)
+
+            stable_generation_one = copy.deepcopy(promoted)
+            stable_generation_one["rows"][0]["state"] = "rust_authoritative_with_rollback"
+            stable_generation_one["rows"][0]["receipts"]["stableRelease"] = "receipts/stable-1.json"
+            (repo / "config/domain-core-legacy-deletion.json").write_text(json.dumps(stable_generation_one))
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "stable generation one"], cwd=repo, check=True)
+            stable_base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            generation_two = copy.deepcopy(stable_generation_one)
+            generation_two["rows"][0]["state"] = "promotion_approved"
+            generation_two["rows"][0]["authorityGeneration"] = 2
+            generation_two["rows"][0]["receipts"] = {"promotion": "receipts/promotion-2.json"}
+            GATE.validate_ledger_transition(repo, stable_base, generation_two)
+            stale_generation = copy.deepcopy(generation_two)
+            stale_generation["rows"][0]["authorityGeneration"] = 1
+            with self.assertRaisesRegex(GATE.GateError, "requires authority generation 2"):
+                GATE.validate_ledger_transition(repo, stable_base, stale_generation)
+
+            frozen = copy.deepcopy(promoted)
+            frozen["rows"][0]["state"] = "deletion_approved"
+            frozen["rows"][0]["receipts"] = {
+                "promotion": "receipts/original.json",
+                "stableRelease": "receipts/stable.json",
+                "deletionReview": "receipts/deletion.json",
+            }
+            (repo / "config/domain-core-legacy-deletion.json").write_text(json.dumps(frozen))
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "freeze approved inventory"], cwd=repo, check=True)
+            frozen_base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            post_approval = copy.deepcopy(frozen)
+            post_approval["rows"][0]["targets"].append(copy.deepcopy(post_approval["rows"][1]["targets"][0]))
+            with self.assertRaisesRegex(GATE.GateError, "frozen after deletion approval"):
+                GATE.validate_ledger_transition(repo, frozen_base, post_approval)
 
     def test_receipt_sets_fail_closed_for_every_state(self) -> None:
         self.assertEqual(GATE.required_receipts("rollout"), set())
@@ -157,6 +305,23 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             GATE.required_receipts("legacy_deleted"),
             {"promotion", "stableRelease", "deletionReview"},
         )
+
+    def test_second_authority_epoch_supersedes_stable_or_rollback_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            receipt_root = root / GATE.RECEIPT_ROOT / GATE.ROW_IDS[0] / "1"
+            receipt_root.mkdir(parents=True)
+            stable = receipt_root / "stable_release.json"
+            stable.write_text('{"transition":"stable_release"}\n')
+            pointer = RECEIPT.superseded_authority_pointer(root, GATE.ROW_IDS[0], 2)
+            self.assertEqual(pointer["transition"], "stable_release")
+            self.assertEqual(pointer["sha256"], hashlib.sha256(stable.read_bytes()).hexdigest())
+            rollback = receipt_root / "rollback.json"
+            rollback.write_text('{"transition":"rollback"}\n')
+            pointer = RECEIPT.superseded_authority_pointer(root, GATE.ROW_IDS[0], 2)
+            self.assertEqual(pointer["transition"], "rollback")
+            with self.assertRaisesRegex(RECEIPT.GATE.GateError, "must supersede"):
+                RECEIPT.superseded_authority_pointer(root, GATE.ROW_IDS[0], 3)
 
     def test_premature_legacy_deleted_state_is_blocked(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -508,6 +673,12 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             "domain": "quota",
             "artifactKind": item["artifactKind"],
             "target": item["target"],
+            "publicProfile": {
+                "profile": "public-production",
+                "domain": "quota",
+                "mode": "rust",
+                "sha256": "3" * 64,
+            },
             "candidate": identity,
             "activation": activation,
             "sourceRun": {
@@ -552,6 +723,16 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         ):
             verifier.verify_release(item, ROOT / "README.md", hashlib.sha256(contents).hexdigest(), "quota")
 
+        rollback_profile = copy.deepcopy(result)
+        rollback_profile[0]["verificationResult"]["statement"]["predicate"]["publicProfile"]["mode"] = "legacy"
+        response = FakeDownloadResponse(contents, "https://objects.githubusercontent.com/release.zip")
+        with (
+            mock.patch.object(GATE, "urlopen", return_value=response),
+            mock.patch.object(verifier, "_verify_bundle", return_value=rollback_profile),
+            self.assertRaisesRegex(GATE.GateError, "signed predicate does not bind"),
+        ):
+            verifier.verify_release(item, ROOT / "README.md", hashlib.sha256(contents).hexdigest(), "quota")
+
     def test_stable_release_requires_exact_candidate_and_retained_signed_rollback(
         self,
     ) -> None:
@@ -566,9 +747,71 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         ):
             self.assertIn(marker, source)
 
+    def test_ios_distribution_receipt_rejects_binary_identity_spoof(self) -> None:
+        candidate = {
+            "candidateCommit": "1" * 40,
+            "coreVersion": "0.3.0",
+            "abiVersion": 3,
+            "sourceSha256": "2" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": "3" * 40,
+            "changedPathsSha256": "4" * 64,
+        }
+        item = {
+            "version": "1.2.3",
+            "tag": "v1.2.3",
+            "commit": activation["activationCommit"],
+            "candidate": candidate,
+            "activation": activation,
+        }
+        receipt = {
+            "schemaVersion": 1,
+            "status": "processed",
+            "deliveryId": "delivery-123",
+            "archiveSha256": "5" * 64,
+            "ipaSha256": "6" * 64,
+            "release": {
+                "version": "1.2.3",
+                "tag": "v1.2.3",
+                "commit": activation["activationCommit"],
+            },
+            "candidate": candidate,
+            "activation": activation,
+            "loadedRustIdentity": {
+                "schemaVersion": 1,
+                "verificationKind": "ios-loaded-rust-slice-identity",
+                "bundleId": "com.openburnbar.mobile",
+                "version": "1.2.3",
+                "buildNumber": "123",
+                "executable": "OpenBurnBarMobile",
+                "architectures": ["arm64"],
+                "candidate": candidate,
+                "executableSha256": "7" * 64,
+                "identitySectionSha256": "8" * 64,
+                "identitySymbols": [
+                    "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+                    "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+                    "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
+                    "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
+                ],
+                "observed": {
+                    "candidateCommit": "1" * 40,
+                    "coreVersion": "0.3.0",
+                    "abiVersion": 3,
+                    "sourceSha256": "2" * 64,
+                },
+            },
+        }
+        GATE.validate_ios_app_store_receipt(receipt, item, "5" * 64)
+        spoof = copy.deepcopy(receipt)
+        spoof["loadedRustIdentity"]["observed"]["sourceSha256"] = "8" * 64
+        with self.assertRaisesRegex(GATE.GateError, "loaded Rust slice"):
+            GATE.validate_ios_app_store_receipt(spoof, item, "5" * 64)
+
     def test_rollback_artifact_verifier_binds_candidate_and_retention(self) -> None:
         verifier = GATE.SignedEvidenceVerifier()
-        contents = b"retained legacy rollback bytes"
         identity = {
             "candidateCommit": "1" * 40,
             "coreVersion": "0.3.0",
@@ -594,6 +837,41 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             "activation": activation,
             "retentionPolicy": "retain_until_legacy_deletion_complete",
         }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = root / "profile.json"
+            activation_path = root / "activation.json"
+            source_path = root / "legacy-source.tar.gz"
+            bundle_path = root / "rollback.zip"
+            profile.write_text(json.dumps({
+                "schemaVersion": 1,
+                "name": "public-production-rollback",
+                "artifactAuthority": "signed",
+                "distribution": "public",
+                "rolloutChannel": None,
+                "evidenceEnabled": False,
+                "modes": {domain: "legacy" for domain in GATE.PROFILE_DOMAIN_ROWS},
+                "candidateIdentity": identity,
+            }))
+            activation_path.write_text(json.dumps(activation))
+            with tarfile.open(source_path, "w:gz") as source:
+                for name, value in (
+                    ("OpenBurnBar/config/domain-core-build-profiles.json", b"{}\n"),
+                    ("OpenBurnBar/crates/openburnbar-domain-core/Cargo.toml", b"[workspace]\n"),
+                ):
+                    info = tarfile.TarInfo(name)
+                    info.size = len(value)
+                    source.addfile(info, io.BytesIO(value))
+            ROLLBACK_BUNDLE.create_bundle(
+                profile,
+                activation_path,
+                bundle_path,
+                source_path,
+                version="1.2.3",
+                tag="v1.2.3",
+                commit=activation["activationCommit"],
+            )
+            contents = bundle_path.read_bytes()
         predicate = {
             "schemaVersion": 1,
             "artifactKind": "legacy-rollback-bundle",

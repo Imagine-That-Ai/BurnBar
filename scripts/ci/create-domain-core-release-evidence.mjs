@@ -57,6 +57,8 @@ function parseArguments(argv) {
     "--protected-signer-run-id",
     "--protected-signer-run-attempt",
     "--rollback-artifact",
+    "--rollback-profile",
+    "--app-store-connect-receipt",
     "--deployment",
   ]);
   const result = {};
@@ -71,7 +73,12 @@ function parseArguments(argv) {
       throw new Error(`duplicate argument: ${flag}`);
     result[flag] = value;
   }
-  const required = [...allowed].filter((flag) => flag !== "--deployment");
+  const required = [...allowed].filter(
+    (flag) =>
+      flag !== "--deployment" &&
+      flag !== "--rollback-profile" &&
+      flag !== "--app-store-connect-receipt",
+  );
   for (const flag of required) {
     if (!Object.hasOwn(result, flag)) throw new Error(`${flag} is required`);
   }
@@ -247,6 +254,8 @@ export function buildReleaseEvidence({
   protectedSignerRunId,
   protectedSignerRunAttempt,
   rollbackArtifactPath,
+  rollbackProfilePath,
+  appStoreConnectReceipt,
   publicProfileSha256,
   deployment,
   promotionVerifier = verifyProtectedPromotionAttestation,
@@ -264,11 +273,21 @@ export function buildReleaseEvidence({
     commit,
     candidate,
   });
-  const activation = activationVerifier({
+  const rawActivation = activationVerifier({
     repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
     candidateCommit: candidate.candidateCommit,
     activationCommit: commit,
   });
+  const activation = Object.fromEntries(
+    [
+      "candidateCommit",
+      "activationCommit",
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+      "changedPathsSha256",
+    ].map((field) => [field, rawActivation[field]]),
+  );
   promotionVerifier({
     candidateBundlePath,
     promotionAttestationPath,
@@ -283,7 +302,7 @@ export function buildReleaseEvidence({
   });
   const rollbackPath = regularFile(rollbackArtifactPath, "rollback artifact");
   validateRollbackArtifact(
-    readJson(rollbackPath, "rollback artifact"),
+    readJson(rollbackProfilePath ?? rollbackPath, "rollback profile"),
     candidate,
   );
   const rollbackArtifact = {
@@ -298,12 +317,19 @@ export function buildReleaseEvidence({
     commit,
     publicProfileSha256: validatePublicProfileSha256(publicProfileSha256),
   };
+  const publicProfile = {
+    profile: "public-production",
+    domain,
+    mode: "rust",
+    sha256: release.publicProfileSha256,
+  };
   const common = {
     schemaVersion: 2,
     consumer,
     domain,
     artifactKind,
     target,
+    publicProfile,
     candidate,
     activation,
     sourceRun,
@@ -311,6 +337,74 @@ export function buildReleaseEvidence({
     rollbackArtifact,
     release,
   };
+  if (consumer === "ios") {
+    const receipt = exactObject(
+      appStoreConnectReceipt,
+      [
+        "schemaVersion",
+        "status",
+        "deliveryId",
+        "archiveSha256",
+        "ipaSha256",
+        "release",
+        "candidate",
+        "activation",
+        "loadedRustIdentity",
+      ],
+      "App Store Connect receipt",
+    );
+    const loaded = exactObject(
+      receipt.loadedRustIdentity,
+      [
+        "schemaVersion",
+        "verificationKind",
+        "bundleId",
+        "version",
+        "buildNumber",
+        "executable",
+        "architectures",
+        "executableSha256",
+        "identitySectionSha256",
+        "identitySymbols",
+        "candidate",
+        "observed",
+      ],
+      "loaded Rust slice identity",
+    );
+    const expectedSymbols = [
+      "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+      "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+      "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
+      "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
+    ];
+    if (
+      receipt.schemaVersion !== 1 ||
+      receipt.status !== "processed" ||
+      typeof receipt.deliveryId !== "string" ||
+      receipt.deliveryId.length === 0 ||
+      receipt.archiveSha256 !== sha256File(artifactPath) ||
+      !SHA256.test(receipt.ipaSha256) ||
+      JSON.stringify(receipt.candidate) !== JSON.stringify(candidate) ||
+      JSON.stringify(receipt.activation) !== JSON.stringify(activation) ||
+      loaded.schemaVersion !== 1 ||
+      loaded.verificationKind !== "ios-loaded-rust-slice-identity" ||
+      loaded.version !== release.version ||
+      loaded.executable !== "OpenBurnBarMobile" ||
+      JSON.stringify(loaded.architectures) !== JSON.stringify(["arm64"]) ||
+      !SHA256.test(loaded.executableSha256) ||
+      !SHA256.test(loaded.identitySectionSha256) ||
+      JSON.stringify(loaded.identitySymbols) !== JSON.stringify(expectedSymbols) ||
+      JSON.stringify(loaded.candidate) !== JSON.stringify(candidate) ||
+      JSON.stringify(loaded.observed) !== JSON.stringify(candidate)
+    ) {
+      throw new Error(
+        "App Store Connect receipt must bind the processed IPA, archive, activation, and loaded Rust slice",
+      );
+    }
+    common.appStoreConnectReceipt = structuredClone(receipt);
+  } else if (appStoreConnectReceipt !== undefined) {
+    throw new Error(`${consumer} must not provide an App Store Connect receipt`);
+  }
 
   let deploymentReceipt;
   if (DEPLOYMENT_CONSUMERS.has(consumer)) {
@@ -364,6 +458,15 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
       "protected signer run attempt",
     ),
     rollbackArtifactPath: resolve(args["--rollback-artifact"]),
+    rollbackProfilePath: args["--rollback-profile"]
+      ? resolve(args["--rollback-profile"])
+      : undefined,
+    appStoreConnectReceipt: args["--app-store-connect-receipt"]
+      ? readJson(
+          args["--app-store-connect-receipt"],
+          "App Store Connect receipt",
+        )
+      : undefined,
     publicProfileSha256: args["--public-profile-sha256"],
     deployment,
     promotionVerifier,

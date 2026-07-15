@@ -353,6 +353,8 @@ pub struct QuotaParseResult {
     pub snapshot: QuotaSnapshot,
 }
 
+const _: [(); 3] = [(); openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION as usize];
+
 #[uniffi::export]
 pub fn domain_core_abi_version() -> u32 {
     openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION

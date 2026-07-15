@@ -11,6 +11,7 @@
     "domain",
     "artifactKind",
     "target",
+    "publicProfile",
     "candidate",
     "activation",
     "sourceRun",
@@ -34,7 +35,7 @@
           ]
         },
         "artifactKind": { "const": "macos-dmg" },
-        "target": { "const": "macos-universal" }
+        "target": { "const": "macos-arm64" }
       }
     },
     {
@@ -57,12 +58,10 @@
         "consumer": { "const": "ios" },
         "domain": {
           "enum": [
-            "quota",
             "cloudVault",
             "cloudVaultRewrap",
             "cloudVaultSearch",
-            "hermes",
-            "pricing"
+            "hermes"
           ]
         },
         "artifactKind": { "const": "ios-app-store-archive" },
@@ -120,6 +119,8 @@
     "domain": { "$ref": "#/$defs/domain" },
     "artifactKind": { "$ref": "#/$defs/artifactKind" },
     "target": { "$ref": "#/$defs/target" },
+    "publicProfile": { "$ref": "#/$defs/publicProfile" },
+    "appStoreConnectReceipt": { "$ref": "#/$defs/appStoreConnectReceipt" },
     "candidate": { "$ref": "#/$defs/candidate" },
     "activation": { "$ref": "#/$defs/activation" },
     "sourceRun": { "$ref": "#/$defs/sourceRun" },
@@ -169,7 +170,7 @@
     },
     "target": {
       "enum": [
-        "macos-universal",
+        "macos-arm64",
         "ios-universal",
         "linux-x64-arm64",
         "android-universal",
@@ -177,6 +178,77 @@
         "firebase-hosting-production",
         "firebase-functions-production"
       ]
+    },
+    "publicProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "domain", "mode", "sha256"],
+      "properties": {
+        "profile": { "const": "public-production" },
+        "domain": { "$ref": "#/$defs/domain" },
+        "mode": { "const": "rust" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "appStoreConnectReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "status", "deliveryId", "archiveSha256", "ipaSha256", "release", "candidate", "activation", "loadedRustIdentity"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "status": { "const": "processed" },
+        "deliveryId": { "type": "string", "minLength": 1 },
+        "archiveSha256": { "$ref": "#/$defs/sha256" },
+        "ipaSha256": { "$ref": "#/$defs/sha256" },
+        "release": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "tag", "commit"],
+          "properties": {
+            "version": { "$ref": "#/$defs/version" },
+            "tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$" },
+            "commit": { "$ref": "#/$defs/gitSha" }
+          }
+        },
+        "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" },
+        "loadedRustIdentity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "verificationKind", "bundleId", "version", "buildNumber", "executable", "architectures", "candidate", "observed", "executableSha256", "identitySectionSha256", "identitySymbols"],
+          "properties": {
+            "schemaVersion": { "const": 1 },
+            "verificationKind": { "const": "ios-loaded-rust-slice-identity" },
+            "bundleId": { "type": "string", "minLength": 1 },
+            "version": { "$ref": "#/$defs/version" },
+            "buildNumber": { "type": "string", "minLength": 1 },
+            "executable": { "const": "OpenBurnBarMobile" },
+            "architectures": { "const": ["arm64"] },
+            "candidate": { "$ref": "#/$defs/candidate" },
+            "observed": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["candidateCommit", "coreVersion", "abiVersion", "sourceSha256"],
+              "properties": {
+                "candidateCommit": { "$ref": "#/$defs/gitSha" },
+                "coreVersion": { "$ref": "#/$defs/version" },
+                "abiVersion": { "type": "integer", "minimum": 1 },
+                "sourceSha256": { "$ref": "#/$defs/sha256" }
+              }
+            },
+            "executableSha256": { "$ref": "#/$defs/sha256" },
+            "identitySectionSha256": { "$ref": "#/$defs/sha256" },
+            "identitySymbols": {
+              "const": [
+                "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+                "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+                "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
+                "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version"
+              ]
+            }
+          }
+        }
+      }
     },
     "candidate": {
       "type": "object",

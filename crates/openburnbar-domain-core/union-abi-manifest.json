@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "coreVersion": "0.1.0",
   "abiVersion": 3,
-  "sourceSha256": "f435ea8e6b615ced64059c1f8ceaa9629247200479dc668abdd42afa2b02f600",
+  "sourceSha256": "432b21ce18a1aa9d81301f6f205e14e0840396407499403b1f04e433e0c91647",
   "sourceRoots": [
     "Cargo.toml",
     "Cargo.lock",

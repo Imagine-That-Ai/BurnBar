@@ -150,6 +150,84 @@ test("builds an exact candidate-bound native release contract", () => {
   }
 });
 
+test("iOS evidence requires processed ASC and loaded Rust slice identity", () => {
+  const files = workspace();
+  try {
+    const artifact = join(
+      files.directory,
+      "OpenBurnBar-1.2.3-iOS.xcarchive.zip",
+    );
+    writeFileSync(artifact, "signed-ios-archive");
+    const receipt = {
+      schemaVersion: 1,
+      status: "processed",
+      deliveryId: "delivery-123",
+      archiveSha256: sha(readFileSync(artifact)),
+      ipaSha256: "f".repeat(64),
+      release: {
+        version: "1.2.3",
+        tag: "v1.2.3",
+        commit: ACTIVATION.activationCommit,
+      },
+      candidate: CANDIDATE,
+      activation: ACTIVATION,
+      loadedRustIdentity: {
+        schemaVersion: 1,
+        verificationKind: "ios-loaded-rust-slice-identity",
+        bundleId: "com.openburnbar.mobile",
+        version: "1.2.3",
+        buildNumber: "123",
+        executable: "OpenBurnBarMobile",
+        architectures: ["arm64"],
+        candidate: CANDIDATE,
+        executableSha256: "9".repeat(64),
+        identitySectionSha256: "8".repeat(64),
+        identitySymbols: [
+          "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+          "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+          "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
+          "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
+        ],
+        observed: {
+          candidateCommit: CANDIDATE.candidateCommit,
+          coreVersion: CANDIDATE.coreVersion,
+          abiVersion: CANDIDATE.abiVersion,
+          sourceSha256: CANDIDATE.sourceSha256,
+        },
+      },
+    };
+    const result = buildReleaseEvidence({
+      ...baseOptions(files, artifact),
+      consumer: "ios",
+      domain: "cloudVault",
+      artifactKind: "ios-app-store-archive",
+      target: "ios-universal",
+      appStoreConnectReceipt: receipt,
+    });
+    assert.deepEqual(result.common.appStoreConnectReceipt, receipt);
+    assert.throws(
+      () =>
+        buildReleaseEvidence({
+          ...baseOptions(files, artifact),
+          consumer: "ios",
+          domain: "cloudVault",
+          artifactKind: "ios-app-store-archive",
+          target: "ios-universal",
+          appStoreConnectReceipt: {
+            ...receipt,
+            loadedRustIdentity: {
+              ...receipt.loadedRustIdentity,
+              candidate: { ...CANDIDATE, sourceSha256: "8".repeat(64) },
+            },
+          },
+        }),
+      /loaded Rust slice/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
 test("cryptographically verifies the exact protected signer and candidate subject", () => {
   const files = workspace();
   try {

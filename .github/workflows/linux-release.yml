@@ -52,6 +52,19 @@ jobs:
       candidate_commit: ${{ steps.domain-core-activation.outputs.candidate_commit }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify official Linux release history
+        run: |
+          set -euo pipefail
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          if [[ "$GITHUB_REF" == refs/tags/linux-v* ]]; then
+            test "$(git rev-list -n 1 "${GITHUB_REF}^{commit}")" = "$GITHUB_SHA"
+          fi
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -116,6 +129,19 @@ jobs:
       OPENBURNBAR_LINUX_RELEASE_OUT: ${{ github.workspace }}/.linux-shard
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify candidate-to-activation history is complete
+        env:
+          CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.candidate_commit }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git cat-file -e "${CANDIDATE_COMMIT}^{commit}"
+          git merge-base --is-ancestor "$CANDIDATE_COMMIT" "$RELEASE_COMMIT"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -239,6 +265,19 @@ jobs:
       OPENBURNBAR_LINUX_RELEASE_BASE_URL: https://github.com/Imagine-That-Ai/BurnBar/releases/download/${{ needs.resolve-release.outputs.tag }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify candidate-to-activation history is complete
+        env:
+          CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.candidate_commit }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git cat-file -e "${CANDIDATE_COMMIT}^{commit}"
+          git merge-base --is-ancestor "$CANDIDATE_COMMIT" "$RELEASE_COMMIT"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
