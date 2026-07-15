@@ -41,6 +41,7 @@ describe('chat composer attachments', () => {
 
     expect(screen.getByTestId('pending-attachment').textContent).toContain('notes.md');
     expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty('disabled', false);
+    expect(screen.getByLabelText('Attachment file')).toHaveProperty('accept', expect.stringContaining('.md'));
     fireEvent.click(screen.getByRole('button', { name: 'Remove attachment notes.md' }));
     expect(screen.queryByTestId('pending-attachment')).toBeNull();
     expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty('disabled', false);

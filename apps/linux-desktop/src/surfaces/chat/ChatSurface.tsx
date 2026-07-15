@@ -10,7 +10,12 @@ import {
   type MemoryCitation
 } from './chatTypes.js';
 import { ChatWorkspacePanel } from './ChatWorkspacePanel.js';
-import { attachmentUploadRequest } from './chatAttachment.js';
+import {
+  attachmentUploadRequest,
+  canonicalAttachmentMimeType,
+  gatewayAttachmentUnsupportedMessage,
+  isGatewayReadableAttachment
+} from './chatAttachment.js';
 import { closeChatPopoutWindow, isChatPopoutWindow, openChatPopoutWindow } from './chatWindow.js';
 import type { PendingChatAttachment } from './Composer.js';
 import {
@@ -117,9 +122,16 @@ export function ChatSurface() {
       if (fixtureMode || !bridge) {
         throw new Error('Attachment transport requires the packaged Linux daemon.');
       }
-      const uploaded = await bridge.chatAttachmentUpload(
-        await attachmentUploadRequest(attachment.file, attachment.name, attachment.type)
-      );
+      const request = await attachmentUploadRequest(attachment.file, attachment.name, attachment.type);
+      const canonicalMimeType = canonicalAttachmentMimeType(request.fileName, request.mimeType);
+      if (!canonicalMimeType || !isGatewayReadableAttachment(canonicalMimeType)) {
+        // Do this before chat_message_append. The native daemon stores PDF
+        // metadata for export, but the current gateway contract expands only
+        // UTF-8 text; persisting first would leave a durable turn that cannot
+        // be sent and would falsely imply attachment parity.
+        throw new Error(gatewayAttachmentUnsupportedMessage(canonicalMimeType ?? request.mimeType));
+      }
+      const uploaded = await bridge.chatAttachmentUpload({ ...request, mimeType: canonicalMimeType });
       await sendMessage(text, [uploaded]);
     } else {
       await sendMessage(text);

@@ -72,7 +72,9 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
     public func streamAnalysisCompletion(
         request: HermesInsightChatRequest
     ) -> AsyncThrowingStream<HermesInsightChunk, Error> {
-        AsyncThrowingStream { continuation in
+        // Spell out the continuation type so Swift's Windows Foundation
+        // overlay does not select the zero-argument async initializer.
+        AsyncThrowingStream<HermesInsightChunk, Error> { continuation in
             let task = Task {
                 do {
                     let urlRequest = try makeURLRequest(for: request, streaming: true)

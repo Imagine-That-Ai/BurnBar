@@ -491,6 +491,67 @@ describe('ChatSurface', () => {
     ]);
   });
 
+  it('fails before upload and preserves a PDF draft when the gateway cannot read it', async () => {
+    const summary = {
+      id: 'thread-pdf-ui',
+      title: 'PDF thread',
+      preview: 'A durable transcript',
+      messageCount: 1,
+      createdAt: '2026-07-10T12:00:00Z',
+      updatedAt: '2026-07-10T12:00:00Z'
+    };
+    const upload = vi.fn(async () => ({
+      attachmentId: 'attachment-pdf-ui',
+      fileName: 'brief.pdf',
+      mimeType: 'application/pdf',
+      byteSize: 5,
+      sha256: 'b'.repeat(64)
+    }));
+    const append = vi.fn(bridgeStubDefaults.chatMessageAppend);
+    const gateway = vi.fn(async (_request: GatewayProxyRequest, onChunk: (chunk: string) => void) => {
+      onChunk('data: [DONE]\n\n');
+    });
+    useShellStore.setState({
+      bridge: mockBridge({
+        chatAttachmentUpload: upload,
+        chatThreadList: async () => ({ threads: [summary] }),
+        chatThreadGet: async () => ({
+          thread: summary,
+          messages: [{
+            id: 'pdf-existing',
+            threadID: summary.id,
+            role: 'assistant',
+            content: 'Ready.',
+            timestamp: '2026-07-10T12:00:00Z'
+          }],
+          hasMoreBefore: false
+        }),
+        gatewayProbe: async () => true,
+        gatewayChatStream: gateway
+      }),
+      fixtureMode: false,
+      bridgeReady: true,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    // Override after mockBridge construction so the test can prove no durable
+    // append is attempted when the attachment capability preflight fails.
+    useShellStore.setState({ bridge: { ...useShellStore.getState().bridge!, chatMessageAppend: append } });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Message composer'), { target: { value: 'Read this PDF' } });
+    fireEvent.change(screen.getByLabelText('Attachment file'), {
+      target: { files: [new File(['%PDF-'], 'brief.pdf', { type: 'application/pdf' })] }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/cannot read PDF content yet/i));
+    expect(upload).not.toHaveBeenCalled();
+    expect(append).not.toHaveBeenCalled();
+    expect(gateway).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Message composer')).toHaveProperty('value', 'Read this PDF');
+    expect(screen.getByTestId('pending-attachment').textContent).toContain('brief.pdf');
+  });
+
   it('keeps options functional for reconnect and the Linux pop-out boundary', async () => {
     useShellStore.setState({ fixtureMode: true, bridge: null, bridgeReady: true });
     const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);

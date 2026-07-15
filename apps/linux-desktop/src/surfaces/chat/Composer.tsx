@@ -2,14 +2,17 @@ import { useId, useRef, useState, type ChangeEvent, type FormEvent, type Keyboar
 import { readTextExpansionConsent } from '../../textExpansionConsent.js';
 import { expandInAppBuffer } from '../../textExpansionStore.js';
 import { composerPlaceholder, type ChatBackendId } from './chatTypes.js';
+import { CHAT_ATTACHMENT_METADATA_MIME_TYPES } from './chatAttachment.js';
 
 export const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const CHAT_ATTACHMENT_ACCEPT = [
-  'text/plain',
-  'text/markdown',
-  'text/csv',
-  'application/json',
-  'application/pdf'
+  ...CHAT_ATTACHMENT_METADATA_MIME_TYPES,
+  '.txt',
+  '.md',
+  '.markdown',
+  '.csv',
+  '.json',
+  '.pdf'
 ] as const;
 const CHAT_ATTACHMENT_EXTENSIONS = new Set(['.txt', '.md', '.markdown', '.csv', '.json', '.pdf']);
 
@@ -67,7 +70,7 @@ export function Composer({
     }
     const type = file.type.trim().toLowerCase();
     const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-    if (!CHAT_ATTACHMENT_ACCEPT.includes(type as (typeof CHAT_ATTACHMENT_ACCEPT)[number]) && !CHAT_ATTACHMENT_EXTENSIONS.has(extension)) {
+    if (!CHAT_ATTACHMENT_METADATA_MIME_TYPES.includes(type as (typeof CHAT_ATTACHMENT_METADATA_MIME_TYPES)[number]) && !CHAT_ATTACHMENT_EXTENSIONS.has(extension)) {
       setAttachmentError('Unsupported attachment type. Choose text, JSON, CSV, Markdown, or PDF.');
       return null;
     }
