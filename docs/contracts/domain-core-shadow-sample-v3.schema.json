@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openburnbar.com/contracts/domain-core-shadow-sample-v3.schema.json",
   "title": "OpenBurnBar candidate-bound domain-core shadow sample v3",
-  "description": "The server verifies candidate and expected-core fields against enrollment claims, enforces loaded-core equality except for explicit loaded_identity_mismatch telemetry, then stamps receivedAt. Only server receivedAt is authoritative for promotion windows. Tuple inequality for loaded_identity_mismatch is enforced by the server and export parser because JSON Schema cannot compare sibling values.",
+  "description": "The server verifies candidate and expected-core fields against enrollment claims, enforces loaded-core equality except for explicit loaded_identity_mismatch telemetry, and permits an all-null loaded tuple only for native_unavailable before stamping receivedAt. Only server receivedAt is authoritative for promotion windows. Tuple inequality for loaded_identity_mismatch is enforced by the server and export parser because JSON Schema cannot compare sibling values.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -133,7 +133,9 @@
     {
       "if": {
         "properties": {
-          "mismatchCategory": { "enum": ["result_mismatch", "invalid_result"] }
+          "mismatchCategory": {
+            "enum": ["result_mismatch", "invalid_result", "native_error"]
+          }
         },
         "required": ["mismatchCategory"]
       },

@@ -10,7 +10,7 @@ namespace OpenBurnBar.App.Quota.Tests;
 public sealed class DomainCoreQuotaBridgeTests
 {
     [Fact]
-    public void Apply_ShadowNativeUnavailable_FallsBackToLegacy()
+    public void Apply_ShadowOperationLoadError_RetainsLoadedIdentityAndFallsBackToLegacy()
     {
         var now = DateTimeOffset.FromUnixTimeSeconds(1783036800);
         var expected = CodexUsageQuotaParser.Parse(
@@ -20,6 +20,7 @@ public sealed class DomainCoreQuotaBridgeTests
         var legacyEvaluations = 0;
         var order = new List<string>();
         var categories = new List<string?>();
+        var loadedIdentities = new List<DomainCoreShadowLoadedIdentity?>();
         var snapshot = DomainCoreQuotaBridge.Apply(
             "codex_quota_test",
             () =>
@@ -38,12 +39,17 @@ public sealed class DomainCoreQuotaBridgeTests
             mapMalformedSnapshot: false,
             DomainCoreQuotaMigrationMode.Shadow,
             requireNative: false,
-            comparisonSink: (_, _, _, category, _, _) => categories.Add(category));
+            comparisonSink: (_, loadedIdentity, _, category, _, _) =>
+            {
+                loadedIdentities.Add(loadedIdentity);
+                categories.Add(category);
+            });
 
         Assert.Same(expected, snapshot);
         Assert.Equal(1, legacyEvaluations);
         Assert.Equal(new[] { "legacy", "rust" }, order);
-        Assert.Equal(new[] { "native_unavailable" }, categories);
+        Assert.Equal(new[] { "native_error" }, categories);
+        Assert.NotNull(Assert.Single(loadedIdentities));
     }
 
     [Fact]
@@ -132,10 +138,13 @@ public sealed class DomainCoreQuotaBridgeTests
             CodexUsageQuotaParser.ManagementUrl,
             mapMalformedSnapshot: false,
             DomainCoreQuotaMigrationMode.Shadow,
-            comparisonSink: (operation, version, equivalent, category, legacyMicros, rustMicros) =>
+            comparisonSink: (operation, loadedIdentity, equivalent, category, legacyMicros, rustMicros) =>
             {
                 Assert.Equal("codex_quota", operation);
-                Assert.False(string.IsNullOrWhiteSpace(version));
+                Assert.NotNull(loadedIdentity);
+                Assert.False(string.IsNullOrWhiteSpace(loadedIdentity.CoreVersion));
+                Assert.Equal(3u, loadedIdentity.CoreAbiVersion);
+                Assert.Matches("^[0-9a-f]{64}$", loadedIdentity.CoreSourceSha256);
                 Assert.True(equivalent);
                 Assert.Null(category);
                 Assert.True(legacyMicros >= 0);
