@@ -1,15 +1,5 @@
 import Foundation
 
-public struct BurnBarProjectSelector: Codable, Hashable, Sendable {
-    public let projectPath: String?
-    public let includeCrossProject: Bool
-
-    public init(projectPath: String? = nil, includeCrossProject: Bool = false) {
-        self.projectPath = projectPath
-        self.includeCrossProject = includeCrossProject
-    }
-}
-
 public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
     public let text: String
     public let projectPath: String?
