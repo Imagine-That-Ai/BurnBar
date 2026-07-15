@@ -51,6 +51,9 @@
     <None Include="../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat.json"
           Link="Fixtures/cloudvault-deterministic-kat.json"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../crates/openburnbar-domain-core/union-abi-manifest.json"
+          Link="Fixtures/domain-core-union-abi-manifest.json"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,10 +1,11 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "44d8adc89c9cca470d2f172d48601a5412b7038f525a1e14e489202380351090",
+  "sourceSha256": "f435ea8e6b615ced64059c1f8ceaa9629247200479dc668abdd42afa2b02f600",
   "sourceRoots": [
     "Cargo.toml",
     "Cargo.lock",
     "rust-toolchain.toml",
+    "build-support",
     "domain-core/Cargo.toml",
     "domain-core/src",
     "domain-ffi/Cargo.toml",
@@ -12,11 +13,13 @@
     "domain-ffi/src",
     "domain-ffi/uniffi.toml",
     "domain-wasm/Cargo.toml",
+    "domain-wasm/build.rs",
     "domain-wasm/src"
   ],
   "uniffiExports": [
     "domain_core_abi_version",
     "domain_core_version",
+    "domain_core_source_fingerprint",
     "calculate_token_cost_nano_usd",
     "is_legacy_kimi_wire_event",
     "price_legacy_kimi_wire_event",
@@ -250,6 +253,11 @@
       "name": "generated-swift",
       "kind": "swift",
       "path": "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift",
+      "requiredSymbols": [
+        "domainCoreAbiVersion",
+        "domainCoreVersion",
+        "domainCoreSourceFingerprint"
+      ],
       "requiredDomains": [
         "quota",
         "cloudVaultC1a",
@@ -280,6 +288,11 @@
       "name": "generated-kotlin",
       "kind": "kotlin",
       "path": "android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi/openburnbar_domain_ffi.kt",
+      "requiredSymbols": [
+        "domainCoreAbiVersion",
+        "domainCoreVersion",
+        "domainCoreSourceFingerprint"
+      ],
       "requiredDomains": [
         "quota",
         "cloudVaultC1a",
@@ -295,6 +308,11 @@
       "name": "generated-csharp",
       "kind": "csharp",
       "path": "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs",
+      "requiredSymbols": [
+        "DomainCoreAbiVersion",
+        "DomainCoreVersion",
+        "DomainCoreSourceFingerprint"
+      ],
       "requiredDomains": [
         "quota",
         "cloudVaultC1a",
@@ -319,6 +337,9 @@
         "encryptedSearch"
       ],
       "requiredSymbols": [
+        "domainCoreAbiVersion",
+        "domainCoreVersion",
+        "domainCoreSourceFingerprint",
         "CloudVaultDocumentRewrapRequest",
         "invalid_rewrap_nonce_plan"
       ]
@@ -327,6 +348,11 @@
       "name": "generated-browser-wasm",
       "kind": "wasm",
       "path": "apps/console/vendor/openburnbar-domain-core-wasm/openburnbar_domain_core.d.ts",
+      "requiredSymbols": [
+        "domainCoreAbiVersion",
+        "domainCoreVersion",
+        "domainCoreSourceFingerprint"
+      ],
       "requiredDomains": [
         "cloudVaultC1a",
         "cloudVaultC1b",
@@ -340,6 +366,11 @@
       "name": "generated-node-wasm",
       "kind": "wasm",
       "path": "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.d.ts",
+      "requiredSymbols": [
+        "domainCoreAbiVersion",
+        "domainCoreVersion",
+        "domainCoreSourceFingerprint"
+      ],
       "requiredDomains": [
         "cloudVaultC1a",
         "cloudVaultC1b",
