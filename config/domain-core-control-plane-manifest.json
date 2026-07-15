@@ -136,6 +136,8 @@
     "scripts/lib/domain-core-shadow-enrollment.test.mjs": "79cdc99a003558037467f9bb724c69ad0d7665eff6ee3f0758d9257eb8f34b90",
     "scripts/lib/export-domain-core-promotion-evidence.mjs": "083f518753c52e866862dec7310c5522066711d5b10e60518b337d8a6094682c",
     "scripts/lib/export-domain-core-promotion-evidence.test.mjs": "9c0fe3b27339e45174a8e5958b64c4f53a7176e38b6f43e60750a0e957a7ae01",
+    "scripts/ops/create-domain-core-deletion-plan.py": "78184f639d8f51a16d98ca759e361bbc82ddbaac5b7654d625a80a20f5f40258",
+    "scripts/ops/create-domain-core-promotion-receipt.py": "034e40ad4d815fc37bbae7f079cbebe2f88afabf5586c074aad6ca85ee41fd02",
     "scripts/ops/export-domain-core-promotion-evidence.mjs": "1d36d98cb876bb19d5b1f382f32d9c2f976e2f5742db6a293216ffda7d3ae14d",
     "scripts/ops/manage-domain-core-shadow-enrollment.mjs": "b1ecd01350eefa6085eba9e1ff9daa915506c901c0e8893d859fb396c381d082",
     "scripts/ops/rollback-revision.sh": "a6f9247de1dc70fa3c6adb4c773c5fa3abba987ebfc7c6506a6b41336a4ae261",

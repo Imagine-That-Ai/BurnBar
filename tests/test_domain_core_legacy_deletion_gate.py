@@ -166,6 +166,20 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         self.assertNotIn("minimumSamples", serialized)
         self.assertNotIn("minimumCoverageSeconds", serialized)
 
+    def test_public_rollback_profile_is_permanently_all_legacy(self) -> None:
+        catalog = json.loads((ROOT / GATE.BUILD_PROFILE_PATH).read_text())
+        GATE.validate_build_profile_catalog(catalog)
+        rollback = catalog["profiles"]["public-production-rollback"]
+        self.assertTrue(all(mode == "legacy" for mode in rollback["modes"].values()))
+
+        weakened = copy.deepcopy(catalog)
+        weakened["profiles"]["public-production-rollback"]["modes"]["pricing"] = "rust"
+        with self.assertRaisesRegex(
+            GATE.GateError,
+            "public-production-rollback modes must all be legacy",
+        ):
+            GATE.validate_build_profile_catalog(weakened)
+
     def test_unsigned_bundle_must_disclaim_authority_and_bind_exact_tuple(self) -> None:
         identity = {
             "candidateCommit": "1" * 40,
