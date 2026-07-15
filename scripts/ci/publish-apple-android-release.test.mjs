@@ -17,6 +17,7 @@ import {
 } from "./publish-apple-android-release.mjs";
 
 const COMMIT = "a".repeat(40);
+const RELEASE_COMMIT = "9".repeat(40);
 const CANDIDATE = {
   candidateCommit: COMMIT,
   coreVersion: "0.3.0",
@@ -92,6 +93,14 @@ function predicate(consumer, domain, artifact, version) {
       sha256: "e".repeat(64),
       candidate: CANDIDATE,
     },
+    activation: {
+      candidateCommit: COMMIT,
+      activationCommit: RELEASE_COMMIT,
+      coreVersion: CANDIDATE.coreVersion,
+      abiVersion: CANDIDATE.abiVersion,
+      sourceSha256: CANDIDATE.sourceSha256,
+      changedPathsSha256: "0".repeat(64),
+    },
     publicProfile: {
       profile: "public-production",
       domain,
@@ -105,7 +114,7 @@ function predicate(consumer, domain, artifact, version) {
     release: {
       version,
       tag: `v${version}`,
-      commit: COMMIT,
+      commit: RELEASE_COMMIT,
       publicProfileSha256: "f".repeat(64),
     },
   };
@@ -150,7 +159,7 @@ function fixture({ prerelease = false, version: requestedVersion } = {}) {
     schemaVersion: 2,
     repository: "Imagine-That-Ai/BurnBar",
     tag,
-    commit: COMMIT,
+    commit: RELEASE_COMMIT,
     consumer,
     signerWorkflow: ".github/workflows/release.yml",
     releaseState: "draft-then-publish",
@@ -169,7 +178,7 @@ function fixture({ prerelease = false, version: requestedVersion } = {}) {
     schemaVersion: 1,
     repository: "Imagine-That-Ai/BurnBar",
     tag,
-    commit: COMMIT,
+    commit: RELEASE_COMMIT,
     title: `OpenBurnBar ${version}`,
     notesPath,
     prerelease,
@@ -215,7 +224,7 @@ class FakeClient {
   release() {
     return {
       tag_name: this.files.raw.tag,
-      target_commitish: COMMIT,
+      target_commitish: RELEASE_COMMIT,
       name: this.files.raw.title,
       body: readFileSync(this.files.raw.notesPath, "utf8"),
       draft: this.state === "draft",
@@ -240,7 +249,11 @@ class FakeClient {
       };
     }
     if (args[0] === "api" && args[1].includes("/commits/")) {
-      return { status: 0, stdout: JSON.stringify({ sha: COMMIT }), stderr: "" };
+      return {
+        status: 0,
+        stdout: JSON.stringify({ sha: RELEASE_COMMIT }),
+        stderr: "",
+      };
     }
     if (args[0] === "api" && args[1].includes("/releases/tags/")) {
       if (this.lookupHook) this.lookupHook(this);
@@ -507,7 +520,7 @@ test("state and tag TOCTOU substitutions prevent further publication", () => {
           movedTag.calls.push([...args]);
           return {
             status: 0,
-            stdout: JSON.stringify({ sha: "9".repeat(40) }),
+            stdout: JSON.stringify({ sha: "8".repeat(40) }),
             stderr: "",
           };
         }

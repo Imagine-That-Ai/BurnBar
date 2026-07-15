@@ -14,6 +14,7 @@ import test from "node:test";
 import { hydrateExistingEvidence } from "./hydrate-apple-android-release-evidence.mjs";
 
 const COMMIT = "a".repeat(40);
+const RELEASE_COMMIT = "9".repeat(40);
 const CANDIDATE = {
   candidateCommit: COMMIT,
   coreVersion: "0.3.0",
@@ -101,6 +102,20 @@ function fixture() {
         sha256: "e".repeat(64),
         candidate: CANDIDATE,
       },
+      activation: {
+        candidateCommit: COMMIT,
+        activationCommit: RELEASE_COMMIT,
+        coreVersion: CANDIDATE.coreVersion,
+        abiVersion: CANDIDATE.abiVersion,
+        sourceSha256: CANDIDATE.sourceSha256,
+        changedPathsSha256: "0".repeat(64),
+      },
+      publicProfile: {
+        profile: "public-production",
+        domain,
+        mode: "rust",
+        sha256: "f".repeat(64),
+      },
       artifact: {
         fileName: basename(artifactPath),
         sha256: sha(artifactPath),
@@ -108,7 +123,7 @@ function fixture() {
       release: {
         version: "1.2.3",
         tag: "v1.2.3",
-        commit: COMMIT,
+        commit: RELEASE_COMMIT,
         publicProfileSha256: "f".repeat(64),
       },
     };
@@ -117,7 +132,7 @@ function fixture() {
       schemaVersion: 2,
       consumer,
       tag: "v1.2.3",
-      commit: COMMIT,
+      commit: RELEASE_COMMIT,
       artifactPath,
       signerWorkflow: ".github/workflows/release.yml",
       domains: [
@@ -153,7 +168,7 @@ function fixture() {
 class FakeClient {
   constructor(
     files,
-    { draft = true, assets = new Map(), commit = COMMIT } = {},
+    { draft = true, assets = new Map(), commit = RELEASE_COMMIT } = {},
   ) {
     this.files = files;
     this.draft = draft;
@@ -180,7 +195,7 @@ class FakeClient {
         status: 0,
         stdout: JSON.stringify({
           tag_name: "v1.2.3",
-          target_commitish: COMMIT,
+          target_commitish: RELEASE_COMMIT,
           draft,
           assets: [...this.assets.keys()].map((name) => ({ name })),
         }),
@@ -288,7 +303,7 @@ test("rejects substituted evidence, moved tags, and inconsistent release state",
       /does not contain its exact predicate/u,
     );
 
-    const moved = new FakeClient(files, { commit: "9".repeat(40) });
+    const moved = new FakeClient(files, { commit: "8".repeat(40) });
     assert.throws(
       () =>
         hydrateExistingEvidence(
