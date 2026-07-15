@@ -27,11 +27,32 @@ final class ConversationIndexer {
     /// file modified timestamps are equivalent (with millisecond tolerance).
     /// Tolerance is needed because persisted SQLite datetimes are millisecond-precision,
     /// while filesystem mtimes can include micro/nanoseconds.
+    ///
+    /// P-PERF-2: steady-state performance fix.
+    /// Previously this method performed one `fetchConversation(id:)` DB roundtrip
+    /// per incoming record — N queries for N records on every 60-second tick,
+    /// even when every conversation was unchanged. Now it issues a single batch
+    /// `fetchConversations(ids:)` query and builds a lookup map, making steady-state
+    /// indexing O(1) DB roundtrips + O(changed) writes rather than O(N) roundtrips.
+    /// The parsers already skip re-parsing unchanged files via `CompositeFileSignature`
+    /// cache hits; this removes the DB-side N+1 that remained.
     func index(_ records: [ConversationRecord], in dataStore: DataStore) async throws -> ConversationIndexingReport {
         var report = ConversationIndexingReport.empty
+        guard !records.isEmpty else { return report }
+
+        // Single batch fetch: replaces N individual `fetchConversation(id:)` calls
+        // with one SQL `WHERE id IN (…)` query. The result is a dictionary keyed
+        // by conversation ID for O(1) lookup inside the loop below.
+        let allIDs = records.map(\.id)
+        let existingRecords = try await dataStore.fetchConversations(ids: allIDs)
+        var existingMap: [String: ConversationRecord] = [:]
+        existingMap.reserveCapacity(existingRecords.count)
+        for existing in existingRecords {
+            existingMap[existing.id] = existing
+        }
 
         for (index, record) in records.enumerated() {
-            let existingConversation = try await dataStore.fetchConversation(id: record.id)
+            let existingConversation = existingMap[record.id]
 
             if let existingConversation,
                shouldSkipUpsert(existing: existingConversation, incoming: record) {

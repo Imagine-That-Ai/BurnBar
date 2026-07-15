@@ -19,7 +19,7 @@ actor DataStoreActor {
     let projectionStore: ProjectionStore
     let controlPlaneStore: ControlPlaneStore
     let deviceStore: DeviceStore
-    let checkpointStore: ParserCheckpointStore
+    nonisolated let checkpointStore: ParserCheckpointStore
     nonisolated let remoteSyncWatermarkStore: RemoteSyncWatermarkStore
     nonisolated let switcherStore: SwitcherProfileStore
     let backfillCursorStore: BackfillCursorStore
