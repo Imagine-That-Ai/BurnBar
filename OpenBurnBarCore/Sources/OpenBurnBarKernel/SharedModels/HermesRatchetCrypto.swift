@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarDomainCoreRuntime
 
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI
@@ -456,83 +457,38 @@ public enum HermesRatchetCrypto {
     }
 
     private static func seal(plaintext: Data, key: Data, aad: Data) throws -> Data {
-        let mode = domainCoreMode
-        guard mode != "legacy" else {
-            return try PlatformCrypto.sealAESGCM(
-                plaintext: plaintext,
-                keyData: key,
-                authenticating: aad
-            )
-        }
-        let legacyStarted = Date.timeIntervalSinceReferenceDate
-        let old: Data?
-        if mode == "shadow" {
-            old = try PlatformCrypto.sealAESGCM(plaintext: plaintext, keyData: key, authenticating: aad)
-        } else {
-            old = nil
-        }
-        let legacyMicros = mode == "shadow" ? elapsedMicros(since: legacyStarted) : 0
-        #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
-            diagnostic("ratchet_seal", "abi_mismatch")
-            if let old {
-                recordRatchetComparison(
-                    operation: "ratchet_seal",
-                    coreVersion: "0.0.0-abi-mismatch",
-                    category: "native_error",
-                    legacyMicros: legacyMicros,
-                    rustMicros: 0
+        try DomainCoreShadowRuntime.selectVerifiedLegacy(
+            domain: "hermes",
+            slice: "ratchet",
+            operation: "ratchet_seal",
+            mode: DomainCoreBuildMode(rawValue: domainCoreMode) ?? .legacy,
+            nativeStatus: HermesDomainCoreAdapter.nativeStatus,
+            coreVersion: HermesDomainCoreAdapter.currentCoreVersion,
+            legacy: {
+                try PlatformCrypto.sealAESGCM(plaintext: plaintext, keyData: key, authenticating: aad)
+            },
+            rustAuthority: {
+                #if canImport(OpenBurnBarDomainCoreFFI)
+                try OpenBurnBarDomainCoreFFI.hermesSealCombined(
+                    plaintext: plaintext,
+                    key: key,
+                    aad: aad,
+                    nonce: PlatformCrypto.secureRandomBytes(count: 12)
                 )
-                return old
-            }
-            throw HermesRatchetError.nativeUnavailable
-        }
-        if let old {
-            let coreVersion = OpenBurnBarDomainCoreFFI.domainCoreVersion()
-            let rustStarted = Date.timeIntervalSinceReferenceDate
-            do {
-                let opened = try OpenBurnBarDomainCoreFFI.hermesOpenCombined(combined: old, key: key, aad: aad)
-                let matches = opened == plaintext
-                if !matches { diagnostic("ratchet_seal", "shadow_mismatch") }
-                recordRatchetComparison(
-                    operation: "ratchet_seal",
-                    coreVersion: coreVersion,
-                    category: matches ? nil : "result_mismatch",
-                    legacyMicros: legacyMicros,
-                    rustMicros: elapsedMicros(since: rustStarted)
-                )
-            } catch {
-                diagnostic("ratchet_seal", "native_error")
-                recordRatchetComparison(
-                    operation: "ratchet_seal",
-                    coreVersion: coreVersion,
-                    category: "native_error",
-                    legacyMicros: legacyMicros,
-                    rustMicros: elapsedMicros(since: rustStarted)
-                )
-            }
-            return old
-        }
-        return try OpenBurnBarDomainCoreFFI.hermesSealCombined(
-            plaintext: plaintext,
-            key: key,
-            aad: aad,
-            nonce: PlatformCrypto.secureRandomBytes(count: 12)
+                #else
+                throw HermesRatchetError.nativeUnavailable
+                #endif
+            },
+            verifyLegacyWithRust: { combined in
+                #if canImport(OpenBurnBarDomainCoreFFI)
+                try OpenBurnBarDomainCoreFFI.hermesOpenCombined(combined: combined, key: key, aad: aad) == plaintext
+                #else
+                throw HermesRatchetError.nativeUnavailable
+                #endif
+            },
+            nativeUnavailableError: HermesRatchetError.nativeUnavailable,
+            diagnostic: diagnostic
         )
-        #else
-        if let old {
-            diagnostic("ratchet_seal", "native_unavailable")
-            recordRatchetComparison(
-                operation: "ratchet_seal",
-                coreVersion: "0.0.0-native-unavailable",
-                category: "native_unavailable",
-                legacyMicros: legacyMicros,
-                rustMicros: 0
-            )
-            return old
-        }
-        throw HermesRatchetError.nativeUnavailable
-        #endif
     }
 
     private static func domainCoreBytes(
@@ -544,146 +500,37 @@ public enum HermesRatchetCrypto {
         return try selectDomainCoreBytes(
             operation: operation,
             mode: mode,
-            nativeStatus: {
-                #if canImport(OpenBurnBarDomainCoreFFI)
-                if OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 {
-                    return .available
-                }
-                return .unavailable(
-                    coreVersion: "0.0.0-abi-mismatch",
-                    mismatchCategory: "native_error"
-                )
-                #else
-                return .unavailable(
-                    coreVersion: "0.0.0-native-unavailable",
-                    mismatchCategory: "native_unavailable"
-                )
-                #endif
-            },
-            coreVersion: {
-                #if canImport(OpenBurnBarDomainCoreFFI)
-                OpenBurnBarDomainCoreFFI.domainCoreVersion()
-                #else
-                "0.0.0-native-unavailable"
-                #endif
-            },
+            nativeStatus: HermesDomainCoreAdapter.nativeStatus,
+            coreVersion: HermesDomainCoreAdapter.currentCoreVersion,
             legacy: legacy,
             rust: rust,
             record: DomainCoreShadowComparisonCollector.record
         )
     }
 
-    enum DomainCoreNativeStatus: Equatable {
-        case available
-        case unavailable(coreVersion: String, mismatchCategory: String)
-    }
-
-    static func selectDomainCoreBytesWhenNativeAvailable(
-        operation: String,
-        mode: String,
-        coreVersion: () -> String,
-        legacy: () throws -> Data,
-        rust: () throws -> Data,
-        record: (DomainCoreShadowComparison) -> Void
-    ) throws -> Data {
-        try selectDomainCoreBytes(
-            operation: operation,
-            mode: mode,
-            nativeStatus: { .available },
-            coreVersion: coreVersion,
-            legacy: legacy,
-            rust: rust,
-            record: record
-        )
-    }
-
     static func selectDomainCoreBytes(
         operation: String,
         mode: String,
-        nativeStatus: () -> DomainCoreNativeStatus,
+        nativeStatus: () -> DomainCoreRuntimeNativeStatus,
         coreVersion: () -> String,
         legacy: () throws -> Data,
         rust: () throws -> Data,
         record: (DomainCoreShadowComparison) -> Void
     ) throws -> Data {
-        guard mode != "legacy" else { return try legacy() }
-        guard mode == "shadow" else {
-            guard nativeStatus() == .available else { throw HermesRatchetError.nativeUnavailable }
-            return try rust()
-        }
-
-        let legacyStarted = Date.timeIntervalSinceReferenceDate
-        let old = try legacy()
-        let legacyMicros = elapsedMicros(since: legacyStarted)
-        switch nativeStatus() {
-        case .available:
-            break
-        case let .unavailable(unavailableCoreVersion, mismatchCategory):
-            diagnostic(operation, mismatchCategory == "native_error" ? "abi_mismatch" : "native_unavailable")
-            record(.init(
-                domain: "hermes",
-                slice: "ratchet",
-                operation: operation,
-                coreVersion: unavailableCoreVersion,
-                outcome: "mismatch",
-                mismatchCategory: mismatchCategory,
-                legacyMicros: legacyMicros,
-                rustMicros: 0
-            ))
-            return old
-        }
-        let comparisonCoreVersion = coreVersion()
-        let rustStarted = Date.timeIntervalSinceReferenceDate
-        let value: Data
-        do {
-            value = try rust()
-        } catch {
-            diagnostic(operation, "native_error")
-            record(.init(
-                domain: "hermes",
-                slice: "ratchet",
-                operation: operation,
-                coreVersion: comparisonCoreVersion,
-                outcome: "mismatch",
-                mismatchCategory: "native_error",
-                legacyMicros: legacyMicros,
-                rustMicros: elapsedMicros(since: rustStarted)
-            ))
-            return old
-        }
-
-        let matches = old == value
-        if !matches { diagnostic(operation, "shadow_mismatch") }
-        record(.init(
+        try DomainCoreShadowRuntime.select(
             domain: "hermes",
             slice: "ratchet",
             operation: operation,
-            coreVersion: comparisonCoreVersion,
-            outcome: matches ? "match" : "mismatch",
-            mismatchCategory: matches ? nil : "result_mismatch",
-            legacyMicros: legacyMicros,
-            rustMicros: elapsedMicros(since: rustStarted)
-        ))
-        return old
-    }
-
-    private static func recordRatchetComparison(
-        operation: String,
-        coreVersion: String,
-        category: String?,
-        legacyMicros: UInt64,
-        rustMicros: UInt64
-    ) {
-        DomainCoreShadowComparisonCollector.record(.init(
-            domain: "hermes",
-            slice: "ratchet",
-            operation: operation,
+            mode: DomainCoreBuildMode(rawValue: mode) ?? .legacy,
+            nativeStatus: nativeStatus,
             coreVersion: coreVersion,
-            outcome: category == nil ? "match" : "mismatch",
-            mismatchCategory: category,
-            legacyMicros: legacyMicros,
-            rustMicros: rustMicros
-        ))
+            legacy: legacy,
+            rust: rust,
+            equivalent: ==,
+            nativeUnavailableError: HermesRatchetError.nativeUnavailable,
+            diagnostic: diagnostic,
+            recordComparison: record
+        )
     }
 
     private static var domainCoreMode: String {
@@ -692,10 +539,6 @@ public enum HermesRatchetCrypto {
 
     private static func diagnostic(_ operation: String, _ outcome: String) {
         NSLog("domain_core.hermes.%@ %@", operation, outcome)
-    }
-
-    private static func elapsedMicros(since started: TimeInterval) -> UInt64 {
-        UInt64(min(600_000_000, max(0, ((Date.timeIntervalSinceReferenceDate - started) * 1_000_000).rounded())))
     }
 
     private static func skippedKeyID(ratchetPublicKeyBase64: String, messageNumber: Int) -> String {

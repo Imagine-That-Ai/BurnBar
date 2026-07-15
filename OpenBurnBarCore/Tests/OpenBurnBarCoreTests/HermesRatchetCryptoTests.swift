@@ -16,9 +16,10 @@ final class HermesRatchetCryptoTests: XCTestCase {
         var comparisons: [DomainCoreShadowComparison] = []
 
         XCTAssertThrowsError(
-            try HermesRatchetCrypto.selectDomainCoreBytesWhenNativeAvailable(
+            try HermesRatchetCrypto.selectDomainCoreBytes(
                 operation: "ratchet_test",
                 mode: "shadow",
+                nativeStatus: { .available },
                 coreVersion: {
                     coreVersionWasCalled = true
                     return "test-core"
@@ -42,9 +43,10 @@ final class HermesRatchetCryptoTests: XCTestCase {
         let legacy = Data([0x00, 0xFF, 0x10, 0x00])
         var comparisons: [DomainCoreShadowComparison] = []
 
-        let result = try HermesRatchetCrypto.selectDomainCoreBytesWhenNativeAvailable(
+        let result = try HermesRatchetCrypto.selectDomainCoreBytes(
             operation: "ratchet_test",
             mode: "shadow",
+            nativeStatus: { .available },
             coreVersion: { "test-core" },
             legacy: { legacy },
             rust: { throw BoundaryError.rustFailure },
@@ -65,9 +67,10 @@ final class HermesRatchetCryptoTests: XCTestCase {
         let legacy = Data("legacy".utf8)
         var comparisons: [DomainCoreShadowComparison] = []
 
-        let result = try HermesRatchetCrypto.selectDomainCoreBytesWhenNativeAvailable(
+        let result = try HermesRatchetCrypto.selectDomainCoreBytes(
             operation: "ratchet_test",
             mode: "shadow",
+            nativeStatus: { .available },
             coreVersion: { "test-core" },
             legacy: { legacy },
             rust: { Data("rust".utf8) },
@@ -287,7 +290,7 @@ final class HermesRatchetCryptoTests: XCTestCase {
     private static var cachedResponderInitialKeyPair: HermesRatchetKeyPair?
 
     private func assertUnavailableRatchetBoundary(
-        status: HermesRatchetCrypto.DomainCoreNativeStatus,
+        status: DomainCoreRuntimeNativeStatus,
         expectedCategory: String,
         expectedCoreVersion: String
     ) throws {

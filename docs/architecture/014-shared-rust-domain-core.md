@@ -65,6 +65,17 @@ the evidence, stable-release, and deletion gates in the
 
 ## Boundary decisions
 
+### Rollout control ownership
+
+Swift rollout profiles, native-availability identity, secret-free comparison
+records, and the generic legacy-authoritative shadow selector live in the
+Foundation-only `OpenBurnBarDomainCoreRuntime` target. `OpenBurnBarKernel`
+depends on and re-exports this leaf, while domain adapters keep their
+domain-specific inputs, equivalence rules, and fail-closed errors. This prevents
+rollout safety machinery from regrowing the model/crypto kernel and gives the
+Apple targets one typed authority contract without moving UI, persistence, or
+artifact loading into the Rust crate.
+
 ### Payload-sized calls
 
 Native and Wasm calls operate on a complete response, payload, document,
