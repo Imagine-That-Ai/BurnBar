@@ -159,6 +159,7 @@
           "runId",
           "runAttempt",
           "artifactSha256",
+          "identityReportSha256",
           "loadedIdentity",
           "loadSuiteIds"
         ],
@@ -169,6 +170,7 @@
           "runId": { "type": "integer", "minimum": 1 },
           "runAttempt": { "type": "integer", "minimum": 1 },
           "artifactSha256": { "$ref": "#/$defs/sha256" },
+          "identityReportSha256": { "$ref": "#/$defs/sha256" },
           "loadedIdentity": { "$ref": "#/$defs/candidate" },
           "loadSuiteIds": {
             "type": "array",

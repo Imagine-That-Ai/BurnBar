@@ -52,6 +52,20 @@ function specs(values, flag, separator = "=") {
   });
 }
 
+function artifactSpecs(values) {
+  return specs(values, "--artifact").map(({ id, path }) => {
+    const separator = path.lastIndexOf(",");
+    if (separator < 1 || separator === path.length - 1) {
+      throw new Error("--artifact must be ID=ARTIFACT_PATH,OBSERVED_IDENTITY_REPORT");
+    }
+    return {
+      id,
+      path: path.slice(0, separator),
+      identityReportPath: path.slice(separator + 1),
+    };
+  });
+}
+
 function policy(values) {
   return JSON.parse(readFileSync(one(values, "--policy", false) ?? DEFAULT_POLICY, "utf8"));
 }
@@ -105,7 +119,7 @@ export function run(argv) {
       candidate: identity,
       policy: activePolicy,
       suites: specs(values, "--suite").map(({ id, path }) => ({ id, reportPath: path })),
-      artifacts: specs(values, "--artifact"),
+      artifacts: artifactSpecs(values),
       benchmarks: specs(values, "--benchmark").map(({ id, path }) => ({ id, reportPath: path })),
       rollback:
         rollback === undefined

@@ -49,7 +49,7 @@
     {
       "id": "swift-xcframework",
       "consumer": "swift",
-      "jobId": "apple",
+      "jobId": "apple-native-smoke",
       "requiredLoadSuiteIds": ["swift-native-load"]
     },
     {
@@ -75,6 +75,24 @@
       "consumer": "node-wasm",
       "jobId": "wasm",
       "requiredLoadSuiteIds": ["wasm-node-kat", "functions-pricing-contracts"]
+    },
+    {
+      "id": "windows-native-x64-binary",
+      "consumer": "csharp",
+      "jobId": "windows-native",
+      "requiredLoadSuiteIds": ["windows-native-x64"]
+    },
+    {
+      "id": "windows-native-arm64-binary",
+      "consumer": "csharp",
+      "jobId": "windows-native",
+      "requiredLoadSuiteIds": ["windows-native-arm64"]
+    },
+    {
+      "id": "linux-arm64-native-binary",
+      "consumer": "csharp",
+      "jobId": "linux-arm64-native",
+      "requiredLoadSuiteIds": ["linux-arm64-native"]
     }
   ],
   "requiredBenchmarks": [

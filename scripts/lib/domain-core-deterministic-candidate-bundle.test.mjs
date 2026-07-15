@@ -102,6 +102,7 @@ function validBundle() {
         runId: 123456,
         runAttempt: 1,
         artifactSha256: digest(`artifact:${id}`),
+        identityReportSha256: digest(`identity:${id}`),
         loadedIdentity: structuredClone(CANDIDATE),
         loadSuiteIds: [...requiredLoadSuiteIds],
       }),
