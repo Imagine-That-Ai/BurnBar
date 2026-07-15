@@ -12,9 +12,13 @@ The Linux Release Candidate run must be complete and successful before any
 package is installed:
 
 ```text
-run:        29351903622
-target:     32b1e6aa4625a31454fbc0dacde404ce50f5a1f0
+run:        29392339783
+target:     4c6e0a9d5769d76cda836e5d2421c4b01062f574
 environment: ubuntu-24.04-gnome-x11-aarch64
+artifact:   sha256:b4467e8d4b7841d87a7cbd10d9175c01c7373e41c864dfc05dd409074ddc61c1
+package:    7b739905254126a308d6d287d711157fba895d793a55dcf897fd2f189d3ea220
+manifest:   17405cf1368f41ea9542fa83a76f92b7847f453b47924678e3201d1ef1b2ff2f
+session:    2984c2e6c2b1a1c9b4b0c96603ef86d89ac6bd5967d587a210a19d2f480ea9b1
 ```
 
 Stop if any of these are false:
@@ -39,8 +43,8 @@ named work directory; do not use the repository's dirty primary checkout.
 ```bash
 set -euo pipefail
 
-TARGET_HEAD=32b1e6aa4625a31454fbc0dacde404ce50f5a1f0
-RUN_ID=29351903622
+TARGET_HEAD=4c6e0a9d5769d76cda836e5d2421c4b01062f574
+RUN_ID=29392339783
 REPO=Imagine-That-Ai/BurnBar
 ENVIRONMENT_ID=ubuntu-24.04-gnome-x11-aarch64
 WORK_ROOT="/private/tmp/burnbar-p40-${RUN_ID}"
@@ -233,12 +237,19 @@ there. The helper must be source-audited before use; it must not be copied from
 another branch:
 
 ```bash
-scp -i "$VM_KEY" scripts/linux-port/run-p40-privacy-rpc-session.mjs \
-  "$VM_USER@$VM_HOST:$VM_ROOT/run-p40-privacy-rpc-session.mjs"
+scp -i "$VM_KEY" \
+  scripts/linux-port/run-p40-privacy-rpc-session.mjs \
+  scripts/linux-port/lib/p40-privacy-proof.mjs \
+  scripts/linux-port/lib/product-proof-closure.mjs \
+  "$VM_USER@$VM_HOST:$VM_ROOT/"
 ssh -i "$VM_KEY" "$VM_USER@$VM_HOST" \
   "RUN_ID=$RUN_ID ENVIRONMENT_ID=$ENVIRONMENT_ID TARGET_HEAD=$TARGET_HEAD CANDIDATE_ARTIFACT_DIGEST=$artifact_digest PACKAGE_VERSION=$PACKAGE_VERSION MANIFEST_SHA256=$MANIFEST_SHA256 bash -s" <<'REMOTE'
 set -euo pipefail
 ROOT="$HOME/.cache/openburnbar-p40-${RUN_ID}"
+mkdir -m 700 -p "$ROOT/lib"
+mv "$ROOT/p40-privacy-proof.mjs" "$ROOT/lib/p40-privacy-proof.mjs"
+mv "$ROOT/product-proof-closure.mjs" "$ROOT/lib/product-proof-closure.mjs"
+export LD_LIBRARY_PATH=/usr/lib/openburnbar/swift:/usr/lib/openburnbar/native
 node "$ROOT/run-p40-privacy-rpc-session.mjs" \
   --socket "$ROOT/runtime/openburnbar/daemon.sock" \
   --token-file "$ROOT/support/daemon-socket-auth-token" \
@@ -254,6 +265,19 @@ REMOTE
 
 The producer's output is the only acceptable source for
 `p40-live-session.json`.
+
+The completed candidate capture recorded the following immutable values:
+
+```text
+environment: ubuntu-24.04-gnome-x11-aarch64 (Ubuntu 24.04, GNOME, X11, arm64)
+session:     2984c2e6c2b1a1c9b4b0c96603ef86d89ac6bd5967d587a210a19d2f480ea9b1
+package:     7b739905254126a308d6d287d711157fba895d793a55dcf897fd2f189d3ea220
+manifest:    17405cf1368f41ea9542fa83a76f92b7847f453b47924678e3201d1ef1b2ff2f
+```
+
+The report passed `validateP40LiveSession` and the checked-in capture emitted a
+passed `data-and-privacy-proof.json`. The other six declared P-40 environment
+rows remain intentionally unclosed until equivalent installed producers exist.
 
 ## 5. Run the candidate-bound capture
 

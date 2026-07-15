@@ -267,6 +267,10 @@ jobs:
           test -f "$token_file"
           manifest_sha256="$(sha256sum /usr/share/openburnbar/attestation/installed-manifest.json | awk '{print $1}')"
           package_version="$(dpkg-deb -f "$deb" Version)"
+          # The trusted launcher exports this path for the daemon. The producer
+          # also invokes the installed Swift CLI peer, so bind the same
+          # package-owned runtime explicitly for its child process.
+          export LD_LIBRARY_PATH="/usr/lib/openburnbar/swift:/usr/lib/openburnbar/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           node scripts/linux-port/run-p40-privacy-rpc-session.mjs \
             --socket "$socket" \
             --token-file "$token_file" \
