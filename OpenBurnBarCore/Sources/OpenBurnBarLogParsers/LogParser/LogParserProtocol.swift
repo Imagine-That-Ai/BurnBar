@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarKernel
+@_exported import OpenBurnBarKernelPlatform
 
 // MARK: - Parse Result
 

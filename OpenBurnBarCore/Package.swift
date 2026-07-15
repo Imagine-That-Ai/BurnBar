@@ -1058,7 +1058,11 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarLogParsers",
-            dependencies: ["OpenBurnBarKernel", "OpenBurnBarSQLiteReader"],
+            dependencies: [
+                "OpenBurnBarKernel",
+                "OpenBurnBarKernelPlatform",
+                "OpenBurnBarSQLiteReader"
+            ],
             exclude: openBurnBarLogParsersExcludes
         ),
         .target(
