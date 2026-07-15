@@ -43,7 +43,7 @@ header for measurement-honesty caveats before trusting any single verdict.
 
 | Packet | Modules | dead | own-module-only | blocked on |
 |---|---|---:|---:|---|
-| A1 | OpenBurnBarKernelPlatform | 12 | 0 | — |
+| A1 | OpenBurnBarKernelPlatform | 12→**0** (CONVERGED: all 12 reclassified ALIVE, compiler-proven; cluster is A9 test-only) | 0 | — |
 | A2 | OpenBurnBarKernelModels | 27 | 6 | — |
 | A3 | OpenBurnBarKernelCrypto + OpenBurnBarKernelContracts | 24 | 3 | — |
 | A4 | OpenBurnBarLogParsers + OpenBurnBarQuota + OpenBurnBarSQLiteReader | 11 | 15 | — |
