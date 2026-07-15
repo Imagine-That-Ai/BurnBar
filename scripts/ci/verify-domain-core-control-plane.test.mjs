@@ -168,3 +168,27 @@ test("candidate control-plane files and parent directories cannot be symlink esc
     /cannot traverse a symlink/u,
   );
 });
+
+test("candidate fixture file modification is detected as control-plane drift", (context) => {
+  const fixturePath =
+    "tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat.json";
+  assert.equal(typeof MANIFEST.files[fixturePath], "string", fixturePath);
+
+  const candidateRoot = candidateCopy(context);
+  const original = readFileSync(resolve(ROOT, fixturePath), "utf8");
+  const tampered = JSON.parse(original);
+  tampered.__drift = "weakened fixture";
+  writeFileSync(
+    resolve(candidateRoot, fixturePath),
+    `${JSON.stringify(tampered, null, 2)}\n`,
+  );
+  assert.throws(
+    () =>
+      verifyDomainCoreControlPlane({
+        trustedRoot: ROOT,
+        candidateRoot,
+        manifest: MANIFEST,
+      }),
+    /differs from trusted main/u,
+  );
+});
