@@ -127,6 +127,20 @@ on:
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - "config/domain-core-android-ndk-version.txt"
       - "config/domain-core-promotion-policy.json"
+      - "config/domain-core-legacy-deletion*.json"
+      - "config/domain-core-legacy-deletion-receipts/**"
+      - "config/domain-core-deletion-*.json"
+      - "config/domain-core-deletion-plans/**"
+      - "config/domain-core-promotion-attestation.schema.json"
+      - "config/domain-core-promotion-attestations/**"
+      - "config/domain-core-promotion-bundles/**"
+      - "config/domain-core-promotion-provenance/**"
+      - "config/domain-core-release-provenance/**"
+      - "scripts/ci/verify-domain-core-legacy-deletion.py"
+      - "scripts/ops/create-domain-core-promotion-receipt.py"
+      - "scripts/ops/create-domain-core-deletion-plan.py"
+      - "tests/test_domain_core_legacy_deletion*.py"
+      - "docs/runbooks/shared-rust-legacy-deletion.md"
       - "config/domain-core-build-profiles.json"
       - "config/domain-core-functions-relevant-targets.json"
       - "config/domain-core-release-predicate.schema.json"
@@ -134,6 +148,7 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
+      - "docs/SHARED_RUST_DOMAIN_INVENTORY.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
       - "docs/runbooks/shared-rust-build-profiles.md"
       - "docs/runbooks/shared-rust-release-evidence.md"
@@ -267,6 +282,20 @@ on:
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - "config/domain-core-android-ndk-version.txt"
       - "config/domain-core-promotion-policy.json"
+      - "config/domain-core-legacy-deletion*.json"
+      - "config/domain-core-legacy-deletion-receipts/**"
+      - "config/domain-core-deletion-*.json"
+      - "config/domain-core-deletion-plans/**"
+      - "config/domain-core-promotion-attestation.schema.json"
+      - "config/domain-core-promotion-attestations/**"
+      - "config/domain-core-promotion-bundles/**"
+      - "config/domain-core-promotion-provenance/**"
+      - "config/domain-core-release-provenance/**"
+      - "scripts/ci/verify-domain-core-legacy-deletion.py"
+      - "scripts/ops/create-domain-core-promotion-receipt.py"
+      - "scripts/ops/create-domain-core-deletion-plan.py"
+      - "tests/test_domain_core_legacy_deletion*.py"
+      - "docs/runbooks/shared-rust-legacy-deletion.md"
       - "config/domain-core-build-profiles.json"
       - "config/domain-core-functions-relevant-targets.json"
       - "config/domain-core-release-predicate.schema.json"
@@ -274,6 +303,7 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
+      - "docs/SHARED_RUST_DOMAIN_INVENTORY.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
       - "docs/runbooks/shared-rust-build-profiles.md"
       - "docs/runbooks/shared-rust-release-evidence.md"
@@ -301,6 +331,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Test fail-closed promotion evidence evaluation
         run: |
@@ -344,6 +375,21 @@ jobs:
 
       - name: Verify shadow evidence retention declaration
         run: bash scripts/ci/check-firestore-ttl-declared.sh
+
+      - name: Verify deterministic legacy-deletion governance
+        env:
+          DOMAIN_CORE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 tests/test_domain_core_legacy_deletion_gate.py
+          python3 tests/test_domain_core_legacy_deletion_workflow.py
+          if [[ ! "$DOMAIN_CORE_BASE_REF" =~ ^[0-9a-f]{40}$ || "$DOMAIN_CORE_BASE_REF" == "0000000000000000000000000000000000000000" ]]; then
+            DOMAIN_CORE_BASE_REF="$(git rev-parse HEAD^)"
+          fi
+          python3 scripts/ci/verify-domain-core-legacy-deletion.py \
+            --base-ref "$DOMAIN_CORE_BASE_REF" \
+            --verify-signed-evidence
 
       - name: Emit promotion-contracts proof fragment
         run: >-
