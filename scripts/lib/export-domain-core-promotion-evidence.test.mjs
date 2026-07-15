@@ -17,6 +17,12 @@ const CANDIDATE = "0123456789abcdef0123456789abcdef01234567";
 const OTHER_CANDIDATE = "89abcdef0123456789abcdef0123456789abcdef";
 const SOURCE_SHA = "a".repeat(64);
 const OTHER_SOURCE_SHA = "b".repeat(64);
+const DIAGNOSTIC_POLICY = JSON.parse(
+  readFileSync(
+    new URL("../../config/domain-core-shadow-diagnostic-policy.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 const SLICE_OPERATION = {
   "quota/claude": "claude_quota",
@@ -102,19 +108,8 @@ function options(domain, overrides = {}) {
   };
 }
 
-function lowPolicy(domain) {
-  return {
-    schemaVersion: 2,
-    domains: {
-      [domain]: {
-        requiredCoverage: requiredCoverageForDomain(domain),
-        allowedChannels: ["internal", "beta"],
-        minimumCoverageSeconds: 14 * 24 * 60 * 60,
-        minimumSamples: 2,
-        maximumP95RegressionBasisPoints: 500,
-      },
-    },
-  };
+function diagnosticPolicy() {
+  return structuredClone(DIAGNOSTIC_POLICY);
 }
 
 test("exporter builds exact candidate-bound V3 evaluator input for every domain", () => {
@@ -123,10 +118,11 @@ test("exporter builds exact candidate-bound V3 evaluator input for every domain"
       recordsFor(domain),
       options(domain),
     );
-    const report = evaluatePromotionEvidence(evidence, lowPolicy(domain), {
+    const report = evaluatePromotionEvidence(evidence, diagnosticPolicy(), {
       now: "2026-07-15T00:02:00.000Z",
     });
-    assert.equal(report.status, "ready", domain);
+    assert.equal(report.status, "diagnostic", domain);
+    assert.equal(report.ready, false, domain);
     assert.equal(evidence.candidateCommit, CANDIDATE);
     assert.equal(evidence.expectedCoreSourceSha256, SOURCE_SHA);
     assert.equal(evidence.provenance.candidateCommit, CANDIDATE);
@@ -135,7 +131,7 @@ test("exporter builds exact candidate-bound V3 evaluator input for every domain"
   }
 });
 
-test("mismatches remain unexplained promotion blockers", () => {
+test("mismatches remain unexplained diagnostic alerts", () => {
   const records = recordsFor("pricing");
   records[0] = {
     ...records[0],
@@ -150,10 +146,10 @@ test("mismatches remain unexplained promotion blockers", () => {
     { category: "result_mismatch", count: 1, resolution: "unexplained" },
   ]);
   assert.equal(
-    evaluatePromotionEvidence(evidence, lowPolicy("pricing"), {
+    evaluatePromotionEvidence(evidence, diagnosticPolicy(), {
       now: "2026-07-15T00:02:00.000Z",
     }).status,
-    "not_ready",
+    "diagnostic",
   );
 });
 
@@ -410,10 +406,10 @@ test("an explicitly reported loaded identity mismatch is retained as a hard bloc
       resolution: "unexplained",
     },
   ]);
-  const report = evaluatePromotionEvidence(evidence, lowPolicy("quota"), {
+  const report = evaluatePromotionEvidence(evidence, diagnosticPolicy(), {
     now: "2026-07-15T00:02:00.000Z",
   });
-  assert.equal(report.status, "not_ready");
+  assert.equal(report.status, "diagnostic");
   assert.ok(report.blockers.some((item) => item.code === "hard_mismatches"));
 
   evidence.windows[0].mismatches[0] = {
@@ -423,7 +419,7 @@ test("an explicitly reported loaded identity mismatch is retained as a hard bloc
     reviewedBy: "@reviewer",
     approvedAt: "2026-07-14T00:00:00.000Z",
   };
-  const explained = evaluatePromotionEvidence(evidence, lowPolicy("quota"), {
+  const explained = evaluatePromotionEvidence(evidence, diagnosticPolicy(), {
     now: "2026-07-15T00:02:00.000Z",
   });
   assert.equal(explained.status, "invalid");
