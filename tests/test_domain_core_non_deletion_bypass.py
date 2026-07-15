@@ -235,6 +235,29 @@ class TestNonDeletionBehindBaseBypass:
         GATE.run_gate(repository, LEDGER_PATH, base_ref=base)
 
 
+def test_malformed_trusted_base_ledger_fails_closed(tmp_path: Path) -> None:
+    """Invalid trusted inventory must not erase sensitive targets from classification."""
+    repository = _repository(tmp_path)
+
+    _git(repository, "checkout", "-b", "feature")
+    _write(repository, Path("docs/notes.md"), "ordinary doc change\n")
+    _commit(repository, "ordinary doc PR")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "main")
+    _write(
+        repository,
+        LEDGER_PATH,
+        json.dumps({"schemaVersion": 2, "rows": "invalid", "sharedTargets": []}),
+    )
+    current_base = _commit(repository, "malformed trusted deletion inventory")
+    _git(repository, "checkout", branch_head)
+
+    assert not _is_ancestor(repository, current_base, branch_head)
+    with pytest.raises(GATE.GateError, match="base manifest rows"):
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
 # ---------------------------------------------------------------------------
 # Adversarial: a behind-base candidate that touches a deletion-covered surface
 # cannot claim non-deletion and stays fail-closed.
