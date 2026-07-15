@@ -43,6 +43,32 @@ test("control-plane manifest exhaustively covers workflow executables and local 
   assert.deepEqual(Object.keys(MANIFEST.files).sort(), discovered);
   assert.ok(discovered.includes("scripts/test-openburnbar-swift.sh"));
   assert.ok(discovered.includes("scripts/test-openburnbar-app.sh"));
+  assert.ok(
+    discovered.includes("scripts/ci/write_burnbar_source_provenance.py"),
+  );
+  assert.ok(
+    discovered.includes("scripts/ci/check_agpl_legal_release_review.py"),
+  );
+});
+
+test("dynamic Python helpers executed by a trusted preflight are trusted bytes", (context) => {
+  for (const path of [
+    "scripts/ci/write_burnbar_source_provenance.py",
+    "scripts/ci/check_agpl_legal_release_review.py",
+  ]) {
+    const candidateRoot = candidateCopy(context);
+    writeFileSync(resolve(candidateRoot, path), "untrusted post-auth helper\n");
+    assert.throws(
+      () =>
+        verifyDomainCoreControlPlane({
+          trustedRoot: ROOT,
+          candidateRoot,
+          manifest: MANIFEST,
+        }),
+      /differs from trusted main/u,
+      path,
+    );
+  }
 });
 
 test("dot-slash workflow executables are normalized into the trusted manifest", (context) => {

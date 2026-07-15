@@ -30,6 +30,10 @@ function regularFile(path, label) {
 }
 
 function walk(root) {
+  const rootStat = lstatSync(root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error(`runtime directory must be a non-symlink directory: ${root}`);
+  }
   const files = [];
   function visit(directory) {
     for (const name of readdirSync(directory).sort()) {
@@ -74,7 +78,8 @@ function readProfile(path) {
 }
 
 function consoleFiles(root) {
-  const all = walk(root);
+  const manifestPath = resolve(root, "domain-core-runtime-artifact-manifest.json");
+  const all = walk(root).filter((path) => path !== manifestPath);
   const wasm = all.filter((path) => path.endsWith(".wasm"));
   if (wasm.length !== 1)
     throw new Error(
@@ -97,13 +102,8 @@ function consoleFiles(root) {
     resolve(root, "domain-core-build-profile.json"),
     resolve(root, "domain-core-deployment-identity.json"),
   ];
-  return [
-    ...new Set([
-      ...required.map((path) => regularFile(path, "Console runtime identity")),
-      ...wasm,
-      ...glue,
-    ]),
-  ];
+  required.forEach((path) => regularFile(path, "Console runtime identity"));
+  return all;
 }
 
 function functionsFiles(root) {
@@ -120,9 +120,20 @@ function functionsFiles(root) {
     "package.json",
     "package-lock.json",
   ];
-  return required.map((path) =>
+  required.forEach((path) =>
     regularFile(resolve(root, path), `Functions runtime file ${path}`),
   );
+  const manifestPath = resolve(
+    root,
+    "lib/domain-core-runtime-artifact-manifest.json",
+  );
+  const deployable = [
+    ...walk(resolve(root, "lib")),
+    ...walk(resolve(root, "vendor/openburnbar/domain-core-wasm")),
+    resolve(root, "package.json"),
+    resolve(root, "package-lock.json"),
+  ].filter((path) => path !== manifestPath);
+  return [...new Set(deployable)];
 }
 
 export function createRuntimeArtifactManifest({
