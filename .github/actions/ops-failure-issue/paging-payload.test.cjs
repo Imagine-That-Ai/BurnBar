@@ -205,3 +205,21 @@ test("label constants are the expected P-OPS-4 primitives", () => {
   assert.equal(PAGED_LABEL, "paged:ops");
   assert.equal(BLOCKER_LABEL, "known-red-named-blocker");
 });
+
+// ---------------------------------------------------------------------------
+// Fetch timeout: the action's fetch() call must use a bounded AbortSignal so
+// an unhealthy Slack endpoint cannot wedge the alerting workflow (Codex P2
+// #discussion_r3585532542).
+// ---------------------------------------------------------------------------
+
+test("action.yml fetch call includes AbortSignal.timeout to bound the webhook POST", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const actionYml = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
+  // The pageP0IfEligible function's fetch must have signal: AbortSignal.timeout(...)
+  assert.match(
+    actionYml,
+    /signal:\s*AbortSignal\.timeout\(\s*\d+\s*\)/,
+    "action.yml fetch() must include signal: AbortSignal.timeout(<ms>) to bound the webhook POST"
+  );
+});

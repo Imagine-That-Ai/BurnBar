@@ -293,6 +293,7 @@ runs:
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: slackText }),
+                signal: AbortSignal.timeout(10000),
               });
               if (!pageResponse.ok) {
                 core.warning(`Lane '${lane}': Slack webhook returned HTTP ${pageResponse.status} for issue #${issueNumber}. Not paged — will retry on next failure.`);
