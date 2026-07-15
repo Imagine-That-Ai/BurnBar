@@ -46,6 +46,21 @@ test("deterministic workflow implements every exact policy job and a fail-closed
   );
 });
 
+test("native consumer jobs keep their measured execution margin and emulator shell context", () => {
+  assert.match(
+    core,
+    /^  swift-consumer-contracts:\n(?:.*\n){0,4}    timeout-minutes: 90$/mu,
+  );
+  assert.match(
+    core,
+    /^            cd android && \.\/gradlew :openburnbar-domain-core:connectedDebugAndroidTest .*candidateCommit="\$GITHUB_SHA"$/mu,
+  );
+  assert.match(
+    core,
+    /^            adb exec-out run-as com\.openburnbar\.domaincore\.test cat files\/domain-core-observed-identity\.json > "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
+  );
+});
+
 test("Linux Tauri remains display-only while the Linux daemon stays under Swift ownership", () => {
   assert.doesNotMatch(
     linuxCargo,
