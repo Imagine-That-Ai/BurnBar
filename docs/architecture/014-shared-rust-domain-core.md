@@ -164,12 +164,36 @@ not distinguish two source revisions built with the same semantic version.
 
 ### Promotion evidence
 
-The quantitative promotion evaluator implemented in
-[#1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612) is the only quota
-shadow evidence gate. It requires 14 consecutive days for each required Apple
-and Windows consumer, 10,000 aggregate internal/beta samples, zero unexplained
-mismatches, and at most five percent p95 regression. It emits a fail-closed
-machine-readable readiness result. No second evaluator, policy override, or
+Candidate-bound V3 is the only evidence schema that may authorize a
+`shadow`-to-`rust` promotion or later legacy deletion. Each signed enrollment
+binds one internal/beta channel and consumer allowlist to one exact app commit
+and expected loaded Rust tuple: canonical version, uint32 ABI, and reviewed
+source SHA-256. The server verifies all six claims, validates the declared
+operation/domain/slice identity, and stamps `receivedAt`. Client `observedAt`
+never controls a promotion window.
+
+The exporter selects one exact candidate/core tuple over a half-open server
+receipt interval and records sample counts for every UTC day and real
+slice/consumer coverage cell. The evaluator requires one common observation
+window, at least 14 consecutive days, 10,000 aggregate internal/beta samples,
+zero unexplained mismatches, and at most five percent p95 regression. A loaded
+tuple different from the signed expected tuple is retained as
+`loaded_identity_mismatch` and is a hard blocker that cannot be explained away.
+Native-unavailable and native-error comparisons are also hard blockers.
+
+V1 and V2 remain accepted only so durable spools can drain idempotently. The
+server marks them non-promotable, they are never translated into V3, and the
+evaluator returns `evidence_schema_v3_required`. Operator-supplied revision
+labels cannot substitute for the candidate commit stored in each V3 sample
+accepted by the server. The exact operator procedure is the
+[Shared Rust Promotion Evidence runbook](../runbooks/shared-rust-promotion-evidence.md),
+and the client contract is
+[`domain-core-shadow-sample-v3.schema.json`](../contracts/domain-core-shadow-sample-v3.schema.json).
+
+The quantitative evaluator originally delivered in
+[#1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612) remains the single
+fail-closed evaluation authority, now upgraded for all inventoried domains and
+candidate-bound V3. No second evaluator, policy override, relabeled cohort, or
 synthetic passing evidence is accepted.
 
 A passing quantitative result is necessary but insufficient. Native artifact
