@@ -6,7 +6,11 @@ import { fileURLToPath } from "node:url";
 import { evaluatePromotionEvidence } from "../lib/domain-core-promotion-evidence.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const DEFAULT_POLICY = join(REPO_ROOT, "config", "domain-core-promotion-policy.json");
+const DEFAULT_POLICY = join(
+  REPO_ROOT,
+  "config",
+  "domain-core-promotion-policy.json",
+);
 
 function usage(message) {
   if (message) console.error(message);
@@ -18,13 +22,16 @@ function usage(message) {
 
 function parseArguments(argv) {
   const result = {};
+  const allowed = new Set(["--domain", "--evidence", "--output"]);
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!value || !new Set(["--domain", "--evidence", "--output"]).has(flag)) {
+    if (!value || !allowed.has(flag)) {
       usage(`invalid argument: ${flag ?? "<missing>"}`);
     }
-    result[flag.slice(2)] = value;
+    const name = flag.slice(2);
+    if (Object.hasOwn(result, name)) usage(`duplicate argument: ${flag}`);
+    result[name] = value;
   }
   if (!result.domain) usage("--domain is required");
   if (!result.evidence) usage("--evidence is required");
@@ -36,11 +43,13 @@ function loadJson(path, label) {
     return JSON.parse(readFileSync(resolve(path), "utf8"));
   } catch (error) {
     const report = {
-      schemaVersion: 1,
+      schemaVersion: 3,
       domain: null,
       status: "invalid",
       ready: false,
-      errors: [`unable to read ${label}: ${error instanceof Error ? error.message : String(error)}`],
+      errors: [
+        `unable to read ${label}: ${error instanceof Error ? error.message : String(error)}`,
+      ],
       blockers: [{ code: "invalid_evidence", consumer: null }],
     };
     console.log(JSON.stringify(report, null, 2));
@@ -58,17 +67,20 @@ function writeAtomically(path, contents) {
 const args = parseArguments(process.argv.slice(2));
 const evidence = loadJson(args.evidence, "evidence");
 const policy = loadJson(DEFAULT_POLICY, "policy");
-const report = evidence?.domain === args.domain
-  ? evaluatePromotionEvidence(evidence, policy)
-  : {
-      schemaVersion: 2,
-      domain: args.domain,
-      status: "invalid",
-      ready: false,
-      errors: [`evidence.domain must equal requested domain ${args.domain}`],
-      blockers: [{ code: "invalid_evidence", slice: null, consumer: null }],
-    };
+const report =
+  evidence?.domain === args.domain
+    ? evaluatePromotionEvidence(evidence, policy)
+    : {
+        schemaVersion: 3,
+        domain: args.domain,
+        status: "invalid",
+        ready: false,
+        errors: [`evidence.domain must equal requested domain ${args.domain}`],
+        blockers: [{ code: "invalid_evidence", slice: null, consumer: null }],
+      };
 const serialized = `${JSON.stringify(report, null, 2)}\n`;
 if (args.output) writeAtomically(args.output, serialized);
 process.stdout.write(serialized);
-process.exit(report.status === "ready" ? 0 : report.status === "not_ready" ? 2 : 1);
+process.exit(
+  report.status === "ready" ? 0 : report.status === "not_ready" ? 2 : 1,
+);
