@@ -42,6 +42,7 @@ const shellVersion = desktop?.package?.shellVersionReadback ?? '';
 const daemonVersion = daemonHealth?.response?.result?.daemonVersion ?? '';
 let archLifecycle = null;
 let archLifecycleFailure = null;
+const explicitArchBaselineBlock = /No previous same-architecture Arch package was supplied/u;
 try {
   const validatedLifecycle = validateArchUpdateRollbackReport({
     report: archUpdateRollback,
@@ -62,6 +63,17 @@ try {
   archLifecycle = validatedLifecycle;
 } catch (error) {
   archLifecycleFailure = error.message;
+  const blockedLifecycle = archUpdateRollback?.lifecycle;
+  const blockedBaseline = requiredLifecycleSteps.every((step) => {
+    const row = blockedLifecycle?.[step];
+    return row?.status === 'blocked' && explicitArchBaselineBlock.test(row.reason ?? '');
+  });
+  if (blockedBaseline) {
+    // Preserve the authenticated report's explicit missing-baseline state so
+    // prerelease assembly can remain honest without weakening stable gates.
+    archLifecycle = blockedLifecycle;
+    archLifecycleFailure = null;
+  }
 }
 const lifecycle = {
   guiLaunch: desktop?.package?.uninstallVerified === true

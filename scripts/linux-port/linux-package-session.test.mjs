@@ -13,6 +13,7 @@ import {
 } from './lib/linux-package-session.mjs';
 
 const releaseWorkflow = readFileSync(path.resolve('.github/workflows/linux-release.yml'), 'utf8');
+const architectureFinalizer = readFileSync(path.resolve('scripts/linux-port/finalize-linux-architecture-session.mjs'), 'utf8');
 
 const manifest = { supportedArchitectures: ['aarch64', 'x86_64'] };
 const version = '1.2.3';
@@ -139,6 +140,11 @@ test('known incompatible legacy Debian baseline is eligible only for prerelease 
     candidate.passed = false;
   }
   assert.equal(isArchitectureSessionBaselineBlocked({ manifest, sessions }), true);
+});
+
+test('Arch missing-baseline reports remain explicit in architecture-session finalization', () => {
+  assert.match(architectureFinalizer, /No previous same-architecture Arch package was supplied/u);
+  assert.match(architectureFinalizer, /archLifecycle = blockedLifecycle/u);
 });
 
 test('cross-commit, duplicate, and version drift are rejected', () => {
