@@ -103,6 +103,20 @@ enum MissionAuthorizationEnforcementVerdict: String, Equatable, Sendable {
     case deny
 }
 
+/// The full outcome of the trusted-decision resolution at the GUI's mission
+/// authorization point. Encodes both the enforcement verdict and the GUI's
+/// own decision so the listener call site is a minimal switch — keeping the
+/// split-brain frozen cluster from growing.
+enum MissionAuthorizationTrustedDecisionOutcome: Equatable, Sendable {
+    /// The mission may proceed to claim.
+    case proceed
+    /// The GUI wants to pause for pre-dispatch operator approval (off/shadow
+    /// only — never returned in enforce mode, where the daemon governs).
+    case pauseForApproval
+    /// The mission must be denied with the given user-visible message.
+    case deny(String)
+}
+
 /// Pure comparator + request/verdict reducers behind the shadow path. Kept
 /// stateless and synchronous so every branch is table-testable.
 enum MissionRemoteAuthorizationShadow {
@@ -539,5 +553,53 @@ enum MissionRemoteAuthorizationShadow {
                 isTerminalDenial: isTerminalDenial
             )
         fireAndForget(ctx: ctx, guiDecision: decision, executorTrustState: "trusted")
+    }
+
+    /// Resolve the trusted-path authorization decision. Encodes the full
+    /// outcome so the listener call site is a minimal switch — keeping the
+    /// split-brain frozen cluster from growing.
+    ///
+    /// In `.off`/`.shadow` mode: observes (fire-and-forget telemetry) and
+    /// returns the GUI's own decision (pause/persona-deny/proceed) — the GUI
+    /// governs unchanged. In `.enforce` mode: queries the daemon, emits
+    /// telemetry, and returns the authoritative outcome — `.deny` stops the
+    /// mission before claim; `.proceed` bypasses GUI-only pauses/persona denials
+    /// (the guiStricter-loosen path).
+    @MainActor
+    static func resolveTrustedDecision(
+        ctx: ShadowContext,
+        isTerminalDenial: Bool,
+        personaScopeMalformed: Bool,
+        willPauseForApproval: Bool,
+        manager: OpenBurnBarDaemonManager = .shared
+    ) async -> MissionAuthorizationTrustedDecisionOutcome {
+        if mode == .enforce {
+            let guiDecision: GUIMissionAuthorizationDecision = personaScopeMalformed
+                ? .deny
+                : reduceGUIDecision(
+                    approvalStatus: ctx.approvalStatus,
+                    willPauseForApproval: willPauseForApproval,
+                    isTerminalDenial: isTerminalDenial
+                )
+            let verdict = await enforce(
+                ctx: ctx, guiDecision: guiDecision,
+                executorTrustState: "trusted", manager: manager
+            )
+            if verdict == .deny {
+                return .deny("This remote mission was not authorized by the Mac daemon and will not run. Re-send the mission from your device.")
+            }
+            return .proceed
+        }
+        // off/shadow: observe (fire-and-forget) and return the GUI's own decision.
+        observeTrustedDecision(
+            ctx: ctx, isTerminalDenial: isTerminalDenial,
+            personaScopeMalformed: personaScopeMalformed, willPauseForApproval: willPauseForApproval)
+        if willPauseForApproval {
+            return .pauseForApproval
+        }
+        if personaScopeMalformed {
+            return .deny("The persona scope attached to this mission could not be read, so it was rejected instead of running with broader permissions. Re-send the mission from your device.")
+        }
+        return .proceed
     }
 }
