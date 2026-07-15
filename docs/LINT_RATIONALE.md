@@ -252,7 +252,7 @@ Source of truth: [`.swiftlint.yml`](../.swiftlint.yml).
 | `modifier_order` | warn | Soft because existing declarations predate the preferred order. New code should follow the configured order. |
 | `line_length`, `function_body_length`, `type_body_length`, `file_length` | ratchet thresholds | Thresholds are set above measured maxima so the gate blocks regression now; tighten as decomposition work lands. |
 | `identifier_name` | relaxed | Single-letter names are common in graphics, math, parsers, and coordinates. Prefer descriptive names outside those domains. |
-| `force_unwrapping` | not opted in | Measured brownfield debt (224 sites) is frozen by `scripts/debt/check-force-unwrap-budget.sh` (shrink-only ratchet, `budgets/force-unwrap-baseline.json`). Enable the SwiftLint rule once the count reaches zero; the ratchet enforces the path. |
+| `force_unwrapping` | not opted in | Measured brownfield debt (215 sites) is frozen by `scripts/debt/check-force-unwrap-budget.sh` (shrink-only ratchet, `budgets/force-unwrap-baseline.json`). Enable the SwiftLint rule once the count reaches zero; the ratchet enforces the path. |
 | `discouraged_optional_collection` | not opted in | Optional collection semantics are API-facing in several models; burn down with compatibility tests before enabling. |
 | `implicitly_unwrapped_optional` | not opted in | UIKit/AppKit/SwiftUI lifecycle and IBOutlet-like surfaces need hand review before this can be made blocking. |
 | `no_extension_access_modifier` | not opted in | The repo convention is ACL on extensions in several public API files. Revisit only with an ADR-backed style migration. |

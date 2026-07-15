@@ -15,7 +15,12 @@
 #   * try! and as! are NOT counted (governed by force_try / force_cast),
 #   * != and !== are NOT counted (comparison operators),
 #   * force-unwraps in comments and strings are NOT counted,
-#   * a missing baseline fails closed.
+#   * a missing baseline fails closed,
+#   * one-for-one replacement is blocked by the per-file growth check,
+#   * force-unwraps inside string interpolation ARE counted,
+#   * implicitly-unwrapped optional TYPE declarations are NOT counted,
+#   * force-unwraps in OpenBurnBarKeyboard/ and OpenBurnBarWidget/ ARE counted,
+#   * force-unwrap on an uppercase variable in expression context IS counted.
 # No network; self-cleaning.
 set -euo pipefail
 
@@ -27,15 +32,16 @@ fail=0
 tmp_roots=()
 cleanup() {
   [[ "${#tmp_roots[@]}" -gt 0 ]] && for r in "${tmp_roots[@]}"; do rm -rf "${r}"; done
+  true
 }
 trap cleanup EXIT
 
-# new_repo → prints the repo path on stdout. Seeds the four scan-root dirs.
+# new_repo → prints the repo path on stdout. Seeds the six scan-root dirs.
 new_repo() {
   local r
   r="$(mktemp -d "${TMPDIR:-/tmp}/force-unwrap-test.XXXXXX")"
   tmp_roots+=("${r}")
-  mkdir -p "${r}/AgentLens" "${r}/OpenBurnBarMobile" "${r}/OpenBurnBarCore/Sources" "${r}/OpenBurnBarDaemon/Sources"
+  mkdir -p "${r}/AgentLens" "${r}/OpenBurnBarMobile" "${r}/OpenBurnBarCore/Sources" "${r}/OpenBurnBarDaemon/Sources" "${r}/OpenBurnBarKeyboard" "${r}/OpenBurnBarWidget"
   printf '%s' "${r}"
 }
 
@@ -47,6 +53,18 @@ write_baseline() {
   "note": "test baseline",
   "total": ${total},
   "files": []
+}
+EOF
+}
+
+# write_baseline_files <repo> <total> <files-json-array>
+write_baseline_files() {
+  local r="${1}" total="${2}" files="${3}"
+  cat >"${r}/budgets/force-unwrap-baseline.json" <<EOF
+{
+  "note": "test baseline",
+  "total": ${total},
+  "files": ${files}
 }
 EOF
 }
@@ -85,53 +103,216 @@ mode="${1:-}"
 node - "${repo_root}" "${baseline_path}" "${mode}" <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
+
 const [repoRoot, baselinePath, mode] = process.argv.slice(2);
-const scanRoots = ["AgentLens", "OpenBurnBarMobile", "OpenBurnBarCore/Sources", "OpenBurnBarDaemon/Sources"];
-const excludedParts = new Set([".build", ".derived-data", ".swiftpm", "Preview Content", "build"]);
+
+const scanRoots = [
+  "AgentLens",
+  "OpenBurnBarMobile",
+  "OpenBurnBarCore/Sources",
+  "OpenBurnBarDaemon/Sources",
+  "OpenBurnBarKeyboard",
+  "OpenBurnBarWidget",
+];
+
+const excludedParts = new Set([
+  ".build",
+  ".derived-data",
+  ".swiftpm",
+  "Preview Content",
+  "build",
+]);
+
 function findSwiftFiles(dir) {
   const results = [];
   if (!fs.existsSync(dir)) return results;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith(".")) continue;
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) { if (excludedParts.has(entry.name)) continue; results.push(...findSwiftFiles(full)); }
-    else if (entry.name.endsWith(".swift")) results.push(full);
+    if (entry.isDirectory()) {
+      if (excludedParts.has(entry.name)) continue;
+      results.push(...findSwiftFiles(full));
+    } else if (entry.name.endsWith(".swift")) {
+      results.push(full);
+    }
   }
   return results;
 }
+
+// Strip comments and string/character literals so force-unwraps inside them
+// are not counted. Handles line comments (//), block comments (/* */),
+// string literals ("..."), multi-line string literals ("""...""").
+//
+// String interpolation `\(...)` is handled specially: the `\(` opens an
+// interpolation expression that contains executable code, so the code inside
+// is preserved (not stripped) while the surrounding string delimiters and
+// non-interpolation string content are removed.
 function stripCommentsAndStrings(src) {
-  let result = "", i = 0; const len = src.length;
-  let inLineComment = false, inBlockComment = false, inString = false, inMultilineString = false;
+  let result = "";
+  let i = 0;
+  const len = src.length;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let inString = false;
+  let inMultilineString = false;
+
   while (i < len) {
-    const ch = src[i], next = src[i + 1] || "", next2 = src[i + 2] || "";
-    if (inLineComment) { if (ch === "\n") { inLineComment = false; result += ch; } i++; continue; }
-    if (inBlockComment) { if (ch === "*" && next === "/") { inBlockComment = false; i += 2; continue; } if (ch === "\n") result += ch; i++; continue; }
-    if (inMultilineString) { if (ch === '"' && next === '"' && next2 === '"') { inMultilineString = false; i += 3; continue; } i++; continue; }
-    if (inString) { if (ch === "\\" && next) { i += 2; continue; } if (ch === '"') { inString = false; i++; continue; } i++; continue; }
-    if (ch === "/" && next === "/") { inLineComment = true; i += 2; continue; }
-    if (ch === "/" && next === "*") { inBlockComment = true; i += 2; continue; }
-    if (ch === '"' && next === '"' && next2 === '"') { inMultilineString = true; i += 3; continue; }
-    if (ch === '"') { inString = true; i++; continue; }
-    result += ch; i++;
+    const ch = src[i];
+    const next = src[i + 1] || "";
+    const next2 = src[i + 2] || "";
+
+    if (inLineComment) {
+      if (ch === "\n") {
+        inLineComment = false;
+        result += ch;
+      }
+      i++;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+      if (ch === "\n") result += ch;
+      i++;
+      continue;
+    }
+    if (inMultilineString) {
+      // Multi-line strings can contain interpolation with \(...)
+      if (ch === "\\" && next === "(") {
+        // Interpolation in multi-line string: preserve the code inside
+        result += " "; // placeholder for the string part
+        i += 2; // skip \(
+        let depth = 1;
+        while (i < len && depth > 0) {
+          if (src[i] === "(") depth++;
+          else if (src[i] === ")") depth--;
+          if (depth > 0) result += src[i];
+          i++;
+        }
+        // i is now past the closing )
+        continue;
+      }
+      if (ch === '"' && next === '"' && next2 === '"') {
+        inMultilineString = false;
+        i += 3;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\" && next === "(") {
+        // String interpolation: preserve the code inside \(...)
+        result += " ";
+        i += 2; // skip \(
+        let depth = 1;
+        while (i < len && depth > 0) {
+          if (src[i] === "(") depth++;
+          else if (src[i] === ")") depth--;
+          if (depth > 0) result += src[i];
+          i++;
+        }
+        continue;
+      }
+      if (ch === "\\" && next) {
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+        i++;
+        continue;
+      }
+      i++;
+      continue;
+    }
+
+    // Not in any comment/string context
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i += 2;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i += 2;
+      continue;
+    }
+    if (ch === '"' && next === '"' && next2 === '"') {
+      inMultilineString = true;
+      i += 3;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      i++;
+      continue;
+    }
+
+    result += ch;
+    i++;
   }
   return result;
 }
+
+// Count force-unwrap `!` sites in stripped source.
+// A force-unwrap is `!` preceded by an expression-ending character (letter,
+// digit, _, ), ]) and NOT followed by `=` (excludes !=, !==).
+// Excludes:
+//   - `try!` and `as!` (governed by force_try / force_cast rules)
+//   - Implicitly-unwrapped optional type declarations (e.g. `var x: UILabel!`)
+//     detected by: word before `!` starts with uppercase (type name) AND
+//     a `:` precedes the type name on the same line (type annotation position)
+//     AND `!` is NOT followed by `.` or `(` (which signal force-unwrap chaining)
 function countForceUnwraps(stripped) {
+  const lines = stripped.split("\n");
   let count = 0;
-  for (let j = 0; j < stripped.length; j++) {
-    if (stripped[j] !== "!") continue;
-    if (stripped[j + 1] === "=") continue;
-    const prev = stripped[j - 1] || "";
-    if (!/[a-zA-Z0-9_)\]]/.test(prev)) continue;
-    let k = j - 1; while (k >= 0 && /[a-zA-Z_]/.test(stripped[k])) k--;
-    const word = stripped.substring(k + 1, j);
-    if (word === "try" || word === "as") continue;
-    count++;
+
+  for (const line of lines) {
+    for (let j = 0; j < line.length; j++) {
+      if (line[j] !== "!") continue;
+      // Skip != and !==
+      if (line[j + 1] === "=") continue;
+
+      const prev = line[j - 1] || "";
+      if (!/[a-zA-Z0-9_)\]]/.test(prev)) continue;
+
+      // Find the word preceding `!` to exclude `try!` and `as!`
+      let k = j - 1;
+      while (k >= 0 && /[a-zA-Z_]/.test(line[k])) k--;
+      const word = line.substring(k + 1, j);
+      if (word === "try" || word === "as") continue;
+
+      // Exclude implicitly-unwrapped optional TYPE declarations.
+      // An IUO type has the form `: TypeName!` where the `!` is in type
+      // annotation position, not expression position. Detected by:
+      //   1. The type name starts with uppercase (Swift type naming convention)
+      //   2. A `:` (followed by optional whitespace) precedes the type name
+      //      on this line — placing the `!` in a type annotation, not an
+      //      expression
+      //   3. The `!` is NOT followed by `.` or `(` — those signal force-unwrap
+      //      chaining (e.g. `optional!.foo`), which is always an operation
+      const startsUpper = /^[A-Z]/.test(word);
+      const beforeType = line.substring(0, k + 1);
+      const hasColon = /:\s*$/.test(beforeType);
+      const after = line[j + 1] || "";
+      const isChaining = after === "." || after === "(";
+
+      if (startsUpper && hasColon && !isChaining) continue;
+
+      count++;
+    }
   }
   return count;
 }
+
 function scanAll() {
-  const byFile = []; let total = 0;
+  const byFile = [];
+  let total = 0;
+
   for (const root of scanRoots) {
     const absRoot = path.join(repoRoot, root);
     const files = findSwiftFiles(absRoot);
@@ -139,29 +320,116 @@ function scanAll() {
       const src = fs.readFileSync(f, "utf8");
       const stripped = stripCommentsAndStrings(src);
       const c = countForceUnwraps(stripped);
-      if (c > 0) { const rel = path.relative(repoRoot, f); byFile.push({ path: rel, count: c }); total += c; }
+      if (c > 0) {
+        const rel = path.relative(repoRoot, f);
+        byFile.push({ path: rel, count: c });
+        total += c;
+      }
     }
   }
+
   byFile.sort((a, b) => b.count - a.count || a.path.localeCompare(b.path));
   return { total, byFile };
 }
+
 const live = scanAll();
-if (mode === "--print-live") { console.log(JSON.stringify({ total: live.total, files: live.byFile }, null, 2) + "\n"); process.exit(0); }
-if (mode === "--update") {
-  if (fs.existsSync(baselinePath)) {
-    const current = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
-    if (live.total > current.total) { console.error("::error::Force-unwrap --update refused: live " + live.total + " > current baseline " + current.total + ". The baseline may only shrink — remove force-unwrap sites first."); process.exit(1); }
-  }
-  const baseline = { note: "test", total: live.total, files: live.byFile };
-  fs.writeFileSync(baselinePath, JSON.stringify(baseline, null, 2) + "\n");
-  console.log("Wrote " + path.relative(repoRoot, baselinePath) + ": " + live.total + " force-unwrap sites across " + live.byFile.length + " file(s).");
+
+if (mode === "--print-live") {
+  console.log(
+    JSON.stringify(
+      { total: live.total, files: live.byFile },
+      null,
+      2,
+    ) + "\n",
+  );
   process.exit(0);
 }
-if (!fs.existsSync(baselinePath)) { console.error("Missing force-unwrap baseline: " + baselinePath); console.error("Run with --update to capture the current budget."); process.exit(1); }
+
+if (mode === "--update") {
+  // Shrink-only: refuse to raise the baseline.
+  if (fs.existsSync(baselinePath)) {
+    const current = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+    if (live.total > current.total) {
+      console.error(
+        `::error::Force-unwrap --update refused: live ${live.total} > current baseline ${current.total}. The baseline may only shrink — remove force-unwrap sites first.`,
+      );
+      process.exit(1);
+    }
+  }
+  const baseline = {
+    note: "Force-unwrap (!) site budget across AgentLens/, OpenBurnBarMobile/, OpenBurnBarCore/Sources/, OpenBurnBarDaemon/Sources/, OpenBurnBarKeyboard/, OpenBurnBarWidget/. Shrink-only: count may only decrease as sites are removed. Excludes try! and as! (governed by force_try / force_cast) and implicitly-unwrapped optional type declarations (governed by implicitly_unwrapped_optional). String interpolation expressions are counted (executable code). Regenerate via scripts/debt/check-force-unwrap-budget.sh --update.",
+    total: live.total,
+    files: live.byFile,
+  };
+  fs.writeFileSync(baselinePath, JSON.stringify(baseline, null, 2) + "\n");
+  console.log(
+    `Wrote ${path.relative(repoRoot, baselinePath)}: ${live.total} force-unwrap sites across ${live.byFile.length} file(s).`,
+  );
+  process.exit(0);
+}
+
+// Check mode
+if (!fs.existsSync(baselinePath)) {
+  console.error(`Missing force-unwrap baseline: ${baselinePath}`);
+  console.error(
+    "Run scripts/debt/check-force-unwrap-budget.sh --update to capture the current budget.",
+  );
+  process.exit(1);
+}
+
 const baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
-console.log("Force-unwrap budget: live=" + live.total + " baseline=" + baseline.total);
-if (live.total > baseline.total) { console.error("::error::Force-unwrap count rose from " + baseline.total + " to " + live.total + ". Remove the new force-unwrap site(s) or use guard/if-let instead."); process.exit(1); }
-if (live.total < baseline.total) { console.log("::notice::Force-unwrap count dropped from " + baseline.total + " to " + live.total + " — run --update to lock it in."); }
+const baseByPath = new Map((baseline.files || []).map((f) => [f.path, f.count]));
+
+console.log(
+  `Force-unwrap budget: live=${live.total} baseline=${baseline.total}`,
+);
+
+const top = live.byFile.slice(0, 10);
+if (top.length) {
+  console.log("Top offending files:");
+  for (const f of top) console.log(`  ${String(f.count).padStart(3)}  ${f.path}`);
+}
+
+let failed = false;
+
+// Check 1: total must not exceed baseline
+if (live.total > baseline.total) {
+  console.error(
+    `::error::Force-unwrap count rose from ${baseline.total} to ${live.total}. Remove the new force-unwrap site(s) or use guard/if-let instead.`,
+  );
+  failed = true;
+}
+
+// Check 2: per-file counts must not exceed baseline (blocks one-for-one
+// replacements that launder a new site behind a removal elsewhere)
+const grownFiles = [];
+for (const f of live.byFile) {
+  const baseCount = baseByPath.get(f.path);
+  if (baseCount !== undefined && f.count > baseCount) {
+    grownFiles.push({ path: f.path, from: baseCount, to: f.count });
+  }
+}
+if (grownFiles.length) {
+  failed = true;
+  console.error(
+    `\n::error::${grownFiles.length} file(s) grew beyond their per-file baseline (one-for-one replacements are blocked — remove sites, don't move them):`,
+  );
+  for (const g of grownFiles) {
+    console.error(`  ${g.from} -> ${g.to}  ${g.path}`);
+  }
+}
+
+if (live.total < baseline.total) {
+  console.log(
+    `::notice::Force-unwrap count dropped from ${baseline.total} to ${live.total} — run scripts/debt/check-force-unwrap-budget.sh --update to lock it in.`,
+  );
+}
+
+if (failed) {
+  console.error("\nThe canonical budget is budgets/force-unwrap-baseline.json.");
+  process.exit(1);
+}
+
 console.log("Force-unwrap ratchet OK.");
 NODE
 WRAPPER
@@ -349,6 +617,61 @@ printf 'let x = a!\nlet y = b!\n' >"${r}/AgentLens/Foo.swift"
 w="$(make_wrapper "${r}")"
 assert_stdout "${w}" '"total": 2' "--print-live emits the live total as JSON" "--print-live"
 
+# ── One-for-one replacement is BLOCKED by per-file growth check (r3585566812) ──
+r="$(new_repo)"
+printf 'let x = a!\nlet y = b!\n' >"${r}/AgentLens/A.swift"
+printf 'let z = 0\n' >"${r}/AgentLens/B.swift"
+mkdir -p "${r}/budgets"
+write_baseline_files "${r}" 2 '[{"path":"AgentLens/A.swift","count":2},{"path":"AgentLens/B.swift","count":0}]'
+w="$(make_wrapper "${r}")"
+# Now move one force-unwrap from A to B: A drops to 1, B grows to 1. Total stays 2.
+printf 'let x = a!\n' >"${r}/AgentLens/A.swift"
+printf 'let z = b!\n' >"${r}/AgentLens/B.swift"
+assert_rc 1 "${w}" "one-for-one replacement blocked: file B grew 0->1 despite total unchanged"
+assert_stdout "${w}" "grew beyond their per-file baseline" "one-for-one replacement reports per-file growth error"
+
+# ── Force-unwraps in string interpolation ARE counted (r3585566821) ──────────────
+r="$(new_repo)"
+printf 'let s = "\\(optional!)"\n' >"${r}/AgentLens/Foo.swift"
+mkdir -p "${r}/budgets"
+write_baseline "${r}" 1
+w="$(make_wrapper "${r}")"
+assert_rc 0 "${w}" "string interpolation force-unwrap counted (1 site, baseline 1)"
+# Add a second file with another interpolation force-unwrap
+printf 'let t = "\\(another!)"\n' >"${r}/AgentLens/Bar.swift"
+assert_rc 1 "${w}" "second string interpolation force-unwrap exceeds baseline (2 > 1)"
+
+# ── IUO type declarations are NOT counted (r3585566838) ──────────────────────────
+r="$(new_repo)"
+printf 'var x: UILabel!\nfunc foo(_ nav: WKNavigation!) {}\n' >"${r}/AgentLens/Foo.swift"
+mkdir -p "${r}/budgets"
+write_baseline "${r}" 0
+w="$(make_wrapper "${r}")"
+assert_rc 0 "${w}" "IUO type declarations not counted (0 sites, baseline 0)"
+# Now add an actual force-unwrap expression
+printf 'var x: UILabel!\nfunc foo(_ nav: WKNavigation!) {}\nlet y = x!\n' >"${r}/AgentLens/Foo.swift"
+assert_rc 1 "${w}" "actual force-unwrap expression counted (1 > baseline 0)"
+
+# ── Extension targets OpenBurnBarKeyboard/ and OpenBurnBarWidget/ in scope (r3585566848) ──
+r="$(new_repo)"
+printf 'let x = a!\n' >"${r}/OpenBurnBarKeyboard/Key.swift"
+printf 'let y = b!\n' >"${r}/OpenBurnBarWidget/Wid.swift"
+mkdir -p "${r}/budgets"
+write_baseline "${r}" 2
+w="$(make_wrapper "${r}")"
+assert_rc 0 "${w}" "force-unwraps in Keyboard/ and Widget/ match baseline 2"
+# Add a new force-unwrap in Widget/
+printf 'let z = c!\n' >"${r}/OpenBurnBarWidget/Extra.swift"
+assert_rc 1 "${w}" "new force-unwrap in Widget/ exceeds baseline (3 > 2)"
+
+# ── Force-unwrap on uppercase variable in expression context IS counted ─────────
+r="$(new_repo)"
+printf 'let x = URL!\n' >"${r}/AgentLens/Foo.swift"
+mkdir -p "${r}/budgets"
+write_baseline "${r}" 0
+w="$(make_wrapper "${r}")"
+assert_rc 1 "${w}" "force-unwrap on uppercase variable counted (no colon before URL, 1 > 0)"
+
 # ── Regression: the ratchet is WIRED into the CI debt-budgets job ───────────────
 workflow="${here}/../../.github/workflows/fast-feedback.yml"
 if [[ -f "${workflow}" ]] && grep -q "check-force-unwrap-budget.sh" "${workflow}"; then
@@ -379,9 +702,11 @@ else
   printf 'FAIL: baseline is NOT in LINT_RATIONALE allowlist\n' >&2
 fi
 
+set -e
 echo
 printf 'passed=%s failed=%s\n' "${pass}" "${fail}"
-set +e
-[[ "${fail}" -eq 0 ]]
+if [[ "${fail}" -ne 0 ]]; then
+  exit 1
+fi
 echo "check-force-unwrap-budget self-test: all green"
 exit 0

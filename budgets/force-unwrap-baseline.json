@@ -1,6 +1,6 @@
 {
-  "note": "Force-unwrap (!) site budget across AgentLens/, OpenBurnBarMobile/, OpenBurnBarCore/Sources/, OpenBurnBarDaemon/Sources/. Shrink-only: count may only decrease as sites are removed. Excludes try! and as! (governed by force_try / force_cast). Regenerate via scripts/debt/check-force-unwrap-budget.sh --update.",
-  "total": 224,
+  "note": "Force-unwrap (!) site budget across AgentLens/, OpenBurnBarMobile/, OpenBurnBarCore/Sources/, OpenBurnBarDaemon/Sources/, OpenBurnBarKeyboard/, OpenBurnBarWidget/. Shrink-only: count may only decrease as sites are removed. Excludes try! and as! (governed by force_try / force_cast) and implicitly-unwrapped optional type declarations (governed by implicitly_unwrapped_optional). String interpolation expressions are counted (executable code). Regenerate via scripts/debt/check-force-unwrap-budget.sh --update.",
+  "total": 215,
   "files": [
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AssistantRuntimeID.swift",
@@ -8,10 +8,6 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift",
-      "count": 12
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/BurnBarRemote/Generated/burnbar_remote.swift",
       "count": 8
     },
     {
@@ -23,8 +19,8 @@
       "count": 7
     },
     {
-      "path": "AgentLens/Services/ProviderQuota/FactoryLoginHelper.swift",
-      "count": 5
+      "path": "OpenBurnBarCore/Sources/BurnBarRemote/Generated/burnbar_remote.swift",
+      "count": 6
     },
     {
       "path": "AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSettingsView+Rendering.swift",
@@ -51,15 +47,15 @@
       "count": 3
     },
     {
+      "path": "AgentLens/Services/ProviderQuota/FactoryLoginHelper.swift",
+      "count": 3
+    },
+    {
       "path": "AgentLens/Views/Chat/ChatSessionControllerBackendGatewayRouting.swift",
       "count": 3
     },
     {
       "path": "AgentLens/Views/SessionLogs/SessionLogsView+Filtering.swift",
-      "count": 3
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarPretext/PretextEngine.swift",
       "count": 3
     },
     {
@@ -195,6 +191,10 @@
       "count": 2
     },
     {
+      "path": "OpenBurnBarMobile/Views/ComputerUse/AgentWatchEmptyStateView.swift",
+      "count": 2
+    },
+    {
       "path": "OpenBurnBarMobile/Views/You/SettingsHubView.swift",
       "count": 2
     },
@@ -212,10 +212,6 @@
     },
     {
       "path": "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonSocketClient.swift",
-      "count": 1
-    },
-    {
-      "path": "AgentLens/Services/ProviderQuota/CursorLoginHelper.swift",
       "count": 1
     },
     {
@@ -251,7 +247,7 @@
       "count": 1
     },
     {
-      "path": "AgentLens/Views/Dashboard/Components/KernelBackdropView.swift",
+      "path": "AgentLens/Views/ComputerUse/ComputerUseSettingsView.swift",
       "count": 1
     },
     {
@@ -264,6 +260,10 @@
     },
     {
       "path": "AgentLens/Views/Onboarding/Switcher/SwitcherOnboardingWelcomeStep.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Settings/AlertsAndNotificationsViews.swift",
       "count": 1
     },
     {
@@ -367,6 +367,10 @@
       "count": 1
     },
     {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift",
+      "count": 1
+    },
+    {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarConfigStore.swift",
       "count": 1
     },
@@ -388,6 +392,10 @@
     },
     {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/VirtualHIDKeyboardEngine.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarKeyboard/SpellCheckService.swift",
       "count": 1
     },
     {
@@ -424,14 +432,6 @@
     },
     {
       "path": "OpenBurnBarMobile/Services/PiService.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarMobile/Views/Aurora/MobileWebGLKernelBackdropView.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarMobile/Views/ChartStudio/MermaidWebView.swift",
       "count": 1
     },
     {
