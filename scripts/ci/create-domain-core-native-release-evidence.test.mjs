@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -65,6 +66,24 @@ function fixture({ profileName = "public-production", rust = ["quota"] } = {}) {
     })}\n`,
   );
   writeFileSync(
+    paths.rollback,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      candidateIdentity: CANDIDATE,
+      modes: {
+        quota: "legacy",
+        cloudVault: "legacy",
+        cloudVaultRewrap: "legacy",
+        cloudVaultSearch: "legacy",
+        hermes: "legacy",
+        pricing: "legacy",
+      },
+    })}\n`,
+  );
+  const rollbackArtifactSha256 = createHash("sha256")
+    .update(readFileSync(paths.rollback))
+    .digest("hex");
+  writeFileSync(
     paths.candidate,
     `${JSON.stringify({
       schemaVersion: 1,
@@ -85,20 +104,15 @@ function fixture({ profileName = "public-production", rust = ["quota"] } = {}) {
         headSha: CANDIDATE.candidateCommit,
         jobs: [],
       },
-    })}\n`,
-  );
-  writeFileSync(
-    paths.rollback,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      candidateIdentity: CANDIDATE,
-      modes: {
-        quota: "legacy",
-        cloudVault: "legacy",
-        cloudVaultRewrap: "legacy",
-        cloudVaultSearch: "legacy",
-        hermes: "legacy",
-        pricing: "legacy",
+      rollback: {
+        jobId: "rollback-drill",
+        suiteId: "rollback-drill",
+        runId: 101,
+        runAttempt: 2,
+        reportSha256: "e".repeat(64),
+        fromCandidateCommit: CANDIDATE.candidateCommit,
+        restoredArtifactSha256: rollbackArtifactSha256,
+        restoredMode: "legacy",
       },
     })}\n`,
   );
@@ -188,6 +202,14 @@ function argumentsFor(paths, profileName = "public-production") {
   ];
 }
 
+function verifiers(paths) {
+  return {
+    promotionVerifier: () => [],
+    activationVerifier: () =>
+      JSON.parse(readFileSync(paths.activation, "utf8")),
+  };
+}
+
 function replaceArgument(args, flag, value) {
   const index = args.indexOf(flag);
   assert.notEqual(index, -1, flag);
@@ -197,7 +219,7 @@ function replaceArgument(args, flag, value) {
 test("creates v2 predicates only for Rust-authoritative public domains", () => {
   const paths = fixture({ rust: ["quota", "pricing"] });
   try {
-    const plan = run(argumentsFor(paths), { promotionVerifier: () => [] });
+    const plan = run(argumentsFor(paths), verifiers(paths));
     assert.deepEqual(
       plan.domains.map((entry) => entry.domain),
       ["quota", "pricing"],
@@ -237,7 +259,7 @@ test("creates v2 predicates only for Rust-authoritative public domains", () => {
 test("all-legacy public release produces no misleading Rust evidence", () => {
   const paths = fixture({ rust: [] });
   try {
-    const plan = run(argumentsFor(paths), { promotionVerifier: () => [] });
+    const plan = run(argumentsFor(paths), verifiers(paths));
     assert.deepEqual(plan.domains, []);
   } finally {
     rmSync(paths.directory, { recursive: true, force: true });
@@ -250,9 +272,10 @@ test("rollback release cannot create or publish Rust domain attestations", () =>
     rust: [],
   });
   try {
-    const plan = run(argumentsFor(paths, "public-production-rollback"), {
-      promotionVerifier: () => [],
-    });
+    const plan = run(
+      argumentsFor(paths, "public-production-rollback"),
+      verifiers(paths),
+    );
     assert.equal(plan.rollback, true);
     assert.deepEqual(plan.domains, []);
     assert.deepEqual(
@@ -278,7 +301,7 @@ test("rejects profile, candidate, and artifact substitution", () => {
     profile.candidateIdentity.sourceSha256 = "c".repeat(64);
     writeFileSync(paths.profile, `${JSON.stringify(profile)}\n`);
     assert.throws(
-      () => run(argumentsFor(paths), { promotionVerifier: () => [] }),
+      () => run(argumentsFor(paths), verifiers(paths)),
       /exact candidate-bound/,
     );
   } finally {
@@ -308,7 +331,7 @@ test("accepts Apple and Android prereleases but keeps Windows stable-only", () =
       if (consumer === "android") {
         args.push("--android-abi-manifest", paths.androidAbiManifest);
       }
-      const plan = run(args, { promotionVerifier: () => [] });
+      const plan = run(args, verifiers(paths));
       assert.equal(plan.consumer, consumer);
       assert.equal(plan.tag, `v${version}`);
       if (consumer === "android") {
@@ -341,7 +364,7 @@ test("accepts Apple and Android prereleases but keeps Windows stable-only", () =
     replaceArgument(args, "--version", version);
     replaceArgument(args, "--tag", `windows-v${version}`);
     assert.throws(
-      () => run(args, { promotionVerifier: () => [] }),
+      () => run(args, verifiers(windows)),
       /native release version is invalid/u,
     );
   } finally {

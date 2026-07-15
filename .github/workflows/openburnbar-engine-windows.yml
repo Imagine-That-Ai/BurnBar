@@ -38,6 +38,11 @@ permissions:
 
 on:
   workflow_call:
+    inputs:
+      candidate_commit:
+        description: Exact protected shared-Rust candidate commit to embed
+        required: false
+        type: string
   # Primary entry point until the lane becomes a required gate (PR-5).
   workflow_dispatch:
   # Wired so it becomes a real gate once this file is on the default branch.
@@ -300,6 +305,8 @@ jobs:
         run: swift build --package-path OpenBurnBarCore --target OpenBurnBarEngine
 
       - name: Build and stage production C ABI engine
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ inputs.candidate_commit || github.sha }}
         run: |
           swift build --package-path OpenBurnBarCore -c release --product OpenBurnBarCoreCAbi
           $bin = swift build --package-path OpenBurnBarCore -c release --show-bin-path
@@ -374,7 +381,6 @@ jobs:
       # Exits 0 only when all five XCTest cases pass (full corpus + semantic guards).
       - name: Run LLM-safe wrap vector contract (C3 / ARM64)
         run: swift test --package-path OpenBurnBarCore --filter LLMSafeWrapVectorTests
-
 
   # ──────────────────────────────────────────────────────────────────────────
   # ARM64 leg (aarch64-unknown-windows-msvc) on the free `windows-11-arm` runner.
@@ -560,6 +566,8 @@ jobs:
         run: swift build --package-path OpenBurnBarCore --target OpenBurnBarEngine
 
       - name: Build and stage production C ABI engine (ARM64)
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ inputs.candidate_commit || github.sha }}
         run: |
           swift build --package-path OpenBurnBarCore -c release --product OpenBurnBarCoreCAbi
           $bin = swift build --package-path OpenBurnBarCore -c release --show-bin-path

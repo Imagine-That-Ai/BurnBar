@@ -281,6 +281,40 @@ for abi in "${ABIS[@]}"; do
     abort "missing ${abi} native library"
 done
 
+EXPECTED_CANDIDATE_COMMIT="${OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT:-0000000000000000000000000000000000000000}"
+python3 - \
+  "${EXPECTED_CANDIDATE_COMMIT}" \
+  "${SOURCE_FINGERPRINT}" \
+  "${CRATE_DIR}/union-abi-manifest.json" \
+  "${CRATE_DIR}/Cargo.toml" \
+  "${JNI_DIR}" \
+  "${ABIS[@]}" <<'PY'
+import json
+import pathlib
+import sys
+import tomllib
+
+candidate_commit, source_sha256, manifest_path, cargo_path, jni_dir, *abis = sys.argv[1:]
+manifest = json.loads(pathlib.Path(manifest_path).read_text())
+with pathlib.Path(cargo_path).open("rb") as handle:
+    core_version = tomllib.load(handle)["workspace"]["package"]["version"]
+marker = (
+    "openburnbar-domain-core-identity-v1"
+    f"|candidateCommit={candidate_commit.lower()}"
+    f"|coreVersion={core_version}"
+    f"|abiVersion={manifest['abiVersion']}"
+    f"|sourceSha256={source_sha256}"
+).encode("ascii")
+for abi in abis:
+    library = pathlib.Path(jni_dir, abi, "libopenburnbar_domain_ffi.so")
+    count = library.read_bytes().count(marker)
+    if count != 1:
+        raise SystemExit(
+            f"{abi}: native library must contain exactly one canonical embedded identity; found {count}"
+        )
+PY
+log "verified one canonical embedded identity in every Android ABI"
+
 mkdir -p "${HELPER_DIR}/src"
 cat > "${HELPER_DIR}/Cargo.toml" <<'EOF'
 [package]

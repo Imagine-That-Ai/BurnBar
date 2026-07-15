@@ -90,6 +90,20 @@ test("requires protected rollback authorization in the exact manual matrix", () 
   assert.throws(() => verifyFunctionsDeployRun(skipped));
 });
 
+test("accepts null head_branch for tag-triggered runs (GitHub API returns null)", () => {
+  const tagPushNull = input();
+  tagPushNull.run.head_branch = null;
+  const verified = verifyFunctionsDeployRun(tagPushNull);
+  assert.equal(verified.deployRun.event, "push");
+  assert.equal(verified.deployRun.ref, `refs/tags/${TAG}`);
+});
+
+test("rejects a head_branch that is neither the tag nor null", () => {
+  const wrong = input();
+  wrong.run.head_branch = "main";
+  assert.throws(() => verifyFunctionsDeployRun(wrong));
+});
+
 test("rejects incomplete, failed, substituted, and non-exact deploy attempts", () => {
   const cases = [
     (value) => {

@@ -208,6 +208,9 @@ jobs:
           set -euo pipefail
           archive="$RUNNER_TEMP/ios-release/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
           activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
+          activation_path="$RUNNER_TEMP/ios-release/domain-core-release-activation.json"
+          jq '{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
+            <<<"$activation" > "$activation_path"
           rollback="$RUNNER_TEMP/ios-release/OpenBurnBar-${VERSION}-legacy-rollback.zip"
           rollback_profile="$RUNNER_TEMP/ios-release/domain-core-public-production-rollback.json"
           test -s "$rollback"
@@ -228,6 +231,7 @@ jobs:
               --artifact "$archive" \
               --predicate "$predicate" \
               --public-profile-sha256 "$(jq -r '.publicProfileSha256' <<<"$encoded")" \
+              --activation "$activation_path" \
               --candidate-bundle "$RUNNER_TEMP/ios-release/domain-core-candidate-bundle.json" \
               --promotion-attestation "$(jq -r '.provenancePath' <<<"$encoded")" \
               --protected-signer-run-id "$(jq -r '.signerRunId' <<<"$encoded")" \

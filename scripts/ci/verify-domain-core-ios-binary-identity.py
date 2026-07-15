@@ -23,6 +23,7 @@ IDENTITY_PATTERN = re.compile(
 IDENTITY_SYMBOL = "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1"
 FFI_IDENTITY_SYMBOLS = {
     "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+    "uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit",
     "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
     "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
 }

@@ -1697,6 +1697,7 @@ def validate_ios_app_store_receipt(
         {
             "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
             "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+            "uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit",
             "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
             "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
         }

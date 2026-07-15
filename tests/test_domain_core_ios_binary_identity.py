@@ -94,6 +94,10 @@ class IosBinaryIdentityTests(unittest.TestCase):
             self.assertEqual("arm64", result["architectures"][0])
             self.assertEqual(64, len(result["executableSha256"]))
             self.assertEqual(64, len(result["identitySectionSha256"]))
+            self.assertIn(
+                "uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit",
+                result["identitySymbols"],
+            )
 
     def test_rejects_decoy_strings_without_identity_section(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

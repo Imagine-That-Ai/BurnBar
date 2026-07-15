@@ -962,9 +962,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Resolve signed Android domain-core candidate
-        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format github-env >> "$GITHUB_ENV"
-
       - name: Install safe Android Firebase build config
         run: cp android/app/google-services.json.template android/app/google-services.json
 
@@ -1011,6 +1008,12 @@ jobs:
           DOMAIN_CORE_ARTIFACT_EXPORT_DIR: ${{ runner.temp }}/domain-core-android-rebuilt
         run: ./scripts/build-domain-core-android-aar.sh --check-artifact
 
+      - name: Resolve signed Android domain-core candidate
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format github-env >> "$GITHUB_ENV"
+
+      - name: Build candidate-bound four-ABI Android AAR
+        run: ./scripts/build-domain-core-android-aar.sh
+
       - name: Upload rebuilt Android AAR and bindings
         if: always()
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
@@ -1053,12 +1056,18 @@ jobs:
           cp "$RUNNER_TEMP/android-observed-identity.json" \
             "$RUNNER_TEMP/android-native-load.log"
 
-      - name: Freeze the observed Android AAR before broader candidate tests
-        run: >-
-          node scripts/ci/stage-domain-core-attestation-artifact.mjs
-          --artifact Vendor/openburnbar-domain-core.aar
-          --identity-report "$RUNNER_TEMP/android-observed-identity.json"
-          --output "$RUNNER_TEMP/attestation-kotlin-aar"
+      - name: Freeze the exact observed Android native library
+        run: |
+          set -euo pipefail
+          observed_library="$RUNNER_TEMP/libopenburnbar_domain_ffi-x86_64.so"
+          instrumentation_apk="android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk"
+          unzip -p "$instrumentation_apk" \
+            lib/x86_64/libopenburnbar_domain_ffi.so > "$observed_library"
+          test -s "$observed_library"
+          node scripts/ci/stage-domain-core-attestation-artifact.mjs \
+            --artifact "$observed_library" \
+            --identity-report "$RUNNER_TEMP/android-observed-identity.json" \
+            --output "$RUNNER_TEMP/attestation-kotlin-aar"
 
       - name: Run Android app domain-core consumer contracts
         working-directory: android
@@ -1090,7 +1099,7 @@ jobs:
           --artifact "kotlin-aar=$RUNNER_TEMP/attestation-kotlin-aar/artifact,$RUNNER_TEMP/attestation-kotlin-aar/observed-identity.json"
           --output "$RUNNER_TEMP/android.json"
 
-      - name: Upload Android AAR attestation input
+      - name: Upload Android loaded-library attestation input
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: domain-core-attestation-kotlin-aar-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1123,6 +1132,8 @@ jobs:
           targets: aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
       - name: Build Apple XCFramework and regenerate Swift bindings
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
         run: ./scripts/build-domain-core-xcframework.sh
 
       - name: Reject Swift binding and provenance drift

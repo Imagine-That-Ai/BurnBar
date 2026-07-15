@@ -38,13 +38,17 @@ public sealed class DomainCoreQuotaBridgeTests
 
         var identity = new
         {
-            candidateCommit = Environment.GetEnvironmentVariable("DOMAIN_CORE_CANDIDATE_COMMIT") ?? string.Empty,
+            candidateCommit = DomainCore.DomainCoreCandidateCommit(),
             coreVersion = DomainCore.DomainCoreVersion(),
             abiVersion = DomainCore.DomainCoreAbiVersion(),
             sourceSha256 = DomainCore.DomainCoreSourceFingerprint(),
             binarySha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(nativeLibraryPath))).ToLowerInvariant(),
         };
         Assert.Matches("^[0-9a-f]{40}$", identity.candidateCommit);
+        Assert.NotEqual(new string('0', 40), identity.candidateCommit);
+        Assert.Equal(
+            Environment.GetEnvironmentVariable("DOMAIN_CORE_CANDIDATE_COMMIT") ?? string.Empty,
+            identity.candidateCommit);
         Assert.False(string.IsNullOrWhiteSpace(identity.coreVersion));
         Assert.Equal(3u, identity.abiVersion);
         Assert.Matches("^[0-9a-f]{64}$", identity.sourceSha256);
