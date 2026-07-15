@@ -75,13 +75,22 @@ tag and pass the separate `domain-core-promotion` protected environment before
 the ordinary `production` deployment environment. Automatic pushes cannot
 select it.
 
-Every build embeds `domain-core-deployment-identity.json`. The live smoke reads
-that file from the canonical Console origin without following redirects and
-compares its exact commit, tag, profile digest, candidate, signer proof, and
-rollback digest with the deployed immutable artifact. Stable-tag health
-evidence hashes those verified live bytes. The release predicate uses the
-canonical per-domain public-profile digest consumed by the deletion gate; the
-identity separately retains the complete resolved profile receipt digest.
+Every build embeds `domain-core-deployment-identity.json` and a deterministic
+`domain-core-runtime-artifact-manifest.json`. The manifest hashes the deployed
+identity, selected build profile, domain-core WASM, and every JavaScript loader
+that can instantiate it. The live smoke reads both files from the canonical
+Console origin without following redirects, verifies every manifest-listed
+file byte-for-byte, and records the exact Firebase Hosting version and live
+release names for both reviewed sites (`burnbar` and `burnbar-console`). The
+release predicate uses the canonical per-domain public-profile digest consumed
+by the deletion gate; the identity separately retains the complete resolved
+profile receipt digest.
+
+Before a stable tag can deploy again, the credentialed job reads the current
+Firebase live release/version coordinates and the public runtime manifest. It
+may reuse existing evidence only when both the bytes and provider coordinates
+match the immutable receipt. Any moved live release, stale bytes, absent target,
+or receipt mismatch fails before the Hosting release mutation.
 
 After a healthy stable deployment,
 [`domain-core-console-release-evidence.yml`](../../.github/workflows/domain-core-console-release-evidence.yml)
@@ -107,6 +116,11 @@ The contracts are:
 
 - [`domain-core-release-predicate.schema.json`](../../config/domain-core-release-predicate.schema.json)
 - [`domain-core-deployment-receipt.schema.json`](../../config/domain-core-deployment-receipt.schema.json)
+
+CI compiles both contracts as Draft 2020-12 schemas with Ajv and validates
+generated positive receipts plus missing-coordinate, mixed-consumer, duplicate-
+target, and unknown-field negatives. A schema that merely parses as JSON is not
+an accepted release contract.
 
 The generator refuses to replace an existing output unless the bytes are
 identical. The release workflow must attest the artifact with the generated v2
@@ -145,11 +159,28 @@ the Functions-specific consumer boundary:
 - the exact source run bundle, candidate-matched rollback artifact, protected
   Sigstore bundle, and protected signer run and attempt pass the pre-release
   gate before `npm ci`, compilation, or Firebase deployment;
-- the generated `domainCoreCandidateReceipt.js`, selected profile bytes, and
-  v2 release-gate receipt are captured in a create-only deploy proof; and
+- the generated `domainCoreCandidateReceipt.js`, selected profile bytes,
+  deterministic runtime artifact manifest, and v2 release-gate receipt are
+  captured in a create-only deploy proof;
 - the live `healthLive` and `healthReady` endpoints must serve the exact source
   commit, release version, candidate tuple, profile name, pricing mode, and
-  production Sentry state before deploy-health evidence can be written.
+  production Sentry state before deploy-health evidence can be written; and
+- both endpoints report the intrinsic core identity, SHA-256 of the actual
+  loaded WASM bytes, runtime-manifest digest, and Cloud Run service/revision.
+
+The protected target inventory is
+[`domain-core-functions-relevant-targets.json`](../../config/domain-core-functions-relevant-targets.json).
+After deploy, every listed Function must be `ACTIVE`, carry the exact tag,
+commit, and runtime-manifest environment, and resolve to one immutable provider
+source object. Evidence records each Function, build, service, and revision.
+Missing, extra, duplicate, or mixed old/new targets fail closed.
+
+A stable-tag replay authenticates only for provider readback, queries every
+protected Function, and compares the current source/build/service/revision set
+and health-served bytes to the existing receipt. Byte-identical code on a new
+revision is not reusable evidence. The replay becomes a no-op only when both
+artifact and provider coordinates are unchanged; otherwise it fails before
+Sentry or Firebase deployment mutation.
 
 After that gate succeeds, the deploy workflow dispatches
 [`domain-core-functions-release-evidence.yml`](../../.github/workflows/domain-core-functions-release-evidence.yml)

@@ -26,6 +26,37 @@ const inventory = readFileSync(
   new URL("../../docs/SHARED_RUST_DOMAIN_INVENTORY.md", import.meta.url),
   "utf8",
 );
+const functionsDeploy = readFileSync(
+  new URL("../../.github/workflows/deploy-production.yml", import.meta.url),
+  "utf8",
+);
+const hostingDeploy = readFileSync(
+  new URL("../../.github/workflows/deploy-hosting.yml", import.meta.url),
+  "utf8",
+);
+const functionsTargets = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../config/domain-core-functions-relevant-targets.json",
+      import.meta.url,
+    ),
+  ),
+);
+const functionsIndex = readFileSync(
+  new URL("../../functions/src/index.ts", import.meta.url),
+  "utf8",
+);
+const functionsPricing = [
+  "health.ts",
+  "insightsHostedAnswer.ts",
+  "rollupCounters.ts",
+  "rollups.ts",
+  "triggers.ts",
+  "scheduled.ts",
+  "callables/misc.ts",
+].map((path) =>
+  readFileSync(new URL(`../../functions/src/${path}`, import.meta.url), "utf8"),
+);
 
 test("deterministic workflow implements every exact policy job and a fail-closed final bundle", () => {
   for (const id of policy.workflow.requiredJobIds) {
@@ -122,4 +153,78 @@ test("rollback proof publishes the dedicated signed legacy artifact and stable r
   assert.equal(policy.rollbackRequired, true);
   assert.equal(policy.oneStableReleaseBeforeDeletion, true);
   assert.equal(policy.stableReleaseRollbackArtifactRequired, true);
+});
+
+test("stable tag replay is byte-and-provider-identical before any production mutation", () => {
+  const functionsReplay = functionsDeploy.indexOf(
+    "Refuse non-identical stable-tag redeploy",
+  );
+  assert.ok(functionsReplay > 0);
+  assert.ok(
+    functionsReplay < functionsDeploy.indexOf("Sentry release (Functions)"),
+  );
+  assert.ok(
+    functionsReplay < functionsDeploy.indexOf("Deploy Cloud Functions"),
+  );
+  assert.match(functionsDeploy, /gcloud functions describe "\$target"/u);
+  assert.match(
+    functionsDeploy,
+    /--provider-coordinates "\$RUNNER_TEMP\/existing-functions-provider-coordinates\.json"/u,
+  );
+  assert.match(
+    functionsDeploy,
+    /--inventory config\/domain-core-functions-relevant-targets\.json/u,
+  );
+  assert.match(
+    functionsDeploy,
+    /already live but its immutable Functions deployment receipt is missing/u,
+  );
+
+  const hostingReplay = hostingDeploy.indexOf(
+    "Refuse non-identical stable-tag redeploy",
+  );
+  assert.ok(
+    hostingReplay > hostingDeploy.indexOf("Authenticate to Google Cloud"),
+  );
+  assert.ok(
+    hostingReplay <
+      hostingDeploy.indexOf("Deploy Hosting (marketing + console)"),
+  );
+  assert.match(
+    hostingDeploy,
+    /firebasehosting\.googleapis\.com\/v1beta1\/sites\/\$\{site\}\/channels\/live\/releases\?pageSize=1/u,
+  );
+  assert.match(
+    hostingDeploy,
+    /--provider-coordinates "\$RUNNER_TEMP\/existing-hosting-provider-coordinates\.json"/u,
+  );
+  assert.match(
+    hostingDeploy,
+    /already live but its immutable Console deployment receipt is missing/u,
+  );
+});
+
+test("protected Functions inventory covers every pricing execution entry and both runtime observers", () => {
+  assert.deepEqual(functionsTargets, {
+    schemaVersion: 1,
+    targets: [
+      "healthCheck",
+      "healthLive",
+      "healthReady",
+      "insightsHostedAnswer",
+      "onUsageWritten",
+      "rebuildRollups",
+      "rollupUserRebuild",
+      "rebuildUsageRollups",
+    ],
+  });
+  for (const target of functionsTargets.targets) {
+    assert.match(functionsIndex, new RegExp(`\\b${target}\\b`, "u"), target);
+  }
+  const combined = functionsPricing.join("\n");
+  assert.match(combined, /loadedDomainCorePricingIdentity/u);
+  assert.match(combined, /from "\.\/pricing\.js"/u);
+  assert.match(combined, /from "\.\/domainCorePricing\.js"/u);
+  assert.match(combined, /from "\.\/rollups\.js"/u);
+  assert.match(combined, /from "\.\.\/rollups\.js"/u);
 });

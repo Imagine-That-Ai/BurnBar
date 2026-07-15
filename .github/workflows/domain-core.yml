@@ -113,6 +113,8 @@ on:
       - "scripts/ci/publish-domain-core-release-evidence*"
       - "scripts/ci/post-deploy-health-gate*"
       - "scripts/ci/create-domain-core-deployment-identity*"
+      - "scripts/ci/create-domain-core-runtime-artifact-manifest*"
+      - "scripts/ci/verify-existing-domain-core-deployment*"
       - "scripts/ci/verify-domain-core-console-deploy-evidence*"
       - "scripts/ci/hosting-smoke-domain-core.test.sh"
       - "scripts/ci/hosting-smoke.sh"
@@ -126,9 +128,11 @@ on:
       - "config/domain-core-android-ndk-version.txt"
       - "config/domain-core-promotion-policy.json"
       - "config/domain-core-build-profiles.json"
+      - "config/domain-core-functions-relevant-targets.json"
       - "config/domain-core-release-predicate.schema.json"
       - "config/domain-core-deployment-receipt.schema.json"
       - "firebase.json"
+      - ".firebaserc"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
       - "docs/runbooks/shared-rust-build-profiles.md"
@@ -249,6 +253,8 @@ on:
       - "scripts/ci/publish-domain-core-release-evidence*"
       - "scripts/ci/post-deploy-health-gate*"
       - "scripts/ci/create-domain-core-deployment-identity*"
+      - "scripts/ci/create-domain-core-runtime-artifact-manifest*"
+      - "scripts/ci/verify-existing-domain-core-deployment*"
       - "scripts/ci/verify-domain-core-console-deploy-evidence*"
       - "scripts/ci/hosting-smoke-domain-core.test.sh"
       - "scripts/ci/hosting-smoke.sh"
@@ -262,9 +268,11 @@ on:
       - "config/domain-core-android-ndk-version.txt"
       - "config/domain-core-promotion-policy.json"
       - "config/domain-core-build-profiles.json"
+      - "config/domain-core-functions-relevant-targets.json"
       - "config/domain-core-release-predicate.schema.json"
       - "config/domain-core-deployment-receipt.schema.json"
       - "firebase.json"
+      - ".firebaserc"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
       - "docs/runbooks/shared-rust-build-profiles.md"
@@ -307,6 +315,9 @@ jobs:
             scripts/ci/verify-domain-core-workflows.test.mjs \
             scripts/ci/create-domain-core-functions-deploy-proof.test.mjs \
             scripts/ci/create-domain-core-functions-deployment-evidence.test.mjs \
+            scripts/ci/create-domain-core-functions-provider-coordinates.test.mjs \
+            scripts/ci/create-domain-core-runtime-artifact-manifest.test.mjs \
+            scripts/ci/verify-existing-domain-core-deployment.test.mjs \
             scripts/ci/verify-domain-core-functions-deploy-run.test.mjs \
             scripts/ci/create-domain-core-deployment-identity.test.mjs \
             scripts/ci/verify-domain-core-console-deploy-evidence.test.mjs \
@@ -1213,6 +1224,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/console-consumer-contracts.log"
           npm run typecheck
           npm run lint
+          node --test ../../scripts/ci/domain-core-release-schema-validation.test.mjs
 
       - name: Emit Console consumer proof fragment
         run: >-

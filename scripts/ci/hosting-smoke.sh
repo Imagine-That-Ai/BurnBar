@@ -6,7 +6,8 @@ set -euo pipefail
 RETRIES="${HOSTING_SMOKE_RETRIES:-8}"
 SLEEP_SEC="${HOSTING_SMOKE_SLEEP_SEC:-10}"
 DEPLOYMENT_IDENTITY_FILE=""
-trap '[[ -z "$DEPLOYMENT_IDENTITY_FILE" ]] || rm -f "$DEPLOYMENT_IDENTITY_FILE"' EXIT
+RUNTIME_MANIFEST_FILE=""
+trap '[[ -z "$DEPLOYMENT_IDENTITY_FILE" ]] || rm -f "$DEPLOYMENT_IDENTITY_FILE"; [[ -z "$RUNTIME_MANIFEST_FILE" ]] || rm -f "$RUNTIME_MANIFEST_FILE"' EXIT
 
 check_target() {
   local label="$1"
@@ -83,6 +84,46 @@ check_console_deployment_identity() {
   return 1
 }
 
+check_console_runtime_artifact() {
+  local base_url="$1"
+  local expected_manifest="$2"
+  local live_manifest manifest_files http_code
+  live_manifest="$(mktemp)"
+  manifest_files="$(mktemp)"
+  trap 'rm -f "$live_manifest" "$manifest_files"' RETURN
+  http_code="$(curl -sS -o "$live_manifest" -w "%{http_code}" "$base_url/domain-core-runtime-artifact-manifest.json" 2>/dev/null || echo "000")"
+  [[ "$http_code" == "200" ]] || { echo "FAIL: Console runtime manifest returned HTTP $http_code" >&2; return 1; }
+  cmp "$expected_manifest" "$live_manifest" \
+    || { echo "FAIL: live Console runtime manifest differs from deployed immutable artifact" >&2; return 1; }
+  if ! node - "$live_manifest" > "$manifest_files" <<'NODE'
+const fs = require("fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+if (manifest.schemaVersion !== 1 || manifest.manifestKind !== "domain-core-runtime-artifact" || manifest.consumer !== "console") throw new Error("invalid Console runtime manifest");
+if (!Array.isArray(manifest.files) || manifest.files.length < 4) throw new Error("incomplete Console runtime manifest");
+for (const file of manifest.files) {
+  if (typeof file.path !== "string" || file.path.startsWith("/") || file.path.split("/").some((part) => !part || part === "." || part === "..") || !/^[0-9a-f]{64}$/.test(file.sha256)) throw new Error("unsafe Console runtime manifest file");
+  process.stdout.write(`${file.path}\t${file.sha256}\n`);
+}
+NODE
+  then
+    echo "FAIL: invalid Console runtime manifest" >&2
+    return 1
+  fi
+  while IFS=$'\t' read -r path expected_sha; do
+    local body actual_sha
+    body="$(mktemp)"
+    http_code="$(curl -sS -o "$body" -w "%{http_code}" "$base_url/$path" 2>/dev/null || echo "000")"
+    [[ "$http_code" == "200" ]] || { rm -f "$body"; echo "FAIL: Console runtime file $path returned HTTP $http_code" >&2; return 1; }
+    actual_sha="$(sha256sum "$body" | cut -d' ' -f1)"
+    rm -f "$body"
+    [[ "$actual_sha" == "$expected_sha" ]] \
+      || { echo "FAIL: live Console runtime file $path differs from manifest" >&2; return 1; }
+  done < "$manifest_files"
+  RUNTIME_MANIFEST_FILE="$(mktemp)"
+  cp "$live_manifest" "$RUNTIME_MANIFEST_FILE"
+  echo "OK Console runtime manifest and every domain-core WASM/JS byte"
+}
+
 check_target "marketing" "${OPENBURNBAR_MARKETING_URL:-https://burnbar.ai/}" "${OPENBURNBAR_MARKETING_MARKER:-BurnBar}"
 check_target "console" "${OPENBURNBAR_CONSOLE_URL:-https://app.burnbar.ai/}" "${OPENBURNBAR_CONSOLE_MARKER:-BurnBar}"
 if [[ -n "${HOSTING_SMOKE_EXPECTED_COMMIT:-}" ]]; then
@@ -96,6 +137,13 @@ if [[ -n "${HOSTING_SMOKE_EXPECTED_COMMIT:-}" ]]; then
     "${HOSTING_SMOKE_EXPECTED_TAG:-}" \
     "$HOSTING_SMOKE_PROFILE_RECEIPT" \
     "${HOSTING_SMOKE_RELEASE_GATE:-}"
+  if [[ -z "${HOSTING_SMOKE_RUNTIME_MANIFEST:-}" ]]; then
+    echo "FAIL: exact Console identity verification requires HOSTING_SMOKE_RUNTIME_MANIFEST" >&2
+    exit 1
+  fi
+  check_console_runtime_artifact \
+    "${OPENBURNBAR_CONSOLE_URL:-https://app.burnbar.ai}" \
+    "$HOSTING_SMOKE_RUNTIME_MANIFEST"
 fi
 
 # Feed enforcement knob (OPENBURNBAR_REQUIRE_DOWNLOAD_FEED):
@@ -173,15 +221,17 @@ if [[ -n "$update_base_url" ]]; then
 fi
 
 if [[ -n "${CONSOLE_DEPLOY_HEALTH_JSON:-}" ]]; then
-  if [[ -z "${HOSTING_SMOKE_EXPECTED_TAG:-}" || -z "$DEPLOYMENT_IDENTITY_FILE" ]]; then
-    echo "FAIL: Console release health evidence requires an exact stable tag and verified live identity" >&2
+  if [[ -z "${HOSTING_SMOKE_EXPECTED_TAG:-}" || -z "$DEPLOYMENT_IDENTITY_FILE" || -z "$RUNTIME_MANIFEST_FILE" || -z "${HOSTING_DEPLOY_COORDINATES_JSON:-}" ]]; then
+    echo "FAIL: Console release health evidence requires an exact stable tag, verified runtime manifest, and provider coordinates" >&2
     exit 1
   fi
-  node - "$DEPLOYMENT_IDENTITY_FILE" "$CONSOLE_DEPLOY_HEALTH_JSON" <<'NODE'
+  node - "$RUNTIME_MANIFEST_FILE" "$CONSOLE_DEPLOY_HEALTH_JSON" "$HOSTING_DEPLOY_COORDINATES_JSON" <<'NODE'
 const crypto = require("crypto");
 const fs = require("fs");
-const [identityPath, outputPath] = process.argv.slice(2);
-const bytes = fs.readFileSync(identityPath);
+const [manifestPath, outputPath, coordinatesJson] = process.argv.slice(2);
+const bytes = fs.readFileSync(manifestPath);
+const coordinates = JSON.parse(coordinatesJson);
+if (coordinates.schemaVersion !== 1 || coordinates.project !== "burnbar" || !Array.isArray(coordinates.sites) || coordinates.sites.length !== 2) throw new Error("invalid Hosting provider coordinates");
 const evidence = {
   provider: "firebase-hosting",
   project: "burnbar",
@@ -191,11 +241,14 @@ const evidence = {
     "marketing-http-200-csp",
     "console-http-200-csp",
     "console-deployment-identity-no-redirect",
+    "console-runtime-manifest-no-redirect",
+    "console-runtime-files-sha256",
   ],
   deployedArtifact: {
-    fileName: "domain-core-deployment-identity.json",
+    fileName: "domain-core-runtime-artifact-manifest.json",
     sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
   },
+  providerCoordinates: { sites: coordinates.sites.map(({ target, site, versionName, releaseName }) => ({ target, site, versionName, releaseName })) },
 };
 fs.writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { flag: "wx", mode: 0o600 });
 NODE

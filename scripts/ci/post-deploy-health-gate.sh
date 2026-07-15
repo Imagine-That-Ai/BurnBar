@@ -156,6 +156,8 @@ domain_core_values=(
   "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_ABI_VERSION:-}"
   "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_SOURCE_SHA256:-}"
   "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_PRICING_MODE:-}"
+  "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_RUNTIME_MANIFEST_SHA256:-}"
+  "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_WASM_SHA256:-}"
 )
 domain_core_present=0
 for value in "${domain_core_values[@]}"; do
@@ -174,20 +176,18 @@ if [[ "$domain_core_present" -ne 0 ]]; then
     "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_VERSION}" \
     "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_ABI_VERSION}" \
     "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_SOURCE_SHA256}" \
-    "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_PRICING_MODE}" <<'PY'
+    "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_PRICING_MODE}" \
+    "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_RUNTIME_MANIFEST_SHA256}" \
+    "${HEALTH_GATE_EXPECTED_DOMAIN_CORE_WASM_SHA256}" <<'PY'
 import json
 import sys
 
-live_path, ready_path, profile, candidate, version, abi, source_sha, pricing = sys.argv[1:]
-expected = {
-    "profile": profile,
-    "candidateIdentity": {
+live_path, ready_path, profile, candidate, version, abi, source_sha, pricing, manifest_sha, wasm_sha = sys.argv[1:]
+expected_candidate = {
         "candidateCommit": candidate,
         "coreVersion": version,
         "abiVersion": int(abi),
         "sourceSha256": source_sha,
-    },
-    "pricingMode": pricing,
 }
 for label, path in (("healthLive", live_path), ("healthReady", ready_path)):
     try:
@@ -195,8 +195,29 @@ for label, path in (("healthLive", live_path), ("healthReady", ready_path)):
             document = json.load(handle)
     except (OSError, json.JSONDecodeError) as error:
         raise SystemExit(f"FAIL: {label} domain-core identity is unreadable: {error}")
-    if document.get("domainCore") != expected:
-        raise SystemExit(f"FAIL: {label} does not serve the exact domain-core profile: {document.get('domainCore')!r}")
+    domain_core = document.get("domainCore")
+    if not isinstance(domain_core, dict):
+        raise SystemExit(f"FAIL: {label} omits domain-core runtime identity")
+    expected_loaded = {
+        "version": version,
+        "abiVersion": int(abi),
+        "sourceSha256": source_sha,
+        "wasmSha256": wasm_sha,
+    }
+    expected_manifest = {
+        "fileName": "domain-core-runtime-artifact-manifest.json",
+        "sha256": manifest_sha,
+    }
+    if (domain_core.get("profile") != profile
+            or domain_core.get("candidateIdentity") != expected_candidate
+            or domain_core.get("pricingMode") != pricing
+            or domain_core.get("loadedCore") != expected_loaded
+            or domain_core.get("artifactManifest") != expected_manifest):
+        raise SystemExit(f"FAIL: {label} does not serve the exact loaded domain-core artifact: {domain_core!r}")
+    runtime = domain_core.get("runtime")
+    required = ("service", "revision", "configuration", "functionTarget")
+    if not isinstance(runtime, dict) or any(not isinstance(runtime.get(key), str) or not runtime[key] for key in required):
+        raise SystemExit(f"FAIL: {label} omits immutable Functions runtime coordinates: {runtime!r}")
 PY
   echo "OK exact deployed domain-core profile (${HEALTH_GATE_EXPECTED_DOMAIN_CORE_PROFILE}, pricing=${HEALTH_GATE_EXPECTED_DOMAIN_CORE_PRICING_MODE})"
 fi

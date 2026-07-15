@@ -184,6 +184,7 @@ jobs:
           node scripts/ci/create-domain-core-functions-deploy-proof.mjs \
             --profile "$proof_dir/domain-core-functions-profile.json" \
             --compiled-receipt "$proof_dir/domainCoreCandidateReceipt.js" \
+            --runtime-manifest "$proof_dir/domain-core-runtime-artifact-manifest.json" \
             --release-gate "$proof_dir/domain-core-release-gate.json" \
             --tag "$RELEASE_TAG" \
             --commit "$GITHUB_SHA" \
@@ -198,6 +199,8 @@ jobs:
             --deploy-proof "$RUNNER_TEMP/functions-deploy-proof/domain-core-functions-deploy-proof.json" \
             --health-artifact "$RUNNER_TEMP/functions-deploy-health/deploy-health.json" \
             --deploy-run-verification "$RUNNER_TEMP/functions-deploy-run-verification.json" \
+            --provider-coordinates "$RUNNER_TEMP/functions-deploy-proof/domain-core-functions-provider-coordinates.json" \
+            --inventory config/domain-core-functions-relevant-targets.json \
             --output "$RUNNER_TEMP/functions-deployment-evidence.json"
 
       - name: Create candidate-bound v2 Functions receipt and predicate
