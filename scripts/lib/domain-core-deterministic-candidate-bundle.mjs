@@ -45,6 +45,7 @@ const POLICY_KEYS = new Set([
   "rollbackRequired",
   "rollback",
   "oneStableReleaseBeforeDeletion",
+  "stableReleaseRollbackArtifactRequired",
   "domains",
 ]);
 const POLICY_WORKFLOW_KEYS = new Set([
@@ -478,6 +479,9 @@ export function validateDeterministicPromotionPolicy(policy) {
   }
   if (policy.oneStableReleaseBeforeDeletion !== true) {
     errors.push("policy.oneStableReleaseBeforeDeletion must be true");
+  }
+  if (policy.stableReleaseRollbackArtifactRequired !== true) {
+    errors.push("policy.stableReleaseRollbackArtifactRequired must be true");
   }
 
   const expectedDomains = ["quota", "cloudvault", "hermes", "pricing"];
@@ -936,6 +940,8 @@ export function evaluateUnsignedDeterministicCandidateBundle(
     workflowRunId: bundle.workflow.runId,
     coverageCellCount: bundle.coverage.length,
     stableReleaseRequiredBeforeDeletion: policy.oneStableReleaseBeforeDeletion,
+    stableReleaseRollbackArtifactRequiredBeforeDeletion:
+      policy.stableReleaseRollbackArtifactRequired,
   };
 }
 

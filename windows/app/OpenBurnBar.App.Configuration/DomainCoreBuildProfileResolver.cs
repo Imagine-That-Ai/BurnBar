@@ -92,6 +92,7 @@ public static class DomainCoreBuildProfileResolver
         var valid = (name, distribution) switch
         {
             ("public-production", "public") => !evidence && channel is null && !modes.Values.Contains("shadow"),
+            ("public-production-rollback", "public") => !evidence && channel is null && modes.Values.All(mode => mode == "legacy"),
             ("internal", "internal") or ("beta", "beta") => evidence && channel == distribution && modes["quota"] == "shadow",
             _ => false,
         };

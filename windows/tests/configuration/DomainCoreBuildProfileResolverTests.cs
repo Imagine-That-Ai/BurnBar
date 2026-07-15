@@ -43,6 +43,20 @@ public sealed class DomainCoreBuildProfileResolverTests
         Assert.All(profile.Modes.Values, mode => Assert.Equal("legacy", mode));
     }
 
+    [Fact]
+    public void Signed_rollback_profile_permanently_selects_legacy_across_every_domain()
+    {
+        var metadata = Signed("public-production-rollback", "public", "", false, "legacy");
+        var profile = DomainCoreBuildProfileResolver.Resolve(metadata, _ => "rust");
+
+        Assert.True(profile.IsValid);
+        Assert.Equal("public-production-rollback", profile.Name);
+        Assert.All(profile.Modes.Values, mode => Assert.Equal("legacy", mode));
+
+        metadata["OpenBurnBar.DomainCore.Mode.pricing"] = "rust";
+        Assert.False(DomainCoreBuildProfileResolver.Resolve(metadata, _ => "legacy").IsValid);
+    }
+
     [Theory]
     [InlineData("internal")]
     [InlineData("beta")]
@@ -95,12 +109,13 @@ public sealed class DomainCoreBuildProfileResolverTests
     [InlineData("OpenBurnBar.DomainCore.ExpectedSourceSha256", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
     public void Every_signed_profile_rejects_a_missing_or_malformed_candidate_field(string key, string value)
     {
-        foreach (var profileName in new[] { "public-production", "internal", "beta" })
+        foreach (var profileName in new[] { "public-production", "public-production-rollback", "internal", "beta" })
         {
-            var distribution = profileName == "public-production" ? "public" : profileName;
-            var channel = profileName == "public-production" ? "" : profileName;
-            var evidence = profileName != "public-production";
-            var mode = profileName == "public-production" ? "legacy" : "shadow";
+            var isPublic = profileName.StartsWith("public-production", StringComparison.Ordinal);
+            var distribution = isPublic ? "public" : profileName;
+            var channel = isPublic ? "" : profileName;
+            var evidence = !isPublic;
+            var mode = isPublic ? "legacy" : "shadow";
             var metadata = Signed(profileName, distribution, channel, evidence, mode);
             metadata[key] = value;
 

@@ -41,10 +41,13 @@ test("protected signer has no user-supplied evidence surface and revalidates tru
   assert.equal(policy.protectedAttestationRequired, true);
 });
 
-test("rollback proof exercises the signed legacy artifact and stable release remains mandatory", () => {
+test("rollback proof publishes the dedicated signed legacy artifact and stable release retains it", () => {
   assert.match(core, /verify-domain-core-rollback\.mjs/u);
-  assert.match(core, /domain-core-legacy-rollback\.json/u);
-  assert.match(core, /Exercise the actual Console legacy fallback control/u);
+  assert.match(core, /--profile public-production-rollback/u);
+  assert.match(core, /domain-core-public-production-rollback\.json/u);
+  assert.match(core, /Exercise the actual Console signed rollback selector/u);
+  assert.match(core, /retention-days: 90/u);
   assert.equal(policy.rollbackRequired, true);
   assert.equal(policy.oneStableReleaseBeforeDeletion, true);
+  assert.equal(policy.stableReleaseRollbackArtifactRequired, true);
 });
