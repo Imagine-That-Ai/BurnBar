@@ -108,6 +108,12 @@ jobs:
 
             git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
 
+            git fetch --force --tags origin
+            if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+              echo "::error::Future tag ${TAG} already exists. Dry-run validates a candidate BEFORE the tag is created."
+              exit 1
+            fi
+
             if ! git cat-file -e "$INPUT_CANDIDATE_SHA^{commit}" 2>/dev/null; then
               git fetch --force origin "$INPUT_CANDIDATE_SHA"
             fi
@@ -212,7 +218,7 @@ jobs:
           REQUIRE_HIGH_RISK_NONCE: ${{ secrets.REQUIRE_HIGH_RISK_NONCE }}
 
       - name: Sentry release (Functions)
-        if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
+        if: env.HAS_SENTRY_AUTH_TOKEN == 'true' && steps.tag.outputs.dry_run != 'true'
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}

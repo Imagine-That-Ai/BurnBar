@@ -390,6 +390,44 @@ expect(
   1,
 );
 
+/* ── Sentry gating mutation ── */
+expect(
+  "production: Sentry without dry_run gate fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        "        if: env.HAS_SENTRY_AUTH_TOKEN == 'true' && steps.tag.outputs.dry_run != 'true'",
+        "        if: env.HAS_SENTRY_AUTH_TOKEN == 'true'",
+      ),
+    ),
+  1,
+);
+
+/* ── Tag-existence check mutations ── */
+expect(
+  "production: dry-run without tag-existence check fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        '            git fetch --force --tags origin\n            if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then\n              echo "::error::Future tag ${TAG} already exists. Dry-run validates a candidate BEFORE the tag is created."\n              exit 1\n            fi\n',
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: dry-run without tag-existence check fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace(
+        '            git fetch --force --tags origin\n            if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then\n              echo "::error::Future tag ${TAG} already exists. Dry-run validates a candidate BEFORE the tag is created."\n              exit 1\n            fi\n',
+        "",
+      ),
+    ),
+  1,
+);
+
 if (failed > 0) {
   console.error(`\nFAIL: ${failed} release-tag-safety self-test case(s) failed.`);
   process.exit(1);
