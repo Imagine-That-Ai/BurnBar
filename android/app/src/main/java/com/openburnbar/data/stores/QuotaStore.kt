@@ -12,6 +12,7 @@ import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.isExplicitlyStale
 import com.openburnbar.data.models.isStale
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,10 +27,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 private const val AUTO_REFRESH_PERIOD_MINUTES = 15
 private const val SECONDS_PER_MINUTE = 60
+private const val CONNECT_TIMEOUT_SECONDS = 15L
+private const val READ_TIMEOUT_SECONDS = 30L
 
 class QuotaStore(
     application: Application,
@@ -290,8 +292,8 @@ class QuotaStore(
 
     companion object {
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
     }
 }
