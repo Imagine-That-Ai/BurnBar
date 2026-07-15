@@ -44,6 +44,35 @@ html.pet-companion-window body {
     box-shadow var(--motion-ease-standard);
 }
 
+/* Wayland-safe contained substitute: the route owns the movement, so the
+ * companion never attempts desktop-level positioning or pointer injection. */
+.pet-stage-viewport {
+  width: 100%;
+  min-height: inherit;
+  display: grid;
+  place-items: center;
+  transform: translate(var(--pet-contained-offset-x, 0px), var(--pet-contained-offset-y, 0px));
+  transition: transform var(--motion-ease-standard);
+}
+
+.pet-stage[data-contained-fallback='true'] {
+  cursor: grab;
+  touch-action: none;
+}
+
+.pet-stage[data-contained-fallback='true']:active {
+  cursor: grabbing;
+}
+
+.pet-stage[data-contained-fallback='true']:focus-visible {
+  outline: 2px solid var(--color-mercury-bright);
+  outline-offset: 3px;
+}
+
+body.reduced-motion .pet-stage-viewport {
+  transition: none;
+}
+
 .pet-stage[data-pet-runtime='loaded'] {
   border-style: solid;
 }

@@ -102,6 +102,42 @@ describe('PetSurface', () => {
     expect(screen.getByText(/companion-window contract is not wired/i)).toBeTruthy();
   });
 
+  it('offers keyboard repositioning for the contained Wayland-safe fallback', async () => {
+    render(<PetSurface />);
+    const stage = await screen.findByRole('img', {
+      name: /pet companion contained preview/i
+    });
+
+    expect(stage.getAttribute('tabindex')).toBe('0');
+    expect(stage.getAttribute('aria-describedby')).toBe('pet-contained-move-help');
+    expect(stage.getAttribute('data-contained-offset')).toBe('0,0');
+
+    fireEvent.keyDown(stage, { key: 'ArrowRight' });
+    expect(stage.getAttribute('data-contained-offset')).toBe('16,0');
+    expect(document.querySelector('.pet-action-status')?.textContent).toMatch(/keyboard/i);
+
+    fireEvent.keyDown(stage, { key: 'ArrowDown', shiftKey: true });
+    expect(stage.getAttribute('data-contained-offset')).toBe('16,48');
+
+    fireEvent.keyDown(stage, { key: 'Home' });
+    expect(stage.getAttribute('data-contained-offset')).toBe('0,0');
+  });
+
+  it('moves the contained preview with bounded pointer drag without enabling desktop input', async () => {
+    render(<PetSurface />);
+    const stage = await screen.findByRole('img', {
+      name: /pet companion contained preview/i
+    });
+
+    fireEvent.mouseDown(stage, { button: 0, clientX: 10, clientY: 20 });
+    fireEvent.mouseMove(stage, { clientX: 200, clientY: 160 });
+    fireEvent.mouseUp(stage, { clientX: 200, clientY: 160 });
+
+    expect(stage.getAttribute('data-contained-offset')).toBe('96,64');
+    expect(stage.getAttribute('data-input-passthrough')).toBe('false');
+    expect(document.querySelector('.pet-action-status')?.textContent).toMatch(/pointer drag/i);
+  });
+
   it('summons and focuses the native companion only for an available X11 contract', async () => {
     const runtimeCapabilities = makeAvailableRuntimeCapabilityManifest();
     const status = {

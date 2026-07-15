@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent
+} from 'react';
 import { prefersReducedMotion } from '../a11y.js';
 import { buildPetBehaviorGraph } from '../petBehaviorGraph.js';
 import {
@@ -20,6 +28,33 @@ import './pet/pet.css';
 
 const PET_ASSET_URL = '/pets/kawaii-aurora-fox-actions.glb';
 
+type ContainedPetOffset = {
+  x: number;
+  y: number;
+};
+
+type ContainedPetDrag = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  origin: ContainedPetOffset;
+  last: ContainedPetOffset;
+};
+
+const CONTAINED_PET_OFFSET_LIMIT = { x: 96, y: 64 } as const;
+const CONTAINED_PET_KEY_STEP = 16;
+
+function clampContainedPetOffset(offset: ContainedPetOffset): ContainedPetOffset {
+  return {
+    x: Math.max(-CONTAINED_PET_OFFSET_LIMIT.x, Math.min(CONTAINED_PET_OFFSET_LIMIT.x, offset.x)),
+    y: Math.max(-CONTAINED_PET_OFFSET_LIMIT.y, Math.min(CONTAINED_PET_OFFSET_LIMIT.y, offset.y))
+  };
+}
+
+function containedPetOffsetLabel(offset: ContainedPetOffset): string {
+  return `${offset.x},${offset.y}`;
+}
+
 /**
  * Pet companion surface. The GLB runtime mounts imperatively into the route
  * preview; the native runtime capability manifest decides whether an overlay
@@ -29,6 +64,8 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
   const runtimeCapabilities = useShellStore((s) => s.runtimeCapabilities);
   const bridge = useShellStore((s) => s.bridge);
   const stageRef = useRef<HTMLDivElement>(null);
+  const runtimeHostRef = useRef<HTMLDivElement>(null);
+  const containedPetDragRef = useRef<ContainedPetDrag | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [runtimeState, setRuntimeState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [capability, setCapability] = useState<PetCapabilityProbe>(() => probePetCapability(null));
@@ -38,7 +75,9 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
   const [containedPetSummoned, setContainedPetSummoned] = useState(false);
   const [containedPetSelected, setContainedPetSelected] = useState(false);
   const [containedActionStatus, setContainedActionStatus] = useState<string | null>(null);
+  const [containedPetOffset, setContainedPetOffset] = useState<ContainedPetOffset>({ x: 0, y: 0 });
   const graph = buildPetBehaviorGraph(capability.tier);
+  const containedFallback = !capability.actions.overlay.supported;
 
   useEffect(() => {
     setCapability(probePetCapability(runtimeCapabilities, petNativeContractFromStatus(nativeStatus)));
@@ -63,12 +102,12 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
   }, [bridge]);
 
   useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
+    const host = runtimeHostRef.current;
+    if (!host) return;
     let cancelled = false;
     setRuntimeState('loading');
     setRuntimeError(null);
-    void mountPetGltfRuntime(stage, PET_ASSET_URL)
+    void mountPetGltfRuntime(host, PET_ASSET_URL)
       .then(() => {
         if (cancelled) return;
         setRuntimeState('loaded');
@@ -82,6 +121,122 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
       cancelled = true;
       stopPetGltfRuntime();
     };
+  }, []);
+
+  const moveContainedPet = useCallback((offset: ContainedPetOffset, source: 'keyboard' | 'pointer') => {
+    const next = clampContainedPetOffset(offset);
+    setContainedPetOffset(next);
+    setContainedActionStatus(
+      `Contained preview moved ${source === 'keyboard' ? 'with the keyboard' : 'with pointer drag'} ` +
+        `(${containedPetOffsetLabel(next)}). Press Home to reset.`
+    );
+  }, []);
+
+  const handleContainedKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (!containedFallback) return;
+      const step = event.shiftKey ? CONTAINED_PET_KEY_STEP * 3 : CONTAINED_PET_KEY_STEP;
+      let delta: ContainedPetOffset | null = null;
+      if (event.key === 'ArrowLeft') delta = { x: -step, y: 0 };
+      if (event.key === 'ArrowRight') delta = { x: step, y: 0 };
+      if (event.key === 'ArrowUp') delta = { x: 0, y: -step };
+      if (event.key === 'ArrowDown') delta = { x: 0, y: step };
+      if (event.key === 'Home') {
+        event.preventDefault();
+        moveContainedPet({ x: 0, y: 0 }, 'keyboard');
+        return;
+      }
+      if (!delta) return;
+      event.preventDefault();
+      moveContainedPet(
+        { x: containedPetOffset.x + delta.x, y: containedPetOffset.y + delta.y },
+        'keyboard'
+      );
+    },
+    [containedFallback, containedPetOffset, moveContainedPet]
+  );
+
+  const handleContainedPointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!containedFallback || event.button !== 0) return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      containedPetDragRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        origin: containedPetOffset,
+        last: containedPetOffset
+      };
+    },
+    [containedFallback, containedPetOffset]
+  );
+
+  // WebViews without PointerEvent support (and assistive technology test
+  // harnesses) still get the same bounded interaction through mouse events.
+  // A pointer drag wins when both event families are emitted by the browser.
+  const handleContainedMouseDown = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (!containedFallback || event.button !== 0 || containedPetDragRef.current) return;
+      event.preventDefault();
+      containedPetDragRef.current = {
+        pointerId: -1,
+        startX: event.clientX,
+        startY: event.clientY,
+        origin: containedPetOffset,
+        last: containedPetOffset
+      };
+    },
+    [containedFallback, containedPetOffset]
+  );
+
+  const handleContainedPointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const drag = containedPetDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const next = clampContainedPetOffset({
+        x: drag.origin.x + event.clientX - drag.startX,
+        y: drag.origin.y + event.clientY - drag.startY
+      });
+      drag.last = next;
+      setContainedPetOffset(next);
+    },
+    []
+  );
+
+  const handleContainedMouseMove = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const drag = containedPetDragRef.current;
+    if (!drag || drag.pointerId !== -1) return;
+    const next = clampContainedPetOffset({
+      x: drag.origin.x + event.clientX - drag.startX,
+      y: drag.origin.y + event.clientY - drag.startY
+    });
+    drag.last = next;
+    setContainedPetOffset(next);
+  }, []);
+
+  const finishContainedPointerDrag = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    const drag = containedPetDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    containedPetDragRef.current = null;
+    if (drag.last.x !== drag.origin.x || drag.last.y !== drag.origin.y) {
+      setContainedActionStatus(
+        `Contained preview moved with pointer drag (${containedPetOffsetLabel(drag.last)}). Press Home to reset.`
+      );
+    }
+  }, []);
+
+  const finishContainedMouseDrag = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const drag = containedPetDragRef.current;
+    if (!drag || drag.pointerId !== -1) return;
+    containedPetDragRef.current = null;
+    if (drag.last.x !== drag.origin.x || drag.last.y !== drag.origin.y) {
+      setContainedActionStatus(
+        `Contained preview moved with pointer drag (${containedPetOffsetLabel(drag.last)}). Press Home to reset.`
+      );
+    }
+    event.preventDefault();
   }, []);
 
   const waveAtPet = useCallback(() => {
@@ -155,14 +310,32 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
         className={stageClasses}
         role="img"
         aria-label={`Pet companion contained preview${containedPetSelected ? ', selected' : ''}`}
-        tabIndex={-1}
+        aria-describedby={containedFallback ? 'pet-contained-move-help' : undefined}
+        aria-keyshortcuts={containedFallback ? 'ArrowLeft ArrowRight ArrowUp ArrowDown Home' : undefined}
+        tabIndex={containedFallback ? 0 : -1}
+        onKeyDown={handleContainedKeyDown}
+        onPointerDown={handleContainedPointerDown}
+        onPointerMove={handleContainedPointerMove}
+        onPointerUp={finishContainedPointerDrag}
+        onPointerCancel={finishContainedPointerDrag}
+        onMouseDown={handleContainedMouseDown}
+        onMouseMove={handleContainedMouseMove}
+        onMouseUp={finishContainedMouseDrag}
         data-overlay-tier={capability.tier}
         data-capability-state={capability.state}
         data-input-passthrough={companionWindow?.clickThrough ? 'true' : 'false'}
         data-pet-runtime={runtimeState}
         data-pet-summoned={containedPetSummoned ? 'true' : 'false'}
         data-pet-selected={containedPetSelected ? 'true' : 'false'}
-        {...(!capability.actions.overlay.supported
+        data-contained-fallback={containedFallback ? 'true' : 'false'}
+        data-contained-offset={containedPetOffsetLabel(containedPetOffset)}
+        style={
+          {
+            '--pet-contained-offset-x': `${containedPetOffset.x}px`,
+            '--pet-contained-offset-y': `${containedPetOffset.y}px`
+          } as React.CSSProperties
+        }
+        {...(containedFallback
           ? {
               draggable: true,
               onDragStart: (event: React.DragEvent<HTMLDivElement>) =>
@@ -170,8 +343,16 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
             }
           : {})}
       >
-        {runtimeState === 'loading' ? 'Loading GLB pet runtime...' : null}
+        <div ref={runtimeHostRef} className="pet-stage-viewport">
+          {runtimeState === 'loading' ? 'Loading GLB pet runtime...' : null}
+        </div>
       </div>
+      {containedFallback ? (
+        <p id="pet-contained-move-help" className="sr-only">
+          Drag the contained preview within this window, or focus it and use the arrow keys to reposition it. Press
+          Home to reset its position.
+        </p>
+      ) : null}
       {!companionMode ? <div className="pet-actions">
         <button type="button" className="pet-wave-button" onClick={waveAtPet}>
           Wave at preview
