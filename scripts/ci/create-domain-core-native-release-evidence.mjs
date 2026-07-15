@@ -16,6 +16,7 @@ import {
   nativeEvidenceDomains,
   nativePredicateName,
   publicProfileSha256,
+  validateNativeActivationSelector,
   validateResolvedProfile,
 } from "../lib/domain-core-native-release.mjs";
 import {
@@ -85,6 +86,7 @@ function parseArguments(argv) {
     "--commit",
     "--profile-name",
     "--profile",
+    "--activation",
     "--candidate-bundle",
     "--promotion-attestation",
     "--protected-signer-run-id",
@@ -146,11 +148,6 @@ export function run(argv, { promotionVerifier } = {}) {
   const { candidate } = validateCandidateBundle(
     readJson(candidateBundle, "candidate bundle"),
   );
-  if (candidate.candidateCommit !== commit) {
-    throw new Error(
-      "native release commit must equal the exact candidate commit",
-    );
-  }
   const profileName = args.get("--profile-name");
   const profile = validateResolvedProfile(
     readJson(resolve(args.get("--profile")), "selected public profile"),
@@ -158,6 +155,10 @@ export function run(argv, { promotionVerifier } = {}) {
     candidate,
   );
   const profileSha256 = publicProfileSha256(profile, profileName, candidate);
+  const activationSelector = validateNativeActivationSelector(
+    readJson(resolve(args.get("--activation")), "release activation"),
+    { candidate, releaseCommit: commit, profile, profileName },
+  );
   const signerRunId = positiveInteger(
     args.get("--protected-signer-run-id"),
     "protected signer run ID",
@@ -168,6 +169,11 @@ export function run(argv, { promotionVerifier } = {}) {
   );
   const outputDirectory = resolve(args.get("--output-dir"));
   mkdirSync(outputDirectory, { recursive: true });
+  const predicateActivationPath = join(
+    outputDirectory,
+    "domain-core-release-activation.json",
+  );
+  writeCreateOnly(predicateActivationPath, activationSelector.activation);
   const domains = nativeEvidenceDomains(consumer, profile, profileName);
   const entries = [];
   for (const domain of domains) {
@@ -196,7 +202,9 @@ export function run(argv, { promotionVerifier } = {}) {
         "--predicate",
         predicatePath,
         "--public-profile-sha256",
-        profileSha256,
+        activationSelector.domains.get(domain).publicProfileSha256,
+        "--activation",
+        predicateActivationPath,
         "--candidate-bundle",
         candidateBundle,
         "--promotion-attestation",
@@ -212,6 +220,8 @@ export function run(argv, { promotionVerifier } = {}) {
     );
     entries.push({
       domain,
+      publicProfileSha256:
+        activationSelector.domains.get(domain).publicProfileSha256,
       predicatePath,
       predicateType: DOMAIN_CORE_RELEASE_PREDICATE_TYPE,
       bundleAssetName: nativeAttestationName(consumer, version, domain),
@@ -225,6 +235,7 @@ export function run(argv, { promotionVerifier } = {}) {
     commit,
     profileName,
     publicProfileSha256: profileSha256,
+    activation: activationSelector.activation,
     artifactPath: artifact,
     signerWorkflow: contract.signerWorkflow,
     rollback: profileName === "public-production-rollback",

@@ -13,6 +13,7 @@ import test from "node:test";
 
 import { run } from "./create-domain-core-native-release-evidence.mjs";
 import { buildPublicationManifest } from "./create-domain-core-native-publication.mjs";
+import { publicDomainProfileSha256 } from "../lib/domain-core-native-release.mjs";
 
 const CANDIDATE = {
   candidateCommit: "a".repeat(40),
@@ -20,6 +21,7 @@ const CANDIDATE = {
   abiVersion: 3,
   sourceSha256: "b".repeat(64),
 };
+const ACTIVATION_COMMIT = "c".repeat(40);
 
 function fixture({ profileName = "public-production", rust = ["quota"] } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "native-release-evidence-"));
@@ -30,7 +32,10 @@ function fixture({ profileName = "public-production", rust = ["quota"] } = {}) {
     promotion: join(directory, "promotion.sigstore.jsonl"),
     rollback: join(directory, "domain-core-public-production-rollback.json"),
     profile: join(directory, "profile.json"),
+    activation: join(directory, "activation.json"),
     output: join(directory, "evidence"),
+    releaseCommit:
+      rust.length === 0 ? CANDIDATE.candidateCommit : ACTIVATION_COMMIT,
   };
   writeFileSync(paths.artifact, "signed artifact bytes");
   writeFileSync(paths.promotion, "{}\n");
@@ -80,22 +85,46 @@ function fixture({ profileName = "public-production", rust = ["quota"] } = {}) {
     "hermes",
     "pricing",
   ];
+  const profile = {
+    schemaVersion: 1,
+    name: profileName,
+    artifactAuthority: "signed",
+    distribution: "public",
+    rolloutChannel: null,
+    evidenceEnabled: false,
+    modes: Object.fromEntries(
+      domains.map((domain) => [
+        domain,
+        rust.includes(domain) ? "rust" : "legacy",
+      ]),
+    ),
+    candidateIdentity: CANDIDATE,
+  };
+  writeFileSync(paths.profile, `${JSON.stringify(profile)}\n`);
   writeFileSync(
-    paths.profile,
+    paths.activation,
     `${JSON.stringify({
-      schemaVersion: 1,
-      name: profileName,
-      artifactAuthority: "signed",
-      distribution: "public",
-      rolloutChannel: null,
-      evidenceEnabled: false,
-      modes: Object.fromEntries(
-        domains.map((domain) => [
-          domain,
-          rust.includes(domain) ? "rust" : "legacy",
-        ]),
-      ),
-      candidateIdentity: CANDIDATE,
+      active: rust.length > 0,
+      candidateCommit: CANDIDATE.candidateCommit,
+      activationCommit: paths.releaseCommit,
+      coreVersion: CANDIDATE.coreVersion,
+      abiVersion: CANDIDATE.abiVersion,
+      sourceSha256: CANDIDATE.sourceSha256,
+      changedPathsSha256:
+        rust.length === 0
+          ? "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          : "d".repeat(64),
+      domains: rust.map((domain, index) => ({
+        domain,
+        rowId: `${domain}.row`,
+        promotionReceiptPath: `receipts/${domain}.json`,
+        attestationPath: `attestations/${domain}.json`,
+        bundlePath: `bundles/${domain}.json`,
+        provenancePath: `provenance/${domain}.json`,
+        signerRunId: 100 + index,
+        signerRunAttempt: 1,
+        publicProfileSha256: publicDomainProfileSha256(profile, domain),
+      })),
     })}\n`,
   );
   return paths;
@@ -112,11 +141,13 @@ function argumentsFor(paths, profileName = "public-production") {
     "--tag",
     "v1.2.3",
     "--commit",
-    CANDIDATE.candidateCommit,
+    paths.releaseCommit,
     "--profile-name",
     profileName,
     "--profile",
     paths.profile,
+    "--activation",
+    paths.activation,
     "--candidate-bundle",
     paths.candidate,
     "--promotion-attestation",
@@ -156,14 +187,22 @@ test("creates v2 predicates only for Rust-authoritative public domains", () => {
       );
       assert.equal(
         predicate.release.publicProfileSha256,
-        plan.publicProfileSha256,
+        publicDomainProfileSha256(
+          JSON.parse(readFileSync(paths.profile, "utf8")),
+          entry.domain,
+        ),
       );
       assert.deepEqual(predicate.publicProfile, {
         profile: "public-production",
         domain: entry.domain,
         mode: "rust",
-        sha256: plan.publicProfileSha256,
+        sha256: predicate.release.publicProfileSha256,
       });
+      assert.equal(
+        predicate.activation.candidateCommit,
+        CANDIDATE.candidateCommit,
+      );
+      assert.equal(predicate.activation.activationCommit, ACTIVATION_COMMIT);
     }
   } finally {
     rmSync(paths.directory, { recursive: true, force: true });

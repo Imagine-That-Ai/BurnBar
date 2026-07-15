@@ -30,6 +30,7 @@ import {
   resolveProtectedSignerCoordinates,
   resolveSourceCoordinates,
   rollbackArtifactName,
+  validateNativeActivationSelector,
   validateResolvedProfile,
 } from "../lib/domain-core-native-release.mjs";
 import {
@@ -159,6 +160,8 @@ export function createCommandRunner(runner = spawnSync) {
 function parseArguments(argv) {
   const required = new Set([
     "--candidate-commit",
+    "--release-commit",
+    "--activation",
     "--event-name",
     "--requested-profile",
     "--output-dir",
@@ -234,6 +237,10 @@ export function run(argv, { command = createCommandRunner() } = {}) {
   const candidateCommit = args.get("--candidate-commit");
   if (!FULL_SHA.test(candidateCommit)) {
     throw new Error("candidate commit must be a full lowercase Git SHA-1");
+  }
+  const releaseCommit = args.get("--release-commit");
+  if (!FULL_SHA.test(releaseCommit)) {
+    throw new Error("release commit must be a full lowercase Git SHA-1");
   }
   const repository = args.get("--repository") ?? DOMAIN_CORE_REPOSITORY;
   if (repository !== DOMAIN_CORE_REPOSITORY) {
@@ -361,6 +368,22 @@ export function run(argv, { command = createCommandRunner() } = {}) {
     resolvedSource.candidate,
   );
   validateResolvedProfile(profile, profileName, resolvedSource.candidate);
+  const activationPath = exactFile(
+    resolve(args.get("--activation")),
+    "canonical release activation",
+  );
+  const activationSelector = validateNativeActivationSelector(
+    parseJson(
+      readFileSync(activationPath, "utf8"),
+      "canonical release activation",
+    ),
+    {
+      candidate: resolvedSource.candidate,
+      releaseCommit,
+      profile,
+      profileName,
+    },
+  );
   const profileSha256 = publicProfileSha256(
     profile,
     profileName,
@@ -400,6 +423,8 @@ export function run(argv, { command = createCommandRunner() } = {}) {
     promotionAttestationPath: promotionPath,
     rollbackArtifactPath: rollbackPath,
     rollbackSha256: sha256File(rollbackPath),
+    activation: activationSelector.activation,
+    activationPath,
     profilePath,
     gatePath,
   };
@@ -418,6 +443,7 @@ export function run(argv, { command = createCommandRunner() } = {}) {
         profile_name: profileName,
         public_profile_sha256: profileSha256,
         candidate_commit: resolvedSource.candidate.candidateCommit,
+        activation_commit: releaseCommit,
         core_version: resolvedSource.candidate.coreVersion,
         abi_version: resolvedSource.candidate.abiVersion,
         source_sha256: resolvedSource.candidate.sourceSha256,

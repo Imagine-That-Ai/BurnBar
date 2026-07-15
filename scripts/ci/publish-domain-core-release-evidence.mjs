@@ -26,6 +26,7 @@ import {
   safeAssetName,
   sha256File,
   validateDomainCoreCandidateIdentity,
+  validateReleaseActivation,
 } from "../lib/domain-core-release-evidence.mjs";
 
 const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
@@ -86,6 +87,7 @@ function validatePredicate(
       "sourceRun",
       "promotionProof",
       "rollbackArtifact",
+      "activation",
       "publicProfile",
       "artifact",
       "release",
@@ -118,13 +120,16 @@ function validatePredicate(
     !versionPattern.test(release.version) ||
     release.version !== version ||
     release.tag !== manifest.tag ||
-    release.commit !== manifest.commit ||
-    release.commit !== candidate.candidateCommit
+    release.commit !== manifest.commit
   ) {
     throw new Error(
       `predicate for ${domain} does not bind the exact candidate tag commit`,
     );
   }
+  validateReleaseActivation(value.activation, {
+    candidate,
+    releaseCommit: manifest.commit,
+  });
   digest(release.publicProfileSha256, `predicate public profile for ${domain}`);
   const publicProfile = exactObject(
     value.publicProfile,
