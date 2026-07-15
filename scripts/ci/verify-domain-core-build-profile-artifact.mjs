@@ -16,18 +16,25 @@ const expected = resolveDomainCoreBuildProfile(
   profileName,
 );
 
+const parseJsonArtifact = (content) =>
+  JSON.parse(content.charCodeAt(0) === 0xfeff ? content.slice(1) : content);
+
 let actual;
 if (args.has("--receipt")) {
-  actual = JSON.parse(readFileSync(resolve(args.get("--receipt")), "utf8"));
+  actual = parseJsonArtifact(readFileSync(resolve(args.get("--receipt")), "utf8"));
 } else if (args.has("--windows-dir")) {
-  actual = JSON.parse(readFileSync(join(resolve(args.get("--windows-dir")), "domain-core-build-profile.json"), "utf8"));
+  actual = parseJsonArtifact(
+    readFileSync(join(resolve(args.get("--windows-dir")), "domain-core-build-profile.json"), "utf8"),
+  );
 } else if (args.has("--console-dir")) {
-  actual = JSON.parse(readFileSync(join(resolve(args.get("--console-dir")), "domain-core-build-profile.json"), "utf8"));
+  actual = parseJsonArtifact(
+    readFileSync(join(resolve(args.get("--console-dir")), "domain-core-build-profile.json"), "utf8"),
+  );
 } else if (args.has("--android-aab")) {
   const content = execFileSync("unzip", ["-p", resolve(args.get("--android-aab")), "base/assets/domain-core-build-profile.json"], {
     encoding: "utf8",
   });
-  actual = JSON.parse(content);
+  actual = parseJsonArtifact(content);
 } else if (args.has("--apple-app")) {
   const candidate = resolve(args.get("--apple-app"));
   const plist = statSync(candidate).isDirectory() ? join(candidate, "Contents/Info.plist") : candidate;
