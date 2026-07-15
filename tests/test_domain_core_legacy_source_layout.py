@@ -92,3 +92,13 @@ def test_document_rewrap_fallbacks_are_whole_file_deletion_targets() -> None:
     assert "func rewrapCloudVaultDocumentLegacy(" in swift_legacy
     assert "private fun applyVaultKeyCompanionUpdates(" in android_legacy
     assert "private static func applyVaultKeyCompanionUpdates(" in swift_legacy
+
+    # Android rewrap deletion removes orchestration only. AES remains a separately
+    # promoted slice, reached through the typed facade rather than duplicated here.
+    android_aes_helpers = (
+        "CloudVaultCrypto.sealPayloadWithNonce(",
+        "CloudVaultCrypto.sealTextWithNonce(",
+        "CloudVaultCrypto.sealBlobWithNonce(",
+    )
+    assert all(call in android_legacy for call in android_aes_helpers)
+    assert all(call.removeprefix("CloudVaultCrypto.") in android_facade for call in android_aes_helpers)
