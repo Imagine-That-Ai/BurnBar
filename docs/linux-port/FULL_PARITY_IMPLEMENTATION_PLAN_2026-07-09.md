@@ -119,10 +119,10 @@ difference in PR #1691: the Windows toolchain selected the zero-argument
 `AsyncThrowingStream` unfolding initializer rather than the continuation
 builder. `dd864a90be` selects the continuation initializer explicitly with a
 buffering-policy label and typed continuation; the macOS package build passes.
-The stale pre-fix candidate was cancelled, and replacement exact-head release
-candidate and nightly matrix are being dispatched from the final documentation
-head. Neither run is a parity receipt until it completes and its evidence is
-validated against the exact head.
+The stale pre-fix candidate was cancelled. A replacement exact-head release
+candidate and nightly matrix will be dispatched after this documentation
+checkpoint is frozen. Neither run is a parity receipt until it completes and
+its evidence is validated against the exact head.
 
 ### Follow-on source checkpoint — 2026-07-14
 

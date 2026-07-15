@@ -92,10 +92,10 @@ percentage. The active remediation stack now contains these reviewable slices:
   buffering-policy label and typed continuation; the macOS package build
   passes and fresh Windows checks are running from this head.
 - **Current candidate and nightly runs:** the replacement exact-head Linux
-  release candidate and nightly matrix are being dispatched from the final
-  documentation head `408487b9e8`. Prior runs from `dd864a90be` were cancelled
-  because a later documentation commit made them stale; no evidence is bound
-  to those runs.
+  release candidate and nightly matrix will be dispatched after this
+  documentation checkpoint is frozen. Prior runs from `dd864a90be` were
+  cancelled because later commits made them stale; no evidence is bound to
+  those runs.
 - **Certification boundary:** despite these source slices, the canonical
   ledger remains **0/40 product requirements** and **0/7 environment receipts**
   with `productParityClaim=false`. A source test count is not a product or
