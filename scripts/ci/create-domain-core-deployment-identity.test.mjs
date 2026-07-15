@@ -54,6 +54,7 @@ function fixture({ mode = "rust", profileName = "public-production" } = {}) {
   const gateValue = {
     schemaVersion: 2,
     verificationKind: "domain-core-release-gate",
+    releaseCommit: ACTIVATION.activationCommit,
     candidate: CANDIDATE,
     activation: ACTIVATION,
     sourceRun: {

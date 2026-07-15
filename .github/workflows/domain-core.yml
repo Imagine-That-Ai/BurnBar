@@ -3,6 +3,10 @@ name: Shared Rust domain core
 permissions:
   contents: read
 
+env:
+  DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+  OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
 on:
   push:
     branches: [main]
@@ -444,7 +448,7 @@ jobs:
       - name: Emit promotion-contracts proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id promotion-contracts
           --suite "promotion-contracts=$RUNNER_TEMP/promotion-contracts.log"
           --output "$RUNNER_TEMP/promotion-contracts.json"
@@ -483,7 +487,7 @@ jobs:
       - name: Check Rust core
         working-directory: crates/openburnbar-domain-core
         env:
-          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}
         run: |
           set -o pipefail
           {
@@ -541,7 +545,7 @@ jobs:
       - name: Observe the exact C# native identity
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}
           DOMAIN_CORE_NATIVE_LIBRARY_PATH: ${{ github.workspace }}/crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/csharp-native-observed-identity.json
         run: >-
@@ -579,17 +583,17 @@ jobs:
 
       - name: Build and verify a signed Windows configuration artifact
         run: |
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format msbuild-props --output "$RUNNER_TEMP/domain-core-profile.props"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" --format msbuild-props --output "$RUNNER_TEMP/domain-core-profile.props"
           dotnet build windows/app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj --nologo -c Release -p:DomainCoreBuildProfileProps="$RUNNER_TEMP/domain-core-profile.props"
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format json --output windows/app/OpenBurnBar.App.Configuration/bin/Release/domain-core-build-profile.json
-          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --windows-dir windows/app/OpenBurnBar.App.Configuration/bin/Release
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" --format json --output windows/app/OpenBurnBar.App.Configuration/bin/Release/domain-core-build-profile.json
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" --windows-dir windows/app/OpenBurnBar.App.Configuration/bin/Release
 
       - name: Emit Rust and C# proof fragment
         env:
           ATTESTATION_INPUT: ${{ runner.temp }}/attestation-csharp-native
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id rust-and-csharp
           --suite "rust-workspace=$RUNNER_TEMP/rust-workspace.log"
           --suite "rust-fuzz-smoke=$RUNNER_TEMP/rust-fuzz-smoke.log"
@@ -654,13 +658,13 @@ jobs:
       - name: Build native domain core
         working-directory: crates/openburnbar-domain-core
         env:
-          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}
         run: cargo build -p openburnbar-domain-ffi
 
       - name: Observe the exact Windows native identity
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}
           DOMAIN_CORE_NATIVE_LIBRARY_PATH: ${{ github.workspace }}/crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/windows-native-${{ matrix.rid }}-observed-identity.json
         run: |
@@ -686,7 +690,7 @@ jobs:
       - name: Emit Windows native proof fragment
         run: |
           node scripts/ci/domain-core-proof-fragment.mjs emit `
-            --expected-candidate-commit "$env:GITHUB_SHA" `
+            --expected-candidate-commit "$env:DOMAIN_CORE_CANDIDATE_COMMIT" `
             --job-id windows-native `
             --suite "${{ matrix.suite }}=$env:RUNNER_TEMP/windows-native-${{ matrix.rid }}.log" `
             --artifact "${{ matrix.artifact }}=$env:RUNNER_TEMP/attestation-${{ matrix.artifact }}/artifact,$env:RUNNER_TEMP/attestation-${{ matrix.artifact }}/observed-identity.json" `
@@ -730,13 +734,13 @@ jobs:
 
       - name: Build Linux ARM64 native domain core
         env:
-          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}
         run: cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
 
       - name: Observe the exact Linux ARM64 native identity
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}
           DOMAIN_CORE_NATIVE_LIBRARY_PATH: ${{ github.workspace }}/crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/linux-arm64-native-observed-identity.json
         run: >-
@@ -761,7 +765,7 @@ jobs:
       - name: Emit Linux ARM64 native proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id linux-arm64-native
           --suite "linux-arm64-native=$RUNNER_TEMP/linux-arm64-native.log"
           --artifact "linux-arm64-native-binary=$RUNNER_TEMP/attestation-linux-arm64-native-binary/artifact,$RUNNER_TEMP/attestation-linux-arm64-native-binary/observed-identity.json"
@@ -861,7 +865,7 @@ jobs:
       - name: Emit Wasm proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id wasm
           --suite "wasm-browser-kat=$RUNNER_TEMP/wasm-browser-kat.log"
           --suite "wasm-node-kat=$RUNNER_TEMP/wasm-node-kat.log"
@@ -933,13 +937,13 @@ jobs:
 
       - name: Generate and verify the deployed signed Functions receipt
         run: |
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format functions-js --output functions/lib/generated/domainCoreCandidateReceipt.js
-          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --functions-dir functions/lib
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" --format functions-js --output functions/lib/generated/domainCoreCandidateReceipt.js
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" --functions-dir functions/lib
 
       - name: Emit Functions pricing proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id functions-pricing
           --suite "functions-pricing-contracts=$RUNNER_TEMP/functions-pricing-contracts.log"
           --output "$RUNNER_TEMP/functions-pricing.json"
@@ -1009,7 +1013,7 @@ jobs:
         run: ./scripts/build-domain-core-android-aar.sh --check-artifact
 
       - name: Resolve signed Android domain-core candidate
-        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format github-env >> "$GITHUB_ENV"
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" --format github-env >> "$GITHUB_ENV"
 
       - name: Build candidate-bound four-ABI Android AAR
         run: ./scripts/build-domain-core-android-aar.sh
@@ -1049,7 +1053,7 @@ jobs:
           emulator-options: >-
             -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
             -no-boot-anim
-          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "$GITHUB_SHA" "$RUNNER_TEMP/android-observed-identity.json"
+          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "$DOMAIN_CORE_CANDIDATE_COMMIT" "$RUNNER_TEMP/android-observed-identity.json"
 
       - name: Record successful Android native load
         run: |
@@ -1087,12 +1091,12 @@ jobs:
           cd android
           ./gradlew :app:bundleDebug --no-daemon
           cd ..
-          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --android-aab android/app/build/outputs/bundle/debug/app-debug.aab
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" --android-aab android/app/build/outputs/bundle/debug/app-debug.aab
 
       - name: Emit Android proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id android
           --suite "android-native-load=$RUNNER_TEMP/android-native-load.log"
           --suite "android-consumer-contracts=$RUNNER_TEMP/android-consumer-contracts.log"
@@ -1133,7 +1137,7 @@ jobs:
 
       - name: Build Apple XCFramework and regenerate Swift bindings
         env:
-          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}
         run: ./scripts/build-domain-core-xcframework.sh
 
       - name: Reject Swift binding and provenance drift
@@ -1156,7 +1160,7 @@ jobs:
       - name: Emit Apple artifact proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id apple
           --suite "swift-artifact-provenance=$RUNNER_TEMP/swift-artifact-provenance.log"
           --output "$RUNNER_TEMP/apple.json"
@@ -1200,16 +1204,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Resolve exact checked-out candidate C
-        id: candidate
-        run: |
-          candidate_commit="$(git rev-parse HEAD)"
-          if [[ ! "$candidate_commit" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Checked-out domain-core candidate is not a full Git SHA-1."
-            exit 1
-          fi
-          printf 'commit=%s\n' "$candidate_commit" >> "$GITHUB_OUTPUT"
-
       - name: Download the exact XCFramework produced by the Apple job
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
@@ -1218,7 +1212,6 @@ jobs:
 
       - name: Load XCFramework and run the narrow native contract
         env:
-          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/swift-observed-identity.json
         working-directory: OpenBurnBarCore
         run: |
@@ -1236,7 +1229,7 @@ jobs:
       - name: Emit Apple native-load proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "${{ steps.candidate.outputs.commit }}"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id apple-native-smoke
           --suite "swift-native-load=$RUNNER_TEMP/swift-native-load.log"
           --artifact "swift-xcframework=$RUNNER_TEMP/attestation-swift-xcframework/artifact,$RUNNER_TEMP/attestation-swift-xcframework/observed-identity.json"
@@ -1316,7 +1309,7 @@ jobs:
       - name: Emit Swift consumer proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id swift-consumer-contracts
           --suite "swift-consumer-contracts=$RUNNER_TEMP/swift-consumer-contracts.log"
           --output "$RUNNER_TEMP/swift-consumer-contracts.json"
@@ -1368,7 +1361,7 @@ jobs:
       - name: Emit Console consumer proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id console-consumer-contracts
           --suite "console-consumer-contracts=$RUNNER_TEMP/console-consumer-contracts.log"
           --output "$RUNNER_TEMP/console-consumer-contracts.json"
@@ -1401,7 +1394,7 @@ jobs:
 
       - name: Build package and run local MCP CloudVault contracts
         env:
-          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/python-mcp-observed-identity.json
         run: |
           set -o pipefail
@@ -1425,7 +1418,7 @@ jobs:
       - name: Emit Python MCP proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id python-mcp-cloudvault-contracts
           --suite "python-mcp-cloudvault-contracts=$RUNNER_TEMP/python-mcp-cloudvault-contracts.log"
           --artifact "python-mcp-native=$RUNNER_TEMP/attestation-python-mcp-native/artifact,$RUNNER_TEMP/attestation-python-mcp-native/observed-identity.json"
@@ -1459,7 +1452,7 @@ jobs:
 
       - name: Build package and run external Hermes plugin contracts
         env:
-          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/python-hermes-observed-identity.json
         run: |
           set -o pipefail
@@ -1485,7 +1478,7 @@ jobs:
       - name: Emit Hermes Python proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id python-hermes-contracts
           --suite "python-hermes-contracts=$RUNNER_TEMP/python-hermes-contracts.log"
           --artifact "python-hermes-native=$RUNNER_TEMP/attestation-python-hermes-native/artifact,$RUNNER_TEMP/attestation-python-hermes-native/observed-identity.json"
@@ -1520,7 +1513,7 @@ jobs:
         run: >-
           node scripts/ci/resolve-domain-core-build-profile.mjs
           --profile public-production-rollback
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --format json
           --output "$RUNNER_TEMP/domain-core-public-production-rollback.json"
 
@@ -1536,12 +1529,12 @@ jobs:
           node scripts/ci/verify-domain-core-rollback.mjs
           --artifact "$RUNNER_TEMP/domain-core-public-production-rollback.json"
           --report "$RUNNER_TEMP/rollback-drill.log"
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
 
       - name: Emit rollback proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT"
           --job-id rollback-drill
           --suite "rollback-drill=$RUNNER_TEMP/rollback-drill.log"
           --rollback "$RUNNER_TEMP/rollback-drill.log,$RUNNER_TEMP/domain-core-public-production-rollback.json"
@@ -1550,7 +1543,7 @@ jobs:
       - name: Publish the exact candidate-bound rollback artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: domain-core-public-production-rollback-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: domain-core-public-production-rollback-${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-public-production-rollback.json
           if-no-files-found: error
           retention-days: 90
@@ -1613,12 +1606,12 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/ci/domain-core-proof-fragment.mjs aggregate \
-            --expected-candidate-commit "$GITHUB_SHA" \
+            --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
             --fragments "$RUNNER_TEMP/domain-core-proof-fragments" \
             --job-results "$RUNNER_TEMP/domain-core-job-results.json" \
             --output "$RUNNER_TEMP/domain-core-deterministic-evidence.json"
           node scripts/ci/create-domain-core-deterministic-candidate-bundle.mjs \
-            --expected-candidate-commit "$GITHUB_SHA" \
+            --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
             --evidence "$RUNNER_TEMP/domain-core-deterministic-evidence.json" \
             --output "$RUNNER_TEMP/domain-core-candidate-bundle.json"
 
@@ -1626,7 +1619,7 @@ jobs:
         if: github.event_name == 'push'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: domain-core-candidate-bundle-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: domain-core-candidate-bundle-${{ env.DOMAIN_CORE_CANDIDATE_COMMIT }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-candidate-bundle.json
           if-no-files-found: error
           retention-days: 90

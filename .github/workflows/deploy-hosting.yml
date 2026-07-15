@@ -22,8 +22,10 @@ on:
       - "scripts/ci/deploy-firebase-hosting-rest.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.mjs"
+      - "scripts/ci/verify-existing-domain-core-deployment.mjs"
       - "scripts/ci/verify-domain-core-build-profile-artifact.mjs"
       - "scripts/ci/verify-domain-core-release-gate.mjs"
+      - "scripts/lib/atomic-regular-file.mjs"
       - "scripts/lib/domain-core-build-profile.mjs"
       - "scripts/lib/domain-core-candidate-receipt.mjs"
       - "scripts/lib/domain-core-release-evidence.mjs"
@@ -333,6 +335,7 @@ jobs:
       - name: Stage hosting deploy artifact
         env:
           ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
+          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}
           DOMAIN_CORE_PROFILE: ${{ steps.ref.outputs.domain_core_profile }}
           RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
           REQUIRES_PROOF: ${{ steps.ref.outputs.requires_proof }}
@@ -349,7 +352,9 @@ jobs:
           cp scripts/ci/deploy-firebase-hosting-rest.mjs "$ARTIFACT_ROOT/scripts/ci/"
           cp scripts/ci/create-domain-core-runtime-artifact-manifest.mjs "$ARTIFACT_ROOT/scripts/ci/"
           cp scripts/ci/verify-existing-domain-core-deployment.mjs "$ARTIFACT_ROOT/scripts/ci/"
+          cp scripts/lib/atomic-regular-file.mjs "$ARTIFACT_ROOT/scripts/lib/"
           cp scripts/lib/curl-bearer.sh "$ARTIFACT_ROOT/scripts/lib/"
+          cp scripts/lib/domain-core-candidate-receipt.mjs "$ARTIFACT_ROOT/scripts/lib/"
           cp "$RUNNER_TEMP/domain-core-build-profile.json" \
             "$ARTIFACT_ROOT/domain-core-release-inputs/domain-core-build-profile.json"
           if [[ "$REQUIRES_PROOF" == "true" ]]; then
@@ -359,7 +364,7 @@ jobs:
 
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
             --profile "$DOMAIN_CORE_PROFILE" \
-            --expected-candidate-commit "$RELEASE_COMMIT" \
+            --expected-candidate-commit "$CANDIDATE_COMMIT" \
             --console-dir "$ARTIFACT_ROOT/apps/console/out"
 
           node scripts/ci/write-firebase-hosting-ci-config.mjs \

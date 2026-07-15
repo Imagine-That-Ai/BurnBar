@@ -20,6 +20,7 @@ import {
   DOMAIN_CORE_REPOSITORY,
   DOMAIN_CORE_SOURCE_WORKFLOW,
   RELEASE_CONSUMERS,
+  canonicalSha256,
   exactObject,
   expectedArtifactName,
   regularFile,
@@ -39,6 +40,47 @@ const APPLE_ANDROID_VERSION =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const NATIVE_CONSUMERS = new Set(["apple", "android", "ios", "windows"]);
 const RELEASE_STATES = new Set(["published", "draft-then-publish"]);
+const FINAL_ABSENCE_ROWS = Object.freeze({
+  "apple/quota": [
+    "quota.anthropic_headers",
+    "quota.claude_statusline",
+    "quota.codex_usage",
+    "quota.cursor_usage",
+  ],
+  "apple/cloudVault": ["cloudvault.portable_primitives"],
+  "apple/cloudVaultRewrap": ["cloudvault.document_rewrap"],
+  "apple/cloudVaultSearch": ["cloudvault.search"],
+  "apple/hermes": ["hermes.ratchet_transforms", "hermes.relay_crypto"],
+  "apple/pricing": ["pricing.token_cost"],
+  "ios/cloudVault": ["cloudvault.portable_primitives"],
+  "ios/cloudVaultRewrap": ["cloudvault.document_rewrap"],
+  "ios/cloudVaultSearch": ["cloudvault.search"],
+  "ios/hermes": ["hermes.ratchet_transforms", "hermes.relay_crypto"],
+  "android/cloudVault": ["cloudvault.portable_primitives"],
+  "android/cloudVaultRewrap": ["cloudvault.document_rewrap"],
+  "android/cloudVaultSearch": ["cloudvault.search"],
+  "android/hermes": ["hermes.ratchet_transforms", "hermes.relay_crypto"],
+  "windows/quota": [
+    "quota.anthropic_headers",
+    "quota.claude_statusline",
+    "quota.codex_usage",
+    "quota.cursor_usage",
+  ],
+  "windows/cloudVault": ["cloudvault.portable_primitives"],
+  "linux/quota": [
+    "quota.anthropic_headers",
+    "quota.claude_statusline",
+    "quota.codex_usage",
+    "quota.cursor_usage",
+  ],
+  "linux/cloudVault": ["cloudvault.portable_primitives"],
+  "linux/cloudVaultRewrap": ["cloudvault.document_rewrap"],
+  "linux/cloudVaultSearch": ["cloudvault.search"],
+  "linux/hermes": ["hermes.ratchet_transforms", "hermes.relay_crypto"],
+  "linux/pricing": ["pricing.token_cost"],
+  "console/cloudVault": ["cloudvault.portable_primitives"],
+  "functions/pricing": ["pricing.kimi_historical", "pricing.token_cost"],
+});
 
 function parseJson(text, label) {
   try {
@@ -84,11 +126,11 @@ function validateActivationBinding(value, candidate, releaseCommit, label) {
   );
   if (
     activation.candidateCommit !== candidate.candidateCommit ||
-    activation.activationCommit !== releaseCommit ||
     activation.coreVersion !== candidate.coreVersion ||
     activation.abiVersion !== candidate.abiVersion ||
     activation.sourceSha256 !== candidate.sourceSha256 ||
-    !FULL_SHA.test(activation.activationCommit)
+    !FULL_SHA.test(activation.activationCommit) ||
+    !FULL_SHA.test(releaseCommit)
   ) {
     throw new Error(
       `${label} activation commit does not bind candidate C to release activation P`,
@@ -96,6 +138,122 @@ function validateActivationBinding(value, candidate, releaseCommit, label) {
   }
   digest(activation.changedPathsSha256, `${label} changed paths`);
   return activation;
+}
+
+function validateLegacyAbsence(
+  value,
+  { activation, artifact, artifactPath, consumer, releaseCommit, domain },
+) {
+  const absence = exactObject(
+    value,
+    [
+      "schemaVersion",
+      "predicateType",
+      "releaseCommit",
+      "authorityActivationCommit",
+      "deletionInventorySha256",
+      "rowIds",
+      "artifactScan",
+    ],
+    `predicate legacy absence for ${domain}`,
+  );
+  if (
+    absence.schemaVersion !== 1 ||
+    absence.predicateType !==
+      "https://openburnbar.dev/attestations/domain-core-final-legacy-absence/v1" ||
+    absence.releaseCommit !== releaseCommit ||
+    absence.authorityActivationCommit !== activation.activationCommit ||
+    absence.authorityActivationCommit === absence.releaseCommit ||
+    !SHA256.test(absence.deletionInventorySha256) ||
+    !Array.isArray(absence.rowIds) ||
+    absence.rowIds.length === 0 ||
+    absence.rowIds.some(
+      (rowId) =>
+        typeof rowId !== "string" || !/^[a-z][a-z0-9_.-]*$/u.test(rowId),
+    ) ||
+    JSON.stringify(absence.rowIds) !==
+      JSON.stringify(FINAL_ABSENCE_ROWS[`${consumer}/${domain}`] ?? [])
+  ) {
+    throw new Error(
+      `predicate legacy absence for ${domain} does not bind release D to authority P`,
+    );
+  }
+  const scan = exactObject(
+    absence.artifactScan,
+    [
+      "reportSha256",
+      "artifactSha256",
+      "ruleSetSha256",
+      "inspectedMemberCount",
+      "report",
+    ],
+    `predicate artifact scan for ${domain}`,
+  );
+  const report = exactObject(
+    scan.report,
+    [
+      "schemaVersion",
+      "consumer",
+      "artifact",
+      "ruleSetSha256",
+      "inspectedMembers",
+      "matches",
+      "result",
+    ],
+    `predicate artifact scan report for ${domain}`,
+  );
+  const reportArtifact = exactObject(
+    report.artifact,
+    ["fileName", "sha256", "size"],
+    `predicate scanned artifact for ${domain}`,
+  );
+  if (!Array.isArray(report.inspectedMembers)) {
+    throw new Error(
+      `predicate artifact scan for ${domain} has invalid inspected members`,
+    );
+  }
+  const members = report.inspectedMembers.map((rawMember, index) => {
+    const member = exactObject(
+      rawMember,
+      ["path", "sha256", "size", "matches"],
+      `predicate artifact scan member ${index} for ${domain}`,
+    );
+    if (
+      typeof member.path !== "string" ||
+      member.path.length === 0 ||
+      !SHA256.test(member.sha256) ||
+      !Number.isSafeInteger(member.size) ||
+      member.size < 0 ||
+      !Array.isArray(member.matches) ||
+      member.matches.length !== 0
+    ) {
+      throw new Error(
+        `predicate artifact scan member ${index} for ${domain} is invalid`,
+      );
+    }
+    return member;
+  });
+  if (
+    report.schemaVersion !== 1 ||
+    report.consumer !== consumer ||
+    report.result !== "absent" ||
+    !Array.isArray(report.matches) ||
+    report.matches.length !== 0 ||
+    members.length === 0 ||
+    reportArtifact.fileName !== artifact.fileName ||
+    reportArtifact.sha256 !== artifact.sha256 ||
+    reportArtifact.size !== readFileSync(artifactPath).length ||
+    !SHA256.test(report.ruleSetSha256) ||
+    scan.reportSha256 !== canonicalSha256(report) ||
+    scan.artifactSha256 !== artifact.sha256 ||
+    scan.ruleSetSha256 !== report.ruleSetSha256 ||
+    scan.inspectedMemberCount !== members.length
+  ) {
+    throw new Error(
+      `predicate artifact scan for ${domain} does not bind exact clean release bytes`,
+    );
+  }
+  return absence;
 }
 
 function validatePredicate(
@@ -122,6 +280,8 @@ function validatePredicate(
     "release",
   ];
   if (manifest.consumer === "android") predicateKeys.push("androidUniversal");
+  if (Object.hasOwn(predicate ?? {}, "legacyAbsence"))
+    predicateKeys.push("legacyAbsence");
   const value = exactObject(
     predicate,
     predicateKeys,
@@ -134,6 +294,14 @@ function validatePredicate(
     manifest.commit,
     `predicate activation for ${domain}`,
   );
+  if (
+    Object.hasOwn(value, "legacyAbsence") !==
+    (activation.activationCommit !== manifest.commit)
+  ) {
+    throw new Error(
+      `predicate for ${domain} must carry final legacy absence exactly when release D follows activation P`,
+    );
+  }
   if (
     value.schemaVersion !== 2 ||
     value.predicateType !== DOMAIN_CORE_RELEASE_PREDICATE_TYPE ||
@@ -328,6 +496,16 @@ function validatePredicate(
       `predicate for ${domain} does not bind the exact release artifact bytes`,
     );
   }
+  if (Object.hasOwn(value, "legacyAbsence")) {
+    validateLegacyAbsence(value.legacyAbsence, {
+      activation,
+      artifact,
+      artifactPath,
+      consumer: manifest.consumer,
+      releaseCommit: manifest.commit,
+      domain,
+    });
+  }
   return value;
 }
 
@@ -465,6 +643,18 @@ export function validateManifest(raw) {
       promotionProof: predicate.promotionProof,
       rollbackArtifact: predicate.rollbackArtifact,
       release: predicate.release,
+      legacyAbsence: predicate.legacyAbsence
+        ? {
+            schemaVersion: predicate.legacyAbsence.schemaVersion,
+            predicateType: predicate.legacyAbsence.predicateType,
+            releaseCommit: predicate.legacyAbsence.releaseCommit,
+            authorityActivationCommit:
+              predicate.legacyAbsence.authorityActivationCommit,
+            deletionInventorySha256:
+              predicate.legacyAbsence.deletionInventorySha256,
+            artifactScan: predicate.legacyAbsence.artifactScan,
+          }
+        : null,
     };
     if (canonicalPredicateBindings === null) {
       canonicalPredicateBindings = predicateBindings;

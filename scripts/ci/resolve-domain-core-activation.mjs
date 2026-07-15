@@ -25,7 +25,7 @@ export function run(argv) {
   }
   const activation = resolveActiveDomainCoreActivation({
     repoRoot: ROOT,
-    activationCommit: argument(argv, "--release-commit"),
+    releaseCommit: argument(argv, "--release-commit"),
   });
   const format = argv.includes("--format")
     ? argument(argv, "--format")
@@ -34,7 +34,7 @@ export function run(argv) {
     process.stdout.write(`${JSON.stringify(activation, null, 2)}\n`);
   } else if (format === "github-output") {
     process.stdout.write(
-      `active=${activation.active}\ncandidate_commit=${activation.candidateCommit}\nactivation_commit=${activation.activationCommit}\nactivation_sha256=${activation.changedPathsSha256}\n`,
+      `active=${activation.active}\ncandidate_commit=${activation.candidateCommit}\nactivation_commit=${activation.activationCommit}\nrelease_commit=${activation.releaseCommit}\nactivation_sha256=${activation.changedPathsSha256}\n`,
     );
   } else {
     throw new Error(`unsupported format: ${format}`);

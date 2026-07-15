@@ -11,6 +11,8 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import test from "node:test";
 
+import { canonicalSha256 } from "../lib/domain-core-release-evidence.mjs";
+
 import {
   publishManifest,
   validateManifest,
@@ -787,7 +789,7 @@ test("rejects predicate substitution even when gh reports a valid signature", ()
   }
 });
 
-test("accepts P after C and rejects an activation-commit substitution", () => {
+test("accepts release D after activation P and rejects activation substitution", () => {
   const files = fixture();
   try {
     assert.doesNotThrow(() => validateManifest(files.manifest));
@@ -795,9 +797,70 @@ test("accepts P after C and rejects an activation-commit substitution", () => {
       ...files.predicate,
       release: { ...files.predicate.release, commit: "7".repeat(40) },
     };
-    writeFileSync(files.predicatePath, `${JSON.stringify(predicate)}\n`);
     const manifest = { ...files.manifest, commit: "7".repeat(40) };
-    assert.throws(() => validateManifest(manifest), /activation commit/u);
+    writeFileSync(files.predicatePath, `${JSON.stringify(predicate)}\n`);
+    assert.throws(() => validateManifest(manifest), /final legacy absence/u);
+    const artifactBytes = readFileSync(files.artifact);
+    const scanReport = {
+      schemaVersion: 1,
+      consumer: "apple",
+      artifact: {
+        fileName: basename(files.artifact),
+        sha256: sha(artifactBytes),
+        size: artifactBytes.length,
+      },
+      ruleSetSha256: "5".repeat(64),
+      inspectedMembers: [
+        {
+          path: "OpenBurnBar",
+          sha256: "4".repeat(64),
+          size: 123,
+          matches: [],
+        },
+      ],
+      matches: [],
+      result: "absent",
+    };
+    predicate.legacyAbsence = {
+      schemaVersion: 1,
+      predicateType:
+        "https://openburnbar.dev/attestations/domain-core-final-legacy-absence/v1",
+      releaseCommit: manifest.commit,
+      authorityActivationCommit: predicate.activation.activationCommit,
+      deletionInventorySha256: "3".repeat(64),
+      rowIds: [
+        "quota.anthropic_headers",
+        "quota.claude_statusline",
+        "quota.codex_usage",
+        "quota.cursor_usage",
+      ],
+      artifactScan: {
+        reportSha256: canonicalSha256(scanReport),
+        artifactSha256: scanReport.artifact.sha256,
+        ruleSetSha256: scanReport.ruleSetSha256,
+        inspectedMemberCount: scanReport.inspectedMembers.length,
+        report: scanReport,
+      },
+    };
+    writeFileSync(files.predicatePath, `${JSON.stringify(predicate)}\n`);
+    assert.doesNotThrow(() => validateManifest(manifest));
+    predicate.rollbackArtifact = {
+      ...predicate.rollbackArtifact,
+      activation: {
+        ...predicate.rollbackArtifact.activation,
+        activationCommit: "6".repeat(40),
+      },
+    };
+    writeFileSync(files.predicatePath, `${JSON.stringify(predicate)}\n`);
+    const substituted = JSON.parse(readFileSync(files.predicatePath, "utf8"));
+    assert.notDeepEqual(
+      substituted.rollbackArtifact.activation,
+      substituted.activation,
+    );
+    assert.throws(
+      () => validateManifest(manifest),
+      /candidate-matched rollback artifact/u,
+    );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
   }

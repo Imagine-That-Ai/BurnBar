@@ -18,6 +18,10 @@ SPEC.loader.exec_module(BUNDLE)
 
 
 class RollbackBundleTests(unittest.TestCase):
+    @staticmethod
+    def allow_ancestry(_ancestor: str, _descendant: str) -> None:
+        return None
+
     def fixture(self, root: Path, *, rust_mode: bool = False) -> tuple[Path, Path, Path, dict]:
         candidate = {
             "candidateCommit": "1" * 40,
@@ -64,7 +68,8 @@ class RollbackBundleTests(unittest.TestCase):
                     source,
                     version="1.2.3",
                     tag="v1.2.3",
-                    commit=activation["activationCommit"],
+                    commit="5" * 40,
+                    ancestry_verifier=self.allow_ancestry,
                 )
             self.assertEqual(outputs[0].read_bytes(), outputs[1].read_bytes())
             with zipfile.ZipFile(outputs[0]) as archive:
@@ -83,7 +88,11 @@ class RollbackBundleTests(unittest.TestCase):
                     self.assertEqual(provenance["subject"]["sha256"], payload["payloadSha256"])
                     decoded = json.loads(settings)
                     self.assertEqual(decoded["action"], "rebuild_and_redeploy_legacy")
-                    self.assertTrue(all(line.endswith("=legacy") for line in decoded["environment"] if line.endswith("_MODE=legacy")))
+                    self.assertTrue(
+                        all(
+                            line.endswith("=legacy") for line in decoded["environment"] if line.endswith("_MODE=legacy")
+                        )
+                    )
 
     def test_rejects_rust_mode_in_rollback_payload(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -98,6 +107,56 @@ class RollbackBundleTests(unittest.TestCase):
                     version="1.2.3",
                     tag="v1.2.3",
                     commit=closure["activationCommit"],
+                    ancestry_verifier=self.allow_ancestry,
+                )
+
+    def test_accepts_distinct_candidate_activation_and_release_commits(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile, activation_path, source, activation = self.fixture(root)
+            release_commit = "5" * 40
+            edges: list[tuple[str, str]] = []
+
+            manifest = BUNDLE.create_bundle(
+                profile,
+                activation_path,
+                root / "rollback.zip",
+                source,
+                version="1.2.3",
+                tag="v1.2.3",
+                commit=release_commit,
+                ancestry_verifier=lambda ancestor, descendant: edges.append((ancestor, descendant)),
+            )
+
+            self.assertEqual(
+                edges,
+                [
+                    (activation["candidateCommit"], activation["activationCommit"]),
+                    (activation["activationCommit"], release_commit),
+                ],
+            )
+            self.assertEqual(manifest["activation"]["activationCommit"], activation["activationCommit"])
+            self.assertEqual(manifest["release"]["commit"], release_commit)
+
+    def test_rejects_release_outside_activation_ancestry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile, activation_path, source, activation = self.fixture(root)
+
+            def verify(ancestor: str, descendant: str) -> None:
+                if ancestor == activation["activationCommit"]:
+                    raise ValueError("not an ancestor")
+
+            with self.assertRaisesRegex(ValueError, "activation P must be an ancestor of release D"):
+                BUNDLE.create_bundle(
+                    profile,
+                    activation_path,
+                    root / "rollback.zip",
+                    source,
+                    version="1.2.3",
+                    tag="v1.2.3",
+                    commit="5" * 40,
+                    ancestry_verifier=verify,
                 )
 
     def test_payload_generator_is_exact_and_not_caller_replaceable(self) -> None:

@@ -57,6 +57,7 @@ function fixture(profileName = "public-production") {
   const gate = {
     schemaVersion: 2,
     verificationKind: "domain-core-release-gate",
+    releaseCommit: COMMIT,
     candidate: CANDIDATE,
     activation: {
       ...CANDIDATE,

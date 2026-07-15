@@ -146,6 +146,7 @@ function fixture({ profileName = "public-production", rust = ["quota"] } = {}) {
       active: rust.length > 0,
       candidateCommit: CANDIDATE.candidateCommit,
       activationCommit: paths.releaseCommit,
+      releaseCommit: paths.releaseCommit,
       coreVersion: CANDIDATE.coreVersion,
       abiVersion: CANDIDATE.abiVersion,
       sourceSha256: CANDIDATE.sourceSha256,

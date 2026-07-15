@@ -2175,7 +2175,8 @@ def validate_receipt_chain(
                 f"row {row_id}: protected candidate mode must be {expected_candidate_mode} "
                 "for this authority transition"
             )
-        require_ancestor(repo_root, activation_commit, stable.commit, f"row {row_id} stable receipt")
+        if stable.commit != activation_commit:
+            raise GateError(f"row {row_id}: stable receipt commit must equal the exact activation commit")
         releases = require_array(release["consumerReleases"], f"row {row_id} release.consumerReleases")
         consumers: set[str] = set()
         artifact_uris: set[str] = set()

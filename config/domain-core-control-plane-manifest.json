@@ -8,16 +8,16 @@
       "791e49744a60b649"
     ],
     ".github/workflows/deploy-hosting.yml": [
-      "d16573e701bbdaaa",
-      "9f9836e47180fa79",
-      "26843e0a441ccc74",
-      "5c7d5e584acbed31"
+      "12cfb9e346e36ca7",
+      "ae7a7e41d2cd32de",
+      "ca6ff9852fe2f730",
+      "040013c21bf1d735"
     ],
     ".github/workflows/deploy-production.yml": [
-      "6f51df6b565ebc51",
-      "1f8a0a58b43c0a29",
-      "46a30bccc9891a78",
-      "9ececa2b9a0b3a7a"
+      "3973619649907698",
+      "f6f82326aa90a6bb",
+      "7aed265a99d74a46",
+      "efaeb58e70f4f5b9"
     ],
     ".github/workflows/domain-core-console-release-evidence.yml": [
       "30a73fcd4eda5674",
@@ -32,10 +32,10 @@
       "ebd95b3ce45e46fc"
     ],
     ".github/workflows/domain-core-functions-release-evidence.yml": [
-      "03f3cb9d3c933ee6",
-      "2fbd66010c11b703",
-      "d4f41f8d3f889c40",
-      "1d4b860cc0448501"
+      "493d15e325ab12e9",
+      "b4c86b710947ef31",
+      "08f6ebb05e2c7edc",
+      "cf8ac217ba5ca903"
     ],
     ".github/workflows/domain-core-ios-release-evidence.yml": [
       "549bd6aebcb6b422",
@@ -56,10 +56,10 @@
       "a5bcf02ab4c1e475"
     ],
     ".github/workflows/domain-core.yml": [
-      "cd46d03d557879a5",
-      "2d702e2b3cf9173d",
-      "fdb86636af23111d",
-      "8b1a6c112cca676f"
+      "69eb9586e5703b89",
+      "adb86b2a723c819a",
+      "17c0c9cd9c3ffcae",
+      "c9ebfcaa8c713396"
     ],
     ".github/workflows/linux-release.yml": [
       "cd464fa8c252b9e9",
@@ -194,10 +194,10 @@
       "daaf9354a443c167"
     ],
     "config/domain-core-release-predicate.schema.json": [
-      "4966ad8329b4ec96",
-      "fea2a39f4ca9b21b",
-      "a8b2529db0920fce",
-      "fdf2f58fd4d0297a"
+      "8b3adaefb1e775b9",
+      "9000ac2f8105f8f5",
+      "5095d4d849e9f872",
+      "b50c500303d20e0e"
     ],
     "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/OpenBurnBarDomainCore.Ffi.csproj": [
       "a5edbdcba46b16ac",
@@ -392,16 +392,16 @@
       "507992de520c8e0d"
     ],
     "scripts/ci/create-domain-core-deployment-identity.mjs": [
-      "1ebf5367ff5b10f6",
-      "65789b585af78b20",
-      "6c7ee15611be7efc",
-      "aee190b25b9f5b76"
+      "00e7010340f5386c",
+      "14b7ff6e4a7717f0",
+      "d00a5e6593cbd9fa",
+      "5774f22908d61f26"
     ],
     "scripts/ci/create-domain-core-deployment-identity.test.mjs": [
-      "7316ed8901d2f929",
-      "c2041f56ca7a89e8",
-      "41573eb5a2588573",
-      "1e092d2341ac84fb"
+      "c50d0c1176214a46",
+      "7932798f0cfded6e",
+      "fbc428d83af325df",
+      "e1ec2de5b6c0dded"
     ],
     "scripts/ci/create-domain-core-deterministic-candidate-bundle.mjs": [
       "cefe7bd81e45ed99",
@@ -416,16 +416,16 @@
       "778bb94fd71aa0e7"
     ],
     "scripts/ci/create-domain-core-functions-deploy-proof.mjs": [
-      "5e5dd40f7312558c",
-      "d454fd4cfd5c6a9c",
-      "266b2709e72de566",
-      "893364192342b86f"
+      "2a7774d0576e9887",
+      "0d791d8a73202564",
+      "595fe7fad01c1fbd",
+      "7168535e32943ae9"
     ],
     "scripts/ci/create-domain-core-functions-deploy-proof.test.mjs": [
-      "147e4118a351b2c9",
-      "6b092763e817d0fc",
-      "1531a1cbe1b8538e",
-      "fd69bd08cb4cdde6"
+      "529e94ed2179f31d",
+      "09fe1a2c93158fb8",
+      "31bd2b9ee6d46093",
+      "7974bb3d39a1bfda"
     ],
     "scripts/ci/create-domain-core-functions-deployment-evidence.mjs": [
       "dcae43128f3f2008",
@@ -476,10 +476,10 @@
       "a27a4b6b3b607ded"
     ],
     "scripts/ci/create-domain-core-rollback-bundle.py": [
-      "dcc61ca782a4b44c",
-      "8180495b61f1013a",
-      "c49f87449e575674",
-      "0841fdee6df1b040"
+      "e6e46a8eb50404b9",
+      "66a150bf44ea2e7c",
+      "c601fb9cab0fcd61",
+      "e75f123b94d48658"
     ],
     "scripts/ci/create-domain-core-runtime-artifact-manifest.mjs": [
       "14f8216d8386b4a5",
@@ -632,10 +632,10 @@
       "2b52d296678f0cc9"
     ],
     "scripts/ci/prepare-domain-core-native-release-gate.mjs": [
-      "2a5b8eaf99ea85b8",
-      "f66ad337e63a5b6b",
-      "31f9ef50c5dacb29",
-      "6190350a9ed39aac"
+      "e349d4fd3785cef1",
+      "19c60db5d75c88e1",
+      "5439499d516d29ec",
+      "062b7734175ea3a3"
     ],
     "scripts/ci/prepare-firebase-tools.sh": [
       "cdc22dab3d0fd21f",
@@ -650,16 +650,16 @@
       "5b2bbecdd03b3284"
     ],
     "scripts/ci/publish-domain-core-release-evidence.mjs": [
-      "ee5c4ab796defa64",
-      "d868a45406bcd5bd",
-      "811e3e43b20ef67d",
-      "1215690da206f321"
+      "64ab906b7dfe6951",
+      "1a416578ddf11c9f",
+      "615c3686e34bae30",
+      "c16deb7255de2ab3"
     ],
     "scripts/ci/publish-domain-core-release-evidence.test.mjs": [
-      "90ca9b39686b9494",
-      "204bea78c28412a6",
-      "293407fc31c402d1",
-      "a46f0b9bfc700209"
+      "3a877f167cdc8563",
+      "67c69cc0b9b02d93",
+      "f1c82aa8b2d408ca",
+      "f9c5ca017f156790"
     ],
     "scripts/ci/release-command-watchdog.py": [
       "a38e875d20624fa4",
@@ -674,16 +674,16 @@
       "66bc080d804414e1"
     ],
     "scripts/ci/resolve-domain-core-activation.mjs": [
-      "cacbd0887e2d0a5c",
-      "2ad7cd11cadcaf0d",
-      "0aa2ffbc20cad282",
-      "0b5fef2a6e8a5656"
+      "2756d8f7ae53e6fc",
+      "a3150bbb89f10820",
+      "c2a798ea306d92fa",
+      "d5da3a83a321bba2"
     ],
     "scripts/ci/resolve-domain-core-build-profile.mjs": [
-      "3a66e093683d9173",
-      "df416655b5e77375",
-      "9e4b89a3599e534a",
-      "01ff11d32ec30659"
+      "4c067a1296b41792",
+      "d07262b457b2399c",
+      "0bfa44e0918caea5",
+      "bd44783a07039415"
     ],
     "scripts/ci/resolve-domain-core-build-profile.test.mjs": [
       "b404e0d5b9adc7fc",
@@ -812,10 +812,10 @@
       "5e55d5bf883e6491"
     ],
     "scripts/ci/verify-domain-core-console-deploy-evidence.test.mjs": [
-      "46170b8e25466a53",
-      "08b2aa6873dd8572",
-      "1e280c42f537cb3d",
-      "f45bd04d49298a5c"
+      "cf8da0b3e4c9d476",
+      "d01bf045def8eabd",
+      "b81f1c94f8def1ef",
+      "f6a9cdeb3103a9c7"
     ],
     "scripts/ci/verify-domain-core-control-plane.mjs": [
       "8a9707367b8c8333",
@@ -884,10 +884,10 @@
       "b3e4e692358daa48"
     ],
     "scripts/ci/verify-domain-core-legacy-deletion.py": [
-      "babfe8ad0cc7812d",
-      "4e6911d476ee797f",
-      "0c5c9a539f9963eb",
-      "1101b7ae4f1d1356"
+      "a7f027c9af0d14db",
+      "15fc479124ceed3b",
+      "836d65fb2ee8dcfa",
+      "9ae7b6d620b0d1f8"
     ],
     "scripts/ci/verify-domain-core-native-event-commit.mjs": [
       "6d2f52e99e5a9634",
@@ -938,22 +938,22 @@
       "27bbacddeb1bbed2"
     ],
     "scripts/ci/verify-domain-core-workflows.test.mjs": [
-      "7323a4336c017d86",
-      "d896f68826eb09ad",
-      "3cbd6529c341225b",
-      "e829a0617ec83fe6"
+      "3a83d41cdf62432f",
+      "00fc5f6fe5d2b85c",
+      "08e708e05ce27de2",
+      "9c252efe8c6a180a"
     ],
     "scripts/ci/verify-existing-domain-core-deployment.mjs": [
-      "addacdce1c763579",
-      "033a76f1d76d71d3",
-      "2550c180b0be45fe",
-      "bbcb6d7902a6433a"
+      "2f0eb74d320b9c3f",
+      "ba2d9909f3c3f048",
+      "3f6d71c245584d98",
+      "5f8850b343380b5f"
     ],
     "scripts/ci/verify-existing-domain-core-deployment.test.mjs": [
-      "1c257b805745fa3f",
-      "d82b641e798f23a0",
-      "1c63d96a6c235238",
-      "bb76a8e6652de934"
+      "aa11d37d3ccd3450",
+      "284c87a18a661f87",
+      "614cac32187ba5c6",
+      "c7e011a1f0679c1f"
     ],
     "scripts/ci/verify-firestore-ttl-state.mjs": [
       "9d29723665555bf2",
@@ -1070,10 +1070,10 @@
       "bdba5b39b1307230"
     ],
     "scripts/lib/domain-core-activation.mjs": [
-      "0e57e1943b8cb9af",
-      "95dbb89321964def",
-      "762663a832373ecf",
-      "405afa247435e015"
+      "08c87a4460665432",
+      "7774312e85831f44",
+      "c8977ffb6ee8d377",
+      "2d34761054c14f01"
     ],
     "scripts/lib/domain-core-artifact-profile.mjs": [
       "5bf898f306494855",
@@ -1124,10 +1124,10 @@
       "784c34fdf1be99f7"
     ],
     "scripts/lib/domain-core-native-release.mjs": [
-      "3ac43828b3f29d4d",
-      "dddef01dba535466",
-      "10044b500c33b7b9",
-      "36dd406bdb8c5dfb"
+      "6b6df8b221b297f8",
+      "b20a199ccadfd053",
+      "3df3dbc560d1e2cf",
+      "ba2bf652590aea88"
     ],
     "scripts/lib/domain-core-promotion-evidence.mjs": [
       "1dc5321e56fd0cb1",
@@ -1148,10 +1148,10 @@
       "a5dc1cfeaca7c7e0"
     ],
     "scripts/lib/domain-core-release-evidence.mjs": [
-      "fd5ef362d32c4835",
-      "03b31af3f1da6ccb",
-      "5831277878dcdc05",
-      "6007aeb5b261c7f0"
+      "7dc204f12d5af1de",
+      "53119e3ff3f87fcd",
+      "3060120b740ea753",
+      "08c427a727adaf16"
     ],
     "scripts/lib/domain-core-shadow-enrollment.mjs": [
       "82c7d43040522fe8",
@@ -1502,10 +1502,10 @@
       "77daf987d32260f5"
     ],
     "tests/test_domain_core_console_release_evidence_workflow.py": [
-      "67a84bfba30bf445",
-      "22a76f5214980eac",
-      "7e5111a127752dad",
-      "25e35059ebf19854"
+      "512a9c00e618ce1d",
+      "8cb26ade28bbaa38",
+      "27ea5c47faa4c091",
+      "f07086dbac5a3b7e"
     ],
     "tests/test_domain_core_functions_release_workflow.py": [
       "7237a811f6a5bc2c",
@@ -1532,10 +1532,10 @@
       "c76ac2c5609b5d61"
     ],
     "tools/hermes-platform-burnbar/domain_core_hermes.py": [
-      "15c4f769e0d71e58",
-      "f23edd6b98fc28d4",
-      "56b90a38d90d2d1f",
-      "d55f6c6e3c8ee95b"
+      "f1c419cb1f3c2406",
+      "8ce29b669afcc6c3",
+      "529828f8f0285a11",
+      "05ebfcc78e8ae9fe"
     ],
     "tools/hermes-platform-burnbar/legacy/__init__.py": [
       "34ba142381379559",

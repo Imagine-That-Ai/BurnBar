@@ -141,7 +141,7 @@ class LifecycleReceiptWriterTests(unittest.TestCase):
                 mock.patch.object(STABLE.GATE, "validate_receipt", return_value=promotion_receipt),
                 mock.patch.object(STABLE.GATE, "validate_receipt_chain") as validate_chain,
             ):
-                STABLE.create_receipt(
+                receipt = STABLE.create_receipt(
                     repo,
                     row_id=row_id,
                     generation=1,
@@ -152,6 +152,7 @@ class LifecycleReceiptWriterTests(unittest.TestCase):
                     approved_at="2026-07-15T00:00:00Z",
                     evidence_verifier=verifier,
                 )
+            self.assertEqual(receipt["commit"], activation["activationCommit"])
             validate_chain.assert_called_once()
             self.assertIs(validate_chain.call_args.args[5], verifier)
 

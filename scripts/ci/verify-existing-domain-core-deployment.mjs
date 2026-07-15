@@ -6,6 +6,18 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
+import { validateDomainCoreCandidateIdentity } from "../lib/domain-core-candidate-receipt.mjs";
+
+const FULL_SHA = /^[0-9a-f]{40}$/u;
+const SHA256 = /^[0-9a-f]{64}$/u;
+const ACTIVATION_KEYS = [
+  "abiVersion",
+  "activationCommit",
+  "candidateCommit",
+  "changedPathsSha256",
+  "coreVersion",
+  "sourceSha256",
+];
 
 function bytes(path, label) {
   return readRegularFileSync(resolve(path), { label });
@@ -32,6 +44,148 @@ function exactTargetSet(targets, expected, label) {
   }
 }
 
+function canonicalJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sameCandidate(actual, expected, label) {
+  let candidate;
+  try {
+    candidate = validateDomainCoreCandidateIdentity(actual);
+  } catch (error) {
+    throw new Error(`${label} is invalid: ${error.message}`);
+  }
+  if (canonicalJson(candidate) !== canonicalJson(expected)) {
+    throw new Error(`${label} does not match candidate C`);
+  }
+  return candidate;
+}
+
+function runtimeManifest(artifactBytes, consumer, candidate) {
+  let manifest;
+  try {
+    manifest = JSON.parse(artifactBytes.toString("utf8"));
+  } catch (error) {
+    throw new Error(
+      `runtime artifact manifest is not valid JSON: ${error.message}`,
+    );
+  }
+  if (
+    manifest?.schemaVersion !== 1 ||
+    manifest?.manifestKind !== "domain-core-runtime-artifact" ||
+    manifest?.consumer !== consumer
+  ) {
+    throw new Error("runtime artifact manifest contract is invalid");
+  }
+  sameCandidate(manifest.candidate, candidate, "runtime artifact candidate");
+  return manifest;
+}
+
+function validateActivation(value, candidate) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !isDeepStrictEqual(Object.keys(value).sort(), ACTIVATION_KEYS) ||
+    value.candidateCommit !== candidate.candidateCommit ||
+    value.coreVersion !== candidate.coreVersion ||
+    value.abiVersion !== candidate.abiVersion ||
+    value.sourceSha256 !== candidate.sourceSha256 ||
+    !FULL_SHA.test(value.activationCommit ?? "") ||
+    value.activationCommit === candidate.candidateCommit ||
+    !SHA256.test(value.changedPathsSha256 ?? "")
+  ) {
+    throw new Error("release activation P does not bind candidate C");
+  }
+  return structuredClone(value);
+}
+
+function validateReleaseGate(receipt, releaseCommit, artifactBytes, consumer) {
+  const candidate = validateDomainCoreCandidateIdentity(receipt?.candidate);
+  const activation = validateActivation(receipt?.activation, candidate);
+  runtimeManifest(artifactBytes, consumer, candidate);
+  sameCandidate(
+    receipt?.rollbackArtifact?.candidate,
+    candidate,
+    "rollback artifact candidate",
+  );
+  if (
+    canonicalJson(receipt?.rollbackArtifact?.activation) !==
+      canonicalJson(activation) ||
+    typeof receipt?.rollbackArtifact?.fileName !== "string" ||
+    receipt.rollbackArtifact.fileName.length === 0 ||
+    !SHA256.test(receipt?.rollbackArtifact?.sha256 ?? "")
+  ) {
+    throw new Error("rollback artifact does not bind activation P");
+  }
+  if (
+    receipt?.sourceRun?.repository !== "Imagine-That-Ai/BurnBar" ||
+    receipt?.sourceRun?.workflowPath !== ".github/workflows/domain-core.yml" ||
+    receipt?.sourceRun?.event !== "push" ||
+    receipt?.sourceRun?.ref !== "refs/heads/main" ||
+    receipt?.sourceRun?.headSha !== candidate.candidateCommit ||
+    !Number.isSafeInteger(receipt?.sourceRun?.runId) ||
+    receipt.sourceRun.runId < 1 ||
+    !Number.isSafeInteger(receipt?.sourceRun?.runAttempt) ||
+    receipt.sourceRun.runAttempt < 1
+  ) {
+    throw new Error("source run does not bind candidate C");
+  }
+  if (
+    receipt?.promotionProof?.signerWorkflow !==
+      ".github/workflows/domain-core-promotion-proof.yml" ||
+    receipt?.promotionProof?.predicateType !==
+      "https://slsa.dev/provenance/v1" ||
+    !Number.isSafeInteger(receipt?.promotionProof?.signerRun?.runId) ||
+    receipt.promotionProof.signerRun.runId < 1 ||
+    !Number.isSafeInteger(receipt?.promotionProof?.signerRun?.runAttempt) ||
+    receipt.promotionProof.signerRun.runAttempt < 1
+  ) {
+    throw new Error("promotion proof does not bind the protected gate");
+  }
+  return { candidate, activation };
+}
+
+function validateFunctionsRuntimeIdentity(
+  document,
+  candidate,
+  releaseCommit,
+  label,
+) {
+  let liveCandidate;
+  try {
+    liveCandidate = validateDomainCoreCandidateIdentity(
+      document?.domainCore?.candidateIdentity,
+    );
+  } catch (error) {
+    throw new Error(`${label} live candidate C is invalid: ${error.message}`);
+  }
+  const loaded = document.domainCore.loadedCore;
+  if (
+    document?.source?.repository !==
+      "https://github.com/Imagine-That-Ai/BurnBar" ||
+    document.source.commit !== releaseCommit ||
+    canonicalJson(liveCandidate) !== canonicalJson(candidate) ||
+    loaded?.version !== candidate.coreVersion ||
+    loaded?.abiVersion !== candidate.abiVersion ||
+    loaded?.sourceSha256 !== candidate.sourceSha256 ||
+    !SHA256.test(loaded?.wasmSha256 ?? "")
+  ) {
+    throw new Error(
+      `${label} live runtime does not bind candidate C and release D`,
+    );
+  }
+}
+
 export function verifyExistingDeployment({
   consumer,
   receipt,
@@ -47,7 +201,6 @@ export function verifyExistingDeployment({
     receipt?.consumer !== consumer ||
     receipt?.release?.tag !== tag ||
     receipt?.release?.commit !== commit ||
-    receipt?.candidate?.candidateCommit !== commit ||
     receipt?.deployment?.status !== "healthy" ||
     receipt?.deployment?.deployedArtifact?.sha256 !== sha256(artifactBytes)
   ) {
@@ -55,6 +208,12 @@ export function verifyExistingDeployment({
       "existing evidence does not match the exact stable deployment artifact",
     );
   }
+  const authority = validateReleaseGate(
+    receipt,
+    commit,
+    artifactBytes,
+    consumer,
+  );
   const coordinates = receipt.deployment.providerCoordinates;
   if (!isDeepStrictEqual(providerCoordinates, coordinates)) {
     throw new Error(
@@ -102,6 +261,12 @@ export function verifyExistingDeployment({
     }
     for (const target of healthTargets) {
       const document = live[target];
+      validateFunctionsRuntimeIdentity(
+        document,
+        authority.candidate,
+        commit,
+        target,
+      );
       if (
         document?.domainCore?.artifactManifest?.sha256 !== sha256(artifactBytes)
       ) {

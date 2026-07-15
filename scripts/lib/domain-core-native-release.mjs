@@ -191,6 +191,7 @@ export function validateNativeActivationSelector(
       "active",
       "candidateCommit",
       "activationCommit",
+      "releaseCommit",
       "coreVersion",
       "abiVersion",
       "sourceSha256",
@@ -202,7 +203,8 @@ export function validateNativeActivationSelector(
   if (
     typeof selector.active !== "boolean" ||
     selector.candidateCommit !== expectedCandidate.candidateCommit ||
-    selector.activationCommit !== releaseCommit ||
+    selector.releaseCommit !== releaseCommit ||
+    !/^[0-9a-f]{40}$/u.test(selector.activationCommit) ||
     selector.coreVersion !== expectedCandidate.coreVersion ||
     selector.abiVersion !== expectedCandidate.abiVersion ||
     selector.sourceSha256 !== expectedCandidate.sourceSha256 ||
@@ -253,6 +255,7 @@ export function validateNativeActivationSelector(
   if (
     !selector.active &&
     (selector.candidateCommit !== selector.activationCommit ||
+      selector.activationCommit !== selector.releaseCommit ||
       selector.changedPathsSha256 !== EMPTY_CHANGED_PATHS_SHA256 ||
       domains.size !== 0)
   ) {
@@ -291,6 +294,7 @@ export function validateNativeActivationSelector(
   }
   return {
     active: selector.active,
+    releaseCommit: selector.releaseCommit,
     activation: {
       candidateCommit: selector.candidateCommit,
       activationCommit: selector.activationCommit,

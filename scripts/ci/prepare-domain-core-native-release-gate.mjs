@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -412,9 +413,18 @@ export function run(
     protectedSignerRunId: signerRun.runId,
     protectedSignerRunAttempt: signerRun.runAttempt,
     expectedRollbackSha256: sha256File(rollbackPath),
+    expectedReleaseCommit: releaseCommit,
     promotionVerifier: () => verified,
     activationVerifier,
   });
+  if (
+    gate.releaseCommit !== activationSelector.releaseCommit ||
+    !isDeepStrictEqual(gate.activation, activationSelector.activation)
+  ) {
+    throw new Error(
+      "verified release gate does not match the canonical activation selector",
+    );
+  }
 
   const profilePath = join(
     outputDirectory,
@@ -457,7 +467,7 @@ export function run(
         profile_name: profileName,
         public_profile_sha256: profileSha256,
         candidate_commit: resolvedSource.candidate.candidateCommit,
-        activation_commit: releaseCommit,
+        activation_commit: activationSelector.activation.activationCommit,
         core_version: resolvedSource.candidate.coreVersion,
         abi_version: resolvedSource.candidate.abiVersion,
         source_sha256: resolvedSource.candidate.sourceSha256,

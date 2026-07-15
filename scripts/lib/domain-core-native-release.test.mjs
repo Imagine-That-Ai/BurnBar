@@ -9,11 +9,14 @@ import {
   nativeEvidenceDomains,
   nativePredicateName,
   publicProfileSha256,
+  publicDomainProfileSha256,
   resolveNativeReleaseProfile,
   resolveProtectedSignerCoordinates,
   rollbackArtifactName,
+  validateNativeActivationSelector,
   validateResolvedProfile,
 } from "./domain-core-native-release.mjs";
+import { validateReleaseActivation } from "./domain-core-release-evidence.mjs";
 
 const CANDIDATE = {
   candidateCommit: "a".repeat(40),
@@ -186,4 +189,98 @@ test("native evidence names are deterministic and traversal-safe", () => {
     "OpenBurnBar-1.2.3-windows-cloudVault-domain-core.sigstore.json",
   );
   assert.throws(() => nativePredicateName("apple", "../1.2.3", "quota"));
+});
+
+function activationSelector({
+  activationCommit,
+  releaseCommit,
+  selectedProfile,
+}) {
+  return {
+    active: true,
+    candidateCommit: CANDIDATE.candidateCommit,
+    activationCommit,
+    releaseCommit,
+    coreVersion: CANDIDATE.coreVersion,
+    abiVersion: CANDIDATE.abiVersion,
+    sourceSha256: CANDIDATE.sourceSha256,
+    changedPathsSha256: "d".repeat(64),
+    domains: Object.entries(selectedProfile.modes)
+      .filter(([, mode]) => mode === "rust")
+      .map(([domain], index) => ({
+        domain,
+        rowId: `${domain}.row`,
+        promotionReceiptPath: `receipts/${domain}.json`,
+        attestationPath: `attestations/${domain}.json`,
+        bundlePath: `bundles/${domain}.json`,
+        provenancePath: `provenance/${domain}.json`,
+        signerRunId: 100 + index,
+        signerRunAttempt: 1,
+        publicProfileSha256: publicDomainProfileSha256(selectedProfile, domain),
+      })),
+  };
+}
+
+test("native selector binds authority P independently from post-deletion release D", () => {
+  const selectedProfile = profile();
+  const activationCommit = "c".repeat(40);
+  const releaseCommit = "d".repeat(40);
+  const selector = activationSelector({
+    activationCommit,
+    releaseCommit,
+    selectedProfile,
+  });
+  const result = validateNativeActivationSelector(selector, {
+    candidate: CANDIDATE,
+    releaseCommit,
+    profile: selectedProfile,
+    profileName: DOMAIN_CORE_PUBLIC_PROFILE,
+  });
+  assert.equal(result.activation.activationCommit, activationCommit);
+  assert.equal(result.releaseCommit, releaseCommit);
+  assert.deepEqual(
+    validateReleaseActivation(result.activation, {
+      candidate: CANDIDATE,
+      releaseCommit,
+    }),
+    result.activation,
+  );
+
+  for (const invalid of [
+    { ...selector, releaseCommit: activationCommit },
+    Object.fromEntries(
+      Object.entries(selector).filter(([key]) => key !== "releaseCommit"),
+    ),
+  ]) {
+    assert.throws(
+      () =>
+        validateNativeActivationSelector(invalid, {
+          candidate: CANDIDATE,
+          releaseCommit,
+          profile: selectedProfile,
+          profileName: DOMAIN_CORE_PUBLIC_PROFILE,
+        }),
+      /release|selector/u,
+    );
+  }
+});
+
+test("release A selector keeps authority and release at P", () => {
+  const selectedProfile = profile();
+  const activationCommit = "c".repeat(40);
+  const result = validateNativeActivationSelector(
+    activationSelector({
+      activationCommit,
+      releaseCommit: activationCommit,
+      selectedProfile,
+    }),
+    {
+      candidate: CANDIDATE,
+      releaseCommit: activationCommit,
+      profile: selectedProfile,
+      profileName: DOMAIN_CORE_PUBLIC_PROFILE,
+    },
+  );
+  assert.equal(result.activation.activationCommit, activationCommit);
+  assert.equal(result.releaseCommit, activationCommit);
 });

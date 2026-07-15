@@ -15,7 +15,7 @@ import {
   parseDomainCoreBuildProfileResolverArgs,
   resolveDomainCoreCandidateIdentity,
 } from "../lib/domain-core-candidate-receipt.mjs";
-import { validateDomainCoreActivation } from "../lib/domain-core-activation.mjs";
+import { resolveActiveDomainCoreActivation } from "../lib/domain-core-activation.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const args = parseDomainCoreBuildProfileResolverArgs(process.argv.slice(2));
@@ -39,26 +39,21 @@ if (catalogProfile.artifactAuthority === "signed") {
         "--expected-release-commit requires --expected-candidate-commit",
       );
     }
-    const hasActiveRust = Object.values(catalogProfile.modes).includes("rust");
-    if (!hasActiveRust && expectedCandidateCommit === expectedReleaseCommit) {
-      candidateIdentity = resolveDomainCoreCandidateIdentity({
-        repoRoot,
-        expectedCandidateCommit,
-        requireClean: true,
-      });
-    } else {
-      const activation = validateDomainCoreActivation({
-        repoRoot,
-        candidateCommit: expectedCandidateCommit,
-        activationCommit: expectedReleaseCommit,
-      });
-      candidateIdentity = {
-        candidateCommit: activation.candidateCommit,
-        coreVersion: activation.coreVersion,
-        abiVersion: activation.abiVersion,
-        sourceSha256: activation.sourceSha256,
-      };
+    const activation = resolveActiveDomainCoreActivation({
+      repoRoot,
+      releaseCommit: expectedReleaseCommit,
+    });
+    if (activation.candidateCommit !== expectedCandidateCommit) {
+      throw new Error(
+        "resolved release activation does not match --expected-candidate-commit",
+      );
     }
+    candidateIdentity = {
+      candidateCommit: activation.candidateCommit,
+      coreVersion: activation.coreVersion,
+      abiVersion: activation.abiVersion,
+      sourceSha256: activation.sourceSha256,
+    };
   } else {
     candidateIdentity = resolveDomainCoreCandidateIdentity({
       repoRoot,

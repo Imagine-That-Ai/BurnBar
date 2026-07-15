@@ -211,10 +211,26 @@ export function validateDomainCoreActivation({
 
 export function resolveActiveDomainCoreActivation({
   repoRoot,
+  releaseCommit: requestedReleaseCommit,
   activationCommit,
 }) {
-  const releaseCommit = commit(activationCommit, "activation commit");
+  if (
+    requestedReleaseCommit !== undefined &&
+    activationCommit !== undefined &&
+    requestedReleaseCommit !== activationCommit
+  ) {
+    throw new Error("release commit arguments must identify the same commit");
+  }
+  const releaseCommit = commit(
+    requestedReleaseCommit ?? activationCommit,
+    "release commit",
+  );
   requireCleanCheckout(repoRoot);
+  if (git(repoRoot, ["rev-parse", "HEAD"]) !== releaseCommit) {
+    throw new Error(
+      "release commit must equal the exact release checkout HEAD",
+    );
+  }
   const profiles = JSON.parse(
     readFileSync(
       join(repoRoot, "config/domain-core-build-profiles.json"),
@@ -229,10 +245,17 @@ export function resolveActiveDomainCoreActivation({
   );
   const rows = new Map(ledger.rows.map((row) => [row.id, row]));
   const candidates = new Set();
+  const stableAuthorities = new Map();
   const domains = [];
   for (const [domain, rowIds] of Object.entries(DOMAIN_ROWS)) {
-    if (profiles.profiles?.["public-production"]?.modes?.[domain] !== "rust")
+    if (profiles.profiles?.["public-production"]?.modes?.[domain] !== "rust") {
+      if (rowIds.some((rowId) => rows.get(rowId)?.state === "legacy_deleted")) {
+        throw new Error(
+          `${domain}: deleted legacy authority requires public-production mode rust`,
+        );
+      }
       continue;
+    }
     for (const rowId of rowIds) {
       const row = rows.get(rowId);
       const pointer = row?.receipts?.promotion;
@@ -246,6 +269,41 @@ export function resolveActiveDomainCoreActivation({
         readFileSync(join(repoRoot, receipt.promotionAttestation.path), "utf8"),
       );
       candidates.add(attestation.candidate?.candidateCommit);
+      if (row.state === "legacy_deleted") {
+        const stablePointer = row.receipts?.stableRelease;
+        if (typeof stablePointer !== "string") {
+          throw new Error(
+            `${domain}: deleted row ${rowId} is missing its stable-release authority`,
+          );
+        }
+        const stable = JSON.parse(
+          readFileSync(join(repoRoot, stablePointer), "utf8"),
+        );
+        const stableCandidate = validateDomainCoreCandidateIdentity(
+          stable.release?.candidate,
+        );
+        const stableActivation = stable.release?.activation;
+        const stableCandidateCommit = stableCandidate?.candidateCommit;
+        const stableActivationCommit = stableActivation?.activationCommit;
+        if (
+          stableCandidateCommit !== attestation.candidate?.candidateCommit ||
+          stableActivation?.candidateCommit !== stableCandidateCommit ||
+          stable.commit !== stableActivationCommit ||
+          typeof stableActivationCommit !== "string"
+        ) {
+          throw new Error(
+            `${domain}: stable-release authority does not cross-bind candidate C and activation P`,
+          );
+        }
+        const authorityKey = canonicalSha256({
+          candidate: stableCandidate,
+          activation: stableActivation,
+        });
+        stableAuthorities.set(authorityKey, {
+          candidate: stableCandidate,
+          activation: stableActivation,
+        });
+      }
       if (!domains.some((item) => item.domain === domain)) {
         domains.push({
           domain,
@@ -278,6 +336,7 @@ export function resolveActiveDomainCoreActivation({
         candidateCommit: releaseCommit,
         activationCommit: releaseCommit,
       }),
+      releaseCommit,
       domains: [],
     };
   }
@@ -286,13 +345,92 @@ export function resolveActiveDomainCoreActivation({
       "public Rust profile must resolve to exactly one protected candidate commit",
     );
   }
+  const candidateCommit = [...candidates][0];
+  if (stableAuthorities.size > 1) {
+    throw new Error(
+      "deleted public Rust rows must share one stable candidate and activation authority",
+    );
+  }
+  if (stableAuthorities.size === 1) {
+    const [{ candidate: stableCandidate, activation: stableActivation }] =
+      stableAuthorities.values();
+    if (stableCandidate.candidateCommit !== candidateCommit) {
+      throw new Error(
+        "stable-release candidate differs from the protected promotion candidate",
+      );
+    }
+    const authority = validateDomainCoreActivation({
+      repoRoot,
+      candidateCommit,
+      activationCommit: stableActivation.activationCommit,
+      requireHead: false,
+    });
+    const activationProfiles = gitJson(
+      repoRoot,
+      authority.activationCommit,
+      "config/domain-core-build-profiles.json",
+      "activation build profiles",
+    );
+    for (const { domain } of domains) {
+      if (
+        activationProfiles.profiles?.["public-production"]?.modes?.[domain] !==
+        "rust"
+      ) {
+        throw new Error(
+          `${domain}: stable activation P was not Rust-authoritative`,
+        );
+      }
+    }
+    if (
+      authority.coreVersion !== stableCandidate.coreVersion ||
+      authority.abiVersion !== stableCandidate.abiVersion ||
+      authority.sourceSha256 !== stableCandidate.sourceSha256 ||
+      authority.coreVersion !== stableActivation.coreVersion ||
+      authority.abiVersion !== stableActivation.abiVersion ||
+      authority.sourceSha256 !== stableActivation.sourceSha256 ||
+      authority.changedPathsSha256 !== stableActivation.changedPathsSha256
+    ) {
+      throw new Error(
+        "stable-release activation does not match the repository-derived C to P authority",
+      );
+    }
+    try {
+      execFileSync("git", [
+        "-C",
+        repoRoot,
+        "merge-base",
+        "--is-ancestor",
+        authority.activationCommit,
+        releaseCommit,
+      ]);
+    } catch {
+      throw new Error(
+        "stable activation P must be an ancestor of release commit D",
+      );
+    }
+    const releaseIdentity = candidateAt(repoRoot, releaseCommit);
+    if (
+      releaseIdentity.coreVersion !== authority.coreVersion ||
+      releaseIdentity.abiVersion !== authority.abiVersion ||
+      releaseIdentity.sourceSha256 !== authority.sourceSha256
+    ) {
+      throw new Error("release commit changed the attested Rust core closure");
+    }
+    return {
+      active: true,
+      ...authority,
+      releaseCommit,
+      domains,
+    };
+  }
   return {
     active: true,
     ...validateDomainCoreActivation({
       repoRoot,
-      candidateCommit: [...candidates][0],
+      candidateCommit,
       activationCommit: releaseCommit,
     }),
+    releaseCommit,
     domains,
   };
 }

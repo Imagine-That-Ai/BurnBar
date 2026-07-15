@@ -175,6 +175,7 @@
     "rollbackArtifact": { "$ref": "#/$defs/rollbackArtifact" },
     "artifact": { "$ref": "#/$defs/artifact" },
     "androidUniversal": { "$ref": "#/$defs/androidUniversal" },
+    "legacyAbsence": { "$ref": "#/$defs/legacyAbsence" },
     "release": { "$ref": "#/$defs/release" }
   },
   "$defs": {
@@ -520,6 +521,101 @@
       "properties": {
         "fileName": { "type": "string", "minLength": 1 },
         "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "legacyAbsence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "predicateType",
+        "releaseCommit",
+        "authorityActivationCommit",
+        "deletionInventorySha256",
+        "rowIds",
+        "artifactScan"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "predicateType": {
+          "const": "https://openburnbar.dev/attestations/domain-core-final-legacy-absence/v1"
+        },
+        "releaseCommit": { "$ref": "#/$defs/gitSha" },
+        "authorityActivationCommit": { "$ref": "#/$defs/gitSha" },
+        "deletionInventorySha256": { "$ref": "#/$defs/sha256" },
+        "rowIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]*$"
+          }
+        },
+        "artifactScan": { "$ref": "#/$defs/legacyArtifactScan" }
+      }
+    },
+    "legacyArtifactScan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportSha256",
+        "artifactSha256",
+        "ruleSetSha256",
+        "inspectedMemberCount",
+        "report"
+      ],
+      "properties": {
+        "reportSha256": { "$ref": "#/$defs/sha256" },
+        "artifactSha256": { "$ref": "#/$defs/sha256" },
+        "ruleSetSha256": { "$ref": "#/$defs/sha256" },
+        "inspectedMemberCount": { "type": "integer", "minimum": 1 },
+        "report": { "$ref": "#/$defs/legacyArtifactScanReport" }
+      }
+    },
+    "legacyArtifactScanReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "consumer",
+        "artifact",
+        "ruleSetSha256",
+        "inspectedMembers",
+        "matches",
+        "result"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "consumer": { "$ref": "#/$defs/consumer" },
+        "artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fileName", "sha256", "size"],
+          "properties": {
+            "fileName": { "type": "string", "minLength": 1 },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "size": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "ruleSetSha256": { "$ref": "#/$defs/sha256" },
+        "inspectedMembers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256", "size", "matches"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "sha256": { "$ref": "#/$defs/sha256" },
+              "size": { "type": "integer", "minimum": 0 },
+              "matches": { "const": [] }
+            }
+          }
+        },
+        "matches": { "const": [] },
+        "result": { "const": "absent" }
       }
     },
     "androidUniversal": {

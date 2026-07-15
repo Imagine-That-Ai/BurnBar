@@ -169,11 +169,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         )
 
     def test_ios_release_consumers_match_mobile_runtime_ownership(self) -> None:
-        ios_rows = {
-            row_id
-            for row_id, consumers in GATE.ROW_RELEASE_CONSUMERS.items()
-            if "ios" in consumers
-        }
+        ios_rows = {row_id for row_id, consumers in GATE.ROW_RELEASE_CONSUMERS.items() if "ios" in consumers}
         self.assertEqual(
             ios_rows,
             {
@@ -423,7 +419,9 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             (repo / "crates/openburnbar-domain-core/union-abi-manifest.json").write_text(
                 json.dumps({"coreVersion": "0.3.0", "abiVersion": 3, "sourceSha256": "2" * 64})
             )
-            (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text('[workspace]\n[workspace.package]\nversion = "0.3.0"\n')
+            (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text(
+                '[workspace]\n[workspace.package]\nversion = "0.3.0"\n'
+            )
             profiles = json.loads((ROOT / GATE.BUILD_PROFILE_PATH).read_text())
             (repo / GATE.BUILD_PROFILE_PATH).write_text(json.dumps(profiles))
             (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"rollout"}\n')
@@ -774,6 +772,76 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         ):
             self.assertIn(marker, source)
 
+    def test_stable_receipt_rejects_descendant_of_exact_activation_commit(self) -> None:
+        row_id = "quota.claude_statusline"
+        candidate_commit = "1" * 40
+        activation_commit = "2" * 40
+        descendant_commit = "3" * 40
+        candidate = {
+            "candidateCommit": candidate_commit,
+            "coreVersion": "0.3.0",
+            "abiVersion": 3,
+            "sourceSha256": "4" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": activation_commit,
+            "changedPathsSha256": "5" * 64,
+        }
+        promotion = GATE.Receipt(
+            path="promotion.json",
+            transition="promotion",
+            generation=1,
+            approved_at=GATE.parse_rfc3339_utc("2026-07-14T00:00:00Z", "approved"),
+            commit=candidate_commit,
+            digest="6" * 64,
+            evidence=(),
+            payload={"supersedes": None},
+        )
+        stable = GATE.Receipt(
+            path="stable_release.json",
+            transition="stable_release",
+            generation=1,
+            approved_at=GATE.parse_rfc3339_utc("2026-07-15T00:00:00Z", "approved"),
+            commit=descendant_commit,
+            digest="7" * 64,
+            evidence=(),
+            payload={
+                "promotionReceiptSha256": promotion.digest,
+                "publicProfileSha256": "8" * 64,
+                "candidate": candidate,
+                "activation": activation,
+                "consumerReleases": [],
+                "rollbackArtifact": {},
+            },
+        )
+        with (
+            mock.patch.object(
+                GATE,
+                "validate_promotion_attestation",
+                return_value=(candidate_commit, "9" * 64, candidate["coreVersion"]),
+            ),
+            mock.patch.object(GATE, "candidate_identity_at_commit", return_value=candidate),
+            mock.patch.object(GATE, "require_commit", return_value=activation_commit),
+            mock.patch.object(GATE, "validate_activation_closure", return_value=activation),
+            mock.patch.object(
+                GATE,
+                "public_production_profile_at_commit",
+                return_value=({"quota": "legacy"}, {"quota": "a" * 64}),
+            ),
+            self.assertRaisesRegex(
+                GATE.GateError,
+                "stable receipt commit must equal the exact activation commit",
+            ),
+        ):
+            GATE.validate_receipt_chain(
+                ROOT,
+                row_id,
+                "rust_authoritative_with_rollback",
+                1,
+                {"promotion": promotion, "stableRelease": stable},
+            )
+
     def test_ios_distribution_receipt_rejects_binary_identity_spoof(self) -> None:
         candidate = {
             "candidateCommit": "1" * 40,
@@ -907,6 +975,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 version="1.2.3",
                 tag="v1.2.3",
                 commit=activation["activationCommit"],
+                ancestry_verifier=lambda _ancestor, _descendant: None,
             )
             contents = bundle_path.read_bytes()
         predicate = {
@@ -969,9 +1038,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             (root / "config").mkdir()
-            (root / GATE.DELETION_REVIEWERS_PATH).write_text(
-                json.dumps({"schemaVersion": 1, "reviewers": []})
-            )
+            (root / GATE.DELETION_REVIEWERS_PATH).write_text(json.dumps({"schemaVersion": 1, "reviewers": []}))
             with self.assertRaisesRegex(GATE.GateError, "at least one qualified reviewer"):
                 GATE.load_deletion_reviewers(root)
             self.assertEqual(
@@ -1101,7 +1168,9 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             )
             + "\n"
         )
-        (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text('[workspace]\n[workspace.package]\nversion = "0.3.0"\n')
+        (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text(
+            '[workspace]\n[workspace.package]\nversion = "0.3.0"\n'
+        )
         (repo / GATE.PROMOTION_POLICY_PATH).write_text((ROOT / GATE.PROMOTION_POLICY_PATH).read_text())
         (repo / GATE.PROMOTION_EVALUATOR_PATH).write_text((ROOT / GATE.PROMOTION_EVALUATOR_PATH).read_text())
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)

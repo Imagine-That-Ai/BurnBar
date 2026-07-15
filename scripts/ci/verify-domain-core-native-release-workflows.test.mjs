@@ -145,14 +145,10 @@ test("deterministic native smoke resolves candidate C and extracts Android ident
     "swift-consumer-contracts",
   );
   const android = job(domainCore, "android", "apple");
-  assert.match(appleSmoke, /candidate_commit="\$\(git rev-parse HEAD\)"/u);
+  assert.doesNotMatch(appleSmoke, /git rev-parse HEAD/u);
   assert.match(
     appleSmoke,
-    /DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ steps\.candidate\.outputs\.commit \}\}/u,
-  );
-  assert.match(
-    appleSmoke,
-    /--expected-candidate-commit "\$\{\{ steps\.candidate\.outputs\.commit \}\}"/u,
+    /--expected-candidate-commit "\$DOMAIN_CORE_CANDIDATE_COMMIT"/u,
   );
   assert.doesNotMatch(
     appleSmoke,

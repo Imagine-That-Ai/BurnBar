@@ -8,7 +8,9 @@ import hashlib
 import json
 import re
 import stat
+import subprocess
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -145,6 +147,25 @@ def rollback_environment(profile: dict[str, Any]) -> bytes:
     return "".join(f"{key}={values[key]}\n" for key in sorted(values)).encode("ascii")
 
 
+def verify_git_ancestry(ancestor: str, descendant: str) -> None:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(Path(__file__).resolve().parents[2]),
+            "merge-base",
+            "--is-ancestor",
+            ancestor,
+            descendant,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"{ancestor} is not an ancestor of {descendant}")
+
+
 def create_bundle(
     profile_path: Path,
     activation_path: Path,
@@ -154,6 +175,7 @@ def create_bundle(
     version: str,
     tag: str,
     commit: str,
+    ancestry_verifier: Callable[[str, str], None] | None = None,
 ) -> dict[str, Any]:
     if not VERSION.fullmatch(version) or tag != f"v{version}" or not SHA.fullmatch(commit):
         raise ValueError("rollback release coordinates are invalid")
@@ -186,13 +208,28 @@ def create_bundle(
         "sourceSha256",
         "changedPathsSha256",
     }
-    if set(activation) != required or activation["activationCommit"] != commit:
-        raise ValueError("rollback activation must bind exact release commit P")
+    if set(activation) != required:
+        raise ValueError("rollback activation must contain the exact closure fields")
+    candidate_commit = activation.get("candidateCommit")
+    activation_commit = activation.get("activationCommit")
+    if not isinstance(candidate_commit, str) or not SHA.fullmatch(candidate_commit):
+        raise ValueError("rollback activation candidate C must be a full commit")
+    if not isinstance(activation_commit, str) or not SHA.fullmatch(activation_commit):
+        raise ValueError("rollback activation authority P must be a full commit")
     if any(
         activation.get(key) != candidate.get(key)
         for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256")
     ):
         raise ValueError("rollback profile candidate and activation closure disagree")
+    verifier = ancestry_verifier or verify_git_ancestry
+    try:
+        verifier(candidate_commit, activation_commit)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        raise ValueError("rollback candidate C must be an ancestor of activation P") from error
+    try:
+        verifier(activation_commit, commit)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        raise ValueError("rollback activation P must be an ancestor of release D") from error
     payload_manifest, payload_entries = rollback_payloads(
         candidate=candidate,
         activation=activation,

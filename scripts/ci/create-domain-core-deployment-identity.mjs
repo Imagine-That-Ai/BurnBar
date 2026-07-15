@@ -103,7 +103,8 @@ function validateReleaseGate(raw, candidate, commit) {
   }
   if (
     raw.schemaVersion !== 2 ||
-    raw.verificationKind !== "domain-core-release-gate"
+    raw.verificationKind !== "domain-core-release-gate" ||
+    raw.releaseCommit !== commit
   ) {
     throw new Error("release gate must use the deterministic v2 contract");
   }
@@ -115,7 +116,8 @@ function validateReleaseGate(raw, candidate, commit) {
   );
   if (
     raw.activation?.candidateCommit !== candidate.candidateCommit ||
-    raw.activation?.activationCommit !== commit ||
+    raw.activation?.activationCommit === candidate.candidateCommit ||
+    !/^[0-9a-f]{40}$/u.test(raw.activation?.activationCommit ?? "") ||
     raw.activation?.coreVersion !== candidate.coreVersion ||
     raw.activation?.abiVersion !== candidate.abiVersion ||
     raw.activation?.sourceSha256 !== candidate.sourceSha256 ||

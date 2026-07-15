@@ -577,6 +577,7 @@ jobs:
           install -m 0700 scripts/ci/create-domain-core-functions-provider-coordinates.mjs "$stage/scripts/ci/create-domain-core-functions-provider-coordinates.mjs"
           install -m 0700 scripts/ci/verify-existing-domain-core-deployment.mjs "$stage/scripts/ci/verify-existing-domain-core-deployment.mjs"
           install -m 0600 scripts/lib/atomic-regular-file.mjs "$stage/scripts/lib/atomic-regular-file.mjs"
+          install -m 0600 scripts/lib/domain-core-candidate-receipt.mjs "$stage/scripts/lib/domain-core-candidate-receipt.mjs"
           if find "$stage" -type l -o \( ! -type d ! -type f \) | grep -q .; then
             echo "::error::Prepared deploy artifact contains a symlink or special file."
             exit 1

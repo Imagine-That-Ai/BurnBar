@@ -146,6 +146,7 @@ function validateReleaseGate(raw, profile, releaseCommit) {
     [
       "schemaVersion",
       "verificationKind",
+      "releaseCommit",
       "candidate",
       "activation",
       "sourceRun",
@@ -156,7 +157,8 @@ function validateReleaseGate(raw, profile, releaseCommit) {
   );
   if (
     gate.schemaVersion !== 2 ||
-    gate.verificationKind !== "domain-core-release-gate"
+    gate.verificationKind !== "domain-core-release-gate" ||
+    gate.releaseCommit !== releaseCommit
   ) {
     throw new Error("release gate is not a v2 domain-core release gate");
   }
@@ -168,7 +170,8 @@ function validateReleaseGate(raw, profile, releaseCommit) {
   }
   if (
     gate.activation?.candidateCommit !== gateCandidate.candidateCommit ||
-    gate.activation?.activationCommit !== releaseCommit ||
+    gate.activation?.activationCommit === gateCandidate.candidateCommit ||
+    !/^[0-9a-f]{40}$/u.test(gate.activation?.activationCommit ?? "") ||
     gate.activation?.coreVersion !== gateCandidate.coreVersion ||
     gate.activation?.abiVersion !== gateCandidate.abiVersion ||
     gate.activation?.sourceSha256 !== gateCandidate.sourceSha256 ||

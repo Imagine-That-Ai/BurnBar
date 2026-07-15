@@ -18,6 +18,7 @@ import { publicDomainProfileSha256 } from "../lib/domain-core-native-release.mjs
 
 const COMMIT = "a".repeat(40);
 const RELEASE_COMMIT = "c".repeat(40);
+const AUTHORITY_COMMIT = "d".repeat(40);
 const CANDIDATE = Object.freeze({
   candidateCommit: COMMIT,
   coreVersion: "0.3.0",
@@ -139,7 +140,8 @@ test("full gate resolves the signed public profile against the exact candidate",
     `${JSON.stringify({
       active: true,
       candidateCommit: COMMIT,
-      activationCommit: RELEASE_COMMIT,
+      activationCommit: AUTHORITY_COMMIT,
+      releaseCommit: RELEASE_COMMIT,
       coreVersion: CANDIDATE.coreVersion,
       abiVersion: CANDIDATE.abiVersion,
       sourceSha256: CANDIDATE.sourceSha256,
@@ -297,11 +299,40 @@ test("full gate resolves the signed public profile against the exact candidate",
     );
     assert.equal(result.profileName, "public-production");
     assert.deepEqual(result.candidate, CANDIDATE);
-    assert.equal(result.activation.activationCommit, RELEASE_COMMIT);
+    assert.equal(result.activation.activationCommit, AUTHORITY_COMMIT);
     assert.equal(
       JSON.parse(readFileSync(result.profilePath, "utf8")).candidateIdentity
         .candidateCommit,
       COMMIT,
+    );
+    assert.throws(
+      () =>
+        run(
+          [
+            "--candidate-commit",
+            COMMIT,
+            "--release-commit",
+            RELEASE_COMMIT,
+            "--activation",
+            activationPath,
+            "--event-name",
+            "push",
+            "--requested-profile",
+            "public-production",
+            "--output-dir",
+            join(outputDirectory, "mismatched-gate"),
+            "--profile-catalog",
+            profileCatalogPath,
+          ],
+          {
+            command,
+            activationVerifier: () => ({
+              ...JSON.parse(readFileSync(activationPath, "utf8")),
+              changedPathsSha256: "e".repeat(64),
+            }),
+          },
+        ),
+      /verified release gate does not match the canonical activation selector/,
     );
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });

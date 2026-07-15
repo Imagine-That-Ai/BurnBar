@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, resolve } from "node:path";
-import { validateDomainCoreActivation } from "./domain-core-activation.mjs";
+import {
+  resolveActiveDomainCoreActivation,
+  validateDomainCoreActivation,
+} from "./domain-core-activation.mjs";
 
 import { validateDomainCoreCandidateIdentity } from "./domain-core-candidate-receipt.mjs";
 
@@ -19,6 +22,11 @@ export const DOMAIN_CORE_RELEASE_PREDICATE_TYPE =
 
 const SHA256 = /^[0-9a-f]{64}$/u;
 const FULL_SHA = /^[0-9a-f]{40}$/u;
+const resolveReleaseActivation = ({ repoRoot, activationCommit }) =>
+  resolveActiveDomainCoreActivation({
+    repoRoot,
+    releaseCommit: activationCommit,
+  });
 export const STABLE_RELEASE_VERSION =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 export const NATIVE_RELEASE_VERSION =
@@ -345,6 +353,9 @@ export function validateReleaseCoordinates({
 }
 
 export function validateReleaseActivation(value, { candidate, releaseCommit }) {
+  if (typeof releaseCommit !== "string" || !FULL_SHA.test(releaseCommit)) {
+    throw new Error("release commit must be a full lowercase Git SHA-1");
+  }
   const activation = exactObject(
     value,
     [
@@ -371,12 +382,9 @@ export function validateReleaseActivation(value, { candidate, releaseCommit }) {
   }
   if (
     typeof activation.activationCommit !== "string" ||
-    !FULL_SHA.test(activation.activationCommit) ||
-    activation.activationCommit !== releaseCommit
+    !FULL_SHA.test(activation.activationCommit)
   ) {
-    throw new Error(
-      "release activation commit does not match the release commit",
-    );
+    throw new Error("release activation commit must be a full Git commit");
   }
   if (activation.activationCommit === activation.candidateCommit) {
     throw new Error(
@@ -533,8 +541,16 @@ export function verifyDomainCoreReleaseGate({
   expectedRollbackSha256,
   expectedReleaseCommit,
   promotionVerifier = verifyProtectedPromotionAttestation,
-  activationVerifier = validateDomainCoreActivation,
+  activationVerifier = resolveReleaseActivation,
 }) {
+  if (
+    typeof expectedReleaseCommit !== "string" ||
+    !FULL_SHA.test(expectedReleaseCommit)
+  ) {
+    throw new Error(
+      "expected release commit must be a full lowercase Git SHA-1",
+    );
+  }
   const candidateBundle = JSON.parse(
     readFileSync(regularFile(candidateBundlePath, "candidate bundle"), "utf8"),
   );
@@ -569,11 +585,33 @@ export function verifyDomainCoreReleaseGate({
     signerRunId: protectedSignerRunId,
     signerRunAttempt: protectedSignerRunAttempt,
   });
-  const activation = activationVerifier({
+  const resolvedActivation = activationVerifier({
     repoRoot: process.cwd(),
     candidateCommit: candidate.candidateCommit,
     activationCommit: expectedReleaseCommit,
   });
+  if (
+    resolvedActivation.candidateCommit !== candidate.candidateCommit ||
+    (resolvedActivation.releaseCommit !== undefined &&
+      resolvedActivation.releaseCommit !== expectedReleaseCommit)
+  ) {
+    throw new Error(
+      "release gate activation resolver does not bind candidate C and release D",
+    );
+  }
+  const activation = validateReleaseActivation(
+    Object.fromEntries(
+      [
+        "candidateCommit",
+        "activationCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256",
+        "changedPathsSha256",
+      ].map((field) => [field, resolvedActivation[field]]),
+    ),
+    { candidate, releaseCommit: expectedReleaseCommit },
+  );
   const rollbackPath = regularFile(rollbackArtifactPath, "rollback artifact");
   validateRollbackArtifact(
     JSON.parse(readFileSync(rollbackPath, "utf8")),
@@ -596,6 +634,7 @@ export function verifyDomainCoreReleaseGate({
   return {
     schemaVersion: 2,
     verificationKind: "domain-core-release-gate",
+    releaseCommit: expectedReleaseCommit,
     candidate,
     sourceRun,
     promotionProof,

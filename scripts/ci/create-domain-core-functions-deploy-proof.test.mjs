@@ -83,6 +83,7 @@ function workspace(selected = profile()) {
       {
         schemaVersion: 2,
         verificationKind: "domain-core-release-gate",
+        releaseCommit: ACTIVATION.activationCommit,
         candidate: CANDIDATE,
         activation: ACTIVATION,
         sourceRun: { runId: 101, runAttempt: 2 },

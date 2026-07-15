@@ -67,6 +67,10 @@ const hostingDeploy = readFileSync(
   new URL("../../.github/workflows/deploy-hosting.yml", import.meta.url),
   "utf8",
 );
+const buildProfileResolver = readFileSync(
+  new URL("./resolve-domain-core-build-profile.mjs", import.meta.url),
+  "utf8",
+);
 const functionsTargets = JSON.parse(
   readFileSync(
     new URL(
@@ -105,7 +109,36 @@ test("deterministic workflow implements every exact policy job and a fail-closed
   assert.match(core, /create-domain-core-deterministic-candidate-bundle\.mjs/u);
   assert.match(
     core,
-    /domain-core-candidate-bundle-\$\{\{ github\.sha \}\}-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u,
+    /domain-core-candidate-bundle-\$\{\{ env\.DOMAIN_CORE_CANDIDATE_COMMIT \}\}-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u,
+  );
+});
+
+test("PR verification binds generated artifacts to the exact candidate head", () => {
+  assert.match(
+    core,
+    /^  DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}$/mu,
+  );
+  assert.match(
+    core,
+    /^  OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}$/mu,
+  );
+  assert.doesNotMatch(core, /--expected-candidate-commit "\$GITHUB_SHA"/u);
+  assert.doesNotMatch(
+    core,
+    /(?:OPENBURNBAR_)?DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.sha \}\}/u,
+  );
+  assert.doesNotMatch(
+    core,
+    /apple-native-smoke:[\s\S]*?git rev-parse HEAD[\s\S]*?Emit Apple native-load proof fragment/u,
+  );
+});
+
+test("release profile resolution preserves distinct candidate, activation, and deletion commits", () => {
+  assert.match(buildProfileResolver, /resolveActiveDomainCoreActivation/u);
+  assert.doesNotMatch(buildProfileResolver, /validateDomainCoreActivation/u);
+  assert.match(
+    buildProfileResolver,
+    /activation\.candidateCommit !== expectedCandidateCommit/u,
   );
 });
 
@@ -118,7 +151,7 @@ test("native consumer jobs keep their measured execution margin and emulator she
   );
   assert.match(
     core,
-    /^          script: bash scripts\/ci\/run-domain-core-android-native-load\.sh android\/openburnbar-domain-core\/build\/outputs\/apk\/androidTest\/debug\/openburnbar-domain-core-debug-androidTest\.apk "\$GITHUB_SHA" "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
+    /^          script: bash scripts\/ci\/run-domain-core-android-native-load\.sh android\/openburnbar-domain-core\/build\/outputs\/apk\/androidTest\/debug\/openburnbar-domain-core-debug-androidTest\.apk "\$DOMAIN_CORE_CANDIDATE_COMMIT" "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
   );
   assert.match(
     androidNativeLoad,
@@ -150,7 +183,7 @@ test("native consumer jobs keep their measured execution margin and emulator she
   assert.ok(candidateResolution < candidateBuild);
   assert.match(
     apple,
-    /Build Apple XCFramework and regenerate Swift bindings[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.sha \}\}[\s\S]*build-domain-core-xcframework\.sh/u,
+    /Build Apple XCFramework and regenerate Swift bindings[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ env\.DOMAIN_CORE_CANDIDATE_COMMIT \}\}[\s\S]*build-domain-core-xcframework\.sh/u,
   );
 });
 
@@ -322,6 +355,19 @@ test("stable tag replay is byte-and-provider-identical before any production mut
   );
   assert.match(
     hostingDeploy,
+    /CANDIDATE_COMMIT: \$\{\{ steps\.activation\.outputs\.candidate_commit \|\| steps\.ref\.outputs\.commit \}\}[\s\S]*--expected-candidate-commit "\$CANDIDATE_COMMIT"/u,
+  );
+  assert.doesNotMatch(
+    hostingDeploy,
+    /--expected-candidate-commit "\$RELEASE_COMMIT"/u,
+  );
+  assert.match(
+    hostingDeploy,
+    /- "scripts\/ci\/verify-existing-domain-core-deployment\.mjs"/u,
+  );
+  assert.match(hostingDeploy, /- "scripts\/lib\/atomic-regular-file\.mjs"/u);
+  assert.match(
+    hostingDeploy,
     /already live but its immutable Console deployment receipt is missing/u,
   );
   assert.match(hostingDeploy, /gh attestation verify/u);
@@ -335,12 +381,21 @@ test("stable tag replay is byte-and-provider-identical before any production mut
   const stagedBearerHelper = hostingDeploy.indexOf(
     'cp scripts/lib/curl-bearer.sh "$ARTIFACT_ROOT/scripts/lib/"',
   );
+  const stagedReplayDependencies = [
+    "atomic-regular-file.mjs",
+    "domain-core-candidate-receipt.mjs",
+  ].map((name) =>
+    hostingDeploy.indexOf(
+      `cp scripts/lib/${name} "$ARTIFACT_ROOT/scripts/lib/"`,
+    ),
+  );
   const sourcedBearerHelper = hostingDeploy.indexOf(
     'source "$ARTIFACT_ROOT/scripts/lib/curl-bearer.sh"',
   );
   assert.ok(stagedManifestCreator > 0);
   assert.ok(usedManifestCreator > stagedManifestCreator);
   assert.ok(stagedBearerHelper > 0);
+  assert.ok(stagedReplayDependencies.every((index) => index > 0));
   assert.ok(sourcedBearerHelper > stagedBearerHelper);
   assert.match(
     hostingDeploy,
@@ -365,6 +420,23 @@ test("Functions preparation is uncredentialed and deploy consumes only a verifie
   assert.match(prepare, /find "\$stage" -type f -links \+1/u);
   assert.match(prepare, /SHA256SUMS/u);
   assert.match(prepare, /--portable-functions-source/u);
+  const replayVerifier = prepare.indexOf(
+    'install -m 0700 scripts/ci/verify-existing-domain-core-deployment.mjs "$stage/scripts/ci/verify-existing-domain-core-deployment.mjs"',
+  );
+  const replayDependencies = [
+    "atomic-regular-file.mjs",
+    "domain-core-candidate-receipt.mjs",
+  ].map((name) =>
+    prepare.indexOf(
+      `install -m 0600 scripts/lib/${name} "$stage/scripts/lib/${name}"`,
+    ),
+  );
+  const preparedSums = prepare.indexOf(
+    "find . -type f ! -name SHA256SUMS -print0",
+  );
+  assert.ok(replayVerifier > 0);
+  assert.ok(replayDependencies.every((index) => index > replayVerifier));
+  assert.ok(replayDependencies.every((index) => index < preparedSums));
   assert.match(
     prepare,
     /- name: Prepare pinned Sentry CLI\n        if: steps\.tag\.outputs\.dry_run != 'true'/u,

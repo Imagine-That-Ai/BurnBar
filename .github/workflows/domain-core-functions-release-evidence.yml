@@ -145,7 +145,8 @@ jobs:
           if (proof.profile.value.name !== expectedProfile) throw new Error("deploy proof profile does not match dispatch input");
           const candidate = proof.profile.value.candidateIdentity;
           if (gate.activation?.candidateCommit !== candidate?.candidateCommit) throw new Error("deploy proof candidate does not match release activation");
-          if (gate.activation?.activationCommit !== process.env.GITHUB_SHA) throw new Error("deploy proof activation does not match stable tag commit");
+          if (gate.releaseCommit !== process.env.GITHUB_SHA) throw new Error("deploy proof release does not match stable tag commit");
+          if (!/^[0-9a-f]{40}$/.test(gate.activation?.activationCommit ?? "") || gate.activation.activationCommit === candidate.candidateCommit) throw new Error("deploy proof activation P is invalid");
           const signer = gate.promotionProof.signerRun;
           fs.appendFileSync(envPath, [
             `CANDIDATE_COMMIT=${candidate.candidateCommit}`,
