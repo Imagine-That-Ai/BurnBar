@@ -71,31 +71,32 @@ test("invalid issue timestamps fail closed", () => {
 
 // ---------------------------------------------------------------------------
 // P-OPS-4 paging: shouldPageP0
+// Dedupe is the persistent paged:ops label on the issue, not a one-shot flag.
 
-test("shouldPageP0 pages once on the first P0 open (isCreate)", () => {
+test("shouldPageP0 pages a P0 that lacks paged:ops (first open or unpaged standing red)", () => {
   assert.deepEqual(
-    shouldPageP0({ mode: "open", isCreate: true, labels: ["lane:nightly-e2e", P0_LABEL] }),
-    { shouldPage: true, reason: "p0-create" }
+    shouldPageP0({ mode: "open", labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: true, reason: "p0-unpaged" }
   );
 });
 
-test("shouldPageP0 does not page on standing red (repeat open, isCreate=false)", () => {
+test("shouldPageP0 does not page a P0 that already has paged:ops (dedupe)", () => {
   assert.deepEqual(
-    shouldPageP0({ mode: "open", isCreate: false, labels: ["lane:nightly-e2e", P0_LABEL] }),
-    { shouldPage: false, reason: "standing-red-no-page" }
+    shouldPageP0({ mode: "open", labels: ["lane:nightly-e2e", P0_LABEL, PAGED_LABEL] }),
+    { shouldPage: false, reason: "already-paged" }
   );
 });
 
 test("shouldPageP0 never pages in close mode", () => {
   assert.deepEqual(
-    shouldPageP0({ mode: "close", isCreate: true, labels: ["lane:nightly-e2e", P0_LABEL] }),
+    shouldPageP0({ mode: "close", labels: ["lane:nightly-e2e", P0_LABEL] }),
     { shouldPage: false, reason: "not-open-mode" }
   );
 });
 
 test("shouldPageP0 never pages for a non-P0 lane", () => {
   assert.deepEqual(
-    shouldPageP0({ mode: "open", isCreate: true, labels: ["lane:nightly-e2e", "P1 - High"] }),
+    shouldPageP0({ mode: "open", labels: ["lane:nightly-e2e", "P1 - High"] }),
     { shouldPage: false, reason: "not-p0" }
   );
 });
@@ -104,7 +105,6 @@ test("shouldPageP0 suppresses paging when a named blocker is present", () => {
   assert.deepEqual(
     shouldPageP0({
       mode: "open",
-      isCreate: true,
       labels: ["lane:nightly-e2e", P0_LABEL, BLOCKER_LABEL],
     }),
     { shouldPage: false, reason: "named-blocker" }
@@ -115,10 +115,9 @@ test("shouldPageP0 accepts GitHub API label objects", () => {
   assert.deepEqual(
     shouldPageP0({
       mode: "open",
-      isCreate: true,
       labels: [{ name: "lane:nightly-e2e" }, { name: P0_LABEL }],
     }),
-    { shouldPage: true, reason: "p0-create" }
+    { shouldPage: true, reason: "p0-unpaged" }
   );
 });
 
@@ -126,25 +125,40 @@ test("PAGED_LABEL is the expected 'paged:ops' string", () => {
   assert.equal(PAGED_LABEL, "paged:ops");
 });
 
-test("flap lifecycle: close then reopen pages again", () => {
-  // First genuine open → page.
+test("dedupe lifecycle: first open pages, repeat suppresses, close→reopen pages again", () => {
+  // First genuine open (issue lacks paged:ops) → page.
   assert.deepEqual(
-    shouldPageP0({ mode: "open", isCreate: true, labels: ["lane:nightly-e2e", P0_LABEL] }),
-    { shouldPage: true, reason: "p0-create" }
+    shouldPageP0({ mode: "open", labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: true, reason: "p0-unpaged" }
   );
-  // Standing red (comment+bump) → no page.
+  // After successful page, the action adds paged:ops; a repeat (standing
+  // red with paged:ops) does NOT page.
   assert.deepEqual(
-    shouldPageP0({ mode: "open", isCreate: false, labels: ["lane:nightly-e2e", P0_LABEL] }),
-    { shouldPage: false, reason: "standing-red-no-page" }
+    shouldPageP0({ mode: "open", labels: ["lane:nightly-e2e", P0_LABEL, PAGED_LABEL] }),
+    { shouldPage: false, reason: "already-paged" }
   );
-  // Close → no page.
+  // Close → never pages.
   assert.deepEqual(
-    shouldPageP0({ mode: "close", isCreate: true, labels: ["lane:nightly-e2e", P0_LABEL] }),
+    shouldPageP0({ mode: "close", labels: ["lane:nightly-e2e", P0_LABEL, PAGED_LABEL] }),
     { shouldPage: false, reason: "not-open-mode" }
   );
-  // New open after close → page again (lane is no longer standing red).
+  // New open after close (new issue, no paged:ops) → page again.
   assert.deepEqual(
-    shouldPageP0({ mode: "open", isCreate: true, labels: ["lane:nightly-e2e", P0_LABEL] }),
-    { shouldPage: true, reason: "p0-create" }
+    shouldPageP0({ mode: "open", labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: true, reason: "p0-unpaged" }
+  );
+});
+
+test("failed/missing webhook leaves issue unpaged so a later run can retry", () => {
+  // First run: P0 lacks paged:ops → eligible to page. If webhook is
+  // missing/failed, the action does NOT add paged:ops.
+  assert.deepEqual(
+    shouldPageP0({ mode: "open", labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: true, reason: "p0-unpaged" }
+  );
+  // Next run: the issue STILL lacks paged:ops → eligible again (retry).
+  assert.deepEqual(
+    shouldPageP0({ mode: "open", labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: true, reason: "p0-unpaged" }
   );
 });

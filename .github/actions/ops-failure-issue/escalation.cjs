@@ -35,23 +35,26 @@ function evaluateP0Escalation(issue, nowMs = Date.now()) {
 }
 
 /**
- * Decide whether a P0 ops failure should page out-of-band (Slack/PagerDuty).
+ * Decide whether a P0 ops failure should page out-of-band (Slack).
  *
- * Paging fires exactly once per genuine P0 open: on issue CREATION when the
- * lane is P0. A standing-red recurrence (issue already open → comment + bump)
- * never pages — the lane label dedupe prevents page-storms. Close mode never
- * pages. Non-P0 lanes never page. A named blocker suppresses paging because a
- * known-red is not an actionable new alert.
+ * Dedupe is the persistent `paged:ops` label on the issue — NOT a one-shot
+ * "isCreate" flag. This means:
+ *   - A first P0 open (create or standing red) that lacks `paged:ops` → page.
+ *   - After a successful page + `paged:ops` label, repeats and close→reopen
+ *     flaps must NOT page again (the label survives on the issue; a new issue
+ *     after close does not have it, so the next genuinely-new P0 open pages).
+ *   - A failed or missing webhook must NOT add `paged:ops`, so a later run
+ *     can retry paging.
+ * Close mode never pages. Non-P0 lanes never page. A named blocker
+ * suppresses paging because a known-red is not an actionable new alert.
  *
  * @param {object} params
  * @param {string} params.mode       - "open" | "close"
- * @param {boolean} params.isCreate  - true when this is a new issue creation (no standing issue), false for a standing-red comment
- * @param {Array} params.labels      - labels applied to the issue (strings or {name})
+ * @param {Array}   params.labels    - labels on the issue (strings or {name})
  * @returns {{ shouldPage: boolean, reason: string }}
  */
-function shouldPageP0({ mode, isCreate, labels }) {
+function shouldPageP0({ mode, labels }) {
   if (mode !== "open") return { shouldPage: false, reason: "not-open-mode" };
-  if (!isCreate) return { shouldPage: false, reason: "standing-red-no-page" };
   const labelNames = new Set(
     (labels || [])
       .map((label) => (typeof label === "string" ? label : label?.name))
@@ -59,7 +62,8 @@ function shouldPageP0({ mode, isCreate, labels }) {
   );
   if (!labelNames.has(P0_LABEL)) return { shouldPage: false, reason: "not-p0" };
   if (labelNames.has(BLOCKER_LABEL)) return { shouldPage: false, reason: "named-blocker" };
-  return { shouldPage: true, reason: "p0-create" };
+  if (labelNames.has(PAGED_LABEL)) return { shouldPage: false, reason: "already-paged" };
+  return { shouldPage: true, reason: "p0-unpaged" };
 }
 
 module.exports = {

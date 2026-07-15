@@ -285,6 +285,7 @@ jobs:
             The Firebase Hosting deploy or post-deploy smoke failed. This blocks
             launch posture until burnbar.ai and app.burnbar.ai return HTTP 200
             with expected content and CSP headers.
+          paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
 
       - name: Close resolved hosting deploy failure issue
         if: success() && github.ref == 'refs/heads/main'
