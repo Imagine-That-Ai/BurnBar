@@ -31,6 +31,7 @@ import {
 const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const SHA256 = /^[0-9a-f]{64}$/u;
 const STABLE_VERSION = /^\d+\.\d+\.\d+(?:\+[0-9A-Za-z.-]+)?$/u;
+const FULL_SHA = /^[0-9a-f]{40}$/u;
 
 function parseJson(text, label) {
   try {
@@ -61,6 +62,35 @@ function digest(value, label) {
   return value;
 }
 
+function validateActivationBinding(value, candidate, releaseCommit, label) {
+  const activation = exactObject(
+    value,
+    [
+      "candidateCommit",
+      "activationCommit",
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+      "changedPathsSha256",
+    ],
+    label,
+  );
+  if (
+    activation.candidateCommit !== candidate.candidateCommit ||
+    activation.activationCommit !== releaseCommit ||
+    activation.coreVersion !== candidate.coreVersion ||
+    activation.abiVersion !== candidate.abiVersion ||
+    activation.sourceSha256 !== candidate.sourceSha256 ||
+    !FULL_SHA.test(activation.activationCommit)
+  ) {
+    throw new Error(
+      `${label} does not bind candidate C to release activation P`,
+    );
+  }
+  digest(activation.changedPathsSha256, `${label} changed paths`);
+  return activation;
+}
+
 function validatePredicate(
   predicate,
   manifest,
@@ -78,6 +108,7 @@ function validatePredicate(
       "artifactKind",
       "target",
       "candidate",
+      "activation",
       "sourceRun",
       "promotionProof",
       "rollbackArtifact",
@@ -87,6 +118,12 @@ function validatePredicate(
     `predicate for ${domain}`,
   );
   const candidate = validateDomainCoreCandidateIdentity(value.candidate);
+  const activation = validateActivationBinding(
+    value.activation,
+    candidate,
+    manifest.commit,
+    `predicate activation for ${domain}`,
+  );
   if (
     value.schemaVersion !== 2 ||
     value.predicateType !== DOMAIN_CORE_RELEASE_PREDICATE_TYPE ||
@@ -104,16 +141,15 @@ function validatePredicate(
     ["version", "tag", "commit", "publicProfileSha256"],
     `predicate release for ${domain}`,
   );
-  const version = manifest.tag.replace(/^(?:windows-)?v/u, "");
+  const version = manifest.tag.replace(/^(?:(?:windows|linux)-)?v/u, "");
   if (
     !STABLE_VERSION.test(release.version) ||
     release.version !== version ||
     release.tag !== manifest.tag ||
-    release.commit !== manifest.commit ||
-    release.commit !== candidate.candidateCommit
+    release.commit !== manifest.commit
   ) {
     throw new Error(
-      `predicate for ${domain} does not bind the exact candidate tag commit`,
+      `predicate for ${domain} does not bind the exact activation tag commit`,
     );
   }
   digest(release.publicProfileSha256, `predicate public profile for ${domain}`);
@@ -194,13 +230,22 @@ function validatePredicate(
   );
   const rollbackArtifact = exactObject(
     value.rollbackArtifact,
-    ["fileName", "sha256", "candidate"],
+    ["fileName", "sha256", "candidate", "activation"],
     `predicate rollback artifact for ${domain}`,
   );
   if (
     !isDeepStrictEqual(
       validateDomainCoreCandidateIdentity(rollbackArtifact.candidate),
       candidate,
+    ) ||
+    !isDeepStrictEqual(
+      validateActivationBinding(
+        rollbackArtifact.activation,
+        candidate,
+        manifest.commit,
+        `predicate rollback activation for ${domain}`,
+      ),
+      activation,
     )
   ) {
     throw new Error(

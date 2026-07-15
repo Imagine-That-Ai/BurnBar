@@ -1,0 +1,178 @@
+name: Domain Core iOS release evidence
+
+on:
+  workflow_call:
+    inputs:
+      enabled:
+        required: true
+        type: boolean
+      version:
+        required: true
+        type: string
+      release_commit:
+        required: true
+        type: string
+      archive_artifact_name:
+        required: true
+        type: string
+
+permissions:
+  attestations: write
+  contents: read
+  id-token: write
+
+jobs:
+  attest-ios-domain-core:
+    name: attest-ios-domain-core
+    environment: release
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact activation release commit
+        if: inputs.enabled
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ inputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require official stable tag and main ancestry
+        if: inputs.enabled
+        env:
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]
+          git fetch --force origin main "+refs/tags/v${VERSION}:refs/tags/v${VERSION}"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          test "$(git rev-list -n 1 "refs/tags/v${VERSION}^{commit}")" = "$RELEASE_COMMIT"
+          git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main
+
+      - name: Download signed App Store archive
+        if: inputs.enabled
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: ${{ inputs.archive_artifact_name }}
+          path: ${{ runner.temp }}/ios-release
+
+      - name: Verify canonical iOS archive and candidate-bound build profile
+        if: inputs.enabled
+        id: activation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ios-release/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
+          test -s "$archive"
+          unzip -Z1 "$archive" | grep -Eq '(^|/)OpenBurnBarMobile\.app/'
+          unzip -Z1 "$archive" | grep -Eq '(^|/)OpenBurnBarMobile\.ipa$'
+          unpacked="$RUNNER_TEMP/ios-release/unpacked"
+          rm -rf "$unpacked"
+          mkdir -p "$unpacked"
+          ditto -x -k "$archive" "$unpacked"
+          app="$(find "$unpacked" -type d -path '*/OpenBurnBarMobile.xcarchive/Products/Applications/OpenBurnBarMobile.app' -print -quit)"
+          test -n "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          test -s "$app/embedded.mobileprovision"
+          ipa="$(find "$unpacked" -type f -name 'OpenBurnBarMobile.ipa' -print -quit)"
+          test -n "$ipa"
+          ipa_unpacked="$RUNNER_TEMP/ios-release/ipa"
+          mkdir -p "$ipa_unpacked"
+          unzip -q "$ipa" -d "$ipa_unpacked"
+          exported_app="$ipa_unpacked/Payload/OpenBurnBarMobile.app"
+          test -d "$exported_app"
+          codesign --verify --deep --strict --verbose=2 "$exported_app"
+          test -s "$exported_app/embedded.mobileprovision"
+          activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
+          candidate="$(jq -er '.candidateCommit' <<<"$activation")"
+          applicable_count="$(jq '[.domains[] | select(.domain == "cloudVault" or .domain == "cloudVaultRewrap" or .domain == "cloudVaultSearch" or .domain == "hermes")] | length' <<<"$activation")"
+          echo "applicable_count=$applicable_count" >> "$GITHUB_OUTPUT"
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+            --profile public-production \
+            --expected-candidate-commit "$candidate" \
+            --apple-app "$app"
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+            --profile public-production \
+            --expected-candidate-commit "$candidate" \
+            --apple-app "$exported_app"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production \
+            --expected-candidate-commit "$candidate" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --format json \
+            --output "$RUNNER_TEMP/ios-release/domain-core-build-profile.json"
+
+      - name: Create iOS identity predicates with rollback provenance
+        if: inputs.enabled && steps.activation.outputs.applicable_count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ios-release/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
+          activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
+          candidate="$(jq -er '.candidateCommit' <<<"$activation")"
+          rollback="$RUNNER_TEMP/ios-release/domain-core-public-production-rollback.json"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production-rollback \
+            --expected-candidate-commit "$candidate" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --format json \
+            --output "$rollback"
+          while IFS= read -r encoded; do
+            domain="$(jq -r '.domain' <<<"$encoded")"
+            cp "$(jq -r '.bundlePath' <<<"$encoded")" "$RUNNER_TEMP/ios-release/domain-core-candidate-bundle.json"
+            predicate="$RUNNER_TEMP/ios-release/domain-core-ios-${domain}.predicate.json"
+            node scripts/ci/create-domain-core-release-evidence.mjs \
+              --consumer ios \
+              --domain "$domain" \
+              --artifact-kind ios-app-store-archive \
+              --target ios-universal \
+              --version "$VERSION" \
+              --tag "v${VERSION}" \
+              --commit "$RELEASE_COMMIT" \
+              --artifact "$archive" \
+              --predicate "$predicate" \
+              --public-profile-sha256 "$(jq -r '.publicProfileSha256' <<<"$encoded")" \
+              --candidate-bundle "$RUNNER_TEMP/ios-release/domain-core-candidate-bundle.json" \
+              --promotion-attestation "$(jq -r '.provenancePath' <<<"$encoded")" \
+              --protected-signer-run-id "$(jq -r '.signerRunId' <<<"$encoded")" \
+              --protected-signer-run-attempt "$(jq -r '.signerRunAttempt' <<<"$encoded")" \
+              --rollback-artifact "$rollback"
+          done < <(jq -c '.domains[] | select(.domain == "cloudVault" or .domain == "cloudVaultRewrap" or .domain == "cloudVaultSearch" or .domain == "hermes")' <<<"$activation")
+
+      - name: Attest exact iOS archive with every active domain predicate
+        if: inputs.enabled && steps.activation.outputs.applicable_count != '0'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Write iOS Sigstore bundles
+        if: inputs.enabled && steps.activation.outputs.applicable_count != '0'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ios-release/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
+          for predicate in "$RUNNER_TEMP"/ios-release/domain-core-ios-*.predicate.json; do
+            cosign attest-blob --yes \
+              --type https://openburnbar.dev/attestations/domain-core-release-artifact/v2 \
+              --predicate "$predicate" \
+              --bundle "${predicate}.sigstore.json" \
+              "$archive"
+          done
+
+      - name: Upload immutable iOS Domain Core release evidence
+        if: inputs.enabled && steps.activation.outputs.applicable_count != '0'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: domain-core-ios-release-evidence-${{ inputs.release_commit }}
+          path: |
+            ${{ runner.temp }}/ios-release/domain-core-ios-*.predicate.json
+            ${{ runner.temp }}/ios-release/domain-core-ios-*.predicate.json.sigstore.json
+            ${{ runner.temp }}/ios-release/domain-core-public-production-rollback.json
+          if-no-files-found: error
+          retention-days: 90

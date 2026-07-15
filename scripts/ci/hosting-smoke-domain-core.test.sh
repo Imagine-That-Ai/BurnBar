@@ -40,17 +40,18 @@ MOCK
 chmod +x "$TMP/bin/curl"
 
 commit="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+candidate_commit="cccccccccccccccccccccccccccccccccccccccc"
 tag="v1.2.3"
 profile="$TMP/domain-core-build-profile.json"
 gate="$TMP/domain-core-release-gate.json"
 identity="$TMP/domain-core-deployment-identity.json"
 health="$TMP/console-deploy-health.json"
 
-node - "$profile" "$gate" "$commit" <<'NODE'
+node - "$profile" "$gate" "$candidate_commit" "$commit" <<'NODE'
 const fs = require("fs");
-const [profilePath, gatePath, commit] = process.argv.slice(2);
+const [profilePath, gatePath, candidateCommit, commit] = process.argv.slice(2);
 const candidate = {
-  candidateCommit: commit,
+  candidateCommit,
   coreVersion: "0.3.0",
   abiVersion: 3,
   sourceSha256: "b".repeat(64),
@@ -76,6 +77,11 @@ const gate = {
   schemaVersion: 2,
   verificationKind: "domain-core-release-gate",
   candidate,
+  activation: {
+    ...candidate,
+    activationCommit: commit,
+    changedPathsSha256: "f".repeat(64),
+  },
   sourceRun: {
     repository: "Imagine-That-Ai/BurnBar",
     workflowPath: ".github/workflows/domain-core.yml",
@@ -83,7 +89,7 @@ const gate = {
     runAttempt: 2,
     event: "push",
     ref: "refs/heads/main",
-    headSha: commit,
+    headSha: candidateCommit,
   },
   promotionProof: {
     signerWorkflow: ".github/workflows/domain-core-promotion-proof.yml",
@@ -96,6 +102,11 @@ const gate = {
     fileName: "domain-core-public-production-rollback.json",
     sha256: "e".repeat(64),
     candidate,
+    activation: {
+      ...candidate,
+      activationCommit: commit,
+      changedPathsSha256: "f".repeat(64),
+    },
   },
 };
 fs.writeFileSync(profilePath, `${JSON.stringify(profile, null, 2)}\n`);

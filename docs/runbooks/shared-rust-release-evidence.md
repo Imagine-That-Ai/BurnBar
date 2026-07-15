@@ -23,8 +23,12 @@ Every release predicate and deployment receipt uses schema version 2 and binds:
 - the exact release tag and commit; and
 - the released native artifact or deployment receipt bytes.
 
-The release commit must equal `candidateCommit`. A later commit is rejected even
-when its core version, ABI version, and source fingerprint are unchanged.
+The release commit is activation `P`; `candidateCommit` is the protected source
+candidate `C`. The gate proves `C` is an ancestor of `P`, the core version, ABI,
+and source fingerprint are identical, and the complete `C..P` diff is restricted
+to the public profile, lifecycle ledger, append-only promotion authority, and
+shared-Rust runbooks. A consumer or Rust-source change between `C` and `P` is
+rejected.
 
 ## Pre-release gate
 
@@ -39,6 +43,7 @@ node scripts/ci/verify-domain-core-release-gate.mjs \
   --promotion-attestation "$RUNNER_TEMP/promotion.sigstore.json" \
   --rollback-artifact "$RUNNER_TEMP/domain-core-public-production-rollback.json" \
   --candidate-commit "$CANDIDATE_COMMIT" \
+  --release-commit "$RELEASE_COMMIT" \
   --core-version "$CORE_VERSION" \
   --abi-version "$ABI_VERSION" \
   --source-sha256 "$SOURCE_SHA256" \
@@ -60,6 +65,23 @@ is idempotent.
 Native, Console, and Functions release workflows should call this command before
 their first signing or deployment mutation whenever the public profile selects
 Rust. Workflow-specific wiring is deliberately separate from this substrate.
+
+The macOS, iOS, Linux, Android, Windows, Console, and Functions evidence
+contracts use distinct artifact identities and signer workflows. iOS is an
+applicable consumer only for CloudVault portable primitives, document rewrap,
+encrypted search, and both Hermes rows; it does not execute the local quota
+adapters or `ModelPricing.lookup()`. Linux binds the canonical x64/arm64 release
+bundle and keeps its broader daemon-owned Swift domain set.
+
+The protected `release.yml` lane builds the Domain Core and Signal XCFrameworks
+with iOS device slices, archives `OpenBurnBarMobile`, successfully exports an
+App Store IPA with protected Apple credentials, and uploads the canonical
+archive bundle. It then invokes `domain-core-ios-release-evidence.yml`, which
+verifies the signed archive and embedded provisioning profile and attests only
+the applicable active iOS domains. Publication cannot proceed unless that job
+succeeds. The stable release job then uses the create-only shared publisher to
+retain the exact archive and verified attestation bundles as durable release
+assets. Linux release evidence is wired into `linux-release.yml`.
 
 ## Console and Hosting lane
 

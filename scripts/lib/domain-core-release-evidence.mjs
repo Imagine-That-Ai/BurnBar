@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, resolve } from "node:path";
+import { validateDomainCoreActivation } from "./domain-core-activation.mjs";
 
 import { validateDomainCoreCandidateIdentity } from "./domain-core-candidate-receipt.mjs";
 
@@ -25,7 +26,7 @@ export const RELEASE_CONSUMERS = Object.freeze({
   apple: Object.freeze({
     signerWorkflow: ".github/workflows/release.yml",
     artifactKind: "macos-dmg",
-    target: "macos-arm64",
+    target: "macos-universal",
     domains: Object.freeze([
       "quota",
       "cloudVault",
@@ -35,6 +36,32 @@ export const RELEASE_CONSUMERS = Object.freeze({
       "pricing",
     ]),
     fileName: (version) => `OpenBurnBar-${version}-macOS.dmg`,
+  }),
+  ios: Object.freeze({
+    signerWorkflow: ".github/workflows/domain-core-ios-release-evidence.yml",
+    artifactKind: "ios-app-store-archive",
+    target: "ios-universal",
+    domains: Object.freeze([
+      "cloudVault",
+      "cloudVaultRewrap",
+      "cloudVaultSearch",
+      "hermes",
+    ]),
+    fileName: (version) => `OpenBurnBar-${version}-iOS.xcarchive.zip`,
+  }),
+  linux: Object.freeze({
+    signerWorkflow: ".github/workflows/linux-release.yml",
+    artifactKind: "linux-release-bundle",
+    target: "linux-x64-arm64",
+    domains: Object.freeze([
+      "quota",
+      "cloudVault",
+      "cloudVaultRewrap",
+      "cloudVaultSearch",
+      "hermes",
+      "pricing",
+    ]),
+    fileName: (version) => `OpenBurnBar-${version}-linux-release.tar.zst`,
   }),
   android: Object.freeze({
     signerWorkflow: ".github/workflows/release.yml",
@@ -245,16 +272,15 @@ export function validateReleaseCoordinates({
     );
   }
   const expectedTag =
-    consumer === "windows" ? `windows-v${version}` : `v${version}`;
+    consumer === "windows"
+      ? `windows-v${version}`
+      : consumer === "linux"
+        ? `linux-v${version}`
+        : `v${version}`;
   if (tag !== expectedTag)
     throw new Error(`release tag must be ${expectedTag}`);
   if (typeof commit !== "string" || !FULL_SHA.test(commit)) {
     throw new Error("release commit must be a full lowercase Git SHA-1");
-  }
-  if (commit !== candidate.candidateCommit) {
-    throw new Error(
-      "release commit must equal the exact protected candidate commit",
-    );
   }
   return contract;
 }
@@ -398,7 +424,9 @@ export function verifyDomainCoreReleaseGate({
   protectedSignerRunId,
   protectedSignerRunAttempt,
   expectedRollbackSha256,
+  expectedReleaseCommit,
   promotionVerifier = verifyProtectedPromotionAttestation,
+  activationVerifier = validateDomainCoreActivation,
 }) {
   const candidateBundle = JSON.parse(
     readFileSync(regularFile(candidateBundlePath, "candidate bundle"), "utf8"),
@@ -433,6 +461,11 @@ export function verifyDomainCoreReleaseGate({
     signerRunId: protectedSignerRunId,
     signerRunAttempt: protectedSignerRunAttempt,
   });
+  const activation = activationVerifier({
+    repoRoot: process.cwd(),
+    candidateCommit: candidate.candidateCommit,
+    activationCommit: expectedReleaseCommit,
+  });
   const rollbackPath = regularFile(rollbackArtifactPath, "rollback artifact");
   validateRollbackArtifact(
     JSON.parse(readFileSync(rollbackPath, "utf8")),
@@ -460,7 +493,9 @@ export function verifyDomainCoreReleaseGate({
       ),
       sha256: rollbackSha256,
       candidate,
+      activation,
     },
+    activation,
   };
 }
 

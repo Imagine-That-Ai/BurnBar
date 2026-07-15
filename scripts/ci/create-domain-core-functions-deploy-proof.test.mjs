@@ -16,6 +16,11 @@ const CANDIDATE = Object.freeze({
   abiVersion: 3,
   sourceSha256: "b".repeat(64),
 });
+const ACTIVATION = Object.freeze({
+  ...CANDIDATE,
+  activationCommit: "d".repeat(40),
+  changedPathsSha256: "e".repeat(64),
+});
 const DOMAINS = [
   "quota",
   "cloudVault",
@@ -58,12 +63,14 @@ function workspace(selected = profile()) {
         schemaVersion: 2,
         verificationKind: "domain-core-release-gate",
         candidate: CANDIDATE,
+        activation: ACTIVATION,
         sourceRun: { runId: 101, runAttempt: 2 },
         promotionProof: { signerRun: { runId: 202, runAttempt: 3 } },
         rollbackArtifact: {
           fileName: "domain-core-public-production-rollback.json",
           sha256: "c".repeat(64),
           candidate: CANDIDATE,
+          activation: ACTIVATION,
         },
       },
       null,
@@ -90,7 +97,7 @@ function args(files) {
     "--tag",
     "v1.2.3",
     "--commit",
-    CANDIDATE.candidateCommit,
+    ACTIVATION.activationCommit,
     "--deploy-run-id",
     "303",
     "--deploy-run-attempt",
@@ -106,7 +113,7 @@ test("binds the selected profile, compiled receipt, release gate, and exact depl
     const proof = run(args(files));
     assert.equal(proof.profile.value.name, "public-production");
     assert.equal(proof.profile.value.modes.pricing, "rust");
-    assert.equal(proof.release.commit, CANDIDATE.candidateCommit);
+    assert.equal(proof.release.commit, ACTIVATION.activationCommit);
     assert.deepEqual(proof.deployRun, { runId: 303, runAttempt: 4 });
     assert.match(proof.compiledReceipt.sha256, /^[0-9a-f]{64}$/u);
     assert.equal(
@@ -160,7 +167,7 @@ test("rejects a release gate for another candidate", () => {
           compiledReceiptPath: files.compiledReceiptPath,
           releaseGatePath: files.releaseGatePath,
           tag: "v1.2.3",
-          commit: CANDIDATE.candidateCommit,
+          commit: ACTIVATION.activationCommit,
           deployRunId: 303,
           deployRunAttempt: 4,
         }),

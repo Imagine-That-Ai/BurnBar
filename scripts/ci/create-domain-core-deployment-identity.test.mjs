@@ -16,6 +16,11 @@ const CANDIDATE = Object.freeze({
   abiVersion: 3,
   sourceSha256: "b".repeat(64),
 });
+const ACTIVATION = Object.freeze({
+  ...CANDIDATE,
+  activationCommit: "d".repeat(40),
+  changedPathsSha256: "e".repeat(64),
+});
 
 function sha(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -50,6 +55,7 @@ function fixture({ mode = "rust", profileName = "public-production" } = {}) {
     schemaVersion: 2,
     verificationKind: "domain-core-release-gate",
     candidate: CANDIDATE,
+    activation: ACTIVATION,
     sourceRun: {
       repository: "Imagine-That-Ai/BurnBar",
       workflowPath: ".github/workflows/domain-core.yml",
@@ -73,6 +79,7 @@ function fixture({ mode = "rust", profileName = "public-production" } = {}) {
       fileName: "domain-core-public-production-rollback.json",
       sha256: "e".repeat(64),
       candidate: CANDIDATE,
+      activation: ACTIVATION,
     },
   };
   writeFileSync(gate, `${JSON.stringify(gateValue, null, 2)}\n`);
@@ -84,7 +91,7 @@ test("binds the live Console identity to exact profile candidate and proof bytes
   try {
     const identity = buildDeploymentIdentity({
       consumer: "console",
-      commit: CANDIDATE.candidateCommit,
+      commit: ACTIVATION.activationCommit,
       tag: "v1.2.3+build.7",
       profileReceiptPath: files.profile,
       releaseGatePath: files.gate,
@@ -121,7 +128,7 @@ test("legacy main deploy may omit proof but tagged and Rust deploys fail closed"
       () =>
         buildDeploymentIdentity({
           consumer: "console",
-          commit: CANDIDATE.candidateCommit,
+          commit: ACTIVATION.activationCommit,
           tag: "v1.2.3",
           profileReceiptPath: legacy.profile,
         }),
@@ -131,7 +138,7 @@ test("legacy main deploy may omit proof but tagged and Rust deploys fail closed"
       () =>
         buildDeploymentIdentity({
           consumer: "console",
-          commit: CANDIDATE.candidateCommit,
+          commit: ACTIVATION.activationCommit,
           profileReceiptPath: rust.profile,
         }),
       /require a protected release gate/u,
@@ -178,7 +185,7 @@ test("verification rejects stale hosted identity and substituted proof", () => {
       "--consumer",
       "console",
       "--commit",
-      CANDIDATE.candidateCommit,
+      ACTIVATION.activationCommit,
       "--tag",
       "v1.2.3",
       "--profile-receipt",

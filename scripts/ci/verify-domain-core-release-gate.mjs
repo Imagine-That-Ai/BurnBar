@@ -14,6 +14,7 @@ function parseArguments(argv) {
     "--promotion-attestation",
     "--rollback-artifact",
     "--candidate-commit",
+    "--release-commit",
     "--core-version",
     "--abi-version",
     "--source-sha256",
@@ -74,7 +75,7 @@ function writeCreateOnly(path, contents) {
   return output;
 }
 
-export function run(argv, { promotionVerifier } = {}) {
+export function run(argv, { promotionVerifier, activationVerifier } = {}) {
   const args = parseArguments(argv);
   const receipt = verifyDomainCoreReleaseGate({
     candidateBundlePath: resolve(args.get("--candidate-bundle")),
@@ -103,7 +104,9 @@ export function run(argv, { promotionVerifier } = {}) {
       "protected signer run attempt",
     ),
     expectedRollbackSha256: args.get("--rollback-sha256"),
+    expectedReleaseCommit: args.get("--release-commit"),
     promotionVerifier,
+    activationVerifier,
   });
   const output = writeCreateOnly(
     args.get("--output"),

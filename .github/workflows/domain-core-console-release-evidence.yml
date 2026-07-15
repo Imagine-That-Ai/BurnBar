@@ -119,7 +119,8 @@ jobs:
             --candidate-bundle "$candidate" \
             --promotion-attestation "$promotion" \
             --rollback-artifact "$rollback" \
-            --candidate-commit "$GITHUB_SHA" \
+            --candidate-commit "$(jq -er '.candidate.candidateCommit' "$gate")" \
+            --release-commit "$GITHUB_SHA" \
             --core-version "$(jq -er '.candidate.coreVersion' "$gate")" \
             --abi-version "$(jq -er '.candidate.abiVersion' "$gate")" \
             --source-sha256 "$(jq -er '.candidate.sourceSha256' "$gate")" \

@@ -18,6 +18,14 @@ const CANDIDATE = Object.freeze({
   sourceSha256: "b".repeat(64),
 });
 const PROFILE_SHA = "c".repeat(64);
+const ACTIVATION = Object.freeze({
+  candidateCommit: CANDIDATE.candidateCommit,
+  activationCommit: "d".repeat(40),
+  coreVersion: CANDIDATE.coreVersion,
+  abiVersion: CANDIDATE.abiVersion,
+  sourceSha256: CANDIDATE.sourceSha256,
+  changedPathsSha256: "e".repeat(64),
+});
 
 function sha(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -73,10 +81,10 @@ function baseOptions(files, artifactPath) {
     consumer: "apple",
     domain: "quota",
     artifactKind: "macos-dmg",
-    target: "macos-arm64",
+    target: "macos-universal",
     version: "1.2.3",
     tag: "v1.2.3",
-    commit: CANDIDATE.candidateCommit,
+    commit: ACTIVATION.activationCommit,
     artifactPath,
     candidateBundlePath: files.candidateBundle,
     promotionAttestationPath: files.promotionAttestation,
@@ -85,6 +93,7 @@ function baseOptions(files, artifactPath) {
     rollbackArtifactPath: files.rollbackArtifact,
     publicProfileSha256: PROFILE_SHA,
     promotionVerifier: () => [],
+    activationVerifier: () => ACTIVATION,
   };
 }
 
@@ -106,7 +115,7 @@ function consoleDeployment() {
       runAttempt: 4,
       event: "push",
       ref: "refs/tags/v1.2.3",
-      headSha: CANDIDATE.candidateCommit,
+      headSha: ACTIVATION.activationCommit,
       jobSetSha256: "d".repeat(64),
     },
     healthArtifactSha256: "e".repeat(64),
@@ -280,7 +289,7 @@ test("rejects a protected signature from a different signer run attempt", () => 
   }
 });
 
-test("rejects a later release commit even when the source tuple is unchanged", () => {
+test("rejects a release commit outside the path-restricted activation closure", () => {
   const files = workspace();
   try {
     const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
@@ -289,9 +298,12 @@ test("rejects a later release commit even when the source tuple is unchanged", (
       () =>
         buildReleaseEvidence({
           ...baseOptions(files, artifact),
-          commit: "d".repeat(40),
+          commit: "f".repeat(40),
+          activationVerifier: () => {
+            throw new Error("activation diff contains forbidden paths");
+          },
         }),
-      /must equal the exact protected candidate commit/u,
+      /forbidden paths/u,
     );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
@@ -365,7 +377,7 @@ test("writes a deployment receipt and predicate with both artifact digests", () 
         "--tag",
         "v1.2.3",
         "--commit",
-        CANDIDATE.candidateCommit,
+        ACTIVATION.activationCommit,
         "--artifact",
         artifact,
         "--predicate",
@@ -385,7 +397,7 @@ test("writes a deployment receipt and predicate with both artifact digests", () 
         "--deployment",
         deployment,
       ],
-      { promotionVerifier: () => [] },
+      { promotionVerifier: () => [], activationVerifier: () => ACTIVATION },
     );
     const receipt = JSON.parse(readFileSync(artifact, "utf8"));
     const writtenPredicate = JSON.parse(readFileSync(predicate, "utf8"));
@@ -466,13 +478,13 @@ test("refuses to rewrite an immutable predicate with different bytes", () => {
             "--artifact-kind",
             "macos-dmg",
             "--target",
-            "macos-arm64",
+            "macos-universal",
             "--version",
             "1.2.3",
             "--tag",
             "v1.2.3",
             "--commit",
-            CANDIDATE.candidateCommit,
+            ACTIVATION.activationCommit,
             "--artifact",
             artifact,
             "--predicate",
@@ -490,7 +502,7 @@ test("refuses to rewrite an immutable predicate with different bytes", () => {
             "--rollback-artifact",
             files.rollbackArtifact,
           ],
-          { promotionVerifier: () => [] },
+          { promotionVerifier: () => [], activationVerifier: () => ACTIVATION },
         ),
       /refusing to replace non-identical immutable output/u,
     );

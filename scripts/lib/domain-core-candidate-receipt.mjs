@@ -19,6 +19,7 @@ export function parseDomainCoreBuildProfileResolverArgs(argv) {
     "--format",
     "--output",
     "--expected-candidate-commit",
+    "--expected-release-commit",
   ]);
   const args = new Map();
   for (let index = 0; index < argv.length; index += 2) {

@@ -9,11 +9,16 @@ const SCRIPT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DEFAULT_MANIFEST = "config/domain-core-control-plane-manifest.json";
 const TRUSTED_WORKFLOWS = Object.freeze([
   ".github/workflows/domain-core.yml",
+  ".github/workflows/domain-core-deletion-guard.yml",
   ".github/workflows/domain-core-promotion-proof.yml",
   ".github/workflows/deploy-production.yml",
   ".github/workflows/domain-core-functions-release-evidence.yml",
   ".github/workflows/deploy-hosting.yml",
   ".github/workflows/domain-core-console-release-evidence.yml",
+  ".github/workflows/release.yml",
+  ".github/workflows/openburnbar-release-windows.yml",
+  ".github/workflows/linux-release.yml",
+  ".github/workflows/domain-core-ios-release-evidence.yml",
 ]);
 const SEED_PATHS = Object.freeze([
   ...TRUSTED_WORKFLOWS,
@@ -217,8 +222,8 @@ export function run(argv) {
     );
     return;
   }
-  const candidateRoot = resolve(argument(argv, "--candidate-root"));
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const candidateRoot = resolve(argument(argv, "--candidate-root"));
   const result = verifyDomainCoreControlPlane({
     trustedRoot,
     candidateRoot,

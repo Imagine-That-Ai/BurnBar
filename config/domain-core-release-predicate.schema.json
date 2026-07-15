@@ -12,6 +12,7 @@
     "artifactKind",
     "target",
     "candidate",
+    "activation",
     "sourceRun",
     "promotionProof",
     "rollbackArtifact",
@@ -33,7 +34,7 @@
           ]
         },
         "artifactKind": { "const": "macos-dmg" },
-        "target": { "const": "macos-arm64" }
+        "target": { "const": "macos-universal" }
       }
     },
     {
@@ -49,6 +50,40 @@
         },
         "artifactKind": { "const": "android-aab" },
         "target": { "const": "android-universal" }
+      }
+    },
+    {
+      "properties": {
+        "consumer": { "const": "ios" },
+        "domain": {
+          "enum": [
+            "quota",
+            "cloudVault",
+            "cloudVaultRewrap",
+            "cloudVaultSearch",
+            "hermes",
+            "pricing"
+          ]
+        },
+        "artifactKind": { "const": "ios-app-store-archive" },
+        "target": { "const": "ios-universal" }
+      }
+    },
+    {
+      "properties": {
+        "consumer": { "const": "linux" },
+        "domain": {
+          "enum": [
+            "quota",
+            "cloudVault",
+            "cloudVaultRewrap",
+            "cloudVaultSearch",
+            "hermes",
+            "pricing"
+          ]
+        },
+        "artifactKind": { "const": "linux-release-bundle" },
+        "target": { "const": "linux-x64-arm64" }
       }
     },
     {
@@ -86,6 +121,7 @@
     "artifactKind": { "$ref": "#/$defs/artifactKind" },
     "target": { "$ref": "#/$defs/target" },
     "candidate": { "$ref": "#/$defs/candidate" },
+    "activation": { "$ref": "#/$defs/activation" },
     "sourceRun": { "$ref": "#/$defs/sourceRun" },
     "promotionProof": { "$ref": "#/$defs/promotionProof" },
     "rollbackArtifact": { "$ref": "#/$defs/rollbackArtifact" },
@@ -100,7 +136,15 @@
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
     },
     "consumer": {
-      "enum": ["apple", "android", "windows", "console", "functions"]
+      "enum": [
+        "apple",
+        "ios",
+        "linux",
+        "android",
+        "windows",
+        "console",
+        "functions"
+      ]
     },
     "domain": {
       "enum": [
@@ -115,6 +159,8 @@
     "artifactKind": {
       "enum": [
         "macos-dmg",
+        "ios-app-store-archive",
+        "linux-release-bundle",
         "android-aab",
         "windows-release-bundle",
         "console-deployment-receipt",
@@ -123,7 +169,9 @@
     },
     "target": {
       "enum": [
-        "macos-arm64",
+        "macos-universal",
+        "ios-universal",
+        "linux-x64-arm64",
         "android-universal",
         "windows-x64-arm64",
         "firebase-hosting-production",
@@ -152,6 +200,30 @@
           "maximum": 4294967295
         },
         "sourceSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCommit",
+        "activationCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256",
+        "changedPathsSha256"
+      ],
+      "properties": {
+        "candidateCommit": { "$ref": "#/$defs/gitSha" },
+        "activationCommit": { "$ref": "#/$defs/gitSha" },
+        "coreVersion": { "$ref": "#/$defs/version" },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
+        "changedPathsSha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "sourceRun": {
@@ -215,11 +287,12 @@
     "rollbackArtifact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fileName", "sha256", "candidate"],
+      "required": ["fileName", "sha256", "candidate", "activation"],
       "properties": {
         "fileName": { "type": "string", "minLength": 1 },
         "sha256": { "$ref": "#/$defs/sha256" },
-        "candidate": { "$ref": "#/$defs/candidate" }
+        "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" }
       }
     },
     "artifact": {
@@ -239,7 +312,7 @@
         "version": { "$ref": "#/$defs/version" },
         "tag": {
           "type": "string",
-          "pattern": "^(?:windows-)?v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
+          "pattern": "^(?:(?:windows|linux)-)?v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
         },
         "commit": { "$ref": "#/$defs/gitSha" },
         "publicProfileSha256": { "$ref": "#/$defs/sha256" }

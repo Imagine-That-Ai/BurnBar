@@ -131,13 +131,14 @@ function validateProfile(raw) {
   };
 }
 
-function validateReleaseGate(raw, profile) {
+function validateReleaseGate(raw, profile, releaseCommit) {
   const gate = exactObject(
     raw,
     [
       "schemaVersion",
       "verificationKind",
       "candidate",
+      "activation",
       "sourceRun",
       "promotionProof",
       "rollbackArtifact",
@@ -157,10 +158,23 @@ function validateReleaseGate(raw, profile) {
     );
   }
   if (
+    gate.activation?.candidateCommit !== gateCandidate.candidateCommit ||
+    gate.activation?.activationCommit !== releaseCommit ||
+    gate.activation?.coreVersion !== gateCandidate.coreVersion ||
+    gate.activation?.abiVersion !== gateCandidate.abiVersion ||
+    gate.activation?.sourceSha256 !== gateCandidate.sourceSha256 ||
+    !/^[0-9a-f]{64}$/u.test(gate.activation?.changedPathsSha256 ?? "")
+  ) {
+    throw new Error(
+      "release gate activation does not bind candidate C to release activation P",
+    );
+  }
+  if (
     !isDeepStrictEqual(
       validateDomainCoreCandidateIdentity(gate.rollbackArtifact?.candidate),
       profile.candidateIdentity,
-    )
+    ) ||
+    !isDeepStrictEqual(gate.rollbackArtifact?.activation, gate.activation)
   ) {
     throw new Error(
       "release gate rollback candidate does not match the Functions profile",
@@ -224,15 +238,16 @@ export function buildFunctionsDeployProof({
   }
   if (!RELEASE_TAG.test(tag))
     throw new Error("Functions release tag is invalid");
-  if (
-    !FULL_SHA.test(commit) ||
-    commit !== profile.candidateIdentity.candidateCommit
-  ) {
+  if (!FULL_SHA.test(commit)) {
     throw new Error(
-      "Functions release commit must equal the profile candidate commit",
+      "Functions release commit must be a full lowercase Git SHA-1",
     );
   }
-  validateReleaseGate(readJson(resolvedGatePath, "release gate"), profile);
+  validateReleaseGate(
+    readJson(resolvedGatePath, "release gate"),
+    profile,
+    commit,
+  );
   return {
     schemaVersion: 1,
     proofKind: "domain-core-functions-deploy-proof",

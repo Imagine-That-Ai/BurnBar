@@ -81,16 +81,23 @@ PROMOTION_SCOPES = {
     "pricing": "pricing",
 }
 ROW_RELEASE_CONSUMERS = {
-    "quota.claude_statusline": {"apple", "windows"},
-    "quota.codex_usage": {"apple", "windows"},
-    "quota.cursor_usage": {"apple", "windows"},
-    "quota.anthropic_headers": {"apple", "windows"},
-    "cloudvault.portable_primitives": {"apple", "android", "windows", "console"},
-    "cloudvault.document_rewrap": {"apple", "android"},
-    "cloudvault.search": {"apple", "android"},
-    "hermes.relay_crypto": {"apple", "android"},
-    "hermes.ratchet_transforms": {"apple", "android"},
-    "pricing.token_cost": {"apple", "functions"},
+    "quota.claude_statusline": {"apple", "linux", "windows"},
+    "quota.codex_usage": {"apple", "linux", "windows"},
+    "quota.cursor_usage": {"apple", "linux", "windows"},
+    "quota.anthropic_headers": {"apple", "linux", "windows"},
+    "cloudvault.portable_primitives": {
+        "apple",
+        "ios",
+        "linux",
+        "android",
+        "windows",
+        "console",
+    },
+    "cloudvault.document_rewrap": {"apple", "ios", "linux", "android"},
+    "cloudvault.search": {"apple", "ios", "linux", "android"},
+    "hermes.relay_crypto": {"apple", "ios", "linux", "android"},
+    "hermes.ratchet_transforms": {"apple", "ios", "linux", "android"},
+    "pricing.token_cost": {"apple", "linux", "functions"},
     "pricing.kimi_historical": {"functions"},
 }
 PROMOTION_POLICY_PATH = "config/domain-core-promotion-policy.json"
@@ -99,23 +106,36 @@ PROMOTION_SIGNER_WORKFLOW = ".github/workflows/domain-core-promotion-proof.yml"
 SOURCE_WORKFLOW = ".github/workflows/domain-core.yml"
 RELEASE_SIGNER_WORKFLOWS = {
     "apple": ".github/workflows/release.yml",
+    "ios": ".github/workflows/domain-core-ios-release-evidence.yml",
+    "linux": ".github/workflows/linux-release.yml",
     "android": ".github/workflows/release.yml",
     "windows": ".github/workflows/openburnbar-release-windows.yml",
     "console": ".github/workflows/deploy-hosting.yml",
     "functions": ".github/workflows/deploy-production.yml",
 }
-RELEASE_PREDICATE_TYPES = {
-    consumer: "https://openburnbar.dev/attestations/domain-core-release-artifact/v2"
-    for consumer in RELEASE_SIGNER_WORKFLOWS
-}
+RELEASE_PREDICATE_TYPES = {consumer: "https://openburnbar.dev/attestations/domain-core-release-artifact/v2" for consumer in RELEASE_SIGNER_WORKFLOWS}
 ROLLBACK_PREDICATE_TYPE = "https://openburnbar.dev/attestations/domain-core-rollback-artifact/v1"
 RELEASE_ARTIFACT_IDENTITIES = {
     "apple": ("macos-dmg", "macos-universal"),
+    "ios": ("ios-app-store-archive", "ios-universal"),
+    "linux": ("linux-release-bundle", "linux-x64-arm64"),
     "android": ("android-aab", "android-universal"),
     "windows": ("windows-release-bundle", "windows-x64-arm64"),
     "console": ("console-deployment-receipt", "firebase-hosting-production"),
     "functions": ("functions-deployment-receipt", "firebase-functions-production"),
 }
+ACTIVATION_ALLOWED_EXACT_PATHS = {
+    BUILD_PROFILE_PATH,
+    "config/domain-core-legacy-deletion.json",
+}
+ACTIVATION_ALLOWED_PREFIXES = (
+    f"{RECEIPT_ROOT}/",
+    f"{ATTESTATION_ROOT}/",
+    f"{PROMOTION_BUNDLE_ROOT}/",
+    f"{PROMOTION_PROVENANCE_ROOT}/",
+    "docs/runbooks/shared-rust-",
+    "docs/SHARED_RUST_DOMAIN_",
+)
 SECURITY_REVIEW_ROWS = {
     "cloudvault.portable_primitives",
     "cloudvault.document_rewrap",
@@ -364,7 +384,12 @@ def load_deletion_reviewers(
     previous: str | None = None
     for index, raw_reviewer in enumerate(raw_reviewers):
         reviewer = require_object(raw_reviewer, f"{label}.reviewers[{index}]")
-        exact_keys(reviewer, {"handle", "reviewClasses"}, {"handle", "reviewClasses"}, f"{label}.reviewers[{index}]")
+        exact_keys(
+            reviewer,
+            {"handle", "reviewClasses"},
+            {"handle", "reviewClasses"},
+            f"{label}.reviewers[{index}]",
+        )
         handle = reviewer["handle"]
         if not isinstance(handle, str) or not RECEIPT_ACTOR_RE.fullmatch(handle):
             raise GateError(f"{label}.reviewers[{index}].handle: expected GitHub handle")
@@ -375,9 +400,7 @@ def load_deletion_reviewers(
             raise GateError(f"{label}: reviewers must be sorted case-insensitively")
         classes = require_array(reviewer["reviewClasses"], f"{label}.reviewers[{index}].reviewClasses")
         if not classes or classes != sorted(set(classes)) or any(value not in reviewers for value in classes):
-            raise GateError(
-                f"{label}.reviewers[{index}].reviewClasses: expected sorted unique deletion review classes"
-            )
+            raise GateError(f"{label}.reviewers[{index}].reviewClasses: expected sorted unique deletion review classes")
         for review_class in classes:
             reviewers[review_class].add(normalized)
         seen_handles.add(normalized)
@@ -387,6 +410,51 @@ def load_deletion_reviewers(
 
 class SignedEvidenceVerifier:
     repository = "Imagine-That-Ai/BurnBar"
+
+    def __init__(self, cache_root: Path | None = None) -> None:
+        configured = os.environ.get("DOMAIN_CORE_EVIDENCE_CACHE")
+        self.cache_root = cache_root or (Path(configured) if configured else None)
+        if self.cache_root is not None:
+            self.cache_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._github_cache: dict[str, dict[str, Any]] = {}
+        self._github_list_cache: dict[str, list[Any]] = {}
+        self._attestation_cache: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+
+    def _cached_artifact(self, uri: str, expected_sha256: str, label: str) -> Path:
+        if self.cache_root is not None:
+            destination = self.cache_root / expected_sha256
+            if destination.exists():
+                if not destination.is_file() or destination.is_symlink() or sha256_path(destination) != expected_sha256:
+                    raise GateError(f"{label}: cached artifact is not the declared immutable bytes")
+                return destination
+        else:
+            destination = Path(tempfile.mkdtemp(prefix="openburnbar-domain-evidence-")) / "artifact"
+        try:
+            request = Request(uri, headers={"User-Agent": "OpenBurnBar-domain-core-gate/1"})
+            with urlopen(request, timeout=60) as response:
+                validate_release_download_redirect(response.geturl())
+                remaining = 2 * 1024 * 1024 * 1024
+                temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
+                with temporary.open("xb") as output:
+                    while chunk := response.read(min(1024 * 1024, remaining + 1)):
+                        remaining -= len(chunk)
+                        if remaining < 0:
+                            raise GateError(f"{label}: artifact exceeds the 2 GiB verification limit")
+                        output.write(chunk)
+                if sha256_path(temporary) != expected_sha256:
+                    temporary.unlink(missing_ok=True)
+                    raise GateError(f"{label}: artifact SHA-256 does not match published bytes")
+                temporary.chmod(0o600)
+                try:
+                    os.link(temporary, destination)
+                except FileExistsError:
+                    if sha256_path(destination) != expected_sha256:
+                        raise GateError(f"{label}: cache collision for immutable artifact")
+                finally:
+                    temporary.unlink(missing_ok=True)
+        except (OSError, ValueError) as error:
+            raise GateError(f"{label}: artifact download failed: {error}") from error
+        return destination
 
     def _verify_bundle(
         self,
@@ -401,20 +469,32 @@ class SignedEvidenceVerifier:
         label: str,
     ) -> list[dict[str, Any]]:
         arguments = [
-            "attestation", "verify", str(artifact),
-            "--bundle", str(bundle),
-            "--repo", self.repository,
-            "--signer-workflow", f"{self.repository}/{signer_workflow}",
-            "--source-digest", source_digest,
-            "--cert-oidc-issuer", "https://token.actions.githubusercontent.com",
+            "attestation",
+            "verify",
+            str(artifact),
+            "--bundle",
+            str(bundle),
+            "--repo",
+            self.repository,
+            "--signer-workflow",
+            f"{self.repository}/{signer_workflow}",
+            "--source-digest",
+            source_digest,
+            "--cert-oidc-issuer",
+            "https://token.actions.githubusercontent.com",
             "--deny-self-hosted-runners",
-            "--predicate-type", predicate_type,
-            "--format", "json",
+            "--predicate-type",
+            predicate_type,
+            "--format",
+            "json",
         ]
         if source_ref is not None:
             arguments.extend(["--source-ref", source_ref])
         if signer_digest is not None:
             arguments.extend(["--signer-digest", signer_digest])
+        cache_key = tuple([str(artifact), str(bundle), *arguments])
+        if cache_key in self._attestation_cache:
+            return self._attestation_cache[cache_key]
         try:
             result = subprocess.run(
                 ["gh", *arguments],
@@ -436,12 +516,19 @@ class SignedEvidenceVerifier:
             raise GateError(f"{label}: no valid signed provenance statement was returned")
         if any(not isinstance(item, dict) for item in verified):
             raise GateError(f"{label}: attestation verifier returned an invalid verification result")
+        self._attestation_cache[cache_key] = verified
         return verified
 
     def _github_json(self, path: str, label: str) -> dict[str, Any]:
+        if path in self._github_cache:
+            return self._github_cache[path]
         try:
             result = subprocess.run(
-                ["gh", "api", path], check=False, capture_output=True, text=True, timeout=30
+                ["gh", "api", path],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise GateError(f"{label}: cannot query GitHub: {error}") from error
@@ -449,9 +536,35 @@ class SignedEvidenceVerifier:
             detail = result.stderr.strip() or result.stdout.strip() or "GitHub API request failed"
             raise GateError(f"{label}: GitHub query failed: {detail}")
         try:
-            return require_object(json.loads(result.stdout), label)
+            value = require_object(json.loads(result.stdout), label)
+            self._github_cache[path] = value
+            return value
         except json.JSONDecodeError as error:
             raise GateError(f"{label}: GitHub query returned invalid JSON") from error
+
+    def _github_list(self, path: str, label: str) -> list[Any]:
+        if path in self._github_list_cache:
+            return self._github_list_cache[path]
+        try:
+            result = subprocess.run(
+                ["gh", "api", "--paginate", "--slurp", path],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise GateError(f"{label}: cannot query GitHub: {error}") from error
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "GitHub API request failed"
+            raise GateError(f"{label}: GitHub query failed: {detail}")
+        try:
+            pages = require_array(json.loads(result.stdout), f"{label} pages")
+            value = [item for page_index, page in enumerate(pages) for item in require_array(page, f"{label} pages[{page_index}]")]
+        except json.JSONDecodeError as error:
+            raise GateError(f"{label}: GitHub query returned invalid JSON") from error
+        self._github_list_cache[path] = value
+        return value
 
     def verify_candidate_bundle(
         self,
@@ -517,25 +630,10 @@ class SignedEvidenceVerifier:
         item: dict[str, Any],
         bundle: Path,
         expected_sha256: str,
+        domain: str,
     ) -> None:
-        uri = item["artifactUri"]
-        with tempfile.TemporaryDirectory(prefix="openburnbar-domain-release-") as directory:
-            artifact = Path(directory) / "artifact"
-            try:
-                request = Request(uri, headers={"User-Agent": "OpenBurnBar-domain-core-gate/1"})
-                with urlopen(request, timeout=60) as response:
-                    validate_release_download_redirect(response.geturl())
-                    remaining = 2 * 1024 * 1024 * 1024
-                    with artifact.open("wb") as output:
-                        while chunk := response.read(min(1024 * 1024, remaining + 1)):
-                            remaining -= len(chunk)
-                            if remaining < 0:
-                                raise GateError("release artifact exceeds the 2 GiB verification limit")
-                            output.write(chunk)
-            except (OSError, ValueError) as error:
-                raise GateError(f"release artifact download failed: {error}") from error
-            if sha256_path(artifact) != expected_sha256:
-                raise GateError("release artifact SHA-256 does not match published bytes")
+        artifact = self._cached_artifact(item["artifactUri"], expected_sha256, "release artifact")
+        try:
             verified = self._verify_bundle(
                 artifact,
                 bundle,
@@ -548,9 +646,13 @@ class SignedEvidenceVerifier:
             )
             expected_predicate = {
                 "schemaVersion": 2,
+                "predicateType": RELEASE_PREDICATE_TYPES[item["consumer"]],
                 "consumer": item["consumer"],
+                "domain": domain,
                 "artifactKind": item["artifactKind"],
                 "target": item["target"],
+                "candidate": item["candidate"],
+                "activation": item["activation"],
                 "artifact": {
                     "fileName": expected_release_asset_name(item["consumer"], item["version"]),
                     "sha256": expected_sha256,
@@ -560,7 +662,6 @@ class SignedEvidenceVerifier:
                     "tag": item["tag"],
                     "commit": item["commit"],
                     "publicProfileSha256": item["publicProfileSha256"],
-                    "candidate": item["candidate"],
                 },
             }
             predicates = []
@@ -570,10 +671,32 @@ class SignedEvidenceVerifier:
                 predicate = statement.get("predicate") if isinstance(statement, dict) else None
                 if isinstance(predicate, dict):
                     predicates.append(predicate)
-            if expected_predicate not in predicates:
-                raise GateError(
-                    f"{item['consumer']} release artifact: signed predicate does not bind the declared consumer identity"
-                )
+            matching = [
+                predicate
+                for predicate in predicates
+                if all(predicate.get(key) == value for key, value in expected_predicate.items())
+                and require_object(predicate.get("sourceRun"), "signed release predicate.sourceRun").get("repository") == self.repository
+                and predicate["sourceRun"].get("workflowPath") == SOURCE_WORKFLOW
+                and predicate["sourceRun"].get("headSha") == item["candidate"]["candidateCommit"]
+                and require_object(
+                    predicate.get("promotionProof"),
+                    "signed release predicate.promotionProof",
+                ).get("signerWorkflow")
+                == PROMOTION_SIGNER_WORKFLOW
+                and predicate["promotionProof"].get("predicateType") == "https://slsa.dev/provenance/v1"
+                and require_object(
+                    predicate.get("rollbackArtifact"),
+                    "signed release predicate.rollbackArtifact",
+                ).get("candidate")
+                == item["candidate"]
+                and predicate["rollbackArtifact"].get("activation") == item["activation"]
+            ]
+            if not matching:
+                raise GateError(f"{item['consumer']} release artifact: signed predicate does not bind the declared consumer identity")
+        finally:
+            if self.cache_root is None:
+                artifact.unlink(missing_ok=True)
+                artifact.parent.rmdir()
 
     def verify_rollback_artifact(
         self,
@@ -581,24 +704,8 @@ class SignedEvidenceVerifier:
         bundle: Path,
         expected_sha256: str,
     ) -> None:
-        uri = item["artifactUri"]
-        with tempfile.TemporaryDirectory(prefix="openburnbar-domain-rollback-") as directory:
-            artifact = Path(directory) / "artifact"
-            try:
-                request = Request(uri, headers={"User-Agent": "OpenBurnBar-domain-core-gate/1"})
-                with urlopen(request, timeout=60) as response:
-                    validate_release_download_redirect(response.geturl())
-                    remaining = 2 * 1024 * 1024 * 1024
-                    with artifact.open("wb") as output:
-                        while chunk := response.read(min(1024 * 1024, remaining + 1)):
-                            remaining -= len(chunk)
-                            if remaining < 0:
-                                raise GateError("rollback artifact exceeds the 2 GiB verification limit")
-                            output.write(chunk)
-            except (OSError, ValueError) as error:
-                raise GateError(f"rollback artifact download failed: {error}") from error
-            if sha256_path(artifact) != expected_sha256:
-                raise GateError("rollback artifact SHA-256 does not match published bytes")
+        artifact = self._cached_artifact(item["artifactUri"], expected_sha256, "rollback artifact")
+        try:
             verified = self._verify_bundle(
                 artifact,
                 bundle,
@@ -613,12 +720,16 @@ class SignedEvidenceVerifier:
                 "schemaVersion": 1,
                 "artifactKind": "legacy-rollback-bundle",
                 "target": "all-supported-consumers",
-                "artifact": {"fileName": item["artifactUri"].rsplit("/", 1)[-1], "sha256": expected_sha256},
+                "artifact": {
+                    "fileName": item["artifactUri"].rsplit("/", 1)[-1],
+                    "sha256": expected_sha256,
+                },
                 "release": {
                     "version": item["version"],
                     "tag": item["tag"],
                     "commit": item["commit"],
                     "candidate": item["candidate"],
+                    "activation": item["activation"],
                     "retentionPolicy": item["retentionPolicy"],
                 },
             }
@@ -631,11 +742,16 @@ class SignedEvidenceVerifier:
                     predicates.append(predicate)
             if expected_predicate not in predicates:
                 raise GateError("rollback artifact: signed predicate does not bind the exact candidate and retention policy")
+        finally:
+            if self.cache_root is None:
+                artifact.unlink(missing_ok=True)
+                artifact.parent.rmdir()
 
     def verify_deletion_review(
         self,
         review: dict[str, Any],
         bound_files: dict[str, str] | None = None,
+        expected_descendant_commit: str | None = None,
     ) -> None:
         parsed = urlsplit(review["reviewUri"])
         match = re.fullmatch(r"/Imagine-That-Ai/BurnBar/pull/([1-9][0-9]*)", parsed.path)
@@ -672,16 +788,32 @@ class SignedEvidenceVerifier:
         )
         head_object = require_object(pull.get("head"), "deletion review pull request.head")
         head = head_object.get("sha")
-        head_repository = require_object(
-            head_object.get("repo"), "deletion review pull request.head.repo"
-        ).get("full_name")
+        head_repository = require_object(head_object.get("repo"), "deletion review pull request.head.repo").get("full_name")
+        base_object = require_object(pull.get("base"), "deletion review pull request.base")
+        base_repository = require_object(base_object.get("repo"), "deletion review pull request.base.repo").get("full_name")
         author = require_object(pull.get("user"), "deletion review pull request.user").get("login")
         reviewer = review["reviewer"].removeprefix("@")
         reviewed_commit = review["reviewedCommit"]
-        if pull.get("draft") is True or head != reviewed_commit or head_repository != self.repository:
-            raise GateError(
-                "deletion review pull request must be non-draft, same-repository, and match reviewedCommit"
+        if (
+            pull.get("draft") is True
+            or pull.get("merged") is not True
+            or not isinstance(pull.get("merged_at"), str)
+            or head != reviewed_commit
+            or head_repository != self.repository
+            or base_repository != self.repository
+            or base_object.get("ref") != "main"
+        ):
+            raise GateError("deletion review pull request must be merged, non-draft, same-repository, target main, and match reviewedCommit")
+        merge_commit = pull.get("merge_commit_sha")
+        if expected_descendant_commit is not None:
+            if not isinstance(merge_commit, str) or not COMMIT_RE.fullmatch(merge_commit):
+                raise GateError("deletion review pull request must expose its merged commit")
+            comparison = self._github_json(
+                f"repos/{self.repository}/compare/{merge_commit}...{expected_descendant_commit}",
+                "deletion review merged ancestry",
             )
+            if comparison.get("status") not in {"ahead", "identical"}:
+                raise GateError("deletion review merged commit must be an ancestor of the receipt commit")
         if not isinstance(author, str) or author.casefold() == reviewer.casefold():
             raise GateError("deletion review must be independent from the pull request author")
         review_pages = require_array(
@@ -692,11 +824,7 @@ class SignedEvidenceVerifier:
             ),
             "deletion review pages",
         )
-        reviews = [
-            review
-            for page_index, page in enumerate(review_pages)
-            for review in require_array(page, f"deletion review pages[{page_index}]")
-        ]
+        reviews = [review for page_index, page in enumerate(review_pages) for review in require_array(page, f"deletion review pages[{page_index}]")]
         decisive_reviews: list[tuple[datetime, int, str]] = []
         for index, item in enumerate(reviews):
             if not isinstance(item, dict) or item.get("commit_id") != reviewed_commit:
@@ -707,17 +835,13 @@ class SignedEvidenceVerifier:
             state = item.get("state")
             if state not in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
                 continue
-            submitted_at = parse_rfc3339_utc(
-                item.get("submitted_at"), f"deletion reviews[{index}].submitted_at"
-            )
+            submitted_at = parse_rfc3339_utc(item.get("submitted_at"), f"deletion reviews[{index}].submitted_at")
             review_id = item.get("id")
             if not isinstance(review_id, int) or isinstance(review_id, bool) or review_id < 1:
                 raise GateError(f"deletion reviews[{index}].id: expected positive integer")
             decisive_reviews.append((submitted_at, review_id, state))
         if not decisive_reviews or max(decisive_reviews)[2] != "APPROVED":
-            raise GateError(
-                "deletion review requires the declared reviewer's latest decisive review on reviewedCommit to be APPROVED"
-            )
+            raise GateError("deletion review requires the declared reviewer's latest decisive review on reviewedCommit to be APPROVED")
         for path, expected_digest in sorted((bound_files or {}).items()):
             encoded_path = quote(path, safe="/")
             content = require_object(
@@ -736,6 +860,59 @@ class SignedEvidenceVerifier:
                 raise GateError(f"reviewed deletion file {path}: invalid GitHub content encoding") from error
             if hashlib.sha256(contents).hexdigest() != expected_digest:
                 raise GateError(f"reviewed deletion file {path}: digest does not match approved PR head")
+
+    def verify_deletion_head(
+        self,
+        *,
+        pull_number: int,
+        deletion_head: str,
+        reviewer: str,
+    ) -> None:
+        pull = self._github_json(
+            f"repos/{self.repository}/pulls/{positive_integer(pull_number, 'deletion pull request number')}",
+            "actual deletion pull request",
+        )
+        head = require_object(pull.get("head"), "actual deletion pull request.head")
+        base = require_object(pull.get("base"), "actual deletion pull request.base")
+        author = require_object(pull.get("user"), "actual deletion pull request.user").get("login")
+        normalized = reviewer.removeprefix("@").casefold()
+        if (
+            pull.get("draft") is True
+            or pull.get("merged") is True
+            or pull.get("state") != "open"
+            or head.get("sha") != deletion_head
+            or require_object(head.get("repo"), "actual deletion pull request.head.repo").get("full_name") != self.repository
+            or base.get("ref") != "main"
+            or require_object(base.get("repo"), "actual deletion pull request.base.repo").get("full_name") != self.repository
+            or not isinstance(author, str)
+            or author.casefold() == normalized
+        ):
+            raise GateError("actual deletion approval must be on the current non-draft same-repository PR head targeting official main")
+        reviews = self._github_list(
+            f"repos/{self.repository}/pulls/{pull_number}/reviews?per_page=100",
+            "actual deletion reviews",
+        )
+        decisive: list[tuple[datetime, int, str]] = []
+        for index, item in enumerate(reviews):
+            if not isinstance(item, dict) or item.get("commit_id") != deletion_head:
+                continue
+            user = item.get("user")
+            if not isinstance(user, dict) or str(user.get("login", "")).casefold() != normalized:
+                continue
+            if item.get("state") not in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+                continue
+            decisive.append(
+                (
+                    parse_rfc3339_utc(
+                        item.get("submitted_at"),
+                        f"actual deletion reviews[{index}].submitted_at",
+                    ),
+                    positive_integer(item.get("id"), f"actual deletion reviews[{index}].id"),
+                    item["state"],
+                )
+            )
+        if not decisive or max(decisive)[2] != "APPROVED":
+            raise GateError("qualified reviewer must approve the exact current deletion PR head")
 
 
 @dataclass(frozen=True)
@@ -981,7 +1158,7 @@ def validate_release_uri(value: Any, label: str) -> str:
     prefix = "/Imagine-That-Ai/BurnBar/releases/download/"
     if parsed.hostname != "github.com" or parsed.port not in {None, 443} or not parsed.path.startswith(prefix):
         raise GateError(f"{label}: expected a canonical OpenBurnBar GitHub Release asset URI")
-    suffix = parsed.path[len(prefix):]
+    suffix = parsed.path[len(prefix) :]
     if len(suffix.split("/")) != 2 or any(not part for part in suffix.split("/")):
         raise GateError(f"{label}: release asset URI must contain one tag and one asset name")
     return uri
@@ -998,6 +1175,8 @@ def validate_release_download_redirect(value: str) -> None:
 def expected_release_asset_name(consumer: str, version: str) -> str:
     names = {
         "apple": f"OpenBurnBar-{version}-macOS.dmg",
+        "ios": f"OpenBurnBar-{version}-iOS.xcarchive.zip",
+        "linux": f"OpenBurnBar-{version}-linux-release.tar.zst",
         "android": f"OpenBurnBar-{version}-Android.aab",
         "windows": f"OpenBurnBar-{version}-windows-release.zip",
         "console": f"OpenBurnBar-{version}-console-deployment.json",
@@ -1014,12 +1193,22 @@ def validate_previous_rollback(
     approved_at: datetime,
 ) -> datetime:
     link = require_object(value, "promotionAttestation.supersedesRollback")
-    exact_keys(link, {"path", "sha256"}, {"path", "sha256"}, "promotionAttestation.supersedesRollback")
+    exact_keys(
+        link,
+        {"path", "sha256"},
+        {"path", "sha256"},
+        "promotionAttestation.supersedesRollback",
+    )
     expected_path = f"{RECEIPT_ROOT}/{row_id}/{generation - 1}/rollback.json"
     path_value = repository_path(link["path"], "promotionAttestation.supersedesRollback.path")
     if path_value != expected_path:
         raise GateError(f"promotionAttestation.supersedesRollback.path must be {expected_path}")
-    path = secure_path(repo_root, path_value, "promotionAttestation.supersedesRollback", must_exist=True)
+    path = secure_path(
+        repo_root,
+        path_value,
+        "promotionAttestation.supersedesRollback",
+        must_exist=True,
+    )
     expected_digest = require_digest(link["sha256"], "promotionAttestation.supersedesRollback.sha256")
     if sha256_path(path) != expected_digest:
         raise GateError("promotionAttestation.supersedesRollback.sha256 does not match the previous rollback receipt")
@@ -1053,7 +1242,10 @@ def positive_integer(value: Any, label: str) -> int:
 def candidate_identity_at_commit(repo_root: Path, commit: str) -> dict[str, Any]:
     relative = "crates/openburnbar-domain-core/union-abi-manifest.json"
     manifest = require_object(
-        load_json_bytes(git_file(repo_root, commit, relative, "candidate union ABI manifest"), "candidate union ABI manifest"),
+        load_json_bytes(
+            git_file(repo_root, commit, relative, "candidate union ABI manifest"),
+            "candidate union ABI manifest",
+        ),
         "candidate union ABI manifest",
     )
     core_version = manifest.get("coreVersion")
@@ -1099,9 +1291,22 @@ def validate_unsigned_candidate_bundle(
 ) -> datetime:
     value = require_object(bundle, label)
     required = {
-        "schemaVersion", "bundleKind", "status", "proofComplete", "eligibleForAttestation",
-        "promotionAuthorized", "trust", "generatedAt", "candidate", "policySha256", "workflow",
-        "suites", "coverage", "artifacts", "benchmarks", "rollback",
+        "schemaVersion",
+        "bundleKind",
+        "status",
+        "proofComplete",
+        "eligibleForAttestation",
+        "promotionAuthorized",
+        "trust",
+        "generatedAt",
+        "candidate",
+        "policySha256",
+        "workflow",
+        "suites",
+        "coverage",
+        "artifacts",
+        "benchmarks",
+        "rollback",
     }
     exact_keys(value, required, required, label)
     if value["schemaVersion"] != 1 or isinstance(value["schemaVersion"], bool):
@@ -1119,13 +1324,14 @@ def validate_unsigned_candidate_bundle(
     if candidate != expected_identity:
         raise GateError(f"{label}: candidate identity does not match the exact candidate checkout")
     trust = require_object(value["trust"], f"{label}.trust")
-    trust_fields = {"authority", "attestationRequired", "requiredSigner", "verificationSteps"}
+    trust_fields = {
+        "authority",
+        "attestationRequired",
+        "requiredSigner",
+        "verificationSteps",
+    }
     exact_keys(trust, trust_fields, trust_fields, f"{label}.trust")
-    if (
-        trust["authority"] != "none"
-        or trust["attestationRequired"] is not True
-        or trust["requiredSigner"] != PROMOTION_SIGNER_WORKFLOW
-    ):
+    if trust["authority"] != "none" or trust["attestationRequired"] is not True or trust["requiredSigner"] != PROMOTION_SIGNER_WORKFLOW:
         raise GateError(f"{label}: unsigned bundle must disclaim authority and require the protected signer")
     workflow = require_object(value["workflow"], f"{label}.workflow")
     if (
@@ -1159,10 +1365,20 @@ def validate_promotion_attestation(
     path = secure_path(repo_root, path_value, f"row {row_id} promotion attestation", must_exist=True)
     if not path.is_file() or require_digest(pointer["sha256"], f"row {row_id} promotionAttestation.sha256") != sha256_path(path):
         raise GateError(f"row {row_id}: promotion attestation digest does not match committed bytes")
-    attestation = require_object(load_json(path, f"row {row_id} promotion attestation"), f"row {row_id} promotion attestation")
+    attestation = require_object(
+        load_json(path, f"row {row_id} promotion attestation"),
+        f"row {row_id} promotion attestation",
+    )
     fields = {
-        "schemaVersion", "authorityScope", "authorityGeneration", "candidate", "unsignedBundle",
-        "provenance", "status", "generatedAt", "evidenceUri",
+        "schemaVersion",
+        "authorityScope",
+        "authorityGeneration",
+        "candidate",
+        "unsignedBundle",
+        "provenance",
+        "status",
+        "generatedAt",
+        "evidenceUri",
     }
     exact_keys(attestation, fields, fields, f"row {row_id} promotion attestation")
     if attestation["schemaVersion"] != 2 or isinstance(attestation["schemaVersion"], bool):
@@ -1173,17 +1389,31 @@ def validate_promotion_attestation(
         raise GateError(f"row {row_id}: deterministic promotion status must be attested")
     evidence_uri = validate_https_uri(attestation["evidenceUri"], f"row {row_id} promotion attestation.evidenceUri")
     parsed_evidence_uri = urlsplit(evidence_uri)
-    if parsed_evidence_uri.hostname != "github.com" or re.fullmatch(
-        r"/Imagine-That-Ai/BurnBar/attestations/[1-9][0-9]*", parsed_evidence_uri.path
-    ) is None:
+    if (
+        parsed_evidence_uri.hostname != "github.com"
+        or re.fullmatch(
+            r"/Imagine-That-Ai/BurnBar/attestations/[1-9][0-9]*",
+            parsed_evidence_uri.path,
+        )
+        is None
+    ):
         raise GateError(f"row {row_id}: promotion evidence must be an official OpenBurnBar GitHub attestation")
     if evidence_uri not in promotion.evidence:
         raise GateError(f"row {row_id}: official attestation URI must be listed in receipt evidence")
 
     candidate_object = require_object(attestation["candidate"], f"row {row_id} promotion candidate")
     identity_fields = {"candidateCommit", "coreVersion", "abiVersion", "sourceSha256"}
-    exact_keys(candidate_object, identity_fields, identity_fields, f"row {row_id} promotion candidate")
-    candidate = require_commit(repo_root, candidate_object["candidateCommit"], f"row {row_id} promotion candidate")
+    exact_keys(
+        candidate_object,
+        identity_fields,
+        identity_fields,
+        f"row {row_id} promotion candidate",
+    )
+    candidate = require_commit(
+        repo_root,
+        candidate_object["candidateCommit"],
+        f"row {row_id} promotion candidate",
+    )
     if candidate != promotion.commit:
         raise GateError(f"row {row_id}: promotion receipt commit must equal the exact attested candidate")
     expected_identity = candidate_identity_at_commit(repo_root, candidate)
@@ -1192,14 +1422,27 @@ def validate_promotion_attestation(
 
     unsigned = require_object(attestation["unsignedBundle"], f"row {row_id} promotion unsignedBundle")
     unsigned_fields = {"path", "sha256", "sourceRunId", "sourceRunAttempt"}
-    exact_keys(unsigned, unsigned_fields, unsigned_fields, f"row {row_id} promotion unsignedBundle")
+    exact_keys(
+        unsigned,
+        unsigned_fields,
+        unsigned_fields,
+        f"row {row_id} promotion unsignedBundle",
+    )
     source_run_id = positive_integer(unsigned["sourceRunId"], f"row {row_id} promotion unsignedBundle.sourceRunId")
-    source_run_attempt = positive_integer(unsigned["sourceRunAttempt"], f"row {row_id} promotion unsignedBundle.sourceRunAttempt")
+    source_run_attempt = positive_integer(
+        unsigned["sourceRunAttempt"],
+        f"row {row_id} promotion unsignedBundle.sourceRunAttempt",
+    )
     expected_bundle_path = f"{PROMOTION_BUNDLE_ROOT}/{scope}/{generation}.json"
     bundle_path_value = repository_path(unsigned["path"], f"row {row_id} promotion unsignedBundle.path")
     if bundle_path_value != expected_bundle_path:
         raise GateError(f"row {row_id}: unsigned candidate bundle must use exact path {expected_bundle_path}")
-    bundle_path = secure_path(repo_root, bundle_path_value, f"row {row_id} unsigned candidate bundle", must_exist=True)
+    bundle_path = secure_path(
+        repo_root,
+        bundle_path_value,
+        f"row {row_id} unsigned candidate bundle",
+        must_exist=True,
+    )
     bundle_digest = require_digest(unsigned["sha256"], f"row {row_id} promotion unsignedBundle.sha256")
     if not bundle_path.is_file() or sha256_path(bundle_path) != bundle_digest:
         raise GateError(f"row {row_id}: unsigned candidate bundle digest does not match committed bytes")
@@ -1213,25 +1456,53 @@ def validate_promotion_attestation(
 
     provenance = require_object(attestation["provenance"], f"row {row_id} promotion provenance")
     provenance_fields = {
-        "path", "sha256", "signerWorkflow", "signerRunId", "signerRunAttempt",
-        "trustedMainCommit", "policySha256", "evaluatorSha256",
+        "path",
+        "sha256",
+        "signerWorkflow",
+        "signerRunId",
+        "signerRunAttempt",
+        "trustedMainCommit",
+        "policySha256",
+        "evaluatorSha256",
     }
-    exact_keys(provenance, provenance_fields, provenance_fields, f"row {row_id} promotion provenance")
+    exact_keys(
+        provenance,
+        provenance_fields,
+        provenance_fields,
+        f"row {row_id} promotion provenance",
+    )
     if provenance["signerWorkflow"] != PROMOTION_SIGNER_WORKFLOW:
         raise GateError(f"row {row_id}: promotion provenance must name the protected signer workflow")
     signer_run_id = positive_integer(provenance["signerRunId"], f"row {row_id} promotion provenance.signerRunId")
-    signer_run_attempt = positive_integer(provenance["signerRunAttempt"], f"row {row_id} promotion provenance.signerRunAttempt")
-    trusted_main = require_commit(repo_root, provenance["trustedMainCommit"], f"row {row_id} trusted-main evaluator")
+    signer_run_attempt = positive_integer(
+        provenance["signerRunAttempt"],
+        f"row {row_id} promotion provenance.signerRunAttempt",
+    )
+    trusted_main = require_commit(
+        repo_root,
+        provenance["trustedMainCommit"],
+        f"row {row_id} trusted-main evaluator",
+    )
     require_ancestor(repo_root, candidate, trusted_main, f"row {row_id} trusted-main evaluator")
     expected_policy_digest = file_sha256_at_commit(repo_root, trusted_main, PROMOTION_POLICY_PATH, "trusted-main promotion policy")
-    expected_evaluator_digest = file_sha256_at_commit(repo_root, trusted_main, PROMOTION_EVALUATOR_PATH, "trusted-main promotion evaluator")
+    expected_evaluator_digest = file_sha256_at_commit(
+        repo_root,
+        trusted_main,
+        PROMOTION_EVALUATOR_PATH,
+        "trusted-main promotion evaluator",
+    )
     if provenance["policySha256"] != expected_policy_digest or provenance["evaluatorSha256"] != expected_evaluator_digest:
         raise GateError(f"row {row_id}: provenance does not bind the trusted-main policy and evaluator")
     expected_provenance_path = f"{PROMOTION_PROVENANCE_ROOT}/{scope}/{generation}.json"
     provenance_path_value = repository_path(provenance["path"], f"row {row_id} promotion provenance.path")
     if provenance_path_value != expected_provenance_path:
         raise GateError(f"row {row_id}: provenance bundle must use exact path {expected_provenance_path}")
-    provenance_path = secure_path(repo_root, provenance_path_value, f"row {row_id} promotion provenance", must_exist=True)
+    provenance_path = secure_path(
+        repo_root,
+        provenance_path_value,
+        f"row {row_id} promotion provenance",
+        must_exist=True,
+    )
     provenance_digest = require_digest(provenance["sha256"], f"row {row_id} promotion provenance.sha256")
     if not provenance_path.is_file() or sha256_path(provenance_path) != provenance_digest:
         raise GateError(f"row {row_id}: provenance bundle digest does not match committed bytes")
@@ -1255,8 +1526,15 @@ def validate_promotion_attestation(
         if pointer["supersedesRollback"] is not None:
             raise GateError(f"row {row_id}: first authority generation cannot supersede a rollback")
     else:
-        validate_previous_rollback(repo_root, row_id, generation, pointer["supersedesRollback"], promotion.approved_at)
+        validate_previous_rollback(
+            repo_root,
+            row_id,
+            generation,
+            pointer["supersedesRollback"],
+            promotion.approved_at,
+        )
     return candidate, bundle_digest, expected_identity["coreVersion"]
+
 
 def validate_receipt_chain(
     repo_root: Path,
@@ -1276,15 +1554,18 @@ def validate_receipt_chain(
         raise GateError(f"row {row_id}: promoted authorityGeneration must be at least 1")
 
     promotion = receipts["promotion"]
-    candidate, report_digest, core_version = validate_promotion_attestation(
-        repo_root, row_id, generation, promotion, evidence_verifier
-    )
+    candidate, report_digest, core_version = validate_promotion_attestation(repo_root, row_id, generation, promotion, evidence_verifier)
 
     stable = receipts.get("stableRelease")
     if stable is not None:
         release = stable.payload
         release_fields = {
-            "promotionReceiptSha256", "publicProfileSha256", "candidate", "consumerReleases", "rollbackArtifact"
+            "promotionReceiptSha256",
+            "publicProfileSha256",
+            "candidate",
+            "activation",
+            "consumerReleases",
+            "rollbackArtifact",
         }
         exact_keys(release, release_fields, release_fields, f"row {row_id} release")
         if release["promotionReceiptSha256"] != promotion.digest:
@@ -1295,16 +1576,55 @@ def validate_receipt_chain(
         release_candidate = require_object(release["candidate"], f"row {row_id} release.candidate")
         if release_candidate != expected_identity:
             raise GateError(f"row {row_id}: stable release must bind the exact promoted candidate tuple")
+        activation = require_object(release["activation"], f"row {row_id} release.activation")
+        activation_fields = {
+            "candidateCommit",
+            "activationCommit",
+            "coreVersion",
+            "abiVersion",
+            "sourceSha256",
+            "changedPathsSha256",
+        }
+        exact_keys(
+            activation,
+            activation_fields,
+            activation_fields,
+            f"row {row_id} release.activation",
+        )
+        activation_commit = require_commit(
+            repo_root,
+            activation.get("activationCommit"),
+            f"row {row_id} release.activation.activationCommit",
+        )
+        expected_activation = validate_activation_closure(repo_root, candidate, activation_commit)
+        if activation != expected_activation:
+            raise GateError(f"row {row_id}: activation proof does not match the exact candidate-to-release closure")
+        candidate_modes, _ = public_production_profile_at_commit(repo_root, candidate)
+        profile_domain = profile_domain_for_row(row_id)
+        if candidate_modes[profile_domain] != "legacy":
+            raise GateError(f"row {row_id}: protected candidate must remain legacy before activation")
+        require_ancestor(repo_root, activation_commit, stable.commit, f"row {row_id} stable receipt")
         releases = require_array(release["consumerReleases"], f"row {row_id} release.consumerReleases")
         consumers: set[str] = set()
         artifact_uris: set[str] = set()
-        profile_domain = profile_domain_for_row(row_id)
         for index, raw_consumer_release in enumerate(releases):
             label = f"row {row_id} release.consumerReleases[{index}]"
             item = require_object(raw_consumer_release, label)
             fields = {
-                "consumer", "artifactKind", "target", "version", "tag", "commit", "publishedAt", "artifactUri", "artifactSha256",
-                "publicProfileSha256", "candidate", "provenancePath", "provenanceSha256",
+                "consumer",
+                "artifactKind",
+                "target",
+                "version",
+                "tag",
+                "commit",
+                "publishedAt",
+                "artifactUri",
+                "artifactSha256",
+                "publicProfileSha256",
+                "candidate",
+                "activation",
+                "provenancePath",
+                "provenanceSha256",
             }
             exact_keys(item, fields, fields, label)
             consumer = item["consumer"]
@@ -1318,16 +1638,18 @@ def validate_receipt_chain(
             version = item["version"]
             if not isinstance(version, str) or not VERSION_RE.fullmatch(version) or "-" in version.split("+", 1)[0]:
                 raise GateError(f"{label}: version must be a stable semantic version")
-            expected_tag = f"windows-v{version}" if consumer == "windows" else f"v{version}"
+            expected_tag = f"windows-v{version}" if consumer == "windows" else f"linux-v{version}" if consumer == "linux" else f"v{version}"
             if item["tag"] != expected_tag:
                 raise GateError(f"{label}: tag must be {expected_tag}")
             release_commit = require_commit(repo_root, item["commit"], f"{label}.commit")
-            if release_commit != candidate:
-                raise GateError(f"{label}: stable release must tag the exact attested candidate commit")
+            if release_commit != activation_commit:
+                raise GateError(f"{label}: stable release must tag the exact activation commit")
             require_ancestor(repo_root, release_commit, stable.commit, f"{label}.commit")
-            if source_fingerprint_at_commit(repo_root, release_commit) != source_fingerprint_at_commit(repo_root, candidate):
-                raise GateError(f"{label}: release changed the promoted Rust source fingerprint")
-            resolved_tag = git_output(repo_root, ["rev-parse", f"refs/tags/{expected_tag}^{{commit}}"], f"{label}.tag").strip()
+            resolved_tag = git_output(
+                repo_root,
+                ["rev-parse", f"refs/tags/{expected_tag}^{{commit}}"],
+                f"{label}.tag",
+            ).strip()
             if resolved_tag != release_commit:
                 raise GateError(f"{label}: tag does not resolve to the declared release commit")
             historical_modes, historical_digests = public_production_profile_at_commit(repo_root, release_commit)
@@ -1339,6 +1661,8 @@ def validate_receipt_chain(
                 raise GateError(f"{label}: signed artifact profile digest must equal the stable release profile")
             if item["candidate"] != expected_identity:
                 raise GateError(f"{label}: signed release candidate tuple must equal the promotion tuple")
+            if item["activation"] != expected_activation:
+                raise GateError(f"{label}: signed release activation must equal the candidate-to-release closure")
             published_at = parse_rfc3339_utc(item["publishedAt"], f"{label}.publishedAt")
             if published_at < promotion.approved_at or published_at > stable.approved_at:
                 raise GateError(f"{label}: release must be published after promotion and before stable approval")
@@ -1356,29 +1680,59 @@ def validate_receipt_chain(
             provenance_path_value = repository_path(item["provenancePath"], f"{label}.provenancePath")
             if provenance_path_value != expected_provenance_path:
                 raise GateError(f"{label}: provenance must use exact path {expected_provenance_path}")
-            provenance_path = secure_path(repo_root, provenance_path_value, f"{label}.provenancePath", must_exist=True)
+            provenance_path = secure_path(
+                repo_root,
+                provenance_path_value,
+                f"{label}.provenancePath",
+                must_exist=True,
+            )
             provenance_digest = require_digest(item["provenanceSha256"], f"{label}.provenanceSha256")
             if not provenance_path.is_file() or sha256_path(provenance_path) != provenance_digest:
                 raise GateError(f"{label}: provenance digest does not match committed bytes")
             if evidence_verifier is None:
                 raise GateError(f"{label}: signed release evidence verification is required")
-            evidence_verifier.verify_release(item, provenance_path, artifact_digest)
+            evidence_verifier.verify_release(item, provenance_path, artifact_digest, profile_domain)
         if consumers != release_consumers_for_row(row_id):
             raise GateError(f"row {row_id}: stable receipt must cover the exact applicable consumer set")
         rollback_item = require_object(release["rollbackArtifact"], f"row {row_id} release.rollbackArtifact")
         rollback_fields = {
-            "artifactKind", "target", "version", "tag", "commit", "publishedAt", "artifactUri",
-            "artifactSha256", "candidate", "retentionPolicy", "provenancePath", "provenanceSha256",
+            "artifactKind",
+            "target",
+            "version",
+            "tag",
+            "commit",
+            "publishedAt",
+            "artifactUri",
+            "artifactSha256",
+            "candidate",
+            "activation",
+            "retentionPolicy",
+            "provenancePath",
+            "provenanceSha256",
         }
-        exact_keys(rollback_item, rollback_fields, rollback_fields, f"row {row_id} release.rollbackArtifact")
+        exact_keys(
+            rollback_item,
+            rollback_fields,
+            rollback_fields,
+            f"row {row_id} release.rollbackArtifact",
+        )
         if rollback_item["artifactKind"] != "legacy-rollback-bundle" or rollback_item["target"] != "all-supported-consumers":
             raise GateError(f"row {row_id}: stable release requires the dedicated cross-consumer rollback artifact")
         if rollback_item["retentionPolicy"] != "retain_until_legacy_deletion_complete":
             raise GateError(f"row {row_id}: rollback artifact must be retained until legacy deletion completes")
         if rollback_item["candidate"] != expected_identity:
             raise GateError(f"row {row_id}: rollback artifact candidate tuple must equal the promotion tuple")
-        if require_commit(repo_root, rollback_item["commit"], f"row {row_id} rollback artifact.commit") != candidate:
-            raise GateError(f"row {row_id}: rollback artifact must be produced by the exact candidate commit")
+        if rollback_item["activation"] != expected_activation:
+            raise GateError(f"row {row_id}: rollback artifact must bind the exact activation closure")
+        if (
+            require_commit(
+                repo_root,
+                rollback_item["commit"],
+                f"row {row_id} rollback artifact.commit",
+            )
+            != activation_commit
+        ):
+            raise GateError(f"row {row_id}: rollback artifact must be produced by the exact activation commit")
         if (
             not isinstance(rollback_item["version"], str)
             or not VERSION_RE.fullmatch(rollback_item["version"])
@@ -1392,14 +1746,18 @@ def validate_receipt_chain(
             ["rev-parse", f"refs/tags/{rollback_item['tag']}^{{commit}}"],
             f"row {row_id} rollback artifact.tag",
         ).strip()
-        if rollback_tag_commit != candidate:
-            raise GateError(f"row {row_id}: rollback artifact tag must resolve to the exact candidate")
+        if rollback_tag_commit != activation_commit:
+            raise GateError(f"row {row_id}: rollback artifact tag must resolve to the exact activation commit")
         rollback_published_at = parse_rfc3339_utc(
-            rollback_item["publishedAt"], f"row {row_id} release.rollbackArtifact.publishedAt"
+            rollback_item["publishedAt"],
+            f"row {row_id} release.rollbackArtifact.publishedAt",
         )
         if rollback_published_at < promotion.approved_at or rollback_published_at > stable.approved_at:
             raise GateError(f"row {row_id}: rollback artifact must be published during the stable release interval")
-        rollback_uri = validate_release_uri(rollback_item["artifactUri"], f"row {row_id} release.rollbackArtifact.artifactUri")
+        rollback_uri = validate_release_uri(
+            rollback_item["artifactUri"],
+            f"row {row_id} release.rollbackArtifact.artifactUri",
+        )
         expected_rollback_uri = (
             f"https://github.com/Imagine-That-Ai/BurnBar/releases/download/{rollback_item['tag']}/"
             f"OpenBurnBar-{rollback_item['version']}-legacy-rollback.zip"
@@ -1408,18 +1766,26 @@ def validate_receipt_chain(
             raise GateError(f"row {row_id}: rollback artifact URI must match the exact tag and canonical asset name")
         if rollback_uri not in stable.evidence or rollback_uri in artifact_uris:
             raise GateError(f"row {row_id}: rollback artifact URI must be unique and listed in stable evidence")
-        rollback_digest = require_digest(rollback_item["artifactSha256"], f"row {row_id} release.rollbackArtifact.artifactSha256")
+        rollback_digest = require_digest(
+            rollback_item["artifactSha256"],
+            f"row {row_id} release.rollbackArtifact.artifactSha256",
+        )
         rollback_provenance_relative = f"{RELEASE_PROVENANCE_ROOT}/{row_id}/{generation}/rollback.json"
         rollback_provenance_value = repository_path(
-            rollback_item["provenancePath"], f"row {row_id} release.rollbackArtifact.provenancePath"
+            rollback_item["provenancePath"],
+            f"row {row_id} release.rollbackArtifact.provenancePath",
         )
         if rollback_provenance_value != rollback_provenance_relative:
             raise GateError(f"row {row_id}: rollback provenance must use exact path {rollback_provenance_relative}")
         rollback_provenance_path = secure_path(
-            repo_root, rollback_provenance_value, f"row {row_id} rollback provenance", must_exist=True
+            repo_root,
+            rollback_provenance_value,
+            f"row {row_id} rollback provenance",
+            must_exist=True,
         )
         rollback_provenance_digest = require_digest(
-            rollback_item["provenanceSha256"], f"row {row_id} release.rollbackArtifact.provenanceSha256"
+            rollback_item["provenanceSha256"],
+            f"row {row_id} release.rollbackArtifact.provenanceSha256",
         )
         if not rollback_provenance_path.is_file() or sha256_path(rollback_provenance_path) != rollback_provenance_digest:
             raise GateError(f"row {row_id}: rollback provenance digest does not match committed bytes")
@@ -1446,12 +1812,23 @@ def validate_receipt_chain(
     if deletion is not None:
         payload = deletion.payload
         fields = {
-            "stableReceiptSha256", "reviewUri", "reviewedCommit", "reviewer", "reviewClass", "outcome",
-            "planPath", "planSha256",
+            "stableReceiptSha256",
+            "reviewUri",
+            "reviewedCommit",
+            "reviewer",
+            "reviewClass",
+            "outcome",
+            "planPath",
+            "planSha256",
         }
         exact_keys(payload, fields, fields, f"row {row_id} deletionReview")
         assert stable is not None
-        require_ancestor(repo_root, stable.commit, deletion.commit, f"row {row_id} deletionReview.commit")
+        require_ancestor(
+            repo_root,
+            stable.commit,
+            deletion.commit,
+            f"row {row_id} deletionReview.commit",
+        )
         if payload["stableReceiptSha256"] != stable.digest:
             raise GateError(f"row {row_id}: deletion review does not bind the current stable receipt")
         validate_https_uri(payload["reviewUri"], f"row {row_id} deletionReview.reviewUri")
@@ -1462,9 +1839,7 @@ def validate_receipt_chain(
             raise GateError(f"row {row_id}: deletion review class or outcome is invalid")
         qualified = (deletion_reviewers or {}).get(expected_review_class, set())
         if payload["reviewer"].casefold() not in qualified:
-            raise GateError(
-                f"row {row_id}: {expected_review_class} reviewer is not qualified by the trusted base catalog"
-            )
+            raise GateError(f"row {row_id}: {expected_review_class} reviewer is not qualified by the trusted base catalog")
         expected_plan_path = f"{DELETION_PLAN_ROOT}/{row_id}/{generation}.json"
         plan_path_value = repository_path(payload["planPath"], f"row {row_id} deletionReview.planPath")
         if plan_path_value != expected_plan_path:
@@ -1475,11 +1850,25 @@ def validate_receipt_chain(
             raise GateError(f"row {row_id}: deletion plan digest does not match committed bytes")
         reviewed_commit = payload["reviewedCommit"]
         reviewed_commit = require_commit(repo_root, reviewed_commit, f"row {row_id} deletion reviewedCommit")
-        require_ancestor(repo_root, reviewed_commit, deletion.commit, f"row {row_id} deletion reviewedCommit")
-        plan = require_object(load_json(plan_path, f"row {row_id} deletion plan"), f"row {row_id} deletion plan")
+        require_ancestor(
+            repo_root,
+            reviewed_commit,
+            deletion.commit,
+            f"row {row_id} deletion reviewedCommit",
+        )
+        plan = require_object(
+            load_json(plan_path, f"row {row_id} deletion plan"),
+            f"row {row_id} deletion plan",
+        )
         plan_fields = {
-            "schemaVersion", "rowId", "authorityGeneration", "stableReceiptSha256", "reviewer", "reviewClass",
-            "legacyTargetsSha256", "requestedAction",
+            "schemaVersion",
+            "rowId",
+            "authorityGeneration",
+            "stableReceiptSha256",
+            "reviewer",
+            "reviewClass",
+            "legacyTargetsSha256",
+            "requestedAction",
         }
         exact_keys(plan, plan_fields, plan_fields, f"row {row_id} deletion plan")
         if targets is None:
@@ -1513,9 +1902,15 @@ def validate_receipt_chain(
         evidence_verifier.verify_deletion_review(
             payload,
             {plan_path_value: plan_digest, stable.path: stable.digest},
+            expected_descendant_commit=deletion.commit,
         )
         if rollback is not None:
-            require_ancestor(repo_root, deletion.commit, rollback.commit, f"row {row_id} rollback.commit")
+            require_ancestor(
+                repo_root,
+                deletion.commit,
+                rollback.commit,
+                f"row {row_id} rollback.commit",
+            )
             assert rollback_activated_at is not None
             if rollback_activated_at < deletion.approved_at:
                 raise GateError(f"row {row_id}: rollback after deletion approval must follow that approval")
@@ -1567,9 +1962,7 @@ def validate_rollback_history(
             else {frozenset(receipt_file_names(set(row.receipts)))}
         )
         if frozenset(actual_files) not in valid_files:
-            raise GateError(
-                f"row {row_id} generation {generation}: receipt files must be exactly a valid set for its authority state"
-            )
+            raise GateError(f"row {row_id} generation {generation}: receipt files must be exactly a valid set for its authority state")
         if generation >= row.generation:
             continue
         seen: set[str] = set()
@@ -1634,7 +2027,11 @@ def verify_append_only_artifacts(repo_root: Path, base_ref: str | None) -> None:
         RELEASE_PROVENANCE_ROOT,
         DELETION_PLAN_ROOT,
     )
-    raw = git_output(repo_root, ["ls-tree", "-r", "-z", base_ref, "--", *roots], "base artifact inventory")
+    raw = git_output(
+        repo_root,
+        ["ls-tree", "-r", "-z", base_ref, "--", *roots],
+        "base artifact inventory",
+    )
     for entry in raw.split("\0"):
         if not entry:
             continue
@@ -1673,38 +2070,34 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
     if not git_file_exists(repo_root, base_ref, relative, "base legacy deletion ledger"):
         rows = require_array(current_manifest.get("rows"), "manifest.rows")
         safe_bootstrap = all(
-            isinstance(row, dict)
-            and row.get("state") == "rollout"
-            and row.get("authorityGeneration") == 0
-            and row.get("receipts") == {}
-            for row in rows
+            isinstance(row, dict) and row.get("state") == "rollout" and row.get("authorityGeneration") == 0 and row.get("receipts") == {} for row in rows
         )
         if len(rows) != len(ROW_IDS) or not safe_bootstrap:
             raise GateError("initial legacy deletion ledger must bootstrap every row in empty generation-0 rollout")
         return
     base_manifest = require_object(
-        load_json_bytes(git_file(repo_root, base_ref, relative, "base legacy deletion ledger"), "base legacy deletion ledger"),
+        load_json_bytes(
+            git_file(repo_root, base_ref, relative, "base legacy deletion ledger"),
+            "base legacy deletion ledger",
+        ),
         "base legacy deletion ledger",
     )
     base_rows_raw = require_array(base_manifest.get("rows"), "base legacy deletion ledger.rows")
     current_rows_raw = require_array(current_manifest.get("rows"), "manifest.rows")
-    base_rows = {
-        row.get("id"): row
-        for raw in base_rows_raw
-        for row in [require_object(raw, "base legacy deletion ledger row")]
-    }
-    current_rows = {
-        row.get("id"): row
-        for raw in current_rows_raw
-        for row in [require_object(raw, "manifest row")]
-    }
+    base_rows = {row.get("id"): row for raw in base_rows_raw for row in [require_object(raw, "base legacy deletion ledger row")]}
+    current_rows = {row.get("id"): row for raw in current_rows_raw for row in [require_object(raw, "manifest row")]}
     if set(base_rows) != set(ROW_IDS) or set(current_rows) != set(ROW_IDS):
         raise GateError("legacy deletion ledger transition requires the exact stable row set at base and HEAD")
     allowed = {
         "rollout": {"rollout", "promotion_approved"},
-        "promotion_approved": {"promotion_approved", "rust_authoritative_with_rollback"},
+        "promotion_approved": {
+            "promotion_approved",
+            "rust_authoritative_with_rollback",
+        },
         "rust_authoritative_with_rollback": {
-            "rust_authoritative_with_rollback", "rollback_active", "deletion_approved",
+            "rust_authoritative_with_rollback",
+            "rollback_active",
+            "deletion_approved",
         },
         "rollback_active": {"rollback_active", "promotion_approved"},
         "deletion_approved": {"deletion_approved", "rollback_active", "legacy_deleted"},
@@ -1725,9 +2118,7 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
         if base_state == "rollout" and current_state == "promotion_approved":
             expected_generation = 1
         if current_generation != expected_generation or isinstance(current_generation, bool):
-            raise GateError(
-                f"row {row_id}: transition {base_state} -> {current_state} requires authority generation {expected_generation}"
-            )
+            raise GateError(f"row {row_id}: transition {base_state} -> {current_state} requires authority generation {expected_generation}")
 
 
 def canonical_json_sha256(value: Any) -> str:
@@ -1738,14 +2129,20 @@ def canonical_json_sha256(value: Any) -> str:
 def source_fingerprint(repo_root: Path) -> str:
     relative = "crates/openburnbar-domain-core/union-abi-manifest.json"
     path = secure_path(repo_root, relative, "domain-core union ABI manifest", must_exist=True)
-    manifest = require_object(load_json(path, "domain-core union ABI manifest"), "domain-core union ABI manifest")
+    manifest = require_object(
+        load_json(path, "domain-core union ABI manifest"),
+        "domain-core union ABI manifest",
+    )
     return require_digest(manifest.get("sourceSha256"), "domain-core union ABI manifest.sourceSha256")
 
 
 def source_fingerprint_at_commit(repo_root: Path, commit: str) -> str:
     relative = "crates/openburnbar-domain-core/union-abi-manifest.json"
     manifest = require_object(
-        load_json_bytes(git_file(repo_root, commit, relative, "candidate union ABI manifest"), "candidate union ABI manifest"),
+        load_json_bytes(
+            git_file(repo_root, commit, relative, "candidate union ABI manifest"),
+            "candidate union ABI manifest",
+        ),
         "candidate union ABI manifest",
     )
     return require_digest(manifest.get("sourceSha256"), "candidate union ABI manifest.sourceSha256")
@@ -1763,8 +2160,62 @@ def core_version_at_commit(repo_root: Path, commit: str) -> str:
     return version
 
 
+def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_commit: str) -> list[str]:
+    require_ancestor(repo_root, candidate_commit, activation_commit, "domain-core activation")
+    changed = [
+        line
+        for line in git_output(
+            repo_root,
+            [
+                "diff",
+                "--name-only",
+                "--diff-filter=ACDMRTUXB",
+                f"{candidate_commit}..{activation_commit}",
+            ],
+            "domain-core activation diff",
+        ).splitlines()
+        if line
+    ]
+    if not changed:
+        raise GateError("domain-core activation commit must change the committed authority profile and receipts")
+    forbidden = sorted(
+        path for path in changed if path not in ACTIVATION_ALLOWED_EXACT_PATHS and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
+    )
+    if forbidden:
+        raise GateError("domain-core activation may change only profile, append-only authority artifacts, and runbooks: " + ", ".join(forbidden))
+    if BUILD_PROFILE_PATH not in changed or "config/domain-core-legacy-deletion.json" not in changed:
+        raise GateError("domain-core activation must atomically change the public profile and authority ledger")
+    return sorted(changed)
+
+
+def validate_activation_closure(
+    repo_root: Path,
+    candidate_commit: str,
+    activation_commit: str,
+) -> dict[str, Any]:
+    candidate = candidate_identity_at_commit(repo_root, candidate_commit)
+    activation = candidate_identity_at_commit(repo_root, activation_commit)
+    activation_identity = {**activation, "candidateCommit": candidate_commit}
+    if activation_identity != candidate:
+        raise GateError("domain-core activation changed the attested core version, ABI, or source fingerprint")
+    changed_paths = activation_changed_paths(repo_root, candidate_commit, activation_commit)
+    return {
+        "candidateCommit": candidate_commit,
+        "activationCommit": activation_commit,
+        "coreVersion": candidate["coreVersion"],
+        "abiVersion": candidate["abiVersion"],
+        "sourceSha256": candidate["sourceSha256"],
+        "changedPathsSha256": canonical_json_sha256(changed_paths),
+    }
+
+
 def validate_deterministic_promotion_policy(repo_root: Path) -> None:
-    path = secure_path(repo_root, PROMOTION_POLICY_PATH, "domain-core promotion policy", must_exist=True)
+    path = secure_path(
+        repo_root,
+        PROMOTION_POLICY_PATH,
+        "domain-core promotion policy",
+        must_exist=True,
+    )
     policy = require_object(load_json(path, "domain-core promotion policy"), "domain-core promotion policy")
     if policy.get("schemaVersion") != 3 or isinstance(policy.get("schemaVersion"), bool):
         raise GateError("domain-core promotion policy schemaVersion must be 3")
@@ -1785,7 +2236,10 @@ def validate_deterministic_promotion_policy(repo_root: Path) -> None:
     ):
         raise GateError("domain-core promotion policy workflow trust boundary is invalid")
 
-def validate_build_profile_catalog(catalog_value: Any) -> tuple[dict[str, str], dict[str, str]]:
+
+def validate_build_profile_catalog(
+    catalog_value: Any,
+) -> tuple[dict[str, str], dict[str, str]]:
     catalog = require_object(catalog_value, "domain-core build profiles")
     exact_keys(
         catalog,
@@ -1803,11 +2257,29 @@ def validate_build_profile_catalog(catalog_value: Any) -> tuple[dict[str, str], 
     profiles = require_object(catalog.get("profiles"), "domain-core build profiles.profiles")
     exact_keys(
         profiles,
-        {"developer", "public-production", "public-production-rollback", "internal", "beta"},
-        {"developer", "public-production", "public-production-rollback", "internal", "beta"},
+        {
+            "developer",
+            "public-production",
+            "public-production-rollback",
+            "internal",
+            "beta",
+        },
+        {
+            "developer",
+            "public-production",
+            "public-production-rollback",
+            "internal",
+            "beta",
+        },
         "domain-core build profiles.profiles",
     )
-    expected_profile_fields = {"artifactAuthority", "distribution", "rolloutChannel", "evidenceEnabled", "modes"}
+    expected_profile_fields = {
+        "artifactAuthority",
+        "distribution",
+        "rolloutChannel",
+        "evidenceEnabled",
+        "modes",
+    }
     expected_modes = {
         "developer": ("development", "development", None, False, "legacy"),
         "internal": ("signed", "internal", "internal", True, "shadow"),
@@ -1815,7 +2287,10 @@ def validate_build_profile_catalog(catalog_value: Any) -> tuple[dict[str, str], 
         "public-production-rollback": ("signed", "public", None, False, "legacy"),
     }
     for profile_name, expected in expected_modes.items():
-        profile = require_object(profiles[profile_name], f"domain-core build profiles.profiles.{profile_name}")
+        profile = require_object(
+            profiles[profile_name],
+            f"domain-core build profiles.profiles.{profile_name}",
+        )
         exact_keys(
             profile,
             expected_profile_fields,
@@ -1830,7 +2305,10 @@ def validate_build_profile_catalog(catalog_value: Any) -> tuple[dict[str, str], 
             or profile["evidenceEnabled"] is not evidence
         ):
             raise GateError(f"domain-core build profiles: {profile_name} authority metadata is not canonical")
-        profile_modes = require_object(profile["modes"], f"domain-core build profiles.profiles.{profile_name}.modes")
+        profile_modes = require_object(
+            profile["modes"],
+            f"domain-core build profiles.profiles.{profile_name}.modes",
+        )
         exact_keys(
             profile_modes,
             set(expected_domains),
@@ -1913,29 +2391,16 @@ def validate_public_profile_transitions(
             def release_identity(receipt: Receipt) -> dict[str, Any]:
                 releases = []
                 for release in receipt.payload["consumerReleases"]:
-                    releases.append(
-                        {
-                            key: value
-                            for key, value in release.items()
-                            if key != "provenancePath"
-                        }
-                    )
+                    releases.append({key: value for key, value in release.items() if key != "provenancePath"})
                 return {
                     "publicProfileSha256": receipt.payload["publicProfileSha256"],
                     "candidate": receipt.payload["candidate"],
+                    "activation": receipt.payload["activation"],
                     "consumerReleases": releases,
-                    "rollbackArtifact": {
-                        key: value
-                        for key, value in receipt.payload["rollbackArtifact"].items()
-                        if key != "provenancePath"
-                    },
+                    "rollbackArtifact": {key: value for key, value in receipt.payload["rollbackArtifact"].items() if key != "provenancePath"},
                 }
 
-            stable_bindings = {
-                canonical_json_sha256(release_identity(receipt))
-                for receipt in stable_receipts
-                if receipt is not None
-            }
+            stable_bindings = {canonical_json_sha256(release_identity(receipt)) for receipt in stable_receipts if receipt is not None}
             if len(stable_bindings) != 1:
                 raise GateError(f"public-production {domain}: mapped rows must share one stable release identity")
         rollback_receipts = [rows[row_id].receipts.get("rollback") for row_id in row_ids]
@@ -1957,22 +2422,14 @@ def validate_public_profile_transitions(
         if mode == "rust":
             unapproved = sorted(row_id for row_id, state in states.items() if state in {"rollout", "rollback_active"})
             if unapproved:
-                raise GateError(
-                    f"public-production {domain}=rust requires promotion approval for every row: "
-                    + ", ".join(unapproved)
-                )
+                raise GateError(f"public-production {domain}=rust requires promotion approval for every row: " + ", ".join(unapproved))
             bindings = {promotion_bindings[row_id] for row_id in row_ids}
             if None in bindings or len(bindings) != 1:
-                raise GateError(
-                    f"public-production {domain}=rust requires one shared candidate commit, deterministic bundle, and core version"
-                )
+                raise GateError(f"public-production {domain}=rust requires one shared candidate commit, deterministic bundle, and core version")
             continue
         candidates = sorted(row_id for row_id, state in states.items() if state not in {"rollout", "rollback_active"})
         if candidates:
-            raise GateError(
-                f"public-production {domain}=legacy is allowed only before promotion or during explicit rollback: "
-                + ", ".join(candidates)
-            )
+            raise GateError(f"public-production {domain}=legacy is allowed only before promotion or during explicit rollback: " + ", ".join(candidates))
 
 
 def run_gate(
@@ -1981,6 +2438,8 @@ def run_gate(
     *,
     base_ref: str | None = None,
     evidence_verifier: SignedEvidenceVerifier | Any | None = None,
+    deletion_pull_request: int | None = None,
+    deletion_head: str | None = None,
 ) -> None:
     if not repo_root.is_dir():
         raise GateError(f"repository root is missing: {repo_root}")
@@ -2062,7 +2521,12 @@ def run_gate(
             targets.append(target)
         if not any(target.role == "legacy_implementation" for target in targets):
             raise GateError(f"{label}.targets must include at least one actual legacy implementation")
-        rows[row_id] = Row(state=state, generation=generation, receipts=parsed_receipts, targets=targets)
+        rows[row_id] = Row(
+            state=state,
+            generation=generation,
+            receipts=parsed_receipts,
+            targets=targets,
+        )
 
     missing_rows = sorted(set(ROW_IDS) - set(rows))
     unknown_rows = sorted(set(rows) - set(ROW_IDS))
@@ -2077,11 +2541,7 @@ def run_gate(
     modes, _ = public_production_profile(repo_root)
     validate_deterministic_promotion_policy(repo_root)
     current_deletion_reviewers = load_deletion_reviewers(repo_root)
-    trusted_deletion_reviewers = (
-        load_deletion_reviewers(repo_root, base_ref, allow_missing=True)
-        if base_ref is not None
-        else current_deletion_reviewers
-    )
+    trusted_deletion_reviewers = load_deletion_reviewers(repo_root, base_ref, allow_missing=True) if base_ref is not None else current_deletion_reviewers
     validate_receipt_root_layout(repo_root)
     for row_id, row in rows.items():
         validate_rollback_history(repo_root, row, row_id, evidence_verifier, trusted_deletion_reviewers)
@@ -2099,6 +2559,20 @@ def run_gate(
         for row_id, row in rows.items()
     }
     validate_public_profile_transitions(rows, modes, promotion_bindings)
+
+    deleted_rows = [row_id for row_id, row in rows.items() if row.state == "legacy_deleted"]
+    if deleted_rows:
+        if evidence_verifier is None or deletion_pull_request is None or deletion_head is None:
+            raise GateError("legacy deletion requires live approval on the exact current deletion pull request head")
+        if not COMMIT_RE.fullmatch(deletion_head):
+            raise GateError("deletion head must be a full lowercase Git SHA")
+        for row_id in deleted_rows:
+            deletion_receipt = rows[row_id].receipts["deletionReview"]
+            evidence_verifier.verify_deletion_head(
+                pull_number=deletion_pull_request,
+                deletion_head=deletion_head,
+                reviewer=deletion_receipt.payload["reviewer"],
+            )
 
     for row_id in ROW_IDS:
         row = rows[row_id]
@@ -2150,10 +2624,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", type=Path, default=Path("config/domain-core-legacy-deletion.json"))
     parser.add_argument("--base-ref", default=os.environ.get("DOMAIN_CORE_BASE_REF") or None)
     parser.add_argument("--verify-signed-evidence", action="store_true")
+    parser.add_argument("--deletion-pull-request", type=int)
+    parser.add_argument("--deletion-head")
     args = parser.parse_args(argv)
     try:
         verifier = SignedEvidenceVerifier() if args.verify_signed_evidence else None
-        run_gate(args.repo_root, args.manifest, base_ref=args.base_ref, evidence_verifier=verifier)
+        run_gate(
+            args.repo_root,
+            args.manifest,
+            base_ref=args.base_ref,
+            evidence_verifier=verifier,
+            deletion_pull_request=args.deletion_pull_request,
+            deletion_head=args.deletion_head,
+        )
     except GateError as error:
         print(f"ERROR: domain-core legacy deletion gate failed: {error}", file=sys.stderr)
         return 1

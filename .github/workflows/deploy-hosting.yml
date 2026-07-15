@@ -151,11 +151,18 @@ jobs:
         with:
           node-version: 24
 
+      - name: Resolve protected candidate C and activation P
+        if: ${{ steps.ref.outputs.requires_proof == 'true' }}
+        id: activation
+        env:
+          RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
+        run: node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format github-output >> "$GITHUB_OUTPUT"
+
       - name: Resolve exact protected signer and source proof
         if: ${{ steps.ref.outputs.requires_proof == 'true' }}
         id: proof
         env:
-          CANDIDATE_COMMIT: ${{ steps.ref.outputs.commit }}
+          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit }}
           GH_TOKEN: ${{ github.token }}
           REQUESTED_SIGNER_RUN_ID: ${{ inputs.protected_signer_run_id }}
           REQUESTED_SIGNER_RUN_ATTEMPT: ${{ inputs.protected_signer_run_attempt }}
@@ -223,7 +230,8 @@ jobs:
       - name: Download and cryptographically verify exact release proof
         if: ${{ steps.ref.outputs.requires_proof == 'true' }}
         env:
-          CANDIDATE_COMMIT: ${{ steps.ref.outputs.commit }}
+          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit }}
+          RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ steps.proof.outputs.source_run_id }}
           SOURCE_RUN_ATTEMPT: ${{ steps.proof.outputs.source_run_attempt }}
@@ -258,6 +266,7 @@ jobs:
             --promotion-attestation "$RUNNER_TEMP/domain-core-release-inputs/promotion.sigstore.jsonl" \
             --rollback-artifact "$rollback" \
             --candidate-commit "$CANDIDATE_COMMIT" \
+            --release-commit "$RELEASE_COMMIT" \
             --core-version "$(jq -er '.candidate.coreVersion' "$candidate")" \
             --abi-version "$(jq -er '.candidate.abiVersion' "$candidate")" \
             --source-sha256 "$(jq -er '.candidate.sourceSha256' "$candidate")" \
@@ -272,9 +281,10 @@ jobs:
         env:
           DOMAIN_CORE_PROFILE: ${{ steps.ref.outputs.domain_core_profile }}
           RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
+          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}
         run: |
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "$DOMAIN_CORE_PROFILE" --expected-candidate-commit "$RELEASE_COMMIT" --format github-env-web >> "$GITHUB_ENV"
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "$DOMAIN_CORE_PROFILE" --expected-candidate-commit "$RELEASE_COMMIT" --format json --output "$RUNNER_TEMP/domain-core-build-profile.json"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "$DOMAIN_CORE_PROFILE" --expected-candidate-commit "$CANDIDATE_COMMIT" --expected-release-commit "$RELEASE_COMMIT" --format github-env-web >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "$DOMAIN_CORE_PROFILE" --expected-candidate-commit "$CANDIDATE_COMMIT" --expected-release-commit "$RELEASE_COMMIT" --format json --output "$RUNNER_TEMP/domain-core-build-profile.json"
           cp "$RUNNER_TEMP/domain-core-build-profile.json" apps/console/public/domain-core-build-profile.json
 
       - name: Embed exact Console deployment identity

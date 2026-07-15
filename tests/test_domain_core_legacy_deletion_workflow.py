@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOMAIN_WORKFLOW = ROOT / ".github/workflows/domain-core.yml"
 SIGNER_WORKFLOW = ROOT / ".github/workflows/domain-core-promotion-proof.yml"
+TRUSTED_GUARD_WORKFLOW = ROOT / ".github/workflows/domain-core-deletion-guard.yml"
 
 
 class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
@@ -16,7 +17,10 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
         for marker in (
             "python3 tests/test_domain_core_legacy_deletion_gate.py",
             "python3 tests/test_domain_core_legacy_deletion_workflow.py",
-            "python3 scripts/ci/verify-domain-core-legacy-deletion.py",
+            "verify-domain-core-legacy-deletion.py",
+            "Domain Core PR Gate",
+            "verify-domain-core-legacy-absence.py",
+            "Check out trusted default-branch evaluator",
             '--base-ref "$DOMAIN_CORE_BASE_REF"',
             "--verify-signed-evidence",
             "fetch-depth: 0",
@@ -58,6 +62,21 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             self.assertIn(marker, source)
         self.assertIn("protected-verification.json", source)
 
+    def test_deletion_guard_executes_only_default_branch_evaluator(self) -> None:
+        source = TRUSTED_GUARD_WORKFLOW.read_text()
+        for marker in (
+            "pull_request_target:",
+            "pull_request_review:",
+            "Domain Core Trusted Deletion Guard",
+            "path: trusted",
+            "path: candidate",
+            "python3 trusted/scripts/ci/verify-domain-core-legacy-deletion.py",
+            '--repo-root "$GITHUB_WORKSPACE/candidate"',
+            '--deletion-head "$HEAD_SHA"',
+        ):
+            self.assertIn(marker, source)
+        self.assertNotIn("candidate/scripts/", source)
+
     def test_signer_uses_trusted_main_and_exact_source_push_run(self) -> None:
         source = SIGNER_WORKFLOW.read_text()
         for marker in (
@@ -88,7 +107,7 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
 
     def test_candidate_bundle_requires_all_deterministic_jobs(self) -> None:
         source = DOMAIN_WORKFLOW.read_text()
-        candidate_job = source[source.index("  candidate-bundle:"):]
+        candidate_job = source[source.index("  candidate-bundle:") :]
         for job in (
             "promotion-contracts",
             "rust-and-csharp",
@@ -104,7 +123,7 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "rollback-drill",
         ):
             self.assertIn(f"      - {job}", candidate_job)
-        self.assertIn("all(.value.result == \"success\")", candidate_job)
+        self.assertIn('all(.value.result == "success")', candidate_job)
 
     def test_schemas_encode_exact_candidate_and_retained_rollback(self) -> None:
         promotion = json.loads((ROOT / "config/domain-core-promotion-attestation.schema.json").read_text())
@@ -115,7 +134,10 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             ["candidateCommit", "coreVersion", "abiVersion", "sourceSha256"],
         )
         rollback = receipt["$defs"]["rollbackArtifact"]
-        self.assertEqual(rollback["properties"]["retentionPolicy"]["const"], "retain_until_legacy_deletion_complete")
+        self.assertEqual(
+            rollback["properties"]["retentionPolicy"]["const"],
+            "retain_until_legacy_deletion_complete",
+        )
         self.assertEqual(rollback["properties"]["artifactKind"]["const"], "legacy-rollback-bundle")
 
 

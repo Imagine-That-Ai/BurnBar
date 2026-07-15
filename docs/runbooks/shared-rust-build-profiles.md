@@ -14,15 +14,19 @@ version, and reviewed lowercase source SHA-256. The resolver accepts the commit
 only from the clean checkout and uses `--expected-candidate-commit` solely as an
 equality assertion. It verifies the other three values against the union
 manifest, Cargo workspace version, Rust ABI constant, and current source tree.
-It never relabels an artifact with an operator-supplied commit.
+It never relabels an artifact with an operator-supplied commit. Before the first
+Rust activation, an all-legacy public release uses its own clean release commit
+as the candidate identity. Once any public domain is Rust, the resolver requires
+candidate `C` plus activation `P` and validates the restricted two-commit
+closure before rendering the profile.
 
-| Profile | Distribution | Evidence channel | Required behavior |
-| --- | --- | --- | --- |
-| `developer` | local development and tests | none | Legacy by default; validated overrides allowed; uploads disabled |
-| `public-production` | public signed artifacts | none | Evidence disabled; shadow forbidden |
-| `public-production-rollback` | candidate-bound rollback artifact | none | Permanently all-legacy; evidence and runtime overrides forbidden |
-| `internal` | signed internal artifacts | `internal` | Evidence enabled; quota shadow required |
-| `beta` | signed beta artifacts | `beta` | Evidence enabled; quota shadow required |
+| Profile                      | Distribution                      | Evidence channel | Required behavior                                                |
+| ---------------------------- | --------------------------------- | ---------------- | ---------------------------------------------------------------- |
+| `developer`                  | local development and tests       | none             | Legacy by default; validated overrides allowed; uploads disabled |
+| `public-production`          | public signed artifacts           | none             | Evidence disabled; shadow forbidden                              |
+| `public-production-rollback` | candidate-bound rollback artifact | none             | Permanently all-legacy; evidence and runtime overrides forbidden |
+| `internal`                   | signed internal artifacts         | `internal`       | Evidence enabled; quota shadow required                          |
+| `beta`                       | signed beta artifacts             | `beta`           | Evidence enabled; quota shadow required                          |
 
 Every candidate proof publishes `public-production-rollback` as a separate
 90-day workflow artifact. Its profile validator rejects any non-legacy mode, so

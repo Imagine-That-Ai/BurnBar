@@ -19,7 +19,9 @@
     "schemaVersion": { "const": 2 },
     "rowId": { "$ref": "#/$defs/rowId" },
     "authorityGeneration": { "type": "integer", "minimum": 1 },
-    "transition": { "enum": ["promotion", "stable_release", "rollback", "deletion_review"] },
+    "transition": {
+      "enum": ["promotion", "stable_release", "rollback", "deletion_review"]
+    },
     "status": { "const": "active" },
     "evidence": {
       "type": "array",
@@ -27,7 +29,10 @@
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/httpsUri" }
     },
-    "approvedBy": { "type": "string", "pattern": "^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$" },
+    "approvedBy": {
+      "type": "string",
+      "pattern": "^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+    },
     "approvedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
     "commit": { "$ref": "#/$defs/commit" },
     "promotionAttestation": { "$ref": "#/$defs/promotionAttestation" },
@@ -37,20 +42,68 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "transition": { "const": "promotion" } }, "required": ["transition"] },
-      "then": { "required": ["promotionAttestation"], "not": { "anyOf": [{ "required": ["release"] }, { "required": ["rollback"] }, { "required": ["deletionReview"] }] } }
+      "if": {
+        "properties": { "transition": { "const": "promotion" } },
+        "required": ["transition"]
+      },
+      "then": {
+        "required": ["promotionAttestation"],
+        "not": {
+          "anyOf": [
+            { "required": ["release"] },
+            { "required": ["rollback"] },
+            { "required": ["deletionReview"] }
+          ]
+        }
+      }
     },
     {
-      "if": { "properties": { "transition": { "const": "stable_release" } }, "required": ["transition"] },
-      "then": { "required": ["release"], "not": { "anyOf": [{ "required": ["promotionAttestation"] }, { "required": ["rollback"] }, { "required": ["deletionReview"] }] } }
+      "if": {
+        "properties": { "transition": { "const": "stable_release" } },
+        "required": ["transition"]
+      },
+      "then": {
+        "required": ["release"],
+        "not": {
+          "anyOf": [
+            { "required": ["promotionAttestation"] },
+            { "required": ["rollback"] },
+            { "required": ["deletionReview"] }
+          ]
+        }
+      }
     },
     {
-      "if": { "properties": { "transition": { "const": "rollback" } }, "required": ["transition"] },
-      "then": { "required": ["rollback"], "not": { "anyOf": [{ "required": ["promotionAttestation"] }, { "required": ["release"] }, { "required": ["deletionReview"] }] } }
+      "if": {
+        "properties": { "transition": { "const": "rollback" } },
+        "required": ["transition"]
+      },
+      "then": {
+        "required": ["rollback"],
+        "not": {
+          "anyOf": [
+            { "required": ["promotionAttestation"] },
+            { "required": ["release"] },
+            { "required": ["deletionReview"] }
+          ]
+        }
+      }
     },
     {
-      "if": { "properties": { "transition": { "const": "deletion_review" } }, "required": ["transition"] },
-      "then": { "required": ["deletionReview"], "not": { "anyOf": [{ "required": ["promotionAttestation"] }, { "required": ["release"] }, { "required": ["rollback"] }] } }
+      "if": {
+        "properties": { "transition": { "const": "deletion_review" } },
+        "required": ["transition"]
+      },
+      "then": {
+        "required": ["deletionReview"],
+        "not": {
+          "anyOf": [
+            { "required": ["promotionAttestation"] },
+            { "required": ["release"] },
+            { "required": ["rollback"] }
+          ]
+        }
+      }
     }
   ],
   "$defs": {
@@ -71,15 +124,24 @@
     },
     "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$" },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
     "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
-    "httpsUri": { "type": "string", "pattern": "^https://(?![^/?#]*@)[^/?#]+(?:/[^?#]*)?$" },
+    "httpsUri": {
+      "type": "string",
+      "pattern": "^https://(?![^/?#]*@)[^/?#]+(?:/[^?#]*)?$"
+    },
     "promotionAttestation": {
       "type": "object",
       "additionalProperties": false,
       "required": ["path", "sha256", "supersedesRollback"],
       "properties": {
-        "path": { "type": "string", "pattern": "^config/domain-core-promotion-attestations/(?:quota|cloudvault|cloudvault-rewrap|cloudvault-search|hermes|pricing)/[1-9][0-9]*\\.json$" },
+        "path": {
+          "type": "string",
+          "pattern": "^config/domain-core-promotion-attestations/(?:quota|cloudvault|cloudvault-rewrap|cloudvault-search|hermes|pricing)/[1-9][0-9]*\\.json$"
+        },
         "sha256": { "$ref": "#/$defs/digest" },
         "supersedesRollback": {
           "oneOf": [
@@ -89,7 +151,10 @@
               "additionalProperties": false,
               "required": ["path", "sha256"],
               "properties": {
-                "path": { "type": "string", "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/[1-9][0-9]*/rollback\\.json$" },
+                "path": {
+                  "type": "string",
+                  "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/[1-9][0-9]*/rollback\\.json$"
+                },
                 "sha256": { "$ref": "#/$defs/digest" }
               }
             }
@@ -100,11 +165,19 @@
     "release": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["promotionReceiptSha256", "publicProfileSha256", "candidate", "consumerReleases", "rollbackArtifact"],
+      "required": [
+        "promotionReceiptSha256",
+        "publicProfileSha256",
+        "candidate",
+        "activation",
+        "consumerReleases",
+        "rollbackArtifact"
+      ],
       "properties": {
         "promotionReceiptSha256": { "$ref": "#/$defs/digest" },
         "publicProfileSha256": { "$ref": "#/$defs/digest" },
         "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" },
         "consumerReleases": {
           "type": "array",
           "minItems": 1,
@@ -116,50 +189,156 @@
     "consumerRelease": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["consumer", "artifactKind", "target", "version", "tag", "commit", "publishedAt", "artifactUri", "artifactSha256", "publicProfileSha256", "candidate", "provenancePath", "provenanceSha256"],
+      "required": [
+        "consumer",
+        "artifactKind",
+        "target",
+        "version",
+        "tag",
+        "commit",
+        "publishedAt",
+        "artifactUri",
+        "artifactSha256",
+        "publicProfileSha256",
+        "candidate",
+        "activation",
+        "provenancePath",
+        "provenanceSha256"
+      ],
       "properties": {
-        "consumer": { "enum": ["apple", "android", "windows", "console", "functions"] },
-        "artifactKind": { "enum": ["macos-dmg", "android-aab", "windows-release-bundle", "console-deployment-receipt", "functions-deployment-receipt"] },
-        "target": { "enum": ["macos-universal", "android-universal", "windows-x64-arm64", "firebase-hosting-production", "firebase-functions-production"] },
+        "consumer": {
+          "enum": [
+            "apple",
+            "ios",
+            "linux",
+            "android",
+            "windows",
+            "console",
+            "functions"
+          ]
+        },
+        "artifactKind": {
+          "enum": [
+            "macos-dmg",
+            "ios-app-store-archive",
+            "linux-release-bundle",
+            "android-aab",
+            "windows-release-bundle",
+            "console-deployment-receipt",
+            "functions-deployment-receipt"
+          ]
+        },
+        "target": {
+          "enum": [
+            "macos-universal",
+            "ios-universal",
+            "linux-x64-arm64",
+            "android-universal",
+            "windows-x64-arm64",
+            "firebase-hosting-production",
+            "firebase-functions-production"
+          ]
+        },
         "version": { "$ref": "#/$defs/version" },
-        "tag": { "type": "string", "pattern": "^(?:windows-)?v\\d+\\.\\d+\\.\\d+(?:\\+[0-9A-Za-z.-]+)?$" },
+        "tag": {
+          "type": "string",
+          "pattern": "^(?:(?:windows|linux)-)?v\\d+\\.\\d+\\.\\d+(?:\\+[0-9A-Za-z.-]+)?$"
+        },
         "commit": { "$ref": "#/$defs/commit" },
         "publishedAt": { "$ref": "#/$defs/timestamp" },
         "artifactUri": { "$ref": "#/$defs/httpsUri" },
         "artifactSha256": { "$ref": "#/$defs/digest" },
         "publicProfileSha256": { "$ref": "#/$defs/digest" },
         "candidate": { "$ref": "#/$defs/candidate" },
-        "provenancePath": { "type": "string", "pattern": "^config/domain-core-release-provenance/[a-z][a-z0-9_.]*/[1-9][0-9]*/(?:apple|android|windows|console|functions)\\.json$" },
+        "activation": { "$ref": "#/$defs/activation" },
+        "provenancePath": {
+          "type": "string",
+          "pattern": "^config/domain-core-release-provenance/[a-z][a-z0-9_.]*/[1-9][0-9]*/(?:apple|ios|linux|android|windows|console|functions)\\.json$"
+        },
         "provenanceSha256": { "$ref": "#/$defs/digest" }
       }
     },
     "candidate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["candidateCommit", "coreVersion", "abiVersion", "sourceSha256"],
+      "required": [
+        "candidateCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256"
+      ],
       "properties": {
         "candidateCommit": { "$ref": "#/$defs/commit" },
         "coreVersion": { "$ref": "#/$defs/version" },
-        "abiVersion": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
         "sourceSha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCommit",
+        "activationCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256",
+        "changedPathsSha256"
+      ],
+      "properties": {
+        "candidateCommit": { "$ref": "#/$defs/commit" },
+        "activationCommit": { "$ref": "#/$defs/commit" },
+        "coreVersion": { "$ref": "#/$defs/version" },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "sourceSha256": { "$ref": "#/$defs/digest" },
+        "changedPathsSha256": { "$ref": "#/$defs/digest" }
       }
     },
     "rollbackArtifact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["artifactKind", "target", "version", "tag", "commit", "publishedAt", "artifactUri", "artifactSha256", "candidate", "retentionPolicy", "provenancePath", "provenanceSha256"],
+      "required": [
+        "artifactKind",
+        "target",
+        "version",
+        "tag",
+        "commit",
+        "publishedAt",
+        "artifactUri",
+        "artifactSha256",
+        "candidate",
+        "activation",
+        "retentionPolicy",
+        "provenancePath",
+        "provenanceSha256"
+      ],
       "properties": {
         "artifactKind": { "const": "legacy-rollback-bundle" },
         "target": { "const": "all-supported-consumers" },
         "version": { "$ref": "#/$defs/version" },
-        "tag": { "type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+(?:\\+[0-9A-Za-z.-]+)?$" },
+        "tag": {
+          "type": "string",
+          "pattern": "^v\\d+\\.\\d+\\.\\d+(?:\\+[0-9A-Za-z.-]+)?$"
+        },
         "commit": { "$ref": "#/$defs/commit" },
         "publishedAt": { "$ref": "#/$defs/timestamp" },
         "artifactUri": { "$ref": "#/$defs/httpsUri" },
         "artifactSha256": { "$ref": "#/$defs/digest" },
         "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" },
         "retentionPolicy": { "const": "retain_until_legacy_deletion_complete" },
-        "provenancePath": { "type": "string", "pattern": "^config/domain-core-release-provenance/[a-z][a-z0-9_.]*/[1-9][0-9]*/rollback\\.json$" },
+        "provenancePath": {
+          "type": "string",
+          "pattern": "^config/domain-core-release-provenance/[a-z][a-z0-9_.]*/[1-9][0-9]*/rollback\\.json$"
+        },
         "provenanceSha256": { "$ref": "#/$defs/digest" }
       }
     },
@@ -176,12 +355,24 @@
     "deletionReview": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["stableReceiptSha256", "reviewUri", "reviewedCommit", "reviewer", "reviewClass", "outcome", "planPath", "planSha256"],
+      "required": [
+        "stableReceiptSha256",
+        "reviewUri",
+        "reviewedCommit",
+        "reviewer",
+        "reviewClass",
+        "outcome",
+        "planPath",
+        "planSha256"
+      ],
       "properties": {
         "stableReceiptSha256": { "$ref": "#/$defs/digest" },
         "reviewUri": { "$ref": "#/$defs/httpsUri" },
         "reviewedCommit": { "$ref": "#/$defs/commit" },
-        "reviewer": { "type": "string", "pattern": "^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$" },
+        "reviewer": {
+          "type": "string",
+          "pattern": "^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+        },
         "reviewClass": { "enum": ["domain_owner", "security_crypto"] },
         "outcome": { "const": "approved" },
         "planPath": {

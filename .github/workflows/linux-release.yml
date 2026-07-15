@@ -49,6 +49,7 @@ jobs:
       publish_allowed: ${{ steps.release-version.outputs.publish_allowed }}
       channel: ${{ steps.channel.outputs.value }}
       previous_version: ${{ steps.previous-version.outputs.version }}
+      candidate_commit: ${{ steps.domain-core-activation.outputs.candidate_commit }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -61,6 +62,10 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: node scripts/linux-port/resolve-linux-release-version.mjs --github-output
+
+      - name: Resolve protected Domain Core candidate C and activation P
+        id: domain-core-activation
+        run: node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$GITHUB_SHA" --format github-output >> "$GITHUB_OUTPUT"
 
       - name: Resolve signed update channel
         id: channel
@@ -125,6 +130,13 @@ jobs:
           set -euo pipefail
           actual="$(node -p "process.arch === 'arm64' ? 'aarch64' : process.arch === 'x64' ? 'x86_64' : process.arch")"
           test "$actual" = "$EXPECTED_ARCHITECTURE"
+
+      - name: Resolve signed Domain Core profile for Linux artifact
+        env:
+          CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.candidate_commit }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$CANDIDATE_COMMIT" --expected-release-commit "$RELEASE_COMMIT" --format github-env >> "$GITHUB_ENV"
 
       - name: Build mission Linux toolchain image
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
@@ -286,6 +298,56 @@ jobs:
           --phase final
           --version '${{ needs.resolve-release.outputs.version }}'
 
+      - name: Create candidate-bound Domain Core Linux release evidence
+        env:
+          CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.candidate_commit }}
+          RELEASE_COMMIT: ${{ github.sha }}
+          VERSION: ${{ needs.resolve-release.outputs.version }}
+          TAG: ${{ needs.resolve-release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          closure="$OPENBURNBAR_LINUX_RELEASE_OUT/OpenBurnBar-${VERSION}-linux-release.tar.zst"
+          tar --zstd -cf "$closure" -C "$OPENBURNBAR_LINUX_RELEASE_OUT" artifacts sidecars latest-linux.draft.json
+          inputs="$RUNNER_TEMP/domain-core-linux-release"
+          mkdir -p "$inputs"
+          activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
+          rollback="$inputs/domain-core-public-production-rollback.json"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production-rollback \
+            --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --format json \
+            --output "$rollback"
+          while IFS= read -r encoded; do
+            domain="$(jq -r '.domain' <<<"$encoded")"
+            bundle="$inputs/domain-core-candidate-bundle.json"
+            provenance="$inputs/${domain}-promotion.sigstore.json"
+            cp "$(jq -r '.bundlePath' <<<"$encoded")" "$bundle"
+            cp "$(jq -r '.provenancePath' <<<"$encoded")" "$provenance"
+            predicate="$OPENBURNBAR_LINUX_RELEASE_OUT/sidecars/domain-core-${domain}.predicate.json"
+            node scripts/ci/create-domain-core-release-evidence.mjs \
+              --consumer linux \
+              --domain "$domain" \
+              --artifact-kind linux-release-bundle \
+              --target linux-x64-arm64 \
+              --version "$VERSION" \
+              --tag "$TAG" \
+              --commit "$RELEASE_COMMIT" \
+              --artifact "$closure" \
+              --predicate "$predicate" \
+              --public-profile-sha256 "$(jq -r '.publicProfileSha256' <<<"$encoded")" \
+              --candidate-bundle "$bundle" \
+              --promotion-attestation "$provenance" \
+              --protected-signer-run-id "$(jq -r '.signerRunId' <<<"$encoded")" \
+              --protected-signer-run-attempt "$(jq -r '.signerRunAttempt' <<<"$encoded")" \
+              --rollback-artifact "$rollback"
+            cosign attest-blob --yes \
+              --type "https://openburnbar.dev/attestations/domain-core-release-artifact/v2" \
+              --predicate "$predicate" \
+              --bundle "${predicate}.sigstore.json" \
+              "$closure"
+          done < <(jq -c '.domains[]' <<<"$activation")
+
       - name: Publish Linux GitHub release
         if: needs.resolve-release.outputs.publish_allowed == 'true'
         env:
@@ -308,6 +370,8 @@ jobs:
                -o -name '*.ed25519.sig' -o -name '*.sigstore.json' -o -name '*.spdx.json' \
                -o -name '*.openvex.json' -o -name '*checksums*.txt' -o -name '*source-*.tar' \
                -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' \
+               -o -name '*-linux-release.tar.zst' -o -name 'domain-core-*.predicate.json' \
+               -o -name 'domain-core-*.predicate.json.sigstore.json' \
                -o -name 'latest-linux.json' \
                -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
           prerelease=""

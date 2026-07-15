@@ -179,22 +179,31 @@ jobs:
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
+      - name: Resolve protected candidate C and activation P
+        id: activation
+        env:
+          RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+        run: node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format github-output >> "$GITHUB_OUTPUT"
+
       - name: Resolve exact signed Functions profile
         id: domain-core-profile
         env:
           DOMAIN_CORE_PROFILE: ${{ steps.tag.outputs.domain_core_profile }}
           RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit }}
         run: |
           set -euo pipefail
           profile="$RUNNER_TEMP/domain-core-functions-profile.json"
           node scripts/ci/resolve-domain-core-build-profile.mjs \
             --profile "$DOMAIN_CORE_PROFILE" \
-            --expected-candidate-commit "$RELEASE_COMMIT" \
+            --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-release-commit "$RELEASE_COMMIT" \
             --format json \
             --output "$profile"
           node scripts/ci/resolve-domain-core-build-profile.mjs \
             --profile "$DOMAIN_CORE_PROFILE" \
-            --expected-candidate-commit "$RELEASE_COMMIT" \
+            --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-release-commit "$RELEASE_COMMIT" \
             --format github-env \
             --output "$RUNNER_TEMP/domain-core-functions.env"
           node - "$profile" "$GITHUB_OUTPUT" <<'NODE'
@@ -355,6 +364,7 @@ jobs:
               --promotion-attestation "$promotion" \
               --rollback-artifact "$rollback" \
               --candidate-commit "$CANDIDATE_COMMIT" \
+              --release-commit "${{ steps.tag.outputs.commit }}" \
               --core-version "$CORE_VERSION" \
               --abi-version "$ABI_VERSION" \
               --source-sha256 "$SOURCE_SHA256" \
@@ -392,12 +402,13 @@ jobs:
           npm run build --prefix functions
           node scripts/ci/resolve-domain-core-build-profile.mjs \
             --profile "${{ steps.tag.outputs.domain_core_profile }}" \
-            --expected-candidate-commit "${{ steps.tag.outputs.commit }}" \
+            --expected-candidate-commit "${{ steps.domain-core-profile.outputs.candidate_commit }}" \
+            --expected-release-commit "${{ steps.tag.outputs.commit }}" \
             --format functions-js \
             --output functions/lib/generated/domainCoreCandidateReceipt.js
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
             --profile "${{ steps.tag.outputs.domain_core_profile }}" \
-            --expected-candidate-commit "${{ steps.tag.outputs.commit }}" \
+            --expected-candidate-commit "${{ steps.domain-core-profile.outputs.candidate_commit }}" \
             --functions-dir functions/lib
           receipt_sha256="$(sha256sum functions/lib/generated/domainCoreCandidateReceipt.js | awk '{print $1}')"
           {

@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateDomainCoreActivation } from "../lib/domain-core-activation.mjs";
 
 import {
   buildPromotionBinding,
@@ -249,6 +250,7 @@ export function buildReleaseEvidence({
   publicProfileSha256,
   deployment,
   promotionVerifier = verifyProtectedPromotionAttestation,
+  activationVerifier = validateDomainCoreActivation,
 }) {
   const candidateBundle = readJson(candidateBundlePath, "candidate bundle");
   const { candidate, sourceRun } = validateCandidateBundle(candidateBundle);
@@ -261,6 +263,11 @@ export function buildReleaseEvidence({
     tag,
     commit,
     candidate,
+  });
+  const activation = activationVerifier({
+    repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
+    candidateCommit: candidate.candidateCommit,
+    activationCommit: commit,
   });
   promotionVerifier({
     candidateBundlePath,
@@ -283,6 +290,7 @@ export function buildReleaseEvidence({
     fileName: basename(rollbackPath),
     sha256: sha256File(rollbackPath),
     candidate,
+    activation,
   };
   const release = {
     version,
@@ -297,6 +305,7 @@ export function buildReleaseEvidence({
     artifactKind,
     target,
     candidate,
+    activation,
     sourceRun,
     promotionProof,
     rollbackArtifact,
@@ -329,7 +338,7 @@ export function buildReleaseEvidence({
   return { common, deploymentReceipt };
 }
 
-export function run(argv, { promotionVerifier } = {}) {
+export function run(argv, { promotionVerifier, activationVerifier } = {}) {
   const args = parseArguments(argv);
   const artifactPath = resolve(args["--artifact"]);
   const deployment = args["--deployment"]
@@ -358,6 +367,7 @@ export function run(argv, { promotionVerifier } = {}) {
     publicProfileSha256: args["--public-profile-sha256"],
     deployment,
     promotionVerifier,
+    activationVerifier,
   });
   if (deploymentReceipt) {
     atomicWrite(

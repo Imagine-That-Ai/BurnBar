@@ -11,6 +11,7 @@
     "artifactKind",
     "target",
     "candidate",
+    "activation",
     "sourceRun",
     "promotionProof",
     "rollbackArtifact",
@@ -53,6 +54,9 @@
     },
     "candidate": {
       "$ref": "domain-core-release-predicate.schema.json#/$defs/candidate"
+    },
+    "activation": {
+      "$ref": "domain-core-release-predicate.schema.json#/$defs/activation"
     },
     "sourceRun": {
       "$ref": "domain-core-release-predicate.schema.json#/$defs/sourceRun"
