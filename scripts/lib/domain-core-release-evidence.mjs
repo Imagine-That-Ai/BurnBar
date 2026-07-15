@@ -194,6 +194,33 @@ export function validateCandidateBundle(bundle) {
     rollbackProof.restoredArtifactSha256,
     "candidate bundle rollback restored artifact SHA-256",
   );
+  const rollbackRunId = positiveInteger(
+    rollbackProof.runId,
+    "candidate bundle rollback run ID",
+  );
+  const rollbackRunAttempt = positiveInteger(
+    rollbackProof.runAttempt,
+    "candidate bundle rollback run attempt",
+  );
+  if (
+    rollbackRunId !== positiveInteger(workflow.runId, "source run ID") ||
+    rollbackRunAttempt !==
+      positiveInteger(workflow.runAttempt, "source run attempt")
+  ) {
+    throw new Error(
+      "candidate bundle rollback proof does not bind the exact source run and attempt",
+    );
+  }
+  const rollbackFromCommit = rollbackProof.fromCandidateCommit;
+  if (
+    typeof rollbackFromCommit !== "string" ||
+    !FULL_SHA.test(rollbackFromCommit) ||
+    rollbackFromCommit !== candidate.candidateCommit
+  ) {
+    throw new Error(
+      "candidate bundle rollback proof does not bind the exact candidate commit",
+    );
+  }
   return {
     candidate,
     sourceRun: {

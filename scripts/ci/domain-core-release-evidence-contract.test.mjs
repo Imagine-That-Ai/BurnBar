@@ -214,3 +214,81 @@ test("release substrate contains no telemetry promotion authority", () => {
     /10,?000|14[- ]day|minimumSamples|telemetry report/iu,
   );
 });
+
+test("predicate schema oneOf cross-binds consumer, domain, artifactKind, and target", () => {
+  const schema = json("config/domain-core-release-predicate.schema.json");
+  const oneOf = schema.oneOf;
+  for (const branch of oneOf) {
+    const consumer = branch.properties.consumer.const;
+    const domain = branch.properties.domain;
+    const artifactKind = branch.properties.artifactKind.const;
+    const target = branch.properties.target.const;
+    const contract = schema.$defs;
+
+    if (consumer === "apple") {
+      assert.deepEqual(domain.enum, ["quota", "cloudVault", "cloudVaultRewrap", "cloudVaultSearch", "hermes", "pricing"]);
+      assert.equal(artifactKind, "macos-dmg");
+      assert.equal(target, "macos-arm64");
+    } else if (consumer === "android") {
+      assert.deepEqual(domain.enum, ["cloudVault", "cloudVaultRewrap", "cloudVaultSearch", "hermes"]);
+      assert.equal(artifactKind, "android-aab");
+      assert.equal(target, "android-universal");
+    } else if (consumer === "windows") {
+      assert.deepEqual(domain.enum, ["quota", "cloudVault"]);
+      assert.equal(artifactKind, "windows-release-bundle");
+      assert.equal(target, "windows-x64-arm64");
+    } else if (consumer === "console") {
+      assert.equal(domain.const, "cloudVault");
+      assert.equal(artifactKind, "console-deployment-receipt");
+      assert.equal(target, "firebase-hosting-production");
+    } else if (consumer === "functions") {
+      assert.equal(domain.const, "pricing");
+      assert.equal(artifactKind, "functions-deployment-receipt");
+      assert.equal(target, "firebase-functions-production");
+    } else {
+      assert.fail(`unknown consumer in oneOf: ${consumer}`);
+    }
+  }
+});
+
+test("predicate schema rejects additional properties on all nested objects", () => {
+  const schema = json("config/domain-core-release-predicate.schema.json");
+  assert.equal(schema.additionalProperties, false);
+  for (const defName of ["candidate", "sourceRun", "promotionProof", "rollbackArtifact", "artifact", "release"]) {
+    const def = schema.$defs[defName];
+    assert.equal(def.additionalProperties, false, `${defName} must reject additional properties`);
+  }
+  const signerRun = schema.$defs.promotionProof.properties.signerRun;
+  assert.equal(signerRun.additionalProperties, false, "promotionProof.signerRun must reject additional properties");
+  const attestationSubject = schema.$defs.promotionProof.properties.attestationSubject;
+  assert.equal(attestationSubject.additionalProperties, false, "promotionProof.attestationSubject must reject additional properties");
+});
+
+test("deployment receipt schema oneOf ties consumer to deploy workflow and provider", () => {
+  const schema = json("config/domain-core-deployment-receipt.schema.json");
+  const oneOf = schema.oneOf;
+  assert.equal(oneOf.length, 2);
+
+  const consoleBranch = oneOf[0];
+  assert.equal(consoleBranch.properties.consumer.const, "console");
+  assert.equal(consoleBranch.properties.deployment.properties.provider.const, "firebase-hosting");
+  assert.equal(
+    consoleBranch.properties.deployment.properties.deployRun.properties.workflowPath.const,
+    ".github/workflows/deploy-hosting.yml",
+  );
+
+  const functionsBranch = oneOf[1];
+  assert.equal(functionsBranch.properties.consumer.const, "functions");
+  assert.equal(functionsBranch.properties.deployment.properties.provider.const, "firebase-functions");
+  assert.equal(
+    functionsBranch.properties.deployment.properties.deployRun.properties.workflowPath.const,
+    ".github/workflows/deploy-production.yml",
+  );
+});
+
+test("deployment receipt schema rejects additionalProperties on deployment and deployRun", () => {
+  const schema = json("config/domain-core-deployment-receipt.schema.json");
+  assert.equal(schema.additionalProperties, false);
+  assert.equal(schema.properties.deployment.additionalProperties, false);
+  assert.equal(schema.properties.deployment.properties.deployRun.additionalProperties, false);
+});

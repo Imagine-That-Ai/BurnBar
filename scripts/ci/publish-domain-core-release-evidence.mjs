@@ -390,7 +390,7 @@ export function validateManifest(raw) {
   }
   const seenAssets = new Set([artifactAssetName]);
   const seenDomains = new Set();
-  let canonicalCandidate = null;
+  let canonical = null;
   const bundles = manifest.bundles.map((rawBundle, index) => {
     const bundle = exactObject(
       rawBundle,
@@ -434,18 +434,23 @@ export function validateManifest(raw) {
       bundle.domain,
       artifactPath,
     );
-    const candidateTuple = {
-      coreVersion: predicate.candidate.coreVersion,
-      abiVersion: predicate.candidate.abiVersion,
-      sourceSha256: predicate.candidate.sourceSha256,
-      candidateCommit: predicate.candidate.candidateCommit,
+    const tuple = {
+      candidate: predicate.candidate,
+      sourceRun: predicate.sourceRun,
+      promotionProof: predicate.promotionProof,
+      rollbackArtifact: predicate.rollbackArtifact,
+      release: predicate.release,
     };
-    if (canonicalCandidate === null) {
-      canonicalCandidate = candidateTuple;
-    } else if (!isDeepStrictEqual(candidateTuple, canonicalCandidate)) {
-      throw new Error(
-        `predicate for ${bundle.domain} has a candidate tuple that differs from the first validated predicate for commit ${manifest.commit}`,
-      );
+    if (canonical === null) {
+      canonical = tuple;
+    } else {
+      for (const key of Object.keys(tuple)) {
+        if (!isDeepStrictEqual(tuple[key], canonical[key])) {
+          throw new Error(
+            `predicate for ${bundle.domain} has a ${key} that differs from the first validated predicate for commit ${manifest.commit}`,
+          );
+        }
+      }
     }
     return {
       domain: bundle.domain,

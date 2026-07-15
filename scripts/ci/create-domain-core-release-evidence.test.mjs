@@ -509,3 +509,116 @@ test("refuses to rewrite an immutable predicate with different bytes", () => {
     rmSync(files.directory, { recursive: true, force: true });
   }
 });
+
+function tamperedBundle(files, mutate) {
+  const bundle = JSON.parse(readFileSync(files.candidateBundle, "utf8"));
+  mutate(bundle);
+  writeFileSync(files.candidateBundle, `${JSON.stringify(bundle)}\n`);
+}
+
+test("rejects a rollback proof from a different source run", () => {
+  const files = workspace();
+  try {
+    tamperedBundle(files, (bundle) => {
+      bundle.rollback.runId = 999;
+    });
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback proof does not bind the exact source run/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback proof from a different source run attempt", () => {
+  const files = workspace();
+  try {
+    tamperedBundle(files, (bundle) => {
+      bundle.rollback.runAttempt = 999;
+    });
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback proof does not bind the exact source run/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback proof bound to a different candidate commit", () => {
+  const files = workspace();
+  try {
+    tamperedBundle(files, (bundle) => {
+      bundle.rollback.fromCandidateCommit = "f".repeat(40);
+    });
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback proof does not bind the exact candidate commit/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a candidate bundle where workflow headSha does not match candidate commit", () => {
+  const files = workspace();
+  try {
+    tamperedBundle(files, (bundle) => {
+      bundle.workflow.headSha = "0".repeat(40);
+    });
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /workflow does not bind the exact main push candidate/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a candidate bundle with workflow ref pointing to a branch other than main", () => {
+  const files = workspace();
+  try {
+    tamperedBundle(files, (bundle) => {
+      bundle.workflow.ref = "refs/heads/feature";
+    });
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /workflow does not bind the exact main push candidate/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a copied rollback artifact whose file digest does not match the bundle proof", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        tampered: true,
+      })}\n`,
+    );
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback artifact digest does not match the protected candidate bundle rollback proof/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});

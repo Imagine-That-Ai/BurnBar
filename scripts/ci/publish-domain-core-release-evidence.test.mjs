@@ -743,7 +743,7 @@ test("rejects two bundles with the same release commit but different candidate c
     };
     assert.throws(
       () => validateManifest(manifest),
-      /candidate tuple that differs from the first validated predicate/u,
+      /predicate for cloudVault has a candidate that differs/u,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -940,5 +940,423 @@ test("accepts a well-formed deployment receipt for deployment consumers", () => 
     assert.equal(manifest.bundles.length, 1);
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects two bundles with the same candidate but different sourceRun runId", () => {
+  const directory = mkdtempSync(join(tmpdir(), "domain-core-publisher-test-"));
+  try {
+    const artifact = join(directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-release-bytes");
+    const bundlePath = join(directory, "quota.sigstore.json");
+    const bundle2Path = join(directory, "cloudVault.sigstore.json");
+    writeFileSync(bundlePath, "signed-attestation-bundle");
+    writeFileSync(bundle2Path, "signed-attestation-bundle-2");
+    const basePredicate = {
+      schemaVersion: 2,
+      predicateType:
+        "https://openburnbar.dev/attestations/domain-core-release-artifact/v2",
+      consumer: "apple",
+      artifactKind: "macos-dmg",
+      target: "macos-arm64",
+      candidate: CANDIDATE,
+      sourceRun: {
+        repository: "Imagine-That-Ai/BurnBar",
+        workflowPath: ".github/workflows/domain-core.yml",
+        runId: 101,
+        runAttempt: 2,
+        event: "push",
+        ref: "refs/heads/main",
+        headSha: CANDIDATE.candidateCommit,
+      },
+      promotionProof: {
+        signerWorkflow: ".github/workflows/domain-core-promotion-proof.yml",
+        predicateType: "https://slsa.dev/provenance/v1",
+        signerRun: { runId: 202, runAttempt: 3 },
+        attestationSubject: {
+          fileName: "domain-core-candidate-bundle.json",
+          sha256: "c".repeat(64),
+        },
+        attestationBundleSha256: "d".repeat(64),
+      },
+      rollbackArtifact: {
+        fileName: "domain-core-legacy-rollback.json",
+        sha256: "e".repeat(64),
+        candidate: CANDIDATE,
+      },
+      artifact: {
+        fileName: basename(artifact),
+        sha256: sha(readFileSync(artifact)),
+      },
+      release: {
+        version: "1.2.3",
+        tag: "v1.2.3",
+        commit: CANDIDATE.candidateCommit,
+        publicProfileSha256: "f".repeat(64),
+      },
+    };
+    const predicate1 = writePredicate(
+      directory,
+      "quota.predicate.json",
+      buildPredicate({ domain: "quota" }, basePredicate),
+    );
+    const predicate2 = writePredicate(
+      directory,
+      "cloudVault.predicate.json",
+      buildPredicate(
+        {
+          domain: "cloudVault",
+          sourceRun: { ...basePredicate.sourceRun, runId: 999 },
+        },
+        basePredicate,
+      ),
+    );
+    const manifest = {
+      schemaVersion: 2,
+      repository: "Imagine-That-Ai/BurnBar",
+      tag: "v1.2.3",
+      commit: CANDIDATE.candidateCommit,
+      consumer: "apple",
+      signerWorkflow: ".github/workflows/release.yml",
+      artifactPath: artifact,
+      bundles: [
+        {
+          domain: "quota",
+          assetName:
+            "OpenBurnBar-1.2.3-macOS-quota-domain-core-attestation.sigstore.json",
+          bundlePath,
+          predicatePath: predicate1,
+        },
+        {
+          domain: "cloudVault",
+          assetName:
+            "OpenBurnBar-1.2.3-macOS-cloudVault-domain-core-attestation.sigstore.json",
+          bundlePath: bundle2Path,
+          predicatePath: predicate2,
+        },
+      ],
+    };
+    assert.throws(
+      () => validateManifest(manifest),
+      /predicate for cloudVault has a sourceRun that differs/u,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects two bundles with the same candidate but different promotionProof signerRun", () => {
+  const directory = mkdtempSync(join(tmpdir(), "domain-core-publisher-test-"));
+  try {
+    const artifact = join(directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-release-bytes");
+    const bundlePath = join(directory, "quota.sigstore.json");
+    const bundle2Path = join(directory, "cloudVault.sigstore.json");
+    writeFileSync(bundlePath, "signed-attestation-bundle");
+    writeFileSync(bundle2Path, "signed-attestation-bundle-2");
+    const basePredicate = {
+      schemaVersion: 2,
+      predicateType:
+        "https://openburnbar.dev/attestations/domain-core-release-artifact/v2",
+      consumer: "apple",
+      artifactKind: "macos-dmg",
+      target: "macos-arm64",
+      candidate: CANDIDATE,
+      sourceRun: {
+        repository: "Imagine-That-Ai/BurnBar",
+        workflowPath: ".github/workflows/domain-core.yml",
+        runId: 101,
+        runAttempt: 2,
+        event: "push",
+        ref: "refs/heads/main",
+        headSha: CANDIDATE.candidateCommit,
+      },
+      promotionProof: {
+        signerWorkflow: ".github/workflows/domain-core-promotion-proof.yml",
+        predicateType: "https://slsa.dev/provenance/v1",
+        signerRun: { runId: 202, runAttempt: 3 },
+        attestationSubject: {
+          fileName: "domain-core-candidate-bundle.json",
+          sha256: "c".repeat(64),
+        },
+        attestationBundleSha256: "d".repeat(64),
+      },
+      rollbackArtifact: {
+        fileName: "domain-core-legacy-rollback.json",
+        sha256: "e".repeat(64),
+        candidate: CANDIDATE,
+      },
+      artifact: {
+        fileName: basename(artifact),
+        sha256: sha(readFileSync(artifact)),
+      },
+      release: {
+        version: "1.2.3",
+        tag: "v1.2.3",
+        commit: CANDIDATE.candidateCommit,
+        publicProfileSha256: "f".repeat(64),
+      },
+    };
+    const predicate1 = writePredicate(
+      directory,
+      "quota.predicate.json",
+      buildPredicate({ domain: "quota" }, basePredicate),
+    );
+    const predicate2 = writePredicate(
+      directory,
+      "cloudVault.predicate.json",
+      buildPredicate(
+        {
+          domain: "cloudVault",
+          promotionProof: {
+            ...basePredicate.promotionProof,
+            signerRun: { runId: 888, runAttempt: 3 },
+          },
+        },
+        basePredicate,
+      ),
+    );
+    const manifest = {
+      schemaVersion: 2,
+      repository: "Imagine-That-Ai/BurnBar",
+      tag: "v1.2.3",
+      commit: CANDIDATE.candidateCommit,
+      consumer: "apple",
+      signerWorkflow: ".github/workflows/release.yml",
+      artifactPath: artifact,
+      bundles: [
+        {
+          domain: "quota",
+          assetName:
+            "OpenBurnBar-1.2.3-macOS-quota-domain-core-attestation.sigstore.json",
+          bundlePath,
+          predicatePath: predicate1,
+        },
+        {
+          domain: "cloudVault",
+          assetName:
+            "OpenBurnBar-1.2.3-macOS-cloudVault-domain-core-attestation.sigstore.json",
+          bundlePath: bundle2Path,
+          predicatePath: predicate2,
+        },
+      ],
+    };
+    assert.throws(
+      () => validateManifest(manifest),
+      /predicate for cloudVault has a promotionProof that differs/u,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects two bundles with the same candidate but different rollbackArtifact sha256", () => {
+  const directory = mkdtempSync(join(tmpdir(), "domain-core-publisher-test-"));
+  try {
+    const artifact = join(directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-release-bytes");
+    const bundlePath = join(directory, "quota.sigstore.json");
+    const bundle2Path = join(directory, "cloudVault.sigstore.json");
+    writeFileSync(bundlePath, "signed-attestation-bundle");
+    writeFileSync(bundle2Path, "signed-attestation-bundle-2");
+    const basePredicate = {
+      schemaVersion: 2,
+      predicateType:
+        "https://openburnbar.dev/attestations/domain-core-release-artifact/v2",
+      consumer: "apple",
+      artifactKind: "macos-dmg",
+      target: "macos-arm64",
+      candidate: CANDIDATE,
+      sourceRun: {
+        repository: "Imagine-That-Ai/BurnBar",
+        workflowPath: ".github/workflows/domain-core.yml",
+        runId: 101,
+        runAttempt: 2,
+        event: "push",
+        ref: "refs/heads/main",
+        headSha: CANDIDATE.candidateCommit,
+      },
+      promotionProof: {
+        signerWorkflow: ".github/workflows/domain-core-promotion-proof.yml",
+        predicateType: "https://slsa.dev/provenance/v1",
+        signerRun: { runId: 202, runAttempt: 3 },
+        attestationSubject: {
+          fileName: "domain-core-candidate-bundle.json",
+          sha256: "c".repeat(64),
+        },
+        attestationBundleSha256: "d".repeat(64),
+      },
+      rollbackArtifact: {
+        fileName: "domain-core-legacy-rollback.json",
+        sha256: "e".repeat(64),
+        candidate: CANDIDATE,
+      },
+      artifact: {
+        fileName: basename(artifact),
+        sha256: sha(readFileSync(artifact)),
+      },
+      release: {
+        version: "1.2.3",
+        tag: "v1.2.3",
+        commit: CANDIDATE.candidateCommit,
+        publicProfileSha256: "f".repeat(64),
+      },
+    };
+    const predicate1 = writePredicate(
+      directory,
+      "quota.predicate.json",
+      buildPredicate({ domain: "quota" }, basePredicate),
+    );
+    const predicate2 = writePredicate(
+      directory,
+      "cloudVault.predicate.json",
+      buildPredicate(
+        {
+          domain: "cloudVault",
+          rollbackArtifact: {
+            fileName: "domain-core-legacy-rollback.json",
+            sha256: "9".repeat(64),
+            candidate: CANDIDATE,
+          },
+        },
+        basePredicate,
+      ),
+    );
+    const manifest = {
+      schemaVersion: 2,
+      repository: "Imagine-That-Ai/BurnBar",
+      tag: "v1.2.3",
+      commit: CANDIDATE.candidateCommit,
+      consumer: "apple",
+      signerWorkflow: ".github/workflows/release.yml",
+      artifactPath: artifact,
+      bundles: [
+        {
+          domain: "quota",
+          assetName:
+            "OpenBurnBar-1.2.3-macOS-quota-domain-core-attestation.sigstore.json",
+          bundlePath,
+          predicatePath: predicate1,
+        },
+        {
+          domain: "cloudVault",
+          assetName:
+            "OpenBurnBar-1.2.3-macOS-cloudVault-domain-core-attestation.sigstore.json",
+          bundlePath: bundle2Path,
+          predicatePath: predicate2,
+        },
+      ],
+    };
+    assert.throws(
+      () => validateManifest(manifest),
+      /predicate for cloudVault has a rollbackArtifact that differs/u,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects two bundles with the same candidate but different release publicProfileSha256", () => {
+  const directory = mkdtempSync(join(tmpdir(), "domain-core-publisher-test-"));
+  try {
+    const artifact = join(directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-release-bytes");
+    const bundlePath = join(directory, "quota.sigstore.json");
+    const bundle2Path = join(directory, "cloudVault.sigstore.json");
+    writeFileSync(bundlePath, "signed-attestation-bundle");
+    writeFileSync(bundle2Path, "signed-attestation-bundle-2");
+    const basePredicate = {
+      schemaVersion: 2,
+      predicateType:
+        "https://openburnbar.dev/attestations/domain-core-release-artifact/v2",
+      consumer: "apple",
+      artifactKind: "macos-dmg",
+      target: "macos-arm64",
+      candidate: CANDIDATE,
+      sourceRun: {
+        repository: "Imagine-That-Ai/BurnBar",
+        workflowPath: ".github/workflows/domain-core.yml",
+        runId: 101,
+        runAttempt: 2,
+        event: "push",
+        ref: "refs/heads/main",
+        headSha: CANDIDATE.candidateCommit,
+      },
+      promotionProof: {
+        signerWorkflow: ".github/workflows/domain-core-promotion-proof.yml",
+        predicateType: "https://slsa.dev/provenance/v1",
+        signerRun: { runId: 202, runAttempt: 3 },
+        attestationSubject: {
+          fileName: "domain-core-candidate-bundle.json",
+          sha256: "c".repeat(64),
+        },
+        attestationBundleSha256: "d".repeat(64),
+      },
+      rollbackArtifact: {
+        fileName: "domain-core-legacy-rollback.json",
+        sha256: "e".repeat(64),
+        candidate: CANDIDATE,
+      },
+      artifact: {
+        fileName: basename(artifact),
+        sha256: sha(readFileSync(artifact)),
+      },
+      release: {
+        version: "1.2.3",
+        tag: "v1.2.3",
+        commit: CANDIDATE.candidateCommit,
+        publicProfileSha256: "f".repeat(64),
+      },
+    };
+    const predicate1 = writePredicate(
+      directory,
+      "quota.predicate.json",
+      buildPredicate({ domain: "quota" }, basePredicate),
+    );
+    const predicate2 = writePredicate(
+      directory,
+      "cloudVault.predicate.json",
+      buildPredicate(
+        {
+          domain: "cloudVault",
+          release: {
+            ...basePredicate.release,
+            publicProfileSha256: "a".repeat(64),
+          },
+        },
+        basePredicate,
+      ),
+    );
+    const manifest = {
+      schemaVersion: 2,
+      repository: "Imagine-That-Ai/BurnBar",
+      tag: "v1.2.3",
+      commit: CANDIDATE.candidateCommit,
+      consumer: "apple",
+      signerWorkflow: ".github/workflows/release.yml",
+      artifactPath: artifact,
+      bundles: [
+        {
+          domain: "quota",
+          assetName:
+            "OpenBurnBar-1.2.3-macOS-quota-domain-core-attestation.sigstore.json",
+          bundlePath,
+          predicatePath: predicate1,
+        },
+        {
+          domain: "cloudVault",
+          assetName:
+            "OpenBurnBar-1.2.3-macOS-cloudVault-domain-core-attestation.sigstore.json",
+          bundlePath: bundle2Path,
+          predicatePath: predicate2,
+        },
+      ],
+    };
+    assert.throws(
+      () => validateManifest(manifest),
+      /predicate for cloudVault has a release that differs/u,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });
