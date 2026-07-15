@@ -9,7 +9,7 @@ import { domainCoreCloudVaultSearch } from "./domainCoreCloudVault.js";
 import {
   legacyCloudVaultSemanticHashes,
   legacyCloudVaultTokenHashes,
-} from "./legacy/cloudVaultLegacy.js";
+} from "./legacy/cloudVaultSearchLegacy.js";
 import { readAccessToken } from "./oauth.js";
 import { readVaultKey } from "./vaultStore.js";
 import { DEFAULT_ENDPOINT, validatedMcpEndpoint } from "./shim.js";

@@ -14,9 +14,11 @@ import {
   legacyAesGcmOpenCombined,
   legacyAesGcmSealCombined,
   legacyCloudVaultAADContext,
+} from "./legacy/cloudVaultPrimitivesLegacy.js";
+import {
   legacyCloudVaultSemanticHashes,
   legacyCloudVaultTokenHashes,
-} from "./legacy/cloudVaultLegacy.js";
+} from "./legacy/cloudVaultSearchLegacy.js";
 
 const MODE = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
 const SOURCE_A = "a".repeat(64);

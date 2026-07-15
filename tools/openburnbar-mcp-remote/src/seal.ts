@@ -13,7 +13,7 @@ import { randomBytes } from "node:crypto";
 import { cloudVaultAADContext, type SealedEnvelope } from "./decrypt.js";
 import { domainCoreAesGcmSealCombined } from "./domainCoreCloudVault.js";
 import { loadVaultKeyBytes } from "./embed.js";
-import { legacyAesGcmSealCombined } from "./legacy/cloudVaultLegacy.js";
+import { legacyAesGcmSealCombined } from "./legacy/cloudVaultPrimitivesLegacy.js";
 
 export const SEAL_KEY_VERSION = 1;
 

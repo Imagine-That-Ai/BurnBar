@@ -5,7 +5,7 @@ import {
 import {
   legacyAesGcmOpenCombined,
   legacyCloudVaultAADContext,
-} from "./legacy/cloudVaultLegacy.js";
+} from "./legacy/cloudVaultPrimitivesLegacy.js";
 import { readVaultKey } from "./vaultStore.js";
 
 

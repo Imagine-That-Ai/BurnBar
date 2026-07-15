@@ -31,7 +31,7 @@ import {
   pensieveProvenanceHash,
   pensieveSlugHmac,
 } from "./domainCoreOpaqueIdentifiers.js";
-import { legacyPensieveHmac } from "./legacy/cloudVaultLegacy.js";
+import { legacyPensieveHmac } from "./legacy/cloudVaultPrimitivesLegacy.js";
 import { sealText } from "./seal.js";
 import type { SealedEnvelope } from "./decrypt.js";
 
