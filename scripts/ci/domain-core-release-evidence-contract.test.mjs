@@ -57,7 +57,7 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
   assert.ok(schema.$defs.rollbackArtifact.required.includes("candidate"));
   assert.ok(schema.$defs.rollbackArtifact.required.includes("activation"));
   assert.ok(schema.$defs.rollbackArtifact.required.includes("sha256"));
-  assert.equal(schema.oneOf.length, 5);
+  assert.equal(schema.oneOf.length, 7);
   assert.deepEqual(schema.$defs.publicProfile.required, [
     "profile",
     "domain",
@@ -93,6 +93,8 @@ test("schema and runtime share consumer-specific release version vectors", () =>
   const stableTagSchema = new RegExp(schema.$defs.stableTag.pattern, "u");
   const contracts = {
     apple: ["quota", "macos-dmg", "macos-arm64"],
+    ios: ["cloudVault", "ios-app-store-archive", "ios-universal"],
+    linux: ["quota", "linux-release-bundle", "linux-x64-arm64"],
     android: ["cloudVault", "android-aab", "android-universal"],
     windows: ["quota", "windows-release-bundle", "windows-x64-arm64"],
     console: [
@@ -127,15 +129,18 @@ test("schema and runtime share consumer-specific release version vectors", () =>
   for (const [consumer, [domain, artifactKind, target]] of Object.entries(
     contracts,
   )) {
-    const native = new Set(["apple", "android"]).has(consumer);
+    const native = new Set(["apple", "android", "ios"]).has(consumer);
     for (const [version, policy] of vectors) {
       const accepted = policy === true || (policy === "native-only" && native);
       const runtimePattern = native
         ? NATIVE_RELEASE_VERSION
         : STABLE_RELEASE_VERSION;
       const schemaPattern = native ? nativeSchema : stableSchema;
-      const tag =
-        consumer === "windows" ? `windows-v${version}` : `v${version}`;
+      const tag = consumer === "windows"
+        ? `windows-v${version}`
+        : consumer === "linux"
+          ? `linux-v${version}`
+          : `v${version}`;
       const tagPattern = native ? nativeTagSchema : stableTagSchema;
       assert.equal(
         runtimePattern.test(version),

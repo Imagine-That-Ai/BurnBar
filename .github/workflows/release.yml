@@ -2673,6 +2673,25 @@ jobs:
             cp "$asset" "$destination"
           done
 
+          ios_predicates=()
+          while IFS= read -r predicate; do
+            [[ -n "$predicate" ]] && ios_predicates+=("$predicate")
+          done < <(find "$RUNNER_TEMP" -type f -name 'domain-core-ios-*.predicate.json' -print 2>/dev/null | LC_ALL=C sort)
+          if ((${#ios_predicates[@]} > 0)); then
+            ios_archive="$(find "$RUNNER_TEMP" -type f -name "OpenBurnBar-${VERSION}-iOS.xcarchive.zip" -print -quit 2>/dev/null)"
+            ios_receipt="$(find "$RUNNER_TEMP" -type f -name 'app-store-connect-receipt.json' -print -quit 2>/dev/null)"
+            test -s "$ios_archive"
+            test -s "$ios_receipt"
+            mkdir -p "$stage/ios"
+            cp "$ios_archive" "$stage/ios/"
+            cp "$ios_receipt" "$stage/assets/OpenBurnBar-${VERSION}-iOS-app-store-connect-receipt.json"
+            for predicate in "${ios_predicates[@]}"; do
+              bundle="${predicate}.sigstore.json"
+              test -s "$bundle"
+              cp "$predicate" "$bundle" "$stage/ios/"
+            done
+          fi
+
       - name: Retain exact general publication inputs
         uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
@@ -2984,6 +3003,37 @@ jobs:
             --tag "$TAG" --commit "$COMMIT" --promote "$PROMOTE" \
             "${asset_args[@]}" --output "$manifest"
           node scripts/ci/publish-apple-android-release.mjs --manifest "$manifest"
+
+          ios_dir="$RUNNER_TEMP/release-publication-inputs/ios"
+          if [[ -d "$ios_dir" ]]; then
+            archive="$ios_dir/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS.xcarchive.zip"
+            test -s "$archive"
+            bundles='[]'
+            while IFS= read -r predicate; do
+              domain="$(jq -er '.domain' "$predicate")"
+              bundle="${predicate}.sigstore.json"
+              test -s "$bundle"
+              asset_name="OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS-${domain}-domain-core-attestation.sigstore.json"
+              bundles="$(jq -c \
+                --arg domain "$domain" \
+                --arg assetName "$asset_name" \
+                --arg bundlePath "$bundle" \
+                --arg predicatePath "$predicate" \
+                '. + [{domain: $domain, assetName: $assetName, bundlePath: $bundlePath, predicatePath: $predicatePath}]' \
+                <<<"$bundles")"
+            done < <(find "$ios_dir" -maxdepth 1 -type f -name 'domain-core-ios-*.predicate.json' -print | LC_ALL=C sort)
+            test "$(jq 'length' <<<"$bundles")" -gt 0
+            ios_manifest="$RUNNER_TEMP/domain-core-native-evidence/ios-publication.json"
+            jq -n \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg tag "$TAG" \
+              --arg commit "$COMMIT" \
+              --arg artifactPath "$archive" \
+              --argjson bundles "$bundles" \
+              '{schemaVersion: 2, repository: $repository, tag: $tag, commit: $commit, consumer: "ios", signerWorkflow: ".github/workflows/domain-core-ios-release-evidence.yml", releaseState: "published", nativeArtifactOnly: false, artifactPath: $artifactPath, bundles: $bundles}' \
+              > "$ios_manifest"
+            node scripts/ci/publish-domain-core-release-evidence.mjs --manifest "$ios_manifest"
+          fi
 
       - name: Notify Sentry of published release
         if: env.SENTRY_AUTH_TOKEN != ''

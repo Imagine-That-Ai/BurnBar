@@ -50,7 +50,7 @@ function fixture() {
     consumer: "apple",
     domain: "quota",
     artifactKind: "macos-dmg",
-    target: "macos-universal",
+    target: "macos-arm64",
     candidate: CANDIDATE,
     activation: ACTIVATION,
     sourceRun: {

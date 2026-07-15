@@ -11,6 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 import { validateDomainCoreActivation } from "../lib/domain-core-activation.mjs";
 
@@ -65,6 +66,8 @@ function parseArguments(argv) {
     "--app-store-connect-receipt",
     "--deployment",
     "--android-abi-manifest",
+    "--legacy-absence-scan",
+    "--legacy-absence-root",
   ]);
   const result = {};
   for (let index = 0; index < argv.length; index += 2) {
@@ -79,7 +82,13 @@ function parseArguments(argv) {
     result[flag] = value;
   }
   const required = [...allowed].filter(
-    (flag) => flag !== "--deployment" && flag !== "--android-abi-manifest",
+    (flag) =>
+      flag !== "--deployment" &&
+      flag !== "--android-abi-manifest" &&
+      flag !== "--rollback-profile" &&
+      flag !== "--app-store-connect-receipt" &&
+      flag !== "--legacy-absence-scan" &&
+      flag !== "--legacy-absence-root",
   );
   for (const flag of required) {
     if (!Object.hasOwn(result, flag)) throw new Error(`${flag} is required`);
@@ -360,7 +369,7 @@ export function buildReleaseEvidence({
   rollbackProfilePath,
   appStoreConnectReceipt,
   publicProfileSha256,
-  activation,
+  activation: suppliedActivation,
   deployment,
   androidAbiManifest,
   androidAbiManifestSha256,
@@ -369,17 +378,6 @@ export function buildReleaseEvidence({
 }) {
   const candidateBundle = readJson(candidateBundlePath, "candidate bundle");
   const { candidate, sourceRun } = validateCandidateBundle(candidateBundle);
-  const contract = validateReleaseCoordinates({
-    consumer,
-    domain,
-    artifactKind,
-    target,
-    version,
-    tag,
-    commit,
-    candidate,
-    activation,
-  });
   const absenceAuthority = JSON.parse(
     execFileSync(
       "python3",
@@ -412,6 +410,22 @@ export function buildReleaseEvidence({
       "changedPathsSha256",
     ].map((field) => [field, rawActivation[field]]),
   );
+  if (!isDeepStrictEqual(suppliedActivation, activation)) {
+    throw new Error(
+      "supplied release activation does not match repository-derived activation",
+    );
+  }
+  const contract = validateReleaseCoordinates({
+    consumer,
+    domain,
+    artifactKind,
+    target,
+    version,
+    tag,
+    commit,
+    candidate,
+    activation,
+  });
   promotionVerifier({
     candidateBundlePath,
     promotionAttestationPath,
@@ -459,10 +473,101 @@ export function buildReleaseEvidence({
     sourceRun,
     promotionProof,
     rollbackArtifact,
-    activation: contract.activation,
-    publicProfile,
     release,
   };
+  if (absenceAuthority !== null) {
+    common.legacyAbsence = absenceAuthority.absence;
+  }
+  if (consumer === "ios") {
+    const receipt = exactObject(
+      appStoreConnectReceipt,
+      [
+        "schemaVersion",
+        "status",
+        "processedStatus",
+        "deliveryId",
+        "archiveSha256",
+        "ipaSha256",
+        "uploadResponseSha256",
+        "statusResponseSha256",
+        "release",
+        "candidate",
+        "activation",
+        "loadedRustIdentity",
+      ],
+      "App Store Connect receipt",
+    );
+    const loaded = exactObject(
+      receipt.loadedRustIdentity,
+      [
+        "schemaVersion",
+        "verificationKind",
+        "bundleId",
+        "version",
+        "buildNumber",
+        "executable",
+        "architectures",
+        "executableSha256",
+        "identitySectionSha256",
+        "identitySymbols",
+        "candidate",
+        "observed",
+      ],
+      "loaded Rust slice identity",
+    );
+    const expectedSymbols = [
+      "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+      "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+      "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
+      "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
+    ];
+    if (
+      receipt.schemaVersion !== 1 ||
+      receipt.status !== "processed" ||
+      ![
+        "complete",
+        "completed",
+        "processed",
+        "processing complete",
+        "success",
+        "succeeded",
+      ].includes(receipt.processedStatus) ||
+      typeof receipt.deliveryId !== "string" ||
+      receipt.deliveryId.length === 0 ||
+      receipt.archiveSha256 !== sha256File(artifactPath) ||
+      !SHA256.test(receipt.ipaSha256) ||
+      !SHA256.test(receipt.uploadResponseSha256) ||
+      !SHA256.test(receipt.statusResponseSha256) ||
+      !isDeepStrictEqual(receipt.release, {
+        version: release.version,
+        tag: release.tag,
+        commit: release.commit,
+      }) ||
+      !isDeepStrictEqual(receipt.candidate, candidate) ||
+      !isDeepStrictEqual(receipt.activation, activation) ||
+      loaded.schemaVersion !== 1 ||
+      loaded.verificationKind !== "ios-loaded-rust-slice-identity" ||
+      typeof loaded.bundleId !== "string" ||
+      loaded.bundleId.length === 0 ||
+      loaded.version !== release.version ||
+      typeof loaded.buildNumber !== "string" ||
+      loaded.buildNumber.length === 0 ||
+      loaded.executable !== "OpenBurnBarMobile" ||
+      !isDeepStrictEqual(loaded.architectures, ["arm64"]) ||
+      !SHA256.test(loaded.executableSha256) ||
+      !SHA256.test(loaded.identitySectionSha256) ||
+      !isDeepStrictEqual(loaded.identitySymbols, expectedSymbols) ||
+      !isDeepStrictEqual(loaded.candidate, candidate) ||
+      !isDeepStrictEqual(loaded.observed, candidate)
+    ) {
+      throw new Error(
+        "App Store Connect receipt must bind the processed IPA, archive, activation, and loaded Rust slice",
+      );
+    }
+    common.appStoreConnectReceipt = structuredClone(receipt);
+  } else if (appStoreConnectReceipt !== undefined) {
+    throw new Error(`${consumer} must not provide an App Store Connect receipt`);
+  }
   if (consumer === "android") {
     if (!androidAbiManifest) {
       throw new Error("android requires a universal ABI manifest");

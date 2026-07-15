@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { RELEASE_CONSUMERS } from "../lib/domain-core-release-evidence.mjs";
 import { deriveDomainCoreFunctionsTargets } from "./verify-domain-core-functions-target-inventory.mjs";
 
 const core = readFileSync(
@@ -30,6 +31,24 @@ const linuxCargo = readFileSync(
 );
 const inventory = readFileSync(
   new URL("../../docs/SHARED_RUST_DOMAIN_INVENTORY.md", import.meta.url),
+  "utf8",
+);
+const release = readFileSync(
+  new URL("../../.github/workflows/release.yml", import.meta.url),
+  "utf8",
+);
+const iosEvidence = readFileSync(
+  new URL(
+    "../../.github/workflows/domain-core-ios-release-evidence.yml",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const artifactVerifier = readFileSync(
+  new URL(
+    "../../scripts/ci/verify-domain-core-build-profile-artifact.mjs",
+    import.meta.url,
+  ),
   "utf8",
 );
 const functionsDeploy = readFileSync(

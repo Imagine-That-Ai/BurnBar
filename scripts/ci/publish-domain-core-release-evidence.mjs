@@ -32,11 +32,12 @@ import { validateAndroidUniversalManifest } from "./verify-domain-core-android-u
 
 const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const SHA256 = /^[0-9a-f]{64}$/u;
+const FULL_SHA = /^[0-9a-f]{40}$/u;
 const STABLE_VERSION =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const APPLE_ANDROID_VERSION =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
-const NATIVE_CONSUMERS = new Set(["apple", "android", "windows"]);
+const NATIVE_CONSUMERS = new Set(["apple", "android", "ios", "windows"]);
 const RELEASE_STATES = new Set(["published", "draft-then-publish"]);
 
 function parseJson(text, label) {
@@ -90,7 +91,7 @@ function validateActivationBinding(value, candidate, releaseCommit, label) {
     !FULL_SHA.test(activation.activationCommit)
   ) {
     throw new Error(
-      `${label} does not bind candidate C to release activation P`,
+      `${label} activation commit does not bind candidate C to release activation P`,
     );
   }
   digest(activation.changedPathsSha256, `${label} changed paths`);
@@ -172,7 +173,7 @@ function validatePredicate(
     `predicate release for ${domain}`,
   );
   const version = manifest.tag.replace(/^(?:windows-)?v/u, "");
-  const versionPattern = new Set(["apple", "android"]).has(manifest.consumer)
+  const versionPattern = new Set(["apple", "android", "ios"]).has(manifest.consumer)
     ? APPLE_ANDROID_VERSION
     : STABLE_VERSION;
   if (

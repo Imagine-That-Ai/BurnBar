@@ -17,8 +17,6 @@
     "sourceRun",
     "promotionProof",
     "rollbackArtifact",
-    "activation",
-    "publicProfile",
     "artifact",
     "release"
   ],
@@ -175,8 +173,6 @@
     "sourceRun": { "$ref": "#/$defs/sourceRun" },
     "promotionProof": { "$ref": "#/$defs/promotionProof" },
     "rollbackArtifact": { "$ref": "#/$defs/rollbackArtifact" },
-    "activation": { "$ref": "#/$defs/activation" },
-    "publicProfile": { "$ref": "#/$defs/publicProfile" },
     "artifact": { "$ref": "#/$defs/artifact" },
     "androidUniversal": { "$ref": "#/$defs/androidUniversal" },
     "release": { "$ref": "#/$defs/release" }
@@ -198,7 +194,7 @@
     },
     "stableTag": {
       "type": "string",
-      "pattern": "^(?:windows-)?v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+      "pattern": "^(?:(?:windows|linux)-)?v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
     },
     "consumer": {
       "enum": [

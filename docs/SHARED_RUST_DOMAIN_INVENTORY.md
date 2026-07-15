@@ -17,7 +17,8 @@ consumer, contract, deletion target, or rollout state changes.
 
 | Platform | Quota transforms | CloudVault portable logic | Hermes portable crypto | Pricing arithmetic | Encrypted search |
 |---|---|---|---|---|---|
-| Swift (macOS/iOS and Linux daemon) | Claude, Codex, Cursor, Anthropic | Yes | Yes | Yes | Yes |
+| Swift (macOS and Linux daemon) | Claude, Codex, Cursor, Anthropic | Yes | Yes | Yes | Yes |
+| Swift (iOS) | No local provider quota parsing | Yes | Yes | No canonical catalog calculator | Yes |
 | C# (Windows) | Claude, Codex, Cursor, Anthropic | AAD/AES/recovery/escrow subsets | No | No; injected calculator defaults to zero | No production owner |
 | Kotlin (Android) | No local provider quota parsing | Yes | Yes | No canonical catalog calculator | Yes |
 | Browser TypeScript (Console) | No | Yes, with non-extractable WebCrypto keys | No | No | Consumes encrypted search data; no duplicate native analyzer |

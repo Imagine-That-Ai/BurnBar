@@ -29,7 +29,7 @@ export const RELEASE_CONSUMERS = Object.freeze({
   apple: Object.freeze({
     signerWorkflow: ".github/workflows/release.yml",
     artifactKind: "macos-dmg",
-    target: "macos-universal",
+    target: "macos-arm64",
     domains: Object.freeze([
       "quota",
       "cloudVault",
@@ -270,7 +270,7 @@ export function validateReleaseCoordinates({
       `${consumer} artifact kind and target do not match the release contract`,
     );
   }
-  const allowedVersion = new Set(["apple", "android"]).has(consumer)
+  const allowedVersion = new Set(["apple", "android", "ios"]).has(consumer)
     ? NATIVE_RELEASE_VERSION
     : STABLE_RELEASE_VERSION;
   if (typeof version !== "string" || !allowedVersion.test(version)) {

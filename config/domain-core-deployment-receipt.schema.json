@@ -16,8 +16,6 @@
     "sourceRun",
     "promotionProof",
     "rollbackArtifact",
-    "activation",
-    "publicProfile",
     "release",
     "deployment"
   ],
@@ -80,12 +78,6 @@
     },
     "rollbackArtifact": {
       "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/rollbackArtifact"
-    },
-    "activation": {
-      "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/activation"
-    },
-    "publicProfile": {
-      "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/publicProfile"
     },
     "release": {
       "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/release"
