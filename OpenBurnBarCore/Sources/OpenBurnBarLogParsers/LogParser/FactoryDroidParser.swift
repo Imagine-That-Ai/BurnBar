@@ -129,7 +129,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                         parseCache.fileEntries[cacheKey] = FactoryDroidCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
-                            conversation: options.includeConversationBodies ? parsed?.conversation : nil
+                            conversation: nil
                         )
                         cacheMutated = true
                     }
@@ -455,7 +455,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
             parseCache.fileEntries[cacheKey] = FactoryDroidCacheEntry(
                 signature: signature,
                 usage: transient.usage,
-                conversation: transient.conversation
+                conversation: nil
             )
             cacheMutated = true
         }
