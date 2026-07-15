@@ -28,6 +28,7 @@ function parseArguments(argv) {
     "--expected-commit",
     "--expected-tag",
     "--identity",
+    "--runtime-manifest",
     "--profile-receipt",
     "--release-gate",
     "--health",
@@ -118,7 +119,7 @@ function validateJobs(raw, profileName, runId, commit) {
   );
 }
 
-function validateHealth(raw, identityPath) {
+function validateHealth(raw, runtimeManifestPath) {
   const health = exactObject(
     raw,
     [
@@ -128,6 +129,7 @@ function validateHealth(raw, identityPath) {
       "status",
       "healthChecks",
       "deployedArtifact",
+      "providerCoordinates",
     ],
     "Console deployment health",
   );
@@ -145,6 +147,8 @@ function validateHealth(raw, identityPath) {
     "marketing-http-200-csp",
     "console-http-200-csp",
     "console-deployment-identity-no-redirect",
+    "console-runtime-manifest-no-redirect",
+    "console-runtime-files-sha256",
   ];
   assert.deepEqual(
     health.healthChecks,
@@ -154,11 +158,30 @@ function validateHealth(raw, identityPath) {
   assert.deepEqual(
     health.deployedArtifact,
     {
-      fileName: "domain-core-deployment-identity.json",
-      sha256: sha256File(identityPath),
+      fileName: "domain-core-runtime-artifact-manifest.json",
+      sha256: sha256File(runtimeManifestPath),
     },
     "Console health evidence does not bind the verified live identity bytes",
   );
+  const sites = health.providerCoordinates?.sites;
+  if (
+    !Array.isArray(sites) ||
+    sites.length !== 2 ||
+    JSON.stringify(sites.map((site) => [site.target, site.site]).sort()) !==
+      JSON.stringify([
+        ["console", "burnbar-console"],
+        ["marketing", "burnbar"],
+      ]) ||
+    sites.some(
+      (site) =>
+        typeof site.versionName !== "string" ||
+        typeof site.releaseName !== "string" ||
+        !site.versionName.startsWith(`sites/${site.site}/versions/`) ||
+        !site.releaseName.startsWith(`sites/${site.site}/channels/live/releases/`),
+    )
+  ) {
+    throw new Error("Console health evidence lacks exact immutable Hosting versions and releases");
+  }
   return structuredClone(health);
 }
 
@@ -230,9 +253,10 @@ export function run(argv) {
     commit,
   );
   const healthPath = resolve(args.get("--health"));
+  const runtimeManifestPath = resolve(args.get("--runtime-manifest"));
   const health = validateHealth(
     readJson(healthPath, "health evidence"),
-    identityPath,
+    runtimeManifestPath,
   );
   const receipt = {
     provider: health.provider,
@@ -241,6 +265,7 @@ export function run(argv) {
     status: health.status,
     healthChecks: health.healthChecks,
     deployedArtifact: health.deployedArtifact,
+    providerCoordinates: health.providerCoordinates,
     deployRun: {
       repository: "Imagine-That-Ai/BurnBar",
       workflowPath: ".github/workflows/deploy-hosting.yml",

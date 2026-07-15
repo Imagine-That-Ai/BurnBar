@@ -60,6 +60,8 @@ class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
             "HEALTH_GATE_EXPECTED_DOMAIN_CORE_CANDIDATE_COMMIT",
             "HEALTH_GATE_EXPECTED_DOMAIN_CORE_SOURCE_SHA256",
             "HEALTH_GATE_EXPECTED_DOMAIN_CORE_PRICING_MODE",
+            "HEALTH_GATE_EXPECTED_DOMAIN_CORE_RUNTIME_MANIFEST_SHA256",
+            "HEALTH_GATE_EXPECTED_DOMAIN_CORE_WASM_SHA256",
             "domain-core-functions-deploy-proof-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}",
             "domain-core-functions-deploy-health-${{ needs.deploy-functions.outputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}",
             "dispatch-domain-core-functions-evidence:",
@@ -136,7 +138,9 @@ class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
         required = (
             "HEALTH_GATE_EXPECTED_SOURCE_COMMIT",
             "HEALTH_GATE_EXPECTED_DOMAIN_CORE_PROFILE",
-            'document.get("domainCore") != expected',
+            'domain_core.get("loadedCore") != expected_loaded',
+            'domain_core.get("artifactManifest") != expected_manifest',
+            "omits immutable Functions runtime coordinates",
             "OK Sentry enabled on live healthReady",
             "A deploy-health artifact is evidence",
         )

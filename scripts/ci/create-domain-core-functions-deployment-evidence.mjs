@@ -16,6 +16,8 @@ function parseArguments(argv) {
     "--deploy-proof",
     "--health-artifact",
     "--deploy-run-verification",
+    "--provider-coordinates",
+    "--inventory",
     "--output",
   ]);
   const values = new Map();
@@ -53,14 +55,36 @@ function requireHealthDocument(document, expectedStatus, proof, label) {
   ) {
     throw new Error(`${label} does not bind the exact released source commit`);
   }
-  const expectedDomainCore = {
-    profile: proof.profile.value.name,
-    candidateIdentity: proof.profile.value.candidateIdentity,
-    pricingMode: proof.profile.value.modes.pricing,
-  };
-  if (!isDeepStrictEqual(document.domainCore, expectedDomainCore)) {
+  const domainCore = document.domainCore;
+  const candidate = proof.profile.value.candidateIdentity;
+  const wasm = proof.runtimeArtifact.value.files.find(
+    (file) =>
+      file.path ===
+      "vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
+  );
+  if (
+    domainCore?.profile !== proof.profile.value.name ||
+    !isDeepStrictEqual(domainCore?.candidateIdentity, candidate) ||
+    domainCore?.pricingMode !== proof.profile.value.modes.pricing ||
+    !isDeepStrictEqual(domainCore?.loadedCore, {
+      version: candidate.coreVersion,
+      abiVersion: candidate.abiVersion,
+      sourceSha256: candidate.sourceSha256,
+      wasmSha256: wasm?.sha256,
+    }) ||
+    !isDeepStrictEqual(domainCore?.artifactManifest, {
+      fileName: proof.runtimeArtifact.fileName,
+      sha256: proof.runtimeArtifact.sha256,
+    }) ||
+    !domainCore?.runtime ||
+    !["service", "revision", "configuration", "functionTarget"].every(
+      (key) =>
+        typeof domainCore.runtime[key] === "string" &&
+        domainCore.runtime[key].length > 0,
+    )
+  ) {
     throw new Error(
-      `${label} does not bind the exact deployed domain-core profile`,
+      `${label} does not bind the exact loaded WASM, runtime manifest, and immutable revision`,
     );
   }
 }
@@ -143,6 +167,8 @@ export function createFunctionsDeploymentEvidence(
   health,
   runVerification,
   healthArtifactBytes,
+  providerCoordinates,
+  inventory,
 ) {
   exactObject(
     proof,
@@ -155,6 +181,7 @@ export function createFunctionsDeploymentEvidence(
       "release",
       "profile",
       "compiledReceipt",
+      "runtimeArtifact",
       "releaseGate",
     ],
     "Functions deploy proof",
@@ -184,6 +211,41 @@ export function createFunctionsDeploymentEvidence(
   ) {
     throw new Error("healthReady does not prove production Sentry enablement");
   }
+  const targetNames = providerCoordinates?.targets?.map(
+    (target) => target.target,
+  );
+  if (
+    providerCoordinates?.buildArtifactSha256 !== proof.runtimeArtifact.sha256 ||
+    !providerCoordinates?.sharedSource ||
+    !Array.isArray(providerCoordinates?.targets) ||
+    inventory?.schemaVersion !== 1 ||
+    !Array.isArray(inventory.targets) ||
+    providerCoordinates.targets.length !== inventory.targets.length ||
+    new Set(targetNames).size !== inventory.targets.length ||
+    inventory.targets.some((target) => !targetNames.includes(target))
+  ) {
+    throw new Error(
+      "Functions provider coordinates do not bind the exact runtime artifact and target inventory",
+    );
+  }
+  for (const [label, document] of [
+    ["healthLive", health.healthLive],
+    ["healthReady", health.healthReady],
+  ]) {
+    const runtime = document.domainCore.runtime;
+    const coordinate = providerCoordinates.targets.find(
+      (target) => target.target === label,
+    );
+    if (
+      !coordinate ||
+      coordinate.revision !== runtime.revision ||
+      !coordinate.service.endsWith(`/${runtime.service}`)
+    ) {
+      throw new Error(
+        `${label} runtime does not match its immutable provider coordinate`,
+      );
+    }
+  }
   return {
     provider: "firebase-functions",
     project: "burnbar",
@@ -197,7 +259,11 @@ export function createFunctionsDeploymentEvidence(
       "sentry",
       "domainCoreProfile",
     ],
-    deployedArtifact: structuredClone(proof.compiledReceipt),
+    deployedArtifact: {
+      fileName: proof.runtimeArtifact.fileName,
+      sha256: proof.runtimeArtifact.sha256,
+    },
+    providerCoordinates: structuredClone(providerCoordinates),
     deployRun,
     healthArtifactSha256: createHash("sha256")
       .update(healthArtifactBytes)
@@ -219,6 +285,14 @@ export function run(argv) {
       "Functions deploy-run verification",
     ),
     readFileSync(healthArtifactPath),
+    readJson(
+      resolve(args.get("--provider-coordinates")),
+      "Functions provider coordinates",
+    ),
+    readJson(
+      resolve(args.get("--inventory")),
+      "protected Functions target inventory",
+    ),
   );
   const output = writeCreateOnly(
     args.get("--output"),

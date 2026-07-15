@@ -48,9 +48,30 @@ function workspace(selected = profile()) {
   const profilePath = join(directory, "profile.json");
   const compiledReceiptPath = join(directory, "domainCoreCandidateReceipt.js");
   const releaseGatePath = join(directory, "domain-core-release-gate.json");
+  const runtimeManifestPath = join(
+    directory,
+    "domain-core-runtime-artifact-manifest.json",
+  );
   const output = join(directory, "domain-core-functions-deploy-proof.json");
   writeFileSync(profilePath, `${JSON.stringify(selected, null, 2)}\n`);
   writeFileSync(compiledReceiptPath, profileFunctionsJavaScript(selected));
+  writeFileSync(
+    runtimeManifestPath,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      manifestKind: "domain-core-runtime-artifact",
+      consumer: "functions",
+      profile: selected.name,
+      candidate: CANDIDATE,
+      files: [
+        {
+          path: "vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
+          sha256: "9".repeat(64),
+          size: 100,
+        },
+      ],
+    })}\n`,
+  );
   writeFileSync(
     releaseGatePath,
     `${JSON.stringify(
@@ -74,6 +95,7 @@ function workspace(selected = profile()) {
     directory,
     profilePath,
     compiledReceiptPath,
+    runtimeManifestPath,
     releaseGatePath,
     output,
   };
@@ -85,6 +107,8 @@ function args(files) {
     files.profilePath,
     "--compiled-receipt",
     files.compiledReceiptPath,
+    "--runtime-manifest",
+    files.runtimeManifestPath,
     "--release-gate",
     files.releaseGatePath,
     "--tag",
@@ -158,6 +182,7 @@ test("rejects a release gate for another candidate", () => {
         buildFunctionsDeployProof({
           profilePath: files.profilePath,
           compiledReceiptPath: files.compiledReceiptPath,
+          runtimeManifestPath: files.runtimeManifestPath,
           releaseGatePath: files.releaseGatePath,
           tag: "v1.2.3",
           commit: CANDIDATE.candidateCommit,

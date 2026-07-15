@@ -14,8 +14,10 @@
  * constant) — never let the two drift without a recorded decision.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 
 import {
   LEGACY_KIMI_WIRE_MODEL,
@@ -28,6 +30,7 @@ import {
   configureDomainCorePricingShadowEvidenceSink,
   DomainCorePricingError,
   flushDomainCorePricingShadowEvidence,
+  loadedDomainCorePricingIdentity,
   resolveDomainCorePricingMode,
 } from "../domainCorePricing.js";
 import { isRecord } from "../guards.js";
@@ -219,6 +222,25 @@ describe("shared domain-core pricing", () => {
   afterEach(async () => {
     configureDomainCorePricingShadowEvidenceSink(undefined);
     await flushDomainCorePricingShadowEvidence();
+  });
+
+  it("reports the digest of the exact WASM bytes loaded by production pricing", () => {
+    const require = createRequire(__filename);
+    const modulePath = require.resolve("@openburnbar/domain-core-wasm");
+    const loaded = require(modulePath) as {
+      domainCoreVersion(): string;
+      domainCoreAbiVersion(): number;
+      domainCoreSourceFingerprint(): string;
+    };
+    const expectedWasmSha256 = createHash("sha256")
+      .update(readFileSync(resolve(dirname(modulePath), "openburnbar_domain_core_bg.wasm")))
+      .digest("hex");
+    expect(loadedDomainCorePricingIdentity()).toEqual({
+      version: loaded.domainCoreVersion(),
+      abiVersion: loaded.domainCoreAbiVersion(),
+      sourceSha256: loaded.domainCoreSourceFingerprint(),
+      wasmSha256: expectedWasmSha256,
+    });
   });
 
   it.each(["legacy", "shadow", "rust"] as const)("matches canonical vectors in %s mode", (mode) => {

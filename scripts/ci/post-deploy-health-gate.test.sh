@@ -36,7 +36,9 @@ commit="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 repository="https://github.com/Imagine-That-Ai/BurnBar"
 core_version="0.3.0"
 core_source="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-domain_core="{\"profile\":\"public-production\",\"candidateIdentity\":{\"candidateCommit\":\"$commit\",\"coreVersion\":\"$core_version\",\"abiVersion\":3,\"sourceSha256\":\"$core_source\"},\"pricingMode\":\"rust\"}"
+manifest_sha="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+wasm_sha="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+domain_core="{\"profile\":\"public-production\",\"candidateIdentity\":{\"candidateCommit\":\"$commit\",\"coreVersion\":\"$core_version\",\"abiVersion\":3,\"sourceSha256\":\"$core_source\"},\"pricingMode\":\"rust\",\"loadedCore\":{\"version\":\"$core_version\",\"abiVersion\":3,\"sourceSha256\":\"$core_source\",\"wasmSha256\":\"$wasm_sha\"},\"artifactManifest\":{\"fileName\":\"domain-core-runtime-artifact-manifest.json\",\"sha256\":\"$manifest_sha\"},\"runtime\":{\"service\":\"health-live\",\"revision\":\"health-live-00042-abc\",\"configuration\":\"health-live\",\"functionTarget\":\"healthLive\"}}"
 cat > "$TMP/live.json" <<EOF
 {"status":"alive","license":"AGPL-3.0-only","source":{"repository":"$repository","commit":"$commit","correspondingSource":"https://burnbar.ai/legal/source"},"domainCore":$domain_core}
 EOF
@@ -61,6 +63,8 @@ run_gate() {
   HEALTH_GATE_EXPECTED_DOMAIN_CORE_ABI_VERSION=3 \
   HEALTH_GATE_EXPECTED_DOMAIN_CORE_SOURCE_SHA256="$core_source" \
   HEALTH_GATE_EXPECTED_DOMAIN_CORE_PRICING_MODE="$2" \
+  HEALTH_GATE_EXPECTED_DOMAIN_CORE_RUNTIME_MANIFEST_SHA256="$manifest_sha" \
+  HEALTH_GATE_EXPECTED_DOMAIN_CORE_WASM_SHA256="${HEALTH_TEST_EXPECTED_WASM_SHA:-$wasm_sha}" \
   DEPLOY_TAG=v1.2.3 \
   DEPLOY_HEALTH_JSON="$3" \
     bash "$ROOT/scripts/ci/post-deploy-health-gate.sh"
@@ -89,5 +93,13 @@ if run_gate "$commit" legacy "$TMP/wrong-profile-health.json" >/dev/null 2>&1; t
   exit 1
 fi
 test ! -e "$TMP/wrong-profile-health.json"
+
+rm -f "$TMP/stale-wasm-health.json"
+if HEALTH_TEST_EXPECTED_WASM_SHA="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" \
+  run_gate "$commit" rust "$TMP/stale-wasm-health.json" >/dev/null 2>&1; then
+  echo "expected stale loaded WASM digest to fail" >&2
+  exit 1
+fi
+test ! -e "$TMP/stale-wasm-health.json"
 
 echo "post-deploy health identity tests passed"

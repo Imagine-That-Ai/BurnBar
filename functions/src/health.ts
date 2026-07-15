@@ -12,12 +12,16 @@
  * Usage: curl https://us-central1-<project>.cloudfunctions.net/healthCheck
  */
 
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { logInfo, logError } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import { sourceMetadata } from "./sourceMetadata.js";
 import { domainCoreDeploymentIdentity } from "./domainCoreBuildProfile.js";
+import { loadedDomainCorePricingIdentity } from "./domainCorePricing.js";
 import { sentryStatus } from "./sentry.js";
 import { setPublicJsonSecurityHeaders } from "./publicHttpSecurityHeaders.js";
 import {
@@ -27,7 +31,22 @@ import {
 } from "./callables/publicRateLimit.js";
 
 const FUNCTION_VERSION = process.env.FUNCTION_VERSION ?? "unknown";
-const DOMAIN_CORE_DEPLOYMENT_IDENTITY = domainCoreDeploymentIdentity();
+const manifestPath = resolve(__dirname, "domain-core-runtime-artifact-manifest.json");
+const manifestBytes = readFileSync(manifestPath);
+const DOMAIN_CORE_DEPLOYMENT_IDENTITY = {
+  ...domainCoreDeploymentIdentity(),
+  loadedCore: loadedDomainCorePricingIdentity(),
+  artifactManifest: {
+    fileName: "domain-core-runtime-artifact-manifest.json",
+    sha256: createHash("sha256").update(manifestBytes).digest("hex"),
+  },
+  runtime: {
+    service: process.env.K_SERVICE ?? null,
+    revision: process.env.K_REVISION ?? null,
+    configuration: process.env.K_CONFIGURATION ?? null,
+    functionTarget: process.env.FUNCTION_TARGET ?? null,
+  },
+};
 
 /**
  * Probe Firestore with a hard timeout. Returns the probe latency in ms.

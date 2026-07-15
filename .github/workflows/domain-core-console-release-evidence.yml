@@ -138,6 +138,7 @@ jobs:
             --expected-commit "$GITHUB_SHA" \
             --expected-tag "$RELEASE_TAG" \
             --identity "$identity" \
+            --runtime-manifest "$RUNNER_TEMP/hosting-artifact/apps/console/out/domain-core-runtime-artifact-manifest.json" \
             --profile-receipt "$profile" \
             --release-gate "$gate" \
             --health "$health" \

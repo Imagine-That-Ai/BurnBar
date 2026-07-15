@@ -134,6 +134,101 @@ function lstatExists(path) {
   }
 }
 
+function validateProviderCoordinates(raw, consumer, artifactSha256) {
+  if (consumer === "console") {
+    const coordinates = exactObject(
+      raw,
+      ["sites"],
+      "Hosting provider coordinates",
+    );
+    const expected = new Map([
+      ["marketing", "burnbar"],
+      ["console", "burnbar-console"],
+    ]);
+    if (
+      !Array.isArray(coordinates.sites) ||
+      coordinates.sites.length !== expected.size
+    ) {
+      throw new Error(
+        "Hosting provider coordinates must contain both exact production sites",
+      );
+    }
+    const seen = new Set();
+    for (const rawSite of coordinates.sites) {
+      const site = exactObject(
+        rawSite,
+        ["target", "site", "versionName", "releaseName"],
+        "Hosting site coordinate",
+      );
+      if (
+        seen.has(site.target) ||
+        expected.get(site.target) !== site.site ||
+        typeof site.versionName !== "string" ||
+        !site.versionName.startsWith(`sites/${site.site}/versions/`) ||
+        typeof site.releaseName !== "string" ||
+        !site.releaseName.startsWith(
+          `sites/${site.site}/channels/live/releases/`,
+        )
+      ) {
+        throw new Error(
+          "Hosting provider coordinate is not an exact immutable production release",
+        );
+      }
+      seen.add(site.target);
+    }
+    if ([...expected.keys()].some((target) => !seen.has(target))) {
+      throw new Error("Hosting provider coordinates omit a production target");
+    }
+    return;
+  }
+
+  const coordinates = exactObject(
+    raw,
+    ["buildArtifactSha256", "sharedSource", "targets"],
+    "Functions provider coordinates",
+  );
+  const source = exactObject(
+    coordinates.sharedSource,
+    ["bucket", "object", "generation"],
+    "Functions provider source",
+  );
+  if (
+    coordinates.buildArtifactSha256 !== artifactSha256 ||
+    typeof source.bucket !== "string" ||
+    source.bucket.length === 0 ||
+    typeof source.object !== "string" ||
+    source.object.length === 0 ||
+    typeof source.generation !== "string" ||
+    !/^[1-9]\d*$/u.test(source.generation) ||
+    !Array.isArray(coordinates.targets) ||
+    coordinates.targets.length === 0
+  ) {
+    throw new Error(
+      "Functions provider coordinates do not bind one immutable build artifact",
+    );
+  }
+  const seen = new Set();
+  for (const rawTarget of coordinates.targets) {
+    const target = exactObject(
+      rawTarget,
+      ["target", "function", "build", "service", "revision"],
+      "Functions target coordinate",
+    );
+    if (
+      !/^[A-Za-z][A-Za-z0-9]*$/u.test(target.target) ||
+      seen.has(target.target) ||
+      [target.function, target.build, target.service, target.revision].some(
+        (value) => typeof value !== "string" || value.length === 0,
+      )
+    ) {
+      throw new Error(
+        "Functions provider coordinates contain an invalid or duplicate target",
+      );
+    }
+    seen.add(target.target);
+  }
+}
+
 function validateDeployment(raw, consumer, release) {
   const value = exactObject(
     raw,
@@ -144,6 +239,7 @@ function validateDeployment(raw, consumer, release) {
       "status",
       "healthChecks",
       "deployedArtifact",
+      "providerCoordinates",
       "deployRun",
       "healthArtifactSha256",
     ],
@@ -186,6 +282,11 @@ function validateDeployment(raw, consumer, release) {
   if (!/^[0-9a-f]{64}$/u.test(deployedArtifact.sha256)) {
     throw new Error("deployed artifact SHA-256 must be lowercase SHA-256");
   }
+  validateProviderCoordinates(
+    value.providerCoordinates,
+    consumer,
+    deployedArtifact.sha256,
+  );
   const expectedProvider =
     consumer === "console" ? "firebase-hosting" : "firebase-functions";
   if (value.provider !== expectedProvider) {
