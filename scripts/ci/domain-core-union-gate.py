@@ -369,6 +369,7 @@ def check_provenance(root: pathlib.Path, fingerprint: str, surfaces: list[str]) 
         "swift": root / "crates/openburnbar-domain-core/artifact-provenance/swift.sha256",
         "kotlin": root / "crates/openburnbar-domain-core/artifact-provenance/kotlin.sha256",
         "csharp": root / "crates/openburnbar-domain-core/artifact-provenance/csharp.sha256",
+        "python": root / "crates/openburnbar-domain-core/artifact-provenance/python.sha256",
         "browser-wasm": root / "apps/console/vendor/openburnbar-domain-core-wasm" / FINGERPRINT_NAME,
         "node-wasm": root / "functions/vendor/openburnbar/domain-core-wasm" / FINGERPRINT_NAME,
         "xcframework": root / "Vendor/OpenBurnBarDomainCore.xcframework" / FINGERPRINT_NAME,

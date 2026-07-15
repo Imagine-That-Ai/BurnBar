@@ -35,6 +35,7 @@ const SLICE_OPERATION = {
   "cloudvault/escrow": "escrow_open",
   "cloudvault/document-rewrap": "document_rewrap",
   "cloudvault/search": "token",
+  "cloudvault/opaque-identifiers": "project_memory_doc_id",
   "hermes/aad": "aad",
   "hermes/payload-keywrap": "seal",
   "hermes/hpke-info": "hpke_v3_info",

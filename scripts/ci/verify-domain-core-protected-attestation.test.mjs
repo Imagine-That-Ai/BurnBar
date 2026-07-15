@@ -184,7 +184,7 @@ function verify(value = bundle(), run = githubRun(), jobs = jobsResponse()) {
 }
 
 test("protected verifier independently accepts only an exact successful main push proof", () => {
-  assert.equal(EXPECTED_JOB_NAMES.length, 14);
+  assert.equal(EXPECTED_JOB_NAMES.length, 15);
   const result = verify();
   assert.equal(result.schemaVersion, 2);
   assert.equal(result.promotionAuthorized, false);

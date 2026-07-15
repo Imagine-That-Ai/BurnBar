@@ -213,7 +213,7 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "foundation" },
-            "consumer": { "enum": ["apple", "android", "windows", "console"] },
+            "consumer": { "enum": ["apple", "android", "windows", "console", "local-mcp"] },
             "operation": {
               "enum": [
                 "aad_v1",
@@ -257,7 +257,7 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "aes" },
-            "consumer": { "enum": ["apple", "android", "windows", "console"] },
+            "consumer": { "enum": ["apple", "android", "windows", "console", "local-mcp"] },
             "operation": {
               "enum": [
                 "aes_gcm_seal_detached",
@@ -330,8 +330,16 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "search" },
-            "consumer": { "enum": ["apple", "android"] },
+            "consumer": { "enum": ["apple", "android", "local-mcp"] },
             "operation": { "enum": ["token", "index", "query", "semantic"] }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "opaque-identifiers" },
+            "consumer": { "const": "local-mcp" },
+            "operation": { "const": "project_memory_doc_id" }
           }
         },
         {

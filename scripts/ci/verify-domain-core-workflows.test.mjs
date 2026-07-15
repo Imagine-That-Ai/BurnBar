@@ -75,11 +75,7 @@ test("native consumer jobs keep their measured execution margin and emulator she
   );
   assert.match(
     core,
-    /^            cd android && \.\/gradlew :openburnbar-domain-core:connectedDebugAndroidTest .*candidateCommit="\$GITHUB_SHA"$/mu,
-  );
-  assert.match(
-    core,
-    /^            adb exec-out run-as com\.openburnbar\.domaincore\.test cat files\/domain-core-observed-identity\.json > "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
+    /^          script: bash scripts\/ci\/run-domain-core-android-native-load\.sh .* "\$GITHUB_SHA" "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
   );
 });
 

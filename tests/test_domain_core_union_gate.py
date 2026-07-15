@@ -175,6 +175,7 @@ class DomainCoreUnionGateTests(unittest.TestCase):
         expected_sidecars = {
             "csharp.sha256",
             "kotlin.sha256",
+            "python.sha256",
             "swift.sha256",
         }
         actual_sidecars = {path.name for path in provenance_root.glob("*.sha256")}

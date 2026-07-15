@@ -94,9 +94,9 @@ CloudVault C1 is split by security boundary:
   Rust.
 - **Opaque identifiers:** closed purpose-specific project-memory, Pensieve,
   provenance, and subscription HKDF/HMAC operations. The local MCP Python
-  consumer is `REQUIRED_CONSUMER_PENDING` and blocks C1 completion and legacy
-  deletion until its production package, identity checks, adapter, and fixture
-  tests land.
+  consumer now has a generated native package, strict identity adapter,
+  canonical contracts, and deterministic candidate-proof cell. Other required
+  consumers and the promotion/deletion gates remain open.
 
 Android selects `legacy`, legacy-authoritative `shadow`, or fail-closed `rust`
 for C1d with `OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE`; missing or
@@ -174,7 +174,7 @@ Quota promotion requires all of the following:
 2. One exact candidate commit and Rust version/ABI/source tuple, proven by the
    artifacts actually loaded by Swift, Kotlin, C#, browser Wasm, and Node Wasm.
 3. A successful `push` run of `.github/workflows/domain-core.yml` on `main` with
-   every exact policy job and all 38 real `(domain, slice, consumer)` coverage
+   every exact policy job and all 42 currently declared `(domain, slice, consumer)` coverage
    cells. Failed, skipped, missing, duplicate, extra, PR, dispatch, mixed-run, or
    mixed-candidate evidence fails closed.
 4. The paired complete-payload FFI benchmark no more than **5 percent** slower

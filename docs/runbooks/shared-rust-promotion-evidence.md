@@ -239,7 +239,7 @@ substitutes for the deterministic workflow below.
 3. The jobs emit suite reports and artifact hashes tied to the exact run ID,
    attempt, commit, version, ABI, and source fingerprint. Required native/Wasm
    load suites prove Swift, Kotlin, C#, browser Wasm, and Node Wasm artifacts.
-   The same run executes all 38 policy coverage cells, deterministic KATs and
+   The same run executes all 42 currently declared policy coverage cells, deterministic KATs and
    fuzz/property suites, the paired five-percent performance ceiling, and the
    real signed-legacy rollback drill.
 4. The final job creates
