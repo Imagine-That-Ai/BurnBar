@@ -9,7 +9,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DEFAULT_POLICY = join(
   REPO_ROOT,
   "config",
-  "domain-core-promotion-policy.json",
+  "domain-core-shadow-diagnostic-policy.json",
 );
 
 function usage(message) {
@@ -82,5 +82,5 @@ const serialized = `${JSON.stringify(report, null, 2)}\n`;
 if (args.output) writeAtomically(args.output, serialized);
 process.stdout.write(serialized);
 process.exit(
-  report.status === "ready" ? 0 : report.status === "not_ready" ? 2 : 1,
+  report.status === "not_ready" || report.status === "diagnostic" ? 2 : 1,
 );

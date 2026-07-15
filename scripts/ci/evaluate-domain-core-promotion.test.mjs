@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -16,7 +16,7 @@ const REPO_ROOT = join(SCRIPT_DIR, "..", "..");
 const CLI = join(SCRIPT_DIR, "evaluate-domain-core-promotion.mjs");
 const POLICY = JSON.parse(
   readFileSync(
-    join(REPO_ROOT, "config", "domain-core-promotion-policy.json"),
+    join(REPO_ROOT, "config", "domain-core-shadow-diagnostic-policy.json"),
     "utf8",
   ),
 );
@@ -48,10 +48,7 @@ function dailySampleCounts(total) {
 
 function validEvidence(domain = "quota") {
   const coverage = requiredCoverageForDomain(domain);
-  const sampleCount = Math.max(
-    14,
-    Math.ceil(POLICY.domains[domain].minimumSamples / coverage.length),
-  );
+  const sampleCount = 14;
   const candidate = {
     candidateCommit: CANDIDATE,
     expectedCoreVersion: "0.3.0",
@@ -83,12 +80,20 @@ function validEvidence(domain = "quota") {
   };
 }
 
-test("every declared domain is ready only with complete candidate-bound V3 coverage", () => {
+test("complete candidate-bound V3 coverage remains diagnostic-only", () => {
   for (const domain of ["quota", "cloudvault", "hermes", "pricing"]) {
     const report = evaluatePromotionEvidence(validEvidence(domain), POLICY, {
       now: NOW,
     });
-    assert.equal(report.status, "ready", domain);
+    assert.equal(report.status, "diagnostic", domain);
+    assert.equal(report.ready, false, domain);
+    assert.equal(report.authority, "diagnostic-only", domain);
+    assert.ok(
+      report.blockers.some(
+        (item) => item.code === "deterministic_proof_required",
+      ),
+      domain,
+    );
     assert.equal(report.candidateCommit, CANDIDATE);
     assert.equal(report.expectedCoreSourceSha256, SOURCE_SHA);
     assert.equal(report.provenance.candidateCommit, CANDIDATE);
@@ -152,13 +157,14 @@ test("candidate core version must be canonical SemVer", () => {
   }
 });
 
-test("missing one required slice/consumer pair blocks promotion", () => {
+test("missing one required slice/consumer pair remains a diagnostic alert", () => {
   const evidence = validEvidence("cloudvault");
   evidence.windows = evidence.windows.filter(
     (item) => !(item.slice === "search" && item.consumer === "android"),
   );
   const report = evaluatePromotionEvidence(evidence, POLICY, { now: NOW });
-  assert.equal(report.status, "not_ready");
+  assert.equal(report.status, "diagnostic");
+  assert.equal(report.ready, false);
   assert.ok(
     report.blockers.some(
       (item) =>
@@ -199,18 +205,8 @@ test("UTC daily continuity is structural evidence, not a min/max approximation",
   );
 });
 
-test("quantitative and review gates fail closed per coverage cell", () => {
+test("mismatch, performance, and channel alerts remain diagnostic-only", () => {
   const cases = [
-    [
-      "sample count",
-      (e) => {
-        for (const item of e.windows) {
-          item.sampleCount = item.latency.sampleCount = 14;
-          item.dailySampleCounts = dailySampleCounts(14);
-        }
-      },
-      "insufficient_samples",
-    ],
     [
       "unexplained mismatch",
       (e) => {
@@ -239,7 +235,8 @@ test("quantitative and review gates fail closed per coverage cell", () => {
     const evidence = validEvidence();
     mutate(evidence);
     const report = evaluatePromotionEvidence(evidence, POLICY, { now: NOW });
-    assert.equal(report.status, "not_ready", label);
+    assert.equal(report.status, "diagnostic", label);
+    assert.equal(report.ready, false, label);
     assert.ok(
       report.blockers.some((item) => item.code === blocker),
       label,
@@ -261,7 +258,7 @@ test("explained mismatches require a linked issue, reviewer, and approval timest
   ];
   assert.equal(
     evaluatePromotionEvidence(valid, POLICY, { now: NOW }).status,
-    "ready",
+    "diagnostic",
   );
 
   const invalid = validEvidence();
@@ -316,7 +313,7 @@ test("CLI requires and binds --domain with distinct exit codes", () => {
     const evidencePath = join(directory, "evidence.json");
     const outputPath = join(directory, "report.json");
     writeFileSync(evidencePath, JSON.stringify(validEvidence("quota")));
-    const stdout = execFileSync(
+    const diagnostic = spawnSync(
       process.execPath,
       [
         CLI,
@@ -329,7 +326,8 @@ test("CLI requires and binds --domain with distinct exit codes", () => {
       ],
       { encoding: "utf8" },
     );
-    assert.equal(JSON.parse(stdout).status, "ready");
+    assert.equal(diagnostic.status, 2);
+    assert.equal(JSON.parse(diagnostic.stdout).status, "diagnostic");
     assert.equal(
       JSON.parse(readFileSync(outputPath, "utf8")).candidateCommit,
       CANDIDATE,
