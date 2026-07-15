@@ -22,6 +22,7 @@
   ],
   "oneOf": [
     {
+      "not": { "required": ["androidUniversal"] },
       "properties": {
         "consumer": { "const": "apple" },
         "domain": {
@@ -39,6 +40,7 @@
       }
     },
     {
+      "required": ["androidUniversal"],
       "properties": {
         "consumer": { "const": "android" },
         "domain": {
@@ -54,6 +56,7 @@
       }
     },
     {
+      "not": { "required": ["androidUniversal"] },
       "properties": {
         "consumer": { "const": "windows" },
         "domain": { "enum": ["quota", "cloudVault"] },
@@ -62,6 +65,7 @@
       }
     },
     {
+      "not": { "required": ["androidUniversal"] },
       "properties": {
         "consumer": { "const": "console" },
         "domain": { "const": "cloudVault" },
@@ -70,6 +74,7 @@
       }
     },
     {
+      "not": { "required": ["androidUniversal"] },
       "properties": {
         "consumer": { "const": "functions" },
         "domain": { "const": "pricing" },
@@ -122,6 +127,7 @@
     "activation": { "$ref": "#/$defs/activation" },
     "publicProfile": { "$ref": "#/$defs/publicProfile" },
     "artifact": { "$ref": "#/$defs/artifact" },
+    "androidUniversal": { "$ref": "#/$defs/androidUniversal" },
     "release": { "$ref": "#/$defs/release" }
   },
   "$defs": {
@@ -312,6 +318,65 @@
       "properties": {
         "fileName": { "type": "string", "minLength": 1 },
         "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "androidUniversal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifestSha256",
+        "schemaVersion",
+        "target",
+        "library",
+        "candidateAar",
+        "abis"
+      ],
+      "properties": {
+        "manifestSha256": { "$ref": "#/$defs/sha256" },
+        "schemaVersion": { "const": 1 },
+        "target": { "const": "android-universal" },
+        "library": { "const": "libopenburnbar_domain_ffi.so" },
+        "candidateAar": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fileName", "sha256"],
+          "properties": {
+            "fileName": { "const": "openburnbar-domain-core.aar" },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "abis": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["abi", "path", "sha256"],
+              "properties": {
+                "abi": { "const": "arm64-v8a" },
+                "path": {
+                  "const": "base/lib/arm64-v8a/libopenburnbar_domain_ffi.so"
+                },
+                "sha256": { "$ref": "#/$defs/sha256" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["abi", "path", "sha256"],
+              "properties": {
+                "abi": { "const": "x86_64" },
+                "path": {
+                  "const": "base/lib/x86_64/libopenburnbar_domain_ffi.so"
+                },
+                "sha256": { "$ref": "#/$defs/sha256" }
+              }
+            }
+          ],
+          "items": false
+        }
       }
     },
     "release": {

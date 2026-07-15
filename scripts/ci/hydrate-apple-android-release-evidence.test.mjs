@@ -21,6 +21,31 @@ const CANDIDATE = {
   sourceSha256: "b".repeat(64),
 };
 
+function androidUniversal() {
+  return {
+    manifestSha256: "1".repeat(64),
+    schemaVersion: 1,
+    target: "android-universal",
+    library: "libopenburnbar_domain_ffi.so",
+    candidateAar: {
+      fileName: "openburnbar-domain-core.aar",
+      sha256: "2".repeat(64),
+    },
+    abis: [
+      {
+        abi: "arm64-v8a",
+        path: "base/lib/arm64-v8a/libopenburnbar_domain_ffi.so",
+        sha256: "3".repeat(64),
+      },
+      {
+        abi: "x86_64",
+        path: "base/lib/x86_64/libopenburnbar_domain_ffi.so",
+        sha256: "4".repeat(64),
+      },
+    ],
+  };
+}
+
 function sha(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
@@ -48,6 +73,9 @@ function fixture() {
       domain,
       artifactKind,
       target,
+      ...(consumer === "android"
+        ? { androidUniversal: androidUniversal() }
+        : {}),
       candidate: CANDIDATE,
       sourceRun: {
         repository: "Imagine-That-Ai/BurnBar",

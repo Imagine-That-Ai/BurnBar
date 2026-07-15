@@ -91,6 +91,8 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
     /--policy config\/apple-release-signing-policy\.json --environment/u,
   );
   assert.match(build, /--binary "\$packaged_library"/u);
+  assert.match(build, /verify-domain-core-android-universal-artifact\.mjs/u);
+  assert.match(build, /--candidate-aar Vendor\/openburnbar-domain-core\.aar/u);
   assert.match(build, /runs-on: macos-26[\s\S]*arch: arm64-v8a/u);
   assert.match(
     androidBuild,
@@ -276,6 +278,8 @@ test("all Apple and Android assets and v2 evidence publish through one draft sta
   assert.match(evidence, /publish-apple-android-release\.mjs/u);
   assert.match(evidence, /apple-final-reverify-identity\.json/u);
   assert.match(evidence, /domain-core-apple-prepublication-identity/u);
+  assert.match(evidence, /android-universal-abi-manifest\.json/u);
+  assert.match(evidence, /--android-abi-manifest/u);
   assert.match(
     evidence,
     /mkdir -p "\$RUNNER_TEMP\/domain-core-native-evidence"/u,
