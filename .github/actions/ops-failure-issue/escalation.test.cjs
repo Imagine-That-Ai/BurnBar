@@ -5,7 +5,9 @@ const {
   ESCALATED_LABEL,
   ESCALATION_AFTER_MS,
   P0_LABEL,
+  PAGED_LABEL,
   evaluateP0Escalation,
+  shouldPageP0,
 } = require("./escalation.cjs");
 
 const now = Date.parse("2026-07-10T12:00:00Z");
@@ -64,5 +66,85 @@ test("invalid issue timestamps fail closed", () => {
   assert.throws(
     () => evaluateP0Escalation(issue({ createdAt: "invalid" }), now),
     /valid timestamps/
+  );
+});
+
+// ---------------------------------------------------------------------------
+// P-OPS-4 paging: shouldPageP0
+
+test("shouldPageP0 pages once on the first P0 open (isCreate)", () => {
+  assert.deepEqual(
+    shouldPageP0({ mode: "open", isCreate: true, labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: true, reason: "p0-create" }
+  );
+});
+
+test("shouldPageP0 does not page on standing red (repeat open, isCreate=false)", () => {
+  assert.deepEqual(
+    shouldPageP0({ mode: "open", isCreate: false, labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: false, reason: "standing-red-no-page" }
+  );
+});
+
+test("shouldPageP0 never pages in close mode", () => {
+  assert.deepEqual(
+    shouldPageP0({ mode: "close", isCreate: true, labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: false, reason: "not-open-mode" }
+  );
+});
+
+test("shouldPageP0 never pages for a non-P0 lane", () => {
+  assert.deepEqual(
+    shouldPageP0({ mode: "open", isCreate: true, labels: ["lane:nightly-e2e", "P1 - High"] }),
+    { shouldPage: false, reason: "not-p0" }
+  );
+});
+
+test("shouldPageP0 suppresses paging when a named blocker is present", () => {
+  assert.deepEqual(
+    shouldPageP0({
+      mode: "open",
+      isCreate: true,
+      labels: ["lane:nightly-e2e", P0_LABEL, BLOCKER_LABEL],
+    }),
+    { shouldPage: false, reason: "named-blocker" }
+  );
+});
+
+test("shouldPageP0 accepts GitHub API label objects", () => {
+  assert.deepEqual(
+    shouldPageP0({
+      mode: "open",
+      isCreate: true,
+      labels: [{ name: "lane:nightly-e2e" }, { name: P0_LABEL }],
+    }),
+    { shouldPage: true, reason: "p0-create" }
+  );
+});
+
+test("PAGED_LABEL is the expected 'paged:ops' string", () => {
+  assert.equal(PAGED_LABEL, "paged:ops");
+});
+
+test("flap lifecycle: close then reopen pages again", () => {
+  // First genuine open → page.
+  assert.deepEqual(
+    shouldPageP0({ mode: "open", isCreate: true, labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: true, reason: "p0-create" }
+  );
+  // Standing red (comment+bump) → no page.
+  assert.deepEqual(
+    shouldPageP0({ mode: "open", isCreate: false, labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: false, reason: "standing-red-no-page" }
+  );
+  // Close → no page.
+  assert.deepEqual(
+    shouldPageP0({ mode: "close", isCreate: true, labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: false, reason: "not-open-mode" }
+  );
+  // New open after close → page again (lane is no longer standing red).
+  assert.deepEqual(
+    shouldPageP0({ mode: "open", isCreate: true, labels: ["lane:nightly-e2e", P0_LABEL] }),
+    { shouldPage: true, reason: "p0-create" }
   );
 });
