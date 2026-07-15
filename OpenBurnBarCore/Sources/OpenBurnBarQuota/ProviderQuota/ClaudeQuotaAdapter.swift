@@ -303,7 +303,9 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         if let probeSnapshot = await headerProbeSnapshot(
             workingCredentials: workingCredentials,
             resolvedAPIKeys: context.resolvedAPIKeys,
-            session: context.session
+            session: context.session,
+            environment: context.environment,
+            quotaLogger: context.quotaLogger
         ) {
             return probeSnapshot
         }
@@ -919,7 +921,9 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private func headerProbeSnapshot(
         workingCredentials: ClaudeOAuthCredentials?,
         resolvedAPIKeys: [String: String?],
-        session: URLSession
+        session: URLSession,
+        environment: [String: String],
+        quotaLogger: any QuotaLogger
     ) async -> ProviderQuotaSnapshot? {
         guard let rawCredential = rawProbeCredential(
             workingCredentials: workingCredentials,
@@ -935,8 +939,23 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             return nil
         }
 
-        let headers = result.rateLimitHeaders
-        let now = Date()
+        let now = Date(timeIntervalSince1970: floor(result.probedAt.timeIntervalSince1970))
+        return AnthropicRateLimitDomainCoreAdapter.snapshot(
+            payload: result.rateLimitHeaderPayload,
+            shape: result.shape,
+            now: now,
+            environment: environment,
+            quotaLogger: quotaLogger
+        ) {
+            legacyHeaderProbeSnapshot(headers: result.rateLimitHeaders, shape: result.shape, now: now)
+        }
+    }
+
+    func legacyHeaderProbeSnapshot(
+        headers: AnthropicCredentialProbe.RateLimitHeaders,
+        shape: AnthropicCredentialProbe.Shape,
+        now: Date
+    ) -> ProviderQuotaSnapshot? {
         var buckets: [ProviderQuotaBucket] = []
 
         if headers.hasUnifiedData {
@@ -1014,7 +1033,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
 
         guard !buckets.isEmpty else { return nil }
 
-        let credentialKind = result.shape == .consoleAPIKey ? "Console API key" : "Claude plan"
+        let credentialKind = shape == .consoleAPIKey ? "Console API key" : "Claude plan"
         return ProviderQuotaSnapshot(
             provider: .claudeCode,
             fetchedAt: now,

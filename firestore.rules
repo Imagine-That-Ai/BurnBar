@@ -4470,5 +4470,8 @@ service cloud.firestore {
 
     // --- Hermes Gateway root indexes (Deny All - Server Only) ---
 
+    // Hermes gateway token indexes and shared-Rust shadow evidence remain
+    // callable/Admin SDK only. Firestore's default deny applies because neither
+    // root collection has a client match block.
   }
 }

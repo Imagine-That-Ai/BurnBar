@@ -81,7 +81,7 @@ public final class WindsurfParser: LogParser, Sendable {
                 let outputTokens = estimatedTotalTokens - inputTokens
 
                 let pricing = ModelPricing.lookup(model: model)
-                let cost = pricing.cost(
+                let cost = try pricing.cost(
                     inputTokens: inputTokens,
                     outputTokens: outputTokens,
                     cacheCreationTokens: 0,

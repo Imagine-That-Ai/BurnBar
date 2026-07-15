@@ -242,6 +242,21 @@
       "operatorAction": "Verify live via scripts/ci/verify-firestore-ttl-state.mjs.",
       "rationale": "Sliding-window rate-limit counters must age out with their window instead of accumulating.",
       "source": "functions/src/callables/shared/providerConnect.ts"
+    },
+    {
+      "collectionGroup": "domain_core_shadow_samples",
+      "path": "domain_core_shadow_samples/{sampleId}",
+      "category": "rollout-telemetry",
+      "growth": "One privacy-safe sample per eligible shared-Rust quota shadow comparison.",
+      "mechanism": "firestore-ttl-field",
+      "ttlField": "expireAt",
+      "retentionSeconds": 5184000,
+      "retention": "60 days (DOMAIN_CORE_SHADOW_RETENTION_MS)",
+      "indexDeclared": true,
+      "status": "active",
+      "operatorAction": "Enable and verify live TTL with scripts/ci/verify-firestore-ttl-state.mjs before beta collection begins.",
+      "rationale": "Promotion evidence needs a bounded observation window and contains no uid, payload, parsed value, path, or stable device identifier.",
+      "source": "functions/src/callables/domainCoreShadowEvidence.ts"
     }
   ]
 }

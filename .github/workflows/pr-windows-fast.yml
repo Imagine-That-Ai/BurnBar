@@ -72,7 +72,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh|docs/windows-port/|scripts/ci/verify-windows-parity-ledger|scripts/windows-port/)'; then
+            '^(windows/|crates/openburnbar-domain-core/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh|docs/windows-port/|scripts/ci/verify-windows-parity-ledger|scripts/windows-port/)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Windows surface changed: running the skeleton, x64, and parity ledger lanes."
           else
@@ -141,6 +141,11 @@ jobs:
             8.0.x
             10.0.x
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
       - name: Verify Windows solution
         run: |
           if (-not (Test-Path "windows/OpenBurnBar.sln")) {
@@ -176,10 +181,15 @@ jobs:
             throw "NuGet vulnerability audit found vulnerable packages."
           }
 
+      - name: Build native shared domain core
+        run: cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
+
       - name: Build Windows solution
         run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64
 
       - name: Run Windows test suite
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-pr-x64.trx" --results-directory TestResults-x64
 
       - name: Upload Windows test results

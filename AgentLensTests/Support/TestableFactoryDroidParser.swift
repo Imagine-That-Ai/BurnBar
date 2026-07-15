@@ -142,7 +142,7 @@ final class TestableFactoryDroidParser: LogParser, @unchecked Sendable {
 
         let mtime = (try? fileManager.attributesOfItem(atPath: jsonlFile.path)[.modificationDate]) as? Date
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: totalInput,
             outputTokens: totalOutput,
             cacheCreationTokens: cacheCreation,

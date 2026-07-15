@@ -71,7 +71,7 @@ public final class HermesParser: LogParser, Sendable {
 
             let indexURL = sessionsDir.appendingPathComponent("sessions.json")
             if fileManager.fileExists(atPath: indexURL.path) {
-                let gatewayResult = parseGatewayIndex(
+                let gatewayResult = try parseGatewayIndex(
                     indexURL: indexURL,
                     sessionsDir: sessionsDir,
                     excluding: seenSessionIds,
@@ -90,7 +90,7 @@ public final class HermesParser: LogParser, Sendable {
                 )) ?? []
 
                 for file in contents where file.lastPathComponent.hasPrefix("session_") && file.pathExtension == "json" {
-                    let result = parseCLISnapshot(file: file, excluding: seenSessionIds, scope: scope)
+                    let result = try parseCLISnapshot(file: file, excluding: seenSessionIds, scope: scope)
                     usages.append(contentsOf: result.usages)
                     conversations.append(contentsOf: result.conversations)
                     seenSessionIds.formUnion(result.usages.map(\.sessionId))
@@ -108,7 +108,7 @@ public final class HermesParser: LogParser, Sendable {
                         fallbackSource: nil,
                         fallbackSessionId: rawSessionId
                     )
-                    if let usage = usage(
+                    if let usage = try usage(
                         sessionId: sessionId,
                         projectName: projectName,
                         model: summary.model ?? "hermes",
@@ -301,7 +301,7 @@ public final class HermesParser: LogParser, Sendable {
                 return nil
             }()
 
-            if let usage = usage(
+            if let usage = try usage(
                 sessionId: sessionId,
                 projectName: projectName,
                 model: model,
@@ -391,7 +391,7 @@ public final class HermesParser: LogParser, Sendable {
         sessionsDir: URL,
         excluding seenSessionIds: Set<String>,
         scope: HermesHomeScope
-    ) -> ParseResult {
+    ) throws -> ParseResult {
         guard let data = try? Data(contentsOf: indexURL), // try?-ok(optional index read)
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
             return ParseResult(usages: [], conversations: [])
@@ -486,7 +486,7 @@ public final class HermesParser: LogParser, Sendable {
                 usageCacheRead = 0
             }
 
-            if let usage = usage(
+            if let usage = try usage(
                 sessionId: sessionId,
                 projectName: projectName,
                 model: model,
@@ -521,7 +521,7 @@ public final class HermesParser: LogParser, Sendable {
         file: URL,
         excluding seenSessionIds: Set<String>,
         scope: HermesHomeScope
-    ) -> ParseResult {
+    ) throws -> ParseResult {
         guard let data = try? Data(contentsOf: file), // try?-ok(optional snapshot read)
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
             return ParseResult(usages: [], conversations: [])
@@ -576,7 +576,7 @@ public final class HermesParser: LogParser, Sendable {
             usageCacheRead = 0
         }
 
-        let usage = usage(
+        let usage = try usage(
             sessionId: sessionId,
             projectName: projectName,
             model: model,
@@ -671,18 +671,18 @@ public final class HermesParser: LogParser, Sendable {
         costOverride: Double?,
         startTime: Date,
         endTime: Date
-    ) -> TokenUsage? {
+    ) throws -> TokenUsage? {
         guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else {
             return nil
         }
 
         let pricing = ModelPricing.lookup(model: model)
-        let cost = costOverride ?? pricing.cost(
+        let cost = try (costOverride ?? pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: cacheReadTokens
-        )
+        ))
 
         return TokenUsage(
             provider: .hermes,

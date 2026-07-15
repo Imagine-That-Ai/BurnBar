@@ -1,0 +1,6 @@
+root = true
+
+# UniFFI-generated Kotlin follows the foreign ABI emitter's naming and wrapping
+# rules. It is regenerated from Rust and must never be hand-formatted.
+[src/main/java/uniffi/**]
+ktlint = disabled

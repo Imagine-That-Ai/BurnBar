@@ -39,7 +39,7 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
         // 1. Try cookie header resolution (env -> keychain -> Cursor SQLite JWT)
         if let credential = await resolveCursorCookieHeader(context: context) {
             do {
-                let usageSummary = try await fetchCursorUsageSummary(
+                let usageSummaryData = try await fetchCursorUsageSummaryData(
                     cookieHeader: credential.cookieHeader,
                     session: context.session
                 )
@@ -48,10 +48,12 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
                     cookieHeader: credential.cookieHeader,
                     session: context.session
                 )
-                return buildExactSnapshot(
-                    usageSummary: usageSummary,
+                return try parseUsageSnapshot(
+                    usageSummaryData,
                     userEmail: userInfo?.email,
-                    cookieHeader: credential.cookieHeader
+                    now: Date(),
+                    environment: context.environment,
+                    quotaLogger: context.quotaLogger
                 )
             } catch {
                 if credential.source == .configured, isAuthenticationRejection(error) {
@@ -134,10 +136,10 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - API Calls
 
-    private func fetchCursorUsageSummary(
+    private func fetchCursorUsageSummaryData(
         cookieHeader: String,
         session: URLSession
-    ) async throws -> CursorUsageSummary {
+    ) async throws -> Data {
         guard let url = URL(string: "https://cursor.sh/api/usage-summary") else {
             throw QuotaServiceError.invalidResponse("Cursor usage-summary URL is invalid.")
         }
@@ -161,9 +163,7 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
             throw QuotaServiceError.httpStatus(provider: .cursor, code: http.statusCode)
         }
 
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(CursorUsageSummary.self, from: data)
+        return data
     }
 
     private func fetchCursorUserInfo(
@@ -191,10 +191,31 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Snapshot Building
 
+    func parseUsageSnapshot(
+        _ data: Data,
+        userEmail: String?,
+        now: Date,
+        environment: [String: String],
+        quotaLogger: any QuotaLogger
+    ) throws -> ProviderQuotaSnapshot {
+        try CursorQuotaDomainCoreAdapter.snapshot(
+            payload: data,
+            userEmail: userEmail,
+            now: now,
+            environment: environment,
+            quotaLogger: quotaLogger
+        ) {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let usageSummary = try decoder.decode(CursorUsageSummary.self, from: data)
+            return buildExactSnapshot(usageSummary: usageSummary, userEmail: userEmail, now: now)
+        }
+    }
+
     private func buildExactSnapshot(
         usageSummary: CursorUsageSummary,
         userEmail: String?,
-        cookieHeader _: String
+        now: Date
     ) -> ProviderQuotaSnapshot {
         var buckets: [ProviderQuotaBucket] = []
 
@@ -294,7 +315,7 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
 
         return ProviderQuotaSnapshot(
             provider: .cursor,
-            fetchedAt: Date(),
+            fetchedAt: now,
             source: .officialAPI,
             confidence: .exact,
             managementURL: "https://cursor.com/dashboard",

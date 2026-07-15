@@ -36,7 +36,11 @@ if [[ -z "$changed_files" ]]; then
     exit 0
 fi
 
-production_changed="$(printf '%s\n' "$changed_files" | awk '/\/src\/main\// && $0 !~ /^android\/macrobenchmark\//')"
+production_changed="$(printf '%s\n' "$changed_files" | awk '
+  /\/src\/main\// &&
+  $0 !~ /^android\/macrobenchmark\// &&
+  $0 !~ /^android\/(burnbar-remote|openburnbar-domain-core|openburnbar-iroh-relay)\/src\/main\/java\/uniffi\//
+')"
 if [[ -z "$production_changed" ]]; then
     echo '{"diffCoverage":{"percent":100.0,"passed":true,"changedFiles":0,"surface":"android","method":"no_production_kotlin"}}'
     exit 0
@@ -78,6 +82,13 @@ changed = subprocess.check_output(
 changed = [c.strip() for c in changed if c.strip() and "/src/main/" in c]
 # android/macrobenchmark is on-device benchmark tooling (instrumented-only module, no JVM unit-test source set).
 changed = [c for c in changed if not c.startswith("android/macrobenchmark/")]
+# These three UniFFI trees are generated from Rust APIs and covered by binding drift/ABI gates.
+generated_uniffi_prefixes = (
+    "android/burnbar-remote/src/main/java/uniffi/",
+    "android/openburnbar-domain-core/src/main/java/uniffi/",
+    "android/openburnbar-iroh-relay/src/main/java/uniffi/",
+)
+changed = [c for c in changed if not c.startswith(generated_uniffi_prefixes)]
 if not changed:
     print(json.dumps({"diffCoverage": {"percent": 100.0, "passed": True, "surface": "android", "method": "no_production_kotlin"}}))
     raise SystemExit(0)

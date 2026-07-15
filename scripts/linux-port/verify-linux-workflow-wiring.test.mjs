@@ -10,12 +10,14 @@ function valid() {
       'assemble-linux-release.test.mjs',
       'linux-package-session.test.mjs',
       'render-parity-ledger.mjs --check',
+      'include-hidden-files: true',
       'macos-matched-performance',
       'run-matched-performance.mjs',
       '--profile pr',
       'matched-performance-contract.test.mjs',
       'perf-budget-contract.test.mjs',
-      'linux-parity-macos-performance-pr'
+      'linux-parity-macos-performance-pr',
+      'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests'
     ].join('\n'),
     nightly: [
       'OPENBURNBAR_LINUX_EVIDENCE_OUT',
@@ -24,7 +26,8 @@ function valid() {
       '--profile nightly',
       'OB_MATCHED_MACOS_INPUT',
       'OB_MATCHED_LINUX_INPUT',
-      'linux-parity-matched-performance-nightly'
+      'linux-parity-matched-performance-nightly',
+      'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests'
     ].join('\n'),
     release: [
       '- "linux-v*"',
@@ -194,6 +197,12 @@ test('package lifecycle finalizer regression suite cannot be removed', () => {
   assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
 });
 
+test('hidden Linux evidence upload cannot be disabled', () => {
+  const input = valid();
+  input.pr = input.pr.replace('include-hidden-files: true', 'include-hidden-files: false');
+  assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
+});
+
 test('attestation and publish order drift fails', () => {
   const input = valid();
   input.release = input.release.replace(
@@ -284,5 +293,16 @@ test('removing PR or nightly matched performance wiring fails', () => {
     const input = valid();
     input[field] = input[field].replace(marker, '');
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, `${field}:${marker}`);
+  }
+});
+
+test('Linux Swift evidence must route through the host-mounted evidence tree', () => {
+  const marker = 'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests';
+  for (const field of ['pr', 'nightly']) {
+    const input = valid();
+    input[field] = input[field].replace(marker, '');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, field);
+    assert.ok(result.failures.some((failure) => failure.includes('Linux Swift evidence routing')), field);
   }
 });

@@ -283,8 +283,13 @@ struct MobileCloudVaultRotationRewrapWorker {
 
                 let title = titlePlaintext(from: data["sealedTitle"], uid: uid, docID: document.documentID, oldKeyData: oldKeyData, newKeyData: newKeyData) ?? document.documentID
                 let preview = String(bodyText.prefix(500))
-                let chunks = Self.chunkUTF8String(bodyText, maxBytes: Self.cloudSearchChunkMaxBytes)
                 let provider = data["provider"] as? String ?? "unknown"
+                let searchMetadata = "\(title) \(provider)"
+                let chunks = try CloudVaultCrypto.cloudSearchBodyChunks(
+                    bodyText,
+                    metadata: searchMetadata,
+                    maxBytes: Self.cloudSearchChunkMaxBytes
+                )
                 let sourceID = data["id"] as? String ?? document.documentID
                 let sealedSearchTitle = try CloudVaultCrypto.sealText(
                     title,
@@ -305,7 +310,7 @@ struct MobileCloudVaultRotationRewrapWorker {
                         keyData: newKeyData,
                         aadContext: CloudVaultAADContext(uid: uid, collection: "cloud_search_chunks", docID: chunkID, field: "sealedSnippet")
                     )
-                    let searchText = "\(chunk) \(title) \(provider)"
+                    let searchText = "\(chunk) \(searchMetadata)"
                     cloudSearchChunks.append([
                         "chunkID": chunkID,
                         "documentID": document.documentID,
@@ -411,24 +416,6 @@ struct MobileCloudVaultRotationRewrapWorker {
             // key — the caller tries new-then-old, so a miss here is routine.
             return nil
         }
-    }
-
-    private static func chunkUTF8String(_ string: String, maxBytes: Int) -> [String] {
-        let data = Data(string.utf8)
-        guard data.count > maxBytes else { return [string] }
-        var chunks: [String] = []
-        var offset = 0
-        while offset < data.count {
-            var end = min(offset + maxBytes, data.count)
-            while end > offset, String(data: data[offset..<end], encoding: .utf8) == nil {
-                end -= 1
-            }
-            if let chunk = String(data: data[offset..<end], encoding: .utf8) {
-                chunks.append(chunk)
-            }
-            offset = end
-        }
-        return chunks.isEmpty ? [string] : chunks
     }
 
     private func rewrapCollection(

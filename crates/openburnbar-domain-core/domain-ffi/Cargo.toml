@@ -11,11 +11,16 @@ name = "openburnbar_domain_ffi"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
-openburnbar-domain-core = { path = "../domain-core" }
+openburnbar-domain-core = { path = "../domain-core", version = "0.1.0" }
+thiserror = "1"
 uniffi = { version = "=0.28.3", features = ["cli"] }
+zeroize = "1"
 
 [build-dependencies]
 uniffi = { version = "=0.28.3", features = ["build"] }
+
+[dev-dependencies]
+proptest = { version = "1.7", default-features = false, features = ["std"] }
 
 [lints]
 workspace = true

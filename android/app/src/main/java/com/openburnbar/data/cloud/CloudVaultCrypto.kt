@@ -11,7 +11,6 @@ import com.openburnbar.BurnBarApplication
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
-import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.interfaces.ECPrivateKey
@@ -23,7 +22,6 @@ import javax.crypto.KeyAgreement
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.tasks.await
 
 data class CloudVaultSealedText(
@@ -44,16 +42,13 @@ data class CloudVaultAADContext(
     val schemaVersion: Int = 2,
     val purpose: String = field,
 ) {
-    val stringValue: String = "${CloudVaultCrypto.AAD_CONTEXT_PREFIX}|$uid|$collection|$docID|$field|$schemaVersion|$purpose"
-    val legacyV1StringValue: String = "${CloudVaultCrypto.LEGACY_AAD_CONTEXT_PREFIX}|$uid|$collection|$docID|$field"
+    private val validated: Unit = require(schemaVersion >= 2 && listOf(uid, collection, docID, field, purpose).all { isValidPart(it) }) {
+        "Invalid CloudVault AAD context"
+    }
+    val stringValue: String = CloudVaultDomainCore.aadV2(uid, collection, docID, field, schemaVersion, purpose)
+    val legacyV1StringValue: String = CloudVaultDomainCore.aadV1(uid, collection, docID, field)
     val bytes: ByteArray get() = stringValue.toByteArray(Charsets.UTF_8)
     val legacyV1Bytes: ByteArray get() = legacyV1StringValue.toByteArray(Charsets.UTF_8)
-
-    init {
-        require(schemaVersion >= 2 && listOf(uid, collection, docID, field, purpose).all { isValidPart(it) }) {
-            "Invalid CloudVault AAD context"
-        }
-    }
 
     private fun isValidPart(value: String): Boolean = value.isNotEmpty() && value.none { it == '|' || it.code < 0x20 || it.code == 0x7f }
 }
@@ -196,7 +191,6 @@ data class CloudVaultDocumentRewrapResult(
 @Suppress("LargeClass") // reason: cohesive crypto facade kept whole for Swift byte-parity (see note above); splitting scatters the AAD/constant parity seam.
 object CloudVaultCrypto {
     const val AES_GCM_ALGORITHM: String = "AES-256-GCM"
-    private const val GCM_AUTH_TAG_BITS = 128
     private const val GCM_TAG_BYTES = 16
     private const val SHA256_DIGEST_BYTES = 32
     private const val UNCOMPRESSED_POINT_PREFIX = 0x04
@@ -243,25 +237,20 @@ object CloudVaultCrypto {
     const val CURRENT_KEY_VERSION: Int = 1
 
     fun sealText(text: String, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): CloudVaultSealedText {
+        return sealTextWithNonce(text, vaultKey, aadContext, secureNonce())
+    }
+
+    private fun sealTextWithNonce(text: String, vaultKey: ByteArray, aadContext: CloudVaultAADContext?, nonce: ByteArray): CloudVaultSealedText {
         val plaintext = text.toByteArray(Charsets.UTF_8)
-        val nonce =
-            ByteArray(GCM_NONCE_BYTES).apply {
-                java.security.SecureRandom().nextBytes(this)
-            }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE.let { Cipher.ENCRYPT_MODE }, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        aadContext?.let { cipher.updateAAD(it.bytes) }
-        val ciphertextAndTag = cipher.doFinal(plaintext)
-        val tagSize = GCM_TAG_BYTES
-        val ciphertext = ciphertextAndTag.copyOfRange(0, ciphertextAndTag.size - tagSize)
-        val tag = ciphertextAndTag.copyOfRange(ciphertextAndTag.size - tagSize, ciphertextAndTag.size)
+        require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
+        val sealed = CloudVaultDomainCore.aesSealDetached(plaintext, vaultKey, nonce, aadContext?.bytes ?: ByteArray(0))
         return CloudVaultSealedText(
             schemaVersion = aadContext?.let { CURRENT_SEALED_TEXT_SCHEMA_VERSION },
             algorithm = "AES-256-GCM",
             keyVersion = 1,
-            nonce = CloudVaultCryptoSupport.encodeBase64(nonce),
-            ciphertext = CloudVaultCryptoSupport.encodeBase64(ciphertext),
-            tag = CloudVaultCryptoSupport.encodeBase64(tag),
+            nonce = CloudVaultCryptoSupport.encodeBase64(sealed.nonce),
+            ciphertext = CloudVaultCryptoSupport.encodeBase64(sealed.ciphertext),
+            tag = CloudVaultCryptoSupport.encodeBase64(sealed.tag),
             aad = aadContext?.stringValue,
         )
     }
@@ -271,20 +260,39 @@ object CloudVaultCrypto {
         val nonce = CloudVaultCryptoSupport.decodeBase64(envelope.nonce)
         val ciphertext = CloudVaultCryptoSupport.decodeBase64(envelope.ciphertext)
         val tag = CloudVaultCryptoSupport.decodeBase64(envelope.tag)
+        val schemaVersion = envelope.schemaVersion ?: 1
+        require(schemaVersion == 1 || schemaVersion == CURRENT_SEALED_TEXT_SCHEMA_VERSION) {
+            "Unsupported sealed text schema"
+        }
         val aad =
-            if ((envelope.schemaVersion ?: 1) >= CURRENT_SEALED_TEXT_SCHEMA_VERSION) {
+            if (schemaVersion == CURRENT_SEALED_TEXT_SCHEMA_VERSION) {
                 require(aadContext != null) { "Invalid sealed text AAD context" }
                 aadBytesFor(envelope.aad, aadContext)
             } else {
                 null
             }
-        val plaintext = CloudVaultCryptoSupport.openAesGcm(vaultKey, nonce, ciphertext + tag, aad)
-        return plaintext.toString(Charsets.UTF_8)
+        return CloudVaultDomainCore.aesOpenTextDetached(nonce, ciphertext, tag, vaultKey, aad ?: ByteArray(0))
     }
 
-    fun tokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> = CloudVaultCryptoSearch.tokenHashes(text, vaultKey, limit)
+    fun tokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
+        CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.TOKEN, text, vaultKey, limit) {
+            CloudVaultCryptoSearch.tokenHashes(text, vaultKey, limit)
+        }
 
-    fun semanticHashes(text: String, vaultKey: ByteArray, limit: Int = 24): List<String> = CloudVaultCryptoSearch.semanticHashes(text, vaultKey, limit)
+    fun searchIndexTokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
+        CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.INDEX, text, vaultKey, limit) {
+            CloudVaultCryptoSearch.searchIndexTokenHashes(text, vaultKey, limit)
+        }
+
+    fun searchQueryTokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
+        CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.QUERY, text, vaultKey, limit) {
+            CloudVaultCryptoSearch.searchQueryTokenHashes(text, vaultKey, limit)
+        }
+
+    fun semanticHashes(text: String, vaultKey: ByteArray, limit: Int = 24): List<String> =
+        CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.SEMANTIC, text, vaultKey, limit) {
+            CloudVaultCryptoSearch.semanticHashes(text, vaultKey, limit)
+        }
 
     fun openBlob(envelope: CloudVaultBlobEnvelope, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): ByteArray {
         require(envelope.algorithm == "AES-256-GCM") { "Unsupported envelope algorithm" }
@@ -326,19 +334,19 @@ object CloudVaultCrypto {
         return plaintext
     }
 
-    fun blobPlaintextHmac(data: ByteArray, vaultKey: ByteArray): String = keyedHmacHex(data, vaultKey, "blob-integrity")
+    fun blobPlaintextHmac(data: ByteArray, vaultKey: ByteArray): String =
+        CloudVaultDomainCore.keyedHashHex(data, vaultKey, CloudVaultHashPurpose.BLOB_INTEGRITY)
 
-    fun sessionBodyHash(data: ByteArray, vaultKey: ByteArray): String = keyedHmacHex(data, vaultKey, "session-body")
+    fun sessionBodyHash(data: ByteArray, vaultKey: ByteArray): String = CloudVaultDomainCore.keyedHashHex(data, vaultKey, CloudVaultHashPurpose.SESSION_BODY)
 
-    fun expectedSessionBodyHash(data: ByteArray, vaultKey: ByteArray, bodyHashVersion: Int): String = when (bodyHashVersion) {
-        SESSION_BODY_HASH_VERSION -> sessionBodyHash(data, vaultKey)
-        0, 1 -> sha256Hex(data)
-        else -> error("Unsupported session body hash version")
-    }
+    fun expectedSessionBodyHash(data: ByteArray, vaultKey: ByteArray, bodyHashVersion: Int): String =
+        CloudVaultDomainCore.expectedSessionBodyHash(data, vaultKey, bodyHashVersion)
 
-    fun sessionChunkHash(text: String, vaultKey: ByteArray): String = keyedHmacHex(text.toByteArray(Charsets.UTF_8), vaultKey, "session-chunk")
+    fun sessionChunkHash(text: String, vaultKey: ByteArray): String =
+        CloudVaultDomainCore.keyedHashHex(text.toByteArray(Charsets.UTF_8), vaultKey, CloudVaultHashPurpose.SESSION_CHUNK)
 
-    fun projectMemoryContentHash(data: ByteArray, vaultKey: ByteArray): String = keyedHmacHex(data, vaultKey, "project-memory-content")
+    fun projectMemoryContentHash(data: ByteArray, vaultKey: ByteArray): String =
+        CloudVaultDomainCore.keyedHashHex(data, vaultKey, CloudVaultHashPurpose.PROJECT_MEMORY_CONTENT)
 
     fun expectedBlobIntegrityHash(data: ByteArray, envelope: CloudVaultBlobEnvelope, vaultKey: ByteArray): String =
         if (envelope.schemaVersion >= CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION) {
@@ -347,16 +355,15 @@ object CloudVaultCrypto {
             sha256Hex(data)
         }
 
-    fun vaultKeyID(vaultKey: ByteArray): String = "v1_${sha256Hex(vaultKey).take(32)}"
+    fun vaultKeyID(vaultKey: ByteArray): String = CloudVaultDomainCore.vaultKeyId(vaultKey)
 
     fun sealBlob(plaintext: ByteArray, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): CloudVaultBlobEnvelope {
-        val nonce =
-            ByteArray(GCM_NONCE_BYTES).apply {
-                java.security.SecureRandom().nextBytes(this)
-            }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        aadContext?.let { cipher.updateAAD(it.bytes) }
+        return sealBlobWithNonce(plaintext, vaultKey, aadContext, secureNonce())
+    }
+
+    private fun sealBlobWithNonce(plaintext: ByteArray, vaultKey: ByteArray, aadContext: CloudVaultAADContext?, nonce: ByteArray): CloudVaultBlobEnvelope {
+        require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
+        val sealed = CloudVaultDomainCore.aesSealCombined(plaintext, vaultKey, nonce, aadContext?.bytes ?: ByteArray(0))
         return CloudVaultBlobEnvelope(
             schemaVersion = CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION,
             algorithm = "AES-256-GCM",
@@ -364,7 +371,7 @@ object CloudVaultCrypto {
             plaintextSHA256 = null,
             plaintextHMAC = blobPlaintextHmac(plaintext, vaultKey),
             integrityHashVersion = BLOB_INTEGRITY_HASH_VERSION,
-            sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(nonce + cipher.doFinal(plaintext)),
+            sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(sealed),
             aad = aadContext?.stringValue ?: BLOB_AAD_CONTEXT,
         )
     }
@@ -375,19 +382,29 @@ object CloudVaultCrypto {
         vaultKeyID: String = vaultKeyID(vaultKey),
         aadContext: CloudVaultAADContext? = null,
     ): CloudVaultSealedPayload {
-        val nonce =
-            ByteArray(GCM_NONCE_BYTES).apply {
-                java.security.SecureRandom().nextBytes(this)
-            }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(vaultKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        cipher.updateAAD(sealedPayloadAAD(vaultKeyID = vaultKeyID, keyVersion = 1, aadContext = aadContext))
+        return sealPayloadWithNonce(plaintext, vaultKey, vaultKeyID, aadContext, secureNonce())
+    }
+
+    private fun sealPayloadWithNonce(
+        plaintext: ByteArray,
+        vaultKey: ByteArray,
+        vaultKeyID: String,
+        aadContext: CloudVaultAADContext?,
+        nonce: ByteArray,
+    ): CloudVaultSealedPayload {
+        require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
+        val sealed = CloudVaultDomainCore.aesSealCombined(
+            plaintext,
+            vaultKey,
+            nonce,
+            sealedPayloadAAD(vaultKeyID = vaultKeyID, keyVersion = 1, aadContext = aadContext),
+        )
         return CloudVaultSealedPayload(
             schemaVersion = CURRENT_SEALED_PAYLOAD_SCHEMA_VERSION,
             algorithm = "AES-256-GCM",
             keyVersion = 1,
             vaultKeyID = vaultKeyID,
-            sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(nonce + cipher.doFinal(plaintext)),
+            sealedBoxBase64 = CloudVaultCryptoSupport.encodeBase64(sealed),
             aad = aadContext?.stringValue ?: SEALED_PAYLOAD_AAD_CONTEXT,
         )
     }
@@ -406,10 +423,12 @@ object CloudVaultCrypto {
         val contentKey = ByteArray(SIGNAL_AT_REST_CONTENT_KEY_LENGTH).apply { java.security.SecureRandom().nextBytes(this) }
         val canonicalAAD = CloudVaultCryptoSupport.bindingToAAD(binding.aadBinding)
         val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(contentKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        cipher.updateAAD(canonicalAAD.toByteArray(Charsets.UTF_8))
-        val payloadCiphertext = nonce + cipher.doFinal(plaintext)
+        val payloadCiphertext = CloudVaultDomainCore.aesSealCombined(
+            plaintext,
+            contentKey,
+            nonce,
+            canonicalAAD.toByteArray(Charsets.UTF_8),
+        )
         val payloadCiphertextB64 = CloudVaultCryptoSupport.encodeBase64(payloadCiphertext)
         val wraps =
             recipients.map { recipient ->
@@ -664,8 +683,53 @@ object CloudVaultCrypto {
         rotationJobId: String? = null,
     ): CloudVaultDocumentRewrapResult {
         require(vaultKeyID(newKey) == newVaultKeyID) { "New vault key id mismatch" }
+        return CloudVaultDocumentRewrapDomainCore.rewrap(
+            data = data,
+            uid = uid,
+            collection = collection,
+            docID = docID,
+            oldKey = oldKey,
+            newKey = newKey,
+            newVaultKeyID = newVaultKeyID,
+            vaultGeneration = vaultGeneration,
+            rotationJobId = rotationJobId,
+        ) { noncePlan ->
+            rewrapCloudVaultDocumentLegacy(
+                data = data,
+                uid = uid,
+                collection = collection,
+                docID = docID,
+                oldKey = oldKey,
+                newKey = newKey,
+                newVaultKeyID = newVaultKeyID,
+                vaultGeneration = vaultGeneration,
+                rotationJobId = rotationJobId,
+                noncePlan = noncePlan,
+            )
+        }
+    }
+
+    private fun rewrapCloudVaultDocumentLegacy(
+        data: Map<String, Any?>,
+        uid: String,
+        collection: String,
+        docID: String,
+        oldKey: ByteArray,
+        newKey: ByteArray,
+        newVaultKeyID: String,
+        vaultGeneration: Int?,
+        rotationJobId: String?,
+        noncePlan: List<CloudVaultDocumentRewrapNonce>,
+    ): CloudVaultDocumentRewrapResult {
         val updated = data.toMutableMap()
         val changedFields = mutableListOf<String>()
+        var nonceIndex = 0
+
+        fun nextNonce(field: String): ByteArray {
+            val planned = noncePlan.getOrNull(nonceIndex++) ?: error("Invalid CloudVault rewrap nonce plan")
+            check(planned.fieldName == field) { "Invalid CloudVault rewrap nonce field" }
+            return planned.bytes
+        }
 
         for (field in data.keys.sorted()) {
             val raw = data[field] as? Map<*, *> ?: continue
@@ -674,24 +738,26 @@ object CloudVaultCrypto {
             sealedPayloadFromMap(raw)?.let { envelope ->
                 if (envelope.vaultKeyID == newVaultKeyID) return@let
                 val plaintext = openPayloadForRewrap(envelope, oldKey, context)
-                val resealed = sealPayload(plaintext, newKey, newVaultKeyID, context)
+                val resealed = sealPayloadWithNonce(plaintext, newKey, newVaultKeyID, context, nextNonce(field))
                 updated[field] = sealedPayloadMap(resealed)
                 applyVaultKeyCompanionUpdates(updated, field, newVaultKeyID)
                 changedFields += field
                 return@let
             } ?: sealedTextFromMap(raw)?.let { envelope ->
                 val plaintext = openTextForRewrap(envelope, oldKey, context)
-                val resealed = sealText(plaintext, newKey, context)
+                val resealed = sealTextWithNonce(plaintext, newKey, context, nextNonce(field))
                 updated[field] = sealedTextMap(resealed)
                 changedFields += field
                 return@let
             } ?: blobEnvelopeFromMap(raw)?.let { envelope ->
                 val plaintext = openBlobForRewrap(envelope, oldKey, context)
-                val resealed = sealBlob(plaintext, newKey, context)
+                val resealed = sealBlobWithNonce(plaintext, newKey, context, nextNonce(field))
                 updated[field] = blobEnvelopeMap(resealed)
                 changedFields += field
             }
         }
+
+        check(nonceIndex == noncePlan.size) { "Invalid CloudVault rewrap nonce plan" }
 
         if (changedFields.isNotEmpty()) {
             vaultGeneration?.let { updated["vaultGeneration"] = it }
@@ -700,6 +766,8 @@ object CloudVaultCrypto {
 
         return CloudVaultDocumentRewrapResult(updated.toMap(), changedFields)
     }
+
+    private fun secureNonce(): ByteArray = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
 
     fun signalEnvelopeMap(envelope: CloudVaultSignalEnvelope): Map<String, Any> = mapOf(
         "signalEnvelopeFormatVersion" to envelope.signalEnvelopeFormatVersion,
@@ -890,41 +958,28 @@ object CloudVaultCrypto {
         }
     }
 
-    private fun keyedHmacHex(data: ByteArray, vaultKey: ByteArray, purpose: String): String {
-        require(vaultKey.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
-        val key =
-            CloudVaultCryptoSearch.hkdfSha256(
-                vaultKey,
-                "OpenBurnBar-CloudVault-HMAC-Salt-v1".toByteArray(Charsets.UTF_8),
-                "OpenBurnBar-CloudVault-HMAC-v1|$purpose".toByteArray(Charsets.UTF_8),
-                SHA256_DIGEST_BYTES,
-            )
-        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(key, "HmacSHA256"))
-        return mac.doFinal(data).joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
-    }
-
     fun unwrapVaultKey(ciphertext: ByteArray, privateKey: PrivateKey): ByteArray {
-        require(ciphertext.size > WRAPPED_KEY_EPHEMERAL_BYTES) { "Invalid wrapped vault key" }
         val ecPrivateKey =
             privateKey as? ECPrivateKey
                 ?: error("Vault key unwrap requires an EC private key")
+        val parts = CloudVaultRecoveryDomainCore.escrowSplitWire(ciphertext) {
+            legacySplitEscrowWire(ciphertext, ecPrivateKey)
+        }
         val ephemeralPublic =
-            CloudVaultCryptoSupport.publicKeyFromX963(ciphertext.copyOfRange(0, WRAPPED_KEY_EPHEMERAL_BYTES), ecPrivateKey.params)
+            CloudVaultCryptoSupport.publicKeyFromX963(parts.ephemeralPublicKey, ecPrivateKey.params)
         val sharedSecret =
             KeyAgreement.getInstance("ECDH").run {
                 init(privateKey)
                 doPhase(ephemeralPublic, true)
                 generateSecret()
             }
-        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(sharedSecret, ByteArray(0), WRAP_INFO.toByteArray(), SHA256_DIGEST_BYTES)
-        val combined = ciphertext.copyOfRange(WRAPPED_KEY_EPHEMERAL_BYTES, ciphertext.size)
-        val plaintext =
-            CloudVaultCryptoSupport.openAesGcm(
-                wrappingKey,
-                combined.copyOfRange(0, GCM_NONCE_BYTES),
-                combined.copyOfRange(GCM_NONCE_BYTES, combined.size),
-            )
+        val plaintext = try {
+            CloudVaultRecoveryDomainCore.escrowOpen(ciphertext, sharedSecret) {
+                legacyEscrowOpen(parts.aesGcmCombined, sharedSecret)
+            }
+        } finally {
+            sharedSecret.fill(0)
+        }
         require(plaintext.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
         return plaintext
     }
@@ -947,6 +1002,12 @@ object CloudVaultCrypto {
     )
 
     fun deriveRecoveryWrappingKey(recoveryKey: String): ByteArray {
+        return CloudVaultRecoveryDomainCore.recoveryWrappingKey(recoveryKey) {
+            legacyDeriveRecoveryWrappingKey(recoveryKey)
+        }
+    }
+
+    private fun legacyDeriveRecoveryWrappingKey(recoveryKey: String): ByteArray {
         val normalized = normalizedRecoveryKey(recoveryKey)
         require(normalized.length >= 20) { "Recovery key is too short" }
         return CloudVaultCryptoSearch.hkdfSha256(
@@ -959,32 +1020,33 @@ object CloudVaultCrypto {
 
     fun wrapVaultKeyWithRecovery(vaultKey: ByteArray, recoveryKey: String): RecoveryWrappedVaultKey {
         require(vaultKey.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
-        val wrappingKey = deriveRecoveryWrappingKey(recoveryKey)
         val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(wrappingKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        val combined = nonce + cipher.doFinal(vaultKey)
+        val wrapped = CloudVaultRecoveryDomainCore.recoveryWrapVaultKey(vaultKey, recoveryKey, nonce) {
+            legacyRecoveryWrapVaultKey(vaultKey, recoveryKey, nonce)
+        }
         return RecoveryWrappedVaultKey(
-            wrappedVaultKeyBase64 = CloudVaultCryptoSupport.encodeBase64(combined),
-            verificationHash = sha256Hex(wrappingKey),
+            wrappedVaultKeyBase64 = CloudVaultCryptoSupport.encodeBase64(wrapped.combined),
+            verificationHash = wrapped.verificationHash,
         )
     }
 
     fun unwrapVaultKeyWithRecovery(wrappedVaultKeyBase64: String, recoveryKey: String): ByteArray {
-        val wrappingKey = deriveRecoveryWrappingKey(recoveryKey)
         val combined = CloudVaultCryptoSupport.decodeBase64(wrappedVaultKeyBase64)
-        require(combined.size > GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid wrapped vault key" }
-        val plaintext =
-            CloudVaultCryptoSupport.openAesGcm(
-                wrappingKey,
-                combined.copyOfRange(0, GCM_NONCE_BYTES),
-                combined.copyOfRange(GCM_NONCE_BYTES, combined.size),
-            )
+        val plaintext = CloudVaultRecoveryDomainCore.recoveryOpenVaultKey(combined, recoveryKey) {
+            legacyRecoveryOpenVaultKey(combined, recoveryKey)
+        }
         require(plaintext.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
         return plaintext
     }
 
-    fun recoveryVerificationHash(recoveryKey: String): String = sha256Hex(deriveRecoveryWrappingKey(recoveryKey))
+    fun recoveryVerificationHash(recoveryKey: String): String = CloudVaultRecoveryDomainCore.recoveryVerificationHash(recoveryKey) {
+        val wrappingKey = legacyDeriveRecoveryWrappingKey(recoveryKey)
+        try {
+            sha256Hex(wrappingKey)
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
 
     private fun normalizedRecoveryKey(recoveryKey: String): String {
         return recoveryKey
@@ -1015,12 +1077,92 @@ object CloudVaultCrypto {
                 doPhase(recipientKey, true)
                 generateSecret()
             }
-        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(sharedSecret, ByteArray(0), WRAP_INFO.toByteArray(), SHA256_DIGEST_BYTES)
         val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(wrappingKey, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        val combined = nonce + cipher.doFinal(keyData)
-        return publicKeyX963(ephemeral.public) + combined
+        val ephemeralPublicX963 = publicKeyX963(ephemeral.public)
+        return try {
+            CloudVaultRecoveryDomainCore.escrowSeal(keyData, ephemeralPublicX963, sharedSecret, nonce) {
+                legacyEscrowSeal(keyData, ephemeralPublicX963, sharedSecret, nonce)
+            }
+        } finally {
+            sharedSecret.fill(0)
+        }
+    }
+
+    private fun legacySplitEscrowWire(ciphertext: ByteArray, privateKey: ECPrivateKey): CloudVaultEscrowParts {
+        require(ciphertext.size > WRAPPED_KEY_EPHEMERAL_BYTES) { "Invalid wrapped vault key" }
+        val publicKey = ciphertext.copyOfRange(0, WRAPPED_KEY_EPHEMERAL_BYTES)
+        CloudVaultCryptoSupport.publicKeyFromX963(publicKey, privateKey.params)
+        return CloudVaultEscrowParts(publicKey, ciphertext.copyOfRange(WRAPPED_KEY_EPHEMERAL_BYTES, ciphertext.size))
+    }
+
+    private fun legacyEscrowSeal(plaintext: ByteArray, ephemeralPublicKey: ByteArray, sharedSecret: ByteArray, nonce: ByteArray): ByteArray {
+        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(
+            sharedSecret,
+            ByteArray(0),
+            WRAP_INFO.toByteArray(),
+            SHA256_DIGEST_BYTES,
+        )
+        return try {
+            ephemeralPublicKey + legacyAesSealCombined(plaintext, wrappingKey, nonce)
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
+    private fun legacyEscrowOpen(combined: ByteArray, sharedSecret: ByteArray): ByteArray {
+        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(
+            sharedSecret,
+            ByteArray(0),
+            WRAP_INFO.toByteArray(),
+            SHA256_DIGEST_BYTES,
+        )
+        return try {
+            legacyAesOpenCombined(combined, wrappingKey)
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
+    private fun legacyRecoveryWrapVaultKey(vaultKey: ByteArray, recoveryKey: String, nonce: ByteArray): CloudVaultRecoveryBox {
+        val wrappingKey = legacyDeriveRecoveryWrappingKey(recoveryKey)
+        return try {
+            CloudVaultRecoveryBox(
+                combined = legacyAesSealCombined(vaultKey, wrappingKey, nonce),
+                verificationHash = sha256Hex(wrappingKey),
+            )
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
+    private fun legacyRecoveryOpenVaultKey(combined: ByteArray, recoveryKey: String): ByteArray {
+        val wrappingKey = legacyDeriveRecoveryWrappingKey(recoveryKey)
+        return try {
+            legacyAesOpenCombined(combined, wrappingKey)
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
+    private fun legacyAesSealCombined(plaintext: ByteArray, key: ByteArray, nonce: ByteArray): ByteArray {
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            javax.crypto.Cipher.ENCRYPT_MODE,
+            javax.crypto.spec.SecretKeySpec(key, "AES"),
+            javax.crypto.spec.GCMParameterSpec(GCM_TAG_BYTES * 8, nonce),
+        )
+        return nonce + cipher.doFinal(plaintext)
+    }
+
+    private fun legacyAesOpenCombined(combined: ByteArray, key: ByteArray): ByteArray {
+        require(combined.size > GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid wrapped vault key" }
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            javax.crypto.Cipher.DECRYPT_MODE,
+            javax.crypto.spec.SecretKeySpec(key, "AES"),
+            javax.crypto.spec.GCMParameterSpec(GCM_TAG_BYTES * 8, combined.copyOfRange(0, GCM_NONCE_BYTES)),
+        )
+        return cipher.doFinal(combined.copyOfRange(GCM_NONCE_BYTES, combined.size))
     }
 
     fun publicKeyX963(publicKey: PublicKey): ByteArray {
@@ -1030,9 +1172,11 @@ object CloudVaultCrypto {
         return byteArrayOf(UNCOMPRESSED_POINT_PREFIX.toByte()) + cloudVaultFixed32(ec.w.affineX) + cloudVaultFixed32(ec.w.affineY)
     }
 
-    fun sha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
+    fun sha256Hex(data: ByteArray): String = CloudVaultDomainCore.sha256Hex(data)
 
-    fun sha256Base64(data: ByteArray): String = CloudVaultCryptoSupport.encodeBase64(MessageDigest.getInstance("SHA-256").digest(data))
+    fun sha256Base64(data: ByteArray): String = CloudVaultCryptoSupport.encodeBase64(
+        sha256Hex(data).chunked(2).map { it.toInt(16).toByte() }.toByteArray(),
+    )
 
     private fun validateSignalRecipients(recipients: List<CloudVaultSignalRecipient>) {
         require(recipients.isNotEmpty()) { "Signal envelopes require at least one recipient" }
