@@ -99,6 +99,37 @@ predicate, signer workflow, repository, tag, and commit. A substituted bundle,
 non-identical artifact collision, or semantic final-state mutation fails the
 run.
 
+## Functions release lane
+
+[`deploy-production.yml`](../../.github/workflows/deploy-production.yml) owns
+the Functions-specific consumer boundary:
+
+- release-tag pushes always select `public-production`;
+- a manual `public-production-rollback` deploy first requires approval in the
+  `domain-core-promotion` environment, then the existing `production`
+  environment approval;
+- the exact source run bundle, candidate-matched rollback artifact, protected
+  Sigstore bundle, and protected signer run and attempt pass the pre-release
+  gate before `npm ci`, compilation, or Firebase deployment;
+- the generated `domainCoreCandidateReceipt.js`, selected profile bytes, and
+  v2 release-gate receipt are captured in a create-only deploy proof; and
+- the live `healthLive` and `healthReady` endpoints must serve the exact source
+  commit, release version, candidate tuple, profile name, pricing mode, and
+  production Sentry state before deploy-health evidence can be written.
+
+After that gate succeeds, the deploy workflow dispatches
+[`domain-core-functions-release-evidence.yml`](../../.github/workflows/domain-core-functions-release-evidence.yml)
+with the exact deploy run and attempt. The evidence workflow downloads only
+those uniquely named artifacts, recreates the deploy proof byte-for-byte,
+reverifies the protected promotion attestation, creates the v2 Functions
+deployment receipt and predicate, and emits an official GitHub attestation.
+
+Normal `public-production` evidence is published through the create-only v2
+release publisher after the exact stable GitHub release exists. A rollback does
+not overwrite those stable assets: it retains a uniquely named Actions artifact
+containing the receipt, predicate, official provenance bundle, deploy proof, and
+health evidence keyed by tag, deploy run, and attempt.
+
 ## Ownership boundary
 
 This substrate defines verification, evidence generation, and immutable
