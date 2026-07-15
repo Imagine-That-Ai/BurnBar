@@ -1,6 +1,12 @@
 import Foundation
 import OpenBurnBarDomainCoreFFI
 
+struct UnionManifest: Decodable {
+    let coreVersion: String
+    let abiVersion: UInt32
+    let sourceSha256: String
+}
+
 func require(_ condition: @autoclosure () -> Bool, _ message: String) {
     guard condition() else {
         FileHandle.standardError.write(Data("domain-core smoke failed: \(message)\n".utf8))
@@ -28,8 +34,28 @@ func data(hex: String) -> Data {
     return Data(bytes)
 }
 
-require(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3, "unexpected ABI version")
-require(!OpenBurnBarDomainCoreFFI.domainCoreVersion().isEmpty, "empty crate version")
+let unionManifestURL = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent()
+    .appendingPathComponent("../../../crates/openburnbar-domain-core/union-abi-manifest.json")
+    .standardizedFileURL
+let unionManifest: UnionManifest
+do {
+    let data = try Data(contentsOf: unionManifestURL)
+    unionManifest = try JSONDecoder().decode(UnionManifest.self, from: data)
+} catch {
+    FileHandle.standardError.write(
+        Data("domain-core smoke failed: cannot read union manifest: \(error)\n".utf8)
+    )
+    exit(1)
+}
+require(
+    OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == unionManifest.abiVersion,
+    "unexpected ABI version"
+)
+require(
+    OpenBurnBarDomainCoreFFI.domainCoreVersion() == unionManifest.coreVersion,
+    "unexpected crate version"
+)
 let sourceFingerprint = OpenBurnBarDomainCoreFFI.domainCoreSourceFingerprint()
 require(
     sourceFingerprint.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil,
@@ -52,6 +78,10 @@ do {
 require(
     expectedSourceFingerprint.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil,
     "invalid XCFramework source fingerprint"
+)
+require(
+    expectedSourceFingerprint == unionManifest.sourceSha256,
+    "XCFramework source fingerprint does not match union manifest"
 )
 require(sourceFingerprint == expectedSourceFingerprint, "loaded XCFramework source fingerprint mismatch")
 

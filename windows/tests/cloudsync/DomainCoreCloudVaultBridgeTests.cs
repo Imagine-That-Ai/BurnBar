@@ -19,12 +19,12 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
         public void NativeLibrary_ReportsBuildIdentity()
         {
             if (!NativeRequired()) return;
-            Assert.Equal(3u, DomainCore.DomainCoreAbiVersion());
-            Assert.False(string.IsNullOrWhiteSpace(DomainCore.DomainCoreVersion()));
-            var sourceFingerprint = DomainCore.DomainCoreSourceFingerprint();
-            Assert.Matches("^[0-9a-f]{64}$", sourceFingerprint);
             using var manifest = JsonDocument.Parse(File.ReadAllText(
                 Path.Combine(AppContext.BaseDirectory, "Fixtures", "domain-core-union-abi-manifest.json")));
+            Assert.Equal(manifest.RootElement.GetProperty("abiVersion").GetUInt32(), DomainCore.DomainCoreAbiVersion());
+            Assert.Equal(manifest.RootElement.GetProperty("coreVersion").GetString(), DomainCore.DomainCoreVersion());
+            var sourceFingerprint = DomainCore.DomainCoreSourceFingerprint();
+            Assert.Matches("^[0-9a-f]{64}$", sourceFingerprint);
             var expectedSourceFingerprint = manifest.RootElement.GetProperty("sourceSha256").GetString();
             Assert.Matches("^[0-9a-f]{64}$", expectedSourceFingerprint!);
             Assert.Equal(expectedSourceFingerprint, sourceFingerprint);

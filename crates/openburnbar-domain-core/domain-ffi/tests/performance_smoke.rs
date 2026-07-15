@@ -1,3 +1,4 @@
+use openburnbar_domain_core::quota as core_quota;
 use openburnbar_domain_ffi::{
     cloud_vault_aes_gcm_open_combined, cloud_vault_aes_gcm_seal_combined,
     cloud_vault_base64_encode, cloud_vault_key_id, cloud_vault_rewrap_document, cloud_vault_search,
@@ -6,12 +7,14 @@ use openburnbar_domain_ffi::{
     CloudVaultSearchRequest,
 };
 use std::error::Error;
+use std::fs;
 use std::hint::black_box;
 use std::io;
 use std::time::{Duration, Instant};
 
 const AES_GCM_ALGORITHM: &str = "AES-256-GCM";
 const SEALED_PAYLOAD_AAD: &str = "OpenBurnBar-CloudVaultSealedPayload-v2";
+const PAIRED_BENCHMARK_REPORT_ENV: &str = "DOMAIN_CORE_BENCHMARK_REPORT";
 
 struct RewrapBenchmarkInput {
     request: CloudVaultDocumentRewrapRequest,
@@ -127,6 +130,43 @@ fn rewrap_request() -> Result<RewrapBenchmarkInput, Box<dyn Error>> {
 fn complete_payload_ffi_performance_smoke() -> Result<(), Box<dyn Error>> {
     let padding = "a".repeat(512 * 1024);
     let quota_payload = format!(r#"{{"rate_limits":[],"padding":"{padding}"}}"#).into_bytes();
+
+    // Pair direct-core and FFI timings on the same complete payload. Alternating
+    // order removes the most obvious warm-up bias while keeping this a bounded CI
+    // regression guard rather than a machine-comparison benchmark.
+    let mut baseline_nanos = 0_u128;
+    let mut candidate_nanos = 0_u128;
+    for iteration in 0..80 {
+        let ffi_payload = quota_payload.clone();
+        if iteration % 2 == 0 {
+            let started = Instant::now();
+            black_box(core_quota::parse_claude_statusline_quota(&quota_payload));
+            baseline_nanos += started.elapsed().as_nanos();
+            let started = Instant::now();
+            black_box(parse_claude_statusline_quota(ffi_payload));
+            candidate_nanos += started.elapsed().as_nanos();
+        } else {
+            let started = Instant::now();
+            black_box(parse_claude_statusline_quota(ffi_payload));
+            candidate_nanos += started.elapsed().as_nanos();
+            let started = Instant::now();
+            black_box(core_quota::parse_claude_statusline_quota(&quota_payload));
+            baseline_nanos += started.elapsed().as_nanos();
+        }
+    }
+    let baseline_nanos = u64::try_from(baseline_nanos)?;
+    let candidate_nanos = u64::try_from(candidate_nanos)?;
+    println!(
+        "domain-core-paired-perf name=complete-payload-ffi baseline_nanos={baseline_nanos} candidate_nanos={candidate_nanos}"
+    );
+    if let Ok(report_path) = std::env::var(PAIRED_BENCHMARK_REPORT_ENV) {
+        fs::write(
+            report_path,
+            format!(
+                "{{\"baselineNanos\":{baseline_nanos},\"candidateNanos\":{candidate_nanos}}}\n"
+            ),
+        )?;
+    }
     measure_payload_boundary(
         "quota-response",
         24,
