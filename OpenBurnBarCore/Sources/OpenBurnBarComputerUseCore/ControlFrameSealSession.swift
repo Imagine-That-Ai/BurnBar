@@ -18,7 +18,7 @@ import OpenBurnBarKernel
 ///     envelope over the inner payload JSON, AAD-bound to (controller
 ///     peerNodeId, frame type).
 public enum ControlFrameSealSession {
-    public enum SessionError: Error, Equatable, Sendable {
+    enum SessionError: Error, Equatable, Sendable {
         case sealedPayloadMissing
         case innerPayloadUndecodable
     }

@@ -7,7 +7,7 @@ import Foundation
 /// a bundle creates a fresh copy of each rule with a new `id` and a
 /// fresh `expiresAt` (so re-applying refreshes the 24 h / N-action
 /// budget rather than re-using a stale expiry).
-public struct ComputerUseScopeLibrary: Codable, Sendable {
+struct ComputerUseScopeLibrary: Codable, Sendable {
     public var bundles: [ComputerUseScopeBundle]
     public let updatedAt: Date
 
