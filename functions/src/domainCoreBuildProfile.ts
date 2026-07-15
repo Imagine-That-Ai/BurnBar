@@ -56,6 +56,12 @@ interface ResolvedDomainCoreProfile {
   evidenceChannel?: "internal" | "beta";
 }
 
+export interface DomainCoreDeploymentIdentity {
+  profile: string;
+  candidateIdentity: DomainCoreCandidateIdentity | null;
+  pricingMode: DomainCoreRuntimeMode;
+}
+
 type CandidateIdentityResolution =
   | { state: "absent" }
   | { state: "invalid" }
@@ -81,6 +87,19 @@ export function resolveDomainCoreRuntimeMode(
   receipt: unknown = DOMAIN_CORE_CANDIDATE_RECEIPT,
 ): DomainCoreRuntimeMode {
   return resolveProfile(environment, receipt)?.modes[domain] ?? "legacy";
+}
+
+/** Public, non-secret identity used by the production health gate. */
+export function domainCoreDeploymentIdentity(
+  receipt: unknown = DOMAIN_CORE_CANDIDATE_RECEIPT,
+): DomainCoreDeploymentIdentity | undefined {
+  const parsed = parseReceipt(receipt);
+  if (!parsed) return undefined;
+  return {
+    profile: parsed.name,
+    candidateIdentity: parsed.candidateIdentity,
+    pricingMode: parsed.modes.pricing as DomainCoreRuntimeMode,
+  };
 }
 
 function resolveProfile(environment: NodeJS.ProcessEnv, receipt: unknown): ResolvedDomainCoreProfile | undefined {

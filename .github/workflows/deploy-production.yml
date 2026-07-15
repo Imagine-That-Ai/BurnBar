@@ -18,23 +18,70 @@ on:
         required: false
         type: boolean
         default: false
+      domain_core_profile:
+        description: "Signed Functions domain-core profile"
+        required: true
+        type: choice
+        default: public-production
+        options:
+          - public-production
+          - public-production-rollback
 
 concurrency:
   group: deploy-production
   cancel-in-progress: false
 
 jobs:
-  deploy-functions:
+  authorize-domain-core-rollback:
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch'
+          && inputs.domain_core_profile == 'public-production-rollback' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    environment: domain-core-promotion
+    permissions:
+      contents: read
+    steps:
+      - name: Record explicit protected rollback authorization
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
+          [[ "${{ inputs.domain_core_profile }}" == "public-production-rollback" ]]
+          echo "Protected reviewers authorized the candidate-bound Functions rollback profile."
+
+  deploy-functions:
+    needs: authorize-domain-core-rollback
+    if: >-
+      ${{ always()
+          && !cancelled()
+          && (github.event_name == 'push'
+              || inputs.domain_core_profile == 'public-production'
+              || needs.authorize-domain-core-rollback.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: production
     permissions:
+      actions: read
+      attestations: read
       contents: read
       id-token: write
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       commit: ${{ steps.tag.outputs.commit }}
       dry_run: ${{ steps.tag.outputs.dry_run }}
+      stable_release: ${{ steps.tag.outputs.stable_release }}
+      domain_core_profile: ${{ steps.tag.outputs.domain_core_profile }}
+      core_version: ${{ steps.domain-core-profile.outputs.core_version }}
+      abi_version: ${{ steps.domain-core-profile.outputs.abi_version }}
+      source_sha256: ${{ steps.domain-core-profile.outputs.source_sha256 }}
+      pricing_mode: ${{ steps.domain-core-profile.outputs.pricing_mode }}
+      profile_sha256: ${{ steps.domain-core-build.outputs.profile_sha256 }}
+      receipt_sha256: ${{ steps.domain-core-build.outputs.receipt_sha256 }}
+      source_run_id: ${{ steps.domain-core-source.outputs.run_id }}
+      source_run_attempt: ${{ steps.domain-core-source.outputs.run_attempt }}
+      signer_run_id: ${{ steps.domain-core-gate.outputs.signer_run_id }}
+      signer_run_attempt: ${{ steps.domain-core-gate.outputs.signer_run_attempt }}
+      proof_artifact: ${{ steps.domain-core-proof.outputs.artifact_name }}
     env:
       HAS_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
       # WIF-only: long-lived service account keys and token fallbacks are
@@ -58,6 +105,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_DOMAIN_CORE_PROFILE: ${{ inputs.domain_core_profile }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
@@ -66,6 +114,19 @@ jobs:
             TAG="$INPUT_TAG"
           else
             TAG="$REF_NAME"
+          fi
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            DOMAIN_CORE_PROFILE="public-production"
+          else
+            DOMAIN_CORE_PROFILE="$INPUT_DOMAIN_CORE_PROFILE"
+          fi
+          if [[ "$DOMAIN_CORE_PROFILE" != "public-production" && "$DOMAIN_CORE_PROFILE" != "public-production-rollback" ]]; then
+            echo "::error::Unknown signed Functions domain-core profile: $DOMAIN_CORE_PROFILE"
+            exit 1
+          fi
+          if [[ "$EVENT_NAME" != "workflow_dispatch" && "$DOMAIN_CORE_PROFILE" == "public-production-rollback" ]]; then
+            echo "::error::The rollback profile is manual-only and requires protected authorization."
+            exit 1
           fi
           if [[ ! "$TAG" =~ ^v[0-9]{1,3}\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::Deploy only from SemVer v* release tags"
@@ -108,6 +169,8 @@ jobs:
             echo "tag=$TAG"
             echo "commit=$commit"
             echo "dry_run=$([[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]] && echo true || echo false)"
+            echo "stable_release=$([[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]] && echo true || echo false)"
+            echo "domain_core_profile=$DOMAIN_CORE_PROFILE"
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
@@ -116,24 +179,231 @@ jobs:
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
-      - name: Install and build Functions
+      - name: Resolve exact signed Functions profile
+        id: domain-core-profile
+        env:
+          DOMAIN_CORE_PROFILE: ${{ steps.tag.outputs.domain_core_profile }}
+          RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
         run: |
+          set -euo pipefail
+          profile="$RUNNER_TEMP/domain-core-functions-profile.json"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile "$DOMAIN_CORE_PROFILE" \
+            --expected-candidate-commit "$RELEASE_COMMIT" \
+            --format json \
+            --output "$profile"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile "$DOMAIN_CORE_PROFILE" \
+            --expected-candidate-commit "$RELEASE_COMMIT" \
+            --format github-env \
+            --output "$RUNNER_TEMP/domain-core-functions.env"
+          node - "$profile" "$GITHUB_OUTPUT" <<'NODE'
+          const fs = require("node:fs");
+          const crypto = require("node:crypto");
+          const [profilePath, outputPath] = process.argv.slice(2);
+          const bytes = fs.readFileSync(profilePath);
+          const profile = JSON.parse(bytes);
+          const candidate = profile.candidateIdentity;
+          if (!candidate || profile.artifactAuthority !== "signed" || profile.distribution !== "public") {
+            throw new Error("Functions production profile is not signed, public, and candidate-bound");
+          }
+          fs.appendFileSync(outputPath, [
+            `profile_path=${profilePath}`,
+            `profile_sha256=${crypto.createHash("sha256").update(bytes).digest("hex")}`,
+            `candidate_commit=${candidate.candidateCommit}`,
+            `core_version=${candidate.coreVersion}`,
+            `abi_version=${candidate.abiVersion}`,
+            `source_sha256=${candidate.sourceSha256}`,
+            `pricing_mode=${profile.modes.pricing}`,
+          ].join("\n") + "\n");
+          NODE
+
+      - name: Locate exact deterministic candidate source run
+        id: domain-core-source
+        env:
+          CANDIDATE_COMMIT: ${{ steps.domain-core-profile.outputs.candidate_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pages="$RUNNER_TEMP/domain-core-source-run-pages.json"
+          gh api --paginate --slurp \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/domain-core.yml/runs?event=push&status=completed&head_sha=$CANDIDATE_COMMIT&per_page=100" \
+            > "$pages"
+          run_json="$RUNNER_TEMP/domain-core-source-run.json"
+          jq -e --arg sha "$CANDIDATE_COMMIT" '
+            if length == 0 then error("source workflow API returned no pages") else . end
+            | if .[0].total_count != ([.[].workflow_runs[]] | unique_by(.id) | length)
+              then error("source workflow pagination is incomplete")
+              else [.[].workflow_runs[]]
+              end
+            | map(select(
+                .path == ".github/workflows/domain-core.yml"
+                and .event == "push"
+                and .head_branch == "main"
+                and .head_sha == $sha
+                and .status == "completed"
+                and .conclusion == "success"
+              ))
+            | unique_by(.id)
+            | if length == 1 then .[0] else error("expected exactly one successful deterministic main push run") end
+          ' "$pages" > "$run_json"
+          run_id="$(jq -er '.id' "$run_json")"
+          run_attempt="$(jq -er '.run_attempt' "$run_json")"
+          printf 'run_id=%s\nrun_attempt=%s\n' "$run_id" "$run_attempt" >> "$GITHUB_OUTPUT"
+
+      - name: Download exact unsigned candidate bundle
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.domain-core-source.outputs.run_id }}
+          name: domain-core-candidate-bundle-${{ steps.domain-core-profile.outputs.candidate_commit }}-${{ steps.domain-core-source.outputs.run_id }}-${{ steps.domain-core-source.outputs.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-release-materials/candidate
+
+      - name: Download exact candidate rollback artifact
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.domain-core-source.outputs.run_id }}
+          name: domain-core-public-production-rollback-${{ steps.domain-core-profile.outputs.candidate_commit }}-${{ steps.domain-core-source.outputs.run_id }}-${{ steps.domain-core-source.outputs.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-release-materials/rollback
+
+      - name: Verify protected promotion and exact rollback before build
+        id: domain-core-gate
+        env:
+          CANDIDATE_COMMIT: ${{ steps.domain-core-profile.outputs.candidate_commit }}
+          CORE_VERSION: ${{ steps.domain-core-profile.outputs.core_version }}
+          ABI_VERSION: ${{ steps.domain-core-profile.outputs.abi_version }}
+          SOURCE_SHA256: ${{ steps.domain-core-profile.outputs.source_sha256 }}
+          SOURCE_RUN_ID: ${{ steps.domain-core-source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.domain-core-source.outputs.run_attempt }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          materials="$RUNNER_TEMP/domain-core-release-materials"
+          candidate="$materials/candidate/domain-core-candidate-bundle.json"
+          rollback="$materials/rollback/domain-core-public-production-rollback.json"
+          test -s "$candidate"
+          test -s "$rollback"
+
+          mkdir -p "$materials/promotion"
+          pushd "$materials/promotion" >/dev/null
+          gh attestation download "$candidate" \
+            --repo "$GITHUB_REPOSITORY" \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --limit 100
+          mapfile -t attestation_files < <(find . -maxdepth 1 -type f -name 'sha256*.jsonl' -print)
+          if [[ "${#attestation_files[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one digest-addressed protected attestation download, found ${#attestation_files[@]}."
+            exit 1
+          fi
+          mv "${attestation_files[0]}" domain-core-promotion.sigstore.jsonl
+          popd >/dev/null
+          promotion="$materials/promotion/domain-core-promotion.sigstore.jsonl"
+
+          verified_attestations="$RUNNER_TEMP/domain-core-protected-attestations.json"
+          gh attestation verify "$candidate" \
+            --bundle "$promotion" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/domain-core-promotion-proof.yml" \
+            --source-ref refs/heads/main \
+            --cert-oidc-issuer https://token.actions.githubusercontent.com \
+            --deny-self-hosted-runners \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --format json \
+            > "$verified_attestations"
+          signer_runs="$RUNNER_TEMP/domain-core-signer-runs.json"
+          node - "$verified_attestations" "$signer_runs" <<'NODE'
+          const fs = require("node:fs");
+          const [verifiedPath, outputPath] = process.argv.slice(2);
+          const verified = JSON.parse(fs.readFileSync(verifiedPath));
+          const prefix = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/`;
+          const runs = new Map();
+          for (const entry of Array.isArray(verified) ? verified : []) {
+            const uri = entry?.verificationResult?.signature?.certificate?.runInvocationURI;
+            if (typeof uri !== "string" || !uri.startsWith(prefix)) continue;
+            const match = uri.slice(prefix.length).match(/^([1-9][0-9]*)\/attempts\/([1-9][0-9]*)$/);
+            if (!match) continue;
+            runs.set(`${match[1]}:${match[2]}`, { id: Number(match[1]), run_attempt: Number(match[2]) });
+          }
+          const result = [...runs.values()].sort((left, right) => right.id - left.id);
+          if (result.length === 0) throw new Error("protected attestation contains no exact signer run invocation");
+          fs.writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
+          NODE
+
+          rollback_sha256="$(sha256sum "$rollback" | awk '{print $1}')"
+          selected_run=""
+          selected_attempt=""
+          : > "$RUNNER_TEMP/domain-core-release-gate-attempts.log"
+          while IFS=$'\t' read -r run_id run_attempt; do
+            signer_run="$RUNNER_TEMP/domain-core-signer-run-$run_id.json"
+            if ! gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > "$signer_run"; then
+              continue
+            fi
+            if ! jq -e --argjson attempt "$run_attempt" '
+              .path == ".github/workflows/domain-core-promotion-proof.yml"
+              and .event == "workflow_dispatch"
+              and .head_branch == "main"
+              and .status == "completed"
+              and .conclusion == "success"
+              and .run_attempt == $attempt
+            ' "$signer_run" >/dev/null; then
+              continue
+            fi
+            attempt_gate="$RUNNER_TEMP/domain-core-release-gate-$run_id-$run_attempt.json"
+            if node scripts/ci/verify-domain-core-release-gate.mjs \
+              --candidate-bundle "$candidate" \
+              --promotion-attestation "$promotion" \
+              --rollback-artifact "$rollback" \
+              --candidate-commit "$CANDIDATE_COMMIT" \
+              --core-version "$CORE_VERSION" \
+              --abi-version "$ABI_VERSION" \
+              --source-sha256 "$SOURCE_SHA256" \
+              --source-run-id "$SOURCE_RUN_ID" \
+              --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+              --protected-signer-run-id "$run_id" \
+              --protected-signer-run-attempt "$run_attempt" \
+              --rollback-sha256 "$rollback_sha256" \
+              --output "$attempt_gate" \
+              >> "$RUNNER_TEMP/domain-core-release-gate-attempts.log" 2>&1; then
+              selected_run="$run_id"
+              selected_attempt="$run_attempt"
+              cp "$attempt_gate" "$materials/domain-core-release-gate.json"
+              break
+            fi
+          done < <(jq -r '.[] | [.id, .run_attempt] | @tsv' "$signer_runs")
+          if [[ -z "$selected_run" || -z "$selected_attempt" ]]; then
+            cat "$RUNNER_TEMP/domain-core-release-gate-attempts.log"
+            echo "::error::No successful protected signer run attests the exact candidate bundle and run attempt."
+            exit 1
+          fi
+          gate_sha256="$(sha256sum "$materials/domain-core-release-gate.json" | awk '{print $1}')"
+          {
+            echo "signer_run_id=$selected_run"
+            echo "signer_run_attempt=$selected_attempt"
+            echo "rollback_sha256=$rollback_sha256"
+            echo "gate_sha256=$gate_sha256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install and build selected Functions artifact
+        id: domain-core-build
+        run: |
+          set -euo pipefail
           npm ci --prefix functions
           npm run build --prefix functions
           node scripts/ci/resolve-domain-core-build-profile.mjs \
-            --profile public-production \
-            --expected-candidate-commit "${{ steps.tag.outputs.commit }}" \
-            --format github-env \
-            --output "$RUNNER_TEMP/domain-core-public.env"
-          node scripts/ci/resolve-domain-core-build-profile.mjs \
-            --profile public-production \
+            --profile "${{ steps.tag.outputs.domain_core_profile }}" \
             --expected-candidate-commit "${{ steps.tag.outputs.commit }}" \
             --format functions-js \
             --output functions/lib/generated/domainCoreCandidateReceipt.js
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-            --profile public-production \
+            --profile "${{ steps.tag.outputs.domain_core_profile }}" \
             --expected-candidate-commit "${{ steps.tag.outputs.commit }}" \
             --functions-dir functions/lib
+          receipt_sha256="$(sha256sum functions/lib/generated/domainCoreCandidateReceipt.js | awk '{print $1}')"
+          {
+            echo "profile_sha256=${{ steps.domain-core-profile.outputs.profile_sha256 }}"
+            echo "receipt_sha256=$receipt_sha256"
+          } >> "$GITHUB_OUTPUT"
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
           node scripts/ci/check-callable-validation.mjs
@@ -143,6 +413,34 @@ jobs:
             --output "$RUNNER_TEMP/firebase-functions.ci.json" \
             --check
           bash scripts/ci/prepare-firebase-tools.sh
+
+      - name: Create immutable Functions deploy proof
+        id: domain-core-proof
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+        run: |
+          set -euo pipefail
+          materials="$RUNNER_TEMP/domain-core-release-materials"
+          stage="$RUNNER_TEMP/domain-core-functions-deploy-proof"
+          mkdir -p "$stage"
+          node scripts/ci/create-domain-core-functions-deploy-proof.mjs \
+            --profile "${{ steps.domain-core-profile.outputs.profile_path }}" \
+            --compiled-receipt functions/lib/generated/domainCoreCandidateReceipt.js \
+            --release-gate "$materials/domain-core-release-gate.json" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --deploy-run-id "$GITHUB_RUN_ID" \
+            --deploy-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --output "$stage/domain-core-functions-deploy-proof.json"
+          install -m 0600 "${{ steps.domain-core-profile.outputs.profile_path }}" "$stage/domain-core-functions-profile.json"
+          install -m 0600 functions/lib/generated/domainCoreCandidateReceipt.js "$stage/domainCoreCandidateReceipt.js"
+          install -m 0600 "$materials/domain-core-release-gate.json" "$stage/domain-core-release-gate.json"
+          install -m 0600 "$materials/candidate/domain-core-candidate-bundle.json" "$stage/domain-core-candidate-bundle.json"
+          install -m 0600 "$materials/promotion/domain-core-promotion.sigstore.jsonl" "$stage/domain-core-promotion.sigstore.jsonl"
+          install -m 0600 "$materials/rollback/domain-core-public-production-rollback.json" "$stage/domain-core-public-production-rollback.json"
+          artifact_name="domain-core-functions-deploy-proof-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 
       - name: BurnBar source provenance preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
@@ -255,7 +553,7 @@ jobs:
           {
             cat "$PROD_CONFIG"
             echo ""
-            cat "$RUNNER_TEMP/domain-core-public.env"
+            cat "$RUNNER_TEMP/domain-core-functions.env"
             echo "FUNCTION_VERSION=${TAG}"
             echo "OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT}"
             echo "SENTRY_DSN=${SENTRY_DSN}"
@@ -282,6 +580,15 @@ jobs:
             --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
             --non-interactive
 
+      - name: Upload exact deployed Functions proof inputs
+        if: steps.tag.outputs.dry_run != 'true'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: ${{ steps.domain-core-proof.outputs.artifact_name }}
+          path: ${{ runner.temp }}/domain-core-functions-deploy-proof
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Dry-run skip deploy
         if: steps.tag.outputs.dry_run == 'true'
         run: echo "dry_run=true — skipping production deploy"
@@ -294,6 +601,8 @@ jobs:
             echo "- Tag: ${{ steps.tag.outputs.tag }}"
             echo "- Dry run: ${{ steps.tag.outputs.dry_run }}"
             echo "- FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}"
+            echo "- Domain core profile: ${{ steps.tag.outputs.domain_core_profile }}"
+            echo "- Protected signer: run ${{ steps.domain-core-gate.outputs.signer_run_id }}, attempt ${{ steps.domain-core-gate.outputs.signer_run_attempt }}"
             echo "- Project: burnbar"
             echo "- Health: functions-health-gate job"
             echo ""
@@ -320,6 +629,14 @@ jobs:
           FUNCTIONS_REGION: us-central1
           DEPLOY_HEALTH_JSON: deploy-health.json
           DEPLOY_TAG: ${{ needs.deploy-functions.outputs.tag }}
+          HEALTH_GATE_EXPECTED_SOURCE_COMMIT: ${{ needs.deploy-functions.outputs.commit }}
+          HEALTH_GATE_EXPECTED_VERSION: ${{ needs.deploy-functions.outputs.tag }}
+          HEALTH_GATE_EXPECTED_DOMAIN_CORE_PROFILE: ${{ needs.deploy-functions.outputs.domain_core_profile }}
+          HEALTH_GATE_EXPECTED_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.deploy-functions.outputs.commit }}
+          HEALTH_GATE_EXPECTED_DOMAIN_CORE_VERSION: ${{ needs.deploy-functions.outputs.core_version }}
+          HEALTH_GATE_EXPECTED_DOMAIN_CORE_ABI_VERSION: ${{ needs.deploy-functions.outputs.abi_version }}
+          HEALTH_GATE_EXPECTED_DOMAIN_CORE_SOURCE_SHA256: ${{ needs.deploy-functions.outputs.source_sha256 }}
+          HEALTH_GATE_EXPECTED_DOMAIN_CORE_PRICING_MODE: ${{ needs.deploy-functions.outputs.pricing_mode }}
           HEALTH_GATE_REQUIRE_SENTRY: "1"
         run: bash scripts/ci/post-deploy-health-gate.sh
 
@@ -327,6 +644,33 @@ jobs:
         if: always() && hashFiles('deploy-health.json') != ''
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: deploy-health-${{ needs.deploy-functions.outputs.tag }}
+          name: domain-core-functions-deploy-health-${{ needs.deploy-functions.outputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: deploy-health.json
           if-no-files-found: ignore
+
+  dispatch-domain-core-functions-evidence:
+    needs: [deploy-functions, functions-health-gate]
+    if: >-
+      ${{ needs.deploy-functions.result == 'success'
+          && needs.functions-health-gate.result == 'success'
+          && needs.deploy-functions.outputs.dry_run != 'true'
+          && needs.deploy-functions.outputs.stable_release == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch exact tag-bound Functions release evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.deploy-functions.outputs.tag }}
+          DOMAIN_CORE_PROFILE: ${{ needs.deploy-functions.outputs.domain_core_profile }}
+        run: |
+          set -euo pipefail
+          gh workflow run domain-core-functions-release-evidence.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$RELEASE_TAG" \
+            --field deploy_run_id="$GITHUB_RUN_ID" \
+            --field deploy_run_attempt="$GITHUB_RUN_ATTEMPT" \
+            --field domain_core_profile="$DOMAIN_CORE_PROFILE"
