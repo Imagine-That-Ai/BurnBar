@@ -122,10 +122,18 @@ final class OpenBurnBarMobileTests: XCTestCase {
     override func setUp() {
         super.setUp()
         HermesGatewayRelayKeypair.configurePrivateKeyStorageForTesting(InMemoryGatewayPrivateKeyStorage())
+        // AssistantPendingThread.shared is a process-wide singleton; tests
+        // that stash/consume pending thread IDs (lines 219, 267) mutate it
+        // directly. Reset every assistant slot before AND after each test so
+        // no cross-test leak can change a downstream test's assertion.
+        AssistantPendingThread.shared.clear(.hermes)
+        AssistantPendingThread.shared.clear(.pi)
     }
 
     override func tearDown() {
         HermesGatewayRelayKeypair.resetPrivateKeyStorageForTesting()
+        AssistantPendingThread.shared.clear(.hermes)
+        AssistantPendingThread.shared.clear(.pi)
         super.tearDown()
     }
 

@@ -104,6 +104,7 @@ let hasBurnBarRemoteXCFramework = !disableBurnBarRemoteXCFramework && FileManage
 var packageProductsBase: [Product] = [
     .library(
         name: "OpenBurnBarCore",
+        type: .dynamic,
         targets: ["OpenBurnBarCore"]
     ),
     // Phase-1 K1 of docs/SURFACE_SPRAWL_AND_SPLITBRAIN_REMEDIATION_PLAN.md: the
