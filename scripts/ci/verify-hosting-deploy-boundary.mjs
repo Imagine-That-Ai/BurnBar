@@ -194,18 +194,50 @@ if (/^\s{8}if\s*:/mu.test(verifyStep)) {
   fail("Verify hosting deploy ref step must not be conditional");
 }
 
-requireIncludes(source, "workflow_dispatch:", "hosting deploy must support manual dispatch");
-requireIncludes(verifyStep, "EVENT_NAME: ${{ github.event_name }}", "verify step must read event name through env");
-requireIncludes(verifyRun, "set -euo pipefail", "verify step must run fail-closed shell mode");
+requireIncludes(
+  source,
+  "workflow_dispatch:",
+  "hosting deploy must support manual dispatch",
+);
+requireIncludes(
+  source,
+  'tags: ["v*"]',
+  "hosting deploy must support stable release tags",
+);
+requireIncludes(
+  verifyStep,
+  "EVENT_NAME: ${{ github.event_name }}",
+  "verify step must read event name through env",
+);
+requireIncludes(
+  verifyStep,
+  "REQUESTED_PROFILE: ${{ inputs.domain_core_profile || 'public-production' }}",
+  "verify step must read the requested profile through env",
+);
 requireIncludes(
   verifyRun,
-  'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-  "manual hosting deploy must fail unless dispatch ref is main",
+  "set -euo pipefail",
+  "verify step must run fail-closed shell mode",
 );
-requireShellIfExits(
+requireIncludes(
   verifyRun,
-  'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-  "manual hosting dispatch main-ref guard",
+  'if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then',
+  "hosting deploy must resolve main explicitly",
+);
+requireIncludes(
+  verifyRun,
+  'elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(\\+[0-9A-Za-z.-]+)?$ ]]; then',
+  "hosting deploy must accept only stable semantic release tags",
+);
+requireIncludes(
+  verifyRun,
+  'commit="$(git rev-parse "$GITHUB_REF^{commit}")"',
+  "hosting deploy must resolve the exact tag commit",
+);
+requireIncludes(
+  verifyRun,
+  '[[ "$GITHUB_SHA" == "$commit" ]] || { echo "::error::Release tag moved away from workflow commit."; exit 1; }',
+  "hosting deploy must reject a moved release tag",
 );
 requireIncludes(
   verifyRun,
@@ -214,13 +246,23 @@ requireIncludes(
 );
 requireIncludes(
   verifyRun,
-  'if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then',
+  'if ! git merge-base --is-ancestor "$commit" origin/main; then',
   "hosting deploy commit must be reachable from origin/main",
 );
 requireShellIfExits(
   verifyRun,
-  'if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then',
+  'if ! git merge-base --is-ancestor "$commit" origin/main; then',
   "hosting deploy origin/main reachability guard",
+);
+requireIncludes(
+  verifyRun,
+  'if [[ "$profile" == "public-production-rollback" ]]; then',
+  "hosting rollback must have an explicit policy branch",
+);
+requireIncludes(
+  verifyRun,
+  'if [[ "$EVENT_NAME" != "workflow_dispatch" || -z "$release_tag" ]]; then',
+  "hosting rollback must be manual and stable-tag-only",
 );
 
 requireOrder(
@@ -327,4 +369,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("PASS: hosting deploy manual dispatch is main-bound and artifact-bound.");
+console.log(
+  "PASS: hosting deploy manual dispatch is main-bound and artifact-bound.",
+);

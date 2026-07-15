@@ -141,6 +141,52 @@ final class CloudVaultDomainCoreAdapterTests: XCTestCase {
         }
     }
 
+    func testNativeRustModeMatchesOpaqueIdentifierKATWithoutLegacyFallback() throws {
+        let key = Data((0 ..< 32).map(UInt8.init))
+        let neverLegacy: () throws -> String = {
+            XCTFail("Rust mode evaluated an opaque-identifier legacy closure")
+            return ""
+        }
+
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.projectMemoryDocID(
+                slug: "la-hormiga-dormida",
+                keyData: key,
+                environment: rustEnvironment,
+                legacy: neverLegacy
+            ),
+            "pm_445f38c87b0e3c474c2be6339b8cd8d8"
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.pensieveDedupHash(
+                plaintext: "deploy the daemon before midnight",
+                keyData: key,
+                environment: rustEnvironment,
+                legacy: neverLegacy
+            ),
+            "e55f699579cba539fb8f3a87c77bd768a95e331859c9fca9c89d21dac0c6d433"
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.pensieveSlugHmac(
+                slug: "burnbar-docs-secret-runbook",
+                keyData: key,
+                environment: rustEnvironment,
+                legacy: neverLegacy
+            ),
+            "f77ecba2eaa6012fb4a6846d8fd218b61a04094cad346683f029e1636da7a96d"
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.subscriptionDocID(
+                agentURI: "agent://burnbar/research-scout",
+                topicID: "agent-updates",
+                keyData: key,
+                environment: rustEnvironment,
+                legacy: neverLegacy
+            ),
+            "sub_4b6aff30300ab361ad751d8d7c6b2bb0"
+        )
+    }
+
     func testNativeRustModeMatchesRecoveryAndP256EscrowKAT() throws {
         let fixture = try loadFixture()
         let recovery = fixture.recovery

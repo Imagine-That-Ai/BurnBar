@@ -4,9 +4,6 @@ package com.openburnbar.data.hermes.relay
 
 import java.security.MessageDigest
 import java.security.SecureRandom
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 import org.json.JSONObject
 
 /**
@@ -14,13 +11,7 @@ import org.json.JSONObject
  * iOS / macOS `HermesRelayCrypto.swift` implementation, byte for byte.
  */
 object HermesRelayCrypto {
-    private const val BITS_PER_BYTE = 0x08
-    private const val GCM_TAG_BITS = 128
-    private const val GCM_IV_BYTES = 12
     private const val AES_KEY_BYTES = 32
-
-    private const val AAD_PREFIX = "OpenBurnBar-HermesRelay-v1"
-    private const val KEY_WRAP_SHARED_INFO_PREFIX = "OpenBurnBar-HermesRelay-KeyWrap-v1|"
 
     private val secureRandom = SecureRandom()
 
@@ -130,25 +121,21 @@ object HermesRelayCrypto {
     fun sealToBase64(plaintext: ByteArray, keyData: ByteArray, aad: ByteArray): String {
         require(keyData.size == AES_KEY_BYTES) { "symmetric key must be 32 bytes" }
         return HermesDomainCoreAdapter.seal(plaintext, keyData, aad) {
-            val nonce = ByteArray(GCM_IV_BYTES).also(secureRandom::nextBytes)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyData, "AES"), GCMParameterSpec(GCM_TAG_BITS, nonce))
-            cipher.updateAAD(aad)
-            HermesRelayCryptoSupport.base64NoWrap(nonce + cipher.doFinal(plaintext))
+            val nonce = ByteArray(HermesRelayLegacyCrypto.GCM_IV_BYTES).also(secureRandom::nextBytes)
+            HermesRelayCryptoSupport.base64NoWrap(
+                HermesRelayLegacyCrypto.sealCombined(plaintext, keyData, aad, nonce),
+            )
         }
     }
 
     fun openBase64(ciphertext: String, keyData: ByteArray, aad: ByteArray): ByteArray {
         require(keyData.size == AES_KEY_BYTES) { "symmetric key must be 32 bytes" }
         return HermesDomainCoreAdapter.open(ciphertext, keyData, aad) {
-            val combined = HermesRelayCryptoSupport.base64Decode(ciphertext)
-            require(combined.size > GCM_IV_BYTES) { "ciphertext too short" }
-            val nonce = combined.copyOfRange(0, GCM_IV_BYTES)
-            val body = combined.copyOfRange(GCM_IV_BYTES, combined.size)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyData, "AES"), GCMParameterSpec(GCM_TAG_BITS, nonce))
-            cipher.updateAAD(aad)
-            cipher.doFinal(body)
+            HermesRelayLegacyCrypto.openCombined(
+                HermesRelayCryptoSupport.base64Decode(ciphertext),
+                keyData,
+                aad,
+            )
         }
     }
 
@@ -196,12 +183,9 @@ object HermesRelayCrypto {
                     length = AES_KEY_BYTES,
                 )
             }
-        val nonce = ByteArray(GCM_IV_BYTES).also(secureRandom::nextBytes)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(wrappingKey, "AES"), GCMParameterSpec(GCM_TAG_BITS, nonce))
-        cipher.updateAAD(aad)
-        val sealed = cipher.doFinal(keyData)
-        return HermesRelayCryptoSupport.base64NoWrap(enc + nonce + sealed)
+        val nonce = ByteArray(HermesRelayLegacyCrypto.GCM_IV_BYTES).also(secureRandom::nextBytes)
+        val sealed = HermesRelayLegacyCrypto.sealCombined(keyData, wrappingKey, aad, nonce)
+        return HermesRelayCryptoSupport.base64NoWrap(enc + sealed)
     }
 
     /**
@@ -219,7 +203,7 @@ object HermesRelayCrypto {
         require(envelope.size > HermesRelayCryptoEc.UNCOMPRESSED_POINT_LEN) { "wrapped key too short" }
         val ephemeralPubBytes = envelope.copyOfRange(0, HermesRelayCryptoEc.UNCOMPRESSED_POINT_LEN)
         val sealed = envelope.copyOfRange(HermesRelayCryptoEc.UNCOMPRESSED_POINT_LEN, envelope.size)
-        require(sealed.size > GCM_IV_BYTES) { "wrapped key body too short" }
+        require(sealed.size > HermesRelayLegacyCrypto.GCM_IV_BYTES) { "wrapped key body too short" }
         val ephemeralPub = HermesRelayCryptoEc.decodeUncompressedPublicKey(ephemeralPubBytes)
         val dh1 = HermesRelayCryptoEc.ecdh(privateKey, ephemeralPub)
         val wrappingKey =
@@ -246,12 +230,7 @@ object HermesRelayCrypto {
                     length = AES_KEY_BYTES,
                 )
             }
-        val nonce = sealed.copyOfRange(0, GCM_IV_BYTES)
-        val body = sealed.copyOfRange(GCM_IV_BYTES, sealed.size)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(wrappingKey, "AES"), GCMParameterSpec(GCM_TAG_BITS, nonce))
-        cipher.updateAAD(aad)
-        return cipher.doFinal(body)
+        return HermesRelayLegacyCrypto.openCombined(sealed, wrappingKey, aad)
     }
 
     fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)

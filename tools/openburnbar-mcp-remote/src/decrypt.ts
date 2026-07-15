@@ -1,15 +1,12 @@
-import { createDecipheriv } from "node:crypto";
+import {
+  domainCoreAesGcmOpenCombined,
+  domainCoreCloudVaultAADContext,
+} from "./domainCoreCloudVault.js";
+import {
+  legacyAesGcmOpenCombined,
+  legacyCloudVaultAADContext,
+} from "./legacy/cloudVaultPrimitivesLegacy.js";
 import { readVaultKey } from "./vaultStore.js";
-
-function hasAADForbiddenCharacter(value: string): boolean {
-  for (const character of value) {
-    const code = character.charCodeAt(0);
-    if (code <= 0x1f || code === 0x7f || character === "|") {
-      return true;
-    }
-  }
-  return false;
-}
 
 
 export interface SealedEnvelope {
@@ -30,15 +27,15 @@ export function cloudVaultAADContext(
   schemaVersion = 2,
   purpose = field,
 ): string {
-  for (const [name, value] of Object.entries({ uid, collection, docID, field, purpose })) {
-    if (!value || hasAADForbiddenCharacter(value)) {
-      throw new Error(`Invalid CloudVault AAD ${name}.`);
-    }
-  }
-  if (!Number.isInteger(schemaVersion) || schemaVersion < 2) {
-    throw new Error("Invalid CloudVault AAD schemaVersion.");
-  }
-  return `OpenBurnBar-CloudVault-aad-v2|${uid}|${collection}|${docID}|${field}|${schemaVersion}|${purpose}`;
+  return domainCoreCloudVaultAADContext(
+    uid,
+    collection,
+    docID,
+    field,
+    schemaVersion,
+    purpose,
+    () => legacyCloudVaultAADContext(uid, collection, docID, field, schemaVersion, purpose),
+  );
 }
 
 function safeCloudVaultAADContext(uid: string, collection: string, docID: string, field: string): string | undefined {
@@ -65,17 +62,22 @@ export function decryptSealedText(envelope: unknown, expectedAAD?: string): stri
   if (!key || !envelope || typeof envelope !== "object") {return undefined;}
   const item = envelope as Partial<SealedEnvelope>;
   if (item.algorithm !== "AES-256-GCM" || !item.nonce || !item.ciphertext || !item.tag) {return undefined;}
-  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(item.nonce, "base64"));
+  const nonce = Buffer.from(item.nonce, "base64");
+  const ciphertext = Buffer.from(item.ciphertext, "base64");
+  const tag = Buffer.from(item.tag, "base64");
+  let aad = Buffer.alloc(0);
   if ((item.schemaVersion ?? 1) >= 2) {
     if (!expectedAAD || item.aad !== expectedAAD) {return undefined;}
-    decipher.setAAD(Buffer.from(expectedAAD, "utf8"));
+    aad = Buffer.from(expectedAAD, "utf8");
   }
-  decipher.setAuthTag(Buffer.from(item.tag, "base64"));
-  const opened = Buffer.concat([
-    decipher.update(Buffer.from(item.ciphertext, "base64")),
-    decipher.final()
-  ]);
-  return opened.toString("utf8");
+  const combined = Buffer.concat([nonce, ciphertext, tag]);
+  const opened = domainCoreAesGcmOpenCombined(
+    combined,
+    key,
+    aad,
+    () => legacyAesGcmOpenCombined(combined, key, aad),
+  );
+  return Buffer.from(opened).toString("utf8");
 }
 
 function safeDecryptSealedText(envelope: unknown, expectedAAD?: string): string | undefined {

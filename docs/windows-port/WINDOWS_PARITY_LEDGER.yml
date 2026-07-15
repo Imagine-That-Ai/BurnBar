@@ -307,7 +307,7 @@ rows:
   - windows/tests/cloudsync
   blocking_paths:
   - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs
-  - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/AesGcmBox.cs
+  - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/Legacy/AesGcmBox.cs
   - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultEnvelopes.cs
   - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/P256KeyAgreement.cs
   - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultAadContext.cs

@@ -46,6 +46,7 @@ class HermesDomainCoreAdapterTest {
                 mismatchCategory = "native_unavailable",
                 legacyMicros = comparisons.single().legacyMicros,
                 rustMicros = 0,
+                observedAt = comparisons.single().observedAt,
             ),
             comparisons.single(),
         )

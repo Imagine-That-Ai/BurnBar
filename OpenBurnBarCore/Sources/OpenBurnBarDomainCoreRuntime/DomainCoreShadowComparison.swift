@@ -9,6 +9,7 @@ public struct DomainCoreShadowComparison: Equatable, Sendable {
     public let mismatchCategory: String?
     public let legacyMicros: UInt64
     public let rustMicros: UInt64
+    public let observedAt: Date
 
     public init(
         domain: String,
@@ -18,7 +19,8 @@ public struct DomainCoreShadowComparison: Equatable, Sendable {
         outcome: String,
         mismatchCategory: String?,
         legacyMicros: UInt64,
-        rustMicros: UInt64
+        rustMicros: UInt64,
+        observedAt: Date = Date()
     ) {
         self.domain = domain
         self.slice = slice
@@ -28,6 +30,7 @@ public struct DomainCoreShadowComparison: Equatable, Sendable {
         self.mismatchCategory = mismatchCategory
         self.legacyMicros = legacyMicros
         self.rustMicros = rustMicros
+        self.observedAt = observedAt
     }
 }
 

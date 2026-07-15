@@ -226,6 +226,95 @@ enum CloudVaultDomainCoreAdapter {
         }
     }
 
+    static func projectMemoryDocID(
+        slug: String,
+        keyData: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(
+            operation: "project_memory_doc_id",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultProjectMemoryDocId(slug: slug, key: keyData)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func pensieveDedupHash(
+        plaintext: String,
+        keyData: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(
+            operation: "pensieve_dedup_hash",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultPensieveDedupHash(plaintext: plaintext, key: keyData)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func pensieveSlugHmac(
+        slug: String,
+        keyData: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(
+            operation: "pensieve_slug_hmac",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultPensieveSlugHmac(slug: slug, key: keyData)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func subscriptionDocID(
+        agentURI: String,
+        topicID: String,
+        keyData: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(
+            operation: "subscription_doc_id",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultSubscriptionDocId(
+                agentUri: agentURI,
+                topicId: topicID,
+                key: keyData
+            )
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
     static func expectedSessionBodyHash(
         _ data: Data,
         keyData: Data,

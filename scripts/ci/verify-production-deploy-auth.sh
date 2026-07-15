@@ -31,7 +31,7 @@ LEGACY_SECRET_RE = re.compile(
     r"\b(?:GCP_SA_KEY|GOOGLE_PLAY_SERVICE_ACCOUNT_JSON|FIREBASE_TOKEN|credentials_json)\b"
 )
 POST_AUTH_FORBIDDEN_RE = re.compile(
-    r"(?im)(?:^|\s)(npm|npx)\s|npm\s+exec|npm\s+ci|npm\s+run|bash\s+scripts/|\./scripts/|uses:\s*\./"
+    r"(?im)(?:^|\s)(npm|npx)\s|npm\s+exec|npm\s+ci|npm\s+run|bash\s+scripts/|python(?:3(?:\.\d+)?)?\s+(?:\./)?scripts/|\./scripts/|uses:\s*\./"
 )
 DEPLOY_RE = re.compile(r"(?s)(\bfirebase\s+deploy\b|FIREBASE_TOOLS_BIN[^\n]*\bdeploy\b)")
 
