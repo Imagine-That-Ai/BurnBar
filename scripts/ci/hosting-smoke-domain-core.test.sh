@@ -31,6 +31,20 @@ case "$url" in
     cp "$MOCK_IDENTITY_SOURCE" "$body"
     printf '%s' "${MOCK_IDENTITY_HTTP_CODE:-200}"
     ;;
+  https://mock.invalid/console/domain-core-runtime-artifact-manifest.json)
+    cp "$MOCK_RUNTIME_MANIFEST_SOURCE" "$body"
+    printf '200'
+    ;;
+  https://mock.invalid/console/*)
+    relative="${url#https://mock.invalid/console/}"
+    if [[ -f "$MOCK_RUNTIME_ROOT/$relative" ]]; then
+      cp "$MOCK_RUNTIME_ROOT/$relative" "$body"
+      printf '200'
+    else
+      : > "$body"
+      printf '404'
+    fi
+    ;;
   *)
     : > "$body"
     printf '404'
@@ -45,6 +59,9 @@ profile="$TMP/domain-core-build-profile.json"
 gate="$TMP/domain-core-release-gate.json"
 identity="$TMP/domain-core-deployment-identity.json"
 health="$TMP/console-deploy-health.json"
+runtime_root="$TMP/runtime"
+runtime_manifest="$TMP/domain-core-runtime-artifact-manifest.json"
+mkdir -p "$runtime_root"
 
 node - "$profile" "$gate" "$commit" <<'NODE'
 const fs = require("fs");
@@ -110,16 +127,32 @@ node "$ROOT/scripts/ci/create-domain-core-deployment-identity.mjs" \
   --release-gate "$gate" \
   --output "$identity"
 
+cp "$identity" "$runtime_root/domain-core-deployment-identity.json"
+cp "$profile" "$runtime_root/domain-core-build-profile.json"
+printf 'domain-core-wasm-bytes\n' > "$runtime_root/domain-core.wasm"
+printf 'fetch("domain-core.wasm"); domainCoreSourceFingerprint();\n' > "$runtime_root/domain-core.js"
+node "$ROOT/scripts/ci/create-domain-core-runtime-artifact-manifest.mjs" \
+  --consumer console \
+  --root "$runtime_root" \
+  --profile-receipt "$profile" \
+  --output "$runtime_manifest" >/dev/null
+
+hosting_coordinates='{"schemaVersion":1,"project":"burnbar","sites":[{"target":"marketing","site":"burnbar","versionName":"sites/burnbar/versions/version-1","releaseName":"sites/burnbar/channels/live/releases/release-1"},{"target":"console","site":"burnbar-console","versionName":"sites/burnbar-console/versions/version-2","releaseName":"sites/burnbar-console/channels/live/releases/release-2"}]}'
+
 run_smoke() {
   PATH="$TMP/bin:$PATH" \
   MOCK_IDENTITY_SOURCE="$identity" \
   MOCK_IDENTITY_HTTP_CODE="${MOCK_IDENTITY_HTTP_CODE:-200}" \
+  MOCK_RUNTIME_ROOT="$runtime_root" \
+  MOCK_RUNTIME_MANIFEST_SOURCE="$runtime_manifest" \
   HOSTING_SMOKE_RETRIES=1 \
   HOSTING_SMOKE_SLEEP_SEC=0 \
   HOSTING_SMOKE_EXPECTED_COMMIT="$commit" \
   HOSTING_SMOKE_EXPECTED_TAG="$tag" \
   HOSTING_SMOKE_PROFILE_RECEIPT="$profile" \
   HOSTING_SMOKE_RELEASE_GATE="$gate" \
+  HOSTING_SMOKE_RUNTIME_MANIFEST="$runtime_manifest" \
+  HOSTING_DEPLOY_COORDINATES_JSON="$hosting_coordinates" \
   CONSOLE_DEPLOY_HEALTH_JSON="$health" \
   OPENBURNBAR_MARKETING_URL="https://mock.invalid/marketing" \
   OPENBURNBAR_CONSOLE_URL="https://mock.invalid/console" \
@@ -131,10 +164,10 @@ run_smoke() {
   cd "$ROOT"
   run_smoke >/dev/null
 )
-node - "$health" "$identity" <<'NODE'
+node - "$health" "$runtime_manifest" <<'NODE'
 const crypto = require("crypto");
 const fs = require("fs");
-const [healthPath, identityPath] = process.argv.slice(2);
+const [healthPath, manifestPath] = process.argv.slice(2);
 const health = JSON.parse(fs.readFileSync(healthPath, "utf8"));
 assert = require("assert/strict");
 assert.deepEqual(health, {
@@ -146,10 +179,18 @@ assert.deepEqual(health, {
     "marketing-http-200-csp",
     "console-http-200-csp",
     "console-deployment-identity-no-redirect",
+    "console-runtime-manifest-no-redirect",
+    "console-runtime-files-sha256",
   ],
   deployedArtifact: {
-    fileName: "domain-core-deployment-identity.json",
-    sha256: crypto.createHash("sha256").update(fs.readFileSync(identityPath)).digest("hex"),
+    fileName: "domain-core-runtime-artifact-manifest.json",
+    sha256: crypto.createHash("sha256").update(fs.readFileSync(manifestPath)).digest("hex"),
+  },
+  providerCoordinates: {
+    sites: [
+      { target: "marketing", site: "burnbar", versionName: "sites/burnbar/versions/version-1", releaseName: "sites/burnbar/channels/live/releases/release-1" },
+      { target: "console", site: "burnbar-console", versionName: "sites/burnbar-console/versions/version-2", releaseName: "sites/burnbar-console/channels/live/releases/release-2" },
+    ],
   },
 });
 NODE
@@ -189,4 +230,14 @@ if (cd "$ROOT" && MOCK_IDENTITY_HTTP_CODE=302 run_smoke >/dev/null 2>&1); then
 fi
 [[ ! -e "$health" ]] || { echo "FAIL: redirected identity produced health evidence" >&2; exit 1; }
 
-echo "PASS: Console hosting evidence is exact, no-redirect, and fail-closed"
+cp "$runtime_root/domain-core.wasm" "$TMP/good-domain-core.wasm"
+printf 'tampered-wasm\n' > "$runtime_root/domain-core.wasm"
+rm -f "$health"
+if (cd "$ROOT" && run_smoke >/dev/null 2>&1); then
+  echo "FAIL: runtime WASM differing from protected manifest passed" >&2
+  exit 1
+fi
+[[ ! -e "$health" ]] || { echo "FAIL: tampered WASM produced health evidence" >&2; exit 1; }
+cp "$TMP/good-domain-core.wasm" "$runtime_root/domain-core.wasm"
+
+echo "PASS: Console Hosting identity, runtime bytes, and immutable provider coordinates are exact and fail-closed"

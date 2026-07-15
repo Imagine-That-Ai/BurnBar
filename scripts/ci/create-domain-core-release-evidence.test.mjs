@@ -99,6 +99,22 @@ function consoleDeployment() {
       fileName: "console-static-bundle.tar",
       sha256: "f".repeat(64),
     },
+    providerCoordinates: {
+      sites: [
+        {
+          target: "marketing",
+          site: "burnbar",
+          versionName: "sites/burnbar/versions/1",
+          releaseName: "sites/burnbar/channels/live/releases/1",
+        },
+        {
+          target: "console",
+          site: "burnbar-console",
+          versionName: "sites/burnbar-console/versions/1",
+          releaseName: "sites/burnbar-console/channels/live/releases/1",
+        },
+      ],
+    },
     deployRun: {
       repository: "Imagine-That-Ai/BurnBar",
       workflowPath: ".github/workflows/deploy-hosting.yml",
@@ -427,6 +443,13 @@ test("rejects substituted deployment run and health artifact bindings", () => {
       },
       (deployment) => {
         deployment.healthArtifactSha256 = "invalid";
+      },
+      (deployment) => {
+        deployment.providerCoordinates.sites[1].site = "burnbar";
+      },
+      (deployment) => {
+        deployment.providerCoordinates.sites[0].versionName =
+          "sites/another-site/versions/1";
       },
     ];
     for (const mutate of cases) {

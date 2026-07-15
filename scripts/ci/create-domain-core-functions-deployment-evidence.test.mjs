@@ -14,6 +14,16 @@ const DOMAIN_CORE = {
   profile: "public-production",
   candidateIdentity: CANDIDATE,
   pricingMode: "rust",
+  loadedCore: {
+    version: CANDIDATE.coreVersion,
+    abiVersion: CANDIDATE.abiVersion,
+    sourceSha256: CANDIDATE.sourceSha256,
+    wasmSha256: "9".repeat(64),
+  },
+  artifactManifest: {
+    fileName: "domain-core-runtime-artifact-manifest.json",
+    sha256: "8".repeat(64),
+  },
 };
 
 function proof() {
@@ -37,6 +47,18 @@ function proof() {
       fileName: "domainCoreCandidateReceipt.js",
       sha256: "e".repeat(64),
     },
+    runtimeArtifact: {
+      fileName: "domain-core-runtime-artifact-manifest.json",
+      sha256: "8".repeat(64),
+      value: {
+        files: [
+          {
+            path: "vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
+            sha256: "9".repeat(64),
+          },
+        ],
+      },
+    },
     releaseGate: {
       fileName: "domain-core-release-gate.json",
       sha256: "f".repeat(64),
@@ -52,16 +74,64 @@ function health() {
   return {
     project: "burnbar",
     tag: "v1.2.3",
-    healthLive: { status: "alive", source, domainCore: DOMAIN_CORE },
+    healthLive: {
+      status: "alive",
+      source,
+      domainCore: {
+        ...DOMAIN_CORE,
+        runtime: {
+          service: "healthlive",
+          revision: "healthlive-1",
+          configuration: "healthlive",
+          functionTarget: "healthLive",
+        },
+      },
+    },
     healthReady: {
       status: "ready",
       version: "v1.2.3",
       source,
-      domainCore: DOMAIN_CORE,
+      domainCore: {
+        ...DOMAIN_CORE,
+        runtime: {
+          service: "healthready",
+          revision: "healthready-1",
+          configuration: "healthready",
+          functionTarget: "healthReady",
+        },
+      },
       sentry: { enabled: true, environment: "production" },
     },
   };
 }
+
+function providerCoordinates() {
+  return {
+    buildArtifactSha256: "8".repeat(64),
+    sharedSource: { bucket: "sources", object: "source.zip", generation: "42" },
+    targets: [
+      {
+        target: "healthLive",
+        function: "functions/healthLive",
+        build: "builds/1",
+        service: "services/healthlive",
+        revision: "healthlive-1",
+      },
+      {
+        target: "healthReady",
+        function: "functions/healthReady",
+        build: "builds/1",
+        service: "services/healthready",
+        revision: "healthready-1",
+      },
+    ],
+  };
+}
+
+const inventory = {
+  schemaVersion: 1,
+  targets: ["healthLive", "healthReady"],
+};
 
 function runVerification() {
   return {
@@ -91,6 +161,8 @@ test("turns exact live deployment proof into v2 generator input", () => {
     health(),
     runVerification(),
     bytes,
+    providerCoordinates(),
+    inventory,
   );
   assert.deepEqual(evidence, {
     provider: "firebase-functions",
@@ -105,7 +177,11 @@ test("turns exact live deployment proof into v2 generator input", () => {
       "sentry",
       "domainCoreProfile",
     ],
-    deployedArtifact: proof().compiledReceipt,
+    deployedArtifact: {
+      fileName: proof().runtimeArtifact.fileName,
+      sha256: proof().runtimeArtifact.sha256,
+    },
+    providerCoordinates: providerCoordinates(),
     deployRun: runVerification().deployRun,
     healthArtifactSha256: createHash("sha256").update(bytes).digest("hex"),
   });
@@ -140,6 +216,8 @@ test("rejects stale source, profile, version, and Sentry identities", () => {
         value,
         runVerification(),
         healthBytes(value),
+        providerCoordinates(),
+        inventory,
       ),
     );
   }
@@ -172,6 +250,28 @@ test("rejects deploy-run coordinate and job-set substitutions", () => {
         health(),
         value,
         healthBytes(),
+        providerCoordinates(),
+        inventory,
+      ),
+    );
+  }
+});
+
+test("rejects missing, extra, and duplicate protected target coordinates", () => {
+  const cases = [
+    providerCoordinates().targets.slice(1),
+    [...providerCoordinates().targets, { target: "extra" }],
+    [providerCoordinates().targets[0], providerCoordinates().targets[0]],
+  ];
+  for (const targets of cases) {
+    assert.throws(() =>
+      createFunctionsDeploymentEvidence(
+        proof(),
+        health(),
+        runVerification(),
+        healthBytes(),
+        { ...providerCoordinates(), targets },
+        inventory,
       ),
     );
   }

@@ -314,6 +314,11 @@ jobs:
         run: |
           npm run verify --prefix website
           npm run build --prefix apps/console
+          node scripts/ci/create-domain-core-runtime-artifact-manifest.mjs \
+            --consumer console \
+            --root apps/console/out \
+            --profile-receipt "$RUNNER_TEMP/domain-core-build-profile.json" \
+            --output apps/console/out/domain-core-runtime-artifact-manifest.json
 
       - name: Stage hosting deploy artifact
         env:
@@ -331,6 +336,7 @@ jobs:
           cp -a apps/console/out "$ARTIFACT_ROOT/apps/console/out"
           cp .firebaserc "$ARTIFACT_ROOT/.firebaserc"
           cp scripts/ci/deploy-firebase-hosting-rest.mjs "$ARTIFACT_ROOT/scripts/ci/"
+          cp scripts/ci/verify-existing-domain-core-deployment.mjs "$ARTIFACT_ROOT/scripts/ci/"
           cp "$RUNNER_TEMP/domain-core-build-profile.json" \
             "$ARTIFACT_ROOT/domain-core-release-inputs/domain-core-build-profile.json"
           if [[ "$REQUIRES_PROOF" == "true" ]]; then
@@ -385,6 +391,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      provider_coordinates: ${{ steps.hosting-release.outputs.provider_coordinates || steps.stable-replay.outputs.provider_coordinates }}
+      reused_existing_evidence: ${{ steps.stable-replay.outputs.reused }}
     steps:
       - name: Download immutable hosting artifact
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
@@ -447,7 +456,76 @@ jobs:
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/cloud-platform
 
+      - name: Refuse non-identical stable-tag redeploy
+        if: ${{ needs.build-hosting-artifacts.outputs.stable_release == 'true' && needs.build-hosting-artifacts.outputs.domain_core_profile == 'public-production' }}
+        id: stable-replay
+        env:
+          ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
+          FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build-hosting-artifacts.outputs.release_tag }}
+          RELEASE_COMMIT: ${{ needs.build-hosting-artifacts.outputs.commit }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          asset="OpenBurnBar-${version}-console-deployment.json"
+          if ! gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/existing-release.json" 2>"$RUNNER_TEMP/existing-release.err"; then
+            if grep -q "HTTP 404" "$RUNNER_TEMP/existing-release.err"; then
+              echo "reused=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            cat "$RUNNER_TEMP/existing-release.err" >&2
+            exit 1
+          fi
+          if ! jq -e --arg asset "$asset" '.assets | any(.name == $asset)' "$RUNNER_TEMP/existing-release.json" >/dev/null; then
+            current_commit="$(curl --fail --silent --show-error \
+              "https://app.burnbar.ai/domain-core-runtime-artifact-manifest.json" \
+              | jq -er '.candidate.candidateCommit')"
+            if [[ "$current_commit" == "$RELEASE_COMMIT" ]]; then
+              echo "::error::The release commit is already live but its immutable Console deployment receipt is missing. Refusing an unverifiable same-tag redeploy."
+              exit 1
+            fi
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir "$RUNNER_TEMP/existing-console-evidence"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$asset" --dir "$RUNNER_TEMP/existing-console-evidence"
+          curl --fail --silent --show-error \
+            "https://app.burnbar.ai/domain-core-runtime-artifact-manifest.json" \
+            > "$RUNNER_TEMP/existing-console-runtime-manifest.json"
+          : > "$RUNNER_TEMP/existing-hosting-sites.jsonl"
+          for mapping in "marketing:burnbar" "console:burnbar-console"; do
+            target="${mapping%%:*}"
+            site="${mapping#*:}"
+            response="$RUNNER_TEMP/existing-hosting-${target}.json"
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer ${FIREBASE_HOSTING_REST_ACCESS_TOKEN}" \
+              "https://firebasehosting.googleapis.com/v1beta1/sites/${site}/channels/live/releases?pageSize=1" \
+              > "$response"
+            jq -ce --arg target "$target" --arg site "$site" '
+              if (.releases | length) != 1 then error("expected exactly one current live Hosting release") else .releases[0] end
+              | {target: $target, site: $site, versionName: .version.name, releaseName: .name}
+              | select(.versionName | startswith("sites/" + $site + "/versions/"))
+              | select(.releaseName | startswith("sites/" + $site + "/channels/live/releases/"))
+            ' "$response" >> "$RUNNER_TEMP/existing-hosting-sites.jsonl"
+          done
+          jq -s '{sites: .}' "$RUNNER_TEMP/existing-hosting-sites.jsonl" \
+            > "$RUNNER_TEMP/existing-hosting-provider-coordinates.json"
+          result="$(node "$ARTIFACT_ROOT/scripts/ci/verify-existing-domain-core-deployment.mjs" \
+            --consumer console \
+            --receipt "$RUNNER_TEMP/existing-console-evidence/$asset" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --artifact "$ARTIFACT_ROOT/apps/console/out/domain-core-runtime-artifact-manifest.json" \
+            --live "$RUNNER_TEMP/existing-console-runtime-manifest.json" \
+            --provider-coordinates "$RUNNER_TEMP/existing-hosting-provider-coordinates.json")"
+          echo "reused=true" >> "$GITHUB_OUTPUT"
+          echo "provider_coordinates=$(jq -c '{schemaVersion: 1, project: "burnbar", sites: .providerCoordinates.sites}' <<< "$result")" >> "$GITHUB_OUTPUT"
+
       - name: Deploy Hosting (marketing + console)
+        if: ${{ steps.stable-replay.outputs.reused != 'true' }}
+        id: hosting-release
         env:
           ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
           FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json
@@ -475,7 +553,9 @@ jobs:
             --project burnbar \
             --config "$FIREBASE_HOSTING_CI_CONFIG" \
             --firebaserc "$ARTIFACT_ROOT/.firebaserc" \
-            --message "GitHub Actions ${GITHUB_SHA}"
+            --message "GitHub Actions ${GITHUB_SHA}" \
+            --result "$RUNNER_TEMP/domain-core-hosting-provider-coordinates.json"
+          echo "provider_coordinates=$(jq -c . "$RUNNER_TEMP/domain-core-hosting-provider-coordinates.json")" >> "$GITHUB_OUTPUT"
 
   hosting-smoke-result:
     needs: [build-hosting-artifacts, deploy-hosting]
@@ -507,6 +587,8 @@ jobs:
           HOSTING_SMOKE_PROFILE_RECEIPT: ${{ runner.temp }}/hosting-artifact/domain-core-release-inputs/domain-core-build-profile.json
           HOSTING_SMOKE_RELEASE_GATE: ${{ needs.build-hosting-artifacts.outputs.requires_proof == 'true' && format('{0}/hosting-artifact/domain-core-release-inputs/domain-core-release-gate.json', runner.temp) || '' }}
           CONSOLE_DEPLOY_HEALTH_JSON: ${{ needs.build-hosting-artifacts.outputs.stable_release == 'true' && 'console-deploy-health.json' || '' }}
+          HOSTING_SMOKE_RUNTIME_MANIFEST: ${{ runner.temp }}/hosting-artifact/apps/console/out/domain-core-runtime-artifact-manifest.json
+          HOSTING_DEPLOY_COORDINATES_JSON: ${{ needs.deploy-hosting.outputs.provider_coordinates }}
           # The signed macOS update feed is produced by release.yml, which
           # fail-closes on its own freshly published feed (verify-live-update-feed
           # job). Hosting deploys still monitor the live feed continuously:
@@ -569,7 +651,8 @@ jobs:
       ${{ needs.build-hosting-artifacts.result == 'success'
           && needs.deploy-hosting.result == 'success'
           && needs.hosting-smoke-result.result == 'success'
-          && needs.build-hosting-artifacts.outputs.stable_release == 'true' }}
+          && needs.build-hosting-artifacts.outputs.stable_release == 'true'
+          && needs.deploy-hosting.outputs.reused_existing_evidence != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

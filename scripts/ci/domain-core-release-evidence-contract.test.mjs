@@ -71,7 +71,7 @@ test("deployment receipt v2 carries the same proof chain and deployed bytes", ()
   }
   assert.equal(
     schema.properties.deployment.properties.deployedArtifact.$ref,
-    "domain-core-release-predicate.schema.json#/$defs/artifact",
+    "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/artifact",
   );
   assert.deepEqual(
     new Set(schema.properties.deployment.properties.deployRun.required),

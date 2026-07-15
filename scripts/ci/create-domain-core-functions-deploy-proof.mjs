@@ -35,6 +35,7 @@ function parseArguments(argv) {
   const required = new Set([
     "--profile",
     "--compiled-receipt",
+    "--runtime-manifest",
     "--release-gate",
     "--tag",
     "--commit",
@@ -197,6 +198,7 @@ function writeCreateOnly(path, contents) {
 export function buildFunctionsDeployProof({
   profilePath,
   compiledReceiptPath,
+  runtimeManifestPath,
   releaseGatePath,
   tag,
   commit,
@@ -209,6 +211,10 @@ export function buildFunctionsDeployProof({
     "compiled Functions receipt",
   );
   const resolvedGatePath = regularFile(releaseGatePath, "release gate");
+  const resolvedManifestPath = regularFile(
+    runtimeManifestPath,
+    "Functions runtime manifest",
+  );
   const profile = validateProfile(
     readJson(resolvedProfilePath, "Functions profile"),
   );
@@ -233,6 +239,28 @@ export function buildFunctionsDeployProof({
     );
   }
   validateReleaseGate(readJson(resolvedGatePath, "release gate"), profile);
+  const runtimeManifest = readJson(
+    resolvedManifestPath,
+    "Functions runtime manifest",
+  );
+  if (
+    runtimeManifest?.schemaVersion !== 1 ||
+    runtimeManifest?.manifestKind !== "domain-core-runtime-artifact" ||
+    runtimeManifest?.consumer !== "functions" ||
+    runtimeManifest?.profile !== profile.name ||
+    !isDeepStrictEqual(runtimeManifest?.candidate, profile.candidateIdentity) ||
+    !Array.isArray(runtimeManifest?.files) ||
+    !runtimeManifest.files.some(
+      (file) =>
+        file?.path ===
+          "vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm" &&
+        /^[0-9a-f]{64}$/u.test(file.sha256),
+    )
+  ) {
+    throw new Error(
+      "Functions runtime manifest is not bound to the selected candidate and WASM",
+    );
+  }
   return {
     schemaVersion: 1,
     proofKind: "domain-core-functions-deploy-proof",
@@ -257,6 +285,11 @@ export function buildFunctionsDeployProof({
       fileName: basename(resolvedReceiptPath),
       sha256: sha256File(resolvedReceiptPath),
     },
+    runtimeArtifact: {
+      fileName: basename(resolvedManifestPath),
+      sha256: sha256File(resolvedManifestPath),
+      value: runtimeManifest,
+    },
     releaseGate: {
       fileName: basename(resolvedGatePath),
       sha256: sha256File(resolvedGatePath),
@@ -269,6 +302,7 @@ export function run(argv) {
   const proof = buildFunctionsDeployProof({
     profilePath: resolve(args.get("--profile")),
     compiledReceiptPath: resolve(args.get("--compiled-receipt")),
+    runtimeManifestPath: resolve(args.get("--runtime-manifest")),
     releaseGatePath: resolve(args.get("--release-gate")),
     tag: args.get("--tag"),
     commit: args.get("--commit"),

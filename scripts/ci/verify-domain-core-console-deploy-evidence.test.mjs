@@ -24,9 +24,16 @@ function sha(value) {
 function fixture(profileName = "public-production") {
   const directory = mkdtempSync(join(tmpdir(), "console-deploy-proof-"));
   const paths = Object.fromEntries(
-    ["profile", "gate", "identity", "health", "run", "jobs", "output"].map(
-      (name) => [name, join(directory, `${name}.json`)],
-    ),
+    [
+      "profile",
+      "gate",
+      "identity",
+      "manifest",
+      "health",
+      "run",
+      "jobs",
+      "output",
+    ].map((name) => [name, join(directory, `${name}.json`)]),
   );
   const rollback = profileName === "public-production-rollback";
   const profile = {
@@ -92,6 +99,43 @@ function fixture(profileName = "public-production") {
     paths.identity,
   ]);
   writeFileSync(
+    paths.manifest,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        manifestKind: "domain-core-runtime-artifact",
+        consumer: "console",
+        profile: profileName,
+        candidate: CANDIDATE,
+        files: [
+          {
+            path: "domain-core-deployment-identity.json",
+            sha256: sha(readFileSync(paths.identity)),
+            size: readFileSync(paths.identity).length,
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  const providerCoordinates = {
+    sites: [
+      {
+        target: "marketing",
+        site: "burnbar",
+        versionName: "sites/burnbar/versions/version-1",
+        releaseName: "sites/burnbar/channels/live/releases/release-1",
+      },
+      {
+        target: "console",
+        site: "burnbar-console",
+        versionName: "sites/burnbar-console/versions/version-2",
+        releaseName: "sites/burnbar-console/channels/live/releases/release-2",
+      },
+    ],
+  };
+  writeFileSync(
     paths.health,
     `${JSON.stringify(
       {
@@ -103,11 +147,14 @@ function fixture(profileName = "public-production") {
           "marketing-http-200-csp",
           "console-http-200-csp",
           "console-deployment-identity-no-redirect",
+          "console-runtime-manifest-no-redirect",
+          "console-runtime-files-sha256",
         ],
         deployedArtifact: {
-          fileName: "domain-core-deployment-identity.json",
-          sha256: sha(readFileSync(paths.identity)),
+          fileName: "domain-core-runtime-artifact-manifest.json",
+          sha256: sha(readFileSync(paths.manifest)),
         },
+        providerCoordinates,
       },
       null,
       2,
@@ -159,6 +206,8 @@ function fixture(profileName = "public-production") {
     TAG,
     "--identity",
     paths.identity,
+    "--runtime-manifest",
+    paths.manifest,
     "--profile-receipt",
     paths.profile,
     "--release-gate",
@@ -171,7 +220,7 @@ function fixture(profileName = "public-production") {
   return { directory, paths, args };
 }
 
-test("accepts only the exact successful tag deploy and live identity digest", () => {
+test("accepts only the exact successful tag deploy and live runtime manifest", () => {
   const files = fixture();
   try {
     const receipt = run(files.args);
@@ -185,7 +234,7 @@ test("accepts only the exact successful tag deploy and live identity digest", ()
   }
 });
 
-test("rejects stale health evidence from different live identity bytes", () => {
+test("rejects stale health evidence from different live runtime manifest bytes", () => {
   const files = fixture();
   try {
     const health = JSON.parse(readFileSync(files.paths.health, "utf8"));
@@ -194,6 +243,22 @@ test("rejects stale health evidence from different live identity bytes", () => {
     assert.throws(
       () => run(files.args),
       /does not bind the verified live identity bytes/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects mutable or mismatched Hosting provider coordinates", () => {
+  const files = fixture();
+  try {
+    const health = JSON.parse(readFileSync(files.paths.health, "utf8"));
+    health.providerCoordinates.sites[1].versionName =
+      "sites/a-different-site/versions/version-2";
+    writeFileSync(files.paths.health, `${JSON.stringify(health)}\n`);
+    assert.throws(
+      () => run(files.args),
+      /lacks exact immutable Hosting versions and releases/u,
     );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });

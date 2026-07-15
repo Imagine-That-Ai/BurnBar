@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "targets": [
+    "healthCheck",
+    "healthLive",
+    "healthReady",
+    "insightsHostedAnswer",
+    "onUsageWritten",
+    "rebuildRollups",
+    "rollupUserRebuild",
+    "rebuildUsageRollups"
+  ]
+}

@@ -77,11 +77,14 @@ jobs:
       pricing_mode: ${{ steps.domain-core-profile.outputs.pricing_mode }}
       profile_sha256: ${{ steps.domain-core-build.outputs.profile_sha256 }}
       receipt_sha256: ${{ steps.domain-core-build.outputs.receipt_sha256 }}
+      runtime_manifest_sha256: ${{ steps.domain-core-build.outputs.runtime_manifest_sha256 }}
+      wasm_sha256: ${{ steps.domain-core-build.outputs.wasm_sha256 }}
       source_run_id: ${{ steps.domain-core-source.outputs.run_id }}
       source_run_attempt: ${{ steps.domain-core-source.outputs.run_attempt }}
       signer_run_id: ${{ steps.domain-core-gate.outputs.signer_run_id }}
       signer_run_attempt: ${{ steps.domain-core-gate.outputs.signer_run_attempt }}
       proof_artifact: ${{ steps.domain-core-proof.outputs.artifact_name }}
+      reused_existing_evidence: ${{ steps.stable-replay.outputs.reused }}
     env:
       HAS_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
       # WIF-only: long-lived service account keys and token fallbacks are
@@ -151,12 +154,18 @@ jobs:
             echo "::error::Unable to resolve ${tag_ref} to a commit."
             exit 1
           fi
+          if [[ "$commit" != "$GITHUB_SHA" ]]; then
+            echo "::error::Release tag moved away from the workflow event commit."
+            exit 1
+          fi
           if ! git merge-base --is-ancestor "$commit" origin/main; then
             echo "::error::Release tag ${TAG} points at ${commit}, which is not reachable from origin/main."
             exit 1
           fi
 
           git checkout --detach "$commit"
+          [[ "$(git rev-parse HEAD)" == "$commit" ]] \
+            || { echo "::error::Detached checkout does not match the immutable release commit."; exit 1; }
           # C8: checkout-time `submodules: recursive` initializes submodules at
           # the dispatch ref's gitlink. After checking out the resolved release
           # commit, the gitlink points at the tag's pinned SHA, but the working
@@ -399,10 +408,19 @@ jobs:
             --profile "${{ steps.tag.outputs.domain_core_profile }}" \
             --expected-candidate-commit "${{ steps.tag.outputs.commit }}" \
             --functions-dir functions/lib
+          node scripts/ci/create-domain-core-runtime-artifact-manifest.mjs \
+            --consumer functions \
+            --root functions \
+            --profile-receipt "${{ steps.domain-core-profile.outputs.profile_path }}" \
+            --output functions/lib/domain-core-runtime-artifact-manifest.json
           receipt_sha256="$(sha256sum functions/lib/generated/domainCoreCandidateReceipt.js | awk '{print $1}')"
+          runtime_manifest_sha256="$(sha256sum functions/lib/domain-core-runtime-artifact-manifest.json | awk '{print $1}')"
+          wasm_sha256="$(jq -er '.files[] | select(.path == "vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm") | .sha256' functions/lib/domain-core-runtime-artifact-manifest.json)"
           {
             echo "profile_sha256=${{ steps.domain-core-profile.outputs.profile_sha256 }}"
             echo "receipt_sha256=$receipt_sha256"
+            echo "runtime_manifest_sha256=$runtime_manifest_sha256"
+            echo "wasm_sha256=$wasm_sha256"
           } >> "$GITHUB_OUTPUT"
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
@@ -427,6 +445,7 @@ jobs:
           node scripts/ci/create-domain-core-functions-deploy-proof.mjs \
             --profile "${{ steps.domain-core-profile.outputs.profile_path }}" \
             --compiled-receipt functions/lib/generated/domainCoreCandidateReceipt.js \
+            --runtime-manifest functions/lib/domain-core-runtime-artifact-manifest.json \
             --release-gate "$materials/domain-core-release-gate.json" \
             --tag "$RELEASE_TAG" \
             --commit "$RELEASE_COMMIT" \
@@ -435,12 +454,104 @@ jobs:
             --output "$stage/domain-core-functions-deploy-proof.json"
           install -m 0600 "${{ steps.domain-core-profile.outputs.profile_path }}" "$stage/domain-core-functions-profile.json"
           install -m 0600 functions/lib/generated/domainCoreCandidateReceipt.js "$stage/domainCoreCandidateReceipt.js"
+          install -m 0600 functions/lib/domain-core-runtime-artifact-manifest.json "$stage/domain-core-runtime-artifact-manifest.json"
           install -m 0600 "$materials/domain-core-release-gate.json" "$stage/domain-core-release-gate.json"
           install -m 0600 "$materials/candidate/domain-core-candidate-bundle.json" "$stage/domain-core-candidate-bundle.json"
           install -m 0600 "$materials/promotion/domain-core-promotion.sigstore.jsonl" "$stage/domain-core-promotion.sigstore.jsonl"
           install -m 0600 "$materials/rollback/domain-core-public-production-rollback.json" "$stage/domain-core-public-production-rollback.json"
           artifact_name="domain-core-functions-deploy-proof-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare pinned Sentry CLI
+        if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
+        run: npm install --global @sentry/cli@2.42.2
+
+      - name: Authenticate to Google Cloud (WIF/OIDC only)
+        if: steps.tag.outputs.dry_run != 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 900s
+
+      - name: Set up gcloud for immutable provider readback
+        if: steps.tag.outputs.dry_run != 'true'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1 (node24-native)
+
+      - name: Refuse non-identical stable-tag redeploy
+        if: ${{ steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.domain_core_profile == 'public-production' }}
+        id: stable-replay
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          asset="OpenBurnBar-${version}-functions-deployment.json"
+          release_json="$RUNNER_TEMP/existing-release.json"
+          if ! gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$release_json" 2>"$RUNNER_TEMP/existing-release.err"; then
+            if grep -q "HTTP 404" "$RUNNER_TEMP/existing-release.err"; then
+              echo "reused=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            cat "$RUNNER_TEMP/existing-release.err" >&2
+            exit 1
+          fi
+          if ! jq -e --arg asset "$asset" '.assets | any(.name == $asset)' "$release_json" >/dev/null; then
+            current_commit="$(curl --fail --silent --show-error \
+              "https://us-central1-burnbar.cloudfunctions.net/healthReady" \
+              | jq -er '.source.commit')"
+            if [[ "$current_commit" == "$RELEASE_COMMIT" ]]; then
+              echo "::error::The release commit is already live but its immutable Functions deployment receipt is missing. Refusing an unverifiable same-tag redeploy."
+              exit 1
+            fi
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir "$RUNNER_TEMP/existing-functions-evidence"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$asset" --dir "$RUNNER_TEMP/existing-functions-evidence"
+          curl --fail --silent --show-error \
+            "https://us-central1-burnbar.cloudfunctions.net/healthLive" \
+            > "$RUNNER_TEMP/existing-health-live.json"
+          curl --fail --silent --show-error \
+            "https://us-central1-burnbar.cloudfunctions.net/healthReady" \
+            > "$RUNNER_TEMP/existing-health-ready.json"
+          jq -n \
+            --slurpfile live "$RUNNER_TEMP/existing-health-live.json" \
+            --slurpfile ready "$RUNNER_TEMP/existing-health-ready.json" \
+            '{healthLive: $live[0], healthReady: $ready[0]}' \
+            > "$RUNNER_TEMP/existing-functions-live.json"
+          descriptions="$RUNNER_TEMP/existing-functions-descriptions.jsonl"
+          : > "$descriptions"
+          while IFS= read -r target; do
+            gcloud functions describe "$target" \
+              --gen2 \
+              --region us-central1 \
+              --project burnbar \
+              --format=json \
+              | jq -c --arg target "$target" '{target: $target, value: .}' >> "$descriptions"
+          done < <(jq -er '.targets[]' config/domain-core-functions-relevant-targets.json)
+          jq -s . "$descriptions" > "$RUNNER_TEMP/existing-functions-descriptions.json"
+          node scripts/ci/create-domain-core-functions-provider-coordinates.mjs \
+            --inventory config/domain-core-functions-relevant-targets.json \
+            --descriptions "$RUNNER_TEMP/existing-functions-descriptions.json" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --artifact-sha256 "${{ steps.domain-core-build.outputs.runtime_manifest_sha256 }}" \
+            --output "$RUNNER_TEMP/existing-functions-provider-coordinates.json"
+          node scripts/ci/verify-existing-domain-core-deployment.mjs \
+            --consumer functions \
+            --receipt "$RUNNER_TEMP/existing-functions-evidence/$asset" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --artifact functions/lib/domain-core-runtime-artifact-manifest.json \
+            --live "$RUNNER_TEMP/existing-functions-live.json" \
+            --provider-coordinates "$RUNNER_TEMP/existing-functions-provider-coordinates.json" \
+            --inventory config/domain-core-functions-relevant-targets.json
+          echo "reused=true" >> "$GITHUB_OUTPUT"
 
       - name: BurnBar source provenance preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
@@ -470,7 +581,7 @@ jobs:
           REQUIRE_HIGH_RISK_NONCE: ${{ secrets.REQUIRE_HIGH_RISK_NONCE }}
 
       - name: Sentry release (Functions)
-        if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
+        if: env.HAS_SENTRY_AUTH_TOKEN == 'true' && steps.stable-replay.outputs.reused != 'true'
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
@@ -478,7 +589,6 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          npm install --global @sentry/cli@2.42.2
           RELEASE_NAME="openburnbar-functions@${TAG}"
           sentry-cli releases new --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" || true
           sentry-cli releases set-commits --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" --auto || true
@@ -490,28 +600,15 @@ jobs:
             --name "${TAG}-$(date -u +%Y%m%dT%H%M%SZ)" || true
           echo "Sentry release ${RELEASE_NAME} created."
 
-      - name: Authenticate to Google Cloud (WIF/OIDC only)
-        if: steps.tag.outputs.dry_run != 'true'
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
-          token_format: access_token
-          access_token_lifetime: 900s
-
-      - name: Set up gcloud for rules-first readback
-        if: steps.tag.outputs.dry_run != 'true'
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1 (node24-native)
-
       - name: Require matching rules before Functions deploy
-        if: steps.tag.outputs.dry_run != 'true'
+        if: steps.tag.outputs.dry_run != 'true' && steps.stable-replay.outputs.reused != 'true'
         env:
           FIREBASE_PROJECT: burnbar
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
 
       - name: Deploy Cloud Functions
         id: deploy
-        if: steps.tag.outputs.dry_run != 'true'
+        if: steps.tag.outputs.dry_run != 'true' && steps.stable-replay.outputs.reused != 'true'
         env:
           FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}
           OPENBURNBAR_SOURCE_COMMIT: ${{ steps.tag.outputs.commit }}
@@ -556,6 +653,7 @@ jobs:
             cat "$RUNNER_TEMP/domain-core-functions.env"
             echo "FUNCTION_VERSION=${TAG}"
             echo "OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT}"
+            echo "OPENBURNBAR_DOMAIN_CORE_RUNTIME_MANIFEST_SHA256=${{ steps.domain-core-build.outputs.runtime_manifest_sha256 }}"
             echo "SENTRY_DSN=${SENTRY_DSN}"
             echo "SENTRY_ENVIRONMENT=production"
           } > "$ENV_FILE"
@@ -580,8 +678,27 @@ jobs:
             --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
             --non-interactive
 
+          descriptions="$RUNNER_TEMP/domain-core-functions-descriptions.jsonl"
+          : > "$descriptions"
+          while IFS= read -r target; do
+            gcloud functions describe "$target" \
+              --gen2 \
+              --region us-central1 \
+              --project burnbar \
+              --format=json \
+              | jq -c --arg target "$target" '{target: $target, value: .}' >> "$descriptions"
+          done < <(jq -er '.targets[]' config/domain-core-functions-relevant-targets.json)
+          jq -s . "$descriptions" > "$RUNNER_TEMP/domain-core-functions-descriptions.json"
+          node scripts/ci/create-domain-core-functions-provider-coordinates.mjs \
+            --inventory config/domain-core-functions-relevant-targets.json \
+            --descriptions "$RUNNER_TEMP/domain-core-functions-descriptions.json" \
+            --tag "$TAG" \
+            --commit "${{ steps.tag.outputs.commit }}" \
+            --artifact-sha256 "${{ steps.domain-core-build.outputs.runtime_manifest_sha256 }}" \
+            --output "$RUNNER_TEMP/domain-core-functions-deploy-proof/domain-core-functions-provider-coordinates.json"
+
       - name: Upload exact deployed Functions proof inputs
-        if: steps.tag.outputs.dry_run != 'true'
+        if: steps.tag.outputs.dry_run != 'true' && steps.stable-replay.outputs.reused != 'true'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: ${{ steps.domain-core-proof.outputs.artifact_name }}
@@ -637,6 +754,8 @@ jobs:
           HEALTH_GATE_EXPECTED_DOMAIN_CORE_ABI_VERSION: ${{ needs.deploy-functions.outputs.abi_version }}
           HEALTH_GATE_EXPECTED_DOMAIN_CORE_SOURCE_SHA256: ${{ needs.deploy-functions.outputs.source_sha256 }}
           HEALTH_GATE_EXPECTED_DOMAIN_CORE_PRICING_MODE: ${{ needs.deploy-functions.outputs.pricing_mode }}
+          HEALTH_GATE_EXPECTED_DOMAIN_CORE_RUNTIME_MANIFEST_SHA256: ${{ needs.deploy-functions.outputs.runtime_manifest_sha256 }}
+          HEALTH_GATE_EXPECTED_DOMAIN_CORE_WASM_SHA256: ${{ needs.deploy-functions.outputs.wasm_sha256 }}
           HEALTH_GATE_REQUIRE_SENTRY: "1"
         run: bash scripts/ci/post-deploy-health-gate.sh
 
@@ -654,7 +773,8 @@ jobs:
       ${{ needs.deploy-functions.result == 'success'
           && needs.functions-health-gate.result == 'success'
           && needs.deploy-functions.outputs.dry_run != 'true'
-          && needs.deploy-functions.outputs.stable_release == 'true' }}
+          && needs.deploy-functions.outputs.stable_release == 'true'
+          && needs.deploy-functions.outputs.reused_existing_evidence != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

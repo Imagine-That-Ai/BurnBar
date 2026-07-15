@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 
 import { isRecord } from "./guards.js";
 import { logWarn } from "./logging.js";
@@ -65,10 +68,11 @@ let unavailableLogged = false;
 let domainCore: DomainCorePricingModule | undefined;
 let rustVersion = "unknown";
 let rustLegacyKimiModel = "";
-interface LoadedDomainCoreIdentity {
+export interface LoadedDomainCoreIdentity {
   version: string;
   abiVersion: number;
   sourceSha256: string;
+  wasmSha256: string;
 }
 let loadedCoreIdentity: LoadedDomainCoreIdentity | undefined;
 type DomainCorePricingShadowEvidenceSink = (sample: DomainCoreShadowSampleV3) => unknown;
@@ -98,6 +102,13 @@ export async function flushDomainCorePricingShadowEvidence(): Promise<void> {
     }
     await Promise.all(pending);
   }
+}
+
+/** Loads the exact production WASM package and returns its intrinsic and byte identities. */
+export function loadedDomainCorePricingIdentity(): Readonly<LoadedDomainCoreIdentity> {
+  initializeDomainCore();
+  if (!loadedCoreIdentity) throw new DomainCorePricingError();
+  return { ...loadedCoreIdentity };
 }
 
 export function resolveDomainCorePricingMode(
@@ -243,13 +254,16 @@ function initializeDomainCore(): void {
   if (wasmUnavailable) throw new DomainCorePricingError();
   try {
     const require = createRequire(__filename);
-    const loaded: unknown = require("@openburnbar/domain-core-wasm");
+    const modulePath = require.resolve("@openburnbar/domain-core-wasm");
+    const loaded: unknown = require(modulePath);
     if (!isDomainCorePricingModule(loaded)) throw new DomainCorePricingError();
     domainCore = loaded;
+    const wasmPath = resolve(dirname(modulePath), "openburnbar_domain_core_bg.wasm");
     loadedCoreIdentity = {
       version: domainCore.domainCoreVersion(),
       abiVersion: domainCore.domainCoreAbiVersion(),
       sourceSha256: domainCore.domainCoreSourceFingerprint(),
+      wasmSha256: createHash("sha256").update(readFileSync(wasmPath)).digest("hex"),
     };
     rustVersion = loadedCoreIdentity.version;
     rustLegacyKimiModel = domainCore.legacyKimiWireModel();
