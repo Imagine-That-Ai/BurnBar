@@ -45,9 +45,20 @@ on:
         required: false
         type: string
         default: ""
+      domain_core_profile:
+        description: "Signed public domain-core profile. Rollback requires protected domain-core-promotion approval."
+        required: true
+        type: choice
+        default: public-production
+        options:
+          - public-production
+          - public-production-rollback
 
 concurrency:
-  group: release-${{ github.ref }}
+  # GitHub releases have no compare-and-swap publish API. Serialize this
+  # workflow by the exact release tag; manual/admin contents writers remain a
+  # documented external trust boundary and are detected by the final audit.
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -183,6 +194,7 @@ jobs:
       release_commit: ${{ steps.version.outputs.release_commit }}
       version: ${{ steps.version.outputs.version }}
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+      domain_core_profile: ${{ steps.version.outputs.domain_core_profile }}
 
     steps:
       - name: Check out repository
@@ -232,15 +244,20 @@ jobs:
             echo "::error::Unable to resolve ${tag_ref} to a commit."
             exit 1
           fi
+          node scripts/ci/verify-domain-core-native-event-commit.mjs \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --event-commit "$GITHUB_SHA" \
+            --release-commit "$release_commit"
           if ! git merge-base --is-ancestor "$release_commit" origin/main; then
             echo "::error::Release tag ${TAG_NAME} points at ${release_commit}, which is not reachable from origin/main."
             exit 1
           fi
 
-          # Prerelease status is derived strictly from the tag: a hyphen in the
-          # version (the SemVer prerelease delimiter) marks it. The publish job
-          # NEVER repoints "latest" for a prerelease, regardless of inputs.
-          if [[ "$TAG_NAME" == *-* ]]; then
+          # Only a hyphen before optional +build metadata is the SemVer
+          # prerelease delimiter. A stable tag such as v1.2.3+linux-x64 stays
+          # stable and may be explicitly promoted.
+          VERSION_WITHOUT_BUILD="${TAG_NAME%%+*}"
+          if [[ "$VERSION_WITHOUT_BUILD" == *-* ]]; then
             IS_PRERELEASE=true
           else
             IS_PRERELEASE=false
@@ -252,6 +269,19 @@ jobs:
             echo "release_commit=$release_commit"
             echo "version=${TAG_NAME#v}"
             echo "is_prerelease=$IS_PRERELEASE"
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              echo "domain_core_profile=public-production"
+            else
+              case "${{ inputs.domain_core_profile }}" in
+                public-production|public-production-rollback)
+                  echo "domain_core_profile=${{ inputs.domain_core_profile }}"
+                  ;;
+                *)
+                  echo "::error::Manual release requires an explicit signed public domain-core profile."
+                  exit 1
+                  ;;
+              esac
+            fi
           } >> "$GITHUB_OUTPUT"
 
       - name: Check out release tag
@@ -811,6 +841,76 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         run: ./scripts/test-openburnbar-android.sh
 
+  authorize-domain-core-rollback:
+    name: Authorize Shared Rust native rollback
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.domain_core_profile == 'public-production-rollback' }}
+    needs: release-preflight
+    runs-on: ubuntu-latest
+    environment: domain-core-promotion
+    permissions:
+      contents: read
+    steps:
+      - name: Record protected rollback authorization
+        run: |
+          set -euo pipefail
+          echo "Protected rollback authorized for ${{ needs.release-preflight.outputs.release_commit }}."
+          echo "Profile: public-production-rollback" >> "$GITHUB_STEP_SUMMARY"
+
+  domain-core-native-release-gate:
+    name: Verify protected Shared Rust native release candidate
+    if: ${{ always() && needs.release-preflight.result == 'success' && (needs.authorize-domain-core-rollback.result == 'success' || needs.authorize-domain-core-rollback.result == 'skipped') }}
+    needs: [release-preflight, authorize-domain-core-rollback]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    outputs:
+      profile_name: ${{ steps.gate.outputs.profile_name }}
+      public_profile_sha256: ${{ steps.gate.outputs.public_profile_sha256 }}
+      candidate_commit: ${{ steps.gate.outputs.candidate_commit }}
+      signer_run_id: ${{ steps.gate.outputs.signer_run_id }}
+      signer_run_attempt: ${{ steps.gate.outputs.signer_run_attempt }}
+      artifact_name: domain-core-native-release-gate-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Check out exact release candidate
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.release-preflight.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download and verify exact protected candidate chain
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          SELECTED_PROFILE: ${{ needs.release-preflight.outputs.domain_core_profile }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/domain-core-native-release-gate"
+          activation="$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json"
+          node scripts/ci/resolve-domain-core-activation.mjs \
+            --release-commit "$RELEASE_COMMIT" --format json > "$activation"
+          CANDIDATE_COMMIT="$(jq -er '.candidateCommit' "$activation")"
+          node scripts/ci/prepare-domain-core-native-release-gate.mjs \
+            --candidate-commit "$CANDIDATE_COMMIT" \
+            --release-commit "$RELEASE_COMMIT" \
+            --activation "$activation" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --requested-profile "$SELECTED_PROFILE" \
+            --output-dir "$RUNNER_TEMP/domain-core-native-release-gate" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload immutable verified native release inputs
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-native-release-gate-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate/
+          if-no-files-found: error
+          retention-days: 90
+
   # The protected packaging lane: builds, signs, notarizes, and attests every
   # release artifact behind the `release` environment approval. Validation
   # gates run in parallel jobs; `publish` requires all of them, so nothing
@@ -818,10 +918,15 @@ jobs:
   # provenance stay serialized in this single job so attestations bind to the
   # same workspace that built the artifacts.
   build-and-release:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: ${{ always() && needs.release-preflight.result == 'success' && needs.domain-core-native-release-gate.result == 'success' && (needs.authorize-domain-core-rollback.result == 'success' || needs.authorize-domain-core-rollback.result == 'skipped') }}
     environment: release
     name: build-and-release
-    needs: release-preflight
+    needs:
+      [
+        release-preflight,
+        authorize-domain-core-rollback,
+        domain-core-native-release-gate,
+      ]
     # Keep release builds on the same current GA macOS/Xcode image as PR app
     # tests; Xcode 16.4 on macOS 15 crashes in SwiftEmitModule for this target.
     runs-on: macos-26
@@ -835,6 +940,8 @@ jobs:
       dmg_name: ${{ steps.dmg.outputs.dmg_name }}
       zip_path: ${{ steps.zip.outputs.zip_path }}
       zip_name: ${{ steps.zip.outputs.zip_name }}
+      aab_name: ${{ steps.android.outputs.aab_name }}
+      native_identity_artifact_name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: Check out repository
@@ -863,6 +970,7 @@ jobs:
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
           OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 }}
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
@@ -874,6 +982,7 @@ jobs:
             APPLE_CERTIFICATE_P12 \
             APPLE_CERTIFICATE_PASSWORD \
             APPLE_NOTARY_KEY_ID \
+            APPLE_NOTARY_ISSUER_ID \
             APPLE_NOTARY_API_KEY_P8 \
             OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 \
             FIREBASE_PLIST_BASE64; do
@@ -886,6 +995,27 @@ jobs:
             echo "::error::Missing required release secrets: ${missing[*]}"
             exit 1
           fi
+          node scripts/ci/verify-domain-core-apple-signing-identity.mjs \
+            --policy config/apple-release-signing-policy.json --environment
+
+      - name: Write Apple API key
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          export NOTARY_KEY_PATH
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          payload = "".join(os.environ["APPLE_NOTARY_API_KEY_P8"].split())
+          Path(os.environ["NOTARY_KEY_PATH"]).write_bytes(base64.b64decode(payload, validate=True))
+          PY
+          chmod 600 "$NOTARY_KEY_PATH"
+          echo "notary_key_path=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
@@ -893,6 +1023,19 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Download verified Shared Rust release inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
+      - name: Resolve signed public domain-core profile
+        env:
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --format github-env >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --format github-env-apple >> "$GITHUB_ENV"
 
       - name: Install Sparkle signing tools
         run: |
@@ -977,26 +1120,136 @@ jobs:
       - name: Prepare Signal FFI XCFramework for release app
         env:
           SIGNAL_FFI_BUILD_PROFILE: release
-          # The direct-download macOS release packages only the Mac app here.
-          # iOS/TestFlight artifacts are cut through the mobile lane, and the
-          # mobile test script prepares iOS slices when that gate is enabled.
-          SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"
+          # The protected release lane packages both the direct-download Mac app
+          # and the App Store iOS archive from one source-coherent FFI build.
+          SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios"
           CARGO_BUILD_JOBS: "2"
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
 
       - name: Prepare shared domain core XCFramework for release app
         env:
           DOMAIN_CORE_BUILD_PROFILE: release
-          DOMAIN_CORE_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"
         run: bash scripts/build-domain-core-xcframework.sh
-
-      - name: Resolve signed public domain-core profile
-        run: |
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env >> "$GITHUB_ENV"
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env-apple >> "$GITHUB_ENV"
 
       - name: Verify shared domain core release artifact
         run: test -d Vendor/OpenBurnBarDomainCore.xcframework
+
+      - name: Archive and export signed iOS app
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        id: ios-archive
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/OpenBurnBarMobile.xcarchive"
+          export_dir="$RUNNER_TEMP/ios-app-store-export"
+          bundle_dir="$RUNNER_TEMP/ios-release-bundle"
+          archive_zip="$RUNNER_TEMP/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
+          export_options="$RUNNER_TEMP/OpenBurnBarMobile-ExportOptions.plist"
+          build_number="$GITHUB_RUN_NUMBER"
+          apple_version="${VERSION%%+*}"
+          rm -rf "$archive" "$export_dir" "$bundle_dir" "$archive_zip"
+          mkdir -p "$export_dir" "$bundle_dir"
+
+          cat > "$export_options" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>destination</key><string>export</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>method</key><string>app-store-connect</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+
+          auth_args=(
+            -allowProvisioningUpdates
+            -authenticationKeyPath "$notary_key_path"
+            -authenticationKeyID "$APPLE_NOTARY_KEY_ID"
+            -authenticationKeyIssuerID "$APPLE_NOTARY_ISSUER_ID"
+          )
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme OpenBurnBarMobile \
+            -configuration "$CONFIG" \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive" \
+            -clonedSourcePackagesDirPath "$CACHE_DIR" \
+            -derivedDataPath "$DERIVED_DATA-ios" \
+            "${auth_args[@]}" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            MARKETING_VERSION="$apple_version" \
+            CURRENT_PROJECT_VERSION="$build_number" \
+            DOMAIN_CORE_BUILD_PROFILE="$DOMAIN_CORE_BUILD_PROFILE" \
+            DOMAIN_CORE_BUILD_AUTHORITY="$DOMAIN_CORE_BUILD_AUTHORITY" \
+            DOMAIN_CORE_DISTRIBUTION="$DOMAIN_CORE_DISTRIBUTION" \
+            DOMAIN_CORE_ROLLOUT_CHANNEL="$DOMAIN_CORE_ROLLOUT_CHANNEL" \
+            DOMAIN_CORE_EVIDENCE_ENABLED="$DOMAIN_CORE_EVIDENCE_ENABLED" \
+            DOMAIN_CORE_CANDIDATE_COMMIT="$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            DOMAIN_CORE_EXPECTED_VERSION="$DOMAIN_CORE_EXPECTED_VERSION" \
+            DOMAIN_CORE_EXPECTED_ABI_VERSION="$DOMAIN_CORE_EXPECTED_ABI_VERSION" \
+            DOMAIN_CORE_EXPECTED_SOURCE_SHA256="$DOMAIN_CORE_EXPECTED_SOURCE_SHA256" \
+            DOMAIN_CORE_QUOTA_MODE="$DOMAIN_CORE_QUOTA_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_MODE="$DOMAIN_CORE_CLOUDVAULT_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE="$DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE="$DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" \
+            DOMAIN_CORE_HERMES_MODE="$DOMAIN_CORE_HERMES_MODE" \
+            DOMAIN_CORE_PRICING_MODE="$DOMAIN_CORE_PRICING_MODE"
+
+          xcodebuild -exportArchive \
+            -archivePath "$archive" \
+            -exportPath "$export_dir" \
+            -exportOptionsPlist "$export_options" \
+            "${auth_args[@]}"
+
+          ipa="$(find "$export_dir" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          test -n "$ipa"
+          test -s "$ipa"
+          ipa_unpacked="$RUNNER_TEMP/ios-app-store-ipa"
+          rm -rf "$ipa_unpacked"
+          mkdir -p "$ipa_unpacked"
+          unzip -q "$ipa" -d "$ipa_unpacked"
+          exported_app="$ipa_unpacked/Payload/OpenBurnBarMobile.app"
+          test -d "$exported_app"
+          test -s "$exported_app/embedded.mobileprovision"
+          codesign --verify --deep --strict --verbose=2 "$exported_app"
+          app="$archive/Products/Applications/OpenBurnBarMobile.app"
+          test -d "$app"
+          test -s "$app/embedded.mobileprovision"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+            --profile public-production \
+            --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            --apple-app "$app"
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+            --profile public-production \
+            --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            --apple-app "$exported_app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$archive/Info.plist")" = "$apple_version"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+
+          cp -R "$archive" "$bundle_dir/OpenBurnBarMobile.xcarchive"
+          cp "$ipa" "$bundle_dir/OpenBurnBarMobile.ipa"
+          ditto -c -k --sequesterRsrc "$bundle_dir" "$archive_zip"
+          test -s "$archive_zip"
+          echo "archive_path=$archive_zip" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=OpenBurnBar-${VERSION}-iOS-archive" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed iOS archive artifact
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: ${{ steps.ios-archive.outputs.artifact_name }}
+          path: ${{ steps.ios-archive.outputs.archive_path }}
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
@@ -1036,6 +1289,7 @@ jobs:
         run: bash ./scripts/ci/inject-android-keystore.sh
 
       - name: Build signed Android release bundle
+        id: android
         env:
           OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD }}
           OPENBURNBAR_ANDROID_KEY_ALIAS: ${{ secrets.OPENBURNBAR_ANDROID_KEY_ALIAS }}
@@ -1047,16 +1301,51 @@ jobs:
           fi
           cd android
           ./gradlew :app:bundleRelease --no-daemon
-          echo "aab_path=$(pwd)/app/build/outputs/bundle/release/app-release.aab" >> "$GITHUB_OUTPUT"
+          source_path="$(pwd)/app/build/outputs/bundle/release/app-release.aab"
+          release_name="OpenBurnBar-${{ needs.release-preflight.outputs.version }}-Android.aab"
+          release_path="$RUNNER_TEMP/$release_name"
+          cp "$source_path" "$release_path"
+          printf 'aab_path=%s\naab_name=%s\n' "$release_path" "$release_name" >> "$GITHUB_OUTPUT"
 
       - name: Verify Android domain-core profile receipt
-        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --android-aab android/app/build/outputs/bundle/release/app-release.aab
+        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --android-aab "${{ steps.android.outputs.aab_path }}"
+
+      - name: Build Android native identity instrumentation
+        working-directory: android
+        run: ./gradlew :openburnbar-domain-core:assembleDebugAndroidTest --no-daemon
+
+      - name: Execute and record loaded Android Rust identity
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          arch: arm64-v8a
+          target: google_apis
+          disk-size: 4G
+          heap-size: 768M
+          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
+
+      - name: Verify loaded Android Rust identity
+        run: |
+          set -euo pipefail
+          packaged_library="$RUNNER_TEMP/domain-core-android-packaged-libopenburnbar_domain_ffi.so"
+          unzip -p "${{ steps.android.outputs.aab_path }}" \
+            base/lib/arm64-v8a/libopenburnbar_domain_ffi.so > "$packaged_library"
+          test -s "$packaged_library"
+          node scripts/ci/verify-domain-core-observed-identity.mjs \
+            --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            --observed-identity "$RUNNER_TEMP/domain-core-android-observed-identity.json" \
+            --binary "$packaged_library"
+          node scripts/ci/verify-domain-core-android-universal-artifact.mjs \
+            --aab "${{ steps.android.outputs.aab_path }}" \
+            --candidate-aar Vendor/openburnbar-domain-core.aar \
+            --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
+            --output "$RUNNER_TEMP/domain-core-android-universal-build-manifest.json"
 
       - name: Upload Android release bundle artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: app-release-aab
-          path: android/app/build/outputs/bundle/release/app-release.aab
+          name: ${{ steps.android.outputs.aab_name }}
+          path: ${{ steps.android.outputs.aab_path }}
 
       - name: Install extension dependencies
         run: npm ci --prefix extensions/openburnbar
@@ -1107,6 +1396,10 @@ jobs:
             DOMAIN_CORE_DISTRIBUTION="$DOMAIN_CORE_DISTRIBUTION" \
             DOMAIN_CORE_ROLLOUT_CHANNEL="$DOMAIN_CORE_ROLLOUT_CHANNEL" \
             DOMAIN_CORE_EVIDENCE_ENABLED="$DOMAIN_CORE_EVIDENCE_ENABLED" \
+            DOMAIN_CORE_CANDIDATE_COMMIT="$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            DOMAIN_CORE_EXPECTED_VERSION="$DOMAIN_CORE_EXPECTED_VERSION" \
+            DOMAIN_CORE_EXPECTED_ABI_VERSION="$DOMAIN_CORE_EXPECTED_ABI_VERSION" \
+            DOMAIN_CORE_EXPECTED_SOURCE_SHA256="$DOMAIN_CORE_EXPECTED_SOURCE_SHA256" \
             DOMAIN_CORE_QUOTA_MODE="$DOMAIN_CORE_QUOTA_MODE" \
             DOMAIN_CORE_CLOUDVAULT_MODE="$DOMAIN_CORE_CLOUDVAULT_MODE" \
             DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE="$DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" \
@@ -1151,7 +1444,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Verify Apple domain-core profile receipt
-        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --apple-app "$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
+        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --apple-app "$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
 
       - name: Embed daemon binary in app bundle
         run: |
@@ -1497,24 +1790,6 @@ jobs:
           codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG_PATH"
           codesign --verify --verbose=2 "$DMG_PATH"
 
-      - name: Write notary API key
-        env:
-          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-          APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
-        run: |
-          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
-          python3 - <<'PY'
-          import base64
-          import os
-          from pathlib import Path
-
-          key_id = os.environ["APPLE_NOTARY_KEY_ID"]
-          payload = os.environ["APPLE_NOTARY_API_KEY_P8"]
-          Path(os.environ["RUNNER_TEMP"], f"AuthKey_{key_id}.p8").write_bytes(base64.b64decode(payload))
-          PY
-          chmod 600 "$NOTARY_KEY_PATH"
-          echo "notary_key_path=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
-
       - name: Notarize and staple DMG
         env:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
@@ -1689,6 +1964,47 @@ jobs:
             echo "update_base_url=$BASE_URL"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Create canonical retained domain-core rollback bundle
+        id: domain-core-rollback
+        env:
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          RELEASE_TAG: ${{ needs.release-preflight.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          activation="$RUNNER_TEMP/domain-core-activation.json"
+          profile="$RUNNER_TEMP/domain-core-public-production-rollback.json"
+          source_archive="$RUNNER_TEMP/OpenBurnBar-${VERSION}-legacy-source.tar.gz"
+          rollback="$RUNNER_TEMP/OpenBurnBar-${VERSION}-legacy-rollback.zip"
+          node scripts/ci/resolve-domain-core-activation.mjs \
+            --release-commit "$RELEASE_COMMIT" --format json \
+            | jq '{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
+            > "$activation"
+          candidate="$(jq -er '.candidateCommit' "$activation")"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production-rollback \
+            --expected-candidate-commit "$candidate" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --format json --output "$profile"
+          git merge-base --is-ancestor "$candidate" "$RELEASE_COMMIT"
+          git archive \
+            --format=tar.gz \
+            --prefix="OpenBurnBar-${VERSION}-legacy-source/" \
+            --output="$source_archive" \
+            "$candidate"
+          test -s "$source_archive"
+          python3 scripts/ci/create-domain-core-rollback-bundle.py \
+            --profile "$profile" \
+            --activation "$activation" \
+            --source-archive "$source_archive" \
+            --version "$VERSION" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --output "$rollback"
+          test -s "$rollback"
+          echo "rollback_path=$rollback" >> "$GITHUB_OUTPUT"
+          echo "rollback_name=${rollback##*/}" >> "$GITHUB_OUTPUT"
+
       - name: Compute artifact checksums
         id: checksums
         env:
@@ -1697,6 +2013,7 @@ jobs:
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
           LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
+          ROLLBACK_PATH: ${{ steps.domain-core-rollback.outputs.rollback_path }}
           VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
           CHECKSUMS_FILE="$RUNNER_TEMP/checksums-v${VERSION}.txt"
@@ -1717,6 +2034,8 @@ jobs:
             sha512sum "$APPCAST_PATH"
             sha256sum "$LATEST_PATH"
             sha512sum "$LATEST_PATH"
+            sha256sum "$ROLLBACK_PATH"
+            sha512sum "$ROLLBACK_PATH"
           } > "$CHECKSUMS_FILE"
 
           cat "$CHECKSUMS_FILE"
@@ -1812,6 +2131,7 @@ jobs:
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
           LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
+          ROLLBACK_PATH: ${{ steps.domain-core-rollback.outputs.rollback_path }}
           VERSION: ${{ needs.release-preflight.outputs.version }}
           RELEASE_TAG: ${{ needs.release-preflight.outputs.tag_name }}
           RELEASE_REF: ${{ needs.release-preflight.outputs.tag_ref }}
@@ -1900,6 +2220,38 @@ jobs:
           attest_release_blob "$SOURCE_PATH" "${SOURCE_PATH##*/}"
           attest_release_blob "$APPCAST_PATH" "${APPCAST_PATH##*/}"
           attest_release_blob "$LATEST_PATH" "${LATEST_PATH##*/}"
+
+          rollback_predicate="$PROVENANCE_DIR/${ROLLBACK_PATH##*/}.predicate.json"
+          rollback_bundle="$PROVENANCE_DIR/${ROLLBACK_PATH##*/}.sigstore.json"
+          python3 - "$ROLLBACK_PATH" "$rollback_predicate" <<'PY'
+          import hashlib, json, os, sys, zipfile
+          from pathlib import Path
+          artifact = Path(sys.argv[1])
+          predicate = Path(sys.argv[2])
+          with zipfile.ZipFile(artifact) as archive:
+              manifest = json.loads(archive.read("manifest.json"))
+          payload = {
+              "schemaVersion": 1,
+              "artifactKind": "legacy-rollback-bundle",
+              "target": "all-supported-consumers",
+              "artifact": {"fileName": artifact.name, "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest()},
+              "release": {
+                  "version": os.environ["VERSION"],
+                  "tag": os.environ["RELEASE_TAG"],
+                  "commit": os.environ["RELEASE_COMMIT"],
+                  "candidate": manifest["candidate"],
+                  "activation": manifest["activation"],
+                  "retentionPolicy": manifest["retentionPolicy"],
+              },
+          }
+          predicate.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+          PY
+          cosign attest-blob --yes \
+            --predicate "$rollback_predicate" \
+            --type https://openburnbar.dev/attestations/domain-core-rollback-artifact/v1 \
+            --bundle "$rollback_bundle" \
+            "$ROLLBACK_PATH"
+          test -s "$rollback_bundle"
 
           echo "provenance_dir=$PROVENANCE_DIR" >> "$GITHUB_OUTPUT"
 
@@ -2013,6 +2365,13 @@ jobs:
           path: ${{ steps.zip.outputs.zip_path }}
           if-no-files-found: error
 
+      - name: Upload retained domain-core rollback artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: ${{ steps.domain-core-rollback.outputs.rollback_name }}
+          path: ${{ steps.domain-core-rollback.outputs.rollback_path }}
+          if-no-files-found: error
+
       - name: Upload appcast artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
@@ -2072,6 +2431,14 @@ jobs:
           path: ${{ steps.sigstore-provenance.outputs.provenance_dir }}
           if-no-files-found: error
 
+      - name: Upload observed Android Rust identity
+        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-android-observed-identity.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Upload NOTICES artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
@@ -2101,6 +2468,19 @@ jobs:
           fi
           rm -f "$RUNNER_TEMP/certificate.p12"
 
+  domain-core-ios-release-evidence:
+    name: Domain Core iOS release evidence
+    needs:
+      - release-preflight
+      - build-and-release
+    uses: ./.github/workflows/domain-core-ios-release-evidence.yml
+    with:
+      enabled: ${{ needs.release-preflight.outputs.is_prerelease == 'false' }}
+      version: ${{ needs.release-preflight.outputs.version }}
+      release_commit: ${{ needs.release-preflight.outputs.release_commit }}
+      archive_artifact_name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS-archive
+    secrets: inherit
+
   smoke-test:
     needs: build-and-release
     runs-on: macos-15
@@ -2122,11 +2502,69 @@ jobs:
           bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$DMG_PATH"
           bash scripts/ci/smoke-openburnbar-release-dmg.sh "$DMG_PATH"
 
-  publish:
-    # Fail-closed release gate: publish requires every validation lane and the
+  apple-native-prepublication:
+    name: Verify and stage immutable Apple DMG before publication
+    needs:
+      - release-preflight
+      - domain-core-native-release-gate
+      - build-and-release
+      - smoke-test
+    if: ${{ needs.smoke-test.result == 'success' && needs.domain-core-native-release-gate.result == 'success' }}
+    runs-on: macos-26
+    timeout-minutes: 25
+    environment: release
+    permissions:
+      actions: read
+      contents: write
+    outputs:
+      identity_artifact_name: domain-core-apple-prepublication-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.release-preflight.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download exact verified release inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
+      - name: Download signed Apple DMG
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.build-and-release.outputs.dmg_name }}
+          path: ${{ runner.temp }}/domain-core-apple-prepublication
+
+      - name: Execute final mounted-app Rust identity mode and verify pinned signer
+        env:
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+          COMMIT: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
+          DMG_PATH: ${{ runner.temp }}/domain-core-apple-prepublication/${{ needs.build-and-release.outputs.dmg_name }}
+          OBSERVED_IDENTITY: ${{ runner.temp }}/domain-core-apple-prepublication-observed-identity.json
+        run: |
+          set -euo pipefail
+          bash scripts/ci/verify-domain-core-native-release-artifact.sh \
+            apple "$DMG_PATH" "$VERSION" "$PROFILE" "$COMMIT" \
+            "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            "$OBSERVED_IDENTITY"
+
+      - name: Retain prepublication Apple observed identity
+        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-apple-prepublication-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-apple-prepublication-observed-identity.json
+          if-no-files-found: error
+          retention-days: 90
+
+  prepare-release-publication:
+    # Fail-closed release gate: preparation requires every validation lane and the
     # packaging + artifact smoke chain. A skipped gate only occurs through the
     # owner-approved bypass inputs validated in release-preflight; a failed or
-    # cancelled gate blocks publish.
+    # cancelled gate blocks publication.
     needs:
       - release-preflight
       - release-swift-gate
@@ -2138,12 +2576,23 @@ jobs:
       - release-extension-gate
       - release-supply-chain-gate
       - build-and-release
+      - domain-core-ios-release-evidence
       - smoke-test
+      - apple-native-prepublication
     runs-on: macos-15
     timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      publication_inputs_artifact_name: release-publication-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - name: Check out repository
+      - name: Check out exact release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.release-preflight.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Download build artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
@@ -2151,20 +2600,13 @@ jobs:
           path: ${{ runner.temp }}
           merge-multiple: true
 
-      - name: Publish release assets
+      - name: Stage the complete general release asset set
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.release-preflight.outputs.version }}
           VERSION: ${{ needs.release-preflight.outputs.version }}
           DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
           ZIP_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.zip_name }}
-          # Prerelease status is derived from the tag (set in release-preflight).
-          IS_PRERELEASE: ${{ needs.release-preflight.outputs.is_prerelease }}
-          # 'latest' (which atomically repoints the in-app update feed) is opt-in:
-          # only an explicit workflow_dispatch promote=true sets it, and never
-          # for a prerelease tag.
-          PROMOTE: ${{ github.event_name == 'workflow_dispatch' && inputs.promote && 'true' || 'false' }}
         run: |
+          set -euo pipefail
           # Checksums, SBOM, and metadata are also downloaded via merge-multiple.
           # `find -print -quit` is shellcheck-clean (SC2012) and quoted to handle spaces (SC2086).
           CHECKSUMS_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "checksums-v${VERSION}*.txt" -print -quit 2>/dev/null)
@@ -2180,7 +2622,7 @@ jobs:
           PROVENANCE_PATHS=()
           while IFS= read -r provenance_path; do
             [[ -n "$provenance_path" ]] && PROVENANCE_PATHS+=("$provenance_path")
-          done < <(find "$RUNNER_TEMP" -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) -print 2>/dev/null | sort)
+          done < <(find "$RUNNER_TEMP" -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) ! -name 'domain-core-ios-*' -print 2>/dev/null | sort)
 
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           VERSION_TAG="${VERSION#v}"
@@ -2196,14 +2638,14 @@ jobs:
             cp CHANGELOG.md "$NOTES_FILE"
           fi
 
-          ASSETS=("$DMG_PATH" "$ZIP_PATH")
-          for asset in "${ASSETS[@]}"; do
+          for asset in "$DMG_PATH" "$ZIP_PATH"; do
             if [[ ! -f "$asset" ]]; then
               echo "::error::Release asset missing after artifact download: $asset"
               exit 1
             fi
           done
           bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$DMG_PATH" "$ZIP_PATH"
+          ASSETS=("$ZIP_PATH")
           [[ -n "$CHECKSUMS_PATH" && -f "$CHECKSUMS_PATH" ]] && ASSETS+=("$CHECKSUMS_PATH")
           [[ -n "$APPCAST_PATH" && -f "$APPCAST_PATH" ]] && ASSETS+=("$APPCAST_PATH")
           [[ -n "$LATEST_PATH" && -f "$LATEST_PATH" ]] && ASSETS+=("$LATEST_PATH")
@@ -2219,44 +2661,381 @@ jobs:
             exit 1
           fi
           ASSETS+=("${PROVENANCE_PATHS[@]}")
+          stage="$RUNNER_TEMP/release-publication-inputs"
+          mkdir -p "$stage/assets"
+          cp "$NOTES_FILE" "$stage/release-notes.md"
+          for asset in "${ASSETS[@]}"; do
+            destination="$stage/assets/$(basename "$asset")"
+            if [[ -e "$destination" ]]; then
+              echo "::error::Duplicate general release asset name: $(basename "$asset")"
+              exit 1
+            fi
+            cp "$asset" "$destination"
+          done
 
-          # Decide prerelease + latest flags up front. A prerelease (-beta etc.)
-          # tag is ALWAYS published as a prerelease and NEVER repoints "latest",
-          # regardless of the promote input — promoting a beta to "latest"
-          # atomically repoints the fleet's update feed onto a beta, which is the
-          # exact failure this guard exists to prevent (H15).
-          if [[ "$IS_PRERELEASE" == "true" ]]; then
-            PRERELEASE_FLAG="--prerelease"
-            LATEST_FLAG="--latest=false"
-            if [[ "$PROMOTE" == "true" ]]; then
-              echo "::warning::promote=true ignored for prerelease tag v${VERSION} — prereleases never become 'latest'."
-            fi
-            echo "Publishing v${VERSION} as a PRERELEASE (update feed not repointed)."
-          else
-            PRERELEASE_FLAG="--prerelease=false"
-            if [[ "$PROMOTE" == "true" ]]; then
-              LATEST_FLAG="--latest"
-              echo "Publishing v${VERSION} and PROMOTING to 'latest' (update feed repointed)."
-            else
-              LATEST_FLAG="--latest=false"
-              echo "Publishing v${VERSION} as a stable release WITHOUT promotion (use workflow_dispatch promote=true to set 'latest')."
-            fi
+          ios_predicates=()
+          while IFS= read -r predicate; do
+            [[ -n "$predicate" ]] && ios_predicates+=("$predicate")
+          done < <(find "$RUNNER_TEMP" -type f -name 'domain-core-ios-*.predicate.json' -print 2>/dev/null | LC_ALL=C sort)
+          if ((${#ios_predicates[@]} > 0)); then
+            ios_archive="$(find "$RUNNER_TEMP" -type f -name "OpenBurnBar-${VERSION}-iOS.xcarchive.zip" -print -quit 2>/dev/null)"
+            ios_receipt="$(find "$RUNNER_TEMP" -type f -name 'app-store-connect-receipt.json' -print -quit 2>/dev/null)"
+            test -s "$ios_archive"
+            test -s "$ios_receipt"
+            mkdir -p "$stage/ios"
+            cp "$ios_archive" "$stage/ios/"
+            cp "$ios_receipt" "$stage/assets/OpenBurnBar-${VERSION}-iOS-app-store-connect-receipt.json"
+            for predicate in "${ios_predicates[@]}"; do
+              bundle="${predicate}.sigstore.json"
+              test -s "$bundle"
+              cp "$predicate" "$bundle" "$stage/ios/"
+            done
           fi
 
-          if gh release view "v${VERSION}" >/dev/null 2>&1; then
-            gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
-            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" "$PRERELEASE_FLAG" "$LATEST_FLAG"
-          else
-            gh release create "v${VERSION}" \
-              "${ASSETS[@]}" \
-              --title "OpenBurnBar $VERSION" \
-              --verify-tag \
-              "$PRERELEASE_FLAG" \
-              "$LATEST_FLAG" \
-              --notes-file "$NOTES_FILE"
+      - name: Retain exact general publication inputs
+        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: release-publication-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-publication-inputs/
+          if-no-files-found: error
+          retention-days: 90
+
+  domain-core-native-release-evidence:
+    name: Atomically publish verified Apple and Android release set
+    needs:
+      - release-preflight
+      - domain-core-native-release-gate
+      - build-and-release
+      - apple-native-prepublication
+      - prepare-release-publication
+    if: ${{ needs.prepare-release-publication.result == 'success' && needs.apple-native-prepublication.result == 'success' }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      actions: read
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.release-preflight.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download exact verified release inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
+      - name: Download signed Apple artifact
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.build-and-release.outputs.dmg_name }}
+          path: ${{ runner.temp }}/domain-core-native-artifacts
+
+      - name: Download signed Android artifact
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.build-and-release.outputs.aab_name }}
+          path: ${{ runner.temp }}/domain-core-native-artifacts
+
+      - name: Download observed native Rust identities
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.build-and-release.outputs.native_identity_artifact_name }}
+          path: ${{ runner.temp }}/domain-core-native-identities
+
+      - name: Download prepublication Apple observed identity
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.apple-native-prepublication.outputs.identity_artifact_name }}
+          path: ${{ runner.temp }}/domain-core-apple-prepublication-identity
+
+      - name: Download exact general publication inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.prepare-release-publication.outputs.publication_inputs_artifact_name }}
+          path: ${{ runner.temp }}/release-publication-inputs
+
+      - name: Reverify signed artifacts, selected profile, and loaded Rust identity
+        env:
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+          COMMIT: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
+          DMG_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          AAB_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+        run: |
+          set -euo pipefail
+          profile="$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json"
+          mkdir -p "$RUNNER_TEMP/domain-core-native-evidence"
+          bash scripts/ci/verify-domain-core-native-release-artifact.sh \
+            apple "$DMG_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
+            "$RUNNER_TEMP/domain-core-native-evidence/apple-final-reverify-identity.json"
+          bash scripts/ci/verify-domain-core-native-release-artifact.sh \
+            android "$AAB_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
+            "$RUNNER_TEMP/domain-core-native-identities/domain-core-android-observed-identity.json" \
+            "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
+            "$RUNNER_TEMP/domain-core-native-evidence/android-universal-abi-manifest.json"
+
+      - name: Create Apple v2 release predicates
+        id: apple-plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          TAG: ${{ needs.release-preflight.outputs.tag_name }}
+          COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+          SIGNER_RUN_ID: ${{ needs.domain-core-native-release-gate.outputs.signer_run_id }}
+          SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
+          DMG_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+        run: |
+          node scripts/ci/create-domain-core-native-release-evidence.mjs \
+            --consumer apple --artifact "$DMG_PATH" --version "$VERSION" \
+            --tag "$TAG" --commit "$COMMIT" --profile-name "$PROFILE" \
+            --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            --activation "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json" \
+            --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
+            --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
+            --protected-signer-run-id "$SIGNER_RUN_ID" \
+            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
+            --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json" \
+            --output-dir "$RUNNER_TEMP/domain-core-native-evidence/apple" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Create Android v2 release predicates
+        id: android-plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          TAG: ${{ needs.release-preflight.outputs.tag_name }}
+          COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+          SIGNER_RUN_ID: ${{ needs.domain-core-native-release-gate.outputs.signer_run_id }}
+          SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
+          AAB_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+        run: |
+          node scripts/ci/create-domain-core-native-release-evidence.mjs \
+            --consumer android --artifact "$AAB_PATH" --version "$VERSION" \
+            --tag "$TAG" --commit "$COMMIT" --profile-name "$PROFILE" \
+            --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            --activation "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json" \
+            --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
+            --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
+            --protected-signer-run-id "$SIGNER_RUN_ID" \
+            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
+            --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json" \
+            --android-abi-manifest "$RUNNER_TEMP/domain-core-native-evidence/android-universal-abi-manifest.json" \
+            --output-dir "$RUNNER_TEMP/domain-core-native-evidence/android" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Reuse cryptographically exact existing evidence on draft or published retries
+        id: existing-evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/ci/hydrate-apple-android-release-evidence.mjs \
+            --apple-plan "${{ steps.apple-plan.outputs.plan_path }}" \
+            --android-plan "${{ steps.android-plan.outputs.plan_path }}" \
+            --output-dir "$RUNNER_TEMP/domain-core-native-evidence/bundles" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Attest Apple quota predicate
+        id: attest-apple-quota
+        if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_quota == 'true' && steps.existing-evidence.outputs.apple_quota_existing != 'true' }}
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-native-evidence/apple/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-apple-quota-domain-core.predicate.json
+
+      - name: Attest Apple CloudVault predicate
+        id: attest-apple-cloud-vault
+        if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_cloud_vault == 'true' && steps.existing-evidence.outputs.apple_cloud_vault_existing != 'true' }}
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-native-evidence/apple/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-apple-cloudVault-domain-core.predicate.json
+
+      - name: Attest Apple CloudVault rewrap predicate
+        id: attest-apple-cloud-vault-rewrap
+        if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_cloud_vault_rewrap == 'true' && steps.existing-evidence.outputs.apple_cloud_vault_rewrap_existing != 'true' }}
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-native-evidence/apple/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-apple-cloudVaultRewrap-domain-core.predicate.json
+
+      - name: Attest Apple CloudVault search predicate
+        id: attest-apple-cloud-vault-search
+        if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_cloud_vault_search == 'true' && steps.existing-evidence.outputs.apple_cloud_vault_search_existing != 'true' }}
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-native-evidence/apple/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-apple-cloudVaultSearch-domain-core.predicate.json
+
+      - name: Attest Apple Hermes predicate
+        id: attest-apple-hermes
+        if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_hermes == 'true' && steps.existing-evidence.outputs.apple_hermes_existing != 'true' }}
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-native-evidence/apple/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-apple-hermes-domain-core.predicate.json
+
+      - name: Attest Apple pricing predicate
+        id: attest-apple-pricing
+        if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_pricing == 'true' && steps.existing-evidence.outputs.apple_pricing_existing != 'true' }}
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-native-evidence/apple/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-apple-pricing-domain-core.predicate.json
+
+      - name: Attest Android CloudVault predicate
+        id: attest-android-cloud-vault
+        if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.android-plan.outputs.domain_cloud_vault == 'true' && steps.existing-evidence.outputs.android_cloud_vault_existing != 'true' }}
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-native-evidence/android/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-android-cloudVault-domain-core.predicate.json
+
+      - name: Attest Android CloudVault rewrap predicate
+        id: attest-android-cloud-vault-rewrap
+        if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.android-plan.outputs.domain_cloud_vault_rewrap == 'true' && steps.existing-evidence.outputs.android_cloud_vault_rewrap_existing != 'true' }}
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-native-evidence/android/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-android-cloudVaultRewrap-domain-core.predicate.json
+
+      - name: Attest Android CloudVault search predicate
+        id: attest-android-cloud-vault-search
+        if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.android-plan.outputs.domain_cloud_vault_search == 'true' && steps.existing-evidence.outputs.android_cloud_vault_search_existing != 'true' }}
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-native-evidence/android/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-android-cloudVaultSearch-domain-core.predicate.json
+
+      - name: Attest Android Hermes predicate
+        id: attest-android-hermes
+        if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.android-plan.outputs.domain_hermes == 'true' && steps.existing-evidence.outputs.android_hermes_existing != 'true' }}
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-native-evidence/android/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-android-hermes-domain-core.predicate.json
+
+      - name: Stage deterministic attestation bundle names
+        env:
+          APPLE_QUOTA: ${{ steps.attest-apple-quota.outputs.bundle-path }}
+          APPLE_CLOUD_VAULT: ${{ steps.attest-apple-cloud-vault.outputs.bundle-path }}
+          APPLE_CLOUD_VAULT_REWRAP: ${{ steps.attest-apple-cloud-vault-rewrap.outputs.bundle-path }}
+          APPLE_CLOUD_VAULT_SEARCH: ${{ steps.attest-apple-cloud-vault-search.outputs.bundle-path }}
+          APPLE_HERMES: ${{ steps.attest-apple-hermes.outputs.bundle-path }}
+          APPLE_PRICING: ${{ steps.attest-apple-pricing.outputs.bundle-path }}
+          ANDROID_CLOUD_VAULT: ${{ steps.attest-android-cloud-vault.outputs.bundle-path }}
+          ANDROID_CLOUD_VAULT_REWRAP: ${{ steps.attest-android-cloud-vault-rewrap.outputs.bundle-path }}
+          ANDROID_CLOUD_VAULT_SEARCH: ${{ steps.attest-android-cloud-vault-search.outputs.bundle-path }}
+          ANDROID_HERMES: ${{ steps.attest-android-hermes.outputs.bundle-path }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          bundle_dir="$RUNNER_TEMP/domain-core-native-evidence/bundles"
+          mkdir -p "$bundle_dir"
+          stage() {
+            local source="$1"
+            local name="$2"
+            [[ -z "$source" ]] && return 0
+            test -f "$source"
+            cp "$source" "$bundle_dir/$name"
+          }
+          stage "$APPLE_QUOTA" "OpenBurnBar-${VERSION}-apple-quota-domain-core.sigstore.json"
+          stage "$APPLE_CLOUD_VAULT" "OpenBurnBar-${VERSION}-apple-cloudVault-domain-core.sigstore.json"
+          stage "$APPLE_CLOUD_VAULT_REWRAP" "OpenBurnBar-${VERSION}-apple-cloudVaultRewrap-domain-core.sigstore.json"
+          stage "$APPLE_CLOUD_VAULT_SEARCH" "OpenBurnBar-${VERSION}-apple-cloudVaultSearch-domain-core.sigstore.json"
+          stage "$APPLE_HERMES" "OpenBurnBar-${VERSION}-apple-hermes-domain-core.sigstore.json"
+          stage "$APPLE_PRICING" "OpenBurnBar-${VERSION}-apple-pricing-domain-core.sigstore.json"
+          stage "$ANDROID_CLOUD_VAULT" "OpenBurnBar-${VERSION}-android-cloudVault-domain-core.sigstore.json"
+          stage "$ANDROID_CLOUD_VAULT_REWRAP" "OpenBurnBar-${VERSION}-android-cloudVaultRewrap-domain-core.sigstore.json"
+          stage "$ANDROID_CLOUD_VAULT_SEARCH" "OpenBurnBar-${VERSION}-android-cloudVaultSearch-domain-core.sigstore.json"
+          stage "$ANDROID_HERMES" "OpenBurnBar-${VERSION}-android-hermes-domain-core.sigstore.json"
+
+      - name: Create exact Apple and Android publication manifests
+        run: |
+          node scripts/ci/create-domain-core-native-publication.mjs \
+            --plan "${{ steps.apple-plan.outputs.plan_path }}" \
+            --bundle-dir "$RUNNER_TEMP/domain-core-native-evidence/bundles" \
+            --output "$RUNNER_TEMP/domain-core-native-evidence/apple-publication.json"
+          node scripts/ci/create-domain-core-native-publication.mjs \
+            --plan "${{ steps.android-plan.outputs.plan_path }}" \
+            --bundle-dir "$RUNNER_TEMP/domain-core-native-evidence/bundles" \
+            --output "$RUNNER_TEMP/domain-core-native-evidence/android-publication.json"
+
+      - name: Publish the complete verified release set from one draft state machine
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-preflight.outputs.tag_name }}
+          COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          PROMOTE: ${{ github.event_name == 'workflow_dispatch' && inputs.promote && needs.release-preflight.outputs.is_prerelease == 'false' && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          asset_args=()
+          while IFS= read -r asset; do
+            asset_args+=(--asset "$asset")
+          done < <(find "$RUNNER_TEMP/release-publication-inputs/assets" -type f -print | LC_ALL=C sort)
+          if ((${#asset_args[@]} == 0)); then
+            echo "::error::No general release publication assets were retained."
+            exit 1
+          fi
+          manifest="$RUNNER_TEMP/domain-core-native-evidence/apple-android-publication.json"
+          node scripts/ci/create-apple-android-release-publication.mjs \
+            --apple "$RUNNER_TEMP/domain-core-native-evidence/apple-publication.json" \
+            --android "$RUNNER_TEMP/domain-core-native-evidence/android-publication.json" \
+            --notes "$RUNNER_TEMP/release-publication-inputs/release-notes.md" \
+            --tag "$TAG" --commit "$COMMIT" --promote "$PROMOTE" \
+            "${asset_args[@]}" --output "$manifest"
+          node scripts/ci/publish-apple-android-release.mjs --manifest "$manifest"
+
+          ios_dir="$RUNNER_TEMP/release-publication-inputs/ios"
+          if [[ -d "$ios_dir" ]]; then
+            archive="$ios_dir/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS.xcarchive.zip"
+            test -s "$archive"
+            bundles='[]'
+            while IFS= read -r predicate; do
+              domain="$(jq -er '.domain' "$predicate")"
+              bundle="${predicate}.sigstore.json"
+              test -s "$bundle"
+              asset_name="OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS-${domain}-domain-core-attestation.sigstore.json"
+              bundles="$(jq -c \
+                --arg domain "$domain" \
+                --arg assetName "$asset_name" \
+                --arg bundlePath "$bundle" \
+                --arg predicatePath "$predicate" \
+                '. + [{domain: $domain, assetName: $assetName, bundlePath: $bundlePath, predicatePath: $predicatePath}]' \
+                <<<"$bundles")"
+            done < <(find "$ios_dir" -maxdepth 1 -type f -name 'domain-core-ios-*.predicate.json' -print | LC_ALL=C sort)
+            test "$(jq 'length' <<<"$bundles")" -gt 0
+            ios_manifest="$RUNNER_TEMP/domain-core-native-evidence/ios-publication.json"
+            jq -n \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg tag "$TAG" \
+              --arg commit "$COMMIT" \
+              --arg artifactPath "$archive" \
+              --argjson bundles "$bundles" \
+              '{schemaVersion: 2, repository: $repository, tag: $tag, commit: $commit, consumer: "ios", signerWorkflow: ".github/workflows/domain-core-ios-release-evidence.yml", releaseState: "published", nativeArtifactOnly: false, artifactPath: $artifactPath, bundles: $bundles}' \
+              > "$ios_manifest"
+            node scripts/ci/publish-domain-core-release-evidence.mjs --manifest "$ios_manifest"
           fi
 
-      - name: Notify Sentry of new release
+      - name: Notify Sentry of published release
         if: env.SENTRY_AUTH_TOKEN != ''
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -2267,24 +3046,29 @@ jobs:
         run: |
           set -euo pipefail
           npm install --global @sentry/cli@2.42.2
-
-          RELEASE_NAME="openburnbar@${VERSION}"
-
-          for PROJECT in "$SENTRY_PROJECT_MACOS" "$SENTRY_PROJECT_FUNCTIONS"; do
-            sentry-cli releases new --org "$SENTRY_ORG" --project "$PROJECT" "$RELEASE_NAME" || true
-            sentry-cli releases set-commits --org "$SENTRY_ORG" --project "$PROJECT" "$RELEASE_NAME" --auto || true
-            sentry-cli releases finalize --org "$SENTRY_ORG" --project "$PROJECT" "$RELEASE_NAME" || true
-            sentry-cli releases deploys "$RELEASE_NAME" new \
-              --org "$SENTRY_ORG" \
-              --project "$PROJECT" \
-              --env production \
+          release_name="openburnbar@${VERSION}"
+          for project in "$SENTRY_PROJECT_MACOS" "$SENTRY_PROJECT_FUNCTIONS"; do
+            sentry-cli releases new --org "$SENTRY_ORG" --project "$project" "$release_name" || true
+            sentry-cli releases set-commits --org "$SENTRY_ORG" --project "$project" "$release_name" --auto || true
+            sentry-cli releases finalize --org "$SENTRY_ORG" --project "$project" "$release_name" || true
+            sentry-cli releases deploys "$release_name" new \
+              --org "$SENTRY_ORG" --project "$project" --env production \
               --name "v${VERSION}-$(date -u +%Y%m%dT%H%M%SZ)" || true
           done
-          echo "Sentry release ${RELEASE_NAME} created and finalized."
 
-      - name: Clean up Firebase config
-        if: always()
-        run: bash ./scripts/ci/cleanup-firebase-config.sh
+      - name: Retain exact native release evidence and rollback chain
+        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-native-release-evidence-${{ needs.domain-core-native-release-gate.outputs.profile_name }}-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/domain-core-native-evidence/
+            ${{ runner.temp }}/domain-core-native-release-gate/domain-core-native-release-gate.json
+            ${{ runner.temp }}/domain-core-native-release-gate/domain-core-selected-public-profile.json
+            ${{ runner.temp }}/domain-core-native-release-gate/source/domain-core-public-production-rollback.json
+            ${{ runner.temp }}/domain-core-native-identities/
+            ${{ runner.temp }}/domain-core-apple-prepublication-identity/
+          if-no-files-found: error
+          retention-days: 90
 
   # Fail-closed feed verification: after the release is published and marked
   # latest, fetch the LIVE feed exactly the way the in-app updater does and
@@ -2293,7 +3077,7 @@ jobs:
   # pinned in Info.plist. A release whose own update feed is broken fails here.
   verify-live-update-feed:
     name: Verify live update feed
-    needs: [release-preflight, publish]
+    needs: [release-preflight, domain-core-native-release-evidence]
     # Tag pushes intentionally publish stable assets without repointing
     # `releases/latest`. Only an explicit promote=true dispatch changes the
     # update channel, so only that promoted run can truthfully verify the live

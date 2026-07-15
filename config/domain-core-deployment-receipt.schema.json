@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/domain-core-deployment-receipt-v2.json",
+  "title": "OpenBurnBar candidate-bound domain-core deployment receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "consumer",
+    "domain",
+    "artifactKind",
+    "target",
+    "publicProfile",
+    "candidate",
+    "activation",
+    "sourceRun",
+    "promotionProof",
+    "rollbackArtifact",
+    "release",
+    "deployment"
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "consumer": { "const": "console" },
+        "domain": { "const": "cloudVault" },
+        "artifactKind": { "const": "console-deployment-receipt" },
+        "target": { "const": "firebase-hosting-production" },
+        "deployment": {
+          "type": "object",
+          "properties": {
+            "provider": { "const": "firebase-hosting" },
+            "providerCoordinates": { "$ref": "#/$defs/hostingCoordinates" }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "consumer": { "const": "functions" },
+        "domain": { "const": "pricing" },
+        "artifactKind": { "const": "functions-deployment-receipt" },
+        "target": { "const": "firebase-functions-production" },
+        "deployment": {
+          "type": "object",
+          "properties": {
+            "provider": { "const": "firebase-functions" },
+            "providerCoordinates": { "$ref": "#/$defs/functionsCoordinates" }
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "consumer": { "enum": ["console", "functions"] },
+    "domain": { "enum": ["cloudVault", "pricing"] },
+    "artifactKind": {
+      "enum": ["console-deployment-receipt", "functions-deployment-receipt"]
+    },
+    "target": {
+      "enum": ["firebase-hosting-production", "firebase-functions-production"]
+    },
+    "publicProfile": {
+      "$ref": "domain-core-release-predicate.schema.json#/$defs/publicProfile"
+    },
+    "candidate": {
+      "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/candidate"
+    },
+    "activation": {
+      "$ref": "domain-core-release-predicate.schema.json#/$defs/activation"
+    },
+    "sourceRun": {
+      "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/sourceRun"
+    },
+    "promotionProof": {
+      "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/promotionProof"
+    },
+    "rollbackArtifact": {
+      "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/rollbackArtifact"
+    },
+    "release": {
+      "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/release"
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "project",
+        "environment",
+        "status",
+        "healthChecks",
+        "deployedArtifact",
+        "providerCoordinates",
+        "deployRun",
+        "healthArtifactSha256"
+      ],
+      "properties": {
+        "provider": { "enum": ["firebase-hosting", "firebase-functions"] },
+        "project": { "type": "string", "minLength": 1 },
+        "environment": { "type": "string", "minLength": 1 },
+        "status": { "const": "healthy" },
+        "healthChecks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "deployedArtifact": {
+          "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/artifact"
+        },
+        "providerCoordinates": {
+          "oneOf": [
+            { "$ref": "#/$defs/functionsCoordinates" },
+            { "$ref": "#/$defs/hostingCoordinates" }
+          ]
+        },
+        "deployRun": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "workflowPath",
+            "runId",
+            "runAttempt",
+            "event",
+            "ref",
+            "headSha",
+            "jobSetSha256"
+          ],
+          "properties": {
+            "repository": { "const": "Imagine-That-Ai/BurnBar" },
+            "workflowPath": {
+              "enum": [
+                ".github/workflows/deploy-hosting.yml",
+                ".github/workflows/deploy-production.yml"
+              ]
+            },
+            "runId": { "type": "integer", "minimum": 1 },
+            "runAttempt": { "type": "integer", "minimum": 1 },
+            "event": { "enum": ["push", "workflow_dispatch"] },
+            "ref": {
+              "type": "string",
+              "pattern": "^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
+            },
+            "headSha": {
+              "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/gitSha"
+            },
+            "jobSetSha256": {
+              "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/sha256"
+            }
+          }
+        },
+        "healthArtifactSha256": {
+          "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/sha256"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "functionsCoordinates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["buildArtifactSha256", "sharedSource", "targets"],
+      "properties": {
+        "buildArtifactSha256": { "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/sha256" },
+        "sharedSource": { "$ref": "#/$defs/functionsSource" },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/functionsTarget" }
+        }
+      }
+    },
+    "hostingCoordinates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sites"],
+      "properties": {
+        "sites": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "properties": { "target": { "const": "marketing" } },
+                "required": ["target"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": { "target": { "const": "console" } },
+                "required": ["target"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ],
+          "items": { "$ref": "#/$defs/hostingRelease" }
+        }
+      }
+    },
+    "functionsSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bucket", "object", "generation"],
+      "properties": {
+        "bucket": { "type": "string", "minLength": 1 },
+        "object": { "type": "string", "minLength": 1 },
+        "generation": { "type": "string", "pattern": "^[1-9][0-9]*$" }
+      }
+    },
+    "functionsTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "function", "build", "service", "revision"],
+      "properties": {
+        "target": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+        "function": { "type": "string", "minLength": 1 },
+        "build": { "type": "string", "minLength": 1 },
+        "service": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 }
+      }
+    },
+    "hostingRelease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "site", "versionName", "releaseName"],
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "target": { "const": "marketing" },
+            "site": { "const": "burnbar" }
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": { "const": "console" },
+            "site": { "const": "burnbar-console" }
+          }
+        }
+      ],
+      "properties": {
+        "target": { "enum": ["marketing", "console"] },
+        "site": { "enum": ["burnbar", "burnbar-console"] },
+        "versionName": { "type": "string", "pattern": "^sites/[a-z0-9-]+/versions/[^/]+$" },
+        "releaseName": { "type": "string", "pattern": "^sites/[a-z0-9-]+/channels/live/releases/[^/]+$" }
+      }
+    }
+  }
+}

@@ -3,6 +3,7 @@ package com.openburnbar.data.hermes.relay
 import android.util.Log
 import com.openburnbar.data.DomainCoreBuildProfile
 import java.security.SecureRandom
+import java.time.Instant
 import uniffi.openburnbar_domain_ffi.HermesAadKind
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
@@ -45,6 +46,7 @@ internal data class HermesShadowComparison(
     val mismatchCategory: String?,
     val legacyMicros: Long,
     val rustMicros: Long,
+    val observedAt: Instant = Instant.now(),
 )
 
 internal object HermesDomainCoreAdapter {

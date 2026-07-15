@@ -1,0 +1,552 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json",
+  "title": "OpenBurnBar candidate-bound domain-core release predicate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "predicateType",
+    "consumer",
+    "domain",
+    "artifactKind",
+    "target",
+    "publicProfile",
+    "candidate",
+    "activation",
+    "sourceRun",
+    "promotionProof",
+    "rollbackArtifact",
+    "artifact",
+    "release"
+  ],
+  "oneOf": [
+    {
+      "not": {
+        "properties": { "androidUniversal": {} },
+        "required": ["androidUniversal"]
+      },
+      "properties": {
+        "consumer": { "const": "apple" },
+        "domain": {
+          "enum": [
+            "quota",
+            "cloudVault",
+            "cloudVaultRewrap",
+            "cloudVaultSearch",
+            "hermes",
+            "pricing"
+          ]
+        },
+        "artifactKind": { "const": "macos-dmg" },
+        "target": { "const": "macos-arm64" }
+      }
+    },
+    {
+      "required": ["androidUniversal"],
+      "properties": {
+        "consumer": { "const": "android" },
+        "domain": {
+          "enum": [
+            "cloudVault",
+            "cloudVaultRewrap",
+            "cloudVaultSearch",
+            "hermes"
+          ]
+        },
+        "artifactKind": { "const": "android-aab" },
+        "target": { "const": "android-universal" }
+      }
+    },
+    {
+      "not": {
+        "properties": { "androidUniversal": {} },
+        "required": ["androidUniversal"]
+      },
+      "properties": {
+        "consumer": { "const": "ios" },
+        "domain": {
+          "enum": [
+            "cloudVault",
+            "cloudVaultRewrap",
+            "cloudVaultSearch",
+            "hermes"
+          ]
+        },
+        "artifactKind": { "const": "ios-app-store-archive" },
+        "target": { "const": "ios-universal" }
+      }
+    },
+    {
+      "properties": {
+        "consumer": { "const": "linux" },
+        "domain": {
+          "enum": [
+            "quota",
+            "cloudVault",
+            "cloudVaultRewrap",
+            "cloudVaultSearch",
+            "hermes",
+            "pricing"
+          ]
+        },
+        "artifactKind": { "const": "linux-release-bundle" },
+        "target": { "const": "linux-x64-arm64" }
+      }
+    },
+    {
+      "properties": {
+        "consumer": { "const": "windows" },
+        "domain": { "enum": ["quota", "cloudVault"] },
+        "artifactKind": { "const": "windows-release-bundle" },
+        "target": { "const": "windows-x64-arm64" }
+      }
+    },
+    {
+      "not": {
+        "properties": { "androidUniversal": {} },
+        "required": ["androidUniversal"]
+      },
+      "properties": {
+        "consumer": { "const": "console" },
+        "domain": { "const": "cloudVault" },
+        "artifactKind": { "const": "console-deployment-receipt" },
+        "target": { "const": "firebase-hosting-production" }
+      }
+    },
+    {
+      "not": {
+        "properties": { "androidUniversal": {} },
+        "required": ["androidUniversal"]
+      },
+      "properties": {
+        "consumer": { "const": "functions" },
+        "domain": { "const": "pricing" },
+        "artifactKind": { "const": "functions-deployment-receipt" },
+        "target": { "const": "firebase-functions-production" }
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": ["consumer"],
+        "properties": { "consumer": { "enum": ["apple", "android"] } }
+      },
+      "then": {
+        "properties": {
+          "release": {
+            "type": "object",
+            "properties": {
+              "version": { "$ref": "#/$defs/nativeVersion" },
+              "tag": { "$ref": "#/$defs/nativeTag" }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "release": {
+            "type": "object",
+            "properties": {
+              "version": { "$ref": "#/$defs/stableVersion" },
+              "tag": { "$ref": "#/$defs/stableTag" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "predicateType": {
+      "const": "https://openburnbar.dev/attestations/domain-core-release-artifact/v2"
+    },
+    "consumer": { "$ref": "#/$defs/consumer" },
+    "domain": { "$ref": "#/$defs/domain" },
+    "artifactKind": { "$ref": "#/$defs/artifactKind" },
+    "target": { "$ref": "#/$defs/target" },
+    "publicProfile": { "$ref": "#/$defs/publicProfile" },
+    "appStoreConnectReceipt": { "$ref": "#/$defs/appStoreConnectReceipt" },
+    "candidate": { "$ref": "#/$defs/candidate" },
+    "activation": { "$ref": "#/$defs/activation" },
+    "sourceRun": { "$ref": "#/$defs/sourceRun" },
+    "promotionProof": { "$ref": "#/$defs/promotionProof" },
+    "rollbackArtifact": { "$ref": "#/$defs/rollbackArtifact" },
+    "artifact": { "$ref": "#/$defs/artifact" },
+    "androidUniversal": { "$ref": "#/$defs/androidUniversal" },
+    "release": { "$ref": "#/$defs/release" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "gitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "nativeVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "stableVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "nativeTag": {
+      "type": "string",
+      "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "stableTag": {
+      "type": "string",
+      "pattern": "^(?:(?:windows|linux)-)?v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "consumer": {
+      "enum": [
+        "apple",
+        "ios",
+        "linux",
+        "android",
+        "windows",
+        "console",
+        "functions"
+      ]
+    },
+    "domain": {
+      "enum": [
+        "quota",
+        "cloudVault",
+        "cloudVaultRewrap",
+        "cloudVaultSearch",
+        "hermes",
+        "pricing"
+      ]
+    },
+    "artifactKind": {
+      "enum": [
+        "macos-dmg",
+        "ios-app-store-archive",
+        "linux-release-bundle",
+        "android-aab",
+        "windows-release-bundle",
+        "console-deployment-receipt",
+        "functions-deployment-receipt"
+      ]
+    },
+    "target": {
+      "enum": [
+        "macos-arm64",
+        "ios-universal",
+        "linux-x64-arm64",
+        "android-universal",
+        "windows-x64-arm64",
+        "firebase-hosting-production",
+        "firebase-functions-production"
+      ]
+    },
+    "publicProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "domain", "mode", "sha256"],
+      "properties": {
+        "profile": { "const": "public-production" },
+        "domain": { "$ref": "#/$defs/domain" },
+        "mode": { "const": "rust" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "appStoreConnectReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "status", "processedStatus", "deliveryId", "archiveSha256", "ipaSha256", "uploadResponseSha256", "statusResponseSha256", "release", "candidate", "activation", "loadedRustIdentity"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "status": { "const": "processed" },
+        "processedStatus": { "enum": ["complete", "completed", "processed", "processing complete", "success", "succeeded"] },
+        "deliveryId": { "type": "string", "minLength": 1 },
+        "archiveSha256": { "$ref": "#/$defs/sha256" },
+        "ipaSha256": { "$ref": "#/$defs/sha256" },
+        "uploadResponseSha256": { "$ref": "#/$defs/sha256" },
+        "statusResponseSha256": { "$ref": "#/$defs/sha256" },
+        "release": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "tag", "commit"],
+          "properties": {
+            "version": { "$ref": "#/$defs/version" },
+            "tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$" },
+            "commit": { "$ref": "#/$defs/gitSha" }
+          }
+        },
+        "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" },
+        "loadedRustIdentity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "verificationKind", "bundleId", "version", "buildNumber", "executable", "architectures", "candidate", "observed", "executableSha256", "identitySectionSha256", "identitySymbols"],
+          "properties": {
+            "schemaVersion": { "const": 1 },
+            "verificationKind": { "const": "ios-loaded-rust-slice-identity" },
+            "bundleId": { "type": "string", "minLength": 1 },
+            "version": { "$ref": "#/$defs/version" },
+            "buildNumber": { "type": "string", "minLength": 1 },
+            "executable": { "const": "OpenBurnBarMobile" },
+            "architectures": { "const": ["arm64"] },
+            "candidate": { "$ref": "#/$defs/candidate" },
+            "observed": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["candidateCommit", "coreVersion", "abiVersion", "sourceSha256"],
+              "properties": {
+                "candidateCommit": { "$ref": "#/$defs/gitSha" },
+                "coreVersion": { "$ref": "#/$defs/version" },
+                "abiVersion": { "type": "integer", "minimum": 1 },
+                "sourceSha256": { "$ref": "#/$defs/sha256" }
+              }
+            },
+            "executableSha256": { "$ref": "#/$defs/sha256" },
+            "identitySectionSha256": { "$ref": "#/$defs/sha256" },
+            "identitySymbols": {
+              "const": [
+                "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+                "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+                "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
+                "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256"
+      ],
+      "properties": {
+        "candidateCommit": { "$ref": "#/$defs/gitSha" },
+        "coreVersion": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+        },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "sourceSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCommit",
+        "activationCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256",
+        "changedPathsSha256"
+      ],
+      "properties": {
+        "candidateCommit": { "$ref": "#/$defs/gitSha" },
+        "activationCommit": { "$ref": "#/$defs/gitSha" },
+        "coreVersion": { "$ref": "#/$defs/version" },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
+        "changedPathsSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sourceRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "workflowPath",
+        "runId",
+        "runAttempt",
+        "event",
+        "ref",
+        "headSha"
+      ],
+      "properties": {
+        "repository": { "const": "Imagine-That-Ai/BurnBar" },
+        "workflowPath": { "const": ".github/workflows/domain-core.yml" },
+        "runId": { "type": "integer", "minimum": 1 },
+        "runAttempt": { "type": "integer", "minimum": 1 },
+        "event": { "const": "push" },
+        "ref": { "const": "refs/heads/main" },
+        "headSha": { "$ref": "#/$defs/gitSha" }
+      }
+    },
+    "promotionProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signerWorkflow",
+        "predicateType",
+        "signerRun",
+        "attestationSubject",
+        "attestationBundleSha256"
+      ],
+      "properties": {
+        "signerWorkflow": {
+          "const": ".github/workflows/domain-core-promotion-proof.yml"
+        },
+        "predicateType": { "const": "https://slsa.dev/provenance/v1" },
+        "signerRun": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runId", "runAttempt"],
+          "properties": {
+            "runId": { "type": "integer", "minimum": 1 },
+            "runAttempt": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "attestationSubject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fileName", "sha256"],
+          "properties": {
+            "fileName": { "const": "domain-core-candidate-bundle.json" },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "attestationBundleSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "rollbackArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "sha256", "candidate", "activation"],
+      "properties": {
+        "fileName": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" }
+      }
+    },
+    "publicProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "domain", "mode", "sha256"],
+      "properties": {
+        "profile": { "const": "public-production" },
+        "domain": { "$ref": "#/$defs/domain" },
+        "mode": { "const": "rust" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCommit",
+        "activationCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256",
+        "changedPathsSha256"
+      ],
+      "properties": {
+        "candidateCommit": { "$ref": "#/$defs/gitSha" },
+        "activationCommit": { "$ref": "#/$defs/gitSha" },
+        "coreVersion": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+        },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
+        "changedPathsSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "sha256"],
+      "properties": {
+        "fileName": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "androidUniversal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifestSha256",
+        "schemaVersion",
+        "target",
+        "library",
+        "candidateAar",
+        "abis"
+      ],
+      "properties": {
+        "manifestSha256": { "$ref": "#/$defs/sha256" },
+        "schemaVersion": { "const": 1 },
+        "target": { "const": "android-universal" },
+        "library": { "const": "libopenburnbar_domain_ffi.so" },
+        "candidateAar": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fileName", "sha256"],
+          "properties": {
+            "fileName": { "const": "openburnbar-domain-core.aar" },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "abis": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["abi", "path", "sha256"],
+              "properties": {
+                "abi": { "const": "arm64-v8a" },
+                "path": {
+                  "const": "base/lib/arm64-v8a/libopenburnbar_domain_ffi.so"
+                },
+                "sha256": { "$ref": "#/$defs/sha256" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["abi", "path", "sha256"],
+              "properties": {
+                "abi": { "const": "x86_64" },
+                "path": {
+                  "const": "base/lib/x86_64/libopenburnbar_domain_ffi.so"
+                },
+                "sha256": { "$ref": "#/$defs/sha256" }
+              }
+            }
+          ],
+          "items": false
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "tag", "commit", "publicProfileSha256"],
+      "properties": {
+        "version": { "$ref": "#/$defs/nativeVersion" },
+        "tag": { "type": "string" },
+        "commit": { "$ref": "#/$defs/gitSha" },
+        "publicProfileSha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

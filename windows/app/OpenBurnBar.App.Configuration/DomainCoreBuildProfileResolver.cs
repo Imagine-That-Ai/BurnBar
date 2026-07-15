@@ -1,9 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace OpenBurnBar.App.Configuration;
+
+public sealed record DomainCoreCandidateIdentity(
+    string CandidateCommit,
+    string ExpectedCoreVersion,
+    uint ExpectedCoreAbiVersion,
+    string ExpectedCoreSourceSha256);
 
 public sealed record DomainCoreBuildProfile(
     string Name,
@@ -12,6 +20,7 @@ public sealed record DomainCoreBuildProfile(
     string? RolloutChannel,
     bool EvidenceEnabled,
     IReadOnlyDictionary<string, string> Modes,
+    DomainCoreCandidateIdentity? CandidateIdentity,
     bool IsValid);
 
 public static class DomainCoreBuildProfileResolver
@@ -20,6 +29,13 @@ public static class DomainCoreBuildProfileResolver
     [
         "quota", "cloudVault", "cloudVaultRewrap", "cloudVaultSearch", "hermes", "pricing",
     ];
+
+    private static readonly Regex CanonicalSemVer = new(
+        "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)" +
+        "(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)" +
+        "(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?" +
+        "(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+        RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     public static DomainCoreBuildProfile Current() => Resolve(
         typeof(DomainCoreBuildProfileResolver).Assembly
@@ -30,6 +46,7 @@ public static class DomainCoreBuildProfileResolver
     public static string Mode(string domain, string environmentKey)
     {
         var profile = Current();
+        if (!profile.IsValid) return "legacy";
         if (!profile.Modes.TryGetValue(domain, out var embedded)) return "legacy";
         if (profile.ArtifactAuthority != "development") return embedded;
         var raw = Environment.GetEnvironmentVariable(environmentKey)?.Trim().ToLowerInvariant();
@@ -47,15 +64,18 @@ public static class DomainCoreBuildProfileResolver
         Func<string, string?> environment)
     {
         var authority = Value(metadata, "BuildAuthority") ?? "development";
+        var candidateIsValid = TryCandidateIdentity(metadata, out var candidateIdentity);
         if (authority is "" or "development")
         {
+            if (!candidateIsValid) return FailClosedDevelopment();
             var developmentModes = Domains.ToDictionary(
                 domain => domain,
                 domain => ValidMode(environment(EnvironmentKey(domain))) ?? ValidMode(Value(metadata, $"Mode.{domain}")) ?? "legacy",
                 StringComparer.Ordinal);
-            return new("developer", "development", "development", null, false, developmentModes, true);
+            return new("developer", "development", "development", null, false, developmentModes, candidateIdentity, true);
         }
         if (authority != "signed") return FailClosedUntrusted(authority);
+        if (!candidateIsValid || candidateIdentity is null) return FailClosedSigned();
 
         var modes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var domain in Domains)
@@ -72,13 +92,50 @@ public static class DomainCoreBuildProfileResolver
         var valid = (name, distribution) switch
         {
             ("public-production", "public") => !evidence && channel is null && !modes.Values.Contains("shadow"),
+            ("public-production-rollback", "public") => !evidence && channel is null && modes.Values.All(mode => mode == "legacy"),
             ("internal", "internal") or ("beta", "beta") => evidence && channel == distribution && modes["quota"] == "shadow",
             _ => false,
         };
         return valid
-            ? new(name!, "signed", distribution!, channel, evidence, modes, true)
+            ? new(name!, "signed", distribution!, channel, evidence, modes, candidateIdentity, true)
             : FailClosedSigned();
     }
+
+    private static bool TryCandidateIdentity(
+        IReadOnlyDictionary<string, string> metadata,
+        out DomainCoreCandidateIdentity? candidateIdentity)
+    {
+        candidateIdentity = null;
+        var candidateCommit = CandidateValue(metadata, "CandidateCommit");
+        var expectedVersion = CandidateValue(metadata, "ExpectedVersion");
+        var expectedAbiVersion = CandidateValue(metadata, "ExpectedAbiVersion");
+        var expectedSourceSha256 = CandidateValue(metadata, "ExpectedSourceSha256");
+        var values = new[] { candidateCommit, expectedVersion, expectedAbiVersion, expectedSourceSha256 };
+
+        if (values.All(string.IsNullOrEmpty)) return true;
+        if (values.Any(string.IsNullOrEmpty)) return false;
+        if (!IsLowerHex(candidateCommit!, 40)) return false;
+        if (expectedVersion!.Length > 64 || !CanonicalSemVer.IsMatch(expectedVersion)) return false;
+        var abiText = expectedAbiVersion!;
+        if (
+            abiText.Any(character => character is < '0' or > '9') ||
+            abiText[0] == '0' ||
+            !uint.TryParse(abiText, NumberStyles.None, CultureInfo.InvariantCulture, out var abiVersion) ||
+            abiVersion < 1)
+        {
+            return false;
+        }
+        if (!IsLowerHex(expectedSourceSha256!, 64)) return false;
+
+        candidateIdentity = new(candidateCommit!, expectedVersion, abiVersion, expectedSourceSha256!);
+        return true;
+    }
+
+    private static string? CandidateValue(IReadOnlyDictionary<string, string> metadata, string suffix) =>
+        metadata.TryGetValue($"OpenBurnBar.DomainCore.{suffix}", out var value) ? value : null;
+
+    private static bool IsLowerHex(string value, int length) =>
+        value.Length == length && value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     private static string? Value(IReadOnlyDictionary<string, string> metadata, string suffix) =>
         metadata.TryGetValue($"OpenBurnBar.DomainCore.{suffix}", out var value) ? value.Trim() : null;
@@ -103,6 +160,17 @@ public static class DomainCoreBuildProfileResolver
         null,
         false,
         Domains.ToDictionary(domain => domain, _ => "legacy", StringComparer.Ordinal),
+        null,
+        false);
+
+    private static DomainCoreBuildProfile FailClosedDevelopment() => new(
+        "invalid-development-profile",
+        "development",
+        "invalid",
+        null,
+        false,
+        Domains.ToDictionary(domain => domain, _ => "legacy", StringComparer.Ordinal),
+        null,
         false);
 
     private static DomainCoreBuildProfile FailClosedUntrusted(string authority) => new(
@@ -112,5 +180,6 @@ public static class DomainCoreBuildProfileResolver
         null,
         false,
         Domains.ToDictionary(domain => domain, _ => "legacy", StringComparer.Ordinal),
+        null,
         false);
 }

@@ -12,6 +12,8 @@ const AAD_PREFIX: &str = "OpenBurnBar-HermesRelay-v1";
 const KEY_WRAP_V1_PREFIX: &[u8] = b"OpenBurnBar-HermesRelay-KeyWrap-v1|";
 const KEY_WRAP_V2_PREFIX: &[u8] = b"OpenBurnBar-HermesRelay-KeyWrap-v2|";
 const HPKE_V3_PREFIX: &[u8] = b"OpenBurnBar-HermesRelay-HPKE-v3|";
+const RATCHET_PREKEY_KDF_DOMAIN: &[u8] = b"OpenBurnBar-HermesRatchet-v1-prekey-x3dh-p256";
+const RATCHET_CHAT_LANE: &str = "chat";
 const AES_KEY_LEN: usize = 32;
 const GCM_NONCE_LEN: usize = 12;
 const GCM_TAG_LEN: usize = 16;
@@ -99,6 +101,22 @@ pub enum HermesError {
     InputTooLarge,
     #[error("Hermes P-256 keys must be exact on-curve 65-byte X9.63 points")]
     InvalidP256PublicKey,
+    #[error("Hermes ratchet ECDH outputs must each be exactly 32 bytes")]
+    InvalidRatchetSharedSecretLength,
+}
+
+pub struct RatchetPrekeyRequest<'a> {
+    pub dh1: &'a [u8],
+    pub dh2: &'a [u8],
+    pub dh3: &'a [u8],
+    pub uid: &'a str,
+    pub client_id: &'a str,
+    pub initiator_role: &'a str,
+    pub initiator_identity_public_key_base64: &'a str,
+    pub responder_identity_public_key_base64: &'a str,
+    pub initiator_signed_prekey_public_key_base64: &'a str,
+    pub responder_signed_prekey_public_key_base64: &'a str,
+    pub initiator_initial_ratchet_public_key_base64: &'a str,
 }
 
 pub fn aad(kind: AadKind, arguments: &[String]) -> Result<Vec<u8>, HermesError> {
@@ -242,6 +260,46 @@ pub fn ratchet_envelope_aad(
     Ok(output)
 }
 
+pub fn ratchet_prekey_shared_secret(
+    request: RatchetPrekeyRequest<'_>,
+) -> Result<Zeroizing<Vec<u8>>, HermesError> {
+    if [request.dh1, request.dh2, request.dh3]
+        .iter()
+        .any(|secret| secret.len() != 32)
+    {
+        return Err(HermesError::InvalidRatchetSharedSecretLength);
+    }
+
+    let mut info = Vec::from(RATCHET_PREKEY_KDF_DOMAIN);
+    for part in [
+        request.uid.as_bytes(),
+        request.client_id.as_bytes(),
+        RATCHET_CHAT_LANE.as_bytes(),
+        request.initiator_role.as_bytes(),
+    ] {
+        append_length_prefixed(&mut info, part)?;
+    }
+    for encoded_key in [
+        request.initiator_identity_public_key_base64,
+        request.responder_identity_public_key_base64,
+        request.initiator_signed_prekey_public_key_base64,
+        request.responder_signed_prekey_public_key_base64,
+        request.initiator_initial_ratchet_public_key_base64,
+    ] {
+        let key = BASE64
+            .decode(encoded_key)
+            .map_err(|_| HermesError::InvalidP256PublicKey)?;
+        validate_p256_x963(&key)?;
+        append_length_prefixed(&mut info, &key)?;
+    }
+
+    let mut input_key_material = Zeroizing::new(Vec::with_capacity(96));
+    input_key_material.extend_from_slice(request.dh1);
+    input_key_material.extend_from_slice(request.dh2);
+    input_key_material.extend_from_slice(request.dh3);
+    hkdf_sha256(&input_key_material, RATCHET_PREKEY_KDF_DOMAIN, &info, 32)
+}
+
 pub fn gateway_relay_safety_code(agent: &[u8], phone: &[u8]) -> Result<String, HermesError> {
     validate_p256_x963(agent)?;
     validate_p256_x963(phone)?;
@@ -345,6 +403,20 @@ fn bounded_concat(prefix: &[u8], parts: &[&[u8]]) -> Result<Vec<u8>, HermesError
         output.extend_from_slice(part);
     }
     Ok(output)
+}
+
+fn append_length_prefixed(output: &mut Vec<u8>, value: &[u8]) -> Result<(), HermesError> {
+    let new_len = output
+        .len()
+        .checked_add(8)
+        .and_then(|length| length.checked_add(value.len()))
+        .ok_or(HermesError::InputTooLarge)?;
+    if new_len > MAX_AAD_BYTES {
+        return Err(HermesError::InputTooLarge);
+    }
+    output.extend_from_slice(&(value.len() as u64).to_be_bytes());
+    output.extend_from_slice(value);
+    Ok(())
 }
 
 fn validate_p256_x963(value: &[u8]) -> Result<(), HermesError> {
@@ -571,6 +643,49 @@ mod tests {
             fixture["ratchet"]["messageKeyHex"]
                 .as_str()
                 .ok_or(HermesError::InvalidCiphertext)?
+        );
+        let prekey = &fixture["ratchet"]["prekey"];
+        let string = |name: &str| prekey[name].as_str().ok_or(HermesError::InvalidCiphertext);
+        let shared_secret_chunks = prekey["sharedSecretHexChunks"]
+            .as_array()
+            .ok_or(HermesError::InvalidCiphertext)?;
+        if shared_secret_chunks.len() != 2 {
+            return Err(HermesError::InvalidCiphertext);
+        }
+        let shared_secret_hex = shared_secret_chunks
+            .iter()
+            .map(|chunk| {
+                let chunk = chunk.as_str().ok_or(HermesError::InvalidCiphertext)?;
+                if chunk.len() != 32 {
+                    return Err(HermesError::InvalidCiphertext);
+                }
+                Ok(chunk)
+            })
+            .collect::<Result<String, HermesError>>()?;
+        let dh1 = (0_u8..32).collect::<Vec<_>>();
+        let dh2 = (32_u8..64).collect::<Vec<_>>();
+        let dh3 = (64_u8..96).collect::<Vec<_>>();
+        assert_eq!(
+            hex(&ratchet_prekey_shared_secret(RatchetPrekeyRequest {
+                dh1: &dh1,
+                dh2: &dh2,
+                dh3: &dh3,
+                uid: string("uid")?,
+                client_id: string("clientID")?,
+                initiator_role: string("initiatorRole")?,
+                initiator_identity_public_key_base64: string("initiatorIdentityPublicKeyBase64")?,
+                responder_identity_public_key_base64: string("responderIdentityPublicKeyBase64")?,
+                initiator_signed_prekey_public_key_base64: string(
+                    "initiatorSignedPreKeyPublicKeyBase64"
+                )?,
+                responder_signed_prekey_public_key_base64: string(
+                    "responderSignedPreKeyPublicKeyBase64"
+                )?,
+                initiator_initial_ratchet_public_key_base64: string(
+                    "initiatorInitialRatchetPublicKeyBase64"
+                )?,
+            })?),
+            shared_secret_hex
         );
         Ok(())
     }
