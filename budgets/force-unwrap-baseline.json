@@ -1,0 +1,466 @@
+{
+  "note": "Force-unwrap (!) site budget across AgentLens/, OpenBurnBarMobile/, OpenBurnBarCore/Sources/, OpenBurnBarDaemon/Sources/. Shrink-only: count may only decrease as sites are removed. Excludes try! and as! (governed by force_try / force_cast). Regenerate via scripts/debt/check-force-unwrap-budget.sh --update.",
+  "total": 224,
+  "files": [
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AssistantRuntimeID.swift",
+      "count": 13
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift",
+      "count": 12
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/BurnBarRemote/Generated/burnbar_remote.swift",
+      "count": 8
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Store/CloudStoreView.swift",
+      "count": 8
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/BurnBarParallelDAGScheduler.swift",
+      "count": 7
+    },
+    {
+      "path": "AgentLens/Services/ProviderQuota/FactoryLoginHelper.swift",
+      "count": 5
+    },
+    {
+      "path": "AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSettingsView+Rendering.swift",
+      "count": 5
+    },
+    {
+      "path": "AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSupport.swift",
+      "count": 5
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift",
+      "count": 4
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/ClaudeQuotaAdapter.swift",
+      "count": 4
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift",
+      "count": 4
+    },
+    {
+      "path": "AgentLens/Services/DirectDownloadUpdateService.swift",
+      "count": 3
+    },
+    {
+      "path": "AgentLens/Views/Chat/ChatSessionControllerBackendGatewayRouting.swift",
+      "count": 3
+    },
+    {
+      "path": "AgentLens/Views/SessionLogs/SessionLogsView+Filtering.swift",
+      "count": 3
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarPretext/PretextEngine.swift",
+      "count": 3
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarUI/Views/Substrate/Flow/PetalDriftSubstrate.swift",
+      "count": 3
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/iOSDeviceKeypair.swift",
+      "count": 3
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Aurora/WallpaperGeneratorView.swift",
+      "count": 3
+    },
+    {
+      "path": "AgentLens/App/AgentLensApp+LiveServices.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/PetCompanion/Chat/PetChatProvider.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/CLIBridge/CLIBridge.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/CloudSync/HermesRelayHostService.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/ContextPackService.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/CursorConnector/CursorConnectorManager.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/DataStore/ConversationStore+Chat.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/HermesRealtimeRelayHostClient.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/HermesRuntimeLauncher.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/HomeAssistant/HomeAssistantBlueprintInstaller.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/IrohRelay/IrohRelayRequestHandler.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/ManagedAgentRuntime/ManagedAgentRuntime.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/OpenBurnBarStartupRecovery.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/ProviderUsageAPI/OpenRouterUsageAPI.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Views/Chat/Components/ChatEngineBackendStrip.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Views/Chat/HermesRuntimeGate.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Views/Insights/InsightsMacEnvironment.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Views/Settings/AccountSettingsView.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Views/Settings/ChatGatewaySettingsView.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Views/Settings/CloudStoreSettingsView.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Views/Settings/CloudStoreSettingsView+Support.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/OpenBurnBarAgentContracts.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/FusionSessionSpend.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarLinuxSecurity/LinuxDesktopOwnerAuthenticator.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarLinuxSecurity/OpenBurnBarLinuxSecurity.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor+OllamaNative.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/LiveCloudReader.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/You/SettingsHubView.swift",
+      "count": 2
+    },
+    {
+      "path": "AgentLens/Services/CloudSync/PiAgentCloudRelayHostService.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Services/DataStore/RemoteSyncWatermarkStore.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonSocketClient.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Services/ProviderQuota/CursorLoginHelper.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Services/ProviderUsageAPI/GitHubCopilotUsageAPI.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Services/SmartHub/PixelClockFirmwareFlasher.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Chat/ChatPanel.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Chat/ChatSessionController+SearchSend.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Chat/ChatSessionControllerTextExpansionDrafts.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Chat/FusionSpend/FusionReceiptModalModel.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Chat/HermesToolCard.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Components/UpdateBannerCard.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Dashboard/Components/KernelBackdropView.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Onboarding/HermesSetupWizardController.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Onboarding/Switcher/SwitcherOnboardingScanAddStep.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Onboarding/Switcher/SwitcherOnboardingWelcomeStep.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Settings/SmartDisplays/PixelClockSettingsCard.swift",
+      "count": 1
+    },
+    {
+      "path": "AgentLens/Views/Settings/UpdatesSettingsView.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseOpenTimestampsClient.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarHermes/HermesAtomURL.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/Adapters/AnthropicInsightAdapter.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/Adapters/OllamaInsightAdapter.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/Adapters/OpenAIInsightAdapter.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/Verdict/RuleBasedVerdictEngine.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/LoopbackIrohRelayTransport.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/OpenBurnBarCatalog.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/Platform/OpenBurnBarIdentity.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/EscrowModels.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/TokenUsage.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarLaunchServices/BrowserLaunchAdapter.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/ForgeDevParser.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/AnthropicCredentialProbe.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/CodexQuotaAdapter.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/KimiQuotaAdapter.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/OllamaQuotaAdapter.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/OpenBurnBarQuotaAdapters.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/WarpAPIFetcher.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/XAIQuotaAdapter.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarUI/Views/Insights/InsightTimeSeriesView.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ClaudeInteractiveHandoffService.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ElderWandWebTools.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarConfigStore.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarLiveModelCatalog.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/PrivilegedInputXPCPeerValidator.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarRemoteAccessAgentCore/VirtualHIDKeyboardEngine.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/App/AppDelegate.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Models/InsightsStore.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/AssistantModelCatalog.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/Hermes/HermesStreamingEngine.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/HermesRuntimeStore.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/HermesService.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/MobileChatHistoryStore.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/PiService.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Aurora/MobileWebGLKernelBackdropView.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/ChartStudio/MermaidWebView.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Chat/InlineAgentMirrorController.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Components/HermesThinkingSpinner.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Hermes/HermesTabView+MessageBubble.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Pulse/TrendAtlasCard.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/RootNavigationView.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/RootTabView.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/You/TextExpansionSettingsView.swift",
+      "count": 1
+    }
+  ]
+}

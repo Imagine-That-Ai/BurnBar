@@ -1263,6 +1263,9 @@ jobs:
       - name: Rust panic debt budget (unwrap/expect)
         run: ./scripts/debt/check-rust-panic-budget.sh
 
+      - name: Force-unwrap debt budget (shrink-only ratchet)
+        run: ./scripts/debt/check-force-unwrap-budget.sh
+
       - name: Swift file-size debt budget (shrink-only)
         run: ./scripts/debt/check-swift-file-size-budget.sh
 
