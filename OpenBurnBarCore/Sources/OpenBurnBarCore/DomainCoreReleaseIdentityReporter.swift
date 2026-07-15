@@ -1,5 +1,12 @@
-import CryptoKit
 import Foundation
+
+#if canImport(CryptoKit)
+import CryptoKit
+#elseif canImport(Crypto)
+@preconcurrency import Crypto
+#else
+#error("DomainCoreReleaseIdentityReporter requires CryptoKit or Swift Crypto")
+#endif
 
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI

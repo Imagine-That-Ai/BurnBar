@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { run } from "./create-domain-core-native-release-evidence.mjs";
+import { buildPublicationManifest } from "./create-domain-core-native-publication.mjs";
 
 const CANDIDATE = {
   candidateCommit: "a".repeat(40),
@@ -150,6 +158,12 @@ test("creates v2 predicates only for Rust-authoritative public domains", () => {
         predicate.release.publicProfileSha256,
         plan.publicProfileSha256,
       );
+      assert.deepEqual(predicate.publicProfile, {
+        profile: "public-production",
+        domain: entry.domain,
+        mode: "rust",
+        sha256: plan.publicProfileSha256,
+      });
     }
   } finally {
     rmSync(paths.directory, { recursive: true, force: true });
@@ -166,7 +180,7 @@ test("all-legacy public release produces no misleading Rust evidence", () => {
   }
 });
 
-test("rollback release retains evidence for every native consumer domain", () => {
+test("rollback release cannot create or publish Rust domain attestations", () => {
   const paths = fixture({
     profileName: "public-production-rollback",
     rust: [],
@@ -176,17 +190,18 @@ test("rollback release retains evidence for every native consumer domain", () =>
       promotionVerifier: () => [],
     });
     assert.equal(plan.rollback, true);
+    assert.deepEqual(plan.domains, []);
     assert.deepEqual(
-      plan.domains.map((entry) => entry.domain),
-      [
-        "quota",
-        "cloudVault",
-        "cloudVaultRewrap",
-        "cloudVaultSearch",
-        "hermes",
-        "pricing",
-      ],
+      readdirSync(paths.output).filter((name) =>
+        name.endsWith(".predicate.json"),
+      ),
+      [],
     );
+    const bundles = join(paths.directory, "bundles");
+    mkdirSync(bundles);
+    const publication = buildPublicationManifest(plan, bundles);
+    assert.equal(publication.nativeArtifactOnly, true);
+    assert.deepEqual(publication.bundles, []);
   } finally {
     rmSync(paths.directory, { recursive: true, force: true });
   }

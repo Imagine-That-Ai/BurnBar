@@ -250,6 +250,12 @@ export function buildReleaseEvidence({
     commit,
     publicProfileSha256: validatePublicProfileSha256(publicProfileSha256),
   };
+  const publicProfile = {
+    profile: "public-production",
+    domain,
+    mode: "rust",
+    sha256: release.publicProfileSha256,
+  };
   const common = {
     schemaVersion: 2,
     consumer,
@@ -260,6 +266,7 @@ export function buildReleaseEvidence({
     sourceRun,
     promotionProof,
     rollbackArtifact,
+    publicProfile,
     release,
   };
 

@@ -164,7 +164,7 @@ export function nativeEvidenceDomains(consumer, profile, profileName) {
     throw new Error(`unsupported native release consumer: ${String(consumer)}`);
   }
   if (profileName === DOMAIN_CORE_ROLLBACK_PROFILE) {
-    return [...contract.domains];
+    return [];
   }
   return contract.domains.filter(
     (domain) => profile.modes?.[domain] === "rust",

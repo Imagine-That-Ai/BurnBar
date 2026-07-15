@@ -129,6 +129,25 @@ test("accepts prereleases but prevents prerelease promotion", () => {
   }
 });
 
+test("treats hyphens in build metadata as stable", () => {
+  const files = fixture({ version: "1.2.3+linux-x64" });
+  try {
+    const publication = buildAppleAndroidPublication({
+      apple: files.apple,
+      android: files.android,
+      notesPath: files.notes,
+      tag: files.tag,
+      commit: COMMIT,
+      promote: true,
+      assets: [files.checksum],
+    });
+    assert.equal(publication.prerelease, false);
+    assert.equal(publication.promote, true);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
 test("rejects general assets that collide with native artifacts", () => {
   const files = fixture();
   try {
