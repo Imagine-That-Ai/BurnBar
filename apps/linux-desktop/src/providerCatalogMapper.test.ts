@@ -43,6 +43,45 @@ describe('mapProviderCatalog', () => {
     });
   });
 
+  it('maps the daemon.catalog response wrapper emitted by the Linux bridge', () => {
+    const mapped = mapProviderCatalog({
+      config: {
+        snapshot: {
+          routerMode: 'providerFamilyFailover',
+          providers: [{
+            providerID: 'anthropic',
+            isEnabled: true,
+            credentialSlots: [{ slotID: 'oauth', label: 'Claude OAuth', isEnabled: true, status: 'connected' }]
+          }]
+        }
+      },
+      catalog: {
+        catalog: {
+          providers: [{
+            id: 'anthropic',
+            displayName: 'Anthropic',
+            capabilities: ['routing'],
+            models: [{ id: 'claude-sonnet-4', displayName: 'Claude Sonnet 4', aliases: ['sonnet'], capabilities: ['reasoning'] }]
+          }]
+        }
+      },
+      catalogAvailable: true
+    });
+
+    expect(mapped[0]).toMatchObject({
+      id: 'anthropic',
+      health: 'healthy',
+      catalogAvailable: true,
+      provenance: 'daemon-catalog+daemon-config'
+    });
+    expect(mapped[0]?.models?.[0]).toMatchObject({
+      id: 'claude-sonnet-4',
+      aliases: ['sonnet'],
+      enabled: true,
+      provenance: 'daemon-catalog'
+    });
+  });
+
   it('keeps unconfigured catalog rows visible but fail-closed', () => {
     const mapped = mapProviderCatalog({
       catalog: { providers: [{ id: 'anthropic', displayName: 'Anthropic', models: [{ id: 'claude-sonnet-4' }] }] },

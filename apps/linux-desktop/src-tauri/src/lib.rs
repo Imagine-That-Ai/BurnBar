@@ -2583,10 +2583,42 @@ fn usage_summary() -> Result<serde_json::Value, String> {
 }
 
 // ───────────────── P02: provider catalog ─────────────────
-// Wire: daemon.config.get (BurnBarRPCMethod.configGet)
+// Wire: daemon.config.get + daemon.catalog (BurnBarRPCMethod.configGet/catalog)
+//
+// `daemon.config.get` owns user configuration, while `daemon.catalog` owns the
+// canonical provider/model metadata. Keep those authorities separate on the
+// wire so the renderer can distinguish a verified catalog from config-only
+// fallback instead of silently presenting configured models as canonical.
+fn compose_provider_catalog_response(
+    config: serde_json::Value,
+    catalog: Result<serde_json::Value, String>,
+) -> serde_json::Value {
+    let mut response = serde_json::Map::new();
+    response.insert("config".to_string(), config);
+    match catalog {
+        Ok(catalog) => {
+            response.insert("catalog".to_string(), catalog);
+            response.insert(
+                "catalogAvailable".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
+        Err(error) => {
+            response.insert(
+                "catalogAvailable".to_string(),
+                serde_json::Value::Bool(false),
+            );
+            response.insert("catalogError".to_string(), serde_json::Value::String(error));
+        }
+    }
+    serde_json::Value::Object(response)
+}
+
 #[tauri::command]
 fn provider_catalog() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.config.get", None)
+    let config = call_daemon_method("daemon.config.get", None)?;
+    let catalog = call_daemon_method("daemon.catalog", None);
+    Ok(compose_provider_catalog_response(config, catalog))
 }
 
 // ───────────────── P03: session list ─────────────────
@@ -6522,6 +6554,43 @@ mod tests {
         assert!(validate_project_identifier("project apollo", "project.id").is_err());
         assert!(validate_project_identifier("project-apollo", "project.id").is_ok());
         assert!(project_reassign("apollo".to_string(), "apollo".to_string()).is_err());
+    }
+
+    #[test]
+    fn provider_catalog_wire_response_keeps_canonical_catalog_separate_from_config() {
+        let response = compose_provider_catalog_response(
+            serde_json::json!({"snapshot": {"providers": [{"providerID": "openai"}]}}),
+            Ok(serde_json::json!({
+                "catalog": {"providers": [{"id": "openai", "models": [{"id": "gpt-5.5"}]}]}
+            })),
+        );
+
+        assert_eq!(response["catalogAvailable"], serde_json::Value::Bool(true));
+        assert_eq!(
+            response["config"]["snapshot"]["providers"][0]["providerID"],
+            "openai"
+        );
+        assert_eq!(
+            response["catalog"]["catalog"]["providers"][0]["models"][0]["id"],
+            "gpt-5.5"
+        );
+        assert!(response.get("catalogError").is_none());
+    }
+
+    #[test]
+    fn provider_catalog_wire_response_preserves_config_when_catalog_is_unavailable() {
+        let response = compose_provider_catalog_response(
+            serde_json::json!({"snapshot": {"providers": [{"providerID": "openai"}]}}),
+            Err("daemon.catalog unavailable".to_string()),
+        );
+
+        assert_eq!(response["catalogAvailable"], serde_json::Value::Bool(false));
+        assert_eq!(response["catalogError"], "daemon.catalog unavailable");
+        assert_eq!(
+            response["config"]["snapshot"]["providers"][0]["providerID"],
+            "openai"
+        );
+        assert!(response.get("catalog").is_none());
     }
 
     #[test]
