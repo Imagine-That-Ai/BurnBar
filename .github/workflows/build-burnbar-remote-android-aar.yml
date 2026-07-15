@@ -158,6 +158,7 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
+          disk-size: 4G
           script: cd android && ./gradlew :burnbar-remote:connectedDebugAndroidTest --no-daemon --stacktrace
 
       - name: Build host UniFFI library for JVM smoke
