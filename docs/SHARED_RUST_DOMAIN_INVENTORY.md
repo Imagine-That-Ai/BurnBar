@@ -24,10 +24,14 @@ consumer, contract, deletion target, or rollout state changes.
 | Cloud Functions TypeScript | Separate Cursor dashboard mechanism only | Encrypted-record coordination only | Envelope validation/coordination only | Yes | Persistence/query coordination only |
 | Tauri/Linux UI | Displays daemon-produced values | No separate implementation | No separate implementation | No separate implementation | No separate implementation |
 
-Provider log parsers remain in `OpenBurnBarCore`. macOS, iOS, and Linux use that
-single Swift engine, and Windows loads it through the existing Swift C ABI.
-Android and Cloud Functions do not read local provider logs. Provider parsers
-are therefore not duplicated and are not a shared-Rust consolidation target.
+Provider log parsers remain in `OpenBurnBarCore`. macOS, iOS, and the Linux
+daemon use that single production Swift engine. Windows contains a deferred
+`CAbiEngineProvider` and a macOS-authoring-host `swift run` parity helper, but
+the Windows application does not yet ship a production parser engine. Android,
+Cloud Functions, and the Tauri/Linux UI do not read local provider logs.
+Provider parsers are therefore not duplicated and are not a shared-Rust
+consolidation target; finishing the Windows consumer is a parity task, not a
+five-language parser migration.
 
 ## Q1/Q2 quota operations
 

@@ -19,8 +19,10 @@
 The program consolidates pure business logic that is genuinely implemented in
 more than one language. It does not rewrite every application or move
 platform-owned I/O into Rust. Provider log parsing is specifically out of
-scope: macOS, iOS, Linux, and Windows already consume the one Swift parser
-engine, while Android and Cloud Functions do not read local provider logs.
+scope: macOS, iOS, and the Linux daemon consume the one production Swift parser
+engine; Windows parser integration is unfinished; and Android, Cloud Functions,
+and the Tauri/Linux UI do not read local provider logs. That is a Windows parity
+gap, not duplicated pure logic in multiple production languages.
 
 ## Invariants
 
