@@ -1,3 +1,9 @@
 website/public/downloads/*.dmg filter=lfs diff=lfs merge=lfs -text
 website/public/downloads/*.zip filter=lfs diff=lfs merge=lfs -text
 security/remediation/**/*.patch -whitespace
+
+# The domain-core source fingerprint is intentionally identical on every host.
+# Prevent core.autocrlf from changing the reviewed Rust/TOML bytes on Windows.
+crates/openburnbar-domain-core/**/*.rs text eol=lf
+crates/openburnbar-domain-core/**/*.toml text eol=lf
+crates/openburnbar-domain-core/Cargo.lock text eol=lf
