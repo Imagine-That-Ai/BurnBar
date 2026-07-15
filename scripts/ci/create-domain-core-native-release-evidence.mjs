@@ -114,7 +114,7 @@ function parseArguments(argv) {
   return values;
 }
 
-export function run(argv, { promotionVerifier } = {}) {
+export function run(argv, { promotionVerifier, activationVerifier } = {}) {
   const args = parseArguments(argv);
   const consumer = args.get("--consumer");
   const contract = RELEASE_CONSUMERS[consumer];
@@ -228,7 +228,10 @@ export function run(argv, { promotionVerifier } = {}) {
         resolve(androidAbiManifest),
       );
     }
-    createReleaseEvidence(evidenceArguments, { promotionVerifier });
+    createReleaseEvidence(evidenceArguments, {
+      promotionVerifier,
+      activationVerifier,
+    });
     entries.push({
       domain,
       publicProfileSha256:

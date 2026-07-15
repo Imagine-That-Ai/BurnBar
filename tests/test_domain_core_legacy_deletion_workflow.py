@@ -195,6 +195,7 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "__obb_core_id",
             "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
             "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+            "uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit",
             "observed != candidate",
         ):
             self.assertIn(marker, verifier)

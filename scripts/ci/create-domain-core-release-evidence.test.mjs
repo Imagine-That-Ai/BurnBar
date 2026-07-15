@@ -46,6 +46,15 @@ function workspace() {
   const rollbackArtifact = join(directory, "domain-core-legacy-rollback.json");
   const activation = join(directory, "domain-core-activation.json");
   writeFileSync(
+    rollbackArtifact,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      candidateIdentity: CANDIDATE,
+      modes: { quota: "legacy", cloudVault: "legacy" },
+    })}\n`,
+  );
+  const rollbackArtifactSha256 = sha(readFileSync(rollbackArtifact));
+  writeFileSync(
     candidateBundle,
     `${JSON.stringify({
       schemaVersion: 1,
@@ -68,19 +77,21 @@ function workspace() {
           { id: "rust-and-csharp", status: "completed", conclusion: "success" },
         ],
       },
+      rollback: {
+        jobId: "rollback-drill",
+        suiteId: "rollback-drill",
+        runId: 101,
+        runAttempt: 2,
+        reportSha256: "e".repeat(64),
+        fromCandidateCommit: CANDIDATE.candidateCommit,
+        restoredArtifactSha256: rollbackArtifactSha256,
+        restoredMode: "legacy",
+      },
     })}\n`,
   );
   writeFileSync(
     promotionAttestation,
     '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}\n',
-  );
-  writeFileSync(
-    rollbackArtifact,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      candidateIdentity: CANDIDATE,
-      modes: { quota: "legacy", cloudVault: "legacy" },
-    })}\n`,
   );
   writeFileSync(activation, `${JSON.stringify(ACTIVATION)}\n`);
   return {
@@ -183,6 +194,50 @@ test("builds an exact candidate-bound native release contract", () => {
   }
 });
 
+test("binds the exact restored rollback bytes while recording a packaged rollback artifact", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    const packagedRollback = join(
+      files.directory,
+      "OpenBurnBar-1.2.3-legacy-rollback.zip",
+    );
+    writeFileSync(artifact, "signed-native-bytes");
+    writeFileSync(packagedRollback, "packaged rollback bytes");
+
+    const result = buildReleaseEvidence({
+      ...baseOptions(files, artifact),
+      rollbackArtifactPath: packagedRollback,
+      rollbackProfilePath: files.rollbackArtifact,
+    });
+
+    assert.equal(
+      result.common.rollbackArtifact.sha256,
+      sha(readFileSync(packagedRollback)),
+    );
+
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        substituted: true,
+      })}\n`,
+    );
+    assert.throws(
+      () =>
+        buildReleaseEvidence({
+          ...baseOptions(files, artifact),
+          rollbackArtifactPath: packagedRollback,
+          rollbackProfilePath: files.rollbackArtifact,
+        }),
+      /restored rollback artifact digest does not match the protected candidate bundle rollback proof/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
 test("iOS evidence requires processed ASC and loaded Rust slice identity", () => {
   const files = workspace();
   try {
@@ -221,6 +276,7 @@ test("iOS evidence requires processed ASC and loaded Rust slice identity", () =>
         identitySymbols: [
           "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
           "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+          "uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit",
           "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
           "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
         ],
@@ -640,6 +696,85 @@ test("refuses to rewrite an immutable predicate with different bytes", () => {
           { promotionVerifier: () => [], activationVerifier: () => ACTIVATION },
         ),
       /refusing to replace non-identical immutable output/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+function tamperedBundle(files, mutate) {
+  const bundle = JSON.parse(readFileSync(files.candidateBundle, "utf8"));
+  mutate(bundle);
+  writeFileSync(files.candidateBundle, `${JSON.stringify(bundle)}\n`);
+}
+
+test("rejects a rollback proof from a different source run", () => {
+  const files = workspace();
+  try {
+    tamperedBundle(files, (bundle) => {
+      bundle.rollback.runId = 999;
+    });
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback proof does not bind the exact source run/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback proof from a different source run attempt", () => {
+  const files = workspace();
+  try {
+    tamperedBundle(files, (bundle) => {
+      bundle.rollback.runAttempt = 999;
+    });
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback proof does not bind the exact source run/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback proof bound to a different candidate commit", () => {
+  const files = workspace();
+  try {
+    tamperedBundle(files, (bundle) => {
+      bundle.rollback.fromCandidateCommit = "f".repeat(40);
+    });
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback proof does not bind the exact candidate commit/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a copied rollback artifact whose file digest does not match the bundle proof", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        tampered: true,
+      })}\n`,
+    );
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /restored rollback artifact digest does not match the protected candidate bundle rollback proof/u,
     );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });

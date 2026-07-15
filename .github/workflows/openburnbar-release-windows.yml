@@ -239,7 +239,10 @@ jobs:
 
   native-engine:
     name: Build native parser engine
+    needs: domain-core-native-release-gate
     uses: ./.github/workflows/openburnbar-engine-windows.yml
+    with:
+      candidate_commit: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
 
   authorize-domain-core-rollback:
     name: Authorize Shared Rust Windows rollback
@@ -265,6 +268,7 @@ jobs:
       contents: read
     outputs:
       profile_name: ${{ steps.gate.outputs.profile_name }}
+      candidate_commit: ${{ steps.gate.outputs.candidate_commit }}
       signer_run_id: ${{ steps.gate.outputs.signer_run_id }}
       signer_run_attempt: ${{ steps.gate.outputs.signer_run_attempt }}
     steps:
@@ -283,8 +287,15 @@ jobs:
           SELECTED_PROFILE: ${{ needs.resolve-release.outputs.domain_core_profile }}
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/domain-core-native-release-gate"
+          activation="$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json"
+          node scripts/ci/resolve-domain-core-activation.mjs \
+            --release-commit "$RELEASE_COMMIT" --format json > "$activation"
+          CANDIDATE_COMMIT="$(jq -er '.candidateCommit' "$activation")"
           node scripts/ci/prepare-domain-core-native-release-gate.mjs \
-            --candidate-commit "$RELEASE_COMMIT" \
+            --candidate-commit "$CANDIDATE_COMMIT" \
+            --release-commit "$RELEASE_COMMIT" \
+            --activation "$activation" \
             --event-name "$GITHUB_EVENT_NAME" \
             --requested-profile "$SELECTED_PROFILE" \
             --output-dir "$RUNNER_TEMP/domain-core-native-release-gate" \
@@ -328,7 +339,7 @@ jobs:
           fetch-depth: 0
 
       - name: Resolve signed public domain-core profile
-        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.resolve-release.outputs.release_commit }}" --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
 
       - name: Download verified Shared Rust release inputs
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
@@ -478,7 +489,7 @@ jobs:
           set -euo pipefail
           for rid in win-x64 win-arm64; do
             node scripts/windows-port/validate-native-engine-layout.mjs "publish/$rid"
-            node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.resolve-release.outputs.release_commit }}" --windows-dir "publish/$rid"
+            node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --windows-dir "publish/$rid"
           done
 
       - name: Run parser smoke from the published x64 layout
@@ -599,7 +610,7 @@ jobs:
         shell: pwsh
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/domain-core-windows-observed-identity.json
         run: |
           $ErrorActionPreference = "Stop"
@@ -1118,6 +1129,9 @@ jobs:
           artifact="artifacts/OpenBurnBar-${VERSION}-windows-release.zip"
           test -s "$artifact"
           activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
+          activation_path="$RUNNER_TEMP/domain-core-windows-release-activation.json"
+          jq '{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
+            <<<"$activation" > "$activation_path"
           rollback="artifacts/OpenBurnBar-${VERSION}-legacy-rollback.zip"
           gh release download "v${VERSION}" \
             --repo "$GITHUB_REPOSITORY" \
@@ -1142,6 +1156,7 @@ jobs:
               --artifact "$artifact" \
               --predicate "$predicate" \
               --public-profile-sha256 "$(jq -r '.publicProfileSha256' <<<"$encoded")" \
+              --activation "$activation_path" \
               --candidate-bundle "$RUNNER_TEMP/domain-core-candidate-bundle.json" \
               --promotion-attestation "$(jq -r '.provenancePath' <<<"$encoded")" \
               --protected-signer-run-id "$(jq -r '.signerRunId' <<<"$encoded")" \
@@ -1222,7 +1237,7 @@ jobs:
             mkdir -p "$directory"
             unzip -q "$package" -d "$directory"
             node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-              --profile "$PROFILE" --expected-candidate-commit "$RELEASE_COMMIT" \
+              --profile "$PROFILE" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" \
               --windows-dir "$directory"
           done
           node scripts/ci/verify-domain-core-observed-identity.mjs \
@@ -1252,6 +1267,7 @@ jobs:
             --version "$VERSION" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" \
             --profile-name "$PROFILE" \
             --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            --activation "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json" \
             --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
             --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
             --protected-signer-run-id "$SIGNER_RUN_ID" \

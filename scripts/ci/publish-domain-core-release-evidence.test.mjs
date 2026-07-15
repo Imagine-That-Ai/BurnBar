@@ -904,3 +904,119 @@ test("detects semantic final attestation bundle mutation after successful upload
     rmSync(files.directory, { recursive: true, force: true });
   }
 });
+
+function twoBundleManifest(files, mutateSecondPredicate) {
+  const secondPredicate = structuredClone(files.predicate);
+  secondPredicate.domain = "cloudVault";
+  secondPredicate.publicProfile.domain = "cloudVault";
+  mutateSecondPredicate(secondPredicate);
+  const predicatePath = join(files.directory, "cloudVault.predicate.json");
+  const bundlePath = join(files.directory, "cloudVault.sigstore.json");
+  writeFileSync(predicatePath, `${JSON.stringify(secondPredicate, null, 2)}\n`);
+  writeFileSync(bundlePath, "signed-attestation-bundle-2");
+  return {
+    ...files.manifest,
+    bundles: [
+      ...files.manifest.bundles,
+      {
+        domain: "cloudVault",
+        assetName:
+          "OpenBurnBar-1.2.3-macOS-cloudVault-domain-core-attestation.sigstore.json",
+        bundlePath,
+        predicatePath,
+      },
+    ],
+  };
+}
+
+test("rejects two bundles with the same release commit but different candidate coreVersion", () => {
+  const files = fixture();
+  try {
+    const manifest = twoBundleManifest(files, (predicate) => {
+      const candidate = {
+        ...predicate.candidate,
+        coreVersion: "0.4.0",
+        sourceSha256: "1".repeat(64),
+      };
+      const activation = {
+        ...predicate.activation,
+        coreVersion: candidate.coreVersion,
+        sourceSha256: candidate.sourceSha256,
+      };
+      predicate.candidate = candidate;
+      predicate.activation = activation;
+      predicate.rollbackArtifact = {
+        ...predicate.rollbackArtifact,
+        candidate,
+        activation,
+      };
+    });
+    assert.throws(
+      () => validateManifest(manifest),
+      /predicate for cloudVault has a candidate that differs/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects two bundles with the same candidate but different sourceRun runId", () => {
+  const files = fixture();
+  try {
+    const manifest = twoBundleManifest(files, (predicate) => {
+      predicate.sourceRun.runId = 999;
+    });
+    assert.throws(
+      () => validateManifest(manifest),
+      /predicate for cloudVault has a sourceRun that differs/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects two bundles with the same candidate but different promotionProof signerRun", () => {
+  const files = fixture();
+  try {
+    const manifest = twoBundleManifest(files, (predicate) => {
+      predicate.promotionProof.signerRun.runId = 888;
+    });
+    assert.throws(
+      () => validateManifest(manifest),
+      /predicate for cloudVault has a promotionProof that differs/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects two bundles with the same candidate but different rollbackArtifact sha256", () => {
+  const files = fixture();
+  try {
+    const manifest = twoBundleManifest(files, (predicate) => {
+      predicate.rollbackArtifact.sha256 = "9".repeat(64);
+    });
+    assert.throws(
+      () => validateManifest(manifest),
+      /predicate for cloudVault has a rollbackArtifact that differs/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects two bundles with the same candidate but different release publicProfileSha256", () => {
+  const files = fixture();
+  try {
+    const manifest = twoBundleManifest(files, (predicate) => {
+      predicate.release.publicProfileSha256 = "a".repeat(64);
+      predicate.publicProfile.sha256 = predicate.release.publicProfileSha256;
+    });
+    assert.throws(
+      () => validateManifest(manifest),
+      /predicate for cloudVault has a release that differs/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
