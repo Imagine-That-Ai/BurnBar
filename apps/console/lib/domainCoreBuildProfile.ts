@@ -113,6 +113,11 @@ function resolveSignedProfile(
       !evidence &&
       channel === undefined &&
       !Object.values(modes).includes("shadow")) ||
+    (name === "public-production-rollback" &&
+      distribution === "public" &&
+      !evidence &&
+      channel === undefined &&
+      Object.values(modes).every((value) => value === "legacy")) ||
     ((name === "internal" || name === "beta") &&
       distribution === name &&
       channel === name &&

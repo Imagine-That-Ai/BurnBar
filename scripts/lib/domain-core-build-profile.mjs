@@ -16,6 +16,10 @@ const DOMAIN_CORE_PROFILE_IDENTITIES = new Map([
     "public-production",
     { artifactAuthority: "signed", distribution: "public" },
   ],
+  [
+    "public-production-rollback",
+    { artifactAuthority: "signed", distribution: "public" },
+  ],
   ["internal", { artifactAuthority: "signed", distribution: "internal" }],
   ["beta", { artifactAuthority: "signed", distribution: "beta" }],
 ]);
@@ -52,7 +56,7 @@ export function validateDomainCoreBuildProfiles(catalog) {
     profileNames.some((name) => !DOMAIN_CORE_PROFILE_IDENTITIES.has(name))
   ) {
     throw new Error(
-      "profiles must exactly declare developer, public-production, internal, and beta",
+      "profiles must exactly declare developer, public-production, public-production-rollback, internal, and beta",
     );
   }
   if (!(catalog.defaultReleaseProfile in catalog.profiles))
@@ -112,6 +116,15 @@ function validateProfile(name, profile, domains) {
   for (const domain of domains) {
     if (!DOMAIN_CORE_MODES.has(profile.modes[domain]))
       throw new Error(`${name}: invalid ${domain} mode`);
+  }
+
+  if (
+    name === "public-production-rollback" &&
+    Object.values(profile.modes).some((mode) => mode !== "legacy")
+  ) {
+    throw new Error(
+      "public-production-rollback: every mode must remain legacy",
+    );
   }
 
   if (

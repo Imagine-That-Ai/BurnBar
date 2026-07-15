@@ -21,16 +21,16 @@ function candidateIdentity() {
 }
 
 function signedReceipt(
-  name: "public-production" | "internal" | "beta",
+  name: "public-production" | "public-production-rollback" | "internal" | "beta",
   mode: "legacy" | "shadow" | "rust",
 ): DomainCoreBuildReceipt {
   return {
     schemaVersion: 1,
     name,
     artifactAuthority: "signed",
-    distribution: name === "public-production" ? "public" : name,
-    rolloutChannel: name === "public-production" ? null : name,
-    evidenceEnabled: name !== "public-production",
+    distribution: name.startsWith("public-production") ? "public" : name,
+    rolloutChannel: name.startsWith("public-production") ? null : name,
+    evidenceEnabled: !name.startsWith("public-production"),
     modes: Object.fromEntries(domains.map((domain) => [domain, mode])) as Record<(typeof domains)[number], string>,
     candidateIdentity: candidateIdentity(),
   };
@@ -109,6 +109,21 @@ describe("domain-core Functions profile", () => {
     expect(resolveDomainCoreRuntimeMode("pricing", {}, receipt)).toBe("rust");
     expect(resolveDomainCoreEvidenceChannel({}, receipt)).toBeUndefined();
     expect(resolveDomainCoreCandidateIdentity({}, receipt)).toEqual(candidateIdentity());
+  });
+
+  it("uses the signed rollback receipt for legacy despite hostile runtime values", () => {
+    const receipt = signedReceipt("public-production-rollback", "legacy");
+    const environment = {
+      OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY: "development",
+      OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE: "public-production",
+      OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "rust",
+    };
+    expect(resolveDomainCoreRuntimeMode("pricing", environment, receipt)).toBe("legacy");
+    const invalidReceipt = {
+      ...receipt,
+      modes: { ...receipt.modes, pricing: "rust" },
+    };
+    expect(resolveDomainCoreRuntimeMode("pricing", environment, invalidReceipt)).toBe("legacy");
   });
 
   it.each(["internal", "beta"] as const)("requires matching %s enrollment metadata in the bundled receipt", (name) => {
