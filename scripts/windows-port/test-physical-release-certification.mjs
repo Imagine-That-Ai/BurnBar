@@ -23,6 +23,9 @@ assert.match(script, /assetTagSource/);
 assert.match(script, /Hardware attestation assetTagSource is required for physical certification/);
 assert.match(script, /Hardware attestation assetTagSource does not match/);
 assert.match(script, /Amazon EC2\|Google Compute Engine\|HVM domU\|\\bXen\\b/);
+assert.match(script, /\$script:AllowedAssetTagSources -notcontains \$candidateAssetTagSource/);
+assert.match(script, /\$candidateDeviceIdentity -match \$script:VirtualHostIdentityPattern/);
+assert.match(script, /\$candidate\.device\.architecture -ne \$performanceArchitectureByGate/);
 assert.match(
   script,
   /system asset tag\|chassis asset tag/,

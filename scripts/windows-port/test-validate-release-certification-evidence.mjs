@@ -62,6 +62,33 @@ function receipt(gate, status = "PASS") {
   };
 }
 
+function physicalPassReceipt(gate = "physical-performance-x64") {
+  const value = receipt(gate);
+  value.device = {
+    kind: "physical-windows",
+    manufacturer: "HP",
+    model: "ENVY x360 15-ew0xxx",
+    assetTag: "5CD1234567",
+    assetTagSource: "Win32_ComputerSystemProduct.IdentifyingNumber",
+    architecture: "x64",
+    osBuild: "Windows 11 10.0.26100",
+    tpm: "present-ready-enabled-activated-owned",
+  };
+  value.artifact = {
+    name: "OpenBurnBar-1.0.30-x64.msix",
+    architecture: "x64",
+    availability: "recorded",
+    sha256: "a".repeat(64),
+    workflowRunId: "123",
+    workflowRunUrl: "https://example.invalid/runs/123",
+    signature: { result: "verified", identity: "Imagine That AI LLC" },
+  };
+  value.evidence.files[0].sha256 = createHash("sha256")
+    .update(readFileSync(join(value.root, "observation.log")))
+    .digest("hex");
+  return value;
+}
+
 {
   const sample = receipt("local-automated-checks");
   const result = validateReceipt(sample, { bundleDir: sample.root });
@@ -212,6 +239,29 @@ function receipt(gate, status = "PASS") {
   assert.equal(result.ok, false);
   assert.match(result.errors.join("\n"), /physical gate cannot PASS/);
   assert.match(result.errors.join("\n"), /physical PASS requires a recorded artifact/);
+}
+
+{
+  const value = physicalPassReceipt();
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, true, result.errors.join("\n"));
+}
+
+{
+  const value = physicalPassReceipt();
+  delete value.device.assetTagSource;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /physical PASS requires device\.assetTagSource/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.device.manufacturer = "Amazon EC2";
+  value.device.model = "HVM domU";
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /physical PASS device identity looks virtualized/);
 }
 
 {

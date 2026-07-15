@@ -30,6 +30,12 @@ const PHYSICAL_PERFORMANCE_ARCHITECTURES = new Map([
   ["physical-performance-x64", "x64"],
   ["physical-performance-arm64", "arm64"],
 ]);
+const PHYSICAL_ASSET_TAG_SOURCES = new Set([
+  "Win32_SystemEnclosure.SMBIOSAssetTag",
+  "Win32_ComputerSystemProduct.IdentifyingNumber",
+]);
+const VIRTUAL_HOST_IDENTITY_PATTERN =
+  /(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V|Amazon EC2|Google Compute Engine|HVM domU|\bXen\b|OpenStack|Bochs|BHYVE|DigitalOcean)/i;
 const REQUIRED_RECEIPT_FIELDS = [
   "schema",
   "status",
@@ -173,6 +179,24 @@ function checkDevice(receipt, errors, label) {
   }
   if (PHYSICAL_GATES.has(receipt.gate) && receipt.status === "PASS" && receipt.device.kind !== "physical-windows") {
     errors.push(`${label}: physical gate cannot PASS on ${receipt.device.kind}`);
+  }
+  if (PHYSICAL_GATES.has(receipt.gate) && receipt.status === "PASS") {
+    for (const field of ["assetTag", "assetTagSource"]) {
+      if (typeof receipt.device[field] !== "string" || receipt.device[field].trim().length === 0) {
+        errors.push(`${label}: physical PASS requires device.${field}`);
+      }
+    }
+    if (
+      typeof receipt.device.assetTagSource === "string" &&
+      receipt.device.assetTagSource.trim().length > 0 &&
+      !PHYSICAL_ASSET_TAG_SOURCES.has(receipt.device.assetTagSource.trim())
+    ) {
+      errors.push(`${label}: physical PASS has unsupported device.assetTagSource`);
+    }
+    const hostIdentity = `${receipt.device.manufacturer ?? ""} ${receipt.device.model ?? ""}`.trim();
+    if (VIRTUAL_HOST_IDENTITY_PATTERN.test(hostIdentity)) {
+      errors.push(`${label}: physical PASS device identity looks virtualized`);
+    }
   }
 }
 

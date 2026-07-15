@@ -27,6 +27,11 @@ $ErrorActionPreference = 'Stop'
 $BundleSchema = 'openburnbar.windows.release-certification-bundle.v1'
 $ReceiptSchema = 'openburnbar.windows.release-certification-receipt.v1'
 $StartedAtUtc = [DateTimeOffset]::UtcNow
+$script:VirtualHostIdentityPattern = '(?i)(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V|Amazon EC2|Google Compute Engine|HVM domU|\bXen\b|OpenStack|Bochs|BHYVE|DigitalOcean)'
+$script:AllowedAssetTagSources = @(
+    'Win32_SystemEnclosure.SMBIOSAssetTag',
+    'Win32_ComputerSystemProduct.IdentifyingNumber'
+)
 
 function Resolve-FullPath([string] $Path) {
     if ([System.IO.Path]::IsPathRooted($Path)) {
@@ -222,7 +227,7 @@ function Get-DeviceIdentity {
         default { '' }
     }
     $identity = "$($computer.Manufacturer) $($computer.Model)"
-    if ($PhysicalHardware -and $identity -match '(?i)(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V|Amazon EC2|Google Compute Engine|HVM domU|\bXen\b|OpenStack|Bochs|BHYVE|DigitalOcean)') {
+    if ($PhysicalHardware -and $identity -match $script:VirtualHostIdentityPattern) {
         throw "PhysicalHardware was asserted but the host identity looks virtualized: $identity"
     }
     if ($PhysicalHardware -and $processorPlatform -ne $Platform) {
@@ -477,9 +482,23 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
         if ($supplementalGateIds -notcontains [string]$candidate.gate) { continue }
         if ($candidate.artifact.availability -ne 'recorded' -or $candidate.artifact.signature.result -ne 'verified') { continue }
         $candidateGate = [string]$candidate.gate
+        $candidateDeviceIdentity = (([string]$candidate.device.manufacturer).Trim() + ' ' + ([string]$candidate.device.model).Trim()).Trim()
+        $candidateAssetTag = ([string]$candidate.device.assetTag).Trim()
+        $candidateAssetTagSource = ([string]$candidate.device.assetTagSource).Trim()
+        if ([string]$candidate.device.kind -ne 'physical-windows' -or
+            [string]::IsNullOrWhiteSpace($candidateDeviceIdentity) -or
+            [string]::IsNullOrWhiteSpace($candidateAssetTag) -or
+            [string]::IsNullOrWhiteSpace($candidateAssetTagSource) -or
+            $script:AllowedAssetTagSources -notcontains $candidateAssetTagSource -or
+            $candidateDeviceIdentity -match $script:VirtualHostIdentityPattern) {
+            continue
+        }
         if ($performanceArchitectureByGate.ContainsKey($candidateGate)) {
-            if ($candidate.artifact.architecture -ne $performanceArchitectureByGate[$candidateGate]) { continue }
+            if ($candidate.artifact.architecture -ne $performanceArchitectureByGate[$candidateGate] -or
+                $candidate.device.architecture -ne $performanceArchitectureByGate[$candidateGate]) { continue }
         } elseif ($candidate.artifact.sha256 -ne $artifact.sha256 -or $candidate.artifact.architecture -ne $artifact.architecture) {
+            continue
+        } elseif (-not [string]::Equals([string]$candidate.device.architecture, [string]$candidate.artifact.architecture, [System.StringComparison]::OrdinalIgnoreCase)) {
             continue
         }
         $candidateFiles = @()
