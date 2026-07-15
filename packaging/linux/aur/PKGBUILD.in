@@ -99,6 +99,7 @@ package() {
   for required in \
     AppRun \
     usr/bin/openburnbar-cli \
+    usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources \
     usr/lib/openburnbar/native/libopenburnbar_iroh.so \
     usr/lib/openburnbar/native/libsqlcipher.so.0 \
     usr/lib/openburnbar/swift; do
@@ -165,6 +166,9 @@ package() {
   install -Dm755 "${srcdir}/openburnbar-linux-desktop" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
   install -Dm755 "${srcdir}/squashfs-root/usr/bin/openburnbar-cli" "${pkgdir}/usr/bin/openburnbar-cli"
   install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
+  install -d "${pkgdir}/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources"
+  cp -a "${srcdir}/squashfs-root/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources/." \
+    "${pkgdir}/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources/"
   install -d "${pkgdir}/usr/lib/openburnbar"
   cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/native" "${pkgdir}/usr/lib/openburnbar/"
   cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/swift" "${pkgdir}/usr/lib/openburnbar/"

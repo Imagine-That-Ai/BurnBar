@@ -64,6 +64,7 @@ if (install.exitCode === 0) {
     allowSymlink: true
   }));
   steps.push(installedFileStep('/usr/share/icons/hicolor/256x256/apps/dev.openburnbar.OpenBurnBar.png'));
+  steps.push(installedDirectoryStep('/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources'));
   steps.push(runStep('/usr/bin/openburnbar-daemon', ['--help'], {
     env: isolatedRuntimeEnvironment()
   }));
@@ -154,6 +155,23 @@ function installedFileStep(file, { executable = false, allowSymlink = false } = 
     passed,
     passed ? `${file}\n` : '',
     passed ? '' : `${file} is missing, not a file, unexpectedly symlinked, or has the wrong mode\n`
+  );
+}
+
+function installedDirectoryStep(file) {
+  let passed = false;
+  try {
+    const link = fs.lstatSync(file);
+    const target = fs.statSync(file);
+    passed = target.isDirectory() && !link.isSymbolicLink();
+  } catch {
+    passed = false;
+  }
+  return assertionStep(
+    `installed resource bundle ${file}`,
+    passed,
+    passed ? `${file}\n` : '',
+    passed ? '' : `${file} is missing, not a directory, or unexpectedly symlinked\n`
   );
 }
 

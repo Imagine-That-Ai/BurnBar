@@ -106,6 +106,12 @@ for (const artifact of closure.artifacts ?? []) {
       'deb package missing /usr/bin/openburnbar-daemon'
     );
     assertContains(
+      'assert deb contains OpenBurnBarCore resource bundle',
+      contents.stdout,
+      'usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources',
+      'deb package missing the SwiftPM resource bundle required by the daemon'
+    );
+    assertContains(
       'assert deb contains openburnbar-daemon.service',
       contents.stdout,
       'openburnbar-daemon.service',
@@ -176,6 +182,12 @@ for (const artifact of closure.artifacts ?? []) {
       listing.stdout,
       '/usr/bin/openburnbar-daemon',
       'rpm package missing /usr/bin/openburnbar-daemon'
+    );
+    assertContains(
+      'assert rpm contains OpenBurnBarCore resource bundle',
+      listing.stdout,
+      '/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources',
+      'rpm package missing the SwiftPM resource bundle required by the daemon'
     );
     assertContains(
       'assert rpm contains Swift runtime under /usr/lib/openburnbar/swift',
@@ -255,6 +267,7 @@ for (const artifact of closure.artifacts ?? []) {
     if (extract?.exitCode === 0) {
       for (const requiredPath of [
         'usr/bin/openburnbar-daemon',
+        'usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources',
         'usr/libexec/openburnbar-daemon-launch',
         'usr/lib/openburnbar/swift',
         'usr/lib/openburnbar/native/libsqlcipher.so.0',

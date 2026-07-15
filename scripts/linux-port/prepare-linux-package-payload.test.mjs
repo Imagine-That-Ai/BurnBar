@@ -6,12 +6,20 @@ import test from 'node:test';
 import {
   buildLinuxCloudAuthConfig,
   resolveIrohNativeLibrary,
+  resolveLinuxResourceBundle,
   resolveSqlcipherLibDir,
   resolveSwiftRuntimeDir,
   stageLinuxPackagePayload
 } from './lib/linux-package-payload.mjs';
 
 const fixtureFirebaseAPIKey = ['AI', 'za', '12345678901234567890123456789012345'].join('');
+
+function createResourceBundle(root) {
+  const resourceBundle = path.join(root, 'OpenBurnBarCore_OpenBurnBarCore.resources');
+  fs.mkdirSync(resourceBundle);
+  fs.writeFileSync(path.join(resourceBundle, 'catalog.json'), '{}\n');
+  return resourceBundle;
+}
 
 test('runtime discovery honors explicit architecture-local directories', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-runtime-discovery-'));
@@ -39,6 +47,20 @@ test('runtime discovery honors explicit architecture-local directories', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('resource bundle discovery honors the Linux SwiftPM output name', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-resource-bundle-'));
+  const bundle = path.join(root, 'OpenBurnBarCore_OpenBurnBarCore.resources');
+  fs.mkdirSync(bundle);
+  assert.equal(
+    resolveLinuxResourceBundle({
+      repoRoot: root,
+      env: { OPENBURNBAR_LINUX_RESOURCE_BUNDLE: bundle }
+    }),
+    bundle
+  );
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-package-payload-'));
   const daemon = path.join(root, 'OpenBurnBarDaemon');
@@ -50,6 +72,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   const sqlcipher = path.join(root, 'sqlcipher-source');
   const iroh = path.join(root, 'libopenburnbar_iroh.so');
   const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
+  const resourceBundle = createResourceBundle(root);
   const payload = path.join(root, 'payload');
   fs.writeFileSync(daemon, '#!/bin/sh\nexit 0\n');
   fs.writeFileSync(cli, '#!/bin/sh\nexit 0\n');
@@ -73,6 +96,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
     browserRuntimeProbe: browserProbe,
     browserRuntimeRequirements: browserRequirements,
     releasePublicKey,
+    resourceBundle,
     payloadRoot: payload,
     swiftRuntimeDir: swift,
     sqlcipherLibDir: sqlcipher,
@@ -82,6 +106,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
 
   assert.ok(fs.statSync(report.daemon).mode & 0o100);
   assert.ok(fs.statSync(report.cli).mode & 0o100);
+  assert.equal(fs.readFileSync(path.join(report.resourceBundle, 'catalog.json'), 'utf8'), '{}\n');
   assert.equal(fs.readFileSync(path.join(report.swiftRuntime, 'libswiftCore.so'), 'utf8'), 'swift');
   assert.equal(fs.readFileSync(path.join(report.nativeRuntime, 'libsqlcipher.so.0'), 'utf8'), 'sqlcipher');
   assert.deepEqual(report.sqlcipherFiles, ['libsqlcipher.so', 'libsqlcipher.so.0']);
@@ -114,6 +139,7 @@ test('payload staging dereferences SQLCipher SONAME links', () => {
   const sqlcipher = path.join(root, 'sqlcipher');
   const iroh = path.join(root, 'libopenburnbar_iroh.so');
   const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
+  const resourceBundle = createResourceBundle(root);
   const payload = path.join(root, 'payload');
   const sqlcipherBinary = path.join(sqlcipher, 'libsqlcipher.so.0.8.6');
   fs.writeFileSync(daemon, 'daemon');
@@ -136,6 +162,7 @@ test('payload staging dereferences SQLCipher SONAME links', () => {
     browserRuntimeProbe: browserProbe,
     browserRuntimeRequirements: browserRequirements,
     releasePublicKey,
+    resourceBundle,
     payloadRoot: payload,
     swiftRuntimeDir: swift,
     sqlcipherLibDir: sqlcipher,
@@ -165,6 +192,7 @@ test('payload staging rejects SQLCipher links outside the runtime directory', ()
   const sqlcipher = path.join(root, 'sqlcipher');
   const iroh = path.join(root, 'libopenburnbar_iroh.so');
   const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
+  const resourceBundle = createResourceBundle(root);
   const outside = path.join(root, 'outside.so');
   fs.writeFileSync(daemon, 'daemon');
   fs.writeFileSync(cli, 'cli');
@@ -186,6 +214,7 @@ test('payload staging rejects SQLCipher links outside the runtime directory', ()
     browserRuntimeProbe: browserProbe,
     browserRuntimeRequirements: browserRequirements,
     releasePublicKey,
+    resourceBundle,
     payloadRoot: path.join(root, 'payload'),
     swiftRuntimeDir: swift,
     sqlcipherLibDir: sqlcipher,
@@ -206,6 +235,7 @@ test('payload staging rejects SQLCipher trees without the required SONAME', () =
   const sqlcipher = path.join(root, 'sqlcipher');
   const iroh = path.join(root, 'libopenburnbar_iroh.so');
   const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
+  const resourceBundle = createResourceBundle(root);
   fs.writeFileSync(daemon, 'daemon');
   fs.writeFileSync(cli, 'cli');
   fs.writeFileSync(bridge, 'bridge');
@@ -224,6 +254,7 @@ test('payload staging rejects SQLCipher trees without the required SONAME', () =
     browserRuntimeProbe: browserProbe,
     browserRuntimeRequirements: browserRequirements,
     releasePublicKey,
+    resourceBundle,
     payloadRoot: path.join(root, 'payload'),
     swiftRuntimeDir: swift,
     sqlcipherLibDir: sqlcipher,

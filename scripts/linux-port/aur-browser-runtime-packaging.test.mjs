@@ -86,6 +86,8 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     'chmod 755 squashfs-root/usr/bin/openburnbar-linux-desktop',
     'printf "#!/bin/bash\\nexit 0\\n" >squashfs-root/usr/bin/openburnbar-cli',
     'chmod 755 squashfs-root/usr/bin/openburnbar-cli',
+    'mkdir -p squashfs-root/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources',
+    'printf catalog >squashfs-root/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources/catalog.json',
     'printf "#!/bin/bash\\nprintf OpenBurnBar\\ 0.1.0\\n" >squashfs-root/AppRun.wrapped',
     'chmod 777 squashfs-root/AppRun.wrapped',
     'ln -s AppRun.wrapped squashfs-root/AppRun',
@@ -164,6 +166,13 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     assert.equal(
       fs.statSync(path.join(pkgdir, 'usr/bin/openburnbar-cli')).mode & 0o777,
       0o755
+    );
+    assert.equal(
+      fs.readFileSync(path.join(
+        pkgdir,
+        'usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources/catalog.json'
+      ), 'utf8'),
+      'catalog'
     );
     assert.equal(
       fs.existsSync(path.join(pkgdir, 'usr/lib/openburnbar/appdir/usr/share/openburnbar/appimage-peer-manifest.json')),

@@ -16,9 +16,12 @@ import {
 } from './lib/linux-appimage-peer-manifest.mjs';
 import { withoutLinuxReleasePrivateKey } from './lib/linux-signing-environment.mjs';
 
+export const linuxResourceBundleRelativePath = 'OpenBurnBarCore_OpenBurnBarCore.resources';
+
 export const requiredPayloadPaths = [
   'openburnbar-cli',
   'openburnbar-daemon',
+  linuxResourceBundleRelativePath,
   'swift',
   'native/libsqlcipher.so.0',
   'native/libopenburnbar_iroh.so',
@@ -49,7 +52,11 @@ function requireRegularResource(candidate, label, expectedMode) {
 export function validatePayload(payloadRoot) {
   const root = path.resolve(payloadRoot);
   for (const entry of requiredPayloadPaths) {
-    requirePath(path.join(root, entry), `AppImage payload ${entry}`, entry === 'swift' ? 'directory' : 'file');
+    requirePath(
+      path.join(root, entry),
+      `AppImage payload ${entry}`,
+      entry === 'swift' || entry === linuxResourceBundleRelativePath ? 'directory' : 'file'
+    );
   }
   requireRegularResource(
     path.join(root, 'openburnbar-cli'),
@@ -119,6 +126,7 @@ function assertEmbeddedPayload(appDir, { requirePeerManifest }) {
   const required = [
     'usr/bin/openburnbar-cli',
     'usr/bin/openburnbar-daemon',
+    `usr/bin/${linuxResourceBundleRelativePath}`,
     'usr/libexec/openburnbar-daemon-launch',
     'usr/lib/openburnbar/swift',
     'usr/lib/openburnbar/native/libsqlcipher.so.0',
@@ -134,7 +142,15 @@ function assertEmbeddedPayload(appDir, { requirePeerManifest }) {
       `usr/share/openburnbar/${linuxAppImagePeerSignatureName}`
     );
   }
-  for (const entry of required) requirePath(path.join(appDir, entry), `embedded AppImage path ${entry}`, entry.endsWith('/swift') ? 'directory' : 'file');
+  for (const entry of required) {
+    requirePath(
+      path.join(appDir, entry),
+      `embedded AppImage path ${entry}`,
+      entry.endsWith('/swift') || entry.endsWith(`/${linuxResourceBundleRelativePath}`)
+        ? 'directory'
+        : 'file'
+    );
+  }
   requireRegularResource(
     path.join(appDir, 'usr/lib/openburnbar/native/libopenburnbar_iroh.so'),
     'embedded AppImage iroh native runtime',
@@ -263,6 +279,15 @@ export function embedLinuxAppImagePayload({
     fs.chmodSync(path.join(appDir, 'usr/bin/openburnbar-cli'), 0o755);
     fs.copyFileSync(path.join(payload, 'openburnbar-daemon'), path.join(appDir, 'usr/bin/openburnbar-daemon'));
     fs.chmodSync(path.join(appDir, 'usr/bin/openburnbar-daemon'), 0o755);
+    fs.rmSync(path.join(appDir, 'usr/bin', linuxResourceBundleRelativePath), {
+      recursive: true,
+      force: true
+    });
+    fs.cpSync(
+      path.join(payload, linuxResourceBundleRelativePath),
+      path.join(appDir, 'usr/bin', linuxResourceBundleRelativePath),
+      { recursive: true, dereference: false, preserveTimestamps: true }
+    );
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/swift'), { recursive: true, force: true });
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/native'), { recursive: true, force: true });
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/playwright'), { recursive: true, force: true });

@@ -20,6 +20,11 @@ function writeCliFixture(root) {
   const cli = path.join(root, 'openburnbar-cli');
   fs.writeFileSync(cli, 'cli');
   fs.chmodSync(cli, 0o755);
+  fs.mkdirSync(path.join(root, 'OpenBurnBarCore_OpenBurnBarCore.resources'));
+  fs.writeFileSync(
+    path.join(root, 'OpenBurnBarCore_OpenBurnBarCore.resources', 'catalog.json'),
+    '{}\n'
+  );
 }
 
 test('AppImage payload validator requires daemon, runtimes, and Browser CU resources', () => {
@@ -39,6 +44,7 @@ test('AppImage payload validator requires daemon, runtimes, and Browser CU resou
   assert.deepEqual(requiredPayloadPaths, [
     'openburnbar-cli',
     'openburnbar-daemon',
+    'OpenBurnBarCore_OpenBurnBarCore.resources',
     'swift',
     'native/libsqlcipher.so.0',
     'native/libopenburnbar_iroh.so',

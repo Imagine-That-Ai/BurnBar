@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 function requireDirectory(candidate, label) {
@@ -81,6 +82,31 @@ export function resolveIrohNativeLibrary({ env = process.env } = {}) {
   );
 }
 
+const linuxResourceBundleName = 'OpenBurnBarCore_OpenBurnBarCore.resources';
+
+export function resolveLinuxResourceBundle({ repoRoot, env = process.env } = {}) {
+  const candidates = [];
+  if (env.OPENBURNBAR_LINUX_RESOURCE_BUNDLE?.trim()) {
+    candidates.push(env.OPENBURNBAR_LINUX_RESOURCE_BUNDLE.trim());
+  }
+  if (repoRoot) {
+    const daemonBuildRoot = path.join(repoRoot, 'OpenBurnBarDaemon/.build');
+    candidates.push(
+      path.join(daemonBuildRoot, 'release', linuxResourceBundleName),
+      path.join(daemonBuildRoot, 'aarch64-unknown-linux-gnu/release', linuxResourceBundleName),
+      path.join(daemonBuildRoot, 'x86_64-unknown-linux-gnu/release', linuxResourceBundleName),
+      path.join(repoRoot, 'OpenBurnBarCore/.build/release', linuxResourceBundleName)
+    );
+    if (fs.existsSync(daemonBuildRoot)) {
+      for (const entry of fs.readdirSync(daemonBuildRoot)) {
+        candidates.push(path.join(daemonBuildRoot, entry, 'release', linuxResourceBundleName));
+      }
+    }
+  }
+  const found = candidates.find((candidate) => candidate && fs.existsSync(candidate));
+  return requireDirectory(found, 'OpenBurnBarCore Linux resource bundle');
+}
+
 export function buildLinuxCloudAuthConfig({ env = process.env, requireConfigured = false } = {}) {
   const values = {
     googleOAuthClientID: env.OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID?.trim() ?? '',
@@ -151,6 +177,53 @@ function copySqlcipherRuntime(source, destination) {
   return entries;
 }
 
+function runDaemonStartupProbe(daemon, swiftDir, nativeDir, env) {
+  const probeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-daemon-runtime-probe-'));
+  const tokenPath = path.join(probeRoot, 'socket.token');
+  const socketPath = path.join(probeRoot, 'daemon.sock');
+  const indexPath = path.join(probeRoot, 'index.sqlite');
+  const libraryPath = [swiftDir, nativeDir, env.LD_LIBRARY_PATH]
+    .filter(Boolean)
+    .join(':');
+  for (const directory of ['config', 'data', 'run']) {
+    fs.mkdirSync(path.join(probeRoot, directory), { recursive: true });
+  }
+  const probeEnv = {
+    ...env,
+    HOME: probeRoot,
+    XDG_CONFIG_HOME: path.join(probeRoot, 'config'),
+    XDG_DATA_HOME: path.join(probeRoot, 'data'),
+    XDG_RUNTIME_DIR: path.join(probeRoot, 'run'),
+    OPENBURNBAR_DAEMON_SUPPORT_DIR: probeRoot,
+    LD_LIBRARY_PATH: libraryPath
+  };
+  fs.writeFileSync(tokenPath, 'openburnbar-runtime-probe-token\n', { mode: 0o600 });
+  try {
+    const result = spawnSync(daemon, [
+      '--socket-path', socketPath,
+      '--index-database-path', indexPath,
+      '--socket-auth-token-file', tokenPath
+    ], {
+      encoding: 'utf8',
+      env: probeEnv,
+      timeout: 10_000,
+      maxBuffer: 8 * 1024 * 1024
+    });
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
+    if (result.error?.code !== 'ETIMEDOUT') {
+      throw new Error(
+        `staged daemon startup probe exited before serving (status ${result.status ?? 'unknown'}):\n${output}`
+      );
+    }
+    if (!fs.existsSync(socketPath)) {
+      throw new Error(`staged daemon startup probe timed out without creating its Unix socket:\n${output}`);
+    }
+    return { startup: output || 'daemon remained alive until probe timeout' };
+  } finally {
+    fs.rmSync(probeRoot, { recursive: true, force: true });
+  }
+}
+
 function runRuntimeProbe(daemon, swiftDir, nativeDir, env) {
   const libraryPath = [swiftDir, nativeDir, env.LD_LIBRARY_PATH]
     .filter(Boolean)
@@ -173,11 +246,13 @@ function runRuntimeProbe(daemon, swiftDir, nativeDir, env) {
   });
   const helpOutput = `${help.stdout ?? ''}\n${help.stderr ?? ''}`;
   if ((help.status ?? 1) !== 0 || !helpOutput.includes('socket-path')) {
-    throw new Error(`staged daemon runtime probe failed:\n${helpOutput}`);
+    throw new Error(`staged daemon runtime help probe failed:\n${helpOutput}`);
   }
+  const startup = runDaemonStartupProbe(daemon, swiftDir, nativeDir, env);
   return {
     ldd: lddOutput.trim(),
-    help: helpOutput.trim()
+    help: helpOutput.trim(),
+    ...startup
   };
 }
 
@@ -188,6 +263,7 @@ export function stageLinuxPackagePayload({
   browserRuntimeProbe,
   browserRuntimeRequirements,
   releasePublicKey,
+  resourceBundle,
   payloadRoot,
   swiftRuntimeDir,
   sqlcipherLibDir,
@@ -204,11 +280,13 @@ export function stageLinuxPackagePayload({
     'browser runtime requirements'
   );
   const releasePublicKeySource = requireRegularFile(releasePublicKey, 'Linux release public key');
+  const resourceBundleSource = requireDirectory(resourceBundle, 'OpenBurnBarCore Linux resource bundle');
   const swiftSource = requireDirectory(swiftRuntimeDir, 'Swift runtime');
   const sqlcipherSource = requireDirectory(sqlcipherLibDir, 'SQLCipher runtime');
   const irohNativeSource = requireRegularFile(irohNativeLibrary, 'Linux iroh native runtime');
   const root = path.resolve(payloadRoot);
   const daemonDestination = path.join(root, 'openburnbar-daemon');
+  const resourceBundleDestination = path.join(root, linuxResourceBundleName);
   const cliDestination = path.join(root, 'openburnbar-cli');
   const swiftDestination = path.join(root, 'swift');
   const nativeDestination = path.join(root, 'native');
@@ -220,6 +298,11 @@ export function stageLinuxPackagePayload({
   fs.mkdirSync(root, { recursive: true });
   fs.copyFileSync(daemonSource, daemonDestination);
   fs.chmodSync(daemonDestination, 0o755);
+  fs.cpSync(resourceBundleSource, resourceBundleDestination, {
+    recursive: true,
+    dereference: false,
+    preserveTimestamps: true
+  });
   if (cliSource) {
     fs.copyFileSync(cliSource, cliDestination);
     fs.chmodSync(cliDestination, 0o755);
@@ -281,6 +364,7 @@ export function stageLinuxPackagePayload({
     schemaVersion: 1,
     architecture: process.arch === 'arm64' ? 'aarch64' : process.arch === 'x64' ? 'x86_64' : process.arch,
     daemon: daemonDestination,
+    resourceBundle: resourceBundleDestination,
     cli: cliSource ? cliDestination : null,
     swiftRuntime: swiftDestination,
     nativeRuntime: nativeDestination,
