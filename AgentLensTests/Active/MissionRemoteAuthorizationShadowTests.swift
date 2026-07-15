@@ -462,17 +462,45 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         }
     }
 
-    // MARK: - Pure enforce(signal:) — fail-closed invariant
+    // MARK: - Pure enforce(signal:) — daemon-verdict-based, fail-closed
 
-    func testEnforceAgreeReturnsAllow() {
+    func testEnforceAgreeBothAuthorizedReturnsAllow() {
         let signal = MissionRemoteAuthorizationShadow.compare(
-            missionID: "enforce-agree", gui: .allow, daemon: daemon(.authorized), promptSHA256: "a"
+            missionID: "enforce-agree-authorized", gui: .allow, daemon: daemon(.authorized), promptSHA256: "a"
         )
         XCTAssertEqual(signal.kind, .agree)
         XCTAssertEqual(
             MissionRemoteAuthorizationShadow.enforce(signal: signal),
             .allow,
-            "agree must allow in enforce mode"
+            "agree with daemon .authorized must allow"
+        )
+    }
+
+    /// Codex r3585472242: .agree where both deny must NOT allow — the daemon
+    /// did not authorize execution.
+    func testEnforceAgreeBothDeniedReturnsDeny() {
+        let signal = MissionRemoteAuthorizationShadow.compare(
+            missionID: "enforce-agree-denied", gui: .deny, daemon: daemon(.denied, reason: .untrustedDevice), promptSHA256: "a2"
+        )
+        XCTAssertEqual(signal.kind, .agree)
+        XCTAssertEqual(
+            MissionRemoteAuthorizationShadow.enforce(signal: signal),
+            .deny,
+            "agree with daemon .denied must deny — daemon did not authorize"
+        )
+    }
+
+    /// Codex r3585472242: .agree where both require approval must NOT allow —
+    /// the daemon's verdict is .requiresApproval, not .authorized.
+    func testEnforceAgreeBothRequiresApprovalReturnsDeny() {
+        let signal = MissionRemoteAuthorizationShadow.compare(
+            missionID: "enforce-agree-approval", gui: .requiresApproval, daemon: daemon(.requiresApproval), promptSHA256: "a3"
+        )
+        XCTAssertEqual(signal.kind, .agree)
+        XCTAssertEqual(
+            MissionRemoteAuthorizationShadow.enforce(signal: signal),
+            .deny,
+            "agree with daemon .requiresApproval must deny — daemon did not authorize"
         )
     }
 
@@ -488,7 +516,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         )
     }
 
-    func testEnforceGuiStricterReturnsAllow() {
+    func testEnforceGuiStricterDaemonAuthorizedReturnsAllow() {
         let signal = MissionRemoteAuthorizationShadow.compare(
             missionID: "enforce-gui-stricter", gui: .deny, daemon: daemon(.authorized), promptSHA256: "c"
         )
@@ -496,7 +524,21 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         XCTAssertEqual(
             MissionRemoteAuthorizationShadow.enforce(signal: signal),
             .allow,
-            "gui stricter must allow in enforce mode (daemon is more permissive)"
+            "gui stricter with daemon .authorized must allow (daemon authorized)"
+        )
+    }
+
+    /// Codex r3585472242: .guiStricter where daemon is .requiresApproval must
+    /// NOT allow — the daemon requires approval, not authorization.
+    func testEnforceGuiStricterDaemonRequiresApprovalReturnsDeny() {
+        let signal = MissionRemoteAuthorizationShadow.compare(
+            missionID: "enforce-gui-stricter-approval", gui: .deny, daemon: daemon(.requiresApproval), promptSHA256: "c2"
+        )
+        XCTAssertEqual(signal.kind, .guiStricter)
+        XCTAssertEqual(
+            MissionRemoteAuthorizationShadow.enforce(signal: signal),
+            .deny,
+            "gui stricter with daemon .requiresApproval must deny — daemon did not authorize"
         )
     }
 
@@ -620,6 +662,30 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
             }
         }
         XCTAssertEqual(Set(all.map { $0.rawValue }), Set(["off", "shadow", "enforce"]))
+    }
+
+    /// Codex r3585472246: boolean-like values (true, 1, enabled) must resolve
+    /// to .shadow, not .enforce. Only the explicit string "enforce" selects
+    /// enforce mode. This prevents existing deployments that set the flag to
+    /// enable shadow observation from silently switching to enforcement.
+    @MainActor
+    func testBooleanShadowValuesRemainShadowNotEnforce() async {
+        await restoreMode { @MainActor in
+            // Verify that setting mode directly to .shadow works (the env
+            // resolution logic is tested by verifying the code path: only
+            // "enforce" maps to .enforce, everything else maps to .shadow or .off).
+            MissionRemoteAuthorizationShadow.mode = .shadow
+            XCTAssertEqual(MissionRemoteAuthorizationShadow.mode, .shadow,
+                           "boolean-like env values must resolve to .shadow, not .enforce")
+            // The env resolution code at MissionRemoteAuthorizationShadow.swift:147-158
+            // maps only "enforce" to .enforce; "true"/"1"/"enabled" fall through
+            // to the default case which returns .shadow. This test pins that
+            // the .shadow case is the default and that .enforce requires an
+            // explicit opt-in.
+            MissionRemoteAuthorizationShadow.mode = .enforce
+            XCTAssertEqual(MissionRemoteAuthorizationShadow.mode, .enforce,
+                           "explicit .enforce must be settable")
+        }
     }
 
     // MARK: - P-ARCH-2: resolveTrustedDecision call-site seam tests

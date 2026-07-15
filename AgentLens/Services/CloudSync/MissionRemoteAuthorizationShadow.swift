@@ -137,17 +137,20 @@ enum MissionRemoteAuthorizationShadow {
 
     /// Ships defaulting to shadow-mode. A runtime override can force it `.off`
     /// for a fast rollback without reverting the wiring, or `.enforce` to make
-    /// the daemon authoritative. `nonisolated(unsafe)` is safe here: this is a
-    /// set-once-at-launch reversal flag, resolved from the environment on first
-    /// access and only ever read afterward on the main actor (`observe` /
-    /// `enforce`) or from tests.
+    /// the daemon authoritative. Only the explicit string `"enforce"` selects
+    /// enforce mode — boolean-like values (`true`, `1`, `enabled`) remain in
+    /// `.shadow` so existing deployments that set the flag to enable shadow
+    /// observation do not silently switch to enforcement. `nonisolated(unsafe)`
+    /// is safe here: this is a set-once-at-launch reversal flag, resolved from
+    /// the environment on first access and only ever read afterward on the main
+    /// actor (`observe` / `enforce`) or from tests.
     nonisolated(unsafe) static var mode: Mode = {
         switch ProcessInfo.processInfo.environment["OBB_MISSION_AUTHORIZE_SHADOW"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() {
         case "off", "0", "false", "disabled":
             return .off
-        case "enforce", "1", "true", "enabled":
+        case "enforce":
             return .enforce
         default:
             return .shadow
@@ -317,23 +320,18 @@ enum MissionRemoteAuthorizationShadow {
     /// The authoritative enforcement verdict derived from a divergence signal.
     /// Pure and synchronous so every branch is table-testable.
     ///
-    /// In enforce mode the daemon's verdict governs using the existing
-    /// permissiveness ranking:
-    ///   - `.agree` → `.allow` (both authorities reached the same verdict)
-    ///   - `.daemonStricter` → `.deny` (daemon permits LESS; it is authoritative)
-    ///   - `.guiStricter` → `.allow` (daemon permits MORE; it is authoritative,
-    ///     so we loosen to the daemon's permissiveness)
-    ///   - `.daemonUnreachable` → `.deny` (FAIL-CLOSED: an unreachable daemon
-    ///     must NEVER allow a remote mission, regardless of the GUI's decision)
+    /// In enforce mode the daemon's **actual verdict** governs — not the
+    /// divergence kind. The mission may proceed only when the daemon's verdict
+    /// is `.authorized`; `.requiresApproval` and `.denied` both stop the
+    /// mission (the daemon did not authorize execution). An unreachable daemon
+    /// (nil verdict) is fail-closed `.deny`.
     static func enforce(
         signal: MissionAuthorizationDivergenceSignal
     ) -> MissionAuthorizationEnforcementVerdict {
-        switch signal.kind {
-        case .agree, .guiStricter:
-            return .allow
-        case .daemonStricter, .daemonUnreachable:
+        guard let daemonVerdict = signal.daemonVerdict else {
             return .deny
         }
+        return daemonVerdict == .authorized ? .allow : .deny
     }
 
     // MARK: Shadow orchestration (called from the GUI decision point)
@@ -562,9 +560,11 @@ enum MissionRemoteAuthorizationShadow {
     /// In `.off`/`.shadow` mode: observes (fire-and-forget telemetry) and
     /// returns the GUI's own decision (pause/persona-deny/proceed) — the GUI
     /// governs unchanged. In `.enforce` mode: queries the daemon, emits
-    /// telemetry, and returns the authoritative outcome — `.deny` stops the
-    /// mission before claim; `.proceed` bypasses GUI-only pauses/persona denials
-    /// (the guiStricter-loosen path).
+    /// telemetry, and returns the authoritative outcome — the mission proceeds
+    /// only when the daemon's actual verdict is `.authorized`; `.requiresApproval`
+    /// and `.denied` both stop the mission before claim. An unreachable daemon
+    /// is fail-closed `.deny`. When the daemon authorizes, GUI-only pauses and
+    /// persona denials are bypassed (the guiStricter-loosen path).
     @MainActor
     static func resolveTrustedDecision(
         ctx: ShadowContext,
