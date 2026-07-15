@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at `a91132e059`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, and launcher precedence are linked below. Accepted candidate run `29401347808` passed both release architectures and installed-package runtime checks. |
+| Remediation evidence | `codex/linux-parity-integration-final` at `1dad80cb2e`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, and Mercury viewer packaging are linked below. Accepted candidate run `29401347808` passed both release architectures and installed-package runtime checks before these later source commits. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
