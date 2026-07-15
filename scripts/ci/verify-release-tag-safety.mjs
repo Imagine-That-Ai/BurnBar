@@ -31,7 +31,7 @@ const ROOT =
 const WORKFLOWS = [
   {
     file: join(ROOT, ".github", "workflows", "deploy-production.yml"),
-    jobName: "deploy-functions",
+    jobName: "prepare-functions-deploy",
     resolveStepName: "Resolve release tag",
     label: "deploy-production",
   },
@@ -211,7 +211,9 @@ for (const wf of WORKFLOWS) {
 
   /* Resolve step must not be conditional */
   if (/^\s{8}if\s*:/mu.test(resolveStep)) {
-    fail(`[${label}] resolve step must not be conditional (runs in all dispatch modes)`);
+    fail(
+      `[${label}] resolve step must not be conditional (runs in all dispatch modes)`,
+    );
   }
 
   /* Env plumbing */
@@ -343,7 +345,9 @@ for (const wf of WORKFLOWS) {
   /* The deploy job(s) must check dry_run output to skip credentials */
   const allSteps = job.split("\n");
   const deployStepPattern = /Authenticate to Google Cloud/i;
-  const hasDeployCredStep = allSteps.some((line) => deployStepPattern.test(line));
+  const hasDeployCredStep = allSteps.some((line) =>
+    deployStepPattern.test(line),
+  );
   if (hasDeployCredStep) {
     /* deploy-production.yml: credentials are in the same job */
     requireIncludes(
@@ -409,9 +413,7 @@ if (prodPhase && cloudPhase && prodPhase !== cloudPhase) {
 
 /* ── Deploy-job dry_run gating for cloud-run (separate deploy job) ─────── */
 
-const cloudSource = stripYamlComments(
-  readFileSync(WORKFLOWS[1].file, "utf8"),
-);
+const cloudSource = stripYamlComments(readFileSync(WORKFLOWS[1].file, "utf8"));
 const cloudDeployJob = jobBlock(cloudSource, "deploy-hosted-mcp");
 if (cloudDeployJob) {
   requireIncludes(
@@ -420,6 +422,45 @@ if (cloudDeployJob) {
     "[deploy-cloud-run] deploy-hosted-mcp job must be gated on dry_run != 'true'",
   );
 }
+
+const productionSource = stripYamlComments(
+  readFileSync(WORKFLOWS[0].file, "utf8"),
+);
+const productionPrepareJob = jobBlock(
+  productionSource,
+  "prepare-functions-deploy",
+);
+const productionDeployJob = jobBlock(productionSource, "deploy-functions");
+requireIncludes(
+  productionPrepareJob,
+  'if [[ -n "${GITHUB_SHA:-}" && "$commit" != "$GITHUB_SHA" ]]; then',
+  "[deploy-production] release tag must match the workflow event commit",
+);
+requireNoPattern(
+  productionPrepareJob,
+  /(?:environment:\s*production|id-token:\s*write|secrets\.|google-github-actions\/auth)/u,
+  "[deploy-production] prepare-functions-deploy must not receive production credentials",
+);
+requireIncludes(
+  productionDeployJob,
+  "needs: prepare-functions-deploy",
+  "[deploy-production] deploy-functions must consume prepare-functions-deploy",
+);
+requireIncludes(
+  productionDeployJob,
+  "needs.prepare-functions-deploy.outputs.dry_run != 'true'",
+  "[deploy-production] deploy-functions must be skipped during dry-run",
+);
+requireIncludes(
+  productionDeployJob,
+  "sha256sum --check --strict SHA256SUMS",
+  "[deploy-production] deploy-functions must verify the immutable artifact checksum",
+);
+requireNoPattern(
+  productionDeployJob,
+  /actions\/checkout@/u,
+  "[deploy-production] credentialed deploy-functions must not check out repository code",
+);
 
 /* ── Attestation invariants ────────────────────────────────────────────── */
 
@@ -460,7 +501,10 @@ for (const wf of WORKFLOWS) {
     /* deploy-cloud-run: publish step is in cloud-run-dry-run-summary job, gated at job level */
     const summaryJob = jobBlock(source, "cloud-run-dry-run-summary");
     if (summaryJob) {
-      const summaryPublishStep = stepBlock(summaryJob, "Publish dry-run attestation");
+      const summaryPublishStep = stepBlock(
+        summaryJob,
+        "Publish dry-run attestation",
+      );
       if (summaryPublishStep) {
         requireIncludes(
           summaryJob,
@@ -468,7 +512,9 @@ for (const wf of WORKFLOWS) {
           `[${wf.label}] dry-run summary job must be gated on dry_run == 'true'`,
         );
       } else {
-        fail(`[${wf.label}] publish attestation step not found in cloud-run-dry-run-summary`);
+        fail(
+          `[${wf.label}] publish attestation step not found in cloud-run-dry-run-summary`,
+        );
       }
     } else {
       fail(`[${wf.label}] missing cloud-run-dry-run-summary job`);
@@ -486,13 +532,16 @@ for (const wf of WORKFLOWS) {
   );
   requireIncludes(
     source,
-    'release-dry-run-attestation.mjs verify',
+    "release-dry-run-attestation.mjs verify",
     `[${wf.label}] must call attestation verify mode before credentials`,
   );
 
   /* Verify must be gated on dry_run != true (only real deploys need verification) */
   if (wf.label === "deploy-production") {
-    const verifyStep = stepBlock(jobBlock(source, wf.jobName), "Verify dry-run attestations");
+    const verifyStep = stepBlock(
+      jobBlock(source, wf.jobName),
+      "Verify dry-run attestations",
+    );
     if (verifyStep) {
       requireIncludes(
         verifyStep,
@@ -543,11 +592,15 @@ for (const wf of WORKFLOWS) {
 /* ── Report ────────────────────────────────────────────────────────────── */
 
 if (failures.length > 0) {
-  console.error(`FAIL: ${failures.length} release-tag-safety invariant(s) violated:\n`);
+  console.error(
+    `FAIL: ${failures.length} release-tag-safety invariant(s) violated:\n`,
+  );
   for (const message of failures) {
     console.error(`  - ${message}`);
   }
   process.exit(1);
 }
 
-console.log("PASS: both deploy workflows enforce two-phase release tag safety with attestation.");
+console.log(
+  "PASS: both deploy workflows enforce two-phase release tag safety with attestation.",
+);

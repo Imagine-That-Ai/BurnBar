@@ -15,7 +15,13 @@
  */
 
 import { execFileSync, execSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  readFileSync,
+  mkdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,9 +95,9 @@ function extractResolveScript(workflowFile) {
   const source = readFileSync(workflowFile, "utf8");
   const resolveStep = source.indexOf("      - name: Resolve release tag\n");
   if (resolveStep === -1) throw new Error("Could not find resolve step");
-  const runMatch = source.slice(resolveStep).match(
-    /        run: \|\n((?:          .*\n|\n)*)/,
-  );
+  const runMatch = source
+    .slice(resolveStep)
+    .match(/        run: \|\n((?:          .*\n|\n)*)/);
   if (!runMatch) throw new Error("Could not extract run script");
   return runMatch[1].replace(/^          /gm, "");
 }
@@ -184,15 +190,35 @@ const FULL_SHA = mainSha;
     },
   });
   const output = readOutput(result.outputFile);
-  assert(
-    "dry-run at exact main SHA succeeds",
-    result.exitCode === 0,
-  );
+  assert("dry-run at exact main SHA succeeds", result.exitCode === 0);
   if (result.exitCode === 0) {
     assert("  emits correct tag", output.includes(`tag=${VALID_TAG}`));
     assert("  emits correct commit", output.includes(`commit=${FULL_SHA}`));
     assert("  emits dry_run=true", output.includes("dry_run=true"));
+    assert(
+      "  defaults to public production profile",
+      output.includes("domain_core_profile=public-production"),
+    );
   }
+}
+
+/* ── Unknown manual profile fails closed ── */
+{
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: VALID_TAG,
+      INPUT_DRY_RUN: "false",
+      INPUT_CANDIDATE_SHA: "",
+      INPUT_DOMAIN_CORE_PROFILE: "unsigned-test-profile",
+      REF_NAME: VALID_TAG,
+      GITHUB_REF: `refs/tags/${VALID_TAG}`,
+      GITHUB_SHA: FULL_SHA,
+    },
+  });
+  assert("unknown manual profile fails", result.exitCode !== 0);
 }
 
 /* ── Dry-run with mismatched SHA (stale): fails ── */
@@ -210,10 +236,7 @@ const FULL_SHA = mainSha;
       GITHUB_REF: "refs/heads/main",
     },
   });
-  assert(
-    "dry-run with stale/non-existent SHA fails",
-    result.exitCode !== 0,
-  );
+  assert("dry-run with stale/non-existent SHA fails", result.exitCode !== 0);
 }
 
 /* ── Dry-run with malformed SHA (not 40 hex): fails ── */
@@ -230,10 +253,7 @@ const FULL_SHA = mainSha;
       GITHUB_REF: "refs/heads/main",
     },
   });
-  assert(
-    "dry-run with malformed (short) SHA fails",
-    result.exitCode !== 0,
-  );
+  assert("dry-run with malformed (short) SHA fails", result.exitCode !== 0);
 }
 
 /* ── Dry-run with empty candidate_sha: fails ── */
@@ -250,10 +270,7 @@ const FULL_SHA = mainSha;
       GITHUB_REF: "refs/heads/main",
     },
   });
-  assert(
-    "dry-run with empty candidate_sha fails",
-    result.exitCode !== 0,
-  );
+  assert("dry-run with empty candidate_sha fails", result.exitCode !== 0);
 }
 
 /* ── Dry-run from a tag ref: fails ── */
@@ -275,10 +292,36 @@ const FULL_SHA = mainSha;
       GITHUB_SHA: FULL_SHA,
     },
   });
+  assert("dry-run from a tag ref fails", result.exitCode !== 0);
+}
+
+/* ── Manual rollback dispatch from the exact tag resolves rollback ── */
+{
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: VALID_TAG,
+      INPUT_DRY_RUN: "false",
+      INPUT_CANDIDATE_SHA: "",
+      INPUT_DOMAIN_CORE_PROFILE: "public-production-rollback",
+      REF_NAME: VALID_TAG,
+      GITHUB_REF: `refs/tags/${VALID_TAG}`,
+      GITHUB_SHA: FULL_SHA,
+    },
+  });
+  const output = readOutput(result.outputFile);
   assert(
-    "dry-run from a tag ref fails",
-    result.exitCode !== 0,
+    "manual rollback dispatch from exact tag succeeds",
+    result.exitCode === 0,
   );
+  if (result.exitCode === 0) {
+    assert(
+      "  emits rollback profile",
+      output.includes("domain_core_profile=public-production-rollback"),
+    );
+  }
 }
 
 /* ── Non-dry-run manual dispatch from non-tag ref: fails ── */
@@ -311,6 +354,7 @@ const FULL_SHA = mainSha;
       INPUT_TAG: VALID_TAG,
       INPUT_DRY_RUN: "false",
       INPUT_CANDIDATE_SHA: "",
+      INPUT_DOMAIN_CORE_PROFILE: "public-production",
       REF_NAME: VALID_TAG,
       GITHUB_REF: `refs/tags/${VALID_TAG}`,
       GITHUB_SHA: FULL_SHA,
@@ -324,6 +368,10 @@ const FULL_SHA = mainSha;
   if (result.exitCode === 0) {
     assert("  emits correct tag", output.includes(`tag=${VALID_TAG}`));
     assert("  emits dry_run=false", output.includes("dry_run=false"));
+    assert(
+      "  emits public production profile",
+      output.includes("domain_core_profile=public-production"),
+    );
   }
 }
 
@@ -337,19 +385,21 @@ const FULL_SHA = mainSha;
       INPUT_TAG: "",
       INPUT_DRY_RUN: "",
       INPUT_CANDIDATE_SHA: "",
+      INPUT_DOMAIN_CORE_PROFILE: "public-production-rollback",
       REF_NAME: VALID_TAG,
       GITHUB_REF: `refs/tags/${VALID_TAG}`,
       GITHUB_SHA: FULL_SHA,
     },
   });
   const output = readOutput(result.outputFile);
-  assert(
-    "tag push event resolves tag commit",
-    result.exitCode === 0,
-  );
+  assert("tag push event resolves tag commit", result.exitCode === 0);
   if (result.exitCode === 0) {
     assert("  emits correct tag", output.includes(`tag=${VALID_TAG}`));
     assert("  emits dry_run=false", output.includes("dry_run=false"));
+    assert(
+      "  tag push forces public production profile",
+      output.includes("domain_core_profile=public-production"),
+    );
   }
 }
 
@@ -368,7 +418,10 @@ const FULL_SHA = mainSha;
       GITHUB_SHA: "f".repeat(40),
     },
   });
-  assert("tag push rejects a mismatched workflow event SHA", result.exitCode !== 0);
+  assert(
+    "tag push rejects a mismatched workflow event SHA",
+    result.exitCode !== 0,
+  );
 }
 
 /* ── Dry-run with future tag that doesn't exist yet: succeeds ── */
@@ -411,10 +464,7 @@ const FULL_SHA = mainSha;
       GITHUB_REF: "refs/heads/main",
     },
   });
-  assert(
-    "dry-run with already-existing tag fails",
-    result.exitCode !== 0,
-  );
+  assert("dry-run with already-existing tag fails", result.exitCode !== 0);
 }
 
 /* ── Dry-run with non-SemVer tag: fails ── */
@@ -431,10 +481,7 @@ const FULL_SHA = mainSha;
       GITHUB_REF: "refs/heads/main",
     },
   });
-  assert(
-    "dry-run with non-SemVer tag fails",
-    result.exitCode !== 0,
-  );
+  assert("dry-run with non-SemVer tag fails", result.exitCode !== 0);
 }
 
 /* ── Static gate also passes on these workflows ── */

@@ -11,6 +11,7 @@ let outputPath = resolve(repoRoot, "firebase-hosting.ci.json");
 let manifestPath = "";
 let mode = "hosting";
 let check = false;
+let portableFunctionsSource = false;
 
 function usage() {
   console.error(
@@ -22,6 +23,7 @@ function usage() {
       "  --output <path>     CI config to write (default: firebase-hosting.ci.json)",
       "  --manifest <path>   Public-dir manifest path for hosting mode",
       "  --mode <mode>       hosting | functions | firestore (default: hosting)",
+      '  --portable-functions-source  Emit artifact-relative functions.source="functions"',
       "  --check             Verify the generated config contains no predeploy hooks",
     ].join("\n"),
   );
@@ -39,6 +41,8 @@ for (let index = 0; index < args.length; index += 1) {
     mode = args[++index] ?? "";
   } else if (arg === "--check") {
     check = true;
+  } else if (arg === "--portable-functions-source") {
+    portableFunctionsSource = true;
   } else if (arg === "--help" || arg === "-h") {
     usage();
     process.exit(0);
@@ -49,7 +53,12 @@ for (let index = 0; index < args.length; index += 1) {
 
 const supportedModes = new Set(["hosting", "functions", "firestore"]);
 if (!supportedModes.has(mode)) {
-  throw new Error(`Unsupported mode ${mode}; expected one of ${[...supportedModes].join(", ")}`);
+  throw new Error(
+    `Unsupported mode ${mode}; expected one of ${[...supportedModes].join(", ")}`,
+  );
+}
+if (portableFunctionsSource && mode !== "functions") {
+  throw new Error("--portable-functions-source requires --mode functions");
 }
 
 function readJson(path) {
@@ -62,7 +71,9 @@ function readJson(path) {
 
 function assertNoPredeploy(value, label) {
   if (Array.isArray(value)) {
-    value.forEach((entry, index) => assertNoPredeploy(entry, `${label}[${index}]`));
+    value.forEach((entry, index) =>
+      assertNoPredeploy(entry, `${label}[${index}]`),
+    );
     return;
   }
   if (!value || typeof value !== "object") return;
@@ -92,7 +103,11 @@ function copyDefined(source, keys) {
 }
 
 function resolveRepoFilePath(value, label) {
-  if (typeof value !== "string" || value.trim() !== value || value.length === 0) {
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    value.length === 0
+  ) {
     throw new Error(`${label} must be a non-empty trimmed path`);
   }
   const resolved = resolve(repoRoot, value);
@@ -103,7 +118,11 @@ function resolveRepoFilePath(value, label) {
 }
 
 function resolveRepoDirectoryPath(value, label) {
-  if (typeof value !== "string" || value.trim() !== value || value.length === 0) {
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    value.length === 0
+  ) {
     throw new Error(`${label} must be a non-empty trimmed path`);
   }
   const resolved = resolve(repoRoot, value);
@@ -116,7 +135,9 @@ function resolveRepoDirectoryPath(value, label) {
 function buildHostingConfig(firebaseJson) {
   const hosting = firebaseJson.hosting;
   if (!Array.isArray(hosting)) {
-    throw new Error("firebase.json hosting must be an array for CI hosting deploys");
+    throw new Error(
+      "firebase.json hosting must be an array for CI hosting deploys",
+    );
   }
 
   const expectedPublicDirs = new Map([
@@ -154,7 +175,9 @@ function buildHostingConfig(firebaseJson) {
     requirePlainObject(entry, "hosting entry");
     for (const key of Object.keys(entry)) {
       if (!allowedHostingKeys.has(key)) {
-        throw new Error(`hosting target ${entry.target ?? "<missing>"} has unsupported key ${key}`);
+        throw new Error(
+          `hosting target ${entry.target ?? "<missing>"} has unsupported key ${key}`,
+        );
       }
     }
 
@@ -194,21 +217,51 @@ function buildHostingConfig(firebaseJson) {
 }
 
 function buildFunctionsConfig(firebaseJson) {
-  const functions = requirePlainObject(firebaseJson.functions, "firebase.json functions");
-  const allowedKeys = new Set(["source", "runtime", "ignore", "codebase", "predeploy"]);
+  const functions = requirePlainObject(
+    firebaseJson.functions,
+    "firebase.json functions",
+  );
+  const allowedKeys = new Set([
+    "source",
+    "runtime",
+    "ignore",
+    "codebase",
+    "predeploy",
+  ]);
   for (const key of Object.keys(functions)) {
     if (!allowedKeys.has(key)) {
       throw new Error(`functions config has unsupported key ${key}`);
     }
   }
   const config = {
-    functions: copyDefined(functions, ["source", "runtime", "ignore", "codebase"]),
+    functions: copyDefined(functions, [
+      "source",
+      "runtime",
+      "ignore",
+      "codebase",
+    ]),
   };
   if (config.functions.source !== undefined) {
-    config.functions.source = resolveRepoDirectoryPath(
+    const absoluteSource = resolveRepoDirectoryPath(
       config.functions.source,
       "functions.source",
     );
+    if (portableFunctionsSource) {
+      if (config.functions.source !== "functions") {
+        throw new Error(
+          '--portable-functions-source requires canonical functions.source="functions"',
+        );
+      }
+      const stagedSource = resolve(dirname(outputPath), "functions");
+      if (!existsSync(stagedSource) || !statSync(stagedSource).isDirectory()) {
+        throw new Error(
+          `portable functions.source does not resolve beside the output config: ${stagedSource}`,
+        );
+      }
+      config.functions.source = "functions";
+    } else {
+      config.functions.source = absoluteSource;
+    }
   }
   assertNoPredeploy(config, "firebase-functions.ci.json");
   return { config, manifest: { functionsSource: config.functions.source } };
@@ -217,7 +270,10 @@ function buildFunctionsConfig(firebaseJson) {
 function buildFirestoreConfig(firebaseJson) {
   const config = {};
   if (firebaseJson.firestore !== undefined) {
-    const firestore = requirePlainObject(firebaseJson.firestore, "firebase.json firestore");
+    const firestore = requirePlainObject(
+      firebaseJson.firestore,
+      "firebase.json firestore",
+    );
     config.firestore = { ...firestore };
     if (config.firestore.rules !== undefined) {
       config.firestore.rules = resolveRepoFilePath(
@@ -233,14 +289,22 @@ function buildFirestoreConfig(firebaseJson) {
     }
   }
   if (firebaseJson.storage !== undefined) {
-    const storage = requirePlainObject(firebaseJson.storage, "firebase.json storage");
+    const storage = requirePlainObject(
+      firebaseJson.storage,
+      "firebase.json storage",
+    );
     config.storage = { ...storage };
     if (config.storage.rules !== undefined) {
-      config.storage.rules = resolveRepoFilePath(config.storage.rules, "storage.rules");
+      config.storage.rules = resolveRepoFilePath(
+        config.storage.rules,
+        "storage.rules",
+      );
     }
   }
   if (!config.firestore && !config.storage) {
-    throw new Error("firebase.json must contain firestore or storage config for firestore mode");
+    throw new Error(
+      "firebase.json must contain firestore or storage config for firestore mode",
+    );
   }
   assertNoPredeploy(config, "firebase-firestore.ci.json");
   return {
@@ -272,7 +336,9 @@ if (check) {
   assertNoPredeploy(generated, outputPath);
 }
 
-console.log(`Wrote ${mode} Firebase CI config without predeploy hooks: ${outputPath}`);
+console.log(
+  `Wrote ${mode} Firebase CI config without predeploy hooks: ${outputPath}`,
+);
 if (manifestPath) {
   console.log(`Wrote ${mode} Firebase CI manifest: ${manifestPath}`);
 }
