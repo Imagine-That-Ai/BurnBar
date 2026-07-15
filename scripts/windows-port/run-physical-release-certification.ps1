@@ -40,6 +40,13 @@ function Resolve-FullPath([string] $Path) {
     return [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Path))
 }
 
+function Normalize-Architecture([string] $Value) {
+    $normalized = ([string]$Value).ToLowerInvariant() -replace '[^a-z0-9]', ''
+    if ($normalized -in @('x64', 'amd64', 'x8664')) { return 'x64' }
+    if ($normalized -in @('arm64', 'aarch64')) { return 'arm64' }
+    return $normalized
+}
+
 function Write-JsonFile([string] $Path, [object] $Value) {
     $parent = Split-Path -Parent $Path
     if (-not [string]::IsNullOrWhiteSpace($parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
@@ -562,16 +569,19 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
             -not [string]::Equals([string]$candidateAttestation.model, [string]$candidate.device.model, [System.StringComparison]::OrdinalIgnoreCase) -or
             -not [string]::Equals([string]$candidateAttestation.assetTag, $candidateAssetTag, [System.StringComparison]::OrdinalIgnoreCase) -or
             -not [string]::Equals([string]$candidateAttestation.assetTagSource, $candidateAssetTagSource, [System.StringComparison]::Ordinal) -or
-            -not [string]::Equals([string]$candidateAttestation.architecture, [string]$candidate.device.architecture, [System.StringComparison]::OrdinalIgnoreCase) -or
+            (Normalize-Architecture ([string]$candidateAttestation.architecture)) -ne (Normalize-Architecture ([string]$candidate.device.architecture)) -or
             $attestedIdentity -match $script:VirtualHostIdentityPattern) {
             continue
         }
         if ($performanceArchitectureByGate.ContainsKey($candidateGate)) {
-            if ($candidate.artifact.architecture -ne $performanceArchitectureByGate[$candidateGate] -or
-                $candidate.device.architecture -ne $performanceArchitectureByGate[$candidateGate]) { continue }
+            $expectedPerformanceArchitecture = Normalize-Architecture $performanceArchitectureByGate[$candidateGate]
+            if ((Normalize-Architecture ([string]$candidate.artifact.architecture)) -ne $expectedPerformanceArchitecture -or
+                (Normalize-Architecture ([string]$candidate.device.architecture)) -ne $expectedPerformanceArchitecture) { continue }
+            if ($expectedPerformanceArchitecture -eq (Normalize-Architecture $Platform) -and
+                $candidate.artifact.sha256 -ne $artifact.sha256) { continue }
         } elseif ($candidate.artifact.sha256 -ne $artifact.sha256 -or $candidate.artifact.architecture -ne $artifact.architecture) {
             continue
-        } elseif (-not [string]::Equals([string]$candidate.device.architecture, [string]$candidate.artifact.architecture, [System.StringComparison]::OrdinalIgnoreCase)) {
+        } elseif ((Normalize-Architecture ([string]$candidate.device.architecture)) -ne (Normalize-Architecture ([string]$candidate.artifact.architecture))) {
             continue
         }
         $candidateFiles = @()

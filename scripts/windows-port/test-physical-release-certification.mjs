@@ -25,7 +25,7 @@ assert.match(script, /Hardware attestation assetTagSource does not match/);
 assert.match(script, /Amazon EC2\|Google Compute Engine\|HVM domU\|\\bXen\\b/);
 assert.match(script, /\$script:AllowedAssetTagSources -notcontains \$candidateAssetTagSource/);
 assert.match(script, /\$candidateDeviceIdentity -match \$script:VirtualHostIdentityPattern/);
-assert.match(script, /\$candidate\.device\.architecture -ne \$performanceArchitectureByGate/);
+assert.match(script, /Normalize-Architecture \(\[string\]\$candidate\.device\.architecture\)/);
 assert.match(
   script,
   /system asset tag\|chassis asset tag/,
@@ -56,6 +56,9 @@ assert.match(windowsFastWorkflow, /Language\.Parser\]::ParseFile/);
 
 assert.match(script, /IsPathRooted\(\$Path\)/);
 assert.match(script, /function ConvertTo-WindowsProcessArgument/);
+assert.match(script, /function Normalize-Architecture/);
+assert.match(script, /'x64', 'amd64', 'x8664'/);
+assert.match(script, /'arm64', 'aarch64'/);
 assert.match(script, /if \(\$null -ne \$startInfo\.PSObject\.Properties\['ArgumentList'\]\)/);
 assert.doesNotMatch(script, /if \(\$null -ne \$startInfo\.ArgumentList\)/);
 assert.match(script, /\$startInfo\.Arguments =/);
@@ -118,6 +121,10 @@ assert.match(script, /SUPPLEMENTAL-LIVE-RECEIPT-MISSING/);
 assert.match(script, /\$supplementalGateIds = @\('accessibility-display'\)/);
 assert.match(script, /\$supplementalGateIds -notcontains/);
 assert.match(script, /\$performanceArchitectureByGate\.ContainsKey\(\$candidateGate\)/);
+assert.match(
+  script,
+  /\$expectedPerformanceArchitecture -eq \(Normalize-Architecture \$Platform\)[\s\S]*\$candidate\.artifact\.sha256 -ne \$artifact\.sha256/,
+);
 assert.match(script, /\$candidate\.artifact\.sha256 -ne \$artifact\.sha256/);
 assert.match(script, /Supplemental evidence hash mismatch/);
 assert.match(script, /\$candidate\.device\.hardwareAttestation/);
