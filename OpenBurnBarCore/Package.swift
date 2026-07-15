@@ -691,6 +691,12 @@ let openBurnBarKernelPlatformExcludes: [String] = []
 let openBurnBarKernelModelsExcludes: [String] = []
 let openBurnBarKernelCryptoExcludes: [String] = []
 let openBurnBarKernelContractsExcludes: [String] = []
+let openBurnBarKernelCryptoTestsExcludes: [String] = [
+    "CloudVaultCryptoTests.swift",
+    "EscrowDeviceSafetyCodeTests.swift",
+    "HermesRatchetCryptoTests.swift",
+    "HermesRelayCryptoSealKeyAADTests.swift"
+]
 // Phase-2 WS-B packet B1: off-Apple exclusions for OpenBurnBarKernelModelsTests.
 // CLITerminalSessionSupervisorTests exercises the Apple-only
 // OpenBurnBarKernelModels.CLITerminalSessionSupervisor, so it stays out of the Linux
@@ -820,6 +826,7 @@ let openBurnBarKernelPlatformExcludes: [String] = []
 let openBurnBarKernelModelsExcludes: [String] = []
 let openBurnBarKernelCryptoExcludes: [String] = []
 let openBurnBarKernelContractsExcludes: [String] = []
+let openBurnBarKernelCryptoTestsExcludes: [String] = []
 // Phase-2 WS-B packet B1: Apple-side (empty) default for OpenBurnBarKernelModelsTests'
 // off-Apple exclude seam. On Apple CLITerminalSessionSupervisorTests compiles.
 let openBurnBarKernelModelsTestsExcludes: [String] = []
@@ -1563,6 +1570,7 @@ let firstPartyTargetsBase: [Target] = [
             // BurnBarHpkeV3CrossPlatformVectorTests), but any file living inside a
             // SwiftPM target dir must be declared or SwiftPM fails with "unhandled
             // files"; `.process("Fixtures")` satisfies that rule.
+            exclude: openBurnBarKernelCryptoTestsExcludes,
             resources: [
                 .process("Fixtures")
             ],
