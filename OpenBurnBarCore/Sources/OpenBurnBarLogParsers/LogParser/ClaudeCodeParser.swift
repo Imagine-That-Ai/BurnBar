@@ -128,7 +128,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
                         parseCache.fileEntries[cacheKey] = ClaudeCodeCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
-                            conversation: nil
+                            conversation: options.includeConversationBodies ? parsed?.conversation : nil
                         )
                         cacheMutated = true
                     }
@@ -451,7 +451,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             parseCache.fileEntries[cacheKey] = ClaudeCodeCacheEntry(
                 signature: signature,
                 usage: transient.usage,
-                conversation: nil
+                conversation: transient.conversation
             )
             cacheMutated = true
         }
