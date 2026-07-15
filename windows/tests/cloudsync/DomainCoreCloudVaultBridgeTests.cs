@@ -197,6 +197,57 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
         }
 
         [Fact]
+        public void ShadowEvidence_OperationLoadFailureRetainsReadableLoadedIdentity()
+        {
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "shadow");
+            DomainCoreCloudVaultShadowComparison? comparison = null;
+            DomainCoreCloudVaultShadowEvidence.Configure(value => comparison = value);
+            try
+            {
+                var result = DomainCoreCloudVaultBridge.Apply(
+                    "cloudvault_sha256",
+                    () => throw new DllNotFoundException("forced native load failure"),
+                    () => "legacy-result",
+                    StringComparer.Ordinal.Equals);
+
+                Assert.Equal("legacy-result", result);
+                Assert.NotNull(comparison);
+                Assert.Equal("native_error", comparison.MismatchCategory);
+                Assert.False(string.IsNullOrWhiteSpace(comparison.LoadedCoreVersion));
+                Assert.Equal(3u, comparison.LoadedCoreAbiVersion);
+                Assert.Matches("^[0-9a-f]{64}$", comparison.LoadedCoreSourceSha256);
+            }
+            finally
+            {
+                DomainCoreCloudVaultShadowEvidence.Configure(null);
+            }
+        }
+
+        [Fact]
+        public void ShadowEvidence_MatchingCallCarriesCompleteLoadedIdentity()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "shadow");
+            DomainCoreCloudVaultShadowComparison? comparison = null;
+            DomainCoreCloudVaultShadowEvidence.Configure(value => comparison = value);
+            try
+            {
+                _ = DomainCoreCloudVaultBridge.Sha256Hex(Array.Empty<byte>(), () =>
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+
+                Assert.NotNull(comparison);
+                Assert.Equal("match", comparison.Outcome);
+                Assert.False(string.IsNullOrWhiteSpace(comparison.LoadedCoreVersion));
+                Assert.Equal(3u, comparison.LoadedCoreAbiVersion);
+                Assert.Matches("^[0-9a-f]{64}$", comparison.LoadedCoreSourceSha256!);
+            }
+            finally
+            {
+                DomainCoreCloudVaultShadowEvidence.Configure(null);
+            }
+        }
+
+        [Fact]
         public void RustMode_MapsInvalidVaultKeyToFailClosedError()
         {
             if (!NativeRequired()) return;
