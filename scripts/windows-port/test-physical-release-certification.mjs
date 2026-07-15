@@ -80,7 +80,11 @@ assert.match(script, /Artifact manifest sourceCommit must be a full 40-character
 assert.match(script, /Artifact manifest source commit mismatch/);
 assert.match(script, /source = \$script:SourceIdentity/);
 assert.doesNotMatch(script, /source = \[ordered\]@\{ commitSha = Get-CommitSha; dirtyTree = Test-DirtyTree \}/);
-assert.match(script, /\$script:HardwareAttestationSha256 = Get-Sha256 \$attestationPath/);
+assert.match(script, /\$script:HardwareAttestationSha256 = Get-Sha256 \$attestationEvidencePath/);
+assert.match(script, /evidence\/hardware-attestation\.json/);
+assert.match(script, /Copy-Item -LiteralPath \$attestationPath -Destination \$attestationEvidencePath/);
+assert.match(script, /evidencePath = \[string\]\$script:HardwareAttestationEvidencePath/);
+assert.match(script, /\$receiptEvidenceFiles \+= \[ordered\]@\{/);
 assert.doesNotMatch(script, /\$script:HardwareAttestation\.sha256\s*=/);
 assert.match(script, /ArtifactManifestPath/);
 assert.match(script, /signatureResult/);
@@ -116,6 +120,12 @@ assert.match(script, /\$supplementalGateIds -notcontains/);
 assert.match(script, /\$performanceArchitectureByGate\.ContainsKey\(\$candidateGate\)/);
 assert.match(script, /\$candidate\.artifact\.sha256 -ne \$artifact\.sha256/);
 assert.match(script, /Supplemental evidence hash mismatch/);
+assert.match(script, /\$candidate\.device\.hardwareAttestation/);
+assert.match(script, /Supplemental hardware attestation hash mismatch/);
+assert.match(script, /\$candidateAttestation\.physicalHardware -ne \$true/);
+assert.match(script, /\$candidateAttestation\.assetTagSource/);
+assert.match(script, /\$attestationCapturedAt -lt \$receiptStartedAt\.AddHours\(-24\)/);
+assert.match(script, /\$candidate\.device\.hardwareAttestation\.evidencePath = \$candidateAttestationDestinationRelative/);
 assert.match(
   script,
   /Get-Sha256 \$sourcePath[\s\S]*Supplemental evidence hash mismatch[\s\S]*Copy-Item -LiteralPath \$sourcePath/,

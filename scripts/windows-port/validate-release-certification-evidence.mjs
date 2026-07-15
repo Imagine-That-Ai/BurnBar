@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 export const BUNDLE_SCHEMA = "openburnbar.windows.release-certification-bundle.v1";
 export const RECEIPT_SCHEMA = "openburnbar.windows.release-certification-receipt.v1";
+export const HARDWARE_ATTESTATION_SCHEMA = "openburnbar.windows.physical-hardware-attestation.v1";
 export const CHECKSUM_FILE = "SHA256SUMS";
 export const REQUIRED_GATE_IDS = [
   "local-automated-checks",
@@ -36,6 +37,7 @@ const PHYSICAL_ASSET_TAG_SOURCES = new Set([
 ]);
 const VIRTUAL_HOST_IDENTITY_PATTERN =
   /(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V|Amazon EC2|Google Compute Engine|HVM domU|\bXen\b|OpenStack|Bochs|BHYVE|DigitalOcean)/i;
+const HARDWARE_ATTESTATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const REQUIRED_RECEIPT_FIELDS = [
   "schema",
   "status",
@@ -200,6 +202,97 @@ function checkDevice(receipt, errors, label) {
   }
 }
 
+function checkPhysicalHardwareAttestation(receipt, bundleDir, errors, label) {
+  if (!PHYSICAL_GATES.has(receipt.gate) || receipt.status !== "PASS") return;
+
+  const metadata = receipt.device?.hardwareAttestation;
+  if (!isRecord(metadata)) {
+    errors.push(`${label}: physical PASS requires device.hardwareAttestation`);
+    return;
+  }
+  for (const field of ["schema", "operator", "assetTag", "assetTagSource", "evidencePath", "sha256"]) {
+    if (typeof metadata[field] !== "string" || metadata[field].trim().length === 0) {
+      errors.push(`${label}: physical PASS requires device.hardwareAttestation.${field}`);
+    }
+  }
+  if (metadata.schema !== HARDWARE_ATTESTATION_SCHEMA) {
+    errors.push(`${label}: device.hardwareAttestation.schema is unsupported`);
+  }
+  if (!/^[a-f0-9]{64}$/.test(metadata.sha256 ?? "")) {
+    errors.push(`${label}: device.hardwareAttestation.sha256 must be a lowercase SHA-256`);
+  }
+  if (metadata.assetTag !== receipt.device?.assetTag) {
+    errors.push(`${label}: device.hardwareAttestation.assetTag does not match device.assetTag`);
+  }
+  if (metadata.assetTagSource !== receipt.device?.assetTagSource) {
+    errors.push(`${label}: device.hardwareAttestation.assetTagSource does not match device.assetTagSource`);
+  }
+
+  const matchingEvidence = asArray(receipt.evidence?.files).filter(
+    (file) => isRecord(file) && file.path === metadata.evidencePath,
+  );
+  if (matchingEvidence.length !== 1) {
+    errors.push(`${label}: hardware attestation must reference exactly one evidence.files entry`);
+    return;
+  }
+  if (matchingEvidence[0].sha256 !== metadata.sha256) {
+    errors.push(`${label}: hardware attestation evidence hash does not match device metadata`);
+    return;
+  }
+  const path = evidencePath(bundleDir, matchingEvidence[0]);
+  if (!path || !existsSync(path) || !lstatSync(path).isFile()) return;
+
+  const attestation = readJson(path, errors, `${label}: hardware attestation`);
+  if (!attestation) return;
+  if (attestation.schema !== HARDWARE_ATTESTATION_SCHEMA) {
+    errors.push(`${label}: hardware attestation schema is unsupported`);
+  }
+  if (attestation.physicalHardware !== true) {
+    errors.push(`${label}: hardware attestation must assert physicalHardware=true`);
+  }
+  for (const field of ["operator", "manufacturer", "model", "assetTag", "assetTagSource", "architecture", "capturedAtUtc"]) {
+    if (typeof attestation[field] !== "string" || attestation[field].trim().length === 0) {
+      errors.push(`${label}: hardware attestation.${field} is required`);
+    }
+  }
+  const capturedAt = Date.parse(attestation.capturedAtUtc ?? "");
+  if (!Number.isFinite(capturedAt)) {
+    errors.push(`${label}: hardware attestation.capturedAtUtc is invalid`);
+  } else {
+    const receiptStartedAt = Date.parse(receipt.time?.startedAtUtc ?? "");
+    const receiptEndedAt = Date.parse(receipt.time?.endedAtUtc ?? "");
+    if (
+      Number.isFinite(receiptStartedAt) &&
+      Number.isFinite(receiptEndedAt) &&
+      (capturedAt > receiptEndedAt || capturedAt < receiptStartedAt - HARDWARE_ATTESTATION_MAX_AGE_MS)
+    ) {
+      errors.push(`${label}: hardware attestation is outside the allowed receipt time window`);
+    }
+  }
+  for (const field of ["manufacturer", "model", "assetTag"]) {
+    if (
+      typeof attestation[field] === "string" &&
+      typeof receipt.device?.[field] === "string" &&
+      attestation[field].trim().toLowerCase() !== receipt.device[field].trim().toLowerCase()
+    ) {
+      errors.push(`${label}: hardware attestation.${field} does not match device.${field}`);
+    }
+  }
+  if (attestation.assetTagSource !== receipt.device?.assetTagSource) {
+    errors.push(`${label}: hardware attestation.assetTagSource does not match device.assetTagSource`);
+  }
+  if (normalizeArchitecture(attestation.architecture) !== normalizeArchitecture(receipt.device?.architecture)) {
+    errors.push(`${label}: hardware attestation architecture does not match device architecture`);
+  }
+  if (attestation.operator !== metadata.operator) {
+    errors.push(`${label}: hardware attestation operator does not match device metadata`);
+  }
+  const attestedIdentity = `${attestation.manufacturer ?? ""} ${attestation.model ?? ""}`.trim();
+  if (VIRTUAL_HOST_IDENTITY_PATTERN.test(attestedIdentity)) {
+    errors.push(`${label}: hardware attestation identity looks virtualized`);
+  }
+}
+
 function checkBlocker(receipt, errors, label) {
   if (receipt.status === "BLOCKED" || receipt.status === "NOT_RUN") {
     if (!isRecord(receipt.blocker)) {
@@ -241,6 +334,7 @@ export function validateReceipt(receipt, options = {}) {
 
   checkArtifact(receipt, errors, label);
   checkDevice(receipt, errors, label);
+  checkPhysicalHardwareAttestation(receipt, bundleDir, errors, label);
 
   if (!isRecord(receipt.protocol)) {
     errors.push(`${label}: protocol is required`);
