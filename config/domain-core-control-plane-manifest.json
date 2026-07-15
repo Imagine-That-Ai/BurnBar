@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "files": {
     ".github/workflows/domain-core-promotion-proof.yml": "3b1cb4e128df224bde51993972e17d865eb9815a5afc21030617df8cd331b596",
-    ".github/workflows/domain-core.yml": "ec092f8b48121ebf22055372a3053e5cbedf23875f3dba54f5eece4d3f794c31",
+    ".github/workflows/domain-core.yml": "02e5e68eae16658845c78947996b51751e147906957db00cbbe7dd335c4e3b0e",
     "OpenBurnBarCore/Package.swift": "47a9ab474dd4e93eccaf6c9609fd9946a1e2e655acec396aaa8f49306cc40d38",
     "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift": "429cc803f4c2ee376e8e3cb6e95034c2be906d3aa278ef55cce9337cddecfab0",
     "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift": "13883ec1178f01412ae1c0465e2586d640b88e22d61ecfb29a2e897f2e1e068d",
@@ -43,7 +43,7 @@
     "scripts/ci/verify-domain-core-protected-attestation.mjs": "6d04ab588744b069bbc2bd89548008136b1698da8daf5d8b8582b09ebdb6e1da",
     "scripts/ci/verify-domain-core-protected-attestation.test.mjs": "981a8e2a5bab63a7fa6742f9673d479dcbc952e76fb0370386b36718716d2104",
     "scripts/ci/verify-domain-core-rollback.mjs": "0237d4b9e26ed82fdb65feb701f8f71b9e8f963422f76c9f27bbacddeb1bbed2",
-    "scripts/ci/verify-domain-core-workflows.test.mjs": "8f01e7f90546849fe6aa9e96988dbda37660b04e87e12a4e6c8adb228193328b",
+    "scripts/ci/verify-domain-core-workflows.test.mjs": "f2169ba3bb2c84e70b13bb12f9a2599d6e0a834d8f0411693fa3d490d17c5adb",
     "scripts/lib/domain-core-artifact-profile.mjs": "5bf898f306494855c9e8256218b49702a3cd83b23dcdd2e2d47a2b8db8b530cc",
     "scripts/lib/domain-core-artifact-profile.test.mjs": "e894020c9dfbd76c87c12999fef62daca6c28f0daf56655cec0a3909d2a7e72f",
     "scripts/lib/domain-core-build-profile.mjs": "dc1f999e240c7900610e5e327d43fe49127c7e67d50ca89aef20ac1ecf79da5e",

@@ -962,6 +962,9 @@ jobs:
           python3 scripts/ci/domain-core-union-gate.py \
             --check-provenance swift xcframework \
             2>&1 | tee "$RUNNER_TEMP/swift-artifact-provenance.log"
+          printf '%s\n' \
+            'swift and xcframework provenance verified' \
+            >> "$RUNNER_TEMP/swift-artifact-provenance.log"
 
       - name: Emit Apple artifact proof fragment
         run: >-
