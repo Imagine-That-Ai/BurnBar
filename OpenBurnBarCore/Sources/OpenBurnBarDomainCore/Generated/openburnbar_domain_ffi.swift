@@ -4451,6 +4451,13 @@ public func pensieveDeterministicEmbedAndCloak(text: String, dimensions: UInt32,
     )
 })
 }
+public func pensieveL2Normalize(vector: [Double])throws  -> [Double] {
+    return try  FfiConverterSequenceDouble.lift(try rustCallWithError(FfiConverterTypePensieveVectorFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize(
+        FfiConverterSequenceDouble.lower(vector),$0
+    )
+})
+}
 public func pensieveVectorCloak(vector: [Double], vaultKey: Data, modelVersion: String)throws  -> [Double] {
     return try  FfiConverterSequenceDouble.lift(try rustCallWithError(FfiConverterTypePensieveVectorFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak(
@@ -4652,6 +4659,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak() != 19070) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize() != 26005) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak() != 60626) {

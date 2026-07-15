@@ -34,6 +34,21 @@ def test_production_package_identity_and_opaque_project_id_fixture() -> None:
     assert adapter.project_memory_doc_id(fixture["unicode"]["projectSlug"], key) == fixture["unicode"]["projectDocumentID"]
 
 
+def test_production_binding_ignores_another_consumers_global_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = json.loads((FIXTURE_DIR / "opaque-identifiers-kat.json").read_text())
+    key = bytes.fromhex(fixture["vaultKeyHex"])
+    monkeypatch.setitem(
+        sys.modules,
+        "openburnbar_domain_ffi",
+        SimpleNamespace(__file__="/untrusted/other-consumer/openburnbar_domain_ffi.py"),
+    )
+    assert _rust().project_memory_doc_id(fixture["projectMemory"]["slug"], key) == fixture[
+        "projectMemory"
+    ]["documentID"]
+
+
 def test_aad_and_fixed_keyed_hash_canonical_fixtures() -> None:
     fixture = json.loads((FIXTURE_DIR / "cloudvault-deterministic-kat.json").read_text())
     adapter = _rust()

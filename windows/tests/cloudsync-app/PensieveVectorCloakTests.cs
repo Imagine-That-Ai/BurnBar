@@ -4,6 +4,13 @@ using Xunit;
 
 namespace OpenBurnBar.App.CloudSync.Tests;
 
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class PensieveVectorDomainCoreCollection
+{
+    public const string Name = "Pensieve vector domain core";
+}
+
+[Collection(PensieveVectorDomainCoreCollection.Name)]
 public sealed class PensieveVectorCloakTests
 {
     private static readonly byte[] Key = Enumerable.Repeat((byte)0x42, 32).ToArray();

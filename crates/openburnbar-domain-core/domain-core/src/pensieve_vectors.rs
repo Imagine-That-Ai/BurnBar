@@ -24,6 +24,24 @@ pub enum PensieveVectorError {
     DerivationFailure,
 }
 
+pub fn l2_normalize(vector: &[f64]) -> Result<Vec<f64>, PensieveVectorError> {
+    if vector.is_empty() {
+        return Ok(Vec::new());
+    }
+    validate_vector(vector)?;
+
+    let norm = vector
+        .iter()
+        .map(|coordinate| coordinate * coordinate)
+        .sum::<f64>()
+        .sqrt();
+    if norm == 0.0 {
+        return Ok(vector.to_vec());
+    }
+
+    Ok(vector.iter().map(|coordinate| coordinate / norm).collect())
+}
+
 pub fn cloak(
     vector: &[f64],
     vault_key: &[u8],
@@ -109,17 +127,9 @@ pub fn deterministic_embed(
         accumulator[index] += if digest[2] & 1 == 0 { 1.0 } else { -1.0 };
     }
     prepared.zeroize();
-    let norm = accumulator
-        .iter()
-        .map(|value| value * value)
-        .sum::<f64>()
-        .sqrt();
-    if norm != 0.0 {
-        for coordinate in &mut accumulator {
-            *coordinate /= norm;
-        }
-    }
-    Ok(accumulator)
+    let normalized = l2_normalize(&accumulator);
+    accumulator.zeroize();
+    normalized
 }
 
 pub fn deterministic_embed_and_cloak(
@@ -143,12 +153,7 @@ fn validate_inputs(
     if vault_key.len() != 32 {
         return Err(PensieveVectorError::InvalidKeyLength);
     }
-    if vector.is_empty()
-        || vector.len() > MAX_VECTOR_DIMENSIONS
-        || vector.iter().any(|coordinate| !coordinate.is_finite())
-    {
-        return Err(PensieveVectorError::InvalidVector);
-    }
+    validate_vector(vector)?;
     if model_version.is_empty()
         || model_version.len() > MAX_MODEL_VERSION_BYTES
         || !model_version
@@ -156,6 +161,16 @@ fn validate_inputs(
             .all(|byte| (0x20..=0x7e).contains(&byte))
     {
         return Err(PensieveVectorError::InvalidModelVersion);
+    }
+    Ok(())
+}
+
+fn validate_vector(vector: &[f64]) -> Result<(), PensieveVectorError> {
+    if vector.is_empty()
+        || vector.len() > MAX_VECTOR_DIMENSIONS
+        || vector.iter().any(|coordinate| !coordinate.is_finite())
+    {
+        return Err(PensieveVectorError::InvalidVector);
     }
     Ok(())
 }
@@ -213,6 +228,27 @@ mod tests {
     use super::*;
 
     const KEY: [u8; 32] = [0x42; 32];
+
+    #[test]
+    fn l2_normalize_matches_the_legacy_contract() -> Result<(), PensieveVectorError> {
+        let normalized = l2_normalize(&[3.0, 4.0])?;
+        assert_eq!(normalized, vec![0.6, 0.8]);
+        assert_eq!(l2_normalize(&[0.0, 0.0])?, vec![0.0, 0.0]);
+        assert_eq!(l2_normalize(&[])?, Vec::<f64>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn l2_normalize_rejects_unbounded_or_non_finite_vectors() {
+        assert_eq!(
+            l2_normalize(&[f64::NAN]),
+            Err(PensieveVectorError::InvalidVector)
+        );
+        assert_eq!(
+            l2_normalize(&vec![1.0; MAX_VECTOR_DIMENSIONS + 1]),
+            Err(PensieveVectorError::InvalidVector)
+        );
+    }
 
     #[test]
     fn cloak_matches_the_published_cross_language_golden_head() -> Result<(), PensieveVectorError> {

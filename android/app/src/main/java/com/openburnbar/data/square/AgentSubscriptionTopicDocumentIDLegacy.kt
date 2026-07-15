@@ -1,6 +1,6 @@
 package com.openburnbar.data.square
 
-import com.openburnbar.data.cloud.CloudVaultCryptoSearch
+import com.openburnbar.data.cloud.CloudVaultLegacySearch
 import java.util.Arrays
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -12,7 +12,7 @@ internal object AgentSubscriptionTopicDocumentIDLegacy {
     private const val HEX_BYTE_MASK = 0xff
 
     fun documentID(agentURI: String, topicID: String, vaultKey: ByteArray): String {
-        val docKey = CloudVaultCryptoSearch.hkdfSha256(
+        val docKey = CloudVaultLegacySearch.hkdfSha256(
             vaultKey,
             ByteArray(0),
             INFO.toByteArray(),

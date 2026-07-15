@@ -17,6 +17,7 @@ import {
   configureCloudVaultDomainCoreForTests,
   configureCloudVaultShadowCollector,
   initializeCloudVaultDomainCoreForTests,
+  verifyCloudVaultDomainCoreIdentityForTests,
 } from "../lib/domainCoreCloudVault";
 import { embedAndCloakQuery } from "../lib/recall";
 
@@ -59,13 +60,28 @@ function fromHex(value: string): Uint8Array {
 }
 
 let fixture: DeterministicKat;
+let expectedCoreIdentity: {
+  coreVersion: string;
+  abiVersion: number;
+  sourceSha256: string;
+};
 
 beforeAll(async () => {
   const wasmURL = new URL(
     "../vendor/openburnbar-domain-core-wasm/openburnbar_domain_core_bg.wasm",
     import.meta.url,
   );
-  initializeCloudVaultDomainCoreForTests(await readFile(fileURLToPath(wasmURL)));
+  const manifestURL = new URL(
+    "../../../crates/openburnbar-domain-core/union-abi-manifest.json",
+    import.meta.url,
+  );
+  expectedCoreIdentity = JSON.parse(
+    await readFile(fileURLToPath(manifestURL), "utf8"),
+  ) as typeof expectedCoreIdentity;
+  initializeCloudVaultDomainCoreForTests(
+    await readFile(fileURLToPath(wasmURL)),
+    expectedCoreIdentity,
+  );
 
   const fixtureURL = new URL(
     "../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat.json",
@@ -80,6 +96,16 @@ afterEach(() => {
 });
 
 describe("CloudVault domain-core browser adapter", () => {
+  it("rejects a same-ABI Wasm with the wrong expected source", () => {
+    expect(() =>
+      verifyCloudVaultDomainCoreIdentityForTests({
+        ...expectedCoreIdentity,
+        sourceSha256: "0".repeat(64),
+      }),
+    ).toThrow("loaded domain core identity does not match candidate");
+    verifyCloudVaultDomainCoreIdentityForTests(expectedCoreIdentity);
+  });
+
   it("runs the Pensieve query embedding and cloak as one Rust call", async () => {
     configureCloudVaultDomainCoreForTests("rust", true);
     const result = await embedAndCloakQuery(
@@ -89,6 +115,27 @@ describe("CloudVault domain-core browser adapter", () => {
     expect(result.embeddingModelVersion).toBe("hashing-bow-v1");
     expect(result.queryVector).toHaveLength(384);
     expect(result.queryVector.every(Number.isFinite)).toBe(true);
+  });
+
+  it("classifies Pensieve query comparisons as vector evidence", async () => {
+    const comparisons: unknown[] = [];
+    configureCloudVaultDomainCoreForTests("shadow", true);
+    configureCloudVaultShadowCollector((comparison) => comparisons.push(comparison));
+
+    await embedAndCloakQuery(
+      "hosted minimax encrypted session search",
+      new Uint8Array(32).fill(0x42),
+    );
+
+    expect(comparisons).toHaveLength(1);
+    expect(comparisons[0]).toMatchObject({
+      domain: "cloudvault",
+      slice: "pensieve-vectors",
+      consumer: "console",
+      operation: "pensieve_deterministic_embed_and_cloak",
+      outcome: "match",
+      mismatchCategory: null,
+    });
   });
 
   it("uses the canonical AAD KAT in rust mode", () => {

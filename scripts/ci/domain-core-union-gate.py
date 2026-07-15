@@ -24,6 +24,7 @@ REQUIRED_DOMAINS = {
     "hermes",
     "pricing",
     "encryptedSearch",
+    "pensieveVectors",
 }
 FINGERPRINT_NAME = "openburnbar-domain-core-source.sha256"
 ANDROID_TOOLCHAIN_PROVENANCE_NAME = "openburnbar-domain-core-android-toolchain.env"

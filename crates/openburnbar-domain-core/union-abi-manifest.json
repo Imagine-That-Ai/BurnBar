@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "coreVersion": "0.1.0",
   "abiVersion": 3,
-  "sourceSha256": "2d853a60805ee1734b27d025fad86850b08efda0bc6525022a13846f2391a07d",
+  "sourceSha256": "1134c8ce3fead9fc4eb262dfb2452bc5ee115dc312a9351e0437da6c3feb740d",
   "sourceRoots": [
     "Cargo.toml",
     "Cargo.lock",
@@ -36,6 +36,10 @@
     "cloud_vault_pensieve_dedup_hash",
     "cloud_vault_pensieve_slug_hmac",
     "cloud_vault_subscription_doc_id",
+    "pensieve_l2_normalize",
+    "pensieve_vector_cloak",
+    "pensieve_deterministic_embed",
+    "pensieve_deterministic_embed_and_cloak",
     "hermes_relay_aad",
     "hermes_key_wrap_info_v1",
     "hermes_key_wrap_info_v2",
@@ -268,6 +272,44 @@
       "wasm": [
         "cloudVaultSearch"
       ]
+    },
+    "pensieveVectors": {
+      "rust": [
+        "pensieve_l2_normalize",
+        "pensieve_vector_cloak",
+        "pensieve_deterministic_embed",
+        "pensieve_deterministic_embed_and_cloak"
+      ],
+      "cHeader": [
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize",
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak",
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed",
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak"
+      ],
+      "swift": [
+        "pensieveL2Normalize",
+        "pensieveVectorCloak",
+        "pensieveDeterministicEmbed",
+        "pensieveDeterministicEmbedAndCloak"
+      ],
+      "kotlin": [
+        "pensieveL2Normalize",
+        "pensieveVectorCloak",
+        "pensieveDeterministicEmbed",
+        "pensieveDeterministicEmbedAndCloak"
+      ],
+      "csharp": [
+        "PensieveL2Normalize",
+        "PensieveVectorCloak",
+        "PensieveDeterministicEmbed",
+        "PensieveDeterministicEmbedAndCloak"
+      ],
+      "wasm": [
+        "pensieveL2Normalize",
+        "pensieveVectorCloak",
+        "pensieveDeterministicEmbed",
+        "pensieveDeterministicEmbedAndCloak"
+      ]
     }
   },
   "abiSurfaces": [
@@ -283,7 +325,8 @@
         "documentRewrap",
         "hermes",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -303,7 +346,8 @@
         "documentRewrap",
         "hermes",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -318,7 +362,8 @@
         "documentRewrap",
         "hermes",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -338,7 +383,8 @@
         "documentRewrap",
         "hermes",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -358,7 +404,8 @@
         "documentRewrap",
         "hermes",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -371,7 +418,8 @@
         "cloudVaultC1c",
         "documentRewrap",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ],
       "requiredSymbols": [
         "domainCoreAbiVersion",
@@ -396,7 +444,8 @@
         "cloudVaultC1c",
         "documentRewrap",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -414,7 +463,8 @@
         "cloudVaultC1c",
         "documentRewrap",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -427,7 +477,8 @@
         "domainCoreSourceFingerprint"
       ],
       "requiredDomains": [
-        "cloudVaultC1a"
+        "cloudVaultC1a",
+        "pensieveVectors"
       ]
     }
   ]

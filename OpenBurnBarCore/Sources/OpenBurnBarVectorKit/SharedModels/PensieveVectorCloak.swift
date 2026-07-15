@@ -64,7 +64,45 @@ public enum PensieveVectorCloak {
     }
 
     public static func l2normalize(_ vector: [Double]) -> [Double] {
-        PensieveVectorLegacy.l2normalize(vector)
+        let legacy = { legacyNormalize(vector) }
+        switch mode {
+        case .legacy:
+            return legacy()
+        case .rust:
+            do { return try nativeNormalize(vector) }
+            catch { preconditionFailure("Rust-authoritative Pensieve normalization failed: \(error)") }
+        case .shadow:
+            let legacyStarted = Date.timeIntervalSinceReferenceDate
+            let legacyValue = legacy()
+            let legacyMicros = elapsedMicros(since: legacyStarted)
+            let rustStarted = Date.timeIntervalSinceReferenceDate
+            do {
+                let rustValue = try nativeNormalize(vector)
+                let matches = equivalent(legacyValue, rustValue)
+                recordComparison(
+                    operation: "l2_normalize",
+                    matches: matches,
+                    category: matches ? nil : "result_mismatch",
+                    legacyMicros: legacyMicros,
+                    rustMicros: elapsedMicros(since: rustStarted)
+                )
+                if !matches {
+                    PlatformLogger(subsystem: "com.openburnbar.core", category: "PensieveVectorDomainCore")
+                        .warning("domain_core.pensieve_vector shadow_mismatch operation=l2_normalize core=abi3")
+                }
+            } catch {
+                recordComparison(
+                    operation: "l2_normalize",
+                    matches: false,
+                    category: "native_error",
+                    legacyMicros: legacyMicros,
+                    rustMicros: elapsedMicros(since: rustStarted)
+                )
+                PlatformLogger(subsystem: "com.openburnbar.core", category: "PensieveVectorDomainCore")
+                    .warning("domain_core.pensieve_vector native_error operation=l2_normalize core=abi3")
+            }
+            return legacyValue
+        }
     }
 
     public static func deterministicEmbed(_ text: String, isQuery: Bool = false) -> [Double] {
@@ -181,6 +219,17 @@ public enum PensieveVectorCloak {
         #endif
     }
 
+    private static func nativeNormalize(_ vector: [Double]) throws -> [Double] {
+        #if canImport(OpenBurnBarDomainCoreFFI)
+        guard DomainCoreNativeProbe.abiVersion() == 3 else {
+            throw PensieveVectorDomainCoreError.nativeUnavailable
+        }
+        return try OpenBurnBarDomainCoreFFI.pensieveL2Normalize(vector: vector)
+        #else
+        throw PensieveVectorDomainCoreError.nativeUnavailable
+        #endif
+    }
+
     private static func nativeEmbed(_ text: String, isQuery: Bool) throws -> [Double] {
         #if canImport(OpenBurnBarDomainCoreFFI)
         guard DomainCoreNativeProbe.abiVersion() == 3 else {
@@ -215,6 +264,12 @@ public enum PensieveVectorCloak {
 
     private static func equivalent(_ left: [Double], _ right: [Double]) -> Bool {
         left.count == right.count && zip(left, right).allSatisfy { abs($0 - $1) < 1e-12 }
+    }
+
+    private static func legacyNormalize(_ vector: [Double]) -> [Double] {
+        let norm = vector.reduce(0) { $0 + $1 * $1 }.squareRoot()
+        guard norm > 0 else { return vector }
+        return vector.map { $0 / norm }
     }
 
     private static func elapsedMicros(since started: TimeInterval) -> UInt64 {

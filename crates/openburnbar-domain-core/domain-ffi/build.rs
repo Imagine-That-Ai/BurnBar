@@ -8,9 +8,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let candidate_commit = std::env::var("OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT")
         .unwrap_or_else(|_| "0000000000000000000000000000000000000000".to_owned());
     if candidate_commit.len() != 40
-        || !candidate_commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || !candidate_commit
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
     {
-        return Err("OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT must be a 40-character hexadecimal commit".into());
+        return Err(
+            "OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT must be a 40-character hexadecimal commit"
+                .into(),
+        );
     }
     println!(
         "cargo:rustc-env=OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT={}",
@@ -43,7 +48,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .cargo_metadata(false)
         .file(output)
         .compile("openburnbar_domain_core_identity");
-    println!("cargo:rustc-link-search=native={}", std::env::var("OUT_DIR")?);
+    println!(
+        "cargo:rustc-link-search=native={}",
+        std::env::var("OUT_DIR")?
+    );
     println!("cargo:rustc-link-lib=static:+whole-archive=openburnbar_domain_core_identity");
     Ok(())
 }

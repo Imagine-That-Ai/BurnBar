@@ -857,6 +857,8 @@ static class _UniFFILib {
 
 
 
+
+
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
@@ -1089,6 +1091,10 @@ static class _UniFFILib {
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(RustBuffer @text,uint @dimensions,sbyte @isQuery,RustBuffer @vaultKey,RustBuffer @modelVersion,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize(RustBuffer @vector,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1552,6 +1558,10 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak(
     );
 
@@ -1913,6 +1923,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak();
             if (checksum != 19070) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak` checksum `19070`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize();
+            if (checksum != 26005) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize` checksum `26005`, library returned `{checksum}`");
             }
         }
         {
@@ -5058,6 +5074,15 @@ public static class OpenburnbarDomainFfiMethods {
         return FfiConverterSequenceDouble.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypePensieveVectorFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(FfiConverterString.INSTANCE.Lower(@text), FfiConverterUInt32.INSTANCE.Lower(@dimensions), FfiConverterBoolean.INSTANCE.Lower(@isQuery), FfiConverterByteArray.INSTANCE.Lower(@vaultKey), FfiConverterString.INSTANCE.Lower(@modelVersion), ref _status)
+));
+    }
+
+
+    /// <exception cref="PensieveVectorFfiException"></exception>
+    public static List<double> PensieveL2Normalize(List<double> @vector) {
+        return FfiConverterSequenceDouble.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypePensieveVectorFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize(FfiConverterSequenceDouble.INSTANCE.Lower(@vector), ref _status)
 ));
     }
 

@@ -827,6 +827,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -955,6 +957,8 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed(`text`: RustBuffer.ByValue,`dimensions`: Int,`isQuery`: Byte,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(`text`: RustBuffer.ByValue,`dimensions`: Int,`isQuery`: Byte,`vaultKey`: RustBuffer.ByValue,`modelVersion`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize(`vector`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak(`vector`: RustBuffer.ByValue,`vaultKey`: RustBuffer.ByValue,`modelVersion`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -1186,6 +1190,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event(
@@ -1375,6 +1381,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak() != 19070.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize() != 26005.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak() != 60626.toShort()) {
@@ -4595,6 +4604,16 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     uniffiRustCallWithError(PensieveVectorFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(
         FfiConverterString.lower(`text`),FfiConverterUInt.lower(`dimensions`),FfiConverterBoolean.lower(`isQuery`),FfiConverterByteArray.lower(`vaultKey`),FfiConverterString.lower(`modelVersion`),_status)
+}
+    )
+    }
+
+
+    @Throws(PensieveVectorFfiException::class) fun `pensieveL2Normalize`(`vector`: List<kotlin.Double>): List<kotlin.Double> {
+            return FfiConverterSequenceDouble.lift(
+    uniffiRustCallWithError(PensieveVectorFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize(
+        FfiConverterSequenceDouble.lower(`vector`),_status)
 }
     )
     }

@@ -192,7 +192,7 @@ Quota promotion requires all of the following:
    artifacts actually loaded by Swift, Kotlin, C#, the local Python native
    package, browser Wasm, and Node Wasm.
 3. A successful `push` run of `.github/workflows/domain-core.yml` on `main` with
-   every exact policy job and all 46 real `(domain, slice, consumer)` coverage
+   every exact policy job and all 51 real `(domain, slice, consumer)` coverage
    cells. Failed, skipped, missing, duplicate, extra, PR, dispatch, mixed-run, or
    mixed-candidate evidence fails closed.
 4. The paired complete-payload FFI benchmark no more than **5 percent** slower

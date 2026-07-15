@@ -311,6 +311,14 @@ pub fn pensieve_vector_cloak(
     result
 }
 
+#[wasm_bindgen(js_name = pensieveL2Normalize)]
+pub fn pensieve_l2_normalize(mut vector: Vec<f64>) -> Result<Vec<f64>, JsError> {
+    let result =
+        pensieve_vectors::l2_normalize(&vector).map_err(|error| JsError::new(&error.to_string()));
+    vector.zeroize();
+    result
+}
+
 #[wasm_bindgen(js_name = pensieveDeterministicEmbed)]
 pub fn pensieve_deterministic_embed(
     mut text: String,
@@ -699,6 +707,13 @@ mod tests {
             super::domain_core_abi_version(),
             openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION
         );
+    }
+
+    #[test]
+    fn wasm_pensieve_l2_normalize_preserves_the_public_contract() -> Result<(), JsError> {
+        assert_eq!(pensieve_l2_normalize(vec![3.0, 4.0])?, vec![0.6, 0.8]);
+        assert_eq!(pensieve_l2_normalize(Vec::new())?, Vec::<f64>::new());
+        Ok(())
     }
 
     #[test]

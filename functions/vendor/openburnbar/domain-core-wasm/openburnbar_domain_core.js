@@ -41,6 +41,70 @@ function addHeapObject(obj) {
 
 let WASM_VECTOR_LEN = 0;
 
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+let cachedDataViewMemory0 = null;
+
+function getDataViewMemory0() {
+    if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || (cachedDataViewMemory0.buffer.detached === undefined && cachedDataViewMemory0.buffer !== wasm.memory.buffer)) {
+        cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
+    }
+    return cachedDataViewMemory0;
+}
+
+function getObject(idx) { return heap[idx]; }
+
+function dropObject(idx) {
+    if (idx < 132) return;
+    heap[idx] = heap_next;
+    heap_next = idx;
+}
+
+function takeObject(idx) {
+    const ret = getObject(idx);
+    dropObject(idx);
+    return ret;
+}
+/**
+ * @param {Uint8Array} data
+ * @param {Uint8Array} key
+ * @param {number} body_hash_version
+ * @returns {string}
+ */
+exports.cloudVaultExpectedSessionBodyHash = function(data, key, body_hash_version) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(key, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.cloudVaultExpectedSessionBodyHash(retptr, ptr0, len0, ptr1, len1, body_hash_version);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        var ptr3 = r0;
+        var len3 = r1;
+        if (r3) {
+            ptr3 = 0; len3 = 0;
+            throw takeObject(r2);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export2(deferred4_0, deferred4_1, 1);
+    }
+};
+
 const cachedTextEncoder = new TextEncoder();
 
 if (!('encodeInto' in cachedTextEncoder)) {
@@ -93,114 +157,58 @@ function passStringToWasm0(arg, malloc, realloc) {
     return ptr;
 }
 
-function passArray8ToWasm0(arg, malloc) {
-    const ptr = malloc(arg.length * 1, 1) >>> 0;
-    getUint8ArrayMemory0().set(arg, ptr / 1);
-    WASM_VECTOR_LEN = arg.length;
-    return ptr;
-}
-
-let cachedDataViewMemory0 = null;
-
-function getDataViewMemory0() {
-    if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || (cachedDataViewMemory0.buffer.detached === undefined && cachedDataViewMemory0.buffer !== wasm.memory.buffer)) {
-        cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
-    }
-    return cachedDataViewMemory0;
-}
-
-function getObject(idx) { return heap[idx]; }
-
-function dropObject(idx) {
-    if (idx < 132) return;
-    heap[idx] = heap_next;
-    heap_next = idx;
-}
-
-function takeObject(idx) {
-    const ret = getObject(idx);
-    dropObject(idx);
-    return ret;
+function getArrayU8FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
 }
 /**
- * @param {string} slug
- * @param {Uint8Array} key
- * @returns {string}
+ * @param {string} value
+ * @returns {Uint8Array}
  */
-exports.cloudVaultProjectMemoryDocId = function(slug, key) {
-    let deferred4_0;
-    let deferred4_1;
+exports.cloudVaultBase64DecodeStrict = function(value) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(slug, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(value, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(key, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        wasm.cloudVaultProjectMemoryDocId(retptr, ptr0, len0, ptr1, len1);
+        wasm.cloudVaultBase64DecodeStrict(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        var ptr3 = r0;
-        var len3 = r1;
         if (r3) {
-            ptr3 = 0; len3 = 0;
             throw takeObject(r2);
         }
-        deferred4_0 = ptr3;
-        deferred4_1 = len3;
-        return getStringFromWasm0(ptr3, len3);
+        var v2 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v2;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred4_0, deferred4_1, 1);
     }
 };
 
 /**
+ * @param {Uint8Array} combined
  * @param {string} recovery_key
- * @returns {string}
+ * @returns {Uint8Array}
  */
-exports.cloudVaultNormalizeRecoveryKey = function(recovery_key) {
-    let deferred3_0;
-    let deferred3_1;
+exports.cloudVaultRecoveryOpenVaultKey = function(combined, recovery_key) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(recovery_key, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passArray8ToWasm0(combined, wasm.__wbindgen_export);
         const len0 = WASM_VECTOR_LEN;
-        wasm.cloudVaultNormalizeRecoveryKey(retptr, ptr0, len0);
+        const ptr1 = passStringToWasm0(recovery_key, wasm.__wbindgen_export, wasm.__wbindgen_export3);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.cloudVaultRecoveryOpenVaultKey(retptr, ptr0, len0, ptr1, len1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        var ptr2 = r0;
-        var len2 = r1;
         if (r3) {
-            ptr2 = 0; len2 = 0;
             throw takeObject(r2);
         }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred3_0, deferred3_1, 1);
-    }
-};
-
-/**
- * @param {Uint8Array} public_key
- */
-exports.cloudVaultValidateP256X963PublicKey = function(public_key) {
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(public_key, wasm.__wbindgen_export);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.cloudVaultValidateP256X963PublicKey(retptr, ptr0, len0);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        if (r1) {
-            throw takeObject(r0);
-        }
+        var v3 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v3;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -239,7 +247,7 @@ exports.pensieveVectorCloak = function(vector, vault_key, model_version) {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray8ToWasm0(vault_key, wasm.__wbindgen_export);
         const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passStringToWasm0(model_version, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr2 = passStringToWasm0(model_version, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len2 = WASM_VECTOR_LEN;
         wasm.pensieveVectorCloak(retptr, ptr0, len0, ptr1, len1, ptr2, len2);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
@@ -250,7 +258,7 @@ exports.pensieveVectorCloak = function(vector, vault_key, model_version) {
             throw takeObject(r2);
         }
         var v4 = getArrayF64FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        wasm.__wbindgen_export2(r0, r1 * 8, 8);
         return v4;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
@@ -258,39 +266,36 @@ exports.pensieveVectorCloak = function(vector, vault_key, model_version) {
 };
 
 /**
- * @param {string} agent_uri
- * @param {string} topic_id
+ * @param {string} value
  * @param {Uint8Array} key
  * @returns {string}
  */
-exports.cloudVaultSubscriptionDocId = function(agent_uri, topic_id, key) {
-    let deferred5_0;
-    let deferred5_1;
+exports.cloudVaultPensieveProvenanceHash = function(value, key) {
+    let deferred4_0;
+    let deferred4_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(agent_uri, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(value, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(topic_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr1 = passArray8ToWasm0(key, wasm.__wbindgen_export);
         const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArray8ToWasm0(key, wasm.__wbindgen_export);
-        const len2 = WASM_VECTOR_LEN;
-        wasm.cloudVaultSubscriptionDocId(retptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        wasm.cloudVaultPensieveProvenanceHash(retptr, ptr0, len0, ptr1, len1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        var ptr4 = r0;
-        var len4 = r1;
+        var ptr3 = r0;
+        var len3 = r1;
         if (r3) {
-            ptr4 = 0; len4 = 0;
+            ptr3 = 0; len3 = 0;
             throw takeObject(r2);
         }
-        deferred5_0 = ptr4;
-        deferred5_1 = len4;
-        return getStringFromWasm0(ptr4, len4);
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred5_0, deferred5_1, 1);
+        wasm.__wbindgen_export2(deferred4_0, deferred4_1, 1);
     }
 };
 
@@ -311,15 +316,15 @@ exports.cloudVaultAadV2 = function(uid, collection, doc_id, field, schema_versio
     let deferred7_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(uid, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(uid, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(collection, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr1 = passStringToWasm0(collection, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passStringToWasm0(doc_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr2 = passStringToWasm0(doc_id, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len2 = WASM_VECTOR_LEN;
-        const ptr3 = passStringToWasm0(field, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr3 = passStringToWasm0(field, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len3 = WASM_VECTOR_LEN;
-        var ptr4 = isLikeNone(purpose) ? 0 : passStringToWasm0(purpose, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        var ptr4 = isLikeNone(purpose) ? 0 : passStringToWasm0(purpose, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         var len4 = WASM_VECTOR_LEN;
         wasm.cloudVaultAadV2(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, schema_version, ptr4, len4);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
@@ -337,37 +342,33 @@ exports.cloudVaultAadV2 = function(uid, collection, doc_id, field, schema_versio
         return getStringFromWasm0(ptr6, len6);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred7_0, deferred7_1, 1);
+        wasm.__wbindgen_export2(deferred7_0, deferred7_1, 1);
     }
 };
 
-function getArrayU8FromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
-}
 /**
- * @param {Uint8Array} combined
+ * @param {Uint8Array} vault_key
  * @param {string} recovery_key
- * @returns {Uint8Array}
+ * @param {Uint8Array} nonce
+ * @returns {CloudVaultRecoveryWrappedVaultKey}
  */
-exports.cloudVaultRecoveryOpenVaultKey = function(combined, recovery_key) {
+exports.cloudVaultRecoveryWrapVaultKey = function(vault_key, recovery_key, nonce) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(combined, wasm.__wbindgen_export);
+        const ptr0 = passArray8ToWasm0(vault_key, wasm.__wbindgen_export);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(recovery_key, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr1 = passStringToWasm0(recovery_key, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len1 = WASM_VECTOR_LEN;
-        wasm.cloudVaultRecoveryOpenVaultKey(retptr, ptr0, len0, ptr1, len1);
+        const ptr2 = passArray8ToWasm0(nonce, wasm.__wbindgen_export);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.cloudVaultRecoveryWrapVaultKey(retptr, ptr0, len0, ptr1, len1, ptr2, len2);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        if (r3) {
-            throw takeObject(r2);
+        if (r2) {
+            throw takeObject(r1);
         }
-        var v3 = getArrayU8FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 1, 1);
-        return v3;
+        return CloudVaultRecoveryWrappedVaultKey.__wrap(r0);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -406,154 +407,10 @@ exports.priceLegacyKimiWireEvent = function(input_tokens, output_tokens, cache_c
             throw takeObject(r2);
         }
         var v1 = getArrayU64FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        wasm.__wbindgen_export2(r0, r1 * 8, 8);
         return v1;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-    }
-};
-
-/**
- * @param {string} value
- * @returns {Uint8Array}
- */
-exports.cloudVaultBase64DecodeStrict = function(value) {
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(value, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.cloudVaultBase64DecodeStrict(retptr, ptr0, len0);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        if (r3) {
-            throw takeObject(r2);
-        }
-        var v2 = getArrayU8FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 1, 1);
-        return v2;
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-    }
-};
-
-/**
- * @param {Uint8Array} data
- * @param {Uint8Array} key
- * @param {number} body_hash_version
- * @returns {string}
- */
-exports.cloudVaultExpectedSessionBodyHash = function(data, key, body_hash_version) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_export);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(key, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        wasm.cloudVaultExpectedSessionBodyHash(retptr, ptr0, len0, ptr1, len1, body_hash_version);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        var ptr3 = r0;
-        var len3 = r1;
-        if (r3) {
-            ptr3 = 0; len3 = 0;
-            throw takeObject(r2);
-        }
-        deferred4_0 = ptr3;
-        deferred4_1 = len3;
-        return getStringFromWasm0(ptr3, len3);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred4_0, deferred4_1, 1);
-    }
-};
-
-/**
- * @param {string} text
- * @returns {CloudVaultSearchAnalysis}
- */
-exports.cloudVaultSearchAnalyze = function(text) {
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.cloudVaultSearchAnalyze(retptr, ptr0, len0);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        if (r2) {
-            throw takeObject(r1);
-        }
-        return CloudVaultSearchAnalysis.__wrap(r0);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-    }
-};
-
-/**
- * @param {Uint8Array} combined
- * @param {Uint8Array} key
- * @param {Uint8Array} aad
- * @returns {Uint8Array}
- */
-exports.cloudVaultAesGcmOpenCombined = function(combined, key, aad) {
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(combined, wasm.__wbindgen_export);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(key, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArray8ToWasm0(aad, wasm.__wbindgen_export);
-        const len2 = WASM_VECTOR_LEN;
-        wasm.cloudVaultAesGcmOpenCombined(retptr, ptr0, len0, ptr1, len1, ptr2, len2);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        if (r3) {
-            throw takeObject(r2);
-        }
-        var v4 = getArrayU8FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 1, 1);
-        return v4;
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-    }
-};
-
-/**
- * @param {string} recovery_key
- * @returns {string}
- */
-exports.cloudVaultRecoveryVerificationHash = function(recovery_key) {
-    let deferred3_0;
-    let deferred3_1;
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(recovery_key, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.cloudVaultRecoveryVerificationHash(retptr, ptr0, len0);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        var ptr2 = r0;
-        var len2 = r1;
-        if (r3) {
-            ptr2 = 0; len2 = 0;
-            throw takeObject(r2);
-        }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred3_0, deferred3_1, 1);
     }
 };
 
@@ -584,7 +441,83 @@ exports.cloudVaultBase64Encode = function(data) {
         return getStringFromWasm0(ptr2, len2);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred3_0, deferred3_1, 1);
+        wasm.__wbindgen_export2(deferred3_0, deferred3_1, 1);
+    }
+};
+
+/**
+ * @param {string} text
+ * @param {number} dimensions
+ * @param {boolean} is_query
+ * @param {Uint8Array} vault_key
+ * @param {string} model_version
+ * @returns {Float64Array}
+ */
+exports.pensieveDeterministicEmbedAndCloak = function(text, dimensions, is_query, vault_key, model_version) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export3);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(vault_key, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(model_version, wasm.__wbindgen_export, wasm.__wbindgen_export3);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.pensieveDeterministicEmbedAndCloak(retptr, ptr0, len0, dimensions, is_query, ptr1, len1, ptr2, len2);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        var v4 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 8, 8);
+        return v4;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+};
+
+/**
+ * Whole-document rewrap for browser/Tauri consumers. `request_json` is the
+ * strict camelCase serialization of `CloudVaultDocumentRewrapRequest`; unknown
+ * fields and malformed envelope variants are rejected by serde.
+ * @param {string} request_json
+ * @param {Uint8Array} old_key
+ * @param {Uint8Array} new_key
+ * @param {string} new_vault_key_id
+ * @returns {string}
+ */
+exports.cloudVaultRewrapDocumentJson = function(request_json, old_key, new_key, new_vault_key_id) {
+    let deferred6_0;
+    let deferred6_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(request_json, wasm.__wbindgen_export, wasm.__wbindgen_export3);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(old_key, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray8ToWasm0(new_key, wasm.__wbindgen_export);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passStringToWasm0(new_vault_key_id, wasm.__wbindgen_export, wasm.__wbindgen_export3);
+        const len3 = WASM_VECTOR_LEN;
+        wasm.cloudVaultRewrapDocumentJson(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        var ptr5 = r0;
+        var len5 = r1;
+        if (r3) {
+            ptr5 = 0; len5 = 0;
+            throw takeObject(r2);
+        }
+        deferred6_0 = ptr5;
+        deferred6_1 = len5;
+        return getStringFromWasm0(ptr5, len5);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export2(deferred6_0, deferred6_1, 1);
     }
 };
 
@@ -615,7 +548,7 @@ exports.cloudVaultAesGcmSealCombined = function(plaintext, key, nonce, aad) {
             throw takeObject(r2);
         }
         var v5 = getArrayU8FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 1, 1);
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
         return v5;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
@@ -623,23 +556,15 @@ exports.cloudVaultAesGcmSealCombined = function(plaintext, key, nonce, aad) {
 };
 
 /**
- * @param {string} text
- * @param {number} dimensions
- * @param {boolean} is_query
- * @param {Uint8Array} vault_key
- * @param {string} model_version
- * @returns {Float64Array}
+ * @param {string} recovery_key
+ * @returns {Uint8Array}
  */
-exports.pensieveDeterministicEmbedAndCloak = function(text, dimensions, is_query, vault_key, model_version) {
+exports.cloudVaultRecoveryWrappingKey = function(recovery_key) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(recovery_key, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(vault_key, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passStringToWasm0(model_version, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len2 = WASM_VECTOR_LEN;
-        wasm.pensieveDeterministicEmbedAndCloak(retptr, ptr0, len0, dimensions, is_query, ptr1, len1, ptr2, len2);
+        wasm.cloudVaultRecoveryWrappingKey(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -647,8 +572,39 @@ exports.pensieveDeterministicEmbedAndCloak = function(text, dimensions, is_query
         if (r3) {
             throw takeObject(r2);
         }
-        var v4 = getArrayF64FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        var v2 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v2;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+};
+
+/**
+ * @param {Uint8Array} combined
+ * @param {Uint8Array} key
+ * @param {Uint8Array} aad
+ * @returns {Uint8Array}
+ */
+exports.cloudVaultAesGcmOpenCombined = function(combined, key, aad) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(combined, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(key, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray8ToWasm0(aad, wasm.__wbindgen_export);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.cloudVaultAesGcmOpenCombined(retptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        var v4 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
         return v4;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
@@ -656,18 +612,54 @@ exports.pensieveDeterministicEmbedAndCloak = function(text, dimensions, is_query
 };
 
 /**
- * @param {Uint8Array} wire
- * @param {Uint8Array} shared_secret
- * @returns {Uint8Array}
+ * @param {string} agent_uri
+ * @param {string} topic_id
+ * @param {Uint8Array} key
+ * @returns {string}
  */
-exports.cloudVaultEscrowOpen = function(wire, shared_secret) {
+exports.cloudVaultSubscriptionDocId = function(agent_uri, topic_id, key) {
+    let deferred5_0;
+    let deferred5_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(wire, wasm.__wbindgen_export);
+        const ptr0 = passStringToWasm0(agent_uri, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(shared_secret, wasm.__wbindgen_export);
+        const ptr1 = passStringToWasm0(topic_id, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len1 = WASM_VECTOR_LEN;
-        wasm.cloudVaultEscrowOpen(retptr, ptr0, len0, ptr1, len1);
+        const ptr2 = passArray8ToWasm0(key, wasm.__wbindgen_export);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.cloudVaultSubscriptionDocId(retptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        var ptr4 = r0;
+        var len4 = r1;
+        if (r3) {
+            ptr4 = 0; len4 = 0;
+            throw takeObject(r2);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export2(deferred5_0, deferred5_1, 1);
+    }
+};
+
+/**
+ * @param {string} text
+ * @param {number} dimensions
+ * @param {boolean} is_query
+ * @returns {Float64Array}
+ */
+exports.pensieveDeterministicEmbed = function(text, dimensions, is_query) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export3);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.pensieveDeterministicEmbed(retptr, ptr0, len0, dimensions, is_query);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -675,9 +667,70 @@ exports.cloudVaultEscrowOpen = function(wire, shared_secret) {
         if (r3) {
             throw takeObject(r2);
         }
-        var v3 = getArrayU8FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 1, 1);
-        return v3;
+        var v2 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 8, 8);
+        return v2;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+};
+
+/**
+ * @param {CloudVaultSearchOperation} operation
+ * @param {string} text
+ * @param {Uint8Array} vault_key
+ * @param {number} limit
+ * @returns {CloudVaultSearchResult}
+ */
+exports.cloudVaultSearch = function(operation, text, vault_key, limit) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export3);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(vault_key, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.cloudVaultSearch(retptr, operation, ptr0, len0, ptr1, len1, limit);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return CloudVaultSearchResult.__wrap(r0);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+};
+
+/**
+ * @param {Uint8Array} plaintext
+ * @param {Uint8Array} ephemeral_public_key
+ * @param {Uint8Array} shared_secret
+ * @param {Uint8Array} nonce
+ * @returns {Uint8Array}
+ */
+exports.cloudVaultEscrowSeal = function(plaintext, ephemeral_public_key, shared_secret, nonce) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(plaintext, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(ephemeral_public_key, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArray8ToWasm0(shared_secret, wasm.__wbindgen_export);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArray8ToWasm0(nonce, wasm.__wbindgen_export);
+        const len3 = WASM_VECTOR_LEN;
+        wasm.cloudVaultEscrowSeal(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        var v5 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v5;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -699,35 +752,38 @@ exports.legacyKimiWireModel = function() {
         return getStringFromWasm0(r0, r1);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
+        wasm.__wbindgen_export2(deferred1_0, deferred1_1, 1);
     }
 };
 
 /**
- * @param {Uint8Array} vault_key
  * @param {string} recovery_key
- * @param {Uint8Array} nonce
- * @returns {CloudVaultRecoveryWrappedVaultKey}
+ * @returns {string}
  */
-exports.cloudVaultRecoveryWrapVaultKey = function(vault_key, recovery_key, nonce) {
+exports.cloudVaultRecoveryVerificationHash = function(recovery_key) {
+    let deferred3_0;
+    let deferred3_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(vault_key, wasm.__wbindgen_export);
+        const ptr0 = passStringToWasm0(recovery_key, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(recovery_key, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArray8ToWasm0(nonce, wasm.__wbindgen_export);
-        const len2 = WASM_VECTOR_LEN;
-        wasm.cloudVaultRecoveryWrapVaultKey(retptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        wasm.cloudVaultRecoveryVerificationHash(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        if (r2) {
-            throw takeObject(r1);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        var ptr2 = r0;
+        var len2 = r1;
+        if (r3) {
+            ptr2 = 0; len2 = 0;
+            throw takeObject(r2);
         }
-        return CloudVaultRecoveryWrappedVaultKey.__wrap(r0);
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export2(deferred3_0, deferred3_1, 1);
     }
 };
 
@@ -745,15 +801,15 @@ exports.cloudVaultAadV1 = function(uid, collection, doc_id, field, schema_versio
     let deferred7_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(uid, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(uid, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(collection, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr1 = passStringToWasm0(collection, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passStringToWasm0(doc_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr2 = passStringToWasm0(doc_id, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len2 = WASM_VECTOR_LEN;
-        const ptr3 = passStringToWasm0(field, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr3 = passStringToWasm0(field, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len3 = WASM_VECTOR_LEN;
-        var ptr4 = isLikeNone(purpose) ? 0 : passStringToWasm0(purpose, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        var ptr4 = isLikeNone(purpose) ? 0 : passStringToWasm0(purpose, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         var len4 = WASM_VECTOR_LEN;
         wasm.cloudVaultAadV1(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, schema_version, ptr4, len4);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
@@ -771,23 +827,20 @@ exports.cloudVaultAadV1 = function(uid, collection, doc_id, field, schema_versio
         return getStringFromWasm0(ptr6, len6);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred7_0, deferred7_1, 1);
+        wasm.__wbindgen_export2(deferred7_0, deferred7_1, 1);
     }
 };
 
 /**
- * @param {Uint8Array} ephemeral_public_key
- * @param {Uint8Array} aes_gcm_combined
+ * @param {Uint8Array} shared_secret
  * @returns {Uint8Array}
  */
-exports.cloudVaultEscrowAssembleWire = function(ephemeral_public_key, aes_gcm_combined) {
+exports.cloudVaultEscrowWrappingKey = function(shared_secret) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(ephemeral_public_key, wasm.__wbindgen_export);
+        const ptr0 = passArray8ToWasm0(shared_secret, wasm.__wbindgen_export);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(aes_gcm_combined, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        wasm.cloudVaultEscrowAssembleWire(retptr, ptr0, len0, ptr1, len1);
+        wasm.cloudVaultEscrowWrappingKey(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -795,9 +848,9 @@ exports.cloudVaultEscrowAssembleWire = function(ephemeral_public_key, aes_gcm_co
         if (r3) {
             throw takeObject(r2);
         }
-        var v3 = getArrayU8FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 1, 1);
-        return v3;
+        var v2 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v2;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -830,7 +883,7 @@ exports.cloudVaultKeyId = function(key) {
         return getStringFromWasm0(ptr2, len2);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred3_0, deferred3_1, 1);
+        wasm.__wbindgen_export2(deferred3_0, deferred3_1, 1);
     }
 };
 
@@ -850,30 +903,24 @@ exports.domainCoreVersion = function() {
         return getStringFromWasm0(r0, r1);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
+        wasm.__wbindgen_export2(deferred1_0, deferred1_1, 1);
     }
 };
 
 /**
- * @param {Uint8Array} shared_secret
- * @returns {Uint8Array}
+ * @param {Uint8Array} public_key
  */
-exports.cloudVaultEscrowWrappingKey = function(shared_secret) {
+exports.cloudVaultValidateP256X963PublicKey = function(public_key) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(shared_secret, wasm.__wbindgen_export);
+        const ptr0 = passArray8ToWasm0(public_key, wasm.__wbindgen_export);
         const len0 = WASM_VECTOR_LEN;
-        wasm.cloudVaultEscrowWrappingKey(retptr, ptr0, len0);
+        wasm.cloudVaultValidateP256X963PublicKey(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        if (r3) {
-            throw takeObject(r2);
+        if (r1) {
+            throw takeObject(r0);
         }
-        var v2 = getArrayU8FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 1, 1);
-        return v2;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -910,22 +957,20 @@ exports.cloudVaultKeyedHashHex = function(data, key, purpose) {
         return getStringFromWasm0(ptr3, len3);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred4_0, deferred4_1, 1);
+        wasm.__wbindgen_export2(deferred4_0, deferred4_1, 1);
     }
 };
 
 /**
- * @param {string} text
- * @param {number} dimensions
- * @param {boolean} is_query
+ * @param {Float64Array} vector
  * @returns {Float64Array}
  */
-exports.pensieveDeterministicEmbed = function(text, dimensions, is_query) {
+exports.pensieveL2Normalize = function(vector) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passArrayF64ToWasm0(vector, wasm.__wbindgen_export);
         const len0 = WASM_VECTOR_LEN;
-        wasm.pensieveDeterministicEmbed(retptr, ptr0, len0, dimensions, is_query);
+        wasm.pensieveL2Normalize(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -934,7 +979,7 @@ exports.pensieveDeterministicEmbed = function(text, dimensions, is_query) {
             throw takeObject(r2);
         }
         var v2 = getArrayF64FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 8, 8);
+        wasm.__wbindgen_export2(r0, r1 * 8, 8);
         return v2;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
@@ -942,85 +987,25 @@ exports.pensieveDeterministicEmbed = function(text, dimensions, is_query) {
 };
 
 /**
- * @param {Uint8Array} plaintext
- * @param {Uint8Array} ephemeral_public_key
- * @param {Uint8Array} shared_secret
- * @param {Uint8Array} nonce
- * @returns {Uint8Array}
+ * @param {Uint8Array} wire
+ * @returns {CloudVaultEscrowWireParts}
  */
-exports.cloudVaultEscrowSeal = function(plaintext, ephemeral_public_key, shared_secret, nonce) {
+exports.cloudVaultEscrowSplitWire = function(wire) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(plaintext, wasm.__wbindgen_export);
+        const ptr0 = passArray8ToWasm0(wire, wasm.__wbindgen_export);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(ephemeral_public_key, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArray8ToWasm0(shared_secret, wasm.__wbindgen_export);
-        const len2 = WASM_VECTOR_LEN;
-        const ptr3 = passArray8ToWasm0(nonce, wasm.__wbindgen_export);
-        const len3 = WASM_VECTOR_LEN;
-        wasm.cloudVaultEscrowSeal(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        wasm.cloudVaultEscrowSplitWire(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        if (r3) {
-            throw takeObject(r2);
+        if (r2) {
+            throw takeObject(r1);
         }
-        var v5 = getArrayU8FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 1, 1);
-        return v5;
+        return CloudVaultEscrowWireParts.__wrap(r0);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
-};
-
-/**
- * @param {string} value
- * @param {Uint8Array} key
- * @returns {string}
- */
-exports.cloudVaultPensieveProvenanceHash = function(value, key) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(value, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(key, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        wasm.cloudVaultPensieveProvenanceHash(retptr, ptr0, len0, ptr1, len1);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        var ptr3 = r0;
-        var len3 = r1;
-        if (r3) {
-            ptr3 = 0; len3 = 0;
-            throw takeObject(r2);
-        }
-        deferred4_0 = ptr3;
-        deferred4_1 = len3;
-        return getStringFromWasm0(ptr3, len3);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred4_0, deferred4_1, 1);
-    }
-};
-
-/**
- * @param {string} provider
- * @param {string} model
- * @returns {boolean}
- */
-exports.isLegacyKimiWireEvent = function(provider, model) {
-    const ptr0 = passStringToWasm0(provider, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(model, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.isLegacyKimiWireEvent(ptr0, len0, ptr1, len1);
-    return ret !== 0;
 };
 
 /**
@@ -1033,7 +1018,7 @@ exports.cloudVaultPensieveSlugHmac = function(slug, key) {
     let deferred4_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(slug, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(slug, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray8ToWasm0(key, wasm.__wbindgen_export);
         const len1 = WASM_VECTOR_LEN;
@@ -1053,7 +1038,55 @@ exports.cloudVaultPensieveSlugHmac = function(slug, key) {
         return getStringFromWasm0(ptr3, len3);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred4_0, deferred4_1, 1);
+        wasm.__wbindgen_export2(deferred4_0, deferred4_1, 1);
+    }
+};
+
+/**
+ * @param {string} provider
+ * @param {string} model
+ * @returns {boolean}
+ */
+exports.isLegacyKimiWireEvent = function(provider, model) {
+    const ptr0 = passStringToWasm0(provider, wasm.__wbindgen_export, wasm.__wbindgen_export3);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(model, wasm.__wbindgen_export, wasm.__wbindgen_export3);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.isLegacyKimiWireEvent(ptr0, len0, ptr1, len1);
+    return ret !== 0;
+};
+
+/**
+ * @param {string} plaintext
+ * @param {Uint8Array} key
+ * @returns {string}
+ */
+exports.cloudVaultPensieveDedupHash = function(plaintext, key) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(plaintext, wasm.__wbindgen_export, wasm.__wbindgen_export3);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(key, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.cloudVaultPensieveDedupHash(retptr, ptr0, len0, ptr1, len1);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        var ptr3 = r0;
+        var len3 = r1;
+        if (r3) {
+            ptr3 = 0; len3 = 0;
+            throw takeObject(r2);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export2(deferred4_0, deferred4_1, 1);
     }
 };
 
@@ -1066,45 +1099,30 @@ exports.domainCoreAbiVersion = function() {
 };
 
 /**
- * Whole-document rewrap for browser/Tauri consumers. `request_json` is the
- * strict camelCase serialization of `CloudVaultDocumentRewrapRequest`; unknown
- * fields and malformed envelope variants are rejected by serde.
- * @param {string} request_json
- * @param {Uint8Array} old_key
- * @param {Uint8Array} new_key
- * @param {string} new_vault_key_id
- * @returns {string}
+ * @param {Uint8Array} wire
+ * @param {Uint8Array} shared_secret
+ * @returns {Uint8Array}
  */
-exports.cloudVaultRewrapDocumentJson = function(request_json, old_key, new_key, new_vault_key_id) {
-    let deferred6_0;
-    let deferred6_1;
+exports.cloudVaultEscrowOpen = function(wire, shared_secret) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(request_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passArray8ToWasm0(wire, wasm.__wbindgen_export);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(old_key, wasm.__wbindgen_export);
+        const ptr1 = passArray8ToWasm0(shared_secret, wasm.__wbindgen_export);
         const len1 = WASM_VECTOR_LEN;
-        const ptr2 = passArray8ToWasm0(new_key, wasm.__wbindgen_export);
-        const len2 = WASM_VECTOR_LEN;
-        const ptr3 = passStringToWasm0(new_vault_key_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        const len3 = WASM_VECTOR_LEN;
-        wasm.cloudVaultRewrapDocumentJson(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        wasm.cloudVaultEscrowOpen(retptr, ptr0, len0, ptr1, len1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
-        var ptr5 = r0;
-        var len5 = r1;
         if (r3) {
-            ptr5 = 0; len5 = 0;
             throw takeObject(r2);
         }
-        deferred6_0 = ptr5;
-        deferred6_1 = len5;
-        return getStringFromWasm0(ptr5, len5);
+        var v3 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v3;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred6_0, deferred6_1, 1);
     }
 };
 
@@ -1135,7 +1153,7 @@ exports.cloudVaultSha256Hex = function(data) {
         return getStringFromWasm0(ptr2, len2);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred3_0, deferred3_1, 1);
+        wasm.__wbindgen_export2(deferred3_0, deferred3_1, 1);
     }
 };
 
@@ -1155,52 +1173,47 @@ exports.domainCoreSourceFingerprint = function() {
         return getStringFromWasm0(r0, r1);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
+        wasm.__wbindgen_export2(deferred1_0, deferred1_1, 1);
     }
 };
 
 /**
- * @param {CloudVaultSearchOperation} operation
  * @param {string} text
- * @param {Uint8Array} vault_key
- * @param {number} limit
- * @returns {CloudVaultSearchResult}
+ * @returns {CloudVaultSearchAnalysis}
  */
-exports.cloudVaultSearch = function(operation, text, vault_key, limit) {
+exports.cloudVaultSearchAnalyze = function(text) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArray8ToWasm0(vault_key, wasm.__wbindgen_export);
-        const len1 = WASM_VECTOR_LEN;
-        wasm.cloudVaultSearch(retptr, operation, ptr0, len0, ptr1, len1, limit);
+        wasm.cloudVaultSearchAnalyze(retptr, ptr0, len0);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
         if (r2) {
             throw takeObject(r1);
         }
-        return CloudVaultSearchResult.__wrap(r0);
+        return CloudVaultSearchAnalysis.__wrap(r0);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
 };
 
 /**
- * @param {string} plaintext
+ * @param {string} slug
  * @param {Uint8Array} key
  * @returns {string}
  */
-exports.cloudVaultPensieveDedupHash = function(plaintext, key) {
+exports.cloudVaultProjectMemoryDocId = function(slug, key) {
     let deferred4_0;
     let deferred4_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(plaintext, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(slug, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArray8ToWasm0(key, wasm.__wbindgen_export);
         const len1 = WASM_VECTOR_LEN;
-        wasm.cloudVaultPensieveDedupHash(retptr, ptr0, len0, ptr1, len1);
+        wasm.cloudVaultProjectMemoryDocId(retptr, ptr0, len0, ptr1, len1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -1216,7 +1229,7 @@ exports.cloudVaultPensieveDedupHash = function(plaintext, key) {
         return getStringFromWasm0(ptr3, len3);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_export3(deferred4_0, deferred4_1, 1);
+        wasm.__wbindgen_export2(deferred4_0, deferred4_1, 1);
     }
 };
 
@@ -1254,14 +1267,48 @@ exports.calculateTokenCostNanoUsd = function(rates, buckets, has_cache_creation_
 
 /**
  * @param {string} recovery_key
- * @returns {Uint8Array}
+ * @returns {string}
  */
-exports.cloudVaultRecoveryWrappingKey = function(recovery_key) {
+exports.cloudVaultNormalizeRecoveryKey = function(recovery_key) {
+    let deferred3_0;
+    let deferred3_1;
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(recovery_key, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(recovery_key, wasm.__wbindgen_export, wasm.__wbindgen_export3);
         const len0 = WASM_VECTOR_LEN;
-        wasm.cloudVaultRecoveryWrappingKey(retptr, ptr0, len0);
+        wasm.cloudVaultNormalizeRecoveryKey(retptr, ptr0, len0);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        var ptr2 = r0;
+        var len2 = r1;
+        if (r3) {
+            ptr2 = 0; len2 = 0;
+            throw takeObject(r2);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export2(deferred3_0, deferred3_1, 1);
+    }
+};
+
+/**
+ * @param {Uint8Array} ephemeral_public_key
+ * @param {Uint8Array} aes_gcm_combined
+ * @returns {Uint8Array}
+ */
+exports.cloudVaultEscrowAssembleWire = function(ephemeral_public_key, aes_gcm_combined) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(ephemeral_public_key, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(aes_gcm_combined, wasm.__wbindgen_export);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.cloudVaultEscrowAssembleWire(retptr, ptr0, len0, ptr1, len1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -1269,31 +1316,9 @@ exports.cloudVaultRecoveryWrappingKey = function(recovery_key) {
         if (r3) {
             throw takeObject(r2);
         }
-        var v2 = getArrayU8FromWasm0(r0, r1).slice();
-        wasm.__wbindgen_export3(r0, r1 * 1, 1);
-        return v2;
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-    }
-};
-
-/**
- * @param {Uint8Array} wire
- * @returns {CloudVaultEscrowWireParts}
- */
-exports.cloudVaultEscrowSplitWire = function(wire) {
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArray8ToWasm0(wire, wasm.__wbindgen_export);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.cloudVaultEscrowSplitWire(retptr, ptr0, len0);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        if (r2) {
-            throw takeObject(r1);
-        }
-        return CloudVaultEscrowWireParts.__wrap(r0);
+        var v3 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v3;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -1353,7 +1378,7 @@ class CloudVaultEscrowWireParts {
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
             var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
             var v1 = getArrayU8FromWasm0(r0, r1).slice();
-            wasm.__wbindgen_export3(r0, r1 * 1, 1);
+            wasm.__wbindgen_export2(r0, r1 * 1, 1);
             return v1;
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
@@ -1369,7 +1394,7 @@ class CloudVaultEscrowWireParts {
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
             var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
             var v1 = getArrayU8FromWasm0(r0, r1).slice();
-            wasm.__wbindgen_export3(r0, r1 * 1, 1);
+            wasm.__wbindgen_export2(r0, r1 * 1, 1);
             return v1;
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
@@ -1421,7 +1446,7 @@ class CloudVaultRecoveryWrappedVaultKey {
             return getStringFromWasm0(r0, r1);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_export3(deferred1_0, deferred1_1, 1);
+            wasm.__wbindgen_export2(deferred1_0, deferred1_1, 1);
         }
     }
     /**
@@ -1434,7 +1459,7 @@ class CloudVaultRecoveryWrappedVaultKey {
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
             var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
             var v1 = getArrayU8FromWasm0(r0, r1).slice();
-            wasm.__wbindgen_export3(r0, r1 * 1, 1);
+            wasm.__wbindgen_export2(r0, r1 * 1, 1);
             return v1;
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
@@ -1483,7 +1508,7 @@ class CloudVaultSearchAnalysis {
             let v1;
             if (r0 !== 0) {
                 v1 = getStringFromWasm0(r0, r1).slice();
-                wasm.__wbindgen_export3(r0, r1 * 1, 1);
+                wasm.__wbindgen_export2(r0, r1 * 1, 1);
             }
             return v1;
         } finally {
@@ -1503,7 +1528,7 @@ class CloudVaultSearchAnalysis {
             let v1;
             if (r0 !== 0) {
                 v1 = getStringFromWasm0(r0, r1).slice();
-                wasm.__wbindgen_export3(r0, r1 * 1, 1);
+                wasm.__wbindgen_export2(r0, r1 * 1, 1);
             }
             return v1;
         } finally {
@@ -1523,7 +1548,7 @@ class CloudVaultSearchAnalysis {
             let v1;
             if (r0 !== 0) {
                 v1 = getStringFromWasm0(r0, r1).slice();
-                wasm.__wbindgen_export3(r0, r1 * 1, 1);
+                wasm.__wbindgen_export2(r0, r1 * 1, 1);
             }
             return v1;
         } finally {
@@ -1601,7 +1626,7 @@ class CloudVaultSearchResult {
             let v1;
             if (r0 !== 0) {
                 v1 = getStringFromWasm0(r0, r1).slice();
-                wasm.__wbindgen_export3(r0, r1 * 1, 1);
+                wasm.__wbindgen_export2(r0, r1 * 1, 1);
             }
             return v1;
         } finally {

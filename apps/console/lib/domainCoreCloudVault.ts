@@ -17,7 +17,11 @@ import initDomainCore, {
   type InitInput,
   type SyncInitInput,
 } from "../vendor/openburnbar-domain-core-wasm/openburnbar_domain_core.js";
-import { resolveDomainCoreWebMode } from "./domainCoreBuildProfile";
+import {
+  resolveDomainCoreCandidateIdentity,
+  resolveDomainCoreWebMode,
+  type DomainCoreCandidateIdentity,
+} from "./domainCoreBuildProfile";
 import { recordConsoleCloudVaultShadowComparison } from "./domainCoreShadowEvidence";
 
 export type CloudVaultDomainCoreMode = "legacy" | "shadow" | "rust";
@@ -36,6 +40,11 @@ interface LoadedCoreIdentity {
   abiVersion: number;
   sourceSha256: string;
 }
+
+type ExpectedCoreIdentity = Pick<
+  DomainCoreCandidateIdentity,
+  "coreVersion" | "abiVersion" | "sourceSha256"
+>;
 
 export interface CloudVaultShadowComparison {
   domain: "cloudvault";
@@ -77,7 +86,11 @@ export function isCloudVaultDomainCoreInitialized(): boolean {
 async function ensureInitialized(input?: InitInput): Promise<void> {
   if (initialized) return;
   initialization ??= initDomainCore(input).then(() => {
-    loadedCoreIdentity = readLoadedCoreIdentity();
+    const expected = resolveDomainCoreCandidateIdentity();
+    if (!expected) {
+      throw new Error("domain core candidate identity is required");
+    }
+    loadedCoreIdentity = readVerifiedCoreIdentity(expected);
     initialized = true;
   });
   await initialization;
@@ -217,7 +230,7 @@ function elapsedMicros(startedMillis: number): number {
 }
 
 function sliceFor(operation: string): CloudVaultShadowComparison["slice"] {
-  if (operation.startsWith("pensieve_vector_")) return "pensieve-vectors";
+  if (operation.startsWith("pensieve_")) return "pensieve-vectors";
   if (operation.includes("escrow")) return "escrow";
   if (
     operation.includes("aes") ||
@@ -264,6 +277,20 @@ function readLoadedCoreIdentity(): LoadedCoreIdentity {
   };
 }
 
+function readVerifiedCoreIdentity(
+  expected: ExpectedCoreIdentity,
+): LoadedCoreIdentity {
+  const loaded = readLoadedCoreIdentity();
+  if (
+    loaded.version !== expected.coreVersion ||
+    loaded.abiVersion !== expected.abiVersion ||
+    loaded.sourceSha256 !== expected.sourceSha256
+  ) {
+    throw new Error("loaded domain core identity does not match candidate");
+  }
+  return loaded;
+}
+
 export const domainCoreCloudVault = {
   aadV2: cloudVaultAadV2,
   aesOpenCombined: cloudVaultAesGcmOpenCombined,
@@ -301,10 +328,17 @@ export async function prepareCloudVaultDomainCore(): Promise<void> {
 
 export function initializeCloudVaultDomainCoreForTests(
   module: SyncInitInput,
+  expected: ExpectedCoreIdentity,
 ): void {
   initSync({ module });
-  loadedCoreIdentity = readLoadedCoreIdentity();
+  loadedCoreIdentity = readVerifiedCoreIdentity(expected);
   initialized = true;
+}
+
+export function verifyCloudVaultDomainCoreIdentityForTests(
+  expected: ExpectedCoreIdentity,
+): void {
+  loadedCoreIdentity = readVerifiedCoreIdentity(expected);
 }
 
 export function configureCloudVaultDomainCoreForTests(

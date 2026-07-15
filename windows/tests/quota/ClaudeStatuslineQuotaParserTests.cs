@@ -65,16 +65,21 @@ public sealed class ClaudeStatuslineQuotaParserTests
     [Fact]
     public void ExplicitRustMode_DoesNotFallbackWhenNativeCoreIsUnavailable()
     {
-        if (Environment.GetEnvironmentVariable("OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE") == "1")
-        {
-            return;
-        }
         var legacy = ClaudeStatuslineQuotaParser.ParseLegacy("{}", FetchedAt);
+        var legacyEvaluations = 0;
         Assert.Throws<InvalidOperationException>(() =>
-            ClaudeStatuslineQuotaDomainCore.Apply("{}", legacy, DomainCoreQuotaMigrationMode.Rust));
-        Assert.Same(
-            legacy,
-            ClaudeStatuslineQuotaDomainCore.Apply("{}", legacy, DomainCoreQuotaMigrationMode.Shadow));
+            ClaudeStatuslineQuotaDomainCore.Apply(
+                "{}",
+                () =>
+                {
+                    legacyEvaluations++;
+                    return legacy;
+                },
+                FetchedAt,
+                legacy.StatusMessage,
+                DomainCoreQuotaMigrationMode.Rust,
+                _ => null));
+        Assert.Equal(0, legacyEvaluations);
     }
 
     [Fact]

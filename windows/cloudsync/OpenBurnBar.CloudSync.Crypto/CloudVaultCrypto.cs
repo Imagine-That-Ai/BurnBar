@@ -358,7 +358,10 @@ namespace OpenBurnBar.CloudSync.Crypto
             DomainCoreCloudVaultBridge.PensieveDedupHash(
                 plaintext,
                 keyData,
-                () => LegacyPensieveKeyedHmacHex(Encoding.UTF8.GetBytes(plaintext), keyData, "content"));
+                () => CloudVaultLegacyCrypto.PensieveKeyedHmacHex(
+                    Encoding.UTF8.GetBytes(plaintext),
+                    keyData,
+                    "content"));
 
         /// <summary>
         /// Vault-keyed HMAC for Pensieve/memory opaque doc ids — parity with Swift

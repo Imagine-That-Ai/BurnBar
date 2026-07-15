@@ -574,6 +574,8 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     if lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak() != 19070:
         raise InternalError("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    if lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize() != 26005:
+        raise InternalError("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     if lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak() != 60626:
         raise InternalError("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     if lib.uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event() != 28560:
@@ -1052,6 +1054,11 @@ _UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_an
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize.restype = _UniffiRustBuffer
 _UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
@@ -1503,6 +1510,9 @@ _UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_em
 _UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak.argtypes = (
 )
 _UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak.restype = ctypes.c_uint16
+_UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize.argtypes = (
+)
+_UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize.restype = ctypes.c_uint16
 _UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak.argtypes = (
 )
 _UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak.restype = ctypes.c_uint16
@@ -5145,6 +5155,13 @@ def pensieve_deterministic_embed_and_cloak(text: "str",dimensions: "int",is_quer
         _UniffiConverterString.lower(model_version)))
 
 
+def pensieve_l2_normalize(vector: "typing.List[float]") -> "typing.List[float]":
+    _UniffiConverterSequenceDouble.check_lower(vector)
+
+    return _UniffiConverterSequenceDouble.lift(_uniffi_rust_call_with_error(_UniffiConverterTypePensieveVectorFfiError,_UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize,
+        _UniffiConverterSequenceDouble.lower(vector)))
+
+
 def pensieve_vector_cloak(vector: "typing.List[float]",vault_key: "bytes",model_version: "str") -> "typing.List[float]":
     _UniffiConverterSequenceDouble.check_lower(vector)
 
@@ -5258,6 +5275,7 @@ __all__ = [
     "parse_cursor_usage_quota",
     "pensieve_deterministic_embed",
     "pensieve_deterministic_embed_and_cloak",
+    "pensieve_l2_normalize",
     "pensieve_vector_cloak",
     "price_legacy_kimi_wire_event",
 ]

@@ -553,6 +553,13 @@ pub fn cloud_vault_subscription_doc_id(
 }
 
 #[uniffi::export]
+pub fn pensieve_l2_normalize(mut vector: Vec<f64>) -> Result<Vec<f64>, PensieveVectorFfiError> {
+    let result = pensieve_vectors::l2_normalize(&vector).map_err(Into::into);
+    vector.zeroize();
+    result
+}
+
+#[uniffi::export]
 pub fn pensieve_vector_cloak(
     mut vector: Vec<f64>,
     mut vault_key: Vec<u8>,
@@ -1694,6 +1701,14 @@ mod tests {
             domain_core_abi_version(),
             openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION
         );
+    }
+
+    #[test]
+    fn ffi_pensieve_l2_normalize_preserves_the_public_contract(
+    ) -> Result<(), PensieveVectorFfiError> {
+        assert_eq!(pensieve_l2_normalize(vec![3.0, 4.0])?, vec![0.6, 0.8]);
+        assert_eq!(pensieve_l2_normalize(Vec::new())?, Vec::<f64>::new());
+        Ok(())
     }
 
     #[test]

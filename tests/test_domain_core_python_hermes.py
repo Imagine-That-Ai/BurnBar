@@ -16,7 +16,11 @@ PLUGIN_DIR = REPO_ROOT / "tools" / "hermes-platform-burnbar"
 if str(PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(PLUGIN_DIR))
 
-from domain_core_hermes import DomainCoreIdentityError, HermesDomainAdapter
+from domain_core_hermes import (
+    _EXPECTED_CORE_IDENTITY,
+    DomainCoreIdentityError,
+    HermesDomainAdapter,
+)
 from legacy import hermes_ratchet_legacy as legacy
 
 PACKAGE_DIR = PLUGIN_DIR / "vendor" / "openburnbar-domain-core-python"
@@ -42,11 +46,36 @@ def _vector() -> tuple[dict[str, object], dict[str, object]]:
     return vector, request
 
 
+def test_expected_identity_matches_canonical_manifest() -> None:
+    manifest = json.loads(
+        (REPO_ROOT / "crates" / "openburnbar-domain-core" / "union-abi-manifest.json").read_text()
+    )
+    assert _EXPECTED_CORE_IDENTITY == (
+        manifest["coreVersion"],
+        manifest["abiVersion"],
+        manifest["sourceSha256"],
+    )
+
+
 def test_production_native_matches_frozen_prekey_vector_and_legacy() -> None:
     vector, request = _vector()
     expected = bytes.fromhex(str(vector["sharedSecretHex"]))
     assert legacy.ratchet_prekey_shared_secret(**request) == expected
     assert HermesDomainAdapter("rust").ratchet_prekey_shared_secret(**request) == expected
+
+
+def test_production_binding_ignores_another_consumers_global_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vector, request = _vector()
+    monkeypatch.setitem(
+        sys.modules,
+        "openburnbar_domain_ffi",
+        SimpleNamespace(__file__="/untrusted/other-consumer/openburnbar_domain_ffi.py"),
+    )
+    assert HermesDomainAdapter("rust").ratchet_prekey_shared_secret(**request) == bytes.fromhex(
+        str(vector["sharedSecretHex"])
+    )
 
 
 def test_rust_mode_calls_one_composite_ffi_operation() -> None:
@@ -136,6 +165,26 @@ def test_same_abi_wrong_source_is_rejected() -> None:
     )
     with pytest.raises(DomainCoreIdentityError, match="loaded domain-core identity mismatch"):
         HermesDomainAdapter("rust", core=fake).ratchet_prekey_shared_secret(**request)
+
+
+def test_self_consistent_wrong_source_package_is_rejected(tmp_path: Path) -> None:
+    _, request = _vector()
+    package = tmp_path / "package"
+    shutil.copytree(PACKAGE_DIR, package)
+    receipt_path = package / "openburnbar-domain-core-package-receipt.json"
+    receipt = json.loads(receipt_path.read_text())
+    receipt["sourceSha256"] = "0" * 64
+    receipt_path.write_text(json.dumps(receipt))
+    (package / "openburnbar-domain-core-source.sha256").write_text(f"{'0' * 64}\n")
+    fake = SimpleNamespace(
+        domain_core_version=lambda: receipt["coreVersion"],
+        domain_core_abi_version=lambda: receipt["abiVersion"],
+        domain_core_source_fingerprint=lambda: receipt["sourceSha256"],
+    )
+    with pytest.raises(DomainCoreIdentityError, match="package source identity mismatch"):
+        HermesDomainAdapter("rust", core=fake, package_dir=package).ratchet_prekey_shared_secret(
+            **request
+        )
 
 
 def test_native_digest_substitution_is_rejected(tmp_path: Path) -> None:

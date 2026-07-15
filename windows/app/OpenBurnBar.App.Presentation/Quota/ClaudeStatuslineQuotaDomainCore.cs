@@ -40,7 +40,8 @@ internal static class ClaudeStatuslineQuotaDomainCore
         Func<ProviderQuotaSnapshot> legacy,
         DateTimeOffset fetchedAt,
         string statusMessage,
-        DomainCoreQuotaMigrationMode? requestedMode = null)
+        DomainCoreQuotaMigrationMode? requestedMode = null,
+        Func<string, IReadOnlyList<ProviderQuotaBucket>?>? nativeParser = null)
     {
         var mode = requestedMode ?? ResolveMode(DomainCoreBuildProfileResolver.Mode("quota", ModeVariable));
         if (mode == DomainCoreQuotaMigrationMode.Legacy)
@@ -53,7 +54,11 @@ internal static class ClaudeStatuslineQuotaDomainCore
         }
 
         var rustStarted = Stopwatch.GetTimestamp();
-        if (!TryParseBuckets(json, out var rustBuckets))
+        IReadOnlyList<ProviderQuotaBucket>? rustBuckets;
+        var nativeAvailable = nativeParser is null
+            ? TryParseBuckets(json, out rustBuckets)
+            : (rustBuckets = nativeParser(json)) is not null;
+        if (!nativeAvailable || rustBuckets is null)
         {
             Trace.TraceWarning("domain_core.claude_quota.native_unavailable mode={0}", mode);
             throw new InvalidOperationException("Domain-core Claude quota is unavailable in explicit Rust mode.");

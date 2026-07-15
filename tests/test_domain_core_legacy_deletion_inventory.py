@@ -14,6 +14,14 @@ def _target_paths(row: dict[str, object]) -> set[str]:
     }
 
 
+def _target_symbols(row: dict[str, object]) -> set[tuple[str, str]]:
+    return {
+        (target["path"], target["symbol"])
+        for target in row["targets"]
+        if target["role"] == "legacy_implementation" and target["kind"] == "source_symbol"
+    }
+
+
 def test_source_distributed_consumers_are_owned_by_the_deletion_ledger() -> None:
     ledger = json.loads(LEDGER.read_text())
     rows = {row["id"]: row for row in ledger["rows"]}
@@ -21,6 +29,7 @@ def test_source_distributed_consumers_are_owned_by_the_deletion_ledger() -> None
     assert {
         "swift-vector",
         "windows-cloudsync",
+        "android-square",
         "local-mcp",
         "remote-mcp",
         "hermes-plugin",
@@ -31,10 +40,15 @@ def test_source_distributed_consumers_are_owned_by_the_deletion_ledger() -> None
         "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/Legacy/PensieveVectorLegacy.swift",
         "windows/app/OpenBurnBar.App.CloudSync/Legacy/PensieveVectorLegacy.cs",
         "apps/console/lib/legacy/pensieveVectorLegacy.ts",
+        "android/app/src/main/java/com/openburnbar/data/square/AgentSubscriptionTopicDocumentIDLegacy.kt",
         "tools/openburnbar-mcp/cloudvault_primitives_legacy.py",
         "tools/openburnbar-mcp-remote/src/legacy/cloudVaultPrimitivesLegacy.ts",
         "tools/openburnbar-mcp-remote/src/legacy/pensieveVectorLegacy.ts",
     } <= portable
+    assert (
+        "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/SharedModels/PensieveVectorCloak.swift",
+        "legacyNormalize",
+    ) in _target_symbols(rows["cloudvault.portable_primitives"])
 
     search = _target_paths(rows["cloudvault.search"])
     assert {

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import importlib
+import importlib.util
 import json
 import os
 import platform
@@ -43,6 +43,27 @@ class DomainCoreIdentityError(RuntimeError):
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _load_binding(binding_path: Path) -> Any:
+    resolved = binding_path.resolve()
+    module_name = f"_openburnbar_domain_ffi_{hashlib.sha256(str(resolved).encode()).hexdigest()}"
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        if Path(existing.__file__).resolve() != resolved:
+            raise DomainCoreIdentityError("domain-core Python module path mismatch")
+        return existing
+    spec = importlib.util.spec_from_file_location(module_name, resolved)
+    if spec is None or spec.loader is None:
+        raise DomainCoreIdentityError("domain-core Python binding has no loader")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(module_name, None)
+        raise DomainCoreIdentityError("domain-core Python binding could not be loaded") from exc
+    return module
 
 
 def _mode_from_environment() -> str:
@@ -106,12 +127,7 @@ class CloudVaultDomainAdapter:
         if not binding_path.is_file() or _sha256(binding_path) != receipt.get("bindingSha256"):
             raise DomainCoreIdentityError("domain-core Python binding digest mismatch")
         if self._injected_core is None:
-            package = str(self.package_dir)
-            if package not in sys.path:
-                sys.path.insert(0, package)
-            core = importlib.import_module("openburnbar_domain_ffi")
-            if Path(core.__file__).resolve() != binding_path.resolve():
-                raise DomainCoreIdentityError("domain-core Python module path mismatch")
+            core = _load_binding(binding_path)
         else:
             core = self._injected_core
         loaded = (
