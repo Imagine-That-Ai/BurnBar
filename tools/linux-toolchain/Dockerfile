@@ -11,6 +11,21 @@ ARG NODE_VERSION=22.23.1
 ARG NODE_X64_SHA256=9749e988f437343b7fa832c69ded82a312e41a03116d766797ac14f6f9eee578
 ARG NODE_ARM64_SHA256=0294e8b915ab75f92c7513d2fcb830ae06e10684e6c603e99a87dbf8835389c1
 
+# GitHub ARM runners intermittently lose plaintext connectivity to the Ubuntu
+# ports mirror. Normalize every Ubuntu archive endpoint to HTTPS before the
+# deterministic package install so a transient HTTP-only route cannot make a
+# release candidate fail before any source is built.
+RUN set -eux; \
+    for source in /etc/apt/sources.list /etc/apt/sources.list.d/*; do \
+        if [ -f "${source}" ]; then \
+            sed -i \
+                -e 's|http://ports.ubuntu.com|https://ports.ubuntu.com|g' \
+                -e 's|http://archive.ubuntu.com|https://archive.ubuntu.com|g' \
+                -e 's|http://security.ubuntu.com|https://security.ubuntu.com|g' \
+                "${source}"; \
+        fi; \
+    done
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update \
     && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends \

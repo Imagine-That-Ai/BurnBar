@@ -94,6 +94,12 @@ percentage. The active remediation stack now contains these reviewable slices:
   the exact autostart exception to DEB, RPM, and Arch, and the real-tool
   fixture asserts the `/etc/xdg/autostart` payload for DEB/RPM when the root
   toolchain is available. This run produced no artifact or certifying receipt.
+- **Toolchain mirror hardening:** repeated ARM preflight failures were traced
+  to plaintext Ubuntu mirror connectivity, not package or source behavior. The
+  pinned Docker toolchain now rewrites Ubuntu archive endpoints to HTTPS before
+  apt installation, with a regression contract in
+  `linux-toolchain-node-runtime.test.mjs`; the next candidate must prove both
+  architectures through the same image.
 
 - **Onboarding hardening:** `238ee56975` validates every daemon snapshot before
   renderer/cache mutation, preserves the last valid state on malformed or

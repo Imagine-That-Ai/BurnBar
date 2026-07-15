@@ -55,6 +55,12 @@ test('Linux toolchain does not reintroduce Noble Node 18 packages', () => {
   assert.match(toolchain, /arm64\) node_arch=arm64/u);
 });
 
+test('Linux toolchain normalizes Ubuntu package mirrors to HTTPS', () => {
+  assert.match(toolchain, /http:\/\/ports\.ubuntu\.com.*https:\/\/ports\.ubuntu\.com/isu);
+  assert.match(toolchain, /http:\/\/archive\.ubuntu\.com.*https:\/\/archive\.ubuntu\.com/isu);
+  assert.match(toolchain, /http:\/\/security\.ubuntu\.com.*https:\/\/security\.ubuntu\.com/isu);
+});
+
 test('toolchain smoke reports the runtime actually used by release builds', () => {
   assert.match(smoke, /node --version/u);
   assert.match(smoke, /npm --version/u);

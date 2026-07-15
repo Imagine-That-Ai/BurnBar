@@ -180,6 +180,12 @@ DEB/RPM fixture checks the extracted desktop entry. The same run's aarch64
 failure was again an independent `ports.ubuntu.com` outage; no artifact or
 receipt is certifying and another exact-head candidate is required.
 
+The repeated ARM mirror outage is now addressed in the toolchain itself: its
+base-image Ubuntu archive entries are normalized to HTTPS before apt runs, and
+the Node/toolchain contract suite asserts all three Ubuntu endpoints. This is a
+release-reliability repair, not a product-parity receipt; the next exact-head
+candidate must still pass both architectures and installed proof.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:
