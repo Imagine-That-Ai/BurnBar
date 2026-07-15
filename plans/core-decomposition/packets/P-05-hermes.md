@@ -26,7 +26,7 @@ has real sources). Remove the now-empty `Hermes/` dir if git leaves it.
 - **AE-IMPORT** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): **REQUIRED in this
   packet** — `HermesAtomNavigator.swift` constructs `PlatformLogger(subsystem:…,
   category:…)` (its line 31: `private let logger = PlatformLogger(...)`), and
-  `PlatformLogger` is a KERNEL symbol (`OpenBurnBarKernel/Platform/PlatformSupport.swift`,
+  `PlatformLogger` is a platform-support symbol (`OpenBurnBarPlatformSupport/PlatformSupport.swift`,
   `public struct PlatformLogger: Sendable`). Inside the old Core target it resolved
   without an import; in the `OpenBurnBarHermes` target it does NOT (Hermes declares
   `OpenBurnBarKernel` as a dep but the source must still import it). So ADD `import
@@ -52,7 +52,7 @@ because Hermes types are `public`. That is true for the type VISIBILITY, but the
 still needs one cross-module import: `HermesAtomNavigator.swift` references
 `PlatformLogger` from the Kernel, which is UN-imported inside the Hermes target.
 `PlatformLogger` is ALREADY `public` in the Kernel
-(`OpenBurnBarKernel/Platform/PlatformSupport.swift`) — verified at S0-repair — so NO
+(`OpenBurnBarPlatformSupport/PlatformSupport.swift`) — verified at S0-repair — so NO
 one-line public change is required in the Kernel; the ONLY edit is the AE-IMPORT
 `import OpenBurnBarKernel` line above. Everything else is Foundation-only (verified).
 
