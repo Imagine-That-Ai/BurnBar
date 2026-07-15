@@ -127,6 +127,33 @@ candidate and nightly matrix will be dispatched after this documentation
 checkpoint is frozen. Neither run is a parity receipt until it completes and
 its evidence is validated against the exact head.
 
+### Continuation checkpoint - 2026-07-15 source follow-on
+
+Commit `dcca8b74b4` adds three bounded implementation units while preserving
+the installed-proof boundary:
+
+- **LNX-CHAT-001:** capability-gated PNG/JPEG/WebP/PDF chat attachments. The
+  daemon reads the selected model's canonical catalog contract, encodes native
+  content only when explicitly accepted, enforces the advertised byte limit,
+  and fails closed before provider submission. The renderer performs the same
+  preflight and preserves the draft/staged file on unknown or unsupported
+  capability. Focused UI/bridge tests, Vite production verification,
+  TypeScript typecheck, and all **102/102** Linux Tauri Rust tests pass.
+- **LNX-SEC-002:** Secret Service first-use health. A missing probe item is
+  normal on a fresh unlocked keyring and is accepted; locked, unavailable, or
+  D-Bus failure details still fail closed. The Linux security target builds and
+  direct behavior harness pass; environment receipts remain required.
+- **LNX-NATIVE-002:** packaged XDG autostart. DEB/RPM/Arch and legacy package
+  staging install one canonical `/etc/xdg/autostart/openburnbar.desktop`, and
+  `--background` hides the window only after tray initialization succeeds.
+  Packaging/wiring tests pass; installed desktop-environment persistence and
+  update/rollback receipts remain required.
+
+These source changes advance the branch beyond the candidate run recorded
+above. A fresh exact-head release candidate must be built before any of the
+new behavior can enter the promotion ledger; the ledger remains **0/40** and
+**0/7**.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:
