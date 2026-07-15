@@ -163,9 +163,9 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(secondResult.indexedConversationChanges, 1)
     }
 
-    // MARK: - 5. Per-tick cap: >200 changed conversations deferred
+    // MARK: - 5. No-loss semantics: >200 changed conversations all processed in one tick
 
-    func test_runConversationIndexing_capsAt200_andDefersExcess() async throws {
+    func test_runConversationIndexing_processesFullSet_noLoss() async throws {
         let store = try makeInMemoryStore()
         let mtime = Date(timeIntervalSince1970: 1_700_000_000)
         // 250 conversations with fileModifiedAt: nil → all pass the watermark filter on first run.
@@ -188,10 +188,8 @@ final class IncrementalConversationIndexingTests: XCTestCase {
 
         // All 250 are "changed" (fileModifiedAt nil → always index).
         XCTAssertEqual(result.changedConversationCount, 250)
-        // 50 should be deferred past the per-tick cap of 200.
-        XCTAssertEqual(result.deferredConversationCount, 50)
-        // Exactly 200 should have been indexed.
-        XCTAssertEqual(result.indexedConversationChanges, 200)
+        // No per-tick cap — all 250 are indexed in one tick (no-loss semantics).
+        XCTAssertEqual(result.indexedConversationChanges, 250)
     }
 
     // MARK: - 6. Error/atomicity: parser throws, checkpoint does not advance
@@ -219,6 +217,196 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         // The checkpoint should NOT have advanced (no checkpoint row written).
         let afterCheckpoint = try await store.checkpointStore.fetchCheckpoint(for: .factory)
         XCTAssertNil(afterCheckpoint)
+    }
+
+    // MARK: - 7. Old-mtime new ID is indexed despite old fileModifiedAt
+
+    func test_runConversationIndexing_oldMtimeNewID_isIndexed() async throws {
+        let store = try makeInMemoryStore()
+        let oldMtime = Date(timeIntervalSince1970: 1_700_000_000)
+        let initialConversations: [ConversationRecord] = (0..<2).map { i in
+            makeFactoryConversationRecord(
+                id: "Factory:old-mtime-\(i)",
+                indexedAt: oldMtime,
+                fileModifiedAt: oldMtime
+            )
+        }
+        let initialParser = StubParser(provider: .factory, conversations: initialConversations)
+        let orchestrator = makeOrchestrator(store: store)
+
+        // First tick: index 2 conversations, checkpoint is set.
+        let firstResult = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: initialParser],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+        XCTAssertEqual(firstResult.changedConversationCount, 2)
+
+        // Second tick: same 2 conversations (filtered by watermark) PLUS 1 new
+        // conversation with an mtime OLDER than the checkpoint watermark.
+        let checkpoint = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        XCTAssertNotNil(checkpoint)
+        let watermark = checkpoint!.lastProcessedAt
+        let newOldMtime = watermark.addingTimeInterval(-100) // older than checkpoint
+        var secondConversations = initialConversations
+        secondConversations.append(makeFactoryConversationRecord(
+            id: "Factory:old-mtime-new-id",
+            indexedAt: oldMtime,
+            fileModifiedAt: newOldMtime
+        ))
+        let secondParser = StubParser(provider: .factory, conversations: secondConversations)
+
+        let secondResult = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: secondParser],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+
+        // The new ID passes through despite old mtime (finding 2).
+        XCTAssertGreaterThanOrEqual(secondResult.changedConversationCount, 1)
+        XCTAssertGreaterThanOrEqual(secondResult.indexedConversationChanges, 1)
+
+        // The new conversation must be fetchable from the store.
+        let fetched = try await store.fetchConversation(id: "Factory:old-mtime-new-id")
+        XCTAssertNotNil(fetched)
+    }
+
+    // MARK: - 8. Indexing failure does not advance checkpoint (retry on next tick)
+
+    func test_runConversationIndexing_indexingFailure_doesNotAdvanceCheckpoint() async throws {
+        let store = try makeInMemoryStore()
+        let mtime = Date(timeIntervalSince1970: 1_700_000_000)
+        let conversations: [ConversationRecord] = (0..<2).map { i in
+            makeFactoryConversationRecord(
+                id: "Factory:fail-idx-\(i)",
+                indexedAt: mtime,
+                fileModifiedAt: mtime
+            )
+        }
+        let initialParser = StubParser(provider: .factory, conversations: conversations)
+        let orchestrator = makeOrchestrator(store: store)
+
+        // First tick: index 2 conversations and set checkpoint.
+        let firstResult = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: initialParser],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+        XCTAssertEqual(firstResult.changedConversationCount, 2)
+
+        let checkpointAfterFirst = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        XCTAssertNotNil(checkpointAfterFirst)
+        let watermarkAfterFirst = checkpointAfterFirst!.lastProcessedAt
+
+        // Corrupt the store: drop the conversations table so indexing throws.
+        try await store.actor.dbQueue.write { db in
+            try db.execute(sql: "DROP TABLE conversations")
+        }
+
+        // Second tick: conversations have nil fileModifiedAt (always changed),
+        // but indexing will fail because the conversations table is gone.
+        let failingConversations: [ConversationRecord] = (0..<2).map { i in
+            makeFactoryConversationRecord(
+                id: "Factory:fail-idx-\(i)",
+                indexedAt: mtime,
+                fileModifiedAt: nil // nil → always passes the watermark filter
+            )
+        }
+        let failingParser = StubParser(provider: .factory, conversations: failingConversations)
+
+        let secondResult = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: failingParser],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+
+        // The error should be captured, not crash.
+        XCTAssertNotNil(secondResult.errors[.factory])
+        XCTAssertFalse(secondResult.errors[.factory]!.isEmpty)
+
+        // The checkpoint should NOT have advanced — same watermark as after the first tick.
+        let checkpointAfterSecond = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        XCTAssertNotNil(checkpointAfterSecond)
+        XCTAssertEqual(
+            checkpointAfterSecond!.lastProcessedAt,
+            watermarkAfterFirst,
+            "Checkpoint must not advance after an indexing failure so the next tick retries."
+        )
+    }
+
+    // MARK: - 9. Chunked batch fetch handles >SQLite parameter limit
+
+    func test_conversationIndexer_chunkedBatchFetch_handlesMoreThanSQLiteLimit() async throws {
+        let store = try makeInMemoryStore()
+        let mtime = Date(timeIntervalSince1970: 1_700_000_000)
+        // 1200 conversation records — exceeds SQLite's default 999 parameter limit.
+        let records: [ConversationRecord] = (0..<1200).map { i in
+            makeFactoryConversationRecord(
+                id: "Factory:sqlite-limit-\(i)",
+                indexedAt: mtime,
+                fileModifiedAt: mtime
+            )
+        }
+
+        // Must not crash; all 1200 should be indexed via chunked batch fetches.
+        let report = try await ConversationIndexer.shared.index(records, in: store)
+        XCTAssertEqual(report.changedRecordCount, 1200)
+        XCTAssertEqual(report.skippedRecordCount, 0)
+    }
+
+    // MARK: - 10. Scan/write race: file modified between scan-start and checkpoint-advance is seen next tick
+
+    func test_runConversationIndexing_scanWriteRace_doesNotSkip() async throws {
+        let store = try makeInMemoryStore()
+        let mtime = Date(timeIntervalSince1970: 1_700_000_000)
+        let conversation = makeFactoryConversationRecord(
+            id: "Factory:race-0",
+            indexedAt: mtime,
+            fileModifiedAt: mtime
+        )
+        let initialParser = StubParser(provider: .factory, conversations: [conversation])
+        let orchestrator = makeOrchestrator(store: store)
+
+        // First tick: index 1 conversation. Checkpoint advances to scan-start S0.
+        let firstResult = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: initialParser],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+        XCTAssertEqual(firstResult.changedConversationCount, 1)
+
+        let checkpoint = try await store.checkpointStore.fetchCheckpoint(for: .factory)
+        XCTAssertNotNil(checkpoint)
+        let watermark = checkpoint!.lastProcessedAt
+
+        // Second tick: the same conversation now has fileModifiedAt just barely
+        // AFTER the first tick's scan-start watermark (simulating a file written
+        // between scan-start and checkpoint-advance). Since the checkpoint
+        // advanced to scan-start (not post-processing), this mtime > watermark
+        // and must pass the filter.
+        let racedMtime = watermark.addingTimeInterval(0.001)
+        let racedConversation = makeFactoryConversationRecord(
+            id: "Factory:race-0",
+            indexedAt: mtime,
+            fileModifiedAt: racedMtime
+        )
+        let racedParser = StubParser(provider: .factory, conversations: [racedConversation])
+
+        let secondResult = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: racedParser],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+
+        // The raced file must be seen and indexed (finding 5).
+        XCTAssertGreaterThanOrEqual(secondResult.changedConversationCount, 1)
+        XCTAssertGreaterThanOrEqual(secondResult.indexedConversationChanges, 1)
     }
 
     // MARK: - Helpers

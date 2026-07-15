@@ -21,6 +21,10 @@ final class ConversationIndexer {
     private static var dateFieldToleranceSeconds: TimeInterval { 0.001 }
     private static var writeYieldInterval: Int { 64 }
 
+    /// SQLite's default parameter limit. Chunk batch fetches to stay safely
+    /// below this so `WHERE id IN (…)` never hits `SQLITE_MAX_VARIABLE_NUMBER`.
+    private static let batchFetchChunkSize: Int = 500
+
     private init() {}
 
     /// Upserts conversation rows, skipping when the parsed payload is unchanged and
@@ -31,24 +35,29 @@ final class ConversationIndexer {
     /// P-PERF-2: steady-state performance fix.
     /// Previously this method performed one `fetchConversation(id:)` DB roundtrip
     /// per incoming record — N queries for N records on every 60-second tick,
-    /// even when every conversation was unchanged. Now it issues a single batch
-    /// `fetchConversations(ids:)` query and builds a lookup map, making steady-state
-    /// indexing O(1) DB roundtrips + O(changed) writes rather than O(N) roundtrips.
+    /// even when every conversation was unchanged. Now it issues batched
+    /// `fetchConversations(ids:)` queries (chunked to stay under SQLite's
+    /// parameter limit) and builds a lookup map, making steady-state indexing
+    /// O(ceil(N/500)) DB roundtrips + O(changed) writes rather than O(N) roundtrips.
     /// The parsers already skip re-parsing unchanged files via `CompositeFileSignature`
     /// cache hits; this removes the DB-side N+1 that remained.
     func index(_ records: [ConversationRecord], in dataStore: DataStore) async throws -> ConversationIndexingReport {
         var report = ConversationIndexingReport.empty
         guard !records.isEmpty else { return report }
 
-        // Single batch fetch: replaces N individual `fetchConversation(id:)` calls
-        // with one SQL `WHERE id IN (…)` query. The result is a dictionary keyed
-        // by conversation ID for O(1) lookup inside the loop below.
+        // Batch fetch: replaces N individual `fetchConversation(id:)` calls
+        // with chunked SQL `WHERE id IN (…)` queries. Chunked to stay safely
+        // below SQLite's SQLITE_MAX_VARIABLE_NUMBER (default 999).
         let allIDs = records.map(\.id)
-        let existingRecords = try await dataStore.fetchConversations(ids: allIDs)
         var existingMap: [String: ConversationRecord] = [:]
-        existingMap.reserveCapacity(existingRecords.count)
-        for existing in existingRecords {
-            existingMap[existing.id] = existing
+        existingMap.reserveCapacity(records.count)
+        for chunkStart in stride(from: 0, to: allIDs.count, by: Self.batchFetchChunkSize) {
+            let chunkEnd = min(chunkStart + Self.batchFetchChunkSize, allIDs.count)
+            let chunkIDs = Array(allIDs[chunkStart..<chunkEnd])
+            let chunkRecords = try await dataStore.fetchConversations(ids: chunkIDs)
+            for existing in chunkRecords {
+                existingMap[existing.id] = existing
+            }
         }
 
         for (index, record) in records.enumerated() {

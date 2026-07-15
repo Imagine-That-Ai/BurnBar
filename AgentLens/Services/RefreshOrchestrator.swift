@@ -70,6 +70,25 @@ actor RefreshOrchestrator {
         }
     }
 
+
+    /// Throwing variant of `indexConversationsOffMain` that propagates
+    /// indexing failures instead of swallowing them into `return 0`.
+    ///
+    /// P-PERF-2: the checkpoint watermark MUST NOT advance after a failed
+    /// indexing pass. The non-throwing variant returns 0 on both failure and
+    /// success-with-no-changes, making them indistinguishable. This variant
+    /// lets the caller detect failure and skip checkpoint advancement so the
+    /// next tick retries the failed upserts.
+    func indexConversationsOffMainThrowing(
+        _ conversations: [OpenBurnBarCore.ConversationRecord],
+        indexingEnabled: Bool
+    ) async throws -> ConversationIndexingReport {
+        guard !conversations.isEmpty, indexingEnabled else {
+            return .empty
+        }
+        return try await ConversationIndexer.shared.index(conversations, in: dataStore)
+    }
+
     func runRetentionPurgeIfNeeded() async {
         // No user-facing retention window is configured in SettingsManager yet, so we apply a
         // conservative built-in policy: reap terminal projection jobs (completed/canceled) that
