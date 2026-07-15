@@ -8,6 +8,7 @@ using OpenBurnBar.App.Dashboard.EasterEgg;
 using OpenBurnBar.App.Dashboard.Layout;
 using OpenBurnBar.App.Dashboard.Layouts;
 using OpenBurnBar.App.Presentation.Dashboard;
+using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.UsageRuntime;
 using Windows.UI.ViewManagement;
@@ -109,7 +110,9 @@ public sealed partial class DashboardPage : Page
         _commandSnapshot = RuntimeDataMode.SampleModeEnabled
             ? DashboardCommandSampleData.Snapshot()
             : App.Current.UsageRuntime is { } usageRuntime
-                ? UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(usageRuntime.State)
+                ? UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(
+                    usageRuntime.State,
+                    WindowsGeneralSettingsComposition.Load())
                 : DashboardCommandSnapshot.Empty;
         CommandSidebar.ApplySnapshot(_commandSnapshot);
         ApplyDetailChrome();
@@ -124,7 +127,9 @@ public sealed partial class DashboardPage : Page
 
         DispatcherQueue.TryEnqueue(() =>
         {
-            _commandSnapshot = UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(args.Current);
+            _commandSnapshot = UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(
+                args.Current,
+                WindowsGeneralSettingsComposition.Load());
             CommandSidebar.ApplySnapshot(_commandSnapshot);
             ApplyDetailChrome();
             ShowLayout(Switcher.State.Selection);

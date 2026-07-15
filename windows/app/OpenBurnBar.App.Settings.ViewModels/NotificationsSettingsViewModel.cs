@@ -11,9 +11,8 @@
 //   controllerCalendarDefaultMinutes      : Int    = 30    (load-floor >= 15 else 30; choices 15/30/45/60/90)
 //   controllerDefaultSnoozeMinutes        : Int    = 180   (load-floor >= 15 else 180; choices 30/60/90/120/180/240)
 //
-// Windows-v1 note: per WPD-0006 the Telegram bridge is DEFER (row 16) and the EventKit
-// calendar bridge is N/A (row 17). These preferences still persist; the tab flags the
-// capability status so the operator knows the local delivery isn't wired yet.
+// The Windows Telegram bridge is live through the protected settings + local Mission
+// Control runtime. The EventKit calendar bridge remains N/A on Windows (row 17).
 
 using System.Collections.Generic;
 
@@ -158,9 +157,9 @@ public sealed class NotificationsSettingsViewModel : ObservableSettingsViewModel
     public bool IsTelegramConfigured =>
         !string.IsNullOrWhiteSpace(_telegramBotToken) && !string.IsNullOrWhiteSpace(_telegramChatId);
 
-    /// <summary>Windows-v1 capability note: Telegram delivery is deferred (WPD-0006 row 16).</summary>
+    /// <summary>Windows Telegram delivery and commands are live through the local runtime.</summary>
     public string TelegramCapabilityNote =>
-        "Telegram delivery is deferred to v1.1 on Windows (WPD-0006 row 16); preferences are saved.";
+        "Telegram delivery and Mission Control commands are live on Windows (WPD-0006 row 16).";
 
     /// <summary>Whether calendar reminders are enabled.</summary>
     public bool CalendarEnabled

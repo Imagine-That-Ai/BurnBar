@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Presentation.SessionLogs;
@@ -23,6 +24,12 @@ public sealed partial class CommandPalette : ContentDialog
     private readonly ObservableCollection<CommandPaletteItem> _results = new();
     private readonly IReadOnlyList<CommandPaletteItem> _sections;
     private IReadOnlyList<CommandPaletteItem> _recentSessions = Array.Empty<CommandPaletteItem>();
+    private IReadOnlyList<SessionLogRecord> _sessions = Array.Empty<SessionLogRecord>();
+    private ISessionLogReadSource? _sessionSource;
+    private CancellationTokenSource? _loadCancellation;
+    private CancellationTokenSource? _searchCancellation;
+    private bool _sessionSearchLoading;
+    private string? _sessionSearchError;
 
     public CommandPalette()
     {
@@ -37,10 +44,14 @@ public sealed partial class CommandPalette : ContentDialog
             QueryBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
             await LoadRecentSessionsAsync();
         };
+        Closed += (_, _) => DisposeSessionSource();
     }
 
     /// <summary>The destination key the user activated, or <c>null</c> if the palette was dismissed.</summary>
     public string? ChosenDestinationKey { get; private set; }
+
+    /// <summary>The selected session id, when the palette activated a session row.</summary>
+    public string? ChosenSessionId { get; private set; }
 
     private static IReadOnlyList<CommandPaletteItem> BuildSections()
     {
@@ -84,33 +95,54 @@ public sealed partial class CommandPalette : ContentDialog
 
     private async Task LoadRecentSessionsAsync()
     {
+        DisposeSessionSource();
+        var loadCancellation = new CancellationTokenSource();
+        _loadCancellation = loadCancellation;
+        CancellationToken loadToken = loadCancellation.Token;
         ISessionLogReadSource? source = null;
         try
         {
             source = WindowsStorageDevHost.CreateSessionLogReadSource();
-            IReadOnlyList<SessionLogRecord> sessions = await source.ListAsync(limit: 12);
-            const string sessionGlyph = "\uE8BD";
-            _recentSessions = sessions.Select(session => new CommandPaletteItem(
-                PaletteItemKind.Session,
-                sessionGlyph,
-                string.IsNullOrWhiteSpace(session.InferredTaskTitle) ? session.SessionId : session.InferredTaskTitle,
-                $"{session.ProviderDisplayName} · {session.ProjectName}",
-                "sessionLogs")).ToArray();
+            _sessionSource = source;
+            _sessionSearchError = null;
+            _sessionSearchLoading = true;
+            Rebuild(QueryBox.Text);
+            _sessions = await source.ListAsync(limit: 200, loadToken);
+            loadToken.ThrowIfCancellationRequested();
+            await RefreshSessionResultsAsync(QueryBox.Text);
+        }
+        catch (OperationCanceledException) when (loadToken.IsCancellationRequested)
+        {
+            // Closing the dialog or a newer open owns the next load.
         }
         catch (Exception ex)
         {
             OpenBurnBar.App.Diagnostics.AppDiagnostics.LogException("command-palette.sessions", ex);
+            _sessionSearchError = "Session search is unavailable.";
+            _sessions = Array.Empty<SessionLogRecord>();
             _recentSessions = Array.Empty<CommandPaletteItem>();
+            _sessionSearchLoading = false;
+            Rebuild(QueryBox.Text);
         }
-        finally
+        if (source is null)
         {
-            (source as IDisposable)?.Dispose();
+            _sessionSearchError = "Session search is unavailable.";
+            _sessionSearchLoading = false;
+            Rebuild(QueryBox.Text);
         }
 
-        Rebuild(QueryBox.Text);
+        if (ReferenceEquals(_loadCancellation, loadCancellation))
+        {
+            _loadCancellation.Dispose();
+            _loadCancellation = null;
+        }
     }
 
-    private void QueryBox_TextChanged(object sender, TextChangedEventArgs e) => Rebuild(QueryBox.Text);
+    private void QueryBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        Rebuild(QueryBox.Text);
+        _ = RefreshSessionResultsAsync(QueryBox.Text);
+    }
 
     private void Rebuild(string rawQuery)
     {
@@ -131,6 +163,117 @@ public sealed partial class CommandPalette : ContentDialog
         {
             ResultsList.SelectedIndex = 0;
         }
+
+        UpdateStatusText(query);
+    }
+
+    private async Task RefreshSessionResultsAsync(string rawQuery)
+    {
+        string query = rawQuery.Trim();
+        ISessionLogReadSource? source = _sessionSource;
+        if (source is null)
+        {
+            _sessionSearchLoading = false;
+            UpdateStatusText(query);
+            return;
+        }
+
+        _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _searchCancellation = cancellation;
+        CancellationToken token = cancellation.Token;
+        _sessionSearchLoading = query.Length > 0;
+        _sessionSearchError = null;
+        UpdateStatusText(query);
+
+        try
+        {
+            IReadOnlyList<string> rankedIds = query.Length == 0
+                ? Array.Empty<string>()
+                : await source.SearchMatchingIdsAsync(query, limit: 200, token).ConfigureAwait(true);
+            token.ThrowIfCancellationRequested();
+
+            IReadOnlyList<SessionLogRecord> ranked = SessionLogSearch.Rank(
+                query,
+                _sessions,
+                rankedIds,
+                limit: 24);
+            _recentSessions = ranked.Select(ToSessionItem).ToArray();
+            _sessionSearchLoading = false;
+            Rebuild(query);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            // A newer keystroke owns the result set.
+        }
+        catch (Exception ex)
+        {
+            OpenBurnBar.App.Diagnostics.AppDiagnostics.LogException("command-palette.search", ex);
+            if (!token.IsCancellationRequested)
+            {
+                _sessionSearchError = "Session search is unavailable.";
+                _recentSessions = Array.Empty<CommandPaletteItem>();
+                _sessionSearchLoading = false;
+                Rebuild(query);
+            }
+        }
+    }
+
+    private static CommandPaletteItem ToSessionItem(SessionLogRecord session)
+    {
+        const string sessionGlyph = "\uE8BD";
+        string subtitle = string.Join(
+            " · ",
+            new[] { session.ProviderDisplayName, session.ProjectName }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+        return new CommandPaletteItem(
+            PaletteItemKind.Session,
+            sessionGlyph,
+            session.DisplayTitle,
+            subtitle,
+            "sessionLogs",
+            sessionId: session.Id);
+    }
+
+    private void UpdateStatusText(string query)
+    {
+        if (_sessionSearchLoading)
+        {
+            StatusText.Text = "Searching sessions...";
+            StatusText.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+            return;
+        }
+
+        if (_sessionSearchError is not null)
+        {
+            StatusText.Text = _sessionSearchError;
+            StatusText.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+            return;
+        }
+
+        if (_results.Count == 0)
+        {
+            StatusText.Text = query.Length == 0 ? "No destinations available." : "No matching destinations or sessions.";
+            StatusText.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+            return;
+        }
+
+        StatusText.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+    }
+
+    private void DisposeSessionSource()
+    {
+        _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+        _loadCancellation = null;
+        _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
+        _searchCancellation = null;
+        (_sessionSource as IDisposable)?.Dispose();
+        _sessionSource = null;
+        _sessions = Array.Empty<SessionLogRecord>();
+        _recentSessions = Array.Empty<CommandPaletteItem>();
     }
 
     private IEnumerable<CommandPaletteItem> FilterSections(string query)
@@ -214,6 +357,7 @@ public sealed partial class CommandPalette : ContentDialog
     private void Activate(CommandPaletteItem item)
     {
         ChosenDestinationKey = item.DestinationKey;
+        ChosenSessionId = item.Kind == PaletteItemKind.Session ? item.SessionId : null;
         Hide();
     }
 

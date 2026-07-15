@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../pal/ipc/OpenBurnBar.Pal.Ipc.csproj" />
+    <ProjectReference Include="../../pal/ipc-windows/OpenBurnBar.Pal.Ipc.Windows.csproj" />
   </ItemGroup>
 
 </Project>

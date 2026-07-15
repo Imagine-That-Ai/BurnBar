@@ -2,7 +2,9 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Diagnostics;
+using OpenBurnBar.App.SessionLogs;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.App.UsageRuntime;
 
 namespace OpenBurnBar.App.Shell;
 
@@ -33,6 +35,9 @@ public sealed partial class AppShell : UserControl
     /// </summary>
     public void BindTheme(ThemeService theme) => _theme = theme;
 
+    /// <summary>Connects the header telemetry capsule to the live usage runtime.</summary>
+    public void BindUsageRuntime(IUsageRuntime? runtime) => BurnHero.Bind(runtime);
+
     private void AppearanceFlyout_Opening(object sender, object e)
     {
         if (_appearanceBound || _theme is null)
@@ -45,7 +50,7 @@ public sealed partial class AppShell : UserControl
     }
 
     /// <summary>Navigate the content frame to a destination by key (used by the palette).</summary>
-    public void Navigate(string key)
+    public void Navigate(string key, string? sessionId = null)
     {
         var destination = NavCatalog.Find(key);
         if (destination is null)
@@ -53,7 +58,7 @@ public sealed partial class AppShell : UserControl
             return;
         }
 
-        NavigateFrame(destination);
+        NavigateFrame(destination, sessionId);
     }
 
     private void BuildSectionMenus()
@@ -102,10 +107,10 @@ public sealed partial class AppShell : UserControl
         return item;
     }
 
-    private void NavigateFrame(NavDestination destination)
+    private void NavigateFrame(NavDestination destination, string? sessionId = null)
     {
         // Dedupe: selection-in-constructor + palette re-entry can both fire.
-        if (_currentKey == destination.Key)
+        if (_currentKey == destination.Key && string.IsNullOrWhiteSpace(sessionId))
         {
             ApplySectionChrome(destination);
             return;
@@ -117,7 +122,13 @@ public sealed partial class AppShell : UserControl
         {
             _currentKey = destination.Key;
             ApplySectionChrome(destination);
-            ContentFrame.Navigate(pageType, destination);
+            object parameter = destination;
+            if (destination.Key == "sessionLogs" && !string.IsNullOrWhiteSpace(sessionId))
+            {
+                parameter = new SessionLogsNavigationRequest(sessionId);
+            }
+
+            ContentFrame.Navigate(pageType, parameter);
             AppDiagnostics.RouteSuccess(destination.Key, pageType);
         }
         catch (Exception ex)

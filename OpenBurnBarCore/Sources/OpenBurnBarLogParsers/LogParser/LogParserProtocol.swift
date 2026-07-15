@@ -15,11 +15,18 @@ public struct ParseResult: Sendable {
 
 public struct LogParseOptions: Sendable {
     public var includeConversationBodies: Bool
+    /// When set, parsers may return cached older rows but should not parse
+    /// uncached files whose modification date is before this boundary.
+    public var minimumFileModificationDate: Date?
 
     public static let `default` = LogParseOptions(includeConversationBodies: true)
 
-    public init(includeConversationBodies: Bool) {
+    public init(
+        includeConversationBodies: Bool,
+        minimumFileModificationDate: Date? = nil
+    ) {
         self.includeConversationBodies = includeConversationBodies
+        self.minimumFileModificationDate = minimumFileModificationDate
     }
 }
 

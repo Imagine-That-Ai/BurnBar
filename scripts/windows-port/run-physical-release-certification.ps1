@@ -27,12 +27,24 @@ $ErrorActionPreference = 'Stop'
 $BundleSchema = 'openburnbar.windows.release-certification-bundle.v1'
 $ReceiptSchema = 'openburnbar.windows.release-certification-receipt.v1'
 $StartedAtUtc = [DateTimeOffset]::UtcNow
+$script:VirtualHostIdentityPattern = '(?i)(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V|Amazon EC2|Google Compute Engine|HVM domU|\bXen\b|OpenStack|Bochs|BHYVE|DigitalOcean)'
+$script:AllowedAssetTagSources = @(
+    'Win32_SystemEnclosure.SMBIOSAssetTag',
+    'Win32_ComputerSystemProduct.IdentifyingNumber'
+)
 
 function Resolve-FullPath([string] $Path) {
     if ([System.IO.Path]::IsPathRooted($Path)) {
         return [System.IO.Path]::GetFullPath($Path)
     }
     return [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Path))
+}
+
+function Normalize-Architecture([string] $Value) {
+    $normalized = ([string]$Value).ToLowerInvariant() -replace '[^a-z0-9]', ''
+    if ($normalized -in @('x64', 'amd64', 'x8664')) { return 'x64' }
+    if ($normalized -in @('arm64', 'aarch64')) { return 'arm64' }
+    return $normalized
 }
 
 function Write-JsonFile([string] $Path, [object] $Value) {
@@ -222,7 +234,7 @@ function Get-DeviceIdentity {
         default { '' }
     }
     $identity = "$($computer.Manufacturer) $($computer.Model)"
-    if ($PhysicalHardware -and $identity -match '(?i)(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V)') {
+    if ($PhysicalHardware -and $identity -match $script:VirtualHostIdentityPattern) {
         throw "PhysicalHardware was asserted but the host identity looks virtualized: $identity"
     }
     if ($PhysicalHardware -and $processorPlatform -ne $Platform) {
@@ -231,12 +243,19 @@ function Get-DeviceIdentity {
     # Many OEMs expose a placeholder chassis tag. Use the system-product
     # identifying number as the stable inventory identifier fallback, and
     # require the attestation to record that same live value.
-    $assetTag = @([string]$enclosure.SMBIOSAssetTag, [string]$systemProduct.IdentifyingNumber) |
+    $inventoryIdentifier = @(
+        [ordered]@{ value = [string]$enclosure.SMBIOSAssetTag; source = 'Win32_SystemEnclosure.SMBIOSAssetTag' },
+        [ordered]@{ value = [string]$systemProduct.IdentifyingNumber; source = 'Win32_ComputerSystemProduct.IdentifyingNumber' }
+    ) |
         Where-Object {
-            -not [string]::IsNullOrWhiteSpace($_) -and
-            $_ -notmatch '(?i)^(none|unknown|default string|to be filled by o\.e\.m\.|not specified|system asset tag|chassis asset tag)$'
+            -not [string]::IsNullOrWhiteSpace([string]$_.value) -and
+            ([string]$_.value).Trim().Length -le 128 -and
+            ([string]$_.value).Trim() -notmatch '[\x00-\x1f\x7f]' -and
+            ([string]$_.value).Trim() -notmatch '(?i)^(none|unknown|default string|to be filled by o\.e\.m\.|not specified|system asset tag|chassis asset tag)$'
         } |
         Select-Object -First 1
+    $assetTag = if ($null -eq $inventoryIdentifier) { '' } else { ([string]$inventoryIdentifier.value).Trim() }
+    $assetTagSource = if ($null -eq $inventoryIdentifier) { '' } else { [string]$inventoryIdentifier.source }
     if ($PhysicalHardware) {
         $liveIdentity = [ordered]@{
             manufacturer = [string]$computer.Manufacturer
@@ -253,12 +272,20 @@ function Get-DeviceIdentity {
                 throw "Hardware attestation $field does not match the current device."
             }
         }
+        $attestedAssetTagSource = [string]$script:HardwareAttestation.assetTagSource
+        if ([string]::IsNullOrWhiteSpace($attestedAssetTagSource)) {
+            throw 'Hardware attestation assetTagSource is required for physical certification.'
+        }
+        if (-not [string]::Equals($assetTagSource, $attestedAssetTagSource.Trim(), [System.StringComparison]::Ordinal)) {
+            throw 'Hardware attestation assetTagSource does not match the current device identifier source.'
+        }
     }
     $result = [ordered]@{
         kind = if ($PhysicalHardware) { 'physical-windows' } else { 'windows-vm-or-hosted-runner' }
         manufacturer = [string]$computer.Manufacturer
         model = [string]$computer.Model
         assetTag = $assetTag
+        assetTagSource = $assetTagSource
         architecture = $Platform
         osArchitecture = $computerArch
         osBuild = ('{0} {1} build {2}' -f $os.Caption, $os.Version, $os.BuildNumber)
@@ -275,6 +302,8 @@ function Get-DeviceIdentity {
             schema = [string]$script:HardwareAttestation.schema
             operator = [string]$script:HardwareAttestation.operator
             assetTag = [string]$script:HardwareAttestation.assetTag
+            assetTagSource = [string]$script:HardwareAttestation.assetTagSource
+            evidencePath = [string]$script:HardwareAttestationEvidencePath
             sha256 = [string]$script:HardwareAttestationSha256
         }
     }
@@ -311,6 +340,17 @@ function New-Receipt(
     [object] $Artifact
 ) {
     $end = [DateTimeOffset]::UtcNow
+    $receiptEvidenceFiles = @($EvidenceFiles)
+    if ($null -ne $Device.hardwareAttestation) {
+        $attestationEvidencePath = [string]$Device.hardwareAttestation.evidencePath
+        $alreadyIncluded = @($receiptEvidenceFiles | Where-Object { [string]$_.path -eq $attestationEvidencePath }).Count -gt 0
+        if (-not $alreadyIncluded) {
+            $receiptEvidenceFiles += [ordered]@{
+                path = $attestationEvidencePath
+                sha256 = [string]$Device.hardwareAttestation.sha256
+            }
+        }
+    }
     $receipt = [ordered]@{
         schema = $ReceiptSchema
         status = $Status
@@ -328,7 +368,7 @@ function New-Receipt(
         expected = $Expected
         observed = $Observed
         exitCode = $ExitCode
-        evidence = [ordered]@{ files = @($EvidenceFiles) }
+        evidence = [ordered]@{ files = @($receiptEvidenceFiles) }
         blocker = $Blocker
     }
     $path = Join-Path $OutputDir ("receipts\" + $Gate + '.json')
@@ -357,6 +397,7 @@ New-Item -ItemType Directory -Force -Path $OutputDir, (Join-Path $OutputDir 'rec
 
 $script:HardwareAttestation = $null
 $script:HardwareAttestationSha256 = $null
+$script:HardwareAttestationEvidencePath = $null
 if ($PhysicalHardware) {
     if ([string]::IsNullOrWhiteSpace($HardwareAttestationPath)) {
         throw 'PhysicalHardware requires -HardwareAttestationPath; a switch alone cannot certify physical hardware.'
@@ -370,7 +411,13 @@ if ($PhysicalHardware) {
     if ($script:HardwareAttestation.schema -ne 'openburnbar.windows.physical-hardware-attestation.v1') { throw 'Unsupported physical hardware attestation schema.' }
     if ($script:HardwareAttestation.physicalHardware -ne $true) { throw 'Hardware attestation does not assert physicalHardware=true.' }
     if ($script:HardwareAttestation.architecture -ne $Platform) { throw "Hardware attestation architecture mismatch: expected $Platform" }
-    $script:HardwareAttestationSha256 = Get-Sha256 $attestationPath
+    $script:HardwareAttestationEvidencePath = 'evidence/hardware-attestation.json'
+    $attestationEvidencePath = Join-Path $OutputDir 'evidence\hardware-attestation.json'
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $attestationEvidencePath) | Out-Null
+    if (-not [string]::Equals($attestationPath, $attestationEvidencePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Copy-Item -LiteralPath $attestationPath -Destination $attestationEvidencePath -Force
+    }
+    $script:HardwareAttestationSha256 = Get-Sha256 $attestationEvidencePath
 }
 
 $artifact = Get-ArtifactIdentity
@@ -461,12 +508,84 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
         if ($supplementalGateIds -notcontains [string]$candidate.gate) { continue }
         if ($candidate.artifact.availability -ne 'recorded' -or $candidate.artifact.signature.result -ne 'verified') { continue }
         $candidateGate = [string]$candidate.gate
+        $candidateDeviceIdentity = (([string]$candidate.device.manufacturer).Trim() + ' ' + ([string]$candidate.device.model).Trim()).Trim()
+        $candidateAssetTag = ([string]$candidate.device.assetTag).Trim()
+        $candidateAssetTagSource = ([string]$candidate.device.assetTagSource).Trim()
+        $candidateAttestationMetadata = $candidate.device.hardwareAttestation
+        if ([string]$candidate.device.kind -ne 'physical-windows' -or
+            [string]::IsNullOrWhiteSpace($candidateDeviceIdentity) -or
+            [string]::IsNullOrWhiteSpace($candidateAssetTag) -or
+            [string]::IsNullOrWhiteSpace($candidateAssetTagSource) -or
+            $script:AllowedAssetTagSources -notcontains $candidateAssetTagSource -or
+            $candidateDeviceIdentity -match $script:VirtualHostIdentityPattern) {
+            continue
+        }
+        if ($null -eq $candidateAttestationMetadata -or
+            [string]$candidateAttestationMetadata.schema -ne 'openburnbar.windows.physical-hardware-attestation.v1' -or
+            [string]::IsNullOrWhiteSpace([string]$candidateAttestationMetadata.operator) -or
+            [string]::IsNullOrWhiteSpace([string]$candidateAttestationMetadata.evidencePath) -or
+            [string]$candidateAttestationMetadata.sha256 -notmatch '^[a-f0-9]{64}$' -or
+            -not [string]::Equals([string]$candidateAttestationMetadata.assetTag, $candidateAssetTag, [System.StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals([string]$candidateAttestationMetadata.assetTagSource, $candidateAssetTagSource, [System.StringComparison]::Ordinal)) {
+            continue
+        }
+        $candidateAttestationEvidence = @($candidate.evidence.files | Where-Object {
+            [string]$_.path -eq [string]$candidateAttestationMetadata.evidencePath
+        })
+        if ($candidateAttestationEvidence.Count -ne 1 -or
+            [string]$candidateAttestationEvidence[0].sha256 -ne [string]$candidateAttestationMetadata.sha256) {
+            continue
+        }
+        $candidateAttestationRelative = ([string]$candidateAttestationMetadata.evidencePath).Replace('/', '\')
+        $candidateAttestationPath = [System.IO.Path]::GetFullPath((Join-Path $supplementalRoot $candidateAttestationRelative))
+        $sourceRootWithSeparator = $supplementalRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+        if (-not $candidateAttestationPath.StartsWith($sourceRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Supplemental hardware attestation path escapes its root: $($candidateAttestationMetadata.evidencePath)"
+        }
+        if (-not (Test-Path -LiteralPath $candidateAttestationPath -PathType Leaf)) {
+            throw "Supplemental hardware attestation file missing: $candidateAttestationPath"
+        }
+        if ((Get-Sha256 $candidateAttestationPath) -ne [string]$candidateAttestationMetadata.sha256) {
+            throw "Supplemental hardware attestation hash mismatch: $candidateAttestationPath"
+        }
+        $candidateAttestation = Get-Content -Raw -LiteralPath $candidateAttestationPath | ConvertFrom-Json
+        $attestationCapturedAt = [DateTimeOffset]::MinValue
+        $receiptStartedAt = [DateTimeOffset]::MinValue
+        $receiptEndedAt = [DateTimeOffset]::MinValue
+        $hasValidAttestationTime = [DateTimeOffset]::TryParse([string]$candidateAttestation.capturedAtUtc, [ref]$attestationCapturedAt)
+        $hasValidReceiptStart = [DateTimeOffset]::TryParse([string]$candidate.time.startedAtUtc, [ref]$receiptStartedAt)
+        $hasValidReceiptEnd = [DateTimeOffset]::TryParse([string]$candidate.time.endedAtUtc, [ref]$receiptEndedAt)
+        $attestedIdentity = (([string]$candidateAttestation.manufacturer).Trim() + ' ' + ([string]$candidateAttestation.model).Trim()).Trim()
+        if ([string]$candidateAttestation.schema -ne 'openburnbar.windows.physical-hardware-attestation.v1' -or
+            $candidateAttestation.physicalHardware -ne $true -or
+            -not $hasValidAttestationTime -or
+            -not $hasValidReceiptStart -or
+            -not $hasValidReceiptEnd -or
+            $attestationCapturedAt -gt $receiptEndedAt -or
+            $attestationCapturedAt -lt $receiptStartedAt.AddHours(-24) -or
+            [string]::IsNullOrWhiteSpace([string]$candidateAttestation.operator) -or
+            -not [string]::Equals([string]$candidateAttestation.operator, [string]$candidateAttestationMetadata.operator, [System.StringComparison]::Ordinal) -or
+            -not [string]::Equals([string]$candidateAttestation.manufacturer, [string]$candidate.device.manufacturer, [System.StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals([string]$candidateAttestation.model, [string]$candidate.device.model, [System.StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals([string]$candidateAttestation.assetTag, $candidateAssetTag, [System.StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals([string]$candidateAttestation.assetTagSource, $candidateAssetTagSource, [System.StringComparison]::Ordinal) -or
+            (Normalize-Architecture ([string]$candidateAttestation.architecture)) -ne (Normalize-Architecture ([string]$candidate.device.architecture)) -or
+            $attestedIdentity -match $script:VirtualHostIdentityPattern) {
+            continue
+        }
         if ($performanceArchitectureByGate.ContainsKey($candidateGate)) {
-            if ($candidate.artifact.architecture -ne $performanceArchitectureByGate[$candidateGate]) { continue }
+            $expectedPerformanceArchitecture = Normalize-Architecture $performanceArchitectureByGate[$candidateGate]
+            if ((Normalize-Architecture ([string]$candidate.artifact.architecture)) -ne $expectedPerformanceArchitecture -or
+                (Normalize-Architecture ([string]$candidate.device.architecture)) -ne $expectedPerformanceArchitecture) { continue }
+            if ($expectedPerformanceArchitecture -eq (Normalize-Architecture $Platform) -and
+                $candidate.artifact.sha256 -ne $artifact.sha256) { continue }
         } elseif ($candidate.artifact.sha256 -ne $artifact.sha256 -or $candidate.artifact.architecture -ne $artifact.architecture) {
+            continue
+        } elseif ((Normalize-Architecture ([string]$candidate.device.architecture)) -ne (Normalize-Architecture ([string]$candidate.artifact.architecture))) {
             continue
         }
         $candidateFiles = @()
+        $candidateAttestationDestinationRelative = $null
         foreach ($sourceFile in @($candidate.evidence.files)) {
             $relativeSource = ([string]$sourceFile.path).Replace('/', '\')
             $sourcePath = [System.IO.Path]::GetFullPath((Join-Path $supplementalRoot $relativeSource))
@@ -482,8 +601,15 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destinationPath) | Out-Null
             Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
             $candidateFiles += [ordered]@{ path = $destinationRelative; sha256 = Get-Sha256 $destinationPath }
+            if ([string]$sourceFile.path -eq [string]$candidateAttestationMetadata.evidencePath) {
+                $candidateAttestationDestinationRelative = $destinationRelative
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($candidateAttestationDestinationRelative)) {
+            throw 'Supplemental hardware attestation was not copied into the evidence bundle.'
         }
         $candidate.evidence.files = $candidateFiles
+        $candidate.device.hardwareAttestation.evidencePath = $candidateAttestationDestinationRelative
         $destinationReceipt = Join-Path $OutputDir ('receipts\' + [string]$candidate.gate + '.json')
         Write-JsonFile $destinationReceipt $candidate
         foreach ($existing in @($receiptEntries | Where-Object { $_.gate -eq [string]$candidate.gate })) { [void]$receiptEntries.Remove($existing) }

@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text.Json;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Gateway;
+using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.Settings.ViewModels;
 using OpenBurnBar.App.TextExpansion;
 using OpenBurnBar.CloudSync.Crypto;
@@ -106,13 +108,45 @@ internal static class WindowsSettingsComposition
 
     public static WindowsSettingsPersistence SharedPersistence => Persistence;
 
+    public static GatewayEndpointSettings LoadGatewayEndpointSettings() =>
+        new GatewayStore(Persistence).Load();
+
+    public static NotificationSettingsSnapshot LoadNotificationSettings() =>
+        new NotificationStore(Persistence).Load();
+
+    public static GatewayComposition CreateGatewayComposition()
+    {
+        var store = new GatewayRouteStore(Persistence);
+        return GatewayCompositionFactory.Create(
+            store.Load(),
+            store.ReadCredential,
+            new ModelRouteHealthStore(Path.Combine(
+                Persistence.DirectoryPath,
+                "gateway-model-health.json")),
+            new GatewayRouteTelemetryStore(Path.Combine(
+                Persistence.DirectoryPath,
+                "gateway-route-events.jsonl")),
+            new WindowsProviderCliProcessRunner(),
+            enableProactiveDiscovery: true);
+    }
+
+    public static ProjectCodeRootSettingsViewModel CreateProjectCodeRootSettingsViewModel() =>
+        new(new WindowsProjectCodeRootStore(Persistence));
+
+    public static ProjectCodeRootSettingsSnapshot LoadProjectCodeRootSettings() =>
+        new WindowsProjectCodeRootStore(Persistence).Load();
+
+    public static void SaveProjectCodeRootSettings(ProjectCodeRootSettingsSnapshot settings) =>
+        new WindowsProjectCodeRootStore(Persistence).Save(settings);
+
     public static object? Create(SettingsTab tab) => tab switch
     {
         SettingsTab.Daemon => new OpenBurnBar.App.Settings.ViewModels.Daemon.DaemonSettingsViewModel(),
         SettingsTab.Agents => new OpenBurnBar.App.Settings.ViewModels.Agents.AgentsSettingsViewModel(),
         SettingsTab.ModelProxy => new ModelProxySettingsViewModel(
             new GatewayStore(Persistence),
-            new WindowsClipboard()),
+            new WindowsClipboard(),
+            new GatewayRouteStore(Persistence)),
         SettingsTab.Alerts => new AlertsSettingsViewModel(new AlertStore(Persistence)),
         SettingsTab.Notifications => new NotificationsSettingsViewModel(new NotificationStore(Persistence)),
         SettingsTab.TextExpansion => new TextExpansionSettingsViewModel(
@@ -120,8 +154,10 @@ internal static class WindowsSettingsComposition
             WindowsAccessibilityProbe.Instance),
         SettingsTab.ComputerUse => new ComputerUseSettingsViewModel(
             WindowsAccessibilityProbe.Instance,
-            UnavailableComputerUseAuditService.Instance,
-            new ComputerUsePermissionsStore(Persistence)),
+            new FileComputerUseAuditService(ComputerUseAuditRoot()),
+            new ComputerUsePermissionsStore(Persistence),
+            new ComputerUseBrowserSettingsStore(Persistence),
+            new WindowsBrowserComputerUseService()),
         SettingsTab.Pets => new PetsSettingsViewModel(store: new PetStore(Persistence)),
         SettingsTab.Account => new AccountSettingsViewModel(
             new OAuthAccountSessionGate(OAuth.Value),
@@ -133,7 +169,8 @@ internal static class WindowsSettingsComposition
         SettingsTab.DevicesAndSync => new DevicesAndSyncSettingsViewModel(
             store: new DevicesSyncStore(Persistence),
             session: new OAuthAccountSessionGate(OAuth.Value)),
-        SettingsTab.Media => new MediaSettingsSurfaceModel(),
+        SettingsTab.Media => new MercuryMediaSettingsViewModel(
+            new StaticMercuryMediaCapabilitySource(captureRuntimeSupported: OperatingSystem.IsWindows())),
         _ => null,
     };
 
@@ -173,6 +210,123 @@ internal static class WindowsSettingsComposition
         }
     }
 
+    private sealed class GatewayRouteStore(WindowsSettingsPersistence persistence) : IGatewayRouteSettingsStore
+    {
+        private const string MetadataKey = "modelProxy.routes";
+
+        public IReadOnlyList<GatewayRouteConfiguration> Load() =>
+            persistence.Read(MetadataKey, Array.Empty<GatewayRouteConfiguration>());
+
+        public string? ReadCredential(string routeId)
+        {
+            try
+            {
+                return NullIfEmpty(persistence.ReadSecret(AppSecretNames.GatewayRouteCredential(routeId)));
+            }
+            catch (SecretStoreException ex)
+            {
+                throw new GatewayRouteSettingsStoreException(
+                    "The protected credential could not be read.",
+                    ex);
+            }
+        }
+
+        public void Upsert(
+            GatewayRouteConfiguration configuration,
+            string? replacementCredential,
+            bool replaceCredential)
+        {
+            ArgumentNullException.ThrowIfNull(configuration);
+            configuration.Validate();
+            var priorRoutes = Load().ToArray();
+            string secretName = AppSecretNames.GatewayRouteCredential(configuration.Id);
+            string? priorCredential = replaceCredential ? ReadCredential(configuration.Id) : null;
+            var nextRoutes = priorRoutes.ToList();
+            int index = nextRoutes.FindIndex(route =>
+                string.Equals(route.Id, configuration.Id, StringComparison.OrdinalIgnoreCase));
+            GatewayRouteConfiguration normalized = configuration with
+            {
+                Id = configuration.Id.Trim(),
+                Vendor = configuration.Vendor.Trim(),
+                Model = configuration.Model.Trim(),
+                Endpoint = configuration.Endpoint.Trim(),
+            };
+            if (index >= 0)
+            {
+                nextRoutes[index] = normalized;
+            }
+            else
+            {
+                nextRoutes.Add(normalized);
+            }
+
+            try
+            {
+                if (replaceCredential)
+                {
+                    persistence.WriteSecret(secretName, replacementCredential?.Trim() ?? string.Empty);
+                }
+                persistence.Write(MetadataKey, nextRoutes.ToArray());
+            }
+            catch (Exception ex) when (ex is SecretStoreException or IOException or UnauthorizedAccessException)
+            {
+                if (replaceCredential)
+                {
+                    TryRestoreCredential(persistence, secretName, priorCredential);
+                }
+                throw new GatewayRouteSettingsStoreException(
+                    "Protected provider-route storage rejected the update.",
+                    ex);
+            }
+        }
+
+        public void Delete(string routeId)
+        {
+            var priorRoutes = Load().ToArray();
+            var nextRoutes = priorRoutes
+                .Where(route => !string.Equals(route.Id, routeId, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (nextRoutes.Length == priorRoutes.Length)
+            {
+                return;
+            }
+
+            string secretName = AppSecretNames.GatewayRouteCredential(routeId);
+            string? priorCredential = ReadCredential(routeId);
+            try
+            {
+                persistence.WriteSecret(secretName, string.Empty);
+                persistence.Write(MetadataKey, nextRoutes);
+            }
+            catch (Exception ex) when (ex is SecretStoreException or IOException or UnauthorizedAccessException)
+            {
+                TryRestoreCredential(persistence, secretName, priorCredential);
+                throw new GatewayRouteSettingsStoreException(
+                    "Protected provider-route storage rejected the delete.",
+                    ex);
+            }
+        }
+
+        private static string? NullIfEmpty(string value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value;
+
+        private static void TryRestoreCredential(
+            WindowsSettingsPersistence persistence,
+            string secretName,
+            string? priorCredential)
+        {
+            try
+            {
+                persistence.WriteSecret(secretName, priorCredential ?? string.Empty);
+            }
+            catch
+            {
+                // The original exception remains authoritative. The settings UI
+                // reports failure and a subsequent edit can retry protected cleanup.
+            }
+        }
+    }
+
     private sealed class PetStore(WindowsSettingsPersistence persistence) : IPetSettingsStore
     {
         public PetSettingsSnapshot Load() => persistence.Read("pets", PetSettingsSnapshot.Default);
@@ -205,6 +359,16 @@ internal static class WindowsSettingsComposition
         {
             get => persistence.Read("computerUse.onboardingCompleted", false);
             set => persistence.Write("computerUse.onboardingCompleted", value);
+        }
+    }
+
+    private sealed class ComputerUseBrowserSettingsStore(WindowsSettingsPersistence persistence)
+        : IComputerUseBrowserSettingsStore
+    {
+        public string BrowserCheckUrl
+        {
+            get => persistence.Read("computerUse.browserCheckUrl", "https://example.com");
+            set => persistence.Write("computerUse.browserCheckUrl", value);
         }
     }
 
@@ -350,11 +514,14 @@ internal static class WindowsSettingsComposition
         public bool TriggerBackup() => false;
     }
 
-    private sealed class UnavailableComputerUseAuditService : IComputerUseAuditService
+    private static string ComputerUseAuditRoot()
     {
-        public static readonly UnavailableComputerUseAuditService Instance = new();
-        public AuditActionResult ValidateChain(string sessionId) => AuditActionResult.Fail("No audit archive is open for this session.");
-        public AuditActionResult ExportArchive(string sessionId, bool includeScreenshots) => AuditActionResult.Fail("No audit archive is open for this session.");
-        public AuditActionResult Notarize(string sessionId) => AuditActionResult.Fail("Audit notarization requires an authenticated production account.");
+        string? configured = Environment.GetEnvironmentVariable(FileComputerUseAuditService.RootEnvironmentVariable);
+        return string.IsNullOrWhiteSpace(configured)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenBurnBar",
+                "computer-use-audit")
+            : configured;
     }
 }

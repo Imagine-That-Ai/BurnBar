@@ -50,14 +50,16 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
 
         let parsed = try parseCodexDatabase(
             dbPath: dbPath,
-            includeConversationBodies: options.includeConversationBodies
+            includeConversationBodies: options.includeConversationBodies,
+            minimumFileModificationDate: options.minimumFileModificationDate
         )
         return OpenBurnBarCore.ParseResult(usages: parsed.usages, conversations: parsed.conversations)
     }
 
     private func parseCodexDatabase(
         dbPath: String,
-        includeConversationBodies: Bool
+        includeConversationBodies: Bool,
+        minimumFileModificationDate: Date?
     ) throws -> (usages: [TokenUsage], conversations: [OpenBurnBarCore.ConversationRecord]) {
         var usages: [TokenUsage] = []
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
@@ -75,14 +77,21 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
             let columnNames = Set(columns.compactMap { $0["name"] as? String })
             let hasRolloutPath = columnNames.contains("rollout_path")
 
-            let sql: String
-            if hasRolloutPath {
-                sql = """
+        let createdAtFilter: String
+        if let minimumFileModificationDate {
+            createdAtFilter = " AND created_at >= \(Int64(minimumFileModificationDate.timeIntervalSince1970))"
+        } else {
+            createdAtFilter = ""
+        }
+
+        let sql: String
+        if hasRolloutPath {
+            sql = """
                     SELECT
                         id, title, model, model_provider, tokens_used,
                         created_at, updated_at, cwd, rollout_path
                     FROM threads
-                    WHERE archived = 0
+                    WHERE archived = 0\(createdAtFilter)
                     ORDER BY created_at DESC
                     LIMIT 500
                 """
@@ -92,7 +101,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                         id, title, model, model_provider, tokens_used,
                         created_at, updated_at, cwd
                     FROM threads
-                    WHERE archived = 0
+                    WHERE archived = 0\(createdAtFilter)
                     ORDER BY created_at DESC
                     LIMIT 500
                 """

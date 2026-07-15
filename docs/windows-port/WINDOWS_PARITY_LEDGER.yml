@@ -1,5 +1,5 @@
 version: 1
-updated: '2026-07-09'
+updated: '2026-07-13'
 finish_line: F2_True_1to1
 finish_line_doc: docs/windows-port/WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md
 schema_id: windows-parity-ledger-v1
@@ -88,8 +88,10 @@ rows:
   status: Real
   evidence:
   - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  - docs/windows-port/evidence/f2/memory-extraction-http-client.md
   tests:
   - windows/tests/presentation
+  - windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests
   blocking_paths:
   - windows/app/OpenBurnBar.App.Presentation/SessionLogs/SessionLogEmptySource.cs
   - windows/app/OpenBurnBar.App.Presentation/SessionLogs/StorageSessionLogReadSource.cs
@@ -225,6 +227,7 @@ rows:
   status: Real
   evidence:
   - docs/windows-port/evidence/f1-settings/viewmodel-host-pages.md
+  - docs/windows-port/evidence/f2/general-settings-persistence.md
   tests:
   - windows/tests/settings
   blocking_paths:
@@ -443,13 +446,18 @@ rows:
   status: Real
   evidence:
   - docs/windows-port/evidence/f1-cu/desktop-loop.md
+  - docs/windows-port/evidence/f2/computer-use-audit-export.md
+  - docs/windows-port/evidence/f2/computer-use-input-adapter.md
+  - docs/windows-port/evidence/f2/mercury-media-settings.md
   tests:
   - windows/tests/computeruse/DesktopLoopTests.cs
   - windows/tests/computeruse
+  - windows/tests/computeruse-windows
   blocking_paths:
   - windows/computeruse/OpenBurnBar.ComputerUse.Core/Loop/ComputerUseDesktopLoop.cs
+  - windows/computeruse/OpenBurnBar.ComputerUse.Windows/SendInputInputSynthesizer.cs
   owner_lane: wave-5-pet-native-os
-  notes: Production dispatch loop Real; full session UI residual.
+  notes: Production dispatch loop and fail-closed audit validation/export are Real; physical UIA/SendInput/WGC session proof remains separate.
 - id: daemon-strategy
   macos_route: daemon
   macos_capability: Daemon capability disposition
@@ -473,12 +481,34 @@ rows:
   status: Real
   evidence:
   - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
+  - docs/windows-port/evidence/f2/live-lsp-parser-client.md
   tests:
   - windows/tests/presentation/Projects/ProjectCodeLexicalScannerTests.cs
+  - windows/tests/presentation/Projects/LanguageServerProjectCodeParserClientTests.cs
   blocking_paths:
   - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeLexicalScanner.cs
+  - windows/app/OpenBurnBar.App.Presentation/Projects/LanguageServerProjectCodeParserClient.cs
   owner_lane: wave-0-architecture
-  notes: Lexical inventory Real; full AST static analyzer deeper residual noted in WPD-0003 history.
+  notes: Tree-sitter inventory and symbol-range extraction Real; bounded LSP selection is composed, while per-language host evidence remains separate.
+- id: f2-project-code-memory-store
+  macos_route: projects
+  macos_capability: Pensieve watcher + project-code memory store
+  windows_route: projects
+  windows_capability: ProjectCodeMemoryStore durable metadata, references, call edges, and checkpoints
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/project-code-memory-store.md
+  - docs/windows-port/evidence/f2/openai-embedding-provider.md
+  - docs/windows-port/evidence/f2/provider-composition.md
+  - docs/windows-port/evidence/f2/live-lsp-parser-client.md
+  tests:
+  - windows/tests/presentation/Projects/ProjectCodeMemoryServiceTests.cs
+  - windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeMemoryStore.cs
+  - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeSymbolIndex.cs
+  owner_lane: f2
+  notes: Live watcher, durable source-free store, parser-backed AST chunk ranges, and protected OpenAI/deterministic provider selection are Real; learned embedding quality and physical/live-host evidence remain separate.
 - id: dist-msix-signed
   macos_route: dist
   macos_capability: Signed distribution
@@ -533,8 +563,10 @@ rows:
   status: Real
   evidence:
   - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
+  - docs/windows-port/evidence/f2/mercury-media-settings.md
   tests:
   - windows/tests/settings
+  - windows/tests/mercury
   blocking_paths:
   - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Sessions/MediaSessionStateMachine.cs
   - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Budget/MediaCapabilityGate.cs
@@ -645,18 +677,55 @@ rows:
   macos_route: gateway
 - id: f2-local-mission-execution
   macos_capability: Local Mission Control DAG execution
-  windows_capability: MissionLocalExecutor fail-closed step runner
+  windows_capability: Authenticated local Mission DAG execution and recovery
   status: Real
   evidence:
-  - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
+  - docs/windows-port/evidence/f2/local-mission-production-composition.md
   tests:
-  - windows/tests/presentation/MissionControl/MissionLocalExecutorTests.cs
+  - windows/tests/managed-runtime/LocalMissionDagExecutorTests.cs
+  - windows/tests/managed-runtime/CompanionCliMissionHandlerTests.cs
+  - windows/tests/managed-runtime/CompanionCliServerTests.cs
   blocking_paths:
-  - windows/app/OpenBurnBar.App.Presentation/MissionControl/MissionLocalExecutor.cs
-  notes: F2 local execution Real (dispatch remains separate).
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Mission/LocalMissionDagExecutor.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Mission/CompanionCliMissionHandler.cs
+  - windows/app/OpenBurnBar.App/App.xaml.cs
+  notes: F2 local DAG execution is production-composed; provider tools remain a separate row.
   owner_lane: f2
   windows_route: missionLocal
   macos_route: missions
+- id: f2-planner-service
+  macos_capability: Typed intent normalization and deterministic plan outlines
+  windows_capability: Authenticated side-effect-free planner composition
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/planner-production-composition.md
+  tests:
+  - windows/tests/managed-runtime/BurnBarPlannerServiceTests.cs
+  - windows/tests/managed-runtime/CompanionCliPlannerHandlerTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Planning/BurnBarPlannerService.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Planning/CompanionCliPlannerHandler.cs
+  - windows/app/OpenBurnBar.App/App.xaml.cs
+  notes: F2 intent planning is production-composed; execution and policy remain separate rows.
+  owner_lane: f2
+  windows_route: planner
+  macos_route: planner
+- id: f2-policy-engine
+  macos_capability: Run and tool approval policy decisions
+  windows_capability: Authenticated side-effect-free policy evaluation
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/policy-engine-production-composition.md
+  tests:
+  - windows/tests/managed-runtime/BurnBarPolicyEngineTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Planning/BurnBarPolicyEngine.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Planning/CompanionCliPolicyHandler.cs
+  - windows/app/OpenBurnBar.App/App.xaml.cs
+  notes: F2 policy decision core is production-composed; approval resolution and execution remain separate.
+  owner_lane: f2
+  windows_route: policy
+  macos_route: policy
 - id: f2-browser-computer-use
   status: Real
   owner_lane: f2
@@ -665,12 +734,17 @@ rows:
   macos_capability: f2-browser-computer-use
   windows_capability: f2-browser-computer-use
   evidence:
-  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  - docs/windows-port/evidence/f2/browser-computer-use-production-composition.md
   tests:
   - windows/tests/computeruse/BrowserLifecycleTests.cs
+  - windows/tests/configuration/WindowsBrowserComputerUseServiceTests.cs
+  - windows/tests/settings/OpenBurnBar.App.Settings.ViewModels.Tests/ComputerUseSettingsViewModelTests.cs
+  - windows/tests/dist/PlaywrightBridgePackagingTests.cs
   blocking_paths:
   - windows/computeruse/OpenBurnBar.ComputerUse.Core/Browser/BrowserComputerUseLifecycle.cs
-  notes: F2 production core Real.
+  - windows/app/OpenBurnBar.App.Configuration/WindowsBrowserComputerUseService.cs
+  - windows/app/OpenBurnBar.App/Settings/WindowsSettingsPersistence.cs
+  notes: F2 managed Playwright lifecycle is production-composed; physical safety certification remains independent.
 - id: f2-elder-wand-fusion
   status: Real
   owner_lane: f2
@@ -694,11 +768,32 @@ rows:
   windows_capability: f2-model-proxy-router
   evidence:
   - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  - docs/windows-port/evidence/f2/provider-router-scorecard.md
+  - docs/windows-port/evidence/f2/gateway-model-health.md
+  - docs/windows-port/evidence/f2/cross-vendor-degrade-policy.md
+  - docs/windows-port/evidence/f2/gateway-route-telemetry.md
+  - docs/windows-port/evidence/f2/ollama-native-provider-transport.md
+  - docs/windows-port/evidence/f2/provider-cli-executors.md
+  - docs/windows-port/evidence/f2/proactive-local-model-discovery.md
   tests:
   - windows/tests/managed-runtime/ModelProxyRouterTests.cs
+  - windows/tests/managed-runtime/ModelRouteHealthStoreTests.cs
+  - windows/tests/managed-runtime/LocalHttpGatewayHostTests.cs
+  - windows/tests/managed-runtime/CrossVendorDegradePolicyTests.cs
+  - windows/tests/managed-runtime/GatewayRouteTelemetryStoreTests.cs
+  - windows/tests/managed-runtime/OllamaNativeProviderAdapterTests.cs
+  - windows/tests/managed-runtime/ProviderCliModelCompletionExecutorTests.cs
+  - windows/tests/managed-runtime/GatewayLiveModelDiscoveryTests.cs
   blocking_paths:
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelProxyRouter.cs
-  notes: F2 production core Real.
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelRouteScorecard.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelRouteHealthStore.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/GatewayRouteTelemetryStore.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/OllamaNativeProviderAdapter.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ProviderCliModelCompletionExecutor.cs
+  - windows/app/OpenBurnBar.App/Gateway/WindowsProviderCliProcessRunner.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/GatewayLiveModelDiscovery.cs
+  notes: F2 production gateway/router Real with authenticated transport, five-factor scoring, strict quota-drain pools, failure-driven health, opt-in bounded cross-vendor degrade, bounded metadata-only route/usage telemetry, OpenAI/Anthropic/Ollama-native HTTP transports, protected Codex/Factory CLI transports, and proactive loopback Ollama/OpenAI-compatible plus Factory CLI discovery.
 - id: f2-companion-cli
   status: Real
   owner_lane: f2
@@ -713,6 +808,29 @@ rows:
   blocking_paths:
   - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/CompanionCliServer.cs
   notes: F2 production core Real.
+- id: f2-headless-run-recovery
+  status: Real
+  owner_lane: f2
+  windows_route: f2-headless-run
+  macos_route: f2-headless-run
+  macos_capability: Headless run service, journal, and recovery
+  windows_capability: Durable HeadlessAgentRunService + protected checkpoints + metadata journal + authenticated approval/tool operations
+  evidence:
+  - docs/windows-port/evidence/f2/headless-run-recovery.md
+  tests:
+  - windows/tests/managed-runtime/HeadlessAgentRunServiceTests.cs
+  - windows/tests/managed-runtime/HeadlessRunServiceTests.cs
+  - windows/tests/managed-runtime/CompanionCliServerTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/HeadlessAgentRunService.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/HeadlessAgentRunService+Execution.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/HeadlessAgentLoopService.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/CompanionCliAgentRunHandler.cs
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Run/CompanionCliHeadlessRunHandler.cs
+  - windows/app/OpenBurnBar.App/Run/ProtectedHeadlessAgentCheckpointStore.cs
+  - windows/app/OpenBurnBar.App.Configuration/ProtectedFilePayloadStore.cs
+  - windows/app/OpenBurnBar.App/App+CompanionRuntime.cs
+  notes: F2 accepted in-process headless run, protected recovery, approval, and leased tool-dispatch path Real; Windows-host and physical lifecycle evidence remain separate.
 f1_coverage_register:
 - subsystem: mercury-media
   ledger_row: mercury-media
@@ -753,9 +871,11 @@ f1_coverage_register:
   windows_status: Real
   note: IA-4 ProjectsPage
 finish_line_note: >-
-  100% parity under ledger laws = finish_line F2_True_1to1 with all rows Real
-  (or allowed residuals). Achieved 2026-07-09: 46 Real / 0 DeferredApproved /
-  0 Blocked / 0 Substituted. Operational residuals outside the ledger gate
+  100% parity under the named finish line is F2_True_1to1. The current 50-row
+  histogram is the scoped F1 Ship Peer source/product gate: 50 Real / 0
+  DeferredApproved / 0 Blocked / 0 Substituted. WPD-0009 governs promotion of
+  F2 workstreams to full parity; production composition and host evidence remain
+  explicit requirements. Operational residuals outside the ledger gate
   (Authenticode private key, branch-protection required-check flip, physical
   TPM claim on hardware) are host/admin steps, not silent product gaps.
 f2_workstream_register:
@@ -768,6 +888,9 @@ f2_workstream_register:
 - id: f2-project-code-lexical
   status: Real
   ledger_row: project-code-static-parser
+- id: f2-pensieve-project-code-memory
+  status: Real
+  ledger_row: f2-project-code-memory-store
 - id: f2-model-proxy-depth
   status: Real
   ledger_row: f2-model-proxy-router
@@ -780,3 +903,6 @@ f2_workstream_register:
 - id: f2-connector-cli
   status: Real
   ledger_row: f2-companion-cli
+- id: f2-headless-run-recovery
+  status: Real
+  ledger_row: f2-headless-run-recovery

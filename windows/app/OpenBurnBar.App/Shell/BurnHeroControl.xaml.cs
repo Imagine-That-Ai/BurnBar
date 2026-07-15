@@ -1,9 +1,15 @@
 using System;
+using System.Globalization;
+using System.Linq;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Data;
 using OpenBurnBar.App.Presentation.Dashboard;
+using OpenBurnBar.App.Settings.Winui;
+using OpenBurnBar.App.Settings.ViewModels;
+using OpenBurnBar.App.UsageRuntime;
 using Windows.UI;
 
 namespace OpenBurnBar.App.Shell;
@@ -11,10 +17,33 @@ namespace OpenBurnBar.App.Shell;
 /// <summary>BURN telemetry capsule — Linux DeckBurnHero / macOS BurnRailTelemetryHero.</summary>
 public sealed partial class BurnHeroControl : UserControl
 {
+    private IUsageRuntime? _runtime;
+    private bool _isLoaded;
+
     public BurnHeroControl()
     {
         InitializeComponent();
-        Loaded += (_, _) => ApplySampleOrEmpty();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    public void Bind(IUsageRuntime? runtime)
+    {
+        if (ReferenceEquals(_runtime, runtime))
+        {
+            return;
+        }
+
+        if (_isLoaded && _runtime is not null)
+        {
+            _runtime.StateChanged -= OnRuntimeStateChanged;
+        }
+        _runtime = runtime;
+        if (_isLoaded && _runtime is not null)
+        {
+            _runtime.StateChanged += OnRuntimeStateChanged;
+        }
+        ApplyCurrent();
     }
 
     public void SetValue(string display, double[]? sparkline = null)
@@ -23,14 +52,54 @@ public sealed partial class BurnHeroControl : UserControl
         DrawSpark(sparkline ?? SampleSpark());
     }
 
-    private void ApplySampleOrEmpty()
+    private void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
+        _isLoaded = true;
+        if (_runtime is not null)
+        {
+            _runtime.StateChanged += OnRuntimeStateChanged;
+        }
+        ApplyCurrent();
+    }
+
+    private void OnUnloaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (_runtime is not null)
+        {
+            _runtime.StateChanged -= OnRuntimeStateChanged;
+        }
+        _isLoaded = false;
+    }
+
+    private void OnRuntimeStateChanged(object? sender, UsageRuntimeStateChangedEventArgs args)
+    {
+        if (!args.Current.IsScanning)
+        {
+            DispatcherQueue.TryEnqueue(ApplyCurrent);
+        }
+    }
+
+    private void ApplyCurrent()
+    {
+        GeneralSettingsSnapshot settings = WindowsGeneralSettingsComposition.Load();
         if (RuntimeDataMode.SampleModeEnabled)
         {
             DashboardUsageSummary summary = DashboardUsageSampleData.Summary();
-            SetValue($"${summary.SpendThisMonthUsd:0.00}", SampleSpark());
+            string display = settings.UsageDisplayMode == GeneralUsageDisplayMode.Tokens
+                ? FormatTokens(summary.TotalTokens)
+                : summary.TotalCostUsd.ToString("C2", CultureInfo.GetCultureInfo("en-US"));
+            SetValue(display, SampleSpark());
             // H0 honesty: the capsule is rendering sample spend, so label it as such.
             SampleChip.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
+        }
+        else if (_runtime is not null && _runtime.State.Snapshot.Usages.Count > 0)
+        {
+            DashboardCommandSnapshot command = UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(
+                _runtime.State,
+                settings);
+            var flyout = UsageRuntimePresentationMapper.ToFlyoutSnapshot(_runtime.State, settings);
+            SetValue(command.OverviewMetricLabel, flyout.Sparkline.ToArray());
+            SampleChip.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
         }
         else
         {
@@ -41,6 +110,14 @@ public sealed partial class BurnHeroControl : UserControl
 
     private static double[] SampleSpark() =>
         new[] { 0.22, 0.28, 0.25, 0.40, 0.55, 0.48, 0.72, 0.68, 0.85, 0.78, 0.92, 1.0 };
+
+    private static string FormatTokens(long tokens)
+    {
+        if (tokens >= 1_000_000_000) return $"{tokens / 1_000_000_000.0:0.##}B";
+        if (tokens >= 1_000_000) return $"{tokens / 1_000_000.0:0.##}M";
+        if (tokens >= 1_000) return $"{tokens / 1_000.0:0.#}K";
+        return tokens.ToString(CultureInfo.InvariantCulture);
+    }
 
     private void DrawSpark(double[] series)
     {

@@ -41,10 +41,14 @@ public final class HermesParser: LogParser, Sendable {
     }()
 
     public func parse() async throws -> ParseResult {
-        try parseSynchronously()
+        try parseSynchronously(options: .default)
     }
 
-    public func parseSynchronously() throws -> ParseResult {
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
+        try parseSynchronously(options: options)
+    }
+
+    public func parseSynchronously(options: LogParseOptions = .default) throws -> ParseResult {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var seenSessionIds: Set<String> = []
@@ -56,7 +60,7 @@ public final class HermesParser: LogParser, Sendable {
             let dbURL = hermesHome.appendingPathComponent("state.db")
             if fileManager.fileExists(atPath: dbURL.path), fileSize(at: dbURL) > 0 {
                 do {
-                    let sqliteResult = try parseSQLiteDatabase(dbURL: dbURL, scope: scope)
+                    let sqliteResult = try parseSQLiteDatabase(dbURL: dbURL, scope: scope, options: options)
                     usages.append(contentsOf: sqliteResult.usages)
                     conversations.append(contentsOf: sqliteResult.conversations)
                     seenSessionIds.formUnion(sqliteResult.usages.map(\.sessionId))
@@ -75,7 +79,8 @@ public final class HermesParser: LogParser, Sendable {
                     indexURL: indexURL,
                     sessionsDir: sessionsDir,
                     excluding: seenSessionIds,
-                    scope: scope
+                    scope: scope,
+                    options: options
                 )
                 usages.append(contentsOf: gatewayResult.usages)
                 conversations.append(contentsOf: gatewayResult.conversations)
@@ -90,7 +95,13 @@ public final class HermesParser: LogParser, Sendable {
                 )) ?? []
 
                 for file in contents where file.lastPathComponent.hasPrefix("session_") && file.pathExtension == "json" {
-                    let result = try parseCLISnapshot(file: file, excluding: seenSessionIds, scope: scope)
+                    guard !shouldSkip(file: file, before: options.minimumFileModificationDate) else { continue }
+                    let result = try parseCLISnapshot(
+                        file: file,
+                        excluding: seenSessionIds,
+                        scope: scope,
+                        options: options
+                    )
                     usages.append(contentsOf: result.usages)
                     conversations.append(contentsOf: result.conversations)
                     seenSessionIds.formUnion(result.usages.map(\.sessionId))
@@ -98,10 +109,11 @@ public final class HermesParser: LogParser, Sendable {
                 }
 
                 for file in contents where file.pathExtension == "jsonl" && file.lastPathComponent != "sessions.json" {
+                    guard !shouldSkip(file: file, before: options.minimumFileModificationDate) else { continue }
                     let rawSessionId = file.deletingPathExtension().lastPathComponent
                     let sessionId = scope.qualify(sessionId: rawSessionId)
                     guard !seenSessionIds.contains(sessionId) else { continue }
-                    guard let summary = parseLegacyTranscript(file: file) else { continue }
+                    guard let summary = parseLegacyTranscript(file: file, includeConversationBody: options.includeConversationBodies) else { continue }
 
                     let projectName = scope.projectName(
                         candidates: [],
@@ -123,7 +135,8 @@ public final class HermesParser: LogParser, Sendable {
                         usages.append(usage)
                     }
 
-                    if let conversation = conversation(
+                    if options.includeConversationBodies,
+                       let conversation = conversation(
                         sessionId: sessionId,
                         projectName: projectName,
                         title: summary.firstUser ?? projectName,
@@ -149,21 +162,23 @@ public final class HermesParser: LogParser, Sendable {
 
     private func parseSQLiteDatabase(
         dbURL: URL,
-        scope: HermesHomeScope
+        scope: HermesHomeScope,
+        options: LogParseOptions
     ) throws -> ParseResult {
         if shouldParseSQLiteFromSnapshot(dbURL: dbURL) {
-            return try parseSQLiteDatabaseSnapshot(dbURL: dbURL, scope: scope)
+            return try parseSQLiteDatabaseSnapshot(dbURL: dbURL, scope: scope, options: options)
         }
 
         // Read-only, plain SQLite (matches GRDB `Configuration.readonly = true`).
         let reader = try SQLiteConnection.openReadOnly(path: dbURL.path)
         defer { reader.close() }
-        return try parseSQLiteDatabase(reader: reader, dbURL: dbURL, scope: scope)
+        return try parseSQLiteDatabase(reader: reader, dbURL: dbURL, scope: scope, options: options)
     }
 
     private func parseSQLiteDatabaseSnapshot(
         dbURL: URL,
-        scope: HermesHomeScope
+        scope: HermesHomeScope,
+        options: LogParseOptions
     ) throws -> ParseResult {
         let snapshotRoot = fileManager.temporaryDirectory.appendingPathComponent("openburnbar-hermes-parser", isDirectory: true)
         try fileManager.createDirectory(at: snapshotRoot, withIntermediateDirectories: true)
@@ -185,7 +200,7 @@ public final class HermesParser: LogParser, Sendable {
 
         let reader = try SQLiteConnection.openReadOnly(path: snapshotURL.path)
         defer { reader.close() }
-        return try parseSQLiteDatabase(reader: reader, dbURL: dbURL, scope: scope)
+        return try parseSQLiteDatabase(reader: reader, dbURL: dbURL, scope: scope, options: options)
     }
 
     private func shouldParseSQLiteFromSnapshot(dbURL: URL) -> Bool {
@@ -196,7 +211,8 @@ public final class HermesParser: LogParser, Sendable {
     private func parseSQLiteDatabase(
         reader: SQLiteReading,
         dbURL: URL,
-        scope: HermesHomeScope
+        scope: HermesHomeScope,
+        options: LogParseOptions
     ) throws -> ParseResult {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
@@ -229,10 +245,17 @@ public final class HermesParser: LogParser, Sendable {
             return ParseResult(usages: usages, conversations: conversations)
         }
 
+        let startedAtFilter: String = {
+            guard let cutoff = options.minimumFileModificationDate,
+                  sessionColumns.contains("started_at") else { return "" }
+            return "WHERE started_at >= \(cutoff.timeIntervalSince1970)"
+        }()
+
         let rows = try reader.query(
             """
             SELECT \(sessionFields.joined(separator: ", "))
             FROM sessions
+            \(startedAtFilter)
             ORDER BY started_at DESC
             """
         )
@@ -245,7 +268,12 @@ public final class HermesParser: LogParser, Sendable {
 
             var summary = messageColumns.isEmpty
                 ? nil
-                : try parseSQLiteTranscript(reader: reader, sessionId: rawSessionId, availableColumns: messageColumns)
+                : try parseSQLiteTranscript(
+                    reader: reader,
+                    sessionId: rawSessionId,
+                    availableColumns: messageColumns,
+                    includeConversationBody: options.includeConversationBodies
+                )
 
             let source = stringValue(row, column: "source") ?? "hermes"
             let title = stringValue(row, column: "title")
@@ -316,7 +344,7 @@ public final class HermesParser: LogParser, Sendable {
                 usages.append(usage)
             }
 
-            if let summary {
+            if options.includeConversationBodies, let summary {
                 let conversation = conversation(
                     sessionId: sessionId,
                     projectName: projectName,
@@ -337,7 +365,8 @@ public final class HermesParser: LogParser, Sendable {
     private func parseSQLiteTranscript(
         reader: SQLiteReading,
         sessionId: String,
-        availableColumns: Set<String>
+        availableColumns: Set<String>,
+        includeConversationBody: Bool
     ) throws -> TranscriptSummary? {
         let fields = [
             "id",
@@ -378,7 +407,7 @@ public final class HermesParser: LogParser, Sendable {
                 summary.keyTools.insert(toolName)
             }
 
-            summary.consume(role: role, content: content)
+            summary.consume(role: role, content: content, includeBody: includeConversationBody)
         }
 
         return summary
@@ -390,7 +419,8 @@ public final class HermesParser: LogParser, Sendable {
         indexURL: URL,
         sessionsDir: URL,
         excluding seenSessionIds: Set<String>,
-        scope: HermesHomeScope
+        scope: HermesHomeScope,
+        options: LogParseOptions
     ) throws -> ParseResult {
         guard let data = try? Data(contentsOf: indexURL), // try?-ok(optional index read)
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
@@ -409,8 +439,14 @@ public final class HermesParser: LogParser, Sendable {
             guard !seenSessionIds.contains(sessionId) else { continue }
 
             let transcriptURL = sessionsDir.appendingPathComponent("\(rawSessionId).jsonl")
+            let entryDate = dateValue(entry["updated_at"]) ?? dateValue(entry["created_at"])
+            guard !shouldSkip(
+                file: transcriptURL,
+                before: options.minimumFileModificationDate,
+                fallbackDate: entryDate
+            ) else { continue }
             let summary = fileManager.fileExists(atPath: transcriptURL.path)
-                ? parseLegacyTranscript(file: transcriptURL)
+                ? parseLegacyTranscript(file: transcriptURL, includeConversationBody: options.includeConversationBodies)
                 : nil
 
             let inputTokens = integerValue(entry, key: "input_tokens")
@@ -501,7 +537,8 @@ public final class HermesParser: LogParser, Sendable {
                 usages.append(usage)
             }
 
-            if let summary,
+            if options.includeConversationBodies,
+               let summary,
                let conversation = conversation(
                     sessionId: sessionId,
                     projectName: projectName,
@@ -520,7 +557,8 @@ public final class HermesParser: LogParser, Sendable {
     private func parseCLISnapshot(
         file: URL,
         excluding seenSessionIds: Set<String>,
-        scope: HermesHomeScope
+        scope: HermesHomeScope,
+        options: LogParseOptions
     ) throws -> ParseResult {
         guard let data = try? Data(contentsOf: file), // try?-ok(optional snapshot read)
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
@@ -534,7 +572,10 @@ public final class HermesParser: LogParser, Sendable {
             return ParseResult(usages: [], conversations: [])
         }
 
-        var summary = transcriptSummary(from: json["messages"] as? [Any] ?? [])
+        var summary = transcriptSummary(
+            from: json["messages"] as? [Any] ?? [],
+            includeBody: options.includeConversationBodies
+        )
         if let systemPrompt = stringValue(json, key: "system_prompt") {
             summary.systemPromptChars = max(
                 summary.systemPromptChars,
@@ -589,19 +630,21 @@ public final class HermesParser: LogParser, Sendable {
             endTime: endTime
         )
 
-        let conversation = conversation(
-            sessionId: sessionId,
-            projectName: projectName,
-            title: stringValue(json, key: "title") ?? summary.firstUser ?? projectName,
-            summary: summary,
-            startTime: startTime,
-            endTime: endTime
-        )
+        let conversation = options.includeConversationBodies
+            ? conversation(
+                sessionId: sessionId,
+                projectName: projectName,
+                title: stringValue(json, key: "title") ?? summary.firstUser ?? projectName,
+                summary: summary,
+                startTime: startTime,
+                endTime: endTime
+            )
+            : nil
 
         return ParseResult(usages: usage.map { [$0] } ?? [], conversations: conversation.map { [$0] } ?? [])
     }
 
-    private func parseLegacyTranscript(file: URL) -> TranscriptSummary? {
+    private func parseLegacyTranscript(file: URL, includeConversationBody: Bool) -> TranscriptSummary? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(optional file open)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
@@ -615,12 +658,12 @@ public final class HermesParser: LogParser, Sendable {
         }
 
         guard !events.isEmpty else { return nil }
-        var summary = transcriptSummary(from: events)
+        var summary = transcriptSummary(from: events, includeBody: includeConversationBody)
         summary.fileModifiedAt = modificationDate(of: file)
         return summary
     }
 
-    private func transcriptSummary(from events: [Any]) -> TranscriptSummary {
+    private func transcriptSummary(from events: [Any], includeBody: Bool = true) -> TranscriptSummary {
         var summary = TranscriptSummary()
 
         for event in events {
@@ -652,7 +695,12 @@ public final class HermesParser: LogParser, Sendable {
                 summary.keyTools.insert(toolName)
             }
 
-            summary.consume(role: role, content: stringContent(from: rawContent), rawContent: rawContent)
+            summary.consume(
+                role: role,
+                content: stringContent(from: rawContent),
+                rawContent: rawContent,
+                includeBody: includeBody
+            )
         }
 
         return summary
@@ -800,6 +848,14 @@ public final class HermesParser: LogParser, Sendable {
 
     private func modificationDate(of url: URL) -> Date? {
         (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(mtime read, nil fallback)
+    }
+
+    private func shouldSkip(file: URL, before cutoff: Date?, fallbackDate: Date? = nil) -> Bool {
+        guard let cutoff else { return false }
+        if fileManager.fileExists(atPath: file.path), let modifiedAt = modificationDate(of: file) {
+            return modifiedAt < cutoff && (fallbackDate ?? modifiedAt) < cutoff
+        }
+        return fallbackDate.map { $0 < cutoff } ?? false
     }
 
     // MARK: - Typed getters (SQLite reader seam — mirror GRDB coercion)
@@ -987,7 +1043,12 @@ private struct TranscriptSummary {
     var keyTools: Set<String> = []
     var fileModifiedAt: Date?
 
-    mutating func consume(role: String, content: String, rawContent: Any? = nil) {
+    mutating func consume(
+        role: String,
+        content: String,
+        rawContent: Any? = nil,
+        includeBody: Bool = true
+    ) {
         let metrics = TokenExtractionUtility.contentMetrics(from: rawContent ?? content)
         let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -1006,7 +1067,7 @@ private struct TranscriptSummary {
                 if firstUser == nil {
                     firstUser = String(text.prefix(120))
                 }
-                append(text, isAssistant: false)
+                if includeBody { append(text, isAssistant: false) }
                 messageCount += 1
             }
         case "assistant":
@@ -1015,7 +1076,7 @@ private struct TranscriptSummary {
             if !text.isEmpty {
                 assistantWords += text.split { $0.isWhitespace || $0.isNewline }.count
                 lastAssistant = text
-                append(text, isAssistant: true)
+                if includeBody { append(text, isAssistant: true) }
                 messageCount += 1
             }
         default:

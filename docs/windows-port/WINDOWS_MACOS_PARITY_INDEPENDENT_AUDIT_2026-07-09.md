@@ -3,14 +3,15 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** implementation and automated signed-runtime certification complete; physical/manual/live-staging release gates remain
+**Status:** F1 source/product implementation is complete; the applicable WPD-0006 F2 source substitutions are complete; exact-head signed promotion and physical/manual/live-staging release gates remain
 
 ## Certification Update - 2026-07-11
 
-The remediation plan in this audit has now been implemented through the F2
-source/product ledger: 46 rows are Real, with zero DeferredApproved, Blocked,
-or Substituted rows. That is implementation parity, not an unconditional public
-release claim.
+At the time of this certification update, the remediation plan's F1
+source/product ledger reported 46 rows as Real, with zero DeferredApproved,
+Blocked, or Substituted rows. The current ledger is 50/50 Real. Both are scoped
+F1 Ship Peer results, not proof that the F2 True 1:1 workstreams or the public
+release gates are complete.
 
 Current evidence materially supersedes the original source-only findings:
 
@@ -85,6 +86,393 @@ cross-device flows; physical Computer Use/media/file-safety validation; and the
 public update/rollback/Store release lifecycle. The QA checklist below remains
 unchecked where a row combines any of these unproven requirements.
 
+## Signed Windows Candidate Update - 2026-07-13
+
+Fresh signed workflow [29259964411](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29259964411)
+completed successfully from commit `2683c57e77c60f40feecf24e6bb734a8941eaa90`.
+Both x64 and ARM64 native Swift engine legs, Tree-sitter parser builds, WinUI
+publish, native-engine manifest verification, Azure Authenticode signing,
+portable signature checks, MSIX creation/signing, pinned update-feed signing,
+SBOM/OpenVEX/Sigstore provenance, and the signed x64 MSIX clean-install,
+20-second launch, uninstall, reinstall, and second 20-second launch all passed.
+The lifecycle receipt records zero crash events and zero fatal crash-log findings.
+
+Exact artifact hashes:
+
+- x64 portable ZIP: `194f1b058558932dc80bff6b64a2a3a302e9a3c29d5650e7bfc8456b53a75ecd`
+- ARM64 portable ZIP: `5d7504cd4310dec8cc2ab4e5fb3d3d146fb6917a9c5a2b0e7214e0206ce9a026`
+- x64 MSIX: `ca7f3c7ab8d74be0035714634f8be3c844d8aae752c507d2cd9f91f01a8f4019`
+- ARM64 MSIX: `4eea35eb423790f6a093ec4e07ea1bc1d04f688c40daac3430e20e192d83a029`
+
+This supersedes the earlier missing-resource-bundle candidate for automated
+packaging/runtime evidence. It does not convert the candidate into physical
+Intel/ARM hardware certification or close the manual accessibility/display,
+live staging, advanced Computer Use/media safety, or public Store/update gates.
+
+## Implementation Update - 2026-07-13
+
+The current checkout adds a real F2 implementation slice, without promoting
+unproven host behavior to certification:
+
+- The configurable local gateway now forwards bounded OpenAI-compatible completion
+  requests through an explicit model route, exposes model/metric surfaces,
+  enforces bearer authentication when configured, and fails closed when no
+  healthy route is available. It also has a bounded Anthropic Messages adapter
+  for non-streaming text and tool requests, including system-message conversion,
+  API-key/OAuth header selection, required version headers, tool-definition and
+  tool-result conversion, tool-choice mapping, normalized `tool_calls` response
+  output, and bounded Anthropic SSE-to-OpenAI event conversion. OpenAI image
+  blocks now convert to bounded Anthropic base64 or HTTPS image sources;
+  truncated SSE, malformed tool data, unsafe image URLs, and unsupported
+  multimodal shapes fail closed before transport.
+- The desktop gateway composition now preserves a configured bearer token or
+  generates and persists a URL-safe 256-bit token through the Windows secret
+  store; unauthenticated loopback is available only through the explicit opt
+  out. Persisted enable/host/port settings now control the real listener, and
+  unauthenticated mode is rejected for every resolved non-loopback bind even
+  when the opt-out was saved or supplied by the environment. The token itself
+  is never logged or placed in route metadata.
+- Provider routes now persist as typed, non-secret Windows settings and resolve
+  per-route bearer credentials only from DPAPI-protected storage. The production
+  app, HTTP gateway, Elder Wand catalog, fusion loop, and companion runtime share
+  that catalog instead of relying on an environment JSON manifest. The Model
+  Proxy leaf provides add/edit/delete and enable controls with automatic shared
+  runtime restart. Unsafe remote HTTP endpoints, URI credentials/fragments,
+  duplicate IDs, missing enabled-route credentials, and plaintext gateway-token
+  environment overrides fail closed. The production router now consumes
+  persisted non-secret score metadata with the macOS five-factor weights for
+  capability, cost, latency, trust, and policy fit. Strict quota-drain ordering
+  applies only within matching provider/model/canonical-model/format/endpoint
+  pools; active windows reset soonest first, then the largest remaining quota,
+  before composite score and deterministic LRU/slot ties. Exhausted,
+  missing-secret, disabled, and statically unhealthy routes cannot win. Live
+  upstream failures now drive the same temporary health blocks as macOS for
+  transient capacity, rate limits, authentication, and quota exhaustion. The
+  block key is provider/account/format/model; expiry or a success restores the
+  route. The authenticated model and metrics endpoints expose health metadata,
+  while provider bodies and credentials never enter the health file. Live
+  provider traffic remains a staging/F2 evidence gate.
+- Cross-vendor degradation is now off by default and cannot be enabled by an
+  untrusted request alone. The operator must explicitly enable the policy, and
+  the request must separately opt in. Candidates are restricted to a bounded
+  allow-list of OpenAI-compatible vendors and preferred models, pass the shared
+  scorecard and live-health filters, and are capped per request. The gateway
+  rewrites `model` to the selected fallback before transport, so it does not
+  replay an unavailable model name to the substitute provider. Anthropic wire
+  routes and non-allow-listed paid providers cannot be selected.
+- Gateway route and usage telemetry now persists as bounded metadata-only JSONL
+  with a 5,000-record retention cap. Exact, failed, and cross-vendor decisions
+  are recorded without prompts, messages, attachments, tools, response bodies,
+  endpoints, or credentials. OpenAI/Anthropic JSON and final authoritative SSE
+  usage events separate uncached input, output, cache creation, cache read, and
+  reasoning tokens. Invalid rows are refused, corrupt rows are skipped, and
+  telemetry persistence failures cannot fail a provider request. The
+  authenticated metrics endpoint exposes aggregate counters and at most 50
+  recent route records.
+- Ollama-local routes whose configured base URL does not select the `/v1`
+  compatibility API now execute through Ollama's native `/api/chat` transport.
+  The adapter maps OpenAI messages, tool arguments, JSON schemas, sampling
+  options, and reasoning effort; converts buffered and NDJSON streaming text,
+  tool calls, finish reasons, and exact usage back to OpenAI shapes; and rejects
+  malformed or truncated streams before reporting success. `/v1` Ollama routes
+  remain byte-preserving OpenAI-compatible transports.
+- Explicit `cli://codex` and `cli://factory` routes now execute through guarded
+  provider adapters that match the macOS contracts. Codex receives its request
+  on stdin under a read-only, ephemeral invocation; Factory receives a guarded
+  prompt in a random temporary directory with mutating tools disabled and
+  strict Standard-tier enforcement. The production runner resolves only
+  protected, hash-approved executable identities, uses no shell, bounds each
+  output stream, scrubs ambient secrets, kills the process tree on cancellation
+  or timeout, and removes temporary inputs after every outcome. CLI failures are
+  classified without returning raw provider output or credentials.
+- Proactive local discovery now refreshes loopback Ollama `/api/tags`, loopback
+  OpenAI-compatible `/v1/models`, and the protected Factory Droid help catalog.
+  Successful models become atomic executable routes without shadowing configured
+  rows; failed authoritative refreshes remove stale rows. Source concurrency,
+  response bytes, model counts, refresh cadence, and timeouts are bounded.
+  Remote routes are never probed, authentication failures enter the shared
+  cooldown, and authenticated model/companion catalogs expose discovery source,
+  display name, freshness, counts, and safe errors without credentials.
+- Cloud startup now restores a non-expired OAuth session from the protected
+  session store without opening a browser; only a signed-out or expired session
+  falls back to the explicit dev-host path. When
+  `OPENBURNBAR_APPCHECK_APP_ID` is explicitly configured, the WinUI composition
+  also wires the real Windows CNG/TPM attestation producer and bounded HTTP mint
+  transport into that OAuth root; without the switch it remains id-token-only.
+  Live Firebase/App Check/TPM staging and server-verifier acceptance remain
+  external certification gates.
+- Headless execution now has two production-composed paths. The local Mission
+  Control DAG keeps its bounded safe-step executor. The new durable agent run
+  service owns provider work independently of the requesting socket, stores
+  prompt/context/approval/tool state in a dedicated bounded current-user-DPAPI
+  payload store without registering opaque state in the token redactor,
+  writes only metadata to its JSONL journal, resumes non-terminal work after
+  restart, and exposes submit/get/poll/cancel/retry/recover through the
+  authenticated companion plane. Exact-model failover updates shared health
+  and telemetry, while iteration, context, tool, and retry limits fail closed.
+- The authenticated companion plane now exposes the macOS-equivalent
+  side-effect-free `planner.plan` contract. It preserves explicit-intent,
+  workflow, tool, prompt, and generic precedence; requested-tool inference;
+  typed constraints/risk/desired outputs; and exact deterministic outlines.
+  Unsupported workflows and schema versions fail closed before execution. This
+  is intent planning only: provider/tool policy and execution remain separate.
+- The companion plane also exposes side-effect-free `policy.evaluate` with the
+  macOS tool-risk matrix, approval descriptors, retryability, progress
+  detection, and model-requested-approval rules. The durable run path now
+  consumes that policy: `approval.respond` resolves protected run state,
+  `workspace.executeTool` leases approved work to the owning authenticated
+  companion, and `workspace.toolResult` advances or recovers the run. A
+  run-level approval can authorize exactly the next risky tool; tool results
+  cannot arrive before a claim, and duplicate results are idempotent.
+- Browser Computer Use process mode now uses a direct executable plus a
+  JSON-line bridge with no shell interpolation, bounded responses, serialized
+  commands, cancellation, and process-tree cleanup. The bridge now accepts the
+  Windows launch/navigate/evaluate/close envelope as well as the existing
+  method-based protocol, so the direct driver reaches the real Playwright
+  lifecycle rather than only the in-process fallback. SSRF and DNS-rebinding
+  guards remain enforced at the browser route chokepoint. The production app
+  now packages that reviewed bridge, discovers an explicit or pinned
+  Playwright/Chromium runtime, launches it through the central child-process
+  policy, and exposes a persisted, user-initiated settings check with no
+  arbitrary script entry. A live local driver-to-Chromium test passes. Hosted
+  Windows Full run 29304837991 passed the same x64 lifecycle with one pass and
+  zero skips, together with the full x64 and ARM64 suites.
+- Project code now has a bounded symbol index with durable metadata-only
+  persistence and a file watcher. The index can invoke the existing Rust
+  Tree-sitter JSONL parser through a direct process client with Git-blob SHA
+  verification, and the Windows release workflow builds and signs one parser
+  executable for each RID before packaging it into portable and MSIX outputs.
+- The Projects page now provides a Windows folder picker for the active Project
+  Code workspace instead of requiring `OPENBURNBAR_PROJECT_ROOT`. The normalized
+  non-secret selection persists across launches, rejects volume roots and
+  reparse-point roots, visibly preserves unavailable folders for recovery, and
+  enables indexing when the user makes an explicit selection. Failed changes
+  restore the prior folder and indexing preference. Environment selection remains
+  only as a non-persisted compatibility override when no user selection exists.
+  Per-root JSON fallback metadata is stored under
+  `%LOCALAPPDATA%\OpenBurnBar\ProjectCode\indexes`, not inside the user's repository.
+- The app composes one long-lived `ProjectCodeMemoryService` for the selected
+  root and shares it between the Projects page and companion operations. A new
+  service must load and complete its initial refresh before an atomic live swap;
+  disposal waits for any parser or watcher refresh, and recursive inventory reads
+  do not cross nested file/directory reparse points. Explicit reference/context
+  reads revalidate the root and every path component against stale links. It
+  restores and watches the
+  metadata-only index, refreshes asynchronously with lexical fallback when the
+  configured parser process is wholly unavailable, and exposes
+  bounded `code.index`, `code.search`, `code.symbol`, `code.status`,
+  `code.semantic_search`, and `code.context_pack` companion operations without
+  persisting source text.
+  Context packs are explicit, path-confined, UTF-8 bounded, secret-redacted,
+  and wrapped as untrusted source before returning to a caller.
+- The project-code watcher now writes a durable Pensieve-compatible SQLite
+  metadata store by default under `%LOCALAPPDATA%\\OpenBurnBar`. Atomic refresh
+  transactions persist project identity, file manifests, artifact hashes,
+  symbols, lexical references/call edges, and index checkpoints; restart loads
+  the durable checkpoint before falling back to the legacy JSON index. Source
+  text is never inserted into the store, and `code.status` exposes bounded
+  storage/index counters; the companion plane exposes bounded
+  `code.call_graph` traversal and semantic search over versioned deterministic
+  96-dimensional vectors. Tree-sitter symbol ranges now drive AST-aware chunks;
+  bounded line-aware slicing handles gaps and oversized symbols. Chunk offsets
+  and vectors are persisted without source text, and semantic results read
+  source only for an explicit context request. The shared service keeps visible
+  symbols and companion operations on one encrypted durable checkpoint.
+- The WinUI app lifecycle now owns the separate general Pensieve watcher. It
+  recursively reconciles configured repo-docs/notes and settled Claude session
+  roots on startup, debounced file events, and a periodic backstop. Windows uses
+  the same keyed dedup/slug hashes, deterministic 384-dimensional embedder,
+  HKDF-derived Householder cloak, secret redaction, CloudVault envelopes, and
+  queue schema as Swift/TypeScript. Document text and paths are sealed before an
+  atomic queue write; raw sessions create metadata-only extraction sentinels.
+  Missing protected vault material fails closed, source/queue bounds prevent
+  runaway scans and self-watch loops, and shutdown cancels and awaits all work.
+  Detailed evidence is in
+  `docs/windows-port/evidence/f2/pensieve-knowledge-watcher.md`.
+- App startup always composes the router, companion CLI, and durable run journal,
+  while opening the HTTP listener only when the resolved Model Proxy setting is
+  enabled. The settings leaf restarts the shared local runtime as one operation so
+  endpoint and token changes apply to both planes; listener failure does not
+  discard the internal route graph. The CLI exposes health/models plus bounded `run.submit`,
+  `run.resume`, and `run.recover` commands; startup surfaces the count of
+  interrupted runs without logging payloads. Only explicitly safe built-in
+  steps execute by default, while arbitrary shell/provider work fails closed.
+- The companion TCP plane now requires the same bearer token as the local
+  gateway when composed by the app; missing or incorrect credentials fail closed
+  and the token is stripped before command handlers receive the request.
+- The Computer Use settings host now composes a real file-backed audit service
+  instead of an unavailable placeholder. It validates the canonical manifest,
+  parent-linked chain, and terminal head anchor; verifies an optional signed
+  head; and atomically exports bounded ZIP evidence with optional screenshots.
+  Missing archives, malformed JSON, tampered chains, path traversal, and
+  reparse-point paths fail closed. OpenTimestamps notarization remains an
+  explicit authenticated-account gate.
+- The Media & Sharing settings route now composes a real Mercury capability
+  projection. It evaluates the shared entitlement, budget, quota, concurrent
+  session, requested-duration, kill-switch, and host-capture signals instead
+  of presenting a placeholder. Missing account/host inputs remain visibly
+  data-gated; this does not claim live capture, cross-device transport, or
+  physical safety certification.
+- The Windows Computer Use input adapter now has bounded allowlisted virtual-key
+  and modifier mapping, key/shortcut sequencing, drag/drop sequencing,
+  horizontal and vertical scroll, and virtual-desktop-origin coordinate
+  normalization. Unknown inputs and oversized payloads fail closed before the
+  native call. The adapter remains advisory SendInput; signed-driver routing,
+  UIA target denial, and physical safety evidence remain external gates.
+- The semantic-search provider boundary now includes a bounded OpenAI-compatible
+  embeddings transport for the three macOS-supported models. It validates
+  model dimensions, batch/input/response bounds, indexed response order, finite
+  vectors, status errors, and secret-safe typed failures through an injectable
+  HTTP client. The Windows app now selects that provider from persisted embedding
+  settings and a protected provider secret, carries its model-derived
+  version/dimension identity into the durable project-code store, and falls back
+  deterministically when it is not configured. This matches the macOS
+  user-selectable index contract: deterministic local embeddings or OpenAI with
+  the same three models. macOS BGE explicitly reports unavailable because no
+  model is bundled, while its NaturalLanguage implementation is a separate
+  memory fallback rather than a selectable index provider. Live OpenAI
+  account/quota acceptance remains a staging evidence gate.
+- The memory-extraction network seam now has a bounded OpenAI-compatible and
+  Ollama HTTP implementation. It preserves the macOS request/response contracts,
+  structured content handling, GPT-5.5/OpenRouter hints, status-based cooldowns,
+  cancellation, and fail-closed size/endpoint validation without exposing keys.
+  Production consent/account selection and provider quota behavior remain
+  separate host/staging gates.
+- Elder Wand now runs the full bounded panel -> comparison judge -> originating
+  model synthesis contract through both the OpenAI-compatible gateway plugin
+  and authenticated companion command. Panel members execute in parallel and
+  degrade independently; inner calls cannot recursively re-enter fusion;
+  DNS-pinned web tools, exact-model route selection, saved-default presets,
+  metadata/digest-only journaling, and route/token telemetry are production
+  composed. The production page consumes the same router catalog instead of an
+  empty provider array. Detailed evidence is in
+  `docs/windows-port/evidence/f2/elder-wand-fusion.md` and
+  `docs/windows-port/evidence/f2/model-proxy-settings-live-catalog.md`.
+- The final connector/tooling deferral is production-composed through the
+  authenticated companion plane. Non-secret connector configuration is durable,
+  credentials use the current-user DPAPI store, outbound actions are HTTPS-only
+  and DNS-pinned, and the tooling facade includes the single-call workspace
+  broker plus read-before-patch context selector. Focused connector tests pass
+  `115/115`; live credentialed calls remain part of staging certification.
+- The Cursor connector session now runs a portable provider/model preflight
+  before invoking any broker, proxy, tunnel, or Cursor-settings runtime step.
+  Empty provider/model configurations fail closed; API-key presence remains in
+  the injected platform secret-store validation step.
+- The command palette now searches the bounded local session index through FTS
+  ids with deterministic title/project/provider/session fallback matching for
+  older databases. Search cancels stale queries, surfaces loading/empty/error
+  states, and carries an activated session id through shell navigation so the
+  session-log detail pane opens on the selected record instead of only opening
+  the generic route.
+- The Switcher now launches persisted account profiles through a real embedded
+  ConPTY session. Profile type selects a fixed executable, Windows command-line
+  quoting preserves each argument, config and environment overrides are bounded
+  and allowlisted, the shared child-process policy removes ambient secrets, and
+  cancellation terminates the process tree. Invalid profile paths fail visibly
+  before process creation; no shell interpolation or arbitrary executable path is
+  accepted.
+- Direct-process chat now composes a bounded transcript context from persisted
+  history before launching the approved CLI executable. The current user turn
+  is included exactly once, attachment metadata and bounded previews are
+  carried without absolute paths, and prior transcript text is explicitly
+  marked as untrusted context. The focused chat runtime suite covers ordering,
+  duplicate-current-turn suppression, attachment redaction, and prompt-size
+  bounds.
+- The project-code parser now preserves explicit blob-integrity state on its
+  JSONL wire response and exposes bounded LSP reference lookups through the
+  Windows presentation service and `code.references` companion operation. The
+  user-facing API accepts one-based project lines, converts to zero-based LSP
+  coordinates, confines files to the configured project root, and returns
+  relative reference paths. Tree-sitter symbol extraction now covers the
+  repository's primary C#, JavaScript, Rust, Swift, Python, TypeScript, and TSX
+  files, Java/Kotlin/Go, and the remaining macOS inventory grammars for
+  C/C++/Objective-C, JSON, Markdown, and YAML. The dedicated Windows x64/ARM64
+  MSVC workflow now smoke-tests each grammar. Hosted run 29299426836 passed its
+  x64 tests/smoke and ARM64 build, closing the WPD-0003 parser-host gate. The
+  inventory still uses bounded lexical fallback only when a parser is
+  unavailable.
+- The project-code presentation layer now has a bounded shell-free JSON-RPC
+  language-server client. It performs initialize/open/document-symbol or
+  references/shutdown lifecycle exchange, correlates framed responses, confines
+  returned paths, and emits `exact_lsp` evidence only for the current source
+  blob. App startup composes this client from an explicit JSON command map and
+  falls back to the bundled Tree-sitter parser when an LSP is unavailable. LSP
+  support is additional precision beyond the macOS selectable parser contract;
+  a configured language-server inventory remains optional deployment evidence,
+  not a blocker for the bundled Tree-sitter F2 parser row.
+- The Windows General settings page now persists its time range, usage mode,
+  refresh cadence, indexing and auto-summary toggles, embedding provider/model,
+  and protected OpenAI key through one normalized settings model. The prior
+  hard-coded toggles and picker defaults no longer discard user changes; the
+  selected provider is consumed by the project-code store after indexing
+  restarts. The app now also consumes the normalized snapshot: usage-runtime
+  periodic refresh uses the saved cadence, and companion/Projects code indexing
+  honors the saved indexing toggle. Native scan requests suppress conversation
+  bodies when indexing is off, preserving the macOS privacy boundary. The
+  General page now exposes the exact five macOS windows, migrates legacy values,
+  and routes its wizard action to onboarding. Local SQLCipher summaries, the
+  bounded cloud fallback, the live dashboard/flyout projection, provider/model
+  ranking, sparklines, and the shell BURN capsule all consume the same selected
+  range and Dollars/Tokens mode. Bounded windows no longer mix current-period
+  cost with all-time tokens/sessions or silently fall back to all-time rows.
+- The last primary WPD-0006 SUB-BUILD row now has a production Windows
+  substitute. An exact approval authorizes one durable desktop-input tool call;
+  the app writes a redacted tamper-evident audit reservation, then dispatches
+  through an isolated exact-publisher broker with UIA protected-target policy,
+  an at-most-once receipt ledger, authenticated watchdog health, and leaf kill
+  checks. Ctrl+Alt+Win+Period, workstation lock, explicit halt, and app exit
+  synchronously set the durable kill flag before notifying the independent
+  watchdog. The signed release layout carries
+  complete self-contained watchdog and broker runtimes for x64 and ARM64 and
+  executes exact-publisher checks after signing. This covers the ordinary
+  interactive desktop; secure-desktop, lock-screen, and cross-integrity input
+  remain explicit non-goals pending a purpose-built signed keyboard/mouse HID
+  driver. ViGEm is not used because it emulates game controllers rather than
+  desktop keyboard/mouse devices. See
+  [`evidence/f2/privileged-input-production-composition.md`](evidence/f2/privileged-input-production-composition.md).
+- Native Swift engine staging now requires the SwiftPM
+  `OpenBurnBarCore_OpenBurnBarCore.resources` bundle, copies it beside the C ABI
+  DLL into every RID's publish output, and records SHA-256/size entries for its
+  files in `native-engine-manifest.json`. The Windows app publish target also
+  carries that directory into portable and MSIX layouts, failing closed when a
+  required native-engine publish omits it. Portable/MSIX packagers and the
+  release workflow independently reverify every manifest file's relative path,
+  size, and SHA-256, including the resource bundle, before an artifact can be
+  signed or zipped.
+
+These changes are covered by focused managed-runtime (293/293 planner, policy,
+mission, gateway, durable agent-run, and recovery tests plus 97/97
+managed-agent-runtime tests),
+CloudSync (80/80), connector
+(99/99), presentation (778/778), General settings (166/166), storage (18/18),
+Computer Use (148 passed plus one explicit live Chromium platform skip),
+settings (186/186), configuration (58/58), distribution (101/101), bridge-policy,
+and provider-boundary tests. They are an implementation increment, not a claim
+that the F2 workstreams or release certification are all complete: the
+physical Computer Use/media safety and host evidence still remain. The ledger's 50/50 `Real`
+result is the scoped F1 source/product gate; WPD-0009 continues to define F2
+True 1:1 as the actual 100% parity endpoint.
+
+The exact implementation commit also passed [PR Windows Fast Gate
+29299426816](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29299426816)
+at commit `6c5abc8bd81cb9a87003f4a029d87acac293a88e`: x64 restore,
+transitive NuGet vulnerability audit, full solution/WinUI XAML build, 37 test
+projects (3,315 passed, 14 skipped, 3,329 total), the parity ledger, test-result
+upload, and the aggregate Windows gate all passed. The same commit passed [PR
+Windows Full Suite
+29299426779](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29299426779)
+with the same 37 projects and results on both x64 and native-hosted ARM64, and
+the [Project Code parser MSVC gate
+29299426836](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29299426836)
+passed its x64 tests/smoke plus ARM64 build. [OpenBurnBarCore Engine run
+29299426807](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29299426807)
+also passed production C-ABI staging, managed-to-Swift integration, quota
+contracts, walking skeletons, parser parity, and safety vectors on both hosted
+x64 and ARM64. This closes the hosted x64/ARM64 compile/test boundary for the
+implementation slice. It does not prove installed UI interaction, physical
+hardware, manual accessibility/display, live staging, advanced safety, or public
+release lifecycle behavior.
+
 ## Implementation Update - 2026-07-10
 
 The foundation remediation branch implements the audit's highest-value daily-use
@@ -153,7 +541,7 @@ dashboard are sample-or-empty; settings are largely diagnostic text;
 updates/activation are declared but not shipped; and several advanced
 capabilities are uncomposed or explicitly deferred.
 
-This audit reviewed current source, current release assets, the 46-row Windows
+This audit reviewed current source, current release assets, the 47-row Windows
 ledger, selected Windows unit suites, and the Windows full-suite CI result.
 The initial audit snapshot found the local Windows VM locked and its guest-exec
 channel unavailable. The later exact-candidate receipt above supersedes that
@@ -188,18 +576,18 @@ treated as end-to-end product parity evidence.
 | Live ingestion, tray, and dashboard | macOS discovers, parses, persists, and renders live usage. Windows configures quota acquisition, but the main flyout is sample-or-empty and Scan is explicitly a no-op. Dashboard command data is also sample-or-empty. See windows/app/OpenBurnBar.App/FlyoutWindow.xaml.cs:89-92,342-346 and Dashboard/DashboardPage.xaml.cs:101-109. The primary product value is unavailable in a normal fresh install. | Build WindowsUsageRuntime: Windows log discovery, watchers, parsers, encrypted persistence, snapshot publication, scan cancellation/progress/error/retry, and freshness metadata. Compose it into flyout, dashboard, insights, and session logs at app launch. | Critical | On a clean Windows VM with no environment variables or copied database, create Claude/Codex/Cursor activity. Verify automatic flyout/dashboard refresh and a Scan that changes persisted data. |
 | Fresh-install storage, session logs, and recovery | Windows requires a pre-existing SQLCipher DB and passphrase; failure can fall back to empty data. See windows/app/OpenBurnBar.App/Storage/WindowsStorageDevHost.cs:13-34. macOS has durable aggregation and recovery UI. | Provision/migrate the database automatically, generate a protected key, repair the database picker owner window, and expose loading, no-data, invalid-key, locked-DB, migration, retry, archive/reset, and reveal-log states. | Critical | Exercise fresh install, corrupt DB, wrong key, locked file, and migration interruption. Each must expose an actionable path and recover after retry. |
 | Secrets, identity, and cloud | SQLCipher passphrase, Firebase token, App Check token, and vault key persist in plaintext %LOCALAPPDATA%/OpenBurnBar/app_config.json; cloud startup is dev-token wiring rather than composed sign-in. See windows/app/OpenBurnBar.App.Configuration/AppConfiguration.cs:37-48,66-95 and AppConfigurationModel.cs:8-27. This is a credential-at-rest issue and a false production sign-in experience. | Add ISecretStore backed by DPAPI/Credential Manager, migrate and securely remove legacy values, then compose OAuth PKCE, refresh, TPM/App Check, offline queue, and sign-out cleanup. | Critical security / High feature | Assert that config, logs, diagnostics, child process environments, crash reports, and support bundles contain no secrets. Test staging sign-in, expiry, invalid App Check, offline recovery, and sign-out. |
-| Chat correctness and command safety | Windows invokes cmd.exe /c, only narrowly escapes command text, and discards history. See windows/app/OpenBurnBar.App/Chat/CliProcessLineSource.cs:50-60,135-157. macOS supports persistent streamed chat, retrieval, attachments, and durable error handling. | Resolve approved executables directly. Use ProcessStartInfo.ArgumentList, stdin or structured temporary input, cancellation, output limits, persisted conversation state, and backend-unavailable UI. Eliminate shell-string construction. | Critical | Add metacharacter and quote payload regression tests, cancellation tests, streamed-error tests, restart/history tests, and attachment/paste/drop/retrieval-degradation tests. |
-| Daemon, gateway, missions, and memory depth | macOS has an installed/repairable daemon lifecycle. Windows has useful portable primitives, but product settings explicitly retain gateway, headless runs, local Mission execution, watcher/planner, and connector deferrals. See windows/app/OpenBurnBar.App.Settings.ViewModels/Daemon/DaemonSettingsViewModel.cs:58-62 and DaemonSubstitutionMatrix.cs:28-53. | Decide and document a Windows service versus in-process worker. Implement authenticated IPC, durable journals, restart recovery, provider routing, mission execution, and lifecycle/recovery UI. | Critical | An approved run survives GUI close/restart, rehydrates safely, records audit state, and exposes meaningful health and error UX. |
+| Chat correctness and command safety | Windows now resolves approved executables directly and composes bounded persisted transcript context, including attachment metadata, before each turn. Prior transcript text is marked untrusted and absolute attachment paths are removed; streamed output, cancellation, and backend-unavailable behavior remain separate runtime gates. macOS supports persistent streamed chat, retrieval, attachments, and durable error handling. | Keep `ProcessStartInfo.ArgumentList`, stdin or structured temporary input, cancellation, output limits, persisted conversation state, and backend-unavailable UI aligned with the Windows runtime. Extend the same boundary to retrieval and multimodal providers as they become available. | Critical | Metacharacter/quote payload, cancellation, streamed-error, restart/history, duplicate-current-turn, attachment/paste/drop, and retrieval-degradation tests. |
+| Daemon, gateway, missions, and memory depth | macOS has an installed/repairable daemon lifecycle. Windows now production-composes the authenticated in-process gateway, standalone authenticated companion CLI staged for signed RID packaging, provider routing, Mission DAG, intent planner/policy, durable headless agent loop, exact-approval isolated input broker, protected recovery state, project index, general sealed Pensieve watcher, parallel Elder Wand fusion, indexed search, guarded Switcher shells, connector/tooling plane, and metadata-only journals. No applicable WPD-0006 primary row remains SUB-BUILD. | Prove Windows-host restart/sleep lifecycle UX for every promoted execution path and run the signed privileged-input physical protocol. | Critical | An approved execution run survives companion disconnect and app restart, rehydrates safely, records redacted audit state, and exposes meaningful health and error UX. |
 | Settings and preferences | macOS has interactive, searchable settings with persistence. Many Windows tabs route to a generic reflection/text-dump host with in-memory/no-op defaults; Updates is static. See windows/app/OpenBurnBar.App/Settings/SettingsViewModelHostPage.xaml.cs:47-123 and UpdatesSettingsPage.xaml:28-44. | Replace generic host pages with concrete bound controls and production stores. Persist state securely; disable unavailable functions with a reason; wire every visible toggle and command. | High | Change each preference, restart, validate persistence and live effect. Test failed saves, unavailable services, and OS-disabled states. |
 | Onboarding and permissions | macOS probes and refreshes real permissions. Windows system permissions are informational and chat gateway health is a placeholder. See windows/app/OpenBurnBar.App/Onboarding/Steps/SystemPermissionsStepPage.xaml.cs:6-22 and ChatEngineStepPage.xaml.cs:142-146. | Add Windows-native probes for notification registration, storage/log access, runtime dependencies, UI Automation, screen capture, and optional input components. Use Windows terminology, not copied TCC labels. | High | In a clean VM, deny, grant, revoke, restart, and recover each capability. Onboarding must never falsely report readiness. |
 | Notifications, background behavior, and tray resilience | Windows has a tray foundation and a toast adapter, but live tray data, session/digest delivery, activation routing, preference persistence, Explorer restart recovery, and richer context actions are not proven or composed. See windows/app/OpenBurnBar.App/Budget/BudgetToastNotifier.cs:24-71. | Compose a notification router with the runtime. Add dedupe/rate limits, deep links, OS-disabled status, background cadence, TaskbarCreated re-registration, and Dashboard/Settings/Update tray actions. | High | Test app open/hidden/closed, sleep/wake, reboot, Explorer restart, disabled notifications, toast click/cold activation, and multi-monitor DPI. |
 | Packaging, updater, URI/file/startup activation | MSIX declares protocol, file associations, startup, and toast activation, but app launch only handles route smoke then creates the tray. The updater core is unreferenced and required MSIX images are absent. See windows/packaging/msix/Package.appxmanifest:102-167 and windows/app/OpenBurnBar.App/App.xaml.cs:44-76. | Wire activation/update services, generate package assets, sign MSIX and portable artifacts, implement startup and single-instance handoff, and publish Windows release metadata/SBOM/attestations. | Critical | Clean x64 and ARM64 install; URI/file activation warm and cold; startup toggle; valid update, tampered-feed rejection, rollback, uninstall, and reinstall. |
-| Computer Use, Mercury, and file transfer | macOS has approvals, audit, kill paths, media permissions, calls, mirroring, and guarded file transfer/quarantine. Windows has cores/adapters but not an end-to-end main-app capability. | After the runtime foundation, compose Windows UIA/SendInput/WGC capability checks, audit archive, kill switch/watchdog, secure-desktop denial, media permission UI, immutable outbound snapshots, and Defender/MOTW-aware inbound quarantine. | High | On physical x64 and ARM64 devices, test protected-target denial, panic halt, capture consent, Windows-to-Mac transfer/call/share, and malicious-file handling. |
-| Navigation and command palette | The Windows shell is broad, but Ctrl+K has three fabricated recent sessions rather than live search/deep links. See windows/app/OpenBurnBar.App/Shell/CommandPalette.xaml.cs:80-90. | Add cancellable FTS/recency search over actual sessions/projects/memory, ranking, loading/no-results/error states, and direct record navigation. | Medium | Keyboard-only tests for populated, empty, slow, cancelled, and failing queries; verify each selected record opens. |
+| Computer Use, Mercury, and file transfer | macOS has approvals, audit, kill paths, media permissions, calls, mirroring, and guarded file transfer/quarantine. Windows production-composes exact approvals, redacted resumable audit, isolated `SendInput`, UIA protected-target policy, an independent watchdog, global panic/workstation-lock paths, media settings, and the existing capture/transfer cores. Physical behavior is not yet certified. | Run the signed x64 protected-target/input/panic/restart protocol, then complete capture consent, immutable outbound snapshots, Defender/MOTW-aware inbound quarantine, and cross-device media evidence. | High | On physical x64, test protected-target denial, panic halt, capture consent, Windows-to-Mac transfer/call/share, and malicious-file handling. Physical ARM64 remains an explicit beta limitation until hardware is available. |
+| Navigation and command palette | Windows now searches the bounded local session index through FTS ids with deterministic metadata fallback, cancellation, loading/empty/error states, and direct session deep links. Project and memory-specific result types remain future depth beyond the current section + session contract. | Add project/memory result providers when those stores expose stable read/search contracts; keep the current session path fail-closed and keyboard accessible. | Medium | Keyboard-only tests for populated, empty, slow, cancelled, and failing queries; verify each selected session opens its detail record. |
 | Visual polish and responsiveness | Windows has Mica/Acrylic, WebView2/Win2D fallbacks, and semantic styling, but data-backed layouts and performance are unverified; no runtime screenshot/performance release gate exists. See windows/app/OpenBurnBar.App/Dashboard/DashboardPage.xaml.cs:38-82. | Establish shared semantic design tokens and loading/empty/error/offline/partial state components. Tune density, resizing, motion, and GPU fallbacks against macOS intent rather than copying macOS chrome. | High | Screenshot and pixel-diff baselines at 100/150/200% DPI, narrow/wide windows, light/dark/high-contrast, reduced motion/transparency, and disabled WebView2/Win2D. Capture frame/input/memory budgets. |
 | Accessibility and keyboard | macOS has extensive annotations and Cmd shortcuts. Windows currently has limited automation metadata and mostly Ctrl+K; no UIA/Narrator interaction suite proves real accessibility. | Define accessible names/values/help, focus order, live-region announcements, Ctrl/Alt shortcuts, visible focus, high-contrast/reduced-motion behavior, and Windows UI Automation tests. | High | Narrator/manual keyboard protocol plus automated UIA tests for tray, onboarding, dashboard, settings, dialogs, palette, errors, and panic behavior. |
 | Diagnostics and failure UX | macOS has recovery, redaction, archive/reset, reveal/copy diagnostics. Windows diagnostics are mostly local logs while storage failures can look like empty data. See windows/app/OpenBurnBar.App/Diagnostics/AppDiagnostics.cs:85-110. | Add redaction, bounded retention, correlation IDs, consented support bundle, data-source/native capability/updater status, and retry/repair/archive/reset controls. | High | Induce bad storage, expired auth, graphics/runtime absence, updater failure, and parser crash. Validate redaction and a usable support bundle. |
-| Parity reporting and release evidence | The 46-row ledger and green .NET CI prove scoped paths, not a whole-product clean-install experience. The checkout, main CI, and public release are separate states. | Make real-device functional certification a required release artifact: fresh-install proof, screenshots, UIA, package tests, performance, security checks, and explicit residual scope. | High | Do not use a 1:1 parity label until every visible capability is functional or intentionally unavailable with a named, user-visible explanation. |
+| Parity reporting and release evidence | The 47-row ledger and green .NET CI prove scoped paths, not a whole-product clean-install experience. The checkout, main CI, and public release are separate states. | Make real-device functional certification a required release artifact: fresh-install proof, screenshots, UIA, package tests, performance, security checks, and explicit residual scope. | High | Do not use a 1:1 parity label until every visible capability is functional or intentionally unavailable with a named, user-visible explanation. |
 
 ## Windows-Native Adaptation Requirements
 
@@ -271,16 +659,24 @@ and release acceptance fixtures between Swift and C#.
 
 ## Conclusion
 
-The audit's implementation plan is complete under the repository's F2 ledger.
+The audit's F1 implementation plan is complete under the repository's scoped
+ledger. The applicable WPD-0006 F2 source substitutions are also complete: no
+primary row remains SUB-BUILD. That source result covers the gateway, durable
+runs/missions, Browser Computer Use, the exact-approval privileged-input broker,
+project symbols, the sealed Pensieve watcher, the full Elder Wand fusion
+pipeline, standalone companion CLI, guarded Switcher, indexed search, and the
+connector/tooling plane. It does not close signed-host or physical evidence.
 The x64/ARM64 build, signing/provenance, hosted x64 registration, ARM64 UTM
 foundation, and corrected signed-runtime gates are proven. The corrected x64
 and ARM64 packages each passed clean-install and reinstall 20-second responsive
 launch holds with zero crash events. The evidence does not yet close every row
 in the QA checklist.
 
-Accordingly, the accurate current claim is: **100% source/product parity and
-substantially complete automated certification, but not 100% physical release
-certification**. A public parity release remains gated on the explicitly named
+Accordingly, the accurate current claim is: **F1 source/product parity is
+ledger-green; applicable F2 source composition is complete; F2 True 1:1 is not
+release-certified because exact-head signed and physical/manual/live evidence
+is incomplete**.
+A public parity release remains gated on the explicitly named
 physical Windows, manual accessibility/display, live staging/cross-device,
 advanced safety, and public lifecycle evidence above.
 

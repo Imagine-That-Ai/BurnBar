@@ -16,6 +16,7 @@ public static class ReleaseConfigurationGuard
             "OPENBURNBAR_FIREBASE_ID_TOKEN",
             "OPENBURNBAR_APP_CHECK_TOKEN",
             "OPENBURNBAR_VAULT_KEY_B64",
+            "OPENBURNBAR_GATEWAY_AUTH_TOKEN",
         };
 
     public static void ThrowIfPlaintextCredentialEnvironmentPresent(

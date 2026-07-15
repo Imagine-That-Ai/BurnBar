@@ -30,6 +30,7 @@
     <Compile Include="../../app/OpenBurnBar.App/Chat/CliProcessLineSource.cs" Link="CliProcessLineSource.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Chat/ChatProcessRunner.cs" Link="ChatProcessRunner.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Chat/ChatExecutableInventory.cs" Link="ChatExecutableInventory.cs" />
+    <Compile Include="ChatPromptComposerTests.cs" />
     <Compile Include="ChatStreamDriverRuntimeTests.cs" />
     <Compile Include="CliProcessLineSourceTests.cs" />
   </ItemGroup>

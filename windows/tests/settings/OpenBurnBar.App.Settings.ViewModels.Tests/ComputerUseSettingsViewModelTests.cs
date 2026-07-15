@@ -1,5 +1,8 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using OpenBurnBar.App.Settings.ViewModels;
+using OpenBurnBar.ComputerUse.Core.Browser;
 using OpenBurnBar.ComputerUse.Core.Gate;
 using Xunit;
 
@@ -14,6 +17,21 @@ public sealed class ComputerUseSettingsViewModelTests
         public AuditActionResult ExportArchive(string sessionId, bool includeScreenshots) => AuditActionResult.Fail("io error");
 
         public AuditActionResult Notarize(string sessionId) => AuditActionResult.Fail("ots down");
+    }
+
+    private sealed class BrowserService(bool available, BrowserSessionResult result) : IComputerUseBrowserService
+    {
+        public int Calls { get; private set; }
+
+        public bool IsAvailable => available;
+
+        public string RuntimeStatus => available ? "Ready" : "Missing";
+
+        public Task<BrowserSessionResult> RunCheckAsync(string startUrl, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(result);
+        }
     }
 
     [Fact]
@@ -120,5 +138,62 @@ public sealed class ComputerUseSettingsViewModelTests
         vm.CompletePermissionsSetup();
         Assert.True(vm.PermissionsOnboardingCompleted);
         Assert.True(store.OnboardingCompleted);
+    }
+
+    [Fact]
+    public async Task BrowserCheck_UsesProductionSeamAndPersistsTarget()
+    {
+        var browser = new BrowserService(
+            true,
+            BrowserSessionResult.Ok("session", new[] { new BrowserEvalResult("document.title", "OpenBurnBar") }));
+        var settings = new InMemoryComputerUseBrowserSettingsStore();
+        var vm = new ComputerUseSettingsViewModel(browserSettings: settings, browser: browser)
+        {
+            BrowserCheckUrl = "https://example.org/check",
+        };
+
+        await vm.RunBrowserCheck();
+
+        Assert.Equal(1, browser.Calls);
+        Assert.Equal("https://example.org/check", settings.BrowserCheckUrl);
+        Assert.Equal("Browser runtime check passed.", vm.BrowserCheckStatus);
+        Assert.True(vm.CanRunBrowserCheck);
+    }
+
+    [Fact]
+    public async Task BrowserCheck_FailsClosedForInvalidTargetOrMissingRuntime()
+    {
+        var browser = new BrowserService(false, BrowserSessionResult.Fail("should_not_run"));
+        var vm = new ComputerUseSettingsViewModel(browser: browser)
+        {
+            BrowserCheckUrl = "file:///C:/secrets.txt",
+        };
+
+        await vm.RunBrowserCheck();
+
+        Assert.Equal(0, browser.Calls);
+        Assert.Equal("Missing", vm.BrowserCheckStatus);
+        Assert.False(vm.CanRunBrowserCheck);
+    }
+
+    [Theory]
+    [InlineData("http://localhost/admin")]
+    [InlineData("http://127.0.0.1/admin")]
+    [InlineData("http://10.1.2.3/admin")]
+    [InlineData("http://169.254.169.254/latest/meta-data")]
+    [InlineData("http://[::1]/admin")]
+    [InlineData("https://user:password@example.com")]
+    public async Task BrowserCheck_RejectsKnownInternalAndCredentialTargetsBeforeLaunch(string target)
+    {
+        var browser = new BrowserService(
+            true,
+            BrowserSessionResult.Ok("unexpected", Array.Empty<BrowserEvalResult>()));
+        var vm = new ComputerUseSettingsViewModel(browser: browser) { BrowserCheckUrl = target };
+
+        await vm.RunBrowserCheck();
+
+        Assert.False(vm.CanRunBrowserCheck);
+        Assert.Equal(0, browser.Calls);
+        Assert.Equal("Enter a public HTTP or HTTPS URL.", vm.BrowserCheckStatus);
     }
 }

@@ -25,11 +25,14 @@
     frame-readback proof is a Windows dev-host task (VAL-W5-*).
 
     R17 (documented in SendInputInputSynthesizer.cs): SendInput makes the
-    capability-token gate ADVISORY for same-integrity processes; non-bypassable
-    actions must route through a signed virtual-HID driver (ViGEm v1 / WHQL v1.1).
+    capability-token gate advisory for same-integrity processes. Production
+    interactive-desktop input therefore runs in the separately signed,
+    authenticated broker. Secure desktop and cross-integrity injection remain
+    explicit non-goals unless a purpose-built signed keyboard/mouse HID driver
+    is introduced and certified.
   -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetFrameworks>net8.0-windows10.0.19041.0;net10.0-windows10.0.19041.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
@@ -44,6 +47,7 @@
   <ItemGroup>
     <ProjectReference Include="../OpenBurnBar.ComputerUse.Core/OpenBurnBar.ComputerUse.Core.csproj" />
     <ProjectReference Include="../../pal/ipc/OpenBurnBar.Pal.Ipc.csproj" />
+    <ProjectReference Include="../../pal/ipc-windows/OpenBurnBar.Pal.Ipc.Windows.csproj" />
   </ItemGroup>
 
 </Project>

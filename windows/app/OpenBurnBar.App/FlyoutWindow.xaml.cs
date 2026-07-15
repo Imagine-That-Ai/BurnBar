@@ -11,6 +11,7 @@ using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Presentation.Dashboard;
 using OpenBurnBar.App.Presentation.Flyout;
 using OpenBurnBar.App.Shell;
+using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.UsageRuntime;
 using Windows.Graphics;
@@ -107,7 +108,9 @@ public sealed partial class FlyoutWindow : Window
             {
                 FreshnessLabel = "Encrypted storage needs attention. Open Data & Privacy settings.",
             }
-            : UsageRuntimePresentationMapper.ToFlyoutSnapshot(_usageRuntime.State);
+            : UsageRuntimePresentationMapper.ToFlyoutSnapshot(
+                _usageRuntime.State,
+                WindowsGeneralSettingsComposition.Load());
     }
 
     private void ApplySnapshot(FlyoutTraySnapshot snap)
@@ -358,7 +361,9 @@ public sealed partial class FlyoutWindow : Window
         {
             if (!RuntimeDataMode.SampleModeEnabled)
             {
-                ApplySnapshot(UsageRuntimePresentationMapper.ToFlyoutSnapshot(args.Current));
+                ApplySnapshot(UsageRuntimePresentationMapper.ToFlyoutSnapshot(
+                    args.Current,
+                    WindowsGeneralSettingsComposition.Load()));
             }
         });
     }

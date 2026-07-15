@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   BUNDLE_SCHEMA,
+  HARDWARE_ATTESTATION_SCHEMA,
   RECEIPT_SCHEMA,
   REQUIRED_GATE_IDS,
   validateReceipt,
@@ -60,6 +61,56 @@ function receipt(gate, status = "PASS") {
     blocker: null,
     root,
   };
+}
+
+function physicalPassReceipt(gate = "physical-performance-x64") {
+  const value = receipt(gate);
+  const attestation = {
+    schema: HARDWARE_ATTESTATION_SCHEMA,
+    operator: "Alberto",
+    physicalHardware: true,
+    architecture: "x64",
+    manufacturer: "HP",
+    model: "ENVY x360 15-ew0xxx",
+    assetTag: "5CD1234567",
+    assetTagSource: "Win32_ComputerSystemProduct.IdentifyingNumber",
+    capturedAtUtc: "2026-07-11T00:00:00Z",
+  };
+  const attestationPath = join(value.root, "hardware-attestation.json");
+  writeJson(attestationPath, attestation);
+  const attestationHash = createHash("sha256").update(readFileSync(attestationPath)).digest("hex");
+  value.device = {
+    kind: "physical-windows",
+    manufacturer: "HP",
+    model: "ENVY x360 15-ew0xxx",
+    assetTag: "5CD1234567",
+    assetTagSource: "Win32_ComputerSystemProduct.IdentifyingNumber",
+    architecture: "x64",
+    osBuild: "Windows 11 10.0.26100",
+    tpm: "present-ready-enabled-activated-owned",
+    hardwareAttestation: {
+      schema: HARDWARE_ATTESTATION_SCHEMA,
+      operator: "Alberto",
+      assetTag: "5CD1234567",
+      assetTagSource: "Win32_ComputerSystemProduct.IdentifyingNumber",
+      evidencePath: "hardware-attestation.json",
+      sha256: attestationHash,
+    },
+  };
+  value.artifact = {
+    name: "OpenBurnBar-1.0.30-x64.msix",
+    architecture: "x64",
+    availability: "recorded",
+    sha256: "a".repeat(64),
+    workflowRunId: "123",
+    workflowRunUrl: "https://example.invalid/runs/123",
+    signature: { result: "verified", identity: "Imagine That AI LLC" },
+  };
+  value.evidence.files[0].sha256 = createHash("sha256")
+    .update(readFileSync(join(value.root, "observation.log")))
+    .digest("hex");
+  value.evidence.files.push({ path: "hardware-attestation.json", sha256: attestationHash });
+  return value;
 }
 
 {
@@ -212,6 +263,96 @@ function receipt(gate, status = "PASS") {
   assert.equal(result.ok, false);
   assert.match(result.errors.join("\n"), /physical gate cannot PASS/);
   assert.match(result.errors.join("\n"), /physical PASS requires a recorded artifact/);
+}
+
+{
+  const value = physicalPassReceipt();
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, true, result.errors.join("\n"));
+}
+
+{
+  const value = physicalPassReceipt();
+  delete value.device.hardwareAttestation;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /physical PASS requires device\.hardwareAttestation/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.evidence.files = value.evidence.files.filter((file) => file.path !== "hardware-attestation.json");
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /must reference exactly one evidence\.files entry/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.device.hardwareAttestation.sha256 = "b".repeat(64);
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /evidence hash does not match device metadata/);
+}
+
+{
+  const value = physicalPassReceipt();
+  const path = join(value.root, "hardware-attestation.json");
+  const attestation = JSON.parse(readFileSync(path, "utf8"));
+  attestation.assetTag = "different-device";
+  writeJson(path, attestation);
+  const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
+  value.device.hardwareAttestation.sha256 = hash;
+  value.evidence.files.find((file) => file.path === "hardware-attestation.json").sha256 = hash;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /hardware attestation\.assetTag does not match device\.assetTag/);
+}
+
+{
+  const value = physicalPassReceipt();
+  const path = join(value.root, "hardware-attestation.json");
+  const attestation = JSON.parse(readFileSync(path, "utf8"));
+  attestation.manufacturer = "Amazon EC2";
+  attestation.model = "HVM domU";
+  writeJson(path, attestation);
+  const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
+  value.device.hardwareAttestation.sha256 = hash;
+  value.evidence.files.find((file) => file.path === "hardware-attestation.json").sha256 = hash;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /hardware attestation identity looks virtualized/);
+}
+
+{
+  const value = physicalPassReceipt();
+  const path = join(value.root, "hardware-attestation.json");
+  const attestation = JSON.parse(readFileSync(path, "utf8"));
+  attestation.capturedAtUtc = "2026-07-01T00:00:00Z";
+  writeJson(path, attestation);
+  const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
+  value.device.hardwareAttestation.sha256 = hash;
+  value.evidence.files.find((file) => file.path === "hardware-attestation.json").sha256 = hash;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /outside the allowed receipt time window/);
+}
+
+{
+  const value = physicalPassReceipt();
+  delete value.device.assetTagSource;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /physical PASS requires device\.assetTagSource/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.device.manufacturer = "Amazon EC2";
+  value.device.model = "HVM domU";
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /physical PASS device identity looks virtualized/);
 }
 
 {

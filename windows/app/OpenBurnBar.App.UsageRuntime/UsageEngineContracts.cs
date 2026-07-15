@@ -45,7 +45,9 @@ public sealed record WindowsUsagePaths(
     UsageEngineScanRequest ScanRequest,
     IReadOnlyList<string> WatchDirectories)
 {
-    public static WindowsUsagePaths ForCurrentUser(string? supportDirectory = null)
+    public static WindowsUsagePaths ForCurrentUser(
+        string? supportDirectory = null,
+        bool includeConversationBodies = true)
     {
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (string.IsNullOrWhiteSpace(home))
@@ -79,7 +81,7 @@ public sealed record WindowsUsagePaths(
                 CursorSessionsDirectory = cursor,
                 FactorySessionsDirectory = factory,
                 HermesHomeDirectory = hermes,
-                IncludeConversationBodies = true,
+                IncludeConversationBodies = includeConversationBodies,
             },
             new[] { claude, codex, cursor, factory, hermes });
     }

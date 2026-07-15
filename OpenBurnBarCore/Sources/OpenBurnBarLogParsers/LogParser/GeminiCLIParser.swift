@@ -14,6 +14,10 @@ public final class GeminiCLIParser: LogParser, Sendable {
     }
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
         let basePath = logDirectoryOverride ?? ("~/.gemini/tmp" as NSString).expandingTildeInPath
 
@@ -42,17 +46,34 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
             for chatFile in chatFiles {
                 let sessionId = chatFile.deletingPathExtension().lastPathComponent
+                if let minimumFileModificationDate = options.minimumFileModificationDate,
+                   let signature = FileSignature(for: chatFile),
+                   Date(timeIntervalSince1970: signature.modifiedAt) < minimumFileModificationDate {
+                    continue
+                }
 
                 let pair: (usage: TokenUsage?, conversation: ConversationRecord?)?
                 if chatFile.pathExtension == "jsonl" {
-                    pair = try parseJsonlSession(file: chatFile, sessionId: sessionId, projectName: projectName)
+                    pair = try parseJsonlSession(
+                        file: chatFile,
+                        sessionId: sessionId,
+                        projectName: projectName,
+                        includeConversationBodies: options.includeConversationBodies
+                    )
                 } else {
-                    pair = try parseJsonSession(file: chatFile, sessionId: sessionId, projectName: projectName)
+                    pair = try parseJsonSession(
+                        file: chatFile,
+                        sessionId: sessionId,
+                        projectName: projectName,
+                        includeConversationBodies: options.includeConversationBodies
+                    )
                 }
 
                 if let pair, let usage = pair.usage {
                     usages.append(usage)
-                    if let conv = pair.conversation { conversations.append(conv) }
+                    if options.includeConversationBodies, let conv = pair.conversation {
+                        conversations.append(conv)
+                    }
                 }
             }
         }
@@ -65,7 +86,8 @@ public final class GeminiCLIParser: LogParser, Sendable {
     private func parseJsonlSession(
         file: URL,
         sessionId: String,
-        projectName: String
+        projectName: String,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(open file, guard nil)
         defer { try? handle.close() } // try?-ok(handle teardown)
@@ -81,7 +103,13 @@ public final class GeminiCLIParser: LogParser, Sendable {
             ingestLine(json, into: &acc)
         }
 
-        return try buildResult(acc: acc, sessionId: sessionId, projectName: projectName, mtime: mtime)
+        return try buildResult(
+            acc: acc,
+            sessionId: sessionId,
+            projectName: projectName,
+            mtime: mtime,
+            includeConversationBodies: includeConversationBodies
+        )
     }
 
     // MARK: - JSON Session Parsing
@@ -89,7 +117,8 @@ public final class GeminiCLIParser: LogParser, Sendable {
     private func parseJsonSession(
         file: URL,
         sessionId: String,
-        projectName: String
+        projectName: String,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let data = try? Data(contentsOf: file) else { return nil } // try?-ok(file read, guard nil)
 
@@ -110,7 +139,13 @@ public final class GeminiCLIParser: LogParser, Sendable {
             }
         }
 
-        return try buildResult(acc: acc, sessionId: sessionId, projectName: projectName, mtime: mtime)
+        return try buildResult(
+            acc: acc,
+            sessionId: sessionId,
+            projectName: projectName,
+            mtime: mtime,
+            includeConversationBodies: includeConversationBodies
+        )
     }
 
     // MARK: - Shared Ingestion
@@ -223,7 +258,8 @@ public final class GeminiCLIParser: LogParser, Sendable {
         acc: GeminiSessionAccumulator,
         sessionId: String,
         projectName: String,
-        mtime: Date?
+        mtime: Date?,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         var inputTokens = acc.inputTokens
         var outputTokens = acc.outputTokens
@@ -273,26 +309,28 @@ public final class GeminiCLIParser: LogParser, Sendable {
             provenanceConfidence: .exact
         )
 
-        let conversation = ConversationRecord(
-            id: ConversationRecord.stableId(provider: .geminiCLI, sessionId: sessionId),
-            provider: .geminiCLI,
-            sessionId: sessionId,
-            projectName: projectName,
-            startTime: startTime,
-            endTime: endTime,
-            messageCount: acc.messageCount,
-            userWordCount: acc.userWords,
-            assistantWordCount: acc.assistantWords,
-            keyFiles: [],
-            keyCommands: [],
-            keyTools: [],
-            inferredTaskTitle: acc.firstUserText ?? projectName,
-            lastAssistantMessage: acc.lastAssistantText,
-            fullText: acc.fullText,
-            indexedAt: Date(),
-            fileModifiedAt: mtime,
-            summary: nil
-        )
+        let conversation = includeConversationBodies
+            ? ConversationRecord(
+                id: ConversationRecord.stableId(provider: .geminiCLI, sessionId: sessionId),
+                provider: .geminiCLI,
+                sessionId: sessionId,
+                projectName: projectName,
+                startTime: startTime,
+                endTime: endTime,
+                messageCount: acc.messageCount,
+                userWordCount: acc.userWords,
+                assistantWordCount: acc.assistantWords,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: acc.firstUserText ?? projectName,
+                lastAssistantMessage: acc.lastAssistantText,
+                fullText: acc.fullText,
+                indexedAt: Date(),
+                fileModifiedAt: mtime,
+                summary: nil
+            )
+            : nil
 
         return (usage, conversation)
     }

@@ -23,6 +23,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path (Join-Path $scriptRoot '..') (Join-Path 'scripts' 'Assert-NativeEngineManifest.ps1'))
 $publish = (Resolve-Path -LiteralPath $PublishDir).Path
 $manifestSource = Join-Path $scriptRoot "Package.appxmanifest"
 $imagesSource = Join-Path $scriptRoot "Images"
@@ -71,6 +72,11 @@ try {
     Copy-Item -Path (Join-Path $publish "*") -Destination $stage -Recurse -Force
     Copy-Item -LiteralPath $imagesSource -Destination (Join-Path $stage "Images") -Recurse -Force
 
+    $nativeEngine = Join-Path $stage "OpenBurnBarCoreCAbi.dll"
+    if (Test-Path -LiteralPath $nativeEngine -PathType Leaf) {
+        Assert-OpenBurnBarNativeEngineManifest -Root $stage
+    }
+
     $document = [System.Xml.XmlDocument]::new()
     $document.PreserveWhitespace = $false
     $document.Load($manifestSource)
@@ -95,6 +101,18 @@ try {
     $executable = if ($null -eq $executableAttribute) { "" } else { $executableAttribute.Value }
     if (-not $executable -or -not (Test-Path -LiteralPath (Join-Path $stage $executable) -PathType Leaf)) {
         throw "Manifest executable '$executable' is missing from publish output $publish."
+    }
+    $companionCli = Join-Path $stage "OpenBurnBar.Cli.exe"
+    if (-not (Test-Path -LiteralPath $companionCli -PathType Leaf)) {
+        throw "Authenticated companion CLI is missing from publish output $publish."
+    }
+    $watchdog = Join-Path $stage "ComputerUseWatchdog\OpenBurnBar.ComputerUse.Watchdog.exe"
+    if (-not (Test-Path -LiteralPath $watchdog -PathType Leaf)) {
+        throw "Privileged-input watchdog is missing from publish output $publish."
+    }
+    $privilegedInput = Join-Path $stage "PrivilegedInput\OpenBurnBar.PrivilegedInput.exe"
+    if (-not (Test-Path -LiteralPath $privilegedInput -PathType Leaf)) {
+        throw "Privileged-input broker is missing from publish output $publish."
     }
 
     $manifestOutput = Join-Path $stage "AppxManifest.xml"

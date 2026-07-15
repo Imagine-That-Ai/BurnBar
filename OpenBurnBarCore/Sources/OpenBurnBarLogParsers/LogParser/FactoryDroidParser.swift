@@ -69,12 +69,24 @@ public final class FactoryDroidParser: LogParser, Sendable {
                 let metadataFile = projectDir.appendingPathComponent("\(baseName).metadata.json")
                 let cacheKey = cachePath(for: jsonlFile)
                 activePaths.insert(cacheKey)
-
-                if let signature = compositeSignature(
+                let signature = compositeSignature(
                     jsonlFile: jsonlFile,
                     settingsFile: settingsFile,
                     metadataFile: metadataFile
-                ), let cached = parseCache.fileEntries[cacheKey], cached.signature == signature {
+                )
+
+                // The normal refresh publishes recent token usage before the
+                // optional conversation-indexing pass. Do not reopen old
+                // transcripts during that fast pass; the later full indexing
+                // pass intentionally calls this parser without a cutoff.
+                if let minimumFileModificationDate = options.minimumFileModificationDate,
+                   signature == nil
+                    || Date(timeIntervalSince1970: signature?.primary.modifiedAt ?? 0) < minimumFileModificationDate {
+                    continue
+                }
+
+                if let signature,
+                   let cached = parseCache.fileEntries[cacheKey], cached.signature == signature {
                     let cached = updateCacheEntry(
                         cached,
                         signature: signature,
@@ -113,11 +125,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                         conversations: &conversations
                     )
 
-                    if let signature = compositeSignature(
-                        jsonlFile: jsonlFile,
-                        settingsFile: settingsFile,
-                        metadataFile: metadataFile
-                    ) {
+                    if let signature {
                         parseCache.fileEntries[cacheKey] = FactoryDroidCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,

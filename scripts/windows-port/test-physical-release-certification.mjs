@@ -7,6 +7,7 @@ import { describeLocalCertificationHost } from "./local-certification-host.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const script = readFileSync(join(root, "run-physical-release-certification.ps1"), "utf8");
+const attestationGenerator = readFileSync(join(root, "new-physical-hardware-attestation.ps1"), "utf8");
 const localRunner = readFileSync(join(root, "run-local-certification-checks.mjs"), "utf8");
 
 assert.match(script, /\$PhysicalHardware/);
@@ -18,6 +19,13 @@ assert.match(script, /Get-CimInstance Win32_SystemEnclosure/);
 assert.match(script, /Get-CimInstance Win32_ComputerSystemProduct/);
 assert.match(script, /placeholder chassis tag/);
 assert.match(script, /systemProduct\.IdentifyingNumber/);
+assert.match(script, /assetTagSource/);
+assert.match(script, /Hardware attestation assetTagSource is required for physical certification/);
+assert.match(script, /Hardware attestation assetTagSource does not match/);
+assert.match(script, /Amazon EC2\|Google Compute Engine\|HVM domU\|\\bXen\\b/);
+assert.match(script, /\$script:AllowedAssetTagSources -notcontains \$candidateAssetTagSource/);
+assert.match(script, /\$candidateDeviceIdentity -match \$script:VirtualHostIdentityPattern/);
+assert.match(script, /Normalize-Architecture \(\[string\]\$candidate\.device\.architecture\)/);
 assert.match(
   script,
   /system asset tag\|chassis asset tag/,
@@ -29,8 +37,28 @@ assert.match(
 );
 assert.match(script, /Physical hardware architecture mismatch/);
 assert.match(script, /Get-Tpm/);
+
+assert.match(attestationGenerator, /openburnbar\.windows\.physical-hardware-attestation\.v1/);
+assert.match(attestationGenerator, /Get-CimInstance Win32_SystemEnclosure/);
+assert.match(attestationGenerator, /Get-CimInstance Win32_ComputerSystemProduct/);
+assert.match(attestationGenerator, /Win32_SystemEnclosure\.SMBIOSAssetTag/);
+assert.match(attestationGenerator, /Win32_ComputerSystemProduct\.IdentifyingNumber/);
+assert.match(attestationGenerator, /system asset tag\|chassis asset tag/);
+assert.match(attestationGenerator, /assetTagSource/);
+assert.match(attestationGenerator, /Refusing physical hardware attestation for a virtualized host identity/);
+assert.match(attestationGenerator, /Amazon EC2\|Google Compute Engine\|HVM domU\|\\bXen\\b/);
+assert.match(attestationGenerator, /Refusing to overwrite existing hardware attestation without -Force/);
+assert.match(attestationGenerator, /\.tmp-/);
+const windowsFastWorkflow = readFileSync(join(root, "../../.github/workflows/pr-windows-fast.yml"), "utf8");
+assert.match(windowsFastWorkflow, /new-physical-hardware-attestation\.ps1/);
+assert.match(windowsFastWorkflow, /run-physical-release-certification\.ps1/);
+assert.match(windowsFastWorkflow, /Language\.Parser\]::ParseFile/);
+
 assert.match(script, /IsPathRooted\(\$Path\)/);
 assert.match(script, /function ConvertTo-WindowsProcessArgument/);
+assert.match(script, /function Normalize-Architecture/);
+assert.match(script, /'x64', 'amd64', 'x8664'/);
+assert.match(script, /'arm64', 'aarch64'/);
 assert.match(script, /if \(\$null -ne \$startInfo\.PSObject\.Properties\['ArgumentList'\]\)/);
 assert.doesNotMatch(script, /if \(\$null -ne \$startInfo\.ArgumentList\)/);
 assert.match(script, /\$startInfo\.Arguments =/);
@@ -55,7 +83,11 @@ assert.match(script, /Artifact manifest sourceCommit must be a full 40-character
 assert.match(script, /Artifact manifest source commit mismatch/);
 assert.match(script, /source = \$script:SourceIdentity/);
 assert.doesNotMatch(script, /source = \[ordered\]@\{ commitSha = Get-CommitSha; dirtyTree = Test-DirtyTree \}/);
-assert.match(script, /\$script:HardwareAttestationSha256 = Get-Sha256 \$attestationPath/);
+assert.match(script, /\$script:HardwareAttestationSha256 = Get-Sha256 \$attestationEvidencePath/);
+assert.match(script, /evidence\/hardware-attestation\.json/);
+assert.match(script, /Copy-Item -LiteralPath \$attestationPath -Destination \$attestationEvidencePath/);
+assert.match(script, /evidencePath = \[string\]\$script:HardwareAttestationEvidencePath/);
+assert.match(script, /\$receiptEvidenceFiles \+= \[ordered\]@\{/);
 assert.doesNotMatch(script, /\$script:HardwareAttestation\.sha256\s*=/);
 assert.match(script, /ArtifactManifestPath/);
 assert.match(script, /signatureResult/);
@@ -89,8 +121,18 @@ assert.match(script, /SUPPLEMENTAL-LIVE-RECEIPT-MISSING/);
 assert.match(script, /\$supplementalGateIds = @\('accessibility-display'\)/);
 assert.match(script, /\$supplementalGateIds -notcontains/);
 assert.match(script, /\$performanceArchitectureByGate\.ContainsKey\(\$candidateGate\)/);
+assert.match(
+  script,
+  /\$expectedPerformanceArchitecture -eq \(Normalize-Architecture \$Platform\)[\s\S]*\$candidate\.artifact\.sha256 -ne \$artifact\.sha256/,
+);
 assert.match(script, /\$candidate\.artifact\.sha256 -ne \$artifact\.sha256/);
 assert.match(script, /Supplemental evidence hash mismatch/);
+assert.match(script, /\$candidate\.device\.hardwareAttestation/);
+assert.match(script, /Supplemental hardware attestation hash mismatch/);
+assert.match(script, /\$candidateAttestation\.physicalHardware -ne \$true/);
+assert.match(script, /\$candidateAttestation\.assetTagSource/);
+assert.match(script, /\$attestationCapturedAt -lt \$receiptStartedAt\.AddHours\(-24\)/);
+assert.match(script, /\$candidate\.device\.hardwareAttestation\.evidencePath = \$candidateAttestationDestinationRelative/);
 assert.match(
   script,
   /Get-Sha256 \$sourcePath[\s\S]*Supplemental evidence hash mismatch[\s\S]*Copy-Item -LiteralPath \$sourcePath/,

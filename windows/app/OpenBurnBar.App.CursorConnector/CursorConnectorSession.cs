@@ -122,6 +122,10 @@ public sealed class CursorConnectorSession
 
         try
         {
+            // Reject an unusable config before any Windows-only runtime side
+            // effect. API-key validation stays in the injected step because
+            // that step owns the platform secret store.
+            ConnectorConfigurationValidator.Validate(_config);
             _steps.ValidateConfiguration();
             _steps.EnsureSupportDirectory();
             _steps.RefreshSystemHealth();

@@ -44,6 +44,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <OpenBurnBarNativeEngineDirectory
       Condition="'$(OpenBurnBarNativeEngineDirectory)' == ''">$(MSBuildProjectDirectory)\..\..\native-engine\$(RuntimeIdentifier)</OpenBurnBarNativeEngineDirectory>
+    <OpenBurnBarProjectCodeParserPath Condition="'$(OpenBurnBarProjectCodeParserPath)' == ''"></OpenBurnBarProjectCodeParserPath>
   </PropertyGroup>
 
   <ItemGroup Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')">
@@ -83,6 +84,27 @@
     <Error
       Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll')"
       Text="Required shared domain core is missing: $(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll" />
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources')"
+      Text="Required Swift resource bundle is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources" />
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json')"
+      Text="Required native-engine manifest is missing: $(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json" />
+  </Target>
+
+  <ItemGroup Condition="Exists('$(OpenBurnBarProjectCodeParserPath)')">
+    <Content Include="$(OpenBurnBarProjectCodeParserPath)"
+             Link="ProjectCode\project-code-static-parser.exe"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="RequireOpenBurnBarProjectCodeParser"
+          BeforeTargets="Publish"
+          Condition="'$(OpenBurnBarRequireProjectCodeParser)' == 'true'">
+    <Error
+      Condition="!Exists('$(OpenBurnBarProjectCodeParserPath)')"
+      Text="Required Windows project-code parser is missing: $(OpenBurnBarProjectCodeParserPath)" />
   </Target>
 
   <ItemGroup>
@@ -153,10 +175,16 @@
       render of that same logic.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.MemorySearch/OpenBurnBar.App.MemorySearch.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
-    <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.ManagedAgentRuntime/OpenBurnBar.App.ManagedAgentRuntime.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.PrivilegedInput/OpenBurnBar.App.PrivilegedInput.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.CursorConnector/OpenBurnBar.App.CursorConnector.csproj" />
+    <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Core/OpenBurnBar.ComputerUse.Core.csproj" />
+    <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Windows/OpenBurnBar.ComputerUse.Windows.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj" />
+    <ProjectReference Include="../../cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck.Windows/OpenBurnBar.CloudSync.AppCheck.Windows.csproj" />
     <ProjectReference Include="../../packaging/updater/OpenBurnBar.Updater.Windows/OpenBurnBar.Updater.Windows.csproj" />
     <ProjectReference Include="../../storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
     <!--
@@ -235,6 +263,10 @@
     <Content Include="..\..\packaging\updater\feed\pinned-update-key.pub"
              Link="Resources\Updates\pinned-update-key.pub"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\OpenBurnBarDaemon\Resources\PlaywrightBridge\openburnbar-playwright-bridge.js"
+             Link="Resources\PlaywrightBridge\openburnbar-playwright-bridge.js"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

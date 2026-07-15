@@ -15,5 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../app/OpenBurnBar.App.ManagedAgentRuntime/OpenBurnBar.App.ManagedAgentRuntime.csproj" />
+    <ProjectReference Include="../../app/OpenBurnBar.App.PrivilegedInput/OpenBurnBar.App.PrivilegedInput.csproj" />
+    <ProjectReference Include="../../app/OpenBurnBar.Cli/OpenBurnBar.Cli.csproj" />
   </ItemGroup>
 </Project>

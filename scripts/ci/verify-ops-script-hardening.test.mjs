@@ -66,6 +66,26 @@ assert.match(
 );
 assert.match(
   windowsReleaseWorkflow,
+  /OpenBurnBar\.ComputerUse\.Watchdog\.csproj[\s\S]*dotnet publish "\$watchdog"[\s\S]*cp -R "\$watchdog_out\/\." "publish\/\$rid\/ComputerUseWatchdog\/"/,
+  "Windows release workflow must publish and stage the independent privileged-input watchdog",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /OpenBurnBar\.PrivilegedInput\.csproj[\s\S]*dotnet publish "\$privileged_input"[\s\S]*cp -R "\$privileged_input_out\/\." "publish\/\$rid\/PrivilegedInput\/"/,
+  "Windows release workflow must publish and stage the complete privileged-input broker runtime",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /OpenBurnBar\.ComputerUse\.Watchdog\.exe[\s\S]*--verify-self-publisher[\s\S]*runtime publisher gate accepted/,
+  "Windows release workflow must execute the signed watchdog's runtime publisher gate",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /PrivilegedInput\/OpenBurnBar\.PrivilegedInput\.exe[\s\S]*--verify-self-publisher[\s\S]*Privileged-input runtime publisher gate accepted/,
+  "Windows release workflow must execute the signed privileged-input broker publisher gate",
+);
+assert.match(
+  windowsReleaseWorkflow,
   /-MakePriPath "\$makepri"/,
   "Windows release workflow must pass the reviewed MakePri tool to the MSIX packager",
 );
@@ -129,6 +149,16 @@ assert.match(
   windowsMsixPackager,
   /\$executableAttribute\.Value/,
   "MSIX staging must validate the executable attribute value, not its serialized XML form",
+);
+assert.match(
+  windowsMsixPackager,
+  /ComputerUseWatchdog\\OpenBurnBar\.ComputerUse\.Watchdog\.exe[\s\S]*Privileged-input watchdog is missing/,
+  "MSIX staging must fail closed when the privileged-input watchdog is absent",
+);
+assert.match(
+  windowsMsixPackager,
+  /PrivilegedInput\\OpenBurnBar\.PrivilegedInput\.exe[\s\S]*Privileged-input broker is missing/,
+  "MSIX staging must fail closed when the privileged-input broker is absent",
 );
 assert.match(
   windowsMsixPackager,
