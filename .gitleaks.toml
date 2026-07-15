@@ -16,12 +16,23 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Swift key-material parameter labels that reference variables, not committed secrets"
+description = "Swift key-material parameter labels that reference variables, not committed secrets — scoped to Swift sources only so the global pattern cannot mask a leaked key literal in TS/Python/Kotlin/etc."
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''privateKey:\s+[A-Za-z_][A-Za-z0-9_]*''',
   '''signingKey:\s+[A-Za-z_][A-Za-z0-9_]*''',
   '''key:\s+[A-Za-z_][A-Za-z0-9_]*''',
+]
+paths = [
+  '''AgentLens/.*\.swift''',
+  '''AgentLensTests/.*\.swift''',
+  '''OpenBurnBarCore/Sources/.*\.swift''',
+  '''OpenBurnBarCore/Tests/.*\.swift''',
+  '''OpenBurnBarDaemon/.*\.swift''',
+  '''OpenBurnBarMobile/.*\.swift''',
+  '''OpenBurnBarMobileTests/.*\.swift''',
+  '''tools/.*/Sources/.*\.swift''',
 ]
 
 [[allowlists]]
@@ -515,11 +526,16 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Linux-port evidence transcripts: sha256 digests, ed25519 public-key hashes, and signer identifiers captured in committed proof bundles under docs/linux-port/evidence — digests of evidence artifacts, never credential material (the privacy-invariants gate governs PII there separately)"
+description = "Linux-port evidence transcripts: SHA-256 digests (64 hex) and git commit SHAs (40 hex) captured in committed proof bundles under docs/linux-port/evidence — digests of evidence artifacts, never credential material (the privacy-invariants gate governs PII there separately)"
 condition = "AND"
 regexTarget = "match"
 regexes = [
-  '''[0-9a-f]{24,64}''',
+  '''"[A-Za-z0-9]*[Ss]ha256":\s*"[0-9a-f]{64}"''',
+  '''"[A-Za-z0-9]*[Hh]ash[A-Za-z]*":\s*"[0-9a-f]{64}"''',
+  '''"commit":\s*"[0-9a-f]{40}"''',
+  '''"head":\s*"[0-9a-f]{40}"''',
+  '''"[A-Za-z0-9]*[Hh]ead[A-Za-z]*[Hh]ash[A-Za-z]*":\s*"[0-9a-f]{40}"''',
+  '''^[0-9a-f]{64}$''',
 ]
 paths = [
   '''docs/linux-port/evidence/.*''',
