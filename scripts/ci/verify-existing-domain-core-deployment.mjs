@@ -2,16 +2,13 @@
 
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { lstatSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
+
 function bytes(path, label) {
-  const absolute = resolve(path);
-  const stat = lstatSync(absolute);
-  if (!stat.isFile() || stat.isSymbolicLink())
-    throw new Error(`${label} must be a regular file`);
-  return readFileSync(absolute);
+  return readRegularFileSync(resolve(path), { label });
 }
 
 function json(path, label) {

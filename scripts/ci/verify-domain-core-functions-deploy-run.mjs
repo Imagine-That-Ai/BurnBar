@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,6 +9,7 @@ import {
   canonicalJson,
   regularFile,
 } from "../lib/domain-core-release-evidence.mjs";
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
 
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 const POSITIVE_INTEGER = /^[1-9]\d*$/u;
@@ -47,7 +48,12 @@ function parseArguments(argv) {
 
 function readJson(path, label) {
   try {
-    return JSON.parse(readFileSync(regularFile(path, label), "utf8"));
+    return JSON.parse(
+      readRegularFileSync(regularFile(path, label), {
+        encoding: "utf8",
+        label,
+      }),
+    );
   } catch (error) {
     throw new Error(`unable to read ${label}: ${error.message}`);
   }
@@ -84,12 +90,16 @@ function writeCreateOnly(path, contents) {
     });
   } catch (error) {
     if (error?.code !== "EEXIST") throw error;
-    const stat = lstatSync(output);
-    if (
-      !stat.isFile() ||
-      stat.isSymbolicLink() ||
-      readFileSync(output, "utf8") !== contents
-    ) {
+    let existing;
+    try {
+      existing = readRegularFileSync(output, {
+        encoding: "utf8",
+        label: "Functions deploy-run verification",
+      });
+    } catch {
+      existing = undefined;
+    }
+    if (existing !== contents) {
       throw new Error(
         `refusing to replace non-identical Functions deploy-run verification: ${output}`,
       );

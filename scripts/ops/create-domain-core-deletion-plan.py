@@ -149,9 +149,7 @@ def create_deletion_receipt(
     receipts = GATE.require_object(row.get("receipts"), f"row {row_id}.receipts")
     stable_relative = receipts.get("stableRelease")
     stable_relative = GATE.repository_path(stable_relative, f"row {row_id}.stableRelease")
-    stable = GATE.validate_receipt(
-        repo_root, stable_relative, row_id, generation, "stable_release", set()
-    )
+    stable = GATE.validate_receipt(repo_root, stable_relative, row_id, generation, "stable_release", set())
     GATE.require_ancestor(repo_root, stable.commit, commit, "deletion receipt commit")
     plan_relative = plan_path.relative_to(repo_root).as_posix()
     plan_digest = GATE.sha256_path(plan_path)

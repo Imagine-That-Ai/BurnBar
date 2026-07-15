@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
 
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 const SHA256 = /^[0-9a-f]{64}$/u;
 
 function json(path, label) {
-  const absolute = resolve(path);
-  const stat = lstatSync(absolute);
-  if (!stat.isFile() || stat.isSymbolicLink())
-    throw new Error(`${label} must be a regular file`);
-  return JSON.parse(readFileSync(absolute, "utf8"));
+  return JSON.parse(
+    readRegularFileSync(resolve(path), { encoding: "utf8", label }),
+  );
 }
 
 function requiredString(value, label) {

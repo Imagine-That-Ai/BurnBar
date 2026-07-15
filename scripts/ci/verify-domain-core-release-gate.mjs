@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { verifyDomainCoreReleaseGate } from "../lib/domain-core-release-evidence.mjs";
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
 
 const POSITIVE_INTEGER = /^[1-9]\d*$/u;
 
@@ -62,11 +63,16 @@ function writeCreateOnly(path, contents) {
     });
   } catch (error) {
     if (error?.code !== "EEXIST") throw error;
-    const stat = lstatSync(output);
-    if (!stat.isFile() || stat.isSymbolicLink()) {
+    let existing;
+    try {
+      existing = readRegularFileSync(output, {
+        encoding: "utf8",
+        label: "release gate receipt",
+      });
+    } catch {
       throw new Error(`release gate receipt must be a regular file: ${output}`);
     }
-    if (readFileSync(output, "utf8") !== contents) {
+    if (existing !== contents) {
       throw new Error(
         `refusing to replace non-identical release gate receipt: ${output}`,
       );

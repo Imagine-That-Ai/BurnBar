@@ -2,18 +2,15 @@
 
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import {
-  linkSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { linkSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 import { validateDomainCoreActivation } from "../lib/domain-core-activation.mjs";
+import {
+  readRegularFileIfExistsSync,
+  readRegularFileSync,
+} from "../lib/atomic-regular-file.mjs";
 
 import {
   buildPromotionBinding,
@@ -38,7 +35,9 @@ const DEPLOYMENT_CONSUMERS = new Set(["console", "functions"]);
 
 function readJson(path, label) {
   try {
-    return JSON.parse(readFileSync(resolve(path), "utf8"));
+    return JSON.parse(
+      readRegularFileSync(resolve(path), { encoding: "utf8", label }),
+    );
   } catch (error) {
     throw new Error(`unable to read ${label}: ${error.message}`);
   }
@@ -108,12 +107,17 @@ function positiveInteger(value, label) {
 function atomicWrite(path, contents) {
   const destination = resolve(path);
   mkdirSync(dirname(destination), { recursive: true });
-  if (lstatExists(destination)) {
-    const stat = lstatSync(destination);
-    if (!stat.isFile() || stat.isSymbolicLink()) {
-      throw new Error(`refusing to replace non-regular output: ${destination}`);
-    }
-    if (readFileSync(destination, "utf8") === contents) return;
+  let existing;
+  try {
+    existing = readRegularFileIfExistsSync(destination, {
+      encoding: "utf8",
+      label: "immutable output",
+    });
+  } catch {
+    throw new Error(`refusing to replace non-regular output: ${destination}`);
+  }
+  if (existing !== undefined) {
+    if (existing === contents) return;
     throw new Error(
       `refusing to replace non-identical immutable output: ${destination}`,
     );
@@ -128,28 +132,22 @@ function atomicWrite(path, contents) {
     linkSync(temporary, destination);
   } catch (error) {
     if (error?.code !== "EEXIST") throw error;
-    const stat = lstatSync(destination);
-    if (
-      !stat.isFile() ||
-      stat.isSymbolicLink() ||
-      readFileSync(destination, "utf8") !== contents
-    ) {
+    let concurrent;
+    try {
+      concurrent = readRegularFileSync(destination, {
+        encoding: "utf8",
+        label: "immutable output",
+      });
+    } catch {
+      throw new Error(`refusing to replace non-regular output: ${destination}`);
+    }
+    if (concurrent !== contents) {
       throw new Error(
         `refusing to replace non-identical immutable output: ${destination}`,
       );
     }
   } finally {
     rmSync(temporary, { force: true });
-  }
-}
-
-function lstatExists(path) {
-  try {
-    lstatSync(path);
-    return true;
-  } catch (error) {
-    if (error?.code === "ENOENT") return false;
-    throw error;
   }
 }
 
@@ -395,11 +393,13 @@ export function buildReleaseEvidence({
       { encoding: "utf8" },
     ),
   );
-  const rawActivation = absenceAuthority?.activation ?? activationVerifier({
-    repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
-    candidateCommit: candidate.candidateCommit,
-    activationCommit: commit,
-  });
+  const rawActivation =
+    absenceAuthority?.activation ??
+    activationVerifier({
+      repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
+      candidateCommit: candidate.candidateCommit,
+      activationCommit: commit,
+    });
   const activation = Object.fromEntries(
     [
       "candidateCommit",
@@ -566,7 +566,9 @@ export function buildReleaseEvidence({
     }
     common.appStoreConnectReceipt = structuredClone(receipt);
   } else if (appStoreConnectReceipt !== undefined) {
-    throw new Error(`${consumer} must not provide an App Store Connect receipt`);
+    throw new Error(
+      `${consumer} must not provide an App Store Connect receipt`,
+    );
   }
   if (consumer === "android") {
     if (!androidAbiManifest) {
@@ -671,32 +673,56 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
   const artifact = regularFile(artifactPath, "release evidence subject");
   const scanPath = args["--legacy-absence-scan"]
     ? resolve(args["--legacy-absence-scan"])
-    : resolve(dirname(args["--predicate"]), `${basename(args["--predicate"])}.legacy-scan.json`);
+    : resolve(
+        dirname(args["--predicate"]),
+        `${basename(args["--predicate"])}.legacy-scan.json`,
+      );
   if (common.legacyAbsence) {
     if (!args["--legacy-absence-scan"]) {
       const scanArgs = [
         "scripts/ci/scan-domain-core-final-artifact-legacy.py",
-        "--consumer", args["--consumer"],
-        "--artifact", artifact,
-        "--output", scanPath,
+        "--consumer",
+        args["--consumer"],
+        "--artifact",
+        artifact,
+        "--output",
+        scanPath,
       ];
       if (args["--legacy-absence-root"]) {
-        scanArgs.push("--extracted-root", resolve(args["--legacy-absence-root"]));
+        scanArgs.push(
+          "--extracted-root",
+          resolve(args["--legacy-absence-root"]),
+        );
       }
       execFileSync("python3", scanArgs, { stdio: "inherit" });
     }
     const report = exactObject(
       readJson(scanPath, "final-artifact legacy-absence scan"),
-      ["schemaVersion", "consumer", "artifact", "ruleSetSha256", "inspectedMembers", "matches", "result"],
+      [
+        "schemaVersion",
+        "consumer",
+        "artifact",
+        "ruleSetSha256",
+        "inspectedMembers",
+        "matches",
+        "result",
+      ],
       "final-artifact legacy-absence scan",
     );
     if (
-      report.schemaVersion !== 1 || report.consumer !== args["--consumer"] ||
-      report.result !== "absent" || !Array.isArray(report.matches) || report.matches.length !== 0 ||
-      !Array.isArray(report.inspectedMembers) || report.inspectedMembers.length === 0 ||
-      report.artifact?.sha256 !== sha256File(artifact) || !SHA256.test(report.ruleSetSha256)
+      report.schemaVersion !== 1 ||
+      report.consumer !== args["--consumer"] ||
+      report.result !== "absent" ||
+      !Array.isArray(report.matches) ||
+      report.matches.length !== 0 ||
+      !Array.isArray(report.inspectedMembers) ||
+      report.inspectedMembers.length === 0 ||
+      report.artifact?.sha256 !== sha256File(artifact) ||
+      !SHA256.test(report.ruleSetSha256)
     ) {
-      throw new Error("final-artifact legacy-absence scan does not bind exact clean release bytes");
+      throw new Error(
+        "final-artifact legacy-absence scan does not bind exact clean release bytes",
+      );
     }
     common.legacyAbsence.artifactScan = {
       reportSha256: canonicalSha256(report),

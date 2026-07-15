@@ -414,8 +414,8 @@ class DomainCoreShadowEvidenceTest {
                 batch.samples.map { it["mismatchCategory"] },
             )
             assertEquals("0.3.1", batch.samples[0]["loadedCoreVersion"])
-            assertEquals(3L, (batch.samples[1]["loadedCoreAbiVersion"] as Number).toLong())
-            assertEquals(4L, (batch.samples[2]["loadedCoreAbiVersion"] as Number).toLong())
+            assertEquals(3L, (batch.samples[1]["loadedCoreAbiVersion"] as? Number)?.toLong())
+            assertEquals(4L, (batch.samples[2]["loadedCoreAbiVersion"] as? Number)?.toLong())
             assertEquals(null, batch.samples[3]["loadedCoreVersion"])
             assertEquals(null, batch.samples[3]["loadedCoreAbiVersion"])
             assertEquals(null, batch.samples[3]["loadedCoreSourceSha256"])

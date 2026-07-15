@@ -40,14 +40,14 @@ enum PensieveVectorLegacy {
     /// unreachable by recall and are deleted by `purgeLegacyKnowledgeVectors`.
     /// MUST stay byte-identical to `EMBEDDING_MODEL_VERSION` in
     /// `tools/openburnbar-mcp-remote/src/embed.ts`.
-    public static let embeddingModelVersion = "bge-small-en-v1.5-vault-dedup-v1"
+    static let embeddingModelVersion = "bge-small-en-v1.5-vault-dedup-v1"
     /// Deterministic offline/test embedder id. Tagged distinctly so its vectors
     /// can never be mixed with real bge vectors by the version-match guard.
-    public static let deterministicModelVersion = "hashing-bow-v1"
-    public static let embeddingDim = 384
+    static let deterministicModelVersion = "hashing-bow-v1"
+    static let embeddingDim = 384
 
     /// bge retrieval asymmetry: queries get an instruction prefix, documents do not.
-    public static let bgeQueryInstruction = "Represent this sentence for searching relevant passages: "
+    static let bgeQueryInstruction = "Represent this sentence for searching relevant passages: "
 
     /// Number of Householder reflections composed into the cloak. Matches
     /// `CLOAK_REFLECTIONS` in embed.ts (>log2(dim) for thorough mixing).
@@ -163,7 +163,7 @@ enum PensieveVectorLegacy {
     /// Apply the per-user orthonormal cloak to a single embedding. Pass the same
     /// `modelVersion` at index time and query time. Returns a fresh vector; the
     /// input is not mutated.
-    public static func cloak(
+    static func cloak(
         _ vector: [Double],
         vaultKey: Data,
         modelVersion: String = embeddingModelVersion
@@ -182,7 +182,7 @@ enum PensieveVectorLegacy {
 
     // MARK: - Vector helpers
 
-    public static func l2normalize(_ vector: [Double]) -> [Double] {
+    static func l2normalize(_ vector: [Double]) -> [Double] {
         var normSq = 0.0
         for value in vector { normSq += value * value }
         let norm = normSq.squareRoot()
@@ -203,7 +203,7 @@ enum PensieveVectorLegacy {
     /// reproducible recall for the encrypt/cloak/commit/search loop and exact
     /// term matches, which is the documented offline path. When a real bge
     /// runtime is wired in, switch `modelVersion` to `embeddingModelVersion`.
-    public static func deterministicEmbed(_ text: String, isQuery: Bool = false) -> [Double] {
+    static func deterministicEmbed(_ text: String, isQuery: Bool = false) -> [Double] {
         let prefix = isQuery ? bgeQueryInstruction : ""
         let prepared = (prefix + text).lowercased()
         var acc = [Double](repeating: 0, count: embeddingDim)
@@ -221,7 +221,7 @@ enum PensieveVectorLegacy {
 
     /// Convenience: deterministic-embed then cloak in one call, returning the
     /// JSON-serialisable `[Double]` the commit/query callables accept.
-    public static func embedAndCloak(
+    static func embedAndCloak(
         _ text: String,
         vaultKey: Data,
         isQuery: Bool = false,
@@ -233,7 +233,7 @@ enum PensieveVectorLegacy {
 
     #if DEBUG
     /// Test hook: clears the reflection cache so cross-key tests don't bleed.
-    public static func resetReflectionCacheForTesting() {
+    static func resetReflectionCacheForTesting() {
         cacheLock.lock(); reflectionCache.removeAll(); cacheLock.unlock()
     }
     #endif

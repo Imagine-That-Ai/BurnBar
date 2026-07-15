@@ -1,9 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  lstatSync,
-  readFileSync,
-  readdirSync,
-} from "node:fs";
+import { lstatSync, readdirSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 
 import {
@@ -14,6 +10,7 @@ import {
   validateDeterministicPromotionPolicy,
 } from "./domain-core-deterministic-candidate-bundle.mjs";
 import { validateDomainCoreCandidateIdentity } from "./domain-core-candidate-receipt.mjs";
+import { readRegularFileSync } from "./atomic-regular-file.mjs";
 
 export const DOMAIN_CORE_PROOF_FRAGMENT_SCHEMA_VERSION = 1;
 export const DOMAIN_CORE_REQUIRED_PROOF_FRAGMENT_JOB_IDS = Object.freeze([
@@ -46,7 +43,10 @@ function exactKeys(value, expected, label) {
   }
   const actual = Object.keys(value).sort();
   const wanted = [...expected].sort();
-  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
+  if (
+    actual.length !== wanted.length ||
+    actual.some((key, index) => key !== wanted[index])
+  ) {
     fail(`${label} must contain exactly ${wanted.join(", ")}`);
   }
 }
@@ -55,7 +55,8 @@ function positiveInteger(value, label) {
   const text = String(value ?? "");
   if (!POSITIVE_INTEGER.test(text)) fail(`${label} must be a positive integer`);
   const parsed = Number(text);
-  if (!Number.isSafeInteger(parsed)) fail(`${label} exceeds the safe integer range`);
+  if (!Number.isSafeInteger(parsed))
+    fail(`${label} exceeds the safe integer range`);
   return parsed;
 }
 
@@ -69,14 +70,17 @@ function candidateIdentitiesEqual(left, right) {
 }
 
 export function sha256File(path) {
-  return createHash("sha256").update(readFileSync(resolve(path))).digest("hex");
+  return createHash("sha256")
+    .update(readRegularFileSync(resolve(path), { label: "proof artifact" }))
+    .digest("hex");
 }
 
 export function sha256Artifact(path) {
   const root = resolve(path);
   const rootStat = lstatSync(root);
   if (rootStat.isFile()) return sha256File(root);
-  if (!rootStat.isDirectory()) fail(`artifact is neither a regular file nor directory: ${root}`);
+  if (!rootStat.isDirectory())
+    fail(`artifact is neither a regular file nor directory: ${root}`);
   const hash = createHash("sha256");
   let fileCount = 0;
   const length = (value, bytes) => {
@@ -90,13 +94,16 @@ export function sha256Artifact(path) {
       const child = join(directory, name);
       const stat = lstatSync(child);
       const childRelative = relative(root, child).replaceAll("\\", "/");
-      if (stat.isSymbolicLink()) fail(`artifact directories cannot contain symlinks: ${childRelative}`);
+      if (stat.isSymbolicLink())
+        fail(`artifact directories cannot contain symlinks: ${childRelative}`);
       if (stat.isDirectory()) {
         visit(child);
       } else if (stat.isFile()) {
         fileCount += 1;
         const pathBytes = Buffer.from(childRelative, "utf8");
-        const contents = readFileSync(child);
+        const contents = readRegularFileSync(child, {
+          label: "proof artifact entry",
+        });
         hash.update(length(pathBytes.length, 4));
         hash.update(pathBytes);
         hash.update(length(contents.length, 8));
@@ -114,12 +121,17 @@ export function sha256Artifact(path) {
 function observedIdentity(path, expected, label) {
   let report;
   try {
-    report = JSON.parse(readFileSync(resolve(path), "utf8"));
+    report = JSON.parse(
+      readRegularFileSync(resolve(path), {
+        encoding: "utf8",
+        label: `${label} observed identity report`,
+      }),
+    );
   } catch (error) {
     fail(`${label} observed identity report is unreadable: ${error.message}`);
   }
   const identity = validateDomainCoreCandidateIdentity(report);
-  if (JSON.stringify(identity) !== JSON.stringify(expected)) {
+  if (!candidateIdentitiesEqual(identity, expected)) {
     fail(`${label} observed identity does not match candidate`);
   }
   return identity;
@@ -127,7 +139,8 @@ function observedIdentity(path, expected, label) {
 
 function reportDigest(path, label) {
   const stat = lstatSync(resolve(path));
-  if (!stat.isFile() || stat.size === 0) fail(`${label} report must be a non-empty file`);
+  if (!stat.isFile() || stat.size === 0)
+    fail(`${label} report must be a non-empty file`);
   return sha256File(path);
 }
 
@@ -156,12 +169,16 @@ export function createDomainCoreProofFragment({
 }) {
   const policyErrors = validateDeterministicPromotionPolicy(policy);
   if (policyErrors.length > 0) fail(policyErrors.join("; "));
-  if (!DOMAIN_CORE_REQUIRED_JOB_IDS.includes(jobId)) fail(`unexpected job ID: ${jobId}`);
+  if (!DOMAIN_CORE_REQUIRED_JOB_IDS.includes(jobId))
+    fail(`unexpected job ID: ${jobId}`);
   const identity = validateDomainCoreCandidateIdentity(candidate);
-  if (headSha !== identity.candidateCommit) fail("fragment head SHA must equal candidate commit");
+  if (headSha !== identity.candidateCommit)
+    fail("fragment head SHA must equal candidate commit");
   const normalizedRunId = positiveInteger(runId, "runId");
   const normalizedAttempt = positiveInteger(runAttempt, "runAttempt");
-  const requiredSuites = DOMAIN_CORE_REQUIRED_SUITES.filter((suite) => suite.jobId === jobId);
+  const requiredSuites = DOMAIN_CORE_REQUIRED_SUITES.filter(
+    (suite) => suite.jobId === jobId,
+  );
   for (const suite of suites) {
     if (!requiredSuites.some((required) => required.id === suite.id)) {
       fail(`suite ${suite.id} does not belong to ${jobId}`);
@@ -203,7 +220,8 @@ export function createDomainCoreProofFragment({
     })),
     artifacts: artifacts.map(({ id, path, identityReportPath }) => {
       const required = requiredArtifacts.find((item) => item.id === id);
-      if (!identityReportPath) fail(`${id} requires an observed identity report`);
+      if (!identityReportPath)
+        fail(`${id} requires an observed identity report`);
       const loadedIdentity = observedIdentity(identityReportPath, identity, id);
       return {
         id,
@@ -212,16 +230,34 @@ export function createDomainCoreProofFragment({
         runId: normalizedRunId,
         runAttempt: normalizedAttempt,
         artifactSha256: sha256Artifact(path),
-        identityReportSha256: reportDigest(identityReportPath, `${id} observed identity`),
+        identityReportSha256: reportDigest(
+          identityReportPath,
+          `${id} observed identity`,
+        ),
         loadedIdentity,
         loadSuiteIds: [...required.requiredLoadSuiteIds],
       };
     }),
     benchmarks: benchmarks.map(({ id, reportPath }) => {
-      const report = JSON.parse(readFileSync(resolve(reportPath), "utf8"));
-      exactKeys(report, new Set(["baselineNanos", "candidateNanos"]), `${id} benchmark`);
-      const baselineNanos = positiveInteger(report.baselineNanos, `${id}.baselineNanos`);
-      const candidateNanos = positiveInteger(report.candidateNanos, `${id}.candidateNanos`);
+      const report = JSON.parse(
+        readRegularFileSync(resolve(reportPath), {
+          encoding: "utf8",
+          label: `${id} benchmark report`,
+        }),
+      );
+      exactKeys(
+        report,
+        new Set(["baselineNanos", "candidateNanos"]),
+        `${id} benchmark`,
+      );
+      const baselineNanos = positiveInteger(
+        report.baselineNanos,
+        `${id}.baselineNanos`,
+      );
+      const candidateNanos = positiveInteger(
+        report.candidateNanos,
+        `${id}.candidateNanos`,
+      );
       return {
         id,
         jobId,
@@ -246,14 +282,20 @@ export function createDomainCoreProofFragment({
             runAttempt: normalizedAttempt,
             reportSha256: reportDigest(rollback.reportPath, "rollback"),
             fromCandidateCommit: identity.candidateCommit,
-            restoredArtifactSha256: sha256Artifact(rollback.restoredArtifactPath),
+            restoredArtifactSha256: sha256Artifact(
+              rollback.restoredArtifactPath,
+            ),
             restoredMode: "legacy",
           },
   };
 }
 
 function validateFragment(fragment, candidate, runId, runAttempt) {
-  exactKeys(fragment, FRAGMENT_KEYS, `fragment ${fragment?.jobId ?? "unknown"}`);
+  exactKeys(
+    fragment,
+    FRAGMENT_KEYS,
+    `fragment ${fragment?.jobId ?? "unknown"}`,
+  );
   if (fragment.schemaVersion !== DOMAIN_CORE_PROOF_FRAGMENT_SCHEMA_VERSION) {
     fail(`fragment ${fragment.jobId} has unsupported schema version`);
   }
@@ -266,12 +308,15 @@ function validateFragment(fragment, candidate, runId, runAttempt) {
   if (fragment.headSha !== candidate.candidateCommit) {
     fail(`fragment ${fragment.jobId} head SHA does not match candidate`);
   }
-  const fragmentCandidate = validateDomainCoreCandidateIdentity(fragment.candidate);
+  const fragmentCandidate = validateDomainCoreCandidateIdentity(
+    fragment.candidate,
+  );
   if (!candidateIdentitiesEqual(fragmentCandidate, candidate)) {
     fail(`fragment ${fragment.jobId} candidate tuple does not match`);
   }
   for (const key of ["suites", "artifacts", "benchmarks"]) {
-    if (!Array.isArray(fragment[key])) fail(`fragment ${fragment.jobId}.${key} must be an array`);
+    if (!Array.isArray(fragment[key]))
+      fail(`fragment ${fragment.jobId}.${key} must be an array`);
   }
   if (fragment.rollback !== null && typeof fragment.rollback !== "object") {
     fail(`fragment ${fragment.jobId}.rollback must be null or an object`);
@@ -294,7 +339,8 @@ export function aggregateDomainCoreProofFragments({
   exactKeys(jobResults, new Set(DOMAIN_CORE_REQUIRED_JOB_IDS), "job results");
   const jobs = DOMAIN_CORE_REQUIRED_JOB_IDS.map((id) => {
     const result = jobResults[id];
-    if (!result || result.result !== "success") fail(`required job ${id} did not succeed`);
+    if (!result || result.result !== "success")
+      fail(`required job ${id} did not succeed`);
     return { id, status: "completed", conclusion: "success" };
   });
   const suites = [];
@@ -307,31 +353,49 @@ export function aggregateDomainCoreProofFragments({
     artifacts.push(...fragment.artifacts);
     benchmarks.push(...fragment.benchmarks);
     if (fragment.rollback !== null) {
-      if (rollback !== null) fail("multiple rollback fragments are not allowed");
+      if (rollback !== null)
+        fail("multiple rollback fragments are not allowed");
       rollback = fragment.rollback;
     }
   }
   const fragmentJobIds = fragments.map(({ jobId }) => jobId).sort();
-  const expectedFragmentJobIds = [...DOMAIN_CORE_REQUIRED_PROOF_FRAGMENT_JOB_IDS].sort();
+  const expectedFragmentJobIds = [
+    ...DOMAIN_CORE_REQUIRED_PROOF_FRAGMENT_JOB_IDS,
+  ].sort();
   if (
     fragmentJobIds.length !== expectedFragmentJobIds.length ||
     fragmentJobIds.some((id, index) => id !== expectedFragmentJobIds[index])
   ) {
-    fail(`proof fragment job IDs must equal ${expectedFragmentJobIds.join(", ")}`);
+    fail(
+      `proof fragment job IDs must equal ${expectedFragmentJobIds.join(", ")}`,
+    );
   }
-  exactIdSet(suites, DOMAIN_CORE_REQUIRED_SUITES.map((suite) => suite.id), "suite");
-  exactIdSet(artifacts, DOMAIN_CORE_REQUIRED_ARTIFACTS.map((artifact) => artifact.id), "artifact");
-  exactIdSet(benchmarks, policy.requiredBenchmarks.map((benchmark) => benchmark.id), "benchmark");
+  exactIdSet(
+    suites,
+    DOMAIN_CORE_REQUIRED_SUITES.map((suite) => suite.id),
+    "suite",
+  );
+  exactIdSet(
+    artifacts,
+    DOMAIN_CORE_REQUIRED_ARTIFACTS.map((artifact) => artifact.id),
+    "artifact",
+  );
+  exactIdSet(
+    benchmarks,
+    policy.requiredBenchmarks.map((benchmark) => benchmark.id),
+    "benchmark",
+  );
   if (rollback === null) fail("rollback evidence is required");
   const suitesById = new Map(suites.map((suite) => [suite.id, suite]));
-  const coverage = Object.entries(policy.domains).flatMap(([domain, domainPolicy]) =>
-    domainPolicy.requiredCoverage.map(({ slice, consumer, suiteId }) => ({
-      domain,
-      slice,
-      consumer,
-      suiteId,
-      reportSha256: suitesById.get(suiteId).reportSha256,
-    })),
+  const coverage = Object.entries(policy.domains).flatMap(
+    ([domain, domainPolicy]) =>
+      domainPolicy.requiredCoverage.map(({ slice, consumer, suiteId }) => ({
+        domain,
+        slice,
+        consumer,
+        suiteId,
+        reportSha256: suitesById.get(suiteId).reportSha256,
+      })),
   );
   return { jobs, suites, coverage, artifacts, benchmarks, rollback };
 }
@@ -342,7 +406,12 @@ export function loadFragments(directory) {
     .sort()
     .map((name) => {
       try {
-        return JSON.parse(readFileSync(join(resolve(directory), name), "utf8"));
+        return JSON.parse(
+          readRegularFileSync(join(resolve(directory), name), {
+            encoding: "utf8",
+            label: `proof fragment ${name}`,
+          }),
+        );
       } catch (error) {
         fail(`unable to read fragment ${basename(name)}: ${error.message}`);
       }

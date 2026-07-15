@@ -481,6 +481,8 @@ jobs:
 
       - name: Check Rust core
         working-directory: crates/openburnbar-domain-core
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
         run: |
           set -o pipefail
           {
@@ -538,6 +540,8 @@ jobs:
       - name: Observe the exact C# native identity
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          DOMAIN_CORE_NATIVE_LIBRARY_PATH: ${{ github.workspace }}/crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/csharp-native-observed-identity.json
         run: >-
           dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
@@ -648,11 +652,15 @@ jobs:
 
       - name: Build native domain core
         working-directory: crates/openburnbar-domain-core
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
         run: cargo build -p openburnbar-domain-ffi
 
       - name: Observe the exact Windows native identity
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          DOMAIN_CORE_NATIVE_LIBRARY_PATH: ${{ github.workspace }}/crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/windows-native-${{ matrix.rid }}-observed-identity.json
         run: |
           dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime ${{ matrix.rid }} `
@@ -720,11 +728,15 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Build Linux ARM64 native domain core
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
         run: cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
 
       - name: Observe the exact Linux ARM64 native identity
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          DOMAIN_CORE_NATIVE_LIBRARY_PATH: ${{ github.workspace }}/crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/linux-arm64-native-observed-identity.json
         run: >-
           dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo

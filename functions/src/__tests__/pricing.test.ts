@@ -51,6 +51,11 @@ type CatalogModel = {
   };
 };
 type Catalog = { providers: { id: string; models: CatalogModel[] }[] };
+type DomainCoreWasmModule = {
+  domainCoreVersion(): string;
+  domainCoreAbiVersion(): number;
+  domainCoreSourceFingerprint(): string;
+};
 
 const LOADED_CORE_SOURCE_SHA256 = loadedDomainCorePricingIdentity().sourceSha256;
 
@@ -66,6 +71,15 @@ function isCatalog(value: unknown): value is Catalog {
   if (!value || typeof value !== "object") return false;
   const providers = Object.getOwnPropertyDescriptor(value, "providers")?.value;
   return Array.isArray(providers);
+}
+
+function isDomainCoreWasmModule(value: unknown): value is DomainCoreWasmModule {
+  return (
+    isRecord(value) &&
+    typeof value.domainCoreVersion === "function" &&
+    typeof value.domainCoreAbiVersion === "function" &&
+    typeof value.domainCoreSourceFingerprint === "function"
+  );
 }
 
 function loadMoonshotModels(): CatalogModel[] {
@@ -226,11 +240,8 @@ describe("shared domain-core pricing", () => {
   it("reports the digest of the exact WASM bytes loaded by production pricing", () => {
     const require = createRequire(__filename);
     const modulePath = require.resolve("@openburnbar/domain-core-wasm");
-    const loaded = require(modulePath) as {
-      domainCoreVersion(): string;
-      domainCoreAbiVersion(): number;
-      domainCoreSourceFingerprint(): string;
-    };
+    const loaded: unknown = require(modulePath);
+    if (!isDomainCoreWasmModule(loaded)) throw new Error("domain-core WASM module has an invalid API");
     const expectedWasmSha256 = createHash("sha256")
       .update(readFileSync(resolve(dirname(modulePath), "openburnbar_domain_core_bg.wasm")))
       .digest("hex");
