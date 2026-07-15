@@ -732,6 +732,14 @@ jobs:
             functions/vendor/openburnbar/domain-core-wasm \
             2>&1 | tee "$RUNNER_TEMP/wasm-node-kat.log"
 
+      - name: Run remote MCP CloudVault consumer contracts
+        run: |
+          set -o pipefail
+          npm ci --prefix tools/openburnbar-mcp-remote
+          npm --prefix tools/openburnbar-mcp-remote run lint
+          npm --prefix tools/openburnbar-mcp-remote test \
+            2>&1 | tee "$RUNNER_TEMP/remote-mcp-cloudvault-contracts.log"
+
       - name: Freeze the observed Node Wasm before broader candidate tests
         run: >-
           node scripts/ci/stage-domain-core-attestation-artifact.mjs
@@ -746,6 +754,7 @@ jobs:
           --job-id wasm
           --suite "wasm-browser-kat=$RUNNER_TEMP/wasm-browser-kat.log"
           --suite "wasm-node-kat=$RUNNER_TEMP/wasm-node-kat.log"
+          --suite "remote-mcp-cloudvault-contracts=$RUNNER_TEMP/remote-mcp-cloudvault-contracts.log"
           --artifact "browser-wasm=$RUNNER_TEMP/attestation-browser-wasm/artifact,$RUNNER_TEMP/attestation-browser-wasm/observed-identity.json"
           --artifact "node-wasm=$RUNNER_TEMP/attestation-node-wasm/artifact,$RUNNER_TEMP/attestation-node-wasm/observed-identity.json"
           --output "$RUNNER_TEMP/wasm.json"

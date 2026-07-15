@@ -31,10 +31,12 @@
         { "slice": "foundation", "consumer": "android" },
         { "slice": "foundation", "consumer": "windows" },
         { "slice": "foundation", "consumer": "console" },
+        { "slice": "foundation", "consumer": "remote-mcp" },
         { "slice": "aes", "consumer": "apple" },
         { "slice": "aes", "consumer": "android" },
         { "slice": "aes", "consumer": "windows" },
         { "slice": "aes", "consumer": "console" },
+        { "slice": "aes", "consumer": "remote-mcp" },
         { "slice": "recovery", "consumer": "apple" },
         { "slice": "recovery", "consumer": "android" },
         { "slice": "recovery", "consumer": "windows" },
@@ -45,7 +47,9 @@
         { "slice": "document-rewrap", "consumer": "apple" },
         { "slice": "document-rewrap", "consumer": "android" },
         { "slice": "search", "consumer": "apple" },
-        { "slice": "search", "consumer": "android" }
+        { "slice": "search", "consumer": "android" },
+        { "slice": "search", "consumer": "remote-mcp" },
+        { "slice": "opaque-identifiers", "consumer": "remote-mcp" }
       ],
       "allowedChannels": ["internal", "beta"],
       "mismatchAlertCategories": [

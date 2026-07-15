@@ -19,7 +19,7 @@
  * filesystem) is injectable so the pipeline is fully unit-testable offline.
  */
 
-import { createHash, createHmac, hkdfSync } from "node:crypto";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -31,6 +31,7 @@ import {
   pensieveProvenanceHash,
   pensieveSlugHmac,
 } from "./domainCoreOpaqueIdentifiers.js";
+import { legacyPensieveHmac } from "./legacy/cloudVaultLegacy.js";
 import { sealText } from "./seal.js";
 import type { SealedEnvelope } from "./decrypt.js";
 
@@ -115,17 +116,8 @@ function sha256(text: string): string {
  * test fixture (functions/.../knowledgeMemoryDedupHash.test.ts):
  *   HKDF(vaultKey, salt=∅, info="pensieve-dedup:content"|"…:slug") → HMAC(value).
  */
-function legacyVaultKeyedHmac(vaultKey: Buffer, label: "content" | "slug" | "provenance", value: string): string {
-  const dedupKey = Buffer.from(hkdfSync("sha256", vaultKey, Buffer.alloc(0), `pensieve-dedup:${label}`, 32));
-  try {
-    return createHmac("sha256", dedupKey).update(value, "utf8").digest("hex");
-  } finally {
-    dedupKey.fill(0);
-  }
-}
-
 function vaultKeyedHmac(vaultKey: Buffer, label: "content" | "slug" | "provenance", value: string): string {
-  const legacy = (): string => legacyVaultKeyedHmac(vaultKey, label, value);
+  const legacy = (): string => legacyPensieveHmac(vaultKey, label, value);
   switch (label) {
     case "content":
       return pensieveDedupHash(value, vaultKey, legacy);

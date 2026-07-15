@@ -22,7 +22,7 @@ consumer, contract, deletion target, or rollout state changes.
 | Kotlin (Android) | No local provider quota parsing | Yes | Yes | No canonical catalog calculator | Yes |
 | Browser TypeScript (Console) | No | Yes, with non-extractable WebCrypto keys | No | No | Consumes encrypted search data; no duplicate native analyzer |
 | Cloud Functions TypeScript | Separate Cursor dashboard mechanism only | Encrypted-record coordination only | Envelope validation/coordination only | Yes | Persistence/query coordination only |
-| Remote MCP TypeScript | No | Pensieve content/slug/provenance opaque hashes | No | No | No |
+| Remote MCP TypeScript | No | AAD v2, AES sealed text, and Pensieve opaque hashes | No | No | Token and semantic query hashes |
 | Local MCP Python | No | Yes; required consumer pending | No | No | Yes; required consumer pending |
 | Tauri/Linux UI | Displays daemon-produced values | No separate implementation | No separate implementation | No separate implementation | No separate implementation |
 
@@ -60,12 +60,12 @@ the stable-release gate has been satisfied.
 
 | Slice | Real owners | Rust boundary and deletion condition |
 |---|---|---|
-| AAD v1/v2 serialization and envelope validation | Swift, Kotlin, C#, Console | Rust owns deterministic bytes. Delete serializers only after every applicable consumer uses the shared contract and crypto gates pass. |
+| AAD v1/v2 serialization and envelope validation | Swift, Kotlin, C#, Console, and remote MCP subsets | Rust owns deterministic bytes. Delete serializers only after every applicable consumer uses the shared contract and crypto gates pass. |
 | SHA-256, HMAC, HKDF, vault-key IDs, and blob hashes | Same four owners, with unequal subsets | Rust/Wasm may own deterministic byte transforms because no private key handle is required. |
-| AES-256-GCM text/blob/payload seal/open | Swift, Kotlin, C#, Console | Rust owns framing/authentication where raw key bytes already cross the adapter. Require cross-open and wrong-key/AAD/tamper rejection; never fall back after auth failure. |
+| AES-256-GCM text/blob/payload seal/open | Swift, Kotlin, C#, Console, and remote MCP subsets | Rust owns framing/authentication where raw key bytes already cross the adapter. Require cross-open and wrong-key/AAD/tamper rejection; never fall back after auth failure. |
 | Recovery-key wrap and P-256 escrow wrap | Swift, Kotlin, C#, Console subsets | Rust owns portable normalization/KDF/framing. Platform key stores retain private-key custody and ECDH; no private scalar or browser `CryptoKey` export crosses the boundary. |
 | Whole-document envelope rewrap | Swift and Kotlin implementations; Rust transform staged | Swift/Kotlin classify dynamic Firestore maps into typed envelopes, then call Rust once per document. Rust owns bounded validation, authentication, deterministic transform, and update intents. Delete platform transform logic only after ABI 3 consumers and crypto promotion gates pass. |
-| Search tokens and semantic hashes | Swift and Kotlin | Rust owns complete analysis and ordered keyed hashes once per text/query. Persistence and query orchestration remain platform-owned. Delete analyzers only after both consumers pass shadow/promotion gates. |
+| Search tokens and semantic hashes | Swift, Kotlin, remote MCP TypeScript, and local MCP Python | Rust owns complete analysis and ordered keyed hashes once per text/query. Persistence and query orchestration remain platform-owned. Delete analyzers only after every applicable consumer passes shadow/promotion gates. The Python consumer remains `REQUIRED_CONSUMER_PENDING`. |
 | Opaque project-memory, Pensieve, provenance, and subscription identifiers | Swift, Kotlin subscription, C# Pensieve, remote MCP TypeScript, and local MCP Python subsets | Rust owns only closed, purpose-specific HKDF/HMAC operations. The Python consumer is `REQUIRED_CONSUMER_PENDING`; no opaque-identifier legacy deletion or completion claim is allowed until it is wired and validated. |
 
 ### Required local MCP Python consumer
@@ -90,6 +90,19 @@ The Python adapter must use the same `legacy|shadow|rust` authority semantics,
 verify the complete version/ABI/source identity of its packaged core, fail
 closed in Rust mode, retain named legacy functions until the deletion gate, and
 run the canonical CloudVault fixtures through the production package.
+
+### Remote MCP TypeScript consumer
+
+`tools/openburnbar-mcp-remote` executes CloudVault transforms locally because
+plaintext and raw vault-key bytes must stay on the device. Its production
+adapter verifies the vendored Node Wasm version, ABI, source fingerprint, and
+exact Wasm digest before Rust authority. AAD v2, AES combined framing/open, and
+token/semantic query hashes use payload- or query-sized calls behind
+`OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE=legacy|shadow|rust`. The named legacy
+implementations live only under `src/legacy/` so the deletion change can remove
+them atomically. Rust mode never calls those implementations after a package,
+validation, or authentication failure; shadow diagnostics contain only the
+operation and mismatch/error category.
 
 ### Typed document-envelope boundary
 

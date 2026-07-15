@@ -136,14 +136,14 @@ function evaluate(bundle, policy = POLICY) {
   return evaluateUnsignedDeterministicCandidateBundle(bundle, policy, { now: NOW });
 }
 
-test("schema-3 policy is canonical and covers all 38 real cells", () => {
+test("schema-3 policy is canonical and covers all 42 real cells", () => {
   assert.deepEqual(validateDeterministicPromotionPolicy(POLICY), []);
   assert.equal(
     Object.values(POLICY.domains).reduce(
       (count, domain) => count + domain.requiredCoverage.length,
       0,
     ),
-    38,
+    42,
   );
   assert.equal(POLICY.maximumPairedRegressionBasisPoints, 500);
   assert.deepEqual(POLICY.workflow.allowedEvents, ["push"]);
@@ -180,7 +180,7 @@ test("complete deterministic evidence is only eligible for protected attestation
   assert.equal(report.promotionAuthorized, false);
   assert.equal(Object.hasOwn(report, "ready"), false);
   assert.equal(bundle.promotionAuthorized, false);
-  assert.equal(report.coverageCellCount, 38);
+  assert.equal(report.coverageCellCount, 42);
   assert.equal(report.stableReleaseRequiredBeforeDeletion, true);
   assert.equal(report.stableReleaseRollbackArtifactRequiredBeforeDeletion, true);
   assert.deepEqual(report.candidate, CANDIDATE);
