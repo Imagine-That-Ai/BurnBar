@@ -206,8 +206,24 @@ test("stable tag replay is byte-and-provider-identical before any production mut
   const usedManifestCreator = hostingDeploy.indexOf(
     'node "$ARTIFACT_ROOT/scripts/ci/create-domain-core-runtime-artifact-manifest.mjs"',
   );
+  const stagedBearerHelper = hostingDeploy.indexOf(
+    'cp scripts/lib/curl-bearer.sh "$ARTIFACT_ROOT/scripts/lib/"',
+  );
+  const sourcedBearerHelper = hostingDeploy.indexOf(
+    'source "$ARTIFACT_ROOT/scripts/lib/curl-bearer.sh"',
+  );
   assert.ok(stagedManifestCreator > 0);
   assert.ok(usedManifestCreator > stagedManifestCreator);
+  assert.ok(stagedBearerHelper > 0);
+  assert.ok(sourcedBearerHelper > stagedBearerHelper);
+  assert.match(
+    hostingDeploy,
+    /obb_curl_with_bearer "\$FIREBASE_HOSTING_REST_ACCESS_TOKEN"/u,
+  );
+  assert.doesNotMatch(
+    hostingDeploy,
+    /-H "Authorization: Bearer \$\{FIREBASE_HOSTING_REST_ACCESS_TOKEN\}"/u,
+  );
 });
 
 test("protected Functions inventory covers every pricing execution entry and both runtime observers", () => {
