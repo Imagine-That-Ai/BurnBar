@@ -22,9 +22,9 @@ public extension ProviderQuotaAdapterContext {
 
 // MARK: - JWT payload parse (Kimi / Cursor / Claude OAuth cache paths)
 
-public enum QuotaJWTPayload {
+enum QuotaJWTPayload {
     /// Decodes the middle segment of a JWT into a JSON object (no signature verify).
-    public static func jsonObject(from token: String) -> [String: Any]? {
+    static func jsonObject(from token: String) -> [String: Any]? {
         let segments = token.split(separator: ".")
         guard segments.count >= 2 else { return nil }
         var base64 = String(segments[1])
@@ -45,8 +45,8 @@ import CryptoKit
 import Crypto
 #endif
 
-public enum QuotaSHA256 {
-    public static func hexDigest(_ utf8: String) -> String {
+enum QuotaSHA256 {
+    static func hexDigest(_ utf8: String) -> String {
         let digest = SHA256.hash(data: Data(utf8.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
