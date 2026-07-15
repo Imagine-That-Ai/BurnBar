@@ -1,15 +1,6 @@
 {
-  "originHash" : "5148534ac17def218eb423d17c47537008cd90472c47398d49496f9d16051d91",
+  "originHash" : "49b5b5abf52185402cc23439ea167cc1a0745cdef37dd065ac6e2547b5cf185e",
   "pins" : [
-    {
-      "identity" : "sqlcipher.swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/sqlcipher/SQLCipher.swift.git",
-      "state" : {
-        "revision" : "07bf6bc2191a063d6f1e7c3b5f276a3fadfe36b7",
-        "version" : "4.16.0"
-      }
-    },
     {
       "identity" : "swift-asn1",
       "kind" : "remoteSourceControl",
