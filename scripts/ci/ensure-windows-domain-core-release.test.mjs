@@ -35,13 +35,11 @@ const published = {
 const draft = { ...published, draft: true };
 
 class FakeClient {
-  constructor({ lookups = [null], create = true, publish = true } = {}) {
+  constructor({ lookups = [null], create = true } = {}) {
     this.lookupValues = [...lookups];
     this.lastLookup = this.lookupValues.at(-1) ?? null;
     this.createResult = create;
-    this.publishResult = publish;
     this.creates = 0;
-    this.publishes = 0;
     this.lookups = 0;
   }
 
@@ -60,12 +58,6 @@ class FakeClient {
     this.creates += 1;
     assert.equal(value.version, "1.2.3");
     return this.createResult;
-  }
-
-  publish(value) {
-    this.publishes += 1;
-    assert.equal(value.version, "1.2.3");
-    return this.publishResult;
   }
 }
 
@@ -127,35 +119,10 @@ test("a draft creation collision succeeds only when the winner is exact", () => 
   );
 });
 
-test("publish exposes a draft only after successful final verification", () => {
-  const client = new FakeClient({ lookups: [draft, published] });
-  assert.deepEqual(manageRelease({ ...request, phase: "publish" }, client), {
-    published: true,
-    alreadyPublished: false,
-  });
-  assert.equal(client.publishes, 1);
-
-  const rerun = new FakeClient({ lookups: [published] });
-  assert.deepEqual(manageRelease({ ...request, phase: "publish" }, rerun), {
-    published: false,
-    alreadyPublished: true,
-  });
-  assert.equal(rerun.publishes, 0);
-});
-
-test("publish failure accepts only a concurrently published exact release", () => {
-  assert.deepEqual(
-    manageRelease(
-      { ...request, phase: "publish" },
-      new FakeClient({ lookups: [draft, published], publish: false }),
-    ),
-    { published: false, alreadyPublished: true },
-  );
-  assert.throws(() =>
-    manageRelease(
-      { ...request, phase: "publish" },
-      new FakeClient({ lookups: [draft, draft], publish: false }),
-    ),
+test("the preparation helper cannot publish a Windows release", () => {
+  assert.throws(
+    () => manageRelease({ ...request, phase: "publish" }, new FakeClient()),
+    /phase must be prepare/u,
   );
 });
 
@@ -190,13 +157,12 @@ test("rejects a release tag moved away from the requested candidate", () => {
   assert.equal(client.creates, 0);
 });
 
-test("GitHub client distinguishes absence and separates draft creation from publication", () => {
+test("GitHub client distinguishes absence and can only create a draft", () => {
   const commands = [];
   const responses = [
     { status: 0, stdout: `${request.commit}\n`, stderr: "" },
     { status: 1, stdout: "", stderr: "gh: Not Found (HTTP 404)" },
     { status: 1, stdout: "", stderr: "gh: service unavailable (HTTP 503)" },
-    { status: 0, stdout: "", stderr: "" },
     { status: 0, stdout: "", stderr: "" },
   ];
   const runner = (_command, arguments_) => {
@@ -208,7 +174,6 @@ test("GitHub client distinguishes absence and separates draft creation from publ
   assert.equal(client.lookup(request.tag), null);
   assert.throws(() => client.lookup(request.tag), /503/);
   assert.equal(client.createDraft({ ...request, version: "1.2.3" }), true);
-  assert.equal(client.publish({ ...request, version: "1.2.3" }), true);
   assert.deepEqual(commands[0].slice(0, 2), [
     "api",
     `repos/${request.repository}/commits/${request.tag}`,
@@ -218,10 +183,11 @@ test("GitHub client distinguishes absence and separates draft creation from publ
   assert.ok(create.includes("--verify-tag"));
   assert.ok(create.includes("--latest=false"));
   assert.ok(create.includes("--draft"));
-  const publish = commands[4];
-  assert.deepEqual(publish.slice(0, 3), ["release", "edit", request.tag]);
-  assert.ok(publish.includes("--draft=false"));
-  assert.ok(publish.includes("--latest=false"));
+  assert.equal(commands.length, 4);
+  assert.equal(
+    commands.some((command) => command[1] === "edit"),
+    false,
+  );
   assert.ok(!commands.flat().includes("--clobber"));
 });
 

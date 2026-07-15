@@ -40,12 +40,8 @@ function parseArguments(argv) {
 }
 
 export function buildPublicationManifest(plan, bundleDirectory) {
-  if (
-    plan?.schemaVersion !== 2 ||
-    !Array.isArray(plan.domains) ||
-    plan.domains.length === 0
-  ) {
-    throw new Error("native evidence plan must contain at least one v2 domain");
+  if (plan?.schemaVersion !== 2 || !Array.isArray(plan.domains)) {
+    throw new Error("native evidence plan must contain a v2 domains array");
   }
   const seenDomains = new Set();
   const seenAssets = new Set();
@@ -97,6 +93,9 @@ export function buildPublicationManifest(plan, bundleDirectory) {
     commit: plan.commit,
     consumer: plan.consumer,
     signerWorkflow: plan.signerWorkflow,
+    releaseState:
+      plan.consumer === "windows" ? "draft-then-publish" : "published",
+    nativeArtifactOnly: bundles.length === 0,
     artifactPath: regularFile(
       resolve(plan.artifactPath),
       "native release artifact",

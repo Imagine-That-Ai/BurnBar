@@ -107,15 +107,69 @@ function fixture() {
   };
 }
 
+function windowsFixture({ artifactOnly = false } = {}) {
+  const files = fixture();
+  const artifact = join(
+    files.directory,
+    "OpenBurnBar-1.2.3-windows-release.zip",
+  );
+  writeFileSync(artifact, "signed-windows-release-bytes");
+  const predicate = {
+    ...files.predicate,
+    consumer: "windows",
+    artifactKind: "windows-release-bundle",
+    target: "windows-x64-arm64",
+    artifact: {
+      fileName: basename(artifact),
+      sha256: sha(readFileSync(artifact)),
+    },
+    release: {
+      ...files.predicate.release,
+      tag: "windows-v1.2.3",
+    },
+  };
+  writeFileSync(files.predicatePath, `${JSON.stringify(predicate, null, 2)}\n`);
+  return {
+    ...files,
+    artifact,
+    predicate,
+    manifest: {
+      ...files.manifest,
+      tag: "windows-v1.2.3",
+      consumer: "windows",
+      signerWorkflow: ".github/workflows/openburnbar-release-windows.yml",
+      releaseState: "draft-then-publish",
+      nativeArtifactOnly: artifactOnly,
+      artifactPath: artifact,
+      bundles: artifactOnly
+        ? []
+        : [
+            {
+              ...files.manifest.bundles[0],
+              assetName:
+                "OpenBurnBar-1.2.3-windows-quota-domain-core-attestation.sigstore.json",
+            },
+          ],
+    },
+  };
+}
+
 class FakeClient {
-  constructor(predicate) {
+  constructor(
+    predicate,
+    { tag = "v1.2.3", draft = false, commit = CANDIDATE.candidateCommit } = {},
+  ) {
     this.predicate = predicate;
+    this.tag = tag;
+    this.draft = draft;
+    this.commit = commit;
     this.assets = new Map();
     this.calls = [];
     this.uploadHook = undefined;
     this.downloadHook = undefined;
     this.attestationHook = undefined;
     this.attestationInputs = [];
+    this.editHook = undefined;
   }
 
   run(args, { allowFailure = false } = {}) {
@@ -141,15 +195,15 @@ class FakeClient {
       if (args[1].includes("/commits/")) {
         return {
           status: 0,
-          stdout: JSON.stringify({ sha: CANDIDATE.candidateCommit }),
+          stdout: JSON.stringify({ sha: this.commit }),
           stderr: "",
         };
       }
       return {
         status: 0,
         stdout: JSON.stringify({
-          tag_name: "v1.2.3",
-          draft: false,
+          tag_name: this.tag,
+          draft: this.draft,
           prerelease: false,
         }),
         stderr: "",
@@ -189,6 +243,14 @@ class FakeClient {
       this.assets.set(name, readFileSync(path));
       return { status: 0, stdout: "", stderr: "" };
     }
+    if (args[0] === "release" && args[1] === "edit") {
+      if (this.editHook) {
+        const hooked = this.editHook(args, this);
+        if (hooked) return hooked;
+      }
+      this.draft = false;
+      return { status: 0, stdout: "", stderr: "" };
+    }
     if (allowFailure) return { status: 1, stdout: "", stderr: "unsupported" };
     throw new Error(`unsupported gh call: ${args.join(" ")}`);
   }
@@ -197,6 +259,12 @@ class FakeClient {
 function uploads(client) {
   return client.calls.filter(
     (args) => args[0] === "release" && args[1] === "upload",
+  );
+}
+
+function mutations(client) {
+  return client.calls.filter(
+    (args) => args[0] === "release" && new Set(["upload", "edit"]).has(args[1]),
   );
 }
 
@@ -232,6 +300,199 @@ test("publishes verified bundles before the immutable artifact and re-downloads 
           new Set(["create", "edit", "delete"]).has(args[1]),
       ),
       false,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("publishes an all-legacy Windows artifact only after final byte verification", () => {
+  const files = windowsFixture({ artifactOnly: true });
+  try {
+    const manifest = validateManifest(files.manifest);
+    const client = new FakeClient(files.predicate, {
+      tag: files.manifest.tag,
+      draft: true,
+    });
+    assert.deepEqual(publishManifest(manifest, { client }), {
+      uploaded: [basename(files.artifact)],
+    });
+    assert.equal(client.draft, false);
+    assert.deepEqual(
+      mutations(client).map((args) => args[1]),
+      ["upload", "edit"],
+    );
+    const editIndex = client.calls.findIndex(
+      (args) => args[0] === "release" && args[1] === "edit",
+    );
+    const finalDownloadIndex = client.calls.findLastIndex(
+      (args) =>
+        args[0] === "release" &&
+        args[1] === "download" &&
+        args[args.indexOf("--pattern") + 1] === basename(files.artifact),
+    );
+    assert.ok(finalDownloadIndex >= 0);
+    assert.ok(editIndex > finalDownloadIndex);
+    assert.equal(client.calls[editIndex].includes("--draft=false"), true);
+    assert.equal(client.calls[editIndex].includes("--clobber"), false);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("verifies every Windows evidence asset while draft and publishes last", () => {
+  const files = windowsFixture();
+  try {
+    const manifest = validateManifest(files.manifest);
+    const client = new FakeClient(files.predicate, {
+      tag: files.manifest.tag,
+      draft: true,
+    });
+    assert.deepEqual(publishManifest(manifest, { client }), {
+      uploaded: [files.manifest.bundles[0].assetName, basename(files.artifact)],
+    });
+    assert.deepEqual(
+      mutations(client).map((args) => args[1]),
+      ["upload", "upload", "edit"],
+    );
+    const editIndex = client.calls.findIndex(
+      (args) => args[0] === "release" && args[1] === "edit",
+    );
+    const finalBundleVerificationIndex = client.calls.findLastIndex((args) => {
+      if (args[0] !== "attestation" || args[1] !== "verify") return false;
+      return args[args.indexOf("--bundle") + 1].includes("/final/");
+    });
+    assert.ok(finalBundleVerificationIndex >= 0);
+    assert.ok(editIndex > finalBundleVerificationIndex);
+    assert.equal(client.draft, false);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("keeps the Windows release draft when collision preflight fails", () => {
+  const files = windowsFixture({ artifactOnly: true });
+  try {
+    const manifest = validateManifest(files.manifest);
+    const client = new FakeClient(files.predicate, {
+      tag: files.manifest.tag,
+      draft: true,
+    });
+    client.assets.set(basename(files.artifact), Buffer.from("attacker-bytes"));
+    assert.throws(
+      () => publishManifest(manifest, { client }),
+      /refusing to replace non-identical/u,
+    );
+    assert.equal(client.draft, true);
+    assert.deepEqual(mutations(client), []);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("keeps the Windows release draft when final verification fails", () => {
+  const files = windowsFixture({ artifactOnly: true });
+  try {
+    const manifest = validateManifest(files.manifest);
+    const client = new FakeClient(files.predicate, {
+      tag: files.manifest.tag,
+      draft: true,
+    });
+    client.downloadHook = (name, contents) =>
+      name === basename(files.artifact)
+        ? Buffer.from("mutated-after-upload")
+        : contents;
+    assert.throws(
+      () => publishManifest(manifest, { client }),
+      /published artifact bytes differ/u,
+    );
+    assert.equal(client.draft, true);
+    assert.deepEqual(
+      mutations(client).map((args) => args[1]),
+      ["upload"],
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("accepts only an exact concurrent Windows publication after publish-last", () => {
+  const files = windowsFixture({ artifactOnly: true });
+  try {
+    const manifest = validateManifest(files.manifest);
+    const client = new FakeClient(files.predicate, {
+      tag: files.manifest.tag,
+      draft: true,
+    });
+    client.editHook = (_args, instance) => {
+      instance.draft = false;
+      return { status: 1, stdout: "", stderr: "concurrent publication" };
+    };
+    assert.deepEqual(publishManifest(manifest, { client }), {
+      uploaded: [basename(files.artifact)],
+    });
+    assert.equal(client.draft, false);
+    assert.equal(mutations(client).at(-1)[1], "edit");
+
+    const nonExact = new FakeClient(files.predicate, {
+      tag: files.manifest.tag,
+      draft: true,
+    });
+    nonExact.editHook = () => ({
+      status: 1,
+      stdout: "",
+      stderr: "publication failed",
+    });
+    assert.throws(
+      () => publishManifest(manifest, { client: nonExact }),
+      /exact published stable release/u,
+    );
+    assert.equal(nonExact.draft, true);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("refuses to repair an incomplete already-published Windows release", () => {
+  const files = windowsFixture({ artifactOnly: true });
+  try {
+    const manifest = validateManifest(files.manifest);
+    const client = new FakeClient(files.predicate, {
+      tag: files.manifest.tag,
+      draft: false,
+    });
+    assert.throws(
+      () => publishManifest(manifest, { client }),
+      /published Windows release is incomplete/u,
+    );
+    assert.deepEqual(mutations(client), []);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects inconsistent or non-native artifact-only controls", () => {
+  const files = windowsFixture({ artifactOnly: true });
+  try {
+    assert.throws(
+      () =>
+        validateManifest({
+          ...files.manifest,
+          nativeArtifactOnly: false,
+        }),
+      /exactly when no attestation bundles exist/u,
+    );
+    assert.throws(
+      () =>
+        validateManifest({
+          ...files.manifest,
+          consumer: "console",
+          tag: "v1.2.3",
+          signerWorkflow:
+            ".github/workflows/domain-core-console-release-evidence.yml",
+          releaseState: "published",
+        }),
+      /native publication controls/u,
     );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });

@@ -31,6 +31,8 @@ import {
 const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const SHA256 = /^[0-9a-f]{64}$/u;
 const STABLE_VERSION = /^\d+\.\d+\.\d+(?:\+[0-9A-Za-z.-]+)?$/u;
+const NATIVE_CONSUMERS = new Set(["apple", "android", "windows"]);
+const RELEASE_STATES = new Set(["published", "draft-then-publish"]);
 
 function parseJson(text, label) {
   try {
@@ -232,6 +234,9 @@ function validatePredicate(
 }
 
 export function validateManifest(raw) {
+  const optionalKeys = ["releaseState", "nativeArtifactOnly"].filter((key) =>
+    Object.hasOwn(raw ?? {}, key),
+  );
   const manifest = exactObject(
     raw,
     [
@@ -243,6 +248,7 @@ export function validateManifest(raw) {
       "signerWorkflow",
       "artifactPath",
       "bundles",
+      ...optionalKeys,
     ],
     "publication manifest",
   );
@@ -260,6 +266,25 @@ export function validateManifest(raw) {
   }
   if (!/^[0-9a-f]{40}$/u.test(manifest.commit)) {
     throw new Error("publication commit must be a full lowercase Git SHA-1");
+  }
+  const releaseState = manifest.releaseState ?? "published";
+  const nativeArtifactOnly = manifest.nativeArtifactOnly ?? false;
+  if (!RELEASE_STATES.has(releaseState)) {
+    throw new Error(
+      "publication releaseState must be published or draft-then-publish",
+    );
+  }
+  if (typeof nativeArtifactOnly !== "boolean") {
+    throw new Error("publication nativeArtifactOnly must be a boolean");
+  }
+  if (
+    (releaseState === "draft-then-publish" &&
+      manifest.consumer !== "windows") ||
+    (nativeArtifactOnly && !NATIVE_CONSUMERS.has(manifest.consumer))
+  ) {
+    throw new Error(
+      "native publication controls do not match the publication consumer",
+    );
   }
   const version = manifest.tag?.replace(/^(?:windows-)?v/u, "");
   const expectedTag =
@@ -282,9 +307,12 @@ export function validateManifest(raw) {
       `publication artifact must be named ${expectedArtifactName(manifest.consumer, version)}`,
     );
   }
-  if (!Array.isArray(manifest.bundles) || manifest.bundles.length === 0) {
+  if (!Array.isArray(manifest.bundles)) {
+    throw new Error("publication manifest bundles must be an array");
+  }
+  if (nativeArtifactOnly !== (manifest.bundles.length === 0)) {
     throw new Error(
-      "publication manifest must contain at least one attestation bundle",
+      "nativeArtifactOnly must be true exactly when no attestation bundles exist",
     );
   }
   const seenAssets = new Set([artifactAssetName]);
@@ -347,6 +375,8 @@ export function validateManifest(raw) {
     commit: manifest.commit,
     consumer: manifest.consumer,
     signerWorkflow: manifest.signerWorkflow,
+    releaseState,
+    nativeArtifactOnly,
     artifactPath,
     artifactAssetName,
     bundles,
@@ -428,7 +458,7 @@ function verifyPublishedBundle(
   verifyBundle(client, manifest, bundle, artifactPath, actualBundlePath);
 }
 
-function requirePublishedRelease(client, manifest) {
+function requireReleaseState(client, manifest, allowedStates) {
   const result = client.run([
     "api",
     `repos/${manifest.repository}/releases/tags/${manifest.tag}`,
@@ -437,13 +467,17 @@ function requirePublishedRelease(client, manifest) {
     parseJson(result.stdout, "release lookup"),
     "release lookup",
   );
+  const state = release.draft === true ? "draft" : "published";
   if (
     release.tag_name !== manifest.tag ||
-    release.draft !== false ||
-    release.prerelease !== false
+    typeof release.draft !== "boolean" ||
+    release.prerelease !== false ||
+    !allowedStates.has(state)
   ) {
     throw new Error(
-      "release evidence requires the exact published stable release",
+      `release evidence requires the exact ${[...allowedStates].join(
+        " or ",
+      )} stable release`,
     );
   }
   const resolvedCommit = objectValue(
@@ -461,6 +495,23 @@ function requirePublishedRelease(client, manifest) {
       "published release tag does not resolve to the exact candidate commit",
     );
   }
+  return state;
+}
+
+function publishDraft(client, manifest) {
+  return client.run(
+    [
+      "release",
+      "edit",
+      manifest.tag,
+      "--repo",
+      manifest.repository,
+      "--draft=false",
+      "--prerelease=false",
+      "--latest=false",
+    ],
+    { allowFailure: true },
+  );
 }
 
 function releaseAssets(client, manifest) {
@@ -535,7 +586,13 @@ export function publishManifest(manifest, { client = createGhClient() } = {}) {
       verifyBundle(client, manifest, bundle, artifact, path);
     }
 
-    requirePublishedRelease(client, manifest);
+    const initialState = requireReleaseState(
+      client,
+      manifest,
+      manifest.releaseState === "draft-then-publish"
+        ? new Set(["draft", "published"])
+        : new Set(["published"]),
+    );
     const assets = releaseAssets(client, manifest);
     const preflight = join(workspace, "preflight");
 
@@ -565,9 +622,28 @@ export function publishManifest(manifest, { client = createGhClient() } = {}) {
       }
     }
 
+    if (
+      initialState === "published" &&
+      manifest.releaseState === "draft-then-publish"
+    ) {
+      const requiredAssets = [
+        manifest.artifactAssetName,
+        ...manifest.bundles.map((bundle) => bundle.assetName),
+      ];
+      const missing = requiredAssets.filter((name) => !assets.has(name));
+      if (missing.length > 0) {
+        throw new Error(
+          `published Windows release is incomplete; missing immutable assets: ${missing.join(", ")}`,
+        );
+      }
+    }
+
     const uploaded = [];
     for (const bundle of manifest.bundles) {
       if (assets.has(bundle.assetName)) continue;
+      if (manifest.releaseState === "draft-then-publish") {
+        requireReleaseState(client, manifest, new Set(["draft"]));
+      }
       const result = uploadCreateOnly(
         client,
         manifest,
@@ -586,6 +662,9 @@ export function publishManifest(manifest, { client = createGhClient() } = {}) {
       }
     }
     if (!assets.has(manifest.artifactAssetName)) {
+      if (manifest.releaseState === "draft-then-publish") {
+        requireReleaseState(client, manifest, new Set(["draft"]));
+      }
       const result = uploadCreateOnly(client, manifest, artifact);
       if (result.status === 0) {
         uploaded.push(manifest.artifactAssetName);
@@ -625,7 +704,23 @@ export function publishManifest(manifest, { client = createGhClient() } = {}) {
         downloadAsset(client, manifest, bundle.assetName, final),
       );
     }
-    requirePublishedRelease(client, manifest);
+    if (manifest.releaseState === "draft-then-publish") {
+      if (initialState === "draft") {
+        const finalState = requireReleaseState(
+          client,
+          manifest,
+          new Set(["draft", "published"]),
+        );
+        if (finalState === "draft") {
+          publishDraft(client, manifest);
+          requireReleaseState(client, manifest, new Set(["published"]));
+        }
+      } else {
+        requireReleaseState(client, manifest, new Set(["published"]));
+      }
+    } else {
+      requireReleaseState(client, manifest, new Set(["published"]));
+    }
     return { uploaded };
   } finally {
     rmSync(workspace, { recursive: true, force: true });

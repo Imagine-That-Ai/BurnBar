@@ -9,9 +9,10 @@ profile_name="${4:-}"
 candidate_commit="${5:-}"
 selected_profile="${6:-}"
 observed_identity="${7:-}"
+apple_signing_policy="${8:-}"
 
 if [[ "$consumer" != "apple" && "$consumer" != "android" ]]; then
-  echo "usage: $0 <apple|android> <artifact> <X.Y.Z[+build]> <profile> <candidate-commit> <selected-profile.json> <observed-identity.json>" >&2
+  echo "usage: $0 <apple|android> <artifact> <X.Y.Z[+build]> <profile> <candidate-commit> <selected-profile.json> <observed-identity.json> [apple-signing-policy.json]" >&2
   exit 2
 fi
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
@@ -26,7 +27,7 @@ if [[ ! "$candidate_commit" =~ ^[0-9a-f]{40}$ ]]; then
   echo "invalid native release candidate commit" >&2
   exit 2
 fi
-for pair in "$artifact:native release artifact" "$selected_profile:selected public profile" "$observed_identity:observed Rust identity"; do
+for pair in "$artifact:native release artifact" "$selected_profile:selected public profile"; do
   path="${pair%%:*}"
   label="${pair#*:}"
   if [[ -z "$path" || ! -f "$path" || -L "$path" || ! -s "$path" ]]; then
@@ -34,10 +35,27 @@ for pair in "$artifact:native release artifact" "$selected_profile:selected publ
     exit 1
   fi
 done
+if [[ "$consumer" == "android" && ( -z "$observed_identity" || ! -f "$observed_identity" || -L "$observed_identity" || ! -s "$observed_identity" ) ]]; then
+  echo "observed Rust identity must be a nonempty regular non-symlink file: $observed_identity" >&2
+  exit 1
+fi
+if [[ "$consumer" == "apple" ]]; then
+  if [[ "$observed_identity" != /* || -e "$observed_identity" || -L "$observed_identity" ]]; then
+    echo "Apple observed Rust identity output must be an absent absolute non-symlink path: $observed_identity" >&2
+    exit 1
+  fi
+  if [[ -z "$apple_signing_policy" || ! -f "$apple_signing_policy" || -L "$apple_signing_policy" || ! -s "$apple_signing_policy" ]]; then
+    echo "Apple signing policy must be a nonempty regular non-symlink file: $apple_signing_policy" >&2
+    exit 1
+  fi
+fi
 
 artifact="$(cd "$(dirname "$artifact")" && pwd)/$(basename "$artifact")"
 selected_profile="$(cd "$(dirname "$selected_profile")" && pwd)/$(basename "$selected_profile")"
 observed_identity="$(cd "$(dirname "$observed_identity")" && pwd)/$(basename "$observed_identity")"
+if [[ "$consumer" == "apple" ]]; then
+  apple_signing_policy="$(cd "$(dirname "$apple_signing_policy")" && pwd)/$(basename "$apple_signing_policy")"
+fi
 apple_mount_point=""
 bundletool_directory=""
 cleanup_apple_mount() {
@@ -64,9 +82,11 @@ if [[ "$(basename "$artifact")" != "$expected_name" ]]; then
 fi
 
 verify_selected_identity() {
+  local binary="$1"
   node "$repo_root/scripts/ci/verify-domain-core-observed-identity.mjs" \
     --profile "$selected_profile" \
-    --observed-identity "$observed_identity"
+    --observed-identity "$observed_identity" \
+    --binary "$binary"
 }
 
 verify_apple() {
@@ -83,12 +103,27 @@ verify_apple() {
   hdiutil attach -readonly -nobrowse -mountpoint "$apple_mount_point" "$artifact" >/dev/null
   local app="$apple_mount_point/OpenBurnBar.app"
   local executable="$app/Contents/MacOS/OpenBurnBar"
+  local identity_probe="$app/Contents/Helpers/OpenBurnBarDomainCoreIdentityProbe"
   if [[ ! -d "$app" || ! -f "$executable" || -L "$executable" ]]; then
     echo "notarized DMG does not contain the expected regular OpenBurnBar executable" >&2
     exit 1
   fi
   codesign --verify --deep --strict --verbose=2 "$app"
   spctl --assess --type execute -vv "$app"
+  if [[ ! -f "$identity_probe" || -L "$identity_probe" || ! -x "$identity_probe" ]]; then
+    echo "notarized DMG does not contain the signed executable domain-core identity probe" >&2
+    exit 1
+  fi
+  local app_signature probe_signature
+  app_signature="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-app-signature.XXXXXX")"
+  probe_signature="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-probe-signature.XXXXXX")"
+  codesign -d --verbose=4 "$app" > "$app_signature" 2>&1
+  codesign -d --verbose=4 "$identity_probe" > "$probe_signature" 2>&1
+  node "$repo_root/scripts/ci/verify-domain-core-apple-signing-identity.mjs" \
+    --policy "$apple_signing_policy" --signature "$app_signature"
+  node "$repo_root/scripts/ci/verify-domain-core-apple-signing-identity.mjs" \
+    --policy "$apple_signing_policy" --signature "$probe_signature"
+  rm -f "$app_signature" "$probe_signature"
   node "$repo_root/scripts/ci/verify-domain-core-build-profile-artifact.mjs" \
     --profile "$profile_name" \
     --expected-candidate-commit "$candidate_commit" \
@@ -100,6 +135,19 @@ verify_apple() {
     echo "Apple release identity requires an arm64-only app, found: ${architectures:-none}" >&2
     exit 1
   fi
+  architectures="$(lipo -archs "$identity_probe" | xargs)"
+  if [[ "$architectures" != "arm64" ]]; then
+    echo "Apple release identity probe must be arm64-only, found: ${architectures:-none}" >&2
+    exit 1
+  fi
+  DOMAIN_CORE_CANDIDATE_COMMIT="$candidate_commit" \
+    DOMAIN_CORE_OBSERVED_IDENTITY_REPORT="$observed_identity" \
+    "$identity_probe"
+  if [[ ! -f "$observed_identity" || -L "$observed_identity" || ! -s "$observed_identity" ]]; then
+    echo "shipped Apple identity probe did not create a safe nonempty report" >&2
+    exit 1
+  fi
+  verify_selected_identity "$identity_probe"
   cleanup_apple_mount
   apple_mount_point=""
 }
@@ -178,15 +226,21 @@ verify_android() {
     --android-aab "$artifact"
 
   local abi
-  for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+  for abi in arm64-v8a x86_64; do
     if ! grep -Fqx "base/lib/$abi/libopenburnbar_domain_ffi.so" <<<"$signature_listing"; then
       echo "Android release bundle is missing domain-core native ABI: $abi" >&2
       exit 1
     fi
   done
+  local packaged_library="$bundletool_directory/libopenburnbar_domain_ffi.so"
+  unzip -p "$artifact" base/lib/arm64-v8a/libopenburnbar_domain_ffi.so > "$packaged_library"
+  if [[ ! -s "$packaged_library" || -L "$packaged_library" ]]; then
+    echo "unable to extract packaged Android domain-core native library" >&2
+    exit 1
+  fi
+  verify_selected_identity "$packaged_library"
 }
 
-verify_selected_identity
 if [[ "$consumer" == "apple" ]]; then
   verify_apple
 else

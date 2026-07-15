@@ -104,15 +104,19 @@ predicate and its consumer-specific protected signer workflow.
 
 Native release predicates are generated after platform-native verification:
 
-- Apple verifies notarization, code signing, the arm64 app executable, the
-  embedded build-profile receipt, and the Rust identity observed by the shipped
-  FFI smoke binary.
+- Apple verifies notarization, the protected TeamIdentifier and leaf signing
+  authority, the arm64 app executable, the embedded build-profile receipt, and
+  the Rust identity reported by a signed probe executed directly from the
+  mounted DMG. The report includes the probe's own SHA-256 and is checked
+  against those mounted bytes.
 - Android verifies the approved upload-certificate fingerprint, JAR signature,
-  bundletool structure, all four native ABIs, the embedded build-profile
-  receipt, and the Rust identity observed on an emulator.
-- Windows verifies both x64 and ARM64 profile receipts, the observed loaded DLL
-  identity, and a deterministic canonical bundle containing both signed
-  packages.
+  bundletool structure, both supported 64-bit native ABIs, the embedded build-profile
+  receipt, and the Rust identity observed on an arm64 emulator. The loaded
+  library digest must match the arm64 library extracted from the final AAB.
+- Windows verifies both x64 and ARM64 profile receipts and executes the signed
+  x64 domain-core DLL extracted from the final portable ZIP. Its observed
+  digest must match that exact packaged DLL before the deterministic canonical
+  bundle containing both signed architectures is attested.
 
 Only domains in `rust` mode receive public-release predicates. A rollback
 release intentionally retains predicates for every consumer domain so the
@@ -125,19 +129,32 @@ Pass the artifact and all domain attestation bundles to
 The publisher:
 
 1. validates every predicate and verifies every local attestation bundle;
-2. requires the exact release tag to already exist as a published stable release;
+2. requires the exact release tag and candidate commit; Apple and Android use
+   an existing published stable release, while Windows uses an exact private
+   draft;
 3. downloads and verifies every existing name collision before any upload;
 4. uploads attestation bundles first with create-only GitHub release operations;
 5. uploads the artifact last; and
-6. freshly downloads and verifies every final asset.
+6. freshly downloads and verifies every final asset; and
+7. publishes the Windows draft only after every final verification succeeds.
 
-It never creates, edits, or deletes a release, and never uses `--clobber`.
+It never deletes a release and never uses `--clobber`. The only edit it may
+perform is the final draft-to-published transition for a completely verified
+Windows release. An all-legacy native profile still publishes the canonical
+artifact through the same create-only path, with an explicitly empty evidence
+bundle set.
 Artifact retries and concurrent winners must be byte-identical. Existing or
 concurrently published Sigstore bundles may use a different valid encoding,
 but they are reused only after verification against the exact artifact,
 predicate, signer workflow, repository, tag, and commit. A substituted bundle,
 non-identical artifact collision, or semantic final-state mutation fails the
 run.
+
+The general macOS publisher never includes the DMG in a clobber upload. It
+preflights an existing same-name DMG before any release mutation. Stable DMGs
+are uploaded only by the evidence publisher; prerelease DMGs use the dedicated
+create-only asset publisher and receive the same collision and final-download
+checks.
 
 ## Ownership boundary
 

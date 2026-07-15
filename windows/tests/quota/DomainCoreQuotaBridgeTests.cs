@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using OpenBurnBar.App.Presentation.Quota;
 using Xunit;
 using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
@@ -9,6 +13,46 @@ namespace OpenBurnBar.App.Quota.Tests;
 
 public sealed class DomainCoreQuotaBridgeTests
 {
+    [Fact]
+    public void Loaded_native_identity_is_observed_for_attestation()
+    {
+        var nativeLibraryPath = Environment.GetEnvironmentVariable("DOMAIN_CORE_NATIVE_LIBRARY_PATH");
+        var reportPath = Environment.GetEnvironmentVariable("DOMAIN_CORE_OBSERVED_IDENTITY_REPORT");
+        if (string.IsNullOrWhiteSpace(nativeLibraryPath) && string.IsNullOrWhiteSpace(reportPath))
+        {
+            return;
+        }
+
+        Assert.False(string.IsNullOrWhiteSpace(nativeLibraryPath));
+        Assert.False(string.IsNullOrWhiteSpace(reportPath));
+        nativeLibraryPath = Path.GetFullPath(nativeLibraryPath!);
+        Assert.True(File.Exists(nativeLibraryPath));
+        Assert.False(File.GetAttributes(nativeLibraryPath).HasFlag(FileAttributes.ReparsePoint));
+
+        NativeLibrary.SetDllImportResolver(
+            typeof(DomainCore).Assembly,
+            (libraryName, _, _) =>
+                libraryName == "openburnbar_domain_ffi"
+                    ? NativeLibrary.Load(nativeLibraryPath)
+                    : IntPtr.Zero);
+
+        var identity = new
+        {
+            candidateCommit = Environment.GetEnvironmentVariable("DOMAIN_CORE_CANDIDATE_COMMIT") ?? string.Empty,
+            coreVersion = DomainCore.DomainCoreVersion(),
+            abiVersion = DomainCore.DomainCoreAbiVersion(),
+            sourceSha256 = DomainCore.DomainCoreSourceFingerprint(),
+            binarySha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(nativeLibraryPath))).ToLowerInvariant(),
+        };
+        Assert.Matches("^[0-9a-f]{40}$", identity.candidateCommit);
+        Assert.False(string.IsNullOrWhiteSpace(identity.coreVersion));
+        Assert.Equal(3u, identity.abiVersion);
+        Assert.Matches("^[0-9a-f]{64}$", identity.sourceSha256);
+        Assert.Matches("^[0-9a-f]{64}$", identity.binarySha256);
+
+        File.WriteAllText(reportPath!, JsonSerializer.Serialize(identity) + Environment.NewLine);
+    }
+
     [Fact]
     public void Apply_ShadowOperationLoadError_RetainsLoadedIdentityAndFallsBackToLegacy()
     {
