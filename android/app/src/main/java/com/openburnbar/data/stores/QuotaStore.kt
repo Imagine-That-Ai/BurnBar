@@ -13,16 +13,20 @@ import com.openburnbar.data.models.isExplicitlyStale
 import com.openburnbar.data.models.isStale
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 private const val AUTO_REFRESH_PERIOD_MINUTES = 15
 private const val SECONDS_PER_MINUTE = 60
@@ -31,13 +35,14 @@ class QuotaStore(
     application: Application,
     private val repo: FirestoreRepository = FirestoreRepository(),
     functions: FunctionsRepository? = null,
+    private val httpClient: OkHttpClient = defaultClient(),
 ) : AndroidViewModel(application) {
-    constructor(application: Application) : this(application, FirestoreRepository(), null)
+    constructor(application: Application) : this(application, FirestoreRepository(), null, defaultClient())
 
     constructor(
         repo: FirestoreRepository = FirestoreRepository(),
         functions: FunctionsRepository? = null,
-    ) : this(Application(), repo, functions)
+    ) : this(Application(), repo, functions, defaultClient())
 
     private val functions: FunctionsRepository by lazy { functions ?: FunctionsRepository() }
 
@@ -179,6 +184,8 @@ class QuotaStore(
                     } else {
                         functions.refreshProviderAccountQuota(account.id)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     // Firestore remains the source of truth; refresh failures
                     // are reflected by provider account and snapshot docs.
@@ -199,7 +206,11 @@ class QuotaStore(
         if (!config.isEnabled || config.endpointUrl.isBlank()) return
         val baseUrl = config.endpointUrl.trim().trimEnd('/')
         val url = "$baseUrl/v1/quota/refresh"
-        val jsonBody = """{"provider":"${account.providerId}","accountID":"${account.id}"}"""
+        val jsonBody =
+            JSONObject().apply {
+                put("provider", account.providerId)
+                put("accountID", account.id)
+            }.toString()
         val requestBody =
             jsonBody.toByteArray()
                 .toRequestBody("application/json".toMediaType())
@@ -211,17 +222,24 @@ class QuotaStore(
             requestBuilder.addHeader("Authorization", "Bearer ${config.apiKey}")
         }
         val request = requestBuilder.build()
-        try {
-            val response = OkHttpClient().newCall(request).execute()
-            if (response.isSuccessful) {
-                // Re-fetch from Firestore after the runner uploads its snapshot.
-                _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
-                _accounts.value = repo.fetchProviderAccounts()
+        withContext(Dispatchers.IO) {
+            httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    // Re-fetch from Firestore after the runner uploads its snapshot.
+                    _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
+                    _accounts.value = repo.fetchProviderAccounts()
+                } else {
+                    _error.value = "Self-hosted runner returned HTTP ${response.code}"
+                }
             }
-        } catch (_: Exception) {
-            // Self-hosted runner unavailable; Firestore snapshot remains
-            // the source of truth and will be refreshed on the next cycle.
         }
+    }
+
+    companion object {
+        fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
     }
 }
 

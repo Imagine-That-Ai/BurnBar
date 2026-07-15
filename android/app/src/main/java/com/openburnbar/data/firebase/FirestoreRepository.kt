@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.CancellationException
 
 private const val NANOS_PER_MILLIS = 1_000_000
 private const val TOP_PROJECTS_BY_COST_LIMIT = 20
@@ -279,6 +280,8 @@ class FirestoreRepository {
         val snapshot =
             try {
                 quotaCollection.get(Source.SERVER).await()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 quotaCollection.get(Source.DEFAULT).await()
             }
@@ -316,6 +319,8 @@ class FirestoreRepository {
         val snapshot =
             try {
                 providerAccountsCollection.get(Source.SERVER).await()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 providerAccountsCollection.get(Source.DEFAULT).await()
             }
