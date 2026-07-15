@@ -95,7 +95,12 @@ on:
       - "scripts/ci/domain-core-union-gate.py"
       - "scripts/ci/evaluate-domain-core-promotion.mjs"
       - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
+      - "scripts/ci/*domain-core-proof*"
+      - "scripts/ci/verify-domain-core-protected-attestation*"
+      - "scripts/ci/verify-domain-core-rollback.mjs"
       - "scripts/lib/domain-core-promotion-evidence.mjs"
+      - "scripts/lib/domain-core-proof-fragments*"
+      - "scripts/lib/domain-core-deterministic-candidate-bundle*"
       - "scripts/lib/domain-core-evidence-contract.mjs"
       - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
@@ -117,6 +122,7 @@ on:
       - "docs/contracts/domain-core-shadow-sample-v3.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
+      - ".github/workflows/domain-core-promotion-proof.yml"
   pull_request:
     paths:
       - "crates/openburnbar-domain-core/**"
@@ -207,7 +213,12 @@ on:
       - "scripts/ci/domain-core-union-gate.py"
       - "scripts/ci/evaluate-domain-core-promotion.mjs"
       - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
+      - "scripts/ci/*domain-core-proof*"
+      - "scripts/ci/verify-domain-core-protected-attestation*"
+      - "scripts/ci/verify-domain-core-rollback.mjs"
       - "scripts/lib/domain-core-promotion-evidence.mjs"
+      - "scripts/lib/domain-core-proof-fragments*"
+      - "scripts/lib/domain-core-deterministic-candidate-bundle*"
       - "scripts/lib/domain-core-evidence-contract.mjs"
       - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
       - "scripts/ops/export-domain-core-promotion-evidence.mjs"
@@ -229,6 +240,7 @@ on:
       - "docs/contracts/domain-core-shadow-sample-v3.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
+      - ".github/workflows/domain-core-promotion-proof.yml"
   workflow_dispatch:
 
 concurrency:
@@ -236,7 +248,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  promotion-evidence-gate:
+  promotion-contracts:
+    name: promotion-contracts
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -246,19 +259,44 @@ jobs:
           persist-credentials: false
 
       - name: Test fail-closed promotion evidence evaluation
-        run: >-
-          node --test
-          scripts/ci/evaluate-domain-core-promotion.test.mjs
-          scripts/lib/export-domain-core-promotion-evidence.test.mjs
-          scripts/ci/resolve-domain-core-build-profile.test.mjs
-          scripts/lib/domain-core-artifact-profile.test.mjs
-          scripts/lib/domain-core-candidate-receipt.test.mjs
-          scripts/lib/domain-core-shadow-enrollment.test.mjs
+        run: |
+          set -o pipefail
+          node --test \
+            scripts/ci/create-domain-core-deterministic-candidate-bundle.test.mjs \
+            scripts/ci/domain-core-proof-fragment.test.mjs \
+            scripts/ci/evaluate-domain-core-promotion.test.mjs \
+            scripts/ci/verify-domain-core-protected-attestation.test.mjs \
+            scripts/ci/verify-domain-core-workflows.test.mjs \
+            scripts/lib/domain-core-deterministic-candidate-bundle.test.mjs \
+            scripts/lib/domain-core-proof-fragments.test.mjs \
+            scripts/lib/export-domain-core-promotion-evidence.test.mjs \
+            scripts/ci/resolve-domain-core-build-profile.test.mjs \
+            scripts/lib/domain-core-artifact-profile.test.mjs \
+            scripts/lib/domain-core-candidate-receipt.test.mjs \
+            scripts/lib/domain-core-shadow-enrollment.test.mjs \
+            | tee "$RUNNER_TEMP/promotion-contracts.log"
 
       - name: Verify shadow evidence retention declaration
         run: bash scripts/ci/check-firestore-ttl-declared.sh
 
+      - name: Emit promotion-contracts proof fragment
+        run: >-
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id promotion-contracts
+          --suite "promotion-contracts=$RUNNER_TEMP/promotion-contracts.log"
+          --output "$RUNNER_TEMP/promotion-contracts.json"
+
+      - name: Upload promotion-contracts proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-promotion-contracts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/promotion-contracts.json
+          if-no-files-found: error
+          retention-days: 14
+
   rust-and-csharp:
+    name: rust-and-csharp
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -283,22 +321,31 @@ jobs:
       - name: Check Rust core
         working-directory: crates/openburnbar-domain-core
         run: |
-          cargo fmt --all --check
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace
-          cargo build -p openburnbar-domain-ffi
+          set -o pipefail
+          {
+            cargo fmt --all --check
+            cargo clippy --workspace --all-targets -- -D warnings
+            cargo test --workspace
+            cargo build -p openburnbar-domain-ffi
+          } 2>&1 | tee "$RUNNER_TEMP/rust-workspace.log"
 
       - name: Run deterministic domain fuzz smoke
         working-directory: crates/openburnbar-domain-core
-        run: >-
-          cargo test -p openburnbar-domain-ffi --test fuzz_smoke --
-          --test-threads=1
+        run: |
+          set -o pipefail
+          cargo test -p openburnbar-domain-ffi --test fuzz_smoke -- --test-threads=1 \
+            2>&1 | tee "$RUNNER_TEMP/rust-fuzz-smoke.log"
 
       - name: Guard complete-payload FFI performance
         working-directory: crates/openburnbar-domain-core
-        run: >-
-          cargo test --release -p openburnbar-domain-ffi
-          --test performance_smoke -- --ignored --nocapture --test-threads=1
+        env:
+          DOMAIN_CORE_BENCHMARK_REPORT: ${{ runner.temp }}/complete-payload-ffi.json
+        run: |
+          set -o pipefail
+          cargo test --release -p openburnbar-domain-ffi --test performance_smoke \
+            -- --ignored --nocapture --test-threads=1 \
+            2>&1 | tee "$RUNNER_TEMP/rust-performance-smoke.log"
+          test -s "$DOMAIN_CORE_BENCHMARK_REPORT"
 
       - name: Test and verify union ABI manifest
         run: |
@@ -330,12 +377,18 @@ jobs:
       - name: Run C# quota contracts through the native library
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-        run: dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
+        run: |
+          set -o pipefail
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo \
+            2>&1 | tee "$RUNNER_TEMP/csharp-quota-native.log"
 
       - name: Run C# CloudVault contracts through the native library
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-        run: dotnet test windows/tests/cloudsync/OpenBurnBar.CloudSync.Crypto.Tests.csproj --nologo
+        run: |
+          set -o pipefail
+          dotnet test windows/tests/cloudsync/OpenBurnBar.CloudSync.Crypto.Tests.csproj --nologo \
+            2>&1 | tee "$RUNNER_TEMP/csharp-cloudvault-native.log"
 
       - name: Run C# signed profile contracts
         run: dotnet test windows/tests/configuration/OpenBurnBar.App.Configuration.Tests.csproj --nologo
@@ -347,15 +400,40 @@ jobs:
           node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format json --output windows/app/OpenBurnBar.App.Configuration/bin/Release/domain-core-build-profile.json
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --windows-dir windows/app/OpenBurnBar.App.Configuration/bin/Release
 
+      - name: Emit Rust and C# proof fragment
+        run: >-
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id rust-and-csharp
+          --suite "rust-workspace=$RUNNER_TEMP/rust-workspace.log"
+          --suite "rust-fuzz-smoke=$RUNNER_TEMP/rust-fuzz-smoke.log"
+          --suite "rust-performance-smoke=$RUNNER_TEMP/rust-performance-smoke.log"
+          --suite "csharp-quota-native=$RUNNER_TEMP/csharp-quota-native.log"
+          --suite "csharp-cloudvault-native=$RUNNER_TEMP/csharp-cloudvault-native.log"
+          --artifact "csharp-native=crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so"
+          --benchmark "complete-payload-ffi=$RUNNER_TEMP/complete-payload-ffi.json"
+          --output "$RUNNER_TEMP/rust-and-csharp.json"
+
+      - name: Upload Rust and C# proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-rust-and-csharp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rust-and-csharp.json
+          if-no-files-found: error
+          retention-days: 14
+
   windows-native:
+    name: windows-native-${{ matrix.rid }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: windows-latest
             rid: win-x64
+            suite: windows-native-x64
           - runner: windows-11-arm
             rid: win-arm64
+            suite: windows-native-arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     defaults:
@@ -384,10 +462,30 @@ jobs:
       - name: Load native core and run quota contracts
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-        run: dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime ${{ matrix.rid }}
+        run: |
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime ${{ matrix.rid }} `
+            2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/windows-native-${{ matrix.rid }}.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Emit Windows native proof fragment
+        run: |
+          node scripts/ci/domain-core-proof-fragment.mjs emit `
+            --expected-candidate-commit "$env:GITHUB_SHA" `
+            --job-id windows-native `
+            --suite "${{ matrix.suite }}=$env:RUNNER_TEMP/windows-native-${{ matrix.rid }}.log" `
+            --output "$env:RUNNER_TEMP/windows-native-${{ matrix.rid }}.json"
+
+      - name: Upload Windows native proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-windows-native-${{ matrix.rid }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/windows-native-${{ matrix.rid }}.json
+          if-no-files-found: error
+          retention-days: 14
 
   linux-arm64-native:
-    runs-on: ubuntu-24.04
+    name: linux-arm64-native
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -409,10 +507,30 @@ jobs:
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: |
-          cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
-          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
+          set -o pipefail
+          {
+            cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
+            dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
+          } 2>&1 | tee "$RUNNER_TEMP/linux-arm64-native.log"
+
+      - name: Emit Linux ARM64 native proof fragment
+        run: >-
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id linux-arm64-native
+          --suite "linux-arm64-native=$RUNNER_TEMP/linux-arm64-native.log"
+          --output "$RUNNER_TEMP/linux-arm64-native.json"
+
+      - name: Upload Linux ARM64 native proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-linux-arm64-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/linux-arm64-native.json
+          if-no-files-found: error
+          retention-days: 14
 
   wasm:
+    name: wasm
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -446,12 +564,41 @@ jobs:
           python3 scripts/ci/domain-core-union-gate.py
           --check-provenance browser-wasm node-wasm
 
-      - name: Run generated package against the canonical KAT
+      - name: Run browser Wasm package against the canonical KAT
+        run: |
+          set -o pipefail
+          node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs \
+            apps/console/vendor/openburnbar-domain-core-wasm \
+            2>&1 | tee "$RUNNER_TEMP/wasm-browser-kat.log"
+
+      - name: Run Node Wasm package against the canonical KAT
+        run: |
+          set -o pipefail
+          node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs \
+            functions/vendor/openburnbar/domain-core-wasm \
+            2>&1 | tee "$RUNNER_TEMP/wasm-node-kat.log"
+
+      - name: Emit Wasm proof fragment
         run: >-
-          node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs
-          apps/console/vendor/openburnbar-domain-core-wasm
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id wasm
+          --suite "wasm-browser-kat=$RUNNER_TEMP/wasm-browser-kat.log"
+          --suite "wasm-node-kat=$RUNNER_TEMP/wasm-node-kat.log"
+          --artifact "browser-wasm=apps/console/vendor/openburnbar-domain-core-wasm/openburnbar_domain_core_bg.wasm"
+          --artifact "node-wasm=functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm"
+          --output "$RUNNER_TEMP/wasm.json"
+
+      - name: Upload Wasm proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-wasm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/wasm.json
+          if-no-files-found: error
+          retention-days: 14
 
   functions-pricing:
+    name: functions-pricing
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -473,11 +620,13 @@ jobs:
 
       - name: Run Functions domain-core contracts
         working-directory: functions
-        run: >-
-          npx vitest run
-          src/__tests__/pricing.test.ts
-          src/__tests__/domainCoreBuildProfile.test.ts
-          src/__tests__/domainCoreShadowEvidence.test.ts
+        run: |
+          set -o pipefail
+          npx vitest run \
+            src/__tests__/pricing.test.ts \
+            src/__tests__/domainCoreBuildProfile.test.ts \
+            src/__tests__/domainCoreShadowEvidence.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/functions-pricing-contracts.log"
 
       - name: Typecheck and lint Functions
         working-directory: functions
@@ -490,7 +639,24 @@ jobs:
           node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format functions-js --output functions/lib/generated/domainCoreCandidateReceipt.js
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --functions-dir functions/lib
 
+      - name: Emit Functions pricing proof fragment
+        run: >-
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id functions-pricing
+          --suite "functions-pricing-contracts=$RUNNER_TEMP/functions-pricing-contracts.log"
+          --output "$RUNNER_TEMP/functions-pricing.json"
+
+      - name: Upload Functions pricing proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-functions-pricing-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/functions-pricing.json
+          if-no-files-found: error
+          retention-days: 14
+
   android:
+    name: android
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
@@ -585,6 +751,26 @@ jobs:
             -no-boot-anim
           script: cd android && ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon
 
+      - name: Record successful Android native load
+        run: >-
+          printf 'candidate=%s abi=%s version=%s source=%s native-load=passed\n'
+          "$GITHUB_SHA" "$DOMAIN_CORE_EXPECTED_ABI_VERSION"
+          "$DOMAIN_CORE_EXPECTED_VERSION" "$DOMAIN_CORE_EXPECTED_SOURCE_SHA256"
+          > "$RUNNER_TEMP/android-native-load.log"
+
+      - name: Run Android app domain-core consumer contracts
+        working-directory: android
+        run: |
+          set -o pipefail
+          ./gradlew :app:testDebugUnitTest --no-daemon \
+            --tests 'com.openburnbar.data.DomainCoreBuildProfileTest' \
+            --tests 'com.openburnbar.data.DomainCoreShadowEvidenceTest' \
+            --tests 'com.openburnbar.data.cloud.*DomainCoreTest' \
+            --tests 'com.openburnbar.data.cloud.CloudVaultAadParityTest' \
+            --tests 'com.openburnbar.data.hermes.relay.HermesDomainCoreAdapterTest' \
+            --tests 'com.openburnbar.data.hermes.relay.HermesRatchetCryptoTest' \
+            2>&1 | tee "$RUNNER_TEMP/android-consumer-contracts.log"
+
       - name: Build and verify a signed Android app bundle
         run: |
           cd android
@@ -592,7 +778,26 @@ jobs:
           cd ..
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --android-aab android/app/build/outputs/bundle/debug/app-debug.aab
 
+      - name: Emit Android proof fragment
+        run: >-
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id android
+          --suite "android-native-load=$RUNNER_TEMP/android-native-load.log"
+          --suite "android-consumer-contracts=$RUNNER_TEMP/android-consumer-contracts.log"
+          --artifact "kotlin-aar=Vendor/openburnbar-domain-core.aar"
+          --output "$RUNNER_TEMP/android.json"
+
+      - name: Upload Android proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-android-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/android.json
+          if-no-files-found: error
+          retention-days: 14
+
   apple:
+    name: apple
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -612,6 +817,7 @@ jobs:
 
       - name: Reject Swift binding and provenance drift
         run: |
+          set -o pipefail
           status="$(git status --porcelain -- \
             OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated \
             crates/openburnbar-domain-core/artifact-provenance/swift.sha256)"
@@ -620,7 +826,25 @@ jobs:
             exit 1
           fi
           python3 scripts/ci/domain-core-union-gate.py \
-            --check-provenance swift xcframework
+            --check-provenance swift xcframework \
+            2>&1 | tee "$RUNNER_TEMP/swift-artifact-provenance.log"
+
+      - name: Emit Apple artifact proof fragment
+        run: >-
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id apple
+          --suite "swift-artifact-provenance=$RUNNER_TEMP/swift-artifact-provenance.log"
+          --artifact "swift-xcframework=Vendor/OpenBurnBarDomainCore.xcframework"
+          --output "$RUNNER_TEMP/apple.json"
+
+      - name: Upload Apple artifact proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-apple-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apple.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload rebuilt Apple artifacts
         if: always()
@@ -643,6 +867,8 @@ jobs:
           retention-days: 14
 
   apple-native-smoke:
+    name: apple-native-smoke
+    needs: apple
     runs-on: macos-26
     timeout-minutes: 30
     steps:
@@ -651,27 +877,37 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+      - name: Download the exact XCFramework produced by the Apple job
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
-          toolchain: "1.96.0"
-
-      - name: Build host domain-core XCFramework
-        env:
-          DOMAIN_CORE_BUILD_PROFILE: debug
-        run: |
-          if [[ "$(uname -m)" == "arm64" ]]; then
-            export DOMAIN_CORE_BUILD_TARGETS="aarch64-apple-darwin"
-          else
-            export DOMAIN_CORE_BUILD_TARGETS="x86_64-apple-darwin"
-          fi
-          ./scripts/build-domain-core-xcframework.sh
+          name: OpenBurnBarDomainCore.xcframework
+          path: Vendor/OpenBurnBarDomainCore.xcframework
 
       - name: Load XCFramework and run the narrow native contract
         working-directory: OpenBurnBarCore
-        run: swift run OpenBurnBarDomainCoreFFISmoke
+        run: |
+          set -o pipefail
+          swift run OpenBurnBarDomainCoreFFISmoke \
+            2>&1 | tee "$RUNNER_TEMP/swift-native-load.log"
+
+      - name: Emit Apple native-load proof fragment
+        run: >-
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id apple-native-smoke
+          --suite "swift-native-load=$RUNNER_TEMP/swift-native-load.log"
+          --output "$RUNNER_TEMP/apple-native-smoke.json"
+
+      - name: Upload Apple native-load proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-apple-native-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apple-native-smoke.json
+          if-no-files-found: error
+          retention-days: 14
 
   swift-consumer-contracts:
+    name: swift-consumer-contracts
     runs-on: macos-26
     # Cold macos-26 runners can spend nearly an hour building the domain-core
     # XCFramework and app-test dependency graph before the focused spool test.
@@ -710,9 +946,206 @@ jobs:
           OPENBURNBAR_CORE_SWIFT_FILTER: DomainCore
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
           OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS: "1"
-        run: ./scripts/test-openburnbar-swift.sh
+        run: |
+          set -o pipefail
+          ./scripts/test-openburnbar-swift.sh \
+            2>&1 | tee "$RUNNER_TEMP/swift-consumer-core.log"
 
       - name: Run Apple shadow evidence spool contracts
+        run: |
+          set -o pipefail
+          ./scripts/test-openburnbar-app.sh \
+            -only-testing:OpenBurnBarTests/DomainCoreShadowEvidenceSpoolTests \
+            2>&1 | tee "$RUNNER_TEMP/swift-consumer-spool.log"
+          cat "$RUNNER_TEMP/swift-consumer-core.log" \
+            "$RUNNER_TEMP/swift-consumer-spool.log" \
+            > "$RUNNER_TEMP/swift-consumer-contracts.log"
+
+      - name: Emit Swift consumer proof fragment
         run: >-
-          ./scripts/test-openburnbar-app.sh
-          -only-testing:OpenBurnBarTests/DomainCoreShadowEvidenceSpoolTests
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id swift-consumer-contracts
+          --suite "swift-consumer-contracts=$RUNNER_TEMP/swift-consumer-contracts.log"
+          --output "$RUNNER_TEMP/swift-consumer-contracts.json"
+
+      - name: Upload Swift consumer proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-swift-consumer-contracts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/swift-consumer-contracts.json
+          if-no-files-found: error
+          retention-days: 14
+
+  console-consumer-contracts:
+    name: console-consumer-contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/console/package-lock.json
+
+      - name: Install Console dependencies
+        working-directory: apps/console
+        run: npm ci
+
+      - name: Run Console domain-core consumer contracts
+        working-directory: apps/console
+        run: |
+          set -o pipefail
+          npx vitest run \
+            test/domainCoreBuildProfile.test.ts \
+            test/domainCoreCloudVault.test.ts \
+            test/domainCoreCloudVaultArtifact.test.ts \
+            test/domainCoreShadowEvidence.test.ts \
+            test/escrow.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/console-consumer-contracts.log"
+          npm run typecheck
+          npm run lint
+
+      - name: Emit Console consumer proof fragment
+        run: >-
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id console-consumer-contracts
+          --suite "console-consumer-contracts=$RUNNER_TEMP/console-consumer-contracts.log"
+          --output "$RUNNER_TEMP/console-consumer-contracts.json"
+
+      - name: Upload Console consumer proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-console-consumer-contracts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/console-consumer-contracts.json
+          if-no-files-found: error
+          retention-days: 14
+
+  rollback-drill:
+    name: rollback-drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/console/package-lock.json
+
+      - name: Resolve the signed legacy rollback artifact
+        run: >-
+          node scripts/ci/resolve-domain-core-build-profile.mjs
+          --profile public-production
+          --expected-candidate-commit "$GITHUB_SHA"
+          --format json
+          --output "$RUNNER_TEMP/domain-core-legacy-rollback.json"
+
+      - name: Exercise the actual Console legacy fallback control
+        working-directory: apps/console
+        run: |
+          npm ci
+          npx vitest run test/domainCoreBuildProfile.test.ts \
+            -t 'accepts a candidate-bound public profile but keeps evidence disabled'
+
+      - name: Verify every domain restores the legacy implementation
+        run: >-
+          node scripts/ci/verify-domain-core-rollback.mjs
+          --artifact "$RUNNER_TEMP/domain-core-legacy-rollback.json"
+          --report "$RUNNER_TEMP/rollback-drill.log"
+          --expected-candidate-commit "$GITHUB_SHA"
+
+      - name: Emit rollback proof fragment
+        run: >-
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id rollback-drill
+          --suite "rollback-drill=$RUNNER_TEMP/rollback-drill.log"
+          --rollback "$RUNNER_TEMP/rollback-drill.log,$RUNNER_TEMP/domain-core-legacy-rollback.json"
+          --output "$RUNNER_TEMP/rollback-drill.json"
+
+      - name: Upload rollback proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-rollback-drill-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rollback-drill.json
+          if-no-files-found: error
+          retention-days: 14
+
+  candidate-bundle:
+    name: candidate-bundle
+    if: always()
+    needs:
+      - promotion-contracts
+      - rust-and-csharp
+      - windows-native
+      - linux-arm64-native
+      - wasm
+      - functions-pricing
+      - android
+      - apple
+      - apple-native-smoke
+      - swift-consumer-contracts
+      - console-consumer-contracts
+      - rollback-drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact candidate
+        if: github.event_name == 'push'
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require every deterministic proof job to succeed
+        if: github.event_name == 'push'
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$NEEDS_JSON" > "$RUNNER_TEMP/domain-core-job-results.json"
+          jq -e 'to_entries | length == 12 and all(.value.result == "success")' \
+            "$RUNNER_TEMP/domain-core-job-results.json" >/dev/null
+
+      - name: Download exact-attempt proof fragments
+        if: github.event_name == 'push'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          pattern: domain-core-proof-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-proof-fragments
+          merge-multiple: true
+
+      - name: Aggregate fragments and create unsigned candidate bundle
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          node scripts/ci/domain-core-proof-fragment.mjs aggregate \
+            --expected-candidate-commit "$GITHUB_SHA" \
+            --fragments "$RUNNER_TEMP/domain-core-proof-fragments" \
+            --job-results "$RUNNER_TEMP/domain-core-job-results.json" \
+            --output "$RUNNER_TEMP/domain-core-deterministic-evidence.json"
+          node scripts/ci/create-domain-core-deterministic-candidate-bundle.mjs \
+            --expected-candidate-commit "$GITHUB_SHA" \
+            --evidence "$RUNNER_TEMP/domain-core-deterministic-evidence.json" \
+            --output "$RUNNER_TEMP/domain-core-candidate-bundle.json"
+
+      - name: Upload immutable unsigned candidate bundle
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-candidate-bundle-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-candidate-bundle.json
+          if-no-files-found: error
+          retention-days: 90

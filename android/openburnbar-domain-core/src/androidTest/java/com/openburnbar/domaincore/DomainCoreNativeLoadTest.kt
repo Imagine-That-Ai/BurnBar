@@ -3,6 +3,7 @@ package com.openburnbar.domaincore
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -35,16 +36,20 @@ import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
 class DomainCoreNativeLoadTest {
     @Test
     fun generatedBindingLoadsAbiVersionThreeNativeLibrary() {
-        assertEquals(3u, domainCoreAbiVersion())
-        assertTrue(domainCoreVersion().isNotBlank())
+        val assets = InstrumentationRegistry.getInstrumentation().context.assets
+        val expectedIdentity =
+            assets.open("union-abi-manifest.json").bufferedReader().use { JSONObject(it.readText()) }
+        assertEquals(expectedIdentity.getLong("abiVersion").toUInt(), domainCoreAbiVersion())
+        assertEquals(expectedIdentity.getString("coreVersion"), domainCoreVersion())
         val sourceFingerprint = domainCoreSourceFingerprint()
         assertTrue(sourceFingerprint.matches(Regex("[0-9a-f]{64}")))
         val expectedSourceFingerprint =
-            InstrumentationRegistry.getInstrumentation().context.assets
+            assets
                 .open("openburnbar-domain-core-source.sha256")
                 .bufferedReader()
                 .use { it.readText().trim() }
         assertTrue(expectedSourceFingerprint.matches(Regex("[0-9a-f]{64}")))
+        assertEquals(expectedIdentity.getString("sourceSha256"), expectedSourceFingerprint)
         assertEquals(expectedSourceFingerprint, sourceFingerprint)
         assertEquals(
             "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7",

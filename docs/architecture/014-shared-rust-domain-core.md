@@ -173,33 +173,31 @@ binds the built runtime surface back to the authorized checkout. Runtime
 environment variables are never signed authority, and an expected commit
 argument may assert equality but may not rename the checkout.
 
-### Promotion evidence
+### Promotion proof and diagnostic telemetry
 
-Candidate-bound V3 is the only evidence schema that may authorize a
-`shadow`-to-`rust` promotion or later legacy deletion. Each signed enrollment
-binds one internal/beta channel and consumer allowlist to one exact app commit
-and expected loaded Rust tuple: canonical version, uint32 ABI, and reviewed
-source SHA-256. The server verifies all six claims, validates the declared
-operation/domain/slice identity, and stamps `receivedAt`. Client `observedAt`
-never controls a promotion window.
+Promotion authority is deterministic and candidate-bound. The `main` push
+workflow runs the exact job, suite, artifact, coverage, benchmark, and rollback
+contract in `config/domain-core-promotion-policy.json`. Each job emits a fragment
+bound to the same GitHub run ID, attempt, commit, core version, ABI, and source
+fingerprint. The final job rejects failed, skipped, missing, duplicate, extra,
+mixed-run, or mixed-candidate fragments and creates an unsigned bundle. That
+bundle states only `eligible_for_attestation`; it cannot authorize promotion.
 
-The exporter selects one exact candidate/core tuple over a half-open server
-receipt interval and records sample counts for every UTC day and real
-slice/consumer coverage cell. The evaluator requires one common observation
-window, at least 14 consecutive days, 10,000 aggregate internal/beta samples,
-zero unexplained mismatches, and at most five percent p95 regression. A loaded
-tuple different from the signed expected tuple is retained as
-`loaded_identity_mismatch` and is a hard blocker that cannot be explained away.
-Native-unavailable and native-error comparisons are also hard blockers.
+The protected promotion workflow is the authority boundary. It checks out the
+evaluator and policy from trusted `main`, requires the candidate to be reachable
+from `main`, queries GitHub for the exact successful `push` run, downloads that
+run's immutable bundle, independently validates the API run/jobs and candidate
+checkout, and then uses GitHub's provenance attester. A dispatch or PR run,
+user-supplied job JSON, a hand-authored bundle, or the uploaded verification
+receipt cannot authorize promotion. The receipt records what was checked but is
+not itself signed authority.
 
-V1 and V2 remain accepted only so durable spools can drain idempotently. The
-server marks them non-promotable, they are never translated into V3, and the
-evaluator returns `evidence_schema_v3_required`. Operator-supplied revision
-labels cannot substitute for the candidate commit stored in each V3 sample
-accepted by the server. The exact operator procedure is the
-[Shared Rust Promotion Evidence runbook](../runbooks/shared-rust-promotion-evidence.md),
-and the client contract is
-[`domain-core-shadow-sample-v3.schema.json`](../contracts/domain-core-shadow-sample-v3.schema.json).
+The `domain-core-promotion` GitHub environment is part of the trust boundary,
+not a decorative YAML name. It must have a required reviewer and an allowlist
+containing only the `main` branch. The signer checks those live controls before
+attesting. As verified on 2026-07-14, the environment requires reviewer
+`Ajnunezg` and permits only `main`; operators must preserve and re-verify those
+settings.
 
 Client durability is candidate-scoped. Apple, Android, Windows, and Console
 derive their active queue namespace from the complete expected candidate tuple
@@ -213,17 +211,20 @@ tuple is retained as `loaded_identity_mismatch`, and an unreadable tuple as
 `native_unavailable`. Unsigned, local, test, or incomplete processes emit no
 production evidence.
 
-The quantitative evaluator originally delivered in
-[#1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612) remains the single
-fail-closed evaluation authority, now upgraded for all inventoried domains and
-candidate-bound V3. No second evaluator, policy override, relabeled cohort, or
-synthetic passing evidence is accepted.
+Candidate-bound V3 shadow samples remain optional diagnostic telemetry. Each
+signed enrollment binds one internal/beta channel and consumer allowlist to one
+exact app commit and expected loaded Rust tuple. The server validates those
+claims and retains loaded identity mismatch, native-unavailable, native-error,
+and result mismatch categories for diagnosis. No observation duration, daily
+continuity, user count, or sample count is required for promotion. V1 and V2 are
+accepted only so durable spools can drain idempotently and remain
+non-promotable. The exact operator procedure is the
+[Shared Rust Promotion Evidence runbook](../runbooks/shared-rust-promotion-evidence.md).
 
-A passing quantitative result is necessary but insufficient. Native artifact
-loads, fixtures, one stable Rust-authoritative release, and the separate legacy
-deletion proof remain required. Crypto migrations additionally require KATs,
-bidirectional cross-open, wrong-key/AAD/tamper rejection, boundary fuzzing, and
-independent security review.
+Crypto migrations additionally require deterministic KATs, bidirectional
+cross-open, wrong-key/AAD/tamper rejection, boundary fuzzing, and independent
+security review. Every domain still requires one stable Rust-authoritative
+release with the explicit rollback path intact before legacy deletion.
 
 ## Landing and rollback
 
@@ -235,8 +236,8 @@ production promotion.
 Before legacy deletion, rollback is an explicit configuration change from
 `rust` to `legacy`; it is never an implicit exception handler. A mismatch,
 latency regression, ABI/provenance failure, or unresolved security finding
-blocks promotion. After a rollback, retain the evidence, fix the cause, and
-restart the applicable evidence window. Legacy code is removed only in a
+    blocks promotion. After a rollback, retain the evidence, fix the cause, and
+    produce a new exact candidate attestation. Legacy code is removed only in a
 separate reviewed change after one stable Rust-authoritative release, and
 source/compile gates must prove the named legacy implementations and selector
 are absent.
