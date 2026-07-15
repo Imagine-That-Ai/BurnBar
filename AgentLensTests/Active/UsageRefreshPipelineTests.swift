@@ -150,6 +150,38 @@ final class UsageRefreshPipelineTests: XCTestCase {
         XCTAssertTrue(parsed.allConversations.isEmpty)
     }
 
+    func test_parseStageForwardsMinimumFileModificationDate() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let cutoff = Date(timeIntervalSince1970: 1_800_000_000)
+        let pipeline = UsageRefreshPipeline(
+            parsers: [.factory: RecordingParser(recorder: recorder)],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            existingUsages: [],
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: false,
+                snapshotAPIs: []
+            )
+        )
+
+        _ = try await pipeline.parse(
+            from: pipeline.discover(),
+            minimumFileModificationDate: cutoff
+        )
+
+        let recordedDates = await recorder.minimumDateSnapshot()
+        XCTAssertEqual(recordedDates, [cutoff])
+    }
+
     func test_conversationIndexingUsesSeparateBodyEnabledPass() async throws {
         let store = try makeInMemoryDataStore()
         let recorder = ParseOptionsRecorder()
@@ -174,6 +206,49 @@ final class UsageRefreshPipelineTests: XCTestCase {
         XCTAssertEqual(recordedOptions, [true])
         XCTAssertEqual(result.indexedConversationChanges, 0)
         XCTAssertTrue(result.errors.isEmpty)
+    }
+
+    func test_conversationIndexingCapturesProviderFailures() async throws {
+        let store = try makeInMemoryDataStore()
+        let result = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: FailingParser()],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            indexingEnabled: true
+        )
+
+        XCTAssertEqual(result.errors[.factory], "simulated parser failure")
+        XCTAssertGreaterThanOrEqual(result.duration, 0)
+    }
+
+    func test_conversationIndexingStopsCleanlyOnCancellation() async throws {
+        let store = try makeInMemoryDataStore()
+        let result = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: CancellingParser()],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            indexingEnabled: true
+        )
+
+        XCTAssertTrue(result.errors.isEmpty)
+        XCTAssertEqual(result.indexedConversationChanges, 0)
+        XCTAssertEqual(result.duration, 0)
     }
 
     func test_fullRefreshKeepsConversationBodiesOffForegroundPass() async throws {
@@ -254,13 +329,19 @@ private struct CancellingParser: LogParser {
 
 private actor ParseOptionsRecorder {
     private var values: [Bool] = []
+    private var minimumDates: [Date?] = []
 
-    func record(_ includeConversationBodies: Bool) {
-        values.append(includeConversationBodies)
+    func record(_ options: LogParseOptions) {
+        values.append(options.includeConversationBodies)
+        minimumDates.append(options.minimumFileModificationDate)
     }
 
     func snapshot() -> [Bool] {
         values
+    }
+
+    func minimumDateSnapshot() -> [Date?] {
+        minimumDates
     }
 }
 
@@ -273,7 +354,7 @@ private struct RecordingParser: LogParser {
     }
 
     func parse(options: LogParseOptions) async throws -> ParseResult {
-        await recorder.record(options.includeConversationBodies)
+        await recorder.record(options)
         return ParseResult(usages: [], conversations: [])
     }
 }

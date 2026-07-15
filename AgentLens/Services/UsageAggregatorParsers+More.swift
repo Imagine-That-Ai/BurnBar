@@ -11,6 +11,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
     private let modelPattern: String
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
+    private let sessionsURL: URL
     private let cacheURL: URL
     private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<ModelFilterCacheEntry>
 
@@ -18,12 +19,15 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         modelPattern: String,
         provider: AgentProvider,
         fileManager: FileManager = .default,
-        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live()
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
+        sessionsDirectoryOverride: URL? = nil
     ) {
         self.modelPattern = modelPattern.lowercased()
         self.provider = provider
         self.fileManager = fileManager
         self.appPaths = appPaths
+        self.sessionsURL = sessionsDirectoryOverride
+            ?? URL(fileURLWithPath: ("~/.factory/sessions" as NSString).expandingTildeInPath)
 
         let providerKey = provider.rawValue
             .lowercased()
@@ -44,8 +48,6 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
     }
 
     func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
-        let sessionsPath = "~/.factory/sessions"
-        let sessionsURL = URL(fileURLWithPath: (sessionsPath as NSString).expandingTildeInPath)
         let includeConversationBodies = options.includeConversationBodies
 
         guard fileManager.fileExists(atPath: sessionsURL.path) else {

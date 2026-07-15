@@ -311,6 +311,48 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         XCTAssertEqual(parser.provider, .zai)
     }
 
+    func testModelFilterParserSkipsSessionsOlderThanIncrementalCutoff() async throws {
+        let root = uniqueTempURL()
+        let sessionsURL = root.appendingPathComponent("sessions", isDirectory: true)
+        let projectURL = sessionsURL.appendingPathComponent("-Users-alberto-project", isDirectory: true)
+        let supportURL = root.appendingPathComponent("support", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+
+        let oldSessionURL = projectURL.appendingPathComponent("old-session.jsonl")
+        let recentSessionURL = projectURL.appendingPathComponent("recent-session.jsonl")
+        let settings = Data(#"{"model":"zai/glm-4.5","tokenUsage":{"input_tokens":100,"output_tokens":10}}"#.utf8)
+
+        for sessionURL in [oldSessionURL, recentSessionURL] {
+            try Data().write(to: sessionURL)
+            try settings.write(to: sessionURL.deletingPathExtension().appendingPathExtension("settings.json"))
+        }
+
+        let cutoff = Date(timeIntervalSince1970: 1_800_000_000)
+        try FileManager.default.setAttributes(
+            [.modificationDate: cutoff.addingTimeInterval(-60)],
+            ofItemAtPath: oldSessionURL.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: cutoff.addingTimeInterval(60)],
+            ofItemAtPath: recentSessionURL.path
+        )
+
+        let parser = ModelFilterParser(
+            modelPattern: "zai",
+            provider: .zai,
+            fileManager: .default,
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportURL),
+            sessionsDirectoryOverride: sessionsURL
+        )
+        let result = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            minimumFileModificationDate: cutoff
+        ))
+
+        XCTAssertEqual(result.usages.map(\.sessionId), ["recent-session"])
+        XCTAssertTrue(result.conversations.isEmpty)
+    }
+
     func testParserRegistryKeepsMimoQuotaApiOnly() {
         let parsers = ParserRegistry.defaultParsers()
 
