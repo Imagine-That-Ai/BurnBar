@@ -42,6 +42,14 @@ on:
         required: false
         default: false
         type: boolean
+      domain_core_profile:
+        description: "Signed public domain-core profile. Rollback requires protected domain-core-promotion approval."
+        required: true
+        type: choice
+        default: public-production
+        options:
+          - public-production
+          - public-production-rollback
 
 permissions:
   contents: read
@@ -64,6 +72,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag_ref: ${{ steps.version.outputs.tag_ref }}
       release_commit: ${{ steps.version.outputs.release_commit }}
+      domain_core_profile: ${{ steps.version.outputs.domain_core_profile }}
     steps:
       - name: Check out repository metadata
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -135,6 +144,19 @@ jobs:
             echo "version=${version}"
             echo "tag_ref=${tag_ref}"
             echo "release_commit=${release_commit}"
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              echo "domain_core_profile=public-production"
+            else
+              case "${{ inputs.domain_core_profile }}" in
+                public-production|public-production-rollback)
+                  echo "domain_core_profile=${{ inputs.domain_core_profile }}"
+                  ;;
+                *)
+                  echo "::error::Manual release requires an explicit signed public domain-core profile."
+                  exit 1
+                  ;;
+              esac
+            fi
           } >> "$GITHUB_OUTPUT"
           echo "Resolved authorized Windows release ${version} at ${release_commit}."
 
@@ -216,6 +238,63 @@ jobs:
     name: Build native parser engine
     uses: ./.github/workflows/openburnbar-engine-windows.yml
 
+  authorize-domain-core-rollback:
+    name: Authorize Shared Rust Windows rollback
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.domain_core_profile == 'public-production-rollback' }}
+    needs: resolve-release
+    runs-on: ubuntu-latest
+    environment: domain-core-promotion
+    permissions:
+      contents: read
+    steps:
+      - name: Record protected rollback authorization
+        run: echo "Protected Windows rollback authorized for ${{ needs.resolve-release.outputs.release_commit }}."
+
+  domain-core-native-release-gate:
+    name: Verify protected Shared Rust Windows release candidate
+    if: ${{ always() && needs.resolve-release.result == 'success' && (needs.authorize-domain-core-rollback.result == 'success' || needs.authorize-domain-core-rollback.result == 'skipped') }}
+    needs: [resolve-release, authorize-domain-core-rollback]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    outputs:
+      profile_name: ${{ steps.gate.outputs.profile_name }}
+      signer_run_id: ${{ steps.gate.outputs.signer_run_id }}
+      signer_run_attempt: ${{ steps.gate.outputs.signer_run_attempt }}
+    steps:
+      - name: Check out exact Windows release candidate
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download and verify exact protected candidate chain
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+          SELECTED_PROFILE: ${{ needs.resolve-release.outputs.domain_core_profile }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/prepare-domain-core-native-release-gate.mjs \
+            --candidate-commit "$RELEASE_COMMIT" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --requested-profile "$SELECTED_PROFILE" \
+            --output-dir "$RUNNER_TEMP/domain-core-native-release-gate" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload immutable verified Windows release inputs
+        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate/
+          if-no-files-found: error
+          retention-days: 90
+
   # ── Windows runner: build + Authenticode sign + sign the update feed ────────
   build-sign:
     name: Build + Authenticode sign
@@ -223,6 +302,9 @@ jobs:
       - resolve-release
       - portable-verify
       - native-engine
+      - authorize-domain-core-rollback
+      - domain-core-native-release-gate
+    if: ${{ always() && needs.resolve-release.result == 'success' && needs.portable-verify.result == 'success' && needs.native-engine.result == 'success' && needs.domain-core-native-release-gate.result == 'success' && (needs.authorize-domain-core-rollback.result == 'success' || needs.authorize-domain-core-rollback.result == 'skipped') }}
     runs-on: windows-latest
     environment: windows-release
     timeout-minutes: 60
@@ -233,6 +315,8 @@ jobs:
         shell: bash
     env:
       VERSION: ${{ needs.resolve-release.outputs.version }}
+    outputs:
+      signed_release: ${{ steps.config.outputs.codesign }}
     steps:
       - name: Check out authorized release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -241,7 +325,13 @@ jobs:
           fetch-depth: 0
 
       - name: Resolve signed public domain-core profile
-        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "${{ needs.resolve-release.outputs.release_commit }}" --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.resolve-release.outputs.release_commit }}" --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
+
+      - name: Download verified Shared Rust release inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Set up .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
@@ -333,8 +423,29 @@ jobs:
           set -euo pipefail
           for rid in win-x64 win-arm64; do
             node scripts/windows-port/validate-native-engine-layout.mjs "publish/$rid"
-            node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "${{ needs.resolve-release.outputs.release_commit }}" --windows-dir "publish/$rid"
+            node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.resolve-release.outputs.release_commit }}" --windows-dir "publish/$rid"
           done
+
+      - name: Install Rust toolchain for loaded domain-core identity proof
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
+      - name: Execute and record loaded Windows Rust identity
+        shell: pwsh
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/domain-core-windows-observed-identity.json
+        run: |
+          $ErrorActionPreference = "Stop"
+          cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime win-x64 `
+            --filter FullyQualifiedName=OpenBurnBar.App.Quota.Tests.DomainCoreQuotaBridgeTests.Loaded_native_identity_is_observed_for_attestation
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/ci/verify-domain-core-observed-identity.mjs `
+            --profile "$env:RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" `
+            --observed-identity "$env:DOMAIN_CORE_OBSERVED_IDENTITY_REPORT"
 
       - name: Authenticode sign (Azure Artifact Signing — no staple analog)
         if: steps.config.outputs.codesign == 'true'
@@ -564,6 +675,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload observed Windows Rust identity
+        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-windows-observed-identity-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-windows-observed-identity.json
+          if-no-files-found: error
+          retention-days: 90
+
   # ── Supply chain: SBOM (SPDX) + OpenVEX + keyless Sigstore over the artifacts ─
   supply-chain:
     name: SBOM + OpenVEX + Sigstore
@@ -732,3 +851,168 @@ jobs:
             provenance-windows-v${{ needs.resolve-release.outputs.version }}/
           if-no-files-found: error
           retention-days: 7
+
+  domain-core-windows-release-evidence:
+    name: Publish immutable Shared Rust Windows release evidence
+    needs:
+      - resolve-release
+      - domain-core-native-release-gate
+      - build-sign
+      - supply-chain
+    if: ${{ needs.build-sign.outputs.signed_release == 'true' && needs.supply-chain.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: windows-release
+    permissions:
+      actions: read
+      attestations: write
+      contents: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.resolve-release.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+      RELEASE_TAG: windows-v${{ needs.resolve-release.outputs.version }}
+      PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+    steps:
+      - name: Check out exact Windows stable release commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download exact signed Windows artifacts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: windows-release-v${{ needs.resolve-release.outputs.version }}
+          path: ${{ runner.temp }}/windows-release-input
+
+      - name: Download exact verified candidate chain
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
+      - name: Download observed Windows Rust identity
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: domain-core-windows-observed-identity-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-windows-identity
+
+      - name: Verify both published profile receipts and loaded Rust identity
+        run: |
+          set -euo pipefail
+          for rid in win-x64 win-arm64; do
+            package="$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-${rid}.zip"
+            directory="$RUNNER_TEMP/windows-profile-${rid}"
+            mkdir -p "$directory"
+            unzip -q "$package" -d "$directory"
+            node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+              --profile "$PROFILE" --expected-candidate-commit "$RELEASE_COMMIT" \
+              --windows-dir "$directory"
+          done
+          node scripts/ci/verify-domain-core-observed-identity.mjs \
+            --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            --observed-identity "$RUNNER_TEMP/domain-core-windows-identity/domain-core-windows-observed-identity.json"
+
+      - name: Build deterministic x64 and ARM64 canonical release bundle
+        id: bundle
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/OpenBurnBar-${VERSION}-windows-release.zip"
+          python3 scripts/ci/create-windows-domain-core-release-bundle.py \
+            --source-dir "$RUNNER_TEMP/windows-release-input" \
+            --output "$artifact" --version "$VERSION" --commit "$RELEASE_COMMIT"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+
+      - name: Create Windows v2 release predicates
+        id: windows-plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNER_RUN_ID: ${{ needs.domain-core-native-release-gate.outputs.signer_run_id }}
+          SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
+        run: |
+          node scripts/ci/create-domain-core-native-release-evidence.mjs \
+            --consumer windows --artifact "${{ steps.bundle.outputs.artifact }}" \
+            --version "$VERSION" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" \
+            --profile-name "$PROFILE" \
+            --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
+            --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
+            --protected-signer-run-id "$SIGNER_RUN_ID" \
+            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
+            --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json" \
+            --output-dir "$RUNNER_TEMP/domain-core-windows-evidence" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Attest Windows quota predicate
+        id: attest-windows-quota
+        if: steps.windows-plan.outputs.domain_quota == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ steps.bundle.outputs.artifact }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-windows-evidence/OpenBurnBar-${{ needs.resolve-release.outputs.version }}-windows-quota-domain-core.predicate.json
+
+      - name: Attest Windows CloudVault predicate
+        id: attest-windows-cloud-vault
+        if: steps.windows-plan.outputs.domain_cloud_vault == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ steps.bundle.outputs.artifact }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-windows-evidence/OpenBurnBar-${{ needs.resolve-release.outputs.version }}-windows-cloudVault-domain-core.predicate.json
+
+      - name: Stage deterministic attestation bundle names
+        if: steps.windows-plan.outputs.evidence_count != '0'
+        env:
+          QUOTA_BUNDLE: ${{ steps.attest-windows-quota.outputs.bundle-path }}
+          CLOUD_VAULT_BUNDLE: ${{ steps.attest-windows-cloud-vault.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          bundle_dir="$RUNNER_TEMP/domain-core-windows-evidence/bundles"
+          mkdir -p "$bundle_dir"
+          if [[ -n "$QUOTA_BUNDLE" ]]; then
+            cp "$QUOTA_BUNDLE" "$bundle_dir/OpenBurnBar-${VERSION}-windows-quota-domain-core.sigstore.json"
+          fi
+          if [[ -n "$CLOUD_VAULT_BUNDLE" ]]; then
+            cp "$CLOUD_VAULT_BUNDLE" "$bundle_dir/OpenBurnBar-${VERSION}-windows-cloudVault-domain-core.sigstore.json"
+          fi
+
+      - name: Prepare exact stable Windows GitHub release
+        if: steps.windows-plan.outputs.evidence_count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/ci/ensure-windows-domain-core-release.mjs \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" --phase prepare
+          node scripts/ci/ensure-windows-domain-core-release.mjs \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" --phase publish
+
+      - name: Publish create-only Windows evidence
+        if: steps.windows-plan.outputs.evidence_count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          manifest="$RUNNER_TEMP/domain-core-windows-evidence/publication.json"
+          node scripts/ci/create-domain-core-native-publication.mjs \
+            --plan "${{ steps.windows-plan.outputs.plan_path }}" \
+            --bundle-dir "$RUNNER_TEMP/domain-core-windows-evidence/bundles" \
+            --output "$manifest"
+          node scripts/ci/publish-domain-core-release-evidence.mjs --manifest "$manifest"
+
+      - name: Retain exact Windows evidence and rollback chain
+        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-windows-release-evidence-${{ needs.domain-core-native-release-gate.outputs.profile_name }}-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/domain-core-windows-evidence/
+            ${{ steps.bundle.outputs.artifact }}
+            ${{ runner.temp }}/domain-core-native-release-gate/domain-core-native-release-gate.json
+            ${{ runner.temp }}/domain-core-native-release-gate/domain-core-selected-public-profile.json
+            ${{ runner.temp }}/domain-core-native-release-gate/source/domain-core-public-production-rollback.json
+            ${{ runner.temp }}/domain-core-windows-identity/
+          if-no-files-found: error
+          retention-days: 90

@@ -61,6 +61,30 @@ Native, Console, and Functions release workflows should call this command before
 their first signing or deployment mutation whenever the public profile selects
 Rust. Workflow-specific wiring is deliberately separate from this substrate.
 
+### Native release wiring
+
+The stable native release lanes resolve the same protected chain before any
+platform signing starts:
+
+- [`.github/workflows/release.yml`](../../.github/workflows/release.yml) covers
+  the notarized Apple DMG and signed Android AAB;
+- [`.github/workflows/openburnbar-release-windows.yml`](../../.github/workflows/openburnbar-release-windows.yml)
+  covers the Authenticode-signed x64 and ARM64 Windows packages; and
+- tag-triggered releases always select `public-production`. A tag cannot request
+  the rollback profile.
+
+An emergency manual release may select `public-production-rollback`. That path
+must pass the protected `domain-core-promotion` environment before signing and
+must resolve the candidate-bound, all-legacy rollback profile. It is an explicit
+release of legacy behavior, not an exception to candidate, signing, or evidence
+verification.
+
+The native gate downloads artifacts by exact candidate commit, deterministic
+source run ID, and source run attempt. It then downloads GitHub Attestations for
+the candidate bundle, verifies the protected signer identity, and binds the
+signer's exact run ID and attempt. The ordinary protected-verification workflow
+artifact is a diagnostic receipt and is not accepted as promotion authority.
+
 ## Generate release evidence
 
 After the artifact is signed or the deployment is healthy, use
@@ -77,6 +101,22 @@ The contracts are:
 The generator refuses to replace an existing output unless the bytes are
 identical. The release workflow must attest the artifact with the generated v2
 predicate and its consumer-specific protected signer workflow.
+
+Native release predicates are generated after platform-native verification:
+
+- Apple verifies notarization, code signing, the arm64 app executable, the
+  embedded build-profile receipt, and the Rust identity observed by the shipped
+  FFI smoke binary.
+- Android verifies the approved upload-certificate fingerprint, JAR signature,
+  bundletool structure, all four native ABIs, the embedded build-profile
+  receipt, and the Rust identity observed on an emulator.
+- Windows verifies both x64 and ARM64 profile receipts, the observed loaded DLL
+  identity, and a deterministic canonical bundle containing both signed
+  packages.
+
+Only domains in `rust` mode receive public-release predicates. A rollback
+release intentionally retains predicates for every consumer domain so the
+all-legacy rollback event remains auditable.
 
 ## Publish immutable assets
 
@@ -102,3 +142,9 @@ publication. Each consumer workflow owns artifact signing, deployment health,
 its explicit legacy fallback exercise, and the decision to invoke this gate.
 No workflow may ship a Rust-authoritative profile without consuming the
 pre-release gate successfully.
+
+The protected signer control-plane manifest must cover these native release
+workflows and every helper they execute with attestation or publication
+permissions. Regenerate and review that manifest whenever this wiring changes;
+otherwise a candidate commit could change its own verifier. Native workflow
+changes and signer-manifest changes therefore land as one reviewed integration.
