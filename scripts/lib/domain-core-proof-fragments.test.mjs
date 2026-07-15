@@ -108,9 +108,23 @@ test("strict fragments aggregate every policy suite, artifact, benchmark, and co
   assert.equal(evidence.rollback.restoredMode, "legacy");
 });
 
-test("artifact identity must be observed and cannot be assigned from the candidate", (context) => {
+test("artifact identity comparison is semantic and rejects candidate drift", (context) => {
   const paths = fixture(context);
-  writeFileSync(paths.identityReport, `${JSON.stringify({ ...CANDIDATE, sourceSha256: "c".repeat(64) })}\n`);
+  writeFileSync(
+    paths.identityReport,
+    `${JSON.stringify({
+      sourceSha256: CANDIDATE.sourceSha256,
+      abiVersion: CANDIDATE.abiVersion,
+      coreVersion: CANDIDATE.coreVersion,
+      candidateCommit: CANDIDATE.candidateCommit,
+    })}\n`,
+  );
+  assert.doesNotThrow(() => fragments(paths));
+
+  writeFileSync(
+    paths.identityReport,
+    `${JSON.stringify({ ...CANDIDATE, sourceSha256: "c".repeat(64) })}\n`,
+  );
   assert.throws(() => fragments(paths), /observed identity does not match/u);
   rmSync(paths.identityReport);
   assert.throws(() => fragments(paths), /unreadable/u);
