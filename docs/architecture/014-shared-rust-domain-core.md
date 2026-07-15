@@ -183,8 +183,9 @@ fingerprint. The final job rejects failed, skipped, missing, duplicate, extra,
 mixed-run, or mixed-candidate fragments and creates an unsigned bundle. That
 bundle states only `eligible_for_attestation`; it cannot authorize promotion.
 
-The protected promotion workflow is the authority boundary. It checks out the
-evaluator and policy from trusted `main`, requires the candidate to be reachable
+The protected promotion workflow is the authority boundary. It pins the trusted
+evaluator and policy checkout to the exact `main` commit that GitHub used to
+dispatch the protected workflow, requires the candidate to be reachable
 from `main`, queries every page of GitHub jobs for the exact successful `push`
 run, and downloads that attempt's immutable bundle, proof fragments, observed
 artifact inputs, and rollback artifact. Before using candidate data, it requires
@@ -196,7 +197,8 @@ rehashes the downloaded artifact and observed-identity bytes. No candidate code
 executes in the protected credential context. A dispatch or PR run,
 user-supplied job JSON, a hand-authored bundle, an incomplete jobs page, or the
 uploaded verification receipt cannot authorize promotion. The receipt records
-what was checked but is not itself signed authority.
+what was checked, including the pinned evaluator commit and control-plane
+manifest digest, but is not itself signed authority.
 
 Each observed artifact is frozen immediately after its narrow native-load
 observer and before broader candidate tests continue. Directory artifacts are
@@ -251,8 +253,8 @@ Before legacy deletion, rollback uses the separate signed, candidate-bound
 and independent of the primary `public-production` modes; it is never an
 implicit exception handler. A mismatch,
 latency regression, ABI/provenance failure, or unresolved security finding
-    blocks promotion. After a rollback, retain the evidence, fix the cause, and
-    produce a new exact candidate attestation. Legacy code is removed only in a
+blocks promotion. After a rollback, retain the evidence, fix the cause, and
+produce a new exact candidate attestation. Legacy code is removed only in a
 separate reviewed change after one stable Rust-authoritative release has
 published and retained that exact rollback artifact, and
 source/compile gates must prove the named legacy implementations and selector
