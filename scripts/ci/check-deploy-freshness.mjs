@@ -4,9 +4,13 @@
 // The company's signature failure — a 26-day silent production freeze (Cloud
 // Functions frozen at 2026-06-18 while the fix sat merged-but-undeployed) —
 // was undetectable because nothing checked whether prod was *recently*
-// deployed. This script reads the live `updateTime` of every Cloud Function
-// and the Cloud Run hosted-MCP service, picks the newest, and fails if it is
-// older than a configurable threshold (default 14 days).
+// deployed. This script reads the live `updateTime` of every ACTIVE Cloud
+// Function (v2 API — the repo's functions are gen2/firebase-functions/v2)
+// and the Cloud Run hosted-MCP service, then checks each deploy surface
+// INDEPENDENTLY against a configurable threshold (default 14 days). A single
+// stale surface fails the check even if another surface is fresh — that's
+// the whole point, since Cloud Functions and Cloud Run deploy in separate
+// workflows and a fresh Cloud Run must not mask a frozen Functions plane.
 //
 // Auth pattern: reuse `accessToken()` from check-firestore-deploy-drift.mjs —
 // `GOOGLE_OAUTH_ACCESS_TOKEN` env first, then `gcloud auth print-access-token`.
@@ -75,19 +79,32 @@ async function fetchJson(url, token) {
 }
 
 async function fetchCloudFunctionsUpdateTime(token) {
-  // Cloud Functions API (v1): list all functions in the region.
+  // Cloud Functions v2 API: the repo's functions are gen2
+  // (firebase-functions/v2 — see functions/src/health.ts). The v1 endpoint
+  // returns no functions in a gen2-only project, so v2 is mandatory.
   const url =
-    `https://cloudfunctions.googleapis.com/v1/projects/${project}/locations/${region}/functions`;
+    `https://cloudfunctions.googleapis.com/v2/projects/${project}/locations/${region}/functions`;
   const data = await fetchJson(url, token);
-  const fns = data.functions || [];
-  if (fns.length === 0) {
+  const allFns = data.functions || [];
+  if (allFns.length === 0) {
     console.error(
       `::error::No Cloud Functions found in ${project}/${region}. ` +
         `If this is expected, set DEPLOY_FRESHNESS_FIXTURE to skip the live check.`,
     );
     process.exit(1);
   }
-  return fns.map((fn) => ({
+  // Filter to ACTIVE functions only — a FAILED/DEPLOYING function with a
+  // fresh updateTime must not mask a stale production surface.
+  const activeFns = allFns.filter((fn) => fn.state === "ACTIVE");
+  if (activeFns.length === 0) {
+    console.error(
+      `::error::No ACTIVE Cloud Functions in ${project}/${region}. ` +
+        `All ${allFns.length} function(s) are in non-serving state — ` +
+        `production may be serving old code or no code at all.`,
+    );
+    process.exit(1);
+  }
+  return activeFns.map((fn) => ({
     kind: "cloudFunctions",
     name: fn.name,
     updateTime: fn.updateTime,
@@ -112,37 +129,48 @@ async function fetchCloudRunUpdateTime(token) {
 /**
  * Fixture format (JSON):
  * {
+ *   "now": "2026-07-14T12:00:00.000Z",
  *   "cloudFunctions": [
- *     { "name": "projects/.../functions/healthLive", "updateTime": "2026-07-14T10:00:00.000Z" },
+ *     { "name": "projects/.../functions/healthLive", "updateTime": "...", "state": "ACTIVE" },
  *     ...
  *   ],
  *   "cloudRun": {
  *     "name": "projects/.../services/openburnbar-hosted-mcp",
- *     "updateTime": "2026-07-14T10:00:00.000Z"
+ *     "updateTime": "..."
  *   }
  * }
  *
- * Any key may be omitted; the check considers all present timestamps.
+ * `cloudFunctions` or `cloudRun` may be omitted to test a single surface.
+ * `state` on cloudFunctions entries defaults to "ACTIVE" if absent.
  */
 function loadFixture(fixturePath) {
   const raw = readFileSync(resolve(fixturePath), "utf8");
   const data = JSON.parse(raw);
-  const entries = [];
+  const surfaces = { cloudFunctions: [], cloudRun: null };
   for (const fn of data.cloudFunctions || []) {
-    entries.push({ kind: "cloudFunctions", name: fn.name, updateTime: fn.updateTime });
+    surfaces.cloudFunctions.push({
+      kind: "cloudFunctions",
+      name: fn.name,
+      updateTime: fn.updateTime,
+      state: fn.state || "ACTIVE",
+    });
   }
   if (data.cloudRun) {
-    entries.push({ kind: "cloudRun", name: data.cloudRun.name, updateTime: data.cloudRun.updateTime });
+    surfaces.cloudRun = {
+      kind: "cloudRun",
+      name: data.cloudRun.name,
+      updateTime: data.cloudRun.updateTime,
+    };
   }
-  if (entries.length === 0) {
+  if (surfaces.cloudFunctions.length === 0 && !surfaces.cloudRun) {
     console.error("::error::Fixture contains no updateTime entries.");
     process.exit(1);
   }
-  return entries;
+  return surfaces;
 }
 
 // ---------------------------------------------------------------------------
-// Core freshness logic
+// Core freshness logic — per-surface, not global newest
 // ---------------------------------------------------------------------------
 function ageDays(updateTime, now) {
   const ts = new Date(updateTime).getTime();
@@ -152,16 +180,55 @@ function ageDays(updateTime, now) {
   return (now - ts) / (1000 * 60 * 60 * 24);
 }
 
-function evaluateFreshness(entries, maxAgeDays, now) {
-  let newest = null;
-  for (const entry of entries) {
-    const age = ageDays(entry.updateTime, now);
-    if (!newest || age < newest.age) {
-      newest = { ...entry, age };
+/**
+ * Evaluate freshness per independent deploy surface.
+ *
+ * - cloudFunctions surface: the OLDEST active function's age (the weakest link).
+ *   A single frozen function fails the whole surface — that's the 6/18 freeze
+ *   pattern (healthLive/healthReady stuck while Cloud Run was fresh).
+ * - cloudRun surface: the single service's age.
+ *
+ * Each surface is checked independently: if EITHER is stale, the check fails.
+ * This prevents a fresh Cloud Run deploy from masking a stale Functions plane.
+ */
+function evaluateFreshness(surfaces, maxAgeDays, now) {
+  const results = [];
+
+  // Cloud Functions surface — check oldest active function
+  if (surfaces.cloudFunctions.length > 0) {
+    // Filter to ACTIVE only (fixture may carry non-active entries)
+    const active = surfaces.cloudFunctions.filter(
+      (fn) => fn.state === "ACTIVE",
+    );
+    if (active.length > 0) {
+      let oldest = null;
+      for (const fn of active) {
+        const age = ageDays(fn.updateTime, now);
+        if (!oldest || age > oldest.age) {
+          oldest = { ...fn, age };
+        }
+      }
+      results.push({
+        surface: "cloudFunctions",
+        entry: oldest,
+        stale: oldest.age > maxAgeDays,
+      });
     }
   }
-  const stale = newest.age > maxAgeDays;
-  return { newest, stale, maxAgeDays, now };
+
+  // Cloud Run surface
+  if (surfaces.cloudRun) {
+    const age = ageDays(surfaces.cloudRun.updateTime, now);
+    results.push({
+      surface: "cloudRun",
+      entry: { ...surfaces.cloudRun, age },
+      stale: age > maxAgeDays,
+    });
+  }
+
+  const staleSurfaces = results.filter((r) => r.stale);
+  const anyStale = staleSurfaces.length > 0;
+  return { results, staleSurfaces, anyStale, maxAgeDays, now };
 }
 
 // ---------------------------------------------------------------------------
@@ -170,23 +237,19 @@ function evaluateFreshness(entries, maxAgeDays, now) {
 const maxAgeDays = parseMaxAgeDays();
 const fixturePath = process.env.DEPLOY_FRESHNESS_FIXTURE;
 
-let entries;
+let surfaces;
 if (fixturePath) {
-  entries = loadFixture(fixturePath);
+  surfaces = loadFixture(fixturePath);
 } else {
   const token = accessToken();
   const fnEntries = await fetchCloudFunctionsUpdateTime(token);
-  let crEntry;
-  try {
-    crEntry = await fetchCloudRunUpdateTime(token);
-  } catch (err) {
-    // Cloud Run service may not exist in every project/region. A missing
-    // service is a warning, not a hard failure — the functions check alone
-    // is sufficient to catch a freeze.
-    console.warn(`::warn::Cloud Run service ${cloudRunService} not reachable: ${err.message}`);
-  }
-  entries = [...fnEntries];
-  if (crEntry) entries.push(crEntry);
+  // Cloud Run is a required production surface — fail closed on any read
+  // failure (404, 403, 5xx) rather than silently disabling the check.
+  const crEntry = await fetchCloudRunUpdateTime(token);
+  surfaces = {
+    cloudFunctions: fnEntries,
+    cloudRun: crEntry,
+  };
 }
 
 // Use a fixed `now` when testing with a fixture so the age comparison is
@@ -201,19 +264,33 @@ const now = fixturePath
     })()
   : Date.now();
 
-const { newest, stale } = evaluateFreshness(entries, maxAgeDays, now);
+const { results, staleSurfaces, anyStale } = evaluateFreshness(
+  surfaces,
+  maxAgeDays,
+  now,
+);
 
-const ageStr = newest.age.toFixed(1);
-if (stale) {
+// Report each surface
+for (const r of results) {
+  const ageStr = r.entry.age.toFixed(1);
+  const status = r.stale ? "FAIL" : "OK";
+  const tag = r.stale ? "::error::" : "";
+  console.log(
+    `${tag}Deploy freshness ${status} [${r.surface}]: ${ageStr} days old ` +
+      `(threshold ${maxAgeDays}d). ${r.entry.name} updateTime=${r.entry.updateTime}.`,
+  );
+}
+
+if (anyStale) {
+  const surfaceNames = staleSurfaces.map((r) => r.surface).join(", ");
   console.error(
-    `::error::Deploy freshness FAIL: newest prod deploy is ${ageStr} days old ` +
-      `(threshold ${maxAgeDays}d). ${newest.kind} ${newest.name} updateTime=${newest.updateTime}. ` +
+    `::error::Deploy freshness FAIL: stale surface(s): ${surfaceNames}. ` +
       `This is the 6/18 freeze signature — a merged fix sitting undeployed.`,
   );
   process.exit(1);
 }
 
+const allAges = results.map((r) => `${r.surface}=${r.entry.age.toFixed(1)}d`).join(", ");
 console.log(
-  `Deploy freshness OK: newest prod deploy is ${ageStr} days old ` +
-    `(threshold ${maxAgeDays}d). ${newest.kind} ${newest.name} updateTime=${newest.updateTime}.`,
+  `Deploy freshness OK: all surfaces within ${maxAgeDays}d threshold (${allAges}).`,
 );

@@ -67,6 +67,7 @@ jobs:
   deploy-freshness:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: production
     permissions:
       contents: read
       id-token: write
@@ -89,10 +90,12 @@ jobs:
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1 (node24-native)
 
       - name: Deploy freshness check
-        # Reads live Cloud Functions + Cloud Run updateTime and fails if the
-        # newest prod deploy exceeds 14 days (DEPLOY_FRESHNESS_MAX_AGE_DAYS
-        # env override). This is the monitor that would have caught the 6/18
-        # 26-day silent freeze (diligence 2026-07-14 Ops finding).
+        # Reads live Cloud Functions (v2 API) + Cloud Run updateTime and fails
+        # if ANY required deploy surface exceeds 14 days
+        # (DEPLOY_FRESHNESS_MAX_AGE_DAYS env override). Each surface is checked
+        # independently so a fresh Cloud Run cannot mask a frozen Functions
+        # plane. This is the monitor that would have caught the 6/18 26-day
+        # silent freeze (diligence 2026-07-14 Ops finding).
         env:
           FIREBASE_PROJECT: burnbar
           FUNCTIONS_REGION: us-central1
@@ -129,7 +132,7 @@ jobs:
           mode: open
           lane: deploy-freshness
           title-prefix: Deploy freshness gate failed
-          summary: Production deploy freshness check failed — newest deploy exceeds the 14-day threshold.
+          summary: Production deploy freshness check failed — a deploy surface exceeds the 14-day threshold.
           details: |
             This is the 6/18 freeze signature: a merged fix sitting undeployed.
             Job results:

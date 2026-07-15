@@ -10,15 +10,10 @@
       "name": "projects/burnbar/locations/us-central1/functions/healthReady",
       "updateTime": "2026-06-18T10:00:00.000Z",
       "state": "ACTIVE"
-    },
-    {
-      "name": "projects/burnbar/locations/us-central1/functions/appStoreServerNotificationsV2",
-      "updateTime": "2026-06-15T08:00:00.000Z",
-      "state": "ACTIVE"
     }
   ],
   "cloudRun": {
     "name": "projects/burnbar/locations/us-central1/services/openburnbar-hosted-mcp",
-    "updateTime": "2026-06-20T14:00:00.000Z"
+    "updateTime": "2026-07-12T10:30:00.000Z"
   }
 }

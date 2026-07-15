@@ -111,3 +111,31 @@ test("DEPLOY_FRESHNESS_MAX_AGE_DAYS=7 catches stale fixture (24 days > 7 days)",
   assert.equal(code, 1);
   assert.match(stderr, /FAIL/);
 });
+
+// ---------------------------------------------------------------------------
+// Case 9 — Per-surface: functions stale, cloudRun fresh still fails
+// This is the exact 6/18 freeze pattern: Cloud Run deployed recently but
+// Cloud Functions frozen. The global-newest approach would miss this.
+// ---------------------------------------------------------------------------
+test("functions stale + cloudRun fresh fails (per-surface independence)", () => {
+  const { code, stderr } = run({
+    DEPLOY_FRESHNESS_FIXTURE: join(FIXTURES, "functions-stale-cloudrun-fresh.json"),
+  });
+  assert.equal(code, 1);
+  assert.match(stderr, /FAIL/);
+  assert.match(stderr, /cloudFunctions/);
+  assert.match(stderr, /6\/18 freeze/);
+});
+
+// ---------------------------------------------------------------------------
+// Case 10 — Non-ACTIVE function filtered out (FAILED state ignored)
+// A FAILED function with a fresh updateTime must not mask a stale surface.
+// The healthReady function has a fresh updateTime but state=FAILED, so it
+// must be excluded — only the ACTIVE healthLive (2 days old) counts.
+// ---------------------------------------------------------------------------
+test("non-ACTIVE function (FAILED state) is filtered from freshness check", () => {
+  const { code } = run({
+    DEPLOY_FRESHNESS_FIXTURE: join(FIXTURES, "non-active-filtered.json"),
+  });
+  assert.equal(code, 0);
+});
