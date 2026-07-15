@@ -8,6 +8,10 @@ duration, daily continuity, user count, or sample count is required.
 No V1, V2, or V3 telemetry bundle can authorize promotion or legacy deletion.
 V3 is the only candidate-bound diagnostic schema. V1 and V2 are drain-only.
 
+After protected promotion, every Rust-authoritative release must consume the
+candidate-bound pre-release gate in
+[`shared-rust-release-evidence.md`](shared-rust-release-evidence.md).
+
 ## Identify one release candidate
 
 Collect evidence for one exact app commit and one exact loaded Rust core. Record:
