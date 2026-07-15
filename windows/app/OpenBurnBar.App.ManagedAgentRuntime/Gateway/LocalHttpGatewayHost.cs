@@ -416,10 +416,13 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
             return;
         }
 
+        byte[] upstreamRequest = PrepareUpstreamRequest(
+            requestBody,
+            decision.Degraded ? decision.Route.Model : null);
         ModelCompletionResult result = await _executor
             .ExecuteAsync(
                 decision.Route,
-                decision.Degraded ? RewriteModel(requestBody, decision.Route.Model) : requestBody,
+                upstreamRequest,
                 cancellationToken)
             .ConfigureAwait(false);
         _router.RecordOutcome(decision.Route, result, decision.Degraded);
@@ -496,19 +499,33 @@ public sealed class LocalHttpGatewayHost : IAsyncDisposable
             result.Succeeded ? GatewayUsageParser.Parse(result) : null));
     }
 
-    private byte[] RewriteModel(byte[] requestBody, string model)
+    private byte[] PrepareUpstreamRequest(byte[] requestBody, string? modelOverride)
     {
         JsonNode? parsed = JsonNode.Parse(requestBody);
         if (parsed is not JsonObject request)
         {
             throw new JsonException("Completion request must be a JSON object.");
         }
-        request["model"] = model;
+
+        string[] gatewayOnlyKeys = request
+            .Select(property => property.Key)
+            .Where(key => key.StartsWith("openburnbar_", StringComparison.Ordinal))
+            .ToArray();
+        foreach (string key in gatewayOnlyKeys)
+        {
+            request.Remove(key);
+        }
+
+        if (!string.IsNullOrWhiteSpace(modelOverride))
+        {
+            request["model"] = modelOverride;
+        }
+
         byte[] rewritten = JsonSerializer.SerializeToUtf8Bytes(request);
         if (rewritten.Length > _maxRequestBytes)
         {
             throw new RequestTooLargeException(
-                $"Request body exceeds the {_maxRequestBytes}-byte gateway limit after model substitution.");
+                $"Request body exceeds the {_maxRequestBytes}-byte gateway limit after gateway sanitization.");
         }
         return rewritten;
     }

@@ -123,11 +123,15 @@ public sealed class LocalHttpGatewayHostTests
                 }));
         string? selected = null;
         string? upstreamModel = null;
+        bool forwardedGatewayOnlyField = false;
         var executor = new DelegateModelCompletionExecutor((route, body, _) =>
         {
             selected = route.Id;
             using JsonDocument forwarded = JsonDocument.Parse(body);
             upstreamModel = forwarded.RootElement.GetProperty("model").GetString();
+            forwardedGatewayOnlyField = forwarded.RootElement.TryGetProperty(
+                "openburnbar_allow_degrade",
+                out JsonElement ignoredGatewayField);
             return Task.FromResult(new ModelCompletionResult(
                 200,
                 Encoding.UTF8.GetBytes("{}"),
@@ -147,6 +151,7 @@ public sealed class LocalHttpGatewayHostTests
         Assert.Equal(200, (int)degraded.StatusCode);
         Assert.Equal("fallback", selected);
         Assert.Equal("gpt", upstreamModel);
+        Assert.False(forwardedGatewayOnlyField);
 
         using var deny = new StringContent(
             "{\"model\":\"claude\",\"messages\":[],\"openburnbar_allow_degrade\":false}",
