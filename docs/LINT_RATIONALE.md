@@ -85,6 +85,9 @@ budgets/mission-splitbrain-baseline.json
 budgets/core-target-membership-baseline.json
 budgets/core-umbrella-imports-baseline.json
 budgets/linux-desktop.perf.json
+# macOS idle/occluded CPU regression tripwire (P-PERF-3): structural assertion
+# gate for the backdrop WebGL rAF pause on occlusion — no existing baseline raised.
+budgets/macos-idle-cpu.perf.json
 # migrator-parity: annotated schema divergences between the canonical Swift GRDB
 # migrator and the Windows/Linux mirrors (scripts/check-migrator-parity.mjs).
 # Exact-set matched both ways: new divergences AND stale entries fail CI.

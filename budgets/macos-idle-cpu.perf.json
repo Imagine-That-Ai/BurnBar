@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "reason": "Mechanical tripwire for macOS idle/occluded CPU recurrence (Perf §alarming-3). The 128–195% idle-CPU class has recurred twice (caught only socially); this gate asserts the backdrop/animation pause guard behavior so a future regression cannot merge silently.",
+  "gate": {
+    "type": "behavioral-assertion",
+    "scope": "macOS backdrop WebGL render-loop occlusion pause (KernelBackdropView → window.__setBackdropActive → setHostVisible → cancelAnimationFrame)",
+    "tripwireClass": "macos-idle-occlusion-gate",
+    "testTarget": "scripts/ci/macos-idle-occlusion-gate.test.mjs",
+    "swiftSeam": "AgentLens/Views/Dashboard/Components/KernelBackdropView.swift (OcclusionVisibilityPolicy)",
+    "swiftSeamTest": "AgentLensTests/Active/MacOSIdleOcclusionGateTests.swift",
+    "assertions": [
+      "JS bundle __setBackdropActive(false) cancels pending requestAnimationFrame and stops scheduling while hidden",
+      "JS bundle __setBackdropActive(true) resumes the rAF loop (new rAF scheduled)",
+      "JS bundle with cancelAnimationFrame gutted is caught (rAF not cancelled on occlusion)",
+      "Swift OcclusionVisibilityPolicy returns inactive for no-window and occluded states, active for visible"
+    ]
+  },
+  "measurementLimitations": {
+    "actualCpuMeasurementInfeasible": true,
+    "reason": "GitHub Actions macOS runners do not support real NSWindow occlusion state transitions; a headless app launch cannot exercise the occlusion→rAF-cancel path at runtime. The behavioral tripwire (exercising the real JS bundle in a mock DOM+rAF harness) is the strongest executable gate available in CI.",
+    "localVerification": "On a real Mac, launch the app, occlude the window, and confirm Activity Monitor shows ~0% CPU (documented in PetCompanion BUILD-NOTES.md §Idle CPU)."
+  },
+  "seededValues": {
+    "idleCpuPercentObserved": "128–195% on recurrence (socially caught, not CI-gated)",
+    "idleCpuPercentTarget": "<5% when occluded (backdrop rAF stopped)",
+    "existingBaselineIncreased": false,
+    "note": "This is a NEW budget for a NEW gate; no existing baseline was raised."
+  },
+  "trendPolicy": {
+    "name": "occlusion-pause-behavioral-ratchet",
+    "rule": "The behavioral tripwire must pass on every PR. If the occlusion guard is removed or weakened, the tripwire fails. The tripwire may only be relaxed with A5 (Alberto) sign-off and a written rationale in the PR body."
+  }
+}
