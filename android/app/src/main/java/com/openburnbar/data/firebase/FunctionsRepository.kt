@@ -98,10 +98,11 @@ class FunctionsRepository {
     private val functions: FirebaseFunctions = Firebase.functions
     private val securityClient = ComputerUseSecurityCallableClient(functions)
     internal val piAgent: FunctionsPiAgentRepository by lazy {
-        FunctionsPiAgentRepository(functions, ::callMap, securityClient, ::localDeviceId)
+        FunctionsPiAgentRepository(functions, ::callMap, securityClient) { localDeviceId }
     }
 
-    private fun localDeviceId(): String = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+    private val localDeviceId: String
+        get() = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
 
     suspend fun searchStreams(query: String, limit: Int = 20): List<Map<String, Any>> {
         val result =
@@ -242,14 +243,13 @@ class FunctionsRepository {
      * returns a snapshot, the client uploads it, and Firestore becomes the
      * single source of truth.
      */
-    suspend fun uploadProviderQuotaSnapshot(snapshot: Map<String, Any>): Map<String, Any> =
-        callMap("uploadProviderQuotaSnapshot", snapshot)
+    suspend fun uploadProviderQuotaSnapshot(snapshot: Map<String, Any>): Map<String, Any> = callMap("uploadProviderQuotaSnapshot", snapshot)
 
     suspend fun deleteProviderAccount(accountId: String) {
         val subjectId = securityClient.providerAccountSubjectId("account", accountId)
         securityClient.callHighRiskOwnerAction(
             callableName = "deleteProviderAccount",
-            deviceId = localDeviceId(),
+            deviceId = localDeviceId,
             actionKind = "provider_account_delete",
             subjectId = subjectId,
             payload = mapOf("accountID" to accountId),
@@ -290,7 +290,7 @@ class FunctionsRepository {
         val subjectId = securityClient.providerAccountSubjectId(providerId, null)
         return securityClient.callHighRiskOwnerAction(
             callableName = "connectProviderAccount",
-            deviceId = localDeviceId(),
+            deviceId = localDeviceId,
             actionKind = "provider_account_connect",
             subjectId = subjectId,
             payload = payload,
@@ -300,7 +300,7 @@ class FunctionsRepository {
     suspend fun revokeRemoteMcpClient(clientId: String) {
         securityClient.callHighRiskOwnerAction(
             callableName = "revokeRemoteMcpClient",
-            deviceId = localDeviceId(),
+            deviceId = localDeviceId,
             actionKind = "remote_mcp_grant_revoke",
             subjectId = clientId,
             payload = mapOf("clientId" to clientId),
@@ -329,7 +329,7 @@ class FunctionsRepository {
             )
         return securityClient.callHighRiskOwnerAction(
             callableName = "approveHermesGatewayDeviceGrant",
-            deviceId = localDeviceId(),
+            deviceId = localDeviceId,
             actionKind = "hermes_gateway_device_grant_approve",
             subjectId = userCode,
             payload = payload,

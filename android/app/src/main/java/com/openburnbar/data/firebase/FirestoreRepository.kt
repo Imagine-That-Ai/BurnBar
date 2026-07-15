@@ -31,12 +31,12 @@ import java.time.Instant
 import java.time.format.DateTimeParseException
 import java.util.Date
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.CancellationException
 
 private const val NANOS_PER_MILLIS = 1_000_000
 private const val TOP_PROJECTS_BY_COST_LIMIT = 20

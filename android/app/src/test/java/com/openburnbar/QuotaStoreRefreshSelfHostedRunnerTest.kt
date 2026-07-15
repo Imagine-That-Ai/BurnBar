@@ -14,6 +14,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -36,8 +38,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 /**
  * Regression tests for the P-CQ-3 Android quota-refresh fix in
@@ -96,82 +96,84 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
     // ─────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `refreshSelfHostedRunner executes the OkHttp call on a non-Main thread`(): TestResult =
-        runTest(testDispatcher) {
-            val testThread = Thread.currentThread()
-            val capturedThread = arrayOfNulls<Thread>(1)
-            val latch = CountDownLatch(1)
-            val client = okHttpClient(Interceptor { chain ->
+    fun `refreshSelfHostedRunner executes the OkHttp call on a non-Main thread`(): TestResult = runTest(testDispatcher) {
+        val testThread = Thread.currentThread()
+        val capturedThread = arrayOfNulls<Thread>(1)
+        val latch = CountDownLatch(1)
+        val client = okHttpClient(
+            Interceptor { chain ->
                 capturedThread[0] = Thread.currentThread()
                 latch.countDown()
                 stubOkResponse(chain.request())
-            })
+            },
+        )
 
-            val mockRepo = mockRepoWithStaleCodexAccount()
-            val store = QuotaStore(stubApp(), mockRepo, null, client)
-            store.load()
-            advanceUntilIdle()
-            awaitIoAndAdvance(latch)
+        val mockRepo = mockRepoWithStaleCodexAccount()
+        val store = QuotaStore(stubApp(), mockRepo, null, client)
+        store.load()
+        advanceUntilIdle()
+        awaitIoAndAdvance(latch)
 
-            val interceptorThread = capturedThread[0]
-            assertNotNull("interceptor thread was not captured", interceptorThread)
-            assertFalse(
-                "OkHttp call ran on the test/Main thread (${interceptorThread?.name})",
-                interceptorThread === testThread,
-            )
-        }
+        val interceptorThread = capturedThread[0]
+        assertNotNull("interceptor thread was not captured", interceptorThread)
+        assertFalse(
+            "OkHttp call ran on the test/Main thread (${interceptorThread?.name})",
+            interceptorThread === testThread,
+        )
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  Test 2: JSON body escapes a quote in the account id via JSONObject
     // ─────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `refreshSelfHostedRunner escapes a quote in the account id via JSONObject`(): TestResult =
-        runTest(testDispatcher) {
-            val capturedBody = mutableListOf<String>()
-            val latch = CountDownLatch(1)
-            val client = okHttpClient(Interceptor { chain ->
+    fun `refreshSelfHostedRunner escapes a quote in the account id via JSONObject`(): TestResult = runTest(testDispatcher) {
+        val capturedBody = mutableListOf<String>()
+        val latch = CountDownLatch(1)
+        val client = okHttpClient(
+            Interceptor { chain ->
                 val buffer = okio.Buffer()
                 chain.request().body?.writeTo(buffer)
                 capturedBody.add(buffer.readUtf8())
                 latch.countDown()
                 stubOkResponse(chain.request())
-            })
+            },
+        )
 
-            // providerId must be "codex" to pass the refresh filter; the
-            // quote goes in the account id, which is also interpolated into
-            // the JSON body.
-            val account = ProviderAccount(
-                id = "acc\"evil",
-                providerId = "codex",
-                status = "stale",
-                storageScope = "local_only",
-            )
-            val mockRepo = mockRepoWithAccount(account)
-            val store = QuotaStore(stubApp(), mockRepo, null, client)
-            store.load()
-            advanceUntilIdle()
-            awaitIoAndAdvance(latch)
+        // providerId must be "codex" to pass the refresh filter; the
+        // quote goes in the account id, which is also interpolated into
+        // the JSON body.
+        val account = ProviderAccount(
+            id = "acc\"evil",
+            providerId = "codex",
+            status = "stale",
+            storageScope = "local_only",
+        )
+        val mockRepo = mockRepoWithAccount(account)
+        val store = QuotaStore(stubApp(), mockRepo, null, client)
+        store.load()
+        advanceUntilIdle()
+        awaitIoAndAdvance(latch)
 
-            assertTrue("request body was never captured", capturedBody.isNotEmpty())
-            // Pre-fix: raw string interpolation produces
-            //   {"provider":"codex","accountID":"acc"evil"}
-            // which is invalid JSON — JSONObject throws.
-            // Post-fix: JSONObject escapes the quote → valid JSON.
-            val json = JSONObject(capturedBody.first())
-            assertEquals("codex", json.getString("provider"))
-            assertEquals("acc\"evil", json.getString("accountID"))
-        }
+        assertTrue("request body was never captured", capturedBody.isNotEmpty())
+        // Pre-fix: raw string interpolation produces
+        //   {"provider":"codex","accountID":"acc"evil"}
+        // which is invalid JSON — JSONObject throws.
+        // Post-fix: JSONObject escapes the quote → valid JSON.
+        val json = JSONObject(capturedBody.first())
+        assertEquals("codex", json.getString("provider"))
+        assertEquals("acc\"evil", json.getString("accountID"))
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  Test 3: Observable failure — HTTP error sets _error StateFlow
     // ─────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `refreshSelfHostedRunner sets error state on HTTP failure`(): TestResult =
-        runTest(testDispatcher) {
-            val latch = CountDownLatch(1)
-            val client = okHttpClient(Interceptor { chain ->
+    fun `refreshSelfHostedRunner sets error state on HTTP failure`(): TestResult = runTest(testDispatcher) {
+        val latch = CountDownLatch(1)
+        val client = okHttpClient(
+            Interceptor { chain ->
                 latch.countDown()
                 Response.Builder()
                     .request(chain.request())
@@ -180,20 +182,21 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
                     .message("Internal Server Error")
                     .body("".toResponseBody("text/plain".toMediaType()))
                     .build()
-            })
+            },
+        )
 
-            val mockRepo = mockRepoWithStaleCodexAccount()
-            val store = QuotaStore(stubApp(), mockRepo, null, client)
-            store.load()
-            advanceUntilIdle()
-            awaitIoAndAdvance(latch)
+        val mockRepo = mockRepoWithStaleCodexAccount()
+        val store = QuotaStore(stubApp(), mockRepo, null, client)
+        store.load()
+        advanceUntilIdle()
+        awaitIoAndAdvance(latch)
 
-            // Pre-fix: catch (_: Exception) swallowed the failure and
-            // _error stayed null.  Post-fix: the HTTP 500 sets _error.
-            val error = store.error.value
-            assertNotNull("error state was not set on HTTP 500", error)
-            assertTrue("error should mention HTTP 500: $error", error!!.contains("500"))
-        }
+        // Pre-fix: catch (_: Exception) swallowed the failure and
+        // _error stayed null.  Post-fix: the HTTP 500 sets _error.
+        val error = store.error.value
+        assertNotNull("error state was not set on HTTP 500", error)
+        assertTrue("error should mention HTTP 500: $error", error!!.contains("500"))
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  Test 4: CancellationException is not swallowed in
@@ -201,29 +204,30 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
     // ─────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `refreshStaleCloudQuotaIfPossible rethrows CancellationException from the runner call`(): TestResult =
-        runTest(testDispatcher) {
-            val latch = CountDownLatch(1)
-            val client = okHttpClient(Interceptor { chain ->
+    fun `refreshStaleCloudQuotaIfPossible rethrows CancellationException from the runner call`(): TestResult = runTest(testDispatcher) {
+        val latch = CountDownLatch(1)
+        val client = okHttpClient(
+            Interceptor { chain ->
                 latch.countDown()
                 throw CancellationException("test-cancellation")
-            })
+            },
+        )
 
-            val mockRepo = mockRepoWithStaleCodexAccount()
-            val store = QuotaStore(stubApp(), mockRepo, null, client)
-            store.load()
-            advanceUntilIdle()
-            awaitIoAndAdvance(latch)
+        val mockRepo = mockRepoWithStaleCodexAccount()
+        val store = QuotaStore(stubApp(), mockRepo, null, client)
+        store.load()
+        advanceUntilIdle()
+        awaitIoAndAdvance(latch)
 
-            // Post-fix: catch (e: CancellationException) { throw e } rethrows
-            // → the coroutine is cancelled BEFORE the trailing runCatching
-            // re-fetch → fetchQuotaSnapshots called exactly once (from load).
-            //
-            // Pre-fix: catch (_: Exception) swallows the CancellationException
-            // → the coroutine continues → runCatching calls
-            // fetchQuotaSnapshots again → 2 total calls → coVerify fails.
-            coVerify(exactly = 1) { mockRepo.fetchQuotaSnapshots() }
-        }
+        // Post-fix: catch (e: CancellationException) { throw e } rethrows
+        // → the coroutine is cancelled BEFORE the trailing runCatching
+        // re-fetch → fetchQuotaSnapshots called exactly once (from load).
+        //
+        // Pre-fix: catch (_: Exception) swallows the CancellationException
+        // → the coroutine continues → runCatching calls
+        // fetchQuotaSnapshots again → 2 total calls → coVerify fails.
+        coVerify(exactly = 1) { mockRepo.fetchQuotaSnapshots() }
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  Test 5: staleRefreshInFlight cleared for ALL accounts on cancellation
@@ -231,39 +235,40 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
     // ─────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `refreshStaleCloudQuotaIfPossible clears all queued account IDs from staleRefreshInFlight on cancellation`(): TestResult =
-        runTest(testDispatcher) {
-            val account1 = ProviderAccount(id = "acc-1", providerId = "codex", status = "stale", storageScope = "local_only")
-            val account2 = ProviderAccount(id = "acc-2", providerId = "codex", status = "stale", storageScope = "local_only")
+    fun `refreshStaleCloudQuotaIfPossible clears all queued account IDs from staleRefreshInFlight on cancellation`(): TestResult = runTest(testDispatcher) {
+        val account1 = ProviderAccount(id = "acc-1", providerId = "codex", status = "stale", storageScope = "local_only")
+        val account2 = ProviderAccount(id = "acc-2", providerId = "codex", status = "stale", storageScope = "local_only")
 
-            val latch = CountDownLatch(1)
-            // Interceptor throws CancellationException on the FIRST account.
-            // The second account never gets its turn because the loop is
-            // cancelled.
-            val client = okHttpClient(Interceptor { chain ->
+        val latch = CountDownLatch(1)
+        // Interceptor throws CancellationException on the FIRST account.
+        // The second account never gets its turn because the loop is
+        // cancelled.
+        val client = okHttpClient(
+            Interceptor { chain ->
                 latch.countDown()
                 throw CancellationException("test-cancellation")
-            })
+            },
+        )
 
-            val mockRepo = mockRepoWithAccounts(account1, account2)
-            val store = QuotaStore(stubApp(), mockRepo, null, client)
-            store.load()
-            advanceUntilIdle()
-            awaitIoAndAdvance(latch)
+        val mockRepo = mockRepoWithAccounts(account1, account2)
+        val store = QuotaStore(stubApp(), mockRepo, null, client)
+        store.load()
+        advanceUntilIdle()
+        awaitIoAndAdvance(latch)
 
-            // Post-fix: the outer `finally` iterates ALL accountsToRefresh
-            // and removes every id, so staleRefreshInFlight is empty.
-            //
-            // Pre-fix: only the per-account `finally` at line 194 runs for
-            // account-1 (the one that threw).  account-2's id is never
-            // removed → staleRefreshInFlight still contains "acc-2" → the
-            // assertion fails.
-            val inFlight = staleRefreshInFlightOf(store)
-            assertTrue(
-                "staleRefreshInFlight should be empty after cancellation, but still contains: $inFlight",
-                inFlight.isEmpty(),
-            )
-        }
+        // Post-fix: the outer `finally` iterates ALL accountsToRefresh
+        // and removes every id, so staleRefreshInFlight is empty.
+        //
+        // Pre-fix: only the per-account `finally` at line 194 runs for
+        // account-1 (the one that threw).  account-2's id is never
+        // removed → staleRefreshInFlight still contains "acc-2" → the
+        // assertion fails.
+        val inFlight = staleRefreshInFlightOf(store)
+        assertTrue(
+            "staleRefreshInFlight should be empty after cancellation, but still contains: $inFlight",
+            inFlight.isEmpty(),
+        )
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  Test 6: refreshSelfHostedRunner uploads the parsed runner response
@@ -271,30 +276,38 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
     // ─────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `refreshSelfHostedRunner uploads the parsed runner response via uploadProviderQuotaSnapshot`(): TestResult =
-        runTest(testDispatcher) {
-            val account = ProviderAccount(
-                id = "acc-1",
-                providerId = "codex",
-                label = "My Codex Account",
-                status = "stale",
-                storageScope = "local_only",
-            )
-            // Runner returns a snapshot nested under "snapshot" (iOS pattern).
-            val runnerResponse = JSONObject().apply {
-                put("snapshot", JSONObject().apply {
-                    put("buckets", org.json.JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("name", "daily")
-                            put("remaining", 5000.0)
-                        })
-                    })
+    fun `refreshSelfHostedRunner uploads the parsed runner response via uploadProviderQuotaSnapshot`(): TestResult = runTest(testDispatcher) {
+        val account = ProviderAccount(
+            id = "acc-1",
+            providerId = "codex",
+            label = "My Codex Account",
+            status = "stale",
+            storageScope = "local_only",
+        )
+        // Runner returns a snapshot nested under "snapshot" (iOS pattern).
+        val runnerResponse = JSONObject().apply {
+            put(
+                "snapshot",
+                JSONObject().apply {
+                    put(
+                        "buckets",
+                        org.json.JSONArray().apply {
+                            put(
+                                JSONObject().apply {
+                                    put("name", "daily")
+                                    put("remaining", 5000.0)
+                                },
+                            )
+                        },
+                    )
                     put("confidence", "high")
-                })
-            }.toString()
+                },
+            )
+        }.toString()
 
-            val latch = CountDownLatch(1)
-            val client = okHttpClient(Interceptor { chain ->
+        val latch = CountDownLatch(1)
+        val client = okHttpClient(
+            Interceptor { chain ->
                 latch.countDown()
                 Response.Builder()
                     .request(chain.request())
@@ -303,26 +316,28 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
                     .message("OK")
                     .body(runnerResponse.toResponseBody("application/json".toMediaType()))
                     .build()
-            })
+            },
+        )
 
-            val mockRepo = mockRepoWithAccount(account)
-            val mockFunctions = mockk<FunctionsRepository>(relaxed = true)
-            coEvery { mockFunctions.uploadProviderQuotaSnapshot(any()) } returns emptyMap()
+        val mockRepo = mockRepoWithAccount(account)
+        val mockFunctions = mockk<FunctionsRepository>(relaxed = true)
+        coEvery { mockFunctions.uploadProviderQuotaSnapshot(any()) } returns emptyMap()
 
-            val store = QuotaStore(stubApp(), mockRepo, mockFunctions, client)
-            store.load()
-            advanceUntilIdle()
-            awaitIoAndAdvance(latch)
+        val store = QuotaStore(stubApp(), mockRepo, mockFunctions, client)
+        store.load()
+        advanceUntilIdle()
+        awaitIoAndAdvance(latch)
 
-            // Post-fix: the response body is parsed, enriched with account
-            // context, and uploaded via uploadProviderQuotaSnapshot.
-            //
-            // Pre-fix: the success branch just called repo.fetchQuotaSnapshots()
-            // and repo.fetchProviderAccounts() without parsing or uploading
-            // the response — uploadProviderQuotaSnapshot was never called
-            // (and didn't even exist on FunctionsRepository).
-            coVerify {
-                mockFunctions.uploadProviderQuotaSnapshot(match { map ->
+        // Post-fix: the response body is parsed, enriched with account
+        // context, and uploaded via uploadProviderQuotaSnapshot.
+        //
+        // Pre-fix: the success branch just called repo.fetchQuotaSnapshots()
+        // and repo.fetchProviderAccounts() without parsing or uploading
+        // the response — uploadProviderQuotaSnapshot was never called
+        // (and didn't even exist on FunctionsRepository).
+        coVerify {
+            mockFunctions.uploadProviderQuotaSnapshot(
+                match { map ->
                     map["provider"] == "codex" &&
                         map["providerID"] == "codex" &&
                         map["accountID"] == "acc-1" &&
@@ -332,9 +347,10 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
                         map["updatedAt"] != null &&
                         map["confidence"] == "high" &&
                         (map["buckets"] as? org.json.JSONArray)?.length() == 1
-                })
-            }
+                },
+            )
         }
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  Helpers
@@ -390,8 +406,7 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
     /** Builds a relaxed mock FirestoreRepository pre-stubbed with an empty
      *  snapshot list and a single stale codex account that triggers the
      *  self-hosted refresh path. */
-    private fun mockRepoWithStaleCodexAccount(): FirestoreRepository =
-        mockRepoWithAccount(staleCodexAccount())
+    private fun mockRepoWithStaleCodexAccount(): FirestoreRepository = mockRepoWithAccount(staleCodexAccount())
 
     private fun mockRepoWithAccount(account: ProviderAccount): FirestoreRepository {
         val mockRepo = mockk<FirestoreRepository>(relaxed = true)
@@ -420,19 +435,17 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
         return field.get(store) as Set<String>
     }
 
-    private fun okHttpClient(interceptor: Interceptor): OkHttpClient =
-        OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
-            .addInterceptor(interceptor)
-            .build()
+    private fun okHttpClient(interceptor: Interceptor): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .addInterceptor(interceptor)
+        .build()
 
-    private fun stubOkResponse(request: okhttp3.Request): Response =
-        Response.Builder()
-            .request(request)
-            .protocol(Protocol.HTTP_1_1)
-            .code(200)
-            .message("OK")
-            .body("{}".toResponseBody("application/json".toMediaType()))
-            .build()
+    private fun stubOkResponse(request: okhttp3.Request): Response = Response.Builder()
+        .request(request)
+        .protocol(Protocol.HTTP_1_1)
+        .code(200)
+        .message("OK")
+        .body("{}".toResponseBody("application/json".toMediaType()))
+        .build()
 }

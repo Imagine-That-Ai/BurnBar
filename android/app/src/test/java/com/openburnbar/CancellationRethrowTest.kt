@@ -77,94 +77,91 @@ class CancellationRethrowTest {
     // ─────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `fetchQuotaSnapshots rethrows CancellationException instead of falling through to Source DEFAULT`(): TestResult =
-        runTest(testDispatcher) {
-            val firestore = mockFirestoreForCancellation("quota_snapshots")
-            mockFirebaseAuth("uid-1")
-            mockFirebaseSingletons(firestore)
-            val repo = FirestoreRepository()
+    fun `fetchQuotaSnapshots rethrows CancellationException instead of falling through to Source DEFAULT`(): TestResult = runTest(testDispatcher) {
+        val firestore = mockFirestoreForCancellation("quota_snapshots")
+        mockFirebaseAuth("uid-1")
+        mockFirebaseSingletons(firestore)
+        val repo = FirestoreRepository()
 
-            val thrown = assertThrows(CancellationException::class.java) {
-                runBlocking { repo.fetchQuotaSnapshots() }
-            }
-            assertTrue("CancellationException should propagate", thrown is CancellationException)
+        val thrown = assertThrows(CancellationException::class.java) {
+            runBlocking { repo.fetchQuotaSnapshots() }
         }
+        assertTrue("CancellationException should propagate", thrown is CancellationException)
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  Test 5b: fetchProviderAccounts rethrows CancellationException
     // ─────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `fetchProviderAccounts rethrows CancellationException instead of falling through to Source DEFAULT`(): TestResult =
-        runTest(testDispatcher) {
-            val firestore = mockFirestoreForCancellation("provider_accounts")
-            mockFirebaseAuth("uid-1")
-            mockFirebaseSingletons(firestore)
-            val repo = FirestoreRepository()
+    fun `fetchProviderAccounts rethrows CancellationException instead of falling through to Source DEFAULT`(): TestResult = runTest(testDispatcher) {
+        val firestore = mockFirestoreForCancellation("provider_accounts")
+        mockFirebaseAuth("uid-1")
+        mockFirebaseSingletons(firestore)
+        val repo = FirestoreRepository()
 
-            val thrown = assertThrows(CancellationException::class.java) {
-                runBlocking { repo.fetchProviderAccounts() }
-            }
-            assertTrue("CancellationException should propagate", thrown is CancellationException)
+        val thrown = assertThrows(CancellationException::class.java) {
+            runBlocking { repo.fetchProviderAccounts() }
         }
+        assertTrue("CancellationException should propagate", thrown is CancellationException)
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  Test 6: ActivityStore.updateSearch rethrows CancellationException
     // ─────────────────────────────────────────────────────────────────────
 
     @Test
-    fun `updateSearch rethrows CancellationException from cloud search instead of swallowing it`(): TestResult =
-        runTest(testDispatcher) {
-            // Phase 1: a successful search populates cloudSearchHits so we
-            // have a non-empty baseline that distinguishes the two code paths.
-            val realRow = CloudConversationSearchRow(
-                id = "r1",
-                documentID = "doc-1",
-                title = "Baseline",
-                snippet = "snippet",
-                provider = "codex",
-                storagePath = "/path",
-                bodyHash = "hash",
-                bodyHashVersion = 1,
-                score = 1.0,
-            )
-            val mockSearchService = mockk<CloudConversationSearchService>()
-            coEvery { mockSearchService.search(any(), any()) } returns listOf(realRow)
+    fun `updateSearch rethrows CancellationException from cloud search instead of swallowing it`(): TestResult = runTest(testDispatcher) {
+        // Phase 1: a successful search populates cloudSearchHits so we
+        // have a non-empty baseline that distinguishes the two code paths.
+        val realRow = CloudConversationSearchRow(
+            id = "r1",
+            documentID = "doc-1",
+            title = "Baseline",
+            snippet = "snippet",
+            provider = "codex",
+            storagePath = "/path",
+            bodyHash = "hash",
+            bodyHashVersion = 1,
+            score = 1.0,
+        )
+        val mockSearchService = mockk<CloudConversationSearchService>()
+        coEvery { mockSearchService.search(any(), any()) } returns listOf(realRow)
 
-            // Pass a mock repo so ActivityStore's constructor doesn't call
-            // FirestoreRepository() (which needs Firebase).
-            val mockRepo = mockk<FirestoreRepository>(relaxed = true)
-            val store = ActivityStore(
-                repo = mockRepo,
-                cloudSearchFactory = { mockSearchService },
-            )
-            store.updateSearch("baseline query")
-            advanceUntilIdle()
-            assertTrue(
-                "baseline search should have produced results",
-                store.cloudSearchHits.value.isNotEmpty(),
-            )
+        // Pass a mock repo so ActivityStore's constructor doesn't call
+        // FirestoreRepository() (which needs Firebase).
+        val mockRepo = mockk<FirestoreRepository>(relaxed = true)
+        val store = ActivityStore(
+            repo = mockRepo,
+            cloudSearchFactory = { mockSearchService },
+        )
+        store.updateSearch("baseline query")
+        advanceUntilIdle()
+        assertTrue(
+            "baseline search should have produced results",
+            store.cloudSearchHits.value.isNotEmpty(),
+        )
 
-            // Phase 2: the next search throws CancellationException.
-            coEvery { mockSearchService.search(any(), any()) } throws
-                CancellationException("test-cancel")
-            store.updateSearch("cancel query")
-            advanceUntilIdle()
+        // Phase 2: the next search throws CancellationException.
+        coEvery { mockSearchService.search(any(), any()) } throws
+            CancellationException("test-cancel")
+        store.updateSearch("cancel query")
+        advanceUntilIdle()
 
-            // Pre-fix: catch (_: Exception) swallows the CancellationException
-            // and sets _cloudSearchHits.value = emptyList() → the baseline
-            // hits are cleared.
-            //
-            // Post-fix: catch (e: CancellationException) { throw e } rethrows
-            // BEFORE the catch (_: Exception) fallback runs, so
-            // _cloudSearchHits is NOT cleared and the baseline hits remain.
-            assertTrue(
-                "pre-fix: swallowed CancellationException cleared the " +
-                    "baseline hits (expected post-fix to preserve them): " +
-                    "${store.cloudSearchHits.value}",
-                store.cloudSearchHits.value.isNotEmpty(),
-            )
-        }
+        // Pre-fix: catch (_: Exception) swallows the CancellationException
+        // and sets _cloudSearchHits.value = emptyList() → the baseline
+        // hits are cleared.
+        //
+        // Post-fix: catch (e: CancellationException) { throw e } rethrows
+        // BEFORE the catch (_: Exception) fallback runs, so
+        // _cloudSearchHits is NOT cleared and the baseline hits remain.
+        assertTrue(
+            "pre-fix: swallowed CancellationException cleared the " +
+                "baseline hits (expected post-fix to preserve them): " +
+                "${store.cloudSearchHits.value}",
+            store.cloudSearchHits.value.isNotEmpty(),
+        )
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  Helpers
