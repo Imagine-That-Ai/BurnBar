@@ -3,7 +3,9 @@
 const SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const TYPES = new Set(['appimage', 'deb', 'rpm', 'daemon']);
+// Every published native package and its runtime companion is represented in
+// the signed feed. Arch is a first-class package format alongside DEB/RPM.
+const TYPES = new Set(['appimage', 'deb', 'rpm', 'arch', 'daemon']);
 const ARCHITECTURES = new Set(['aarch64', 'x86_64']);
 const CHANNELS = new Set(['stable', 'prerelease', 'nightly']);
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u;
