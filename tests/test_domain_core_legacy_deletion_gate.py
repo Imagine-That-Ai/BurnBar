@@ -141,6 +141,33 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
     def test_current_rollout_ledger_passes(self) -> None:
         GATE.run_gate(ROOT, ROOT / "config/domain-core-legacy-deletion.json")
 
+    def test_extracted_legacy_owners_are_whole_file_deletion_targets(self) -> None:
+        ledger = json.loads((ROOT / "config/domain-core-legacy-deletion.json").read_text())
+        path_targets = {
+            target["path"]
+            for row in ledger["rows"]
+            for target in row["targets"]
+            if target["kind"] == "path" and target["role"] == "legacy_implementation"
+        }
+        self.assertTrue(
+            {
+                "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/ClaudeQuotaLegacy.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/CodexQuotaLegacy.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyCrypto.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyDocumentRewrap.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacySearch.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRelayLegacyCrypto.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRatchetLegacyCrypto.swift",
+                "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyCrypto.kt",
+                "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacySearch.kt",
+                "android/app/src/main/java/com/openburnbar/data/cloud/Legacy/CloudVaultLegacyDocumentRewrap.kt",
+                "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayLegacyCrypto.kt",
+                "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetLegacyCrypto.kt",
+                "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/Legacy/CloudVaultLegacyCrypto.cs",
+                "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/Legacy/AesGcmBox.cs",
+            }.issubset(path_targets)
+        )
+
     def test_ios_release_consumers_match_mobile_runtime_ownership(self) -> None:
         ios_rows = {
             row_id

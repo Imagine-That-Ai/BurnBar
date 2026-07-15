@@ -39,8 +39,8 @@ five-language parser migration.
 
 | Operation                                | Migration owners                  | Contract                                                  | Production callers                                                                        | Legacy deletion target                                                                            |
 | ---------------------------------------- | --------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Claude statusline JSON to buckets        | Rust plus Swift/C# during rollout | `tests/fixtures/domain-core/quota/v1/claude-statusline-*` | Swift `ClaudeQuotaAdapter`; Windows `ClaudeStatuslinePayloadSource`                       | Swift `legacyBuckets`; C# `ParseLegacy`, window parser, and bucket builder                        |
-| Codex `wham/usage` JSON to snapshot      | Rust plus Swift/C# during rollout | `codex-usage-*`                                           | Swift `CodexOAuthQuotaFetcher`; Windows `CodexUsageQuotaSource`                           | Swift `rateLimitBuckets` helpers and decoded transform; C# `CodexUsageQuotaParser` implementation |
+| Claude statusline JSON to buckets        | Rust plus Swift/C# during rollout | `tests/fixtures/domain-core/quota/v1/claude-statusline-*` | Swift `ClaudeQuotaAdapter`; Windows `ClaudeStatuslinePayloadSource`                       | Swift `Legacy/ClaudeQuotaLegacy.swift`; C# `ParseLegacy`, window parser, and bucket builder        |
+| Codex `wham/usage` JSON to snapshot      | Rust plus Swift/C# during rollout | `codex-usage-*`                                           | Swift `CodexOAuthQuotaFetcher`; Windows `CodexUsageQuotaSource`                           | Swift `Legacy/CodexQuotaLegacy.swift`; C# `CodexUsageQuotaParser` implementation                   |
 | Cursor `usage-summary` JSON to snapshot  | Rust plus Swift/C# during rollout | `cursor-usage-summary-*`                                  | Swift `CursorQuotaAdapter`; Windows `CursorUsageQuotaSource`                              | Swift `buildExactSnapshot`; C# `CursorUsageQuotaParser` implementation                            |
 | Anthropic rate-limit headers to snapshot | Rust plus Swift/C# during rollout | `anthropic-ratelimit-headers-*`                           | Swift `AnthropicCredentialProbe`/`ClaudeQuotaAdapter`; Windows `AnthropicRateLimitSource` | Swift header coercion/snapshot builder; C# `AnthropicRateLimitHeaderParser` implementation        |
 
@@ -49,6 +49,14 @@ where relative resets exist. HTTP, credentials, files, and SQLite remain in the
 platform acquisition layer. Rust mode must fail closed on artifact, ABI, or
 transform failure; shadow mode returns the legacy result while collecting safe
 comparison metadata.
+
+The portable Swift, Kotlin, and C# fallback bodies that can be deleted as whole
+files now live under explicit `Legacy/` owners and are pinned as `path` targets
+in `config/domain-core-legacy-deletion.json`. Mixed files still have exact
+symbol targets until their remaining fallback code is isolated. The isolated
+Swift `PiAgentRelayCrypto.swift` owner is not a deletion target: Pi relay has no
+shared-domain-core selector yet, so deleting it would be a false completion
+claim.
 
 Current status: [#1590](https://github.com/Imagine-That-Ai/BurnBar/pull/1590)
 and [#1591](https://github.com/Imagine-That-Ai/BurnBar/pull/1591) remain open;
