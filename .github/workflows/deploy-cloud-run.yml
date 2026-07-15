@@ -18,7 +18,7 @@ on:
         required: false
         type: boolean
         default: false
-      candidate_commit:
+      candidate_sha:
         description: "Full SHA of the release candidate on origin/main (dry_run only)"
         required: false
         type: string
@@ -57,7 +57,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
-          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
@@ -81,18 +81,18 @@ jobs:
           # ── Two-phase release safety ─────────────────────────────────────
           # Phase 1 (dry_run): validate a release candidate BEFORE the v* tag
           # exists. The dispatch ref is a non-tag branch/SHA, and the exact
-          # candidate_commit SHA is checked against current origin/main so the
+          # candidate_sha SHA is checked against current origin/main so the
           # same commit that passes the dry-run is the one that gets tagged.
           # Phase 2 (tag push or manual non-dry-run dispatch): the v* tag is
           # the immutable real-deploy trigger; manual dispatch must run from
           # that tag ref. Credentials stay tag-bound.
           if [[ "$IS_DRY_RUN" == "true" ]]; then
-            if [[ -z "$INPUT_CANDIDATE_COMMIT" ]]; then
-              echo "::error::Dry-run dispatch requires candidate_commit (full SHA on origin/main)."
+            if [[ -z "$INPUT_CANDIDATE_SHA" ]]; then
+              echo "::error::Dry-run dispatch requires candidate_sha (full SHA on origin/main)."
               exit 1
             fi
-            if ! [[ "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "::error::candidate_commit must be a full 40-char hex SHA, got: $INPUT_CANDIDATE_COMMIT"
+            if ! [[ "$INPUT_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::candidate_sha must be a full 40-char hex SHA, got: $INPUT_CANDIDATE_SHA"
               exit 1
             fi
             tag_ref="refs/tags/${TAG}"
@@ -103,22 +103,22 @@ jobs:
 
             git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
 
-            if ! git cat-file -e "$INPUT_CANDIDATE_COMMIT^{commit}" 2>/dev/null; then
-              git fetch --force origin "$INPUT_CANDIDATE_COMMIT"
+            if ! git cat-file -e "$INPUT_CANDIDATE_SHA^{commit}" 2>/dev/null; then
+              git fetch --force origin "$INPUT_CANDIDATE_SHA"
             fi
-            if ! git cat-file -e "$INPUT_CANDIDATE_COMMIT^{commit}" 2>/dev/null; then
-              echo "::error::candidate_commit $INPUT_CANDIDATE_COMMIT does not resolve to a commit."
+            if ! git cat-file -e "$INPUT_CANDIDATE_SHA^{commit}" 2>/dev/null; then
+              echo "::error::candidate_sha $INPUT_CANDIDATE_SHA does not resolve to a commit."
               exit 1
             fi
 
             main_sha="$(git rev-parse origin/main)"
-            if [[ "$INPUT_CANDIDATE_COMMIT" != "$main_sha" ]]; then
-              echo "::error::candidate_commit $INPUT_CANDIDATE_COMMIT != origin/main $main_sha."
+            if [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then
+              echo "::error::candidate_sha $INPUT_CANDIDATE_SHA != origin/main $main_sha."
               echo "::error::Dry-run must prove the exact commit that will be tagged is current main."
               exit 1
             fi
 
-            commit="$INPUT_CANDIDATE_COMMIT"
+            commit="$INPUT_CANDIDATE_SHA"
           else
             tag_ref="refs/tags/${TAG}"
             if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then
@@ -230,6 +230,29 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  verify-attestations:
+    name: Verify dry-run attestations
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: resolve-release
+    if: needs.resolve-release.outputs.dry_run != 'true'
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.commit }}
+          fetch-depth: 1
+          submodules: false
+
+      - name: Verify dry-run attestations
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ATTEST_SHA: ${{ needs.resolve-release.outputs.commit }}
+          ATTEST_TAG: ${{ needs.resolve-release.outputs.tag }}
+        run: node scripts/ci/release-dry-run-attestation.mjs verify --sha "$ATTEST_SHA" --tag "$ATTEST_TAG"
+
   deploy-hosted-mcp:
     name: Deploy hosted MCP
     runs-on: ubuntu-latest
@@ -237,11 +260,13 @@ jobs:
     needs:
       - resolve-release
       - build-hosted-mcp-artifact
+      - verify-attestations
     if: needs.resolve-release.outputs.dry_run != 'true'
     environment: production
     permissions:
       contents: read
       id-token: write
+      statuses: write
     outputs:
       previous_revision: ${{ steps.current.outputs.previous_revision }}
       latest_revision: ${{ steps.readback.outputs.latest_revision }}
@@ -778,7 +803,14 @@ jobs:
     if: needs.resolve-release.outputs.dry_run == 'true'
     permissions:
       contents: read
+      statuses: write
     steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.commit }}
+          fetch-depth: 1
+          submodules: false
+
       - name: Dry-run skip deploy
         run: |
           {
@@ -788,6 +820,13 @@ jobs:
             echo "- Dry run: true"
             echo "- Result: built, tested, Docker-smoked, and staged a deploy artifact; skipped production deploy."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish dry-run attestation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ATTEST_SHA: ${{ needs.resolve-release.outputs.commit }}
+          ATTEST_TAG: ${{ needs.resolve-release.outputs.tag }}
+        run: node scripts/ci/release-dry-run-attestation.mjs publish --sha "$ATTEST_SHA" --tag "$ATTEST_TAG" --plane deploy-cloud-run
 
   cloud-run-deploy-result:
     name: Cloud Run deploy result

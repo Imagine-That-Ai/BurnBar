@@ -7,8 +7,8 @@
  *
  *   Phase 1 — dry-run (workflow_dispatch + dry_run=true):
  *     The dispatch ref is a non-tag candidate branch/SHA. The operator supplies
- *     candidate_commit (a full 40-char SHA). The resolve step fetches origin/main,
- *     requires candidate_commit == origin/main, checks out that exact commit, and
+ *     candidate_sha (a full 40-char SHA). The resolve step fetches origin/main,
+ *     requires candidate_sha == origin/main, checks out that exact commit, and
  *     emits it. The tag string (future v*) is validated as SemVer but must NOT
  *     already exist — no credential or deploy step runs.
  *
@@ -197,16 +197,16 @@ for (const wf of WORKFLOWS) {
     `[${label}] must support manual workflow_dispatch`,
   );
 
-  /* candidate_commit input */
+  /* candidate_sha input */
   requireIncludes(
     source,
-    "candidate_commit:",
-    `[${label}] must define candidate_commit workflow_dispatch input`,
+    "candidate_sha:",
+    `[${label}] must define candidate_sha workflow_dispatch input`,
   );
   requireIncludes(
     source,
     "Full SHA of the release candidate on origin/main (dry_run only)",
-    `[${label}] candidate_commit input must document dry-run-only intent`,
+    `[${label}] candidate_sha input must document dry-run-only intent`,
   );
 
   /* Resolve step must not be conditional */
@@ -217,8 +217,8 @@ for (const wf of WORKFLOWS) {
   /* Env plumbing */
   requireIncludes(
     resolveStep,
-    "INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}",
-    `[${label}] resolve step must pass candidate_commit through env`,
+    "INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}",
+    `[${label}] resolve step must pass candidate_sha through env`,
   );
   requireIncludes(
     resolveStep,
@@ -260,13 +260,13 @@ for (const wf of WORKFLOWS) {
   );
   requireIncludes(
     resolveRun,
-    'if [[ -z "$INPUT_CANDIDATE_COMMIT" ]]; then',
-    `[${label}] dry-run must require non-empty candidate_commit`,
+    'if [[ -z "$INPUT_CANDIDATE_SHA" ]]; then',
+    `[${label}] dry-run must require non-empty candidate_sha`,
   );
   requireIncludes(
     resolveRun,
-    'if ! [[ "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then',
-    `[${label}] dry-run must validate candidate_commit is a full 40-char hex SHA`,
+    'if ! [[ "$INPUT_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]; then',
+    `[${label}] dry-run must validate candidate_sha is a full 40-char hex SHA`,
   );
   requireIncludes(
     resolveRun,
@@ -285,12 +285,12 @@ for (const wf of WORKFLOWS) {
   );
   requireIncludes(
     resolveRun,
-    'if [[ "$INPUT_CANDIDATE_COMMIT" != "$main_sha" ]]; then',
-    `[${label}] dry-run must require candidate_commit == origin/main`,
+    'if [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then',
+    `[${label}] dry-run must require candidate_sha == origin/main`,
   );
   requireIncludes(
     resolveRun,
-    'commit="$INPUT_CANDIDATE_COMMIT"',
+    'commit="$INPUT_CANDIDATE_SHA"',
     `[${label}] dry-run must emit the candidate commit`,
   );
 
@@ -401,6 +401,125 @@ if (cloudDeployJob) {
   );
 }
 
+/* ── Attestation invariants ────────────────────────────────────────────── */
+
+/* Both workflows must publish a dry-run attestation on success */
+for (const wf of WORKFLOWS) {
+  const source = stripYamlComments(readFileSync(wf.file, "utf8"));
+  requireIncludes(
+    source,
+    "release-dry-run-attestation.mjs",
+    `[${wf.label}] must reference the release-dry-run-attestation.mjs script`,
+  );
+  requireIncludes(
+    source,
+    "Publish dry-run attestation",
+    `[${wf.label}] must have a Publish dry-run attestation step`,
+  );
+  requireIncludes(
+    source,
+    `--plane ${wf.label}`,
+    `[${wf.label}] publish step must attest with its own plane name`,
+  );
+
+  /* Publish must be gated on dry_run == true */
+  if (wf.label === "deploy-production") {
+    /* deploy-production: publish step is in the same job, gated at step level */
+    const deployJob = jobBlock(source, wf.jobName);
+    const publishStep = stepBlock(deployJob, "Publish dry-run attestation");
+    if (publishStep) {
+      requireIncludes(
+        publishStep,
+        "dry_run == 'true'",
+        `[${wf.label}] publish attestation step must be gated on dry_run == 'true'`,
+      );
+    } else {
+      fail(`[${wf.label}] publish attestation step not found in ${wf.jobName}`);
+    }
+  } else {
+    /* deploy-cloud-run: publish step is in cloud-run-dry-run-summary job, gated at job level */
+    const summaryJob = jobBlock(source, "cloud-run-dry-run-summary");
+    if (summaryJob) {
+      const summaryPublishStep = stepBlock(summaryJob, "Publish dry-run attestation");
+      if (summaryPublishStep) {
+        requireIncludes(
+          summaryJob,
+          "needs.resolve-release.outputs.dry_run == 'true'",
+          `[${wf.label}] dry-run summary job must be gated on dry_run == 'true'`,
+        );
+      } else {
+        fail(`[${wf.label}] publish attestation step not found in cloud-run-dry-run-summary`);
+      }
+    } else {
+      fail(`[${wf.label}] missing cloud-run-dry-run-summary job`);
+    }
+  }
+}
+
+/* Both workflows must verify attestations before credentials */
+for (const wf of WORKFLOWS) {
+  const source = stripYamlComments(readFileSync(wf.file, "utf8"));
+  requireIncludes(
+    source,
+    "Verify dry-run attestations",
+    `[${wf.label}] must have a Verify dry-run attestations step`,
+  );
+  requireIncludes(
+    source,
+    'release-dry-run-attestation.mjs verify',
+    `[${wf.label}] must call attestation verify mode before credentials`,
+  );
+
+  /* Verify must be gated on dry_run != true (only real deploys need verification) */
+  if (wf.label === "deploy-production") {
+    const verifyStep = stepBlock(jobBlock(source, wf.jobName), "Verify dry-run attestations");
+    if (verifyStep) {
+      requireIncludes(
+        verifyStep,
+        "dry_run != 'true'",
+        `[${wf.label}] verify attestation step must be gated on dry_run != 'true'`,
+      );
+    } else {
+      fail(`[${wf.label}] verify attestation step not found in ${wf.jobName}`);
+    }
+  } else {
+    /* deploy-cloud-run: verify is in a separate verify-attestations job */
+    const verifyJob = jobBlock(source, "verify-attestations");
+    if (verifyJob) {
+      requireIncludes(
+        verifyJob,
+        "needs.resolve-release.outputs.dry_run != 'true'",
+        `[${wf.label}] verify-attestations job must be gated on dry_run != 'true'`,
+      );
+      requireIncludes(
+        cloudDeployJob,
+        "verify-attestations",
+        `[${wf.label}] deploy-hosted-mcp must depend on verify-attestations`,
+      );
+    } else {
+      fail(`[${wf.label}] missing verify-attestations job`);
+    }
+  }
+
+  /* Verify must come before any credential/auth step */
+  const fullSource = source;
+  const verifyIdx = fullSource.indexOf("Verify dry-run attestations");
+  const authIdx = fullSource.indexOf("Authenticate to Google Cloud");
+  if (verifyIdx !== -1 && authIdx !== -1 && verifyIdx > authIdx) {
+    fail(`[${wf.label}] verify attestation step must precede credential auth`);
+  }
+}
+
+/* Both workflows must grant statuses: write for attestation */
+for (const wf of WORKFLOWS) {
+  const source = stripYamlComments(readFileSync(wf.file, "utf8"));
+  requireIncludes(
+    source,
+    "statuses: write",
+    `[${wf.label}] must grant statuses: write for attestation publish/verify`,
+  );
+}
+
 /* ── Report ────────────────────────────────────────────────────────────── */
 
 if (failures.length > 0) {
@@ -411,4 +530,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("PASS: both deploy workflows enforce two-phase release tag safety.");
+console.log("PASS: both deploy workflows enforce two-phase release tag safety with attestation.");

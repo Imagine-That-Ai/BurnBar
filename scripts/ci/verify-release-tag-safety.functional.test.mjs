@@ -6,7 +6,7 @@
  * then executes the resolve-step script (extracted from the workflow) against
  * various inputs to prove:
  *   - Dry-run succeeds only at exact current-main SHA
- *   - Mismatched/stale/malformed candidate_commit fails
+ *   - Mismatched/stale/malformed candidate_sha fails
  *   - Dry-run cannot deploy (credentials stay skipped)
  *   - Non-dry-run/tag-push stays tag-bound
  *
@@ -173,7 +173,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: VALID_TAG,
       INPUT_DRY_RUN: "true",
-      INPUT_CANDIDATE_COMMIT: FULL_SHA,
+      INPUT_CANDIDATE_SHA: FULL_SHA,
       REF_NAME: "main",
       GITHUB_REF: "refs/heads/main",
     },
@@ -200,7 +200,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: VALID_TAG,
       INPUT_DRY_RUN: "true",
-      INPUT_CANDIDATE_COMMIT: staleSha,
+      INPUT_CANDIDATE_SHA: staleSha,
       REF_NAME: "main",
       GITHUB_REF: "refs/heads/main",
     },
@@ -220,7 +220,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: VALID_TAG,
       INPUT_DRY_RUN: "true",
-      INPUT_CANDIDATE_COMMIT: "abc123",
+      INPUT_CANDIDATE_SHA: "abc123",
       REF_NAME: "main",
       GITHUB_REF: "refs/heads/main",
     },
@@ -231,7 +231,7 @@ const FULL_SHA = mainSha;
   );
 }
 
-/* ── Dry-run with empty candidate_commit: fails ── */
+/* ── Dry-run with empty candidate_sha: fails ── */
 {
   const result = runResolve({
     cloneDir,
@@ -240,13 +240,13 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: VALID_TAG,
       INPUT_DRY_RUN: "true",
-      INPUT_CANDIDATE_COMMIT: "",
+      INPUT_CANDIDATE_SHA: "",
       REF_NAME: "main",
       GITHUB_REF: "refs/heads/main",
     },
   });
   assert(
-    "dry-run with empty candidate_commit fails",
+    "dry-run with empty candidate_sha fails",
     result.exitCode !== 0,
   );
 }
@@ -264,7 +264,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: VALID_TAG,
       INPUT_DRY_RUN: "true",
-      INPUT_CANDIDATE_COMMIT: FULL_SHA,
+      INPUT_CANDIDATE_SHA: FULL_SHA,
       REF_NAME: VALID_TAG,
       GITHUB_REF: `refs/tags/${VALID_TAG}`,
     },
@@ -284,7 +284,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: VALID_TAG,
       INPUT_DRY_RUN: "false",
-      INPUT_CANDIDATE_COMMIT: "",
+      INPUT_CANDIDATE_SHA: "",
       REF_NAME: "main",
       GITHUB_REF: "refs/heads/main",
     },
@@ -304,7 +304,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: VALID_TAG,
       INPUT_DRY_RUN: "false",
-      INPUT_CANDIDATE_COMMIT: "",
+      INPUT_CANDIDATE_SHA: "",
       REF_NAME: VALID_TAG,
       GITHUB_REF: `refs/tags/${VALID_TAG}`,
     },
@@ -329,7 +329,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "push",
       INPUT_TAG: "",
       INPUT_DRY_RUN: "",
-      INPUT_CANDIDATE_COMMIT: "",
+      INPUT_CANDIDATE_SHA: "",
       REF_NAME: VALID_TAG,
       GITHUB_REF: `refs/tags/${VALID_TAG}`,
     },
@@ -355,7 +355,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: futureTag,
       INPUT_DRY_RUN: "true",
-      INPUT_CANDIDATE_COMMIT: FULL_SHA,
+      INPUT_CANDIDATE_SHA: FULL_SHA,
       REF_NAME: "main",
       GITHUB_REF: "refs/heads/main",
     },
@@ -379,7 +379,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: "not-a-version",
       INPUT_DRY_RUN: "true",
-      INPUT_CANDIDATE_COMMIT: FULL_SHA,
+      INPUT_CANDIDATE_SHA: FULL_SHA,
       REF_NAME: "main",
       GITHUB_REF: "refs/heads/main",
     },

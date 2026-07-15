@@ -89,13 +89,13 @@ console.log("Self-test: verify-release-tag-safety.mjs\n");
 /* ── Post-fix: current workflows pass ── */
 expect("current fixed workflows pass", () => {}, 0);
 
-/* ── Pre-fix impossibility: remove candidate_commit + two-phase logic ── */
+/* ── Pre-fix impossibility: remove candidate_sha + two-phase logic ── */
 expect(
-  "pre-fix production (no candidate_commit) fails",
+  "pre-fix production (no candidate_sha) fails",
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        /      candidate_commit:\n        description: "Full SHA of the release candidate on origin\/main \(dry_run only\)"\n        required: false\n        type: string\n/,
+        /      candidate_sha:\n        description: "Full SHA of the release candidate on origin\/main \(dry_run only\)"\n        required: false\n        type: string\n/,
         "",
       ),
     ),
@@ -103,11 +103,11 @@ expect(
 );
 
 expect(
-  "pre-fix cloud-run (no candidate_commit) fails",
+  "pre-fix cloud-run (no candidate_sha) fails",
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        /      candidate_commit:\n        description: "Full SHA of the release candidate on origin\/main \(dry_run only\)"\n        required: false\n        type: string\n/,
+        /      candidate_sha:\n        description: "Full SHA of the release candidate on origin\/main \(dry_run only\)"\n        required: false\n        type: string\n/,
         "",
       ),
     ),
@@ -128,19 +128,19 @@ expect(
           /          if \[\[ "\$IS_DRY_RUN" == "true" \]\]; then[\s\S]*?          else\n/,
           "          ",
         )
-        .replace(/            commit="\$INPUT_CANDIDATE_COMMIT"\n          else\n[\s\S]*?          fi\n\n/, "")
+        .replace(/            commit="\$INPUT_CANDIDATE_SHA"\n          else\n[\s\S]*?          fi\n\n/, "")
         .replace('echo "dry_run=$IS_DRY_RUN"', 'echo "dry_run=$([[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]] && echo true || echo false)"'),
     ),
   1,
 );
 
-/* ── Dry-run without candidate_commit requirement fails ── */
+/* ── Dry-run without candidate_sha requirement fails ── */
 expect(
-  "production: dry-run without candidate_commit requirement fails",
+  "production: dry-run without candidate_sha requirement fails",
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        '            if [[ -z "$INPUT_CANDIDATE_COMMIT" ]]; then\n              echo "::error::Dry-run dispatch requires candidate_commit (full SHA on origin/main)."\n              exit 1\n            fi\n',
+        '            if [[ -z "$INPUT_CANDIDATE_SHA" ]]; then\n              echo "::error::Dry-run dispatch requires candidate_sha (full SHA on origin/main)."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -153,7 +153,7 @@ expect(
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        '            if ! [[ "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then\n              echo "::error::candidate_commit must be a full 40-char hex SHA, got: $INPUT_CANDIDATE_COMMIT"\n              exit 1\n            fi\n',
+        '            if ! [[ "$INPUT_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]; then\n              echo "::error::candidate_sha must be a full 40-char hex SHA, got: $INPUT_CANDIDATE_SHA"\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -179,7 +179,7 @@ expect(
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        '            main_sha="$(git rev-parse origin/main)"\n            if [[ "$INPUT_CANDIDATE_COMMIT" != "$main_sha" ]]; then\n              echo "::error::candidate_commit $INPUT_CANDIDATE_COMMIT != origin/main $main_sha."\n              echo "::error::Dry-run must prove the exact commit that will be tagged is current main."\n              exit 1\n            fi\n',
+        '            main_sha="$(git rev-parse origin/main)"\n            if [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then\n              echo "::error::candidate_sha $INPUT_CANDIDATE_SHA != origin/main $main_sha."\n              echo "::error::Dry-run must prove the exact commit that will be tagged is current main."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -201,11 +201,11 @@ expect(
 
 /* ── Same mutations for cloud-run (symmetry) ── */
 expect(
-  "cloud-run: dry-run without candidate_commit requirement fails",
+  "cloud-run: dry-run without candidate_sha requirement fails",
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        '            if [[ -z "$INPUT_CANDIDATE_COMMIT" ]]; then\n              echo "::error::Dry-run dispatch requires candidate_commit (full SHA on origin/main)."\n              exit 1\n            fi\n',
+        '            if [[ -z "$INPUT_CANDIDATE_SHA" ]]; then\n              echo "::error::Dry-run dispatch requires candidate_sha (full SHA on origin/main)."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -217,7 +217,7 @@ expect(
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        '            if ! [[ "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then\n              echo "::error::candidate_commit must be a full 40-char hex SHA, got: $INPUT_CANDIDATE_COMMIT"\n              exit 1\n            fi\n',
+        '            if ! [[ "$INPUT_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]; then\n              echo "::error::candidate_sha must be a full 40-char hex SHA, got: $INPUT_CANDIDATE_SHA"\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -241,7 +241,7 @@ expect(
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        '            main_sha="$(git rev-parse origin/main)"\n            if [[ "$INPUT_CANDIDATE_COMMIT" != "$main_sha" ]]; then\n              echo "::error::candidate_commit $INPUT_CANDIDATE_COMMIT != origin/main $main_sha."\n              echo "::error::Dry-run must prove the exact commit that will be tagged is current main."\n              exit 1\n            fi\n',
+        '            main_sha="$(git rev-parse origin/main)"\n            if [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then\n              echo "::error::candidate_sha $INPUT_CANDIDATE_SHA != origin/main $main_sha."\n              echo "::error::Dry-run must prove the exact commit that will be tagged is current main."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -319,6 +319,73 @@ expect(
         "    if: needs.resolve-release.outputs.dry_run != 'true'",
         "    if: true",
       ),
+    ),
+  1,
+);
+
+/* ── Attestation mutations ── */
+expect(
+  "production: removing publish attestation step fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        "      - name: Publish dry-run attestation\n        if: steps.tag.outputs.dry_run == 'true'\n",
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "production: removing verify attestation step fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        "      - name: Verify dry-run attestations\n        if: steps.tag.outputs.dry_run != 'true'\n",
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: removing publish attestation step fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace(
+        "      - name: Publish dry-run attestation\n",
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: removing verify-attestations job fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace(
+        /  verify-attestations:\n    name: Verify dry-run attestations[\s\S]*?run: node scripts\/ci\/release-dry-run-attestation\.mjs verify --sha "\$ATTEST_SHA" --tag "\$ATTEST_TAG"\n/,
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: removing verify-attestations from deploy needs fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace("      - verify-attestations\n", ""),
+    ),
+  1,
+);
+
+expect(
+  "production: removing statuses:write permission fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace("      statuses: write\n", ""),
     ),
   1,
 );
