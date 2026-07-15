@@ -19,15 +19,23 @@ from typing import Any
 
 RULES = {
     "quota": (
-        b"ClaudeQuotaLegacy", b"CodexQuotaLegacy", b"CodexUsagePayload",
-        b"legacyBuckets", b"CodexUsageQuotaParser", b"ParseLegacy",
+        b"ClaudeQuotaLegacy",
+        b"CodexQuotaLegacy",
+        b"CodexUsagePayload",
+        b"legacyBuckets",
+        b"CodexUsageQuotaParser",
+        b"ParseLegacy",
     ),
     "cloudvault": (
-        b"CloudVaultLegacyCrypto", b"CloudVaultLegacySearch",
-        b"CloudVaultCryptoSearch", b"AesGcmBox",
+        b"CloudVaultLegacyCrypto",
+        b"CloudVaultLegacySearch",
+        b"CloudVaultCryptoSearch",
+        b"AesGcmBox",
     ),
     "hermes": (
-        b"HermesRelayLegacyCrypto", b"HermesRatchetLegacyCrypto", b"PiAgentRelayCrypto",
+        b"HermesRelayLegacyCrypto",
+        b"HermesRatchetLegacyCrypto",
+        b"PiAgentRelayCrypto",
     ),
     "pricing": (b"legacyTokenCost", b"priceLegacyKimiEvent", b"LEGACY_KIMI_WIRE"),
 }
@@ -61,12 +69,14 @@ def scan_bytes(path: str, data: bytes, needles: tuple[bytes, ...], results: list
     if not is_code(path, data):
         return
     matches = [needle.decode("ascii") for needle in needles if needle in data]
-    results.append({
-        "path": path,
-        "sha256": hashlib.sha256(data).hexdigest(),
-        "size": len(data),
-        "matches": matches,
-    })
+    results.append(
+        {
+            "path": path,
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "size": len(data),
+            "matches": matches,
+        }
+    )
 
 
 def scan(
@@ -97,7 +107,8 @@ def scan(
                 )
                 plist = plistlib.loads(attached.stdout)
                 mount_points = [
-                    entity.get("mount-point") for entity in plist.get("system-entities", [])
+                    entity.get("mount-point")
+                    for entity in plist.get("system-entities", [])
                     if isinstance(entity, dict) and entity.get("mount-point")
                 ]
                 if len(mount_points) != 1:
@@ -124,10 +135,7 @@ def scan(
     members = [unique[key] for key in sorted(unique)]
     if not members:
         raise ValueError("final artifact scan found no executable or compiled code members")
-    matches = [
-        {"path": member["path"], "symbols": member["matches"]}
-        for member in members if member["matches"]
-    ]
+    matches = [{"path": member["path"], "symbols": member["matches"]} for member in members if member["matches"]]
     report = {
         "schemaVersion": 1,
         "consumer": consumer,
@@ -136,9 +144,7 @@ def scan(
             "sha256": hashlib.sha256(artifact_bytes).hexdigest(),
             "size": len(artifact_bytes),
         },
-        "ruleSetSha256": hashlib.sha256(
-            b"\0".join(sorted(needles))
-        ).hexdigest(),
+        "ruleSetSha256": hashlib.sha256(b"\0".join(sorted(needles))).hexdigest(),
         "inspectedMembers": members,
         "matches": matches,
         "result": "absent" if not matches else "legacy_present",

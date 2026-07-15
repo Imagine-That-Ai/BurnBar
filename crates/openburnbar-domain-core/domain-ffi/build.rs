@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::write(
         &output,
         format!(
-            "#if defined(__APPLE__)\n__attribute__((used, retain, section(\"__TEXT,__obb_core_id\"), visibility(\"default\")))\n#else\n__attribute__((used, visibility(\"default\")))\n#endif\nconst unsigned char OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1[] = \"{wire}\";\n"
+            "#if defined(_MSC_VER)\n#pragma section(\".obb_core_id\", read)\n__declspec(allocate(\".obb_core_id\")) __declspec(dllexport)\n#elif defined(__APPLE__)\n__attribute__((used, retain, section(\"__TEXT,__obb_core_id\"), visibility(\"default\")))\n#else\n__attribute__((used, visibility(\"default\")))\n#endif\nconst unsigned char OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1[] = \"{wire}\";\n"
         ),
     )?;
     cc::Build::new()

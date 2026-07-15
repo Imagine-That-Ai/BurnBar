@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildDeploymentIdentity } from "./create-domain-core-deployment-identity.mjs";
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
 import {
   canonicalSha256,
   exactObject,
@@ -53,7 +54,9 @@ function parseArguments(argv) {
 
 function readJson(path, label) {
   try {
-    return JSON.parse(readFileSync(resolve(path), "utf8"));
+    return JSON.parse(
+      readRegularFileSync(resolve(path), { encoding: "utf8", label }),
+    );
   } catch (error) {
     throw new Error(`unable to read ${label}: ${error.message}`);
   }
@@ -177,10 +180,14 @@ function validateHealth(raw, runtimeManifestPath) {
         typeof site.versionName !== "string" ||
         typeof site.releaseName !== "string" ||
         !site.versionName.startsWith(`sites/${site.site}/versions/`) ||
-        !site.releaseName.startsWith(`sites/${site.site}/channels/live/releases/`),
+        !site.releaseName.startsWith(
+          `sites/${site.site}/channels/live/releases/`,
+        ),
     )
   ) {
-    throw new Error("Console health evidence lacks exact immutable Hosting versions and releases");
+    throw new Error(
+      "Console health evidence lacks exact immutable Hosting versions and releases",
+    );
   }
   return structuredClone(health);
 }
@@ -196,12 +203,16 @@ function writeCreateOnly(path, contents) {
     });
   } catch (error) {
     if (error?.code !== "EEXIST") throw error;
-    const stat = lstatSync(output);
-    if (
-      !stat.isFile() ||
-      stat.isSymbolicLink() ||
-      readFileSync(output, "utf8") !== contents
-    ) {
+    let existing;
+    try {
+      existing = readRegularFileSync(output, {
+        encoding: "utf8",
+        label: "Console deploy verification receipt",
+      });
+    } catch {
+      existing = undefined;
+    }
+    if (existing !== contents) {
       throw new Error(
         "refusing to replace non-identical Console deploy verification receipt",
       );

@@ -36,6 +36,11 @@ const candidate = {
 };
 
 function common() {
+  const activation = {
+    ...candidate,
+    activationCommit: candidate.candidateCommit,
+    changedPathsSha256: "3".repeat(64),
+  };
   return {
     schemaVersion: 2,
     consumer: "functions",
@@ -66,12 +71,9 @@ function common() {
       fileName: "domain-core-public-production-rollback.json",
       sha256: "d".repeat(64),
       candidate,
+      activation,
     },
-    activation: {
-      ...candidate,
-      activationCommit: candidate.candidateCommit,
-      changedPathsSha256: "3".repeat(64),
-    },
+    activation,
     publicProfile: {
       profile: "public-production",
       domain: "pricing",

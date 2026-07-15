@@ -69,8 +69,9 @@ public enum PensieveVectorCloak {
         case .legacy:
             return legacy()
         case .rust:
-            do { return try nativeNormalize(vector) }
-            catch { preconditionFailure("Rust-authoritative Pensieve normalization failed: \(error)") }
+            do { return try nativeNormalize(vector) } catch {
+                preconditionFailure("Rust-authoritative Pensieve normalization failed: \(error)")
+            }
         case .shadow:
             let legacyStarted = Date.timeIntervalSinceReferenceDate
             let legacyValue = legacy()
@@ -111,8 +112,9 @@ public enum PensieveVectorCloak {
         case .legacy:
             return legacy()
         case .rust:
-            do { return try nativeEmbed(text, isQuery: isQuery) }
-            catch { preconditionFailure("Rust-authoritative Pensieve embedding failed: \(error)") }
+            do { return try nativeEmbed(text, isQuery: isQuery) } catch {
+                preconditionFailure("Rust-authoritative Pensieve embedding failed: \(error)")
+            }
         case .shadow:
             let legacyStarted = Date.timeIntervalSinceReferenceDate
             let legacyValue = legacy()

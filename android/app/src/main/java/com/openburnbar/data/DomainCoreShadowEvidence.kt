@@ -38,6 +38,7 @@ private const val DEFAULT_MAX_READY_FILES = 8
 private const val DEFAULT_MAX_SAMPLES_PER_FILE = 100
 private const val READY_ORDINAL_WIDTH = 19
 private const val MAX_LATENCY_MICROS = 600_000_000L
+private const val MAX_UINT32_VALUE = 0xffff_ffffL
 private const val UPLOAD_DEBOUNCE_MILLIS = 5_000L
 private const val RETRY_DELAY_MILLIS = 30_000L
 private val MAX_SAMPLE_AGE: Duration = Duration.ofDays(31)
@@ -115,6 +116,12 @@ internal class AndroidDomainCoreShadowSpool(
     private val maxSamplesPerFile: Int = DEFAULT_MAX_SAMPLES_PER_FILE,
 ) {
     data class Batch(val file: File, val samples: List<Map<String, Any?>>)
+
+    private data class LoadedIdentityState(
+        val isNull: Boolean,
+        val isPresent: Boolean,
+        val matchesExpected: Boolean,
+    )
 
     private val active = File(directory, "active.jsonl")
     private var ordinal = 0L
@@ -201,39 +208,60 @@ internal class AndroidDomainCoreShadowSpool(
         .orEmpty()
 
     private fun Map<String, Any?>.isUploadable(expectedChannel: String, expectedCandidate: AndroidDomainCoreCandidateIdentity, now: Instant): Boolean {
+        if (!hasValidStructureAndOperation()) return false
+        if (!hasValidExpectedIdentity(expectedChannel, expectedCandidate)) return false
+        val loadedIdentity = loadedIdentityState(expectedCandidate) ?: return false
+        return hasValidOutcome(loadedIdentity) && hasValidObservation(now)
+    }
+
+    private fun Map<String, Any?>.hasValidStructureAndOperation(): Boolean {
         if (keys != V3_SAMPLE_KEYS || this["schemaVersion"].wholeLong() != SHADOW_SCHEMA_VERSION.toLong()) return false
         if ((this["sampleId"] as? String)?.matches(UUID_V4) != true || this["consumer"] != "android") return false
         val domain = this["domain"] as? String ?: return false
         val slice = this["slice"] as? String ?: return false
         val operation = this["operation"] as? String ?: return false
-        if (AndroidDomainCoreShadowEvidence.allowedOperations[domain]?.get(slice)?.contains(operation) != true) return false
+        return AndroidDomainCoreShadowEvidence.allowedOperations[domain]?.get(slice)?.contains(operation) == true
+    }
+
+    private fun Map<String, Any?>.hasValidExpectedIdentity(expectedChannel: String, expectedCandidate: AndroidDomainCoreCandidateIdentity): Boolean {
         if (this["channel"] != expectedChannel || (this["candidateCommit"] as? String)?.matches(GIT_COMMIT) != true) return false
         if (this["candidateCommit"] != expectedCandidate.candidateCommit) return false
         val expectedVersion = this["expectedCoreVersion"] as? String ?: return false
         val expectedAbi = this["expectedCoreAbiVersion"].wholeLong() ?: return false
         val expectedSource = this["expectedCoreSourceSha256"] as? String ?: return false
         if (!expectedVersion.matches(CANONICAL_CORE_VERSION) || expectedVersion != expectedCandidate.coreVersion) return false
-        if (expectedAbi !in 1..0xffff_ffffL || expectedAbi != expectedCandidate.abiVersion) return false
-        if (!expectedSource.matches(SHA256) || expectedSource != expectedCandidate.sourceSha256) return false
+        return expectedAbi in 1..MAX_UINT32_VALUE &&
+            expectedAbi == expectedCandidate.abiVersion &&
+            expectedSource.matches(SHA256) &&
+            expectedSource == expectedCandidate.sourceSha256
+    }
 
+    private fun Map<String, Any?>.loadedIdentityState(expectedCandidate: AndroidDomainCoreCandidateIdentity): LoadedIdentityState? {
         val loadedVersion = this["loadedCoreVersion"]
         val loadedAbiValue = this["loadedCoreAbiVersion"]
         val loadedSource = this["loadedCoreSourceSha256"]
+        val loadedVersionString = loadedVersion as? String
+        val loadedSourceString = loadedSource as? String
         val loadedIsNull = loadedVersion == null && loadedAbiValue == null && loadedSource == null
-        val loadedIsPresent = loadedVersion is String && loadedAbiValue != null && loadedSource is String
-        if (!loadedIsNull && !loadedIsPresent) return false
-        val loadedAbi = if (loadedIsPresent) loadedAbiValue.wholeLong() ?: return false else null
+        val loadedIsPresent = loadedVersionString != null && loadedAbiValue != null && loadedSourceString != null
+        if (!loadedIsNull && !loadedIsPresent) return null
+        val loadedAbi = if (loadedIsPresent) loadedAbiValue.wholeLong() ?: return null else null
         if (loadedIsPresent && (
-                !(loadedVersion as String).matches(CANONICAL_CORE_VERSION) ||
-                    loadedAbi !in 1..0xffff_ffffL ||
-                    !(loadedSource as String).matches(SHA256)
+                loadedVersionString?.matches(CANONICAL_CORE_VERSION) != true ||
+                    loadedAbi !in 1..MAX_UINT32_VALUE ||
+                    loadedSourceString?.matches(SHA256) != true
                 )
         ) {
-            return false
+            return null
         }
         val loadedMatchesExpected = loadedIsPresent &&
-            loadedVersion == expectedVersion && loadedAbi == expectedAbi && loadedSource == expectedSource
+            loadedVersionString == expectedCandidate.coreVersion &&
+            loadedAbi == expectedCandidate.abiVersion &&
+            loadedSourceString == expectedCandidate.sourceSha256
+        return LoadedIdentityState(loadedIsNull, loadedIsPresent, loadedMatchesExpected)
+    }
 
+    private fun Map<String, Any?>.hasValidOutcome(loadedIdentity: LoadedIdentityState): Boolean {
         val outcome = this["outcome"] as? String ?: return false
         val mismatchCategory = this["mismatchCategory"] as? String
         val validOutcome = (outcome == "match" && mismatchCategory == null) ||
@@ -241,10 +269,13 @@ internal class AndroidDomainCoreShadowSpool(
         if (!validOutcome) return false
         val requiresExpectedIdentity = outcome == "match" ||
             mismatchCategory == "result_mismatch" || mismatchCategory == "invalid_result" || mismatchCategory == "native_error"
-        if (requiresExpectedIdentity && !loadedMatchesExpected) return false
-        if (mismatchCategory == "native_unavailable" && !loadedIsNull) return false
-        if (mismatchCategory == "loaded_identity_mismatch" && (!loadedIsPresent || loadedMatchesExpected)) return false
+        if (requiresExpectedIdentity && !loadedIdentity.matchesExpected) return false
+        if (mismatchCategory == "native_unavailable" && !loadedIdentity.isNull) return false
+        return mismatchCategory != "loaded_identity_mismatch" ||
+            (loadedIdentity.isPresent && !loadedIdentity.matchesExpected)
+    }
 
+    private fun Map<String, Any?>.hasValidObservation(now: Instant): Boolean {
         val observedAt = (this["observedAt"] as? String)?.takeIf(UTC_TIMESTAMP::matches) ?: return false
         val observedInstant = runCatching { Instant.parse(observedAt) }.getOrNull() ?: return false
         if (observedInstant.isBefore(now.minus(MAX_SAMPLE_AGE)) || observedInstant.isAfter(now.plus(FUTURE_SAMPLE_SKEW))) return false

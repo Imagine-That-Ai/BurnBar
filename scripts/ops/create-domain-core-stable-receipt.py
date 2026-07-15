@@ -72,7 +72,9 @@ def create_receipt(
         raise GATE.GateError("consumer release descriptors do not cover the exact row consumer set")
     for item in releases:
         if item.get("candidate") != candidate or item.get("activation") != activation:
-            raise GATE.GateError(f"{item.get('consumer')}: release descriptor does not bind candidate C and activation P")
+            raise GATE.GateError(
+                f"{item.get('consumer')}: release descriptor does not bind candidate C and activation P"
+            )
         if item.get("commit") != activation_commit:
             raise GATE.GateError(f"{item.get('consumer')}: release descriptor commit must equal activation P")
     rollback = load(rollback_path, "rollback artifact descriptor")

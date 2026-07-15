@@ -17,7 +17,7 @@ interface DomainCoreBuildReceipt {
   distribution: string;
   rolloutChannel: string | null;
   evidenceEnabled: boolean;
-  modes: Readonly<Record<DomainCoreRuntimeDomain, string>>;
+  modes: Readonly<Record<DomainCoreRuntimeDomain, DomainCoreRuntimeMode>>;
   candidateIdentity: DomainCoreCandidateIdentity | null;
 }
 
@@ -29,6 +29,14 @@ const domainKeys: Record<DomainCoreRuntimeDomain, string> = {
   hermes: "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE",
   pricing: "OPENBURNBAR_DOMAIN_CORE_PRICING_MODE",
 };
+const runtimeDomains: readonly DomainCoreRuntimeDomain[] = [
+  "quota",
+  "cloudVault",
+  "cloudVaultRewrap",
+  "cloudVaultSearch",
+  "hermes",
+  "pricing",
+];
 
 const candidateKeys = {
   candidateCommit: "OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT",
@@ -92,7 +100,7 @@ export function domainCoreDeploymentIdentity(
   return {
     profile: parsed.name,
     candidateIdentity: parsed.candidateIdentity,
-    pricingMode: parsed.modes.pricing as DomainCoreRuntimeMode,
+    pricingMode: parsed.modes.pricing,
   };
 }
 
@@ -118,12 +126,14 @@ function resolveProfile(environment: NodeJS.ProcessEnv, receipt: unknown): Resol
     parsedReceipt.candidateIdentity ??
     (environmentCandidate.state === "valid" ? environmentCandidate.identity : undefined);
   return {
-    modes: Object.fromEntries(
-      Object.entries(domainKeys).map(([domain, key]) => [
-        domain,
-        mode(environment[key]) ?? parsedReceipt.modes[domain as DomainCoreRuntimeDomain],
-      ]),
-    ) as Record<DomainCoreRuntimeDomain, DomainCoreRuntimeMode>,
+    modes: {
+      quota: mode(environment[domainKeys.quota]) ?? parsedReceipt.modes.quota,
+      cloudVault: mode(environment[domainKeys.cloudVault]) ?? parsedReceipt.modes.cloudVault,
+      cloudVaultRewrap: mode(environment[domainKeys.cloudVaultRewrap]) ?? parsedReceipt.modes.cloudVaultRewrap,
+      cloudVaultSearch: mode(environment[domainKeys.cloudVaultSearch]) ?? parsedReceipt.modes.cloudVaultSearch,
+      hermes: mode(environment[domainKeys.hermes]) ?? parsedReceipt.modes.hermes,
+      pricing: mode(environment[domainKeys.pricing]) ?? parsedReceipt.modes.pricing,
+    },
     candidateIdentity,
   };
 }
@@ -149,7 +159,7 @@ function resolveSignedProfile(receipt: DomainCoreBuildReceipt): ResolvedDomainCo
   if (!valid) return undefined;
 
   return {
-    modes: receipt.modes as Record<DomainCoreRuntimeDomain, DomainCoreRuntimeMode>,
+    modes: { ...receipt.modes },
     candidateIdentity: receipt.candidateIdentity,
     evidenceChannel: receipt.name === "internal" || receipt.name === "beta" ? receipt.name : undefined,
   };
@@ -167,14 +177,8 @@ function parseReceipt(value: unknown): DomainCoreBuildReceipt | undefined {
   ) {
     return undefined;
   }
-  const receiptModes = value.modes;
-  const modeKeys = Object.keys(receiptModes);
-  if (
-    modeKeys.length !== Object.keys(domainKeys).length ||
-    Object.keys(domainKeys).some((domain) => mode(receiptModes[domain]) !== receiptModes[domain])
-  ) {
-    return undefined;
-  }
+  const receiptModes = parseModes(value.modes);
+  if (!receiptModes) return undefined;
 
   const candidate = resolveReceiptCandidateIdentity(value);
   if (candidate.state === "invalid") return undefined;
@@ -197,7 +201,7 @@ function parseReceipt(value: unknown): DomainCoreBuildReceipt | undefined {
     distribution: value.distribution,
     rolloutChannel: value.rolloutChannel,
     evidenceEnabled: value.evidenceEnabled,
-    modes: receiptModes as Record<DomainCoreRuntimeDomain, DomainCoreRuntimeMode>,
+    modes: receiptModes,
     candidateIdentity: candidateIdentity ?? null,
   };
 }
@@ -207,21 +211,14 @@ function resolveReceiptCandidateIdentity(receipt: Record<string, unknown>): Cand
   const identity = receipt.candidateIdentity;
   if (identity === null) return { state: "absent" };
   if (!isRecord(identity)) return { state: "invalid" };
-  if (
-    Object.keys(identity).length !== 4 ||
-    !isCandidateIdentity(identity.candidateCommit, identity.coreVersion, identity.abiVersion, identity.sourceSha256)
-  ) {
-    return { state: "invalid" };
-  }
-  return {
-    state: "valid",
-    identity: {
-      candidateCommit: identity.candidateCommit as string,
-      coreVersion: identity.coreVersion as string,
-      abiVersion: identity.abiVersion as number,
-      sourceSha256: identity.sourceSha256 as string,
-    },
-  };
+  if (Object.keys(identity).length !== 4) return { state: "invalid" };
+  const parsed = parseCandidateIdentity(
+    identity.candidateCommit,
+    identity.coreVersion,
+    identity.abiVersion,
+    identity.sourceSha256,
+  );
+  return parsed ? { state: "valid", identity: parsed } : { state: "invalid" };
 }
 
 function resolveEnvironmentCandidateIdentity(environment: NodeJS.ProcessEnv): CandidateIdentityResolution {
@@ -237,39 +234,52 @@ function resolveEnvironmentCandidateIdentity(environment: NodeJS.ProcessEnv): Ca
     return { state: "invalid" };
   }
   const abiVersion = Number(raw.abiVersion);
-  if (!isCandidateIdentity(raw.candidateCommit, raw.coreVersion, abiVersion, raw.sourceSha256)) {
-    return { state: "invalid" };
-  }
-  return {
-    state: "valid",
-    identity: {
-      candidateCommit: raw.candidateCommit as string,
-      coreVersion: raw.coreVersion as string,
-      abiVersion,
-      sourceSha256: raw.sourceSha256 as string,
-    },
-  };
+  const parsed = parseCandidateIdentity(raw.candidateCommit, raw.coreVersion, abiVersion, raw.sourceSha256);
+  return parsed ? { state: "valid", identity: parsed } : { state: "invalid" };
 }
 
-function isCandidateIdentity(
+function parseCandidateIdentity(
   candidateCommit: unknown,
   coreVersion: unknown,
   abiVersion: unknown,
   sourceSha256: unknown,
-): boolean {
-  return (
-    typeof candidateCommit === "string" &&
-    FULL_GIT_COMMIT.test(candidateCommit) &&
-    typeof coreVersion === "string" &&
-    coreVersion.length <= 64 &&
-    CANONICAL_SEMVER.test(coreVersion) &&
-    typeof abiVersion === "number" &&
-    Number.isSafeInteger(abiVersion) &&
-    abiVersion >= 1 &&
-    abiVersion <= UINT32_MAX &&
-    typeof sourceSha256 === "string" &&
-    SHA256.test(sourceSha256)
-  );
+): DomainCoreCandidateIdentity | undefined {
+  if (
+    typeof candidateCommit !== "string" ||
+    !FULL_GIT_COMMIT.test(candidateCommit) ||
+    typeof coreVersion !== "string" ||
+    coreVersion.length > 64 ||
+    !CANONICAL_SEMVER.test(coreVersion) ||
+    typeof abiVersion !== "number" ||
+    !Number.isSafeInteger(abiVersion) ||
+    abiVersion < 1 ||
+    abiVersion > UINT32_MAX ||
+    typeof sourceSha256 !== "string" ||
+    !SHA256.test(sourceSha256)
+  ) {
+    return undefined;
+  }
+  return { candidateCommit, coreVersion, abiVersion, sourceSha256 };
+}
+
+function parseModes(
+  value: Record<string, unknown>,
+): Record<DomainCoreRuntimeDomain, DomainCoreRuntimeMode> | undefined {
+  if (Object.keys(value).length !== runtimeDomains.length) return undefined;
+  const parsed = {
+    quota: mode(value.quota),
+    cloudVault: mode(value.cloudVault),
+    cloudVaultRewrap: mode(value.cloudVaultRewrap),
+    cloudVaultSearch: mode(value.cloudVaultSearch),
+    hermes: mode(value.hermes),
+    pricing: mode(value.pricing),
+  };
+  if (runtimeDomains.some((domain) => parsed[domain] === undefined || parsed[domain] !== value[domain])) {
+    return undefined;
+  }
+  const { quota, cloudVault, cloudVaultRewrap, cloudVaultSearch, hermes, pricing } = parsed;
+  if (!quota || !cloudVault || !cloudVaultRewrap || !cloudVaultSearch || !hermes || !pricing) return undefined;
+  return { quota, cloudVault, cloudVaultRewrap, cloudVaultSearch, hermes, pricing };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

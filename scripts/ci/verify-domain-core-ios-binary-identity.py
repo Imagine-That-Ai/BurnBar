@@ -108,19 +108,13 @@ def verify(app: Path, candidate_path: Path, output: Path) -> dict[str, Any]:
     }
     missing = ({IDENTITY_SYMBOL} | FFI_IDENTITY_SYMBOLS) - symbols
     if missing:
-        raise ValueError(
-            "iOS executable is missing linked Rust identity symbols: " + ", ".join(sorted(missing))
-        )
+        raise ValueError("iOS executable is missing linked Rust identity symbols: " + ", ".join(sorted(missing)))
 
-    section = parse_identity_section(
-        run("otool", "-arch", "arm64", "-s", "__TEXT", "__obb_core_id", str(executable))
-    )
+    section = parse_identity_section(run("otool", "-arch", "arm64", "-s", "__TEXT", "__obb_core_id", str(executable)))
     observed = parse_observed_identity(section)
     if observed != candidate:
         differing = sorted(field for field in required if observed.get(field) != candidate.get(field))
-        raise ValueError(
-            "loaded iOS Rust slice identity differs from protected candidate: " + ", ".join(differing)
-        )
+        raise ValueError("loaded iOS Rust slice identity differs from protected candidate: " + ", ".join(differing))
 
     result = {
         "schemaVersion": 1,
@@ -148,7 +142,14 @@ def main() -> int:
     args = parser.parse_args()
     try:
         verify(args.app, args.candidate, args.output)
-    except (OSError, ValueError, KeyError, json.JSONDecodeError, plistlib.InvalidFileException, subprocess.SubprocessError) as error:
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        json.JSONDecodeError,
+        plistlib.InvalidFileException,
+        subprocess.SubprocessError,
+    ) as error:
         parser.error(str(error))
     return 0
 

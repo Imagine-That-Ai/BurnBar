@@ -35,13 +35,68 @@ interface OperationContractBranch {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function operationContractBranch(value: unknown): OperationContractBranch | undefined {
+  if (!isRecord(value) || !isRecord(value.properties)) return undefined;
+  const { domain, slice, consumer, operation } = value.properties;
+  if (!isRecord(domain) || typeof domain.const !== "string" || !isRecord(slice) || typeof slice.const !== "string") {
+    return undefined;
+  }
+  if (!isRecord(consumer) || !isRecord(operation)) return undefined;
+  const consumerConst = typeof consumer.const === "string" ? consumer.const : undefined;
+  const consumerEnum =
+    Array.isArray(consumer.enum) && consumer.enum.every((item) => typeof item === "string")
+      ? consumer.enum.filter((item): item is string => typeof item === "string")
+      : undefined;
+  const operationConst = typeof operation.const === "string" ? operation.const : undefined;
+  const operationEnum =
+    Array.isArray(operation.enum) && operation.enum.every((item) => typeof item === "string")
+      ? operation.enum.filter((item): item is string => typeof item === "string")
+      : undefined;
+  if ((!consumerConst && !consumerEnum) || (!operationConst && !operationEnum)) return undefined;
+  return {
+    properties: {
+      domain: { const: domain.const },
+      slice: { const: slice.const },
+      consumer: { const: consumerConst, enum: consumerEnum },
+      operation: { const: operationConst, enum: operationEnum },
+    },
+  };
+}
+
+function mismatchRequirementProperties(schema: unknown, category: string): Record<string, unknown> | undefined {
+  if (!isRecord(schema) || !Array.isArray(schema.allOf)) return undefined;
+  for (const condition of schema.allOf) {
+    if (!isRecord(condition) || !isRecord(condition.if) || !isRecord(condition.if.properties)) continue;
+    const mismatchCategory = condition.if.properties.mismatchCategory;
+    if (!isRecord(mismatchCategory) || !Array.isArray(mismatchCategory.enum)) continue;
+    if (
+      !mismatchCategory.enum.includes(category) ||
+      !isRecord(condition.then) ||
+      !isRecord(condition.then.properties)
+    ) {
+      continue;
+    }
+    return condition.then.properties;
+  }
+  return undefined;
+}
+
 function v3OperationContractBranches(): OperationContractBranch[] {
-  const schema = JSON.parse(
+  const schema: unknown = JSON.parse(
     readFileSync(resolve(__dirname, "../../../docs/contracts/domain-core-shadow-sample-v3.schema.json"), "utf8"),
-  ) as { allOf: Array<{ oneOf?: OperationContractBranch[] }> };
-  return schema.allOf
-    .flatMap((condition) => condition.oneOf ?? [])
-    .filter((branch) => branch.properties?.domain?.const !== undefined && branch.properties?.operation !== undefined);
+  );
+  if (!isRecord(schema) || !Array.isArray(schema.allOf)) throw new Error("V3 shadow schema must define allOf.");
+  return schema.allOf.flatMap((condition) => {
+    if (!isRecord(condition) || !Array.isArray(condition.oneOf)) return [];
+    return condition.oneOf.flatMap((value) => {
+      const branch = operationContractBranch(value);
+      return branch ? [branch] : [];
+    });
+  });
 }
 
 function sample(overrides: Partial<DomainCoreShadowSampleV2> = {}): DomainCoreShadowSampleV2 {
@@ -344,19 +399,12 @@ describe("domain-core shadow evidence contract", () => {
   });
 
   it("pins the V3 schema to require a loaded tuple for native errors", () => {
-    const schema = JSON.parse(
+    const schema: unknown = JSON.parse(
       readFileSync(resolve(__dirname, "../../../docs/contracts/domain-core-shadow-sample-v3.schema.json"), "utf8"),
-    ) as {
-      allOf: Array<{
-        if?: { properties?: { mismatchCategory?: { enum?: string[] } } };
-        then?: { properties?: Record<string, { type?: string }> };
-      }>;
-    };
-    const identityRequired = schema.allOf.find((condition) =>
-      condition.if?.properties?.mismatchCategory?.enum?.includes("native_error"),
     );
+    const identityRequired = mismatchRequirementProperties(schema, "native_error");
 
-    expect(identityRequired?.then?.properties).toMatchObject({
+    expect(identityRequired).toMatchObject({
       loadedCoreVersion: { type: "string" },
       loadedCoreAbiVersion: { type: "integer" },
       loadedCoreSourceSha256: { type: "string" },

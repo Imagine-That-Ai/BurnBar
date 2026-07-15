@@ -62,28 +62,34 @@ PROFILE_DOMAIN_ROWS = {
 }
 TARGET_KINDS = {"source_symbol", "mode_literal", "path"}
 ATOMIC_DELETION_GROUPS = (
-    frozenset({
-        "quota.claude_statusline",
-        "quota.codex_usage",
-        "quota.cursor_usage",
-        "quota.anthropic_headers",
-    }),
-    frozenset({
-        "cloudvault.portable_primitives",
-        "cloudvault.document_rewrap",
-        "cloudvault.search",
-    }),
+    frozenset(
+        {
+            "quota.claude_statusline",
+            "quota.codex_usage",
+            "quota.cursor_usage",
+            "quota.anthropic_headers",
+        }
+    ),
+    frozenset(
+        {
+            "cloudvault.portable_primitives",
+            "cloudvault.document_rewrap",
+            "cloudvault.search",
+        }
+    ),
     frozenset({"hermes.relay_crypto", "hermes.ratchet_transforms"}),
     frozenset({"pricing.token_cost", "pricing.kimi_historical"}),
 )
 POST_DELETION_PRIMITIVE_RULES = (
     (
         "swift-cloudvault-crypto",
-        frozenset({
-            "cloudvault.portable_primitives",
-            "cloudvault.document_rewrap",
-            "cloudvault.search",
-        }),
+        frozenset(
+            {
+                "cloudvault.portable_primitives",
+                "cloudvault.document_rewrap",
+                "cloudvault.search",
+            }
+        ),
         "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
         re.compile(
             r"PlatformCrypto\.(?:sha256(?:Hex)?|hmacSHA256|deriveHKDFSHA256(?:Key|KeyData)?|sealAESGCM|openAESGCM)|"
@@ -92,11 +98,13 @@ POST_DELETION_PRIMITIVE_RULES = (
     ),
     (
         "android-cloudvault-crypto",
-        frozenset({
-            "cloudvault.portable_primitives",
-            "cloudvault.document_rewrap",
-            "cloudvault.search",
-        }),
+        frozenset(
+            {
+                "cloudvault.portable_primitives",
+                "cloudvault.document_rewrap",
+                "cloudvault.search",
+            }
+        ),
         "android/app/src/main/java/com/openburnbar/data/cloud",
         re.compile(
             r"(?:Mac\.getInstance\(\"HmacSHA256\"\)|MessageDigest\.getInstance\(\"SHA-256\"\)|"
@@ -111,11 +119,13 @@ POST_DELETION_PRIMITIVE_RULES = (
     ),
     (
         "windows-cloudvault-crypto",
-        frozenset({
-            "cloudvault.portable_primitives",
-            "cloudvault.document_rewrap",
-            "cloudvault.search",
-        }),
+        frozenset(
+            {
+                "cloudvault.portable_primitives",
+                "cloudvault.document_rewrap",
+                "cloudvault.search",
+            }
+        ),
         "windows/cloudsync/OpenBurnBar.CloudSync.Crypto",
         re.compile(r"SHA256\.HashData|HMACSHA256|HKDF\.DeriveKey|\bAesGcm\b|=>\s*Legacy[A-Za-z0-9_]*\("),
     ),
@@ -139,12 +149,14 @@ POST_DELETION_PRIMITIVE_RULES = (
     ),
     (
         "swift-codex-quota-decoder",
-        frozenset({
-            "quota.claude_statusline",
-            "quota.codex_usage",
-            "quota.cursor_usage",
-            "quota.anthropic_headers",
-        }),
+        frozenset(
+            {
+                "quota.claude_statusline",
+                "quota.codex_usage",
+                "quota.cursor_usage",
+                "quota.anthropic_headers",
+            }
+        ),
         "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota",
         re.compile(r"additional_rate_limits|primary_window|secondary_window|used_percent|\blegacy\s*:\s*\{"),
     ),
@@ -210,7 +222,10 @@ RELEASE_SIGNER_WORKFLOWS = {
     "console": ".github/workflows/deploy-hosting.yml",
     "functions": ".github/workflows/deploy-production.yml",
 }
-RELEASE_PREDICATE_TYPES = {consumer: "https://openburnbar.dev/attestations/domain-core-release-artifact/v2" for consumer in RELEASE_SIGNER_WORKFLOWS}
+RELEASE_PREDICATE_TYPES = {
+    consumer: "https://openburnbar.dev/attestations/domain-core-release-artifact/v2"
+    for consumer in RELEASE_SIGNER_WORKFLOWS
+}
 ROLLBACK_PREDICATE_TYPE = "https://openburnbar.dev/attestations/domain-core-rollback-artifact/v1"
 ROLLBACK_PAYLOAD_IDENTITIES = {
     "apple": ("apple-rollback-settings", "macos-arm64"),
@@ -523,9 +538,7 @@ def load_deletion_reviewers(
         previous = normalized
     missing_classes = sorted(review_class for review_class, handles in reviewers.items() if not handles)
     if missing_classes and not allow_missing:
-        raise GateError(
-            f"{label}: no qualified reviewer covers {', '.join(missing_classes)}"
-        )
+        raise GateError(f"{label}: no qualified reviewer covers {', '.join(missing_classes)}")
     return reviewers
 
 
@@ -689,7 +702,11 @@ class SignedEvidenceVerifier:
             raise GateError(f"{label}: GitHub query failed: {detail}")
         try:
             pages = require_array(json.loads(result.stdout), f"{label} pages")
-            value = [item for page_index, page in enumerate(pages) for item in require_array(page, f"{label} pages[{page_index}]")]
+            value = [
+                item
+                for page_index, page in enumerate(pages)
+                for item in require_array(page, f"{label} pages[{page_index}]")
+            ]
         except json.JSONDecodeError as error:
             raise GateError(f"{label}: GitHub query returned invalid JSON") from error
         self._github_list_cache[path] = value
@@ -733,7 +750,10 @@ class SignedEvidenceVerifier:
         for key, expected in expected_source.items():
             if source.get(key) != expected:
                 raise GateError(f"domain-core source run.{key} must equal {expected!r}")
-        if require_object(source.get("repository"), "domain-core source run.repository").get("full_name") != self.repository:
+        if (
+            require_object(source.get("repository"), "domain-core source run.repository").get("full_name")
+            != self.repository
+        ):
             raise GateError("domain-core source run repository is not trusted")
         signer = self._github_json(
             f"repos/{self.repository}/actions/runs/{signer_run_id}/attempts/{signer_run_attempt}",
@@ -751,7 +771,10 @@ class SignedEvidenceVerifier:
         for key, expected in expected_signer.items():
             if signer.get(key) != expected:
                 raise GateError(f"domain-core signer run.{key} must equal {expected!r}")
-        if require_object(signer.get("repository"), "domain-core signer run.repository").get("full_name") != self.repository:
+        if (
+            require_object(signer.get("repository"), "domain-core signer run.repository").get("full_name")
+            != self.repository
+        ):
             raise GateError("domain-core signer run repository is not trusted")
 
     def verify_release(
@@ -810,7 +833,8 @@ class SignedEvidenceVerifier:
                 predicate
                 for predicate in predicates
                 if all(predicate.get(key) == value for key, value in expected_predicate.items())
-                and require_object(predicate.get("sourceRun"), "signed release predicate.sourceRun").get("repository") == self.repository
+                and require_object(predicate.get("sourceRun"), "signed release predicate.sourceRun").get("repository")
+                == self.repository
                 and predicate["sourceRun"].get("workflowPath") == SOURCE_WORKFLOW
                 and predicate["sourceRun"].get("headSha") == item["candidate"]["candidateCommit"]
                 and require_object(
@@ -833,7 +857,9 @@ class SignedEvidenceVerifier:
                     if ios_app_store_receipt_matches(predicate, item, expected_sha256)
                 ]
             if not matching:
-                raise GateError(f"{item['consumer']} release artifact: signed predicate does not bind the declared consumer identity")
+                raise GateError(
+                    f"{item['consumer']} release artifact: signed predicate does not bind the declared consumer identity"
+                )
         finally:
             if self.cache_root is None:
                 artifact.unlink(missing_ok=True)
@@ -931,7 +957,8 @@ class SignedEvidenceVerifier:
                 or manifest.get("target") != "all-supported-consumers"
                 or manifest.get("candidate") != item["candidate"]
                 or manifest.get("activation") != item["activation"]
-                or manifest.get("release") != {
+                or manifest.get("release")
+                != {
                     "version": item["version"],
                     "tag": item["tag"],
                     "commit": item["commit"],
@@ -1002,9 +1029,7 @@ class SignedEvidenceVerifier:
                     )
                 except (UnicodeDecodeError, json.JSONDecodeError) as error:
                     raise GateError(f"rollback payload {consumer}: settings or provenance is unreadable") from error
-                expected_release = {
-                    "version": item["version"], "tag": item["tag"], "commit": item["commit"]
-                }
+                expected_release = {"version": item["version"], "tag": item["tag"], "commit": item["commit"]}
                 expected_settings = {
                     "schemaVersion": 1,
                     "action": "rebuild_and_redeploy_legacy",
@@ -1031,14 +1056,17 @@ class SignedEvidenceVerifier:
                     "release": expected_release,
                 }
                 if settings_payload != expected_settings or provenance_payload != expected_provenance:
-                    raise GateError(f"rollback payload {consumer}: bytes do not encode the exact usable legacy settings")
+                    raise GateError(
+                        f"rollback payload {consumer}: bytes do not encode the exact usable legacy settings"
+                    )
             try:
                 settings_text = environment.decode("ascii")
             except UnicodeDecodeError as error:
                 raise GateError("rollback artifact environment is not canonical ASCII") from error
             if (
                 "OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE=public-production-rollback\n" not in settings_text
-                or "OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT=" + item["candidate"]["candidateCommit"] + "\n" not in settings_text
+                or "OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT=" + item["candidate"]["candidateCommit"] + "\n"
+                not in settings_text
                 or sum(line.endswith("_MODE=legacy") for line in settings_text.splitlines()) != len(modes)
             ):
                 raise GateError("rollback artifact environment cannot restore every legacy domain")
@@ -1097,7 +1125,9 @@ class SignedEvidenceVerifier:
                 if isinstance(predicate, dict):
                     predicates.append(predicate)
             if expected_predicate not in predicates:
-                raise GateError("rollback artifact: signed predicate does not bind the exact candidate and retention policy")
+                raise GateError(
+                    "rollback artifact: signed predicate does not bind the exact candidate and retention policy"
+                )
         finally:
             if self.cache_root is None:
                 artifact.unlink(missing_ok=True)
@@ -1144,9 +1174,13 @@ class SignedEvidenceVerifier:
         )
         head_object = require_object(pull.get("head"), "deletion review pull request.head")
         head = head_object.get("sha")
-        head_repository = require_object(head_object.get("repo"), "deletion review pull request.head.repo").get("full_name")
+        head_repository = require_object(head_object.get("repo"), "deletion review pull request.head.repo").get(
+            "full_name"
+        )
         base_object = require_object(pull.get("base"), "deletion review pull request.base")
-        base_repository = require_object(base_object.get("repo"), "deletion review pull request.base.repo").get("full_name")
+        base_repository = require_object(base_object.get("repo"), "deletion review pull request.base.repo").get(
+            "full_name"
+        )
         author = require_object(pull.get("user"), "deletion review pull request.user").get("login")
         reviewer = review["reviewer"].removeprefix("@")
         reviewed_commit = review["reviewedCommit"]
@@ -1159,7 +1193,9 @@ class SignedEvidenceVerifier:
             or base_repository != self.repository
             or base_object.get("ref") != "main"
         ):
-            raise GateError("deletion review pull request must be merged, non-draft, same-repository, target main, and match reviewedCommit")
+            raise GateError(
+                "deletion review pull request must be merged, non-draft, same-repository, target main, and match reviewedCommit"
+            )
         merge_commit = pull.get("merge_commit_sha")
         if expected_descendant_commit is not None:
             if not isinstance(merge_commit, str) or not COMMIT_RE.fullmatch(merge_commit):
@@ -1180,7 +1216,11 @@ class SignedEvidenceVerifier:
             ),
             "deletion review pages",
         )
-        reviews = [review for page_index, page in enumerate(review_pages) for review in require_array(page, f"deletion review pages[{page_index}]")]
+        reviews = [
+            review
+            for page_index, page in enumerate(review_pages)
+            for review in require_array(page, f"deletion review pages[{page_index}]")
+        ]
         decisive_reviews: list[tuple[datetime, int, str]] = []
         for index, item in enumerate(reviews):
             if not isinstance(item, dict) or item.get("commit_id") != reviewed_commit:
@@ -1197,7 +1237,9 @@ class SignedEvidenceVerifier:
                 raise GateError(f"deletion reviews[{index}].id: expected positive integer")
             decisive_reviews.append((submitted_at, review_id, state))
         if not decisive_reviews or max(decisive_reviews)[2] != "APPROVED":
-            raise GateError("deletion review requires the declared reviewer's latest decisive review on reviewedCommit to be APPROVED")
+            raise GateError(
+                "deletion review requires the declared reviewer's latest decisive review on reviewedCommit to be APPROVED"
+            )
         for path, expected_digest in sorted((bound_files or {}).items()):
             encoded_path = quote(path, safe="/")
             content = require_object(
@@ -1237,13 +1279,17 @@ class SignedEvidenceVerifier:
             or pull.get("merged") is True
             or pull.get("state") != "open"
             or head.get("sha") != deletion_head
-            or require_object(head.get("repo"), "actual deletion pull request.head.repo").get("full_name") != self.repository
+            or require_object(head.get("repo"), "actual deletion pull request.head.repo").get("full_name")
+            != self.repository
             or base.get("ref") != "main"
-            or require_object(base.get("repo"), "actual deletion pull request.base.repo").get("full_name") != self.repository
+            or require_object(base.get("repo"), "actual deletion pull request.base.repo").get("full_name")
+            != self.repository
             or not isinstance(author, str)
             or author.casefold() == normalized
         ):
-            raise GateError("actual deletion approval must be on the current non-draft same-repository PR head targeting official main")
+            raise GateError(
+                "actual deletion approval must be on the current non-draft same-repository PR head targeting official main"
+            )
         reviews = self._github_list(
             f"repos/{self.repository}/pulls/{pull_number}/reviews?per_page=100",
             "actual deletion reviews",
@@ -1403,10 +1449,7 @@ def validate_atomic_deletion_groups(rows: dict[str, Row]) -> None:
     for group in ATOMIC_DELETION_GROUPS:
         selected = deleted & group
         if selected and selected != group:
-            raise GateError(
-                "coupled legacy rows must enter legacy_deleted atomically: "
-                + ", ".join(sorted(group))
-            )
+            raise GateError("coupled legacy rows must enter legacy_deleted atomically: " + ", ".join(sorted(group)))
 
 
 def verify_post_deletion_primitives(repo_root: Path, rows: dict[str, Row]) -> None:
@@ -1417,11 +1460,15 @@ def verify_post_deletion_primitives(repo_root: Path, rows: dict[str, Row]) -> No
         path = secure_path(repo_root, relative, label, must_exist=False)
         if not path.exists():
             continue
-        sources = [path] if path.is_file() else [
-            child
-            for child in path.rglob("*")
-            if child.is_file() and not child.is_symlink() and child.suffix in {".cs", ".kt", ".swift", ".ts"}
-        ]
+        sources = (
+            [path]
+            if path.is_file()
+            else [
+                child
+                for child in path.rglob("*")
+                if child.is_file() and not child.is_symlink() and child.suffix in {".cs", ".kt", ".swift", ".ts"}
+            ]
+        )
         for source in sources:
             contents = source.read_text(encoding="utf-8", errors="replace")
             match = pattern.search(contents)
@@ -1621,24 +1668,27 @@ def validate_ios_app_store_receipt(
         "abiVersion": item["candidate"]["abiVersion"],
         "sourceSha256": item["candidate"]["sourceSha256"],
     }
-    expected_symbols = sorted({
-        "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
-        "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
-        "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
-        "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
-    })
+    expected_symbols = sorted(
+        {
+            "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+            "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+            "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
+            "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
+        }
+    )
     invalid = (
         receipt["schemaVersion"] != 1
         or receipt["status"] != "processed"
-        or receipt["processedStatus"] not in {
-            "complete", "completed", "processed", "processing complete", "success", "succeeded"
-        }
+        or receipt["processedStatus"]
+        not in {"complete", "completed", "processed", "processing complete", "success", "succeeded"}
         or not isinstance(receipt["deliveryId"], str)
         or not receipt["deliveryId"]
         or receipt["archiveSha256"] != archive_sha256
         or require_digest(receipt["ipaSha256"], "signed iOS IPA SHA-256") != receipt["ipaSha256"]
-        or require_digest(receipt["uploadResponseSha256"], "signed iOS upload response SHA-256") != receipt["uploadResponseSha256"]
-        or require_digest(receipt["statusResponseSha256"], "signed iOS status response SHA-256") != receipt["statusResponseSha256"]
+        or require_digest(receipt["uploadResponseSha256"], "signed iOS upload response SHA-256")
+        != receipt["uploadResponseSha256"]
+        or require_digest(receipt["statusResponseSha256"], "signed iOS status response SHA-256")
+        != receipt["statusResponseSha256"]
         or release != {"version": item["version"], "tag": item["tag"], "commit": item["commit"]}
         or receipt["candidate"] != item["candidate"]
         or receipt["activation"] != item["activation"]
@@ -1654,11 +1704,15 @@ def validate_ios_app_store_receipt(
         or loaded.get("identitySymbols") != expected_symbols
         or loaded.get("candidate") != item["candidate"]
         or observed != expected_observed
-        or require_digest(loaded.get("executableSha256"), "signed iOS executable SHA-256") != loaded.get("executableSha256")
-        or require_digest(loaded.get("identitySectionSha256"), "signed iOS identity-section SHA-256") != loaded.get("identitySectionSha256")
+        or require_digest(loaded.get("executableSha256"), "signed iOS executable SHA-256")
+        != loaded.get("executableSha256")
+        or require_digest(loaded.get("identitySectionSha256"), "signed iOS identity-section SHA-256")
+        != loaded.get("identitySectionSha256")
     )
     if invalid:
-        raise GateError("signed iOS App Store Connect receipt does not bind the exact processed IPA and loaded Rust slice")
+        raise GateError(
+            "signed iOS App Store Connect receipt does not bind the exact processed IPA and loaded Rust slice"
+        )
 
 
 def ios_app_store_receipt_matches(
@@ -1829,7 +1883,11 @@ def validate_unsigned_candidate_bundle(
         "verificationSteps",
     }
     exact_keys(trust, trust_fields, trust_fields, f"{label}.trust")
-    if trust["authority"] != "none" or trust["attestationRequired"] is not True or trust["requiredSigner"] != PROMOTION_SIGNER_WORKFLOW:
+    if (
+        trust["authority"] != "none"
+        or trust["attestationRequired"] is not True
+        or trust["requiredSigner"] != PROMOTION_SIGNER_WORKFLOW
+    ):
         raise GateError(f"{label}: unsigned bundle must disclaim authority and require the protected signer")
     workflow = require_object(value["workflow"], f"{label}.workflow")
     if (
@@ -1861,7 +1919,9 @@ def validate_promotion_attestation(
     if path_value != expected_path:
         raise GateError(f"row {row_id}: promotion attestation must use exact path {expected_path}")
     path = secure_path(repo_root, path_value, f"row {row_id} promotion attestation", must_exist=True)
-    if not path.is_file() or require_digest(pointer["sha256"], f"row {row_id} promotionAttestation.sha256") != sha256_path(path):
+    if not path.is_file() or require_digest(
+        pointer["sha256"], f"row {row_id} promotionAttestation.sha256"
+    ) != sha256_path(path):
         raise GateError(f"row {row_id}: promotion attestation digest does not match committed bytes")
     attestation = require_object(
         load_json(path, f"row {row_id} promotion attestation"),
@@ -1982,14 +2042,19 @@ def validate_promotion_attestation(
         f"row {row_id} trusted-main evaluator",
     )
     require_ancestor(repo_root, candidate, trusted_main, f"row {row_id} trusted-main evaluator")
-    expected_policy_digest = file_sha256_at_commit(repo_root, trusted_main, PROMOTION_POLICY_PATH, "trusted-main promotion policy")
+    expected_policy_digest = file_sha256_at_commit(
+        repo_root, trusted_main, PROMOTION_POLICY_PATH, "trusted-main promotion policy"
+    )
     expected_evaluator_digest = file_sha256_at_commit(
         repo_root,
         trusted_main,
         PROMOTION_EVALUATOR_PATH,
         "trusted-main promotion evaluator",
     )
-    if provenance["policySha256"] != expected_policy_digest or provenance["evaluatorSha256"] != expected_evaluator_digest:
+    if (
+        provenance["policySha256"] != expected_policy_digest
+        or provenance["evaluatorSha256"] != expected_evaluator_digest
+    ):
         raise GateError(f"row {row_id}: provenance does not bind the trusted-main policy and evaluator")
     expected_provenance_path = f"{PROMOTION_PROVENANCE_ROOT}/{scope}/{generation}.json"
     provenance_path_value = repository_path(provenance["path"], f"row {row_id} promotion provenance.path")
@@ -2052,7 +2117,9 @@ def validate_receipt_chain(
         raise GateError(f"row {row_id}: promoted authorityGeneration must be at least 1")
 
     promotion = receipts["promotion"]
-    candidate, report_digest, core_version = validate_promotion_attestation(repo_root, row_id, generation, promotion, evidence_verifier)
+    candidate, report_digest, core_version = validate_promotion_attestation(
+        repo_root, row_id, generation, promotion, evidence_verifier
+    )
 
     stable = receipts.get("stableRelease")
     if stable is not None:
@@ -2100,10 +2167,7 @@ def validate_receipt_chain(
         candidate_modes, _ = public_production_profile_at_commit(repo_root, candidate)
         profile_domain = profile_domain_for_row(row_id)
         supersedes = promotion.payload["supersedes"]
-        reattests_stable_authority = (
-            isinstance(supersedes, dict)
-            and supersedes.get("transition") == "stable_release"
-        )
+        reattests_stable_authority = isinstance(supersedes, dict) and supersedes.get("transition") == "stable_release"
         expected_candidate_mode = "rust" if reattests_stable_authority else "legacy"
         if candidate_modes[profile_domain] != expected_candidate_mode:
             raise GateError(
@@ -2145,7 +2209,13 @@ def validate_receipt_chain(
             version = item["version"]
             if not isinstance(version, str) or not VERSION_RE.fullmatch(version) or "-" in version.split("+", 1)[0]:
                 raise GateError(f"{label}: version must be a stable semantic version")
-            expected_tag = f"windows-v{version}" if consumer == "windows" else f"linux-v{version}" if consumer == "linux" else f"v{version}"
+            expected_tag = (
+                f"windows-v{version}"
+                if consumer == "windows"
+                else f"linux-v{version}"
+                if consumer == "linux"
+                else f"v{version}"
+            )
             if item["tag"] != expected_tag:
                 raise GateError(f"{label}: tag must be {expected_tag}")
             release_commit = require_commit(repo_root, item["commit"], f"{label}.commit")
@@ -2223,7 +2293,10 @@ def validate_receipt_chain(
             rollback_fields,
             f"row {row_id} release.rollbackArtifact",
         )
-        if rollback_item["artifactKind"] != "legacy-rollback-bundle" or rollback_item["target"] != "all-supported-consumers":
+        if (
+            rollback_item["artifactKind"] != "legacy-rollback-bundle"
+            or rollback_item["target"] != "all-supported-consumers"
+        ):
             raise GateError(f"row {row_id}: stable release requires the dedicated cross-consumer rollback artifact")
         if rollback_item["retentionPolicy"] != "retain_until_legacy_deletion_complete":
             raise GateError(f"row {row_id}: rollback artifact must be retained until legacy deletion completes")
@@ -2294,7 +2367,10 @@ def validate_receipt_chain(
             rollback_item["provenanceSha256"],
             f"row {row_id} release.rollbackArtifact.provenanceSha256",
         )
-        if not rollback_provenance_path.is_file() or sha256_path(rollback_provenance_path) != rollback_provenance_digest:
+        if (
+            not rollback_provenance_path.is_file()
+            or sha256_path(rollback_provenance_path) != rollback_provenance_digest
+        ):
             raise GateError(f"row {row_id}: rollback provenance digest does not match committed bytes")
         if evidence_verifier is None:
             raise GateError(f"row {row_id}: signed rollback artifact verification is required")
@@ -2346,7 +2422,9 @@ def validate_receipt_chain(
             raise GateError(f"row {row_id}: deletion review class or outcome is invalid")
         qualified = (deletion_reviewers or {}).get(expected_review_class, set())
         if payload["reviewer"].casefold() not in qualified:
-            raise GateError(f"row {row_id}: {expected_review_class} reviewer is not qualified by the trusted base catalog")
+            raise GateError(
+                f"row {row_id}: {expected_review_class} reviewer is not qualified by the trusted base catalog"
+            )
         expected_plan_path = f"{DELETION_PLAN_ROOT}/{row_id}/{generation}.json"
         plan_path_value = repository_path(payload["planPath"], f"row {row_id} deletionReview.planPath")
         if plan_path_value != expected_plan_path:
@@ -2476,7 +2554,9 @@ def validate_rollback_history(
             else {frozenset(receipt_file_names(set(row.receipts)))}
         )
         if frozenset(actual_files) not in valid_files:
-            raise GateError(f"row {row_id} generation {generation}: receipt files must be exactly a valid set for its authority state")
+            raise GateError(
+                f"row {row_id} generation {generation}: receipt files must be exactly a valid set for its authority state"
+            )
         if generation >= row.generation:
             continue
         seen: set[str] = set()
@@ -2585,7 +2665,11 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
     if not git_file_exists(repo_root, base_ref, relative, "base legacy deletion ledger"):
         rows = require_array(current_manifest.get("rows"), "manifest.rows")
         safe_bootstrap = all(
-            isinstance(row, dict) and row.get("state") == "rollout" and row.get("authorityGeneration") == 0 and row.get("receipts") == {} for row in rows
+            isinstance(row, dict)
+            and row.get("state") == "rollout"
+            and row.get("authorityGeneration") == 0
+            and row.get("receipts") == {}
+            for row in rows
         )
         if len(rows) != len(ROW_IDS) or not safe_bootstrap:
             raise GateError("initial legacy deletion ledger must bootstrap every row in empty generation-0 rollout")
@@ -2613,7 +2697,9 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
     missing_shared = sorted(set(base_shared_by_digest) - set(current_shared_by_digest))
     if missing_shared:
         raise GateError("shared target inventory is monotonic: existing entries cannot be removed or relabeled")
-    base_rows = {row.get("id"): row for raw in base_rows_raw for row in [require_object(raw, "base legacy deletion ledger row")]}
+    base_rows = {
+        row.get("id"): row for raw in base_rows_raw for row in [require_object(raw, "base legacy deletion ledger row")]
+    }
     current_rows = {row.get("id"): row for raw in current_rows_raw for row in [require_object(raw, "manifest row")]}
     if set(base_rows) != set(ROW_IDS) or set(current_rows) != set(ROW_IDS):
         raise GateError("legacy deletion ledger transition requires the exact stable row set at base and HEAD")
@@ -2654,8 +2740,12 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
         base_targets_by_digest = {canonical_json_sha256(item): item for item in base_targets}
         current_targets_by_digest = {canonical_json_sha256(item): item for item in current_targets}
         if set(base_targets_by_digest) - set(current_targets_by_digest):
-            raise GateError(f"row {row_id}: target inventory is monotonic and cannot remove or relabel an existing target")
-        added_targets = [current_targets_by_digest[key] for key in set(current_targets_by_digest) - set(base_targets_by_digest)]
+            raise GateError(
+                f"row {row_id}: target inventory is monotonic and cannot remove or relabel an existing target"
+            )
+        added_targets = [
+            current_targets_by_digest[key] for key in set(current_targets_by_digest) - set(base_targets_by_digest)
+        ]
         if base_row.get("state") in {"deletion_approved", "legacy_deleted"} and added_targets:
             raise GateError(f"row {row_id}: target inventory is frozen after deletion approval")
         for target in added_targets:
@@ -2676,7 +2766,9 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
         if base_state == "rollout" and current_state == "promotion_approved":
             expected_generation = 1
         if current_generation != expected_generation or isinstance(current_generation, bool):
-            raise GateError(f"row {row_id}: transition {base_state} -> {current_state} requires authority generation {expected_generation}")
+            raise GateError(
+                f"row {row_id}: transition {base_state} -> {current_state} requires authority generation {expected_generation}"
+            )
         base_receipts = require_object(base_row.get("receipts"), f"row {row_id}: base receipts")
         current_receipts = require_object(current_row.get("receipts"), f"row {row_id}: current receipts")
         if current_generation == base_generation:
@@ -2694,6 +2786,7 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
     new_roots = set(current_roots) - set(base_roots)
     if new_roots != (added_target_roots - set(base_roots)):
         raise GateError("new source roots must be introduced exactly by newly added targets")
+
 
 def source_fingerprint(repo_root: Path) -> str:
     relative = "crates/openburnbar-domain-core/union-abi-manifest.json"
@@ -2720,7 +2813,9 @@ def source_fingerprint_at_commit(repo_root: Path, commit: str) -> str:
 def core_version_at_commit(repo_root: Path, commit: str) -> str:
     relative = "crates/openburnbar-domain-core/Cargo.toml"
     try:
-        cargo = tomllib.loads(git_file(repo_root, commit, relative, "candidate domain-core Cargo manifest").decode("utf-8"))
+        cargo = tomllib.loads(
+            git_file(repo_root, commit, relative, "candidate domain-core Cargo manifest").decode("utf-8")
+        )
     except (UnicodeError, tomllib.TOMLDecodeError) as error:
         raise GateError(f"candidate domain-core Cargo manifest: invalid TOML: {error}") from error
     version = cargo.get("workspace", {}).get("package", {}).get("version")
@@ -2748,10 +2843,16 @@ def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_
     if not changed:
         raise GateError("domain-core activation commit must change the committed authority profile and receipts")
     forbidden = sorted(
-        path for path in changed if path not in ACTIVATION_ALLOWED_EXACT_PATHS and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
+        path
+        for path in changed
+        if path not in ACTIVATION_ALLOWED_EXACT_PATHS
+        and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
     )
     if forbidden:
-        raise GateError("domain-core activation may change only profile, append-only authority artifacts, and runbooks: " + ", ".join(forbidden))
+        raise GateError(
+            "domain-core activation may change only profile, append-only authority artifacts, and runbooks: "
+            + ", ".join(forbidden)
+        )
     if BUILD_PROFILE_PATH not in changed or "config/domain-core-legacy-deletion.json" not in changed:
         raise GateError("domain-core activation must atomically change the public profile and authority ledger")
     return sorted(changed)
@@ -2795,7 +2896,9 @@ def validate_deterministic_promotion_policy(repo_root: Path) -> None:
         or policy.get("oneStableReleaseBeforeDeletion") is not True
         or policy.get("rollbackRequired") is not True
     ):
-        raise GateError("domain-core promotion policy must remain deterministic, protected, rollback-capable, and stable-release gated")
+        raise GateError(
+            "domain-core promotion policy must remain deterministic, protected, rollback-capable, and stable-release gated"
+        )
     workflow = require_object(policy.get("workflow"), "domain-core promotion policy.workflow")
     if (
         workflow.get("repository") != SignedEvidenceVerifier.repository
@@ -2966,10 +3069,16 @@ def validate_public_profile_transitions(
                     "candidate": receipt.payload["candidate"],
                     "activation": receipt.payload["activation"],
                     "consumerReleases": releases,
-                    "rollbackArtifact": {key: value for key, value in receipt.payload["rollbackArtifact"].items() if key != "provenancePath"},
+                    "rollbackArtifact": {
+                        key: value
+                        for key, value in receipt.payload["rollbackArtifact"].items()
+                        if key != "provenancePath"
+                    },
                 }
 
-            stable_bindings = {canonical_json_sha256(release_identity(receipt)) for receipt in stable_receipts if receipt is not None}
+            stable_bindings = {
+                canonical_json_sha256(release_identity(receipt)) for receipt in stable_receipts if receipt is not None
+            }
             if len(stable_bindings) != 1:
                 raise GateError(f"public-production {domain}: mapped rows must share one stable release identity")
         rollback_receipts = [rows[row_id].receipts.get("rollback") for row_id in row_ids]
@@ -2991,14 +3100,22 @@ def validate_public_profile_transitions(
         if mode == "rust":
             unapproved = sorted(row_id for row_id, state in states.items() if state in {"rollout", "rollback_active"})
             if unapproved:
-                raise GateError(f"public-production {domain}=rust requires promotion approval for every row: " + ", ".join(unapproved))
+                raise GateError(
+                    f"public-production {domain}=rust requires promotion approval for every row: "
+                    + ", ".join(unapproved)
+                )
             bindings = {promotion_bindings[row_id] for row_id in row_ids}
             if None in bindings or len(bindings) != 1:
-                raise GateError(f"public-production {domain}=rust requires one shared candidate commit, deterministic bundle, and core version")
+                raise GateError(
+                    f"public-production {domain}=rust requires one shared candidate commit, deterministic bundle, and core version"
+                )
             continue
         candidates = sorted(row_id for row_id, state in states.items() if state not in {"rollout", "rollback_active"})
         if candidates:
-            raise GateError(f"public-production {domain}=legacy is allowed only before promotion or during explicit rollback: " + ", ".join(candidates))
+            raise GateError(
+                f"public-production {domain}=legacy is allowed only before promotion or during explicit rollback: "
+                + ", ".join(candidates)
+            )
 
 
 def run_gate(
@@ -3113,7 +3230,11 @@ def run_gate(
     modes, _ = public_production_profile(repo_root)
     validate_deterministic_promotion_policy(repo_root)
     current_deletion_reviewers = load_deletion_reviewers(repo_root)
-    trusted_deletion_reviewers = load_deletion_reviewers(repo_root, base_ref, allow_missing=True) if base_ref is not None else current_deletion_reviewers
+    trusted_deletion_reviewers = (
+        load_deletion_reviewers(repo_root, base_ref, allow_missing=True)
+        if base_ref is not None
+        else current_deletion_reviewers
+    )
     validate_receipt_root_layout(repo_root)
     for row_id, row in rows.items():
         validate_rollback_history(repo_root, row, row_id, evidence_verifier, trusted_deletion_reviewers)

@@ -121,7 +121,10 @@ class CloudVaultDomainAdapter:
             or _SHA256.fullmatch(str(receipt.get("bindingSha256", ""))) is None
         ):
             raise DomainCoreIdentityError("domain-core Python package source identity mismatch")
-        if receipt.get("platform") != platform.system().lower() or receipt.get("architecture") != platform.machine().lower():
+        if (
+            receipt.get("platform") != platform.system().lower()
+            or receipt.get("architecture") != platform.machine().lower()
+        ):
             raise DomainCoreIdentityError("domain-core Python package host identity mismatch")
         if not native_path.is_file() or _sha256(native_path) != receipt.get("nativeSha256"):
             raise DomainCoreIdentityError("domain-core Python native digest mismatch")
@@ -148,12 +151,14 @@ class CloudVaultDomainAdapter:
                 version = self._verified_core.domain_core_version()
             except Exception:
                 version = "unavailable"
-        self._diagnostic({
-            "component": "local-mcp-domain-core",
-            "operation": operation,
-            "category": category,
-            "coreVersion": version,
-        })
+        self._diagnostic(
+            {
+                "component": "local-mcp-domain-core",
+                "operation": operation,
+                "category": category,
+                "coreVersion": version,
+            }
+        )
 
     def _route(self, operation: str, old: Callable[[], _T], rust: Callable[[Any], _T]) -> _T:
         if self.mode == "legacy":
@@ -192,7 +197,9 @@ class CloudVaultDomainAdapter:
             raise ValueError("invalid CloudVault AAD schema version") from exc
         return parts[1], parts[2], parts[3], parts[4], schema_version, parts[6]
 
-    def aad_context(self, uid: str, collection: str, doc_id: str, field: str, schema_version: int = 2, purpose: str | None = None) -> str:
+    def aad_context(
+        self, uid: str, collection: str, doc_id: str, field: str, schema_version: int = 2, purpose: str | None = None
+    ) -> str:
         return self._route(
             "aad-v2",
             lambda: legacy._cloud_vault_aad_context(uid, collection, doc_id, field, schema_version, purpose),
@@ -206,6 +213,7 @@ class CloudVaultDomainAdapter:
             if canonical != value:
                 raise ValueError("invalid CloudVault AAD context")
             return value
+
         return self._route("aad-validate", lambda: legacy._validate_cloud_vault_aad(value), rust)
 
     def keyed_hash(self, data: bytes, vault_key: bytes, purpose: str) -> str:
@@ -214,12 +222,14 @@ class CloudVaultDomainAdapter:
             "session-body": "SESSION_BODY",
             "project-memory-content": "PROJECT_MEMORY_CONTENT",
         }
+
         def rust(core: Any) -> str:
             try:
                 enum_value = getattr(core.CloudVaultHashPurpose, names[purpose])
             except KeyError as exc:
                 raise ValueError("unsupported CloudVault keyed-hash purpose") from exc
             return core.cloud_vault_keyed_hash_hex(data, vault_key, enum_value)
+
         return self._route("keyed-hash", lambda: legacy._cloud_vault_hmac_hex(data, vault_key, purpose), rust)
 
     def project_memory_doc_id(self, slug: str, vault_key: bytes) -> str:
@@ -237,12 +247,28 @@ class CloudVaultDomainAdapter:
         )
 
     def token_hashes(self, text: str, vault_key: bytes, limit: int = 10) -> list[str]:
-        return self._search("token-search", "TOKEN", text, vault_key, limit, lambda: search_legacy._cloud_token_hashes(text, vault_key, limit))
+        return self._search(
+            "token-search",
+            "TOKEN",
+            text,
+            vault_key,
+            limit,
+            lambda: search_legacy._cloud_token_hashes(text, vault_key, limit),
+        )
 
     def semantic_hashes(self, text: str, vault_key: bytes, limit: int = 12) -> list[str]:
-        return self._search("semantic-search", "SEMANTIC", text, vault_key, limit, lambda: search_legacy._cloud_semantic_hashes(text, vault_key, limit))
+        return self._search(
+            "semantic-search",
+            "SEMANTIC",
+            text,
+            vault_key,
+            limit,
+            lambda: search_legacy._cloud_semantic_hashes(text, vault_key, limit),
+        )
 
-    def _search(self, operation: str, enum_name: str, text: str, vault_key: bytes, limit: int, old: Callable[[], list[str]]) -> list[str]:
+    def _search(
+        self, operation: str, enum_name: str, text: str, vault_key: bytes, limit: int, old: Callable[[], list[str]]
+    ) -> list[str]:
         def rust(core: Any) -> list[str]:
             request = core.CloudVaultSearchRequest(
                 operation=getattr(core.CloudVaultSearchOperation, enum_name),
@@ -251,6 +277,7 @@ class CloudVaultDomainAdapter:
                 limit=limit,
             )
             return list(core.cloud_vault_search(request).hashes)
+
         return self._route(operation, old, rust)
 
     def open_sealed_text(self, envelope: dict[str, Any], vault_key: bytes, expected_aad: str | None = None) -> str:
@@ -267,7 +294,10 @@ class CloudVaultDomainAdapter:
                 vault_key,
                 expected_aad.encode("utf-8") if schema_version >= 2 and expected_aad else b"",
             )
-        return self._route("sealed-text-open", lambda: legacy._open_cloud_sealed_text(envelope, vault_key, expected_aad), rust)
+
+        return self._route(
+            "sealed-text-open", lambda: legacy._open_cloud_sealed_text(envelope, vault_key, expected_aad), rust
+        )
 
     def open_blob(self, envelope: dict[str, Any], vault_key: bytes, expected_aad: str | None = None) -> bytes:
         def rust(core: Any) -> bytes:
@@ -289,21 +319,30 @@ class CloudVaultDomainAdapter:
             if schema_version >= 2:
                 if int(envelope.get("integrityHashVersion") or 0) != 1:
                     raise ValueError("encrypted blob integrity version mismatch")
-                actual = core.cloud_vault_keyed_hash_hex(plaintext, vault_key, core.CloudVaultHashPurpose.BLOB_INTEGRITY)
+                actual = core.cloud_vault_keyed_hash_hex(
+                    plaintext, vault_key, core.CloudVaultHashPurpose.BLOB_INTEGRITY
+                )
                 if actual != str(envelope.get("plaintextHMAC", "")):
                     raise ValueError("encrypted blob HMAC mismatch")
             elif core.cloud_vault_sha256_hex(plaintext) != str(envelope.get("plaintextSHA256", "")):
                 raise ValueError("encrypted blob SHA-256 mismatch")
             return plaintext
-        return self._route("blob-open", lambda: legacy._open_cloud_blob_envelope(envelope, vault_key, expected_aad), rust)
 
-    def seal_blob(self, plaintext: bytes, vault_key: bytes, key_version: int = 1, aad_context: str | None = None) -> dict[str, Any]:
+        return self._route(
+            "blob-open", lambda: legacy._open_cloud_blob_envelope(envelope, vault_key, expected_aad), rust
+        )
+
+    def seal_blob(
+        self, plaintext: bytes, vault_key: bytes, key_version: int = 1, aad_context: str | None = None
+    ) -> dict[str, Any]:
         nonce = os.urandom(12)
         created_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
         def old() -> dict[str, Any]:
             return legacy._seal_cloud_blob_envelope(
                 plaintext, vault_key, key_version, aad_context, nonce=nonce, created_at=created_at
             )
+
         def rust(core: Any) -> dict[str, Any]:
             if aad_context:
                 self.validate_aad(aad_context)
@@ -313,19 +352,24 @@ class CloudVaultDomainAdapter:
                 "schemaVersion": 2,
                 "algorithm": "AES-256-GCM",
                 "keyVersion": int(key_version),
-                "plaintextHMAC": core.cloud_vault_keyed_hash_hex(plaintext, vault_key, core.CloudVaultHashPurpose.BLOB_INTEGRITY),
+                "plaintextHMAC": core.cloud_vault_keyed_hash_hex(
+                    plaintext, vault_key, core.CloudVaultHashPurpose.BLOB_INTEGRITY
+                ),
                 "integrityHashVersion": 1,
                 "sealedBoxBase64": core.cloud_vault_base64_encode(combined),
                 "createdAt": created_at,
                 "aad": aad_context or OPENBURNBAR_CLOUD_VAULT_BLOB_AAD_CONTEXT,
             }
+
         return self._route("blob-seal", old, rust)
 
 
 _PRODUCTION = CloudVaultDomainAdapter(_mode_from_environment())
 
 
-def _cloud_vault_aad_context(uid: str, collection: str, doc_id: str, field: str, schema_version: int = 2, purpose: str | None = None) -> str:
+def _cloud_vault_aad_context(
+    uid: str, collection: str, doc_id: str, field: str, schema_version: int = 2, purpose: str | None = None
+) -> str:
     return _PRODUCTION.aad_context(uid, collection, doc_id, field, schema_version, purpose)
 
 
@@ -361,5 +405,7 @@ def _open_cloud_blob_envelope(envelope: dict[str, Any], vault_key: bytes, expect
     return _PRODUCTION.open_blob(envelope, vault_key, expected_aad)
 
 
-def _seal_cloud_blob_envelope(plaintext: bytes, vault_key: bytes, key_version: int = 1, aad_context: str | None = None) -> dict[str, Any]:
+def _seal_cloud_blob_envelope(
+    plaintext: bytes, vault_key: bytes, key_version: int = 1, aad_context: str | None = None
+) -> dict[str, Any]:
     return _PRODUCTION.seal_blob(plaintext, vault_key, key_version, aad_context)

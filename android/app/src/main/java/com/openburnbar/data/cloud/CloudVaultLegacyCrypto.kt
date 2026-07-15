@@ -7,11 +7,12 @@ import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
+private const val GCM_NONCE_BYTES = 12
+private const val GCM_TAG_BYTES = 16
+private const val KEY_BYTES = 32
+
 internal object CloudVaultLegacyCrypto {
     private const val GCM_AUTH_TAG_BITS = 128
-    private const val GCM_NONCE_BYTES = 12
-    private const val GCM_TAG_BYTES = 16
-    private const val KEY_BYTES = 32
     private const val BYTE_MASK = 0xff
     private const val HMAC_SALT = "OpenBurnBar-CloudVault-HMAC-Salt-v1"
     private const val HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1"
@@ -34,12 +35,12 @@ internal object CloudVaultLegacyCrypto {
     fun sha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).toHex()
 
     fun vaultKeyId(key: ByteArray): String {
-        requireVaultKey(key)
+        CloudVaultLegacyValidation.requireVaultKey(key)
         return "v1_${sha256Hex(key).take(32)}"
     }
 
     fun keyedHashHex(data: ByteArray, key: ByteArray, purpose: CloudVaultHashPurpose): String {
-        requireVaultKey(key)
+        CloudVaultLegacyValidation.requireVaultKey(key)
         val derivedKey = CloudVaultLegacySearch.hkdfSha256(
             key,
             HMAC_SALT.toByteArray(Charsets.UTF_8),
@@ -176,6 +177,16 @@ internal object CloudVaultLegacyCrypto {
         return cipher.doFinal(combined.copyOfRange(GCM_NONCE_BYTES, combined.size))
     }
 
+    private fun requireValidAadPart(value: String) {
+        require(value.isNotEmpty() && value.none { it == '|' || it.code < 0x20 || it.code == 0x7f }) {
+            "Invalid CloudVault AAD context"
+        }
+    }
+
+    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
+}
+
+internal object CloudVaultLegacyValidation {
     fun requireAesInputs(key: ByteArray, nonce: ByteArray) {
         requireVaultKey(key)
         require(nonce.size == GCM_NONCE_BYTES) { "Invalid AES-GCM nonce length" }
@@ -188,12 +199,4 @@ internal object CloudVaultLegacyCrypto {
     fun requireVaultKey(key: ByteArray) {
         require(key.size == KEY_BYTES) { "Invalid vault key length" }
     }
-
-    private fun requireValidAadPart(value: String) {
-        require(value.isNotEmpty() && value.none { it == '|' || it.code < 0x20 || it.code == 0x7f }) {
-            "Invalid CloudVault AAD context"
-        }
-    }
-
-    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
 }

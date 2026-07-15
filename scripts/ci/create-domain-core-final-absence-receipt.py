@@ -69,8 +69,7 @@ def absent_rows(repo_root: Path, manifest: dict[str, Any], consumer: str) -> lis
             if isinstance(raw, dict) and raw.get("role") == "legacy_implementation"
         ]
         if implementations and all(
-            not GATE.target_present(repo_root, target, f"row {row_id} target")
-            for target in implementations
+            not GATE.target_present(repo_root, target, f"row {row_id} target") for target in implementations
         ):
             result.append(row_id)
     if not result:
@@ -150,8 +149,16 @@ def main() -> int:
     try:
         manifest = args.manifest if args.manifest.is_absolute() else args.repo_root / args.manifest
         result = create(
-            args.repo_root.resolve(), manifest, args.consumer, args.artifact, args.identity,
-            args.candidate, args.activation, version=args.version, tag=args.tag, commit=args.commit,
+            args.repo_root.resolve(),
+            manifest,
+            args.consumer,
+            args.artifact,
+            args.identity,
+            args.candidate,
+            args.activation,
+            version=args.version,
+            tag=args.tag,
+            commit=args.commit,
         )
         args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     except (OSError, ValueError, GATE.GateError, json.JSONDecodeError) as error:
