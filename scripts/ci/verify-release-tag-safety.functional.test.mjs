@@ -60,10 +60,13 @@ function setupGitRepo() {
   execSync(`git -C "${cloneDir}" config user.email test@test.com`);
   execSync(`git -C "${cloneDir}" config user.name Test`);
 
-  // Create main branch with commits
+  // Create main branch with commits — explicitly name it "main" independent
+  // of global git config (init.defaultBranch may be set to master or other).
   writeFileSync(join(cloneDir, "README.md"), "# test\n");
   execSync(`git -C "${cloneDir}" add -A`);
   execSync(`git -C "${cloneDir}" commit -m "initial"`);
+  // Ensure the current branch is "main" regardless of init.defaultBranch
+  execSync(`git -C "${cloneDir}" branch -m main`);
 
   writeFileSync(join(cloneDir, "file1.txt"), "content1\n");
   execSync(`git -C "${cloneDir}" add -A`);
@@ -368,6 +371,27 @@ const FULL_SHA = mainSha;
   if (result.exitCode === 0) {
     assert("  emits future tag", output.includes(`tag=${futureTag}`));
   }
+}
+
+/* ── Dry-run with tag that already exists: fails ── */
+{
+  // v1.2.3 was created and pushed in the "dry-run from a tag ref" test above
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: VALID_TAG,
+      INPUT_DRY_RUN: "true",
+      INPUT_CANDIDATE_SHA: FULL_SHA,
+      REF_NAME: "main",
+      GITHUB_REF: "refs/heads/main",
+    },
+  });
+  assert(
+    "dry-run with already-existing tag fails",
+    result.exitCode !== 0,
+  );
 }
 
 /* ── Dry-run with non-SemVer tag: fails ── */
