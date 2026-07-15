@@ -257,6 +257,31 @@ ACTIVATION_ALLOWED_PREFIXES = (
     "docs/runbooks/shared-rust-",
     "docs/SHARED_RUST_DOMAIN_",
 )
+GUARD_WORKFLOW_PATH = ".github/workflows/domain-core-deletion-guard.yml"
+GUARD_VERIFIER_PATH = "scripts/ci/verify-domain-core-legacy-deletion.py"
+SENSITIVE_EXACT_PATHS = frozenset(
+    {
+        "config/domain-core-legacy-deletion.json",
+        DELETION_REVIEWERS_PATH,
+        PROMOTION_POLICY_PATH,
+        BUILD_PROFILE_PATH,
+        PROMOTION_EVALUATOR_PATH,
+        PROMOTION_SIGNER_WORKFLOW,
+        SOURCE_WORKFLOW,
+        GUARD_WORKFLOW_PATH,
+        GUARD_VERIFIER_PATH,
+    }
+    | set(RELEASE_SIGNER_WORKFLOWS.values())
+    | ACTIVATION_ALLOWED_EXACT_PATHS
+)
+SENSITIVE_PREFIXES = (
+    f"{RECEIPT_ROOT}/",
+    f"{ATTESTATION_ROOT}/",
+    f"{PROMOTION_BUNDLE_ROOT}/",
+    f"{PROMOTION_PROVENANCE_ROOT}/",
+    f"{RELEASE_PROVENANCE_ROOT}/",
+    f"{DELETION_PLAN_ROOT}/",
+)
 SECURITY_REVIEW_ROWS = {
     "cloudvault.portable_primitives",
     "cloudvault.document_rewrap",
@@ -2608,6 +2633,148 @@ def validate_rollback_history(
         )
 
 
+def _sensitive_target_paths(repo_root: Path, revision: str) -> set[str]:
+    """Extract ledger-covered target paths from the manifest at a trusted revision.
+
+    Reads the manifest's ``rows[].targets[].path`` and ``sharedTargets[].target.path``
+    values so the classifier treats any diff touching a legacy target, rollback control,
+    or post-deletion primitive path as deletion-sensitive.
+    """
+    paths: set[str] = set()
+    relative = "config/domain-core-legacy-deletion.json"
+    if not git_file_exists(repo_root, revision, relative, "base legacy deletion ledger"):
+        return paths
+    try:
+        manifest = require_object(
+            load_json_bytes(git_file(repo_root, revision, relative, "base legacy deletion ledger"), relative),
+            relative,
+        )
+        for raw_row in require_array(manifest.get("rows"), "base manifest rows"):
+            row = require_object(raw_row, "base manifest row")
+            for raw_target in require_array(row.get("targets"), "base manifest targets"):
+                target = require_object(raw_target, "base manifest target")
+                path = target.get("path")
+                if isinstance(path, str) and path:
+                    paths.add(path)
+        for raw_shared in require_array(manifest.get("sharedTargets"), "base manifest sharedTargets"):
+            shared = require_object(raw_shared, "base manifest sharedTarget")
+            target = require_object(shared.get("target"), "base manifest sharedTarget.target")
+            path = target.get("path")
+            if isinstance(path, str) and path:
+                paths.add(path)
+    except GateError:
+        pass
+    return paths
+
+
+def _post_deletion_primitive_paths() -> set[str]:
+    """Collect the source paths the post-deletion primitive rules guard."""
+    return {rule[2] for rule in POST_DELETION_PRIMITIVE_RULES}
+
+
+def _is_sensitive_path(path: str, target_paths: set[str]) -> bool:
+    """Return True if a repository-relative path touches a deletion-covered surface."""
+    if path in SENSITIVE_EXACT_PATHS:
+        return True
+    if any(path.startswith(prefix) for prefix in SENSITIVE_PREFIXES):
+        return True
+    if path in target_paths:
+        return True
+    if any(path.startswith(tp + "/") for tp in target_paths):
+        return True
+    return False
+
+
+def _ensure_base_ref_available(repo_root: Path, base_ref: str, trusted_root: Path | None) -> None:
+    """Ensure ``base_ref`` is fetchable into the candidate repo for merge-base.
+
+    In CI, the candidate checkout (``fetch-depth: 0``) may lack the current main
+    SHA when the PR branch is behind. The trusted checkout at ``trusted_root``
+    always has it (checked out at ``base.sha``). When the candidate cannot reach
+    ``base_ref``, fetch it from the trusted checkout so ``merge-base`` can
+    compute the fork point. Both checkouts are local and credential-free.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "cat-file", "-e", f"{base_ref}^{{commit}}"],
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise GateError(f"base ref: cannot verify commit availability: {error}") from error
+    if result.returncode == 0:
+        return
+    if trusted_root is None:
+        return
+    trusted_root = trusted_root.resolve(strict=True)
+    try:
+        subprocess.run(
+            ["git", "fetch", str(trusted_root), base_ref],
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise GateError(f"base ref: cannot fetch trusted commit: {error}") from error
+    try:
+        result = subprocess.run(
+            ["git", "cat-file", "-e", f"{base_ref}^{{commit}}"],
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise GateError(f"base ref: cannot verify commit availability: {error}") from error
+    if result.returncode != 0:
+        raise GateError("base ref: trusted commit is unavailable in both candidate and trusted checkouts")
+
+
+def classify_deletion_sensitivity(repo_root: Path, base_ref: str) -> bool:
+    """Classify whether the candidate diff touches any deletion-covered surface.
+
+    Uses trusted default-branch code and inventory only. The fork point
+    (``merge-base(base_ref, HEAD)``) isolates the PR author's own changes from
+    main's independent advance, so a behind-base ordinary PR whose diff touches
+    none of the sensitive surfaces is classified non-deletion and may bypass the
+    current-base ancestry requirement. Any touch of a ledger-covered target,
+    rollback control, immutable artifact, reviewer catalog, policy, workflow,
+    verifier, or guard surface is deletion-sensitive and must proceed through
+    full ancestry + signed-evidence validation.
+
+    Returns ``True`` if deletion-sensitive, ``False`` if non-deletion.
+    """
+    if not COMMIT_RE.fullmatch(base_ref):
+        raise GateError("base ref must be a full lowercase Git SHA")
+    fork_point = git_output(
+        repo_root,
+        ["merge-base", base_ref, "HEAD"],
+        "non-deletion classification fork point",
+    ).strip()
+    if not COMMIT_RE.fullmatch(fork_point):
+        raise GateError("non-deletion classification: cannot determine fork point")
+    changed = [
+        line
+        for line in git_output(
+            repo_root,
+            [
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "--diff-filter=ACDMRTUXB",
+                f"{fork_point}..HEAD",
+            ],
+            "non-deletion classification diff",
+        ).splitlines()
+        if line
+    ]
+    target_paths = _sensitive_target_paths(repo_root, base_ref) | _post_deletion_primitive_paths()
+    return any(_is_sensitive_path(path, target_paths) for path in changed)
+
+
 def verify_append_only_artifacts(repo_root: Path, base_ref: str | None) -> None:
     if base_ref is None:
         return
@@ -3126,10 +3293,15 @@ def run_gate(
     evidence_verifier: SignedEvidenceVerifier | Any | None = None,
     deletion_pull_request: int | None = None,
     deletion_head: str | None = None,
+    trusted_root: Path | None = None,
 ) -> None:
     if not repo_root.is_dir():
         raise GateError(f"repository root is missing: {repo_root}")
     repo_root = repo_root.resolve(strict=True)
+    if base_ref is not None:
+        _ensure_base_ref_available(repo_root, base_ref, trusted_root)
+        if not classify_deletion_sensitivity(repo_root, base_ref):
+            return
     verify_append_only_artifacts(repo_root, base_ref)
     manifest_path = manifest_path if manifest_path.is_absolute() else repo_root / manifest_path
     try:
@@ -3330,6 +3502,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verify-signed-evidence", action="store_true")
     parser.add_argument("--deletion-pull-request", type=int)
     parser.add_argument("--deletion-head")
+    parser.add_argument("--trusted-root", type=Path, default=None)
     args = parser.parse_args(argv)
     try:
         verifier = SignedEvidenceVerifier() if args.verify_signed_evidence else None
@@ -3340,6 +3513,7 @@ def main(argv: list[str] | None = None) -> int:
             evidence_verifier=verifier,
             deletion_pull_request=args.deletion_pull_request,
             deletion_head=args.deletion_head,
+            trusted_root=args.trusted_root,
         )
     except GateError as error:
         print(f"ERROR: domain-core legacy deletion gate failed: {error}", file=sys.stderr)

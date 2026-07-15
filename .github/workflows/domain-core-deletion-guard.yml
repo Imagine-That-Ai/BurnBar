@@ -54,6 +54,7 @@ jobs:
           python3 "$TRUSTED_ROOT/scripts/ci/verify-domain-core-legacy-deletion.py" \
             --repo-root "$CANDIDATE_ROOT" \
             --base-ref "$BASE_SHA" \
+            --trusted-root "$TRUSTED_ROOT" \
             --verify-signed-evidence \
             --deletion-pull-request "$PULL_REQUEST" \
             --deletion-head "$HEAD_SHA"

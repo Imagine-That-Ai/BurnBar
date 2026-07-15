@@ -33,6 +33,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -148,8 +149,7 @@ def _behind_base_topology(tmp_path: Path, *, branch_commit: str) -> tuple[Path, 
     return repository, older_main, branch_head, current_base
 
 
-def _bootstrap_ledger() -> dict[str, object]:
-    """A minimal valid generation-0 rollout ledger bootstrapping every stable row."""
+def _bootstrap_ledger() -> dict[str, Any]:
     return {
         "schemaVersion": 2,
         "sourceRoots": {"rust": "crates/openburnbar-domain-core"},
@@ -186,17 +186,17 @@ def _bootstrap_ledger() -> dict[str, object]:
     }
 
 
-def _materialize_ledger_tree(repository: Path, ledger: dict[str, object]) -> None:
+def _materialize_ledger_tree(repository: Path, ledger: dict[str, Any]) -> None:
     """Write the ledger plus every source root/target path it references so the gate can read them."""
     _write(repository, LEDGER_PATH, json.dumps(ledger, separators=(",", ":")))
-    for root_path in set(ledger["sourceRoots"].values()):  # type: ignore[union-attr]
+    for root_path in set(ledger["sourceRoots"].values()):
         root_dir = repository / Path(root_path)
         root_dir.mkdir(parents=True, exist_ok=True)
-    for row in ledger["rows"]:  # type: ignore[union-attr]
-        for target in row["targets"]:  # type: ignore[index]
+    for row in ledger["rows"]:
+        for target in row["targets"]:
             _write(repository, Path(target["path"]), f"// legacy {target['symbol']}\n")
-    for shared in ledger["sharedTargets"]:  # type: ignore[union-attr]
-        target = shared["target"]  # type: ignore[index]
+    for shared in ledger["sharedTargets"]:
+        target = shared["target"]
         _write(repository, Path(target["path"]), f"// {target['literal']} = true\n")
 
 
@@ -378,6 +378,90 @@ def test_self_declaration_is_not_trusted(tmp_path: Path) -> None:
     # Candidate attempts to neuter the verifier (a deletion-covered surface).
     _write(repository, VERIFIER_SCRIPT, "print('non-deletion')\n")
     _commit(repository, "candidate weakens verifier to self-declare non-deletion")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "main")
+    _write(repository, Path("main-advance.txt"), "default branch advanced\n")
+    _commit(repository, "default branch advanced")
+    current_base = _git(repository, "rev-parse", "HEAD")
+    _git(repository, "checkout", branch_head)
+
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    with pytest.raises(GATE.GateError):
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
+# ---------------------------------------------------------------------------
+# Adversarial: a rename of a sensitive path to an ordinary name must stay
+# fail-closed. With --no-renames the classifier sees the old path as Deleted,
+# so the sensitive source is detected regardless of the new destination.
+# ---------------------------------------------------------------------------
+
+
+def test_rename_sensitive_ledger_target_to_ordinary_name_stays_fail_closed(tmp_path: Path) -> None:
+    """Renaming a ledger-covered legacy target to ordinary.txt is deletion-sensitive."""
+    repository = _repository(tmp_path)
+    _materialize_ledger_tree(repository, _bootstrap_ledger())
+    _write(
+        repository,
+        REVIEWERS_PATH,
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "reviewers": [
+                    {"handle": "@domain-owner", "reviewClasses": ["domain_owner"]},
+                    {"handle": "@crypto-security", "reviewClasses": ["security_crypto"]},
+                ],
+            }
+        ),
+    )
+    older_main = _commit(repository, "seed deletion-covered surfaces")
+
+    _git(repository, "checkout", "-b", "feature")
+    sensitive_target = Path("crates/openburnbar-domain-core/src/legacy/quota.claude_statusline.rs")
+    ordinary_dest = Path("crates/openburnbar-domain-core/src/legacy/ordinary.txt")
+    _git(repository, "mv", str(sensitive_target), str(ordinary_dest))
+    _commit(repository, "rename sensitive target to ordinary name")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "main")
+    _write(repository, Path("main-advance.txt"), "default branch advanced\n")
+    _commit(repository, "default branch advanced")
+    current_base = _git(repository, "rev-parse", "HEAD")
+    _git(repository, "checkout", branch_head)
+
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    with pytest.raises(GATE.GateError):
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
+def test_rename_immutable_artifact_to_ordinary_name_stays_fail_closed(tmp_path: Path) -> None:
+    """Renaming an immutable receipt artifact to an ordinary path is deletion-sensitive."""
+    repository = _repository(tmp_path)
+    _materialize_ledger_tree(repository, _bootstrap_ledger())
+    immutable_artifact = IMMUTABLE_ROOTS[0] / "quota.claude_statusline" / "0" / "promotion.json"
+    _write(repository, immutable_artifact, json.dumps({"immutable": True}))
+    _write(
+        repository,
+        REVIEWERS_PATH,
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "reviewers": [
+                    {"handle": "@domain-owner", "reviewClasses": ["domain_owner"]},
+                    {"handle": "@crypto-security", "reviewClasses": ["security_crypto"]},
+                ],
+            }
+        ),
+    )
+    older_main = _commit(repository, "seed immutable artifact")
+
+    _git(repository, "checkout", "-b", "feature")
+    ordinary_dest = Path("config/ordinary.txt")
+    _git(repository, "mv", str(immutable_artifact), str(ordinary_dest))
+    _commit(repository, "rename immutable artifact to ordinary name")
     branch_head = _git(repository, "rev-parse", "HEAD")
 
     _git(repository, "checkout", "main")
