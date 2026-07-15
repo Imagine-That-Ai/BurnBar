@@ -97,6 +97,9 @@ on:
       - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
       - "scripts/ci/*domain-core-proof*"
       - "scripts/ci/verify-domain-core-protected-attestation*"
+      - "scripts/ci/create-domain-core-deterministic-candidate-bundle*"
+      - "scripts/ci/stage-domain-core-attestation-artifact*"
+      - "scripts/ci/verify-domain-core-control-plane*"
       - "scripts/ci/verify-domain-core-rollback.mjs"
       - "scripts/lib/domain-core-promotion-evidence.mjs"
       - "scripts/lib/domain-core-proof-fragments*"
@@ -114,6 +117,9 @@ on:
       - "config/domain-core-android-ndk-version.txt"
       - "config/domain-core-promotion-policy.json"
       - "config/domain-core-build-profiles.json"
+      - "config/domain-core-control-plane-manifest.json"
+      - "config/domain-core-deterministic-candidate-bundle.schema.json"
+      - "config/domain-core-shadow-diagnostic-policy.json"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
       - "docs/runbooks/shared-rust-build-profiles.md"
@@ -215,6 +221,9 @@ on:
       - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
       - "scripts/ci/*domain-core-proof*"
       - "scripts/ci/verify-domain-core-protected-attestation*"
+      - "scripts/ci/create-domain-core-deterministic-candidate-bundle*"
+      - "scripts/ci/stage-domain-core-attestation-artifact*"
+      - "scripts/ci/verify-domain-core-control-plane*"
       - "scripts/ci/verify-domain-core-rollback.mjs"
       - "scripts/lib/domain-core-promotion-evidence.mjs"
       - "scripts/lib/domain-core-proof-fragments*"
@@ -232,6 +241,9 @@ on:
       - "config/domain-core-android-ndk-version.txt"
       - "config/domain-core-promotion-policy.json"
       - "config/domain-core-build-profiles.json"
+      - "config/domain-core-control-plane-manifest.json"
+      - "config/domain-core-deterministic-candidate-bundle.schema.json"
+      - "config/domain-core-shadow-diagnostic-policy.json"
       - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
       - "docs/runbooks/shared-rust-promotion-evidence.md"
       - "docs/runbooks/shared-rust-build-profiles.md"
@@ -1090,6 +1102,11 @@ jobs:
             export DOMAIN_CORE_BUILD_TARGETS="x86_64-apple-darwin"
           fi
           ./scripts/build-domain-core-xcframework.sh
+
+      - name: Restore checkout after host-only XCFramework build
+        run: |
+          git checkout -- .
+          git clean -fdx -- Vendor/ OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/
 
       - name: Run Swift domain-core consumer contracts
         env:
