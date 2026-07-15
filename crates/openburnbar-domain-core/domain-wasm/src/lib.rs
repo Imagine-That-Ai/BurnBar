@@ -12,9 +12,19 @@ use openburnbar_domain_core::pricing::{self, TokenBuckets, TokenRates};
 use wasm_bindgen::prelude::*;
 use zeroize::{Zeroize, Zeroizing};
 
+#[wasm_bindgen(js_name = domainCoreAbiVersion)]
+pub fn domain_core_abi_version() -> u32 {
+    openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION
+}
+
 #[wasm_bindgen(js_name = domainCoreVersion)]
 pub fn domain_core_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
+}
+
+#[wasm_bindgen(js_name = domainCoreSourceFingerprint)]
+pub fn domain_core_source_fingerprint() -> String {
+    env!("OPENBURNBAR_DOMAIN_CORE_SOURCE_FINGERPRINT").to_owned()
 }
 
 #[wasm_bindgen(js_name = calculateTokenCostNanoUsd)]
@@ -585,4 +595,15 @@ fn search_js_error(error: CloudVaultSearchError) -> JsError {
         CloudVaultSearchError::DerivationFailure => "derivation_failure",
     };
     JsError::new(&format!("{code}: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn wasm_surface_uses_shared_domain_core_abi_authority() {
+        assert_eq!(
+            super::domain_core_abi_version(),
+            openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION
+        );
+    }
 }

@@ -16,6 +16,13 @@ const wasmBytes = await readFile(wasmPath);
 domainCore.initSync({ module: wasmBytes });
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
+const unionManifestPath = path.resolve(testDirectory, "../../union-abi-manifest.json");
+const unionManifest = JSON.parse(await readFile(unionManifestPath, "utf8"));
+assert.equal(domainCore.domainCoreAbiVersion(), 3);
+assert.equal(domainCore.domainCoreVersion(), "0.1.0");
+assert.match(unionManifest.sourceSha256, /^[0-9a-f]{64}$/);
+assert.equal(domainCore.domainCoreSourceFingerprint(), unionManifest.sourceSha256);
+
 const fixturePath = path.resolve(
   testDirectory,
   "../../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat.json",

@@ -155,6 +155,13 @@ language-specific drift jobs rebuild and compare generated output. A PR may not
 independently merge one regenerated artifact if doing so creates mixed-source
 bindings or binaries.
 
+Every loaded native or Wasm module also exposes its own immutable identity:
+domain-core version, ABI version, and the reviewed lowercase SHA-256 source
+fingerprint. Promotion evidence must read this tuple from the loaded module and
+compare it with the candidate's signed build metadata. A package sidecar alone
+does not prove which library the process loaded, and a version string alone does
+not distinguish two source revisions built with the same semantic version.
+
 ### Promotion evidence
 
 The quantitative promotion evaluator implemented in
