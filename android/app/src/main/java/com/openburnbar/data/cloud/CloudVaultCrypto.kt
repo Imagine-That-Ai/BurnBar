@@ -276,22 +276,22 @@ object CloudVaultCrypto {
 
     fun tokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
         CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.TOKEN, text, vaultKey, limit) {
-            CloudVaultCryptoSearch.tokenHashes(text, vaultKey, limit)
+            CloudVaultLegacySearch.tokenHashes(text, vaultKey, limit)
         }
 
     fun searchIndexTokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
         CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.INDEX, text, vaultKey, limit) {
-            CloudVaultCryptoSearch.searchIndexTokenHashes(text, vaultKey, limit)
+            CloudVaultLegacySearch.searchIndexTokenHashes(text, vaultKey, limit)
         }
 
     fun searchQueryTokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
         CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.QUERY, text, vaultKey, limit) {
-            CloudVaultCryptoSearch.searchQueryTokenHashes(text, vaultKey, limit)
+            CloudVaultLegacySearch.searchQueryTokenHashes(text, vaultKey, limit)
         }
 
     fun semanticHashes(text: String, vaultKey: ByteArray, limit: Int = 24): List<String> =
         CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.SEMANTIC, text, vaultKey, limit) {
-            CloudVaultCryptoSearch.semanticHashes(text, vaultKey, limit)
+            CloudVaultLegacySearch.semanticHashes(text, vaultKey, limit)
         }
 
     fun openBlob(envelope: CloudVaultBlobEnvelope, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): ByteArray {
@@ -1010,7 +1010,7 @@ object CloudVaultCrypto {
     private fun legacyDeriveRecoveryWrappingKey(recoveryKey: String): ByteArray {
         val normalized = normalizedRecoveryKey(recoveryKey)
         require(normalized.length >= 20) { "Recovery key is too short" }
-        return CloudVaultCryptoSearch.hkdfSha256(
+        return CloudVaultLegacySearch.hkdfSha256(
             normalized.toByteArray(Charsets.UTF_8),
             RECOVERY_SALT.toByteArray(Charsets.UTF_8),
             RECOVERY_WRAP_INFO.toByteArray(Charsets.UTF_8),
@@ -1096,7 +1096,7 @@ object CloudVaultCrypto {
     }
 
     private fun legacyEscrowSeal(plaintext: ByteArray, ephemeralPublicKey: ByteArray, sharedSecret: ByteArray, nonce: ByteArray): ByteArray {
-        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(
+        val wrappingKey = CloudVaultLegacySearch.hkdfSha256(
             sharedSecret,
             ByteArray(0),
             WRAP_INFO.toByteArray(),
@@ -1110,7 +1110,7 @@ object CloudVaultCrypto {
     }
 
     private fun legacyEscrowOpen(combined: ByteArray, sharedSecret: ByteArray): ByteArray {
-        val wrappingKey = CloudVaultCryptoSearch.hkdfSha256(
+        val wrappingKey = CloudVaultLegacySearch.hkdfSha256(
             sharedSecret,
             ByteArray(0),
             WRAP_INFO.toByteArray(),

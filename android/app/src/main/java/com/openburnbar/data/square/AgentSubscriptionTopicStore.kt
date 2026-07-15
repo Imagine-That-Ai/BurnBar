@@ -11,7 +11,7 @@ import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.assistants.SkillRunEventImportance
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.CloudVaultCrypto
-import com.openburnbar.data.cloud.CloudVaultCryptoSearch
+import com.openburnbar.data.cloud.CloudVaultLegacySearch
 import com.openburnbar.data.firebase.CloudVaultSealedTextCodec
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -372,7 +372,7 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
          */
         fun documentID(agentURI: String, topicID: String, vaultKey: ByteArray): String {
             val docKey =
-                CloudVaultCryptoSearch.hkdfSha256(
+                CloudVaultLegacySearch.hkdfSha256(
                     vaultKey,
                     ByteArray(0),
                     SUBSCRIPTION_DOC_ID_INFO.toByteArray(),

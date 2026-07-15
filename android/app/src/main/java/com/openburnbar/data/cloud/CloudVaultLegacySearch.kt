@@ -3,7 +3,7 @@ package com.openburnbar.data.cloud
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-internal object CloudVaultCryptoSearch {
+internal object CloudVaultLegacySearch {
     private const val BITS_PER_BYTE = 8
     private const val BYTE_MASK = 0xff
     private const val GCM_TAG_BYTES = 16
