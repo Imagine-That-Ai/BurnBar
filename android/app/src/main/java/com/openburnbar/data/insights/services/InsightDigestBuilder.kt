@@ -7,8 +7,9 @@ import com.openburnbar.data.insights.InsightTimeWindow
 import java.security.MessageDigest
 
 /**
- * Builds a privacy-bounded InsightDigest from Firestore rollups on Android.
- * Mirrors the Swift InsightDigestBuilder with the same 24KB ceiling.
+ * Mirrors the Swift InsightDigestBuilder with the same 24KB ceiling and
+ * the same privacy hashing: project display names are replaced with hashed
+ * IDs and inferred task titles are hashed before entering the digest.
  *
  * Android-specific note: useCaseHistogram, agentFocusSignals, and modelFocusSignals
  * are left empty because raw session data isn't synced to Android.
@@ -66,9 +67,9 @@ object InsightDigestBuilder {
     fun build(input: InsightDigestBuildInput): InsightDigest {
         val filter = input.filter
         val totals = input.totals
-        val providers = input.providers
-        val models = input.models
-        val projects = input.projects
+        val providers = input.providers.map { hashProviderSnapshot(it) }
+        val models = input.models.map { hashModelSnapshot(it) }
+        val projects = input.projects.map { hashProjectSnapshot(it) }
         val daily = input.daily
         val quotaSnapshots = input.quotaSnapshots
         val modelBenchmarks = input.modelBenchmarks
@@ -218,6 +219,23 @@ object InsightDigestBuilder {
         val hash = digest.digest(input.toByteArray(Charsets.UTF_8))
         return hash.joinToString("") { "%02x".format(it) }
     }
+
+    // Privacy hashing — parity with Swift shortHash(raw,salt:)
+
+    private fun shortHash(raw: String, salt: String): String {
+        val md = MessageDigest.getInstance(HASH_ALGORITHM)
+        val hash = md.digest("$salt:$raw".toByteArray(Charsets.UTF_8))
+        return hash.take(4).joinToString("") { "%02x".format(it) }
+    }
+
+    private fun hashProjectSnapshot(snapshot: InsightDigest.ProjectSnapshot): InsightDigest.ProjectSnapshot =
+        snapshot.copy(displayName = snapshot.id)
+
+    private fun hashProviderSnapshot(snapshot: InsightDigest.ProviderSnapshot): InsightDigest.ProviderSnapshot =
+        snapshot.copy(topInferredTaskTitles = snapshot.topInferredTaskTitles.map { shortHash(it, "title") })
+
+    private fun hashModelSnapshot(snapshot: InsightDigest.ModelSnapshot): InsightDigest.ModelSnapshot =
+        snapshot.copy(topInferredTaskTitles = snapshot.topInferredTaskTitles.map { shortHash(it, "title") })
 
     private fun InsightTimeWindow.toInterval(): Pair<String, String> {
         val now = java.time.Instant.now()
