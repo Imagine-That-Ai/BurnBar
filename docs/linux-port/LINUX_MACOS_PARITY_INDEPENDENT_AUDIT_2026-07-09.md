@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at `3b652f9b9e`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, chat attachment preflight, canonical provider catalog hydration, and the Wayland-safe pet fallback are linked below. Accepted candidate run `29401347808` passed both release architectures and installed-package runtime checks before these later source commits. |
+| Remediation evidence | `codex/linux-parity-integration-final` at `dd864a90be`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, chat attachment preflight, canonical provider catalog hydration, the Wayland-safe pet fallback, and the Windows-portable Hermes stream initializer are linked below. Accepted candidate run `29401347808` passed both release architectures and installed-package runtime checks before these later source commits; replacement candidate `29420342930` is the current exact-head run. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -84,6 +84,17 @@ percentage. The active remediation stack now contains these reviewable slices:
   initializer. `4b1126bfdf` adds a public production no-argument initializer
   while retaining the injected test initializer as internal; the replacement
   exact-head candidate is required before release evidence can be counted.
+- **Windows shared-core portability repair:** PR #1691's Windows x86_64 and
+  aarch64 jobs exposed a Swift overload difference in the shared Hermes
+  transport: the Windows Foundation overlay selected the zero-argument
+  `AsyncThrowingStream` unfolding initializer instead of the continuation
+  builder. `dd864a90be` selects the continuation initializer explicitly with a
+  buffering-policy label and typed continuation; the macOS package build
+  passes and fresh Windows checks are running from this head.
+- **Current candidate and nightly runs:** exact-head Linux release candidate
+  `29420342930` and nightly matrix `29420350943` were dispatched from
+  `dd864a90be`. Their results are not yet receipts; stale pre-fix runs were
+  cancelled so no evidence can bind to the wrong head.
 - **Certification boundary:** despite these source slices, the canonical
   ledger remains **0/40 product requirements** and **0/7 environment receipts**
   with `productParityClaim=false`. A source test count is not a product or

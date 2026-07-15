@@ -65,7 +65,7 @@ AES-GCM sealed storage, native Secret Service/KWallet custody, consent RPC, and
 in-app-only Composer expansion (`227d7e3c49`, `46aa7f3c91`, `6cc09bc2c0`,
 `930125a53e`, `83ef8e8edf`, `09860849c7`). These improve source parity without
 changing the 0/40 product or 0/7 environment certification state. The current
-source commit is `5a80e82b89` (building on `814749c8be`, `cba9266277`, `a5485fe238`, and `825e081bda`); it adds a daemon-owned
+source commit is `dd864a90be` (building on `b056423dbd`, `4b1126bfdf`, `3b652f9b9e`, `d7cffc79d6`, `702f59146e`, `814749c8be`, `cba9266277`, `a5485fe238`, and `825e081bda`); it adds a daemon-owned
 retention policy in addition to the `daemon.usage.insights`
 local-rules response with bounded citations, selected-scope encrypted privacy
 export, and independent per-binding native shortcut health. Focused
@@ -113,6 +113,16 @@ the Linux Computer Use adapter. `4b1126bfdf` adds the public production
 no-argument initializer and keeps dependency injection internal; the corrected
 candidate must pass both architecture shards before any release evidence is
 considered current.
+
+The shared Hermes insight transport then exposed a Windows Foundation overload
+difference in PR #1691: the Windows toolchain selected the zero-argument
+`AsyncThrowingStream` unfolding initializer rather than the continuation
+builder. `dd864a90be` selects the continuation initializer explicitly with a
+buffering-policy label and typed continuation; the macOS package build passes.
+The stale pre-fix candidate was cancelled, and replacement exact-head release
+candidate `29420342930` plus nightly matrix `29420350943` are running from this
+commit. Neither run is a parity receipt until it completes and its evidence is
+validated against the exact head.
 
 ### Follow-on source checkpoint — 2026-07-14
 
