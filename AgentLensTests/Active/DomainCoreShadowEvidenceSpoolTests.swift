@@ -99,6 +99,97 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         }
     }
 
+    func testGenericCollectorRejectsInvalidCoverageOutcomeAndTiming() {
+        let valid = DomainCoreShadowComparison(
+            domain: "cloudvault",
+            slice: "search",
+            operation: "query",
+            coreVersion: "0.3.0",
+            outcome: "match",
+            mismatchCategory: nil,
+            legacyMicros: 10,
+            rustMicros: 8
+        )
+
+        XCTAssertNil(DomainCoreShadowSampleV2(comparison: valid, channel: "production"))
+        XCTAssertNil(DomainCoreShadowSampleV2(
+            comparison: .init(
+                domain: "cloudvault", slice: "unknown", operation: "query", coreVersion: "0.3.0",
+                outcome: "match", mismatchCategory: nil, legacyMicros: 10, rustMicros: 8
+            ),
+            channel: "internal"
+        ))
+        XCTAssertNil(DomainCoreShadowSampleV2(
+            comparison: .init(
+                domain: "cloudvault", slice: "search", operation: "", coreVersion: "0.3.0",
+                outcome: "match", mismatchCategory: nil, legacyMicros: 10, rustMicros: 8
+            ),
+            channel: "internal"
+        ))
+        XCTAssertNil(DomainCoreShadowSampleV2(
+            comparison: .init(
+                domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
+                outcome: "match", mismatchCategory: "result_mismatch", legacyMicros: 10, rustMicros: 8
+            ),
+            channel: "internal"
+        ))
+        XCTAssertNil(DomainCoreShadowSampleV2(
+            comparison: .init(
+                domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
+                outcome: "mismatch", mismatchCategory: nil, legacyMicros: 10, rustMicros: 8
+            ),
+            channel: "internal"
+        ))
+        XCTAssertNil(DomainCoreShadowSampleV2(
+            comparison: .init(
+                domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
+                outcome: "match", mismatchCategory: nil, legacyMicros: 600_000_001, rustMicros: 8
+            ),
+            channel: "internal"
+        ))
+        XCTAssertNil(DomainCoreShadowSampleV2(
+            comparison: .init(
+                domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
+                outcome: "match", mismatchCategory: nil, legacyMicros: 10, rustMicros: 600_000_001
+            ),
+            channel: "internal"
+        ))
+    }
+
+    func testMacRecorderPersistsGenericCollectorComparisons() async throws {
+        defer { DomainCoreShadowComparisonCollector.configure(nil) }
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let submitter = RecordingDomainCoreShadowSubmitter()
+        let recorder = MacDomainCoreShadowEvidenceRecorder(
+            profile: signedProfile(
+                profile: "internal",
+                distribution: "internal",
+                channel: "internal",
+                evidenceEnabled: true
+            ),
+            directory: directory,
+            submitter: submitter,
+            debounceNanoseconds: 1_000_000
+        )
+
+        DomainCoreShadowComparisonCollector.record(.init(
+            domain: "cloudvault",
+            slice: "search",
+            operation: "query",
+            coreVersion: "0.3.0",
+            outcome: "match",
+            mismatchCategory: nil,
+            legacyMicros: 10,
+            rustMicros: 8
+        ))
+
+        try await eventually {
+            await submitter.batchSizes() == [1]
+        }
+        withExtendedLifetime(recorder) {}
+    }
+
     func testUnacknowledgedBatchIsReturnedForRetryUntilAcknowledged() throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
