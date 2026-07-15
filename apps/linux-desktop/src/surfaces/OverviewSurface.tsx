@@ -72,14 +72,6 @@ export function OverviewSurface() {
     hasSummary: !!summary
   });
 
-  const shellState = resolveOverviewShellState({
-    offlineNoBridge,
-    daemonOffline,
-    error,
-    busy,
-    hasSummary: !!summary
-  });
-
   const providerRows = useMemo(() => {
     const mix = insights?.providerMix ?? [];
     const total = fixtureMode ? 680.94 : summary?.todayCostUsd ?? 0;
