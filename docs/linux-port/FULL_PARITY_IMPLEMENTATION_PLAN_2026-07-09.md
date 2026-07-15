@@ -154,6 +154,15 @@ above. A fresh exact-head release candidate must be built before any of the
 new behavior can enter the promotion ledger; the ledger remains **0/40** and
 **0/7**.
 
+Candidate `29429549029` then failed both architecture shards during package
+preflight because the new XDG autostart member was intentionally outside the
+verifier's previous `/usr`-only extraction root. Commit `646270227e` closes
+that release-integrity gap without broadening the trust boundary: the verifier
+allows and extracts only `etc/xdg/autostart/openburnbar.desktop`, the Arch
+source/checksum generator includes the canonical file, and the focused release
+suite is **36/36** with one root-toolchain skip. A replacement candidate must
+pass both architectures and the aggregate attestation before installation.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:

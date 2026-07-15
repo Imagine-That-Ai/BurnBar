@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at the source checkpoint `dcca8b74b4`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, packaged XDG autostart, and the Windows-portable Hermes stream transport are linked below. Accepted candidate run `29421777733` passed both release architectures and installed-package runtime checks before this source checkpoint; a replacement exact-head candidate will be dispatched from the final documentation head. |
+| Remediation evidence | `codex/linux-parity-integration-final` at the source checkpoint `646270227e`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, and the Windows-portable Hermes stream transport are linked below. Accepted candidate run `29421777733` passed both release architectures and installed-package runtime checks before this source checkpoint; candidate `29429549029` correctly failed closed on the new `/etc` archive member before packaging, and a replacement exact-head candidate will be dispatched from the final documentation head. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -70,6 +70,14 @@ percentage. The active remediation stack now contains these reviewable slices:
   are historical evidence only. No new source claim is promoted until a fresh
   candidate is built, installed, and validated against the final documentation
   head.
+- **Release preflight repair:** candidate `29429549029` exposed that the
+  native archive verifier allowed only `/usr`, so both architecture shards
+  rejected the intentionally packaged `/etc/xdg/autostart/openburnbar.desktop`
+  before signing. `646270227e` adds a single exact non-`/usr` allowlist entry,
+  extracts only that path for Arch verification, and binds its checksum/source
+  slot through the AUR metadata generator. The focused release suite is
+  **36/36** (one root-toolchain skip); a fresh exact-head candidate is still
+  required.
 
 - **Onboarding hardening:** `238ee56975` validates every daemon snapshot before
   renderer/cache mutation, preserves the last valid state on malformed or
