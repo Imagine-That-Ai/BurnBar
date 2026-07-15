@@ -1103,10 +1103,6 @@ jobs:
           fi
           ./scripts/build-domain-core-xcframework.sh
 
-      - name: Restore checkout after host-only XCFramework build
-        run: |
-          git checkout -- .
-          git clean -fdx -- Vendor/ OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/
 
       - name: Run Swift domain-core consumer contracts
         env:
@@ -1127,6 +1123,11 @@ jobs:
           cat "$RUNNER_TEMP/swift-consumer-core.log" \
             "$RUNNER_TEMP/swift-consumer-spool.log" \
             > "$RUNNER_TEMP/swift-consumer-contracts.log"
+
+      - name: Restore checkout after native consumer tests
+        run: |
+          git checkout -- .
+          git clean -fdx -- Vendor/ OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/
 
       - name: Emit Swift consumer proof fragment
         run: >-

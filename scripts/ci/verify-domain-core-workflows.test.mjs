@@ -59,6 +59,13 @@ test("native consumer jobs keep their measured execution margin and emulator she
     core,
     /^            adb exec-out run-as com\.openburnbar\.domaincore\.test cat files\/domain-core-observed-identity\.json > "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
   );
+  const nativeBuild = core.indexOf("- name: Build host domain-core XCFramework");
+  const nativeContracts = core.indexOf("- name: Run Swift domain-core consumer contracts");
+  const nativeRestore = core.indexOf("- name: Restore checkout after native consumer tests");
+  const nativeProof = core.indexOf("- name: Emit Swift consumer proof fragment");
+  assert.ok(nativeBuild < nativeContracts, "native artifact must exist before consumer tests");
+  assert.ok(nativeContracts < nativeRestore, "consumer tests must run before checkout restore");
+  assert.ok(nativeRestore < nativeProof, "checkout must be clean before proof emission");
 });
 
 test("Linux Tauri remains display-only while the Linux daemon stays under Swift ownership", () => {

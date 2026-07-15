@@ -110,7 +110,12 @@ function observedIdentity(path, expected, label) {
     fail(`${label} observed identity report is unreadable: ${error.message}`);
   }
   const identity = validateDomainCoreCandidateIdentity(report);
-  if (JSON.stringify(identity) !== JSON.stringify(expected)) {
+  if (
+    identity.candidateCommit !== expected.candidateCommit ||
+    identity.coreVersion !== expected.coreVersion ||
+    identity.abiVersion !== expected.abiVersion ||
+    identity.sourceSha256 !== expected.sourceSha256
+  ) {
     fail(`${label} observed identity does not match candidate`);
   }
   return identity;
