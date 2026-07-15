@@ -144,6 +144,7 @@ test('known incompatible legacy Debian baseline is eligible only for prerelease 
 
 test('Arch missing-baseline reports remain explicit in architecture-session finalization', () => {
   assert.match(architectureFinalizer, /No previous same-architecture Arch package was supplied/u);
+  assert.match(architectureFinalizer, /\['update', 'rollback', 'dataPreservation'\]\.every/u);
   assert.match(architectureFinalizer, /archLifecycle = blockedLifecycle/u);
 });
 

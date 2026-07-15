@@ -64,7 +64,7 @@ try {
 } catch (error) {
   archLifecycleFailure = error.message;
   const blockedLifecycle = archUpdateRollback?.lifecycle;
-  const blockedBaseline = requiredLifecycleSteps.every((step) => {
+  const blockedBaseline = ['update', 'rollback', 'dataPreservation'].every((step) => {
     const row = blockedLifecycle?.[step];
     return row?.status === 'blocked' && explicitArchBaselineBlock.test(row.reason ?? '');
   });
