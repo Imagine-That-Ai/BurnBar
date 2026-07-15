@@ -42,7 +42,7 @@ Per diligence 2026-07-14 §LB-1:
 - **Labels:** `P0 - Critical`, `area: infra`, `lane:deploy-cloud-run`, `failures:41`
 - **Created:** 2026-06-30
 - **Last update:** 2026-07-06 (41 recurrence comments, all Cloud Run deploy failures from `refs/tags/v1.0.6` through `v1.0.29`)
-- **This audit does NOT close #1091.** Closure is an Alberto-only action (A1 step 4) contingent on a successful real deploy.
+- **This audit does NOT close #1091.** Closure is automatic on Cloud Run deploy success — the `cloud-run-deploy-result` job runs `ops-failure-issue mode:close lane:deploy-cloud-run`, which closes every open issue with that lane label (§8 Step 5). The operator's remaining action is to verify Functions deploy and paste run URLs as final disposition.
 
 ---
 
@@ -88,7 +88,7 @@ git log --oneline 994bc55288 --since=2026-06-18 -- functions/
 
 ### 3.2 Classification: security-relevant vs. other
 
-**96 security-relevant** | **78 other** (infrastructure, CI, features, rollups, deps)
+**100 security-relevant** | **74 other** (infrastructure, CI, features, rollups, deps)
 
 Security-relevant commits are those touching auth, App Check, rate limiting, input validation, escrow, secrets, credentials, tokens, entitlement enforcement, BOLA/denial contracts, vault rotation, attestation, replay guards, or boundary/binding/proof logic — any of which changes the security posture of production callables.
 
@@ -198,6 +198,10 @@ Commits touching **auth / App Check / rate-limit / validation / escrow / secret 
 | 94 | `f6ac511480` | 2026-06-20 | security: harden release and credential boundaries | **credential/boundary** |
 | 95 | `2417372bcd` | 2026-06-19 | fix(memory): retire stale review tombstones (#601) | **stale/review** |
 | 96 | `618eb2707f` | 2026-06-18 | fix: clean up legacy shared artifact plaintext (#553) | **plaintext/privacy** |
+| 97 | `3f5d9cac45` | 2026-06-26 | fix(functions): bind knowledge repo GitHub app secrets | **secret/binding** |
+| 98 | `0c28889ea4` | 2026-06-24 | fix(functions): bind provider account secrets to provider | **secret/binding** |
+| 99 | `20e0b298f5` | 2026-06-24 | fix(functions): validate knowledge search limits | **validation** |
+| 100 | `08db92ec70` | 2026-06-23 | fix(functions): prevent caching CLI link credentials | **credential** |
 
 ---
 
@@ -247,7 +251,6 @@ Infrastructure, CI, features, rollups, deps, and data-path changes that do not a
 | `2ed2c0831c` | 2026-06-26 | test(functions): exercise repo webhook test hooks |
 | `5bc5bb0c94` | 2026-06-26 | fix(functions): preserve verified legacy repo webhooks |
 | `a3130596fe` | 2026-06-26 | fix(functions): harden project memory legacy cleanup ids |
-| `3f5d9cac45` | 2026-06-26 | fix(functions): bind knowledge repo GitHub app secrets |
 | `9180fa61c8` | 2026-06-26 | fix(ci): satisfy repo webhook ratchets |
 | `2274a0c102` | 2026-06-26 | fix(security): verify repo webhook registrations |
 | `3dac9282e8` | 2026-06-26 | fix(functions): align billing data export paths |
@@ -260,8 +263,6 @@ Infrastructure, CI, features, rollups, deps, and data-path changes that do not a
 | `23c5c965a0` | 2026-06-25 | fix(functions): gate iroh audit rollups on server eligibility |
 | `a3e3cd9fa2` | 2026-06-25 | fix(functions): isolate demo provider quota refresh |
 | `439c1adc2d` | 2026-06-24 | fix(functions): hash device link log identifiers |
-| `0c28889ea4` | 2026-06-24 | fix(functions): bind provider account secrets to provider |
-| `20e0b298f5` | 2026-06-24 | fix(functions): validate knowledge search limits |
 | `a554562e43` | 2026-06-24 | fix(functions): retain account erasure audit intent |
 | `013ae129c3` | 2026-06-24 | fix(functions): disambiguate gateway pop query signing |
 | `9b9a08d944` | 2026-06-24 | fix(functions): bind gateway attachment signed URLs |
@@ -275,7 +276,6 @@ Infrastructure, CI, features, rollups, deps, and data-path changes that do not a
 | `7ee301e0c0` | 2026-06-24 | fix(search): preserve capped cloud-search recall |
 | `523210f81a` | 2026-06-23 | fix(functions): retry app store webhook transient failures |
 | `216e48ee84` | 2026-06-23 | fix(functions): preserve phone control peer bindings |
-| `08db92ec70` | 2026-06-23 | fix(functions): prevent caching CLI link credentials |
 | `cea73550af` | 2026-06-23 | fix(functions): harden Google Play top-up verification |
 | `6093902302` | 2026-06-22 | deps(deps-dev): bump firebase-tools in /functions |
 | `f17613bb26` | 2026-06-22 | fix(pi-agent): satisfy response sanitizer debt gate |
@@ -344,7 +344,7 @@ The deploy workflow (`deploy-production.yml` step "Deploy Cloud Functions") asse
 2. Appending per-deploy dynamic values on top: `FUNCTION_VERSION`, `OPENBURNBAR_SOURCE_COMMIT`, `SENTRY_DSN` (from Actions secret), `SENTRY_ENVIRONMENT=production`.
 3. Writing the combined file to `functions/.env.burnbar` (the firebase-tools target).
 
-Both the deploy lane and `scripts/rollback.sh` source the **same** committed `functions/.env.burnbar.production`, so a deploy and a rollback can never disagree or ship empty config.
+Both the deploy lane and `scripts/rollback.sh` source the **same** committed `functions/.env.burnbar.production`, so they can never ship empty config or disagree on the committed public IDs/URLs. **However, the rollback path has a metadata gap:** `scripts/rollback.sh` writes only `FUNCTION_VERSION` into `functions/.env.burnbar` (line 188), whereas the normal deploy appends `OPENBURNBAR_SOURCE_COMMIT`, `SENTRY_DSN`, and `SENTRY_ENVIRONMENT` in addition to `FUNCTION_VERSION` (deploy-production.yml lines 244–247). As a result, a rollback deploys functions without Sentry crash reporting or AGPL source-metadata env vars. Operators using this audit during a rollback should verify the health gate's `HEALTH_GATE_REQUIRE_SENTRY=1` assertion (§7.1) catches this — or align the rollback script to append the same per-deploy metadata.
 
 ---
 
@@ -404,6 +404,8 @@ These are the exact steps from the production deploy workflow, annotated with th
 ### Step 0 — Prerequisite: create a new release tag (STOP CONDITION)
 
 > No existing tag contains PR #1572's fix. A new immutable release tag at a commit containing `bf7462683c` must be created through the normal release process before any dispatch. See §2.
+>
+> ⚠️ **Tag-push auto-deploy hazard:** Both `deploy-production.yml` and `deploy-cloud-run.yml` trigger on `push: tags: v*` (lines 7–9 in each workflow). Their tag resolver sets `dry_run=false` for non-`workflow_dispatch` events (line 110: `dry_run` is only `true` when `EVENT_NAME == "workflow_dispatch" && INPUT_DRY_RUN == "true"`). Pushing the new `v*` tag therefore queues real Functions and Cloud Run deploys automatically — the Step 1/3 dry-runs cannot run first because a tag push skips the dispatch selector. **Operators must complete all dry-run dispatches (Steps 1 and 3) via `workflow_dispatch` from the tag ref before pushing the tag**, or temporarily disable the push trigger on both workflows until the tag is pushed after rehearsal.
 
 ```
 # Verify the new tag contains PR #1572:
@@ -428,7 +430,9 @@ The dry-run runs these verification steps (lines 119-137):
 8. `python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only`
 9. `python3 scripts/ci/check_burnbar_release_preflight.py`
 10. Security config gate — `REQUIRE_HIGH_RISK_NONCE` must not be disabled (lines 139-158)
-11. Sentry release creation (if `SENTRY_AUTH_TOKEN` present)
+11. Sentry release creation (if `SENTRY_AUTH_TOKEN` present) — ⚠️ **this step is NOT gated by `dry_run`** (line 160: `if: env.HAS_SENTRY_AUTH_TOKEN == 'true'`). With the token present, even a dry-run creates/finalizes `openburnbar-functions@<tag>` and records a `--env production` deploy in Sentry (lines 171–178). Sentry's production release/deploy timeline can show a deployment that never reached Firebase.
+
+> ⚠️ **Sentry dry-run mutation:** The Sentry release step (deploy-production.yml lines 160–178) runs during dry-runs because its `if` condition checks only `env.HAS_SENTRY_AUTH_TOKEN == 'true'`, not `steps.tag.outputs.dry_run != 'true'`. Operators should either (a) temporarily clear `SENTRY_AUTH_TOKEN` from the production environment before the dry-run, or (b) accept that the dry-run will create a Sentry release/deploy record and verify the real deploy's Sentry deploy supersedes it. Gate the step to real deploys (`if: env.HAS_SENTRY_AUTH_TOKEN == 'true' && steps.tag.outputs.dry_run != 'true'`) to make the dry-run a true no-op.
 
 Dry-run **skips** the Google auth + Firestore drift check + firebase deploy (gated by `steps.tag.outputs.dry_run != 'true'`).
 
@@ -440,7 +444,7 @@ Dry-run **skips** the Google auth + Firestore drift check + firebase deploy (gat
 
 After the tag resolves and build passes, the real deploy runs:
 1. **WIF auth** (`google-github-actions/auth` with workload identity federation — no JSON keys)
-2. **Rules-first readback** — `node scripts/ci/check-firestore-deploy-drift.mjs burnbar` (line 198) — verifies prod Firestore rules hash-match main before functions deploy
+2. **Rules-first readback** — `node scripts/ci/check-firestore-deploy-drift.mjs burnbar` (line 198) — verifies prod Firestore rules hash-match **the checked-out release tag's** `firestore.rules`/`firestore.indexes.json` before functions deploy. The workflow checks out the resolved tag commit (`git checkout --detach "$commit"`, line 98) and the script reads those workspace files (`check-firestore-deploy-drift.mjs` line 203: `resolve(repoRoot, "firestore.rules")`). This confirms the tag's rules match production, but does NOT compare against `origin/main` — an older tag with stale rules could pass this gate while diverging from main. Operators should verify the tag's rules also match current `origin/main` separately (e.g., `git diff <tag>..origin/main -- firestore.rules` must be empty) before deploying.
 3. **Deploy** — `firebase deploy --only functions --project burnbar` with the assembled env file (line 264-268)
 4. **Health gate** — `functions-health-gate` job with `HEALTH_GATE_REQUIRE_SENTRY=1` (line 308-309), probes `healthReady`/`healthLive` for availability + AGPL source metadata compliance
 
@@ -461,20 +465,22 @@ Runs: build + test hosted MCP → Docker build smoke → artifact staging + SHA2
 
 **Source:** `deploy-cloud-run.yml` `workflow_dispatch` with `dry_run=false`
 
-Runs: WIF auth → deployer IAM verification (required roles, no Secret Manager payload access) → capture current state → build + deploy → health probe → **readback** (lines 579-666):
+Runs: WIF auth → deployer IAM verification (required roles, no **project-wide** Secret Manager payload/write roles) → capture current state → build + deploy → health probe → **readback** (lines 579-666):
 - 100% traffic on latest ready revision
 - `OPENBURNBAR_STORAGE_BUCKET` matches (no env drift)
 - `MCP_RESOURCE` matches
 - `MCP_AUTH_ISSUER` matches
 - Auto-rollback on failure (pins traffic to previous revision)
 
+> ⚠️ **IAM scope limitation:** The deployer IAM verification (`deploy-cloud-run.yml` lines 254–297) reads only the **project-level** IAM policy (`gcloud projects get-iam-policy`) and rejects project-wide `roles/secretmanager.secretAccessor` and similar roles for the deployer service account. It does **not** inspect **per-secret IAM bindings** — if the deployer was granted `roles/secretmanager.secretAccessor` on individual signer secrets via a per-secret binding, this verifier would not detect it. Operators should verify per-secret bindings separately (e.g., `gcloud secrets get-iam-policy <secret> --project burnbar | grep <service-account>`) before relying on this gate as proof of no Secret Manager payload access.
+
 **Evidence placeholders:**
 - _[paste Cloud Run real deploy run URL]_
 - _[paste readback JSON showing latestReadyRevisionName + traffic=100%]_
 
-### Step 5 — Close #1091 (Alberto-only)
+### Step 5 — Close #1091 (automatic on Cloud Run success; verify manually)
 
-After all four dispatches succeed, close issue #1091 with the run URLs as disposition.
+Issue #1091 carries the `lane:deploy-cloud-run` label (§1.3). The Cloud Run workflow's `cloud-run-deploy-result` job (deploy-cloud-run.yml lines 775–781) runs `ops-failure-issue` with `mode: close` and `lane: deploy-cloud-run` as soon as `deploy-hosted-mcp` succeeds. That action (`.github/actions/ops-failure-issue/action.yml` lines 321–341) finds **every** open issue with the `lane:deploy-cloud-run` label, comments a "Resolved by green run" link, and closes it. **In the normal A1 scenario, #1091 is closed automatically immediately after the Cloud Run real deploy succeeds** — even before the operator has pasted the four run URLs or verified Functions. Operators should treat the auto-close as the signal that Cloud Run succeeded, then verify the Functions deploy independently and paste all run URLs into a final disposition comment on the closed issue.
 
 ---
 
@@ -486,9 +492,9 @@ The diligence report (§LB-1 sub-risk) identifies the combination of July-14 Fir
 - **Spend caps:** rules may enforce budget limits the frozen functions don't check
 - **Monotonic counters:** rules may enforce ordering the frozen functions don't guarantee
 
-**Mitigation in the deploy path:** The `check-firestore-deploy-drift.mjs` step (§8 Step 2) runs before functions deploy and verifies prod rules hash-match main. This confirms the rules are current, but does NOT test that the functions' write patterns are compatible with those rules — that integration is untested.
+**Mitigation in the deploy path:** The `check-firestore-deploy-drift.mjs` step (§8 Step 2) runs before functions deploy and verifies prod rules hash-match **the release tag's** rules/index files (not `origin/main` — see §8 Step 2 caveat). This confirms the tag's rules match production, but does NOT test that the functions' write patterns are compatible with those rules — that integration is untested.
 
-**Recommendation:** after the first real deploy, run `firestore-rules-tests` against the newly-deployed functions to verify the rules/functions combination. If the audit finds a stranded security fix (§4), verify it deploys correctly and re-run the relevant rules tests.
+**Recommendation:** after the first real deploy, run **live callable smoke tests** against the newly-deployed functions (e.g., calling `healthReady`, `healthLive`, and a representative security-relevant callable like `searchKnowledge` or `insightsHostedAnswer` with a real auth token) to verify the rules/functions write-path combination in production. The `firestore-rules-tests` suite (`npm run test:firestore-rules`) runs `firebase emulators:exec --only firestore` (`functions/package.json` line 19) — it exercises emulator rules with synthetic clients and never calls the live Cloud Functions, so a green emulator suite does not prove the deployed callables are compatible with production rules. If the audit finds a stranded security fix (§4), verify it deploys correctly and exercise the affected callable live.
 
 ---
 
@@ -499,7 +505,7 @@ This audit is agent-prep only. The following are Alberto-only actions that must 
 | Action | Description | Status |
 |---|---|---|
 | **A1** | Trigger production deploys (`deploy-production.yml`, `deploy-cloud-run.yml` `workflow_dispatch`) from `refs/tags/<new-tag>` | **BLOCKED** — no tag contains PR #1572; new tag required first |
-| **A1 step 5** | Close issue #1091 with run URLs as disposition | **BLOCKED** — contingent on successful A1 deploy |
+| **A1 step 5** | Close issue #1091 — **automatic** via `ops-failure-issue mode:close` on Cloud Run success (see §8 Step 5); operator verifies Functions and pastes run URLs as final disposition | **AUTO on Cloud Run success** |
 | **New tag** | Create a new immutable release tag containing `bf7462683c` + vetted function state | **Prerequisite for A1** |
 
 ---
