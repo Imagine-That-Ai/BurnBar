@@ -7,6 +7,7 @@ import argparse
 import base64
 import binascii
 import hashlib
+import io
 import json
 import os
 import re
@@ -14,7 +15,9 @@ import stat
 import subprocess
 import sys
 import tempfile
+import tarfile
 import tomllib
+import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -116,7 +119,7 @@ RELEASE_SIGNER_WORKFLOWS = {
 RELEASE_PREDICATE_TYPES = {consumer: "https://openburnbar.dev/attestations/domain-core-release-artifact/v2" for consumer in RELEASE_SIGNER_WORKFLOWS}
 ROLLBACK_PREDICATE_TYPE = "https://openburnbar.dev/attestations/domain-core-rollback-artifact/v1"
 RELEASE_ARTIFACT_IDENTITIES = {
-    "apple": ("macos-dmg", "macos-universal"),
+    "apple": ("macos-dmg", "macos-arm64"),
     "ios": ("ios-app-store-archive", "ios-universal"),
     "linux": ("linux-release-bundle", "linux-x64-arm64"),
     "android": ("android-aab", "android-universal"),
@@ -492,7 +495,15 @@ class SignedEvidenceVerifier:
             arguments.extend(["--source-ref", source_ref])
         if signer_digest is not None:
             arguments.extend(["--signer-digest", signer_digest])
-        cache_key = tuple([str(artifact), str(bundle), *arguments])
+        cache_key = (
+            sha256_path(artifact),
+            sha256_path(bundle),
+            signer_workflow,
+            source_digest,
+            source_ref or "",
+            predicate_type,
+            signer_digest or "",
+        )
         if cache_key in self._attestation_cache:
             return self._attestation_cache[cache_key]
         try:
@@ -651,6 +662,12 @@ class SignedEvidenceVerifier:
                 "domain": domain,
                 "artifactKind": item["artifactKind"],
                 "target": item["target"],
+                "publicProfile": {
+                    "profile": "public-production",
+                    "domain": domain,
+                    "mode": "rust",
+                    "sha256": item["publicProfileSha256"],
+                },
                 "candidate": item["candidate"],
                 "activation": item["activation"],
                 "artifact": {
@@ -691,6 +708,12 @@ class SignedEvidenceVerifier:
                 == item["candidate"]
                 and predicate["rollbackArtifact"].get("activation") == item["activation"]
             ]
+            if item["consumer"] == "ios":
+                matching = [
+                    predicate
+                    for predicate in matching
+                    if ios_app_store_receipt_matches(predicate, item, expected_sha256)
+                ]
             if not matching:
                 raise GateError(f"{item['consumer']} release artifact: signed predicate does not bind the declared consumer identity")
         finally:
@@ -706,6 +729,95 @@ class SignedEvidenceVerifier:
     ) -> None:
         artifact = self._cached_artifact(item["artifactUri"], expected_sha256, "rollback artifact")
         try:
+            try:
+                with zipfile.ZipFile(artifact) as archive:
+                    expected_entries = [
+                        "manifest.json",
+                        "domain-core-public-production-rollback.json",
+                        "rollback.env",
+                        "legacy-source.tar.gz",
+                    ]
+                    if archive.namelist() != expected_entries:
+                        raise GateError("rollback artifact does not contain the exact restoration payload")
+                    if any(info.is_dir() or info.flag_bits & 1 for info in archive.infolist()):
+                        raise GateError("rollback artifact contains an unsafe or encrypted entry")
+                    manifest = require_object(
+                        json.loads(archive.read("manifest.json")),
+                        "rollback artifact manifest",
+                    )
+                    profile = require_object(
+                        json.loads(archive.read("domain-core-public-production-rollback.json")),
+                        "rollback artifact profile",
+                    )
+                    environment = archive.read("rollback.env")
+                    source_archive = archive.read("legacy-source.tar.gz")
+            except (OSError, ValueError, KeyError, json.JSONDecodeError, zipfile.BadZipFile) as error:
+                raise GateError(f"rollback artifact restoration payload is unreadable: {error}") from error
+            modes = require_object(profile.get("modes"), "rollback artifact profile.modes")
+            if (
+                profile.get("name") != "public-production-rollback"
+                or profile.get("artifactAuthority") != "signed"
+                or profile.get("distribution") != "public"
+                or profile.get("candidateIdentity") != item["candidate"]
+                or set(modes) != set(PROFILE_DOMAIN_ROWS)
+                or any(mode != "legacy" for mode in modes.values())
+            ):
+                raise GateError("rollback artifact does not contain the exact all-legacy signed profile")
+            restoration = require_object(manifest.get("restoration"), "rollback artifact restoration")
+            source = require_object(restoration.get("sourceArchive"), "rollback artifact source archive")
+            settings = require_object(restoration.get("environment"), "rollback artifact environment")
+            if (
+                manifest.get("schemaVersion") != 1
+                or manifest.get("artifactKind") != "legacy-rollback-bundle"
+                or manifest.get("target") != "all-supported-consumers"
+                or manifest.get("candidate") != item["candidate"]
+                or manifest.get("activation") != item["activation"]
+                or manifest.get("release") != {
+                    "version": item["version"],
+                    "tag": item["tag"],
+                    "commit": item["commit"],
+                }
+                or manifest.get("retentionPolicy") != item["retentionPolicy"]
+                or manifest.get("contents") != expected_entries
+                or restoration.get("sourceCommit") != item["candidate"]["candidateCommit"]
+                or source.get("path") != "legacy-source.tar.gz"
+                or source.get("sha256") != hashlib.sha256(source_archive).hexdigest()
+                or source.get("size") != len(source_archive)
+                or settings.get("path") != "rollback.env"
+                or settings.get("sha256") != hashlib.sha256(environment).hexdigest()
+                or settings.get("allDomainModes") != "legacy"
+            ):
+                raise GateError("rollback artifact manifest does not bind usable legacy source and settings")
+            try:
+                settings_text = environment.decode("ascii")
+            except UnicodeDecodeError as error:
+                raise GateError("rollback artifact environment is not canonical ASCII") from error
+            if (
+                "OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE=public-production-rollback\n" not in settings_text
+                or "OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT=" + item["candidate"]["candidateCommit"] + "\n" not in settings_text
+                or sum(line.endswith("_MODE=legacy") for line in settings_text.splitlines()) != len(modes)
+            ):
+                raise GateError("rollback artifact environment cannot restore every legacy domain")
+            try:
+                with tarfile.open(fileobj=io.BytesIO(source_archive), mode="r:gz") as source_tar:
+                    source_members = source_tar.getmembers()
+            except (OSError, tarfile.TarError) as error:
+                raise GateError(f"rollback artifact legacy source is unreadable: {error}") from error
+            if not source_members or any(
+                member.issym()
+                or member.islnk()
+                or PurePosixPath(member.name).is_absolute()
+                or ".." in PurePosixPath(member.name).parts
+                for member in source_members
+            ):
+                raise GateError("rollback artifact legacy source contains unsafe entries")
+            source_names = {member.name for member in source_members if member.isfile()}
+            required_suffixes = {
+                "config/domain-core-build-profiles.json",
+                "crates/openburnbar-domain-core/Cargo.toml",
+            }
+            if any(not any(name.endswith(suffix) for name in source_names) for suffix in required_suffixes):
+                raise GateError("rollback artifact legacy source omits required build inputs")
             verified = self._verify_bundle(
                 artifact,
                 bundle,
@@ -1185,52 +1297,151 @@ def expected_release_asset_name(consumer: str, version: str) -> str:
     return names[consumer]
 
 
-def validate_previous_rollback(
+def validate_ios_app_store_receipt(
+    value: Any,
+    item: dict[str, Any],
+    archive_sha256: str,
+) -> None:
+    receipt = require_object(value, "signed iOS App Store Connect receipt")
+    fields = {
+        "schemaVersion",
+        "status",
+        "deliveryId",
+        "archiveSha256",
+        "ipaSha256",
+        "release",
+        "candidate",
+        "activation",
+        "loadedRustIdentity",
+    }
+    exact_keys(receipt, fields, fields, "signed iOS App Store Connect receipt")
+    release = require_object(receipt["release"], "signed iOS App Store Connect receipt.release")
+    loaded = require_object(receipt["loadedRustIdentity"], "signed iOS loaded Rust identity")
+    loaded_fields = {
+        "schemaVersion",
+        "verificationKind",
+        "bundleId",
+        "version",
+        "buildNumber",
+        "executable",
+        "architectures",
+        "executableSha256",
+        "identitySectionSha256",
+        "identitySymbols",
+        "candidate",
+        "observed",
+    }
+    exact_keys(loaded, loaded_fields, loaded_fields, "signed iOS loaded Rust identity")
+    observed = require_object(loaded.get("observed"), "signed iOS loaded Rust identity.observed")
+    expected_observed = {
+        "candidateCommit": item["candidate"]["candidateCommit"],
+        "coreVersion": item["candidate"]["coreVersion"],
+        "abiVersion": item["candidate"]["abiVersion"],
+        "sourceSha256": item["candidate"]["sourceSha256"],
+    }
+    expected_symbols = sorted({
+        "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+        "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+        "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
+        "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
+    })
+    invalid = (
+        receipt["schemaVersion"] != 1
+        or receipt["status"] != "processed"
+        or not isinstance(receipt["deliveryId"], str)
+        or not receipt["deliveryId"]
+        or receipt["archiveSha256"] != archive_sha256
+        or require_digest(receipt["ipaSha256"], "signed iOS IPA SHA-256") != receipt["ipaSha256"]
+        or release != {"version": item["version"], "tag": item["tag"], "commit": item["commit"]}
+        or receipt["candidate"] != item["candidate"]
+        or receipt["activation"] != item["activation"]
+        or loaded.get("schemaVersion") != 1
+        or loaded.get("verificationKind") != "ios-loaded-rust-slice-identity"
+        or not isinstance(loaded.get("bundleId"), str)
+        or not loaded.get("bundleId")
+        or loaded.get("version") != item["version"]
+        or not isinstance(loaded.get("buildNumber"), str)
+        or not loaded.get("buildNumber")
+        or loaded.get("executable") != "OpenBurnBarMobile"
+        or loaded.get("architectures") != ["arm64"]
+        or loaded.get("identitySymbols") != expected_symbols
+        or loaded.get("candidate") != item["candidate"]
+        or observed != expected_observed
+        or require_digest(loaded.get("executableSha256"), "signed iOS executable SHA-256") != loaded.get("executableSha256")
+        or require_digest(loaded.get("identitySectionSha256"), "signed iOS identity-section SHA-256") != loaded.get("identitySectionSha256")
+    )
+    if invalid:
+        raise GateError("signed iOS App Store Connect receipt does not bind the exact processed IPA and loaded Rust slice")
+
+
+def ios_app_store_receipt_matches(
+    predicate: dict[str, Any],
+    item: dict[str, Any],
+    archive_sha256: str,
+) -> bool:
+    try:
+        validate_ios_app_store_receipt(
+            predicate.get("appStoreConnectReceipt"),
+            item,
+            archive_sha256,
+        )
+    except GateError:
+        return False
+    return True
+
+
+def validate_superseded_authority(
     repo_root: Path,
     row_id: str,
     generation: int,
     value: Any,
     approved_at: datetime,
 ) -> datetime:
-    link = require_object(value, "promotionAttestation.supersedesRollback")
+    link = require_object(value, "promotionAttestation.supersedes")
     exact_keys(
         link,
-        {"path", "sha256"},
-        {"path", "sha256"},
-        "promotionAttestation.supersedesRollback",
+        {"transition", "path", "sha256"},
+        {"transition", "path", "sha256"},
+        "promotionAttestation.supersedes",
     )
-    expected_path = f"{RECEIPT_ROOT}/{row_id}/{generation - 1}/rollback.json"
-    path_value = repository_path(link["path"], "promotionAttestation.supersedesRollback.path")
+    transition = link["transition"]
+    names = {"rollback": "rollback.json", "stable_release": "stable_release.json"}
+    if transition not in names:
+        raise GateError("promotionAttestation.supersedes.transition must be rollback or stable_release")
+    expected_path = f"{RECEIPT_ROOT}/{row_id}/{generation - 1}/{names[transition]}"
+    path_value = repository_path(link["path"], "promotionAttestation.supersedes.path")
     if path_value != expected_path:
-        raise GateError(f"promotionAttestation.supersedesRollback.path must be {expected_path}")
+        raise GateError(f"promotionAttestation.supersedes.path must be {expected_path}")
     path = secure_path(
         repo_root,
         path_value,
-        "promotionAttestation.supersedesRollback",
+        "promotionAttestation.supersedes",
         must_exist=True,
     )
-    expected_digest = require_digest(link["sha256"], "promotionAttestation.supersedesRollback.sha256")
+    expected_digest = require_digest(link["sha256"], "promotionAttestation.supersedes.sha256")
     if sha256_path(path) != expected_digest:
-        raise GateError("promotionAttestation.supersedesRollback.sha256 does not match the previous rollback receipt")
-    previous = require_object(load_json(path, "previous rollback receipt"), "previous rollback receipt")
+        raise GateError("promotionAttestation.supersedes.sha256 does not match the previous authority receipt")
+    previous = require_object(load_json(path, "previous authority receipt"), "previous authority receipt")
     if (
         previous.get("schemaVersion") != 2
         or previous.get("rowId") != row_id
         or previous.get("authorityGeneration") != generation - 1
-        or previous.get("transition") != "rollback"
+        or previous.get("transition") != transition
         or previous.get("status") != "active"
     ):
-        raise GateError("promotionAttestation.supersedesRollback does not identify the previous active rollback")
-    previous_approved = parse_rfc3339_utc(previous.get("approvedAt"), "previous rollback receipt.approvedAt")
+        raise GateError("promotionAttestation.supersedes does not identify the previous active authority")
+    previous_approved = parse_rfc3339_utc(previous.get("approvedAt"), "previous authority receipt.approvedAt")
     if previous_approved >= approved_at:
-        raise GateError("promotion approval must be later than the superseded rollback")
-    activated_at = parse_rfc3339_utc(
-        require_object(previous.get("rollback"), "previous rollback receipt.rollback").get("activatedAt"),
-        "previous rollback receipt.rollback.activatedAt",
-    )
-    if activated_at > previous_approved:
-        raise GateError("previous rollback activation cannot follow rollback approval")
-    return activated_at
+        raise GateError("promotion approval must be later than the superseded authority")
+    if transition == "rollback":
+        activated_at = parse_rfc3339_utc(
+            require_object(previous.get("rollback"), "previous rollback receipt.rollback").get("activatedAt"),
+            "previous rollback receipt.rollback.activatedAt",
+        )
+        if activated_at > previous_approved:
+            raise GateError("previous rollback activation cannot follow rollback approval")
+        return activated_at
+    return previous_approved
 
 
 def positive_integer(value: Any, label: str) -> int:
@@ -1356,7 +1567,7 @@ def validate_promotion_attestation(
 ) -> tuple[str, str, str]:
     scope = PROMOTION_SCOPES[profile_domain_for_row(row_id)]
     pointer = promotion.payload
-    pointer_fields = {"path", "sha256", "supersedesRollback"}
+    pointer_fields = {"path", "sha256", "supersedes"}
     exact_keys(pointer, pointer_fields, pointer_fields, f"row {row_id} promotionAttestation")
     expected_path = f"{ATTESTATION_ROOT}/{scope}/{generation}.json"
     path_value = repository_path(pointer["path"], f"row {row_id} promotionAttestation.path")
@@ -1523,14 +1734,14 @@ def validate_promotion_attestation(
     if bundle_generated_at > generated_at or generated_at > promotion.approved_at:
         raise GateError(f"row {row_id}: bundle, attestation, and approval timestamps are inconsistent")
     if generation == 1:
-        if pointer["supersedesRollback"] is not None:
-            raise GateError(f"row {row_id}: first authority generation cannot supersede a rollback")
+        if pointer["supersedes"] is not None:
+            raise GateError(f"row {row_id}: first authority generation cannot supersede prior authority")
     else:
-        validate_previous_rollback(
+        validate_superseded_authority(
             repo_root,
             row_id,
             generation,
-            pointer["supersedesRollback"],
+            pointer["supersedes"],
             promotion.approved_at,
         )
     return candidate, bundle_digest, expected_identity["coreVersion"]
@@ -1601,8 +1812,17 @@ def validate_receipt_chain(
             raise GateError(f"row {row_id}: activation proof does not match the exact candidate-to-release closure")
         candidate_modes, _ = public_production_profile_at_commit(repo_root, candidate)
         profile_domain = profile_domain_for_row(row_id)
-        if candidate_modes[profile_domain] != "legacy":
-            raise GateError(f"row {row_id}: protected candidate must remain legacy before activation")
+        supersedes = promotion.payload["supersedes"]
+        reattests_stable_authority = (
+            isinstance(supersedes, dict)
+            and supersedes.get("transition") == "stable_release"
+        )
+        expected_candidate_mode = "rust" if reattests_stable_authority else "legacy"
+        if candidate_modes[profile_domain] != expected_candidate_mode:
+            raise GateError(
+                f"row {row_id}: protected candidate mode must be {expected_candidate_mode} "
+                "for this authority transition"
+            )
         require_ancestor(repo_root, activation_commit, stable.commit, f"row {row_id} stable receipt")
         releases = require_array(release["consumerReleases"], f"row {row_id} release.consumerReleases")
         consumers: set[str] = set()
@@ -1954,10 +2174,17 @@ def validate_rollback_history(
             if child.is_symlink() or not child.is_file():
                 raise GateError(f"row {row_id} generation {generation}: receipt entries must be regular files")
             actual_files.add(child.name)
+        stable_files = receipt_file_names(required_receipts("rust_authoritative_with_rollback"))
+        stable_after_deletion_files = stable_files | {"deletion_review.json"}
         rollback_files = receipt_file_names(required_receipts("rollback_active"))
         rollback_after_deletion_files = rollback_files | {"deletion_review.json"}
         valid_files = (
-            {frozenset(rollback_files), frozenset(rollback_after_deletion_files)}
+            {
+                frozenset(stable_files),
+                frozenset(stable_after_deletion_files),
+                frozenset(rollback_files),
+                frozenset(rollback_after_deletion_files),
+            }
             if generation < row.generation
             else {frozenset(receipt_file_names(set(row.receipts)))}
         )
@@ -1966,7 +2193,7 @@ def validate_rollback_history(
         if generation >= row.generation:
             continue
         seen: set[str] = set()
-        historical = {
+        historical: dict[str, Receipt] = {
             "promotion": validate_receipt(
                 repo_root,
                 f"{relative}/{generation}/promotion.json",
@@ -1983,15 +2210,16 @@ def validate_rollback_history(
                 "stable_release",
                 seen,
             ),
-            "rollback": validate_receipt(
+        }
+        if "rollback.json" in actual_files:
+            historical["rollback"] = validate_receipt(
                 repo_root,
                 f"{relative}/{generation}/rollback.json",
                 row_id,
                 generation,
                 "rollback",
                 seen,
-            ),
-        }
+            )
         if "deletion_review.json" in actual_files:
             historical["deletionReview"] = validate_receipt(
                 repo_root,
@@ -2004,7 +2232,7 @@ def validate_rollback_history(
         validate_receipt_chain(
             repo_root,
             row_id,
-            "rollback_active",
+            "rollback_active" if "rollback" in historical else "rust_authoritative_with_rollback",
             generation,
             historical,
             evidence_verifier,
@@ -2084,6 +2312,20 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
     )
     base_rows_raw = require_array(base_manifest.get("rows"), "base legacy deletion ledger.rows")
     current_rows_raw = require_array(current_manifest.get("rows"), "manifest.rows")
+    if base_manifest.get("schemaVersion") != current_manifest.get("schemaVersion"):
+        raise GateError("legacy deletion ledger schemaVersion is immutable")
+    base_roots = require_object(base_manifest.get("sourceRoots"), "base legacy deletion ledger.sourceRoots")
+    current_roots = require_object(current_manifest.get("sourceRoots"), "manifest.sourceRoots")
+    for root, path in base_roots.items():
+        if current_roots.get(root) != path:
+            raise GateError(f"source root {root}: existing mapping is immutable")
+    base_shared = require_array(base_manifest.get("sharedTargets"), "base legacy deletion ledger.sharedTargets")
+    current_shared = require_array(current_manifest.get("sharedTargets"), "manifest.sharedTargets")
+    base_shared_by_digest = {canonical_json_sha256(item): item for item in base_shared}
+    current_shared_by_digest = {canonical_json_sha256(item): item for item in current_shared}
+    missing_shared = sorted(set(base_shared_by_digest) - set(current_shared_by_digest))
+    if missing_shared:
+        raise GateError("shared target inventory is monotonic: existing entries cannot be removed or relabeled")
     base_rows = {row.get("id"): row for raw in base_rows_raw for row in [require_object(raw, "base legacy deletion ledger row")]}
     current_rows = {row.get("id"): row for raw in current_rows_raw for row in [require_object(raw, "manifest row")]}
     if set(base_rows) != set(ROW_IDS) or set(current_rows) != set(ROW_IDS):
@@ -2096,6 +2338,7 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
         },
         "rust_authoritative_with_rollback": {
             "rust_authoritative_with_rollback",
+            "promotion_approved",
             "rollback_active",
             "deletion_approved",
         },
@@ -2103,9 +2346,33 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
         "deletion_approved": {"deletion_approved", "rollback_active", "legacy_deleted"},
         "legacy_deleted": {"legacy_deleted"},
     }
+    added_target_roots: set[str] = set()
     for row_id in ROW_IDS:
         base_row = base_rows[row_id]
         current_row = current_rows[row_id]
+        immutable_row_fields = {
+            key: value
+            for key, value in base_row.items()
+            if key not in {"state", "authorityGeneration", "receipts", "targets"}
+        }
+        current_immutable_row_fields = {
+            key: value
+            for key, value in current_row.items()
+            if key not in {"state", "authorityGeneration", "receipts", "targets"}
+        }
+        if immutable_row_fields != current_immutable_row_fields:
+            raise GateError(f"row {row_id}: every non-lifecycle field other than monotonic targets is immutable")
+        base_targets = require_array(base_row.get("targets"), f"row {row_id}: base targets")
+        current_targets = require_array(current_row.get("targets"), f"row {row_id}: current targets")
+        base_targets_by_digest = {canonical_json_sha256(item): item for item in base_targets}
+        current_targets_by_digest = {canonical_json_sha256(item): item for item in current_targets}
+        if set(base_targets_by_digest) - set(current_targets_by_digest):
+            raise GateError(f"row {row_id}: target inventory is monotonic and cannot remove or relabel an existing target")
+        added_targets = [current_targets_by_digest[key] for key in set(current_targets_by_digest) - set(base_targets_by_digest)]
+        if base_row.get("state") in {"deletion_approved", "legacy_deleted"} and added_targets:
+            raise GateError(f"row {row_id}: target inventory is frozen after deletion approval")
+        for target in added_targets:
+            added_target_roots.add(require_object(target, f"row {row_id}: added target").get("root"))
         base_state = base_row.get("state")
         current_state = current_row.get("state")
         if base_state not in allowed or current_state not in allowed[base_state]:
@@ -2114,11 +2381,32 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
         current_generation = current_row.get("authorityGeneration")
         if not isinstance(base_generation, int) or isinstance(base_generation, bool):
             raise GateError(f"row {row_id}: base authority generation is invalid")
-        expected_generation = base_generation + 1 if base_state == "rollback_active" and current_state == "promotion_approved" else base_generation
+        starts_new_generation = (
+            base_state in {"rollback_active", "rust_authoritative_with_rollback"}
+            and current_state == "promotion_approved"
+        )
+        expected_generation = base_generation + 1 if starts_new_generation else base_generation
         if base_state == "rollout" and current_state == "promotion_approved":
             expected_generation = 1
         if current_generation != expected_generation or isinstance(current_generation, bool):
             raise GateError(f"row {row_id}: transition {base_state} -> {current_state} requires authority generation {expected_generation}")
+        base_receipts = require_object(base_row.get("receipts"), f"row {row_id}: base receipts")
+        current_receipts = require_object(current_row.get("receipts"), f"row {row_id}: current receipts")
+        if current_generation == base_generation:
+            for receipt_kind, pointer in base_receipts.items():
+                if current_receipts.get(receipt_kind) != pointer:
+                    raise GateError(
+                        f"row {row_id}: receipt pointer {receipt_kind} is immutable within authority generation {base_generation}"
+                    )
+    for digest in set(current_shared_by_digest) - set(base_shared_by_digest):
+        shared = require_object(current_shared_by_digest[digest], "added shared target")
+        row_ids = require_array(shared.get("rowIds"), "added shared target.rowIds")
+        if any(base_rows.get(row_id, {}).get("state") in {"deletion_approved", "legacy_deleted"} for row_id in row_ids):
+            raise GateError("shared target inventory is frozen for rows after deletion approval")
+        added_target_roots.add(require_object(shared.get("target"), "added shared target.target").get("root"))
+    new_roots = set(current_roots) - set(base_roots)
+    if new_roots != (added_target_roots - set(base_roots)):
+        raise GateError("new source roots must be introduced exactly by newly added targets")
 
 
 def canonical_json_sha256(value: Any) -> str:

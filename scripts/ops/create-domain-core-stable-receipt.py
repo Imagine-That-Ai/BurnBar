@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import sys
@@ -44,6 +45,7 @@ def create_receipt(
     rollback_path: Path,
     approved_by: str,
     approved_at: str,
+    evidence_verifier: Any | None = None,
 ) -> dict[str, Any]:
     if row_id not in GATE.ROW_IDS:
         raise GATE.GateError(f"unknown row id: {row_id}")
@@ -65,6 +67,8 @@ def create_receipt(
     if not releases:
         raise GATE.GateError("at least one consumer release descriptor is required")
     consumers = {item.get("consumer") for item in releases}
+    if len(consumers) != len(releases):
+        raise GATE.GateError("consumer release descriptors must contain each consumer exactly once")
     if consumers != GATE.release_consumers_for_row(row_id):
         raise GATE.GateError("consumer release descriptors do not cover the exact row consumer set")
     for item in releases:
@@ -82,7 +86,7 @@ def create_receipt(
     if modes[profile_domain] != "rust":
         raise GATE.GateError(f"public-production.{profile_domain} must be rust at activation P")
     evidence = sorted({item["artifactUri"] for item in releases} | {rollback["artifactUri"]})
-    return {
+    receipt = {
         "schemaVersion": 2,
         "rowId": row_id,
         "authorityGeneration": generation,
@@ -101,6 +105,35 @@ def create_receipt(
             "rollbackArtifact": rollback,
         },
     }
+    promotion_receipt = GATE.validate_receipt(
+        repo_root,
+        promotion_relative,
+        row_id,
+        generation,
+        "promotion",
+        set(),
+    )
+    encoded = WRITER.serialized(receipt)
+    stable_receipt = GATE.Receipt(
+        path=f"{GATE.RECEIPT_ROOT}/{row_id}/{generation}/stable_release.json",
+        transition="stable_release",
+        generation=generation,
+        approved_at=approved,
+        commit=activation_commit,
+        digest=hashlib.sha256(encoded).hexdigest(),
+        evidence=tuple(evidence),
+        payload=receipt["release"],
+    )
+    verifier = evidence_verifier or GATE.SignedEvidenceVerifier()
+    GATE.validate_receipt_chain(
+        repo_root,
+        row_id,
+        "rust_authoritative_with_rollback",
+        generation,
+        {"promotion": promotion_receipt, "stableRelease": stable_receipt},
+        verifier,
+    )
+    return receipt
 
 
 def main(argv: list[str] | None = None) -> int:

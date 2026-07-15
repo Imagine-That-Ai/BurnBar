@@ -15,7 +15,7 @@ The six states are:
 5. `rollback_active`: the stable release was rolled back; legacy remains and the generation is closed.
 6. `legacy_deleted`: approved targets are absent and Rust-only platform builds remain green.
 
-Rows never skip states. A rollback closes the current authority generation. Re-promotion starts the next generation and its promotion receipt must hash the previous rollback receipt.
+Rows never skip states. Every release that activates another shared domain starts a new authority epoch for domains that are already Rust-authoritative. Those rows move back to `promotion_approved`, advance their generation, and re-attest the new candidate closure before the activation commit can ship. The new promotion receipt hashes the previous active `stable_release.json`; after an operational rollback it instead hashes `rollback.json`. This keeps all Rust-active domains on one candidate identity without forcing an all-at-once migration.
 
 ## Promotion authority
 
@@ -80,12 +80,14 @@ The stable-release receipt must also bind a dedicated `legacy-rollback-bundle`:
 - built and tagged from activation `P` while binding candidate `C`;
 - separately hashed and covered by official release-workflow provenance;
 - targeted to all supported consumers;
+- contains a full `git archive` of candidate `C`, the exact signed all-legacy profile, and a portable `rollback.env` with every domain mode set to `legacy`;
+- rejects missing, encrypted, linked, path-traversing, or digest-mismatched restoration material during stable-receipt verification;
 - retained under `retain_until_legacy_deletion_complete`;
 - listed in stable-release evidence and stored with append-only provenance.
 
 This is different from the deterministic rollback drill. The drill proves the selector and retained legacy artifact work before promotion. The stable-release artifact preserves the actual rollback payload after release.
 
-An operational rollback creates `rollback.json`, restores the public profile to legacy, and closes that authority generation. It never reuses the old promotion proof.
+An operational rollback creates `rollback.json`, restores the public profile to legacy, and closes that authority generation. It never reuses the old promotion proof. A later release epoch also never reuses an old proof: already-Rust rows receive a fresh promotion and stable receipt for the new candidate, while a newly activated row is promoted from a candidate that still has that row in legacy mode.
 
 Use the append-only writers rather than hand-authoring lifecycle receipts:
 
@@ -148,7 +150,11 @@ The `pull_request_target`-based `Domain Core Trusted Deletion Guard` comes from 
 
 The source-absence gate scans the whole declared source root for deleted symbols and literals, rejects deleted paths still referenced by tracked build graphs, and verifies exact identity receipts against the final XCFramework, AAR, native Windows and Linux binaries, browser WASM, Node WASM, and C# native artifact. Symbol-only absence is not sufficient.
 
-The protected signer audits the live default-branch protection settings without mutating them. Official `main` must require strict `Domain Core PR Gate` and `Domain Core Trusted Deletion Guard` checks, admin enforcement, stale-approval dismissal, and disabled force-pushes/deletions.
+The iOS stable predicate is created only after App Store Connect accepts the exact IPA and reports completed processing. Its receipt binds the archive digest, IPA digest, and shipped executable digest. The executable verifier reads candidate commit, core version, ABI, and source fingerprint from the dedicated `__TEXT,__obb_core_id` Mach-O section and also requires the three linked UniFFI identity symbols; unrelated strings in the app cannot satisfy this proof.
+
+The protected signer and trusted deletion guard audit the live default-branch protection settings without mutating them. Official `main` must require strict `Domain Core PR Gate` and `Domain Core Trusted Deletion Guard` checks, admin enforcement, stale-approval dismissal, and disabled force-pushes/deletions. Signed release artifacts are cached by immutable SHA-256 under runner-temporary storage during a gate run; attestations are separately deduplicated by their complete verification key.
+
+The live protection query cannot eliminate GitHub administrator time-of-check/time-of-use risk by itself. Branch protection and the required checks remain the final merge-time authority: an administrator who changes those controls after the query can bypass repository policy, and that administrative action must be handled through GitHub audit-log monitoring and incident response.
 
 ## Recovery
 

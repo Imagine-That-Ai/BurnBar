@@ -10,6 +10,7 @@
     "domain",
     "artifactKind",
     "target",
+    "publicProfile",
     "candidate",
     "activation",
     "sourceRun",
@@ -61,6 +62,9 @@
     },
     "target": {
       "enum": ["firebase-hosting-production", "firebase-functions-production"]
+    },
+    "publicProfile": {
+      "$ref": "domain-core-release-predicate.schema.json#/$defs/publicProfile"
     },
     "candidate": {
       "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/candidate"

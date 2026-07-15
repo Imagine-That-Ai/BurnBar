@@ -32,6 +32,7 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
       "domain",
       "artifactKind",
       "target",
+      "publicProfile",
       "candidate",
       "activation",
       "sourceRun",
@@ -173,6 +174,7 @@ test("deployment receipt v2 carries the same proof chain and deployed bytes", ()
   const schema = json("config/domain-core-deployment-receipt.schema.json");
   assert.equal(schema.properties.schemaVersion.const, 2);
   for (const field of [
+    "publicProfile",
     "candidate",
     "activation",
     "sourceRun",

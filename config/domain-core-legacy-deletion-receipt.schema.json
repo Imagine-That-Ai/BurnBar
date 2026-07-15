@@ -136,24 +136,25 @@
     "promotionAttestation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "sha256", "supersedesRollback"],
+      "required": ["path", "sha256", "supersedes"],
       "properties": {
         "path": {
           "type": "string",
           "pattern": "^config/domain-core-promotion-attestations/(?:quota|cloudvault|cloudvault-rewrap|cloudvault-search|hermes|pricing)/[1-9][0-9]*\\.json$"
         },
         "sha256": { "$ref": "#/$defs/digest" },
-        "supersedesRollback": {
+        "supersedes": {
           "oneOf": [
             { "type": "null" },
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["path", "sha256"],
+              "required": ["transition", "path", "sha256"],
               "properties": {
+                "transition": { "enum": ["rollback", "stable_release"] },
                 "path": {
                   "type": "string",
-                  "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/[1-9][0-9]*/rollback\\.json$"
+                  "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/[1-9][0-9]*/(?:rollback|stable_release)\\.json$"
                 },
                 "sha256": { "$ref": "#/$defs/digest" }
               }
@@ -230,7 +231,7 @@
         },
         "target": {
           "enum": [
-            "macos-universal",
+            "macos-arm64",
             "ios-universal",
             "linux-x64-arm64",
             "android-universal",

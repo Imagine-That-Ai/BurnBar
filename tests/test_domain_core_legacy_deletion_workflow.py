@@ -73,9 +73,20 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "python3 trusted/scripts/ci/verify-domain-core-legacy-deletion.py",
             '--repo-root "$GITHUB_WORKSPACE/candidate"',
             '--deletion-head "$HEAD_SHA"',
+            "node trusted/scripts/ci/verify-domain-core-default-branch-controls.mjs",
+            "DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache",
+            "timeout-minutes: 60",
         ):
             self.assertIn(marker, source)
         self.assertNotIn("candidate/scripts/", source)
+
+    def test_linux_release_preserves_candidate_activation_history_in_every_job(self) -> None:
+        source = (ROOT / ".github/workflows/linux-release.yml").read_text()
+        self.assertEqual(source.count("fetch-depth: 0"), 3)
+        self.assertEqual(source.count("fetch-tags: true"), 3)
+        self.assertIn("Verify official Linux release history", source)
+        self.assertEqual(source.count("Verify candidate-to-activation history is complete"), 2)
+        self.assertGreaterEqual(source.count("git merge-base --is-ancestor"), 3)
 
     def test_signer_uses_trusted_main_and_exact_source_push_run(self) -> None:
         source = SIGNER_WORKFLOW.read_text()
@@ -139,6 +150,54 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "retain_until_legacy_deletion_complete",
         )
         self.assertEqual(rollback["properties"]["artifactKind"]["const"], "legacy-rollback-bundle")
+
+    def test_native_and_deletion_contracts_share_the_shipped_apple_identity(self) -> None:
+        release = json.loads((ROOT / "config/domain-core-release-predicate.schema.json").read_text())
+        receipt = json.loads((ROOT / "config/domain-core-legacy-deletion-receipt.schema.json").read_text())
+        apple_release = release["oneOf"][0]["properties"]
+        artifact = receipt["$defs"]["consumerRelease"]
+        self.assertEqual(apple_release["target"]["const"], "macos-arm64")
+        self.assertIn("macos-arm64", artifact["properties"]["target"]["enum"])
+        self.assertNotIn("macos-universal", artifact["properties"]["target"]["enum"])
+
+    def test_retained_rollback_contains_source_and_executable_settings(self) -> None:
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        creator = (ROOT / "scripts/ci/create-domain-core-rollback-bundle.py").read_text()
+        gate = (ROOT / "scripts/ci/verify-domain-core-legacy-deletion.py").read_text()
+        for marker in (
+            "git archive",
+            '"$candidate"',
+            "--source-archive",
+            "legacy-source.tar.gz",
+            "rollback.env",
+        ):
+            self.assertIn(marker, release + creator)
+        for marker in (
+            "rollback artifact legacy source omits required build inputs",
+            "rollback artifact environment cannot restore every legacy domain",
+            "sourceCommit",
+        ):
+            self.assertIn(marker, gate)
+
+    def test_ios_release_requires_processed_ipa_and_executable_derived_identity(self) -> None:
+        workflow = (ROOT / ".github/workflows/domain-core-ios-release-evidence.yml").read_text()
+        verifier = (ROOT / "scripts/ci/verify-domain-core-ios-binary-identity.py").read_text()
+        for marker in (
+            "xcrun altool --upload-app",
+            "xcrun altool --build-status",
+            "--wait",
+            "app-store-connect-receipt.json",
+            "ipa-loaded-rust-identity.json",
+        ):
+            self.assertIn(marker, workflow)
+        for marker in (
+            "__TEXT",
+            "__obb_core_id",
+            "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
+            "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+            "observed != candidate",
+        ):
+            self.assertIn(marker, verifier)
 
 
 if __name__ == "__main__":

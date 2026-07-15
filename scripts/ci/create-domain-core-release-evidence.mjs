@@ -59,6 +59,8 @@ function parseArguments(argv) {
     "--protected-signer-run-id",
     "--protected-signer-run-attempt",
     "--rollback-artifact",
+    "--rollback-profile",
+    "--app-store-connect-receipt",
     "--deployment",
     "--android-abi-manifest",
   ]);
@@ -353,6 +355,8 @@ export function buildReleaseEvidence({
   protectedSignerRunId,
   protectedSignerRunAttempt,
   rollbackArtifactPath,
+  rollbackProfilePath,
+  appStoreConnectReceipt,
   publicProfileSha256,
   activation,
   deployment,
@@ -374,11 +378,21 @@ export function buildReleaseEvidence({
     candidate,
     activation,
   });
-  const activation = activationVerifier({
+  const rawActivation = activationVerifier({
     repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
     candidateCommit: candidate.candidateCommit,
     activationCommit: commit,
   });
+  const activation = Object.fromEntries(
+    [
+      "candidateCommit",
+      "activationCommit",
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+      "changedPathsSha256",
+    ].map((field) => [field, rawActivation[field]]),
+  );
   promotionVerifier({
     candidateBundlePath,
     promotionAttestationPath,
@@ -393,7 +407,7 @@ export function buildReleaseEvidence({
   });
   const rollbackPath = regularFile(rollbackArtifactPath, "rollback artifact");
   validateRollbackArtifact(
-    readJson(rollbackPath, "rollback artifact"),
+    readJson(rollbackProfilePath ?? rollbackPath, "rollback profile"),
     candidate,
   );
   const rollbackArtifact = {
@@ -420,6 +434,7 @@ export function buildReleaseEvidence({
     domain,
     artifactKind,
     target,
+    publicProfile,
     candidate,
     activation,
     sourceRun,
@@ -502,6 +517,15 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
       "protected signer run attempt",
     ),
     rollbackArtifactPath: resolve(args["--rollback-artifact"]),
+    rollbackProfilePath: args["--rollback-profile"]
+      ? resolve(args["--rollback-profile"])
+      : undefined,
+    appStoreConnectReceipt: args["--app-store-connect-receipt"]
+      ? readJson(
+          args["--app-store-connect-receipt"],
+          "App Store Connect receipt",
+        )
+      : undefined,
     publicProfileSha256: args["--public-profile-sha256"],
     activation: readJson(args["--activation"], "release activation"),
     deployment,

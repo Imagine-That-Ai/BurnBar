@@ -404,6 +404,7 @@ jobs:
       - name: Verify deterministic legacy-deletion governance
         env:
           DOMAIN_CORE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -1523,6 +1524,9 @@ jobs:
           merge-multiple: false
 
       - name: Prove deleted legacy source, build inputs, and final binaries are absent
+        env:
+          DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           evaluator=".domain-core-trusted-evaluator/scripts/ci/verify-domain-core-legacy-absence.py"
@@ -1531,6 +1535,7 @@ jobs:
               --repo-root "$GITHUB_WORKSPACE" \
               --fragments "$RUNNER_TEMP/domain-core-proof-fragments" \
               --artifacts "$RUNNER_TEMP/domain-core-final-binaries" \
+              --verify-signed-evidence \
               --output "$RUNNER_TEMP/domain-core-legacy-absence.json"
           else
             # One-time bootstrap: the base evaluator predates final-binary proof.

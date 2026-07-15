@@ -42,6 +42,30 @@ def append_only(path: Path, contents: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def superseded_authority_pointer(
+    repo_root: Path,
+    row_id: str,
+    generation: int,
+) -> dict[str, str] | None:
+    if generation == 1:
+        return None
+    previous_root = f"{GATE.RECEIPT_ROOT}/{row_id}/{generation - 1}"
+    for transition, relative in (
+        ("rollback", f"{previous_root}/rollback.json"),
+        ("stable_release", f"{previous_root}/stable_release.json"),
+    ):
+        path = GATE.secure_path(repo_root, relative, "previous authority receipt", must_exist=False)
+        if path.is_file():
+            return {
+                "transition": transition,
+                "path": relative,
+                "sha256": GATE.sha256_path(path),
+            }
+    raise GATE.GateError(
+        "authority generation after the first must supersede the previous stable or rollback receipt"
+    )
+
+
 def create_artifacts(
     repo_root: Path,
     *,
@@ -113,11 +137,7 @@ def create_artifacts(
     bundle_relative = f"{GATE.PROMOTION_BUNDLE_ROOT}/{scope}/{generation}.json"
     provenance_relative = f"{GATE.PROMOTION_PROVENANCE_ROOT}/{scope}/{generation}.json"
     attestation_relative = f"{GATE.ATTESTATION_ROOT}/{scope}/{generation}.json"
-    supersedes = None
-    if generation > 1:
-        rollback_relative = f"{GATE.RECEIPT_ROOT}/{row_id}/{generation - 1}/rollback.json"
-        rollback_path = GATE.secure_path(repo_root, rollback_relative, "previous rollback receipt", must_exist=True)
-        supersedes = {"path": rollback_relative, "sha256": GATE.sha256_path(rollback_path)}
+    supersedes = superseded_authority_pointer(repo_root, row_id, generation)
     attestation = {
         "schemaVersion": 2,
         "authorityScope": scope,
@@ -157,7 +177,7 @@ def create_artifacts(
         "promotionAttestation": {
             "path": attestation_relative,
             "sha256": hashlib.sha256(attestation_bytes).hexdigest(),
-            "supersedesRollback": supersedes,
+            "supersedes": supersedes,
         },
     }
     return attestation, receipt, bundle_bytes, provenance_bytes

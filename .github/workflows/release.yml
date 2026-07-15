@@ -1964,6 +1964,47 @@ jobs:
             echo "update_base_url=$BASE_URL"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Create canonical retained domain-core rollback bundle
+        id: domain-core-rollback
+        env:
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          RELEASE_TAG: ${{ needs.release-preflight.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          activation="$RUNNER_TEMP/domain-core-activation.json"
+          profile="$RUNNER_TEMP/domain-core-public-production-rollback.json"
+          source_archive="$RUNNER_TEMP/OpenBurnBar-${VERSION}-legacy-source.tar.gz"
+          rollback="$RUNNER_TEMP/OpenBurnBar-${VERSION}-legacy-rollback.zip"
+          node scripts/ci/resolve-domain-core-activation.mjs \
+            --release-commit "$RELEASE_COMMIT" --format json \
+            | jq '{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
+            > "$activation"
+          candidate="$(jq -er '.candidateCommit' "$activation")"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production-rollback \
+            --expected-candidate-commit "$candidate" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --format json --output "$profile"
+          git merge-base --is-ancestor "$candidate" "$RELEASE_COMMIT"
+          git archive \
+            --format=tar.gz \
+            --prefix="OpenBurnBar-${VERSION}-legacy-source/" \
+            --output="$source_archive" \
+            "$candidate"
+          test -s "$source_archive"
+          python3 scripts/ci/create-domain-core-rollback-bundle.py \
+            --profile "$profile" \
+            --activation "$activation" \
+            --source-archive "$source_archive" \
+            --version "$VERSION" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --output "$rollback"
+          test -s "$rollback"
+          echo "rollback_path=$rollback" >> "$GITHUB_OUTPUT"
+          echo "rollback_name=${rollback##*/}" >> "$GITHUB_OUTPUT"
+
       - name: Compute artifact checksums
         id: checksums
         env:
@@ -1972,6 +2013,7 @@ jobs:
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
           LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
+          ROLLBACK_PATH: ${{ steps.domain-core-rollback.outputs.rollback_path }}
           VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
           CHECKSUMS_FILE="$RUNNER_TEMP/checksums-v${VERSION}.txt"
@@ -1992,6 +2034,8 @@ jobs:
             sha512sum "$APPCAST_PATH"
             sha256sum "$LATEST_PATH"
             sha512sum "$LATEST_PATH"
+            sha256sum "$ROLLBACK_PATH"
+            sha512sum "$ROLLBACK_PATH"
           } > "$CHECKSUMS_FILE"
 
           cat "$CHECKSUMS_FILE"
@@ -2087,6 +2131,7 @@ jobs:
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
           LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
+          ROLLBACK_PATH: ${{ steps.domain-core-rollback.outputs.rollback_path }}
           VERSION: ${{ needs.release-preflight.outputs.version }}
           RELEASE_TAG: ${{ needs.release-preflight.outputs.tag_name }}
           RELEASE_REF: ${{ needs.release-preflight.outputs.tag_ref }}
@@ -2175,6 +2220,38 @@ jobs:
           attest_release_blob "$SOURCE_PATH" "${SOURCE_PATH##*/}"
           attest_release_blob "$APPCAST_PATH" "${APPCAST_PATH##*/}"
           attest_release_blob "$LATEST_PATH" "${LATEST_PATH##*/}"
+
+          rollback_predicate="$PROVENANCE_DIR/${ROLLBACK_PATH##*/}.predicate.json"
+          rollback_bundle="$PROVENANCE_DIR/${ROLLBACK_PATH##*/}.sigstore.json"
+          python3 - "$ROLLBACK_PATH" "$rollback_predicate" <<'PY'
+          import hashlib, json, os, sys, zipfile
+          from pathlib import Path
+          artifact = Path(sys.argv[1])
+          predicate = Path(sys.argv[2])
+          with zipfile.ZipFile(artifact) as archive:
+              manifest = json.loads(archive.read("manifest.json"))
+          payload = {
+              "schemaVersion": 1,
+              "artifactKind": "legacy-rollback-bundle",
+              "target": "all-supported-consumers",
+              "artifact": {"fileName": artifact.name, "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest()},
+              "release": {
+                  "version": os.environ["VERSION"],
+                  "tag": os.environ["RELEASE_TAG"],
+                  "commit": os.environ["RELEASE_COMMIT"],
+                  "candidate": manifest["candidate"],
+                  "activation": manifest["activation"],
+                  "retentionPolicy": manifest["retentionPolicy"],
+              },
+          }
+          predicate.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+          PY
+          cosign attest-blob --yes \
+            --predicate "$rollback_predicate" \
+            --type https://openburnbar.dev/attestations/domain-core-rollback-artifact/v1 \
+            --bundle "$rollback_bundle" \
+            "$ROLLBACK_PATH"
+          test -s "$rollback_bundle"
 
           echo "provenance_dir=$PROVENANCE_DIR" >> "$GITHUB_OUTPUT"
 
@@ -2286,6 +2363,13 @@ jobs:
         with:
           name: ${{ steps.zip.outputs.zip_name }}
           path: ${{ steps.zip.outputs.zip_path }}
+          if-no-files-found: error
+
+      - name: Upload retained domain-core rollback artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: ${{ steps.domain-core-rollback.outputs.rollback_name }}
+          path: ${{ steps.domain-core-rollback.outputs.rollback_path }}
           if-no-files-found: error
 
       - name: Upload appcast artifact

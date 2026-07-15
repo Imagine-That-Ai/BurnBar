@@ -18,7 +18,7 @@ jobs:
   trusted-deletion-guard:
     name: Domain Core Trusted Deletion Guard
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     steps:
       - name: Check out trusted default-branch evaluator
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -36,8 +36,14 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Require live protected default-branch controls
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node trusted/scripts/ci/verify-domain-core-default-branch-controls.mjs
+
       - name: Evaluate candidate with trusted default-branch code
         env:
+          DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache
           GH_TOKEN: ${{ github.token }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}

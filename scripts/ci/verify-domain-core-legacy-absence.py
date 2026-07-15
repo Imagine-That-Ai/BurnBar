@@ -109,8 +109,106 @@ def verify_source_and_build_graph(repo_root: Path, manifest: dict[str, Any]) -> 
     return deleted
 
 
-def verify_final_artifacts(repo_root: Path, fragments_root: Path, artifacts_root: Path) -> dict[str, str]:
-    expected_identity = GATE.candidate_identity_at_commit(repo_root, GATE.git_output(repo_root, ["rev-parse", "HEAD"], "HEAD").strip())
+def stable_authority_for_deleted_rows(
+    repo_root: Path,
+    manifest: dict[str, Any],
+    evidence_verifier: Any | None = None,
+) -> dict[str, Any]:
+    authorities: dict[str, dict[str, Any]] = {}
+    receipt_digests: dict[str, str] = {}
+    release_artifacts: dict[str, str] = {}
+    for raw_row in GATE.require_array(manifest["rows"], "manifest.rows"):
+        row = GATE.require_object(raw_row, "manifest row")
+        if row.get("state") != "legacy_deleted":
+            continue
+        row_id = row["id"]
+        receipts = GATE.require_object(row.get("receipts"), f"row {row_id}.receipts")
+        relative = GATE.repository_path(
+            receipts.get("stableRelease"),
+            f"row {row_id}.receipts.stableRelease",
+        )
+        path = GATE.secure_path(repo_root, relative, f"row {row_id} stable receipt", must_exist=True)
+        stable = GATE.require_object(GATE.load_json(path, f"row {row_id} stable receipt"), f"row {row_id} stable receipt")
+        generation = row.get("authorityGeneration")
+        if (
+            stable.get("schemaVersion") != 2
+            or stable.get("rowId") != row_id
+            or stable.get("authorityGeneration") != generation
+            or stable.get("transition") != "stable_release"
+            or stable.get("status") != "active"
+        ):
+            raise GATE.GateError(f"row {row_id}: stable authority receipt identity is invalid")
+        release = GATE.require_object(stable.get("release"), f"row {row_id} stable receipt.release")
+        if evidence_verifier is None:
+            raise GATE.GateError("deleted rows require live verification of exact stable release bytes")
+        candidate = GATE.require_object(release.get("candidate"), f"row {row_id} stable receipt.release.candidate")
+        activation = GATE.require_object(release.get("activation"), f"row {row_id} stable receipt.release.activation")
+        authority = {"candidate": candidate, "activation": activation}
+        authorities[GATE.canonical_json_sha256(authority)] = authority
+        receipt_digests[row_id] = GATE.sha256_path(path)
+        for item in GATE.require_array(release.get("consumerReleases"), f"row {row_id} consumer releases"):
+            descriptor = GATE.require_object(item, f"row {row_id} consumer release")
+            uri = GATE.validate_release_uri(descriptor.get("artifactUri"), f"row {row_id} artifact URI")
+            digest = GATE.require_digest(descriptor.get("artifactSha256"), f"row {row_id} artifact SHA-256")
+            if uri in release_artifacts and release_artifacts[uri] != digest:
+                raise GATE.GateError("stable release artifact URI has conflicting immutable digests")
+            release_artifacts[uri] = digest
+            provenance_relative = GATE.repository_path(
+                descriptor.get("provenancePath"),
+                f"row {row_id} consumer provenance",
+            )
+            provenance = GATE.secure_path(
+                repo_root,
+                provenance_relative,
+                f"row {row_id} consumer provenance",
+                must_exist=True,
+            )
+            evidence_verifier.verify_release(
+                descriptor,
+                provenance,
+                digest,
+                GATE.profile_domain_for_row(row_id),
+            )
+        rollback = GATE.require_object(release.get("rollbackArtifact"), f"row {row_id} rollback artifact")
+        rollback_digest = GATE.require_digest(rollback.get("artifactSha256"), f"row {row_id} rollback SHA-256")
+        rollback_provenance = GATE.secure_path(
+            repo_root,
+            GATE.repository_path(rollback.get("provenancePath"), f"row {row_id} rollback provenance"),
+            f"row {row_id} rollback provenance",
+            must_exist=True,
+        )
+        evidence_verifier.verify_rollback_artifact(rollback, rollback_provenance, rollback_digest)
+    if len(authorities) != 1:
+        raise GATE.GateError("all deleted rows must bind one exact stable candidate and activation authority")
+    authority = next(iter(authorities.values()))
+    expected_identity = authority["candidate"]
+    activation = authority["activation"]
+    head = GATE.git_output(repo_root, ["rev-parse", "HEAD"], "deletion HEAD").strip()
+    activation_commit = GATE.require_commit(
+        repo_root,
+        activation.get("activationCommit"),
+        "stable activation commit",
+    )
+    GATE.require_ancestor(repo_root, activation_commit, head, "stable activation to deletion")
+    head_identity = GATE.candidate_identity_at_commit(repo_root, head)
+    for field in ("coreVersion", "abiVersion", "sourceSha256"):
+        if head_identity[field] != expected_identity.get(field):
+            raise GATE.GateError(
+                f"deletion HEAD changed stable Rust authority field {field}; a new stable release is required"
+            )
+    return {
+        "candidate": expected_identity,
+        "activation": activation,
+        "stableReceiptSha256s": dict(sorted(receipt_digests.items())),
+        "releaseArtifacts": dict(sorted(release_artifacts.items())),
+    }
+
+
+def verify_final_artifacts(
+    fragments_root: Path,
+    artifacts_root: Path,
+    expected_identity: dict[str, Any],
+) -> dict[str, str]:
     declared: dict[str, dict[str, Any]] = {}
     for path in fragments_root.rglob("*.json"):
         value = json.loads(path.read_text())
@@ -142,22 +240,35 @@ def verify_final_artifacts(repo_root: Path, fragments_root: Path, artifacts_root
         if len(matches) != 1:
             raise GATE.GateError(f"{artifact_id}: final binary bytes and observed identity are not uniquely staged")
         if item.get("loadedIdentity") != expected_identity or matches[0][2] != expected_identity:
-            raise GATE.GateError(f"{artifact_id}: final loaded Rust identity does not equal the deletion head build")
+            raise GATE.GateError(f"{artifact_id}: final loaded Rust identity does not equal the stable released candidate")
         resolved[artifact_id] = item["artifactSha256"]
     return resolved
 
 
-def run(repo_root: Path, manifest_path: Path, fragments: Path | None, artifacts: Path | None) -> dict[str, Any]:
+def run(
+    repo_root: Path,
+    manifest_path: Path,
+    fragments: Path | None,
+    artifacts: Path | None,
+    evidence_verifier: Any | None = None,
+) -> dict[str, Any]:
     manifest = GATE.require_object(GATE.load_json(manifest_path, "manifest"), "manifest")
     deleted = verify_source_and_build_graph(repo_root, manifest)
     final_artifacts: dict[str, str] = {}
+    stable_authority: dict[str, Any] | None = None
     if deleted:
         if fragments is None or artifacts is None:
             raise GATE.GateError("legacy_deleted requires exact proof fragments and staged final binaries")
-        final_artifacts = verify_final_artifacts(repo_root, fragments, artifacts)
+        stable_authority = stable_authority_for_deleted_rows(repo_root, manifest, evidence_verifier)
+        final_artifacts = verify_final_artifacts(
+            fragments,
+            artifacts,
+            stable_authority["candidate"],
+        )
     return {
         "schemaVersion": 1,
         "deletedRows": sorted(deleted),
+        "stableAuthority": stable_authority,
         "finalArtifacts": final_artifacts,
     }
 
@@ -169,11 +280,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fragments", type=Path)
     parser.add_argument("--artifacts", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--verify-signed-evidence", action="store_true")
     args = parser.parse_args(argv)
     repo_root = args.repo_root.resolve(strict=True)
     manifest = args.manifest if args.manifest.is_absolute() else repo_root / args.manifest
     try:
-        result = run(repo_root, manifest, args.fragments, args.artifacts)
+        verifier = GATE.SignedEvidenceVerifier() if args.verify_signed_evidence else None
+        result = run(repo_root, manifest, args.fragments, args.artifacts, verifier)
         encoded = json.dumps(result, indent=2, sort_keys=True) + "\n"
         if args.output:
             args.output.write_text(encoded)
