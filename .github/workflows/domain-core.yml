@@ -109,6 +109,7 @@ on:
       - "docs/runbooks/shared-rust-build-profiles.md"
       - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
       - "docs/contracts/domain-core-shadow-sample-v2.schema.json"
+      - "docs/contracts/domain-core-shadow-sample-v3.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
   pull_request:
@@ -215,6 +216,7 @@ on:
       - "docs/runbooks/shared-rust-build-profiles.md"
       - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
       - "docs/contracts/domain-core-shadow-sample-v2.schema.json"
+      - "docs/contracts/domain-core-shadow-sample-v3.schema.json"
       - "tests/test_domain_core_union_gate.py"
       - ".github/workflows/domain-core.yml"
   workflow_dispatch:
