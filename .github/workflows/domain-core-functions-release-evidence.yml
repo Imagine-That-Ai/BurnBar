@@ -1,0 +1,316 @@
+name: Publish Shared Rust Functions Release Evidence
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_run_id:
+        description: Exact successful deploy-production run ID
+        required: true
+        type: string
+      deploy_run_attempt:
+        description: Exact successful deploy-production run attempt
+        required: true
+        type: string
+      domain_core_profile:
+        description: Exact signed public profile deployed by the source run
+        required: true
+        type: choice
+        options:
+          - public-production
+          - public-production-rollback
+
+concurrency:
+  group: domain-core-functions-release-evidence-${{ github.ref }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: production
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out exact stable release commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate exact tag, deploy run, attempt, and required jobs
+        env:
+          DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
+          DEPLOY_RUN_ATTEMPT: ${{ inputs.deploy_run_attempt }}
+          DOMAIN_CORE_PROFILE: ${{ inputs.domain_core_profile }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$DEPLOY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          if [[ ! "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Functions release evidence must run from a stable vX.Y.Z tag."
+            exit 1
+          fi
+          release_tag="${GITHUB_REF#refs/tags/}"
+          git fetch --force --tags origin "+refs/tags/$release_tag:refs/tags/$release_tag"
+          tag_commit="$(git rev-parse "refs/tags/$release_tag^{commit}")"
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" || "$tag_commit" != "$GITHUB_SHA" ]]; then
+            echo "::error::Evidence checkout and stable tag do not resolve to the exact same commit."
+            exit 1
+          fi
+
+          run_json="$RUNNER_TEMP/deploy-run.json"
+          pages_json="$RUNNER_TEMP/deploy-job-pages.json"
+          jobs_json="$RUNNER_TEMP/deploy-jobs.json"
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOY_RUN_ID" > "$run_json"
+          gh api --paginate --slurp \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOY_RUN_ID/attempts/$DEPLOY_RUN_ATTEMPT/jobs?per_page=100" \
+            > "$pages_json"
+          jq -e '
+            if length == 0 then error("jobs API returned no pages") else . end
+            | {total_count: .[0].total_count, jobs: [.[].jobs[]]}
+            | select(.total_count == (.jobs | length))
+          ' "$pages_json" > "$jobs_json"
+          python3 - "$run_json" "$jobs_json" "$GITHUB_SHA" "$release_tag" "$DEPLOY_RUN_ATTEMPT" "$DOMAIN_CORE_PROFILE" <<'PY'
+          import json
+          import sys
+
+          run_path, jobs_path, commit, tag, attempt, profile = sys.argv[1:]
+          with open(run_path, encoding="utf-8") as handle:
+              run = json.load(handle)
+          with open(jobs_path, encoding="utf-8") as handle:
+              jobs_document = json.load(handle)
+          if (
+              run.get("path") != ".github/workflows/deploy-production.yml"
+              or run.get("head_sha") != commit
+              or run.get("head_branch") != tag
+              or run.get("event") not in {"push", "workflow_dispatch"}
+              or run.get("run_attempt") != int(attempt)
+          ):
+              raise SystemExit("deploy run does not bind the exact production workflow, tag, commit, and attempt")
+          jobs = jobs_document.get("jobs", [])
+          names = [job.get("name") for job in jobs]
+          if len(names) != len(set(names)):
+              raise SystemExit("deploy attempt contains duplicate job names")
+          conclusions = {job.get("name"): job.get("conclusion") for job in jobs}
+          for required in ("deploy-functions", "functions-health-gate"):
+              if conclusions.get(required) != "success":
+                  raise SystemExit(f"required deploy job {required} did not succeed")
+          if profile == "public-production-rollback":
+              if run.get("event") != "workflow_dispatch":
+                  raise SystemExit("rollback evidence requires a manual deployment run")
+              if conclusions.get("authorize-domain-core-rollback") != "success":
+                  raise SystemExit("rollback deployment lacks protected domain-core-promotion authorization")
+          elif profile != "public-production":
+              raise SystemExit("unexpected Functions domain-core profile")
+          PY
+          {
+            echo "RELEASE_TAG=$release_tag"
+            echo "RELEASE_VERSION=${release_tag#v}"
+          } >> "$GITHUB_ENV"
+
+      - name: Download exact deployed Functions proof inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.deploy_run_id }}
+          name: domain-core-functions-deploy-proof-${{ github.ref_name }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}
+          path: ${{ runner.temp }}/functions-deploy-proof
+
+      - name: Download exact post-deploy health evidence
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.deploy_run_id }}
+          name: domain-core-functions-deploy-health-${{ github.ref_name }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}
+          path: ${{ runner.temp }}/functions-deploy-health
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Export archived candidate and signer coordinates
+        env:
+          EXPECTED_PROFILE: ${{ inputs.domain_core_profile }}
+        run: |
+          set -euo pipefail
+          proof_dir="$RUNNER_TEMP/functions-deploy-proof"
+          node - "$proof_dir" "$EXPECTED_PROFILE" "$GITHUB_ENV" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const [directory, expectedProfile, envPath] = process.argv.slice(2);
+          const proof = JSON.parse(fs.readFileSync(path.join(directory, "domain-core-functions-deploy-proof.json")));
+          const gate = JSON.parse(fs.readFileSync(path.join(directory, "domain-core-release-gate.json")));
+          if (proof.profile.value.name !== expectedProfile) throw new Error("deploy proof profile does not match dispatch input");
+          const candidate = proof.profile.value.candidateIdentity;
+          if (candidate?.candidateCommit !== process.env.GITHUB_SHA) throw new Error("deploy proof candidate does not match stable tag commit");
+          const signer = gate.promotionProof.signerRun;
+          fs.appendFileSync(envPath, [
+            `CANDIDATE_COMMIT=${candidate.candidateCommit}`,
+            `CORE_VERSION=${candidate.coreVersion}`,
+            `ABI_VERSION=${candidate.abiVersion}`,
+            `SOURCE_SHA256=${candidate.sourceSha256}`,
+            `SOURCE_RUN_ID=${gate.sourceRun.runId}`,
+            `SOURCE_RUN_ATTEMPT=${gate.sourceRun.runAttempt}`,
+            `SIGNER_RUN_ID=${signer.runId}`,
+            `SIGNER_RUN_ATTEMPT=${signer.runAttempt}`,
+            `PUBLIC_PROFILE_SHA256=${proof.profile.sha256}`,
+          ].join("\n") + "\n");
+          NODE
+
+      - name: Reverify archived release gate and exact deploy proof
+        env:
+          DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
+          DEPLOY_RUN_ATTEMPT: ${{ inputs.deploy_run_attempt }}
+        run: |
+          set -euo pipefail
+          proof_dir="$RUNNER_TEMP/functions-deploy-proof"
+          rollback_sha256="$(sha256sum "$proof_dir/domain-core-public-production-rollback.json" | awk '{print $1}')"
+          node scripts/ci/verify-domain-core-release-gate.mjs \
+            --candidate-bundle "$proof_dir/domain-core-candidate-bundle.json" \
+            --promotion-attestation "$proof_dir/domain-core-promotion.sigstore.jsonl" \
+            --rollback-artifact "$proof_dir/domain-core-public-production-rollback.json" \
+            --candidate-commit "$CANDIDATE_COMMIT" \
+            --core-version "$CORE_VERSION" \
+            --abi-version "$ABI_VERSION" \
+            --source-sha256 "$SOURCE_SHA256" \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --protected-signer-run-id "$SIGNER_RUN_ID" \
+            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
+            --rollback-sha256 "$rollback_sha256" \
+            --output "$proof_dir/domain-core-release-gate.json"
+          node scripts/ci/create-domain-core-functions-deploy-proof.mjs \
+            --profile "$proof_dir/domain-core-functions-profile.json" \
+            --compiled-receipt "$proof_dir/domainCoreCandidateReceipt.js" \
+            --release-gate "$proof_dir/domain-core-release-gate.json" \
+            --tag "$RELEASE_TAG" \
+            --commit "$GITHUB_SHA" \
+            --deploy-run-id "$DEPLOY_RUN_ID" \
+            --deploy-run-attempt "$DEPLOY_RUN_ATTEMPT" \
+            --output "$proof_dir/domain-core-functions-deploy-proof.json"
+
+      - name: Reverify live deployment evidence
+        run: |
+          set -euo pipefail
+          node scripts/ci/create-domain-core-functions-deployment-evidence.mjs \
+            --deploy-proof "$RUNNER_TEMP/functions-deploy-proof/domain-core-functions-deploy-proof.json" \
+            --health-artifact "$RUNNER_TEMP/functions-deploy-health/deploy-health.json" \
+            --output "$RUNNER_TEMP/functions-deployment-evidence.json"
+
+      - name: Create candidate-bound v2 Functions receipt and predicate
+        id: evidence
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/OpenBurnBar-${RELEASE_VERSION}-functions-deployment.json"
+          predicate="$RUNNER_TEMP/OpenBurnBar-${RELEASE_VERSION}-functions-deployment.predicate.json"
+          proof_dir="$RUNNER_TEMP/functions-deploy-proof"
+          node scripts/ci/create-domain-core-release-evidence.mjs \
+            --consumer functions \
+            --domain pricing \
+            --artifact-kind functions-deployment-receipt \
+            --target firebase-functions-production \
+            --version "$RELEASE_VERSION" \
+            --tag "$RELEASE_TAG" \
+            --commit "$GITHUB_SHA" \
+            --artifact "$artifact" \
+            --predicate "$predicate" \
+            --public-profile-sha256 "$PUBLIC_PROFILE_SHA256" \
+            --candidate-bundle "$proof_dir/domain-core-candidate-bundle.json" \
+            --promotion-attestation "$proof_dir/domain-core-promotion.sigstore.jsonl" \
+            --protected-signer-run-id "$SIGNER_RUN_ID" \
+            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
+            --rollback-artifact "$proof_dir/domain-core-public-production-rollback.json" \
+            --deployment "$RUNNER_TEMP/functions-deployment-evidence.json"
+          {
+            echo "artifact=$artifact"
+            echo "predicate=$predicate"
+            echo "bundle_asset=OpenBurnBar-${RELEASE_VERSION}-functions-pricing.sigstore.json"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Attest exact Functions deployment receipt
+        id: attest
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ steps.evidence.outputs.artifact }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ steps.evidence.outputs.predicate }}
+
+      - name: Stage exact official provenance bundle
+        env:
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          BUNDLE_ASSET: ${{ steps.evidence.outputs.bundle_asset }}
+        run: |
+          set -euo pipefail
+          install -m 0600 "$ATTESTATION_BUNDLE" "$RUNNER_TEMP/$BUNDLE_ASSET"
+
+      - name: Wait for exact stable GitHub release
+        if: inputs.domain_core_profile == 'public-production'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            if release_json="$(gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" 2>/dev/null)"; then
+              state="$(jq -r --arg tag "$RELEASE_TAG" '
+                if .tag_name != $tag or .draft != false or .prerelease != false then "invalid" else "ready" end
+              ' <<< "$release_json")"
+              if [[ "$state" == "ready" ]]; then
+                exit 0
+              fi
+              echo "::error::Release $RELEASE_TAG exists but is not the exact published stable release."
+              exit 1
+            fi
+            echo "Waiting for release.yml to publish $RELEASE_TAG ($attempt/120)..."
+            sleep 30
+          done
+          echo "::error::Stable release $RELEASE_TAG was not published within 60 minutes."
+          exit 1
+
+      - name: Publish immutable normal-release evidence
+        if: inputs.domain_core_profile == 'public-production'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_PATH: ${{ steps.evidence.outputs.artifact }}
+          PREDICATE_PATH: ${{ steps.evidence.outputs.predicate }}
+          BUNDLE_ASSET: ${{ steps.evidence.outputs.bundle_asset }}
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/domain-core-functions-publication.json"
+          node - "$manifest" "$ARTIFACT_PATH" "$PREDICATE_PATH" "$RUNNER_TEMP/$BUNDLE_ASSET" "$BUNDLE_ASSET" <<'NODE'
+          const fs = require("node:fs");
+          const [manifest, artifact, predicate, bundle, bundleAsset] = process.argv.slice(2);
+          fs.writeFileSync(manifest, `${JSON.stringify({
+            schemaVersion: 2,
+            repository: "Imagine-That-Ai/BurnBar",
+            tag: process.env.RELEASE_TAG,
+            commit: process.env.GITHUB_SHA,
+            consumer: "functions",
+            signerWorkflow: ".github/workflows/domain-core-functions-release-evidence.yml",
+            artifactPath: artifact,
+            bundles: [{ domain: "pricing", assetName: bundleAsset, bundlePath: bundle, predicatePath: predicate }],
+          }, null, 2)}\n`);
+          NODE
+          node scripts/ci/publish-domain-core-release-evidence.mjs --manifest "$manifest"
+
+      - name: Retain unique immutable rollback evidence
+        if: inputs.domain_core_profile == 'public-production-rollback'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-functions-rollback-evidence-${{ github.ref_name }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}
+          path: |
+            ${{ steps.evidence.outputs.artifact }}
+            ${{ steps.evidence.outputs.predicate }}
+            ${{ runner.temp }}/${{ steps.evidence.outputs.bundle_asset }}
+            ${{ runner.temp }}/functions-deploy-proof
+            ${{ runner.temp }}/functions-deploy-health/deploy-health.json
+          if-no-files-found: error
+          retention-days: 90
