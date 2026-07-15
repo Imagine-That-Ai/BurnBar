@@ -612,6 +612,8 @@ version = "0.1.0"
 dependencies = [
  "openburnbar-domain-core",
  "proptest",
+ "serde_json",
+ "sha2",
  "thiserror",
  "uniffi",
  "zeroize",
@@ -624,6 +626,7 @@ dependencies = [
  "num-traits",
  "openburnbar-domain-core",
  "serde_json",
+ "sha2",
  "wasm-bindgen",
  "zeroize",
 ]

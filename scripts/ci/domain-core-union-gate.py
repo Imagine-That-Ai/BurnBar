@@ -79,8 +79,8 @@ def calculate_source_fingerprint(root: pathlib.Path, manifest: dict[str, object]
 
 def verified_source_fingerprint(root: pathlib.Path, manifest: dict[str, object]) -> str:
     expected = manifest.get("sourceSha256")
-    if not isinstance(expected, str) or len(expected) != 64:
-        raise GateError("sourceSha256 must be a 64-character SHA-256 digest")
+    if not isinstance(expected, str) or re.fullmatch(r"[0-9a-f]{64}", expected) is None:
+        raise GateError("sourceSha256 must be a 64-character lowercase SHA-256 digest")
     actual = calculate_source_fingerprint(root, manifest)
     if actual != expected:
         raise GateError(
