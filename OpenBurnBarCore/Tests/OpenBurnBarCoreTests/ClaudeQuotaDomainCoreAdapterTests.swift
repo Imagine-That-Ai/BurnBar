@@ -135,12 +135,11 @@ final class ClaudeQuotaDomainCoreAdapterTests: XCTestCase {
         )
     }
 
-    func testShadowClockStartableWithModeAndChannelEnvVars() throws {
-        // P-ARCH-1a: prove the Apple shadow clock is truly startable via the
-        // OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE env var, not just type construction.
-        // When mode=shadow, the adapter MUST run both legacy + Rust probes,
-        // record exactly one shadow comparison via the quota logger, and
-        // return the legacy buckets unchanged.
+    func testShadowClockStartableWithCanonicalDevelopmentModeEnvVar() throws {
+        // P-ARCH-1a: prove the Apple quota comparison path is startable through
+        // the canonical development override, not just type construction.
+        // Signed artifact mode and evidence channel come from the validated
+        // embedded profile and are covered by the app-level recorder contract.
         let input = try Data(contentsOf: fixtureURL("claude-statusline-input.json"))
         let rateLimits = ClaudeRateLimits(from: input)
         let expected = ClaudeQuotaDomainCoreAdapter.legacyBuckets(from: rateLimits)

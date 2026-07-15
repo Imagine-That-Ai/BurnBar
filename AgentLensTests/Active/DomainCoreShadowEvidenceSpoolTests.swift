@@ -558,17 +558,20 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     }
 
-    func testShadowClockStartableWithChannelEnvVarSpoolsOneSample() async throws {
-        // P-ARCH-1a: prove the Apple telemetry shadow clock is truly startable
-        // via the OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL env var. When channel=
-        // internal, MacDomainCoreShadowEvidenceRecorder MUST persist a
-        // DomainCoreQuotaShadowComparison and the submitter MUST eventually
-        // receive exactly one batch of size 1.
+    func testShadowClockStartableWithSignedInternalProfileSpoolsOneSample() async throws {
+        // P-ARCH-1a: signed consumers bind telemetry to the validated build
+        // profile. An internal profile must persist one comparison and deliver
+        // exactly one sample to the uploader.
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let submitter = RecordingDomainCoreShadowSubmitter()
         let recorder = MacDomainCoreShadowEvidenceRecorder(
-            environment: ["OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL": "internal"],
+            profile: signedProfile(
+                profile: "internal",
+                distribution: "internal",
+                channel: "internal",
+                evidenceEnabled: true
+            ),
             directory: directory,
             submitter: submitter,
             debounceNanoseconds: 1_000_000

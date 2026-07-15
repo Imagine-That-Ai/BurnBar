@@ -5,15 +5,19 @@ start quota shadow mode on the two policy-required consumers (Apple and
 Windows). Shadow mode is the first phase of the promotion evidence pipeline
 documented in [`shared-rust-promotion-evidence.md`](shared-rust-promotion-evidence.md).
 
-**No committed config file activates shadow mode.** Both consumers read
-environment variables from the **app process launch environment** — not
-variables that were present during build/signing. Setting them in the
-signed build environment alone does NOT start shadow mode; the variables
-must be present in the app's launch environment at runtime. This runbook
-documents the exact launch-time carriers for each platform.
+Signed release artifacts do not take rollout authority from the app process
+environment. They embed one validated profile from
+[`config/domain-core-build-profiles.json`](../../config/domain-core-build-profiles.json),
+and both consumers ignore runtime overrides when that profile has signed
+authority. This prevents an installed public artifact from enabling shadow mode
+or evidence upload by environment-variable injection.
 
-Setting both variables starts the 14-day evidence clock required by
-[`config/domain-core-promotion-policy.json`](../../config/domain-core-promotion-policy.json).
+The canonical `OPENBURNBAR_DOMAIN_CORE_*` names remain the development/test and
+server configuration contract. Release tooling translates the reviewed catalog
+profile into the platform-specific Apple build settings or Windows MSBuild
+properties shown below. The 14-day clock starts only when a signed `internal` or
+`beta` artifact is running, the account has matching server-issued enrollment
+claims, and samples from both required consumers reach the evidence collection.
 
 ## What shadow mode does
 
@@ -34,83 +38,69 @@ rollback state. Shadow mode never changes the user-visible result.
 
 ## Apple (macOS / iOS)
 
-### Mode
+### Start a signed internal or beta artifact
 
-The Swift quota adapter resolves the mode from the process launch
-environment:
-
-```swift
-// ClaudeQuotaDomainCoreAdapter.swift
-static func resolve(environment: [String: String]) -> Self {
-    guard let raw = environment["OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE"]?.lowercased() else {
-        return .legacy
-    }
-    return Self(rawValue: raw) ?? .legacy
-}
-```
-
-`ProviderQuotaService` defaults `environment` to
-`ProcessInfo.processInfo.environment`, which reads the app process's launch
-environment — not the build-time environment.
-
-**To start shadow mode, set the variable in the app's launch environment:**
-
-The repo already uses `LSEnvironment` in `Info.plist`
-(`AgentLens/Resources/OpenBurnBar-Info.plist`) to inject launch-time
-environment variables into the macOS app process. Add the quota mode key
-there for signed internal/beta builds:
-
-```xml
-<!-- In AgentLens/Resources/OpenBurnBar-Info.plist, inside the existing LSEnvironment dict: -->
-<key>OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE</key>
-<string>shadow</string>
-```
-
-`LSEnvironment` is read by LaunchServices at app launch time and propagated
-to `ProcessInfo.processInfo.environment`. This is the same mechanism already
-used for `SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE`.
-
-For development/testing, you can also use:
+Resolve the reviewed profile instead of hand-setting individual values. The
+Apple formatter emits the canonical `DOMAIN_CORE_*` Xcode build settings that
+become `OpenBurnBarDomainCore*` keys in the signed app's Info.plist:
 
 ```bash
-# Per-boot, for GUI apps launched via Finder/Dock:
-launchctl setenv OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE shadow
+node scripts/ci/resolve-domain-core-build-profile.mjs \
+  --profile internal \
+  --format github-env-apple \
+  > /tmp/openburnbar-domain-core-apple.env
 
-# Or launch from a shell that exports it:
+set -a
+. /tmp/openburnbar-domain-core-apple.env
+set +a
+
+xcodebuild \
+  -project OpenBurnBar.xcodeproj \
+  -scheme OpenBurnBar \
+  -configuration Release \
+  DOMAIN_CORE_BUILD_PROFILE="$DOMAIN_CORE_BUILD_PROFILE" \
+  DOMAIN_CORE_BUILD_AUTHORITY="$DOMAIN_CORE_BUILD_AUTHORITY" \
+  DOMAIN_CORE_DISTRIBUTION="$DOMAIN_CORE_DISTRIBUTION" \
+  DOMAIN_CORE_ROLLOUT_CHANNEL="$DOMAIN_CORE_ROLLOUT_CHANNEL" \
+  DOMAIN_CORE_EVIDENCE_ENABLED="$DOMAIN_CORE_EVIDENCE_ENABLED" \
+  DOMAIN_CORE_QUOTA_MODE="$DOMAIN_CORE_QUOTA_MODE" \
+  DOMAIN_CORE_CLOUDVAULT_MODE="$DOMAIN_CORE_CLOUDVAULT_MODE" \
+  DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE="$DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" \
+  DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE="$DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" \
+  DOMAIN_CORE_HERMES_MODE="$DOMAIN_CORE_HERMES_MODE" \
+  DOMAIN_CORE_PRICING_MODE="$DOMAIN_CORE_PRICING_MODE" \
+  build
+```
+
+Use `--profile beta` for beta. Run the same signing, notarization, and packaging
+steps as the existing release lane; profile resolution never replaces those
+gates. Before distribution, verify the built artifact receipt:
+
+```bash
+node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+  --profile internal \
+  --apple-app /path/to/OpenBurnBar.app
+```
+
+At runtime, `DomainCoreBuildProfileResolver` validates the embedded authority,
+profile, distribution, channel, evidence flag, and all domain modes as one
+coherent record. `MacDomainCoreShadowEvidenceRecorder` enables its spool only
+when that record is a valid signed `internal` or `beta` profile. Incomplete or
+inconsistent signed metadata fails closed to `legacy` with evidence disabled.
+
+### Development override (does not start the promotion clock)
+
+For an unsigned development build, the canonical process variable still starts
+the quota comparison path:
+
+```bash
 OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE=shadow open -a OpenBurnBar
 ```
 
-### Channel (telemetry enablement)
-
-The Apple telemetry recorder resolves the channel from the launch
-environment, with an Info.plist fallback:
-
-```swift
-// DomainCoreShadowEvidenceSpool.swift — MacDomainCoreShadowEvidenceRecorder.init
-let configured = environment["OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL"]
-    ?? Bundle.main.object(forInfoDictionaryKey: "OpenBurnBarDomainCoreRolloutChannel") as? String
-self.channel = configured == "internal" || configured == "beta" ? configured : nil
-```
-
-**To enable telemetry spooling, set one of:**
-
-- `LSEnvironment` in Info.plist (launch-time, recommended for signed builds):
-  ```xml
-  <key>OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL</key>
-  <string>internal</string>
-  ```
-- Info.plist custom key (read at runtime, not launch-time env):
-  ```xml
-  <key>OpenBurnBarDomainCoreRolloutChannel</key>
-  <string>internal</string>
-  ```
-- Environment variable for development/testing:
-  ```bash
-  launchctl setenv OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL internal
-  ```
-
-Use `internal` or `beta`. An absent, unknown, or `production` value
-disables collection — no samples are spooled or uploaded.
+Development authority intentionally has no evidence channel and cannot upload
+promotion evidence. Do not use `launchctl setenv`, `LSEnvironment`, or an
+Info.plist edit to simulate an internal/beta signed profile; only the catalog
+profile and artifact verification above start the production evidence path.
 
 ### Spool location
 
@@ -120,102 +110,90 @@ Apple spools bounded JSONL batches under
 
 ## Windows
 
-### Mode
+### Start a signed internal or beta artifact
 
-The C# quota bridge resolves the mode from the process launch environment:
-
-```csharp
-// DomainCoreQuotaBridge.cs
-var mode = requestedMode ?? ClaudeStatuslineQuotaDomainCore.ResolveMode(
-    Environment.GetEnvironmentVariable("OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE"));
-```
-
-```csharp
-// ClaudeStatuslineQuotaDomainCore.cs
-internal static DomainCoreQuotaMigrationMode ResolveMode(string? raw)
-{
-    return raw?.Trim().ToLowerInvariant() switch
-    {
-        "shadow" => DomainCoreQuotaMigrationMode.Shadow,
-        "rust" => DomainCoreQuotaMigrationMode.Rust,
-        _ => DomainCoreQuotaMigrationMode.Legacy,
-    };
-}
-```
-
-`Environment.GetEnvironmentVariable` reads from the process environment
-block, which is inherited from the parent process or set via system/user
-environment variables. Build-time variables do NOT propagate to installed
-apps.
-
-**To start shadow mode, set the variable in the app's launch environment:**
-
-For a signed Windows release, set a persistent user environment variable
-before the app launches:
+Generate the reviewed MSBuild property sheet, then pass it to every app publish
+command in the signed Windows release lane:
 
 ```powershell
-# Set for the current user (persists across reboots):
-[Environment]::SetEnvironmentVariable(
-    "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE", "shadow",
-    [EnvironmentVariableTarget]::User)
+node scripts/ci/resolve-domain-core-build-profile.mjs `
+  --profile internal `
+  --format msbuild-props `
+  --output .domain-core-internal.props
 
-# Or set for the current process only (e.g., in a launch script):
+dotnet publish windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj `
+  -c Release `
+  -r win-x64 `
+  --self-contained true `
+  -p:Platform=x64 `
+  -p:DomainCoreBuildProfileProps="$PWD/.domain-core-internal.props" `
+  -o publish/win-x64
+
+dotnet publish windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj `
+  -c Release `
+  -r win-arm64 `
+  --self-contained true `
+  -p:Platform=ARM64 `
+  -p:DomainCoreBuildProfileProps="$PWD/.domain-core-internal.props" `
+  -o publish/win-arm64
+```
+
+The production release lane also passes native-engine, parser, version, signing,
+and packaging inputs; keep every existing argument and gate when substituting
+the internal profile sheet. Use `--profile beta` for beta. Verify both receipts
+before distribution:
+
+```powershell
+node scripts/ci/verify-domain-core-build-profile-artifact.mjs `
+  --profile internal --windows-dir publish/win-x64
+node scripts/ci/verify-domain-core-build-profile-artifact.mjs `
+  --profile internal --windows-dir publish/win-arm64
+```
+
+`Directory.Build.props` embeds the sheet as assembly metadata and
+`DomainCoreBuildProfileResolver` validates it at runtime. Signed assemblies
+ignore process overrides. A valid signed `internal` or `beta` record requires
+quota mode `shadow`, evidence enabled, and a rollout channel equal to the
+distribution; any inconsistency fails closed.
+
+### Development override (does not start the promotion clock)
+
+For a developer build, the canonical process variable starts quota comparisons:
+
+```powershell
 $env:OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE = "shadow"
 ```
 
-For a service-based deployment, set the variable in the service's
-environment block (e.g., via the Windows Service `EnvironmentVariables`
-registry key or the process launch configuration).
-
-### Channel (telemetry enablement)
-
-The Windows telemetry recorder reads the channel from the process
-environment:
-
-```csharp
-// DomainCoreQuotaShadowEvidence.cs — PersistComparison
-string? channel = Environment.GetEnvironmentVariable(
-    "OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL")?.Trim().ToLowerInvariant();
-if (channel is not ("internal" or "beta") || …)
-{
-    return; // no sample persisted
-}
-```
-
-**To enable telemetry spooling, set:**
-
-```powershell
-[Environment]::SetEnvironmentVariable(
-    "OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL", "internal",
-    [EnvironmentVariableTarget]::User)
-```
-
-Use `internal` or `beta`. An absent, unknown, or `production` value
-disables collection.
+Developer authority has no evidence channel, so this cannot upload promotion
+evidence. Persistent user or service environment variables do not override a
+signed artifact.
 
 ### Spool location
 
-Windows spools bounded JSONL batches under
-`LocalApplicationData/OpenBurnBar/DomainCoreShadow`. Same bounds as Apple
-(8 ready files, 100 samples per file).
+Windows spools bounded schema-v2 JSONL batches under
+`LocalApplicationData/OpenBurnBar/DomainCoreShadow`. The bounds match Apple:
+8 ready files and 100 samples per file.
 
-## Firebase Auth custom claim
+## Firebase Auth custom claims
 
 The `submitDomainCoreShadowSamples` callable rejects absent or mismatched
-Firebase Auth custom claims. Enroll the signed-in account with:
+Firebase Auth claims. Enroll the signed-in account with both:
 
 ```
 domainCoreShadowChannel: "internal" | "beta"
+domainCoreShadowConsumers: ["apple", "windows"]
 ```
 
-The callable requires Firebase Auth and App Check. The request body cannot
-self-assert enrollment. Firestore rules deny direct client access to
-`domain_core_shadow_samples`; the callable is the only write path.
+Use `scripts/ops/manage-domain-core-shadow-enrollment.mjs` as documented in
+[`shared-rust-build-profiles.md`](shared-rust-build-profiles.md); do not hand-edit
+claims. The callable requires Firebase Auth and App Check. The request body
+cannot self-assert enrollment, and Firestore rules deny direct client writes to
+`domain_core_shadow_samples`.
 
 ## Verification (operator, post-startup)
 
-After setting both env vars and enrolling the account, verify telemetry is
-flowing within 24 hours:
+After distributing verified `internal` or `beta` artifacts and enrolling the
+account, verify telemetry is flowing within 24 hours:
 
 1. **Check the local spool** on a device in the target channel:
    - Apple: `ls ~/Library/Application\ Support/OpenBurnBar/DomainCoreShadow/`
@@ -242,8 +220,8 @@ flowing within 24 hours:
 
    The output JSON should show non-zero `sampleCount` for both `apple` and
    `windows` consumers. If either consumer has zero samples, telemetry is
-   not flowing for that platform — check the env vars and Firebase Auth
-   custom claim.
+   not flowing for that platform — check its artifact receipt, signed profile,
+   Firebase Auth claims, and App Check status.
 
    Alternatively, use the Firebase console:
    https://console.cloud.google.com/firestore/databases/-default-/data/panel/domain_core_shadow_samples
@@ -287,19 +265,20 @@ at day 14, the fix is more soak time or more beta devices.
 
 ## Rollback
 
-To roll back from shadow to legacy, unset or change the mode env var in the
-app's launch environment:
+Signed consumers ignore process overrides. Roll back by stopping distribution
+of the `internal`/`beta` artifact and deploying the reviewed
+`public-production` profile through the normal signed release lane. Verify the
+replacement artifact receipt before rollout. Public production is catalog-bound
+to `legacy` with evidence disabled, so neither an operator environment variable
+nor an installed-app launch script can re-enable shadow mode.
 
-- Apple: remove `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE` from `LSEnvironment` in
-  Info.plist, or set it to `legacy`.
-- Windows: set `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE` to `legacy` (or remove
-  it) in the user environment variables.
+For unsigned development builds only, remove the canonical override or set:
 
 ```
 OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE=legacy
 ```
 
-This stops shadow comparisons and telemetry spooling immediately. The
-user-visible quota result is unchanged (legacy was always authoritative in
-shadow mode). Retain accumulated evidence; do not delete the spool or
-Firestore documents.
+For development, this stops local shadow comparisons. Deploying the verified
+public-production artifact stops signed comparison and spooling. The
+user-visible quota result remains unchanged because legacy is authoritative in
+shadow mode. Retain accumulated evidence; do not delete spool or Firestore data.
