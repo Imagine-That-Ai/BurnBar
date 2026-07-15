@@ -336,6 +336,7 @@ jobs:
           cp -a apps/console/out "$ARTIFACT_ROOT/apps/console/out"
           cp .firebaserc "$ARTIFACT_ROOT/.firebaserc"
           cp scripts/ci/deploy-firebase-hosting-rest.mjs "$ARTIFACT_ROOT/scripts/ci/"
+          cp scripts/ci/create-domain-core-runtime-artifact-manifest.mjs "$ARTIFACT_ROOT/scripts/ci/"
           cp scripts/ci/verify-existing-domain-core-deployment.mjs "$ARTIFACT_ROOT/scripts/ci/"
           cp "$RUNNER_TEMP/domain-core-build-profile.json" \
             "$ARTIFACT_ROOT/domain-core-release-inputs/domain-core-build-profile.json"
@@ -469,6 +470,7 @@ jobs:
           set -euo pipefail
           version="${RELEASE_TAG#v}"
           asset="OpenBurnBar-${version}-console-deployment.json"
+          bundle_asset="OpenBurnBar-${version}-console-cloudVault-domain-core-attestation.sigstore.json"
           if ! gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/existing-release.json" 2>"$RUNNER_TEMP/existing-release.err"; then
             if grep -q "HTTP 404" "$RUNNER_TEMP/existing-release.err"; then
               echo "reused=false" >> "$GITHUB_OUTPUT"
@@ -490,7 +492,22 @@ jobs:
           fi
           mkdir "$RUNNER_TEMP/existing-console-evidence"
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "$asset" --dir "$RUNNER_TEMP/existing-console-evidence"
+            --pattern "$asset" \
+            --pattern "$bundle_asset" \
+            --dir "$RUNNER_TEMP/existing-console-evidence"
+          gh attestation verify \
+            "$RUNNER_TEMP/existing-console-evidence/$asset" \
+            --bundle "$RUNNER_TEMP/existing-console-evidence/$bundle_asset" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/domain-core-console-release-evidence.yml" \
+            --source-digest "$RELEASE_COMMIT" \
+            --source-ref "refs/tags/$RELEASE_TAG" \
+            --signer-digest "$RELEASE_COMMIT" \
+            --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --deny-self-hosted-runners \
+            --predicate-type "https://openburnbar.dev/attestations/domain-core-release-artifact/v2" \
+            --format json \
+            | jq -e 'type == "array" and length > 0' >/dev/null
           curl --fail --silent --show-error \
             "https://app.burnbar.ai/domain-core-runtime-artifact-manifest.json" \
             > "$RUNNER_TEMP/existing-console-runtime-manifest.json"
@@ -546,6 +563,16 @@ jobs:
           fi
           if [[ ! -f "$FIREBASE_HOSTING_CI_CONFIG" ]]; then
             echo "::error::Firebase Hosting CI config is missing from the immutable artifact root."
+            exit 1
+          fi
+          recomputed_manifest="$RUNNER_TEMP/domain-core-console-runtime-manifest-recomputed.json"
+          node "$ARTIFACT_ROOT/scripts/ci/create-domain-core-runtime-artifact-manifest.mjs" \
+            --consumer console \
+            --root "$ARTIFACT_ROOT/apps/console/out" \
+            --profile-receipt "$ARTIFACT_ROOT/domain-core-release-inputs/domain-core-build-profile.json" \
+            --output "$recomputed_manifest"
+          if ! cmp -s "$ARTIFACT_ROOT/apps/console/out/domain-core-runtime-artifact-manifest.json" "$recomputed_manifest"; then
+            echo "::error::Console runtime bytes changed after the immutable manifest was created."
             exit 1
           fi
           cd "$ARTIFACT_ROOT"

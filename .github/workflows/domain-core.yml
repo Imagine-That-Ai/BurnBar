@@ -317,6 +317,7 @@ jobs:
             scripts/ci/create-domain-core-functions-deployment-evidence.test.mjs \
             scripts/ci/create-domain-core-functions-provider-coordinates.test.mjs \
             scripts/ci/create-domain-core-runtime-artifact-manifest.test.mjs \
+            scripts/ci/verify-domain-core-functions-target-inventory.test.mjs \
             scripts/ci/verify-existing-domain-core-deployment.test.mjs \
             scripts/ci/verify-domain-core-functions-deploy-run.test.mjs \
             scripts/ci/create-domain-core-deployment-identity.test.mjs \

@@ -408,6 +408,8 @@ jobs:
             --profile "${{ steps.tag.outputs.domain_core_profile }}" \
             --expected-candidate-commit "${{ steps.tag.outputs.commit }}" \
             --functions-dir functions/lib
+          node scripts/ci/verify-domain-core-functions-target-inventory.mjs \
+            --inventory config/domain-core-functions-relevant-targets.json
           node scripts/ci/create-domain-core-runtime-artifact-manifest.mjs \
             --consumer functions \
             --root functions \
@@ -466,6 +468,12 @@ jobs:
         if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
         run: npm install --global @sentry/cli@2.42.2
 
+      - name: BurnBar source provenance preflight
+        run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
+
+      - name: BurnBar product release preflight
+        run: python3 scripts/ci/check_burnbar_release_preflight.py
+
       - name: Authenticate to Google Cloud (WIF/OIDC only)
         if: steps.tag.outputs.dry_run != 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
@@ -490,6 +498,7 @@ jobs:
           set -euo pipefail
           version="${RELEASE_TAG#v}"
           asset="OpenBurnBar-${version}-functions-deployment.json"
+          bundle_asset="OpenBurnBar-${version}-functions-pricing.sigstore.json"
           release_json="$RUNNER_TEMP/existing-release.json"
           if ! gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$release_json" 2>"$RUNNER_TEMP/existing-release.err"; then
             if grep -q "HTTP 404" "$RUNNER_TEMP/existing-release.err"; then
@@ -512,7 +521,22 @@ jobs:
           fi
           mkdir "$RUNNER_TEMP/existing-functions-evidence"
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "$asset" --dir "$RUNNER_TEMP/existing-functions-evidence"
+            --pattern "$asset" \
+            --pattern "$bundle_asset" \
+            --dir "$RUNNER_TEMP/existing-functions-evidence"
+          gh attestation verify \
+            "$RUNNER_TEMP/existing-functions-evidence/$asset" \
+            --bundle "$RUNNER_TEMP/existing-functions-evidence/$bundle_asset" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/domain-core-functions-release-evidence.yml" \
+            --source-digest "$RELEASE_COMMIT" \
+            --source-ref "refs/tags/$RELEASE_TAG" \
+            --signer-digest "$RELEASE_COMMIT" \
+            --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --deny-self-hosted-runners \
+            --predicate-type "https://openburnbar.dev/attestations/domain-core-release-artifact/v2" \
+            --format json \
+            | jq -e 'type == "array" and length > 0' >/dev/null
           curl --fail --silent --show-error \
             "https://us-central1-burnbar.cloudfunctions.net/healthLive" \
             > "$RUNNER_TEMP/existing-health-live.json"
@@ -552,12 +576,6 @@ jobs:
             --provider-coordinates "$RUNNER_TEMP/existing-functions-provider-coordinates.json" \
             --inventory config/domain-core-functions-relevant-targets.json
           echo "reused=true" >> "$GITHUB_OUTPUT"
-
-      - name: BurnBar source provenance preflight
-        run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
-
-      - name: BurnBar product release preflight
-        run: python3 scripts/ci/check_burnbar_release_preflight.py
 
       - name: Security config gate — nonce replay defense must not be explicitly disabled
         # F-RR04-002: requireHighRiskNonce defaults to true in production (looksProd).
@@ -669,6 +687,17 @@ jobs:
           fi
           if grep -q '"predeploy"' "$FIREBASE_FUNCTIONS_CI_CONFIG"; then
             echo "::error::$FIREBASE_FUNCTIONS_CI_CONFIG contains predeploy."
+            exit 1
+          fi
+
+          recomputed_manifest="$RUNNER_TEMP/domain-core-functions-runtime-manifest-recomputed.json"
+          node scripts/ci/create-domain-core-runtime-artifact-manifest.mjs \
+            --consumer functions \
+            --root functions \
+            --profile-receipt "${{ steps.domain-core-profile.outputs.profile_path }}" \
+            --output "$recomputed_manifest"
+          if ! cmp -s functions/lib/domain-core-runtime-artifact-manifest.json "$recomputed_manifest"; then
+            echo "::error::Functions runtime bytes changed after the immutable manifest was created."
             exit 1
           fi
 

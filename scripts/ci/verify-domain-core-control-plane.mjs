@@ -51,6 +51,8 @@ const SEED_PATHS = Object.freeze([
   "functions/vendor/openburnbar/domain-core-wasm/package.json",
   "scripts/ci/verify-domain-core-control-plane.mjs",
   "scripts/ci/verify-domain-core-protected-attestation.mjs",
+  "scripts/ci/write_burnbar_source_provenance.py",
+  "scripts/ci/check_agpl_legal_release_review.py",
   "tests/test_domain_core_console_release_evidence_workflow.py",
   "tests/test_domain_core_functions_release_workflow.py",
   "tests/test_domain_core_union_gate.py",
@@ -67,6 +69,8 @@ const SEED_PATHS = Object.freeze([
 const EXECUTABLE_REFERENCE =
   /(?:^|[\s"'(])((?:\.\/)?(?:scripts|tools)\/[A-Za-z0-9_./-]+\.(?:js|mjs|py|sh))/gmu;
 const LOCAL_IMPORT = /(?:from\s+|import\s*\()(["'])(\.{1,2}\/[^"']+)\1/gmu;
+const DYNAMIC_PYTHON_CI_MODULE =
+  /load_ci_module\([^,]+,\s*(["'])([A-Za-z_][A-Za-z0-9_]*)\1\s*\)/gmu;
 
 function fail(message) {
   throw new Error(message);
@@ -152,17 +156,36 @@ export function discoverDomainCoreControlPlane(root = SCRIPT_ROOT) {
   const pending = [...discovered];
   while (pending.length > 0) {
     const path = pending.pop();
-    if (!path.endsWith(".mjs") && !path.endsWith(".js")) continue;
+    if (
+      !path.endsWith(".mjs") &&
+      !path.endsWith(".js") &&
+      !path.endsWith(".py") &&
+      !path.endsWith(".sh")
+    )
+      continue;
     const absolute = regularRepoFile(root, path, "trusted control-plane file");
     const source = readFileSync(absolute, "utf8");
-    for (const match of source.matchAll(LOCAL_IMPORT)) {
-      const imported = resolveImport(root, path, match[2]);
-      if (!imported) fail(`${path} imports missing local module ${match[2]}`);
-      const importedPath = repoPath(root, imported);
-      if (!discovered.has(importedPath)) {
-        discovered.add(importedPath);
-        pending.push(importedPath);
+    const references = [];
+    if (path.endsWith(".mjs") || path.endsWith(".js")) {
+      for (const match of source.matchAll(LOCAL_IMPORT)) {
+        const imported = resolveImport(root, path, match[2]);
+        if (!imported) fail(`${path} imports missing local module ${match[2]}`);
+        references.push(repoPath(root, imported));
       }
+    }
+    if (path.endsWith(".py") || path.endsWith(".sh")) {
+      for (const match of source.matchAll(EXECUTABLE_REFERENCE))
+        references.push(match[1].replace(/^\.\//u, ""));
+    }
+    if (path.endsWith(".py")) {
+      for (const match of source.matchAll(DYNAMIC_PYTHON_CI_MODULE))
+        references.push(`scripts/ci/${match[2]}.py`);
+    }
+    for (const referencedPath of references) {
+      regularRepoFile(root, referencedPath, "trusted control-plane dependency");
+      if (discovered.has(referencedPath)) continue;
+      discovered.add(referencedPath);
+      pending.push(referencedPath);
     }
   }
   return [...discovered].sort();
