@@ -3136,7 +3136,18 @@ def run_gate(
         manifest_relative = manifest_path.relative_to(repo_root).as_posix()
     except ValueError as error:
         raise GateError("manifest path must be inside repository root") from error
-    manifest_path = secure_path(repo_root, manifest_relative, "manifest", must_exist=True)
+    manifest_path = secure_path(repo_root, manifest_relative, "manifest", must_exist=False)
+    if not manifest_path.exists():
+        if base_ref is not None and git_file_exists(
+            repo_root,
+            base_ref,
+            manifest_relative,
+            "base legacy deletion ledger",
+        ):
+            raise GateError("candidate cannot remove the legacy deletion ledger")
+        return
+    if not manifest_path.is_file():
+        raise GateError("manifest: expected regular file")
     manifest = require_object(load_json(manifest_path, "manifest"), "manifest")
     validate_ledger_transition(repo_root, base_ref, manifest)
     manifest_fields = {"schemaVersion", "sourceRoots", "rows", "sharedTargets"}
@@ -3333,7 +3344,7 @@ def main(argv: list[str] | None = None) -> int:
     except GateError as error:
         print(f"ERROR: domain-core legacy deletion gate failed: {error}", file=sys.stderr)
         return 1
-    print("PASS: domain-core legacy deletion ledger and source targets are consistent")
+    print("PASS: domain-core legacy deletion guard accepted the candidate")
     return 0
 
 

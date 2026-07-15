@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -10,7 +11,6 @@ def test_trusted_deletion_guard_runs_only_default_branch_code() -> None:
 
     for marker in (
         "pull_request_target:",
-        "pull_request_review:",
         "Domain Core Trusted Deletion Guard",
         "ref: ${{ github.event.pull_request.base.sha }}",
         "path: trusted",
@@ -19,7 +19,6 @@ def test_trusted_deletion_guard_runs_only_default_branch_code() -> None:
         "persist-credentials: false",
         "TRUSTED_ROOT: ${{ github.workspace }}/trusted",
         "CANDIDATE_ROOT: ${{ github.workspace }}/candidate",
-        'node "$TRUSTED_ROOT/scripts/ci/verify-domain-core-default-branch-controls.mjs"',
         'python3 "$TRUSTED_ROOT/scripts/ci/verify-domain-core-legacy-deletion.py"',
         '--repo-root "$CANDIDATE_ROOT"',
         '--deletion-head "$HEAD_SHA"',
@@ -30,6 +29,7 @@ def test_trusted_deletion_guard_runs_only_default_branch_code() -> None:
     assert "candidate/scripts/" not in source
     assert "python3 candidate/" not in source
     assert "node candidate/" not in source
+    assert "pull_request_review:" not in source
 
 
 def test_trusted_deletion_guard_uses_workspace_anchored_checkout_paths() -> None:
@@ -40,3 +40,11 @@ def test_trusted_deletion_guard_uses_workspace_anchored_checkout_paths() -> None
     assert "git -C trusted" not in source
     assert "git -C candidate" not in source
     assert "$GITHUB_WORKSPACE/candidate" not in source
+
+
+def test_trusted_deletion_guard_remains_pending_until_the_ledger_lands() -> None:
+    governance = json.loads((ROOT / "governance/branch-protection.main.json").read_text())
+    context = "Domain Core Trusted Deletion Guard"
+
+    assert context in governance["_pending_required_status_checks"]["contexts"]
+    assert context not in governance["required_status_checks"]["contexts"]
