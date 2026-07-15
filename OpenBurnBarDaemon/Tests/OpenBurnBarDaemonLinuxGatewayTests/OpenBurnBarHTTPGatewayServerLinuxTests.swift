@@ -525,7 +525,7 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
 
         listenFD = socketFD
         acceptTask = Task.detached(priority: .utility) { [weak self] in
-            self?.acceptOnce(socketFD: socketFD)
+            self?.acceptLoop(socketFD: socketFD)
         }
     }
 
@@ -537,11 +537,17 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
         }
     }
 
-    private func acceptOnce(socketFD: Int32) {
-        var address = sockaddr()
-        var addressLength = socklen_t(MemoryLayout<sockaddr>.stride)
-        let clientFD = Glibc.accept(socketFD, &address, &addressLength)
-        guard clientFD >= 0 else { return }
+    private func acceptLoop(socketFD: Int32) {
+        while !Task.isCancelled {
+            var address = sockaddr()
+            var addressLength = socklen_t(MemoryLayout<sockaddr>.stride)
+            let clientFD = Glibc.accept(socketFD, &address, &addressLength)
+            guard clientFD >= 0 else { return }
+            handle(clientFD: clientFD)
+        }
+    }
+
+    private func handle(clientFD: Int32) {
         defer { Glibc.close(clientFD) }
 
         guard let requestText = try? LinuxSocketSupport.readHTTPRequest(from: clientFD) else { return }
