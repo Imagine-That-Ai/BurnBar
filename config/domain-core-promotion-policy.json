@@ -141,7 +141,11 @@
         { "slice": "search", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
         { "slice": "search", "consumer": "android", "suiteId": "android-consumer-contracts" },
         { "slice": "search", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
-        { "slice": "opaque-identifiers", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" }
+        { "slice": "opaque-identifiers", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
+        { "slice": "pensieve-vectors", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "pensieve-vectors", "consumer": "windows", "suiteId": "csharp-cloudvault-native" },
+        { "slice": "pensieve-vectors", "consumer": "console", "suiteId": "console-consumer-contracts" },
+        { "slice": "pensieve-vectors", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" }
       ]
     },
     "hermes": {

@@ -15,14 +15,14 @@ consumer, contract, deletion target, or rollout state changes.
 
 ## Platform reality
 
-| Platform | Quota transforms | CloudVault portable logic | Hermes portable crypto | Pricing arithmetic | Encrypted search |
-|---|---|---|---|---|---|
-| Swift (macOS/iOS and Linux daemon) | Claude, Codex, Cursor, Anthropic | Yes | Yes | Yes | Yes |
-| C# (Windows) | Claude, Codex, Cursor, Anthropic | AAD/AES/recovery/escrow subsets | No | No; injected calculator defaults to zero | No production owner |
+| Platform | Quota transforms | CloudVault portable logic | Hermes portable crypto | Pricing arithmetic | Encrypted search | Pensieve vectors |
+|---|---|---|---|---|---|---|
+| Swift (macOS/iOS and Linux daemon) | Claude, Codex, Cursor, Anthropic | Yes | Yes | Yes | Yes | Cloak and deterministic embed |
+| C# (Windows) | Claude, Codex, Cursor, Anthropic | AAD/AES/recovery/escrow subsets | No | No; injected calculator defaults to zero | No production owner | Cloak and deterministic embed |
 | Kotlin (Android) | No local provider quota parsing | Yes | Yes | No canonical catalog calculator | Yes |
-| Browser TypeScript (Console) | No | Yes, with non-extractable WebCrypto keys | No | No | Consumes encrypted search data; no duplicate native analyzer |
+| Browser TypeScript (Console) | No | Yes, with non-extractable WebCrypto keys | No | No | Consumes encrypted search data; no duplicate native analyzer | Query embed and cloak |
 | Cloud Functions TypeScript | Separate Cursor dashboard mechanism only | Encrypted-record coordination only | Envelope validation/coordination only | Yes | Persistence/query coordination only |
-| Remote MCP TypeScript | No | AAD v2, AES sealed text, and Pensieve opaque hashes | No | No | Token and semantic query hashes |
+| Remote MCP TypeScript | No | AAD v2, AES sealed text, and Pensieve opaque hashes | No | No | Token and semantic query hashes | Cloak and deterministic embed |
 | Local MCP Python | No | Yes; required consumer pending | No | No | Yes; required consumer pending |
 | Tauri/Linux UI | Displays daemon-produced values | No separate implementation | No separate implementation | No separate implementation | No separate implementation |
 
@@ -67,6 +67,7 @@ the stable-release gate has been satisfied.
 | Whole-document envelope rewrap | Swift and Kotlin implementations; Rust transform staged | Swift/Kotlin classify dynamic Firestore maps into typed envelopes, then call Rust once per document. Rust owns bounded validation, authentication, deterministic transform, and update intents. Delete platform transform logic only after ABI 3 consumers and crypto promotion gates pass. |
 | Search tokens and semantic hashes | Swift, Kotlin, remote MCP TypeScript, and local MCP Python | Rust owns complete analysis and ordered keyed hashes once per text/query. Persistence and query orchestration remain platform-owned. Delete analyzers only after every applicable consumer passes shadow/promotion gates. The Python consumer remains `REQUIRED_CONSUMER_PENDING`. |
 | Opaque project-memory, Pensieve, provenance, and subscription identifiers | Swift, Kotlin subscription, C# Pensieve, remote MCP TypeScript, and local MCP Python subsets | Rust owns only closed, purpose-specific HKDF/HMAC operations. The Python consumer is `REQUIRED_CONSUMER_PENDING`; no opaque-identifier legacy deletion or completion claim is allowed until it is wired and validated. |
+| Pensieve vector cloak and deterministic hashing embed | Swift, C#, Console, and remote MCP TypeScript | Rust owns one bounded whole-vector transform or one text-to-vector transform per call. Android and local MCP Python do not implement this operation and are not consumers. Legacy implementations remain path-addressable until the release/deletion gate. |
 
 ### Required local MCP Python consumer
 

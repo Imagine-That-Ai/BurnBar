@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "coreVersion": "0.1.0",
   "abiVersion": 3,
-  "sourceSha256": "11e77f76f191fe05a6170b76976270b974e3dccf442e31204a35f87f86628087",
+  "sourceSha256": "95c978417e47e5df697e0c6e4135d86e14aa5b27a3e1cec532fdd628e443a4ec",
   "sourceRoots": [
     "Cargo.toml",
     "Cargo.lock",
@@ -36,6 +36,9 @@
     "cloud_vault_pensieve_dedup_hash",
     "cloud_vault_pensieve_slug_hmac",
     "cloud_vault_subscription_doc_id",
+    "pensieve_vector_cloak",
+    "pensieve_deterministic_embed",
+    "pensieve_deterministic_embed_and_cloak",
     "hermes_relay_aad",
     "hermes_key_wrap_info_v1",
     "hermes_key_wrap_info_v2",
@@ -245,22 +248,40 @@
     },
     "encryptedSearch": {
       "rust": [
-        "cloud_vault_search"
+        "cloud_vault_search",
+        "pensieve_vector_cloak",
+        "pensieve_deterministic_embed",
+        "pensieve_deterministic_embed_and_cloak"
       ],
       "cHeader": [
-        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search"
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search",
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak",
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed",
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak"
       ],
       "swift": [
-        "cloudVaultSearch"
+        "cloudVaultSearch",
+        "pensieveVectorCloak",
+        "pensieveDeterministicEmbed",
+        "pensieveDeterministicEmbedAndCloak"
       ],
       "kotlin": [
-        "cloudVaultSearch"
+        "cloudVaultSearch",
+        "pensieveVectorCloak",
+        "pensieveDeterministicEmbed",
+        "pensieveDeterministicEmbedAndCloak"
       ],
       "csharp": [
-        "CloudVaultSearch"
+        "CloudVaultSearch",
+        "PensieveVectorCloak",
+        "PensieveDeterministicEmbed",
+        "PensieveDeterministicEmbedAndCloak"
       ],
       "wasm": [
-        "cloudVaultSearch"
+        "cloudVaultSearch",
+        "pensieveVectorCloak",
+        "pensieveDeterministicEmbed",
+        "pensieveDeterministicEmbedAndCloak"
       ]
     }
   },
@@ -421,7 +442,8 @@
         "domainCoreSourceFingerprint"
       ],
       "requiredDomains": [
-        "cloudVaultC1a"
+        "cloudVaultC1a",
+        "encryptedSearch"
       ]
     }
   ]

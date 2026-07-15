@@ -98,6 +98,11 @@ CloudVault C1 is split by security boundary:
   consumer is `REQUIRED_CONSUMER_PENDING` and blocks C1 completion and legacy
   deletion until its production package, identity checks, adapter, and fixture
   tests land.
+- **Pensieve vectors:** bounded deterministic hashing embeddings and the
+  vault-key-derived Householder cloak. Swift, Windows, Console, and remote MCP
+  cross the FFI/Wasm boundary once per complete vector or text. Android and the
+  local MCP Python server have no equivalent implementation and are not claimed
+  as consumers.
 
 Android selects `legacy`, legacy-authoritative `shadow`, or fail-closed `rust`
 for C1d with `OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE`; missing or
@@ -181,7 +186,7 @@ Quota promotion requires all of the following:
 2. One exact candidate commit and Rust version/ABI/source tuple, proven by the
    artifacts actually loaded by Swift, Kotlin, C#, browser Wasm, and Node Wasm.
 3. A successful `push` run of `.github/workflows/domain-core.yml` on `main` with
-   every exact policy job and all 42 real `(domain, slice, consumer)` coverage
+   every exact policy job and all 46 real `(domain, slice, consumer)` coverage
    cells. Failed, skipped, missing, duplicate, extra, PR, dispatch, mixed-run, or
    mixed-candidate evidence fails closed.
 4. The paired complete-payload FFI benchmark no more than **5 percent** slower

@@ -7,6 +7,8 @@ import {
   domainCoreAesGcmSealCombined,
   domainCoreCloudVaultAADContext,
   domainCoreCloudVaultSearch,
+  domainCorePensieveDeterministicEmbedAndCloak,
+  domainCorePensieveVectorCloak,
   type DomainCoreCloudVaultModule,
   type DomainCoreCloudVaultReceipt,
 } from "./domainCoreCloudVault.js";
@@ -17,6 +19,10 @@ import {
   legacyCloudVaultSemanticHashes,
   legacyCloudVaultTokenHashes,
 } from "./legacy/cloudVaultLegacy.js";
+import {
+  legacyCloakVector,
+  legacyDeterministicEmbed,
+} from "./legacy/pensieveVectorLegacy.js";
 
 const MODE = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
 const SOURCE_A = "a".repeat(64);
@@ -48,6 +54,9 @@ function testModule(overrides: Partial<DomainCoreCloudVaultModule> = {}): Domain
     cloudVaultAesGcmOpenCombined: () => Buffer.from("rust-open"),
     cloudVaultAesGcmSealCombined: () => Buffer.from("rust-seal"),
     cloudVaultSearch: () => searchResult(["rust-hash"]),
+    pensieveVectorCloak: (vector) => vector,
+    pensieveDeterministicEmbed: (_text, dimensions) => new Float64Array(dimensions),
+    pensieveDeterministicEmbedAndCloak: (_text, dimensions) => new Float64Array(dimensions),
     domainCoreAbiVersion: () => 3,
     domainCoreSourceFingerprint: () => SOURCE_A,
     domainCoreVersion: () => "0.1.0",
@@ -107,6 +116,42 @@ test("Rust CloudVault adapter matches canonical AAD, AES, and search vectors", (
       domainCoreCloudVaultSearch(0, "The QUICK, quick fox and X.", Buffer.from(Array.from({ length: 32 }, (_, index) => index)), 250, () => []),
       ["e9110d7f0c79afdae6316235800dc41b", "66e59fa04825dc74f5ef7cb57884d4ed"],
     );
+  });
+});
+
+test("Rust Pensieve vector adapter matches the published cross-language golden vectors", () => {
+  withMode("rust", () => {
+    const key = Buffer.alloc(32, 0x42);
+    const basis = new Float64Array(384);
+    basis[5] = 1;
+    const cloaked = domainCorePensieveVectorCloak(
+      basis,
+      key,
+      "hashing-bow-v1",
+      () => legacyCloakVector(basis, key, "hashing-bow-v1"),
+    );
+    const expected = [
+      0.024962057620774702,
+      -0.0012100986493098734,
+      0.01970170194431331,
+      -0.01876288243402278,
+      0.050834395709711204,
+      0.8367944634995997,
+    ];
+    expected.forEach((value, index) => assert.ok(Math.abs(cloaked[index] - value) < 1e-12));
+
+    const text = "hosted minimax encrypted session search";
+    const combined = domainCorePensieveDeterministicEmbedAndCloak(
+      text,
+      384,
+      false,
+      key,
+      "hashing-bow-v1",
+      () => Array.from(legacyCloakVector(
+        legacyDeterministicEmbed(text, 384, false), key, "hashing-bow-v1",
+      )),
+    );
+    assert.ok(Math.abs(combined[0] - -0.06038318803677569) < 1e-12);
   });
 });
 

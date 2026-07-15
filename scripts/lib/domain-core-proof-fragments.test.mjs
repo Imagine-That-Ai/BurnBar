@@ -104,7 +104,7 @@ test("strict fragments aggregate every policy suite, artifact, benchmark, and co
   assert.equal(evidence.suites.length, 20);
   assert.equal(evidence.artifacts.length, 8);
   assert.equal(evidence.benchmarks[0].pairedRegressionBasisPoints, 490);
-  assert.equal(evidence.coverage.length, 42);
+  assert.equal(evidence.coverage.length, 46);
   assert.equal(evidence.rollback.restoredMode, "legacy");
 });
 

@@ -15,6 +15,7 @@ export const DOMAIN_CORE_REQUIRED_COVERAGE = Object.freeze({
     "document-rewrap": Object.freeze(["apple", "android"]),
     search: Object.freeze(["apple", "android", "remote-mcp"]),
     "opaque-identifiers": Object.freeze(["remote-mcp"]),
+    "pensieve-vectors": Object.freeze(["apple", "windows", "console", "remote-mcp"]),
   }),
   hermes: Object.freeze({
     aad: Object.freeze(["apple", "android"]),

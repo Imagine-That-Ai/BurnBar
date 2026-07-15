@@ -39,7 +39,7 @@ interface LoadedCoreIdentity {
 
 export interface CloudVaultShadowComparison {
   domain: "cloudvault";
-  slice: "foundation" | "aes" | "escrow";
+  slice: "foundation" | "aes" | "escrow" | "pensieve-vectors";
   consumer: "console";
   operation: string;
   loadedCoreVersion: string | null;
@@ -217,6 +217,7 @@ function elapsedMicros(startedMillis: number): number {
 }
 
 function sliceFor(operation: string): CloudVaultShadowComparison["slice"] {
+  if (operation.startsWith("pensieve_vector_")) return "pensieve-vectors";
   if (operation.includes("escrow")) return "escrow";
   if (
     operation.includes("aes") ||

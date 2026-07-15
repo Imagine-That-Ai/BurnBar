@@ -849,6 +849,12 @@ static class _UniFFILib {
 
 
 
+
+
+
+
+
+
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
@@ -1069,6 +1075,18 @@ static class _UniFFILib {
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(RustBuffer @payload,RustBuffer @userEmail,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed(RustBuffer @text,uint @dimensions,sbyte @isQuery,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(RustBuffer @text,uint @dimensions,sbyte @isQuery,RustBuffer @vaultKey,RustBuffer @modelVersion,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak(RustBuffer @vector,RustBuffer @vaultKey,RustBuffer @modelVersion,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1516,6 +1534,18 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event(
     );
 
@@ -1855,6 +1885,24 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota();
             if (checksum != 39634) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota` checksum `39634`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed();
+            if (checksum != 45890) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed` checksum `45890`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak();
+            if (checksum != 19070) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak` checksum `19070`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak();
+            if (checksum != 60626) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak` checksum `60626`, library returned `{checksum}`");
             }
         }
         {
@@ -3629,6 +3677,111 @@ class FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiException
 
 
 
+public class PensieveVectorFfiException: UniffiException {
+    PensieveVectorFfiException() : base() {}
+    PensieveVectorFfiException(String @Message) : base(@Message) {}
+
+    // Each variant is a nested class
+
+    public class InvalidKeyLength : PensieveVectorFfiException {
+        public InvalidKeyLength() : base() {}
+    }
+
+
+    public class InvalidVector : PensieveVectorFfiException {
+        public InvalidVector() : base() {}
+    }
+
+
+    public class InvalidModelVersion : PensieveVectorFfiException {
+        public InvalidModelVersion() : base() {}
+    }
+
+
+    public class TextTooLarge : PensieveVectorFfiException {
+        public TextTooLarge() : base() {}
+    }
+
+
+    public class DerivationFailure : PensieveVectorFfiException {
+        public DerivationFailure() : base() {}
+    }
+
+
+
+
+}
+
+class FfiConverterTypePensieveVectorFfiError : FfiConverterRustBuffer<PensieveVectorFfiException>, CallStatusErrorHandler<PensieveVectorFfiException> {
+    public static FfiConverterTypePensieveVectorFfiError INSTANCE = new FfiConverterTypePensieveVectorFfiError();
+
+    public override PensieveVectorFfiException Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new PensieveVectorFfiException.InvalidKeyLength();
+            case 2:
+                return new PensieveVectorFfiException.InvalidVector();
+            case 3:
+                return new PensieveVectorFfiException.InvalidModelVersion();
+            case 4:
+                return new PensieveVectorFfiException.TextTooLarge();
+            case 5:
+                return new PensieveVectorFfiException.DerivationFailure();
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypePensieveVectorFfiError.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(PensieveVectorFfiException value) {
+        switch (value) {
+
+            case PensieveVectorFfiException.InvalidKeyLength variant_value:
+                return 4;
+
+            case PensieveVectorFfiException.InvalidVector variant_value:
+                return 4;
+
+            case PensieveVectorFfiException.InvalidModelVersion variant_value:
+                return 4;
+
+            case PensieveVectorFfiException.TextTooLarge variant_value:
+                return 4;
+
+            case PensieveVectorFfiException.DerivationFailure variant_value:
+                return 4;
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypePensieveVectorFfiError.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(PensieveVectorFfiException value, BigEndianStream stream) {
+        switch (value) {
+            case PensieveVectorFfiException.InvalidKeyLength variant_value:
+                stream.WriteInt(1);
+                break;
+            case PensieveVectorFfiException.InvalidVector variant_value:
+                stream.WriteInt(2);
+                break;
+            case PensieveVectorFfiException.InvalidModelVersion variant_value:
+                stream.WriteInt(3);
+                break;
+            case PensieveVectorFfiException.TextTooLarge variant_value:
+                stream.WriteInt(4);
+                break;
+            case PensieveVectorFfiException.DerivationFailure variant_value:
+                stream.WriteInt(5);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypePensieveVectorFfiError.Write()", value));
+        }
+    }
+}
+
+
+
+
+
 public class PricingFfiException: UniffiException {
     PricingFfiException() : base() {}
     PricingFfiException(String @Message) : base(@Message) {}
@@ -4011,6 +4164,48 @@ class FfiConverterOptionalString: FfiConverterRustBuffer<string?> {
             stream.WriteByte(1);
             FfiConverterString.INSTANCE.Write((string)value, stream);
         }
+    }
+}
+
+
+
+
+class FfiConverterSequenceDouble: FfiConverterRustBuffer<List<double>> {
+    public static FfiConverterSequenceDouble INSTANCE = new FfiConverterSequenceDouble();
+
+    public override List<double> Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        var result = new List<double>(length);
+        var readFn = FfiConverterDouble.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result.Add(readFn(stream));
+        }
+        return result;
+    }
+
+    public override int AllocationSize(List<double> value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterDouble.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(List<double> value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Count);
+        var writerFn = FfiConverterDouble.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
     }
 }
 
@@ -4741,6 +4936,33 @@ public static class OpenburnbarDomainFfiMethods {
         return FfiConverterTypeQuotaParseResult.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(FfiConverterByteArray.INSTANCE.Lower(@payload), FfiConverterOptionalString.INSTANCE.Lower(@userEmail), ref _status)
+));
+    }
+
+
+    /// <exception cref="PensieveVectorFfiException"></exception>
+    public static List<double> PensieveDeterministicEmbed(string @text, uint @dimensions, bool @isQuery) {
+        return FfiConverterSequenceDouble.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypePensieveVectorFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed(FfiConverterString.INSTANCE.Lower(@text), FfiConverterUInt32.INSTANCE.Lower(@dimensions), FfiConverterBoolean.INSTANCE.Lower(@isQuery), ref _status)
+));
+    }
+
+
+    /// <exception cref="PensieveVectorFfiException"></exception>
+    public static List<double> PensieveDeterministicEmbedAndCloak(string @text, uint @dimensions, bool @isQuery, byte[] @vaultKey, string @modelVersion) {
+        return FfiConverterSequenceDouble.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypePensieveVectorFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(FfiConverterString.INSTANCE.Lower(@text), FfiConverterUInt32.INSTANCE.Lower(@dimensions), FfiConverterBoolean.INSTANCE.Lower(@isQuery), FfiConverterByteArray.INSTANCE.Lower(@vaultKey), FfiConverterString.INSTANCE.Lower(@modelVersion), ref _status)
+));
+    }
+
+
+    /// <exception cref="PensieveVectorFfiException"></exception>
+    public static List<double> PensieveVectorCloak(List<double> @vector, byte[] @vaultKey, string @modelVersion) {
+        return FfiConverterSequenceDouble.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypePensieveVectorFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak(FfiConverterSequenceDouble.INSTANCE.Lower(@vector), FfiConverterByteArray.INSTANCE.Lower(@vaultKey), FfiConverterString.INSTANCE.Lower(@modelVersion), ref _status)
 ));
     }
 
