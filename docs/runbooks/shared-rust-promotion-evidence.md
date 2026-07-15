@@ -243,14 +243,16 @@ substitutes for the deterministic workflow below.
    only `eligible_for_attestation`; it is not promotion authority.
 5. Dispatch `Shared Rust domain core promotion proof` with the full candidate
    commit. The workflow runs under the protected `domain-core-promotion`
-   environment, checks out the evaluator and policy from trusted `main`, proves
-   the candidate is reachable from `main`, queries GitHub for the exact
+   environment, pins the evaluator and policy checkout to the exact `main`
+   commit that GitHub used for the dispatch, proves the candidate is reachable
+   from `main`, queries GitHub for the exact
    successful push run, downloads its immutable bundle, and independently
    verifies the API run/jobs, policy, bundle, and candidate checkout.
 6. Only the GitHub provenance attestation produced after that trusted-main
    verification authorizes the reviewed promotion. The uploaded
    `protected-verification.json` receipt remains non-authoritative; it is an
-   audit record, not a signature or shortcut.
+   audit record containing the pinned evaluator commit and control-plane
+   manifest digest, not a signature or shortcut.
 
 The GitHub environment is a live security control. It must retain at least one
 required reviewer and a deployment branch policy allowing only `main`; the
