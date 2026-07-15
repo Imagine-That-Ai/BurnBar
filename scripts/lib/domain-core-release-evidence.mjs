@@ -18,9 +18,9 @@ export const DOMAIN_CORE_RELEASE_PREDICATE_TYPE =
 
 const SHA256 = /^[0-9a-f]{64}$/u;
 const FULL_SHA = /^[0-9a-f]{40}$/u;
-const STABLE_VERSION =
+export const STABLE_RELEASE_VERSION =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
-const NATIVE_VERSION =
+export const NATIVE_RELEASE_VERSION =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const SAFE_NAME = /^[0-9A-Za-z][0-9A-Za-z._+-]{0,254}$/u;
 
@@ -243,8 +243,8 @@ export function validateReleaseCoordinates({
     );
   }
   const allowedVersion = new Set(["apple", "android"]).has(consumer)
-    ? NATIVE_VERSION
-    : STABLE_VERSION;
+    ? NATIVE_RELEASE_VERSION
+    : STABLE_RELEASE_VERSION;
   if (typeof version !== "string" || !allowedVersion.test(version)) {
     throw new Error(
       "release version does not match its consumer release train",

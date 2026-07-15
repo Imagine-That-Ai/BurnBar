@@ -152,13 +152,12 @@ test("profile digest binds the exact candidate and modes", () => {
   );
 });
 
-test("rollback profile is all-legacy and emits retained evidence for every consumer domain", () => {
+test("rollback profile is all-legacy and cannot emit native domain attestations", () => {
   const value = rollbackProfile();
   validateResolvedProfile(value, value.name, CANDIDATE);
-  assert.deepEqual(nativeEvidenceDomains("windows", value, value.name), [
-    "quota",
-    "cloudVault",
-  ]);
+  for (const consumer of ["apple", "android", "windows"]) {
+    assert.deepEqual(nativeEvidenceDomains(consumer, value, value.name), []);
+  }
   const hostile = structuredClone(value);
   hostile.modes.quota = "rust";
   assert.throws(

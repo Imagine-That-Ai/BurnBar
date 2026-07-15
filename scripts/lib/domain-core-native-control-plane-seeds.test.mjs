@@ -1,15 +1,24 @@
 import assert from "node:assert/strict";
-import { lstatSync, readFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { NATIVE_RELEASE_CONTROL_PLANE_SEEDS } from "./domain-core-native-control-plane-seeds.mjs";
+import { discoverControlPlaneClosure } from "./domain-core-native-control-plane-discovery.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const EXECUTABLE_REFERENCE =
-  /(?:^|[\s"'(])((?:scripts|tools)\/[A-Za-z0-9_./-]+\.(?:js|mjs|py|sh))/gmu;
-const MODULE_IMPORT = /from\s+["'](\.\.?\/[A-Za-z0-9_./-]+\.mjs)["']/gmu;
+const WORKFLOWS = [
+  ".github/workflows/release.yml",
+  ".github/workflows/openburnbar-release-windows.yml",
+];
 
 test("native control-plane seeds are sorted, unique, regular repo files", () => {
   assert.deepEqual(
@@ -28,36 +37,60 @@ test("native control-plane seeds are sorted, unique, regular repo files", () => 
   }
 });
 
-test("every executable referenced by native release workflows is seeded", () => {
+test("every release workflow dependency and recursive local child is seeded", () => {
   const seeds = new Set(NATIVE_RELEASE_CONTROL_PLANE_SEEDS);
-  for (const workflow of [
-    ".github/workflows/release.yml",
-    ".github/workflows/openburnbar-release-windows.yml",
-  ]) {
-    const source = readFileSync(resolve(ROOT, workflow), "utf8");
-    for (const match of source.matchAll(EXECUTABLE_REFERENCE)) {
-      assert.equal(seeds.has(match[1]), true, `${workflow}: ${match[1]}`);
-    }
+  const closure = discoverControlPlaneClosure(ROOT, WORKFLOWS);
+  for (const path of closure) {
+    assert.equal(seeds.has(path), true, `unseeded release dependency: ${path}`);
   }
 });
 
-test("seeded JavaScript release executables include their complete relative import closure", () => {
-  const seeds = new Set(NATIVE_RELEASE_CONTROL_PLANE_SEEDS);
-  const pending = [...seeds].filter((path) => path.endsWith(".mjs"));
-  const visited = new Set();
-  while (pending.length > 0) {
-    const path = pending.pop();
-    if (visited.has(path)) continue;
-    visited.add(path);
-    const source = readFileSync(resolve(ROOT, path), "utf8");
-    for (const match of source.matchAll(MODULE_IMPORT)) {
-      const imported = relative(
-        ROOT,
-        resolve(dirname(resolve(ROOT, path)), match[1]),
-      );
-      assert.equal(seeds.has(imported), true, `${path}: ${imported}`);
-      if (!visited.has(imported)) pending.push(imported);
+test("discovery follows dot-slash, side-effect, dynamic, require, and child execution references", () => {
+  const root = mkdtempSync(join(tmpdir(), "native-control-plane-discovery-"));
+  try {
+    mkdirSync(join(root, ".github/workflows"), { recursive: true });
+    mkdirSync(join(root, "scripts/lib"), { recursive: true });
+    mkdirSync(join(root, "config"), { recursive: true });
+    writeFileSync(
+      join(root, ".github/workflows/release.yml"),
+      'run: node ./scripts/root.mjs && bash scripts/child.sh\n',
+    );
+    writeFileSync(
+      join(root, "scripts/root.mjs"),
+      [
+        'import "./side.js";',
+        'await import("./dynamic.mjs");',
+        'require("./common.cjs");',
+        'spawnSync("python3", ["scripts/child.py"]);',
+        'readFileSync("config/policy.json");',
+      ].join("\n"),
+    );
+    for (const path of [
+      "scripts/side.js",
+      "scripts/dynamic.mjs",
+      "scripts/common.cjs",
+      "scripts/child.py",
+      "scripts/child.sh",
+      "config/policy.json",
+    ]) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), "{}\n");
     }
+    assert.deepEqual(
+      discoverControlPlaneClosure(root, [".github/workflows/release.yml"]),
+      [
+        ".github/workflows/release.yml",
+        "config/policy.json",
+        "scripts/child.py",
+        "scripts/child.sh",
+        "scripts/common.cjs",
+        "scripts/dynamic.mjs",
+        "scripts/root.mjs",
+        "scripts/side.js",
+      ],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

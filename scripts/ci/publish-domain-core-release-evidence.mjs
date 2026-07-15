@@ -86,6 +86,7 @@ function validatePredicate(
       "sourceRun",
       "promotionProof",
       "rollbackArtifact",
+      "publicProfile",
       "artifact",
       "release",
     ],
@@ -125,6 +126,21 @@ function validatePredicate(
     );
   }
   digest(release.publicProfileSha256, `predicate public profile for ${domain}`);
+  const publicProfile = exactObject(
+    value.publicProfile,
+    ["profile", "domain", "mode", "sha256"],
+    `predicate public profile object for ${domain}`,
+  );
+  if (
+    publicProfile.profile !== "public-production" ||
+    publicProfile.domain !== domain ||
+    publicProfile.mode !== "rust" ||
+    publicProfile.sha256 !== release.publicProfileSha256
+  ) {
+    throw new Error(
+      `predicate for ${domain} does not bind its Rust-active public profile`,
+    );
+  }
   const sourceRun = exactObject(
     value.sourceRun,
     [

@@ -66,6 +66,12 @@ function predicate(consumer, domain, artifact, version) {
       sha256: "e".repeat(64),
       candidate: CANDIDATE,
     },
+    publicProfile: {
+      profile: "public-production",
+      domain,
+      mode: "rust",
+      sha256: "f".repeat(64),
+    },
     artifact: {
       fileName: basename(artifact),
       sha256: sha(readFileSync(artifact)),
@@ -79,9 +85,10 @@ function predicate(consumer, domain, artifact, version) {
   };
 }
 
-function fixture({ prerelease = false } = {}) {
+function fixture({ prerelease = false, version: requestedVersion } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "apple-android-release-test-"));
-  const version = prerelease ? "1.2.3-beta.1" : "1.2.3";
+  const version =
+    requestedVersion ?? (prerelease ? "1.2.3-beta.1" : "1.2.3");
   const tag = `v${version}`;
   const notesPath = join(directory, "notes.md");
   const dmg = join(directory, `OpenBurnBar-${version}-macOS.dmg`);
@@ -246,7 +253,7 @@ class FakeClient {
     }
     if (args[0] === "release" && args[1] === "edit") {
       if (this.editHook) return this.editHook(args, this);
-      this.state = "published";
+      this.state = args.includes("--draft=true") ? "draft" : "published";
       return { status: 0, stdout: "", stderr: "" };
     }
     if (allowFailure) return { status: 1, stdout: "", stderr: "unsupported" };
@@ -308,6 +315,20 @@ test("prerelease creation and publication use explicit non-latest state", () => 
     assert.equal(create.includes("--prerelease=false"), false);
     assert.equal(edit.includes("--prerelease=true"), true);
     assert.equal(edit.includes("--latest=false"), true);
+  });
+});
+
+test("stable build metadata containing a hyphen is not a prerelease", () => {
+  withFixture({ version: "1.2.3+linux-x64" }, (files) => {
+    assert.equal(files.publication.prerelease, false);
+    files.publication.promote = true;
+    const client = new FakeClient(files, "absent");
+    publishAppleAndroidRelease(files.publication, { client });
+    const create = mutations(client).find((args) => args[1] === "create");
+    const edit = mutations(client).find((args) => args[1] === "edit");
+    assert.equal(create.includes("--prerelease"), false);
+    assert.equal(edit.includes("--prerelease=false"), true);
+    assert.equal(edit.includes("--latest"), true);
   });
 });
 
@@ -468,5 +489,29 @@ test("failed final edit accepts only a complete exact concurrent publication", (
       mutations(concurrent).filter((args) => args[1] === "edit").length,
       1,
     );
+  });
+});
+
+test("asset interference during final edit fails audit and redrafts", () => {
+  withFixture({}, (files) => {
+    const client = new FakeClient(files, "draft");
+    client.editHook = (args, instance) => {
+      if (args.includes("--draft=true")) {
+        instance.state = "draft";
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      instance.state = "published";
+      instance.assets.set("unexpected-admin-asset.bin", Buffer.from("x"));
+      return { status: 0, stdout: "", stderr: "" };
+    };
+    assert.throws(
+      () => publishAppleAndroidRelease(files.publication, { client }),
+      /unexpected=unexpected-admin-asset\.bin/u,
+    );
+    assert.equal(client.state, "draft");
+    const edits = mutations(client).filter((args) => args[1] === "edit");
+    assert.equal(edits.length, 2);
+    assert.equal(edits[0].includes("--draft=false"), true);
+    assert.equal(edits[1].includes("--draft=true"), true);
   });
 });
