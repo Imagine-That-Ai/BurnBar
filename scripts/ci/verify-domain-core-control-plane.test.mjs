@@ -38,6 +38,30 @@ function candidateCopy(context) {
   return root;
 }
 
+function assertCandidateTamperingFails(context, paths) {
+  const candidateRoot = candidateCopy(context);
+  for (const path of paths) {
+    assert.equal(typeof MANIFEST.files[path], "string", path);
+    const candidatePath = resolve(candidateRoot, path);
+    const trustedBytes = readFileSync(resolve(ROOT, path));
+    writeFileSync(
+      candidatePath,
+      Buffer.concat([trustedBytes, Buffer.from("\ncandidate tamper\n")]),
+    );
+    assert.throws(
+      () =>
+        verifyDomainCoreControlPlane({
+          trustedRoot: ROOT,
+          candidateRoot,
+          manifest: MANIFEST,
+        }),
+      /differs from trusted main/u,
+      path,
+    );
+    writeFileSync(candidatePath, trustedBytes);
+  }
+}
+
 test("control-plane manifest exhaustively covers workflow executables and local imports", () => {
   const discovered = discoverDomainCoreControlPlane(ROOT);
   assert.deepEqual(Object.keys(MANIFEST.files).sort(), discovered);
@@ -191,4 +215,39 @@ test("candidate fixture file modification is detected as control-plane drift", (
       }),
     /differs from trusted main/u,
   );
+});
+
+test("candidate artifact contract and diagnostic policy tampering are rejected", (context) => {
+  assertCandidateTamperingFails(context, [
+    "apps/console/test/domainCoreCloudVaultInitialization.test.ts",
+    "scripts/ci/stage-domain-core-attestation-artifact.test.mjs",
+    "config/domain-core-shadow-diagnostic-policy.json",
+  ]);
+});
+
+test("candidate package, checker, and local hook tampering are rejected", (context) => {
+  assertCandidateTamperingFails(context, [
+    "apps/console/eslint.config.mjs",
+    "apps/console/package-lock.json",
+    "apps/console/package.json",
+    "apps/console/scripts/sync-domains.mjs",
+    "apps/console/tsconfig.json",
+    "apps/console/vitest.config.ts",
+    "functions/eslint.config.mjs",
+    "functions/package-lock.json",
+    "functions/package.json",
+    "functions/scripts/copy-certs.mjs",
+    "functions/scripts/postinstall-sync-local-packages.mjs",
+    "functions/scripts/sync-local-packages.mjs",
+    "functions/tsconfig.json",
+    "functions/vitest.config.ts",
+    "packages/entitlements/package-lock.json",
+    "packages/entitlements/package.json",
+    "packages/entitlements/tsconfig.json",
+    "packages/signal-envelope-contracts/package-lock.json",
+    "packages/signal-envelope-contracts/package.json",
+    "packages/signal-envelope-contracts/tsconfig.json",
+    "scripts/build-entitlements.sh",
+    "scripts/build-signal-envelope-contracts.sh",
+  ]);
 });
