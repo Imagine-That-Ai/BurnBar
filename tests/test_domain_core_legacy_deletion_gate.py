@@ -84,6 +84,161 @@ class FakeDownloadResponse:
 
 
 class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
+    def assert_crypto_deletion_review_rejected(
+        self,
+        mutate_review,
+        reviewers: dict[str, set[str]],
+        expected_error: str,
+    ) -> None:
+        row_id = "cloudvault.search"
+        candidate_commit = "1" * 40
+        activation_commit = "2" * 40
+        deletion_commit = "3" * 40
+        candidate = {
+            "candidateCommit": candidate_commit,
+            "coreVersion": "0.3.0",
+            "abiVersion": 3,
+            "sourceSha256": "4" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": activation_commit,
+            "changedPathsSha256": "5" * 64,
+        }
+        promotion = GATE.Receipt(
+            path="promotion.json",
+            transition="promotion",
+            generation=1,
+            approved_at=GATE.parse_rfc3339_utc("2026-07-14T00:00:00Z", "approved"),
+            commit=candidate_commit,
+            digest="6" * 64,
+            evidence=(),
+            payload={"supersedes": None},
+        )
+        rollback_uri = (
+            "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.2.3/OpenBurnBar-1.2.3-legacy-rollback.zip"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory).resolve()
+            rollback_relative = f"{GATE.RELEASE_PROVENANCE_ROOT}/{row_id}/1/rollback.json"
+            rollback_provenance = repo_root / rollback_relative
+            rollback_provenance.parent.mkdir(parents=True)
+            rollback_provenance.write_text("signed rollback provenance\n")
+            rollback_provenance_digest = hashlib.sha256(rollback_provenance.read_bytes()).hexdigest()
+            stable = GATE.Receipt(
+                path="stable_release.json",
+                transition="stable_release",
+                generation=1,
+                approved_at=GATE.parse_rfc3339_utc("2026-07-15T00:00:00Z", "approved"),
+                commit=activation_commit,
+                digest="7" * 64,
+                evidence=(rollback_uri,),
+                payload={
+                    "promotionReceiptSha256": promotion.digest,
+                    "publicProfileSha256": "8" * 64,
+                    "candidate": candidate,
+                    "activation": activation,
+                    "consumerReleases": [],
+                    "rollbackArtifact": {
+                        "artifactKind": "legacy-rollback-bundle",
+                        "target": "all-supported-consumers",
+                        "version": "1.2.3",
+                        "tag": "v1.2.3",
+                        "commit": activation_commit,
+                        "publishedAt": "2026-07-14T12:00:00Z",
+                        "artifactUri": rollback_uri,
+                        "artifactSha256": "9" * 64,
+                        "candidate": candidate,
+                        "activation": activation,
+                        "retentionPolicy": "retain_until_legacy_deletion_complete",
+                        "provenancePath": rollback_relative,
+                        "provenanceSha256": rollback_provenance_digest,
+                    },
+                },
+            )
+            target = GATE.Target(
+                kind="source_symbol",
+                role="legacy_implementation",
+                root="source",
+                path="src/legacy.py",
+                value="legacy_search",
+            )
+            target_digest = GATE.canonical_json_sha256(
+                [
+                    {
+                        "kind": target.kind,
+                        "role": target.role,
+                        "root": target.root,
+                        "path": target.path,
+                        "value": target.value,
+                    }
+                ]
+            )
+            plan_relative = f"{GATE.DELETION_PLAN_ROOT}/{row_id}/1.json"
+            plan = {
+                "schemaVersion": 1,
+                "rowId": row_id,
+                "authorityGeneration": 1,
+                "stableReceiptSha256": stable.digest,
+                "reviewer": "@emilio3435",
+                "reviewClass": "security_crypto",
+                "legacyTargetsSha256": target_digest,
+                "requestedAction": "approve_legacy_deletion",
+            }
+            plan_path = repo_root / plan_relative
+            plan_path.parent.mkdir(parents=True)
+            plan_path.write_text(json.dumps(plan))
+            review_payload = {
+                "stableReceiptSha256": stable.digest,
+                "reviewUri": "https://github.com/Imagine-That-Ai/BurnBar/pull/123",
+                "reviewedCommit": deletion_commit,
+                "reviewer": "@emilio3435",
+                "reviewClass": "security_crypto",
+                "outcome": "approved",
+                "planPath": plan_relative,
+                "planSha256": hashlib.sha256(plan_path.read_bytes()).hexdigest(),
+            }
+            mutate_review(review_payload)
+            deletion = GATE.Receipt(
+                path="deletion_review.json",
+                transition="deletion_review",
+                generation=1,
+                approved_at=GATE.parse_rfc3339_utc("2026-07-16T00:00:00Z", "approved"),
+                commit=deletion_commit,
+                digest="a" * 64,
+                evidence=(),
+                payload=review_payload,
+            )
+            with (
+                mock.patch.object(
+                    GATE,
+                    "validate_promotion_attestation",
+                    return_value=(candidate_commit, "b" * 64, candidate["coreVersion"]),
+                ),
+                mock.patch.object(GATE, "candidate_identity_at_commit", return_value=candidate),
+                mock.patch.object(GATE, "validate_activation_closure", return_value=activation),
+                mock.patch.object(GATE, "require_commit", side_effect=lambda _root, value, _label: value),
+                mock.patch.object(GATE, "require_ancestor"),
+                mock.patch.object(GATE, "git_output", return_value=activation_commit),
+                mock.patch.object(
+                    GATE,
+                    "public_production_profile_at_commit",
+                    return_value=({"cloudVaultSearch": "legacy"}, {"cloudVaultSearch": "8" * 64}),
+                ),
+                mock.patch.object(GATE, "release_consumers_for_row", return_value=set()),
+                self.assertRaisesRegex(GATE.GateError, expected_error),
+            ):
+                GATE.validate_receipt_chain(
+                    repo_root,
+                    row_id,
+                    "deletion_approved",
+                    1,
+                    {"promotion": promotion, "stableRelease": stable, "deletionReview": deletion},
+                    FakeVerifier(),
+                    [target],
+                    reviewers,
+                )
+
     def make_rollback_artifact_fixture(self) -> tuple[dict, bytes, dict]:
         identity = {
             "candidateCommit": "1" * 40,
@@ -640,6 +795,79 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         with (
             mock.patch.object(verifier, "_github_json", return_value=fork),
             self.assertRaisesRegex(GATE.GateError, "same-repository"),
+        ):
+            verifier.verify_deletion_head(
+                pull_number=123,
+                deletion_head=head,
+                reviewer="@qualified-reviewer",
+            )
+
+    def test_actual_deletion_head_rejects_stale_or_non_approved_review(self) -> None:
+        verifier = GATE.SignedEvidenceVerifier()
+        head = "a" * 40
+        pull = {
+            "draft": False,
+            "merged": False,
+            "state": "open",
+            "user": {"login": "deletion-author"},
+            "head": {"sha": head, "repo": {"full_name": verifier.repository}},
+            "base": {"ref": "main", "repo": {"full_name": verifier.repository}},
+        }
+        approved = {
+            "id": 7,
+            "commit_id": head,
+            "state": "APPROVED",
+            "submitted_at": "2026-07-15T01:00:00Z",
+            "user": {"login": "qualified-reviewer"},
+        }
+        cases = {
+            "stale reviewed head": [{**approved, "commit_id": "b" * 40}],
+            "non-approved review": [{**approved, "state": "CHANGES_REQUESTED"}],
+        }
+        for name, reviews in cases.items():
+            with (
+                self.subTest(name=name),
+                mock.patch.object(verifier, "_github_json", return_value=pull),
+                mock.patch.object(verifier, "_github_list", return_value=reviews),
+                self.assertRaisesRegex(GATE.GateError, "qualified reviewer must approve"),
+            ):
+                verifier.verify_deletion_head(
+                    pull_number=123,
+                    deletion_head=head,
+                    reviewer="@qualified-reviewer",
+                )
+
+    def test_actual_deletion_head_latest_decisive_review_invalidates_approval(self) -> None:
+        verifier = GATE.SignedEvidenceVerifier()
+        head = "a" * 40
+        pull = {
+            "draft": False,
+            "merged": False,
+            "state": "open",
+            "user": {"login": "deletion-author"},
+            "head": {"sha": head, "repo": {"full_name": verifier.repository}},
+            "base": {"ref": "main", "repo": {"full_name": verifier.repository}},
+        }
+        reviews = [
+            {
+                "id": 7,
+                "commit_id": head,
+                "state": "APPROVED",
+                "submitted_at": "2026-07-15T01:00:00Z",
+                "user": {"login": "qualified-reviewer"},
+            },
+            {
+                "id": 8,
+                "commit_id": head,
+                "state": "CHANGES_REQUESTED",
+                "submitted_at": "2026-07-15T02:00:00Z",
+                "user": {"login": "qualified-reviewer"},
+            },
+        ]
+        with (
+            mock.patch.object(verifier, "_github_json", return_value=pull),
+            mock.patch.object(verifier, "_github_list", return_value=reviews),
+            self.assertRaisesRegex(GATE.GateError, "qualified reviewer must approve"),
         ):
             verifier.verify_deletion_head(
                 pull_number=123,
@@ -1401,6 +1629,35 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         self.assertEqual(set(catalog), {"domain_owner", "security_crypto"})
         self.assertEqual(catalog["domain_owner"], {"@emilio3435"})
         self.assertEqual(catalog["security_crypto"], {"@emilio3435"})
+
+    def test_crypto_deletion_review_rejects_wrong_class_outcome_or_unqualified_reviewer(self) -> None:
+        cases = (
+            (
+                "domain owner class",
+                lambda review: review.__setitem__("reviewClass", "domain_owner"),
+                {"domain_owner": {"@emilio3435"}, "security_crypto": {"@emilio3435"}},
+                "review class or outcome is invalid",
+            ),
+            (
+                "non-approved outcome",
+                lambda review: review.__setitem__("outcome", "changes_requested"),
+                {"domain_owner": {"@emilio3435"}, "security_crypto": {"@emilio3435"}},
+                "review class or outcome is invalid",
+            ),
+            (
+                "unqualified reviewer",
+                lambda _review: None,
+                {"domain_owner": {"@emilio3435"}, "security_crypto": set()},
+                "security_crypto reviewer is not qualified",
+            ),
+        )
+        for name, mutate_review, reviewers, expected_error in cases:
+            with self.subTest(name=name):
+                self.assert_crypto_deletion_review_rejected(
+                    mutate_review,
+                    reviewers,
+                    expected_error,
+                )
 
     def test_reviewer_catalog_rejects_an_empty_operational_roster(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
