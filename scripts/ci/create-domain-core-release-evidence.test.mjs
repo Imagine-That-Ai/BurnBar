@@ -29,6 +29,19 @@ function workspace() {
   const promotionAttestation = join(directory, "promotion.sigstore.json");
   const rollbackArtifact = join(directory, "domain-core-legacy-rollback.json");
   writeFileSync(
+    promotionAttestation,
+    '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}\n',
+  );
+  writeFileSync(
+    rollbackArtifact,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      candidateIdentity: CANDIDATE,
+      modes: { quota: "legacy", cloudVault: "legacy" },
+    })}\n`,
+  );
+  const rollbackArtifactSha256 = sha(readFileSync(rollbackArtifact));
+  writeFileSync(
     candidateBundle,
     `${JSON.stringify({
       schemaVersion: 1,
@@ -51,18 +64,16 @@ function workspace() {
           { id: "rust-and-csharp", status: "completed", conclusion: "success" },
         ],
       },
-    })}\n`,
-  );
-  writeFileSync(
-    promotionAttestation,
-    '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}\n',
-  );
-  writeFileSync(
-    rollbackArtifact,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      candidateIdentity: CANDIDATE,
-      modes: { quota: "legacy", cloudVault: "legacy" },
+      rollback: {
+        jobId: "rollback-drill",
+        suiteId: "rollback-drill",
+        runId: 101,
+        runAttempt: 2,
+        reportSha256: "e".repeat(64),
+        fromCandidateCommit: CANDIDATE.candidateCommit,
+        restoredArtifactSha256: rollbackArtifactSha256,
+        restoredMode: "legacy",
+      },
     })}\n`,
   );
   return { directory, candidateBundle, promotionAttestation, rollbackArtifact };

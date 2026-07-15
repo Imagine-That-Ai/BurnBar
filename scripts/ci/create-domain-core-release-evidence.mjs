@@ -251,7 +251,7 @@ export function buildReleaseEvidence({
   promotionVerifier = verifyProtectedPromotionAttestation,
 }) {
   const candidateBundle = readJson(candidateBundlePath, "candidate bundle");
-  const { candidate, sourceRun } = validateCandidateBundle(candidateBundle);
+  const { candidate, sourceRun, rollbackArtifactSha256 } = validateCandidateBundle(candidateBundle);
   const contract = validateReleaseCoordinates({
     consumer,
     domain,
@@ -284,6 +284,11 @@ export function buildReleaseEvidence({
     sha256: sha256File(rollbackPath),
     candidate,
   };
+  if (rollbackArtifact.sha256 !== rollbackArtifactSha256) {
+    throw new Error(
+      "release evidence rollback artifact digest does not match the protected candidate bundle rollback proof",
+    );
+  }
   const release = {
     version,
     tag,

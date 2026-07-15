@@ -180,6 +180,20 @@ export function validateCandidateBundle(bundle) {
       "candidate bundle workflow does not bind the exact main push candidate",
     );
   }
+  const rollbackProof = bundle.rollback;
+  if (
+    !rollbackProof ||
+    typeof rollbackProof !== "object" ||
+    Array.isArray(rollbackProof)
+  ) {
+    throw new Error(
+      "candidate bundle must contain a rollback proof binding the exercised artifact",
+    );
+  }
+  const rollbackArtifactSha256 = digest(
+    rollbackProof.restoredArtifactSha256,
+    "candidate bundle rollback restored artifact SHA-256",
+  );
   return {
     candidate,
     sourceRun: {
@@ -191,6 +205,7 @@ export function validateCandidateBundle(bundle) {
       ref: "refs/heads/main",
       headSha: candidate.candidateCommit,
     },
+    rollbackArtifactSha256,
   };
 }
 
@@ -403,7 +418,7 @@ export function verifyDomainCoreReleaseGate({
   const candidateBundle = JSON.parse(
     readFileSync(regularFile(candidateBundlePath, "candidate bundle"), "utf8"),
   );
-  const { candidate, sourceRun } = validateCandidateBundle(candidateBundle);
+  const { candidate, sourceRun, rollbackArtifactSha256 } = validateCandidateBundle(candidateBundle);
   const expectedIdentity =
     validateDomainCoreCandidateIdentity(expectedCandidate);
   if (canonicalJson(candidate) !== canonicalJson(expectedIdentity)) {
@@ -439,6 +454,11 @@ export function verifyDomainCoreReleaseGate({
     candidate,
   );
   const rollbackSha256 = sha256File(rollbackPath);
+  if (rollbackSha256 !== rollbackArtifactSha256) {
+    throw new Error(
+      "release gate rollback artifact digest does not match the protected candidate bundle rollback proof",
+    );
+  }
   if (
     rollbackSha256 !==
     digest(expectedRollbackSha256, "expected rollback artifact SHA-256")
