@@ -764,21 +764,32 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Check all platform jobs passed
+      - name: Check all platform jobs passed (informational jobs warn, not block)
         run: |
           results='${{ toJSON(needs) }}'
           failed=$(echo "$results" | python3 -c "
           import json, sys
           data = json.load(sys.stdin)
-          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
+          # P-QA-1 split: android, node-evals, ios-mobile, retrieval-evals are
+          # informational (external/emulator deps). They are still in this
+          # aggregate for coverage, but their failures are warnings, not red.
+          informational = {'android', 'node-evals', 'ios-mobile', 'retrieval-evals'}
+          failed = [k for k, v in data.items()
+                    if v.get('result') not in ('success', 'skipped')
+                    and k not in informational]
+          warnings = [k for k, v in data.items()
+                      if v.get('result') not in ('success', 'skipped')
+                      and k in informational]
           print('\n'.join(failed))
+          if warnings:
+            print('\n'.join('::warning::Informational job ' + k + ' failed (non-blocking)' for k in warnings), file=sys.stderr)
           ")
           if [[ -n "$failed" ]]; then
-            echo "::error::The following platform confidence jobs failed:"
+            echo "::error::The following required platform confidence jobs failed:"
             echo "$failed"
             exit 1
           fi
-          echo "### Platform Confidence: All checks passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Platform Confidence: All required checks passed" >> "$GITHUB_STEP_SUMMARY"
 
   path-filter:
     runs-on: ubuntu-latest
@@ -805,7 +816,7 @@ jobs:
           fi
           echo "$CHANGED" > /tmp/changed-paths.txt
           match() { grep -Eq "$1" /tmp/changed-paths.txt; }
-          if match '^OpenBurnBarCore/|^android/.*/hermes/|^functions/src/hermes|^functions/src/.*iroh|^OpenBurnBarMobile/.*iroh|^scripts/e2e/.*iroh'; then
+          if match '^OpenBurnBarCore/|^android/.*/hermes/|^functions/src/hermes|^functions/src/.*iroh|^OpenBurnBarMobile/.*iroh|^scripts/e2e/.*iroh|^\.github/workflows/openburnbar-pr-harness\.yml$'; then
             echo "hermes_iroh=true" >> "$GITHUB_OUTPUT"
           else
             echo "hermes_iroh=false" >> "$GITHUB_OUTPUT"
