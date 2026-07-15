@@ -21,6 +21,7 @@
       "apple-native-smoke",
       "swift-consumer-contracts",
       "console-consumer-contracts",
+      "python-mcp-cloudvault-contracts",
       "rollback-drill"
     ]
   },
@@ -44,6 +45,7 @@
     { "id": "swift-native-load", "jobId": "apple-native-smoke" },
     { "id": "swift-consumer-contracts", "jobId": "swift-consumer-contracts" },
     { "id": "console-consumer-contracts", "jobId": "console-consumer-contracts" },
+    { "id": "python-mcp-cloudvault-contracts", "jobId": "python-mcp-cloudvault-contracts" },
     { "id": "rollback-drill", "jobId": "rollback-drill" }
   ],
   "requiredArtifacts": [
@@ -94,6 +96,12 @@
       "consumer": "csharp",
       "jobId": "linux-arm64-native",
       "requiredLoadSuiteIds": ["linux-arm64-native"]
+    },
+    {
+      "id": "python-mcp-native",
+      "consumer": "python",
+      "jobId": "python-mcp-cloudvault-contracts",
+      "requiredLoadSuiteIds": ["python-mcp-cloudvault-contracts"]
     }
   ],
   "requiredBenchmarks": [
@@ -124,11 +132,13 @@
         { "slice": "foundation", "consumer": "windows", "suiteId": "csharp-cloudvault-native" },
         { "slice": "foundation", "consumer": "console", "suiteId": "console-consumer-contracts" },
         { "slice": "foundation", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
+        { "slice": "foundation", "consumer": "local-mcp", "suiteId": "python-mcp-cloudvault-contracts" },
         { "slice": "aes", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
         { "slice": "aes", "consumer": "android", "suiteId": "android-consumer-contracts" },
         { "slice": "aes", "consumer": "windows", "suiteId": "csharp-cloudvault-native" },
         { "slice": "aes", "consumer": "console", "suiteId": "console-consumer-contracts" },
         { "slice": "aes", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
+        { "slice": "aes", "consumer": "local-mcp", "suiteId": "python-mcp-cloudvault-contracts" },
         { "slice": "recovery", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
         { "slice": "recovery", "consumer": "android", "suiteId": "android-consumer-contracts" },
         { "slice": "recovery", "consumer": "windows", "suiteId": "csharp-cloudvault-native" },
@@ -141,7 +151,9 @@
         { "slice": "search", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
         { "slice": "search", "consumer": "android", "suiteId": "android-consumer-contracts" },
         { "slice": "search", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
-        { "slice": "opaque-identifiers", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" }
+        { "slice": "opaque-identifiers", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
+        { "slice": "search", "consumer": "local-mcp", "suiteId": "python-mcp-cloudvault-contracts" },
+        { "slice": "opaque-identifiers", "consumer": "local-mcp", "suiteId": "python-mcp-cloudvault-contracts" }
       ]
     },
     "hermes": {

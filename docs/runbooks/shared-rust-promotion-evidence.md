@@ -232,14 +232,15 @@ substitutes for the deterministic workflow below.
 1. Merge the exact candidate to `main`. A PR merge ref, dispatch checkout, or
    unmerged commit is ineligible.
 2. Require the `Shared Rust domain core` `push` run at that commit to succeed.
-   Its 12 exact policy job IDs expand to 14 exact GitHub API jobs because Windows
+   Its 13 exact policy job IDs expand to 15 exact GitHub API jobs because Windows
    runs x64 and ARM64 separately and the final `candidate-bundle` job aggregates
    them. Any failed, skipped, missing, duplicate, extra, mixed-run, or
    mixed-candidate job fails closed.
 3. The jobs emit suite reports and artifact hashes tied to the exact run ID,
    attempt, commit, version, ABI, and source fingerprint. Required native/Wasm
-   load suites prove Swift, Kotlin, C#, browser Wasm, and Node Wasm artifacts.
-   The same run executes all 42 policy coverage cells, deterministic KATs and
+   load suites prove Swift, Kotlin, C#, the local Python native package, browser
+   Wasm, and Node Wasm artifacts.
+   The same run executes all 46 policy coverage cells, deterministic KATs and
    fuzz/property suites, the paired five-percent performance ceiling, and the
    real signed-legacy rollback drill.
 4. The final job creates

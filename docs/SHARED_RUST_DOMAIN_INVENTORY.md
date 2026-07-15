@@ -24,7 +24,8 @@ consumer, contract, deletion target, or rollout state changes.
 | Browser TypeScript (Console) | No | Yes, with non-extractable WebCrypto keys | No | No | Consumes encrypted search data; no duplicate native analyzer |
 | Cloud Functions TypeScript | Separate Cursor dashboard mechanism only | Encrypted-record coordination only | Envelope validation/coordination only | Yes | Persistence/query coordination only |
 | Remote MCP TypeScript | No | AAD v2, AES sealed text, and Pensieve opaque hashes | No | No | Token and semantic query hashes |
-| Local MCP Python | No | Yes; required consumer pending | No | No | Yes; required consumer pending |
+| Local MCP Python | No | Rust plus named Python rollback during rollout | No | No | Rust plus named Python rollback during rollout |
+| Hermes plugin Python | No | No | Relay crypto delegates to Hermes `gateway.crypto`; ratchet prekey transcript/HKDF remains a required consumer | No | No |
 | Tauri/Linux UI | Displays daemon-produced values | No separate implementation | No separate implementation | No separate implementation | No separate implementation |
 
 Provider log parsers remain in `OpenBurnBarCore`. macOS, iOS, and the Linux
@@ -69,20 +70,21 @@ the stable-release gate has been satisfied.
 
 | Slice | Real owners | Rust boundary and deletion condition |
 |---|---|---|
-| AAD v1/v2 serialization and envelope validation | Swift, Kotlin, C#, Console, and remote MCP subsets | Rust owns deterministic bytes. Delete serializers only after every applicable consumer uses the shared contract and crypto gates pass. |
-| SHA-256, HMAC, HKDF, vault-key IDs, and blob hashes | Same four owners, with unequal subsets | Rust/Wasm may own deterministic byte transforms because no private key handle is required. |
-| AES-256-GCM text/blob/payload seal/open | Swift, Kotlin, C#, Console, and remote MCP subsets | Rust owns framing/authentication where raw key bytes already cross the adapter. Require cross-open and wrong-key/AAD/tamper rejection; never fall back after auth failure. |
+| AAD v1/v2 serialization and envelope validation | Swift, Kotlin, C#, Console, remote MCP, and local MCP subsets | Rust owns deterministic bytes. Delete serializers only after every applicable consumer uses the shared contract and crypto gates pass. |
+| SHA-256, HMAC, HKDF, vault-key IDs, and blob hashes | Native, browser, remote MCP, and local MCP owners with unequal subsets | Rust/Wasm may own deterministic byte transforms because no private key handle is required. |
+| AES-256-GCM text/blob/payload seal/open | Swift, Kotlin, C#, Console, remote MCP, and local MCP subsets | Rust owns framing/authentication where raw key bytes already cross the adapter. Require cross-open and wrong-key/AAD/tamper rejection; never fall back after auth failure. |
 | Recovery-key wrap and P-256 escrow wrap | Swift, Kotlin, C#, Console subsets | Rust owns portable normalization/KDF/framing. Platform key stores retain private-key custody and ECDH; no private scalar or browser `CryptoKey` export crosses the boundary. |
 | Whole-document envelope rewrap | Swift and Kotlin implementations; Rust transform staged | Swift/Kotlin classify dynamic Firestore maps into typed envelopes, then call Rust once per document. Rust owns bounded validation, authentication, deterministic transform, and update intents. Delete platform transform logic only after ABI 3 consumers and crypto promotion gates pass. |
-| Search tokens and semantic hashes | Swift, Kotlin, remote MCP TypeScript, and local MCP Python | Rust owns complete analysis and ordered keyed hashes once per text/query. Persistence and query orchestration remain platform-owned. Delete analyzers only after every applicable consumer passes shadow/promotion gates. The Python consumer remains `REQUIRED_CONSUMER_PENDING`. |
-| Opaque project-memory, Pensieve, provenance, and subscription identifiers | Swift, Kotlin subscription, C# Pensieve, remote MCP TypeScript, and local MCP Python subsets | Rust owns only closed, purpose-specific HKDF/HMAC operations. The Python consumer is `REQUIRED_CONSUMER_PENDING`; no opaque-identifier legacy deletion or completion claim is allowed until it is wired and validated. |
+| Search tokens and semantic hashes | Swift, Kotlin, remote MCP TypeScript, and local MCP Python | Rust owns complete analysis and ordered keyed hashes once per text/query. Persistence and query orchestration remain platform-owned. Delete analyzers only after every applicable consumer passes shadow/promotion gates. |
+| Opaque project-memory, Pensieve, provenance, and subscription identifiers | Swift, Kotlin subscription, C# Pensieve, remote MCP TypeScript, and local MCP Python subsets | Rust owns only closed, purpose-specific HKDF/HMAC operations. The local Python consumer is wired behind `legacy|shadow|rust` with candidate-proof coverage; legacy deletion remains gated. |
 
 ### Required local MCP Python consumer
 
 `tools/openburnbar-mcp/server.py` is a real CloudVault consumer, not a waiver or
-an excluded platform. Its migration is `REQUIRED_CONSUMER_PENDING` and blocks
-CloudVault completion and legacy deletion. The dedicated Python lane must cover
-the operations it actually executes:
+an excluded platform. Its executable transforms now route through
+`tools/openburnbar-mcp/domain_core_cloudvault.py`; the named rollback code lives
+only in `cloudvault_legacy.py`. The production adapter covers the operations it
+actually executes:
 
 - project-memory opaque document IDs at `_cloud_vault_project_memory_doc_id`;
 - CloudVault AAD v2 serialization and validation at
@@ -95,10 +97,11 @@ the operations it actually executes:
   `_open_cloud_sealed_text`, `_open_cloud_blob_envelope`, and
   `_seal_cloud_blob_envelope`.
 
-The Python adapter must use the same `legacy|shadow|rust` authority semantics,
-verify the complete version/ABI/source identity of its packaged core, fail
-closed in Rust mode, retain named legacy functions until the deletion gate, and
-run the canonical CloudVault fixtures through the production package.
+The adapter uses the same `legacy|shadow|rust` authority semantics, verifies the
+complete version/ABI/source/host/package identity, fails closed in Rust mode,
+retains named legacy functions until the deletion gate, and runs canonical
+CloudVault fixtures through the production package. Its exact source/deletion
+ledger is [`domain-core-python-consumer-manifest.json`](contracts/domain-core-python-consumer-manifest.json).
 
 ### Remote MCP TypeScript consumer
 
@@ -142,13 +145,14 @@ preserves non-extractability.
 
 Current status snapshot (2026-07-13):
 
-| Slice               | Core/contract PR                                                                                                                                                             | Consumer PRs                                                                                                                                                                                                                                                                                                                     |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C1a foundation      | [#1594](https://github.com/Imagine-That-Ai/BurnBar/pull/1594) open                                                                                                           | Console [#1597](https://github.com/Imagine-That-Ai/BurnBar/pull/1597), C# [#1598](https://github.com/Imagine-That-Ai/BurnBar/pull/1598), Swift [#1599](https://github.com/Imagine-That-Ai/BurnBar/pull/1599), and Kotlin [#1601](https://github.com/Imagine-That-Ai/BurnBar/pull/1601) open                                      |
-| C1b AES             | [#1602](https://github.com/Imagine-That-Ai/BurnBar/pull/1602) open                                                                                                           | C# [#1604](https://github.com/Imagine-That-Ai/BurnBar/pull/1604), Console [#1607](https://github.com/Imagine-That-Ai/BurnBar/pull/1607), and Swift [#1608](https://github.com/Imagine-That-Ai/BurnBar/pull/1608) open; Kotlin [#1611](https://github.com/Imagine-That-Ai/BurnBar/pull/1611) merged into the AES feature branch   |
-| C1c recovery/escrow | [#1615](https://github.com/Imagine-That-Ai/BurnBar/pull/1615) merged into the AES feature branch                                                                             | C# [#1616](https://github.com/Imagine-That-Ai/BurnBar/pull/1616) and Console [#1617](https://github.com/Imagine-That-Ai/BurnBar/pull/1617) merged into the C1c feature branch; Kotlin [#1623](https://github.com/Imagine-That-Ai/BurnBar/pull/1623) and Swift [#1634](https://github.com/Imagine-That-Ai/BurnBar/pull/1634) open |
-| C1d document rewrap | [#1636](https://github.com/Imagine-That-Ai/BurnBar/pull/1636) open/converging into ABI 3                                                                                     | Swift and Kotlin ABI 3 consumer changes are not yet landed                                                                                                                                                                                                                                                                       |
-| Encrypted search    | Contract [#1620](https://github.com/Imagine-That-Ai/BurnBar/pull/1620) merged into a feature branch; core [#1632](https://github.com/Imagine-That-Ai/BurnBar/pull/1632) open | Kotlin [#1635](https://github.com/Imagine-That-Ai/BurnBar/pull/1635) and Swift [#1640](https://github.com/Imagine-That-Ai/BurnBar/pull/1640) open                                                                                                                                                                                |
+| Slice | Core/contract PR | Consumer PRs |
+|---|---|---|
+| C1a foundation | [#1594](https://github.com/Imagine-That-Ai/BurnBar/pull/1594) open | Console [#1597](https://github.com/Imagine-That-Ai/BurnBar/pull/1597), C# [#1598](https://github.com/Imagine-That-Ai/BurnBar/pull/1598), Swift [#1599](https://github.com/Imagine-That-Ai/BurnBar/pull/1599), and Kotlin [#1601](https://github.com/Imagine-That-Ai/BurnBar/pull/1601) open |
+| C1b AES | [#1602](https://github.com/Imagine-That-Ai/BurnBar/pull/1602) open | C# [#1604](https://github.com/Imagine-That-Ai/BurnBar/pull/1604), Console [#1607](https://github.com/Imagine-That-Ai/BurnBar/pull/1607), and Swift [#1608](https://github.com/Imagine-That-Ai/BurnBar/pull/1608) open; Kotlin [#1611](https://github.com/Imagine-That-Ai/BurnBar/pull/1611) merged into the AES feature branch |
+| C1c recovery/escrow | [#1615](https://github.com/Imagine-That-Ai/BurnBar/pull/1615) merged into the AES feature branch | C# [#1616](https://github.com/Imagine-That-Ai/BurnBar/pull/1616) and Console [#1617](https://github.com/Imagine-That-Ai/BurnBar/pull/1617) merged into the C1c feature branch; Kotlin [#1623](https://github.com/Imagine-That-Ai/BurnBar/pull/1623) and Swift [#1634](https://github.com/Imagine-That-Ai/BurnBar/pull/1634) open |
+| C1d document rewrap | [#1636](https://github.com/Imagine-That-Ai/BurnBar/pull/1636) open/converging into ABI 3 | Swift and Kotlin ABI 3 consumer changes are not yet landed |
+| Encrypted search | Contract [#1620](https://github.com/Imagine-That-Ai/BurnBar/pull/1620) merged into a feature branch; core [#1632](https://github.com/Imagine-That-Ai/BurnBar/pull/1632) open | Kotlin [#1635](https://github.com/Imagine-That-Ai/BurnBar/pull/1635) and Swift [#1640](https://github.com/Imagine-That-Ai/BurnBar/pull/1640) open |
+| Local MCP Python | ABI 3 CloudVault/opaque/search exports in the converged core | Generated Python binding and host-native receipt, production `legacy\|shadow\|rust` adapter, canonical contracts, and candidate-proof job are wired; promotion and legacy deletion remain open |
 
 “Merged” in this table means merged into the named feature branch, not `main`.
 No CloudVault slice has completed security review, protected deterministic
@@ -168,6 +172,23 @@ Functions validate schemas and proof-of-possession but do not decrypt relay
 payloads, so they are not a native relay-crypto implementation. Hermes
 [#1609](https://github.com/Imagine-That-Ai/BurnBar/pull/1609) is merged into a
 feature branch, not `main`; rollout and deletion gates remain open.
+
+### Hermes Python adapter audit
+
+`tools/hermes-platform-burnbar/adapter.py` is not the local MCP and cannot be
+silently covered by the MCP package. AES payload seal/open, v2/v3 content-key
+wrap, and relay AAD namespace encoding delegate to the separately deployed
+Hermes `gateway.crypto.relay_e2ee` module. P-256 private-key loading, ECDH,
+Keychain custody, signatures, randomness, ratchet state transitions, replay
+policy, and persistence are platform-owned.
+
+One portable transform is still local: `_ratchet_prekey_shared_secret` builds
+the versioned prekey transcript and executes HKDF-SHA256 over three ECDH
+outputs. It is therefore a real required Hermes Python consumer, not an
+exclusion. Migrating it requires shipping the candidate-bound Python native
+package with the external Hermes plugin instead of merely copying `adapter.py`.
+Until that separate packaging lane lands, C2 cannot claim all consumers or
+delete the Python ratchet prekey transform.
 
 ## P1 pricing operations
 
@@ -194,6 +215,7 @@ The generated surfaces are a single source-coherent set:
 | Swift binding/XCFramework   | `artifact-provenance/swift.sha256` plus fingerprint embedded at the XCFramework root                               |
 | Kotlin binding/four-ABI AAR | `artifact-provenance/kotlin.sha256` plus source and Rust/NDK toolchain provenance under `META-INF/` inside the AAR |
 | C# binding/native DLL       | `artifact-provenance/csharp.sha256` plus generated binding drift/native load checks                                |
+| Python binding/host native library | `artifact-provenance/python.sha256` plus package receipt, host tuple, binding/native SHA-256 checks, and candidate-bundle native-load proof |
 | Browser and Node Wasm       | `openburnbar-domain-core-source.sha256` inside each vendored package plus exact tree comparison                    |
 
 `scripts/ci/domain-core-union-gate.py` validates all eight converged domains,

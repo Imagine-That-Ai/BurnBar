@@ -173,6 +173,10 @@ const OPERATION_IDENTITY = new Map([
     operation,
     "cloudvault/search",
   ]),
+  ["project_memory_doc_id", "cloudvault/opaque-identifiers"],
+  ["pensieve_dedup_hash", "cloudvault/opaque-identifiers"],
+  ["pensieve_provenance_hash", "cloudvault/opaque-identifiers"],
+  ["pensieve_slug_hmac", "cloudvault/opaque-identifiers"],
   ["aad", "hermes/aad"],
   ["hpke_v3_info", "hermes/hpke-info"],
   ...[

@@ -85,6 +85,7 @@ version = "0.0.0"
 edition = "2021"
 
 [build-dependencies]
+cc = "=1.2.67"
 serde_json = "=1.0.150"
 sha2 = "=0.10.9"
 """,
@@ -104,6 +105,7 @@ fn compiled_identity_matches_verified_manifest() {
     )
     return crate, {
         "schemaVersion": 1,
+        "abiVersion": 3,
         "sourceRoots": [
             f"{source_crate}/build.rs",
             f"{source_crate}/src",
@@ -175,6 +177,7 @@ class DomainCoreUnionGateTests(unittest.TestCase):
         expected_sidecars = {
             "csharp.sha256",
             "kotlin.sha256",
+            "python.sha256",
             "swift.sha256",
         }
         actual_sidecars = {path.name for path in provenance_root.glob("*.sha256")}

@@ -158,6 +158,7 @@ export const DOMAIN_CORE_REQUIRED_JOB_IDS = Object.freeze([
   "apple-native-smoke",
   "swift-consumer-contracts",
   "console-consumer-contracts",
+  "python-mcp-cloudvault-contracts",
   "rollback-drill",
 ]);
 
@@ -181,6 +182,10 @@ export const DOMAIN_CORE_REQUIRED_SUITES = Object.freeze([
   Object.freeze({ id: "swift-native-load", jobId: "apple-native-smoke" }),
   Object.freeze({ id: "swift-consumer-contracts", jobId: "swift-consumer-contracts" }),
   Object.freeze({ id: "console-consumer-contracts", jobId: "console-consumer-contracts" }),
+  Object.freeze({
+    id: "python-mcp-cloudvault-contracts",
+    jobId: "python-mcp-cloudvault-contracts",
+  }),
   Object.freeze({ id: "rollback-drill", jobId: "rollback-drill" }),
 ]);
 
@@ -243,6 +248,12 @@ export const DOMAIN_CORE_REQUIRED_ARTIFACTS = Object.freeze([
     jobId: "linux-arm64-native",
     requiredLoadSuiteIds: Object.freeze(["linux-arm64-native"]),
   }),
+  Object.freeze({
+    id: "python-mcp-native",
+    consumer: "python",
+    jobId: "python-mcp-cloudvault-contracts",
+    requiredLoadSuiteIds: Object.freeze(["python-mcp-cloudvault-contracts"]),
+  }),
 ]);
 
 const CANONICAL_BENCHMARKS = Object.freeze([
@@ -260,6 +271,7 @@ const COVERAGE_SUITE_BY_CONSUMER = Object.freeze({
   console: "console-consumer-contracts",
   functions: "functions-pricing-contracts",
   "remote-mcp": "remote-mcp-cloudvault-contracts",
+  "local-mcp": "python-mcp-cloudvault-contracts",
 });
 
 function isRecord(value) {

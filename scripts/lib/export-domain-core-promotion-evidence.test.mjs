@@ -35,6 +35,7 @@ const SLICE_OPERATION = {
   "cloudvault/escrow": "escrow_open",
   "cloudvault/document-rewrap": "document_rewrap",
   "cloudvault/search": "token",
+  "cloudvault/opaque-identifiers": "project_memory_doc_id",
   "hermes/aad": "aad",
   "hermes/payload-keywrap": "seal",
   "hermes/hpke-info": "hpke_v3_info",
@@ -43,12 +44,18 @@ const SLICE_OPERATION = {
   "pricing/legacy-kimi": "price_legacy_kimi",
 };
 
+const CONSUMER_OPERATION = {
+  "cloudvault/opaque-identifiers/remote-mcp": "pensieve_dedup_hash",
+};
+
 function dayTimestamp(day) {
   return `2026-07-${String(day).padStart(2, "0")}T12:00:00.000Z`;
 }
 
-function operation(domain, slice) {
-  const value = SLICE_OPERATION[`${domain}/${slice}`];
+function operation(domain, slice, consumer) {
+  const value =
+    CONSUMER_OPERATION[`${domain}/${slice}/${consumer}`] ??
+    SLICE_OPERATION[`${domain}/${slice}`];
   assert.ok(value, `test operation missing for ${domain}/${slice}`);
   return value;
 }
@@ -62,7 +69,7 @@ function record(domain, slice, consumer, suffix, overrides = {}) {
     slice,
     consumer,
     channel: "internal",
-    operation: operation(domain, slice),
+    operation: operation(domain, slice, consumer),
     candidateCommit: CANDIDATE,
     expectedCoreVersion: "0.3.0",
     expectedCoreAbiVersion: 3,
