@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Candidate-bound Shared Rust Functions releases** - production Functions
+  releases now verify the exact deterministic source run, protected signer run
+  and attempt, rollback bytes, selected compiled receipt, live source/version,
+  domain-core profile, and Sentry state before publishing immutable v2 release
+  evidence; manual legacy rollback uses a separately authorized and retained
+  proof path.
 - **Launch-readiness hardening** — added durable account-erasure barriers,
   resumable oldest-first reconciliation with poison-record quarantine, and
   privacy-safe retained audit receipts across Functions, Firestore, and Storage.
