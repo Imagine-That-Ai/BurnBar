@@ -158,6 +158,18 @@ function makeDb() {
       delete: (ref: { __path: string }) => void stored.delete(ref.__path),
       commit: async () => undefined,
     }),
+    // Rate limiter (checkKnowledgeSearchRateLimit) uses runTransaction to
+    // atomically increment a counter in public_rate_limits.
+    runTransaction: async (fn: (tx: {
+      get: (ref: FakeRef) => Promise<unknown>;
+      set: (ref: FakeRef, data: Record<string, unknown>) => Promise<void>;
+    }) => Promise<unknown>) => {
+      const tx = {
+        get: async (ref: FakeRef) => ref.get(),
+        set: async (ref: FakeRef, data: Record<string, unknown>) => ref.set(data),
+      };
+      return fn(tx);
+    },
   };
 }
 

@@ -83,6 +83,37 @@ const HERMES_GATEWAY_BEARER_LIMITS: Record<
   hermes_gateway_event_enqueue: { windowSeconds: 60, maxAttempts: 120 },
 };
 
+// Per-uid burst + daily limiters for authenticated onCall endpoints that
+// perform owner-funded work or hit Firestore with a non-trivial cost per call.
+// Each mirrors the hosted-Insights pattern (burst + daily) so a single account
+// cannot loop calls to exhaust shared resources, while leaving normal
+// interactive usage unthrottled. Keyed per uid so the limit follows the
+// account, not a device/IP.
+type CallableRateLimitAction =
+  | "voip_call_burst"
+  | "voip_call_daily"
+  | "knowledge_search_burst"
+  | "knowledge_search_daily"
+  | "agent_notification_reply_burst"
+  | "agent_notification_reply_daily";
+
+const CALLABLE_RATE_LIMITS: Record<CallableRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
+  // VoIP call trigger: each call fans out APNs + FCM pushes. 20 burst/min,
+  // 100/day — generous for legitimate call initiation but caps push-spam.
+  voip_call_burst: { windowSeconds: 60, maxAttempts: 20 },
+  voip_call_daily: { windowSeconds: 86_400, maxAttempts: 100 },
+  // Knowledge search: server-side vector ANN over cloaked embeddings. 30
+  // burst/min, 300/day — interactive Q&A is well under this, but a looped
+  // caller cannot pin Firestore vector compute.
+  knowledge_search_burst: { windowSeconds: 60, maxAttempts: 30 },
+  knowledge_search_daily: { windowSeconds: 86_400, maxAttempts: 300 },
+  // Agent notification reply: writes a queued reply doc. 30 burst/min, 200/day
+  // — a burst of replies from a notification thread is normal, but a loop
+  // cannot flood the reply queue.
+  agent_notification_reply_burst: { windowSeconds: 60, maxAttempts: 30 },
+  agent_notification_reply_daily: { windowSeconds: 86_400, maxAttempts: 200 },
+};
+
 // Owner-funded hosted Intelligence Brief (OpenRouter). The Pro paywall gates
 // access but does not bound per-account request volume, and each call bills
 // input tokens to the owner's OpenRouter budget. A short burst window plus a
@@ -172,6 +203,63 @@ export async function checkHostedInsightsAnswerRateLimit(uid: string): Promise<v
     rateLimitDocId(uid, "insights_hosted_answer_daily"),
     "insights_hosted_answer_daily",
     HOSTED_INSIGHTS_LIMITS.insights_hosted_answer_daily,
+  );
+}
+
+/**
+ * Per-user rate limit for the VoIP call trigger callable (`triggerVoIPCall`).
+ * Enforces both a short burst window and a daily ceiling so a single account
+ * cannot loop call triggers to spam push notifications. Throws
+ * `resource-exhausted` when either bound is hit.
+ */
+export async function checkVoIPCallRateLimit(uid: string): Promise<void> {
+  await incrementRateLimit(
+    rateLimitDocId(uid, "voip_call_burst"),
+    "voip_call_burst",
+    CALLABLE_RATE_LIMITS.voip_call_burst,
+  );
+  await incrementRateLimit(
+    rateLimitDocId(uid, "voip_call_daily"),
+    "voip_call_daily",
+    CALLABLE_RATE_LIMITS.voip_call_daily,
+  );
+}
+
+/**
+ * Per-user rate limit for the knowledge search callable (`searchKnowledge`).
+ * Enforces both a short burst window and a daily ceiling so a single account
+ * cannot loop vector ANN queries to pin Firestore compute. Throws
+ * `resource-exhausted` when either bound is hit.
+ */
+export async function checkKnowledgeSearchRateLimit(uid: string): Promise<void> {
+  await incrementRateLimit(
+    rateLimitDocId(uid, "knowledge_search_burst"),
+    "knowledge_search_burst",
+    CALLABLE_RATE_LIMITS.knowledge_search_burst,
+  );
+  await incrementRateLimit(
+    rateLimitDocId(uid, "knowledge_search_daily"),
+    "knowledge_search_daily",
+    CALLABLE_RATE_LIMITS.knowledge_search_daily,
+  );
+}
+
+/**
+ * Per-user rate limit for the agent notification reply callable
+ * (`submitAgentNotificationReply`). Enforces both a short burst window and a
+ * daily ceiling so a single account cannot flood the reply queue. Throws
+ * `resource-exhausted` when either bound is hit.
+ */
+export async function checkAgentNotificationReplyRateLimit(uid: string): Promise<void> {
+  await incrementRateLimit(
+    rateLimitDocId(uid, "agent_notification_reply_burst"),
+    "agent_notification_reply_burst",
+    CALLABLE_RATE_LIMITS.agent_notification_reply_burst,
+  );
+  await incrementRateLimit(
+    rateLimitDocId(uid, "agent_notification_reply_daily"),
+    "agent_notification_reply_daily",
+    CALLABLE_RATE_LIMITS.agent_notification_reply_daily,
   );
 }
 
