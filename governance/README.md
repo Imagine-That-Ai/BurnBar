@@ -20,18 +20,33 @@ BurnBar is intentionally solo-maintainer automation friendly. The hard merge gat
 - no branch deletion;
 - exact-head merge discipline in the automation lane.
 
-The following must not be reintroduced as permanent blockers for the daily maintainer lane unless the
-owner intentionally changes the contract again:
+The following were disabled for the solo-maintainer merge drain and must not be
+reintroduced as permanent blockers for the daily maintainer lane unless the owner
+intentionally changes the contract again:
 
-- strict up-to-date status checks (`required_status_checks.strict`);
 - required approving reviews;
 - required CODEOWNER reviews;
 - required last-push approval;
 - stale-review dismissal as a merge blocker.
 
-That is why the current desired file has `required_status_checks.strict: false` and a
-`required_pull_request_reviews` object whose count/booleans are all non-blocking. Keeping the review
-object present makes drift explicit without making self-approval a required gate.
+**Exception (Operation 9 P-QA-3, 2026-07-15):** `required_status_checks.strict` is
+now `true` by owner decision. The QA lane finding §M-1 showed stale-base greens
+landing breakage because PRs merged against an out-of-date base whose checks
+passed against an earlier commit. Strict up-to-date checks prevent this: GitHub
+requires the PR head to be tested against the current base ref before merge.
+Strict was chosen over a merge queue because it does not require every required
+context (60 today) to also fire on the `merge_group` event — 11 of the 60 required
+contexts (5 weekly cron, 2 GitHub-native analyzers, 2 third-party bots, 1
+push-triggered, 1 QA) have no `merge_group` trigger and would leave PRs pending
+forever under a merge queue. The drift checker already verifies
+`strictRequiredStatusChecks` (see Drift Check below), so any live drift from this
+setting fails closed. This is an A2 operator action: Alberto must apply `strict:
+true` to the live ruleset/classic branch protection in the same change as this
+file, then `scripts/ops/check-branch-protection-drift.mjs` must show match.
+
+The `required_pull_request_reviews` object's count/booleans remain
+non-blocking. Keeping the review object present makes drift explicit without
+making self-approval a required gate.
 
 ## Live Surface
 
@@ -103,8 +118,9 @@ not exposed to PRs.
 The drift check fails closed on:
 
 - required-check set differences in either direction;
-- strict status checks being enabled when this file says false, or disabled if this file is changed
-  back to true;
+- strict status checks differing from this file (currently `true`; any live
+  mismatch — strict disabled when the file says true, or enabled when it says
+  false — is drift);
 - required review/CODEOWNER/last-push/stale-review settings differing from this file;
 - conversation resolution disabled;
 - admin enforcement disabled;
