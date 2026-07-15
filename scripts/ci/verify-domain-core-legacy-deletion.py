@@ -1803,8 +1803,8 @@ def validate_build_profile_catalog(catalog_value: Any) -> tuple[dict[str, str], 
     profiles = require_object(catalog.get("profiles"), "domain-core build profiles.profiles")
     exact_keys(
         profiles,
-        {"developer", "public-production", "internal", "beta"},
-        {"developer", "public-production", "internal", "beta"},
+        {"developer", "public-production", "public-production-rollback", "internal", "beta"},
+        {"developer", "public-production", "public-production-rollback", "internal", "beta"},
         "domain-core build profiles.profiles",
     )
     expected_profile_fields = {"artifactAuthority", "distribution", "rolloutChannel", "evidenceEnabled", "modes"}
@@ -1812,6 +1812,7 @@ def validate_build_profile_catalog(catalog_value: Any) -> tuple[dict[str, str], 
         "developer": ("development", "development", None, False, "legacy"),
         "internal": ("signed", "internal", "internal", True, "shadow"),
         "beta": ("signed", "beta", "beta", True, "shadow"),
+        "public-production-rollback": ("signed", "public", None, False, "legacy"),
     }
     for profile_name, expected in expected_modes.items():
         profile = require_object(profiles[profile_name], f"domain-core build profiles.profiles.{profile_name}")

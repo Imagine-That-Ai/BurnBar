@@ -61,11 +61,14 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
     def test_signer_uses_trusted_main_and_exact_source_push_run(self) -> None:
         source = SIGNER_WORKFLOW.read_text()
         for marker in (
-            "ref: main",
+            "ref: ${{ github.sha }}",
             "persist-credentials: false",
+            '[[ "$GITHUB_REF" == "refs/heads/main" ]]',
+            '[[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]',
             "event=push&status=completed&head_sha=$CANDIDATE_COMMIT",
             "expected exactly one successful push run",
             "run_attempt",
+            '--expected-evaluator-commit "$GITHUB_SHA"',
             "Revalidate with trusted main policy and evaluator",
             "domain-core-promotion-environment.json",
             'type == "required_reviewers"',
