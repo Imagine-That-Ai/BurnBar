@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarLaunchServices
 
 final class AppCheckDebugTokenEnvironmentTests: XCTestCase {
     func testAllowedPolicyConfiguresFirebaseDebugTokenFromFirebasePlist() throws {

@@ -1,4 +1,3 @@
-@testable import OpenBurnBarCore
 @testable import OpenBurnBarLaunchServices
 import XCTest
 

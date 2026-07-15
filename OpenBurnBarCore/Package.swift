@@ -719,11 +719,13 @@ let openBurnBarCoreTestExcludes = [
     // OpenBurnBarUIModuleTests (an Apple-pruned test target that off-Apple graphs never
     // see): AgentProviderLogoBackdrop, SmartHubDisplaySettingsModel, SwarmLogoShape,
     // SwarmSubstrateContract, SwarmSubstratePreviewRender, UnifiedQuotaSignalCurrency,
-    // UnifiedToolCallAccordion (the P-16f comment block moved with the last two). The two
-    // remaining entries stay in OpenBurnBarCoreTests: MissionConsoleTests is INTEGRATION
-    // (KernelModels+Insights+UI), SwitcherCLIPostLaunchFallbackTests is B7's future move.
-    "MissionConsoleTests.swift",
-    "SwitcherCLIPostLaunchFallbackTests.swift"
+    // UnifiedToolCallAccordion (the P-16f comment block moved with the last two).
+    // WS-B B7 (plans/core-decomposition2/packets/B7-launchservices-tests.md) then carried
+    // SwitcherCLIPostLaunchFallbackTests out to OpenBurnBarLaunchServicesTests (also an
+    // Apple-pruned test target), so its exclusion entry is gone with the file.
+    // The one remaining entry stays in OpenBurnBarCoreTests: MissionConsoleTests is
+    // INTEGRATION (KernelModels+Insights+UI).
+    "MissionConsoleTests.swift"
 ]
 let computerUseCoreTestExcludes = [
     "ComputerUseOpenTimestampsClientTests.swift",
@@ -946,7 +948,16 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
         name: "OpenBurnBarLaunchServicesTests",
         dependencies: [
             "OpenBurnBarLaunchServices",
-            "OpenBurnBarKernel"
+            "OpenBurnBarKernel",
+            // KernelModels DIRECT dep (cross-platform, acyclic): B7 carried
+            // CLIAuthDiscoveryTests + CLILaunchAdapterExecutableResolutionTests here.
+            // Both `@testable import OpenBurnBarKernelModels` to reach CLILaunchAdapter's
+            // internal test seams (environmentProvider/homeDirectoryProvider/...), which
+            // K2 carried into OpenBurnBarKernelModels. The @_exported Kernel umbrella
+            // re-exports only KernelModels' PUBLIC surface, so a per-module @testable
+            // needs KernelModels as a DIRECT target dependency. OpenBurnBarKernel already
+            // depends on KernelModels, so this edge stays acyclic.
+            "OpenBurnBarKernelModels"
         ] + swiftTestingAppleDependencies,
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),
