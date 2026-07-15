@@ -185,12 +185,25 @@ bundle states only `eligible_for_attestation`; it cannot authorize promotion.
 
 The protected promotion workflow is the authority boundary. It checks out the
 evaluator and policy from trusted `main`, requires the candidate to be reachable
-from `main`, queries GitHub for the exact successful `push` run, downloads that
-run's immutable bundle, independently validates the API run/jobs and candidate
-checkout, and then uses GitHub's provenance attester. A dispatch or PR run,
-user-supplied job JSON, a hand-authored bundle, or the uploaded verification
-receipt cannot authorize promotion. The receipt records what was checked but is
-not itself signed authority.
+from `main`, queries every page of GitHub jobs for the exact successful `push`
+run, and downloads that attempt's immutable bundle, proof fragments, observed
+artifact inputs, and rollback artifact. Before using candidate data, it requires
+the candidate workflow, proof/evaluator scripts, identity observers, policy,
+schemas, build profiles, and union identity manifest to be regular,
+non-symlinked files whose bytes match trusted `main`. Only trusted-main code
+recomputes the candidate source fingerprint, reaggregates the fragments, and
+rehashes the downloaded artifact and observed-identity bytes. No candidate code
+executes in the protected credential context. A dispatch or PR run,
+user-supplied job JSON, a hand-authored bundle, an incomplete jobs page, or the
+uploaded verification receipt cannot authorize promotion. The receipt records
+what was checked but is not itself signed authority.
+
+Each observed artifact is frozen immediately after its narrow native-load
+observer and before broader candidate tests continue. Directory artifacts are
+identified by sorted relative file paths and exact file contents; Unix mode and
+directory metadata are intentionally excluded because GitHub artifact transport
+normalizes them. This keeps the protected rehash transport-stable without
+weakening code-byte or path identity.
 
 The `domain-core-promotion` GitHub environment is part of the trust boundary,
 not a decorative YAML name. It must have a required reviewer and an allowlist
@@ -256,9 +269,10 @@ category, core version, and count.
 
 - The shared crate removes real duplication without forcing UI, persistence,
   networking, or key custody through FFI.
-- Swift, Kotlin, and C# use generated UniFFI bindings. Tauri may link the pure
-  crate directly only for a domain it actually executes. Cloud Functions use
-  the reviewed Wasm adapter only for applicable pricing operations.
+- Swift (including the Linux daemon-owned parser/runtime path), Kotlin, and C#
+  use generated UniFFI bindings. Browser and Node consumers use the reviewed
+  Wasm adapters. The current Tauri/Linux UI only displays daemon-produced
+  values and has no domain-core dependency or separate selector.
 - Browser private keys remain non-extractable WebCrypto handles.
 - Existing iroh, remote, media, and libsignal crates remain separate ownership
   boundaries.

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -9,7 +11,10 @@ import {
   DOMAIN_CORE_REQUIRED_JOB_IDS,
   DOMAIN_CORE_REQUIRED_SUITES,
 } from "../lib/domain-core-deterministic-candidate-bundle.mjs";
-import { verifyProtectedAttestationInputs } from "./verify-domain-core-protected-attestation.mjs";
+import {
+  verifyDownloadedEvidence,
+  verifyProtectedAttestationInputs,
+} from "./verify-domain-core-protected-attestation.mjs";
 
 const POLICY = JSON.parse(
   readFileSync(new URL("../../config/domain-core-promotion-policy.json", import.meta.url)),
@@ -97,6 +102,7 @@ function bundle() {
         runId: RUN_ID,
         runAttempt: RUN_ATTEMPT,
         artifactSha256: digest(`artifact:${id}`),
+        identityReportSha256: digest(`identity:${id}`),
         loadedIdentity: structuredClone(CANDIDATE),
         loadSuiteIds: [...requiredLoadSuiteIds],
       }),
@@ -141,16 +147,15 @@ function githubRun() {
 }
 
 function jobsResponse() {
-  return {
-    jobs: EXPECTED_JOB_NAMES.map((name, index) => ({
+  const jobs = EXPECTED_JOB_NAMES.map((name, index) => ({
       id: index + 1,
       name,
       run_id: RUN_ID,
       head_sha: CANDIDATE.candidateCommit,
       status: "completed",
       conclusion: "success",
-    })),
-  };
+    }));
+  return { total_count: jobs.length, jobs };
 }
 
 function verify(value = bundle(), run = githubRun(), jobs = jobsResponse()) {
@@ -211,4 +216,123 @@ test("protected verifier rejects dispatch/PR runs, failed or missing jobs, and c
     },
   ];
   for (const build of cases) assert.throws(() => verify(...build()));
+});
+
+test("protected verifier rejects hidden later-page jobs and inconsistent API totals", () => {
+  const truncated = jobsResponse();
+  truncated.total_count += 101;
+  assert.throws(() => verify(bundle(), githubRun(), truncated), /pagination pages/u);
+
+  const missingTotal = jobsResponse();
+  delete missingTotal.total_count;
+  assert.throws(() => verify(bundle(), githubRun(), missingTotal), /total_count/u);
+});
+
+function downloadedEvidenceFixture(context) {
+  const root = mkdtempSync(join(tmpdir(), "domain-core-protected-downloads-"));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const proofFragments = join(root, "fragments");
+  const attestationInputs = join(root, "inputs");
+  mkdirSync(proofFragments);
+  mkdirSync(attestationInputs);
+  const value = bundle();
+  const fragmentOrder = new Map(
+    [...DOMAIN_CORE_REQUIRED_JOB_IDS].sort().map((jobId, index) => [jobId, index]),
+  );
+  for (const key of ["suites", "artifacts", "benchmarks"]) {
+    value[key].sort((left, right) => fragmentOrder.get(left.jobId) - fragmentOrder.get(right.jobId));
+  }
+  for (const artifact of value.artifacts) {
+    const archive = join(
+      attestationInputs,
+      `domain-core-attestation-${artifact.id}-${RUN_ID}-${RUN_ATTEMPT}`,
+    );
+    mkdirSync(archive);
+    const artifactBytes = `artifact:${artifact.id}`;
+    const identityBytes = `${JSON.stringify(CANDIDATE)}\n`;
+    writeFileSync(join(archive, "artifact"), artifactBytes);
+    writeFileSync(join(archive, "observed-identity.json"), identityBytes);
+    artifact.artifactSha256 = digest(artifactBytes);
+    artifact.identityReportSha256 = digest(identityBytes);
+  }
+  for (const jobId of DOMAIN_CORE_REQUIRED_JOB_IDS) {
+    const jobArtifacts = value.artifacts.filter((item) => item.jobId === jobId);
+    const partitions =
+      jobId === "windows-native"
+        ? jobArtifacts.map((artifact) => ({
+            artifacts: [artifact],
+            suites: value.suites.filter((suite) => artifact.loadSuiteIds.includes(suite.id)),
+          }))
+        : [{
+            artifacts: jobArtifacts,
+            suites: value.suites.filter((item) => item.jobId === jobId),
+          }];
+    for (const [index, partition] of partitions.entries()) {
+      writeFileSync(
+        join(proofFragments, `${jobId}-${index}.json`),
+        `${JSON.stringify({
+          schemaVersion: 1,
+          jobId,
+          runId: RUN_ID,
+          runAttempt: RUN_ATTEMPT,
+          headSha: CANDIDATE.candidateCommit,
+          candidate: CANDIDATE,
+          ...partition,
+          benchmarks: value.benchmarks.filter((item) => item.jobId === jobId),
+          rollback: value.rollback.jobId === jobId ? value.rollback : null,
+        })}\n`,
+      );
+    }
+  }
+  const rollbackArtifact = join(root, "rollback.json");
+  writeFileSync(rollbackArtifact, "legacy-artifact");
+  return { value, proofFragments, attestationInputs, rollbackArtifact };
+}
+
+test("protected verifier independently rehashes artifacts and rejects forged or missing reports", (context) => {
+  const fixture = downloadedEvidenceFixture(context);
+  assert.doesNotThrow(() =>
+    verifyDownloadedEvidence({ bundle: fixture.value, policy: POLICY, ...fixture }),
+  );
+  const first = fixture.value.artifacts[0];
+  const archive = join(
+    fixture.attestationInputs,
+    `domain-core-attestation-${first.id}-${RUN_ID}-${RUN_ATTEMPT}`,
+  );
+  writeFileSync(
+    join(archive, "observed-identity.json"),
+    `${JSON.stringify({ ...CANDIDATE, abiVersion: 4 })}\n`,
+  );
+  assert.throws(
+    () => verifyDownloadedEvidence({ bundle: fixture.value, policy: POLICY, ...fixture }),
+    /report does not match proof/u,
+  );
+  rmSync(join(archive, "artifact"));
+  assert.throws(
+    () => verifyDownloadedEvidence({ bundle: fixture.value, policy: POLICY, ...fixture }),
+    /must contain exactly/u,
+  );
+});
+
+test("protected verifier rejects extra artifact archives and extra archive entries", (context) => {
+  const fixture = downloadedEvidenceFixture(context);
+  mkdirSync(join(fixture.attestationInputs, "domain-core-attestation-untrusted-extra"));
+  assert.throws(
+    () => verifyDownloadedEvidence({ bundle: fixture.value, policy: POLICY, ...fixture }),
+    /archive set/u,
+  );
+  rmSync(join(fixture.attestationInputs, "domain-core-attestation-untrusted-extra"), {
+    recursive: true,
+  });
+
+  const first = fixture.value.artifacts[0];
+  const archive = join(
+    fixture.attestationInputs,
+    `domain-core-attestation-${first.id}-${RUN_ID}-${RUN_ATTEMPT}`,
+  );
+  writeFileSync(join(archive, "untrusted-extra"), "extra");
+  assert.throws(
+    () => verifyDownloadedEvidence({ bundle: fixture.value, policy: POLICY, ...fixture }),
+    /must contain exactly/u,
+  );
 });

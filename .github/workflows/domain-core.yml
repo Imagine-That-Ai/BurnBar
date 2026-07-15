@@ -265,6 +265,8 @@ jobs:
             scripts/ci/create-domain-core-deterministic-candidate-bundle.test.mjs \
             scripts/ci/domain-core-proof-fragment.test.mjs \
             scripts/ci/evaluate-domain-core-promotion.test.mjs \
+            scripts/ci/stage-domain-core-attestation-artifact.test.mjs \
+            scripts/ci/verify-domain-core-control-plane.test.mjs \
             scripts/ci/verify-domain-core-protected-attestation.test.mjs \
             scripts/ci/verify-domain-core-workflows.test.mjs \
             scripts/lib/domain-core-deterministic-candidate-bundle.test.mjs \
@@ -374,6 +376,21 @@ jobs:
           python3 scripts/ci/domain-core-union-gate.py
           --check-provenance csharp
 
+      - name: Observe the exact C# native identity
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/csharp-native-observed-identity.json
+        run: >-
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
+          --filter FullyQualifiedName=OpenBurnBar.App.Quota.Tests.DomainCoreQuotaBridgeTests.Loaded_native_identity_is_observed_for_attestation
+
+      - name: Freeze the observed C# artifact before broader candidate tests
+        run: >-
+          node scripts/ci/stage-domain-core-attestation-artifact.mjs
+          --artifact crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so
+          --identity-report "$RUNNER_TEMP/csharp-native-observed-identity.json"
+          --output "$RUNNER_TEMP/attestation-csharp-native"
+
       - name: Run C# quota contracts through the native library
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
@@ -401,6 +418,8 @@ jobs:
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --windows-dir windows/app/OpenBurnBar.App.Configuration/bin/Release
 
       - name: Emit Rust and C# proof fragment
+        env:
+          ATTESTATION_INPUT: ${{ runner.temp }}/attestation-csharp-native
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
           --expected-candidate-commit "$GITHUB_SHA"
@@ -410,9 +429,17 @@ jobs:
           --suite "rust-performance-smoke=$RUNNER_TEMP/rust-performance-smoke.log"
           --suite "csharp-quota-native=$RUNNER_TEMP/csharp-quota-native.log"
           --suite "csharp-cloudvault-native=$RUNNER_TEMP/csharp-cloudvault-native.log"
-          --artifact "csharp-native=crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so"
+          --artifact "csharp-native=$ATTESTATION_INPUT/artifact,$ATTESTATION_INPUT/observed-identity.json"
           --benchmark "complete-payload-ffi=$RUNNER_TEMP/complete-payload-ffi.json"
           --output "$RUNNER_TEMP/rust-and-csharp.json"
+
+      - name: Upload C# native attestation input
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-attestation-csharp-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/attestation-csharp-native
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Rust and C# proof fragment
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -431,9 +458,11 @@ jobs:
           - runner: windows-latest
             rid: win-x64
             suite: windows-native-x64
+            artifact: windows-native-x64-binary
           - runner: windows-11-arm
             rid: win-arm64
             suite: windows-native-arm64
+            artifact: windows-native-arm64-binary
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     defaults:
@@ -459,7 +488,23 @@ jobs:
         working-directory: crates/openburnbar-domain-core
         run: cargo build -p openburnbar-domain-ffi
 
-      - name: Load native core and run quota contracts
+      - name: Observe the exact Windows native identity
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/windows-native-${{ matrix.rid }}-observed-identity.json
+        run: |
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime ${{ matrix.rid }} `
+            --filter FullyQualifiedName=OpenBurnBar.App.Quota.Tests.DomainCoreQuotaBridgeTests.Loaded_native_identity_is_observed_for_attestation
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Freeze the observed Windows artifact before broader candidate tests
+        run: |
+          node scripts/ci/stage-domain-core-attestation-artifact.mjs `
+            --artifact "crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll" `
+            --identity-report "$env:RUNNER_TEMP/windows-native-${{ matrix.rid }}-observed-identity.json" `
+            --output "$env:RUNNER_TEMP/attestation-${{ matrix.artifact }}"
+
+      - name: Run Windows native quota contracts
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: |
@@ -473,7 +518,16 @@ jobs:
             --expected-candidate-commit "$env:GITHUB_SHA" `
             --job-id windows-native `
             --suite "${{ matrix.suite }}=$env:RUNNER_TEMP/windows-native-${{ matrix.rid }}.log" `
+            --artifact "${{ matrix.artifact }}=$env:RUNNER_TEMP/attestation-${{ matrix.artifact }}/artifact,$env:RUNNER_TEMP/attestation-${{ matrix.artifact }}/observed-identity.json" `
             --output "$env:RUNNER_TEMP/windows-native-${{ matrix.rid }}.json"
+
+      - name: Upload Windows native attestation input
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-attestation-${{ matrix.artifact }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/attestation-${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Windows native proof fragment
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -503,15 +557,31 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Build and load native domain core
+      - name: Build Linux ARM64 native domain core
+        run: cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
+
+      - name: Observe the exact Linux ARM64 native identity
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/linux-arm64-native-observed-identity.json
+        run: >-
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
+          --filter FullyQualifiedName=OpenBurnBar.App.Quota.Tests.DomainCoreQuotaBridgeTests.Loaded_native_identity_is_observed_for_attestation
+
+      - name: Freeze the observed Linux ARM64 artifact before broader candidate tests
+        run: >-
+          node scripts/ci/stage-domain-core-attestation-artifact.mjs
+          --artifact crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so
+          --identity-report "$RUNNER_TEMP/linux-arm64-native-observed-identity.json"
+          --output "$RUNNER_TEMP/attestation-linux-arm64-native-binary"
+
+      - name: Run Linux ARM64 native quota contracts
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: |
           set -o pipefail
-          {
-            cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
-            dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo
-          } 2>&1 | tee "$RUNNER_TEMP/linux-arm64-native.log"
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo \
+            2>&1 | tee "$RUNNER_TEMP/linux-arm64-native.log"
 
       - name: Emit Linux ARM64 native proof fragment
         run: >-
@@ -519,7 +589,16 @@ jobs:
           --expected-candidate-commit "$GITHUB_SHA"
           --job-id linux-arm64-native
           --suite "linux-arm64-native=$RUNNER_TEMP/linux-arm64-native.log"
+          --artifact "linux-arm64-native-binary=$RUNNER_TEMP/attestation-linux-arm64-native-binary/artifact,$RUNNER_TEMP/attestation-linux-arm64-native-binary/observed-identity.json"
           --output "$RUNNER_TEMP/linux-arm64-native.json"
+
+      - name: Upload Linux ARM64 native attestation input
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-attestation-linux-arm64-native-binary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/attestation-linux-arm64-native-binary
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Linux ARM64 native proof fragment
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -565,18 +644,36 @@ jobs:
           --check-provenance browser-wasm node-wasm
 
       - name: Run browser Wasm package against the canonical KAT
+        env:
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/browser-wasm-observed-identity.json
         run: |
           set -o pipefail
           node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs \
             apps/console/vendor/openburnbar-domain-core-wasm \
             2>&1 | tee "$RUNNER_TEMP/wasm-browser-kat.log"
 
+      - name: Freeze the observed browser Wasm before loading another package
+        run: >-
+          node scripts/ci/stage-domain-core-attestation-artifact.mjs
+          --artifact apps/console/vendor/openburnbar-domain-core-wasm/openburnbar_domain_core_bg.wasm
+          --identity-report "$RUNNER_TEMP/browser-wasm-observed-identity.json"
+          --output "$RUNNER_TEMP/attestation-browser-wasm"
+
       - name: Run Node Wasm package against the canonical KAT
+        env:
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/node-wasm-observed-identity.json
         run: |
           set -o pipefail
           node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs \
             functions/vendor/openburnbar/domain-core-wasm \
             2>&1 | tee "$RUNNER_TEMP/wasm-node-kat.log"
+
+      - name: Freeze the observed Node Wasm before broader candidate tests
+        run: >-
+          node scripts/ci/stage-domain-core-attestation-artifact.mjs
+          --artifact functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm
+          --identity-report "$RUNNER_TEMP/node-wasm-observed-identity.json"
+          --output "$RUNNER_TEMP/attestation-node-wasm"
 
       - name: Emit Wasm proof fragment
         run: >-
@@ -585,9 +682,25 @@ jobs:
           --job-id wasm
           --suite "wasm-browser-kat=$RUNNER_TEMP/wasm-browser-kat.log"
           --suite "wasm-node-kat=$RUNNER_TEMP/wasm-node-kat.log"
-          --artifact "browser-wasm=apps/console/vendor/openburnbar-domain-core-wasm/openburnbar_domain_core_bg.wasm"
-          --artifact "node-wasm=functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm"
+          --artifact "browser-wasm=$RUNNER_TEMP/attestation-browser-wasm/artifact,$RUNNER_TEMP/attestation-browser-wasm/observed-identity.json"
+          --artifact "node-wasm=$RUNNER_TEMP/attestation-node-wasm/artifact,$RUNNER_TEMP/attestation-node-wasm/observed-identity.json"
           --output "$RUNNER_TEMP/wasm.json"
+
+      - name: Upload Wasm attestation inputs
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-attestation-browser-wasm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/attestation-browser-wasm
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Node Wasm attestation input
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-attestation-node-wasm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/attestation-node-wasm
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Wasm proof fragment
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -749,14 +862,27 @@ jobs:
           emulator-options: >-
             -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
             -no-boot-anim
-          script: cd android && ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon
+          script: |
+            cd android
+            ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon \
+              -Pandroid.testInstrumentationRunnerArguments.candidateCommit="$GITHUB_SHA"
+            adb exec-out run-as com.openburnbar.domaincore.test \
+              cat files/domain-core-observed-identity.json \
+              > "$RUNNER_TEMP/android-observed-identity.json"
 
       - name: Record successful Android native load
+        run: |
+          test -s "$RUNNER_TEMP/android-observed-identity.json"
+          jq -e --arg commit "$GITHUB_SHA" '.candidateCommit == $commit' \
+            "$RUNNER_TEMP/android-observed-identity.json"
+          cp "$RUNNER_TEMP/android-observed-identity.json" "$RUNNER_TEMP/android-native-load.log"
+
+      - name: Freeze the observed Android AAR before broader candidate tests
         run: >-
-          printf 'candidate=%s abi=%s version=%s source=%s native-load=passed\n'
-          "$GITHUB_SHA" "$DOMAIN_CORE_EXPECTED_ABI_VERSION"
-          "$DOMAIN_CORE_EXPECTED_VERSION" "$DOMAIN_CORE_EXPECTED_SOURCE_SHA256"
-          > "$RUNNER_TEMP/android-native-load.log"
+          node scripts/ci/stage-domain-core-attestation-artifact.mjs
+          --artifact Vendor/openburnbar-domain-core.aar
+          --identity-report "$RUNNER_TEMP/android-observed-identity.json"
+          --output "$RUNNER_TEMP/attestation-kotlin-aar"
 
       - name: Run Android app domain-core consumer contracts
         working-directory: android
@@ -785,8 +911,16 @@ jobs:
           --job-id android
           --suite "android-native-load=$RUNNER_TEMP/android-native-load.log"
           --suite "android-consumer-contracts=$RUNNER_TEMP/android-consumer-contracts.log"
-          --artifact "kotlin-aar=Vendor/openburnbar-domain-core.aar"
+          --artifact "kotlin-aar=$RUNNER_TEMP/attestation-kotlin-aar/artifact,$RUNNER_TEMP/attestation-kotlin-aar/observed-identity.json"
           --output "$RUNNER_TEMP/android.json"
+
+      - name: Upload Android AAR attestation input
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-attestation-kotlin-aar-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/attestation-kotlin-aar
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Android proof fragment
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -835,7 +969,6 @@ jobs:
           --expected-candidate-commit "$GITHUB_SHA"
           --job-id apple
           --suite "swift-artifact-provenance=$RUNNER_TEMP/swift-artifact-provenance.log"
-          --artifact "swift-xcframework=Vendor/OpenBurnBarDomainCore.xcframework"
           --output "$RUNNER_TEMP/apple.json"
 
       - name: Upload Apple artifact proof fragment
@@ -884,11 +1017,20 @@ jobs:
           path: Vendor/OpenBurnBarDomainCore.xcframework
 
       - name: Load XCFramework and run the narrow native contract
+        env:
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/swift-observed-identity.json
         working-directory: OpenBurnBarCore
         run: |
           set -o pipefail
           swift run OpenBurnBarDomainCoreFFISmoke \
             2>&1 | tee "$RUNNER_TEMP/swift-native-load.log"
+
+      - name: Freeze the observed XCFramework before proof generation
+        run: >-
+          node scripts/ci/stage-domain-core-attestation-artifact.mjs
+          --artifact Vendor/OpenBurnBarDomainCore.xcframework
+          --identity-report "$RUNNER_TEMP/swift-observed-identity.json"
+          --output "$RUNNER_TEMP/attestation-swift-xcframework"
 
       - name: Emit Apple native-load proof fragment
         run: >-
@@ -896,7 +1038,16 @@ jobs:
           --expected-candidate-commit "$GITHUB_SHA"
           --job-id apple-native-smoke
           --suite "swift-native-load=$RUNNER_TEMP/swift-native-load.log"
+          --artifact "swift-xcframework=$RUNNER_TEMP/attestation-swift-xcframework/artifact,$RUNNER_TEMP/attestation-swift-xcframework/observed-identity.json"
           --output "$RUNNER_TEMP/apple-native-smoke.json"
+
+      - name: Upload Swift XCFramework attestation input
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-attestation-swift-xcframework-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/attestation-swift-xcframework
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Apple native-load proof fragment
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
