@@ -27,6 +27,7 @@ function jobs(profile = "public-production") {
     profile === "public-production-rollback" ? "success" : "skipped";
   const values = [
     ["authorize-domain-core-rollback", authorization],
+    ["prepare-functions-deploy", "success"],
     ["deploy-functions", "success"],
     ["functions-health-gate", "success"],
     ["dispatch-domain-core-functions-evidence", "success"],
