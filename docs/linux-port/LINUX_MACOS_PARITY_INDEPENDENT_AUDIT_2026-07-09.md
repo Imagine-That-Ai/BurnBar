@@ -87,6 +87,13 @@ percentage. The active remediation stack now contains these reviewable slices:
   sibling/path-traversal rejection tests still green. This run produced no
   candidate artifact and remains non-certifying; a fresh exact-head run is
   required.
+- **Release candidate `29434274277`:** after the parent-directory repair,
+  x86_64 still rejected the same autostart parent because DEB/RPM extraction
+  had not received the shared non-`/usr` allowlist; aarch64 again failed on the
+  independent Ubuntu package-mirror outage. The shared extractor now applies
+  the exact autostart exception to DEB, RPM, and Arch, and the real-tool
+  fixture asserts the `/etc/xdg/autostart` payload for DEB/RPM when the root
+  toolchain is available. This run produced no artifact or certifying receipt.
 
 - **Onboarding hardening:** `238ee56975` validates every daemon snapshot before
   renderer/cache mutation, preserves the last valid state on malformed or

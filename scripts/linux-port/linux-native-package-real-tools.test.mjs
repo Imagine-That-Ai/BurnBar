@@ -38,6 +38,10 @@ test('real deb and rpm metadata and payload extraction preserve release identity
     assert.equal(stat.uid, 0);
     assert.equal(stat.gid, 0);
     assert.equal(stat.mode & 0o777, 0o755);
+    assert.match(
+      fs.readFileSync(path.join(destination, 'etc/xdg/autostart/openburnbar.desktop'), 'utf8'),
+      /Exec=openburnbar-linux-desktop --background/u
+    );
   }
 });
 
@@ -63,6 +67,7 @@ function buildDeb(root, architecture) {
   const packageRoot = path.join(root, 'deb-package');
   fs.mkdirSync(path.join(packageRoot, 'DEBIAN'), { recursive: true });
   fs.mkdirSync(path.join(packageRoot, 'usr/bin'), { recursive: true });
+  fs.mkdirSync(path.join(packageRoot, 'etc/xdg/autostart'), { recursive: true });
   fs.writeFileSync(path.join(packageRoot, 'DEBIAN/control'), [
     'Package: open-burn-bar',
     'Version: 1.2.3',
@@ -74,6 +79,10 @@ function buildDeb(root, architecture) {
   const daemon = path.join(packageRoot, 'usr/bin/openburnbar-daemon');
   fs.writeFileSync(daemon, 'fixture\n', { mode: 0o755 });
   fs.chmodSync(daemon, 0o755);
+  fs.writeFileSync(
+    path.join(packageRoot, 'etc/xdg/autostart/openburnbar.desktop'),
+    '[Desktop Entry]\nType=Application\nExec=openburnbar-linux-desktop --background\n'
+  );
   const artifact = path.join(root, 'open-burn-bar.deb');
   run('dpkg-deb', ['--build', packageRoot, artifact]);
   return artifact;
@@ -98,8 +107,12 @@ function buildRpm(root, architecture) {
     'mkdir -p %{buildroot}/usr/bin',
     'echo fixture > %{buildroot}/usr/bin/openburnbar-daemon',
     'chmod 755 %{buildroot}/usr/bin/openburnbar-daemon',
+    'mkdir -p %{buildroot}/etc/xdg/autostart',
+    "printf '[Desktop Entry]\\nType=Application\\nExec=openburnbar-linux-desktop --background\\n' > %{buildroot}/etc/xdg/autostart/openburnbar.desktop",
+    'chmod 644 %{buildroot}/etc/xdg/autostart/openburnbar.desktop',
     '%files',
     '/usr/bin/openburnbar-daemon',
+    '/etc/xdg/autostart/openburnbar.desktop',
     ''
   ].join('\n'));
   run('rpmbuild', ['--define', `_topdir ${top}`, '-bb', spec]);

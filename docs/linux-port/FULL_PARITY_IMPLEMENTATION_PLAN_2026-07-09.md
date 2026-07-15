@@ -172,6 +172,14 @@ sibling/path-traversal rejection coverage; the focused release suite remains
 **36/36** with one root-toolchain skip. No artifact or receipt from this run is
 certifying; rerun from the new exact head.
 
+Candidate `29434274277` confirmed one remaining source boundary: DEB/RPM
+extraction still passed an empty non-`/usr` allowlist even though those bundles
+now carry the canonical XDG autostart leaf. The shared native extractor now
+uses the exact autostart allowlist for all three formats, and the root-toolchain
+DEB/RPM fixture checks the extracted desktop entry. The same run's aarch64
+failure was again an independent `ports.ubuntu.com` outage; no artifact or
+receipt is certifying and another exact-head candidate is required.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:

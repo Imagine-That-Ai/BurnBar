@@ -207,7 +207,7 @@ export function extractNativePackage(format, artifact, destination, { env = proc
   extractPreflightedArchiveBytes(archive, destination, {
     env,
     allowedRootMetadata: format === 'arch' ? ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST : [],
-    allowedPaths: format === 'arch' ? NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST : [],
+    allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST,
     extractUsrOnly: format === 'arch'
   });
 }
