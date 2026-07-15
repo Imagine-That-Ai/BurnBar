@@ -8,6 +8,10 @@ const core = readFileSync(
   new URL("../../.github/workflows/domain-core.yml", import.meta.url),
   "utf8",
 );
+const androidNativeLoad = readFileSync(
+  new URL("./run-domain-core-android-native-load.sh", import.meta.url),
+  "utf8",
+);
 const signer = readFileSync(
   new URL(
     "../../.github/workflows/domain-core-promotion-proof.yml",
@@ -75,11 +79,15 @@ test("native consumer jobs keep their measured execution margin and emulator she
   );
   assert.match(
     core,
-    /^            cd android && \.\/gradlew :openburnbar-domain-core:connectedDebugAndroidTest .*candidateCommit="\$GITHUB_SHA"$/mu,
+    /^          script: bash scripts\/ci\/run-domain-core-android-native-load\.sh android\/openburnbar-domain-core\/build\/outputs\/apk\/androidTest\/debug\/openburnbar-domain-core-debug-androidTest\.apk "\$GITHUB_SHA" "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
   );
   assert.match(
-    core,
-    /^            adb exec-out run-as com\.openburnbar\.domaincore\.test cat files\/domain-core-observed-identity\.json > "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
+    androidNativeLoad,
+    /^if ! "\$adb_bin" exec-out run-as "\$instrumentation_package" \\$/mu,
+  );
+  assert.match(
+    androidNativeLoad,
+    /^identity_path="\$data_path\/files\/domain-core-observed-identity\.json"$/mu,
   );
 });
 
