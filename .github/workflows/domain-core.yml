@@ -634,7 +634,9 @@ jobs:
 
   swift-consumer-contracts:
     runs-on: macos-26
-    timeout-minutes: 60
+    # Cold macos-26 runners can spend nearly an hour building the domain-core
+    # XCFramework and app-test dependency graph before the focused spool test.
+    timeout-minutes: 90
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1

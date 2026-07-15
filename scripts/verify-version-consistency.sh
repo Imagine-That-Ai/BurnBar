@@ -19,6 +19,19 @@ elif [[ -n "$requested_version" ]]; then
   echo "PASS: requested release version"
 fi
 
+# Windows has an independent release tag/version line. A Windows release must
+# match the Win32 identity exactly without falsely advancing the macOS, mobile,
+# daemon, extension, or public legal-release metadata.
+requested_windows_version="${OPENBURNBAR_EXPECTED_WINDOWS_VERSION:-}"
+if [[ -n "$requested_windows_version" ]]; then
+  if ! [[ "$requested_windows_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "FAIL: requested Windows release version '$requested_windows_version' is not X.Y.Z" >&2
+    fail=1
+  else
+    echo "Requested Windows release version: $requested_windows_version"
+  fi
+fi
+
 check() {
   local file="$1"
   local pattern="$2"
@@ -88,12 +101,14 @@ check "$repo_root/SECURITY.md" '.*repo metadata \(`([^`]+)`.*' "SECURITY.md supp
 # ── Windows direct-download channel (deferred until the Windows release ships) ──
 # The WinUI app identity version lives in windows/app/OpenBurnBar.App/app.manifest
 # (assemblyIdentity version="A.B.C.D"). It is compared on its first three components against
-# the macOS marketing version. Like the Homebrew cask, it is DEFERRED (pass with a notice)
+# the requested Windows release version when supplied, otherwise the macOS marketing version.
+# Like the Homebrew cask, it is DEFERRED (pass with a notice)
 # until the Windows channel actually ships — the Windows app needs the W0 Authenticode cert +
 # a Windows build host first — and becomes REQUIRED at tag time or when
 # OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION=1.
 windows_manifest="$repo_root/windows/app/OpenBurnBar.App/app.manifest"
 require_current_windows="${OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION:-0}"
+windows_expected_version="${requested_windows_version:-$expected_version}"
 if [[ "${GITHUB_REF_TYPE:-}" == "tag" || "${GITHUB_REF:-}" =~ refs/tags/ ]]; then
   require_current_windows=1
 fi
@@ -108,14 +123,14 @@ else
   if [[ -z "$windows_version_core" ]]; then
     echo "FAIL: Windows app manifest — assemblyIdentity version not found in $windows_manifest" >&2
     fail=1
-  elif [[ "$windows_version_core" == "$expected_version" ]]; then
+  elif [[ "$windows_version_core" == "$windows_expected_version" ]]; then
     echo "PASS: Windows app manifest"
   elif [[ "$require_current_windows" == "1" ]]; then
-    echo "FAIL: Windows app manifest — expected '$expected_version', found '$windows_version_core' in $windows_manifest" >&2
-    echo "      Bump the assemblyIdentity version to ${expected_version}.0 when cutting the Windows release." >&2
+    echo "FAIL: Windows app manifest — expected '$windows_expected_version', found '$windows_version_core' in $windows_manifest" >&2
+    echo "      Bump the assemblyIdentity version to ${windows_expected_version}.0 when cutting the Windows release." >&2
     fail=1
   else
-    echo "PASS: Windows app manifest deferred (currently '$windows_version_core'; bump to v$expected_version when the Windows channel ships)"
+    echo "PASS: Windows app manifest deferred (currently '$windows_version_core'; align with v$windows_expected_version when cutting that Windows release)"
   fi
 fi
 

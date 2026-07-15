@@ -211,7 +211,7 @@ jobs:
 
       - name: Enforce version consistency at release time
         env:
-          OPENBURNBAR_EXPECTED_VERSION: ${{ needs.resolve-release.outputs.version }}
+          OPENBURNBAR_EXPECTED_WINDOWS_VERSION: ${{ needs.resolve-release.outputs.version }}
           OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_unsigned == 'true' && '0' || '1' }}
         run: bash scripts/verify-version-consistency.sh
 
@@ -568,6 +568,26 @@ jobs:
             -ReceiptPath $receiptPath `
             -HoldSeconds 20
 
+      - name: Write physical-certification artifact manifests
+        if: steps.config.outputs.codesign == 'true'
+        env:
+          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+          EXPECTED_PUBLISHER: "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+        run: |
+          set -euo pipefail
+          workflow_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          for arch in x64 ARM64; do
+            file_arch="${arch,,}"
+            node scripts/windows-port/write-signed-artifact-manifest.mjs \
+              --artifact "artifacts/OpenBurnBar-${VERSION}-${file_arch}.msix" \
+              --architecture "$arch" \
+              --source-commit "$RELEASE_COMMIT" \
+              --workflow-run-id "$GITHUB_RUN_ID" \
+              --workflow-run-url "$workflow_url" \
+              --signature-identity "$EXPECTED_PUBLISHER" \
+              --output "artifacts/signed-artifact-${file_arch}.json"
+          done
+
       - name: Finalize checksums after signing
         run: |
           set -euo pipefail
@@ -577,7 +597,10 @@ jobs:
             "OpenBurnBar-${VERSION}-win-x64.zip" \
             "OpenBurnBar-${VERSION}-win-arm64.zip" \
             "OpenBurnBar-${VERSION}-x64.msix" \
-            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            "OpenBurnBar-${VERSION}-arm64.msix" \
+            "signed-artifact-x64.json" \
+            "signed-artifact-arm64.json"; do
+            [[ -f "artifacts/$file" ]] || continue
             ( cd artifacts && sha256sum "$file" >> "$checksum_file" )
           done
           echo "Checksums:"
