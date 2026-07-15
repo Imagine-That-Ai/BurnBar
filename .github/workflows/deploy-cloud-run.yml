@@ -18,6 +18,10 @@ on:
         required: false
         type: boolean
         default: false
+      candidate_commit:
+        description: "Full SHA of the release candidate on origin/main (dry_run only)"
+        required: false
+        type: string
 
 concurrency:
   group: deploy-cloud-run
@@ -53,9 +57,15 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+
+          IS_DRY_RUN="false"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]]; then
+            IS_DRY_RUN="true"
+          fi
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_TAG" ]]; then
             TAG="$INPUT_TAG"
@@ -68,30 +78,73 @@ jobs:
             exit 1
           fi
 
-          tag_ref="refs/tags/${TAG}"
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then
-            echo "::error::Manual Cloud Run deploy for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}."
-            echo "::error::Select the release tag as the workflow dispatch ref so production credentials stay tag-bound."
-            exit 1
-          fi
+          # ── Two-phase release safety ─────────────────────────────────────
+          # Phase 1 (dry_run): validate a release candidate BEFORE the v* tag
+          # exists. The dispatch ref is a non-tag branch/SHA, and the exact
+          # candidate_commit SHA is checked against current origin/main so the
+          # same commit that passes the dry-run is the one that gets tagged.
+          # Phase 2 (tag push or manual non-dry-run dispatch): the v* tag is
+          # the immutable real-deploy trigger; manual dispatch must run from
+          # that tag ref. Credentials stay tag-bound.
+          if [[ "$IS_DRY_RUN" == "true" ]]; then
+            if [[ -z "$INPUT_CANDIDATE_COMMIT" ]]; then
+              echo "::error::Dry-run dispatch requires candidate_commit (full SHA on origin/main)."
+              exit 1
+            fi
+            if ! [[ "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::candidate_commit must be a full 40-char hex SHA, got: $INPUT_CANDIDATE_COMMIT"
+              exit 1
+            fi
+            tag_ref="refs/tags/${TAG}"
+            if [[ "$GITHUB_REF" == "$tag_ref" ]]; then
+              echo "::error::Dry-run must not run from a tag ref ($tag_ref). Dispatch from a non-tag branch or SHA ref."
+              exit 1
+            fi
 
-          git fetch --force --tags origin "+${tag_ref}:${tag_ref}"
-          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+            git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
 
-          commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"
-          if [[ -z "$commit" ]]; then
-            echo "::error::Unable to resolve ${tag_ref} to a commit."
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "$commit" origin/main; then
-            echo "::error::Release tag ${TAG} points at ${commit}, which is not reachable from origin/main."
-            exit 1
+            if ! git cat-file -e "$INPUT_CANDIDATE_COMMIT^{commit}" 2>/dev/null; then
+              git fetch --force origin "$INPUT_CANDIDATE_COMMIT"
+            fi
+            if ! git cat-file -e "$INPUT_CANDIDATE_COMMIT^{commit}" 2>/dev/null; then
+              echo "::error::candidate_commit $INPUT_CANDIDATE_COMMIT does not resolve to a commit."
+              exit 1
+            fi
+
+            main_sha="$(git rev-parse origin/main)"
+            if [[ "$INPUT_CANDIDATE_COMMIT" != "$main_sha" ]]; then
+              echo "::error::candidate_commit $INPUT_CANDIDATE_COMMIT != origin/main $main_sha."
+              echo "::error::Dry-run must prove the exact commit that will be tagged is current main."
+              exit 1
+            fi
+
+            commit="$INPUT_CANDIDATE_COMMIT"
+          else
+            tag_ref="refs/tags/${TAG}"
+            if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then
+              echo "::error::Manual Cloud Run deploy for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}."
+              echo "::error::Select the release tag as the workflow dispatch ref so production credentials stay tag-bound."
+              exit 1
+            fi
+
+            git fetch --force --tags origin "+${tag_ref}:${tag_ref}"
+            git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+
+            commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"
+            if [[ -z "$commit" ]]; then
+              echo "::error::Unable to resolve ${tag_ref} to a commit."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$commit" origin/main; then
+              echo "::error::Release tag ${TAG} points at ${commit}, which is not reachable from origin/main."
+              exit 1
+            fi
           fi
 
           {
             echo "tag=$TAG"
             echo "commit=$commit"
-            echo "dry_run=$([[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]] && echo true || echo false)"
+            echo "dry_run=$IS_DRY_RUN"
           } >> "$GITHUB_OUTPUT"
 
   build-hosted-mcp-artifact:
