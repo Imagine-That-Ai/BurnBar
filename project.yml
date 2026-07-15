@@ -24,6 +24,10 @@ settings:
     DOMAIN_CORE_DISTRIBUTION: development
     DOMAIN_CORE_ROLLOUT_CHANNEL: ""
     DOMAIN_CORE_EVIDENCE_ENABLED: NO
+    DOMAIN_CORE_CANDIDATE_COMMIT: ""
+    DOMAIN_CORE_EXPECTED_VERSION: ""
+    DOMAIN_CORE_EXPECTED_ABI_VERSION: ""
+    DOMAIN_CORE_EXPECTED_SOURCE_SHA256: ""
     DOMAIN_CORE_QUOTA_MODE: legacy
     DOMAIN_CORE_CLOUDVAULT_MODE: legacy
     DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE: legacy
@@ -147,6 +151,10 @@ targets:
         OpenBurnBarDomainCoreDistribution: "$(DOMAIN_CORE_DISTRIBUTION)"
         OpenBurnBarDomainCoreRolloutChannel: "$(DOMAIN_CORE_ROLLOUT_CHANNEL)"
         OpenBurnBarDomainCoreEvidenceEnabled: "$(DOMAIN_CORE_EVIDENCE_ENABLED)"
+        OpenBurnBarDomainCoreCandidateCommit: "$(DOMAIN_CORE_CANDIDATE_COMMIT)"
+        OpenBurnBarDomainCoreExpectedVersion: "$(DOMAIN_CORE_EXPECTED_VERSION)"
+        OpenBurnBarDomainCoreExpectedABIVersion: "$(DOMAIN_CORE_EXPECTED_ABI_VERSION)"
+        OpenBurnBarDomainCoreExpectedSourceSHA256: "$(DOMAIN_CORE_EXPECTED_SOURCE_SHA256)"
         OpenBurnBarDomainCoreModeQuota: "$(DOMAIN_CORE_QUOTA_MODE)"
         OpenBurnBarDomainCoreModeCloudVault: "$(DOMAIN_CORE_CLOUDVAULT_MODE)"
         OpenBurnBarDomainCoreModeCloudVaultRewrap: "$(DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE)"
@@ -1033,6 +1041,10 @@ targets:
         OpenBurnBarDomainCoreDistribution: "$(DOMAIN_CORE_DISTRIBUTION)"
         OpenBurnBarDomainCoreRolloutChannel: "$(DOMAIN_CORE_ROLLOUT_CHANNEL)"
         OpenBurnBarDomainCoreEvidenceEnabled: "$(DOMAIN_CORE_EVIDENCE_ENABLED)"
+        OpenBurnBarDomainCoreCandidateCommit: "$(DOMAIN_CORE_CANDIDATE_COMMIT)"
+        OpenBurnBarDomainCoreExpectedVersion: "$(DOMAIN_CORE_EXPECTED_VERSION)"
+        OpenBurnBarDomainCoreExpectedABIVersion: "$(DOMAIN_CORE_EXPECTED_ABI_VERSION)"
+        OpenBurnBarDomainCoreExpectedSourceSHA256: "$(DOMAIN_CORE_EXPECTED_SOURCE_SHA256)"
         OpenBurnBarDomainCoreModeQuota: "$(DOMAIN_CORE_QUOTA_MODE)"
         OpenBurnBarDomainCoreModeCloudVault: "$(DOMAIN_CORE_CLOUDVAULT_MODE)"
         OpenBurnBarDomainCoreModeCloudVaultRewrap: "$(DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE)"

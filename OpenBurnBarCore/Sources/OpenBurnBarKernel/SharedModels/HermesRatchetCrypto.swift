@@ -338,11 +338,7 @@ public enum HermesRatchetCrypto {
         do {
             let aad = try envelopeAAD(header: envelope.header, associatedData: associatedData)
             return try domainCoreBytes(operation: "ratchet_open") {
-                try PlatformCrypto.openAESGCM(
-                    combined: combined,
-                    keyData: messageKey,
-                    authenticating: aad
-                )
+                try HermesRatchetLegacyCrypto.open(combined: combined, key: messageKey, aad: aad)
             } rust: {
                 #if canImport(OpenBurnBarDomainCoreFFI)
                 try OpenBurnBarDomainCoreFFI.hermesOpenCombined(
@@ -376,12 +372,7 @@ public enum HermesRatchetCrypto {
     private static func rootKDF(rootKey: Data, dhOutput: Data) throws -> (rootKey: Data, chainKey: Data) {
         let info = Data("OpenBurnBar-HermesRatchet-v1-root".utf8)
         let data = try domainCoreBytes(operation: "ratchet_root_kdf") {
-            try PlatformCrypto.deriveHKDFSHA256KeyData(
-                inputKeyMaterial: dhOutput,
-                salt: rootKey,
-                info: info,
-                outputByteCount: 64
-            )
+            try HermesRatchetLegacyCrypto.rootKDFBytes(rootKey: rootKey, dhOutput: dhOutput)
         } rust: {
             #if canImport(OpenBurnBarDomainCoreFFI)
             try OpenBurnBarDomainCoreFFI.hermesHkdfSha256(
@@ -401,7 +392,7 @@ public enum HermesRatchetCrypto {
         let chainLabel = Data("OpenBurnBar-HermesRatchet-v1-chain".utf8)
         let messageLabel = Data("OpenBurnBar-HermesRatchet-v1-message".utf8)
         let next = try domainCoreBytes(operation: "ratchet_chain_kdf") {
-            try PlatformCrypto.hmacSHA256(chainLabel, keyData: chainKey)
+            try HermesRatchetLegacyCrypto.nextChainKey(chainKey)
         } rust: {
             #if canImport(OpenBurnBarDomainCoreFFI)
             try OpenBurnBarDomainCoreFFI.hermesHmacSha256(key: chainKey, data: chainLabel)
@@ -410,7 +401,7 @@ public enum HermesRatchetCrypto {
             #endif
         }
         let message = try domainCoreBytes(operation: "ratchet_message_kdf") {
-            try PlatformCrypto.hmacSHA256(messageLabel, keyData: chainKey)
+            try HermesRatchetLegacyCrypto.messageKey(chainKey)
         } rust: {
             #if canImport(OpenBurnBarDomainCoreFFI)
             try OpenBurnBarDomainCoreFFI.hermesHmacSha256(key: chainKey, data: messageLabel)
@@ -422,20 +413,7 @@ public enum HermesRatchetCrypto {
     }
 
     private static func envelopeAAD(header: HermesRatchetHeader, associatedData: Data) throws -> Data {
-        let legacy = {
-            var data = Data("OpenBurnBar-HermesRatchet-v1-AAD".utf8)
-            appendPart(&data, associatedData)
-            appendPart(&data, Data(header.algorithm.utf8))
-            appendPart(&data, Data(header.sessionID.utf8))
-            appendPart(&data, Data(header.senderDeviceID.utf8))
-            appendPart(&data, Data(header.receiverDeviceID.utf8))
-            appendPart(&data, Data(header.ratchetPublicKeyBase64.utf8))
-            appendInt(&data, header.version)
-            appendInt(&data, header.previousChainLength)
-            appendInt(&data, header.messageNumber)
-            appendInt(&data, header.epoch)
-            return data
-        }
+        let legacy = { HermesRatchetLegacyCrypto.envelopeAAD(header: header, associatedData: associatedData) }
         return try domainCoreBytes(operation: "ratchet_aad", legacy: legacy) {
             #if canImport(OpenBurnBarDomainCoreFFI)
             try OpenBurnBarDomainCoreFFI.hermesRatchetEnvelopeAad(
@@ -465,7 +443,7 @@ public enum HermesRatchetCrypto {
             nativeStatus: HermesDomainCoreAdapter.nativeStatus,
             coreVersion: HermesDomainCoreAdapter.currentCoreVersion,
             legacy: {
-                try PlatformCrypto.sealAESGCM(plaintext: plaintext, keyData: key, authenticating: aad)
+                try HermesRatchetLegacyCrypto.seal(plaintext: plaintext, key: key, aad: aad)
             },
             rustAuthority: {
                 #if canImport(OpenBurnBarDomainCoreFFI)
@@ -597,13 +575,4 @@ public enum HermesRatchetCrypto {
         }
     }
 
-    private static func appendPart(_ data: inout Data, _ part: Data) {
-        appendInt(&data, part.count)
-        data.append(part)
-    }
-
-    private static func appendInt(_ data: inout Data, _ value: Int) {
-        var be = UInt64(value).bigEndian
-        withUnsafeBytes(of: &be) { data.append(contentsOf: $0) }
-    }
 }

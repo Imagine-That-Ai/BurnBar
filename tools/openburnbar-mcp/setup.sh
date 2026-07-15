@@ -11,6 +11,15 @@ python3 -m venv .venv
 ./.venv/bin/python -m pip install -U pip
 ./.venv/bin/python -m pip install -r requirements.txt
 
+# The Python binding is source-controlled; the native library and receipt are
+# rebuilt for this exact host so Rust-mode identity checks cannot load a stale
+# or cross-platform artifact.
+command -v cargo >/dev/null 2>&1 || {
+  echo "ERROR: cargo is required to build the local MCP shared domain core." >&2
+  exit 1
+}
+"$REPO_ROOT/scripts/build-domain-core-python.sh"
+
 # --- Build/verify Project Code Memory static parser helper ---
 PARSER_MANIFEST="$REPO_ROOT/crates/project-code-static-parser/Cargo.toml"
 PARSER_BIN="$REPO_ROOT/crates/project-code-static-parser/target/release/project-code-static-parser"

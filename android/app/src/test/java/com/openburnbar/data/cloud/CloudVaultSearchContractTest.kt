@@ -32,8 +32,8 @@ class CloudVaultSearchContractTest {
             val testCase = element.jsonObject
             val id = testCase.string("id")
             val text = testCase.string("text")
-            assertEquals(id, testCase.strings("normalizedTokens"), CloudVaultCryptoSearch.normalizedTokens(text))
-            assertEquals(id, testCase.strings("exactPhraseTokens"), CloudVaultCryptoSearch.exactPhraseTokensForContract(text))
+            assertEquals(id, testCase.strings("normalizedTokens"), CloudVaultLegacySearch.normalizedTokens(text))
+            assertEquals(id, testCase.strings("exactPhraseTokens"), CloudVaultLegacySearch.exactPhraseTokensForContract(text))
         }
 
         for (element in fixture.array("semanticFeatureCases")) {
@@ -41,7 +41,7 @@ class CloudVaultSearchContractTest {
             assertEquals(
                 testCase.string("id"),
                 testCase.strings("features"),
-                CloudVaultCryptoSearch.semanticFeatureNamesForContract(testCase.string("text")),
+                CloudVaultLegacySearch.semanticFeatureNamesForContract(testCase.string("text")),
             )
         }
     }
@@ -108,10 +108,10 @@ class CloudVaultSearchContractTest {
 
     private fun legacyResult(request: CloudVaultSearchRequest): CloudVaultSearchResult {
         val hashes = when (request.operation) {
-            FfiSearchOperation.TOKEN -> CloudVaultCryptoSearch.tokenHashes(request.text, request.vaultKey, request.limit)
-            FfiSearchOperation.INDEX -> CloudVaultCryptoSearch.searchIndexTokenHashes(request.text, request.vaultKey, request.limit)
-            FfiSearchOperation.QUERY -> CloudVaultCryptoSearch.searchQueryTokenHashes(request.text, request.vaultKey, request.limit)
-            FfiSearchOperation.SEMANTIC -> CloudVaultCryptoSearch.semanticHashes(request.text, request.vaultKey, request.limit)
+            FfiSearchOperation.TOKEN -> CloudVaultLegacySearch.tokenHashes(request.text, request.vaultKey, request.limit)
+            FfiSearchOperation.INDEX -> CloudVaultLegacySearch.searchIndexTokenHashes(request.text, request.vaultKey, request.limit)
+            FfiSearchOperation.QUERY -> CloudVaultLegacySearch.searchQueryTokenHashes(request.text, request.vaultKey, request.limit)
+            FfiSearchOperation.SEMANTIC -> CloudVaultLegacySearch.semanticHashes(request.text, request.vaultKey, request.limit)
         }
         return CloudVaultSearchResult(request.operation, hashes)
     }

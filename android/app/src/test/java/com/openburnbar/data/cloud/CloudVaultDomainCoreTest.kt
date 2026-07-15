@@ -93,7 +93,28 @@ class CloudVaultDomainCoreTest {
             assertThrows(IllegalArgumentException::class.java) { CloudVaultCrypto.sessionBodyHash(byteArrayOf(1), key) }
             assertThrows(IllegalArgumentException::class.java) { CloudVaultCrypto.sessionChunkHash("x", key) }
             assertThrows(IllegalArgumentException::class.java) { CloudVaultCrypto.projectMemoryContentHash(byteArrayOf(1), key) }
+            assertThrows(IllegalArgumentException::class.java) {
+                CloudVaultDomainCore.subscriptionDocId("agent://burnbar/scout", "updates", key) { "legacy" }
+            }
         }
+    }
+
+    @Test
+    fun subscriptionDocumentIDDispatchKeepsLegacyPathAddressable() {
+        CloudVaultDomainCore.modeOverride = CloudVaultDomainCoreMode.LEGACY
+        var legacyCalls = 0
+
+        val result = CloudVaultDomainCore.subscriptionDocId(
+            "agent://burnbar/research-scout",
+            "agent-updates",
+            ByteArray(32) { 0x5a.toByte() },
+        ) {
+            legacyCalls += 1
+            "sub_legacy"
+        }
+
+        assertEquals("sub_legacy", result)
+        assertEquals(1, legacyCalls)
     }
 
     @Test

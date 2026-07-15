@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "authority": "diagnostic-only",
+  "promotionAuthority": false,
+  "description": "Shadow traffic is optional diagnostic telemetry. It cannot authorize or block promotion.",
+  "domains": {
+    "quota": {
+      "requiredCoverage": [
+        { "slice": "claude", "consumer": "apple" },
+        { "slice": "claude", "consumer": "windows" },
+        { "slice": "codex", "consumer": "apple" },
+        { "slice": "codex", "consumer": "windows" },
+        { "slice": "cursor", "consumer": "apple" },
+        { "slice": "cursor", "consumer": "windows" },
+        { "slice": "anthropic", "consumer": "apple" },
+        { "slice": "anthropic", "consumer": "windows" }
+      ],
+      "allowedChannels": ["internal", "beta"],
+      "mismatchAlertCategories": [
+        "native_unavailable",
+        "native_error",
+        "loaded_identity_mismatch",
+        "result_mismatch",
+        "invalid_result"
+      ],
+      "performanceAlertBasisPoints": 500
+    },
+    "cloudvault": {
+      "requiredCoverage": [
+        { "slice": "foundation", "consumer": "apple" },
+        { "slice": "foundation", "consumer": "android" },
+        { "slice": "foundation", "consumer": "windows" },
+        { "slice": "foundation", "consumer": "console" },
+        { "slice": "foundation", "consumer": "remote-mcp" },
+        { "slice": "foundation", "consumer": "local-mcp" },
+        { "slice": "aes", "consumer": "apple" },
+        { "slice": "aes", "consumer": "android" },
+        { "slice": "aes", "consumer": "windows" },
+        { "slice": "aes", "consumer": "console" },
+        { "slice": "aes", "consumer": "remote-mcp" },
+        { "slice": "aes", "consumer": "local-mcp" },
+        { "slice": "recovery", "consumer": "apple" },
+        { "slice": "recovery", "consumer": "android" },
+        { "slice": "recovery", "consumer": "windows" },
+        { "slice": "escrow", "consumer": "apple" },
+        { "slice": "escrow", "consumer": "android" },
+        { "slice": "escrow", "consumer": "windows" },
+        { "slice": "escrow", "consumer": "console" },
+        { "slice": "document-rewrap", "consumer": "apple" },
+        { "slice": "document-rewrap", "consumer": "android" },
+        { "slice": "search", "consumer": "apple" },
+        { "slice": "search", "consumer": "android" },
+        { "slice": "search", "consumer": "remote-mcp" },
+        { "slice": "opaque-identifiers", "consumer": "remote-mcp" },
+        { "slice": "search", "consumer": "local-mcp" },
+        { "slice": "opaque-identifiers", "consumer": "local-mcp" },
+        { "slice": "pensieve-vectors", "consumer": "apple" },
+        { "slice": "pensieve-vectors", "consumer": "windows" },
+        { "slice": "pensieve-vectors", "consumer": "console" },
+        { "slice": "pensieve-vectors", "consumer": "remote-mcp" }
+      ],
+      "allowedChannels": ["internal", "beta"],
+      "mismatchAlertCategories": [
+        "native_unavailable",
+        "native_error",
+        "loaded_identity_mismatch",
+        "result_mismatch",
+        "invalid_result"
+      ],
+      "performanceAlertBasisPoints": 500
+    },
+    "hermes": {
+      "requiredCoverage": [
+        { "slice": "aad", "consumer": "apple" },
+        { "slice": "aad", "consumer": "android" },
+        { "slice": "payload-keywrap", "consumer": "apple" },
+        { "slice": "payload-keywrap", "consumer": "android" },
+        { "slice": "hpke-info", "consumer": "apple" },
+        { "slice": "hpke-info", "consumer": "android" },
+        { "slice": "ratchet", "consumer": "apple" },
+        { "slice": "ratchet", "consumer": "android" },
+        { "slice": "ratchet", "consumer": "hermes-python" }
+      ],
+      "allowedChannels": ["internal", "beta"],
+      "mismatchAlertCategories": [
+        "native_unavailable",
+        "native_error",
+        "loaded_identity_mismatch",
+        "result_mismatch",
+        "invalid_result"
+      ],
+      "performanceAlertBasisPoints": 500
+    },
+    "pricing": {
+      "requiredCoverage": [
+        { "slice": "token-cost", "consumer": "apple" },
+        { "slice": "token-cost", "consumer": "functions" },
+        { "slice": "legacy-kimi", "consumer": "functions" }
+      ],
+      "allowedChannels": ["internal", "beta"],
+      "mismatchAlertCategories": [
+        "native_unavailable",
+        "native_error",
+        "loaded_identity_mismatch",
+        "result_mismatch",
+        "invalid_result"
+      ],
+      "performanceAlertBasisPoints": 500
+    }
+  }
+}

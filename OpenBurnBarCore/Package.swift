@@ -983,7 +983,10 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarVectorKit",
-            dependencies: ["OpenBurnBarKernel"],
+            dependencies: [
+                "OpenBurnBarKernel",
+                "OpenBurnBarDomainCoreRuntime"
+            ] + domainCoreDependencies,
             exclude: openBurnBarVectorKitExcludes
         ),
         .target(

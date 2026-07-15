@@ -15,6 +15,12 @@ const HMAC_INFO_PREFIX: &str = "OpenBurnBar-CloudVault-HMAC-v1";
 const RECOVERY_SALT: &[u8] = b"OpenBurnBar-Recovery-Salt-v1";
 const RECOVERY_WRAP_INFO: &[u8] = b"OpenBurnBar-Recovery-Wrap-v1";
 const ESCROW_HKDF_INFO: &[u8] = b"OpenBurnBar-Escrow-v1";
+const PROJECT_MEMORY_DOC_ID_SALT: &[u8] = b"OpenBurnBar-DocID-Salt-v1";
+const PROJECT_MEMORY_DOC_ID_INFO: &[u8] = b"OpenBurnBar-ProjectMemory-DocID-v1";
+const PENSIEVE_DEDUP_CONTENT_INFO: &[u8] = b"pensieve-dedup:content";
+const PENSIEVE_DEDUP_PROVENANCE_INFO: &[u8] = b"pensieve-dedup:provenance";
+const PENSIEVE_DEDUP_SLUG_INFO: &[u8] = b"pensieve-dedup:slug";
+const SUBSCRIPTION_DOC_ID_INFO: &[u8] = b"subscription-topic";
 pub const AES_GCM_NONCE_LENGTH: usize = 12;
 pub const AES_GCM_TAG_LENGTH: usize = 16;
 pub const P256_X963_PUBLIC_KEY_LENGTH: usize = 65;
@@ -237,6 +243,52 @@ pub fn expected_session_body_hash(
         0 | 1 => sha256_hex(data),
         _ => Err(CloudVaultError::UnsupportedHashVersion),
     }
+}
+
+pub fn project_memory_doc_id(slug: &str, key: &[u8]) -> Result<String, CloudVaultError> {
+    let digest = opaque_identifier_hmac(
+        slug.as_bytes(),
+        key,
+        PROJECT_MEMORY_DOC_ID_SALT,
+        PROJECT_MEMORY_DOC_ID_INFO,
+    )?;
+    Ok(format!("pm_{}", hex_lower(&digest[..16])))
+}
+
+pub fn pensieve_dedup_hash(plaintext: &str, key: &[u8]) -> Result<String, CloudVaultError> {
+    opaque_identifier_hmac(plaintext.as_bytes(), key, b"", PENSIEVE_DEDUP_CONTENT_INFO)
+        .map(|digest| hex_lower(&digest))
+}
+
+pub fn pensieve_slug_hmac(slug: &str, key: &[u8]) -> Result<String, CloudVaultError> {
+    opaque_identifier_hmac(slug.as_bytes(), key, b"", PENSIEVE_DEDUP_SLUG_INFO)
+        .map(|digest| hex_lower(&digest))
+}
+
+pub fn pensieve_provenance_hash(value: &str, key: &[u8]) -> Result<String, CloudVaultError> {
+    opaque_identifier_hmac(value.as_bytes(), key, b"", PENSIEVE_DEDUP_PROVENANCE_INFO)
+        .map(|digest| hex_lower(&digest))
+}
+
+pub fn subscription_doc_id(
+    agent_uri: &str,
+    topic_id: &str,
+    key: &[u8],
+) -> Result<String, CloudVaultError> {
+    let input_len = agent_uri
+        .len()
+        .checked_add(topic_id.len())
+        .and_then(|length| length.checked_add(1))
+        .ok_or(CloudVaultError::InputTooLarge)?;
+    if input_len > MAX_DATA_BYTES {
+        return Err(CloudVaultError::InputTooLarge);
+    }
+    let mut input = Zeroizing::new(Vec::with_capacity(input_len));
+    input.extend_from_slice(agent_uri.as_bytes());
+    input.push(b':');
+    input.extend_from_slice(topic_id.as_bytes());
+    let digest = opaque_identifier_hmac(&input, key, b"", SUBSCRIPTION_DOC_ID_INFO)?;
+    Ok(format!("sub_{}", hex_lower(&digest[..16])))
 }
 
 pub fn aes_gcm_seal_detached(
@@ -507,6 +559,21 @@ fn derive_key_32(
     Ok(*derived_key)
 }
 
+fn opaque_identifier_hmac(
+    data: &[u8],
+    key: &[u8],
+    salt: &[u8],
+    info: &[u8],
+) -> Result<[u8; 32], CloudVaultError> {
+    require_vault_key(key)?;
+    require_data_bound(data)?;
+    let derived_key = Zeroizing::new(derive_key_32(key, salt, info)?);
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&*derived_key)
+        .map_err(|_| CloudVaultError::DerivationFailure)?;
+    mac.update(data);
+    Ok(mac.finalize().into_bytes().into())
+}
+
 fn require_vault_key(key: &[u8]) -> Result<(), CloudVaultError> {
     if key.len() == 32 {
         Ok(())
@@ -578,6 +645,12 @@ mod tests {
     fn fixture() -> Result<Value, serde_json::Error> {
         serde_json::from_str(include_str!(
             "../../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat.json"
+        ))
+    }
+
+    fn opaque_identifier_fixture() -> Result<Value, serde_json::Error> {
+        serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/domain-core/cloudvault/v1/opaque-identifiers-kat.json"
         ))
     }
 
@@ -955,6 +1028,89 @@ mod tests {
             );
         }
         Ok(())
+    }
+
+    #[test]
+    fn opaque_identifier_contract_matches_cross_language_fixture(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = opaque_identifier_fixture()?;
+        let key = decode_hex(required_string(&fixture, "vaultKeyHex")?)?;
+
+        assert_eq!(
+            project_memory_doc_id(required_string(&fixture["projectMemory"], "slug")?, &key)?,
+            required_string(&fixture["projectMemory"], "documentID")?
+        );
+        assert_eq!(
+            pensieve_dedup_hash(required_string(&fixture["pensieve"], "plaintext")?, &key)?,
+            required_string(&fixture["pensieve"], "dedupHash")?
+        );
+        assert_eq!(
+            pensieve_slug_hmac(required_string(&fixture["pensieve"], "slug")?, &key)?,
+            required_string(&fixture["pensieve"], "slugHmac")?
+        );
+        assert_eq!(
+            pensieve_provenance_hash(
+                required_string(&fixture["pensieve"], "provenanceValue")?,
+                &key,
+            )?,
+            required_string(&fixture["pensieve"], "provenanceHash")?
+        );
+        assert_eq!(
+            subscription_doc_id(
+                required_string(&fixture["subscription"], "agentURI")?,
+                required_string(&fixture["subscription"], "topicID")?,
+                &key,
+            )?,
+            required_string(&fixture["subscription"], "documentID")?
+        );
+        assert_eq!(
+            project_memory_doc_id(required_string(&fixture["unicode"], "projectSlug")?, &key)?,
+            required_string(&fixture["unicode"], "projectDocumentID")?
+        );
+        assert_eq!(
+            pensieve_dedup_hash(
+                required_string(&fixture["unicode"], "pensievePlaintext")?,
+                &key,
+            )?,
+            required_string(&fixture["unicode"], "pensieveDedupHash")?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn opaque_identifiers_reject_invalid_keys_and_oversized_inputs() {
+        let invalid_key = [0_u8; 31];
+        assert_eq!(
+            project_memory_doc_id("slug", &invalid_key),
+            Err(CloudVaultError::InvalidKeyLength)
+        );
+        assert_eq!(
+            pensieve_dedup_hash("plaintext", &invalid_key),
+            Err(CloudVaultError::InvalidKeyLength)
+        );
+        assert_eq!(
+            pensieve_slug_hmac("slug", &invalid_key),
+            Err(CloudVaultError::InvalidKeyLength)
+        );
+        assert_eq!(
+            pensieve_provenance_hash("value", &invalid_key),
+            Err(CloudVaultError::InvalidKeyLength)
+        );
+        assert_eq!(
+            subscription_doc_id("agent", "topic", &invalid_key),
+            Err(CloudVaultError::InvalidKeyLength)
+        );
+
+        let oversized = "x".repeat(MAX_DATA_BYTES + 1);
+        let key = [0x5a_u8; 32];
+        assert_eq!(
+            project_memory_doc_id(&oversized, &key),
+            Err(CloudVaultError::InputTooLarge)
+        );
+        assert_eq!(
+            subscription_doc_id(&oversized, "topic", &key),
+            Err(CloudVaultError::InputTooLarge)
+        );
     }
 
     #[test]

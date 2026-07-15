@@ -6,6 +6,10 @@
 
 **Source inventory:** [Shared Rust Domain Inventory](SHARED_RUST_DOMAIN_INVENTORY.md)
 
+**Promotion evidence:** [Candidate-bound V3 runbook](runbooks/shared-rust-promotion-evidence.md)
+
+**Shadow sample contract:** [`domain-core-shadow-sample-v3.schema.json`](contracts/domain-core-shadow-sample-v3.schema.json)
+
 **Quota contract:** [`tests/fixtures/domain-core/quota/v1/`](../tests/fixtures/domain-core/quota/v1/)
 
 **CloudVault contract:** [`tests/fixtures/domain-core/cloudvault/v1/`](../tests/fixtures/domain-core/cloudvault/v1/)
@@ -15,8 +19,10 @@
 The program consolidates pure business logic that is genuinely implemented in
 more than one language. It does not rewrite every application or move
 platform-owned I/O into Rust. Provider log parsing is specifically out of
-scope: macOS, iOS, Linux, and Windows already consume the one Swift parser
-engine, while Android and Cloud Functions do not read local provider logs.
+scope: macOS, iOS, and the Linux daemon consume the one production Swift parser
+engine; Windows parser integration is unfinished; and Android, Cloud Functions,
+and the Tauri/Linux UI do not read local provider logs. That is a Windows parity
+gap, not duplicated pure logic in multiple production languages.
 
 ## Invariants
 
@@ -32,9 +38,18 @@ engine, while Android and Cloud Functions do not read local provider logs.
 - Telemetry contains mismatch categories, counts, versions, and timing only. It
   never contains sensitive inputs, outputs, credentials, user identifiers, or
   stable payload hashes.
+- Promotion proof is bound to one signed app commit and one expected loaded Rust
+  version/ABI/source fingerprint. Optional V3 telemetry keeps server
+  `receivedAt` for diagnostic ordering, but telemetry continuity and volume do
+  not control promotion.
 - Generated Swift, Kotlin, C#, native, and Wasm artifacts are one atomic release
   set. A consumer never mixes bindings or binaries generated from different
   domain-core source trees.
+- Legacy deletion is authorized by Rust-authoritative stable release A. A
+  separate post-deletion stable release B must prove the exact final DMG, IPA,
+  AAB, Windows/Linux bundles, and Console/Functions deployments before the
+  domain is counted operationally complete; PR CI never fabricates those
+  post-merge receipts.
 
 ## Migration mode semantics
 
@@ -58,8 +73,8 @@ promotion; it is input to the promotion gate.
 |---|---|---|---|
 | Q1 | Claude statusline quota | Swift + C# | Rust enforced on Apple/Windows; quota rollout gate passes; named legacy transforms deleted |
 | Q2 | Codex, Cursor, Anthropic quota | Swift + C# | Four quota mechanisms use Rust as authority; quota rollout gate passes; named legacy transforms deleted |
-| C1 | CloudVault primitives, encrypted search, and document envelopes | Swift + Kotlin + C# + browser TypeScript, with different subsets | KAT/cross-open/tamper/fuzz/security gates pass for each applicable consumer; duplicated portable crypto and transform copies deleted without exporting browser private keys |
-| C2 | Hermes relay crypto and ratchet byte transforms | Swift + Kotlin | Existing wire vectors pass through Rust; P-256 custody and ratchet state mutation remain platform-owned; legacy byte transforms deleted after crypto promotion |
+| C1 | CloudVault primitives, encrypted search, opaque identifiers, and document envelopes | Swift + Kotlin + C# + browser/remote TypeScript + local MCP Python, with different subsets | No `REQUIRED_CONSUMER_PENDING` owner remains; KAT/cross-open/tamper/fuzz/security gates pass for each applicable consumer; duplicated portable crypto and transform copies are deleted without exporting browser private keys |
+| C2 | Hermes relay crypto and ratchet byte transforms | Swift + Kotlin + external Hermes Python plugin | Existing wire vectors and the Python prekey KAT pass through Rust; P-256 custody and ratchet state mutation remain platform-owned; legacy byte transforms deleted after crypto promotion |
 | P1 | Model pricing and cost arithmetic | Swift + Cloud Functions TypeScript | Checked nano-USD Rust/Wasm path enforced; parity and rollout evidence pass; duplicate calculators deleted |
 
 CloudVault C1 is split by security boundary:
@@ -81,7 +96,18 @@ CloudVault C1 is split by security boundary:
   timestamps, orchestration, and secure nonce generation remain platform-owned.
 - **Search:** complete v1 token analysis and ordered keyed hashes. Storage,
   query orchestration, and browser non-extractable key handles stay outside
-  Rust.
+  Rust. Swift, Kotlin, remote MCP TypeScript, and local MCP Python route one
+  complete text/query per call.
+- **Opaque identifiers:** closed purpose-specific project-memory, Pensieve,
+  provenance, and subscription HKDF/HMAC operations. The local MCP Python
+  consumer now has a generated native package, strict identity adapter,
+  canonical contracts, and deterministic candidate-proof cell. Other required
+  consumers and the promotion/deletion gates remain open.
+- **Pensieve vectors:** bounded deterministic hashing embeddings and the
+  vault-key-derived Householder cloak. Swift, Windows, Console, and remote MCP
+  cross the FFI/Wasm boundary once per complete vector or text. Android and the
+  local MCP Python server have no equivalent implementation and are not claimed
+  as consumers.
 
 Android selects `legacy`, legacy-authoritative `shadow`, or fail-closed `rust`
 for C1d with `OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE`; missing or
@@ -149,31 +175,53 @@ input, or a UniFFI error never invokes legacy code in `rust` mode. Diagnostics
 contain only the operation, mismatch/error category, and core version; search
 text, hashes, and key material are never logged.
 
+Remote MCP uses the same CloudVault mode for its Node Wasm AAD v2, AES sealed
+text, opaque identifier, and token/semantic query-hash operations. It verifies
+the package version, ABI 3, embedded source fingerprint, source receipt, and
+exact Wasm digest before the first Rust call. Its secure nonce generation,
+vault-key storage, network calls, and result rendering remain TypeScript-owned.
+
 ## Rollout and deletion gates
 
 Quota promotion requires all of the following:
 
-1. Complete fixture corpus and native binding load tests on Apple and Windows.
-2. At least **14 consecutive days per required consumer** in an internal or beta
-   channel and **10,000 aggregate shadow parses** across the required consumers.
-3. Zero unexplained mismatches. Explained categories require a linked issue and
-   named review; explanation never removes the raw count from evidence.
-4. Rust p95 latency no more than **5 percent** above the legacy p95, using the
-   same shadow samples.
-5. A passing fail-closed quantitative report from the existing promotion
-   evidence evaluator delivered by [PR #1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612).
-   Use `node scripts/ci/evaluate-domain-core-promotion.mjs --domain quota --evidence <bundle>
-   --output <report>` after that merged feature-stack commit is in the landing
-   ancestry, and follow `docs/runbooks/shared-rust-promotion-evidence.md` from
-   that commit. Do not add a second evaluator or hand-edit evidence.
-6. One stable release observed with Rust authoritative and the explicit legacy
-   rollback mode still available.
+1. Complete deterministic fixtures, property/fuzz tests, and native/Wasm binding
+   load tests for every required consumer in
+   [`config/domain-core-promotion-policy.json`](../config/domain-core-promotion-policy.json).
+2. One exact candidate commit and Rust version/ABI/source tuple, proven by the
+   artifacts actually loaded by Swift, Kotlin, C#, the local Python native
+   package, browser Wasm, and Node Wasm.
+3. A successful `push` run of `.github/workflows/domain-core.yml` on `main` with
+   every exact policy job and all 51 real `(domain, slice, consumer)` coverage
+   cells. Failed, skipped, missing, duplicate, extra, PR, dispatch, mixed-run, or
+   mixed-candidate evidence fails closed.
+4. The paired complete-payload FFI benchmark no more than **5 percent** slower
+   than the direct Rust baseline in the same CI job and attempt.
+5. A real rollback drill that resolves the signed public artifact and exercises
+   its `legacy` routing, followed by a protected provenance attestation from
+   `.github/workflows/domain-core-promotion-proof.yml`. The signer independently
+   queries GitHub, downloads the exact run bundle, and revalidates it with the
+   trusted `main` policy and evaluator. The unsigned bundle and uploaded
+   verification receipt are not authority by themselves.
+6. One stable signed release of the exact attested candidate with Rust
+   authoritative, plus a dedicated signed legacy rollback artifact retained
+   until deletion completes.
+
+Shadow telemetry is optional diagnostic input. V3 preserves exact candidate and
+loaded-module identity and can reveal mismatches in real deployments, but no
+duration, daily continuity, account count, or sample count is a promotion gate.
+V1/V2 remain drain-only and no telemetry report may substitute for the protected
+deterministic attestation.
 
 Only after all six gates pass may a separate deletion PR remove the legacy
-quota implementations and rollback setting. A mismatch, artifact/ABI failure,
-or latency regression before deletion rolls the affected consumer explicitly
-back to `legacy`, preserves evidence, and restarts the applicable shadow window
-after the cause is fixed.
+quota implementations and rollback setting. Its proof must retain the exact
+attested candidate/core tuple, then pass named source-absence and Rust-only
+compile gates. The deletion receipt chain verifies the official GitHub
+provenance bundle; an unsigned bundle or `protected-verification.json` is not
+authority. A mismatch, artifact/ABI/source failure, rollback, new candidate
+commit, or performance regression before deletion rolls the affected consumer
+explicitly back to `legacy`, preserves the diagnostic evidence, fixes the cause,
+and requires a new exact candidate attestation.
 
 Crypto promotion additionally requires deterministic KATs, bidirectional
 cross-open coverage for every supported envelope version and consumer,
@@ -185,13 +233,17 @@ stable Rust-authoritative release.
 
 ## Current landing state
 
-Snapshot: **2026-07-13**. “Merged” below means merged into a feature branch,
-not into `main`, and does not mean production promotion.
+Snapshot: **2026-07-14**. PR and branch status records implementation ancestry
+only. A merged crate, collector, or evidence contract is not production
+promotion, does not prove a protected deterministic attestation, and does not
+authorize legacy deletion.
 
 - Quota: pilot [#1590](https://github.com/Imagine-That-Ai/BurnBar/pull/1590),
   Q2 [#1591](https://github.com/Imagine-That-Ai/BurnBar/pull/1591), and consumer
-  wiring [#1592](https://github.com/Imagine-That-Ai/BurnBar/pull/1592) are merged.
-  The 14-day/10,000-sample window has not been certified.
+  wiring [#1592](https://github.com/Imagine-That-Ai/BurnBar/pull/1592) are in the
+  implementation ancestry. The shared collector foundation
+  [#1722](https://github.com/Imagine-That-Ai/BurnBar/pull/1722) is merged into
+  `main`; that does not certify the protected deterministic candidate proof.
 - CloudVault and pricing: foundation
   [#1594](https://github.com/Imagine-That-Ai/BurnBar/pull/1594), AES
   [#1602](https://github.com/Imagine-That-Ai/BurnBar/pull/1602), C1c core
@@ -209,8 +261,15 @@ not into `main`, and does not mean production promotion.
   are merged into feature branches. Convergence
   [#1647](https://github.com/Imagine-That-Ai/BurnBar/pull/1647), crypto
   hardening [#1721](https://github.com/Imagine-That-Ai/BurnBar/pull/1721), rollout
-  evidence collection [#1722](https://github.com/Imagine-That-Ai/BurnBar/pull/1722),
-  and remaining Swift/Kotlin consumer PRs remain open or pending.
+  authority [#1729](https://github.com/Imagine-That-Ai/BurnBar/pull/1729), and
+  remaining Swift/Kotlin consumer work are still under review or pending.
+- Candidate-bound V3 ingress, enrollment, export, and evaluation remain useful
+  diagnostic surfaces. They must not be cited as promotion authority regardless
+  of sample volume or collection duration.
+- Signed candidate receipts are being bound across Apple, Android, Windows,
+  Console, and Functions to one clean checkout and one verified Rust
+  version/ABI/source tuple. This release-integrity work prevents mixed or
+  relabeled diagnostics, but does not authorize a mode promotion.
 - No shared-Rust domain is complete under the inventory's completion rule. No
   legacy implementation should be deleted from this status snapshot.
 
@@ -226,3 +285,7 @@ not into `main`, and does not mean production promotion.
   Windows x64/ARM64 DLL, and applicable Linux library load tests.
 - Focused platform fixture/consumer tests plus release checks for checksums,
   SBOM, provenance, and AGPL source completeness.
+- Exact-run proof fragments, the real signed-legacy rollback drill, and a final
+  unsigned candidate bundle on `main`; only the trusted-main revalidation and
+  provenance attestation behind the protected `domain-core-promotion`
+  environment authorizes promotion.
