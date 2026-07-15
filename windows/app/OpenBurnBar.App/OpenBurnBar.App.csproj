@@ -31,10 +31,9 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
     <DefaultLanguage>en-US</DefaultLanguage>
+    <!-- Nullable, LangVersion, TreatWarningsAsErrors inherited from windows/Directory.Build.props -->
     <!--
       Lets the project be RESTORED/EVALUATED by MSBuild on a non-Windows host
       (macOS CI authoring) without the Windows targeting pack error NETSDK1100.

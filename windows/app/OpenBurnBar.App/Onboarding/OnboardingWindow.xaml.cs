@@ -61,6 +61,9 @@ public sealed partial class OnboardingWindow : Window
             OpenDashboard = OnOpenDashboard,
             Dismiss = OnDismiss,
             ShowHermesSetup = ShowHermesSetup,
+            // Resolve the real HWND so step-page file pickers get a real owner
+            // (WindowChrome.GetHandle pattern — fixes the dead-picker bug).
+            WindowHandleProvider = () => WindowChrome.GetHandle(this),
         };
 
         _page.Start(context);

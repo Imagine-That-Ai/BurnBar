@@ -23,6 +23,14 @@ public sealed partial class ProvidersStepPage : Page
     private OnboardingContext? _context;
     private readonly Dictionary<AgentProviderBrand, OnboardingProviderPill> _pills = new();
 
+    /// <summary>
+    /// Injected HWND resolver (the <c>Func&lt;IntPtr&gt;</c> pattern from
+    /// <c>DataControlCenterView.WindowHandleProvider</c>). When set, <see cref="ResolveOwnerHwnd"/>
+    /// uses this instead of the <see cref="OnboardingContext"/> provider so a host can supply
+    /// the exact owner window for the file picker.
+    /// </summary>
+    public Func<IntPtr>? WindowHandleProvider { get; set; }
+
     public ProvidersStepPage()
     {
         InitializeComponent();
@@ -39,6 +47,10 @@ public sealed partial class ProvidersStepPage : Page
         {
             return;
         }
+
+        // Wire the injected HWND provider so ResolveOwnerHwnd returns a real handle
+        // instead of IntPtr.Zero (the dead-picker bug — Code Quality SERIOUS-4).
+        WindowHandleProvider ??= _context.WindowHandleProvider;
 
         LoadDbFields();
         BuildPills();
@@ -101,7 +113,17 @@ public sealed partial class ProvidersStepPage : Page
 
     private nint ResolveOwnerHwnd()
     {
-        return System.IntPtr.Zero;
+        // Resolve the real Win32 HWND backing this page's host window. The provider is
+        // the injected Func<IntPtr> pattern from DataControlCenterView.xaml.cs:35,345,
+        // wired from OnboardingContext in OnNavigatedTo. When no provider is wired
+        // (unit tests, headless harness) returns IntPtr.Zero so the picker is skipped
+        // rather than crashing — the same guard OnBrowseDb already checks.
+        if (WindowHandleProvider is not null)
+        {
+            return WindowHandleProvider();
+        }
+
+        return IntPtr.Zero;
     }
 
     private void BuildPills()
