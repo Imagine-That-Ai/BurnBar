@@ -58,6 +58,11 @@ on:
       - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ci/verify-release-tag-safety.mjs"
+      - "scripts/ci/verify-release-tag-safety.test.mjs"
+      - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/release-dry-run-attestation.mjs"
+      - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
       - "scripts/ops/run-firestore-restore-drill.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
@@ -124,6 +129,11 @@ on:
       - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ci/verify-release-tag-safety.mjs"
+      - "scripts/ci/verify-release-tag-safety.test.mjs"
+      - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/release-dry-run-attestation.mjs"
+      - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
       - "scripts/ops/run-firestore-restore-drill.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
@@ -262,6 +272,18 @@ jobs:
 
       - name: Verify ops-plane workflow boundary
         run: node scripts/ci/verify-ops-plane-workflow-boundary.mjs
+
+      - name: Self-test release tag safety
+        run: node scripts/ci/verify-release-tag-safety.test.mjs
+
+      - name: Functional test release tag safety
+        run: node scripts/ci/verify-release-tag-safety.functional.test.mjs
+
+      - name: Verify release tag safety
+        run: node scripts/ci/verify-release-tag-safety.mjs
+
+      - name: Self-test release dry-run attestation
+        run: node scripts/ci/release-dry-run-attestation.test.mjs
 
       - name: Self-test PR harness aggregate gates
         run: node scripts/ci/verify-pr-harness-aggregate-gates.test.mjs
