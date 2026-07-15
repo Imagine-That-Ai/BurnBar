@@ -16,17 +16,17 @@ const ACTION_DIR = __dirname;
 const WORKFLOWS_DIR = path.resolve(ACTION_DIR, "..", "..", "workflows");
 const ACTION_YML = path.join(ACTION_DIR, "action.yml");
 
-// The 7 workflows that call ops-failure-issue with mode: open. Each maps to the
-// lane value its open call declares (used as a cross-check that we matched the
-// right block).
+// The 7 workflows that call ops-failure-issue with mode: open. Each maps to
+// every exact lane value its open calls declare (used as a cross-check that we
+// matched every block independently).
 const OPEN_WORKFLOWS = [
-  { file: "deploy-cloud-run.yml", lane: "deploy-cloud-run" },
-  { file: "deploy-firestore.yml", lane: "deploy-firestore" },
-  { file: "deploy-hosting.yml", lane: "deploy-hosting" },
-  { file: "linux-nightly.yml", lane: "linux-nightly" },
-  { file: "nightly-dast-sandbox.yml", lane: "nightly-sandbox" },
-  { file: "nightly-e2e.yml", lane: "nightly-e2e" },
-  { file: "ops-confidence.yml", lane: "ops-confidence" },
+  { file: "deploy-cloud-run.yml", lanes: ["deploy-cloud-run"] },
+  { file: "deploy-firestore.yml", lanes: ["deploy-firestore"] },
+  { file: "deploy-hosting.yml", lanes: ["deploy-hosting"] },
+  { file: "linux-nightly.yml", lanes: ["linux-nightly"] },
+  { file: "nightly-dast-sandbox.yml", lanes: ["nightly-sandbox"] },
+  { file: "nightly-e2e.yml", lanes: ["nightly-e2e"] },
+  { file: "ops-confidence.yml", lanes: ["ops-confidence", "deploy-freshness"] },
 ];
 
 const ACTION_USES = "./.github/actions/ops-failure-issue";
@@ -50,7 +50,7 @@ function readLines(relFile) {
  * next list item / job key (indent < 8) or EOF. This captures the full `with:`
  * map including folded scalars like `summary: >-`.
  *
- * Returns an array of { mode, block } where block is the joined step text.
+ * Returns an array of { mode, lane, block } where block is the joined step text.
  */
 function extractActionBlocks(relFile) {
   const lines = readLines(relFile);
@@ -74,17 +74,18 @@ function extractActionBlocks(relFile) {
     }
     const block = body.join("\n");
 
-    // Determine the mode from the `mode:` key (a line whose first token after
-    // indentation is `mode:`).
+    // Determine the mode and lane from keys whose first token after indentation
+    // is `mode:` or `lane:`.
     let mode = null;
+    let lane = null;
     for (const bodyLine of body) {
-      const m = bodyLine.match(/^\s+mode:\s*(\S+)\s*$/);
-      if (m) {
-        mode = m[1];
-        break;
-      }
+      const modeMatch = bodyLine.match(/^\s+mode:\s*(\S+)\s*$/);
+      if (modeMatch) mode = modeMatch[1];
+
+      const laneMatch = bodyLine.match(/^\s+lane:\s*(\S+)\s*$/);
+      if (laneMatch) lane = laneMatch[1];
     }
-    blocks.push({ mode, block });
+    blocks.push({ mode, lane, block });
   }
   return blocks;
 }
@@ -93,8 +94,8 @@ function extractActionBlocks(relFile) {
 // Per-workflow wiring: open must page, close must not.
 // ---------------------------------------------------------------------------
 
-for (const { file, lane } of OPEN_WORKFLOWS) {
-  test(`${file} wires paging-slack-webhook on mode: open and omits it on mode: close`, () => {
+for (const { file, lanes } of OPEN_WORKFLOWS) {
+  test(`${file} wires paging-slack-webhook on every mode: open and omits it on mode: close`, () => {
     const blocks = extractActionBlocks(file);
     assert.ok(
       blocks.length > 0,
@@ -104,22 +105,30 @@ for (const { file, lane } of OPEN_WORKFLOWS) {
     const openBlocks = blocks.filter((b) => b.mode === "open");
     const closeBlocks = blocks.filter((b) => b.mode === "close");
 
-    assert.ok(
-      openBlocks.length > 0,
-      `${file} must have at least one mode: open call to ops-failure-issue`
+    assert.equal(
+      openBlocks.length,
+      lanes.length,
+      `${file} must have exactly ${lanes.length} mode: open call(s) to ops-failure-issue`
     );
 
-    // Every open block must wire the paging secret and declare the expected lane.
-    for (const { block } of openBlocks) {
+    // Validate every open invocation independently: each must page and use one
+    // of this workflow's explicitly expected lanes.
+    for (const { lane, block } of openBlocks) {
       assert.ok(
         block.includes(PAGING_LINE),
         `${file} mode: open block must wire paging-slack-webhook to the repo secret:\n${block}`
       );
       assert.ok(
-        block.includes(`lane: ${lane}`),
-        `${file} mode: open block must declare lane: ${lane}:\n${block}`
+        lanes.includes(lane),
+        `${file} mode: open block must declare one of the exact expected lanes (${lanes.join(", ")}):\n${block}`
       );
     }
+
+    assert.deepEqual(
+      openBlocks.map(({ lane }) => lane).sort(),
+      [...lanes].sort(),
+      `${file} mode: open calls must declare exactly the expected lanes`
+    );
 
     // Close never pages: no close block may carry the paging input.
     for (const { block } of closeBlocks) {
