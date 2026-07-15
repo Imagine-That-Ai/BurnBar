@@ -7,12 +7,12 @@ import Foundation
 ///
 /// Plan §4.7 — tool-use finally wired. All tools are read-only by
 /// construction; no mutating operations are declared.
-public enum InsightToolDefinitions {
+enum InsightToolDefinitions {
 
     // Immutable JSON-schema literal constants; `Tool` holds `[String: Any]`
     // parameters that can't be proven Sendable, but these are configured once
     // and never mutated.
-    nonisolated(unsafe) public static let all: [Tool] = [
+    nonisolated(unsafe) static let all: [Tool] = [
         drilldownSearch,
         drilldownSession,
         agentUsage,
@@ -24,12 +24,12 @@ public enum InsightToolDefinitions {
         listUseCases
     ]
 
-    public struct Tool {
-        public let name: String
-        public let description: String
-        public let parameters: [String: Any]
+    struct Tool {
+        let name: String
+        let description: String
+        let parameters: [String: Any]
 
-        public init(name: String, description: String, parameters: [String: Any]) {
+        init(name: String, description: String, parameters: [String: Any]) {
             self.name = name
             self.description = description
             self.parameters = parameters
@@ -39,7 +39,7 @@ public enum InsightToolDefinitions {
     // MARK: - Anthropic shape
 
     /// Tools formatted for Anthropic's Messages API (`tools` array).
-    public static var anthropicTools: [[String: Any]] {
+    static var anthropicTools: [[String: Any]] {
         all.map { tool in
             [
                 "name": tool.name,
@@ -52,7 +52,7 @@ public enum InsightToolDefinitions {
     // MARK: - OpenAI shape
 
     /// Tools formatted for OpenAI's Chat Completions API (`tools` array).
-    public static var openAITools: [[String: Any]] {
+    static var openAITools: [[String: Any]] {
         all.map { tool in
             [
                 "type": "function",
@@ -69,7 +69,7 @@ public enum InsightToolDefinitions {
     // MARK: - Individual tools
 
     // Immutable JSON-schema literal constant (`[String: Any]` parameters).
-    nonisolated(unsafe) public static let drilldownSearch = Tool(
+    nonisolated(unsafe) static let drilldownSearch = Tool(
         name: "drilldown_search",
         description: "Search sessions by query string across task titles, tools, and commands.",
         parameters: [
@@ -84,7 +84,7 @@ public enum InsightToolDefinitions {
     )
 
     // Immutable JSON-schema literal constant (`[String: Any]` parameters).
-    nonisolated(unsafe) public static let drilldownSession = Tool(
+    nonisolated(unsafe) static let drilldownSession = Tool(
         name: "drilldown_session",
         description: "Fetch full metadata for a single session by its ID.",
         parameters: [
@@ -98,7 +98,7 @@ public enum InsightToolDefinitions {
     )
 
     // Immutable JSON-schema literal constant (`[String: Any]` parameters).
-    nonisolated(unsafe) public static let agentUsage = Tool(
+    nonisolated(unsafe) static let agentUsage = Tool(
         name: "agent_usage",
         description: "Get a time-series breakdown of cost or tokens for a specific agent/provider.",
         parameters: [
@@ -113,7 +113,7 @@ public enum InsightToolDefinitions {
     )
 
     // Immutable JSON-schema literal constant (`[String: Any]` parameters).
-    nonisolated(unsafe) public static let modelUsage = Tool(
+    nonisolated(unsafe) static let modelUsage = Tool(
         name: "model_usage",
         description: "Get a ranking of projects or dimensions for a specific model.",
         parameters: [
@@ -128,7 +128,7 @@ public enum InsightToolDefinitions {
     )
 
     // Immutable JSON-schema literal constant (`[String: Any]` parameters).
-    nonisolated(unsafe) public static let operatingActions = Tool(
+    nonisolated(unsafe) static let operatingActions = Tool(
         name: "operating_actions",
         description: "List recent operating actions (tool calls, commands) within a window.",
         parameters: [
@@ -142,7 +142,7 @@ public enum InsightToolDefinitions {
     )
 
     // Immutable JSON-schema literal constant (`[String: Any]` parameters).
-    nonisolated(unsafe) public static let quotaSnapshot = Tool(
+    nonisolated(unsafe) static let quotaSnapshot = Tool(
         name: "quota_snapshot",
         description: "Read the current quota state for a provider or all providers.",
         parameters: [
@@ -156,7 +156,7 @@ public enum InsightToolDefinitions {
     )
 
     // Immutable JSON-schema literal constant (`[String: Any]` parameters).
-    nonisolated(unsafe) public static let anomalyDetail = Tool(
+    nonisolated(unsafe) static let anomalyDetail = Tool(
         name: "anomaly_detail",
         description: "Fetch the full detail row for a specific anomaly by its ID.",
         parameters: [
@@ -170,7 +170,7 @@ public enum InsightToolDefinitions {
     )
 
     // Immutable JSON-schema literal constant (`[String: Any]` parameters).
-    nonisolated(unsafe) public static let listFocuses = Tool(
+    nonisolated(unsafe) static let listFocuses = Tool(
         name: "list_focuses",
         description: "Return the controlled vocabulary of task focuses used in this account.",
         parameters: [
@@ -182,7 +182,7 @@ public enum InsightToolDefinitions {
     )
 
     // Immutable JSON-schema literal constant (`[String: Any]` parameters).
-    nonisolated(unsafe) public static let listUseCases = Tool(
+    nonisolated(unsafe) static let listUseCases = Tool(
         name: "list_use_cases",
         description: "Return the controlled vocabulary of use cases used in this account.",
         parameters: [

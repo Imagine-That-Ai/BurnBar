@@ -7,10 +7,10 @@ import OpenBurnBarKernel
 /// (findings, anomalies, recommendations, citations, generated widget
 /// proposals). The app then materializes those generated widget proposals into
 /// an `InsightCanvas`.
-public struct InsightAnalysisModelPrompt: Sendable {
-    public init() {}
+struct InsightAnalysisModelPrompt: Sendable {
+    init() {}
 
-    public func systemPrompt(
+    func systemPrompt(
         for request: InsightAnalysisRequest,
         platform: InsightAnalysisPlatform,
         strictSchema: Bool
@@ -53,7 +53,7 @@ public struct InsightAnalysisModelPrompt: Sendable {
         return lines.joined(separator: "\n")
     }
 
-    public func userPayload(for request: InsightAnalysisRequest) throws -> Data {
+    func userPayload(for request: InsightAnalysisRequest) throws -> Data {
         struct Payload: Encodable {
             let prompt: String
             let instruction: String
@@ -74,7 +74,7 @@ public struct InsightAnalysisModelPrompt: Sendable {
         ))
     }
 
-    public static let preamble = """
+    static let preamble = """
     You are OpenBurnBar Insights: an expert analyst for a developer's AI usage,
     cost, quota, routing, and workflow data. Your job is to explain what
     changed, why it matters, what caused it, what looks wasteful or risky, and
@@ -85,7 +85,7 @@ public struct InsightAnalysisModelPrompt: Sendable {
     sessions, providers, models, quotas, projects, or costs.
     """
 
-    public static func instructionDescription(_ instruction: InsightAnalysisRequest.Instruction) -> String {
+    static func instructionDescription(_ instruction: InsightAnalysisRequest.Instruction) -> String {
         switch instruction {
         case .defaultBrief:
             return "Generate the default Insights brief: what changed, top 3 findings, biggest waste opportunity, most important anomaly, quota/provider risk, one supporting chart/widget, and useful follow-up questions."

@@ -6,11 +6,11 @@ import FoundationNetworking
 
 /// Adapter for OpenAI's Chat Completions API. Same shape as Anthropic
 /// modulo wire format. Uses strict JSON-Schema on `gpt-5*` and later.
-public struct OpenAIInsightAdapter: InsightModelGateway {
+struct OpenAIInsightAdapter: InsightModelGateway {
 
-    public let providerKey = "openai"
-    public let displayName = "OpenAI (GPT)"
-    public let capabilities = InsightModelCapabilities(
+    let providerKey = "openai"
+    let displayName = "OpenAI (GPT)"
+    let capabilities = InsightModelCapabilities(
         supportsStrictJSONSchema: true,
         supportsJSONObject: true,
         supportsThinking: true,
@@ -18,12 +18,12 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         supportsStreaming: true
     )
 
-    public let apiKey: String
-    public let baseURL: URL
-    public let urlSession: URLSession
-    public let modelCatalog: [InsightCatalogModel]
+    let apiKey: String
+    let baseURL: URL
+    let urlSession: URLSession
+    let modelCatalog: [InsightCatalogModel]
 
-    public init(apiKey: String,
+    init(apiKey: String,
                 baseURL: URL = URL(string: "https://api.openai.com")!,
                 urlSession: URLSession = .shared,
                 modelCatalog: [InsightCatalogModel] = OpenAIInsightAdapter.defaultModels) {
@@ -33,11 +33,11 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         self.modelCatalog = modelCatalog
     }
 
-    public func availableModels() async throws -> [InsightCatalogModel] {
+    func availableModels() async throws -> [InsightCatalogModel] {
         modelCatalog
     }
 
-    public static let defaultModels: [InsightCatalogModel] = [
+    static let defaultModels: [InsightCatalogModel] = [
         .init(id: "gpt-5", displayName: "GPT-5", providerKey: "openai",
               egressTier: .userKey,
               capabilities: .init(supportsStrictJSONSchema: true,
@@ -56,7 +56,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
               inputCostPerMtoken: 0.25, outputCostPerMtoken: 2, symbolName: "bolt.fill")
     ]
 
-    public func investigate(
+    func investigate(
         request: InsightInvestigateRequest,
         tools: InsightToolBroker?
     ) -> AsyncThrowingStream<InsightInvestigateEvent, Error> {
@@ -73,7 +73,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         }
     }
 
-    public func analyze(
+    func analyze(
         request: InsightAnalysisRequest,
         platform: InsightAnalysisPlatform,
         tools: InsightToolBroker?
