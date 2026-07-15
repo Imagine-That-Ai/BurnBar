@@ -62,10 +62,34 @@ test("deployment receipt v2 carries the same proof chain and deployed bytes", ()
   ]) {
     assert.ok(schema.required.includes(field));
   }
-  assert.ok(schema.properties.deployment.required.includes("deployedArtifact"));
+  for (const field of [
+    "deployedArtifact",
+    "deployRun",
+    "healthArtifactSha256",
+  ]) {
+    assert.ok(schema.properties.deployment.required.includes(field));
+  }
   assert.equal(
     schema.properties.deployment.properties.deployedArtifact.$ref,
     "domain-core-release-predicate.schema.json#/$defs/artifact",
+  );
+  assert.deepEqual(
+    new Set(schema.properties.deployment.properties.deployRun.required),
+    new Set([
+      "repository",
+      "workflowPath",
+      "runId",
+      "runAttempt",
+      "event",
+      "ref",
+      "headSha",
+      "jobSetSha256",
+    ]),
+  );
+  assert.equal(
+    schema.properties.deployment.properties.deployRun.properties.repository
+      .const,
+    "Imagine-That-Ai/BurnBar",
   );
   assert.equal(schema.oneOf.length, 2);
 });
