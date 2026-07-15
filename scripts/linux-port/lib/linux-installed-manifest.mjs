@@ -6,6 +6,13 @@ export const INSTALLED_MANIFEST_PATH = '/usr/share/openburnbar/attestation/insta
 export const INSTALLED_MANIFEST_SIGNATURE_PATH = `${INSTALLED_MANIFEST_PATH}.sig`;
 export const RELEASE_PUBLIC_KEY_PATH = '/usr/share/openburnbar/attestation/release-ed25519.pub.pem';
 
+// The package payload is rooted under /usr except for this single declarative
+// XDG autostart entry. Keep the exception exact so both inventory generation
+// and manifest validation reject arbitrary /etc configuration.
+export const INSTALLED_MANIFEST_NON_USR_PATH_ALLOWLIST = Object.freeze([
+  '/etc/xdg/autostart/openburnbar.desktop'
+]);
+
 const MANIFEST_KEYS = Object.freeze([
   'appId',
   'authorizedClients',
@@ -77,6 +84,14 @@ function ownership(stat, installedPath, metadataProvider) {
   return { uid: value.uid, gid: value.gid };
 }
 
+function isAllowedNonUsrPath(installedPath) {
+  return INSTALLED_MANIFEST_NON_USR_PATH_ALLOWLIST.some((allowedPath) => (
+    allowedPath === installedPath
+    || allowedPath.startsWith(`${installedPath}/`)
+    || installedPath.startsWith(`${allowedPath}/`)
+  ));
+}
+
 function assertTrustedDirectory(stat, installedPath, metadataProvider) {
   const owner = ownership(stat, installedPath, metadataProvider);
   const mode = stat.mode & 0o7777;
@@ -120,7 +135,7 @@ function assertSafeSymlink(root, full, installedPath, target, metadataProvider) 
 
 function collectTree(root, current, records, excluded, metadataProvider) {
   const currentPath = `/${path.relative(root, current).split(path.sep).join('/')}`;
-  if (currentPath.startsWith('/usr')) {
+  if (currentPath.startsWith('/usr') || isAllowedNonUsrPath(currentPath)) {
     assertTrustedDirectory(fs.lstatSync(current), currentPath, metadataProvider);
   }
   for (const entry of fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => compareUtf8(a.name, b.name))) {
@@ -133,7 +148,7 @@ function collectTree(root, current, records, excluded, metadataProvider) {
       collectTree(root, full, records, excluded, metadataProvider);
       continue;
     }
-    if (!installedPath.startsWith('/usr/')) {
+    if (!installedPath.startsWith('/usr/') && !isAllowedNonUsrPath(installedPath)) {
       throw new Error(`package owns a non-/usr file that cannot be signed: ${installedPath}`);
     }
     const owner = ownership(stat, installedPath, metadataProvider);
@@ -147,6 +162,9 @@ function collectTree(root, current, records, excluded, metadataProvider) {
       continue;
     }
     if (stat.isSymbolicLink()) {
+      if (!installedPath.startsWith('/usr/')) {
+        throw new Error(`installed package symlink is outside /usr: ${installedPath}`);
+      }
       const target = fs.readlinkSync(full);
       assertSafeSymlink(root, full, installedPath, target, metadataProvider);
       records.push({
@@ -301,11 +319,16 @@ function assertInstalledFileRecord(file) {
   if (JSON.stringify(Object.keys(file).sort(compareUtf8)) !== JSON.stringify(expectedKeys)) {
     throw new Error('installed manifest file record has unexpected fields');
   }
+  const isAllowedPath = typeof file.path === 'string'
+    && (file.path.startsWith('/usr/') || isAllowedNonUsrPath(file.path));
   if (typeof file.path !== 'string' || file.path.includes('\0')
-      || !file.path.startsWith('/usr/') || path.posix.normalize(file.path) !== file.path
+      || !isAllowedPath || path.posix.normalize(file.path) !== file.path
       || file.path === INSTALLED_MANIFEST_PATH || file.path === INSTALLED_MANIFEST_SIGNATURE_PATH
       || !MODE.test(file.mode ?? '') || file.uid !== 0 || file.gid !== 0) {
     throw new Error('installed manifest file record path, mode, or ownership is invalid');
+  }
+  if (file.type === 'symlink' && !file.path.startsWith('/usr/')) {
+    throw new Error('installed manifest symlink is outside /usr');
   }
   if (file.type === 'file') {
     if (!SHA256.test(file.sha256 ?? '') || !Number.isSafeInteger(file.size) || file.size < 0

@@ -100,6 +100,14 @@ percentage. The active remediation stack now contains these reviewable slices:
   apt installation, with a regression contract in
   `linux-toolchain-node-runtime.test.mjs`; the next candidate must prove both
   architectures through the same image.
+- **Release candidate `29436469591`:** both architecture shards cleared the
+  HTTPS mirror/toolchain stage, confirming that reliability repair, then failed
+  during installed-manifest generation because the inventory still rejected the
+  intentionally packaged `/etc/xdg/autostart/openburnbar.desktop` as a
+  non-`/usr` file. The run produced no artifact or certifying receipt. The next
+  source fix must share the exact autostart allowlist with manifest generation
+  while retaining parent-directory, ownership, and sibling/path-traversal
+  rejection, followed by a fresh exact-head candidate.
 
 - **Onboarding hardening:** `238ee56975` validates every daemon snapshot before
   renderer/cache mutation, preserves the last valid state on malformed or

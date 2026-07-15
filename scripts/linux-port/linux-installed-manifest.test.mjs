@@ -99,6 +99,47 @@ test('inventory generation is byte-deterministic and excludes only manifest self
   assert.ok(!first.some((row) => row.path === INSTALLED_MANIFEST_SIGNATURE_PATH));
 });
 
+test('inventory allows only the canonical XDG autostart file outside /usr', (t) => {
+  const value = fixture();
+  t.after(() => fs.rmSync(value.root, { recursive: true, force: true }));
+  write(value.root, '/etc/xdg/autostart/openburnbar.desktop', '[Desktop Entry]\n', 0o644);
+
+  const files = collectInstalledFiles(value.root, { metadataProvider: value.metadataProvider });
+  const autostart = files.find((row) => row.path === '/etc/xdg/autostart/openburnbar.desktop');
+  assert.deepEqual(autostart, {
+    path: '/etc/xdg/autostart/openburnbar.desktop',
+    type: 'file',
+    sha256: crypto.createHash('sha256').update('[Desktop Entry]\n').digest('hex'),
+    size: Buffer.byteLength('[Desktop Entry]\n'),
+    mode: '0644',
+    uid: 0,
+    gid: 0
+  });
+
+  const manifest = createInstalledManifest({
+    files,
+    packageVersion: value.manifest.packageVersion,
+    gitCommit: value.manifest.gitCommit,
+    packageArchitecture: value.manifest.packageArchitecture,
+    packageFormat: value.manifest.packageFormat,
+    firebaseAppId: value.manifest.firebaseAppId
+  });
+  assert.ok(manifest.files.some((row) => row.path === '/etc/xdg/autostart/openburnbar.desktop'));
+
+  write(value.root, '/etc/xdg/autostart/other.desktop', '[Desktop Entry]\n', 0o644);
+  assert.throws(
+    () => collectInstalledFiles(value.root, { metadataProvider: value.metadataProvider }),
+    /\/etc\/xdg\/autostart\/other\.desktop/u
+  );
+  fs.rmSync(path.join(value.root, 'etc/xdg/autostart/other.desktop'));
+
+  write(value.root, '/etc/pacman.conf', '[options]\n', 0o644);
+  assert.throws(
+    () => collectInstalledFiles(value.root, { metadataProvider: value.metadataProvider }),
+    /\/etc\/pacman\.conf/u
+  );
+});
+
 for (const [name, mutate, pattern] of [
   ['file bytes', (value) => write(value.root, '/usr/bin/openburnbar-daemon', 'changed\n', 0o755), /inventory differs/u],
   ['extra file', (value) => write(value.root, '/usr/bin/openburnbar-extra', 'extra\n', 0o755), /inventory differs/u],

@@ -186,6 +186,17 @@ the Node/toolchain contract suite asserts all three Ubuntu endpoints. This is a
 release-reliability repair, not a product-parity receipt; the next exact-head
 candidate must still pass both architectures and installed proof.
 
+Candidate `29436469591` confirmed that the mirror repair is effective: both
+architecture shards cleared toolchain construction and reached installed
+manifest generation. They then failed closed because the manifest inventory
+still enforced a `/usr`-only file boundary and rejected the intentionally
+packaged `/etc/xdg/autostart/openburnbar.desktop`. No artifact or certifying
+receipt was produced. The next implementation unit must make manifest
+generation use the same exact autostart allowlist as native package extraction,
+including its required parent directories while preserving ownership and
+sibling/path-traversal rejection, then rerun a fresh exact-head candidate before
+installation or ledger promotion.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:

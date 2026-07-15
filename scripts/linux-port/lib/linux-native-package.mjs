@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   INSTALLED_MANIFEST_PATH,
   INSTALLED_MANIFEST_SIGNATURE_PATH,
+  INSTALLED_MANIFEST_NON_USR_PATH_ALLOWLIST,
   verifyInstalledManifestTree
 } from './linux-installed-manifest.mjs';
 
@@ -17,9 +18,9 @@ export const ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST = Object.freeze([
 // The package payload is rooted under /usr except for this single, declarative
 // XDG autostart entry. Keep the exception exact so an archive cannot smuggle
 // arbitrary /etc configuration into the extraction or attestation path.
-export const NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST = Object.freeze([
-  'etc/xdg/autostart/openburnbar.desktop'
-]);
+export const NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST = Object.freeze(
+  INSTALLED_MANIFEST_NON_USR_PATH_ALLOWLIST.map((entry) => entry.slice(1))
+);
 
 export const ARCH_PACKAGE_PRIVATE_DIRECTORIES = Object.freeze([
   '/usr/lib/openburnbar',
