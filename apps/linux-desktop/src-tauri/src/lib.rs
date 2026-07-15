@@ -4024,6 +4024,14 @@ fn media_capability_get() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.media.capability.get", Some(serde_json::json!({})))
 }
 
+/// Return shell-local Mercury viewer capability without asking the daemon to
+/// infer whether this process can actually render a VP9 screen-share frame.
+#[tauri::command]
+fn media_viewer_capability_get() -> Result<serde_json::Value, String> {
+    serde_json::to_value(media::MediaViewer::capability())
+        .map_err(|error| format!("media_viewer_capability_encode_failed:{error}"))
+}
+
 #[tauri::command]
 fn media_file_offer_list() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.media.file.offer.list", Some(serde_json::json!({})))
@@ -6396,6 +6404,7 @@ pub fn run() {
             media_decline_call,
             media_end_call,
             media_capability_get,
+            media_viewer_capability_get,
             media_file_offer_list,
             media_file_accept,
             media_file_decline,

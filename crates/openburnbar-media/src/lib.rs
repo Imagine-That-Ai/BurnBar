@@ -2,7 +2,9 @@ pub mod capability;
 pub mod capture;
 pub mod decode;
 
-pub use capability::{media_capability_probe, probe, MediaCapabilities};
+pub use capability::{
+    media_capability_probe, probe, viewer_probe, MediaCapabilities, MediaViewerCapabilities,
+};
 pub use capture::{
     media_audio_capture_start, media_capture_set_bitrate, media_capture_start, media_capture_stop,
     CaptureCodec, CaptureFrameCallback, CapturePipeline,

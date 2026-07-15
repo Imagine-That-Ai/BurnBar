@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::io::{ErrorKind, Read};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
@@ -15,6 +16,20 @@ pub struct MediaFrame {
     pub flags: u8,
     pub pts_ms: u64,
     pub payload: Vec<u8>,
+}
+
+/// Shell-owned Mercury viewer capability. This is deliberately distinct from
+/// the daemon's capture capability: a daemon may be able to encode frames
+/// while the desktop shell is missing a native video sink to display them.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaViewerCapability {
+    pub available: bool,
+    pub renderer: &'static str,
+    pub feature_enabled: bool,
+    pub can_decode_vp9: bool,
+    pub has_video_sink: bool,
+    pub reason: Option<String>,
 }
 
 pub struct MediaViewer {
@@ -50,6 +65,45 @@ impl MediaViewer {
         }
     }
 
+    /// Report whether this shell can render Mercury VP9 frames. The probe is
+    /// side-effect free: it initializes GStreamer and inspects registered
+    /// factories, but does not create a pipeline or open a native window.
+    pub fn capability() -> MediaViewerCapability {
+        #[cfg(feature = "media-gst")]
+        {
+            let capabilities = openburnbar_media::viewer_probe();
+            let reason = if capabilities.available() {
+                None
+            } else if !capabilities.backend_available {
+                Some("gstreamer_backend_unavailable".to_string())
+            } else if !capabilities.vp9_decoder_available {
+                Some("gstreamer_vp9_decoder_missing".to_string())
+            } else {
+                Some("gstreamer_video_sink_missing".to_string())
+            };
+            return MediaViewerCapability {
+                available: capabilities.available(),
+                renderer: "media-gst",
+                feature_enabled: true,
+                can_decode_vp9: capabilities.vp9_decoder_available,
+                has_video_sink: capabilities.video_sink_available,
+                reason,
+            };
+        }
+
+        #[cfg(not(feature = "media-gst"))]
+        {
+            MediaViewerCapability {
+                available: false,
+                renderer: "stub",
+                feature_enabled: false,
+                can_decode_vp9: false,
+                has_video_sink: false,
+                reason: Some("linux_media_viewer_built_without_gstreamer".to_string()),
+            }
+        }
+    }
+
     pub fn ensure_window(&self, app: &AppHandle) {
         let mut inner = match self.inner.lock() {
             Ok(guard) => guard,
@@ -80,12 +134,14 @@ impl MediaViewer {
         let ready_payload = serde_json::json!({
             "source": if cfg!(feature = "media-gst") { "media-gst" } else { "stub" },
             "available": decoder_error.is_none(),
+            "featureEnabled": true,
             "reason": decoder_error,
         });
         #[cfg(not(feature = "media-gst"))]
         let ready_payload = serde_json::json!({
             "source": "stub",
             "available": false,
+            "featureEnabled": false,
             "reason": "Linux media viewer was built without the GStreamer feature.",
         });
         let _ = app.emit("media-viewer-ready", ready_payload);
@@ -300,6 +356,19 @@ mod tests {
         assert_eq!(
             format!("{frame:?}"),
             "MediaFrame { kind: 1, flags: 1, pts_ms: 7, payload: [1, 2, 3] }"
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "media-gst"))]
+    fn viewer_capability_is_explicitly_stubbed_without_gstreamer() {
+        let capability = super::MediaViewer::capability();
+        assert!(!capability.available);
+        assert_eq!(capability.renderer, "stub");
+        assert!(!capability.feature_enabled);
+        assert_eq!(
+            capability.reason.as_deref(),
+            Some("linux_media_viewer_built_without_gstreamer")
         );
     }
 }
