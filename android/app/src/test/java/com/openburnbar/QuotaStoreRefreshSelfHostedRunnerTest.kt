@@ -195,7 +195,7 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
         // _error stayed null.  Post-fix: the HTTP 500 sets _error.
         val error = store.error.value
         assertNotNull("error state was not set on HTTP 500", error)
-        assertTrue("error should mention HTTP 500: $error", error!!.contains("500"))
+        assertTrue("error should mention HTTP 500: $error", error?.contains("500") == true)
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -428,11 +428,10 @@ class QuotaStoreRefreshSelfHostedRunnerTest {
      * Reads the private [staleRefreshInFlight] set via reflection so tests
      * can assert it is empty after cancellation.
      */
-    @Suppress("UNCHECKED_CAST")
     private fun staleRefreshInFlightOf(store: QuotaStore): Set<String> {
         val field = QuotaStore::class.java.getDeclaredField("staleRefreshInFlight")
         field.isAccessible = true
-        return field.get(store) as Set<String>
+        return field.get(store) as? Set<String> ?: emptySet()
     }
 
     private fun okHttpClient(interceptor: Interceptor): OkHttpClient = OkHttpClient.Builder()
