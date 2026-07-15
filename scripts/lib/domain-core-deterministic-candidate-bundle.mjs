@@ -39,6 +39,7 @@ const POLICY_KEYS = new Set([
   "protectedAttestationRequired",
   "workflow",
   "requiredSuites",
+  "requiredCryptoProofs",
   "requiredArtifacts",
   "requiredBenchmarks",
   "maximumPairedRegressionBasisPoints",
@@ -57,6 +58,7 @@ const POLICY_WORKFLOW_KEYS = new Set([
   "requiredJobIds",
 ]);
 const POLICY_SUITE_KEYS = new Set(["id", "jobId"]);
+const POLICY_CRYPTO_PROOF_KEYS = new Set(["id", "suiteIds"]);
 const POLICY_ARTIFACT_KEYS = new Set([
   "id",
   "consumer",
@@ -167,6 +169,12 @@ export const DOMAIN_CORE_REQUIRED_SUITES = Object.freeze([
   Object.freeze({ id: "promotion-contracts", jobId: "promotion-contracts" }),
   Object.freeze({ id: "rust-workspace", jobId: "rust-and-csharp" }),
   Object.freeze({ id: "rust-fuzz-smoke", jobId: "rust-and-csharp" }),
+  Object.freeze({ id: "crypto-kat", jobId: "rust-and-csharp" }),
+  Object.freeze({ id: "crypto-cross-open", jobId: "rust-and-csharp" }),
+  Object.freeze({ id: "crypto-wrong-key", jobId: "rust-and-csharp" }),
+  Object.freeze({ id: "crypto-aad", jobId: "rust-and-csharp" }),
+  Object.freeze({ id: "crypto-tamper", jobId: "rust-and-csharp" }),
+  Object.freeze({ id: "crypto-boundary-fuzz", jobId: "rust-and-csharp" }),
   Object.freeze({ id: "rust-performance-smoke", jobId: "rust-and-csharp" }),
   Object.freeze({ id: "csharp-quota-native", jobId: "rust-and-csharp" }),
   Object.freeze({ id: "csharp-cloudvault-native", jobId: "rust-and-csharp" }),
@@ -189,6 +197,48 @@ export const DOMAIN_CORE_REQUIRED_SUITES = Object.freeze([
   }),
   Object.freeze({ id: "python-hermes-contracts", jobId: "python-hermes-contracts" }),
   Object.freeze({ id: "rollback-drill", jobId: "rollback-drill" }),
+]);
+
+const CRYPTO_CONSUMER_SUITES = Object.freeze([
+  "swift-consumer-contracts",
+  "android-consumer-contracts",
+  "csharp-cloudvault-native",
+  "console-consumer-contracts",
+  "remote-mcp-cloudvault-contracts",
+  "python-mcp-cloudvault-contracts",
+  "python-hermes-contracts",
+]);
+
+export const DOMAIN_CORE_REQUIRED_CRYPTO_PROOFS = Object.freeze([
+  Object.freeze({
+    id: "kat",
+    suiteIds: Object.freeze([
+      "crypto-kat",
+      "wasm-browser-kat",
+      "wasm-node-kat",
+      ...CRYPTO_CONSUMER_SUITES,
+    ]),
+  }),
+  Object.freeze({
+    id: "cross-open",
+    suiteIds: Object.freeze(["crypto-cross-open", ...CRYPTO_CONSUMER_SUITES]),
+  }),
+  Object.freeze({
+    id: "wrong-key",
+    suiteIds: Object.freeze(["crypto-wrong-key", ...CRYPTO_CONSUMER_SUITES]),
+  }),
+  Object.freeze({
+    id: "aad",
+    suiteIds: Object.freeze(["crypto-aad", ...CRYPTO_CONSUMER_SUITES]),
+  }),
+  Object.freeze({
+    id: "tamper",
+    suiteIds: Object.freeze(["crypto-tamper", ...CRYPTO_CONSUMER_SUITES]),
+  }),
+  Object.freeze({
+    id: "boundary-fuzz",
+    suiteIds: Object.freeze(["crypto-boundary-fuzz", "rust-fuzz-smoke"]),
+  }),
 ]);
 
 export const DOMAIN_CORE_REQUIRED_ARTIFACTS = Object.freeze([
@@ -479,6 +529,21 @@ export function validateDeterministicPromotionPolicy(policy) {
     errors,
     (actual, expected, path) => {
       if (actual.jobId !== expected.jobId) errors.push(`${path}.jobId must equal ${expected.jobId}`);
+    },
+  );
+  validatePolicyCollection(
+    policy.requiredCryptoProofs,
+    DOMAIN_CORE_REQUIRED_CRYPTO_PROOFS,
+    POLICY_CRYPTO_PROOF_KEYS,
+    "policy.requiredCryptoProofs",
+    errors,
+    (actual, expected, path) => {
+      exactStringSet(actual.suiteIds, [...expected.suiteIds], `${path}.suiteIds`, errors);
+      for (const suiteId of Array.isArray(actual.suiteIds) ? actual.suiteIds : []) {
+        if (!policy.requiredSuites.some((suite) => suite.id === suiteId)) {
+          errors.push(`${path}.suiteIds references non-required suite ${String(suiteId)}`);
+        }
+      }
     },
   );
   validatePolicyCollection(

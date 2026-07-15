@@ -29,7 +29,8 @@ def test_trusted_deletion_guard_runs_only_default_branch_code() -> None:
     assert "candidate/scripts/" not in source
     assert "python3 candidate/" not in source
     assert "node candidate/" not in source
-    assert "pull_request_review:" not in source
+    assert "pull_request_review:" in source
+    assert "types: [submitted, dismissed]" in source
 
 
 def test_trusted_deletion_guard_uses_workspace_anchored_checkout_paths() -> None:

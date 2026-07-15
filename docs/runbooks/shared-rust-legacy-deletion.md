@@ -107,7 +107,11 @@ python3 scripts/ops/create-domain-core-deletion-plan.py \
   --reviewer @qualified-reviewer
 ```
 
-The plan hashes the stable receipt and exact target inventory. Crypto-sensitive CloudVault and Hermes rows require a reviewer in the `security_crypto` class. Other rows require `domain_owner`. The reviewer must be independent, approve the exact PR head, and remain the latest decisive review.
+The plan hashes the stable receipt and exact target inventory. Crypto-sensitive
+CloudVault and Hermes rows inherit the exact six-category crypto proof set from
+the signed v3 candidate policy and require a reviewer in the `security_crypto`
+class. Other rows require `domain_owner`. The reviewer must be independent,
+approve the exact PR head, and remain the latest decisive review.
 
 Use three reviewable commits/PRs so approval cannot be invalidated by a circular
 receipt dependency:

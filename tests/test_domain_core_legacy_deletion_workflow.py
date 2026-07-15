@@ -70,8 +70,8 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "Domain Core Trusted Deletion Guard",
             "path: trusted",
             "path: candidate",
-            "python3 trusted/scripts/ci/verify-domain-core-legacy-deletion.py",
-            '--repo-root "$GITHUB_WORKSPACE/candidate"',
+            'python3 "$TRUSTED_ROOT/scripts/ci/verify-domain-core-legacy-deletion.py"',
+            '--repo-root "$CANDIDATE_ROOT"',
             '--deletion-head "$HEAD_SHA"',
             "node trusted/scripts/ci/verify-domain-core-default-branch-controls.mjs",
             "DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache",
@@ -111,8 +111,10 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
         combined = gate + creator
         self.assertNotIn("validate_ready_report", combined)
         self.assertNotIn("domain-core-promotion-observation.yml", combined)
-        self.assertNotIn("minimumCoverageSeconds", combined)
-        self.assertNotIn("minimumSamples", combined)
+        deterministic_policy = (ROOT / "config/domain-core-promotion-policy.json").read_text()
+        self.assertNotIn("minimumCoverageSeconds", deterministic_policy)
+        self.assertNotIn("minimumSamples", deterministic_policy)
+        self.assertIn("FORBIDDEN_PROMOTION_AUTHORITY_KEYS", gate)
         self.assertIn("protected-verification output is not provenance authority", combined)
         self.assertIn('value["promotionAuthorized"] is not False', combined)
 
@@ -135,6 +137,29 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(f"      - {job}", candidate_job)
         self.assertIn('all(.value.result == "success")', candidate_job)
+
+    def test_crypto_deletion_proofs_run_as_six_distinct_candidate_suites(self) -> None:
+        source = DOMAIN_WORKFLOW.read_text()
+        for proof in (
+            "crypto-kat",
+            "crypto-cross-open",
+            "crypto-wrong-key",
+            "crypto-aad",
+            "crypto-tamper",
+            "crypto-boundary-fuzz",
+        ):
+            self.assertIn(f"{proof}=$RUNNER_TEMP/{proof}.log", source)
+        for test_name in (
+            "cloudvault::tests::canonical_fixture_is_executable_contract",
+            "hermes::tests::canonical_vectors_are_stable",
+            "cloudvault_rewrap::tests::legacy_v1_payload_text_and_blob_are_migrated_to_path_bound_v2",
+            "wrong_key_rejects_cloudvault_and_hermes",
+            "wrong_aad_rejects_cloudvault_and_hermes",
+            "tamper_rejects_cloudvault_and_hermes",
+            "cloudvault_",
+            "hermes_payload_fuzz_smoke",
+        ):
+            self.assertIn(test_name, source)
 
     def test_schemas_encode_exact_candidate_and_retained_rollback(self) -> None:
         promotion = json.loads((ROOT / "config/domain-core-promotion-attestation.schema.json").read_text())
@@ -211,7 +236,7 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "post_deletion_release_complete",
             "actions/attest-build-provenance@",
             "git merge-base --is-ancestor",
-            "all(.rows[]; .state == \"legacy_deleted\")",
+            'all(.rows[]; .state == "legacy_deleted")',
         ):
             self.assertIn(marker, workflow)
         self.assertIn("inspect-domain-core-release-legacy-absence.py", creator)
@@ -242,8 +267,8 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
             "canonicalSha256(report)",
         ):
             self.assertIn(marker, creator)
-        self.assertIn('$RUNNER_TEMP/hosting-artifact/apps/console/out', console)
-        self.assertIn('$proof_dir/functions-lib', functions)
+        self.assertIn("$RUNNER_TEMP/hosting-artifact/apps/console/out", console)
+        self.assertIn("$proof_dir/functions-lib", functions)
         self.assertIn('cp -a functions/lib "$stage/functions-lib"', deploy)
         for marker in (
             "OpenBurnBar-${version}-macOS.dmg",

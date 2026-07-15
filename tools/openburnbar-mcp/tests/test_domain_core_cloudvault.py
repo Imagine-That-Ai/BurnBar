@@ -25,7 +25,20 @@ FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures" / "domain-core" / "cloudvault" / 
 
 
 def _rust() -> CloudVaultDomainAdapter:
-    return CloudVaultDomainAdapter("rust")
+    return CloudVaultDomainAdapter("rust", "rust")
+
+
+def _mixed_mode_core() -> SimpleNamespace:
+    manifest = json.loads((REPO_ROOT / "crates" / "openburnbar-domain-core" / "union-abi-manifest.json").read_text())
+    return SimpleNamespace(
+        domain_core_version=lambda: manifest["coreVersion"],
+        domain_core_abi_version=lambda: manifest["abiVersion"],
+        domain_core_source_fingerprint=lambda: manifest["sourceSha256"],
+        cloud_vault_aad_v2=lambda *_args: "rust-aad",
+        CloudVaultSearchOperation=SimpleNamespace(TOKEN="token"),
+        CloudVaultSearchRequest=lambda **values: SimpleNamespace(**values),
+        cloud_vault_search=lambda _request: SimpleNamespace(hashes=["rust-search"]),
+    )
 
 
 def test_production_package_identity_and_opaque_project_id_fixture() -> None:
@@ -103,6 +116,42 @@ def test_token_and_semantic_search_use_canonical_ordered_hashes() -> None:
         assert actual == vector["expected"], vector["id"]
 
 
+def test_foundation_legacy_search_rust_routes_modes_independently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "legacy")
+    monkeypatch.setenv("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE", "rust")
+    monkeypatch.setattr(legacy, "_cloud_vault_aad_context", lambda *_args: "legacy-aad")
+    adapter = CloudVaultDomainAdapter(
+        domain_core_cloudvault._mode_from_environment(),
+        domain_core_cloudvault._mode_from_environment(domain_core_cloudvault._SEARCH_MODE_ENV),
+        core=_mixed_mode_core(),
+    )
+
+    assert adapter.aad_context("uid", "collection", "doc", "field") == "legacy-aad"
+    assert adapter.token_hashes("query", bytes(32)) == ["rust-search"]
+
+
+def test_foundation_rust_search_legacy_routes_modes_independently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "rust")
+    monkeypatch.setenv("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE", "legacy")
+    monkeypatch.setattr(
+        domain_core_cloudvault.search_legacy,
+        "_cloud_token_hashes",
+        lambda *_args: ["legacy-search"],
+    )
+    adapter = CloudVaultDomainAdapter(
+        domain_core_cloudvault._mode_from_environment(),
+        domain_core_cloudvault._mode_from_environment(domain_core_cloudvault._SEARCH_MODE_ENV),
+        core=_mixed_mode_core(),
+    )
+
+    assert adapter.aad_context("uid", "collection", "doc", "field") == "rust-aad"
+    assert adapter.token_hashes("query", bytes(32)) == ["legacy-search"]
+
+
 def test_sealed_text_and_blob_cross_open_canonical_aes_fixture() -> None:
     fixture = json.loads((FIXTURE_DIR / "cloudvault-deterministic-kat.json").read_text())
     vector = fixture["aesGcm"][1]
@@ -174,7 +223,7 @@ def test_shadow_returns_legacy_and_reports_only_safe_metadata() -> None:
         domain_core_source_fingerprint=lambda: manifest["sourceSha256"],
         cloud_vault_project_memory_doc_id=lambda _slug, _key: "pm_mismatch",
     )
-    adapter = CloudVaultDomainAdapter("shadow", core=fake, diagnostic=diagnostics.append)
+    adapter = CloudVaultDomainAdapter("shadow", "shadow", core=fake, diagnostic=diagnostics.append)
     key = bytes(range(32))
     expected = legacy._cloud_vault_project_memory_doc_id("secret-project", key)
     assert adapter.project_memory_doc_id("secret-project", key) == expected
@@ -200,7 +249,7 @@ def test_same_abi_wrong_source_is_rejected() -> None:
         domain_core_source_fingerprint=lambda: "0" * 64,
     )
     with pytest.raises(DomainCoreIdentityError, match="loaded domain-core identity mismatch"):
-        CloudVaultDomainAdapter("rust", core=fake).project_memory_doc_id("slug", bytes(32))
+        CloudVaultDomainAdapter("rust", "rust", core=fake).project_memory_doc_id("slug", bytes(32))
 
 
 def test_native_digest_substitution_is_rejected(tmp_path: Path) -> None:
@@ -210,18 +259,20 @@ def test_native_digest_substitution_is_rejected(tmp_path: Path) -> None:
     native = package / receipt["nativeFile"]
     native.write_bytes(native.read_bytes() + b"substitution")
     with pytest.raises(DomainCoreIdentityError, match="native digest mismatch"):
-        CloudVaultDomainAdapter("rust", package_dir=package).project_memory_doc_id("slug", bytes(32))
+        CloudVaultDomainAdapter("rust", "rust", package_dir=package).project_memory_doc_id("slug", bytes(32))
 
 
 def test_legacy_mode_does_not_require_native_package(tmp_path: Path) -> None:
-    adapter = CloudVaultDomainAdapter("legacy", package_dir=tmp_path / "absent")
+    adapter = CloudVaultDomainAdapter("legacy", "legacy", package_dir=tmp_path / "absent")
     key = bytes(range(32))
     assert adapter.project_memory_doc_id("alpha", key) == legacy._cloud_vault_project_memory_doc_id("alpha", key)
 
 
 def test_shadow_native_load_failure_returns_legacy_with_safe_diagnostic(tmp_path: Path) -> None:
     diagnostics: list[dict[str, object]] = []
-    adapter = CloudVaultDomainAdapter("shadow", package_dir=tmp_path / "absent", diagnostic=diagnostics.append)
+    adapter = CloudVaultDomainAdapter(
+        "shadow", "shadow", package_dir=tmp_path / "absent", diagnostic=diagnostics.append
+    )
     key = bytes(range(32))
     expected = legacy._cloud_vault_project_memory_doc_id("private-project", key)
     assert adapter.project_memory_doc_id("private-project", key) == expected

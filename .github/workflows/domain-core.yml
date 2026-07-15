@@ -504,6 +504,34 @@ jobs:
           cargo test -p openburnbar-domain-ffi --test fuzz_smoke -- --test-threads=1 \
             2>&1 | tee "$RUNNER_TEMP/rust-fuzz-smoke.log"
 
+      - name: Run mandatory crypto proof categories
+        working-directory: crates/openburnbar-domain-core
+        run: |
+          set -o pipefail
+          cargo test -p openburnbar-domain-core cloudvault::tests::canonical_fixture_is_executable_contract -- --exact \
+            2>&1 | tee "$RUNNER_TEMP/crypto-kat.log"
+          cargo test -p openburnbar-domain-core hermes::tests::canonical_vectors_are_stable -- --exact \
+            2>&1 | tee -a "$RUNNER_TEMP/crypto-kat.log"
+
+          cargo test -p openburnbar-domain-core cloudvault::tests::aes_gcm_matches_webcrypto_and_accepts_empty_plaintext -- --exact \
+            2>&1 | tee "$RUNNER_TEMP/crypto-cross-open.log"
+          cargo test -p openburnbar-domain-core cloudvault_rewrap::tests::legacy_v1_payload_text_and_blob_are_migrated_to_path_bound_v2 -- --exact \
+            2>&1 | tee -a "$RUNNER_TEMP/crypto-cross-open.log"
+
+          cargo test -p openburnbar-domain-ffi --test crypto_negative wrong_key_rejects_cloudvault_and_hermes -- --exact \
+            2>&1 | tee "$RUNNER_TEMP/crypto-wrong-key.log"
+
+          cargo test -p openburnbar-domain-ffi --test crypto_negative wrong_aad_rejects_cloudvault_and_hermes -- --exact \
+            2>&1 | tee "$RUNNER_TEMP/crypto-aad.log"
+
+          cargo test -p openburnbar-domain-ffi --test crypto_negative tamper_rejects_cloudvault_and_hermes -- --exact \
+            2>&1 | tee "$RUNNER_TEMP/crypto-tamper.log"
+
+          cargo test -p openburnbar-domain-ffi --test fuzz_smoke cloudvault_ -- --test-threads=1 \
+            2>&1 | tee "$RUNNER_TEMP/crypto-boundary-fuzz.log"
+          cargo test -p openburnbar-domain-ffi --test fuzz_smoke hermes_payload_fuzz_smoke -- --exact --test-threads=1 \
+            2>&1 | tee -a "$RUNNER_TEMP/crypto-boundary-fuzz.log"
+
       - name: Guard complete-payload FFI performance
         working-directory: crates/openburnbar-domain-core
         env:
@@ -597,6 +625,12 @@ jobs:
           --job-id rust-and-csharp
           --suite "rust-workspace=$RUNNER_TEMP/rust-workspace.log"
           --suite "rust-fuzz-smoke=$RUNNER_TEMP/rust-fuzz-smoke.log"
+          --suite "crypto-kat=$RUNNER_TEMP/crypto-kat.log"
+          --suite "crypto-cross-open=$RUNNER_TEMP/crypto-cross-open.log"
+          --suite "crypto-wrong-key=$RUNNER_TEMP/crypto-wrong-key.log"
+          --suite "crypto-aad=$RUNNER_TEMP/crypto-aad.log"
+          --suite "crypto-tamper=$RUNNER_TEMP/crypto-tamper.log"
+          --suite "crypto-boundary-fuzz=$RUNNER_TEMP/crypto-boundary-fuzz.log"
           --suite "rust-performance-smoke=$RUNNER_TEMP/rust-performance-smoke.log"
           --suite "csharp-quota-native=$RUNNER_TEMP/csharp-quota-native.log"
           --suite "csharp-cloudvault-native=$RUNNER_TEMP/csharp-cloudvault-native.log"

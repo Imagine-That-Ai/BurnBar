@@ -10,6 +10,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -83,6 +84,125 @@ class FakeDownloadResponse:
 
 
 class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
+    def make_rollback_artifact_fixture(self) -> tuple[dict, bytes, dict]:
+        identity = {
+            "candidateCommit": "1" * 40,
+            "coreVersion": "0.3.0",
+            "abiVersion": 3,
+            "sourceSha256": "2" * 64,
+        }
+        activation = {
+            "candidateCommit": identity["candidateCommit"],
+            "activationCommit": "4" * 40,
+            "coreVersion": identity["coreVersion"],
+            "abiVersion": identity["abiVersion"],
+            "sourceSha256": identity["sourceSha256"],
+            "changedPathsSha256": "5" * 64,
+        }
+        item = {
+            "artifactKind": "legacy-rollback-bundle",
+            "target": "all-supported-consumers",
+            "artifactUri": (
+                "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.2.3/"
+                "OpenBurnBar-1.2.3-legacy-rollback.zip"
+            ),
+            "commit": activation["activationCommit"],
+            "tag": "v1.2.3",
+            "version": "1.2.3",
+            "candidate": identity,
+            "activation": activation,
+            "retentionPolicy": "retain_until_legacy_deletion_complete",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = root / "profile.json"
+            activation_path = root / "activation.json"
+            source_path = root / "legacy-source.tar.gz"
+            bundle_path = root / "rollback.zip"
+            profile.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "name": "public-production-rollback",
+                        "artifactAuthority": "signed",
+                        "distribution": "public",
+                        "rolloutChannel": None,
+                        "evidenceEnabled": False,
+                        "modes": {domain: "legacy" for domain in GATE.PROFILE_DOMAIN_ROWS},
+                        "candidateIdentity": identity,
+                    }
+                )
+            )
+            activation_path.write_text(json.dumps(activation))
+            with tarfile.open(source_path, "w:gz") as source:
+                for name, value in (
+                    ("OpenBurnBar/config/domain-core-build-profiles.json", b"{}\n"),
+                    ("OpenBurnBar/crates/openburnbar-domain-core/Cargo.toml", b"[workspace]\n"),
+                ):
+                    info = tarfile.TarInfo(name)
+                    info.size = len(value)
+                    source.addfile(info, io.BytesIO(value))
+            ROLLBACK_BUNDLE.create_bundle(
+                profile,
+                activation_path,
+                bundle_path,
+                source_path,
+                version=item["version"],
+                tag=item["tag"],
+                commit=item["commit"],
+                ancestry_verifier=lambda _ancestor, _descendant: None,
+            )
+            contents = bundle_path.read_bytes()
+        predicate = {
+            "schemaVersion": 1,
+            "artifactKind": item["artifactKind"],
+            "target": item["target"],
+            "artifact": {
+                "fileName": item["artifactUri"].rsplit("/", 1)[-1],
+                "sha256": hashlib.sha256(contents).hexdigest(),
+            },
+            "release": {
+                "version": item["version"],
+                "tag": item["tag"],
+                "commit": item["commit"],
+                "candidate": identity,
+                "activation": activation,
+                "retentionPolicy": item["retentionPolicy"],
+            },
+        }
+        return item, contents, predicate
+
+    def rewrite_zip(
+        self,
+        contents: bytes,
+        *,
+        replacements: dict[str, bytes] | None = None,
+        removed: set[str] | None = None,
+    ) -> bytes:
+        replacements = replacements or {}
+        removed = removed or set()
+        with zipfile.ZipFile(io.BytesIO(contents)) as source:
+            entries = [(name, source.read(name)) for name in source.namelist() if name not in removed]
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as destination:
+            for name, value in entries:
+                destination.writestr(name, replacements.get(name, value))
+        return output.getvalue()
+
+    def verify_rollback_bytes(self, item: dict, contents: bytes, predicate: dict) -> None:
+        verifier = GATE.SignedEvidenceVerifier()
+        response = FakeDownloadResponse(contents, "https://objects.githubusercontent.com/retained")
+        result = [{"verificationResult": {"statement": {"predicate": predicate}}}]
+        with (
+            mock.patch.object(GATE, "urlopen", return_value=response),
+            mock.patch.object(verifier, "_verify_bundle", return_value=result),
+        ):
+            verifier.verify_rollback_artifact(
+                item,
+                ROOT / "README.md",
+                hashlib.sha256(contents).hexdigest(),
+            )
+
     def test_signed_evidence_cache_reuses_digest_addressed_immutable_bytes(
         self,
     ) -> None:
@@ -393,9 +513,33 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         self.assertTrue(policy["protectedAttestationRequired"])
         self.assertTrue(policy["rollbackRequired"])
         self.assertTrue(policy["oneStableReleaseBeforeDeletion"])
+        self.assertTrue(policy["stableReleaseRollbackArtifactRequired"])
         serialized = json.dumps(policy)
         self.assertNotIn("minimumSamples", serialized)
         self.assertNotIn("minimumCoverageSeconds", serialized)
+
+        mutations = (
+            lambda value: value.__setitem__("stableReleaseRollbackArtifactRequired", False),
+            lambda value: value.pop("stableReleaseRollbackArtifactRequired"),
+            lambda value: value["domains"]["quota"].__setitem__("minimumSamples", 10_000),
+            lambda value: value["domains"]["quota"].__setitem__("minimumCoverageSeconds", 1_209_600),
+            lambda value: value["requiredCryptoProofs"].pop(),
+            lambda value: value["requiredCryptoProofs"].append(copy.deepcopy(value["requiredCryptoProofs"][0])),
+            lambda value: value["requiredCryptoProofs"][0]["suiteIds"].__setitem__(0, "invented-suite"),
+            lambda value: value.__setitem__(
+                "requiredSuites",
+                [suite for suite in value["requiredSuites"] if suite["id"] != "crypto-kat"],
+            ),
+        )
+        for mutate in mutations:
+            weakened = copy.deepcopy(policy)
+            mutate(weakened)
+            with self.subTest(policy=weakened), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "config").mkdir()
+                (root / GATE.PROMOTION_POLICY_PATH).write_text(json.dumps(weakened))
+                with self.assertRaises(GATE.GateError):
+                    GATE.validate_deterministic_promotion_policy(root)
 
     def test_public_rollback_profile_is_permanently_all_legacy(self) -> None:
         catalog = json.loads((ROOT / GATE.BUILD_PROFILE_PATH).read_text())
@@ -758,6 +902,159 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         ):
             verifier.verify_release(item, ROOT / "README.md", hashlib.sha256(contents).hexdigest(), "quota")
 
+    def test_stable_receipt_rejects_missing_rollback_descriptor(self) -> None:
+        candidate_commit = "1" * 40
+        promotion = GATE.Receipt(
+            path="promotion.json",
+            transition="promotion",
+            generation=1,
+            approved_at=GATE.parse_rfc3339_utc("2026-07-14T00:00:00Z", "approved"),
+            commit=candidate_commit,
+            digest="2" * 64,
+            evidence=(),
+            payload={"supersedes": None},
+        )
+        stable = GATE.Receipt(
+            path="stable_release.json",
+            transition="stable_release",
+            generation=1,
+            approved_at=GATE.parse_rfc3339_utc("2026-07-15T00:00:00Z", "approved"),
+            commit="3" * 40,
+            digest="4" * 64,
+            evidence=(),
+            payload={
+                "promotionReceiptSha256": promotion.digest,
+                "publicProfileSha256": "5" * 64,
+                "candidate": {},
+                "activation": {},
+                "consumerReleases": [],
+            },
+        )
+        with (
+            mock.patch.object(
+                GATE,
+                "validate_promotion_attestation",
+                return_value=(candidate_commit, "6" * 64, "0.3.0"),
+            ),
+            self.assertRaisesRegex(GATE.GateError, "missing fields: rollbackArtifact"),
+        ):
+            GATE.validate_receipt_chain(
+                ROOT,
+                "quota.claude_statusline",
+                "rust_authoritative_with_rollback",
+                1,
+                {"promotion": promotion, "stableRelease": stable},
+                FakeVerifier(),
+            )
+
+    def test_stable_receipt_rejects_missing_required_consumer_release(self) -> None:
+        row_id = "quota.claude_statusline"
+        candidate_commit = "1" * 40
+        activation_commit = "2" * 40
+        profile_digest = "3" * 64
+        candidate = {
+            "candidateCommit": candidate_commit,
+            "coreVersion": "0.3.0",
+            "abiVersion": 3,
+            "sourceSha256": "4" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": activation_commit,
+            "changedPathsSha256": "5" * 64,
+        }
+        promotion = GATE.Receipt(
+            path="promotion.json",
+            transition="promotion",
+            generation=1,
+            approved_at=GATE.parse_rfc3339_utc("2026-07-14T00:00:00Z", "approved"),
+            commit=candidate_commit,
+            digest="6" * 64,
+            evidence=(),
+            payload={"supersedes": None},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory).resolve()
+            releases = []
+            evidence = []
+            for consumer in ("apple", "linux"):
+                version = "1.2.3"
+                tag = f"linux-v{version}" if consumer == "linux" else f"v{version}"
+                asset = GATE.expected_release_asset_name(consumer, version)
+                artifact_uri = f"https://github.com/Imagine-That-Ai/BurnBar/releases/download/{tag}/{asset}"
+                provenance_relative = f"{GATE.RELEASE_PROVENANCE_ROOT}/{row_id}/1/{consumer}.json"
+                provenance = repo_root / provenance_relative
+                provenance.parent.mkdir(parents=True, exist_ok=True)
+                provenance.write_bytes(f"{consumer} provenance\n".encode())
+                artifact_kind, target = GATE.RELEASE_ARTIFACT_IDENTITIES[consumer]
+                releases.append(
+                    {
+                        "consumer": consumer,
+                        "artifactKind": artifact_kind,
+                        "target": target,
+                        "version": version,
+                        "tag": tag,
+                        "commit": activation_commit,
+                        "publishedAt": "2026-07-14T12:00:00Z",
+                        "artifactUri": artifact_uri,
+                        "artifactSha256": "7" * 64,
+                        "publicProfileSha256": profile_digest,
+                        "candidate": candidate,
+                        "activation": activation,
+                        "provenancePath": provenance_relative,
+                        "provenanceSha256": hashlib.sha256(provenance.read_bytes()).hexdigest(),
+                    }
+                )
+                evidence.append(artifact_uri)
+            stable = GATE.Receipt(
+                path="stable_release.json",
+                transition="stable_release",
+                generation=1,
+                approved_at=GATE.parse_rfc3339_utc("2026-07-15T00:00:00Z", "approved"),
+                commit=activation_commit,
+                digest="8" * 64,
+                evidence=tuple(evidence),
+                payload={
+                    "promotionReceiptSha256": promotion.digest,
+                    "publicProfileSha256": profile_digest,
+                    "candidate": candidate,
+                    "activation": activation,
+                    "consumerReleases": releases,
+                    "rollbackArtifact": {},
+                },
+            )
+
+            def profile_at_commit(_repo_root: Path, commit: str):
+                mode = "legacy" if commit == candidate_commit else "rust"
+                return ({"quota": mode}, {"quota": profile_digest})
+
+            with (
+                mock.patch.object(
+                    GATE,
+                    "validate_promotion_attestation",
+                    return_value=(candidate_commit, "9" * 64, candidate["coreVersion"]),
+                ),
+                mock.patch.object(GATE, "candidate_identity_at_commit", return_value=candidate),
+                mock.patch.object(GATE, "validate_activation_closure", return_value=activation),
+                mock.patch.object(GATE, "require_commit", side_effect=lambda _root, value, _label: value),
+                mock.patch.object(GATE, "require_ancestor"),
+                mock.patch.object(GATE, "git_output", return_value=activation_commit),
+                mock.patch.object(
+                    GATE,
+                    "public_production_profile_at_commit",
+                    side_effect=profile_at_commit,
+                ),
+                self.assertRaisesRegex(GATE.GateError, "exact applicable consumer set"),
+            ):
+                GATE.validate_receipt_chain(
+                    repo_root,
+                    row_id,
+                    "rust_authoritative_with_rollback",
+                    1,
+                    {"promotion": promotion, "stableRelease": stable},
+                    FakeVerifier(),
+                )
+
     def test_stable_release_requires_exact_candidate_and_retained_signed_rollback(
         self,
     ) -> None:
@@ -1017,6 +1314,77 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             self.assertRaisesRegex(GATE.GateError, "does not bind the exact candidate"),
         ):
             verifier.verify_rollback_artifact(item, ROOT / "README.md", hashlib.sha256(contents).hexdigest())
+
+    def test_rollback_artifact_rejects_source_without_required_build_inputs(self) -> None:
+        item, contents, predicate = self.make_rollback_artifact_fixture()
+        source_output = io.BytesIO()
+        with tarfile.open(fileobj=source_output, mode="w:gz") as source:
+            value = b"{}\n"
+            info = tarfile.TarInfo("OpenBurnBar/config/domain-core-build-profiles.json")
+            info.size = len(value)
+            source.addfile(info, io.BytesIO(value))
+        source_bytes = source_output.getvalue()
+        with zipfile.ZipFile(io.BytesIO(contents)) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+        manifest["restoration"]["sourceArchive"]["sha256"] = hashlib.sha256(source_bytes).hexdigest()
+        manifest["restoration"]["sourceArchive"]["size"] = len(source_bytes)
+        mutated = self.rewrite_zip(
+            contents,
+            replacements={
+                "manifest.json": ROLLBACK_BUNDLE.canonical(manifest),
+                "legacy-source.tar.gz": source_bytes,
+            },
+        )
+        predicate["artifact"]["sha256"] = hashlib.sha256(mutated).hexdigest()
+        with self.assertRaisesRegex(GATE.GateError, "legacy source omits required build inputs"):
+            self.verify_rollback_bytes(item, mutated, predicate)
+
+    def test_rollback_artifact_rejects_nonlegacy_profile_mode(self) -> None:
+        item, contents, predicate = self.make_rollback_artifact_fixture()
+        with zipfile.ZipFile(io.BytesIO(contents)) as archive:
+            profile = json.loads(archive.read("domain-core-public-production-rollback.json"))
+        profile["modes"]["quota"] = "rust"
+        mutated = self.rewrite_zip(
+            contents,
+            replacements={"domain-core-public-production-rollback.json": ROLLBACK_BUNDLE.canonical(profile)},
+        )
+        predicate["artifact"]["sha256"] = hashlib.sha256(mutated).hexdigest()
+        with self.assertRaisesRegex(GATE.GateError, "exact all-legacy signed profile"):
+            self.verify_rollback_bytes(item, mutated, predicate)
+
+    def test_rollback_artifact_rejects_missing_consumer_payload_or_provenance(self) -> None:
+        item, contents, predicate = self.make_rollback_artifact_fixture()
+        for missing in (
+            "payloads/apple/rollback-settings.json",
+            "payloads/apple/provenance.json",
+        ):
+            mutated = self.rewrite_zip(contents, removed={missing})
+            mutated_predicate = copy.deepcopy(predicate)
+            mutated_predicate["artifact"]["sha256"] = hashlib.sha256(mutated).hexdigest()
+            with (
+                self.subTest(missing=missing),
+                self.assertRaisesRegex(GATE.GateError, "restoration payload is unreadable"),
+            ):
+                self.verify_rollback_bytes(item, mutated, mutated_predicate)
+
+    def test_rollback_artifact_rejects_unavailable_or_digest_mismatched_bytes(self) -> None:
+        item, contents, _predicate = self.make_rollback_artifact_fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            verifier = GATE.SignedEvidenceVerifier(Path(directory))
+            with (
+                mock.patch.object(GATE, "urlopen", side_effect=OSError("artifact unavailable")),
+                self.assertRaisesRegex(GATE.GateError, "artifact download failed"),
+            ):
+                verifier.verify_rollback_artifact(item, ROOT / "README.md", hashlib.sha256(contents).hexdigest())
+
+        with tempfile.TemporaryDirectory() as directory:
+            verifier = GATE.SignedEvidenceVerifier(Path(directory))
+            response = FakeDownloadResponse(contents, "https://objects.githubusercontent.com/retained")
+            with (
+                mock.patch.object(GATE, "urlopen", return_value=response),
+                self.assertRaisesRegex(GATE.GateError, "artifact SHA-256 does not match published bytes"),
+            ):
+                verifier.verify_rollback_artifact(item, ROOT / "README.md", "0" * 64)
 
     def test_security_rows_require_security_crypto_review(self) -> None:
         self.assertEqual(

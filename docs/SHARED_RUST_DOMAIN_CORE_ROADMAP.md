@@ -229,7 +229,11 @@ wrong-key/AAD/tamper rejection, boundary fuzzing, and an independent security
 review with all release-blocking findings resolved. Authentication failures in
 `rust` mode are fail-closed and never trigger legacy decryption. Legacy crypto
 is deleted only after those gates, consumer-specific rollout evidence, and one
-stable Rust-authoritative release.
+stable Rust-authoritative release. The v3 policy binds those categories to the
+distinct `crypto-kat`, `crypto-cross-open`, `crypto-wrong-key`, `crypto-aad`,
+`crypto-tamper`, and `crypto-boundary-fuzz` candidate suites plus the applicable
+consumer contract suites; omitting or remapping any category invalidates the
+candidate before protected attestation.
 
 ## Current landing state
 

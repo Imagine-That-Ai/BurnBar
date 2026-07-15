@@ -122,6 +122,7 @@ export interface DomainCoreCloudVaultAdapter {
 
 const DOMAIN_CORE_ABI_VERSION = 3;
 const MODE_ENVIRONMENT_VARIABLE = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
+const SEARCH_MODE_ENVIRONMENT_VARIABLE = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE";
 const packageDirectory = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../vendor/openburnbar-domain-core-wasm",
@@ -130,6 +131,14 @@ const require = createRequire(import.meta.url);
 
 function configuredMode(environment: NodeJS.ProcessEnv = process.env): DomainCoreCloudVaultMode {
   const value = environment[MODE_ENVIRONMENT_VARIABLE]?.trim().toLowerCase();
+  if (value === "shadow" || value === "rust") {
+    return value;
+  }
+  return "legacy";
+}
+
+function configuredSearchMode(environment: NodeJS.ProcessEnv = process.env): DomainCoreCloudVaultMode {
+  const value = environment[SEARCH_MODE_ENVIRONMENT_VARIABLE]?.trim().toLowerCase();
   if (value === "shadow" || value === "rust") {
     return value;
   }
@@ -205,6 +214,7 @@ function loadProductionPackage(): DomainCoreCloudVaultLoadedPackageForTest {
 
 function createAdapter(
   mode: () => DomainCoreCloudVaultMode,
+  searchMode: () => DomainCoreCloudVaultMode,
   load: () => DomainCoreCloudVaultLoadedPackageForTest,
   warning: (message: string) => void,
 ): DomainCoreCloudVaultAdapter {
@@ -225,16 +235,17 @@ function createAdapter(
   };
 
   const select = <T>(
+    selectedMode: () => DomainCoreCloudVaultMode,
     operation: string,
     legacy: () => T,
     rust: (core: DomainCoreCloudVaultModule) => T,
     equal: (left: T, right: T) => boolean,
   ): T => {
-    const selectedMode = mode();
-    if (selectedMode === "legacy") {
+    const authority = selectedMode();
+    if (authority === "legacy") {
       return legacy();
     }
-    if (selectedMode === "rust") {
+    if (authority === "rust") {
       return rust(requireDomainCore());
     }
 
@@ -257,24 +268,28 @@ function createAdapter(
 
   return {
     aadV2: (uid, collection, docID, field, schemaVersion, purpose, legacy) => select(
+      mode,
       "aad_v2",
       legacy,
       (core) => core.cloudVaultAadV2(uid, collection, docID, field, schemaVersion, purpose),
       (left, right) => left === right,
     ),
     aesGcmOpenCombined: (combined, key, aad, legacy) => select(
+      mode,
       "aes_gcm_open_combined",
       legacy,
       (core) => core.cloudVaultAesGcmOpenCombined(combined, key, aad),
       bytesEqual,
     ),
     aesGcmSealCombined: (plaintext, key, nonce, aad, legacy) => select(
+      mode,
       "aes_gcm_seal_combined",
       legacy,
       (core) => core.cloudVaultAesGcmSealCombined(plaintext, key, nonce, aad),
       bytesEqual,
     ),
     search: (operation, text, vaultKey, limit, legacy) => select(
+      searchMode,
       operation === 3 ? "search_semantic" : "search_token",
       legacy,
       (core) => {
@@ -294,6 +309,7 @@ function createAdapter(
       stringsEqual,
     ),
     vectorCloak: (vector, vaultKey, modelVersion, legacy) => select(
+      mode,
       "pensieve_vector_cloak",
       legacy,
       (core) => core.pensieveVectorCloak(Float64Array.from(vector), vaultKey, modelVersion),
@@ -302,12 +318,14 @@ function createAdapter(
       ),
     ),
     deterministicEmbed: (text, dimensions, isQuery, legacy) => select(
+      mode,
       "pensieve_deterministic_embed",
       legacy,
       (core) => Array.from(core.pensieveDeterministicEmbed(text, dimensions, isQuery)),
       (left, right) => left.length === right.length && left.every((value, index) => value === right[index]),
     ),
     deterministicEmbedAndCloak: (text, dimensions, isQuery, vaultKey, modelVersion, legacy) => select(
+      mode,
       "pensieve_deterministic_embed_and_cloak",
       legacy,
       (core) => Array.from(core.pensieveDeterministicEmbedAndCloak(
@@ -326,6 +344,7 @@ function createAdapter(
 
 const productionAdapter = createAdapter(
   configuredMode,
+  configuredSearchMode,
   loadProductionPackage,
   (message) => console.warn(message),
 );
@@ -404,8 +423,9 @@ export function domainCorePensieveDeterministicEmbedAndCloak(
 
 export function createDomainCoreCloudVaultAdapterForTest(
   selectedMode: DomainCoreCloudVaultMode,
+  selectedSearchMode: DomainCoreCloudVaultMode,
   loaded: DomainCoreCloudVaultLoadedPackageForTest,
   warning: (message: string) => void = () => undefined,
 ): DomainCoreCloudVaultAdapter {
-  return createAdapter(() => selectedMode, () => loaded, warning);
+  return createAdapter(() => selectedMode, () => selectedSearchMode, () => loaded, warning);
 }

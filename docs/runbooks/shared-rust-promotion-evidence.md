@@ -231,6 +231,14 @@ An implementation having a Rust export is not proof. The exporter never
 fabricates an empty, continuous, or passing window, and telemetry volume never
 substitutes for the deterministic workflow below.
 
+Crypto authority is also explicit rather than inferred from broad job success.
+The v3 policy requires six separately digested suites: `crypto-kat`,
+`crypto-cross-open`, `crypto-wrong-key`, `crypto-aad`, `crypto-tamper`, and
+`crypto-boundary-fuzz`. Each category is cross-bound to the applicable Swift,
+Android, C#, Wasm, Console, remote/local MCP, and Hermes Python consumer suites.
+The candidate evaluator rejects a missing, duplicated, remapped, digest-reused,
+or candidate-mismatched proof before protected attestation.
+
 ## Create and attest deterministic proof
 
 1. Merge the exact candidate to `main`. A PR merge ref, dispatch checkout, or

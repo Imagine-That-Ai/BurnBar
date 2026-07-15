@@ -18,6 +18,18 @@ public static class DomainCorePensieveVectorBridge
             legacy,
             Equivalent);
 
+    public static double[] Normalize(
+        IReadOnlyList<double> vector,
+        Func<double[]> legacy)
+    {
+        ArgumentNullException.ThrowIfNull(vector);
+        return DomainCoreCloudVaultBridge.Apply(
+            "pensieve_l2_normalize",
+            () => DomainCore.PensieveL2Normalize(vector.ToList()).ToArray(),
+            legacy,
+            Equivalent);
+    }
+
     public static double[] DeterministicEmbed(
         string text,
         uint dimensions,

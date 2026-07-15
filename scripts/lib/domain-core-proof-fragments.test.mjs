@@ -14,6 +14,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  DOMAIN_CORE_REQUIRED_ARTIFACTS,
   DOMAIN_CORE_REQUIRED_JOB_IDS,
   DOMAIN_CORE_REQUIRED_SUITES,
 } from "./domain-core-deterministic-candidate-bundle.mjs";
@@ -100,9 +101,9 @@ test("strict fragments aggregate every policy suite, artifact, benchmark, and co
     runAttempt: RUN.runAttempt,
     policy: POLICY,
   });
-  assert.equal(evidence.jobs.length, 14);
-  assert.equal(evidence.suites.length, 22);
-  assert.equal(evidence.artifacts.length, 10);
+  assert.equal(evidence.jobs.length, DOMAIN_CORE_REQUIRED_JOB_IDS.length);
+  assert.equal(evidence.suites.length, DOMAIN_CORE_REQUIRED_SUITES.length);
+  assert.equal(evidence.artifacts.length, DOMAIN_CORE_REQUIRED_ARTIFACTS.length);
   assert.equal(evidence.benchmarks[0].pairedRegressionBasisPoints, 490);
   assert.equal(evidence.coverage.length, 51);
   assert.equal(evidence.rollback.restoredMode, "legacy");

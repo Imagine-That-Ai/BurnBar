@@ -27,6 +27,7 @@ import {
 } from "./legacy/pensieveVectorLegacy.js";
 
 const MODE = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
+const SEARCH_MODE = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE";
 const SOURCE_A = "a".repeat(64);
 const SOURCE_B = "b".repeat(64);
 const WASM_SHA = "c".repeat(64);
@@ -66,26 +67,28 @@ function testModule(overrides: Partial<DomainCoreCloudVaultModule> = {}): Domain
   };
 }
 
-function withMode<T>(value: string | undefined, operation: () => T): T {
-  const previous = process.env[MODE];
-  if (value === undefined) {
-    delete process.env[MODE];
-  } else {
-    process.env[MODE] = value;
-  }
+function withModes<T>(mode: string | undefined, searchMode: string | undefined, operation: () => T): T {
+  const previousMode = process.env[MODE];
+  const previousSearchMode = process.env[SEARCH_MODE];
+  const set = (name: string, value: string | undefined) => {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+  };
+  set(MODE, mode);
+  set(SEARCH_MODE, searchMode);
   try {
     return operation();
   } finally {
-    if (previous === undefined) {
-      delete process.env[MODE];
-    } else {
-      process.env[MODE] = previous;
-    }
+    set(MODE, previousMode);
+    set(SEARCH_MODE, previousSearchMode);
   }
 }
 
 test("Rust CloudVault adapter matches canonical AAD, AES, and search vectors", () => {
-  withMode("rust", () => {
+  withModes("rust", "rust", () => {
     const aad = domainCoreCloudVaultAADContext(
       "user",
       "sessions",
@@ -121,8 +124,33 @@ test("Rust CloudVault adapter matches canonical AAD, AES, and search vectors", (
   });
 });
 
+test("foundation legacy and search Rust route independently", () => {
+  withModes("legacy", "rust", () => {
+    assert.equal(
+      domainCoreCloudVaultAADContext("uid", "collection", "doc", "field", 2, "body", () => "legacy-aad"),
+      "legacy-aad",
+    );
+    const result = domainCoreCloudVaultSearch(0, "query", KEY, 10, () => ["legacy-search"]);
+    assert.notDeepEqual(result, ["legacy-search"]);
+    assert.ok(result.length > 0);
+  });
+});
+
+test("foundation Rust and search legacy route independently", () => {
+  withModes("rust", "legacy", () => {
+    assert.equal(
+      domainCoreCloudVaultAADContext("user", "sessions", "doc", "body", 2, "body", () => "legacy-aad"),
+      AAD.toString("utf8"),
+    );
+    assert.deepEqual(
+      domainCoreCloudVaultSearch(0, "query", KEY, 10, () => ["legacy-search"]),
+      ["legacy-search"],
+    );
+  });
+});
+
 test("Rust Pensieve vector adapter matches the published cross-language golden vectors", () => {
-  withMode("rust", () => {
+  withModes("rust", undefined, () => {
     const key = Buffer.alloc(32, 0x42);
     const basis = new Float64Array(384);
     basis[5] = 1;
@@ -174,7 +202,7 @@ test("legacy helpers preserve the remote MCP rollback behavior", () => {
 
 test("shadow remains legacy-authoritative and logs no input material", () => {
   const warnings: string[] = [];
-  const adapter = createDomainCoreCloudVaultAdapterForTest("shadow", {
+  const adapter = createDomainCoreCloudVaultAdapterForTest("shadow", "shadow", {
     module: testModule(),
     receipt,
     sourceFingerprint: SOURCE_A,
@@ -189,7 +217,7 @@ test("shadow remains legacy-authoritative and logs no input material", () => {
 });
 
 test("Rust authority rejects a same-ABI package with the wrong source", () => {
-  const adapter = createDomainCoreCloudVaultAdapterForTest("rust", {
+  const adapter = createDomainCoreCloudVaultAdapterForTest("rust", "rust", {
     module: testModule({ domainCoreSourceFingerprint: () => SOURCE_B }),
     receipt,
     sourceFingerprint: SOURCE_A,
@@ -202,7 +230,7 @@ test("Rust authority rejects a same-ABI package with the wrong source", () => {
 });
 
 test("Rust authority fails closed on AES authentication failure", () => {
-  withMode("rust", () => {
+  withModes("rust", undefined, () => {
     const combined = Buffer.from(domainCoreAesGcmSealCombined(
       Buffer.from("secret"),
       KEY,

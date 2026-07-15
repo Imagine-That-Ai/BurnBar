@@ -36,6 +36,27 @@ public sealed class PensieveVectorCloakTests
     }
 
     [Fact]
+    public void RustAuthority_NormalizePreservesThePublicContract()
+    {
+        const string variable = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        Environment.SetEnvironmentVariable(variable, "rust");
+        try
+        {
+            double[] normalized = PensieveVectorCloak.Normalize(new[] { 3.0, 4.0 });
+
+            Assert.Equal(0.6, normalized[0], precision: 12);
+            Assert.Equal(0.8, normalized[1], precision: 12);
+            Assert.Empty(PensieveVectorCloak.Normalize(Array.Empty<double>()));
+            Assert.Throws<ArgumentNullException>(() => PensieveVectorCloak.Normalize(null!));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
+    [Fact]
     public void ShadowEvidence_UsesPensieveVectorSlice()
     {
         const string variable = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";

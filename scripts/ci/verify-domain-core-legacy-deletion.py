@@ -210,6 +210,46 @@ ROW_RELEASE_CONSUMERS = {
     "pricing.kimi_historical": {"functions"},
 }
 PROMOTION_POLICY_PATH = "config/domain-core-promotion-policy.json"
+DETERMINISTIC_POLICY_KEYS = {
+    "schemaVersion",
+    "authority",
+    "promotionAuthority",
+    "protectedAttestationRequired",
+    "workflow",
+    "requiredSuites",
+    "requiredCryptoProofs",
+    "requiredArtifacts",
+    "requiredBenchmarks",
+    "maximumPairedRegressionBasisPoints",
+    "rollbackRequired",
+    "rollback",
+    "oneStableReleaseBeforeDeletion",
+    "stableReleaseRollbackArtifactRequired",
+    "domains",
+}
+FORBIDDEN_PROMOTION_AUTHORITY_KEYS = {"minimumCoverageSeconds", "minimumSamples"}
+CRYPTO_CONSUMER_SUITES = (
+    "swift-consumer-contracts",
+    "android-consumer-contracts",
+    "csharp-cloudvault-native",
+    "console-consumer-contracts",
+    "remote-mcp-cloudvault-contracts",
+    "python-mcp-cloudvault-contracts",
+    "python-hermes-contracts",
+)
+REQUIRED_CRYPTO_PROOFS = {
+    "kat": (
+        "crypto-kat",
+        "wasm-browser-kat",
+        "wasm-node-kat",
+        *CRYPTO_CONSUMER_SUITES,
+    ),
+    "cross-open": ("crypto-cross-open", *CRYPTO_CONSUMER_SUITES),
+    "wrong-key": ("crypto-wrong-key", *CRYPTO_CONSUMER_SUITES),
+    "aad": ("crypto-aad", *CRYPTO_CONSUMER_SUITES),
+    "tamper": ("crypto-tamper", *CRYPTO_CONSUMER_SUITES),
+    "boundary-fuzz": ("crypto-boundary-fuzz", "rust-fuzz-smoke"),
+}
 PROMOTION_EVALUATOR_PATH = "scripts/lib/domain-core-deterministic-candidate-bundle.mjs"
 PROMOTION_SIGNER_WORKFLOW = ".github/workflows/domain-core-promotion-proof.yml"
 SOURCE_WORKFLOW = ".github/workflows/domain-core.yml"
@@ -2889,6 +2929,62 @@ def validate_deterministic_promotion_policy(repo_root: Path) -> None:
         must_exist=True,
     )
     policy = require_object(load_json(path, "domain-core promotion policy"), "domain-core promotion policy")
+    exact_keys(
+        policy,
+        DETERMINISTIC_POLICY_KEYS,
+        DETERMINISTIC_POLICY_KEYS,
+        "domain-core promotion policy",
+    )
+    pending: list[Any] = [policy]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, dict):
+            forbidden = FORBIDDEN_PROMOTION_AUTHORITY_KEYS.intersection(value)
+            if forbidden:
+                raise GateError(
+                    "domain-core promotion policy cannot restore elapsed-time or sample-count authority: "
+                    + ", ".join(sorted(forbidden))
+                )
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    crypto_proofs = require_array(
+        policy.get("requiredCryptoProofs"),
+        "domain-core promotion policy.requiredCryptoProofs",
+    )
+    normalized_crypto_proofs: dict[str, tuple[str, ...]] = {}
+    for index, raw_proof in enumerate(crypto_proofs):
+        proof = require_object(raw_proof, f"domain-core promotion policy.requiredCryptoProofs[{index}]")
+        exact_keys(
+            proof,
+            {"id", "suiteIds"},
+            {"id", "suiteIds"},
+            f"domain-core promotion policy.requiredCryptoProofs[{index}]",
+        )
+        proof_id = proof.get("id")
+        suite_ids = require_array(
+            proof.get("suiteIds"),
+            f"domain-core promotion policy.requiredCryptoProofs[{index}].suiteIds",
+        )
+        if not isinstance(proof_id, str) or proof_id in normalized_crypto_proofs:
+            raise GateError("domain-core promotion policy crypto proof IDs must be unique strings")
+        if any(not isinstance(suite_id, str) for suite_id in suite_ids) or len(set(suite_ids)) != len(suite_ids):
+            raise GateError(f"domain-core promotion policy crypto proof {proof_id} has invalid suite IDs")
+        normalized_crypto_proofs[proof_id] = tuple(suite_ids)
+    if normalized_crypto_proofs != REQUIRED_CRYPTO_PROOFS:
+        raise GateError(
+            "domain-core promotion policy must require exact KAT, cross-open, wrong-key, AAD, tamper, and boundary-fuzz proofs"
+        )
+    required_suite_ids = {
+        require_object(raw_suite, "domain-core promotion policy required suite").get("id")
+        for raw_suite in require_array(
+            policy.get("requiredSuites"),
+            "domain-core promotion policy.requiredSuites",
+        )
+    }
+    crypto_suite_ids = {suite_id for suite_ids in REQUIRED_CRYPTO_PROOFS.values() for suite_id in suite_ids}
+    if not crypto_suite_ids.issubset(required_suite_ids):
+        raise GateError("domain-core promotion policy omits a required crypto proof suite")
     if policy.get("schemaVersion") != 3 or isinstance(policy.get("schemaVersion"), bool):
         raise GateError("domain-core promotion policy schemaVersion must be 3")
     if (
@@ -2896,6 +2992,7 @@ def validate_deterministic_promotion_policy(repo_root: Path) -> None:
         or policy.get("promotionAuthority") is not False
         or policy.get("protectedAttestationRequired") is not True
         or policy.get("oneStableReleaseBeforeDeletion") is not True
+        or policy.get("stableReleaseRollbackArtifactRequired") is not True
         or policy.get("rollbackRequired") is not True
     ):
         raise GateError(

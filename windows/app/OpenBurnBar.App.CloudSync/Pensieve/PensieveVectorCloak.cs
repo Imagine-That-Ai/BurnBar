@@ -40,5 +40,8 @@ public static class PensieveVectorCloak
             modelVersion,
             () => PensieveVectorLegacy.Cloak(vector, vaultKey, modelVersion));
 
-    public static double[] Normalize(IReadOnlyList<double> vector) => PensieveVectorLegacy.Normalize(vector);
+    public static double[] Normalize(IReadOnlyList<double> vector) =>
+        DomainCorePensieveVectorBridge.Normalize(
+            vector,
+            () => PensieveVectorLegacy.Normalize(vector));
 }

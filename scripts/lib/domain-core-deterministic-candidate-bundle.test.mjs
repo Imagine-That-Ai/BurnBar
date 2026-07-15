@@ -9,6 +9,7 @@ import {
   createUnsignedDeterministicCandidateBundle,
   deterministicPolicySha256,
   DOMAIN_CORE_REQUIRED_ARTIFACTS,
+  DOMAIN_CORE_REQUIRED_CRYPTO_PROOFS,
   DOMAIN_CORE_REQUIRED_JOB_IDS,
   DOMAIN_CORE_REQUIRED_SUITES,
   evaluateUnsignedDeterministicCandidateBundle,
@@ -152,6 +153,7 @@ test("schema-3 policy is canonical and covers all 51 real cells", () => {
   assert.equal(POLICY.rollbackRequired, true);
   assert.equal(POLICY.oneStableReleaseBeforeDeletion, true);
   assert.equal(POLICY.stableReleaseRollbackArtifactRequired, true);
+  assert.deepEqual(POLICY.requiredCryptoProofs, DOMAIN_CORE_REQUIRED_CRYPTO_PROOFS);
 });
 
 test("shadow telemetry is explicitly non-authoritative and has no time or sample targets", () => {
@@ -217,6 +219,10 @@ test("policy cannot weaken exact jobs, suites, artifacts, cells, rollback, or pe
     (policy) => (policy.protectedAttestationRequired = false),
     (policy) => policy.workflow.requiredJobIds.pop(),
     (policy) => policy.requiredSuites.pop(),
+    (policy) => policy.requiredCryptoProofs.pop(),
+    (policy) => policy.requiredCryptoProofs.push(structuredClone(policy.requiredCryptoProofs[0])),
+    (policy) => policy.requiredCryptoProofs[0].suiteIds.pop(),
+    (policy) => policy.requiredCryptoProofs[0].suiteIds.push("invented-suite"),
     (policy) => policy.requiredArtifacts.pop(),
     (policy) => policy.domains.cloudvault.requiredCoverage.pop(),
     (policy) => (policy.maximumPairedRegressionBasisPoints = 501),
@@ -229,6 +235,30 @@ test("policy cannot weaken exact jobs, suites, artifacts, cells, rollback, or pe
     mutate(policy);
     assert.notDeepEqual(validateDeterministicPromotionPolicy(policy), []);
     assert.equal(evaluate(validBundle(), policy).eligibleForAttestation, false);
+  }
+});
+
+test("every mandatory crypto proof suite is digest-unique and candidate-bound", () => {
+  const categorySuites = [
+    "crypto-kat",
+    "crypto-cross-open",
+    "crypto-wrong-key",
+    "crypto-aad",
+    "crypto-tamper",
+    "crypto-boundary-fuzz",
+  ];
+  for (const suiteId of categorySuites) {
+    const wrongDigest = validBundle();
+    const suite = wrongDigest.suites.find((item) => item.id === suiteId);
+    assert.ok(suite, suiteId);
+    suite.reportSha256 = wrongDigest.suites[0].reportSha256;
+    assert.equal(evaluate(wrongDigest).eligibleForAttestation, false, `${suiteId}: digest`);
+
+    const wrongCandidate = validBundle();
+    const candidateSuite = wrongCandidate.suites.find((item) => item.id === suiteId);
+    assert.ok(candidateSuite, suiteId);
+    candidateSuite.candidate.candidateCommit = "f".repeat(40);
+    assert.equal(evaluate(wrongCandidate).eligibleForAttestation, false, `${suiteId}: candidate`);
   }
 });
 

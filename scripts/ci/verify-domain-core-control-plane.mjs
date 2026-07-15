@@ -45,6 +45,8 @@ const SEED_PATHS = Object.freeze([
   "config/domain-core-promotion-policy.json",
   "config/domain-core-release-predicate.schema.json",
   "crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs",
+  "crates/openburnbar-domain-core/domain-ffi/tests/crypto_negative.rs",
+  "crates/openburnbar-domain-core/domain-ffi/tests/fuzz_smoke.rs",
   "crates/openburnbar-domain-core/union-abi-manifest.json",
   "functions/src/domainCoreBuildProfile.ts",
   "functions/src/domainCorePricing.ts",

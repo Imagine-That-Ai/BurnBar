@@ -30,6 +30,12 @@
     { "id": "promotion-contracts", "jobId": "promotion-contracts" },
     { "id": "rust-workspace", "jobId": "rust-and-csharp" },
     { "id": "rust-fuzz-smoke", "jobId": "rust-and-csharp" },
+    { "id": "crypto-kat", "jobId": "rust-and-csharp" },
+    { "id": "crypto-cross-open", "jobId": "rust-and-csharp" },
+    { "id": "crypto-wrong-key", "jobId": "rust-and-csharp" },
+    { "id": "crypto-aad", "jobId": "rust-and-csharp" },
+    { "id": "crypto-tamper", "jobId": "rust-and-csharp" },
+    { "id": "crypto-boundary-fuzz", "jobId": "rust-and-csharp" },
     { "id": "rust-performance-smoke", "jobId": "rust-and-csharp" },
     { "id": "csharp-quota-native", "jobId": "rust-and-csharp" },
     { "id": "csharp-cloudvault-native", "jobId": "rust-and-csharp" },
@@ -49,6 +55,14 @@
     { "id": "python-mcp-cloudvault-contracts", "jobId": "python-mcp-cloudvault-contracts" },
     { "id": "python-hermes-contracts", "jobId": "python-hermes-contracts" },
     { "id": "rollback-drill", "jobId": "rollback-drill" }
+  ],
+  "requiredCryptoProofs": [
+    { "id": "kat", "suiteIds": ["crypto-kat", "wasm-browser-kat", "wasm-node-kat", "swift-consumer-contracts", "android-consumer-contracts", "csharp-cloudvault-native", "console-consumer-contracts", "remote-mcp-cloudvault-contracts", "python-mcp-cloudvault-contracts", "python-hermes-contracts"] },
+    { "id": "cross-open", "suiteIds": ["crypto-cross-open", "swift-consumer-contracts", "android-consumer-contracts", "csharp-cloudvault-native", "console-consumer-contracts", "remote-mcp-cloudvault-contracts", "python-mcp-cloudvault-contracts", "python-hermes-contracts"] },
+    { "id": "wrong-key", "suiteIds": ["crypto-wrong-key", "swift-consumer-contracts", "android-consumer-contracts", "csharp-cloudvault-native", "console-consumer-contracts", "remote-mcp-cloudvault-contracts", "python-mcp-cloudvault-contracts", "python-hermes-contracts"] },
+    { "id": "aad", "suiteIds": ["crypto-aad", "swift-consumer-contracts", "android-consumer-contracts", "csharp-cloudvault-native", "console-consumer-contracts", "remote-mcp-cloudvault-contracts", "python-mcp-cloudvault-contracts", "python-hermes-contracts"] },
+    { "id": "tamper", "suiteIds": ["crypto-tamper", "swift-consumer-contracts", "android-consumer-contracts", "csharp-cloudvault-native", "console-consumer-contracts", "remote-mcp-cloudvault-contracts", "python-mcp-cloudvault-contracts", "python-hermes-contracts"] },
+    { "id": "boundary-fuzz", "suiteIds": ["crypto-boundary-fuzz", "rust-fuzz-smoke"] }
   ],
   "requiredArtifacts": [
     {
