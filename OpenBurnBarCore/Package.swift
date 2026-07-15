@@ -1570,7 +1570,14 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .testTarget(
             name: "OpenBurnBarVectorKitTests",
-            dependencies: ["OpenBurnBarVectorKit"] + swiftTestingAppleDependencies,
+            // KernelCrypto AE-dep (cross-platform, acyclic): B6 carried
+            // PensieveKnowledgeChunkerTests here, which asserts the Pensieve chunk seal
+            // against OpenBurnBarKernelCrypto.CloudVaultCrypto (pensieveSlugHmac/openText).
+            // `@testable import OpenBurnBarVectorKit` does not re-export VectorKit's Kernel
+            // deps, so the test imports OpenBurnBarKernelCrypto directly and the target must
+            // link it. VectorKit already depends on it transitively (via the Kernel
+            // umbrella), so this stays acyclic.
+            dependencies: ["OpenBurnBarVectorKit", "OpenBurnBarKernelCrypto"] + swiftTestingAppleDependencies,
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]

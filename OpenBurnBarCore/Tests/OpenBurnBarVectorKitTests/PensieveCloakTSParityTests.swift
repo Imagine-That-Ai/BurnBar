@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarVectorKit
 
 /// Cross-platform parity: the Swift cloak must produce byte-identical vectors to
 /// the TS shim (tools/openburnbar-mcp-remote/src/embed.ts) for the same key +

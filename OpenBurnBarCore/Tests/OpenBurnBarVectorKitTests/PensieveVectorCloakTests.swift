@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarVectorKit
 
 final class PensieveVectorCloakTests: XCTestCase {
     private let key = Data(repeating: 0x42, count: 32)
