@@ -1271,8 +1271,8 @@ jobs:
         with:
           toolchain: "1.96.0"
 
-      - name: Install Python test dependency
-        run: python3 -m pip install --disable-pip-version-check pytest
+      - name: Install Python test dependencies
+        run: python3 -m pip install --disable-pip-version-check pytest cryptography
 
       - name: Build package and run local MCP CloudVault contracts
         env:
@@ -1311,6 +1311,66 @@ jobs:
         with:
           name: domain-core-proof-python-mcp-cloudvault-contracts-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/python-mcp-cloudvault-contracts.json
+          if-no-files-found: error
+          retention-days: 14
+
+  python-hermes-contracts:
+    name: python-hermes-contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
+      - name: Install Python test dependencies
+        run: python3 -m pip install --disable-pip-version-check pytest cryptography
+
+      - name: Build package and run external Hermes plugin contracts
+        env:
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/python-hermes-observed-identity.json
+        run: |
+          set -o pipefail
+          ./scripts/build-domain-core-python.sh
+          python3 -m pytest tests/test_domain_core_python_hermes.py -q \
+            2>&1 | tee "$RUNNER_TEMP/python-hermes-contracts.log"
+
+      - name: Reject Python binding and provenance drift
+        run: |
+          git diff --exit-code -- \
+            tools/openburnbar-mcp/vendor/openburnbar-domain-core-python \
+            tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python \
+            crates/openburnbar-domain-core/artifact-provenance/python.sha256
+          python3 scripts/ci/domain-core-union-gate.py --check-provenance python
+
+      - name: Freeze observed Hermes Python native package
+        run: >-
+          node scripts/ci/stage-domain-core-attestation-artifact.mjs
+          --artifact tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python
+          --identity-report "$RUNNER_TEMP/python-hermes-observed-identity.json"
+          --output "$RUNNER_TEMP/attestation-python-hermes-native"
+
+      - name: Emit Hermes Python proof fragment
+        run: >-
+          node scripts/ci/domain-core-proof-fragment.mjs emit
+          --expected-candidate-commit "$GITHUB_SHA"
+          --job-id python-hermes-contracts
+          --suite "python-hermes-contracts=$RUNNER_TEMP/python-hermes-contracts.log"
+          --artifact "python-hermes-native=$RUNNER_TEMP/attestation-python-hermes-native/artifact,$RUNNER_TEMP/attestation-python-hermes-native/observed-identity.json"
+          --output "$RUNNER_TEMP/python-hermes-contracts.json"
+
+      - name: Upload Hermes Python proof fragment
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-proof-python-hermes-contracts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/python-hermes-contracts.json
           if-no-files-found: error
           retention-days: 14
 
@@ -1394,6 +1454,7 @@ jobs:
       - swift-consumer-contracts
       - console-consumer-contracts
       - python-mcp-cloudvault-contracts
+      - python-hermes-contracts
       - rollback-drill
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -1411,7 +1472,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s\n' "$NEEDS_JSON" > "$RUNNER_TEMP/domain-core-job-results.json"
-          jq -e 'to_entries | length == 13 and all(.value.result == "success")' \
+          jq -e 'to_entries | length == 14 and all(.value.result == "success")' \
             "$RUNNER_TEMP/domain-core-job-results.json" >/dev/null
 
       - name: Download exact-attempt proof fragments

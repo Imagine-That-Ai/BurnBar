@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and package the host-native UniFFI Python surface for the local MCP.
+# Build and package the host-native UniFFI Python surface for both Python consumers.
 
 set -euo pipefail
 
@@ -10,6 +10,7 @@ if [[ "${TARGET_DIR}" != /* ]]; then
   TARGET_DIR="${CRATE_DIR}/${TARGET_DIR}"
 fi
 PACKAGE_DIR="${ROOT_DIR}/tools/openburnbar-mcp/vendor/openburnbar-domain-core-python"
+HERMES_PACKAGE_DIR="${ROOT_DIR}/tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python"
 HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-python-helper"
 MANIFEST="${CRATE_DIR}/union-abi-manifest.json"
 PROFILE="${DOMAIN_CORE_BUILD_PROFILE:-release}"
@@ -33,7 +34,7 @@ case "$(uname -s)" in
   *) echo "ERROR: unsupported host OS: $(uname -s)" >&2; exit 1 ;;
 esac
 
-mkdir -p "${HELPER_DIR}/src" "${PACKAGE_DIR}"
+mkdir -p "${HELPER_DIR}/src" "${PACKAGE_DIR}" "${HERMES_PACKAGE_DIR}"
 cat > "${HELPER_DIR}/Cargo.toml" <<'EOF'
 [package]
 name = "openburnbar-uniffi-bindgen-python-helper"
@@ -86,6 +87,8 @@ fi
 
 rm -f "${PACKAGE_DIR}/openburnbar_domain_ffi.py" "${PACKAGE_DIR}"/*.dylib \
   "${PACKAGE_DIR}"/*.so "${PACKAGE_DIR}"/*.dll
+rm -f "${HERMES_PACKAGE_DIR}/openburnbar_domain_ffi.py" "${HERMES_PACKAGE_DIR}"/*.dylib \
+  "${HERMES_PACKAGE_DIR}"/*.so "${HERMES_PACKAGE_DIR}"/*.dll
 UNIFFI_LIBRARY_PATH="${NATIVE_SOURCE}" \
 UNIFFI_OUT_DIR="${PACKAGE_DIR}" \
   cargo run --manifest-path "${HELPER_DIR}/Cargo.toml" --release --quiet
@@ -126,6 +129,12 @@ receipt = {
 )
 PY
 
+cp "${PACKAGE_DIR}/openburnbar_domain_ffi.py" \
+  "${PACKAGE_DIR}/openburnbar-domain-core-source.sha256" \
+  "${PACKAGE_DIR}/${NATIVE_NAME}" \
+  "${PACKAGE_DIR}/openburnbar-domain-core-package-receipt.json" \
+  "${HERMES_PACKAGE_DIR}/"
+
 if [[ -n "${DOMAIN_CORE_OBSERVED_IDENTITY_REPORT:-}" ]]; then
   : "${DOMAIN_CORE_CANDIDATE_COMMIT:?DOMAIN_CORE_CANDIDATE_COMMIT is required with DOMAIN_CORE_OBSERVED_IDENTITY_REPORT}"
   python3 - "${PACKAGE_DIR}" "${DOMAIN_CORE_OBSERVED_IDENTITY_REPORT}" "${DOMAIN_CORE_CANDIDATE_COMMIT}" <<'PY'
@@ -159,8 +168,26 @@ assert core.domain_core_version() == receipt["coreVersion"]
 assert core.domain_core_abi_version() == receipt["abiVersion"]
 assert core.domain_core_source_fingerprint() == receipt["sourceSha256"]
 assert core.cloud_vault_project_memory_doc_id("alpha", bytes(range(32))).startswith("pm_")
+agent = "BGsX0fLhLEJH+Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT+NC4v4af5uO5+tKfA+eFivOM1drMV7Oy7ZAaDe/UfU="
+phone = "BHzyexiNA09+ilI4AwS1GsPAiWnid/IbNaYLSPxHZpl4B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E="
+request = core.HermesRatchetPrekeyRequest(
+    dh1=bytes(range(32)),
+    dh2=bytes(range(32, 64)),
+    dh3=bytes(range(64, 96)),
+    uid="user-python-kat",
+    client_id="client-python-kat",
+    initiator_role="agent",
+    initiator_identity_public_key_base64=agent,
+    responder_identity_public_key_base64=phone,
+    initiator_signed_prekey_public_key_base64=agent,
+    responder_signed_prekey_public_key_base64=phone,
+    initiator_initial_ratchet_public_key_base64=agent,
+)
+assert core.hermes_ratchet_prekey_shared_secret(request).hex() == (
+    "106bcf0cd44712e7e9a1e1a6ef91e318e11766588247b831bce9aeaead74ab7d"
+)
 print(
-    "OK: local MCP domain core "
+    "OK: Python consumer domain core "
     f"{receipt['coreVersion']}/ABI-{receipt['abiVersion']} "
     f"({receipt['platform']}-{receipt['architecture']})"
 )

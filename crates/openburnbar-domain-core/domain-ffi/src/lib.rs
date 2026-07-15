@@ -247,6 +247,21 @@ pub enum HermesAadKind {
     GatewayAttachmentBody,
 }
 
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct HermesRatchetPrekeyRequest {
+    pub dh1: Vec<u8>,
+    pub dh2: Vec<u8>,
+    pub dh3: Vec<u8>,
+    pub uid: String,
+    pub client_id: String,
+    pub initiator_role: String,
+    pub initiator_identity_public_key_base64: String,
+    pub responder_identity_public_key_base64: String,
+    pub initiator_signed_prekey_public_key_base64: String,
+    pub responder_signed_prekey_public_key_base64: String,
+    pub initiator_initial_ratchet_public_key_base64: String,
+}
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum HermesFfiError {
     #[error("Hermes AAD argument count does not match its domain")]
@@ -269,6 +284,8 @@ pub enum HermesFfiError {
     InputTooLarge,
     #[error("Hermes P-256 keys must be exact on-curve 65-byte X9.63 points")]
     InvalidP256PublicKey,
+    #[error("Hermes ratchet ECDH outputs must each be exactly 32 bytes")]
+    InvalidRatchetSharedSecretLength,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -607,6 +624,34 @@ pub fn hermes_ratchet_envelope_aad(
         epoch,
     )
     .map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_ratchet_prekey_shared_secret(
+    mut request: HermesRatchetPrekeyRequest,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::ratchet_prekey_shared_secret(hermes::RatchetPrekeyRequest {
+        dh1: &request.dh1,
+        dh2: &request.dh2,
+        dh3: &request.dh3,
+        uid: &request.uid,
+        client_id: &request.client_id,
+        initiator_role: &request.initiator_role,
+        initiator_identity_public_key_base64: &request.initiator_identity_public_key_base64,
+        responder_identity_public_key_base64: &request.responder_identity_public_key_base64,
+        initiator_signed_prekey_public_key_base64: &request
+            .initiator_signed_prekey_public_key_base64,
+        responder_signed_prekey_public_key_base64: &request
+            .responder_signed_prekey_public_key_base64,
+        initiator_initial_ratchet_public_key_base64: &request
+            .initiator_initial_ratchet_public_key_base64,
+    })
+    .map(|secret| secret.to_vec())
+    .map_err(Into::into);
+    request.dh1.zeroize();
+    request.dh2.zeroize();
+    request.dh3.zeroize();
+    result
 }
 
 #[uniffi::export]
@@ -979,6 +1024,9 @@ impl From<hermes::HermesError> for HermesFfiError {
             hermes::HermesError::InvalidAadComponent => Self::InvalidAadComponent,
             hermes::HermesError::InputTooLarge => Self::InputTooLarge,
             hermes::HermesError::InvalidP256PublicKey => Self::InvalidP256PublicKey,
+            hermes::HermesError::InvalidRatchetSharedSecretLength => {
+                Self::InvalidRatchetSharedSecretLength
+            }
         }
     }
 }

@@ -70,7 +70,8 @@
         { "slice": "hpke-info", "consumer": "apple" },
         { "slice": "hpke-info", "consumer": "android" },
         { "slice": "ratchet", "consumer": "apple" },
-        { "slice": "ratchet", "consumer": "android" }
+        { "slice": "ratchet", "consumer": "android" },
+        { "slice": "ratchet", "consumer": "hermes-python" }
       ],
       "allowedChannels": ["internal", "beta"],
       "mismatchAlertCategories": [

@@ -100,11 +100,11 @@ test("strict fragments aggregate every policy suite, artifact, benchmark, and co
     runAttempt: RUN.runAttempt,
     policy: POLICY,
   });
-  assert.equal(evidence.jobs.length, 13);
-  assert.equal(evidence.suites.length, 20);
-  assert.equal(evidence.artifacts.length, 9);
+  assert.equal(evidence.jobs.length, 14);
+  assert.equal(evidence.suites.length, 21);
+  assert.equal(evidence.artifacts.length, 10);
   assert.equal(evidence.benchmarks[0].pairedRegressionBasisPoints, 490);
-  assert.equal(evidence.coverage.length, 42);
+  assert.equal(evidence.coverage.length, 43);
   assert.equal(evidence.rollback.restoredMode, "legacy");
 });
 

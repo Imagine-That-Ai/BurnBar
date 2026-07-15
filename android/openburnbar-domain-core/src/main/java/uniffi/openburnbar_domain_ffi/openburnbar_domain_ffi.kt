@@ -819,6 +819,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -923,6 +925,8 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_fn_func_hermes_open_combined(`combined`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_envelope_aad(`associatedData`: RustBuffer.ByValue,`algorithm`: RustBuffer.ByValue,`sessionId`: RustBuffer.ByValue,`senderDeviceId`: RustBuffer.ByValue,`receiverDeviceId`: RustBuffer.ByValue,`ratchetPublicKeyBase64`: RustBuffer.ByValue,`version`: Long,`previousChainLength`: Long,`messageNumber`: Long,`epoch`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_prekey_shared_secret(`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad(`kind`: RustBuffer.ByValue,`arguments`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -1146,6 +1150,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_prekey_shared_secret(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_base64(
@@ -1315,6 +1321,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad() != 11546.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_prekey_shared_secret() != 50844.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad() != 34735.toShort()) {
@@ -2157,6 +2166,74 @@ public object FfiConverterTypeCloudVaultSearchResult: FfiConverterRustBuffer<Clo
     override fun write(value: CloudVaultSearchResult, buf: ByteBuffer) {
             FfiConverterTypeCloudVaultSearchOperation.write(value.`operation`, buf)
             FfiConverterSequenceString.write(value.`hashes`, buf)
+    }
+}
+
+
+
+data class HermesRatchetPrekeyRequest (
+    var `dh1`: kotlin.ByteArray,
+    var `dh2`: kotlin.ByteArray,
+    var `dh3`: kotlin.ByteArray,
+    var `uid`: kotlin.String,
+    var `clientId`: kotlin.String,
+    var `initiatorRole`: kotlin.String,
+    var `initiatorIdentityPublicKeyBase64`: kotlin.String,
+    var `responderIdentityPublicKeyBase64`: kotlin.String,
+    var `initiatorSignedPrekeyPublicKeyBase64`: kotlin.String,
+    var `responderSignedPrekeyPublicKeyBase64`: kotlin.String,
+    var `initiatorInitialRatchetPublicKeyBase64`: kotlin.String
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHermesRatchetPrekeyRequest: FfiConverterRustBuffer<HermesRatchetPrekeyRequest> {
+    override fun read(buf: ByteBuffer): HermesRatchetPrekeyRequest {
+        return HermesRatchetPrekeyRequest(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HermesRatchetPrekeyRequest) = (
+            FfiConverterByteArray.allocationSize(value.`dh1`) +
+            FfiConverterByteArray.allocationSize(value.`dh2`) +
+            FfiConverterByteArray.allocationSize(value.`dh3`) +
+            FfiConverterString.allocationSize(value.`uid`) +
+            FfiConverterString.allocationSize(value.`clientId`) +
+            FfiConverterString.allocationSize(value.`initiatorRole`) +
+            FfiConverterString.allocationSize(value.`initiatorIdentityPublicKeyBase64`) +
+            FfiConverterString.allocationSize(value.`responderIdentityPublicKeyBase64`) +
+            FfiConverterString.allocationSize(value.`initiatorSignedPrekeyPublicKeyBase64`) +
+            FfiConverterString.allocationSize(value.`responderSignedPrekeyPublicKeyBase64`) +
+            FfiConverterString.allocationSize(value.`initiatorInitialRatchetPublicKeyBase64`)
+    )
+
+    override fun write(value: HermesRatchetPrekeyRequest, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`dh1`, buf)
+            FfiConverterByteArray.write(value.`dh2`, buf)
+            FfiConverterByteArray.write(value.`dh3`, buf)
+            FfiConverterString.write(value.`uid`, buf)
+            FfiConverterString.write(value.`clientId`, buf)
+            FfiConverterString.write(value.`initiatorRole`, buf)
+            FfiConverterString.write(value.`initiatorIdentityPublicKeyBase64`, buf)
+            FfiConverterString.write(value.`responderIdentityPublicKeyBase64`, buf)
+            FfiConverterString.write(value.`initiatorSignedPrekeyPublicKeyBase64`, buf)
+            FfiConverterString.write(value.`responderSignedPrekeyPublicKeyBase64`, buf)
+            FfiConverterString.write(value.`initiatorInitialRatchetPublicKeyBase64`, buf)
     }
 }
 
@@ -3111,6 +3188,12 @@ sealed class HermesFfiException: kotlin.Exception() {
             get() = ""
     }
 
+    class InvalidRatchetSharedSecretLength(
+        ) : HermesFfiException() {
+        override val message
+            get() = ""
+    }
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<HermesFfiException> {
         override fun lift(error_buf: RustBuffer.ByValue): HermesFfiException = FfiConverterTypeHermesFfiError.lift(error_buf)
@@ -3137,6 +3220,7 @@ public object FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiE
             8 -> HermesFfiException.InvalidAadComponent()
             9 -> HermesFfiException.InputTooLarge()
             10 -> HermesFfiException.InvalidP256PublicKey()
+            11 -> HermesFfiException.InvalidRatchetSharedSecretLength()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -3183,6 +3267,10 @@ public object FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiE
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
+            is HermesFfiException.InvalidRatchetSharedSecretLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
         }
     }
 
@@ -3226,6 +3314,10 @@ public object FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiE
             }
             is HermesFfiException.InvalidP256PublicKey -> {
                 buf.putInt(10)
+                Unit
+            }
+            is HermesFfiException.InvalidRatchetSharedSecretLength -> {
+                buf.putInt(11)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -4220,6 +4312,16 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     uniffiRustCallWithError(HermesFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_envelope_aad(
         FfiConverterByteArray.lower(`associatedData`),FfiConverterString.lower(`algorithm`),FfiConverterString.lower(`sessionId`),FfiConverterString.lower(`senderDeviceId`),FfiConverterString.lower(`receiverDeviceId`),FfiConverterString.lower(`ratchetPublicKeyBase64`),FfiConverterULong.lower(`version`),FfiConverterULong.lower(`previousChainLength`),FfiConverterULong.lower(`messageNumber`),FfiConverterULong.lower(`epoch`),_status)
+}
+    )
+    }
+
+
+    @Throws(HermesFfiException::class) fun `hermesRatchetPrekeySharedSecret`(`request`: HermesRatchetPrekeyRequest): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(HermesFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_prekey_shared_secret(
+        FfiConverterTypeHermesRatchetPrekeyRequest.lower(`request`),_status)
 }
     )
     }

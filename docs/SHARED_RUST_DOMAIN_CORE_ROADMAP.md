@@ -69,7 +69,7 @@ promotion; it is input to the promotion gate.
 | Q1 | Claude statusline quota | Swift + C# | Rust enforced on Apple/Windows; quota rollout gate passes; named legacy transforms deleted |
 | Q2 | Codex, Cursor, Anthropic quota | Swift + C# | Four quota mechanisms use Rust as authority; quota rollout gate passes; named legacy transforms deleted |
 | C1 | CloudVault primitives, encrypted search, opaque identifiers, and document envelopes | Swift + Kotlin + C# + browser/remote TypeScript + local MCP Python, with different subsets | No `REQUIRED_CONSUMER_PENDING` owner remains; KAT/cross-open/tamper/fuzz/security gates pass for each applicable consumer; duplicated portable crypto and transform copies are deleted without exporting browser private keys |
-| C2 | Hermes relay crypto and ratchet byte transforms | Swift + Kotlin | Existing wire vectors pass through Rust; P-256 custody and ratchet state mutation remain platform-owned; legacy byte transforms deleted after crypto promotion |
+| C2 | Hermes relay crypto and ratchet byte transforms | Swift + Kotlin + external Hermes Python plugin | Existing wire vectors and the Python prekey KAT pass through Rust; P-256 custody and ratchet state mutation remain platform-owned; legacy byte transforms deleted after crypto promotion |
 | P1 | Model pricing and cost arithmetic | Swift + Cloud Functions TypeScript | Checked nano-USD Rust/Wasm path enforced; parity and rollout evidence pass; duplicate calculators deleted |
 
 CloudVault C1 is split by security boundary:
