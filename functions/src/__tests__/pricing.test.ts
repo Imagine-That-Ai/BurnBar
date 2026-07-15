@@ -50,6 +50,8 @@ type CatalogModel = {
 };
 type Catalog = { providers: { id: string; models: CatalogModel[] }[] };
 
+const LOADED_CORE_SOURCE_SHA256 = "f435ea8e6b615ced64059c1f8ceaa9629247200479dc668abdd42afa2b02f600";
+
 // Mirrors BurnBarModelMatcher.matches in OpenBurnBarCatalog.swift.
 function matches(matcher: Matcher, normalized: string): boolean {
   const containsAll = matcher.all.every((token) => normalized.includes(token));
@@ -202,7 +204,7 @@ describe("shared domain-core pricing", () => {
       candidateCommit: "a".repeat(40),
       coreVersion: "0.1.0",
       abiVersion: 3,
-      sourceSha256: "b".repeat(64),
+      sourceSha256: LOADED_CORE_SOURCE_SHA256,
     },
     modes: {
       quota: "shadow",
@@ -320,7 +322,7 @@ describe("shared domain-core pricing", () => {
     ).toBe(42);
   });
 
-  it("emits one generic V2 whole-call comparison to the configured sink", () => {
+  it("emits one candidate-bound V3 whole-call comparison with the loaded Wasm identity", () => {
     const samples: unknown[] = [];
     configureDomainCorePricingShadowEvidenceSink((sample) => {
       samples.push(sample);
@@ -348,13 +350,62 @@ describe("shared domain-core pricing", () => {
     ).toBe(3);
     expect(samples).toHaveLength(1);
     expect(samples[0]).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       domain: "pricing",
       slice: "token-cost",
       consumer: "functions",
       operation: "calculate_token_cost",
+      candidateCommit: "a".repeat(40),
+      expectedCoreVersion: "0.1.0",
+      expectedCoreAbiVersion: 3,
+      expectedCoreSourceSha256: LOADED_CORE_SOURCE_SHA256,
+      loadedCoreVersion: "0.1.0",
+      loadedCoreAbiVersion: 3,
+      loadedCoreSourceSha256: LOADED_CORE_SOURCE_SHA256,
       outcome: "match",
       mismatchCategory: null,
+    });
+    expect(samples[0]).not.toHaveProperty("coreVersion");
+  });
+
+  it("classifies a different loaded Wasm tuple as loaded_identity_mismatch", () => {
+    const samples: unknown[] = [];
+    configureDomainCorePricingShadowEvidenceSink((sample) => {
+      samples.push(sample);
+    });
+    const receipt = signedInternalReceipt();
+    if (!receipt.candidateIdentity) throw new Error("signed test receipt is missing candidate identity");
+    receipt.candidateIdentity.sourceSha256 = "c".repeat(64);
+
+    calculateTokenCost(
+      { inputPerMToken: 3, outputPerMToken: 15, cacheReadPerMToken: 0.5 },
+      { inputTokens: 1_000_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      () => 3,
+      {
+        OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY: "signed",
+        OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE: "internal",
+        OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION: "internal",
+        OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED: "1",
+        OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_HERMES_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL: "internal",
+      },
+      receipt,
+    );
+
+    expect(samples).toHaveLength(1);
+    expect(samples[0]).toMatchObject({
+      schemaVersion: 3,
+      expectedCoreSourceSha256: "c".repeat(64),
+      loadedCoreVersion: "0.1.0",
+      loadedCoreAbiVersion: 3,
+      loadedCoreSourceSha256: LOADED_CORE_SOURCE_SHA256,
+      outcome: "mismatch",
+      mismatchCategory: "loaded_identity_mismatch",
     });
   });
 

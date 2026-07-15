@@ -83,41 +83,55 @@ internal static class ClaudeStatuslineQuotaDomainCore
         var rustStarted = Stopwatch.GetTimestamp();
         IReadOnlyList<ProviderQuotaBucket> rustBuckets = ProviderQuotaSnapshot.NoBuckets;
         string? mismatchCategory = null;
-        try
-        {
-            if (DomainCore.DomainCoreAbiVersion() != 3)
-            {
-                mismatchCategory = "native_unavailable";
-            }
-            else
-            {
-                var result = DomainCore.ParseClaudeStatuslineQuota(Encoding.UTF8.GetBytes(json));
-                if (result.status == DomainQuotaParseStatus.Malformed)
-                {
-                    mismatchCategory = "invalid_result";
-                }
-                else if (result.status == DomainQuotaParseStatus.Parsed)
-                {
-                    rustBuckets = result.snapshot.buckets.Select(MapBucket).ToArray();
-                }
-                if (mismatchCategory is null && !Equivalent(legacySnapshot.Buckets, rustBuckets))
-                {
-                    mismatchCategory = "result_mismatch";
-                }
-            }
-        }
-        catch (Exception error) when (IsNativeUnavailable(error))
+        DomainCoreShadowLoadedIdentity? loadedIdentity = null;
+        if (!TryLoadShadowIdentity(out loadedIdentity))
         {
             mismatchCategory = "native_unavailable";
         }
-        catch
+        else
         {
-            mismatchCategory = "native_error";
+            DomainCoreCandidateIdentity? expectedIdentity = DomainCoreQuotaShadowEvidence.CurrentSignedCandidateIdentity();
+            if (expectedIdentity is not null && !Matches(expectedIdentity, loadedIdentity))
+            {
+                mismatchCategory = "loaded_identity_mismatch";
+            }
+            else if (expectedIdentity is null && loadedIdentity.CoreAbiVersion != 3)
+            {
+                mismatchCategory = "native_unavailable";
+                loadedIdentity = null;
+            }
+            else
+            {
+                try
+                {
+                    var result = DomainCore.ParseClaudeStatuslineQuota(Encoding.UTF8.GetBytes(json));
+                    if (result.status == DomainQuotaParseStatus.Malformed)
+                    {
+                        mismatchCategory = "invalid_result";
+                    }
+                    else if (result.status == DomainQuotaParseStatus.Parsed)
+                    {
+                        rustBuckets = result.snapshot.buckets.Select(MapBucket).ToArray();
+                    }
+                    if (mismatchCategory is null && !Equivalent(legacySnapshot.Buckets, rustBuckets))
+                    {
+                        mismatchCategory = "result_mismatch";
+                    }
+                }
+                catch (Exception error) when (IsNativeUnavailable(error))
+                {
+                    mismatchCategory = loadedIdentity is null ? "native_unavailable" : "native_error";
+                }
+                catch
+                {
+                    mismatchCategory = "native_error";
+                }
+            }
         }
         var rustMicros = ElapsedMicros(rustStarted);
         DomainCoreQuotaShadowEvidence.RecordComparison(
             "claude_quota",
-            SafeCoreVersion(),
+            loadedIdentity,
             mismatchCategory is null,
             mismatchCategory,
             legacyMicros,
@@ -170,11 +184,27 @@ internal static class ClaudeStatuslineQuotaDomainCore
             or BadImageFormatException
             or TypeInitializationException;
 
-    private static string SafeCoreVersion()
+    private static bool TryLoadShadowIdentity(out DomainCoreShadowLoadedIdentity identity)
     {
-        try { return DomainCore.DomainCoreVersion(); }
-        catch { return "0.0.0-unavailable"; }
+        identity = null!;
+        try
+        {
+            identity = new(
+                DomainCore.DomainCoreVersion(),
+                DomainCore.DomainCoreAbiVersion(),
+                DomainCore.DomainCoreSourceFingerprint());
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
+
+    private static bool Matches(DomainCoreCandidateIdentity expected, DomainCoreShadowLoadedIdentity loaded) =>
+        loaded.CoreVersion == expected.ExpectedCoreVersion
+        && loaded.CoreAbiVersion == expected.ExpectedCoreAbiVersion
+        && loaded.CoreSourceSha256 == expected.ExpectedCoreSourceSha256;
 
     private static ProviderQuotaBucket MapBucket(DomainQuotaBucket bucket)
     {

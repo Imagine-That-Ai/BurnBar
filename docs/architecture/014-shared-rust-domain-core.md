@@ -201,6 +201,18 @@ accepted by the server. The exact operator procedure is the
 and the client contract is
 [`domain-core-shadow-sample-v3.schema.json`](../contracts/domain-core-shadow-sample-v3.schema.json).
 
+Client durability is candidate-scoped. Apple, Android, Windows, and Console
+derive their active queue namespace from the complete expected candidate tuple
+and never read, upload, translate, or relabel a prior candidate's queue as new
+evidence. Functions comparisons are a trusted server-side exception to client
+claims only: the production process must hold an immutable signed compiled
+receipt, record the identity independently observed from the loaded Wasm
+module, and pass the same V3 parser before it may persist evidence. Only an
+identical loaded tuple can produce a promotable success; a different readable
+tuple is retained as `loaded_identity_mismatch`, and an unreadable tuple as
+`native_unavailable`. Unsigned, local, test, or incomplete processes emit no
+production evidence.
+
 The quantitative evaluator originally delivered in
 [#1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612) remains the single
 fail-closed evaluation authority, now upgraded for all inventoried domains and

@@ -98,16 +98,38 @@ passing cohort. Samples never contain uid, device identity, paths, payloads,
 parsed results, plaintext, credentials, keys, or stable payload hashes.
 
 Apple, Android, and Windows durably spool bounded JSONL batches under their
-application-private support/files directories. Console CloudVault uses bounded
-origin-scoped browser storage. A client removes a batch only after every sample
-is accepted as new or idempotently duplicate. Sign-out and transport failures
-leave the batch queued for authenticated retry.
+application-private support/files directories. Each spool namespace is derived
+from the complete expected candidate tuple, so a new candidate never reads or
+uploads a prior candidate's queue. Console CloudVault applies the same rule to
+bounded origin-scoped browser storage. Native clients discard V1, V2,
+incomplete, and stale candidate namespaces when a signed candidate is
+installed. Console preserves legacy shared V2/V3 keys byte-for-byte for older
+deployments to drain and never reads, relabels, or deletes them. New V3 samples
+use immutable candidate-, writer-, and sample-bound keys, so tabs never share a
+mutable read-modify-write queue.
+Coalesced maintenance removes malformed and out-of-window immutable records
+and retains at most 800 active-candidate samples and 3,200 samples globally.
+No client reads, uploads, rewrites, or relabels
+another candidate's records as V3 evidence for the active candidate. A client
+removes an active-candidate batch only after every sample is accepted as new or
+idempotently duplicate. Sign-out and transport failures leave that batch queued
+for authenticated retry. Successfully read records that are malformed, older
+than 31 days, or more than five minutes in the future are discarded locally
+without blocking valid records behind them; transient storage read failures
+retain the unacknowledged batch for retry. Evidence setup, persistence,
+acknowledgement, and cleanup are best-effort diagnostics and must never change
+the result of quota, CloudVault, Hermes, pricing, or application startup work.
 
-Functions pricing comparisons do not cross a client boundary. Deployed Cloud
-Functions write through the same parser and immutable Firestore persistence
-path. Local and test processes do not emit production evidence. Firestore rules
-deny direct client writes, and the server stamps both `receivedAt` and the
-60-day `expireAt` TTL.
+Functions pricing comparisons do not cross a client boundary and therefore do
+not carry client enrollment claims. A deployed process may write them only when
+its immutable compiled receipt contains a complete signed candidate tuple. It
+records the actually loaded Wasm version, ABI, and source fingerprint, or an
+all-null tuple when the module identity cannot be read, then writes through the
+same V3 parser and immutable Firestore persistence path. A different readable
+tuple is retained only as `loaded_identity_mismatch` blocker evidence; it can
+never become a promotable success. Local, test, unsigned, or incomplete
+processes do not emit production evidence. Firestore rules deny direct client
+writes, and the server stamps both `receivedAt` and the 60-day `expireAt` TTL.
 
 Before collecting beta evidence, enable and verify the TTL:
 
