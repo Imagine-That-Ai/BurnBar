@@ -157,6 +157,20 @@ test("full gate resolves the signed public profile against the exact candidate",
       })),
     })}\n`,
   );
+  const rollback = `${JSON.stringify({
+    candidateIdentity: CANDIDATE,
+    modes: {
+      quota: "legacy",
+      cloudVault: "legacy",
+      cloudVaultRewrap: "legacy",
+      cloudVaultSearch: "legacy",
+      hermes: "legacy",
+      pricing: "legacy",
+    },
+  })}\n`;
+  const rollbackArtifactSha256 = createHash("sha256")
+    .update(rollback)
+    .digest("hex");
   const candidate = `${JSON.stringify({
     schemaVersion: 1,
     bundleKind: "unsigned-domain-core-candidate",
@@ -175,6 +189,16 @@ test("full gate resolves the signed public profile against the exact candidate",
       ref: "refs/heads/main",
       headSha: COMMIT,
       jobs: [],
+    },
+    rollback: {
+      jobId: "rollback-drill",
+      suiteId: "rollback-drill",
+      runId: 123,
+      runAttempt: 2,
+      reportSha256: "e".repeat(64),
+      fromCandidateCommit: COMMIT,
+      restoredArtifactSha256: rollbackArtifactSha256,
+      restoredMode: "legacy",
     },
   })}\n`;
   const candidateDigest = createHash("sha256").update(candidate).digest("hex");
@@ -218,17 +242,7 @@ test("full gate resolves the signed public profile against the exact candidate",
       } else {
         writeFileSync(
           join(directory, "domain-core-public-production-rollback.json"),
-          `${JSON.stringify({
-            candidateIdentity: CANDIDATE,
-            modes: {
-              quota: "legacy",
-              cloudVault: "legacy",
-              cloudVaultRewrap: "legacy",
-              cloudVaultSearch: "legacy",
-              hermes: "legacy",
-              pricing: "legacy",
-            },
-          })}\n`,
+          rollback,
         );
       }
       return "";
@@ -275,7 +289,11 @@ test("full gate resolves the signed public profile against the exact candidate",
         "--profile-catalog",
         profileCatalogPath,
       ],
-      { command },
+      {
+        command,
+        activationVerifier: () =>
+          JSON.parse(readFileSync(activationPath, "utf8")),
+      },
     );
     assert.equal(result.profileName, "public-production");
     assert.deepEqual(result.candidate, CANDIDATE);

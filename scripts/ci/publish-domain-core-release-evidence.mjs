@@ -173,7 +173,9 @@ function validatePredicate(
     `predicate release for ${domain}`,
   );
   const version = manifest.tag.replace(/^(?:windows-)?v/u, "");
-  const versionPattern = new Set(["apple", "android", "ios"]).has(manifest.consumer)
+  const versionPattern = new Set(["apple", "android", "ios"]).has(
+    manifest.consumer,
+  )
     ? APPLE_ANDROID_VERSION
     : STABLE_VERSION;
   if (
@@ -413,6 +415,7 @@ export function validateManifest(raw) {
   }
   const seenAssets = new Set([artifactAssetName]);
   const seenDomains = new Set();
+  let canonicalPredicateBindings = null;
   const bundles = manifest.bundles.map((rawBundle, index) => {
     const bundle = exactObject(
       rawBundle,
@@ -456,6 +459,29 @@ export function validateManifest(raw) {
       bundle.domain,
       artifactPath,
     );
+    const predicateBindings = {
+      candidate: predicate.candidate,
+      sourceRun: predicate.sourceRun,
+      promotionProof: predicate.promotionProof,
+      rollbackArtifact: predicate.rollbackArtifact,
+      release: predicate.release,
+    };
+    if (canonicalPredicateBindings === null) {
+      canonicalPredicateBindings = predicateBindings;
+    } else {
+      for (const key of Object.keys(predicateBindings)) {
+        if (
+          !isDeepStrictEqual(
+            predicateBindings[key],
+            canonicalPredicateBindings[key],
+          )
+        ) {
+          throw new Error(
+            `predicate for ${bundle.domain} has a ${key} that differs from the first validated predicate for commit ${manifest.commit}`,
+          );
+        }
+      }
+    }
     return {
       domain: bundle.domain,
       assetName,

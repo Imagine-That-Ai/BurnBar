@@ -136,11 +136,12 @@ test("schema and runtime share consumer-specific release version vectors", () =>
         ? NATIVE_RELEASE_VERSION
         : STABLE_RELEASE_VERSION;
       const schemaPattern = native ? nativeSchema : stableSchema;
-      const tag = consumer === "windows"
-        ? `windows-v${version}`
-        : consumer === "linux"
-          ? `linux-v${version}`
-          : `v${version}`;
+      const tag =
+        consumer === "windows"
+          ? `windows-v${version}`
+          : consumer === "linux"
+            ? `linux-v${version}`
+            : `v${version}`;
       const tagPattern = native ? nativeTagSchema : stableTagSchema;
       assert.equal(
         runtimePattern.test(version),
@@ -250,6 +251,32 @@ test("pre-release gate verifies immutable candidate source signer and rollback i
     "--rollback-sha256",
   ]) {
     assert.match(command, new RegExp(flag, "u"));
+  }
+});
+
+test("every direct release-evidence workflow supplies a canonical activation document", () => {
+  const workflows = [
+    ".github/workflows/linux-release.yml",
+    ".github/workflows/domain-core-console-release-evidence.yml",
+    ".github/workflows/openburnbar-release-windows.yml",
+    ".github/workflows/domain-core-ios-release-evidence.yml",
+    ".github/workflows/domain-core-functions-release-evidence.yml",
+  ];
+  for (const path of workflows) {
+    const source = readFileSync(join(REPO_ROOT, path), "utf8");
+    const invocations = source.split(
+      "node scripts/ci/create-domain-core-release-evidence.mjs",
+    );
+    assert.ok(invocations.length > 1, `${path} has no evidence invocation`);
+    for (const block of invocations.slice(1)) {
+      const command = block.split(/\n\s*(?:cosign |\{)/u, 1)[0];
+      assert.match(command, /--activation\s+"[^"\n]+"/u, path);
+    }
+    assert.match(
+      source,
+      /\{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256\}/u,
+      path,
+    );
   }
 });
 

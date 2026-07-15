@@ -101,6 +101,14 @@ function fixture() {
         fileName: "domain-core-public-production-rollback.json",
         sha256: "e".repeat(64),
         candidate: CANDIDATE,
+        activation: {
+          candidateCommit: COMMIT,
+          activationCommit: RELEASE_COMMIT,
+          coreVersion: CANDIDATE.coreVersion,
+          abiVersion: CANDIDATE.abiVersion,
+          sourceSha256: CANDIDATE.sourceSha256,
+          changedPathsSha256: "0".repeat(64),
+        },
       },
       activation: {
         candidateCommit: COMMIT,

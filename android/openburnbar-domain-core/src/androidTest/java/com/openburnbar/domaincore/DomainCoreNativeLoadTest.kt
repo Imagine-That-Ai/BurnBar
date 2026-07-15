@@ -28,6 +28,7 @@ import uniffi.openburnbar_domain_ffi.cloudVaultSearch
 import uniffi.openburnbar_domain_ffi.cloudVaultSearchAnalyze
 import uniffi.openburnbar_domain_ffi.cloudVaultValidateP256X963PublicKey
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
+import uniffi.openburnbar_domain_ffi.domainCoreCandidateCommit
 import uniffi.openburnbar_domain_ffi.domainCoreSourceFingerprint
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
 import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
@@ -55,8 +56,11 @@ class DomainCoreNativeLoadTest {
         assertEquals(expectedIdentity.getString("sourceSha256"), expectedSourceFingerprint)
         assertEquals(expectedSourceFingerprint, sourceFingerprint)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val candidateCommit = InstrumentationRegistry.getArguments().getString("candidateCommit").orEmpty()
+        val expectedCandidateCommit = InstrumentationRegistry.getArguments().getString("candidateCommit").orEmpty()
+        val candidateCommit = domainCoreCandidateCommit()
         assertTrue(candidateCommit.matches(Regex("[0-9a-f]{40}")))
+        assertTrue(candidateCommit.any { it != '0' })
+        assertEquals(expectedCandidateCommit, candidateCommit)
         val nativeLibrary =
             File(
                 instrumentation.context.applicationInfo.nativeLibraryDir,

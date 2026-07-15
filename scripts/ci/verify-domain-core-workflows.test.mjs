@@ -13,6 +13,14 @@ const androidNativeLoad = readFileSync(
   new URL("./run-domain-core-android-native-load.sh", import.meta.url),
   "utf8",
 );
+const pythonBuild = readFileSync(
+  new URL("../../scripts/build-domain-core-python.sh", import.meta.url),
+  "utf8",
+);
+const androidAarBuild = readFileSync(
+  new URL("../../scripts/build-domain-core-android-aar.sh", import.meta.url),
+  "utf8",
+);
 const signer = readFileSync(
   new URL(
     "../../.github/workflows/domain-core-promotion-proof.yml",
@@ -102,6 +110,8 @@ test("deterministic workflow implements every exact policy job and a fail-closed
 });
 
 test("native consumer jobs keep their measured execution margin and emulator shell context", () => {
+  const android = workflowJob(core, "android");
+  const apple = workflowJob(core, "apple");
   assert.match(
     core,
     /^  swift-consumer-contracts:\n(?:.*\n){0,4}    timeout-minutes: 90$/mu,
@@ -117,6 +127,56 @@ test("native consumer jobs keep their measured execution margin and emulator she
   assert.match(
     androidNativeLoad,
     /^identity_path="\$data_path\/files\/domain-core-observed-identity\.json"$/mu,
+  );
+  assert.match(
+    android,
+    /Freeze the exact observed Android native library[\s\S]*instrumentation_apk="android\/openburnbar-domain-core\/build\/outputs\/apk\/androidTest\/debug\/openburnbar-domain-core-debug-androidTest\.apk"[\s\S]*unzip -p "\$instrumentation_apk"[\s\S]*lib\/x86_64\/libopenburnbar_domain_ffi\.so > "\$observed_library"[\s\S]*--artifact "\$observed_library"/u,
+  );
+  assert.doesNotMatch(
+    android,
+    /stage-domain-core-attestation-artifact\.mjs[\s\S]{0,200}--artifact Vendor\/openburnbar-domain-core\.aar/u,
+  );
+  const byteDriftCheck = android.indexOf(
+    "./scripts/build-domain-core-android-aar.sh --check-artifact",
+  );
+  const candidateResolution = android.indexOf(
+    "Resolve signed Android domain-core candidate",
+  );
+  const candidateBuild = android.indexOf(
+    "Build candidate-bound four-ABI Android AAR",
+  );
+  assert.ok(byteDriftCheck >= 0);
+  assert.ok(byteDriftCheck < candidateResolution);
+  assert.ok(candidateResolution < candidateBuild);
+  assert.match(
+    apple,
+    /Build Apple XCFramework and regenerate Swift bindings[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.sha \}\}[\s\S]*build-domain-core-xcframework\.sh/u,
+  );
+});
+
+test("Python native evidence reports the candidate embedded by Rust", () => {
+  assert.match(
+    pythonBuild,
+    /export OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT="\$\{DOMAIN_CORE_CANDIDATE_COMMIT\}"[\s\S]*cargo build/u,
+  );
+  assert.match(
+    pythonBuild,
+    /candidate_commit = core\.domain_core_candidate_commit\(\)/u,
+  );
+  assert.match(
+    pythonBuild,
+    /candidate_commit == "0" \* 40 or candidate_commit != expected_candidate_commit/u,
+  );
+});
+
+test("Android artifact generation rejects missing or duplicated embedded identity", () => {
+  assert.match(
+    androidAarBuild,
+    /native library must contain exactly one canonical embedded identity; found \{count\}/u,
+  );
+  assert.match(
+    androidAarBuild,
+    /verified one canonical embedded identity in every Android ABI/u,
   );
 });
 
