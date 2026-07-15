@@ -153,6 +153,49 @@ check "covered per-line evidence passes" "0" "$rc"
 check "passing verdict is 100 percent" \
   "100.0" "$(json_get "$tmp_root/pass.json" 'v["diffCoverage"]["percent"]')"
 
+# A deletion-only diff (no added lines) has zero executable lines to cover
+# and must not require JaCoCo evidence.
+repo="$tmp_root/deletion-only"
+new_repo "$repo"
+add_kotlin "$repo" sample/del Del 1
+# Add a second line so there is something left after deletion.
+printf 'package sample.del\nfun delValue(): Int = 1\nfun delExtra(): Int = 2\n' \
+  > "$repo/android/app/src/main/java/sample/del/Del.kt"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "add extra line"
+# Now delete the first function line (deletion-only diff).
+printf 'package sample.del\nfun delExtra(): Int = 2\n' \
+  > "$repo/android/app/src/main/java/sample/del/Del.kt"
+base="$(commit_change "$repo")"
+# Use a report that does NOT contain Del.kt — proving deletion-only
+# does not need JaCoCo evidence.
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/del-only.json" "$tmp_root/del-only.err")"
+check "deletion-only diff passes without JaCoCo evidence" "0" "$rc"
+check "deletion-only method is reported" \
+  "deletion_only" "$(json_get "$tmp_root/del-only.json" 'v["details"][0]["method"]')"
+
+# A deletion-only diff must NOT mask an added executable line in the
+# same hunk: if the file has both added and deleted lines, the added
+# lines still need coverage evidence.
+repo="$tmp_root/mixed-add-delete"
+new_repo "$repo"
+add_kotlin "$repo" sample/mixed Mixed 1
+base="$(commit_change "$repo")"
+# Modify the file: delete the old function and add a new one.
+printf 'package sample.mixed\nfun mixedNew(): Int = 42\n' \
+  > "$repo/android/app/src/main/java/sample/mixed/Mixed.kt"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "replace function"
+# JaCoCo report has no entry for Mixed.kt → added line is uninstrumented.
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/mixed.json" "$tmp_root/mixed.err")"
+check "added executable line with no JaCoCo source still fails" "1" "$rc"
+check "mixed add+delete reports no_jacoco_source for the added line" \
+  "no_jacoco_source" "$(json_get "$tmp_root/mixed.json" 'v["details"][0]["method"]')"
+
 if [[ "$failures" -gt 0 ]]; then
   echo "Android diff-coverage self-test: $failures assertion(s) failed" >&2
   exit 1

@@ -200,6 +200,19 @@ for rel_path in changed:
     identity = source_identity(rel_path)
     line_cov = coverage.get(identity)
     changed_lines = set(file_blocks.get(rel_path, []))
+    # A deletion-only diff (no added lines in the -U0 hunk) has zero
+    # executable lines to cover.  Report it as deletion_only and skip
+    # the JaCoCo lookup — there is nothing to instrument or attest.
+    if not changed_lines:
+        details.append({
+            "file": rel_path,
+            "executableLines": 0,
+            "coveredLines": 0,
+            "percent": 100.0,
+            "method": "deletion_only",
+            "sourceIdentity": identity,
+        })
+        continue
     if line_cov is None:
         missing_evidence.append(rel_path)
         details.append({
@@ -230,7 +243,10 @@ for rel_path in changed:
     details.append(entry)
 
 total_pct = 0.0 if total_exc <= 0 else round(total_hit * 100.0 / total_exc, 2)
-passed = not missing_evidence and total_exc > 0 and total_pct >= threshold
+# When every changed file is deletion-only (total_exc == 0) there are no
+# executable lines to gate; the run passes trivially as long as no file
+# is missing evidence.
+passed = not missing_evidence and (total_exc > 0 and total_pct >= threshold or total_exc == 0)
 print(json.dumps({
     "diffCoverage": {
         "percent": total_pct,
