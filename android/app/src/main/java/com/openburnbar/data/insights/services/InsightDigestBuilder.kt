@@ -68,8 +68,11 @@ object InsightDigestBuilder {
         val filter = input.filter
         val totals = input.totals
         val providers = input.providers.map { hashProviderSnapshot(it) }
-        val models = input.models.map { hashModelSnapshot(it) }
-        val projects = input.projects.map { hashProjectSnapshot(it) }
+        // Build per-digest opaque ordinal project token map: sort original
+        // project IDs alphabetically, assign project_1, project_2, …
+        val projectTokenMap = buildProjectTokenMap(input.projects)
+        val models = input.models.map { remapModelProjects(it, projectTokenMap) }
+        val projects = input.projects.map { remapProject(it, projectTokenMap) }
         val daily = input.daily
         val quotaSnapshots = input.quotaSnapshots
         val modelBenchmarks = input.modelBenchmarks
@@ -220,13 +223,21 @@ object InsightDigestBuilder {
         return hash.joinToString("") { "%02x".format(it) }
     }
 
-    private fun hashProjectSnapshot(snapshot: InsightDigest.ProjectSnapshot): InsightDigest.ProjectSnapshot =
-        snapshot.copy(displayName = snapshot.id)
+    private fun buildProjectTokenMap(projects: List<InsightDigest.ProjectSnapshot>): Map<String, String> =
+        projects.map { it.id }.sorted().mapIndexed { index, id -> id to "project_${index + 1}" }.toMap()
+
+    private fun remapProject(snapshot: InsightDigest.ProjectSnapshot, tokenMap: Map<String, String>): InsightDigest.ProjectSnapshot {
+        val token = tokenMap[snapshot.id] ?: snapshot.id
+        return snapshot.copy(id = token, displayName = token)
+    }
+
+    private fun remapModelProjects(snapshot: InsightDigest.ModelSnapshot, tokenMap: Map<String, String>): InsightDigest.ModelSnapshot =
+        snapshot.copy(
+            topInferredTaskTitles = emptyList(),
+            topProjects = snapshot.topProjects.map { tokenMap[it] ?: it },
+        )
 
     private fun hashProviderSnapshot(snapshot: InsightDigest.ProviderSnapshot): InsightDigest.ProviderSnapshot =
-        snapshot.copy(topInferredTaskTitles = emptyList())
-
-    private fun hashModelSnapshot(snapshot: InsightDigest.ModelSnapshot): InsightDigest.ModelSnapshot =
         snapshot.copy(topInferredTaskTitles = emptyList())
 
     private fun InsightTimeWindow.toInterval(): Pair<String, String> {

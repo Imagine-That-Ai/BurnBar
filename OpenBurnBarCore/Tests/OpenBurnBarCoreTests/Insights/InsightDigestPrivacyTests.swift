@@ -187,4 +187,58 @@ final class InsightDigestPrivacyTests: XCTestCase {
                           "Use case '\(bin.id)' is not in the taxonomy")
         }
     }
+
+    func testProjectIDsAreOpaqueOrdinalsNotGuessableHashes() throws {
+        // The hosted digest must use per-digest opaque ordinal tokens
+        // (project_1, project_2, …) — not the legacy fixed-salt 32-bit
+        // hashedProjectID, which is dictionary-guessable for common folder
+        // names (Codex review r3585472422). This test proves:
+        //   1. The cleartext folder names ("foo", "bar") are absent.
+        //   2. The legacy hashedProjectID values are absent.
+        //   3. Multiple projects produce distinct ordinal tokens (aggregates
+        //      remain distinguishable to the LLM).
+        // Uses a minimal snapshot to avoid the 24KB trim dropping projects.
+        let now = Date()
+        let window = DateInterval(start: now.addingTimeInterval(-3600), end: now)
+        var snapshot = InsightTestFixtures.emptySnapshot(window: window)
+        snapshot.usages = [
+            InsightUsageRow(sessionID: "s1", provider: "Claude Code", model: "claude-sonnet-4-6",
+                            projectName: "/Users/me/foo", deviceID: "d1", deviceName: "Mac",
+                            startTime: now, endTime: now, inputTokens: 100, outputTokens: 50,
+                            reasoningTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+                            totalTokens: 150, costUSD: 0.01),
+            InsightUsageRow(sessionID: "s2", provider: "Codex", model: "gpt-5",
+                            projectName: "/Users/me/bar", deviceID: "d1", deviceName: "Mac",
+                            startTime: now, endTime: now, inputTokens: 200, outputTokens: 100,
+                            reasoningTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+                            totalTokens: 300, costUSD: 0.02),
+        ]
+        let builder = InsightDigestBuilder()
+        let digest = try builder.build(from: snapshot, filter: InsightFilter(window: .last24h))
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let encoded = try encoder.encode(digest)
+        let str = String(data: encoded, encoding: .utf8) ?? ""
+        // 1. Cleartext folder names must be absent.
+        XCTAssertFalse(str.contains("foo"),
+                       "Digest leaked cleartext project folder name \"foo\"")
+        XCTAssertFalse(str.contains("bar"),
+                       "Digest leaked cleartext project folder name \"bar\"")
+        // 2. Legacy hashedProjectID values must be absent.
+        let legacyFooHash = builder.hashedProjectID("/Users/me/foo")
+        let legacyBarHash = builder.hashedProjectID("/Users/me/bar")
+        XCTAssertFalse(str.contains(legacyFooHash),
+                       "Digest leaked legacy hashedProjectID for /Users/me/foo: \(legacyFooHash)")
+        XCTAssertFalse(str.contains(legacyBarHash),
+                       "Digest leaked legacy hashedProjectID for /Users/me/bar: \(legacyBarHash)")
+        // 3. Projects remain distinguishable: at least 2 distinct ordinal IDs.
+        let projectIDs = Set(digest.projects.map(\.id))
+        XCTAssertGreaterThanOrEqual(projectIDs.count, 2,
+                                    "Project aggregates were not distinguishable — only \(projectIDs.count) unique ID(s)")
+        for id in projectIDs {
+            XCTAssertTrue(id.hasPrefix("project_"),
+                          "Project ID is not an opaque ordinal token: \(id)")
+        }
+    }
 }

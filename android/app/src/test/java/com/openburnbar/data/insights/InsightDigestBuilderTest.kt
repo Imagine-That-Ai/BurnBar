@@ -268,6 +268,70 @@ class InsightDigestBuilderTest {
         )
     }
 
+    @Test
+    fun `build replaces project ids and display names with opaque ordinal tokens not guessable hashes`() {
+        val input =
+            InsightDigestBuildInput(
+                filter = InsightFilter(window = InsightTimeWindow.Last7d),
+                totals = InsightDigest.Totals(sessionCount = 10),
+                providers = emptyList(),
+                models =
+                listOf(
+                    InsightDigest.ModelSnapshot(
+                        id = "model-01",
+                        providerID = "provider-01",
+                        costUSD = 15.0,
+                        totalTokens = 3000L,
+                        sessionCount = 8,
+                        topProjects = listOf("alpha-secret-hash", "beta-secret-hash"),
+                    ),
+                ),
+                projects =
+                listOf(
+                    InsightDigest.ProjectSnapshot(
+                        id = "alpha-secret-hash",
+                        displayName = "my-alpha-project",
+                        costUSD = 10.0,
+                        totalTokens = 1000L,
+                        sessionCount = 5,
+                    ),
+                    InsightDigest.ProjectSnapshot(
+                        id = "beta-secret-hash",
+                        displayName = "my-beta-project",
+                        costUSD = 5.0,
+                        totalTokens = 500L,
+                        sessionCount = 3,
+                    ),
+                ),
+                daily = emptyList(),
+                quotaSnapshots = emptyList(),
+                modelBenchmarks = emptyList(),
+                anomalies = emptyList(),
+            )
+
+        val digest = InsightDigestBuilder.build(input)
+        val json = Json.encodeToString(InsightDigest.serializer(), digest)
+
+        // 1. Cleartext display names must be absent.
+        assertFalse("encoded digest must not contain cleartext project display name 'my-alpha-project'", json.contains("my-alpha-project"))
+        assertFalse("encoded digest must not contain cleartext project display name 'my-beta-project'", json.contains("my-beta-project"))
+        // 2. Legacy hash values must be absent (replaced with ordinal tokens).
+        assertFalse("encoded digest must not contain legacy project id 'alpha-secret-hash'", json.contains("alpha-secret-hash"))
+        assertFalse("encoded digest must not contain legacy project id 'beta-secret-hash'", json.contains("beta-secret-hash"))
+        // 3. Projects remain distinguishable: at least 2 distinct ordinal IDs.
+        val projectIDs = digest.projects.map { it.id }.toSet()
+        assertTrue("Project aggregates were not distinguishable — only ${projectIDs.size} unique ID(s)", projectIDs.size >= 2)
+        for (id in projectIDs) {
+            assertTrue("Project ID is not an opaque ordinal token: $id", id.startsWith("project_"))
+        }
+        // 4. Model topProjects must also use ordinal tokens, not legacy hashes.
+        for (model in digest.models) {
+            for (pid in model.topProjects) {
+                assertTrue("Model topProject ID is not an opaque ordinal token: $pid", pid.startsWith("project_"))
+            }
+        }
+    }
+
     private fun windowSpan(window: InsightTimeWindow): Duration {
         val digest = InsightDigestBuilder.build(emptyInput(window))
         return Duration.between(Instant.parse(digest.windowStart), Instant.parse(digest.windowEnd))
