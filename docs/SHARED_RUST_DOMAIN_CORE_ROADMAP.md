@@ -36,10 +36,10 @@ engine, while Android and Cloud Functions do not read local provider logs.
 - Telemetry contains mismatch categories, counts, versions, and timing only. It
   never contains sensitive inputs, outputs, credentials, user identifiers, or
   stable payload hashes.
-- Promotion evidence is bound to one signed app commit and one expected loaded
-  Rust version/ABI/source fingerprint. Server `receivedAt`, not client time,
-  controls the half-open observation window; every required coverage cell must
-  contain an accepted V3 sample on every UTC day.
+- Promotion proof is bound to one signed app commit and one expected loaded Rust
+  version/ABI/source fingerprint. Optional V3 telemetry keeps server
+  `receivedAt` for diagnostic ordering, but telemetry continuity and volume do
+  not control promotion.
 - Generated Swift, Kotlin, C#, native, and Wasm artifacts are one atomic release
   set. A consumer never mixes bindings or binaries generated from different
   domain-core source trees.
@@ -161,34 +161,39 @@ text, hashes, and key material are never logged.
 
 Quota promotion requires all of the following:
 
-1. Complete fixture corpus and native binding load tests on Apple and Windows.
-2. One exact signed candidate commit and expected Rust version/ABI/source tuple,
-   with at least **14 consecutive server-received UTC days per required
-   `(slice, consumer)` cell** in an internal or beta channel and **10,000
-   aggregate V3 shadow samples** across the required coverage.
-3. Zero unexplained mismatches. Ordinary explained categories require a linked
-   issue and named review; explanation never removes the raw count. Native
-   unavailable/error and loaded-identity mismatch categories remain hard
-   blockers, and a loaded identity mismatch cannot be explained away.
-4. Rust p95 latency no more than **5 percent** above the legacy p95, using the
-   same shadow samples.
-5. A passing candidate-bound V3 report from the existing fail-closed promotion
-   evidence evaluator delivered by
-   [PR #1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612) and its V3
-   hardening. Evaluate the domain-specific V3 bundle exactly as documented in
-   the [promotion-evidence runbook](runbooks/shared-rust-promotion-evidence.md).
-   V1/V2 drain evidence, operator revision labels, and hand-edited or synthetic
-   passing reports are not accepted.
-6. One stable release observed with Rust authoritative and the explicit legacy
-   rollback mode still available.
+1. Complete deterministic fixtures, property/fuzz tests, and native/Wasm binding
+   load tests for every required consumer in
+   [`config/domain-core-promotion-policy.json`](../config/domain-core-promotion-policy.json).
+2. One exact candidate commit and Rust version/ABI/source tuple, proven by the
+   artifacts actually loaded by Swift, Kotlin, C#, browser Wasm, and Node Wasm.
+3. A successful `push` run of `.github/workflows/domain-core.yml` on `main` with
+   every exact policy job and all 38 real `(domain, slice, consumer)` coverage
+   cells. Failed, skipped, missing, duplicate, extra, PR, dispatch, mixed-run, or
+   mixed-candidate evidence fails closed.
+4. The paired complete-payload FFI benchmark no more than **5 percent** slower
+   than the direct Rust baseline in the same CI job and attempt.
+5. A real rollback drill that resolves the signed public artifact and exercises
+   its `legacy` routing, followed by a protected provenance attestation from
+   `.github/workflows/domain-core-promotion-proof.yml`. The signer independently
+   queries GitHub, downloads the exact run bundle, and revalidates it with the
+   trusted `main` policy and evaluator. The unsigned bundle and uploaded
+   verification receipt are not authority by themselves.
+6. One stable signed release observed with Rust authoritative and the explicit
+   legacy rollback mode still available.
+
+Shadow telemetry is optional diagnostic input. V3 preserves exact candidate and
+loaded-module identity and can reveal mismatches in real deployments, but no
+duration, daily continuity, account count, or sample count is a promotion gate.
+V1/V2 remain drain-only and no telemetry report may substitute for the protected
+deterministic attestation.
 
 Only after all six gates pass may a separate deletion PR remove the legacy
-quota implementations and rollback setting. Its proof must retain the exact V3
-candidate/core tuple and report, then pass named source-absence and Rust-only
-compile gates. A mismatch, missing UTC day, artifact/ABI/source failure,
-rollback, new candidate commit, or latency regression before deletion rolls the
-affected consumer explicitly back to `legacy`, preserves evidence, and restarts
-the applicable shadow window after the cause is fixed.
+quota implementations and rollback setting. Its proof must retain the exact
+attested candidate/core tuple, then pass named source-absence and Rust-only
+compile gates. A mismatch, artifact/ABI/source failure, rollback, new candidate
+commit, or performance regression before deletion rolls the affected consumer
+explicitly back to `legacy`, preserves the diagnostic evidence, fixes the cause,
+and requires a new exact candidate attestation.
 
 Crypto promotion additionally requires deterministic KATs, bidirectional
 cross-open coverage for every supported envelope version and consumer,
@@ -202,7 +207,7 @@ stable Rust-authoritative release.
 
 Snapshot: **2026-07-14**. PR and branch status records implementation ancestry
 only. A merged crate, collector, or evidence contract is not production
-promotion, does not prove a completed observation window, and does not
+promotion, does not prove a protected deterministic attestation, and does not
 authorize legacy deletion.
 
 - Quota: pilot [#1590](https://github.com/Imagine-That-Ai/BurnBar/pull/1590),
@@ -210,8 +215,7 @@ authorize legacy deletion.
   wiring [#1592](https://github.com/Imagine-That-Ai/BurnBar/pull/1592) are in the
   implementation ancestry. The shared collector foundation
   [#1722](https://github.com/Imagine-That-Ai/BurnBar/pull/1722) is merged into
-  `main`; that does not certify a candidate-bound V3 observation. The
-  14-day/10,000-sample window has not been certified.
+  `main`; that does not certify the protected deterministic candidate proof.
 - CloudVault and pricing: foundation
   [#1594](https://github.com/Imagine-That-Ai/BurnBar/pull/1594), AES
   [#1602](https://github.com/Imagine-That-Ai/BurnBar/pull/1602), C1c core
@@ -231,14 +235,13 @@ authorize legacy deletion.
   hardening [#1721](https://github.com/Imagine-That-Ai/BurnBar/pull/1721), rollout
   authority [#1729](https://github.com/Imagine-That-Ai/BurnBar/pull/1729), and
   remaining Swift/Kotlin consumer work are still under review or pending.
-- Candidate-bound V3 ingress, enrollment, export, and evaluation are being
-  hardened in the current contract work. They have not yet produced a signed
-  internal or beta observation window and must not be cited as promotion proof.
+- Candidate-bound V3 ingress, enrollment, export, and evaluation remain useful
+  diagnostic surfaces. They must not be cited as promotion authority regardless
+  of sample volume or collection duration.
 - Signed candidate receipts are being bound across Apple, Android, Windows,
   Console, and Functions to one clean checkout and one verified Rust
   version/ABI/source tuple. This release-integrity work prevents mixed or
-  relabeled evidence, but does not itself supply any V3 samples or authorize a
-  mode promotion.
+  relabeled diagnostics, but does not authorize a mode promotion.
 - No shared-Rust domain is complete under the inventory's completion rule. No
   legacy implementation should be deleted from this status snapshot.
 
@@ -254,3 +257,7 @@ authorize legacy deletion.
   Windows x64/ARM64 DLL, and applicable Linux library load tests.
 - Focused platform fixture/consumer tests plus release checks for checksums,
   SBOM, provenance, and AGPL source completeness.
+- Exact-run proof fragments, the real signed-legacy rollback drill, and a final
+  unsigned candidate bundle on `main`; only the trusted-main revalidation and
+  provenance attestation behind the protected `domain-core-promotion`
+  environment authorizes promotion.
