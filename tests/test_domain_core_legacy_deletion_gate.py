@@ -160,7 +160,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRatchetLegacyCrypto.swift",
                 "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyCrypto.kt",
                 "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacySearch.kt",
-                "android/app/src/main/java/com/openburnbar/data/cloud/Legacy/CloudVaultLegacyDocumentRewrap.kt",
+                "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyDocumentRewrap.kt",
                 "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayLegacyCrypto.kt",
                 "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetLegacyCrypto.kt",
                 "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/Legacy/CloudVaultLegacyCrypto.cs",
