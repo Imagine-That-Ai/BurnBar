@@ -863,12 +863,8 @@ jobs:
             -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
             -no-boot-anim
           script: |
-            cd android
-            ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon \
-              -Pandroid.testInstrumentationRunnerArguments.candidateCommit="$GITHUB_SHA"
-            adb exec-out run-as com.openburnbar.domaincore.test \
-              cat files/domain-core-observed-identity.json \
-              > "$RUNNER_TEMP/android-observed-identity.json"
+            cd android && ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.candidateCommit="$GITHUB_SHA"
+            adb exec-out run-as com.openburnbar.domaincore.test cat files/domain-core-observed-identity.json > "$RUNNER_TEMP/android-observed-identity.json"
 
       - name: Record successful Android native load
         run: |
