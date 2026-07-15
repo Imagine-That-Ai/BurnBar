@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { createFunctionsDeploymentEvidence } from "./create-domain-core-functions-deployment-evidence.mjs";
@@ -62,8 +63,35 @@ function health() {
   };
 }
 
+function runVerification() {
+  return {
+    schemaVersion: 1,
+    verificationKind: "domain-core-functions-deploy-run",
+    deployRun: {
+      repository: "Imagine-That-Ai/BurnBar",
+      workflowPath: ".github/workflows/deploy-production.yml",
+      runId: 303,
+      runAttempt: 4,
+      event: "push",
+      ref: "refs/tags/v1.2.3",
+      headSha: CANDIDATE.candidateCommit,
+      jobSetSha256: "f".repeat(64),
+    },
+  };
+}
+
+function healthBytes(value = health()) {
+  return Buffer.from(`${JSON.stringify(value)}\n`);
+}
+
 test("turns exact live deployment proof into v2 generator input", () => {
-  const evidence = createFunctionsDeploymentEvidence(proof(), health());
+  const bytes = healthBytes();
+  const evidence = createFunctionsDeploymentEvidence(
+    proof(),
+    health(),
+    runVerification(),
+    bytes,
+  );
   assert.deepEqual(evidence, {
     provider: "firebase-functions",
     project: "burnbar",
@@ -78,6 +106,8 @@ test("turns exact live deployment proof into v2 generator input", () => {
       "domainCoreProfile",
     ],
     deployedArtifact: proof().compiledReceipt,
+    deployRun: runVerification().deployRun,
+    healthArtifactSha256: createHash("sha256").update(bytes).digest("hex"),
   });
 });
 
@@ -104,6 +134,45 @@ test("rejects stale source, profile, version, and Sentry identities", () => {
   for (const mutate of cases) {
     const value = structuredClone(health());
     mutate(value);
-    assert.throws(() => createFunctionsDeploymentEvidence(proof(), value));
+    assert.throws(() =>
+      createFunctionsDeploymentEvidence(
+        proof(),
+        value,
+        runVerification(),
+        healthBytes(value),
+      ),
+    );
+  }
+});
+
+test("rejects deploy-run coordinate and job-set substitutions", () => {
+  const cases = [
+    (value) => {
+      value.deployRun.runId += 1;
+    },
+    (value) => {
+      value.deployRun.runAttempt += 1;
+    },
+    (value) => {
+      value.deployRun.ref = "refs/tags/v1.2.2";
+    },
+    (value) => {
+      value.deployRun.headSha = "0".repeat(40);
+    },
+    (value) => {
+      value.deployRun.jobSetSha256 = "invalid";
+    },
+  ];
+  for (const mutate of cases) {
+    const value = runVerification();
+    mutate(value);
+    assert.throws(() =>
+      createFunctionsDeploymentEvidence(
+        proof(),
+        health(),
+        value,
+        healthBytes(),
+      ),
+    );
   }
 });
