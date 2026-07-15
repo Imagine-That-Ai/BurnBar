@@ -20,6 +20,17 @@ export const DOMAIN_CORE_REQUIRED_PROOF_FRAGMENT_JOB_IDS = Object.freeze([
 ]);
 
 const POSITIVE_INTEGER = /^[1-9]\d*$/u;
+const SHA256 = /^[0-9a-f]{64}$/u;
+const CANDIDATE_IDENTITY_KEYS = new Set([
+  "abiVersion",
+  "candidateCommit",
+  "coreVersion",
+  "sourceSha256",
+]);
+const OBSERVED_NATIVE_IDENTITY_KEYS = new Set([
+  ...CANDIDATE_IDENTITY_KEYS,
+  "binarySha256",
+]);
 const FRAGMENT_KEYS = new Set([
   "schemaVersion",
   "jobId",
@@ -118,7 +129,7 @@ export function sha256Artifact(path) {
   return hash.digest("hex");
 }
 
-function observedIdentity(path, expected, label) {
+function observedIdentity(path, expected, expectedArtifactSha256, label) {
   let report;
   try {
     report = JSON.parse(
@@ -130,9 +141,33 @@ function observedIdentity(path, expected, label) {
   } catch (error) {
     fail(`${label} observed identity report is unreadable: ${error.message}`);
   }
-  const identity = validateDomainCoreCandidateIdentity(report);
+  const hasBinaryDigest = Object.hasOwn(report, "binarySha256");
+  exactKeys(
+    report,
+    hasBinaryDigest ? OBSERVED_NATIVE_IDENTITY_KEYS : CANDIDATE_IDENTITY_KEYS,
+    `${label} observed identity`,
+  );
+  const identity = validateDomainCoreCandidateIdentity({
+    candidateCommit: report.candidateCommit,
+    coreVersion: report.coreVersion,
+    abiVersion: report.abiVersion,
+    sourceSha256: report.sourceSha256,
+  });
   if (!candidateIdentitiesEqual(identity, expected)) {
     fail(`${label} observed identity does not match candidate`);
+  }
+  if (hasBinaryDigest) {
+    if (
+      typeof report.binarySha256 !== "string" ||
+      !SHA256.test(report.binarySha256)
+    ) {
+      fail(
+        `${label} observed identity binarySha256 must be a lowercase SHA-256 digest`,
+      );
+    }
+    if (report.binarySha256 !== expectedArtifactSha256) {
+      fail(`${label} observed binary digest does not match artifact`);
+    }
   }
   return identity;
 }
@@ -222,14 +257,20 @@ export function createDomainCoreProofFragment({
       const required = requiredArtifacts.find((item) => item.id === id);
       if (!identityReportPath)
         fail(`${id} requires an observed identity report`);
-      const loadedIdentity = observedIdentity(identityReportPath, identity, id);
+      const artifactSha256 = sha256Artifact(path);
+      const loadedIdentity = observedIdentity(
+        identityReportPath,
+        identity,
+        artifactSha256,
+        id,
+      );
       return {
         id,
         consumer: required.consumer,
         jobId,
         runId: normalizedRunId,
         runAttempt: normalizedAttempt,
-        artifactSha256: sha256Artifact(path),
+        artifactSha256,
         identityReportSha256: reportDigest(
           identityReportPath,
           `${id} observed identity`,
