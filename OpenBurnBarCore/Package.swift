@@ -497,7 +497,7 @@ let swiftTestingPackageDependencies: [Package.Dependency] = [
 #endif
 let swiftCryptoDependency: Target.Dependency = .product(name: "Crypto", package: "swift-crypto")
 // Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-2): OpenBurnBarCore's
-// crypto is centralized in `Platform/PlatformSupport.swift`, which resolves to
+// crypto is centralized in `OpenBurnBarPlatformSupport/PlatformSupport.swift`, which resolves to
 // CryptoKit on Apple via `#if canImport(CryptoKit)` and to swift-crypto's
 // `Crypto` module only in the `#else` (non-Apple) branch. Gate Core's
 // swift-crypto product to Windows/Linux so the **Apple** link/product graph
@@ -916,6 +916,13 @@ let firstPartyTargetsBase: [Target] = [
                 .brew(["zlib"])
             ]
         ),
+        // Cross-platform crypto, logging, and Foundation concurrency shims.
+        // Kernel re-exports this lower-level leaf so moving these primitives
+        // does not expand the public import surface.
+        .target(
+            name: "OpenBurnBarPlatformSupport",
+            dependencies: [swiftCryptoNonAppleDependency]
+        ),
         // Shared-Rust rollout policy and evidence primitives. This leaf stays
         // Foundation-only so Kernel, Quota, LogParsers, and platform shells can
         // share one fail-closed authority contract without regrowing Kernel.
@@ -932,6 +939,7 @@ let firstPartyTargetsBase: [Target] = [
         .target(
             name: "OpenBurnBarKernel",
             dependencies: [
+                "OpenBurnBarPlatformSupport",
                 "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency

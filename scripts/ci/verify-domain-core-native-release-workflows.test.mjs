@@ -27,7 +27,7 @@ const artifactVerifier = readFileSync(
 );
 const appleReporter = readFileSync(
   new URL(
-    "../../OpenBurnBarCore/Sources/OpenBurnBarCore/DomainCoreReleaseIdentityReporter.swift",
+    "../../OpenBurnBarCore/Sources/OpenBurnBarKernel/DomainCoreReleaseIdentityReporter.swift",
     import.meta.url,
   ),
   "utf8",

@@ -98,7 +98,7 @@ test("native observer source and immutable signer pins cannot fall out of the se
   const seeds = new Set(NATIVE_RELEASE_CONTROL_PLANE_SEEDS);
   for (const required of [
     "AgentLens/App/AgentLensApp.swift",
-    "OpenBurnBarCore/Sources/OpenBurnBarCore/DomainCoreReleaseIdentityReporter.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarKernel/DomainCoreReleaseIdentityReporter.swift",
     "android/openburnbar-domain-core/src/androidTest/java/com/openburnbar/domaincore/DomainCoreNativeLoadTest.kt",
     "config/android-upload-certificate.sha256",
     "config/apple-release-signing-policy.json",
