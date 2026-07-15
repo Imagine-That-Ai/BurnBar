@@ -40,6 +40,13 @@ function job(source, name, nextName) {
   return source.slice(start, end === -1 ? source.length : end);
 }
 
+function renderArtifactName(template, { commit, runId, runAttempt }) {
+  return template
+    .replaceAll("${{ needs.release-preflight.outputs.release_commit }}", commit)
+    .replaceAll("${{ github.run_id }}", String(runId))
+    .replaceAll("${{ github.run_attempt }}", String(runAttempt));
+}
+
 test("native release profiles force stable tags and protect manual rollback", () => {
   for (const source of [appleAndroid, windows]) {
     assert.match(
@@ -112,7 +119,74 @@ test("Apple DMG is fully verified before any release mutation", () => {
   assert.match(preparation, /- apple-native-prepublication/u);
   assert.match(preparation, /release-publication-inputs/u);
   assert.match(preparation, /Retain exact general publication inputs/u);
+  assert.match(
+    preparation,
+    /permissions:\n\s+actions: read\n\s+contents: read/u,
+  );
+  assert.doesNotMatch(
+    preparation,
+    /(?:contents|attestations|id-token): write/u,
+  );
   assert.doesNotMatch(preparation, /gh release|--clobber/u);
+});
+
+test("failed-job reruns consume exact producer artifact names from attempt one", () => {
+  const gate = job(
+    appleAndroid,
+    "domain-core-native-release-gate",
+    "build-and-release",
+  );
+  const build = job(appleAndroid, "build-and-release", "smoke-test");
+  const prepublication = job(
+    appleAndroid,
+    "apple-native-prepublication",
+    "prepare-release-publication",
+  );
+  const preparation = job(
+    appleAndroid,
+    "prepare-release-publication",
+    "domain-core-native-release-evidence",
+  );
+  const evidence = job(
+    appleAndroid,
+    "domain-core-native-release-evidence",
+    "verify-live-update-feed",
+  );
+  const output = gate.match(/^\s+artifact_name: (.+)$/mu)?.[1];
+  assert.ok(output);
+  const attemptOne = renderArtifactName(output, {
+    commit: "a".repeat(40),
+    runId: 9001,
+    runAttempt: 1,
+  });
+  const incorrectAttemptTwo = renderArtifactName(output, {
+    commit: "a".repeat(40),
+    runId: 9001,
+    runAttempt: 2,
+  });
+  assert.notEqual(attemptOne, incorrectAttemptTwo);
+  assert.match(
+    build,
+    /name: \$\{\{ needs\.domain-core-native-release-gate\.outputs\.artifact_name \}\}/u,
+  );
+  assert.match(
+    prepublication,
+    /name: \$\{\{ needs\.domain-core-native-release-gate\.outputs\.artifact_name \}\}/u,
+  );
+  for (const binding of [
+    "domain-core-native-release-gate.outputs.artifact_name",
+    "build-and-release.outputs.native_identity_artifact_name",
+    "apple-native-prepublication.outputs.identity_artifact_name",
+    "prepare-release-publication.outputs.publication_inputs_artifact_name",
+  ]) {
+    assert.match(evidence, new RegExp(`name: \\$\\{\\{ needs\\.${binding.replaceAll(".", "\\.")} \\}\\}`, "u"));
+  }
+  assert.doesNotMatch(
+    evidence.slice(0, evidence.indexOf("Retain exact native release evidence")),
+    /name: [^\n]*github\.run_attempt/u,
+  );
+  assert.match(preparation, /publication_inputs_artifact_name:/u);
+  assert.equal(attemptOne.endsWith("-1"), true);
 });
 
 test("Apple and Android verifiers accept the same prerelease SemVer", () => {
@@ -139,6 +213,10 @@ test("mounted shipped app executable itself emits the loaded Rust identity", () 
   assert.match(appleReporter, /domainCoreAbiVersion\(\)/u);
   assert.match(appleReporter, /domainCoreSourceFingerprint\(\)/u);
   assert.match(appleReporter, /SHA256\.hash\(data: executableData\)/u);
+  assert.match(
+    appleReporter,
+    /#if canImport\(CryptoKit\)[\s\S]*import CryptoKit[\s\S]*#elseif canImport\(Crypto\)[\s\S]*import Crypto[\s\S]*#error/u,
+  );
 });
 
 test("all Apple and Android assets and v2 evidence publish through one draft state machine", () => {
@@ -178,6 +256,11 @@ test("release workflow has no replacement-capable asset mutation", () => {
     /gh release (?:upload|create|edit|delete)/u,
   );
   assert.match(appleAndroid, /publish-apple-android-release\.mjs/u);
+  assert.match(
+    appleAndroid,
+    /group: release-\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.tag \|\| github\.ref_name \}\}/u,
+  );
+  assert.match(appleAndroid, /VERSION_WITHOUT_BUILD="\$\{TAG_NAME%%\+\*\}"/u);
 });
 
 test("Windows signing and canonical evidence consume the exact gate", () => {

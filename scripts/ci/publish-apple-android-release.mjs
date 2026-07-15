@@ -96,7 +96,7 @@ export function validateAppleAndroidPublication(raw) {
     throw new Error("publication title must match its exact version");
   }
   const notesPath = regularFile(value.notesPath, "release notes");
-  const prerelease = value.tag.includes("-");
+  const prerelease = match[1].split("+", 1)[0].includes("-");
   if (value.prerelease !== prerelease || typeof value.promote !== "boolean") {
     throw new Error("publication prerelease and promote controls are invalid");
   }
@@ -348,6 +348,21 @@ function publishDraft(client, publication) {
   );
 }
 
+function redraftAfterFailedAudit(client, publication) {
+  return client.run(
+    [
+      "release",
+      "edit",
+      publication.tag,
+      "--repo",
+      publication.repository,
+      "--draft=true",
+      "--latest=false",
+    ],
+    { allowFailure: true },
+  );
+}
+
 export function publishAppleAndroidRelease(
   publication,
   { client = createGhClient() } = {},
@@ -457,12 +472,24 @@ export function publishAppleAndroidRelease(
         throw new Error("final draft publication failed");
       }
     }
-    auditCompleteRelease(
-      client,
-      publication,
-      staged,
-      join(workspace, "post-publish"),
-    );
+    try {
+      auditCompleteRelease(
+        client,
+        publication,
+        staged,
+        join(workspace, "post-publish"),
+      );
+    } catch (error) {
+      if (result.status === 0) {
+        const redraft = redraftAfterFailedAudit(client, publication);
+        if (redraft.status !== 0) {
+          throw new Error(
+            `post-publication audit failed and emergency redraft failed: ${error.message}`,
+          );
+        }
+      }
+      throw error;
+    }
     return { published: result.status === 0, uploaded, readOnly: false };
   } finally {
     rmSync(workspace, { recursive: true, force: true });

@@ -201,8 +201,20 @@ Apple and Android use one combined publication manifest and one state machine:
 
 Stable and prerelease releases use the same state machine. Prereleases are
 always non-latest; only an explicitly promoted stable release may become latest.
-No partial release is published, and no attestation is generated against bytes
-other than the DMG or AAB that will be published.
+Under the exclusive-writer boundary below, no partial release is published, and
+no attestation is generated against bytes other than the DMG or AAB that will
+be published.
+
+GitHub does not expose a compare-and-swap operation for publishing a release.
+The workflow therefore serializes release runs by the exact tag with
+`cancel-in-progress: false`, and the release workflow is the exclusive trusted
+contents writer for that tag while publication is in progress. A repository
+administrator or manual API client can still race the final edit. The publisher
+detects any metadata or asset-set change in its immediate post-publication
+audit and makes a best-effort transition back to draft before failing, but a
+concurrent privileged writer can cause transient exposure. Trusted consumers
+must bind the expected signed manifest, exact asset names, and verified hashes;
+they must not treat the mere existence of a published GitHub release as proof.
 
 ## Functions release lane
 
@@ -265,6 +277,16 @@ bundle fails without mutation. Draft retries may fill only missing assets.
 Concurrent exact uploads and a concurrent final publication are accepted after
 fresh verification; substituted collisions, unexpected assets, moved tags,
 state changes, or byte tampering fail closed and leave the release draft.
+
+For recovery, rerun only failed jobs in the original workflow run. Every
+producer exports the exact Actions artifact name it uploaded, so an attempt-2
+publication consumer downloads the successful attempt-1 signed DMG, AAB,
+identities, protected gate, and general asset set byte-for-byte. Starting a new
+workflow dispatch rebuilds nondeterministic signed artifacts and is not a retry
+of an existing partial draft; ordinary assets from that new run must still be
+byte-identical or publication fails. Evidence bundles are the sole encoding
+exception and are adopted only after cryptographic verification against the
+exact predicate and native artifact.
 
 The publisher never deletes a release, never replaces an asset, and never uses
 `--clobber`. Windows retains its separate draft-then-publish state machine, with

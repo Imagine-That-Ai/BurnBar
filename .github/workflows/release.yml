@@ -55,7 +55,10 @@ on:
           - public-production-rollback
 
 concurrency:
-  group: release-${{ github.ref }}
+  # GitHub releases have no compare-and-swap publish API. Serialize this
+  # workflow by the exact release tag; manual/admin contents writers remain a
+  # documented external trust boundary and are detected by the final audit.
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -250,10 +253,11 @@ jobs:
             exit 1
           fi
 
-          # Prerelease status is derived strictly from the tag: a hyphen in the
-          # version (the SemVer prerelease delimiter) marks it. The publish job
-          # NEVER repoints "latest" for a prerelease, regardless of inputs.
-          if [[ "$TAG_NAME" == *-* ]]; then
+          # Only a hyphen before optional +build metadata is the SemVer
+          # prerelease delimiter. A stable tag such as v1.2.3+linux-x64 stays
+          # stable and may be explicitly promoted.
+          VERSION_WITHOUT_BUILD="${TAG_NAME%%+*}"
+          if [[ "$VERSION_WITHOUT_BUILD" == *-* ]]; then
             IS_PRERELEASE=true
           else
             IS_PRERELEASE=false
@@ -867,6 +871,7 @@ jobs:
       public_profile_sha256: ${{ steps.gate.outputs.public_profile_sha256 }}
       signer_run_id: ${{ steps.gate.outputs.signer_run_id }}
       signer_run_attempt: ${{ steps.gate.outputs.signer_run_attempt }}
+      artifact_name: domain-core-native-release-gate-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out exact release candidate
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -928,6 +933,7 @@ jobs:
       zip_path: ${{ steps.zip.outputs.zip_path }}
       zip_name: ${{ steps.zip.outputs.zip_name }}
       aab_name: ${{ steps.android.outputs.aab_name }}
+      native_identity_artifact_name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: Check out repository
@@ -992,7 +998,7 @@ jobs:
       - name: Download verified Shared Rust release inputs
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
-          name: domain-core-native-release-gate-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Resolve signed public domain-core profile
@@ -2287,6 +2293,8 @@ jobs:
     permissions:
       actions: read
       contents: write
+    outputs:
+      identity_artifact_name: domain-core-apple-prepublication-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out exact release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -2298,7 +2306,7 @@ jobs:
       - name: Download exact verified release inputs
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
-          name: domain-core-native-release-gate-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Download signed Apple DMG
@@ -2349,6 +2357,11 @@ jobs:
       - apple-native-prepublication
     runs-on: macos-15
     timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      publication_inputs_artifact_name: release-publication-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out exact release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -2472,7 +2485,7 @@ jobs:
       - name: Download exact verified release inputs
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
-          name: domain-core-native-release-gate-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Download signed Apple artifact
@@ -2490,19 +2503,19 @@ jobs:
       - name: Download observed native Rust identities
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
-          name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.build-and-release.outputs.native_identity_artifact_name }}
           path: ${{ runner.temp }}/domain-core-native-identities
 
       - name: Download prepublication Apple observed identity
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
-          name: domain-core-apple-prepublication-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.apple-native-prepublication.outputs.identity_artifact_name }}
           path: ${{ runner.temp }}/domain-core-apple-prepublication-identity
 
       - name: Download exact general publication inputs
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
-          name: release-publication-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ needs.prepare-release-publication.outputs.publication_inputs_artifact_name }}
           path: ${{ runner.temp }}/release-publication-inputs
 
       - name: Reverify signed artifacts, selected profile, and loaded Rust identity

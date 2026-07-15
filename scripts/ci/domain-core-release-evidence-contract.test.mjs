@@ -4,6 +4,12 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  NATIVE_RELEASE_VERSION,
+  STABLE_RELEASE_VERSION,
+  validateReleaseCoordinates,
+} from "../lib/domain-core-release-evidence.mjs";
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function json(path) {
@@ -30,6 +36,7 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
       "sourceRun",
       "promotionProof",
       "rollbackArtifact",
+      "publicProfile",
       "artifact",
       "release",
     ]),
@@ -47,6 +54,79 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
   assert.ok(schema.$defs.rollbackArtifact.required.includes("candidate"));
   assert.ok(schema.$defs.rollbackArtifact.required.includes("sha256"));
   assert.equal(schema.oneOf.length, 5);
+  assert.deepEqual(schema.$defs.publicProfile.required, [
+    "profile",
+    "domain",
+    "mode",
+    "sha256",
+  ]);
+  assert.equal(schema.$defs.publicProfile.properties.mode.const, "rust");
+});
+
+test("schema and runtime share consumer-specific release version vectors", () => {
+  const schema = json("config/domain-core-release-predicate.schema.json");
+  const nativeSchema = new RegExp(schema.$defs.nativeVersion.pattern, "u");
+  const stableSchema = new RegExp(schema.$defs.stableVersion.pattern, "u");
+  const nativeTagSchema = new RegExp(schema.$defs.nativeTag.pattern, "u");
+  const stableTagSchema = new RegExp(schema.$defs.stableTag.pattern, "u");
+  const contracts = {
+    apple: ["quota", "macos-dmg", "macos-arm64"],
+    android: ["cloudVault", "android-aab", "android-universal"],
+    windows: ["quota", "windows-release-bundle", "windows-x64-arm64"],
+    console: [
+      "cloudVault",
+      "console-deployment-receipt",
+      "firebase-hosting-production",
+    ],
+    functions: [
+      "pricing",
+      "functions-deployment-receipt",
+      "firebase-functions-production",
+    ],
+  };
+  const vectors = [
+    ["1.2.3", true],
+    ["1.2.3+linux-x64", true],
+    ["1.2.3-rc.1", "native-only"],
+    ["1.2.3-rc.1+build-7", "native-only"],
+    ["01.2.3", false],
+  ];
+  const candidate = {
+    candidateCommit: "a".repeat(40),
+    coreVersion: "0.3.0",
+    abiVersion: 3,
+    sourceSha256: "b".repeat(64),
+  };
+  for (const [consumer, [domain, artifactKind, target]] of Object.entries(
+    contracts,
+  )) {
+    const native = new Set(["apple", "android"]).has(consumer);
+    for (const [version, policy] of vectors) {
+      const accepted = policy === true || (policy === "native-only" && native);
+      const runtimePattern = native
+        ? NATIVE_RELEASE_VERSION
+        : STABLE_RELEASE_VERSION;
+      const schemaPattern = native ? nativeSchema : stableSchema;
+      const tag = consumer === "windows" ? `windows-v${version}` : `v${version}`;
+      const tagPattern = native ? nativeTagSchema : stableTagSchema;
+      assert.equal(runtimePattern.test(version), accepted, `${consumer} ${version}`);
+      assert.equal(schemaPattern.test(version), accepted, `${consumer} schema ${version}`);
+      assert.equal(tagPattern.test(tag), accepted, `${consumer} tag ${version}`);
+      const call = () =>
+        validateReleaseCoordinates({
+          consumer,
+          domain,
+          artifactKind,
+          target,
+          version,
+          tag,
+          commit: candidate.candidateCommit,
+          candidate,
+        });
+      if (accepted) assert.doesNotThrow(call);
+      else assert.throws(call);
+    }
+  }
 });
 
 test("deployment receipt v2 carries the same proof chain and deployed bytes", () => {

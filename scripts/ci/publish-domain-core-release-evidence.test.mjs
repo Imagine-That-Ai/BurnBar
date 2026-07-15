@@ -67,6 +67,12 @@ function fixture() {
       sha256: "e".repeat(64),
       candidate: CANDIDATE,
     },
+    publicProfile: {
+      profile: "public-production",
+      domain: "quota",
+      mode: "rust",
+      sha256: "f".repeat(64),
+    },
     artifact: {
       fileName: basename(artifact),
       sha256: sha(readFileSync(artifact)),

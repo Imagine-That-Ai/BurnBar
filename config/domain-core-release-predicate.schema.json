@@ -15,6 +15,7 @@
     "sourceRun",
     "promotionProof",
     "rollbackArtifact",
+    "publicProfile",
     "artifact",
     "release"
   ],
@@ -76,6 +77,34 @@
       }
     }
   ],
+  "allOf": [
+    {
+      "if": {
+        "required": ["consumer"],
+        "properties": { "consumer": { "enum": ["apple", "android"] } }
+      },
+      "then": {
+        "properties": {
+          "release": {
+            "properties": {
+              "version": { "$ref": "#/$defs/nativeVersion" },
+              "tag": { "$ref": "#/$defs/nativeTag" }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "release": {
+            "properties": {
+              "version": { "$ref": "#/$defs/stableVersion" },
+              "tag": { "$ref": "#/$defs/stableTag" }
+            }
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "schemaVersion": { "const": 2 },
     "predicateType": {
@@ -89,15 +118,28 @@
     "sourceRun": { "$ref": "#/$defs/sourceRun" },
     "promotionProof": { "$ref": "#/$defs/promotionProof" },
     "rollbackArtifact": { "$ref": "#/$defs/rollbackArtifact" },
+    "publicProfile": { "$ref": "#/$defs/publicProfile" },
     "artifact": { "$ref": "#/$defs/artifact" },
     "release": { "$ref": "#/$defs/release" }
   },
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "gitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "version": {
+    "nativeVersion": {
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "stableVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "nativeTag": {
+      "type": "string",
+      "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "stableTag": {
+      "type": "string",
+      "pattern": "^(?:windows-)?v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
     },
     "consumer": {
       "enum": ["apple", "android", "windows", "console", "functions"]
@@ -222,6 +264,17 @@
         "candidate": { "$ref": "#/$defs/candidate" }
       }
     },
+    "publicProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "domain", "mode", "sha256"],
+      "properties": {
+        "profile": { "const": "public-production" },
+        "domain": { "$ref": "#/$defs/domain" },
+        "mode": { "const": "rust" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
     "artifact": {
       "type": "object",
       "additionalProperties": false,
@@ -236,11 +289,8 @@
       "additionalProperties": false,
       "required": ["version", "tag", "commit", "publicProfileSha256"],
       "properties": {
-        "version": { "$ref": "#/$defs/version" },
-        "tag": {
-          "type": "string",
-          "pattern": "^(?:windows-)?v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
-        },
+        "version": { "$ref": "#/$defs/nativeVersion" },
+        "tag": { "type": "string" },
         "commit": { "$ref": "#/$defs/gitSha" },
         "publicProfileSha256": { "$ref": "#/$defs/sha256" }
       }

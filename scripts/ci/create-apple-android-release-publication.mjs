@@ -68,7 +68,7 @@ export function buildAppleAndroidPublication({
     commit,
     title: `OpenBurnBar ${version}`,
     notesPath: regularFile(resolve(notesPath), "release notes"),
-    prerelease: version.includes("-"),
+    prerelease: version.split("+", 1)[0].includes("-"),
     promote,
     apple,
     android,
