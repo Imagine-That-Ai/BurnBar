@@ -714,11 +714,6 @@ public struct InsightDigestBuilder: Sendable {
         return "Device · \(suffix)"
     }
 
-    private func lastPathComponent(of path: String) -> String {
-        let component = (path as NSString).lastPathComponent
-        return component.isEmpty ? path : component
-    }
-
     private static func shortHash(_ raw: String, salt: String) -> String {
         PlatformCrypto.sha256(Data("\(salt):\(raw)".utf8))
             .prefix(4)
