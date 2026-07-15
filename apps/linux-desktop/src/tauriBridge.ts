@@ -1377,6 +1377,14 @@ export type ChatAttachmentUploadResult = {
   sha256: string;
 };
 
+export type GatewayAttachmentCapabilityState = 'supported' | 'unsupported' | 'unknown';
+export type GatewayAttachmentCapability = {
+  mimeType: string;
+  state: GatewayAttachmentCapabilityState;
+  reason: string;
+  maxBytes?: number;
+};
+
 export type GatewayProxyRequest = {
   requestId: string;
   model: string;
@@ -1433,6 +1441,8 @@ export interface LinuxShellBridge {
   daemonHealth(): Promise<DaemonHealth>;
   runtimeCapabilities(): Promise<RuntimeCapabilityManifest>;
   gatewayProbe(): Promise<boolean>;
+  /** Optional on older packaged shells; binary/PDF sends fail closed when absent. */
+  gatewayAttachmentCapability?(model: string, mimeType: string): Promise<GatewayAttachmentCapability>;
   chatAttachmentUpload(request: ChatAttachmentUploadRequest): Promise<ChatAttachmentUploadResult>;
   gatewayChatStream(request: GatewayProxyRequest, onChunk: (chunk: string) => void): Promise<void>;
   gatewayChatCancel(requestId: string): Promise<void>;
@@ -2339,7 +2349,16 @@ export function decodeChatAttachmentUpload(raw: RawJsonValue): ChatAttachmentUpl
     throw new Error('chat attachment upload.sha256 must be a SHA-256 hex digest.');
   }
   const mimeType = requireBoundedString(source.mimeType, 'chat attachment upload.mimeType', 128);
-  if (!['text/plain', 'text/markdown', 'text/csv', 'application/json', 'application/pdf'].includes(mimeType)) {
+  if (![
+    'text/plain',
+    'text/markdown',
+    'text/csv',
+    'application/json',
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'image/webp'
+  ].includes(mimeType)) {
     throw new Error('chat attachment upload.mimeType is unsupported.');
   }
   const attachmentId = requireBoundedString(source.attachmentId, 'chat attachment upload.attachmentId', 128);
@@ -2357,6 +2376,34 @@ export function decodeChatAttachmentUpload(raw: RawJsonValue): ChatAttachmentUpl
     byteSize,
     sha256: sha256.toLowerCase()
   };
+}
+
+export function decodeGatewayAttachmentCapability(raw: RawJsonValue): GatewayAttachmentCapability {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'gateway attachment capability');
+  const mimeType = requireBoundedString(
+    pick(source, 'mimeType', 'mime_type'),
+    'gateway attachment capability.mimeType',
+    128
+  ).toLowerCase();
+  const state = pick(source, 'state');
+  if (state !== 'supported' && state !== 'unsupported' && state !== 'unknown') {
+    throw new Error('gateway attachment capability.state is unsupported.');
+  }
+  const reason = requireBoundedString(
+    pick(source, 'reason'),
+    'gateway attachment capability.reason',
+    512,
+    { allowEmpty: true }
+  );
+  const maxBytesRaw = pick(source, 'maxBytes', 'max_bytes');
+  let maxBytes: number | undefined;
+  if (maxBytesRaw !== undefined && maxBytesRaw !== null) {
+    maxBytes = requireCount(maxBytesRaw, 'gateway attachment capability.maxBytes');
+    if (maxBytes === 0 || maxBytes > CHAT_ATTACHMENT_MAX_BYTES) {
+      throw new Error('gateway attachment capability.maxBytes is out of bounds.');
+    }
+  }
+  return { mimeType, state, reason, maxBytes };
 }
 
 function assertAppendEcho(request: ChatMessageAppendRequest, result: ChatMessageAppendResult): void {
@@ -4620,6 +4667,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     runtimeCapabilities: async () =>
       decodeRuntimeCapabilityManifest(await invoke<RawJsonValue>('runtime_capabilities')),
     gatewayProbe: () => invoke<boolean>('gateway_probe'),
+    gatewayAttachmentCapability: async (model, mimeType) =>
+      decodeGatewayAttachmentCapability(
+        await invoke<RawJsonValue>('gateway_attachment_capability', { model, mimeType })
+      ),
     chatAttachmentUpload: async (request) =>
       decodeChatAttachmentUpload(await invoke<RawJsonValue>('chat_attachment_upload', { request })),
     gatewayChatStream: (request, onChunk) => {

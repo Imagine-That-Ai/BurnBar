@@ -27,6 +27,7 @@ const daemonBin =
 const launchSrc = path.join(root, 'packaging/linux/openburnbar-daemon-launch.sh');
 const serviceSrc = path.join(root, 'packaging/linux/openburnbar-daemon.service');
 const desktopSrc = path.join(root, 'packaging/linux/openburnbar.desktop');
+const autostartSrc = path.join(root, 'packaging/linux/autostart/openburnbar.desktop');
 const swiftSrc =
   process.env.OPENBURNBAR_SWIFT_LIB_DIR?.trim() ||
   [
@@ -57,6 +58,7 @@ function mustExist(p, label) {
 mustExist(daemonBin, 'daemon binary');
 mustExist(launchSrc, 'launch script');
 mustExist(serviceSrc, 'systemd unit');
+mustExist(autostartSrc, 'XDG autostart entry');
 if (!swiftSrc) throw new Error('Swift runtime dir not found (set OPENBURNBAR_SWIFT_LIB_DIR)');
 mustExist(resourceBundleSrc, 'OpenBurnBarCore resource bundle');
 
@@ -69,6 +71,7 @@ const paths = {
   libexec: path.join(tree, 'usr/libexec'),
   systemd: path.join(tree, 'usr/lib/systemd/user'),
   apps: path.join(tree, 'usr/share/applications'),
+  autostart: path.join(tree, 'etc/xdg/autostart'),
   swift: path.join(tree, 'opt/openburnbar/lib/swift'),
   resourceBundle: path.join(tree, 'usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources'),
   lib: path.join(tree, 'opt/openburnbar/lib')
@@ -88,6 +91,7 @@ fs.copyFileSync(serviceSrc, path.join(paths.systemd, 'openburnbar-daemon.service
 if (fs.existsSync(desktopSrc)) {
   fs.copyFileSync(desktopSrc, path.join(paths.apps, 'dev.openburnbar.OpenBurnBar.desktop'));
 }
+fs.copyFileSync(autostartSrc, path.join(paths.autostart, 'openburnbar.desktop'));
 
 // Copy Swift shared libs (runtime only — .so* and support)
 run('rsync', ['-a', '--delete', `${swiftSrc}/`, `${paths.swift}/`]);

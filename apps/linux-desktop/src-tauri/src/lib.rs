@@ -558,6 +558,49 @@ struct ChatAttachmentUploadResult {
     sha256: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GatewayAttachmentCapability {
+    mime_type: String,
+    state: String,
+    reason: String,
+    max_bytes: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayModelCatalogResponse {
+    #[serde(default)]
+    data: Vec<GatewayModelCatalogEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayModelCatalogEntry {
+    id: String,
+    #[serde(
+        default,
+        alias = "baseModelID",
+        alias = "baseModelId",
+        alias = "base_model_id"
+    )]
+    base_model_id: Option<String>,
+    #[serde(default, alias = "modelCapabilities", alias = "model_capabilities")]
+    model_capabilities: Option<GatewayModelIOCapabilities>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayModelIOCapabilities {
+    #[serde(default, alias = "inputModalities", alias = "input_modalities")]
+    input_modalities: Vec<String>,
+    #[serde(
+        default,
+        alias = "acceptedInputMimeTypes",
+        alias = "accepted_input_mime_types"
+    )]
+    accepted_input_mime_types: Vec<String>,
+    #[serde(default, alias = "imageMaxBytes", alias = "image_max_bytes")]
+    image_max_bytes: Option<usize>,
+}
+
 #[derive(Debug, Clone)]
 struct StoredChatAttachment {
     path: PathBuf,
@@ -580,7 +623,28 @@ fn chat_attachment_root() -> PathBuf {
 fn is_allowed_chat_attachment_mime(mime_type: &str) -> bool {
     matches!(
         mime_type,
-        "text/plain" | "text/markdown" | "text/csv" | "application/json" | "application/pdf"
+        "text/plain"
+            | "text/markdown"
+            | "text/csv"
+            | "application/json"
+            | "application/pdf"
+            | "image/png"
+            | "image/jpeg"
+            | "image/webp"
+    )
+}
+
+fn is_gateway_text_attachment_mime(mime_type: &str) -> bool {
+    matches!(
+        mime_type,
+        "text/plain" | "text/markdown" | "text/csv" | "application/json"
+    )
+}
+
+fn is_gateway_native_attachment_mime(mime_type: &str) -> bool {
+    matches!(
+        mime_type,
+        "application/pdf" | "image/png" | "image/jpeg" | "image/webp"
     )
 }
 
@@ -597,6 +661,9 @@ fn inferred_chat_attachment_mime(file_name: &str) -> Option<&'static str> {
         "csv" => Some("text/csv"),
         "json" => Some("application/json"),
         "pdf" => Some("application/pdf"),
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "webp" => Some("image/webp"),
         _ => None,
     }
 }
@@ -771,7 +838,8 @@ fn store_chat_attachment(
 
 struct LoadedChatAttachment {
     file_name: String,
-    text: String,
+    mime_type: String,
+    bytes: Vec<u8>,
     byte_size: usize,
 }
 
@@ -793,10 +861,6 @@ fn take_chat_attachment(attachment_id: &str) -> Result<LoadedChatAttachment, Str
         let _ = fs::remove_file(&stored.path);
         return Err(error);
     }
-    if stored.mime_type == "application/pdf" {
-        let _ = fs::remove_file(&stored.path);
-        return Err("gateway_attachment_unsupported:application/pdf".into());
-    }
     let bytes = match fs::read(&stored.path) {
         Ok(bytes) => bytes,
         Err(_) => {
@@ -813,11 +877,10 @@ fn take_chat_attachment(attachment_id: &str) -> Result<LoadedChatAttachment, Str
     if format!("{:x}", hasher.finalize()) != stored.sha256 {
         return Err("chat_attachment_integrity_failed".into());
     }
-    let text =
-        String::from_utf8(bytes).map_err(|_| "gateway_attachment_invalid_utf8".to_string())?;
     Ok(LoadedChatAttachment {
         file_name: stored.file_name,
-        text,
+        mime_type: stored.mime_type,
+        bytes,
         byte_size: stored.byte_size,
     })
 }
@@ -825,13 +888,20 @@ fn take_chat_attachment(attachment_id: &str) -> Result<LoadedChatAttachment, Str
 fn gateway_messages_payload(
     request: &GatewayProxyRequest,
 ) -> Result<Vec<serde_json::Value>, String> {
+    gateway_messages_payload_with_native_mime_types(request, &HashMap::new())
+}
+
+fn gateway_messages_payload_with_native_mime_types(
+    request: &GatewayProxyRequest,
+    native_mime_limits: &HashMap<String, Option<usize>>,
+) -> Result<Vec<serde_json::Value>, String> {
     let mut total_attachment_bytes = 0usize;
     let mut messages = Vec::with_capacity(request.messages.len());
     for message in &request.messages {
-        let mut content = message.content.clone();
-        if content.len() > GATEWAY_MAX_CONTENT_BYTES {
+        if message.content.len() > GATEWAY_MAX_CONTENT_BYTES {
             return Err("gateway_request_too_large".into());
         }
+        let mut loaded_attachments = Vec::with_capacity(message.attachments.len());
         for attachment in &message.attachments {
             let stored = take_chat_attachment(&attachment.attachment_id)?;
             total_attachment_bytes = total_attachment_bytes
@@ -840,12 +910,74 @@ fn gateway_messages_payload(
             if total_attachment_bytes > CHAT_ATTACHMENT_MAX_TOTAL_BYTES {
                 return Err("gateway_request_too_large".into());
             }
-            content.push_str("\n\n[Attachment: ");
-            content.push_str(&stored.file_name);
-            content.push_str("]\n");
-            content.push_str(&stored.text);
-            content.push_str("\n[End attachment]");
+            if !is_gateway_text_attachment_mime(&stored.mime_type)
+                && (!is_gateway_native_attachment_mime(&stored.mime_type)
+                    || !native_mime_limits.contains_key(&stored.mime_type))
+            {
+                return Err(format!(
+                    "gateway_attachment_unsupported:{}",
+                    stored.mime_type
+                ));
+            }
+            if let Some(Some(max_bytes)) = native_mime_limits.get(&stored.mime_type) {
+                if stored.byte_size > *max_bytes {
+                    return Err(format!("gateway_attachment_too_large:{}", stored.mime_type));
+                }
+            }
+            if is_gateway_text_attachment_mime(&stored.mime_type) {
+                String::from_utf8(stored.bytes.clone())
+                    .map_err(|_| "gateway_attachment_invalid_utf8".to_string())?;
+            }
+            loaded_attachments.push(stored);
         }
+
+        let has_native_attachment = loaded_attachments
+            .iter()
+            .any(|attachment| is_gateway_native_attachment_mime(&attachment.mime_type));
+        let content = if !has_native_attachment {
+            let mut text = message.content.clone();
+            for attachment in loaded_attachments {
+                let attachment_text = String::from_utf8(attachment.bytes)
+                    .map_err(|_| "gateway_attachment_invalid_utf8".to_string())?;
+                text.push_str("\n\n[Attachment: ");
+                text.push_str(&attachment.file_name);
+                text.push_str("]\n");
+                text.push_str(&attachment_text);
+                text.push_str("\n[End attachment]");
+            }
+            serde_json::Value::String(text)
+        } else {
+            let mut parts = Vec::with_capacity(loaded_attachments.len() + 1);
+            if !message.content.is_empty() {
+                parts.push(serde_json::json!({
+                    "type": "text",
+                    "text": message.content,
+                }));
+            }
+            for attachment in loaded_attachments {
+                if is_gateway_text_attachment_mime(&attachment.mime_type) {
+                    let attachment_text = String::from_utf8(attachment.bytes)
+                        .map_err(|_| "gateway_attachment_invalid_utf8".to_string())?;
+                    parts.push(serde_json::json!({
+                        "type": "text",
+                        "text": format!(
+                            "[Attachment: {}]\n{}\n[End attachment]",
+                            attachment.file_name, attachment_text
+                        ),
+                    }));
+                } else {
+                    let encoded = BASE64_STANDARD.encode(&attachment.bytes);
+                    parts.push(serde_json::json!({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": format!("data:{};base64,{}", attachment.mime_type, encoded),
+                            "detail": "auto",
+                        },
+                    }));
+                }
+            }
+            serde_json::Value::Array(parts)
+        };
         messages.push(serde_json::json!({
             "role": message.role,
             "content": content,
@@ -964,6 +1096,288 @@ async fn gateway_probe() -> Result<bool, String> {
     Ok(response.status().is_success())
 }
 
+fn gateway_attachment_capability_result(
+    mime_type: &str,
+    state: &str,
+    reason: impl Into<String>,
+    max_bytes: Option<usize>,
+) -> GatewayAttachmentCapability {
+    GatewayAttachmentCapability {
+        mime_type: mime_type.to_string(),
+        state: state.to_string(),
+        reason: reason.into(),
+        max_bytes,
+    }
+}
+
+fn gateway_catalog_mime_matches(accepted: &str, mime_type: &str) -> bool {
+    let accepted = accepted.trim().to_ascii_lowercase();
+    let mime_type = mime_type.trim().to_ascii_lowercase();
+    if accepted.ends_with("/*") {
+        mime_type.starts_with(accepted.trim_end_matches('*'))
+    } else {
+        accepted == mime_type
+    }
+}
+
+fn gateway_model_accepts_attachment(
+    mime_type: &str,
+    capabilities: &GatewayModelIOCapabilities,
+) -> (bool, Option<usize>) {
+    let accepted_explicitly = capabilities
+        .accepted_input_mime_types
+        .iter()
+        .any(|accepted| gateway_catalog_mime_matches(accepted, mime_type));
+    let modality = if mime_type == "application/pdf" {
+        "pdf"
+    } else {
+        "image"
+    };
+    let modality_supported = capabilities
+        .input_modalities
+        .iter()
+        .any(|value| value.trim().eq_ignore_ascii_case(modality));
+    let accepted = if capabilities.accepted_input_mime_types.is_empty() {
+        modality_supported
+    } else {
+        accepted_explicitly
+    };
+    let max_bytes = (mime_type != "application/pdf")
+        .then_some(capabilities.image_max_bytes)
+        .flatten();
+    (accepted, max_bytes)
+}
+
+async fn query_gateway_attachment_capability(
+    model: &str,
+    mime_type: &str,
+    health: &DaemonHealth,
+    token: &str,
+) -> GatewayAttachmentCapability {
+    let mime_type = mime_type.trim().to_ascii_lowercase();
+    if is_gateway_text_attachment_mime(&mime_type) {
+        return gateway_attachment_capability_result(
+            &mime_type,
+            "supported",
+            "Text attachments are decoded by the Linux gateway.",
+            None,
+        );
+    }
+    if !is_gateway_native_attachment_mime(&mime_type) {
+        return gateway_attachment_capability_result(
+            &mime_type,
+            "unsupported",
+            "The Linux gateway does not allow this MIME type.",
+            None,
+        );
+    }
+    let url = match gateway_endpoint_from_health(health, "/v1/models/catalog") {
+        Ok(url) => url,
+        Err(error) => {
+            return gateway_attachment_capability_result(
+                &mime_type,
+                "unknown",
+                format!("Model capability catalog is unavailable ({error})."),
+                None,
+            )
+        }
+    };
+    let client = match gateway_http_client() {
+        Ok(client) => client,
+        Err(error) => {
+            return gateway_attachment_capability_result(
+                &mime_type,
+                "unknown",
+                format!("Model capability catalog is unavailable ({error})."),
+                None,
+            )
+        }
+    };
+    let response = match client.get(url).bearer_auth(token).send().await {
+        Ok(response) => response,
+        Err(error) => {
+            return gateway_attachment_capability_result(
+                &mime_type,
+                "unknown",
+                format!("Model capability catalog is unavailable ({error})."),
+                None,
+            )
+        }
+    };
+    if !response.status().is_success() {
+        return gateway_attachment_capability_result(
+            &mime_type,
+            "unknown",
+            format!(
+                "Model capability catalog returned HTTP {}.",
+                response.status().as_u16()
+            ),
+            None,
+        );
+    }
+    let body = match response.text().await {
+        Ok(body) if body.len() <= 1_048_576 => body,
+        Ok(_) => {
+            return gateway_attachment_capability_result(
+                &mime_type,
+                "unknown",
+                "Model capability catalog response is too large.",
+                None,
+            )
+        }
+        Err(error) => {
+            return gateway_attachment_capability_result(
+                &mime_type,
+                "unknown",
+                format!("Model capability catalog could not be read ({error})."),
+                None,
+            )
+        }
+    };
+    let catalog: GatewayModelCatalogResponse = match serde_json::from_str(&body) {
+        Ok(catalog) => catalog,
+        Err(error) => {
+            return gateway_attachment_capability_result(
+                &mime_type,
+                "unknown",
+                format!("Model capability catalog is invalid ({error})."),
+                None,
+            )
+        }
+    };
+    let model = model.trim();
+    let entry = catalog.data.iter().find(|entry| {
+        entry.id.eq_ignore_ascii_case(model)
+            || entry
+                .base_model_id
+                .as_deref()
+                .is_some_and(|base| base.eq_ignore_ascii_case(model))
+    });
+    let Some(entry) = entry else {
+        return gateway_attachment_capability_result(
+            &mime_type,
+            "unknown",
+            "The selected model is absent from the daemon capability catalog.",
+            None,
+        );
+    };
+    let Some(capabilities) = entry.model_capabilities.as_ref() else {
+        return gateway_attachment_capability_result(
+            &mime_type,
+            "unknown",
+            "The selected model has no declared input capability contract.",
+            None,
+        );
+    };
+    let (accepted, max_bytes) = gateway_model_accepts_attachment(&mime_type, capabilities);
+    if accepted {
+        gateway_attachment_capability_result(
+            &mime_type,
+            "supported",
+            "The daemon catalog explicitly permits this input type.",
+            max_bytes,
+        )
+    } else {
+        gateway_attachment_capability_result(
+            &mime_type,
+            "unsupported",
+            "The selected model does not declare support for this input type.",
+            max_bytes,
+        )
+    }
+}
+
+fn stored_chat_attachment_mime(attachment_id: &str) -> Result<String, String> {
+    if attachment_id.is_empty()
+        || attachment_id.len() > 128
+        || !attachment_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        return Err("chat_attachment_invalid_reference".into());
+    }
+    chat_attachments()
+        .lock()
+        .map_err(|_| "chat_attachment_registry_unavailable".to_string())?
+        .get(attachment_id)
+        .map(|attachment| attachment.mime_type.clone())
+        .ok_or_else(|| "chat_attachment_reference_expired".into())
+}
+
+async fn native_attachment_mime_types_for_request(
+    request: &GatewayProxyRequest,
+    health: &DaemonHealth,
+    token: &str,
+) -> Result<HashMap<String, Option<usize>>, String> {
+    let mut native_mime_limits = HashMap::new();
+    let mut capability_cache: HashMap<String, GatewayAttachmentCapability> = HashMap::new();
+    for message in &request.messages {
+        for attachment in &message.attachments {
+            let mime_type = stored_chat_attachment_mime(&attachment.attachment_id)?;
+            if is_gateway_text_attachment_mime(&mime_type) {
+                continue;
+            }
+            let capability = if let Some(capability) = capability_cache.get(&mime_type) {
+                capability.clone()
+            } else {
+                let capability =
+                    query_gateway_attachment_capability(&request.model, &mime_type, health, token)
+                        .await;
+                capability_cache.insert(mime_type.clone(), capability.clone());
+                capability
+            };
+            match capability.state.as_str() {
+                "supported" => {
+                    native_mime_limits.insert(mime_type, capability.max_bytes);
+                }
+                "unsupported" => {
+                    return Err(format!(
+                        "gateway_attachment_unsupported:{}",
+                        capability.mime_type
+                    ));
+                }
+                _ => return Err("gateway_attachment_capability_unavailable".into()),
+            }
+        }
+    }
+    Ok(native_mime_limits)
+}
+
+#[tauri::command]
+async fn gateway_attachment_capability(
+    model: String,
+    mime_type: String,
+) -> Result<GatewayAttachmentCapability, String> {
+    let normalized_mime_type = mime_type.trim().to_ascii_lowercase();
+    if normalized_mime_type.is_empty() || normalized_mime_type.len() > 128 {
+        return Ok(gateway_attachment_capability_result(
+            &normalized_mime_type,
+            "unsupported",
+            "The attachment MIME type is invalid.",
+            None,
+        ));
+    }
+    if is_gateway_text_attachment_mime(&normalized_mime_type) {
+        return Ok(query_gateway_attachment_capability(
+            &model,
+            &normalized_mime_type,
+            &DaemonHealth::default(),
+            "",
+        )
+        .await);
+    }
+    let health = probe_daemon_health();
+    let Some(token) = read_gateway_auth_token() else {
+        return Ok(gateway_attachment_capability_result(
+            &normalized_mime_type,
+            "unknown",
+            "Gateway authentication is unavailable for model capability lookup.",
+            None,
+        ));
+    };
+    Ok(query_gateway_attachment_capability(&model, &normalized_mime_type, &health, &token).await)
+}
+
 async fn run_gateway_chat_stream(
     request: &GatewayProxyRequest,
     on_event: &Channel<String>,
@@ -973,7 +1387,9 @@ async fn run_gateway_chat_stream(
     let health = probe_daemon_health();
     let url = gateway_endpoint_from_health(&health, "/v1/chat/completions")?;
     let token = read_gateway_auth_token().ok_or("gateway_token_unavailable")?;
-    let messages = gateway_messages_payload(request)?;
+    let native_mime_limits =
+        native_attachment_mime_types_for_request(request, &health, &token).await?;
+    let messages = gateway_messages_payload_with_native_mime_types(request, &native_mime_limits)?;
     let body = serde_json::json!({
         "model": request.model.trim(),
         "stream": true,
@@ -6256,16 +6672,26 @@ fn init_tracing() {
     let _ = fmt().with_env_filter(filter).with_target(true).try_init();
 }
 
+fn should_start_in_background(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--background")
+}
+
+fn should_hide_startup_window(start_in_background: bool, tray_ready: bool) -> bool {
+    start_in_background && tray_ready
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let initial_route = std::env::args()
-        .skip(1)
-        .find_map(|arg| validated_deep_link_route(&arg).map(str::to_string));
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let start_in_background = should_start_in_background(&args);
+    let initial_route = args
+        .iter()
+        .find_map(|arg| validated_deep_link_route(arg).map(str::to_string));
     store_initial_deep_link_route(initial_route);
 
     // Fast-exit CLI flags before booting the GUI: a GTK/WebKit app launched
     // headless (packaging smoke, CI) would otherwise spin forever on `--version`.
-    for arg in std::env::args().skip(1) {
+    for arg in &args {
         match arg.as_str() {
             "--version" | "-V" => {
                 println!("OpenBurnBar {}", env!("CARGO_PKG_VERSION"));
@@ -6283,7 +6709,7 @@ pub fn run() {
             }
             "--help" | "-h" => {
                 println!(
-                    "OpenBurnBar Linux desktop shell\n\nUsage: openburnbar-linux-desktop [--version] [--daemon-health] [--help]"
+                    "OpenBurnBar Linux desktop shell\n\nUsage: openburnbar-linux-desktop [--background] [--version] [--daemon-health] [--help]"
                 );
                 std::process::exit(0);
             }
@@ -6292,7 +6718,7 @@ pub fn run() {
     }
 
     let startup_messages = match single_instance::startup_messages_from_args(
-        std::env::args().skip(1),
+        args.clone().into_iter(),
         validated_deep_link_route,
     ) {
         Ok(messages) => messages,
@@ -6330,6 +6756,7 @@ pub fn run() {
             daemon_health,
             runtime_capabilities,
             gateway_probe,
+            gateway_attachment_capability,
             chat_attachment_upload,
             gateway_chat_stream,
             gateway_chat_cancel,
@@ -6458,9 +6885,20 @@ pub fn run() {
             app.manage(instance_guard);
             start_single_instance_dispatcher(app.handle().clone(), instance_receiver);
             start_packaged_daemon_lifecycle(app.handle().clone());
-            if let Err(e) = build_tray(app.handle()) {
-                TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
-                eprintln!("tray init degraded: {e}");
+            let tray_ready = match build_tray(app.handle()) {
+                Ok(()) => true,
+                Err(error) => {
+                    TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
+                    eprintln!("tray init degraded: {error}");
+                    false
+                }
+            };
+            if should_hide_startup_window(start_in_background, tray_ready) {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(error) = window.hide() {
+                        eprintln!("openburnbar: background startup hide failed: {error}");
+                    }
+                }
             }
             // Install the global-shortcut manager without a batch of initial
             // bindings. Each binding is registered independently below so a
@@ -7046,6 +7484,8 @@ mod tests {
         fs::write(&path, b"%PDF-1.7").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
         let id = format!("attachment-{}", uuid::Uuid::new_v4().simple());
+        let mut hasher = Sha256::new();
+        hasher.update(b"%PDF-1.7");
         chat_attachments().lock().unwrap().insert(
             id.clone(),
             StoredChatAttachment {
@@ -7053,7 +7493,7 @@ mod tests {
                 file_name: "brief.pdf".into(),
                 mime_type: "application/pdf".into(),
                 byte_size: 8,
-                sha256: "ignored".into(),
+                sha256: format!("{:x}", hasher.finalize()),
             },
         );
         let request = GatewayProxyRequest {
@@ -7071,6 +7511,145 @@ mod tests {
         );
         assert!(!path.exists());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn chat_attachment_gateway_encodes_native_image_only_with_explicit_capability() {
+        let root = std::env::temp_dir().join(format!("openburnbar-chat-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = root.join("attachment.bin");
+        let bytes = b"png-bytes";
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let id = format!("attachment-{}", uuid::Uuid::new_v4().simple());
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        let sha256 = format!("{:x}", hasher.finalize());
+        chat_attachments().lock().unwrap().insert(
+            id.clone(),
+            StoredChatAttachment {
+                path: path.clone(),
+                file_name: "photo.png".into(),
+                mime_type: "image/png".into(),
+                byte_size: bytes.len(),
+                sha256,
+            },
+        );
+        let request = GatewayProxyRequest {
+            request_id: "request-image".into(),
+            model: "vision-model".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "Inspect this".into(),
+                attachments: vec![GatewayAttachmentReference { attachment_id: id }],
+            }],
+        };
+        let without_capability = gateway_messages_payload(&request).unwrap_err();
+        assert_eq!(
+            without_capability,
+            "gateway_attachment_unsupported:image/png"
+        );
+        assert!(!path.exists());
+
+        let path = root.join("attachment-2.bin");
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let id = format!("attachment-{}", uuid::Uuid::new_v4().simple());
+        chat_attachments().lock().unwrap().insert(
+            id.clone(),
+            StoredChatAttachment {
+                path: path.clone(),
+                file_name: "photo.png".into(),
+                mime_type: "image/png".into(),
+                byte_size: bytes.len(),
+                sha256: format!("{:x}", Sha256::digest(bytes)),
+            },
+        );
+        let request = GatewayProxyRequest {
+            request_id: "request-image-supported".into(),
+            model: "vision-model".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "Inspect this".into(),
+                attachments: vec![GatewayAttachmentReference { attachment_id: id }],
+            }],
+        };
+        let native = HashMap::from([("image/png".to_string(), Some(1024usize))]);
+        let payload = gateway_messages_payload_with_native_mime_types(&request, &native).unwrap();
+        let parts = payload[0]["content"].as_array().unwrap();
+        assert_eq!(parts[0]["type"], "text");
+        assert_eq!(parts[1]["type"], "image_url");
+        assert_eq!(
+            parts[1]["image_url"]["url"],
+            format!("data:image/png;base64,{}", BASE64_STANDARD.encode(bytes))
+        );
+        assert!(!path.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn chat_attachment_gateway_enforces_native_model_size_limit() {
+        let root = std::env::temp_dir().join(format!("openburnbar-chat-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = root.join("attachment.bin");
+        let bytes = b"png-bytes";
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let id = format!("attachment-{}", uuid::Uuid::new_v4().simple());
+        chat_attachments().lock().unwrap().insert(
+            id.clone(),
+            StoredChatAttachment {
+                path: path.clone(),
+                file_name: "photo.png".into(),
+                mime_type: "image/png".into(),
+                byte_size: bytes.len(),
+                sha256: format!("{:x}", Sha256::digest(bytes)),
+            },
+        );
+        let request = GatewayProxyRequest {
+            request_id: "request-image-too-large".into(),
+            model: "vision-model".into(),
+            messages: vec![GatewayProxyMessage {
+                role: "user".into(),
+                content: "Inspect this".into(),
+                attachments: vec![GatewayAttachmentReference { attachment_id: id }],
+            }],
+        };
+        let native = HashMap::from([("image/png".to_string(), Some(4usize))]);
+        assert_eq!(
+            gateway_messages_payload_with_native_mime_types(&request, &native).unwrap_err(),
+            "gateway_attachment_too_large:image/png"
+        );
+        assert!(!path.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn gateway_model_capability_matching_honors_modalities_and_mime_wildcards() {
+        let capabilities = GatewayModelIOCapabilities {
+            input_modalities: vec!["text".into(), "image".into()],
+            accepted_input_mime_types: vec!["image/*".into()],
+            image_max_bytes: Some(4 * 1024 * 1024),
+        };
+        assert_eq!(
+            gateway_model_accepts_attachment("image/png", &capabilities),
+            (true, Some(4 * 1024 * 1024))
+        );
+        assert_eq!(
+            gateway_model_accepts_attachment("application/pdf", &capabilities),
+            (false, None)
+        );
+        let pdf_capabilities = GatewayModelIOCapabilities {
+            input_modalities: vec!["text".into(), "pdf".into()],
+            accepted_input_mime_types: Vec::new(),
+            image_max_bytes: None,
+        };
+        assert_eq!(
+            gateway_model_accepts_attachment("application/pdf", &pdf_capabilities),
+            (true, None)
+        );
     }
 
     #[test]
@@ -8282,6 +8861,20 @@ mod tests {
         status.state = "available".into();
         status.latest_version = Some("0.2.0".into());
         assert_eq!(tray_update_text(&status), "Update available: 0.2.0");
+    }
+
+    #[test]
+    fn background_start_is_opt_in_and_does_not_change_foreground_launches() {
+        assert!(should_start_in_background(&["--background".into()]));
+        assert!(should_start_in_background(&[
+            "openburnbar://settings".into(),
+            "--background".into()
+        ]));
+        assert!(!should_start_in_background(&[]));
+        assert!(!should_start_in_background(&["--background=true".into()]));
+        assert!(should_hide_startup_window(true, true));
+        assert!(!should_hide_startup_window(true, false));
+        assert!(!should_hide_startup_window(false, true));
     }
 
     #[test]

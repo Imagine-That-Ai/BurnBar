@@ -12,9 +12,15 @@ export const CHAT_ATTACHMENT_ACCEPT = [
   '.markdown',
   '.csv',
   '.json',
-  '.pdf'
+  '.pdf',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp'
 ] as const;
-const CHAT_ATTACHMENT_EXTENSIONS = new Set(['.txt', '.md', '.markdown', '.csv', '.json', '.pdf']);
+const CHAT_ATTACHMENT_EXTENSIONS = new Set([
+  '.txt', '.md', '.markdown', '.csv', '.json', '.pdf', '.png', '.jpg', '.jpeg', '.webp'
+]);
 
 export type PendingChatAttachment = {
   name: string;
@@ -71,7 +77,7 @@ export function Composer({
     const type = file.type.trim().toLowerCase();
     const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
     if (!CHAT_ATTACHMENT_METADATA_MIME_TYPES.includes(type as (typeof CHAT_ATTACHMENT_METADATA_MIME_TYPES)[number]) && !CHAT_ATTACHMENT_EXTENSIONS.has(extension)) {
-      setAttachmentError('Unsupported attachment type. Choose text, JSON, CSV, Markdown, or PDF.');
+      setAttachmentError('Unsupported attachment type. Choose text, JSON, CSV, Markdown, PDF, PNG, JPEG, or WebP.');
       return null;
     }
     setAttachmentError(null);
@@ -131,7 +137,7 @@ export function Composer({
             type="button"
             className="ghost chat-composer-attach"
             disabled={disabled}
-            title="Attach a bounded text document"
+            title="Attach a bounded document or image"
             aria-label="Attach files"
             onClick={() => fileInputRef.current?.click()}
           >

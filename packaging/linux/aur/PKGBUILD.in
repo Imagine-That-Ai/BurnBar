@@ -12,6 +12,7 @@ optdepends=("kwallet: KDE Wallet credential backend")
 source=(
   "openburnbar.desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar.desktop"
   "openburnbar-safe-mode.desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-safe-mode.desktop"
+  "openburnbar-autostart.desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/autostart/openburnbar.desktop"
   "openburnbar-daemon.service::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-daemon.service"
   "openburnbar-daemon-launch::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-daemon-launch"
   "openburnbar-linux-desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-linux-desktop"
@@ -25,6 +26,7 @@ source=(
 sha256sums=(
   "REPLACE_WITH_DESKTOP_SHA256"
   "REPLACE_WITH_SAFE_MODE_DESKTOP_SHA256"
+  "REPLACE_WITH_AUTOSTART_DESKTOP_SHA256"
   "REPLACE_WITH_SERVICE_SHA256"
   "REPLACE_WITH_LAUNCH_SHA256"
   "REPLACE_WITH_DESKTOP_LAUNCHER_SHA256"
@@ -175,6 +177,7 @@ package() {
   install -Dm755 "${srcdir}/openburnbar-daemon-launch" "${pkgdir}/usr/libexec/openburnbar-daemon-launch"
   install -Dm644 "${srcdir}/openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
   install -Dm644 "${srcdir}/openburnbar-safe-mode.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop"
+  install -Dm644 "${srcdir}/openburnbar-autostart.desktop" "${pkgdir}/etc/xdg/autostart/openburnbar.desktop"
   install -Dm644 "${srcdir}/openburnbar-icon.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/dev.openburnbar.OpenBurnBar.png"
   install -Dm644 "${srcdir}/openburnbar-daemon.service" "${pkgdir}/usr/lib/systemd/user/openburnbar-daemon.service"
   install -Dm644 "${srcdir}/com.openburnbar.computer-use.policy" "${pkgdir}/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy"

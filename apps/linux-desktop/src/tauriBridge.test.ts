@@ -4,6 +4,7 @@ import {
   computeCacheHitRatePct,
   decodeUsageInsights,
   decodeChatAttachmentUpload,
+  decodeGatewayAttachmentCapability,
   decodeChatMessageAppend,
   decodeChatThreadGet,
   decodeChatThreadList,
@@ -169,6 +170,36 @@ describe('chat attachment upload decoding', () => {
       sha256: 'a'.repeat(64),
       path: '/home/alberto/secret'
     })).toThrow('path');
+  });
+});
+
+describe('gateway attachment capability decoding', () => {
+  it('accepts a bounded native capability result', () => {
+    expect(decodeGatewayAttachmentCapability({
+      mimeType: 'image/png',
+      state: 'supported',
+      reason: 'catalog',
+      maxBytes: 5 * 1024 * 1024
+    })).toEqual({
+      mimeType: 'image/png',
+      state: 'supported',
+      reason: 'catalog',
+      maxBytes: 5 * 1024 * 1024
+    });
+  });
+
+  it('rejects malformed capability state and unsafe limits', () => {
+    expect(() => decodeGatewayAttachmentCapability({
+      mimeType: 'image/png',
+      state: 'maybe',
+      reason: 'catalog'
+    })).toThrow('state');
+    expect(() => decodeGatewayAttachmentCapability({
+      mimeType: 'image/png',
+      state: 'supported',
+      reason: 'catalog',
+      maxBytes: 10 * 1024 * 1024 + 1
+    })).toThrow('out of bounds');
   });
 });
 

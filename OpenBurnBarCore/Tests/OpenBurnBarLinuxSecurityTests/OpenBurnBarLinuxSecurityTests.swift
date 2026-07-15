@@ -49,6 +49,38 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         }
     }
 
+    func testSecretServiceHealthCheckAcceptsMissingProbeItemOnFreshKeyring() throws {
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { _, arguments, _ in
+                XCTAssertEqual(arguments, ["search", "openburnbar-health", "probe"])
+                return LinuxSecretCommandResult(exitCode: 1, stderr: "No such secret")
+            }
+        )
+
+        XCTAssertNoThrow(try backend.healthCheck())
+    }
+
+    func testSecretServiceHealthCheckStillFailsForLockedOrUnavailableBackend() throws {
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { _, _, _ in
+                LinuxSecretCommandResult(exitCode: 1, stderr: "The Secret Service is locked")
+            }
+        )
+
+        XCTAssertThrowsError(try backend.healthCheck()) { error in
+            guard case let LinuxSecretStoreError.commandFailed(backend, operation, detail) = error else {
+                return XCTFail("Expected a command failure, got \(error)")
+            }
+            XCTAssertEqual(backend, "org.freedesktop.secrets")
+            XCTAssertEqual(operation, "health-check")
+            XCTAssertEqual(detail, "The Secret Service is locked")
+        }
+    }
+
     func testKWalletCRUDUsesFolderEntryAndStdinContract() throws {
         let harness = LinuxSecretCommandHarness(kind: .kwallet)
         let backend = LinuxNativeSecretStoreBackend(

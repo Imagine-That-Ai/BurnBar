@@ -14,7 +14,8 @@ import {
   attachmentUploadRequest,
   canonicalAttachmentMimeType,
   gatewayAttachmentUnsupportedMessage,
-  isGatewayReadableAttachment
+  isGatewayReadableAttachment,
+  requiresGatewayAttachmentCapability
 } from './chatAttachment.js';
 import { closeChatPopoutWindow, isChatPopoutWindow, openChatPopoutWindow } from './chatWindow.js';
 import type { PendingChatAttachment } from './Composer.js';
@@ -124,12 +125,22 @@ export function ChatSurface() {
       }
       const request = await attachmentUploadRequest(attachment.file, attachment.name, attachment.type);
       const canonicalMimeType = canonicalAttachmentMimeType(request.fileName, request.mimeType);
-      if (!canonicalMimeType || !isGatewayReadableAttachment(canonicalMimeType)) {
-        // Do this before chat_message_append. The native daemon stores PDF
-        // metadata for export, but the current gateway contract expands only
-        // UTF-8 text; persisting first would leave a durable turn that cannot
-        // be sent and would falsely imply attachment parity.
+      if (!canonicalMimeType) {
         throw new Error(gatewayAttachmentUnsupportedMessage(canonicalMimeType ?? request.mimeType));
+      }
+      if (requiresGatewayAttachmentCapability(canonicalMimeType)) {
+        const capability = await bridge.gatewayAttachmentCapability?.(
+          useChatStore.getState().modelLabel.trim() || 'hermes',
+          canonicalMimeType
+        );
+        // Do this before upload/chat_message_append. Binary and PDF payloads
+        // are only safe when the daemon catalog explicitly authorizes the
+        // selected model; older shells fail closed when the command is absent.
+        if (!capability || capability.state !== 'supported') {
+          throw new Error(gatewayAttachmentUnsupportedMessage(canonicalMimeType));
+        }
+      } else if (!isGatewayReadableAttachment(canonicalMimeType)) {
+        throw new Error(gatewayAttachmentUnsupportedMessage(canonicalMimeType));
       }
       const uploaded = await bridge.chatAttachmentUpload({ ...request, mimeType: canonicalMimeType });
       await sendMessage(text, [uploaded]);

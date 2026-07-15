@@ -50,6 +50,7 @@
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop": "../../../packaging/linux/openburnbar-safe-mode.desktop",
+          "/etc/xdg/autostart/openburnbar.desktop": "../../../packaging/linux/autostart/openburnbar.desktop",
           "/usr/share/doc/openburnbar/daemon.env.example": "../../../packaging/linux/daemon.env.example",
           "/usr/share/doc/openburnbar/systemd/custom-xdg.conf.example": "../../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
         }
@@ -76,6 +77,7 @@
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop": "../../../packaging/linux/openburnbar-safe-mode.desktop",
+          "/etc/xdg/autostart/openburnbar.desktop": "../../../packaging/linux/autostart/openburnbar.desktop",
           "/usr/share/doc/openburnbar/daemon.env.example": "../../../packaging/linux/daemon.env.example",
           "/usr/share/doc/openburnbar/systemd/custom-xdg.conf.example": "../../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
         }

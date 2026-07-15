@@ -2,15 +2,18 @@ import type { ChatAttachmentUploadRequest } from '../../tauriBridge.js';
 
 /**
  * MIME types the Linux daemon can retain as attachment metadata. The gateway
- * currently expands only UTF-8 text into a provider request; PDF metadata is
- * intentionally accepted for export/recovery but is not gateway-readable yet.
+ * can retain as attachment metadata. Binary/PDF sends still require an
+ * explicit model capability result from the daemon before they are uploaded.
  */
 export const CHAT_ATTACHMENT_METADATA_MIME_TYPES = [
   'text/plain',
   'text/markdown',
   'text/csv',
   'application/json',
-  'application/pdf'
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp'
 ] as const;
 
 export const CHAT_GATEWAY_TEXT_MIME_TYPES = [
@@ -20,13 +23,24 @@ export const CHAT_GATEWAY_TEXT_MIME_TYPES = [
   'application/json'
 ] as const;
 
+export const CHAT_GATEWAY_NATIVE_MIME_TYPES = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp'
+] as const;
+
 const MIME_BY_EXTENSION: Readonly<Record<string, (typeof CHAT_ATTACHMENT_METADATA_MIME_TYPES)[number]>> = {
   '.txt': 'text/plain',
   '.md': 'text/markdown',
   '.markdown': 'text/markdown',
   '.csv': 'text/csv',
   '.json': 'application/json',
-  '.pdf': 'application/pdf'
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp'
 };
 
 /**
@@ -56,12 +70,18 @@ export function isGatewayReadableAttachment(mimeType: string): boolean {
   );
 }
 
+export function requiresGatewayAttachmentCapability(mimeType: string): boolean {
+  return CHAT_GATEWAY_NATIVE_MIME_TYPES.includes(
+    mimeType.trim().toLowerCase() as (typeof CHAT_GATEWAY_NATIVE_MIME_TYPES)[number]
+  );
+}
+
 export function gatewayAttachmentUnsupportedMessage(mimeType: string): string {
   const normalized = mimeType.trim().toLowerCase();
   if (normalized === 'application/pdf') {
-    return 'PDF attachments are staged safely, but this Linux chat gateway cannot read PDF content yet. Choose a text, Markdown, CSV, or JSON file.';
+    return 'PDF attachments are staged safely, but this Linux chat gateway cannot read PDF content yet because the selected model does not declare PDF input support. Choose a text, Markdown, CSV, or JSON file, or select a model with PDF support.';
   }
-  return 'This attachment type is not readable by the Linux chat gateway yet. Choose a text, Markdown, CSV, or JSON file.';
+  return 'This attachment type requires explicit model input support from the Linux daemon. Choose a text, Markdown, CSV, or JSON file, or select a model with image input support.';
 }
 
 /** Convert a browser File to the bounded upload envelope without exposing a path. */

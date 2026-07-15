@@ -56,9 +56,10 @@ const expectedInstallPaths = {
   irohNativeLibrary: '/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
     cloudAuthConfig: '/usr/share/openburnbar/cloud-auth.json',
     installedManifest: '/usr/share/openburnbar/attestation/installed-manifest.json',
-    installedManifestSignature: '/usr/share/openburnbar/attestation/installed-manifest.json.sig',
-    releasePublicKey: '/usr/share/openburnbar/attestation/release-ed25519.pub.pem',
-  computerUsePolkitPolicy: '/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy'
+  installedManifestSignature: '/usr/share/openburnbar/attestation/installed-manifest.json.sig',
+  releasePublicKey: '/usr/share/openburnbar/attestation/release-ed25519.pub.pem',
+  computerUsePolkitPolicy: '/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy',
+  autostartEntry: '/etc/xdg/autostart/openburnbar.desktop'
 };
 for (const [key, expected] of Object.entries(expectedInstallPaths)) {
   if (manifest.installPaths?.[key] !== expected) {
@@ -80,7 +81,8 @@ const packageSources = {
   '/usr/share/openburnbar/cloud-auth.json': 'target/openburnbar-package-payload/cloud-auth.json',
   '/usr/share/openburnbar/attestation/installed-manifest.json': 'target/openburnbar-package-payload/attestation/installed-manifest.json',
   '/usr/share/openburnbar/attestation/installed-manifest.json.sig': 'target/openburnbar-package-payload/attestation/installed-manifest.json.sig',
-  '/usr/share/openburnbar/attestation/release-ed25519.pub.pem': 'target/openburnbar-package-payload/attestation/release-ed25519.pub.pem'
+  '/usr/share/openburnbar/attestation/release-ed25519.pub.pem': 'target/openburnbar-package-payload/attestation/release-ed25519.pub.pem',
+  '/etc/xdg/autostart/openburnbar.desktop': '../../../packaging/linux/autostart/openburnbar.desktop'
 };
 for (const packageType of ['deb', 'rpm']) {
   const files = tauri.bundle?.linux?.[packageType]?.files ?? {};

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalAttachmentMimeType,
   gatewayAttachmentUnsupportedMessage,
-  isGatewayReadableAttachment
+  isGatewayReadableAttachment,
+  requiresGatewayAttachmentCapability
 } from './chatAttachment.js';
 
 describe('Linux chat attachment capability boundary', () => {
@@ -17,10 +18,13 @@ describe('Linux chat attachment capability boundary', () => {
     expect(canonicalAttachmentMimeType('installer.exe', 'application/octet-stream')).toBeNull();
   });
 
-  it('keeps PDF metadata distinct from gateway-readable content', () => {
+  it('keeps binary metadata distinct from text gateway content', () => {
     expect(canonicalAttachmentMimeType('brief.pdf', 'application/pdf')).toBe('application/pdf');
+    expect(canonicalAttachmentMimeType('photo.PNG', 'image/png')).toBe('image/png');
     expect(isGatewayReadableAttachment('application/pdf')).toBe(false);
     expect(isGatewayReadableAttachment('text/plain')).toBe(true);
+    expect(requiresGatewayAttachmentCapability('application/pdf')).toBe(true);
+    expect(requiresGatewayAttachmentCapability('image/png')).toBe(true);
     expect(gatewayAttachmentUnsupportedMessage('application/pdf')).toMatch(/cannot read PDF content/i);
   });
 });

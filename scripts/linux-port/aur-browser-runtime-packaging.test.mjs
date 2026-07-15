@@ -75,6 +75,10 @@ test('AUR package staging installs canonical Browser Computer Use resources with
   for (const asset of localAssets) {
     fs.copyFileSync(path.join(repoRoot, 'packaging/linux/aur', asset), path.join(srcdir, asset));
   }
+  fs.copyFileSync(
+    path.join(repoRoot, 'packaging/linux/autostart/openburnbar.desktop'),
+    path.join(srcdir, 'openburnbar-autostart.desktop')
+  );
   const appImage = path.join(srcdir, 'OpenBurnBar_REPLACE_WITH_RELEASE_VERSION_amd64.AppImage');
   fs.writeFileSync(appImage, [
     '#!/bin/bash',
@@ -146,6 +150,7 @@ test('AUR package staging installs canonical Browser Computer Use resources with
       ,['installed-manifest.ed25519', ['usr/share/openburnbar/attestation/installed-manifest.json.sig', 0o644]]
       ,['release-ed25519.pub.pem', ['usr/share/openburnbar/attestation/release-ed25519.pub.pem', 0o644]]
       ,['openburnbar-linux-desktop', ['usr/bin/openburnbar-linux-desktop', 0o755]]
+      ,['openburnbar-autostart.desktop', ['etc/xdg/autostart/openburnbar.desktop', 0o644]]
       ,['openburnbar-icon.png', ['usr/share/icons/hicolor/256x256/apps/dev.openburnbar.OpenBurnBar.png', 0o644]]
     ]);
     for (const [alias, [relativePath, mode]] of installed) {

@@ -20,6 +20,7 @@ function mockBridge(handlers: {
   chatThreadList?: (query?: string, limit?: number) => Promise<ChatThreadListResult>;
   chatThreadGet?: (threadID: string, maxMessages?: number, before?: ChatMessageCursor) => Promise<ChatThreadGetResult>;
   chatAttachmentUpload?: LinuxShellBridge['chatAttachmentUpload'];
+  gatewayAttachmentCapability?: LinuxShellBridge['gatewayAttachmentCapability'];
   gatewayProbe?: () => Promise<boolean>;
   gatewayChatStream?: (request: GatewayProxyRequest, onChunk: (chunk: string) => void) => Promise<void>;
 }): LinuxShellBridge {
@@ -62,6 +63,7 @@ function mockBridge(handlers: {
     })),
     chatMessageAppend: bridgeStubDefaults.chatMessageAppend,
     chatAttachmentUpload: handlers.chatAttachmentUpload ?? bridgeStubDefaults.chatAttachmentUpload,
+    gatewayAttachmentCapability: handlers.gatewayAttachmentCapability,
     usageInsights: async () => ({ weekly: [], providerMix: [], modelMix: [], cacheHitRatePct: 0 }),
     missionList: async () => ({ missions: [], pendingApprovals: [] }),
     missionApprovalDecision: async () => {},
@@ -550,6 +552,71 @@ describe('ChatSurface', () => {
     expect(gateway).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Message composer')).toHaveProperty('value', 'Read this PDF');
     expect(screen.getByTestId('pending-attachment').textContent).toContain('brief.pdf');
+  });
+
+  it('preflights a native image capability before uploading the attachment', async () => {
+    const summary = {
+      id: 'thread-image-ui',
+      title: 'Image thread',
+      preview: 'A durable transcript',
+      messageCount: 1,
+      createdAt: '2026-07-10T12:00:00Z',
+      updatedAt: '2026-07-10T12:00:00Z'
+    };
+    const capability = vi.fn(async () => ({
+      mimeType: 'image/png',
+      state: 'supported' as const,
+      reason: 'catalog',
+      maxBytes: 5 * 1024 * 1024
+    }));
+    const upload = vi.fn(async () => ({
+      attachmentId: 'attachment-image-ui',
+      fileName: 'photo.png',
+      mimeType: 'image/png',
+      byteSize: 5,
+      sha256: 'c'.repeat(64)
+    }));
+    const gatewayRequests: GatewayProxyRequest[] = [];
+    useShellStore.setState({
+      bridge: mockBridge({
+        gatewayAttachmentCapability: capability,
+        chatAttachmentUpload: upload,
+        chatThreadList: async () => ({ threads: [summary] }),
+        chatThreadGet: async () => ({
+          thread: summary,
+          messages: [{
+            id: 'image-existing',
+            threadID: summary.id,
+            role: 'assistant',
+            content: 'Ready.',
+            timestamp: '2026-07-10T12:00:00Z'
+          }],
+          hasMoreBefore: false
+        }),
+        gatewayProbe: async () => true,
+        gatewayChatStream: async (request, onChunk) => {
+          gatewayRequests.push(request);
+          onChunk('data: {"choices":[{"delta":{"content":"Done"}}]}\n\n');
+          onChunk('data: [DONE]\n\n');
+        }
+      }),
+      fixtureMode: false,
+      bridgeReady: true,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Message composer'), { target: { value: 'Inspect this image' } });
+    fireEvent.change(screen.getByLabelText('Attachment file'), {
+      target: { files: [new File(['hello'], 'photo.png', { type: 'image/png' })] }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(capability).toHaveBeenCalledWith('hermes', 'image/png'));
+    await waitFor(() => expect(upload).toHaveBeenCalledOnce());
+    await waitFor(() => expect(gatewayRequests).toHaveLength(1));
+    expect(gatewayRequests[0]?.messages.at(-1)?.attachments).toEqual([
+      { attachmentId: 'attachment-image-ui' }
+    ]);
   });
 
   it('keeps options functional for reconnect and the Linux pop-out boundary', async () => {
