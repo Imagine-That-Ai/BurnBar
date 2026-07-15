@@ -16,6 +16,8 @@ import {
   extractNativePackage,
   extractPreflightedArchiveBytes,
   inspectNativePackageMetadata,
+  isAllowedNativeNonUsrPath,
+  NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST,
   verifySignedNativePackage
 } from './lib/linux-native-package.mjs';
 import { replaceRpmAttestationFromPayload } from './lib/linux-rpm-attestation.mjs';
@@ -122,7 +124,10 @@ function bundleRpmFromDeb(debArtifact) {
       encoding: 'buffer',
       env: childEnvironment
     }).stdout;
-    extractPreflightedArchiveBytes(dataArchive, extractedRoot, { env: childEnvironment });
+    extractPreflightedArchiveBytes(dataArchive, extractedRoot, {
+      env: childEnvironment,
+      allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST
+    });
     replaceRpmAttestationFromPayload({
       extractedRoot,
       payloadAttestation
@@ -185,7 +190,8 @@ function collectRpmFileEntries(root) {
 }
 
 function rpmSpecPath(value) {
-  if ((value !== '/usr' && !value.startsWith('/usr/'))
+  const packagePath = value.startsWith('/') ? value.slice(1) : value;
+  if ((value !== '/usr' && !value.startsWith('/usr/') && !isAllowedNativeNonUsrPath(packagePath))
       || /[\u0000-\u001f\u007f\s]/u.test(value)) {
     throw new Error(`RPM source DEB contains an unsafe payload path: ${JSON.stringify(value)}`);
   }

@@ -197,6 +197,14 @@ including its required parent directories while preserving ownership and
 sibling/path-traversal rejection, then rerun a fresh exact-head candidate before
 installation or ledger promotion.
 
+Candidate `29438744035` advanced past both toolchain builds but failed closed in
+`bundleRpmFromDeb`: DEB re-extraction and the RPM spec path validator were not
+given the canonical non-`/usr` allowlist, so the rebuild rejected
+`native package archive member is outside /usr: etc`. No artifact or certifying
+receipt was produced. The next implementation unit must thread the shared
+allowlist through the RPM rebuild path and then rerun both architecture shards
+before installation or ledger promotion.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:

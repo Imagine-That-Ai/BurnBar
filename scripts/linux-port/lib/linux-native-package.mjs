@@ -22,6 +22,17 @@ export const NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST = Object.freeze(
   INSTALLED_MANIFEST_NON_USR_PATH_ALLOWLIST.map((entry) => entry.slice(1))
 );
 
+export function isAllowedNativeNonUsrPath(
+  packagePath,
+  allowlist = NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST
+) {
+  return typeof packagePath === 'string' && allowlist.some((allowedPath) => (
+    allowedPath === packagePath
+    || allowedPath.startsWith(`${packagePath}/`)
+    || packagePath.startsWith(`${allowedPath}/`)
+  ));
+}
+
 export const ARCH_PACKAGE_PRIVATE_DIRECTORIES = Object.freeze([
   '/usr/lib/openburnbar',
   '/usr/share/openburnbar'
@@ -99,11 +110,7 @@ export function assertSafeArchiveMemberNames(listing, {
     // Archive listings include parent directory entries before the allowed
     // leaf. Accept only those parents (or descendants of the exact leaf),
     // never a sibling under the same top-level directory.
-    const isAllowedPath = allowedPaths.some((allowedPath) => (
-      allowedPath === stripped
-      || allowedPath.startsWith(`${stripped}/`)
-      || stripped.startsWith(`${allowedPath}/`)
-    ));
+    const isAllowedPath = isAllowedNativeNonUsrPath(stripped, allowedPaths);
     if (segments[0] !== 'usr' && !isAllowedPath) {
       throw new Error(`native package archive member is outside /usr: ${raw}`);
     }

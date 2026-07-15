@@ -108,6 +108,12 @@ percentage. The active remediation stack now contains these reviewable slices:
   source fix must share the exact autostart allowlist with manifest generation
   while retaining parent-directory, ownership, and sibling/path-traversal
   rejection, followed by a fresh exact-head candidate.
+- **Release candidate `29438744035`:** both architecture shards built their
+  toolchains, then failed closed in `bundleRpmFromDeb`: DEB re-extraction and
+  the RPM spec path validator did not receive the canonical non-`/usr`
+  allowlist, producing `native package archive member is outside /usr: etc`.
+  No artifact or certifying receipt was produced. The next fix must wire the
+  shared allowlist through the RPM rebuild path and rerun both architectures.
 
 - **Onboarding hardening:** `238ee56975` validates every daemon snapshot before
   renderer/cache mutation, preserves the last valid state on malformed or

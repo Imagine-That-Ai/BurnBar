@@ -4,6 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import {
+  isAllowedNativeNonUsrPath,
+  NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST
+} from './lib/linux-native-package.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -77,11 +81,43 @@ test('RPM release packaging is rebuilt from the validated DEB filesystem', () =>
   const source = read('scripts/linux-port/bundle-signed-linux-packages.mjs');
   assert.match(source, /function bundleRpmFromDeb\(debArtifact\)/u);
   assert.match(source, /run\('dpkg-deb', \['--fsys-tarfile', debArtifact\]/u);
-  assert.match(source, /extractPreflightedArchiveBytes\(dataArchive, extractedRoot/u);
+  assert.match(
+    source,
+    /extractPreflightedArchiveBytes\(dataArchive, extractedRoot, \{\s*env: childEnvironment,\s*allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST\s*\}\)/u
+  );
   assert.match(source, /run\('rpmbuild'/u);
   assert.match(source, /Requires: libsecret/u);
   assert.match(source, /Tauri's RPM bundler can emit an archive/u);
   assert.doesNotMatch(source, /bundleFormat\('rpm'\)/u);
+});
+
+test('RPM spec path validation allows only canonical XDG autostart and its parents', () => {
+  const source = read('scripts/linux-port/bundle-signed-linux-packages.mjs');
+  const guardStart = source.indexOf('function rpmSpecPath(value)');
+  const guardEnd = source.indexOf('function rpmSpecToken', guardStart);
+  assert.ok(guardStart >= 0 && guardEnd > guardStart, 'RPM spec path guard must remain explicit');
+  const guard = source.slice(guardStart, guardEnd);
+  assert.match(guard, /const packagePath = value\.startsWith\('\/'\) \? value\.slice\(1\) : value/u);
+  assert.match(guard, /isAllowedNativeNonUsrPath\(packagePath\)/u);
+
+  assert.deepEqual([...NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST], [
+    'etc/xdg/autostart/openburnbar.desktop'
+  ]);
+  for (const candidate of [
+    'etc',
+    'etc/xdg',
+    'etc/xdg/autostart',
+    'etc/xdg/autostart/openburnbar.desktop'
+  ]) {
+    assert.equal(isAllowedNativeNonUsrPath(candidate), true, `${candidate} should be allowed`);
+  }
+  for (const candidate of [
+    'etc/pacman.conf',
+    'etc/xdg/autostart/other.desktop',
+    'var/lib/openburnbar/state'
+  ]) {
+    assert.equal(isAllowedNativeNonUsrPath(candidate), false, `${candidate} should be rejected`);
+  }
 });
 
 test('Arch preparation embeds the native payload before makepkg without unsigned peer files', () => {
