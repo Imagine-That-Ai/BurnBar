@@ -139,17 +139,20 @@ test("publish rejects non-identical existing bytes with zero mutations", () => {
 });
 
 test("publish uploads a missing asset create-only and verifies final bytes", () => {
-  withFixture({}, ({ request }) => {
-    const client = new FakeClient(request);
-    assert.deepEqual(publishAsset(request, { client }), { uploaded: true });
-    assert.deepEqual(client.mutations, [
-      ["upload", basename(request.artifact)],
-    ]);
-    assert.deepEqual(
-      client.assets.get(basename(request.artifact)),
-      readFileSync(request.artifact),
-    );
-  });
+  for (const draft of [true, false]) {
+    withFixture({}, ({ request }) => {
+      const client = new FakeClient(request);
+      client.releaseOverride = { draft };
+      assert.deepEqual(publishAsset(request, { client }), { uploaded: true });
+      assert.deepEqual(client.mutations, [
+        ["upload", basename(request.artifact)],
+      ]);
+      assert.deepEqual(
+        client.assets.get(basename(request.artifact)),
+        readFileSync(request.artifact),
+      );
+    });
+  }
 });
 
 test("publish recovers an upload collision only when concurrent bytes are exact", () => {
@@ -199,7 +202,7 @@ test("release and tag identity substitutions fail before upload", () => {
     for (const releaseOverride of [
       { tag_name: "v1.2.3-beta.2" },
       { target_commitish: "b".repeat(40) },
-      { draft: true },
+      { draft: "true" },
       { prerelease: false },
     ]) {
       const client = new FakeClient(request);

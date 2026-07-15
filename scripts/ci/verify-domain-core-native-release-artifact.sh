@@ -9,14 +9,19 @@ profile_name="${4:-}"
 candidate_commit="${5:-}"
 selected_profile="${6:-}"
 observed_identity="${7:-}"
-apple_signing_policy="${8:-}"
+apple_signing_policy="$repo_root/config/apple-release-signing-policy.json"
 
 if [[ "$consumer" != "apple" && "$consumer" != "android" ]]; then
-  echo "usage: $0 <apple|android> <artifact> <X.Y.Z[+build]> <profile> <candidate-commit> <selected-profile.json> <observed-identity.json> [apple-signing-policy.json]" >&2
+  echo "usage: $0 <apple|android> <artifact> <version> <profile> <candidate-commit> <selected-profile.json> <observed-identity.json>" >&2
   exit 2
 fi
-if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
-  echo "invalid stable release version: $version" >&2
+if [[ "$consumer" == "apple" ]]; then
+  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?(\+[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+    echo "invalid Apple release version: $version" >&2
+    exit 2
+  fi
+elif [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+  echo "invalid stable Android release version: $version" >&2
   exit 2
 fi
 if [[ "$profile_name" != "public-production" && "$profile_name" != "public-production-rollback" ]]; then
@@ -44,7 +49,7 @@ if [[ "$consumer" == "apple" ]]; then
     echo "Apple observed Rust identity output must be an absent absolute non-symlink path: $observed_identity" >&2
     exit 1
   fi
-  if [[ -z "$apple_signing_policy" || ! -f "$apple_signing_policy" || -L "$apple_signing_policy" || ! -s "$apple_signing_policy" ]]; then
+  if [[ ! -f "$apple_signing_policy" || -L "$apple_signing_policy" || ! -s "$apple_signing_policy" ]]; then
     echo "Apple signing policy must be a nonempty regular non-symlink file: $apple_signing_policy" >&2
     exit 1
   fi
@@ -53,9 +58,6 @@ fi
 artifact="$(cd "$(dirname "$artifact")" && pwd)/$(basename "$artifact")"
 selected_profile="$(cd "$(dirname "$selected_profile")" && pwd)/$(basename "$selected_profile")"
 observed_identity="$(cd "$(dirname "$observed_identity")" && pwd)/$(basename "$observed_identity")"
-if [[ "$consumer" == "apple" ]]; then
-  apple_signing_policy="$(cd "$(dirname "$apple_signing_policy")" && pwd)/$(basename "$apple_signing_policy")"
-fi
 apple_mount_point=""
 bundletool_directory=""
 cleanup_apple_mount() {
@@ -114,16 +116,20 @@ verify_apple() {
     echo "notarized DMG does not contain the signed executable domain-core identity probe" >&2
     exit 1
   fi
-  local app_signature probe_signature
+  local dmg_signature app_signature probe_signature
+  dmg_signature="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-dmg-signature.XXXXXX")"
   app_signature="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-app-signature.XXXXXX")"
   probe_signature="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-probe-signature.XXXXXX")"
+  codesign -d --verbose=4 "$artifact" > "$dmg_signature" 2>&1
   codesign -d --verbose=4 "$app" > "$app_signature" 2>&1
   codesign -d --verbose=4 "$identity_probe" > "$probe_signature" 2>&1
+  node "$repo_root/scripts/ci/verify-domain-core-apple-signing-identity.mjs" \
+    --policy "$apple_signing_policy" --signature "$dmg_signature"
   node "$repo_root/scripts/ci/verify-domain-core-apple-signing-identity.mjs" \
     --policy "$apple_signing_policy" --signature "$app_signature"
   node "$repo_root/scripts/ci/verify-domain-core-apple-signing-identity.mjs" \
     --policy "$apple_signing_policy" --signature "$probe_signature"
-  rm -f "$app_signature" "$probe_signature"
+  rm -f "$dmg_signature" "$app_signature" "$probe_signature"
   node "$repo_root/scripts/ci/verify-domain-core-build-profile-artifact.mjs" \
     --profile "$profile_name" \
     --expected-candidate-commit "$candidate_commit" \
@@ -142,12 +148,13 @@ verify_apple() {
   fi
   DOMAIN_CORE_CANDIDATE_COMMIT="$candidate_commit" \
     DOMAIN_CORE_OBSERVED_IDENTITY_REPORT="$observed_identity" \
+    DOMAIN_CORE_SHIPPED_BINARY="$executable" \
     "$identity_probe"
   if [[ ! -f "$observed_identity" || -L "$observed_identity" || ! -s "$observed_identity" ]]; then
     echo "shipped Apple identity probe did not create a safe nonempty report" >&2
     exit 1
   fi
-  verify_selected_identity "$identity_probe"
+  verify_selected_identity "$executable"
   cleanup_apple_mount
   apple_mount_point=""
 }
