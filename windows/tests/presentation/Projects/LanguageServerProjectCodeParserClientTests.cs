@@ -106,4 +106,31 @@ public sealed class LanguageServerProjectCodeParserClientTests
         Assert.Equal("tree-sitter", response.Parser);
         Assert.Equal("Fallback", Assert.Single(response.Symbols).Name);
     }
+
+    [Fact]
+    public void TreeSitterWireCoordinatesRemainOneBased()
+    {
+        var wire = new JsonLinesProjectCodeStaticParserClient.ProjectCodeParserWireResponse(
+            true,
+            false,
+            new List<JsonLinesProjectCodeStaticParserClient.ProjectCodeParserWireSymbol>
+            {
+                new(
+                    "ExactTarget",
+                    "class",
+                    7,
+                    9,
+                    "static_tree_sitter",
+                    new JsonLinesProjectCodeStaticParserClient.ProjectCodeParserWireEvidence("tree-sitter", true)),
+            },
+            new List<string>(),
+            "c_sharp",
+            "sha",
+            true,
+            null);
+
+        ProjectCodeParsedSymbol symbol = Assert.Single(wire.ToResponse().Symbols);
+        Assert.Equal(7, symbol.StartLine);
+        Assert.Equal(9, symbol.EndLine);
+    }
 }

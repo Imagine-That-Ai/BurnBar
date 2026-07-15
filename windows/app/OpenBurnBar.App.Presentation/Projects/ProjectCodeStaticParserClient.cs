@@ -281,7 +281,7 @@ public sealed class JsonLinesProjectCodeStaticParserClient : IProjectCodeStaticP
         };
     }
 
-    private sealed record ProjectCodeParserWireResponse(
+    internal sealed record ProjectCodeParserWireResponse(
         bool Ok,
         bool HasParseError,
         List<ProjectCodeParserWireSymbol>? Symbols,
@@ -299,8 +299,8 @@ public sealed class JsonLinesProjectCodeStaticParserClient : IProjectCodeStaticP
                 symbols.Add(new ProjectCodeParsedSymbol(
                     symbol.Name ?? string.Empty,
                     symbol.Kind ?? "symbol",
-                    symbol.StartLine + 1,
-                    symbol.EndLine + 1,
+                    symbol.StartLine,
+                    symbol.EndLine,
                     symbol.ConfidenceTier ?? "static_tree_sitter",
                     symbol.Evidence?.ShaMatch ?? false,
                     symbol.Evidence?.Parser ?? "tree-sitter"));
@@ -329,7 +329,7 @@ public sealed class JsonLinesProjectCodeStaticParserClient : IProjectCodeStaticP
         }
     }
 
-    private sealed record ProjectCodeParserWireSymbol(
+    internal sealed record ProjectCodeParserWireSymbol(
         string? Name,
         string? Kind,
         int StartLine,
@@ -337,11 +337,11 @@ public sealed class JsonLinesProjectCodeStaticParserClient : IProjectCodeStaticP
         string? ConfidenceTier,
         ProjectCodeParserWireEvidence? Evidence);
 
-    private sealed record ProjectCodeParserWireEvidence(
+    internal sealed record ProjectCodeParserWireEvidence(
         string? Parser,
         bool ShaMatch);
 
-    private sealed record ProjectCodeParserWireReference(
+    internal sealed record ProjectCodeParserWireReference(
         string? FilePath,
         int StartLine,
         int EndLine,

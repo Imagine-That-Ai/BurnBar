@@ -41,7 +41,7 @@ public sealed class HeadlessRunServiceTests
     }
 
     [Fact]
-    public async Task RecoverAsync_FindsInterruptedRunAndResumeSkipsCompletedSteps()
+    public async Task ExecuteAsync_ThrownHandlerIsJournaledAsTerminalFailure()
     {
         string path = Path.Combine(Path.GetTempPath(), $"obb-run-{Guid.NewGuid():N}.jsonl");
         try
@@ -54,7 +54,7 @@ public sealed class HeadlessRunServiceTests
                 new HeadlessRunStep("b", "work", "b", new[] { "a" }),
             });
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => service.ExecuteAsync(definition, (step, _) =>
+            HeadlessRunResult failed = await service.ExecuteAsync(definition, (step, _) =>
             {
                 if (step.Id == "b")
                 {
@@ -62,11 +62,44 @@ public sealed class HeadlessRunServiceTests
                 }
 
                 return Task.FromResult(HeadlessRunStepResult.Ok());
-            }));
+            });
 
-            var recovered = await service.RecoverAsync();
-            Assert.Single(recovered);
-            Assert.Equal(new[] { "a" }, recovered[0].CompletedStepIds);
+            Assert.Equal(HeadlessRunState.Failed, failed.State);
+            Assert.Equal("b", failed.FailedStepId);
+            Assert.Equal("headless_step_handler_failed", failed.Error);
+            Assert.Empty(await service.RecoverAsync());
+
+            string persisted = await File.ReadAllTextAsync(path);
+            Assert.Contains("headless_step_handler_failed", persisted, StringComparison.Ordinal);
+            Assert.DoesNotContain("simulated process loss", persisted, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task RecoverAsync_FindsInterruptedRunAndResumeSkipsCompletedSteps()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"obb-run-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var journal = new JsonLinesHeadlessRunJournal(path);
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            await journal.AppendAsync(new HeadlessRunJournalEntry("run-interrupted", HeadlessRunState.Queued, null, null, now));
+            await journal.AppendAsync(new HeadlessRunJournalEntry("run-interrupted", HeadlessRunState.Running, null, null, now.AddMilliseconds(1)));
+            await journal.AppendAsync(new HeadlessRunJournalEntry("run-interrupted", HeadlessRunState.Succeeded, "a", null, now.AddMilliseconds(2)));
+
+            var service = new HeadlessRunService(journal);
+            var definition = new HeadlessRunDefinition("run-interrupted", new[]
+            {
+                new HeadlessRunStep("a", "work", "a"),
+                new HeadlessRunStep("b", "work", "b", new[] { "a" }),
+            });
+
+            RecoverableHeadlessRun recovered = Assert.Single(await service.RecoverAsync());
+            Assert.Equal(new[] { "a" }, recovered.CompletedStepIds);
 
             var resumed = new System.Collections.Generic.List<string>();
             HeadlessRunResult result = await service.ResumeAsync(definition, (step, _) =>
@@ -76,6 +109,31 @@ public sealed class HeadlessRunServiceTests
             });
             Assert.Equal(HeadlessRunState.Succeeded, result.State);
             Assert.Equal(new[] { "b" }, resumed);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task RecoverAsync_UsesLatestAttemptAfterHistoricalFailure()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"obb-run-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var journal = new JsonLinesHeadlessRunJournal(path);
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            await journal.AppendAsync(new HeadlessRunJournalEntry("run-retried", HeadlessRunState.Queued, null, null, now));
+            await journal.AppendAsync(new HeadlessRunJournalEntry("run-retried", HeadlessRunState.Running, null, null, now.AddMilliseconds(1)));
+            await journal.AppendAsync(new HeadlessRunJournalEntry("run-retried", HeadlessRunState.Failed, "compile", "compiler_failed", now.AddMilliseconds(2)));
+            await journal.AppendAsync(new HeadlessRunJournalEntry("run-retried", HeadlessRunState.Recoverable, null, null, now.AddMilliseconds(3)));
+            await journal.AppendAsync(new HeadlessRunJournalEntry("run-retried", HeadlessRunState.Running, null, null, now.AddMilliseconds(4)));
+
+            RecoverableHeadlessRun recovered = Assert.Single(
+                await new HeadlessRunService(journal).RecoverAsync());
+
+            Assert.Equal("run-retried", recovered.RunId);
         }
         finally
         {

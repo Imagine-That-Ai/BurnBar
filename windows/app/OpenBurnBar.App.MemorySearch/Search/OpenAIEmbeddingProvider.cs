@@ -80,7 +80,8 @@ public sealed class OpenAIEmbeddingProvider : IChunkEmbeddingProvider, IQueryEmb
         int dimensions = DimensionsFor(modelName);
         if (!Uri.TryCreate((baseUrl ?? string.Empty).Trim().TrimEnd('/'), UriKind.Absolute, out var parsed)
             || parsed is null
-            || (parsed.Scheme != Uri.UriSchemeHttps && parsed.Scheme != Uri.UriSchemeHttp)
+            || (parsed.Scheme != Uri.UriSchemeHttps
+                && (parsed.Scheme != Uri.UriSchemeHttp || !parsed.IsLoopback))
             || !string.IsNullOrEmpty(parsed.UserInfo)
             || !string.IsNullOrEmpty(parsed.Query)
             || !string.IsNullOrEmpty(parsed.Fragment))

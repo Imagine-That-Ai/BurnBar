@@ -176,6 +176,52 @@ final class UsageRefreshPipelineTests: XCTestCase {
         XCTAssertTrue(result.errors.isEmpty)
     }
 
+    func test_fullRefreshKeepsConversationBodiesOffForegroundPass() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let orchestrator = RefreshOrchestrator(
+            dataStore: store,
+            settingsManager: SettingsManager.shared,
+            quotaService: ProviderQuotaService(
+                appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                homeDirectoryURL: FileManager.default.temporaryDirectory,
+                refreshProviders: []
+            )
+        )
+
+        _ = try await RefreshBackgroundWork.runFullRefresh(
+            parsers: [.factory: RecordingParser(recorder: recorder)],
+            dataStore: store,
+            orchestrator: orchestrator,
+            existingUsages: [],
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: true,
+                snapshotAPIs: []
+            )
+        )
+
+        let recordedOptions = await recorder.snapshot()
+        XCTAssertEqual(recordedOptions, [false])
+    }
+
+    func test_singleProviderRefreshKeepsConversationBodiesOffForegroundPass() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+
+        _ = await RefreshBackgroundWork.runSingleProviderRefresh(
+            provider: .factory,
+            parser: RecordingParser(recorder: recorder),
+            dataStore: store,
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: true,
+                snapshotAPIs: []
+            )
+        )
+
+        let recordedOptions = await recorder.snapshot()
+        XCTAssertEqual(recordedOptions, [false])
+    }
+
     private func makeInMemoryDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)

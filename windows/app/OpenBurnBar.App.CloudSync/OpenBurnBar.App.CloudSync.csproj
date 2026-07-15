@@ -16,6 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="OpenBurnBar.App.CloudSync.Tests" />
     <ProjectReference Include="..\OpenBurnBar.App.Presentation\OpenBurnBar.App.Presentation.csproj" />
     <ProjectReference Include="..\OpenBurnBar.App.Configuration\OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="..\..\cloudsync\OpenBurnBar.CloudSync\OpenBurnBar.CloudSync.csproj" />

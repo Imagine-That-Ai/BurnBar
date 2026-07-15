@@ -219,10 +219,19 @@ public sealed class HeadlessRunService
         var recovered = new List<RecoverableHeadlessRun>();
         foreach (IGrouping<string, HeadlessRunJournalEntry> group in entries.GroupBy(entry => entry.RunId))
         {
-            bool hasTerminalEntry = group.Any(entry =>
-                (entry.State == HeadlessRunState.Succeeded && entry.StepId is null)
-                || entry.State is HeadlessRunState.Failed or HeadlessRunState.Cancelled);
-            if (hasTerminalEntry || !group.Any(entry => entry.State is HeadlessRunState.Running or HeadlessRunState.Queued))
+            HeadlessRunJournalEntry[] history = group.ToArray();
+            int attemptStart = Array.FindLastIndex(history, entry =>
+                entry.State is HeadlessRunState.Queued or HeadlessRunState.Recoverable);
+            HeadlessRunJournalEntry[] latestAttempt = attemptStart >= 0
+                ? history[attemptStart..]
+                : history;
+            HeadlessRunJournalEntry? latest = latestAttempt.LastOrDefault();
+            bool hasTerminalEntry = latest is not null && (
+                (latest.State == HeadlessRunState.Succeeded && latest.StepId is null)
+                || latest.State is HeadlessRunState.Failed or HeadlessRunState.Cancelled);
+            bool hasActiveEntry = latestAttempt.Any(entry =>
+                entry.State is HeadlessRunState.Running or HeadlessRunState.Queued or HeadlessRunState.Recoverable);
+            if (hasTerminalEntry || !hasActiveEntry)
             {
                 continue;
             }
@@ -273,7 +282,25 @@ public sealed class HeadlessRunService
                         cancellationToken).ConfigureAwait(false);
                 }
 
-                HeadlessRunStepResult result = await handler(next, cancellationToken).ConfigureAwait(false);
+                HeadlessRunStepResult result;
+                try
+                {
+                    result = await handler(next, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception)
+                {
+                    return await FinishAsync(
+                        definition.RunId,
+                        HeadlessRunState.Failed,
+                        completed,
+                        next.Id,
+                        "headless_step_handler_failed",
+                        CancellationToken.None).ConfigureAwait(false);
+                }
                 if (!result.Succeeded)
                 {
                     return await FinishAsync(

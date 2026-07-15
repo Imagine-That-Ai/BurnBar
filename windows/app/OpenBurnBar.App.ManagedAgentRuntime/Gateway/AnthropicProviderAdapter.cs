@@ -630,13 +630,17 @@ public static partial class AnthropicProviderAdapter
 
         if (choice is JsonValue value && value.TryGetValue<string>(out string? text))
         {
-            target["tool_choice"] = text?.ToLowerInvariant() switch
+            JsonObject? converted = text?.ToLowerInvariant() switch
             {
                 "auto" => new JsonObject { ["type"] = "auto" },
                 "required" => new JsonObject { ["type"] = "any" },
                 "none" => null,
                 _ => throw new ProviderWireFormatException(400, "anthropic_tool_choice_invalid"),
             };
+            if (converted is not null)
+            {
+                target["tool_choice"] = converted;
+            }
             return;
         }
 

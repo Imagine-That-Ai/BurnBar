@@ -153,12 +153,6 @@ public static class WinAppCloudSyncHost
     public static void ConfigureFromAppConfiguration()
     {
         AppConfiguration config = AppConfiguration.Current;
-        string? uid = config.EffectiveFirebaseUid();
-        if (string.IsNullOrWhiteSpace(uid))
-        {
-            return;
-        }
-
         string project = config.EffectiveFirebaseProjectId();
         byte[] vaultKey = CloudVaultCrypto.GenerateVaultKey();
         string? keyB64 = config.EffectiveVaultKeyB64();
@@ -171,9 +165,18 @@ public static class WinAppCloudSyncHost
         // browser on launch. The credentials provider loads its protected
         // Firebase session and passive accessors remain non-interactive.
         DesktopOAuthCredentialsProvider? oauth = CloudAuthProductionComposition.TryCreateOAuthCredentialsProvider();
-        if (oauth?.CurrentSession is { } session && !session.IsExpired(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))
+        FirebaseOAuthSession? session = SelectRestorableSession(
+            oauth?.CurrentSession,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        if (oauth is not null && session is not null)
         {
             ConfigureWithOAuth(oauth, project, session.Uid, vaultKey);
+            return;
+        }
+
+        string? uid = config.EffectiveFirebaseUid();
+        if (string.IsNullOrWhiteSpace(uid))
+        {
             return;
         }
 
@@ -184,6 +187,15 @@ public static class WinAppCloudSyncHost
             idToken: config.EffectiveFirebaseIdToken(),
             appCheckToken: config.EffectiveAppCheckToken());
     }
+
+    internal static FirebaseOAuthSession? SelectRestorableSession(
+        FirebaseOAuthSession? session,
+        long nowMillis) =>
+        session is not null
+        && !string.IsNullOrWhiteSpace(session.Uid)
+        && !session.IsExpired(nowMillis)
+            ? session
+            : null;
 
     public static void ConfigureFromEnvironment() => ConfigureFromAppConfiguration();
 

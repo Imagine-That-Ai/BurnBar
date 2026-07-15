@@ -95,6 +95,24 @@ public sealed class OpenAIEmbeddingProviderTests
     }
 
     [Fact]
+    public void PlaintextBaseUrlIsAllowedOnlyForLoopbackDevelopment()
+    {
+        var remote = Assert.Throws<OpenAIEmbeddingProviderException>(
+            () => new OpenAIEmbeddingProvider(
+                "key",
+                "text-embedding-3-small",
+                baseUrl: "http://example.test/v1"));
+
+        var loopback = new OpenAIEmbeddingProvider(
+            "key",
+            "text-embedding-3-small",
+            baseUrl: "http://127.0.0.1:11434/v1");
+
+        Assert.Equal(OpenAIEmbeddingFailureKind.InvalidBaseUrl, remote.Kind);
+        Assert.Equal("openai", loopback.Descriptor.Provider);
+    }
+
+    [Fact]
     public async Task InvalidVectorShapeFailsClosed()
     {
         var handler = new StubHandler(HttpStatusCode.OK, "{\"data\":[{\"index\":0,\"embedding\":[1]}]}");
