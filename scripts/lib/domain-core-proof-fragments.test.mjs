@@ -89,6 +89,27 @@ test("strict fragments aggregate every policy suite, artifact, benchmark, and co
   assert.equal(evidence.rollback.restoredMode, "legacy");
 });
 
+test("candidate identity comparison is independent of JSON object key order", (context) => {
+  const paths = fixture(context);
+  const values = fragments(paths);
+  values[0].candidate = {
+    sourceSha256: CANDIDATE.sourceSha256,
+    abiVersion: CANDIDATE.abiVersion,
+    coreVersion: CANDIDATE.coreVersion,
+    candidateCommit: CANDIDATE.candidateCommit,
+  };
+  assert.doesNotThrow(() =>
+    aggregateDomainCoreProofFragments({
+      fragments: values,
+      jobResults: jobResults(),
+      candidate: CANDIDATE,
+      runId: RUN.runId,
+      runAttempt: RUN.runAttempt,
+      policy: POLICY,
+    }),
+  );
+});
+
 test("aggregation rejects missing, skipped, stale, duplicate, and cross-candidate evidence", (context) => {
   const paths = fixture(context);
   const cases = [

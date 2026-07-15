@@ -1184,14 +1184,7 @@ jobs:
           target: google_apis
           disk-size: 4G
           heap-size: 768M
-          script: |
-            set -euo pipefail
-            cd android
-            ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon \
-              -Pandroid.testInstrumentationRunnerArguments.candidateCommit="${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}"
-            adb exec-out run-as com.openburnbar.domaincore.test \
-              cat files/domain-core-observed-identity.json \
-              > "$RUNNER_TEMP/domain-core-android-observed-identity.json"
+          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
 
       - name: Verify loaded Android Rust identity
         run: |

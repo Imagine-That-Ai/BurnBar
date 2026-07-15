@@ -749,14 +749,12 @@ jobs:
           emulator-options: >-
             -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
             -no-boot-anim
-          script: cd android && ./gradlew :openburnbar-domain-core:connectedDebugAndroidTest --no-daemon
+          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "$GITHUB_SHA" "$RUNNER_TEMP/android-observed-identity.json"
 
       - name: Record successful Android native load
-        run: >-
-          printf 'candidate=%s abi=%s version=%s source=%s native-load=passed\n'
-          "$GITHUB_SHA" "$DOMAIN_CORE_EXPECTED_ABI_VERSION"
-          "$DOMAIN_CORE_EXPECTED_VERSION" "$DOMAIN_CORE_EXPECTED_SOURCE_SHA256"
-          > "$RUNNER_TEMP/android-native-load.log"
+        run: |
+          cp "$RUNNER_TEMP/android-observed-identity.json" \
+            "$RUNNER_TEMP/android-native-load.log"
 
       - name: Run Android app domain-core consumer contracts
         working-directory: android
@@ -877,6 +875,16 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Resolve exact checked-out candidate C
+        id: candidate
+        run: |
+          candidate_commit="$(git rev-parse HEAD)"
+          if [[ ! "$candidate_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Checked-out domain-core candidate is not a full Git SHA-1."
+            exit 1
+          fi
+          printf 'commit=%s\n' "$candidate_commit" >> "$GITHUB_OUTPUT"
+
       - name: Download the exact XCFramework produced by the Apple job
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
@@ -884,6 +892,9 @@ jobs:
           path: Vendor/OpenBurnBarDomainCore.xcframework
 
       - name: Load XCFramework and run the narrow native contract
+        env:
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/swift-observed-identity.json
         working-directory: OpenBurnBarCore
         run: |
           set -o pipefail
@@ -893,7 +904,7 @@ jobs:
       - name: Emit Apple native-load proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "${{ steps.candidate.outputs.commit }}"
           --job-id apple-native-smoke
           --suite "swift-native-load=$RUNNER_TEMP/swift-native-load.log"
           --output "$RUNNER_TEMP/apple-native-smoke.json"

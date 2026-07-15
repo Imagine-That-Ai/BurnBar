@@ -54,6 +54,15 @@ function positiveInteger(value, label) {
   return parsed;
 }
 
+function candidateIdentitiesEqual(left, right) {
+  return (
+    left.candidateCommit === right.candidateCommit &&
+    left.coreVersion === right.coreVersion &&
+    left.abiVersion === right.abiVersion &&
+    left.sourceSha256 === right.sourceSha256
+  );
+}
+
 export function sha256File(path) {
   return createHash("sha256").update(readFileSync(resolve(path))).digest("hex");
 }
@@ -228,7 +237,7 @@ function validateFragment(fragment, candidate, runId, runAttempt) {
     fail(`fragment ${fragment.jobId} head SHA does not match candidate`);
   }
   const fragmentCandidate = validateDomainCoreCandidateIdentity(fragment.candidate);
-  if (JSON.stringify(fragmentCandidate) !== JSON.stringify(candidate)) {
+  if (!candidateIdentitiesEqual(fragmentCandidate, candidate)) {
     fail(`fragment ${fragment.jobId} candidate tuple does not match`);
   }
   for (const key of ["suites", "artifacts", "benchmarks"]) {

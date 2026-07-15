@@ -38,6 +38,7 @@ export const NATIVE_RELEASE_CONTROL_PLANE_SEEDS = Object.freeze([
   "scripts/ci/publish-domain-core-release-evidence.mjs",
   "scripts/ci/release-command-watchdog.py",
   "scripts/ci/resolve-domain-core-build-profile.mjs",
+  "scripts/ci/run-domain-core-android-native-load.sh",
   "scripts/ci/sentry_dsn.py",
   "scripts/ci/smoke-openburnbar-release-dmg.sh",
   "scripts/ci/test-storage-rules.sh",
