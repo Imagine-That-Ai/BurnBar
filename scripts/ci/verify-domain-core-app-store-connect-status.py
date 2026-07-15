@@ -58,8 +58,7 @@ def validate(path: Path) -> dict[str, str]:
     successes = [status for status in normalized if status in SUCCESS_STATES]
     if failures or len(successes) != 1:
         raise ValueError(
-            "App Store Connect response must contain exactly one successful terminal status "
-            "and no failure status"
+            "App Store Connect response must contain exactly one successful terminal status and no failure status"
         )
     return {
         "processedStatus": successes[0],

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ import {
   validateDomainCoreCandidateIdentity,
 } from "../lib/domain-core-release-evidence.mjs";
 import { parseDomainCoreFunctionsJavaScript } from "../lib/domain-core-build-profile.mjs";
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
 
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 const POSITIVE_INTEGER = /^[1-9]\d*$/u;
@@ -62,7 +63,12 @@ function parseArguments(argv) {
 
 function readJson(path, label) {
   try {
-    return JSON.parse(readFileSync(regularFile(path, label), "utf8"));
+    return JSON.parse(
+      readRegularFileSync(regularFile(path, label), {
+        encoding: "utf8",
+        label,
+      }),
+    );
   } catch (error) {
     throw new Error(`unable to read ${label}: ${error.message}`);
   }
@@ -78,7 +84,9 @@ function positiveInteger(value, label) {
 }
 
 function sha256File(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
+  return createHash("sha256")
+    .update(readRegularFileSync(path, { label: "Functions runtime artifact" }))
+    .digest("hex");
 }
 
 function validateProfile(raw) {
@@ -195,12 +203,16 @@ function writeCreateOnly(path, contents) {
     });
   } catch (error) {
     if (error?.code !== "EEXIST") throw error;
-    const stat = lstatSync(output);
-    if (
-      !stat.isFile() ||
-      stat.isSymbolicLink() ||
-      readFileSync(output, "utf8") !== contents
-    ) {
+    let existing;
+    try {
+      existing = readRegularFileSync(output, {
+        encoding: "utf8",
+        label: "Functions deploy proof",
+      });
+    } catch {
+      existing = undefined;
+    }
+    if (existing !== contents) {
       throw new Error(
         `refusing to replace non-identical Functions deploy proof: ${output}`,
       );
@@ -234,7 +246,10 @@ export function buildFunctionsDeployProof({
   );
   const compiledReceipt = validateProfile(
     parseDomainCoreFunctionsJavaScript(
-      readFileSync(resolvedReceiptPath, "utf8"),
+      readRegularFileSync(resolvedReceiptPath, {
+        encoding: "utf8",
+        label: "compiled Functions receipt",
+      }),
     ),
   );
   if (!isDeepStrictEqual(profile, compiledReceipt)) {
@@ -249,7 +264,11 @@ export function buildFunctionsDeployProof({
       "Functions release commit must be a full lowercase Git SHA-1",
     );
   }
-  validateReleaseGate(readJson(resolvedGatePath, "release gate"), profile);
+  validateReleaseGate(
+    readJson(resolvedGatePath, "release gate"),
+    profile,
+    commit,
+  );
   const runtimeManifest = readJson(
     resolvedManifestPath,
     "Functions runtime manifest",

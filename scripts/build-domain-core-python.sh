@@ -85,11 +85,27 @@ if [[ ! -f "${NATIVE_SOURCE}" ]]; then
   exit 1
 fi
 
+# Release stripping removes the UniFFI metadata symbols from ELF libraries.
+# Generate bindings from an unstripped debug library while packaging the
+# requested release library, matching the Android AAR build's metadata path.
+BINDGEN_NATIVE_SOURCE="${NATIVE_SOURCE}"
+if [[ "${PROFILE}" != "debug" ]]; then
+  (
+    cd "${CRATE_DIR}"
+    cargo build -p openburnbar-domain-ffi --lib
+  )
+  BINDGEN_NATIVE_SOURCE="${TARGET_DIR}/debug/${NATIVE_NAME}"
+  if [[ ! -f "${BINDGEN_NATIVE_SOURCE}" ]]; then
+    echo "ERROR: expected UniFFI metadata library missing: ${BINDGEN_NATIVE_SOURCE}" >&2
+    exit 1
+  fi
+fi
+
 rm -f "${PACKAGE_DIR}/openburnbar_domain_ffi.py" "${PACKAGE_DIR}"/*.dylib \
   "${PACKAGE_DIR}"/*.so "${PACKAGE_DIR}"/*.dll
 rm -f "${HERMES_PACKAGE_DIR}/openburnbar_domain_ffi.py" "${HERMES_PACKAGE_DIR}"/*.dylib \
   "${HERMES_PACKAGE_DIR}"/*.so "${HERMES_PACKAGE_DIR}"/*.dll
-UNIFFI_LIBRARY_PATH="${NATIVE_SOURCE}" \
+UNIFFI_LIBRARY_PATH="${BINDGEN_NATIVE_SOURCE}" \
 UNIFFI_OUT_DIR="${PACKAGE_DIR}" \
   cargo run --manifest-path "${HELPER_DIR}/Cargo.toml" --release --quiet
 perl -0pi -e 's/[ \t]+(?=\n)//g; s/\s+\z/\n/' "${PACKAGE_DIR}/openburnbar_domain_ffi.py"

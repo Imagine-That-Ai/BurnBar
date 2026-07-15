@@ -21,9 +21,7 @@ def canonicalize_xcframework_plist(path: Path) -> None:
     if not isinstance(libraries, list):
         raise ValueError("AvailableLibraries must be an array")
     if any(
-        not isinstance(library, dict)
-        or not isinstance(library.get("LibraryIdentifier"), str)
-        for library in libraries
+        not isinstance(library, dict) or not isinstance(library.get("LibraryIdentifier"), str) for library in libraries
     ):
         raise ValueError("every AvailableLibraries entry must have a string LibraryIdentifier")
 

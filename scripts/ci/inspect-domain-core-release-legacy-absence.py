@@ -53,7 +53,9 @@ def inspect(
         receipts = GATE.require_object(row.get("receipts"), f"row {row_id}.receipts")
         stable_relative = GATE.repository_path(receipts.get("stableRelease"), f"row {row_id}.stableRelease")
         stable = GATE.require_object(
-            GATE.load_json(GATE.secure_path(repo_root, stable_relative, "stable receipt", must_exist=True), "stable receipt"),
+            GATE.load_json(
+                GATE.secure_path(repo_root, stable_relative, "stable receipt", must_exist=True), "stable receipt"
+            ),
             "stable receipt",
         )
         release = GATE.require_object(stable.get("release"), "stable receipt.release")

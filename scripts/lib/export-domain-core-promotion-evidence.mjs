@@ -95,6 +95,13 @@ const OPERATION_IDENTITY = new Map([
   ["codex_quota", "quota/codex"],
   ["cursor_quota", "quota/cursor"],
   ["anthropic_quota", "quota/anthropic"],
+  ["pensieve_l2_normalize", "cloudvault/pensieve-vectors"],
+  ["pensieve_vector_cloak", "cloudvault/pensieve-vectors"],
+  ["pensieve_deterministic_embed", "cloudvault/pensieve-vectors"],
+  [
+    "pensieve_deterministic_embed_and_cloak",
+    "cloudvault/pensieve-vectors",
+  ],
   ...[
     "aad_v1",
     "aad_v2",

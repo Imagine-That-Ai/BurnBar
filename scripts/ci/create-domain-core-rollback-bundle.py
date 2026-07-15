@@ -106,16 +106,18 @@ def rollback_payloads(
             "release": release,
         }
         provenance_bytes = canonical(provenance)
-        payload_records.append({
-            "consumer": consumer,
-            "artifactKind": artifact_kind,
-            "target": target,
-            "payloadPath": payload_path,
-            "payloadSha256": hashlib.sha256(payload_bytes).hexdigest(),
-            "size": len(payload_bytes),
-            "provenancePath": provenance_path,
-            "provenanceSha256": hashlib.sha256(provenance_bytes).hexdigest(),
-        })
+        payload_records.append(
+            {
+                "consumer": consumer,
+                "artifactKind": artifact_kind,
+                "target": target,
+                "payloadPath": payload_path,
+                "payloadSha256": hashlib.sha256(payload_bytes).hexdigest(),
+                "size": len(payload_bytes),
+                "provenancePath": provenance_path,
+                "provenanceSha256": hashlib.sha256(provenance_bytes).hexdigest(),
+            }
+        )
         retained.extend(((payload_path, payload_bytes), (provenance_path, provenance_bytes)))
     manifest = {
         "schemaVersion": 1,
@@ -138,10 +140,7 @@ def rollback_environment(profile: dict[str, Any]) -> bytes:
         "OPENBURNBAR_DOMAIN_CORE_EXPECTED_VERSION": candidate["coreVersion"],
         "OPENBURNBAR_DOMAIN_CORE_EXPECTED_ABI_VERSION": str(candidate["abiVersion"]),
         "OPENBURNBAR_DOMAIN_CORE_EXPECTED_SOURCE_SHA256": candidate["sourceSha256"],
-        **{
-            f"OPENBURNBAR_DOMAIN_CORE_{DOMAIN_ENV_KEYS[domain]}_MODE": mode
-            for domain, mode in modes.items()
-        },
+        **{f"OPENBURNBAR_DOMAIN_CORE_{DOMAIN_ENV_KEYS[domain]}_MODE": mode for domain, mode in modes.items()},
     }
     return "".join(f"{key}={values[key]}\n" for key in sorted(values)).encode("ascii")
 
@@ -189,7 +188,10 @@ def create_bundle(
     }
     if set(activation) != required or activation["activationCommit"] != commit:
         raise ValueError("rollback activation must bind exact release commit P")
-    if any(activation.get(key) != candidate.get(key) for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256")):
+    if any(
+        activation.get(key) != candidate.get(key)
+        for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256")
+    ):
         raise ValueError("rollback profile candidate and activation closure disagree")
     payload_manifest, payload_entries = rollback_payloads(
         candidate=candidate,

@@ -11,9 +11,32 @@ OPENBURNBAR_TOKEN_SEARCH_INFO = b"OpenBurnBar-CloudSearch-TokenHash-v1"
 OPENBURNBAR_SEMANTIC_SEARCH_SALT = b"OpenBurnBar-CloudSearch-Semantic-Salt-v1"
 OPENBURNBAR_SEMANTIC_SEARCH_INFO = b"OpenBurnBar-CloudSearch-SemanticHash-v1"
 OPENBURNBAR_STOPWORDS = {
-    "the", "and", "for", "with", "that", "this", "from", "how", "what",
-    "where", "when", "why", "are", "was", "were", "you", "your", "have",
-    "has", "had", "into", "onto", "can", "could", "should", "would",
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "from",
+    "how",
+    "what",
+    "where",
+    "when",
+    "why",
+    "are",
+    "was",
+    "were",
+    "you",
+    "your",
+    "have",
+    "has",
+    "had",
+    "into",
+    "onto",
+    "can",
+    "could",
+    "should",
+    "would",
 }
 
 
@@ -50,7 +73,22 @@ def _cloud_token_hashes(text: str, vault_key: bytes, limit: int = 10) -> list[st
 
 
 def _simple_semantic_stem(token: str) -> str:
-    suffixes = ["ization", "ations", "ation", "ments", "ment", "ingly", "edly", "ing", "ies", "ied", "ers", "er", "ed", "s"]
+    suffixes = [
+        "ization",
+        "ations",
+        "ation",
+        "ments",
+        "ment",
+        "ingly",
+        "edly",
+        "ing",
+        "ies",
+        "ied",
+        "ers",
+        "er",
+        "ed",
+        "s",
+    ]
     for suffix in suffixes:
         if len(token) > len(suffix) + 3 and token.endswith(suffix):
             stem = token[: -len(suffix)]

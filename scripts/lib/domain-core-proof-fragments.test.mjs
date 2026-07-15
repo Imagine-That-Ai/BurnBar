@@ -118,6 +118,15 @@ test("artifact identity must be observed and cannot be assigned from the candida
 
 test("candidate identity comparison is independent of JSON object key order", (context) => {
   const paths = fixture(context);
+  writeFileSync(
+    paths.identityReport,
+    `${JSON.stringify({
+      sourceSha256: CANDIDATE.sourceSha256,
+      abiVersion: CANDIDATE.abiVersion,
+      coreVersion: CANDIDATE.coreVersion,
+      candidateCommit: CANDIDATE.candidateCommit,
+    })}\n`,
+  );
   const values = fragments(paths);
   values[0].candidate = {
     sourceSha256: CANDIDATE.sourceSha256,

@@ -309,21 +309,25 @@ function parseCoveredIdentity(
   raw: Record<string, unknown>,
   index: number,
 ): Pick<DomainCoreShadowSampleV2, "domain" | "slice" | "consumer" | "operation"> {
+  const domain = raw.domain;
+  const slice = raw.slice;
+  const consumer = raw.consumer;
+  const operation = raw.operation;
   if (
-    !isV2Domain(raw.domain) ||
-    typeof raw.slice !== "string" ||
-    !isV2Consumer(raw.consumer) ||
-    typeof raw.operation !== "string" ||
-    !domainCoreShadowOperationConsumers(raw.domain, raw.slice, raw.operation as string).includes(raw.consumer)
+    !isV2Domain(domain) ||
+    typeof slice !== "string" ||
+    !isV2Consumer(consumer) ||
+    typeof operation !== "string" ||
+    !domainCoreShadowOperationConsumers(domain, slice, operation).includes(consumer)
   ) {
     throw new HttpsError("invalid-argument", `samples[${index}] has an invalid domain, slice, or consumer.`);
   }
-  const expectedSlice = DOMAIN_CORE_SHADOW_OPERATION_SLICES[raw.domain]?.[raw.operation];
-  const mustValidateOperation = raw.schemaVersion === 3 || (raw.schemaVersion === 2 && raw.domain === "quota");
-  if (mustValidateOperation && expectedSlice !== raw.slice) {
+  const expectedSlice = DOMAIN_CORE_SHADOW_OPERATION_SLICES[domain]?.[operation];
+  const mustValidateOperation = raw.schemaVersion === 3 || (raw.schemaVersion === 2 && domain === "quota");
+  if (mustValidateOperation && expectedSlice !== slice) {
     throw new HttpsError("invalid-argument", `samples[${index}] has an inconsistent operation and slice.`);
   }
-  return { domain: raw.domain, slice: raw.slice, consumer: raw.consumer, operation: raw.operation };
+  return { domain, slice, consumer, operation };
 }
 
 function parseSample(raw: unknown, nowMillis: number, index: number): DomainCoreShadowSample {
@@ -372,6 +376,10 @@ function parseSample(raw: unknown, nowMillis: number, index: number): DomainCore
     if (raw.domain !== "quota" || !isConsumer(raw.consumer) || !isOperation(raw.operation)) {
       throw new HttpsError("invalid-argument", `samples[${index}] has an unsupported v1 identity.`);
     }
+    const mismatchCategory = common.mismatchCategory;
+    if (mismatchCategory === "loaded_identity_mismatch") {
+      throw new HttpsError("invalid-argument", `samples[${index}] has an unsupported v1 mismatch category.`);
+    }
     return {
       schemaVersion: 1,
       domain: "quota",
@@ -379,7 +387,7 @@ function parseSample(raw: unknown, nowMillis: number, index: number): DomainCore
       operation: raw.operation,
       ...common,
       coreVersion: parsedCoreVersion,
-      mismatchCategory: common.mismatchCategory as DomainCoreShadowMismatchCategory | null,
+      mismatchCategory,
     };
   }
   const covered = parseCoveredIdentity(raw, index);
@@ -399,12 +407,16 @@ function parseSample(raw: unknown, nowMillis: number, index: number): DomainCore
     };
   }
   if (parsedCoreVersion === undefined) throw new Error("V2 shadow sample lost its core version.");
+  const mismatchCategory = common.mismatchCategory;
+  if (mismatchCategory === "loaded_identity_mismatch") {
+    throw new HttpsError("invalid-argument", `samples[${index}] has an unsupported v2 mismatch category.`);
+  }
   return {
     schemaVersion: 2,
     ...covered,
     ...common,
     coreVersion: parsedCoreVersion,
-    mismatchCategory: common.mismatchCategory as DomainCoreShadowMismatchCategory | null,
+    mismatchCategory,
   };
 }
 
