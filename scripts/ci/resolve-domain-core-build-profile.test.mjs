@@ -28,8 +28,21 @@ const signedProfile = (name) =>
 test("canonical profiles satisfy signed artifact invariants", () => {
   assert.equal(validateDomainCoreBuildProfiles(catalog), catalog);
   assert.equal(signedProfile("public-production").evidenceEnabled, false);
+  assert.deepEqual(
+    new Set(Object.values(signedProfile("public-production-rollback").modes)),
+    new Set(["legacy"]),
+  );
   assert.equal(signedProfile("internal").modes.quota, "shadow");
   assert.equal(signedProfile("beta").rolloutChannel, "beta");
+});
+
+test("the signed rollback profile is immutable and permanently legacy", () => {
+  const mutated = structuredClone(catalog);
+  mutated.profiles["public-production-rollback"].modes.pricing = "rust";
+  assert.throws(
+    () => validateDomainCoreBuildProfiles(mutated),
+    /every mode must remain legacy/,
+  );
 });
 
 test("public signed profiles cannot accidentally enable shadow evidence", () => {

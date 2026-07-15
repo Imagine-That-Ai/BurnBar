@@ -123,6 +123,11 @@ function resolveSignedProfile(receipt: DomainCoreBuildReceipt): ResolvedDomainCo
       !receipt.evidenceEnabled &&
       receipt.rolloutChannel === null &&
       !Object.values(receipt.modes).includes("shadow")) ||
+    (receipt.name === "public-production-rollback" &&
+      receipt.distribution === "public" &&
+      !receipt.evidenceEnabled &&
+      receipt.rolloutChannel === null &&
+      Object.values(receipt.modes).every((value) => value === "legacy")) ||
     ((receipt.name === "internal" || receipt.name === "beta") &&
       receipt.distribution === receipt.name &&
       receipt.rolloutChannel === receipt.name &&

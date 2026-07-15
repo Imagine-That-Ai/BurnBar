@@ -20,8 +20,16 @@ It never relabels an artifact with an operator-supplied commit.
 | --- | --- | --- | --- |
 | `developer` | local development and tests | none | Legacy by default; validated overrides allowed; uploads disabled |
 | `public-production` | public signed artifacts | none | Evidence disabled; shadow forbidden |
+| `public-production-rollback` | candidate-bound rollback artifact | none | Permanently all-legacy; evidence and runtime overrides forbidden |
 | `internal` | signed internal artifacts | `internal` | Evidence enabled; quota shadow required |
 | `beta` | signed beta artifacts | `beta` | Evidence enabled; quota shadow required |
+
+Every candidate proof publishes `public-production-rollback` as a separate
+90-day workflow artifact. Its profile validator rejects any non-legacy mode, so
+it remains usable after `public-production` moves to Rust. The stable release
+must publish and retain that exact candidate-bound artifact before a later PR
+may delete legacy implementations; candidate proof does not require an older
+published artifact.
 
 Resolve values instead of hand-copying them:
 
