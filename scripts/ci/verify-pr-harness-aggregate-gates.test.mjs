@@ -74,7 +74,7 @@ console.log("Self-test: verify-pr-harness-aggregate-gates.mjs\n");
 
 expect("current PR harness aggregate gates pass", () => {}, 0);
 
-for (const job of ["platform-confidence-gate", "targeted-e2e-gate", "openburnbar-pr"]) {
+for (const job of ["platform-confidence-gate", "targeted-e2e-gate", "harness-required", "harness-informational", "openburnbar-pr"]) {
   expect(
     `${job} with !cancelled() fails`,
     (root) =>
