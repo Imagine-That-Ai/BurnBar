@@ -56,7 +56,7 @@ if ([string]::IsNullOrWhiteSpace($manufacturer) -or [string]::IsNullOrWhiteSpace
     throw 'Physical hardware identity did not expose manufacturer and model.'
 }
 $hostIdentity = "$manufacturer $model"
-if ($hostIdentity -match '(?i)(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V)') {
+if ($hostIdentity -match '(?i)(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V|Amazon EC2|Google Compute Engine|HVM domU|\bXen\b|OpenStack|Bochs|BHYVE|DigitalOcean)') {
     throw "Refusing physical hardware attestation for a virtualized host identity: $hostIdentity"
 }
 

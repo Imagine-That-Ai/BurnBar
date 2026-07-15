@@ -20,7 +20,9 @@ assert.match(script, /Get-CimInstance Win32_ComputerSystemProduct/);
 assert.match(script, /placeholder chassis tag/);
 assert.match(script, /systemProduct\.IdentifyingNumber/);
 assert.match(script, /assetTagSource/);
+assert.match(script, /Hardware attestation assetTagSource is required for physical certification/);
 assert.match(script, /Hardware attestation assetTagSource does not match/);
+assert.match(script, /Amazon EC2\|Google Compute Engine\|HVM domU\|\\bXen\\b/);
 assert.match(
   script,
   /system asset tag\|chassis asset tag/,
@@ -41,6 +43,7 @@ assert.match(attestationGenerator, /Win32_ComputerSystemProduct\.IdentifyingNumb
 assert.match(attestationGenerator, /system asset tag\|chassis asset tag/);
 assert.match(attestationGenerator, /assetTagSource/);
 assert.match(attestationGenerator, /Refusing physical hardware attestation for a virtualized host identity/);
+assert.match(attestationGenerator, /Amazon EC2\|Google Compute Engine\|HVM domU\|\\bXen\\b/);
 assert.match(attestationGenerator, /Refusing to overwrite existing hardware attestation without -Force/);
 assert.match(attestationGenerator, /\.tmp-/);
 const windowsFastWorkflow = readFileSync(join(root, "../../.github/workflows/pr-windows-fast.yml"), "utf8");

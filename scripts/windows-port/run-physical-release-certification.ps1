@@ -222,7 +222,7 @@ function Get-DeviceIdentity {
         default { '' }
     }
     $identity = "$($computer.Manufacturer) $($computer.Model)"
-    if ($PhysicalHardware -and $identity -match '(?i)(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V)') {
+    if ($PhysicalHardware -and $identity -match '(?i)(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V|Amazon EC2|Google Compute Engine|HVM domU|\bXen\b|OpenStack|Bochs|BHYVE|DigitalOcean)') {
         throw "PhysicalHardware was asserted but the host identity looks virtualized: $identity"
     }
     if ($PhysicalHardware -and $processorPlatform -ne $Platform) {
@@ -261,8 +261,10 @@ function Get-DeviceIdentity {
             }
         }
         $attestedAssetTagSource = [string]$script:HardwareAttestation.assetTagSource
-        if (-not [string]::IsNullOrWhiteSpace($attestedAssetTagSource) -and
-            -not [string]::Equals($assetTagSource, $attestedAssetTagSource.Trim(), [System.StringComparison]::Ordinal)) {
+        if ([string]::IsNullOrWhiteSpace($attestedAssetTagSource)) {
+            throw 'Hardware attestation assetTagSource is required for physical certification.'
+        }
+        if (-not [string]::Equals($assetTagSource, $attestedAssetTagSource.Trim(), [System.StringComparison]::Ordinal)) {
             throw 'Hardware attestation assetTagSource does not match the current device identifier source.'
         }
     }
