@@ -7,9 +7,14 @@ import { fileURLToPath } from "node:url";
 
 const SCRIPT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DEFAULT_MANIFEST = "config/domain-core-control-plane-manifest.json";
-const SEED_PATHS = Object.freeze([
+const TRUSTED_WORKFLOWS = Object.freeze([
   ".github/workflows/domain-core.yml",
   ".github/workflows/domain-core-promotion-proof.yml",
+  ".github/workflows/deploy-production.yml",
+  ".github/workflows/domain-core-functions-release-evidence.yml",
+]);
+const SEED_PATHS = Object.freeze([
+  ...TRUSTED_WORKFLOWS,
   "OpenBurnBarCore/Package.swift",
   "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift",
   "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift",
@@ -169,10 +174,7 @@ function resolveImport(root, importer, specifier) {
 
 export function discoverDomainCoreControlPlane(root = SCRIPT_ROOT) {
   const discovered = new Set(SEED_PATHS);
-  for (const workflow of [
-    ".github/workflows/domain-core.yml",
-    ".github/workflows/domain-core-promotion-proof.yml",
-  ]) {
+  for (const workflow of TRUSTED_WORKFLOWS) {
     const source = readFileSync(
       regularRepoFile(root, workflow, "trusted workflow"),
       "utf8",
