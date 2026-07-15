@@ -91,6 +91,24 @@ test("deployment receipt v2 carries the same proof chain and deployed bytes", ()
       .const,
     "Imagine-That-Ai/BurnBar",
   );
+  assert.deepEqual(
+    new Set(schema.properties.deployment.properties.deployRun.required),
+    new Set([
+      "repository",
+      "workflowPath",
+      "runId",
+      "runAttempt",
+      "event",
+      "ref",
+      "headSha",
+      "jobSetSha256",
+    ]),
+  );
+  assert.equal(
+    schema.properties.deployment.properties.deployRun.properties.repository
+      .const,
+    "Imagine-That-Ai/BurnBar",
+  );
   assert.equal(schema.oneOf.length, 2);
 });
 
