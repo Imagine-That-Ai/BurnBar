@@ -41,6 +41,20 @@ class DomainCoreBuildProfileTest {
     }
 
     @Test
+    fun signedBetaProfileIsImmutableAndIgnoresDevelopmentOverrides() {
+        val beta = input().copy(
+            name = "beta",
+            distribution = "beta",
+            rolloutChannel = "beta",
+        )
+        val profile = requireNotNull(DomainCoreBuildProfile.resolve(beta))
+
+        assertEquals(DomainCoreEvidenceChannel.BETA, profile.evidenceChannel)
+        assertEquals("rust", DomainCoreBuildProfile.resolveMode(profile, "hermes", "legacy"))
+        assertEquals("legacy", DomainCoreBuildProfile.resolveMode(profile, "unknown", "rust"))
+    }
+
+    @Test
     fun malformedOrUnknownAuthorityFailsClosed() {
         val malformed = listOf(
             input().copy(artifactAuthority = "unknown"),
@@ -49,6 +63,9 @@ class DomainCoreBuildProfileTest {
             input().copy(rolloutChannel = "beta"),
             input().copy(evidenceEnabled = false),
             input().copy(modes = input().modes + ("quota" to "rust")),
+            input().copy(modes = input().modes - "pricing"),
+            input().copy(modes = input().modes + ("unknown" to "legacy")),
+            input().copy(modes = input().modes + ("hermes" to "future")),
             publicInput().copy(modes = publicInput().modes + ("hermes" to "shadow")),
         )
 

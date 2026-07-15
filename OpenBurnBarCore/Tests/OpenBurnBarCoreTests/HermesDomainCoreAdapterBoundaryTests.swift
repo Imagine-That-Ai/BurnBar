@@ -10,12 +10,13 @@ final class HermesDomainCoreAdapterBoundaryTests: XCTestCase {
     func testShadowModeReturnsLegacyWhenRustBoundaryThrows() throws {
         let legacy = Data("legacy".utf8)
         var comparisons: [DomainCoreShadowComparison] = []
-        let result = try HermesDomainCoreAdapter.selectBytesWhenNativeAvailable(
+        let result = try HermesDomainCoreAdapter.selectBytes(
             operation: "test_open",
             mode: .shadow,
+            nativeStatus: { .available },
+            coreVersion: { "1.2.3" },
             legacy: { legacy },
             rust: { throw HermesDomainCoreAdapterError.invalidInput },
-            coreVersion: { "1.2.3" },
             recordComparison: { comparisons.append($0) }
         )
 
@@ -29,14 +30,17 @@ final class HermesDomainCoreAdapterBoundaryTests: XCTestCase {
         var legacyWasCalled = false
 
         XCTAssertThrowsError(
-            try HermesDomainCoreAdapter.selectBytesWhenNativeAvailable(
+            try HermesDomainCoreAdapter.selectBytes(
                 operation: "test_open",
                 mode: .rust,
+                nativeStatus: { .available },
+                coreVersion: { "0.0.0-native-unavailable" },
                 legacy: {
                     legacyWasCalled = true
                     return Data()
                 },
-                rust: { throw HermesDomainCoreAdapterError.invalidInput }
+                rust: { throw HermesDomainCoreAdapterError.invalidInput },
+                recordComparison: { _ in }
             )
         )
         XCTAssertFalse(legacyWasCalled)
@@ -47,18 +51,20 @@ final class HermesDomainCoreAdapterBoundaryTests: XCTestCase {
         var coreVersionWasCalled = false
 
         XCTAssertThrowsError(
-            try HermesDomainCoreAdapter.selectBytesWhenNativeAvailable(
+            try HermesDomainCoreAdapter.selectBytes(
                 operation: "test_open",
                 mode: .shadow,
+                nativeStatus: { .available },
+                coreVersion: {
+                    coreVersionWasCalled = true
+                    return "1.2.3"
+                },
                 legacy: { throw BoundaryError.legacyFailure },
                 rust: {
                     rustWasCalled = true
                     return Data("rust".utf8)
                 },
-                coreVersion: {
-                    coreVersionWasCalled = true
-                    return "1.2.3"
-                }
+                recordComparison: { _ in }
             )
         ) { error in
             XCTAssertTrue(error is BoundaryError)
@@ -95,7 +101,7 @@ final class HermesDomainCoreAdapterBoundaryTests: XCTestCase {
     }
 
     private func assertUnavailableShadowBoundary(
-        status: HermesDomainCoreAdapter.NativeStatus,
+        status: DomainCoreRuntimeNativeStatus,
         expectedCategory: String,
         expectedCoreVersion: String
     ) throws {

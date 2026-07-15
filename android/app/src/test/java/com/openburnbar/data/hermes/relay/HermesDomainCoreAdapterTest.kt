@@ -9,6 +9,8 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -140,6 +142,119 @@ class HermesDomainCoreAdapterTest {
         assertArrayEquals(expected, actual)
         assertEquals("hpke_v3_info", comparisons.single().operation)
         assertEquals("hpke-info", comparisons.single().slice)
+    }
+
+    @Test
+    fun `shadow generic selector records match and mismatch with bounded timings`() {
+        mockkStatic(Log::class)
+        every { Log.w(any(), any<String>()) } returns 0
+        val expected = byteArrayOf(0x00, 0x7f, 0xff.toByte())
+        val comparisons = mutableListOf<HermesShadowComparison>()
+        HermesDomainCoreAdapter.comparisonOverride = comparisons::add
+        HermesDomainCoreAdapter.coreVersionOverride = { "1.4.0-beta.2" }
+
+        val matched = HermesDomainCoreAdapter.selectValueWhenNativeAvailable(
+            operation = "aad",
+            mode = HermesDomainCoreMode.SHADOW,
+            legacy = { expected },
+            rust = { expected.copyOf() },
+            equivalent = ByteArray::contentEquals,
+        )
+        val mismatched = HermesDomainCoreAdapter.selectValueWhenNativeAvailable(
+            operation = "ratchet_open",
+            mode = HermesDomainCoreMode.SHADOW,
+            legacy = { expected },
+            rust = { byteArrayOf(0x01) },
+            equivalent = ByteArray::contentEquals,
+        )
+
+        assertSame(expected, matched)
+        assertSame(expected, mismatched)
+        assertEquals(listOf("match", "mismatch"), comparisons.map { it.outcome })
+        assertEquals(listOf(null, "result_mismatch"), comparisons.map { it.mismatchCategory })
+        assertEquals(listOf("aad", "ratchet"), comparisons.map { it.slice })
+        comparisons.forEach { comparison ->
+            assertEquals("1.4.0-beta.2", comparison.coreVersion)
+            assertTrue(comparison.legacyMicros in 0..600_000_000)
+            assertTrue(comparison.rustMicros in 0..600_000_000)
+        }
+    }
+
+    @Test
+    fun `shadow special seal paths contain native loader failure and preserve legacy outputs`() {
+        mockkStatic(Log::class)
+        every { Log.w(any(), any<String>()) } returns 0
+        System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
+        val legacyCiphertext = String(charArrayOf('n', 'o', 't', '-', 'b', 'a', 's', 'e', '6', '4'))
+        val legacyCombined = byteArrayOf(0x01, 0x02)
+        val comparisons = mutableListOf<HermesShadowComparison>()
+        HermesDomainCoreAdapter.comparisonOverride = comparisons::add
+        HermesDomainCoreAdapter.abiVersionOverride = { 3u }
+        HermesDomainCoreAdapter.coreVersionOverride = { "1.4.0" }
+
+        val sealed = HermesDomainCoreAdapter.seal(ByteArray(1), ByteArray(32), ByteArray(0)) { legacyCiphertext }
+        val combined = HermesDomainCoreAdapter.sealCombined(ByteArray(1), ByteArray(32), ByteArray(0)) { legacyCombined }
+
+        assertSame(legacyCiphertext, sealed)
+        assertSame(legacyCombined, combined)
+        assertEquals(listOf("mismatch", "mismatch"), comparisons.map { it.outcome })
+        assertTrue(comparisons.all { it.mismatchCategory == "native_error" })
+        assertEquals(listOf("payload-keywrap", "ratchet"), comparisons.map { it.slice })
+        comparisons.forEach { comparison ->
+            assertTrue(comparison.legacyMicros in 0..600_000_000)
+            assertTrue(comparison.rustMicros in 0..600_000_000)
+        }
+    }
+
+    @Test
+    fun `special seal paths contain ABI unavailability in shadow and fail closed in rust`() {
+        mockkStatic(Log::class)
+        every { Log.w(any(), any<String>()) } returns 0
+        val comparisons = mutableListOf<HermesShadowComparison>()
+        HermesDomainCoreAdapter.comparisonOverride = comparisons::add
+        HermesDomainCoreAdapter.abiVersionOverride = { 2u }
+        HermesDomainCoreAdapter.coreVersionOverride = { error("must not query native version") }
+        val legacyString = String(charArrayOf('l', 'e', 'g', 'a', 'c', 'y'))
+        val legacyBytes = byteArrayOf(0x10, 0x20)
+
+        System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
+        val shadowString = HermesDomainCoreAdapter.seal(ByteArray(1), ByteArray(32), ByteArray(0)) { legacyString }
+        val shadowBytes = HermesDomainCoreAdapter.sealCombined(ByteArray(1), ByteArray(32), ByteArray(0)) { legacyBytes }
+
+        assertSame(legacyString, shadowString)
+        assertSame(legacyBytes, shadowBytes)
+        assertEquals(listOf("seal", "ratchet_seal"), comparisons.map { it.operation })
+        assertTrue(comparisons.all { it.coreVersion == "0.0.0-abi-mismatch" })
+        assertTrue(comparisons.all { it.mismatchCategory == "native_error" && it.rustMicros == 0L })
+
+        System.setProperty("openburnbar.domain_core.hermes.mode", "rust")
+        var legacyCalls = 0
+        assertThrows(IllegalStateException::class.java) {
+            HermesDomainCoreAdapter.seal(ByteArray(1), ByteArray(32), ByteArray(0)) {
+                legacyCalls += 1
+                legacyString
+            }
+        }
+        assertThrows(IllegalStateException::class.java) {
+            HermesDomainCoreAdapter.sealCombined(ByteArray(1), ByteArray(32), ByteArray(0)) {
+                legacyCalls += 1
+                legacyBytes
+            }
+        }
+        assertEquals(0, legacyCalls)
+    }
+
+    @Test
+    fun `reset clears every native and evidence override`() {
+        HermesDomainCoreAdapter.comparisonOverride = { }
+        HermesDomainCoreAdapter.abiVersionOverride = { 3u }
+        HermesDomainCoreAdapter.coreVersionOverride = { "1.0.0" }
+
+        HermesDomainCoreAdapter.resetTestOverrides()
+
+        assertNull(HermesDomainCoreAdapter.comparisonOverride)
+        assertNull(HermesDomainCoreAdapter.abiVersionOverride)
+        assertNull(HermesDomainCoreAdapter.coreVersionOverride)
     }
 
     @Test

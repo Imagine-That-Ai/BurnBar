@@ -162,6 +162,12 @@ internal object AndroidDomainCoreShadowEvidence {
     )
     private val coreVersionPattern = Regex("^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
     private val operationPattern = Regex("^[a-z][a-z0-9_.-]{0,63}$")
+    private val mismatchCategories = setOf(
+        "result_mismatch",
+        "native_unavailable",
+        "native_error",
+        "invalid_result",
+    )
     private val flushMutex = Mutex()
     private var spool: AndroidDomainCoreShadowSpool? = null
     private var flushJob: Job? = null
@@ -291,7 +297,9 @@ internal object AndroidDomainCoreShadowEvidence {
     ): Boolean {
         if (allowedCoverage[domain]?.contains(slice) != true) return false
         if (!operationPattern.matches(operation) || !coreVersionPattern.matches(coreVersion)) return false
-        if ((outcome == "match") != (mismatchCategory == null)) return false
+        if (outcome == "match" && mismatchCategory != null) return false
+        if (outcome == "mismatch" && mismatchCategory !in mismatchCategories) return false
+        if (outcome != "match" && outcome != "mismatch") return false
         return legacyMicros in 0..MAX_LATENCY_MICROS && rustMicros in 0..MAX_LATENCY_MICROS
     }
 }

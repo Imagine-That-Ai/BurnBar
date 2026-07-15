@@ -118,6 +118,10 @@ var packageProductsBase: [Product] = [
         name: "OpenBurnBarKernel",
         targets: ["OpenBurnBarKernel"]
     ),
+    .library(
+        name: "OpenBurnBarDomainCoreRuntime",
+        targets: ["OpenBurnBarDomainCoreRuntime"]
+    ),
     // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): the cross-platform
     // (Apple + Linux + Windows) engine-layer targets carved out of the
     // OpenBurnBarCore monolith. At S0 each holds only a `ModuleMarker.swift`
@@ -912,6 +916,12 @@ let firstPartyTargetsBase: [Target] = [
                 .brew(["zlib"])
             ]
         ),
+        // Shared-Rust rollout policy and evidence primitives. This leaf stays
+        // Foundation-only so Kernel, Quota, LogParsers, and platform shells can
+        // share one fail-closed authority contract without regrowing Kernel.
+        .target(
+            name: "OpenBurnBarDomainCoreRuntime"
+        ),
         // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
         // remediation(typespec-strangler): the generated Firestore canon stays
         // linked into the production graph — the `import OpenBurnBarFirestoreModels`
@@ -922,6 +932,7 @@ let firstPartyTargetsBase: [Target] = [
         .target(
             name: "OpenBurnBarKernel",
             dependencies: [
+                "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
             ] + domainCoreDependencies,
@@ -1195,6 +1206,7 @@ let firstPartyTargetsBase: [Target] = [
             // directly so an absent or stale ABI cannot compile into a skipped assertion.
             dependencies: [
                 "OpenBurnBarCore",
+                "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarKernel",
                 "OpenBurnBarLogParsers",
                 "OpenBurnBarFirestoreModels",

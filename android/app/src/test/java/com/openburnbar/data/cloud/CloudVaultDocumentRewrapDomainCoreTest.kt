@@ -2,6 +2,7 @@ package com.openburnbar.data.cloud
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -220,11 +221,13 @@ class CloudVaultDocumentRewrapDomainCoreTest {
     fun sameKeyFailsClosedInRustButShadowReturnsLegacyAndReportsSanitizedError() {
         val key = ByteArray(32) { 7.toByte() }
         val diagnostics = mutableListOf<CloudVaultDocumentRewrapDiagnostic>()
+        val comparisons = mutableListOf<CloudVaultShadowComparison>()
         var legacyCalls = 0
         var nativeCalls = 0
         CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
         CloudVaultDocumentRewrapDomainCore.coreVersionOverride = { "0.1.0" }
         CloudVaultDocumentRewrapDomainCore.diagnosticOverride = diagnostics::add
+        CloudVaultDocumentRewrapDomainCore.comparisonOverride = comparisons::add
         CloudVaultDocumentRewrapDomainCore.nativeRewrapOverride = { _, _, _, _ ->
             nativeCalls += 1
             emptyFfiResult()
@@ -271,6 +274,10 @@ class CloudVaultDocumentRewrapDomainCoreTest {
             listOf(CloudVaultDocumentRewrapDiagnostic("document_rewrap", "rust_error", "0.1.0", 1)),
             diagnostics,
         )
+        assertEquals("mismatch", comparisons.single().outcome)
+        assertEquals("native_error", comparisons.single().mismatchCategory)
+        assertTrue(comparisons.single().legacyMicros in 0..600_000_000)
+        assertTrue(comparisons.single().rustMicros in 0..600_000_000)
     }
 
     @Test
@@ -287,11 +294,13 @@ class CloudVaultDocumentRewrapDomainCoreTest {
 
         CloudVaultDocumentRewrapDomainCore.resetTestOverrides()
         val diagnostics = mutableListOf<CloudVaultDocumentRewrapDiagnostic>()
+        val comparisons = mutableListOf<CloudVaultShadowComparison>()
         CloudVaultDocumentRewrapDomainCore.modeOverride = CloudVaultDocumentRewrapMode.SHADOW
         CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
         CloudVaultDocumentRewrapDomainCore.coreVersionOverride = { "0.1.0" }
         CloudVaultDocumentRewrapDomainCore.nonceOverride = { ByteArray(12) { 0x55.toByte() } }
         CloudVaultDocumentRewrapDomainCore.diagnosticOverride = diagnostics::add
+        CloudVaultDocumentRewrapDomainCore.comparisonOverride = comparisons::add
         CloudVaultDocumentRewrapDomainCore.nativeRewrapOverride = { request, _, _, _ ->
             assertEquals("sealedLabel", request.resealNoncePlan.single().fieldName)
             assertEquals(0x55, request.resealNoncePlan.single().nonce.first().toInt() and 0xff)
@@ -314,6 +323,90 @@ class CloudVaultDocumentRewrapDomainCoreTest {
             listOf(CloudVaultDocumentRewrapDiagnostic("document_rewrap", "mismatch", "0.1.0", 1)),
             diagnostics,
         )
+        assertEquals("result_mismatch", comparisons.single().mismatchCategory)
+        assertTrue(comparisons.single().legacyMicros in 0..600_000_000)
+        assertTrue(comparisons.single().rustMicros in 0..600_000_000)
+    }
+
+    @Test
+    fun shadowMatchReturnsExactLegacyResultAndEmitsBoundedPromotionEvidence() {
+        val oldKey = ByteArray(32) { 0x11.toByte() }
+        val newKey = ByteArray(32) { 0x22.toByte() }
+        val newVaultKeyID = CloudVaultCrypto.vaultKeyID(newKey)
+        val expected = CloudVaultDocumentRewrapResult(mapOf("status" to "unchanged"), emptyList())
+        val comparisons = mutableListOf<CloudVaultShadowComparison>()
+        var legacyCalls = 0
+        var nativeCalls = 0
+        CloudVaultDocumentRewrapDomainCore.modeOverride = CloudVaultDocumentRewrapMode.SHADOW
+        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
+        CloudVaultDocumentRewrapDomainCore.coreVersionOverride = { "2.0.0-beta.4" }
+        CloudVaultDocumentRewrapDomainCore.comparisonOverride = comparisons::add
+        CloudVaultDocumentRewrapDomainCore.nativeRewrapOverride = { request, _, _, _ ->
+            nativeCalls += 1
+            assertTrue(request.envelopes.isEmpty())
+            assertTrue(request.resealNoncePlan.isEmpty())
+            emptyFfiResult()
+        }
+
+        val actual = CloudVaultDocumentRewrapDomainCore.rewrap(
+            data = expected.data,
+            uid = "uid",
+            collection = "collection",
+            docID = "doc",
+            oldKey = oldKey,
+            newKey = newKey,
+            newVaultKeyID = newVaultKeyID,
+            vaultGeneration = null,
+            rotationJobId = null,
+        ) {
+            legacyCalls += 1
+            expected
+        }
+
+        assertSame(expected, actual)
+        assertEquals(1, legacyCalls)
+        assertEquals(1, nativeCalls)
+        val comparison = comparisons.single()
+        assertEquals("cloudvault", comparison.domain)
+        assertEquals("document-rewrap", comparison.slice)
+        assertEquals("document_rewrap", comparison.operation)
+        assertEquals("2.0.0-beta.4", comparison.coreVersion)
+        assertEquals("match", comparison.outcome)
+        assertNull(comparison.mismatchCategory)
+        assertTrue(comparison.legacyMicros in 0..600_000_000)
+        assertTrue(comparison.rustMicros in 0..600_000_000)
+    }
+
+    @Test
+    fun invalidNonceLengthFailsBeforeNativeAndLeavesCallerKeysUntouched() {
+        val oldKey = ByteArray(32) { 0x31.toByte() }
+        val newKey = ByteArray(32) { 0x32.toByte() }
+        var nativeCalls = 0
+        CloudVaultDocumentRewrapDomainCore.modeOverride = CloudVaultDocumentRewrapMode.RUST
+        CloudVaultDocumentRewrapDomainCore.abiVersionOverride = { 3u }
+        CloudVaultDocumentRewrapDomainCore.nonceOverride = { ByteArray(11) }
+        CloudVaultDocumentRewrapDomainCore.nativeRewrapOverride = { _, _, _, _ ->
+            nativeCalls += 1
+            emptyFfiResult()
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            CloudVaultDocumentRewrapDomainCore.rewrap(
+                mapOf("sealed" to textMap()),
+                "uid",
+                "collection",
+                "doc",
+                oldKey,
+                newKey,
+                CloudVaultCrypto.vaultKeyID(newKey),
+                null,
+                null,
+            ) { error("legacy must not run") }
+        }
+
+        assertEquals(0, nativeCalls)
+        assertTrue(oldKey.all { it == 0x31.toByte() })
+        assertTrue(newKey.all { it == 0x32.toByte() })
     }
 
     @Test

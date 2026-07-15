@@ -1,9 +1,30 @@
-import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import java.util.Properties
+import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
+
+abstract class GenerateDomainCoreBuildProfileAsset : DefaultTask() {
+    @get:Input
+    abstract val profileJson: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val file = outputDirectory.file("domain-core-build-profile.json").get().asFile
+        file.parentFile.mkdirs()
+        file.writeText(profileJson.get())
+    }
+}
 
 plugins {
     id("com.android.application")
@@ -61,7 +82,7 @@ val canonicalDomainCoreIdentity = mapOf(
     "developer" to ("development" to "development"),
     "public-production" to ("signed" to "public"),
     "internal" to ("signed" to "internal"),
-    "beta" to ("signed" to "beta"),
+    "beta" to ("signed" to "beta")
 )[domainCoreProfileName] ?: error("Unknown domain-core profile identity")
 require(domainCoreAuthority == canonicalDomainCoreIdentity.first && domainCoreDistribution == canonicalDomainCoreIdentity.second) {
     "Domain-core profile authority/distribution does not match its canonical identity"
@@ -86,16 +107,16 @@ fun developerDomainCoreMode(domain: String, vararg environmentKeys: String): Str
 val cloudVaultSearchDomainCoreMode = developerDomainCoreMode(
     "cloudVaultSearch",
     "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE",
-    "OPENBURNBAR_CLOUDVAULT_SEARCH_MODE",
+    "OPENBURNBAR_CLOUDVAULT_SEARCH_MODE"
 )
 val cloudVaultDocumentRewrapMode = developerDomainCoreMode("cloudVaultRewrap", "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE")
 val cloudVaultDomainCoreMode = developerDomainCoreMode(
     "cloudVault",
     "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE",
-    "OPENBURNBAR_CLOUDVAULT_DOMAIN_MODE",
+    "OPENBURNBAR_CLOUDVAULT_DOMAIN_MODE"
 )
 val hermesDomainCoreMode = developerDomainCoreMode("hermes", "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE")
-val generatedDomainCoreProfileDir = layout.buildDirectory.dir("generated/domainCoreProfile")
+val generatedDomainCoreProfileAssetsDir = layout.buildDirectory.dir("generated/domainCoreProfile/assets")
 val resolvedDomainCoreProfileArtifact = mapOf(
     "schemaVersion" to 1,
     "name" to domainCoreProfileName,
@@ -103,21 +124,11 @@ val resolvedDomainCoreProfileArtifact = mapOf(
     "distribution" to domainCoreDistribution,
     "rolloutChannel" to domainCoreChannel.ifEmpty { null },
     "evidenceEnabled" to domainCoreEvidenceEnabled,
-    "modes" to canonicalDomainCoreModes,
+    "modes" to canonicalDomainCoreModes
 )
-val generateDomainCoreBuildProfileAsset = tasks.register("generateDomainCoreBuildProfileAsset") {
-    val output = generatedDomainCoreProfileDir.map { it.file("assets/domain-core-build-profile.json") }
-    inputs.property("resolvedDomainCoreProfile", JsonOutput.toJson(resolvedDomainCoreProfileArtifact))
-    outputs.file(output)
-    doLast {
-        val file = output.get().asFile
-        file.parentFile.mkdirs()
-        file.writeText(
-            JsonOutput.prettyPrint(
-                JsonOutput.toJson(resolvedDomainCoreProfileArtifact),
-            ) + "\n",
-        )
-    }
+val generateDomainCoreBuildProfileAsset = tasks.register<GenerateDomainCoreBuildProfileAsset>("generateDomainCoreBuildProfileAsset") {
+    profileJson.set(JsonOutput.prettyPrint(JsonOutput.toJson(resolvedDomainCoreProfileArtifact)) + "\n")
+    outputDirectory.set(generatedDomainCoreProfileAssetsDir)
 }
 
 /**
@@ -145,7 +156,13 @@ fun resolveAmplitudeConfig(envVar: String, localPropertyKey: String): String {
 gradle.taskGraph.whenReady {
     val releaseTask =
         allTasks.firstOrNull { task ->
-            task.path.startsWith("${project.path}:") && task.name.contains("Release")
+            val artifactTask =
+                listOf("assemble", "bundle", "package", "install").any(task.name::startsWith) &&
+                    task.name.endsWith("Release")
+            val distributionTask =
+                listOf("publish", "upload").any(task.name::startsWith) && task.name.contains("Release")
+            task.path.startsWith("${project.path}:") &&
+                (artifactTask || distributionTask)
         }
     if (releaseTask != null) {
         if (openBurnBarUseDebugAppCheck.get()) {
@@ -162,7 +179,8 @@ gradle.taskGraph.whenReady {
         }
         if (domainCoreAuthority != "signed") {
             throw GradleException(
-                "Android release artifacts require OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE to resolve to a signed profile",
+                "Android release artifact task ${releaseTask.path} requires " +
+                    "OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE to resolve to a signed profile"
             )
         }
     }
@@ -318,10 +336,6 @@ android {
         }
     }
 
-    sourceSets.named("main") {
-        assets.srcDir(generatedDomainCoreProfileDir.get().dir("assets").asFile)
-    }
-
     testOptions {
         unitTests.all {
             it.jvmArgs("-Xshare:off")
@@ -335,6 +349,15 @@ android {
         )
         getByName("androidTest").assets.directories.add(
             rootProject.layout.projectDirectory.dir("../tests/fixtures/domain-core/cloudvault/v1").asFile.absolutePath
+        )
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            generateDomainCoreBuildProfileAsset,
+            GenerateDomainCoreBuildProfileAsset::outputDirectory
         )
     }
 }
@@ -754,7 +777,7 @@ tasks.register("syncGeneratedSources") {
 // A fresh build always pulls the latest generated sources first, so a stale
 // hand-edited copy can never reach the compiler.
 tasks.named("preBuild") {
-    dependsOn("syncGeneratedSources", generateDomainCoreBuildProfileAsset)
+    dependsOn("syncGeneratedSources")
 }
 
 // syncGeneratedSources writes two files inside src/main/java, which the
