@@ -25,6 +25,7 @@ const DIAGNOSTIC_POLICY = JSON.parse(
 );
 
 const SLICE_OPERATION = {
+  "cloudvault/pensieve-vectors": "pensieve_l2_normalize",
   "quota/claude": "claude_quota",
   "quota/codex": "codex_quota",
   "quota/cursor": "cursor_quota",

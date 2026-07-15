@@ -223,7 +223,7 @@ public enum DomainCoreBuildProfileResolver {
     }
 
     private static func isAbsentCandidateValue(_ value: Any?) -> Bool {
-        value == nil || (value as? String) == ""
+        value == nil || (value as? String)?.isEmpty == true
     }
 
     private static func exactString(_ value: Any?) -> String? {

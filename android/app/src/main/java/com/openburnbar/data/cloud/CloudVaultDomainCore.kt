@@ -126,7 +126,7 @@ internal object CloudVaultDomainCore {
     )
 
     fun vaultKeyId(key: ByteArray): String {
-        CloudVaultLegacyCrypto.requireVaultKey(key)
+        CloudVaultLegacyValidation.requireVaultKey(key)
         return dispatch(
             operation = "vault_key_id",
             legacy = { CloudVaultLegacyCrypto.vaultKeyId(key) },
@@ -135,7 +135,7 @@ internal object CloudVaultDomainCore {
     }
 
     fun keyedHashHex(data: ByteArray, key: ByteArray, purpose: CloudVaultHashPurpose): String {
-        CloudVaultLegacyCrypto.requireVaultKey(key)
+        CloudVaultLegacyValidation.requireVaultKey(key)
         return dispatch(
             operation = purpose.wireValue.replace('-', '_'),
             legacy = { CloudVaultLegacyCrypto.keyedHashHex(data, key, purpose) },
@@ -144,7 +144,7 @@ internal object CloudVaultDomainCore {
     }
 
     fun subscriptionDocId(agentURI: String, topicID: String, key: ByteArray, legacy: () -> String): String {
-        CloudVaultLegacyCrypto.requireVaultKey(key)
+        CloudVaultLegacyValidation.requireVaultKey(key)
         return dispatch(
             operation = "subscription_doc_id",
             legacy = legacy,
@@ -162,7 +162,7 @@ internal object CloudVaultDomainCore {
     )
 
     fun aesSealDetached(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): CloudVaultAesDetachedBox {
-        CloudVaultLegacyCrypto.requireAesInputs(key, nonce)
+        CloudVaultLegacyValidation.requireAesInputs(key, nonce)
         return dispatch(
             operation = "aes_seal_detached",
             legacy = { CloudVaultLegacyCrypto.aesSealDetached(plaintext, key, nonce, aad) },
@@ -179,7 +179,7 @@ internal object CloudVaultDomainCore {
     }
 
     fun aesSealCombined(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): ByteArray {
-        CloudVaultLegacyCrypto.requireAesInputs(key, nonce)
+        CloudVaultLegacyValidation.requireAesInputs(key, nonce)
         return dispatchBytes(
             operation = "aes_seal_combined",
             legacy = {
@@ -191,7 +191,7 @@ internal object CloudVaultDomainCore {
     }
 
     fun aesOpenCombined(combined: ByteArray, key: ByteArray, aad: ByteArray): ByteArray {
-        CloudVaultLegacyCrypto.requireVaultKey(key)
+        CloudVaultLegacyValidation.requireVaultKey(key)
         return dispatchBytes(
             operation = "aes_open_combined",
             legacy = { CloudVaultLegacyCrypto.aesOpenCombined(combined, key, aad) },
@@ -200,8 +200,8 @@ internal object CloudVaultDomainCore {
     }
 
     fun aesOpenTextDetached(nonce: ByteArray, ciphertext: ByteArray, tag: ByteArray, key: ByteArray, aad: ByteArray): String {
-        CloudVaultLegacyCrypto.requireAesInputs(key, nonce)
-        CloudVaultLegacyCrypto.requireTag(tag)
+        CloudVaultLegacyValidation.requireAesInputs(key, nonce)
+        CloudVaultLegacyValidation.requireTag(tag)
         return dispatch(
             operation = "aes_open_text",
             legacy = { CloudVaultLegacyCrypto.aesOpenCombined(nonce + ciphertext + tag, key, aad).toString(Charsets.UTF_8) },
@@ -268,8 +268,22 @@ internal object CloudVaultDomainCore {
             val rustMicros = elapsedMicros(rustStarted)
             val matches = rustResult.isSuccess && equivalent(legacyResult, rustResult.getOrThrow())
             when {
-                rustResult.isFailure -> record(operation, "rust_error")
-                !matches -> record(operation, "mismatch")
+                rustResult.isFailure -> recordCloudVaultDiagnostic(
+                    operation,
+                    "rust_error",
+                    ABI_VERSION,
+                    LOG_TAG,
+                    diagnosticCounts,
+                    diagnosticOverride,
+                )
+                !matches -> recordCloudVaultDiagnostic(
+                    operation,
+                    "mismatch",
+                    ABI_VERSION,
+                    LOG_TAG,
+                    diagnosticCounts,
+                    diagnosticOverride,
+                )
             }
             comparisonOverride?.invoke(
                 CloudVaultShadowComparison(
@@ -298,18 +312,6 @@ internal object CloudVaultDomainCore {
         check(abi == ABI_VERSION.toUInt()) { "CloudVault domain-core ABI mismatch" }
     }
 
-    private fun record(operation: String, category: String) {
-        val counter = diagnosticCounts.computeIfAbsent("$operation:$category") { AtomicLong() }
-        val diagnostic = CloudVaultDomainCoreDiagnostic(operation, ABI_VERSION, category, counter.incrementAndGet())
-        diagnosticOverride?.invoke(diagnostic) ?: runCatching {
-            Log.w(
-                LOG_TAG,
-                "operation=${diagnostic.operation} version=${diagnostic.abiVersion} " +
-                    "category=${diagnostic.category} count=${diagnostic.count}",
-            )
-        }
-    }
-
     private val CloudVaultHashPurpose.ffiValue: FfiHashPurpose
         get() = when (this) {
             CloudVaultHashPurpose.BLOB_INTEGRITY -> FfiHashPurpose.BLOB_INTEGRITY
@@ -317,6 +319,25 @@ internal object CloudVaultDomainCore {
             CloudVaultHashPurpose.SESSION_CHUNK -> FfiHashPurpose.SESSION_CHUNK
             CloudVaultHashPurpose.PROJECT_MEMORY_CONTENT -> FfiHashPurpose.PROJECT_MEMORY_CONTENT
         }
+}
+
+private fun recordCloudVaultDiagnostic(
+    operation: String,
+    category: String,
+    abiVersion: Int,
+    logTag: String,
+    diagnosticCounts: ConcurrentHashMap<String, AtomicLong>,
+    diagnosticOverride: ((CloudVaultDomainCoreDiagnostic) -> Unit)?,
+) {
+    val counter = diagnosticCounts.computeIfAbsent("$operation:$category") { AtomicLong() }
+    val diagnostic = CloudVaultDomainCoreDiagnostic(operation, abiVersion, category, counter.incrementAndGet())
+    diagnosticOverride?.invoke(diagnostic) ?: runCatching {
+        Log.w(
+            logTag,
+            "operation=${diagnostic.operation} version=${diagnostic.abiVersion} " +
+                "category=${diagnostic.category} count=${diagnostic.count}",
+        )
+    }
 }
 
 internal object CloudVaultRecoveryDomainCore {

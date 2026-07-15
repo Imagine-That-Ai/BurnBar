@@ -61,7 +61,7 @@ public enum DomainCoreReleaseIdentityReporter {
         let executable = executableURL.standardizedFileURL
         let executableValues = try executable.resourceValues(forKeys: [
             .isRegularFileKey,
-            .isSymbolicLinkKey,
+            .isSymbolicLinkKey
         ])
         guard executableValues.isRegularFile == true,
               executableValues.isSymbolicLink != true else {

@@ -82,9 +82,14 @@ def verify_source_and_build_graph(repo_root: Path, manifest: dict[str, Any]) -> 
     graph_files = [
         path
         for path in tracked_files(repo_root)
-        if Path(path).suffix in BUILD_GRAPH_SUFFIXES and not path.startswith(("config/domain-core-legacy-deletion", "docs/", "tests/"))
+        if Path(path).suffix in BUILD_GRAPH_SUFFIXES
+        and not path.startswith(("config/domain-core-legacy-deletion", "docs/", "tests/"))
     ]
-    graph_text = {path: (repo_root / path).read_text(encoding="utf-8", errors="replace") for path in graph_files if (repo_root / path).is_file()}
+    graph_text = {
+        path: (repo_root / path).read_text(encoding="utf-8", errors="replace")
+        for path in graph_files
+        if (repo_root / path).is_file()
+    }
     for raw_row in GATE.require_array(manifest["rows"], "manifest.rows"):
         row = GATE.require_object(raw_row, "manifest row")
         if row.get("state") != "legacy_deleted":
@@ -102,11 +107,15 @@ def verify_source_and_build_graph(repo_root: Path, manifest: dict[str, Any]) -> 
                 for source in root.rglob("*"):
                     if source.is_file() and not source.is_symlink():
                         if target.value in source.read_text(encoding="utf-8", errors="replace"):
-                            raise GATE.GateError(f"row {row_id}: deleted legacy identifier remains elsewhere in source root: {source.relative_to(repo_root)}")
+                            raise GATE.GateError(
+                                f"row {row_id}: deleted legacy identifier remains elsewhere in source root: {source.relative_to(repo_root)}"
+                            )
             needles = {target.path, Path(target.path).name}
             for graph_path, contents in graph_text.items():
                 if any(needle in contents for needle in needles):
-                    raise GATE.GateError(f"row {row_id}: build graph still references deleted legacy input in {graph_path}")
+                    raise GATE.GateError(
+                        f"row {row_id}: build graph still references deleted legacy input in {graph_path}"
+                    )
     return deleted
 
 
@@ -129,7 +138,9 @@ def stable_authority_for_deleted_rows(
             f"row {row_id}.receipts.stableRelease",
         )
         path = GATE.secure_path(repo_root, relative, f"row {row_id} stable receipt", must_exist=True)
-        stable = GATE.require_object(GATE.load_json(path, f"row {row_id} stable receipt"), f"row {row_id} stable receipt")
+        stable = GATE.require_object(
+            GATE.load_json(path, f"row {row_id} stable receipt"), f"row {row_id} stable receipt"
+        )
         generation = row.get("authorityGeneration")
         if (
             stable.get("schemaVersion") != 2
@@ -237,11 +248,17 @@ def verify_final_artifacts(
         )
     resolved: dict[str, str] = {}
     for artifact_id, item in declared.items():
-        matches = [entry for entry in staged if entry[0] == item.get("artifactSha256") and entry[1] == item.get("identityReportSha256")]
+        matches = [
+            entry
+            for entry in staged
+            if entry[0] == item.get("artifactSha256") and entry[1] == item.get("identityReportSha256")
+        ]
         if len(matches) != 1:
             raise GATE.GateError(f"{artifact_id}: final binary bytes and observed identity are not uniquely staged")
         if item.get("loadedIdentity") != expected_identity or matches[0][2] != expected_identity:
-            raise GATE.GateError(f"{artifact_id}: final loaded Rust identity does not equal the stable released candidate")
+            raise GATE.GateError(
+                f"{artifact_id}: final loaded Rust identity does not equal the stable released candidate"
+            )
         resolved[artifact_id] = item["artifactSha256"]
     return resolved
 

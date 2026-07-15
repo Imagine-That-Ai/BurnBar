@@ -33,8 +33,12 @@ def test_production_package_identity_and_opaque_project_id_fixture() -> None:
     key = bytes.fromhex(fixture["vaultKeyHex"])
     adapter = _rust()
 
-    assert adapter.project_memory_doc_id(fixture["projectMemory"]["slug"], key) == fixture["projectMemory"]["documentID"]
-    assert adapter.project_memory_doc_id(fixture["unicode"]["projectSlug"], key) == fixture["unicode"]["projectDocumentID"]
+    assert (
+        adapter.project_memory_doc_id(fixture["projectMemory"]["slug"], key) == fixture["projectMemory"]["documentID"]
+    )
+    assert (
+        adapter.project_memory_doc_id(fixture["unicode"]["projectSlug"], key) == fixture["unicode"]["projectDocumentID"]
+    )
 
 
 def test_production_binding_ignores_another_consumers_global_module(
@@ -47,32 +51,38 @@ def test_production_binding_ignores_another_consumers_global_module(
         "openburnbar_domain_ffi",
         SimpleNamespace(__file__="/untrusted/other-consumer/openburnbar_domain_ffi.py"),
     )
-    assert _rust().project_memory_doc_id(fixture["projectMemory"]["slug"], key) == fixture[
-        "projectMemory"
-    ]["documentID"]
+    assert (
+        _rust().project_memory_doc_id(fixture["projectMemory"]["slug"], key) == fixture["projectMemory"]["documentID"]
+    )
 
 
 def test_aad_and_fixed_keyed_hash_canonical_fixtures() -> None:
     fixture = json.loads((FIXTURE_DIR / "cloudvault-deterministic-kat.json").read_text())
     adapter = _rust()
     for vector in fixture["aad"]:
-        assert adapter.aad_context(
-            vector["uid"],
-            vector["collection"],
-            vector["docID"],
-            vector["field"],
-            vector["schemaVersion"],
-            vector["purpose"],
-        ) == vector["v2"]
+        assert (
+            adapter.aad_context(
+                vector["uid"],
+                vector["collection"],
+                vector["docID"],
+                vector["field"],
+                vector["schemaVersion"],
+                vector["purpose"],
+            )
+            == vector["v2"]
+        )
         assert adapter.validate_aad(vector["v2"]) == vector["v2"]
     for vector in fixture["keyedHashes"]:
         if vector["purpose"] == "session-chunk":
             continue
-        assert adapter.keyed_hash(
-            bytes.fromhex(vector["dataHex"]),
-            bytes.fromhex(vector["keyHex"]),
-            vector["purpose"],
-        ) == vector["hex"]
+        assert (
+            adapter.keyed_hash(
+                bytes.fromhex(vector["dataHex"]),
+                bytes.fromhex(vector["keyHex"]),
+                vector["purpose"],
+            )
+            == vector["hex"]
+        )
 
 
 def test_token_and_semantic_search_use_canonical_ordered_hashes() -> None:
@@ -168,12 +178,14 @@ def test_shadow_returns_legacy_and_reports_only_safe_metadata() -> None:
     key = bytes(range(32))
     expected = legacy._cloud_vault_project_memory_doc_id("secret-project", key)
     assert adapter.project_memory_doc_id("secret-project", key) == expected
-    assert diagnostics == [{
-        "component": "local-mcp-domain-core",
-        "operation": "project-memory-doc-id",
-        "category": "value-mismatch",
-        "coreVersion": manifest["coreVersion"],
-    }]
+    assert diagnostics == [
+        {
+            "component": "local-mcp-domain-core",
+            "operation": "project-memory-doc-id",
+            "category": "value-mismatch",
+            "coreVersion": manifest["coreVersion"],
+        }
+    ]
     encoded = json.dumps(diagnostics)
     assert "secret-project" not in encoded
     assert key.hex() not in encoded
@@ -209,9 +221,7 @@ def test_legacy_mode_does_not_require_native_package(tmp_path: Path) -> None:
 
 def test_shadow_native_load_failure_returns_legacy_with_safe_diagnostic(tmp_path: Path) -> None:
     diagnostics: list[dict[str, object]] = []
-    adapter = CloudVaultDomainAdapter(
-        "shadow", package_dir=tmp_path / "absent", diagnostic=diagnostics.append
-    )
+    adapter = CloudVaultDomainAdapter("shadow", package_dir=tmp_path / "absent", diagnostic=diagnostics.append)
     key = bytes(range(32))
     expected = legacy._cloud_vault_project_memory_doc_id("private-project", key)
     assert adapter.project_memory_doc_id("private-project", key) == expected

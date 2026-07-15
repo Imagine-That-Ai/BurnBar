@@ -9,7 +9,20 @@ import { DOMAIN_CORE_CANDIDATE_RECEIPT } from "../generated/domainCoreCandidateR
 
 const CANDIDATE_COMMIT = "a".repeat(40);
 const SOURCE_SHA256 = "b".repeat(64);
-const domains = ["quota", "cloudVault", "cloudVaultRewrap", "cloudVaultSearch", "hermes", "pricing"] as const;
+function receiptModes(mode: string) {
+  return {
+    quota: mode,
+    cloudVault: mode,
+    cloudVaultRewrap: mode,
+    cloudVaultSearch: mode,
+    hermes: mode,
+    pricing: mode,
+  };
+}
+
+function mutableCandidateIdentity(): Record<string, unknown> {
+  return { ...candidateIdentity() };
+}
 
 function candidateIdentity() {
   return {
@@ -31,7 +44,7 @@ function signedReceipt(
     distribution: name.startsWith("public-production") ? "public" : name,
     rolloutChannel: name.startsWith("public-production") ? null : name,
     evidenceEnabled: !name.startsWith("public-production"),
-    modes: Object.fromEntries(domains.map((domain) => [domain, mode])) as Record<(typeof domains)[number], string>,
+    modes: receiptModes(mode),
     candidateIdentity: candidateIdentity(),
   };
 }
@@ -44,7 +57,7 @@ function developerReceipt() {
     distribution: "development",
     rolloutChannel: null,
     evidenceEnabled: false,
-    modes: Object.fromEntries(domains.map((domain) => [domain, "legacy"])) as Record<(typeof domains)[number], string>,
+    modes: receiptModes("legacy"),
     candidateIdentity: null,
   };
 }
@@ -150,8 +163,9 @@ describe("domain-core Functions profile", () => {
   it.each(["candidateCommit", "coreVersion", "abiVersion", "sourceSha256"])(
     "rejects a signed receipt missing candidateIdentity.%s",
     (key) => {
-      const receipt = signedReceipt("internal", "shadow") as unknown as {
-        candidateIdentity: Record<string, unknown>;
+      const receipt = {
+        ...signedReceipt("internal", "shadow"),
+        candidateIdentity: mutableCandidateIdentity(),
       };
       delete receipt.candidateIdentity[key];
       expect(resolveDomainCoreRuntimeMode("pricing", {}, receipt)).toBe("legacy");
@@ -172,8 +186,9 @@ describe("domain-core Functions profile", () => {
     ["uppercase source digest", "sourceSha256", "B".repeat(64)],
     ["short source digest", "sourceSha256", "b".repeat(63)],
   ])("rejects a signed receipt with %s", (_label, key, value) => {
-    const receipt = signedReceipt("internal", "shadow") as unknown as {
-      candidateIdentity: Record<string, unknown>;
+    const receipt = {
+      ...signedReceipt("internal", "shadow"),
+      candidateIdentity: mutableCandidateIdentity(),
     };
     receipt.candidateIdentity[key] = value;
     expect(resolveDomainCoreRuntimeMode("pricing", {}, receipt)).toBe("legacy");
@@ -182,8 +197,9 @@ describe("domain-core Functions profile", () => {
   });
 
   it("rejects an extra candidate identity field", () => {
-    const receipt = signedReceipt("internal", "shadow") as unknown as {
-      candidateIdentity: Record<string, unknown>;
+    const receipt = {
+      ...signedReceipt("internal", "shadow"),
+      candidateIdentity: mutableCandidateIdentity(),
     };
     receipt.candidateIdentity.untrusted = "value";
     expect(resolveDomainCoreRuntimeMode("pricing", {}, receipt)).toBe("legacy");
@@ -214,18 +230,16 @@ describe("domain-core Functions profile", () => {
   });
 
   it("requires the canonical developer receipt to carry explicit null identity", () => {
-    const missing = developerReceipt() as unknown as Record<string, unknown>;
-    delete missing.candidateIdentity;
+    const { candidateIdentity: _candidateIdentity, ...missing } = developerReceipt();
     expect(resolveDomainCoreRuntimeMode("pricing", {}, missing)).toBe("legacy");
 
-    const populated = developerReceipt() as unknown as Record<string, unknown>;
-    populated.candidateIdentity = candidateIdentity();
+    const populated = { ...developerReceipt(), candidateIdentity: candidateIdentity() };
     expect(resolveDomainCoreRuntimeMode("pricing", {}, populated)).toBe("legacy");
   });
 
   it("rejects malformed receipt modes instead of normalizing them", () => {
     const receipt = signedReceipt("internal", "shadow");
-    (receipt.modes as Record<string, string>).pricing = "SHADOW";
-    expect(resolveDomainCoreRuntimeMode("pricing", {}, receipt)).toBe("legacy");
+    const malformed = { ...receipt, modes: { ...receipt.modes, pricing: "SHADOW" } };
+    expect(resolveDomainCoreRuntimeMode("pricing", {}, malformed)).toBe("legacy");
   });
 });
