@@ -30,6 +30,7 @@ struct SingleProviderResult: Sendable {
 
 struct ConversationIndexingResult: Sendable {
     var indexedConversationChanges: Int = 0
+    var parsedConversationCount: Int = 0
     var errors: [AgentProvider: String] = [:]
     var duration: TimeInterval = 0
 }

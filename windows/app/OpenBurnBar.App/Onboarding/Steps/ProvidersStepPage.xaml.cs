@@ -23,6 +23,14 @@ public sealed partial class ProvidersStepPage : Page
     private OnboardingContext? _context;
     private readonly Dictionary<AgentProviderBrand, OnboardingProviderPill> _pills = new();
 
+    /// <summary>
+    /// Injected HWND resolver (the <c>Func&lt;IntPtr&gt;</c> pattern from
+    /// <c>DataControlCenterView.WindowHandleProvider</c>). When set, <see cref="ResolveOwnerHwnd"/>
+    /// uses this instead of the <see cref="OnboardingContext"/> provider so a host can supply
+    /// the exact owner window for the file picker.
+    /// </summary>
+    public Func<IntPtr>? WindowHandleProvider { get; set; }
+
     public ProvidersStepPage()
     {
         InitializeComponent();
@@ -31,12 +39,19 @@ public sealed partial class ProvidersStepPage : Page
 
     private OnboardingWizardModel? Model => _context?.Model;
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
-    {
-        base.OnNavigatedTo(e);
-        _context = e.Parameter as OnboardingContext;
         if (_context is null || Model is null)
         {
+            return;
+        }
+
+        // Wire the injected HWND provider so ResolveOwnerHwnd returns a real handle
+        // instead of IntPtr.Zero (the dead-picker bug — Code Quality SERIOUS-4).
+        WindowHandleProvider ??= _context.WindowHandleProvider;
+
+        LoadDbFields();
+        BuildPills();
+        Model.PropertyChanged += OnModelChanged;
+        SyncCounts();
             return;
         }
 

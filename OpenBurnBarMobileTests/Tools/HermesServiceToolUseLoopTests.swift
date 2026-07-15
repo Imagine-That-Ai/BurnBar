@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import Security
 import FirebaseAuth
 import FirebaseCore
 import OpenBurnBarCore
@@ -31,6 +32,29 @@ final class HermesServiceToolUseLoopTests: XCTestCase {
             options.projectID = "test"
             options.bundleID = Bundle.main.bundleIdentifier ?? "test"
             FirebaseApp.configure(options: options)
+        }
+    }
+
+    /// Keychain entitlement guard: the Hermes tool-use loop creates a
+    /// `HermesService` whose default `secretStore` and relay identity
+    /// keypair touch the iOS Keychain. On an unsigned simulator (CI) the
+    /// Keychain returns `errSecMissingEntitlement` (-34018), which crashes
+    /// or fails every test in this class. Skip the whole class the same way
+    /// `EscrowCryptoRoundTripTests` does — only when the entitlement is
+    /// genuinely unavailable, never to hide a logic failure.
+    override func setUp() async throws {
+        try await super.setUp()
+        // Probe the Keychain with a throwaway item read. If the entitlement
+        // is missing we skip; otherwise the probe is a harmless no-op.
+        let probeQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.openburnbar.qa2-keychain-probe",
+            kSecAttrAccount as String: "probe",
+            kSecReturnData as String: false
+        ]
+        let probeStatus = SecItemCopyMatching(probeQuery as CFDictionary, nil)
+        if probeStatus == errSecMissingEntitlement {
+            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
         }
     }
 

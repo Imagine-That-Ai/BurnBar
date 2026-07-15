@@ -5,8 +5,8 @@ import Foundation
 /// **Privacy contract** (also enforced by `InsightDigestPrivacyTests`):
 ///
 ///   • Device names hashed to `device_xxxx` (stable across builds).
-///   • Project names hashed to `project_xxxx` for export. A user-visible
-///     mapping is returned as `displayName` (last path component, only).
+///   • Project names hashed to `project_xxxx` for export — `displayName`
+///     uses the same hashed ID, never the cleartext folder name.
 ///   • Encoded payload is trimmed to 24 KB by dropping long-tail entries
 ///     (per-day per-provider extras, low-rank providers/models/projects).
 ///   • No keyFiles or full message text ever appears.
@@ -227,7 +227,7 @@ public struct InsightDigestBuilder: Sendable {
                     .prefix(3).map(\.key))
                 let topTitles = Array(value.titles
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-                    .prefix(5).map(\.key))
+                    .prefix(5).map { Self.shortHash($0.key, salt: "title") })
                 let topTools = Array(value.tools
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(5).map(\.key))
@@ -278,7 +278,7 @@ public struct InsightDigestBuilder: Sendable {
                 let cacheRate = value.tokens > 0 ? Double(value.cacheTokens) / Double(value.tokens) : 0
                 let topTitles = Array(value.titles
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-                    .prefix(5).map(\.key))
+                    .prefix(5).map { Self.shortHash($0.key, salt: "title") })
                 let topProjects = Array(value.projects
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(3).map(\.key))
@@ -301,7 +301,7 @@ public struct InsightDigestBuilder: Sendable {
         for u in usages {
             guard let p = u.projectName, !p.isEmpty else { continue }
             let id = hashedProjectID(p)
-            var entry = perProject[id] ?? (lastPathComponent(of: p), 0, 0, [])
+            var entry = perProject[id] ?? (id, 0, 0, [])
             entry.cost += u.costUSD
             entry.tokens += u.totalTokens
             entry.sessions.insert(u.sessionID)

@@ -160,7 +160,11 @@ test("each dangerous mutation reports DRIFT", () => {
     },
     extraCheckAdded: (r) => {
       const rule = r.rules.find((x) => x.type === "required_status_checks");
-      rule.parameters.required_status_checks.push({ context: "Rogue Gate" });
+    },
+    strictToggled: (r) => {
+      const rule = r.rules.find((x) => x.type === "required_status_checks");
+      rule.parameters.strict_required_status_checks_policy =
+        !desiredJson.required_status_checks.strict;
     },
   };
   for (const [label, mutate] of Object.entries(mutations)) {

@@ -458,7 +458,7 @@ final class CloudSyncCoordinator {
         await MainActor.run {
             lastSyncDate = downloadSync.lastSyncDate
             lastSyncError = downloadSync.lastSyncError
+            cloudTotalCost = downloadSync.cloudTotalCost
         }
-        await fetchCloudTotal()
     }
 }

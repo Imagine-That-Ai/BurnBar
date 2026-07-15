@@ -16,12 +16,23 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Swift key-material parameter labels that reference variables, not committed secrets"
+description = "Swift key-material parameter labels that reference variables, not committed secrets — scoped to Swift sources only so the global pattern cannot mask a leaked key literal in TS/Python/Kotlin/etc."
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''privateKey:\s+[A-Za-z_][A-Za-z0-9_]*''',
   '''signingKey:\s+[A-Za-z_][A-Za-z0-9_]*''',
   '''key:\s+[A-Za-z_][A-Za-z0-9_]*''',
+]
+paths = [
+  '''AgentLens/.*\.swift''',
+  '''AgentLensTests/.*\.swift''',
+  '''OpenBurnBarCore/Sources/.*\.swift''',
+  '''OpenBurnBarCore/Tests/.*\.swift''',
+  '''OpenBurnBarDaemon/.*\.swift''',
+  '''OpenBurnBarMobile/.*\.swift''',
+  '''OpenBurnBarMobileTests/.*\.swift''',
+  '''tools/.*/Sources/.*\.swift''',
 ]
 
 [[allowlists]]

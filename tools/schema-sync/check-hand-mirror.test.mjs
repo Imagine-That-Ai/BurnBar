@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   diffMirror,
+  extractCsharpMirrorFields,
   extractInterfaceFields,
   extractKotlinMirrorFields,
   extractSwiftMirrorFields,
@@ -101,5 +102,150 @@ private const val CACHE_WRITE_PIN = "cacheWriteTokens"
       language: "kotlin",
     }),
     ["UsageEventDoc.deviceId", "UsageEventDoc.cacheWriteTokens"]
+  );
+});
+
+test("C# mirror parsing extracts [JsonPropertyName] wire names from records", () => {
+  const mirrorSource = `
+public record FirestoreUsageEventDoc
+{
+    [JsonPropertyName("provider")]
+    public required string Provider { get; init; }
+
+    [JsonPropertyName("providerID")]
+    public required string ProviderID { get; init; }
+
+    [JsonPropertyName("model")]
+    public required string Model { get; init; }
+}
+
+public record FirestoreQuotaBucket
+{
+    [JsonPropertyName("name")]
+    public required string Name { get; init; }
+
+    [JsonPropertyName("used")]
+    public required long Used { get; init; }
+
+    [JsonPropertyName("limit")]
+    public required long Limit { get; init; }
+}
+`;
+
+  assert.deepEqual(
+    [...extractCsharpMirrorFields(mirrorSource)].sort(),
+    ["limit", "model", "name", "provider", "providerID", "used"]
+  );
+});
+
+test("C# mirror parsing ignores comments and string literals", () => {
+  const mirrorSource = `// [JsonPropertyName("fake")]
+var decoy = "[JsonPropertyName(\\\"fake2\\\")]";
+[JsonPropertyName("provider")]
+public required string Provider { get; init; }
+`;
+
+  const fields = extractCsharpMirrorFields(mirrorSource);
+
+  assert.equal(fields.has("fake"), false);
+  assert.equal(fields.has("fake2"), false);
+  assert.deepEqual([...fields], ["provider"]);
+});
+
+test("C# mirror diff detects missing fields when compareOptionality is false", () => {
+  const generated = `
+export interface UsageEventDoc {
+  provider: string;
+  providerID?: string;
+  deviceId?: string;
+  cacheWriteTokens?: number;
+}
+`;
+
+  const mirrorSource = `
+public record FirestoreUsageEventDoc
+{
+    [JsonPropertyName("provider")]
+    public required string Provider { get; init; }
+
+    [JsonPropertyName("providerID")]
+    public required string ProviderID { get; init; }
+}
+`;
+
+  assert.deepEqual(
+    diffMirror({
+      generated,
+      mirrorSource,
+      interfaces: ["UsageEventDoc"],
+      compareOptionality: false,
+      language: "csharp",
+    }),
+    ["UsageEventDoc.deviceId", "UsageEventDoc.cacheWriteTokens"]
+  );
+});
+
+test("stale knownDrift entry: fully-matching C# mirror reports no drift, so a grandfathered token would be stale", () => {
+  const generated = `
+export interface UsageEventDoc {
+  provider: string;
+  providerID?: string;
+}
+`;
+
+  const mirrorSource = `
+public record FirestoreUsageEventDoc
+{
+    [JsonPropertyName("provider")]
+    public required string Provider { get; init; }
+
+    [JsonPropertyName("providerID")]
+    public required string ProviderID { get; init; }
+}
+`;
+
+  const liveDrift = diffMirror({
+    generated,
+    mirrorSource,
+    interfaces: ["UsageEventDoc"],
+    compareOptionality: false,
+    language: "csharp",
+  });
+
+  assert.deepEqual(liveDrift, []);
+  assert.equal(
+    liveDrift.includes("UsageEventDoc.providerID"),
+    false,
+    "diffMirror does not report providerID as drift for a fully-matching mirror; if knownDrift listed it, checkMirror's stale-grandfather path would fire because the token is no longer real drift"
+  );
+});
+
+test("C# mirror with an extra field not in the canon produces zero drift", () => {
+  const generated = `
+export interface UsageEventDoc {
+  provider: string;
+}
+`;
+
+  const mirrorSource = `
+public record FirestoreUsageEventDoc
+{
+    [JsonPropertyName("provider")]
+    public required string Provider { get; init; }
+
+    [JsonPropertyName("extraField")]
+    public required string ExtraField { get; init; }
+}
+`;
+
+  assert.deepEqual(
+    diffMirror({
+      generated,
+      mirrorSource,
+      interfaces: ["UsageEventDoc"],
+      compareOptionality: false,
+      language: "csharp",
+    }),
+    []
   );
 });

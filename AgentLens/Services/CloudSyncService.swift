@@ -122,7 +122,6 @@ final class CloudSyncService {
             )
             if service.lastSyncDate != nil {
                 await downloadRemoteData()
-                await fetchCloudTotal()
             }
         } else {
             TelemetryService.shared.record(

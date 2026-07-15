@@ -62,17 +62,23 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
         await context.refreshPresentationLayer()
     }
 
-    /// Fetch sum of cost across all devices for this user (last 90 days).
+    /// Fetch the 90-day cloud total from the pre-computed rollup document.
+    ///
+    /// Replaces a 90-day `usage` collection scan + client-side sum with a single
+    /// document read of `users/{uid}/usage_rollups/90d` → `totals.costUsd`, the
+    /// same source iOS already uses (`FirestoreRepository.fetchRollups`). The
+    /// rollup is server-computed and costUsd is rounded to 1e-6, matching the
+    /// former client-side sum within rounding.
+    ///
+    /// Missing rollup → nil (graceful; the UI shows "—"). Decode failure → nil.
     func fetchCloudTotal(uid: String? = nil) async {
         let gate = await context.syncGate()
         guard gate.account.isFirebaseAvailable else { return }
         let resolvedUid = uid ?? gate.account.uid
         guard let resolvedUid else { return }
 
-        let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
-
         do {
-            let snapshot = try await withCloudSyncRetry(
+            let data = try await withCloudSyncRetry(
                 policy: context.retryPolicy,
                 circuitBreaker: context.circuitBreaker,
                 domain: "download.usageAggregate"
@@ -80,17 +86,99 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                 try await context.firestoreGateway
                     .collection("users")
                     .document(resolvedUid)
-                    .collection("usage")
-                    .whereField("startTime", isGreaterThan: Timestamp(date: cutoff))
-                    .getDocuments()
+                    .collection("usage_rollups")
+                    .document(RollupWindowKey.ninetyDays.rawValue)
+                    .getData()
             }
 
-            cloudTotalCostBox.write(snapshot.documents.compactMap { doc -> Double? in
-                doc.data()["cost"] as? Double
-            }.reduce(0, +))
+            guard let data, !data.isEmpty else {
+                cloudTotalCostBox.write(nil)
+                return
+            }
+
+            let rollup = Self.decodeUsageRollup(from: data, docID: RollupWindowKey.ninetyDays.rawValue)
+            cloudTotalCostBox.write(rollup?.totals.costUsd)
         } catch {
             AppLogger.sync.error("download_sync_aggregate_failed", metadata: ["error": error.localizedDescription])
         }
+    }
+
+    /// Decodes a Firestore rollup document into `UsageRollupDoc`, replicating the
+    /// iOS `FirestoreRepository.decodeUsageRollup` + `normalizeRollupData` logic:
+    /// Cloud Functions write rollups with shape differences from Swift Codable
+    /// (dict-based `dailyPoints`, missing `id`/`windowKey` in the payload, nested
+    /// arrays without `id` fields).
+    private static func decodeUsageRollup(from data: [String: Any], docID: String) -> UsageRollupDoc? {
+        var enriched = normalizeRollupData(data, docID: docID)
+        if enriched["id"] == nil { enriched["id"] = docID }
+        if enriched["windowKey"] == nil { enriched["windowKey"] = docID }
+
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: enriched) else {
+            AppLogger.sync.warning("rollup_decode_serialization_failed", metadata: ["docID": docID])
+            return nil
+        }
+        do {
+            return try JSONDecoder().decode(UsageRollupDoc.self, from: jsonData)
+        } catch {
+            AppLogger.sync.error("rollup_decode_failed", metadata: ["docID": docID, "error": error.localizedDescription])
+            return nil
+        }
+    }
+
+    /// Normalizes a rollup document to match what the Swift Codable types expect.
+    /// Mirrors `FirestoreRepository.normalizeRollupData` on iOS.
+    private static func normalizeRollupData(_ data: [String: Any], docID: String) -> [String: Any] {
+        var result = data
+
+        // dailyPoints: dict → array
+        if let pointsDict = result["dailyPoints"] as? [String: Any] {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withFullDate]
+            var pointsArray: [[String: Any]] = []
+            for (dateStr, rawValue) in pointsDict {
+                let value: Double
+                if let d = rawValue as? Double { value = d }
+                else if let i = rawValue as? Int { value = Double(i) }
+                else if let n = rawValue as? NSNumber { value = n.doubleValue }
+                else { continue }
+                let date = formatter.date(from: dateStr) ?? Date()
+                pointsArray.append([
+                    "id": dateStr,
+                    "date": date.timeIntervalSinceReferenceDate,
+                    "value": value,
+                ])
+            }
+            pointsArray.sort { ($0["id"] as? String ?? "") < ($1["id"] as? String ?? "") }
+            result["dailyPoints"] = pointsArray
+        }
+
+        // providerSummaries: inject id from provider
+        if let providers = result["providerSummaries"] as? [[String: Any]] {
+            result["providerSummaries"] = providers.map { var p = $0; if p["id"] == nil { p["id"] = p["provider"] }; return p }
+        }
+
+        // accountSummaries: inject id from accountID, or the unattributed provider bucket.
+        if let accounts = result["accountSummaries"] as? [[String: Any]] {
+            result["accountSummaries"] = accounts.map {
+                var account = $0
+                if account["id"] == nil {
+                    account["id"] = account["accountID"] ?? "\(account["providerID"] ?? account["provider"] ?? "provider"):unattributed"
+                }
+                return account
+            }
+        }
+
+        // modelSummaries: inject id from "provider:model"
+        if let models = result["modelSummaries"] as? [[String: Any]] {
+            result["modelSummaries"] = models.map { var m = $0; if m["id"] == nil { m["id"] = "\(m["provider"] ?? ""):\(m["model"] ?? "")" }; return m }
+        }
+
+        // deviceSummaries: inject id from deviceId
+        if let devices = result["deviceSummaries"] as? [[String: Any]] {
+            result["deviceSummaries"] = devices.map { var d = $0; if d["id"] == nil { d["id"] = d["deviceId"] }; return d }
+        }
+
+        return result
     }
 
     /// Updates the local device name in Firestore (called from Settings).

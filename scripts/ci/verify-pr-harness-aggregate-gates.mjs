@@ -20,6 +20,8 @@ const WORKFLOW = join(ROOT, ".github", "workflows", "openburnbar-pr-harness.yml"
 const REQUIRED_GATES = [
   "platform-confidence-gate",
   "targeted-e2e-gate",
+  "harness-required",
+  "harness-informational",
   "openburnbar-pr",
 ];
 

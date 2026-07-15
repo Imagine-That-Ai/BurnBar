@@ -667,6 +667,66 @@ jobs:
         if: always() && env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
         run: bash ./scripts/ci/cleanup-firebase-config.sh
 
+  harness-required:
+    name: Harness Required (deterministic gates)
+    needs:
+      - platform-misc
+      - functions-integration
+      - windows
+      - swift-core
+      - app-xctest
+      - supply-chain
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all required (deterministic) harness jobs passed
+        run: |
+          results='${{ toJSON(needs) }}'
+          failed=$(echo "$results" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
+          print('\n'.join(failed))
+          ")
+          if [[ -n "$failed" ]]; then
+            echo "::error::The following required (deterministic) harness jobs failed:"
+            echo "$failed"
+            exit 1
+          fi
+          echo "### Harness Required: All deterministic gates passed" >> "$GITHUB_STEP_SUMMARY"
+
+  harness-informational:
+    name: Harness Informational (external/emulator/virtualization)
+    needs:
+      - android
+      - node-evals
+      - ios-mobile
+      - retrieval-evals
+      - hermes-gateway-e2ee-proof
+      - hermes-iroh-e2e
+      - android-hermes-smoke
+      - computer-use-e2e
+      - mercury-media-e2e
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Report informational harness job results (alerts, does not block)
+        run: |
+          results='${{ toJSON(needs) }}'
+          failed=$(echo "$results" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
+          print('\n'.join(failed))
+          ")
+          if [[ -n "$failed" ]]; then
+            echo "::warning::The following informational harness jobs failed (visible but non-blocking):"
+            echo "$failed"
+            echo "### Harness Informational: failures detected (non-blocking)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Harness Informational: All external/emulator jobs passed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   platform-confidence-gate:
     name: Platform Confidence Gate
     needs:
@@ -852,7 +912,10 @@ jobs:
     if: >-
       github.event_name != 'pull_request' &&
       needs.path-filter.outputs.hermes_iroh == 'true'
-    runs-on: macos-26
+    # ubuntu-24.04 + x86_64 + KVM: macos-26/arm64-v8a fails with HV_UNSUPPORTED
+    # (no hardware virtualization on Apple Silicon runners). Follows the proven
+    # pattern from domain-core.yml: Enable KVM, x86_64 image, swiftshader_indirect.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       ALLOW_ANDROID_FIREBASE_SECRET_RUN: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
@@ -864,6 +927,12 @@ jobs:
           java-version: "21"
           distribution: temurin
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Use Android Firebase template when secret run is not allowed
         if: env.ALLOW_ANDROID_FIREBASE_SECRET_RUN != 'true' || env.HAS_ANDROID_SECRETS != 'true'
         run: cp android/app/google-services.json.template android/app/google-services.json
@@ -877,7 +946,11 @@ jobs:
         with:
           api-level: 34
           target: google_apis
-          arch: arm64-v8a
+          arch: x86_64
+          disable-animations: true
+          emulator-options: >-
+            -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim
           script: ./scripts/e2e/android-iroh-chat.sh
 
   computer-use-e2e:
@@ -1001,9 +1074,13 @@ jobs:
             OpenBurnBarMobileTests/HermesServiceTests/testInlineMirrorRelayResolverRejectsStoppedMediaControlWithoutRelay
             OpenBurnBarMobileTests/MediaAttachmentManifestStoreTests
             OpenBurnBarMobileTests/MediaInboxFileProtectionTests
-            OpenBurnBarMobileTests/MercuryPersonalizationTests
-            OpenBurnBarMobileTests/MercuryTransferThumbnailCacheTests
-            OpenBurnBarMobileTests/OpenBurnBarMobileTests/testMercuryReceiverInstallIsRetainedByRelayTransport
+    needs:
+      - platform-confidence-gate
+      - targeted-e2e-gate
+      - harness-required
+      - harness-informational
+      - harness-required
+      - harness-informational
             OpenBurnBarMobileTests/OpenBurnBarMobileTests/testMercuryReceiverCanInstallWithoutBlobBackend
             OpenBurnBarMobileTests/OpenBurnBarMobileTests/testIrohRequestStreamRoutesSignalSessionMessagesToMediaDispatcher
             OpenBurnBarMobileTests/ScreenShareAutoTypeFollowPolicyTests

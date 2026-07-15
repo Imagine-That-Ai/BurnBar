@@ -59,6 +59,42 @@ final class InsightDigestPrivacyTests: XCTestCase {
                        "Digest leaked keyFile content")
     }
 
+    func testDigestContainsNoCleartextProjectFolderNames() throws {
+        // Project folder names (the lastPathComponent of the fixture's project
+        // paths /Users/me/foo and /Users/me/bar) are sensitive metadata that
+        // must not appear in cleartext in the encoded digest sent to the LLM
+        // provider. Pre-fix these leak via ProjectSnapshot.displayName.
+        let snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        let digest = try InsightDigestBuilder().build(from: snapshot, filter: InsightFilter(window: .last30d))
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let encoded = try encoder.encode(digest)
+        let str = String(data: encoded, encoding: .utf8) ?? ""
+        XCTAssertFalse(str.contains("foo"),
+                       "Digest leaked cleartext project folder name \"foo\"")
+        XCTAssertFalse(str.contains("bar"),
+                       "Digest leaked cleartext project folder name \"bar\"")
+    }
+
+    func testDigestContainsNoCleartextTaskTitles() throws {
+        // Inferred task titles are sensitive metadata that must not appear in
+        // cleartext in the encoded digest sent to the LLM provider. Pre-fix
+        // these leak via ProviderSnapshot.topInferredTaskTitles and
+        // ModelSnapshot.topInferredTaskTitles.
+        let snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        let digest = try InsightDigestBuilder().build(from: snapshot, filter: InsightFilter(window: .last30d))
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let encoded = try encoder.encode(digest)
+        let str = String(data: encoded, encoding: .utf8) ?? ""
+        XCTAssertFalse(str.contains("Fix bug in module"),
+                       "Digest leaked cleartext inferred task title \"Fix bug in module\"")
+        XCTAssertFalse(str.contains("Refactor data layer"),
+                       "Digest leaked cleartext inferred task title \"Refactor data layer\"")
+    }
+
     func testBenchmarkMetadataIsCanonicalizedBeforePromptDigest() throws {
         let now = Date()
         var snapshot = InsightTestFixtures.emptySnapshot(

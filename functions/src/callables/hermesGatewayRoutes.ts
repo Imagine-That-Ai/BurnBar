@@ -64,7 +64,7 @@ import {
   resolveGatewayGrant,
   resolveGatewayWriteBody,
 } from "./hermesGatewayResolve.js";
-import { checkHermesGatewayBearerRateLimit } from "./publicRateLimit.js";
+import { checkHermesGatewayBearerRateLimit, checkPublicHttpEndpointRateLimit, clientIpFromHttpRequest, isPublicRateLimitExceeded } from "./publicRateLimit.js";
 import { handleDevicePoll, handleDeviceStart } from "./hermesGatewayDeviceRoutes.js";
 import {
   handleArmApproval,
@@ -602,6 +602,19 @@ export async function dispatchHermesGatewayRequest(req: HttpRequest, res: HttpRe
     return;
   }
   try {
+    // Endpoint-level per-IP rate limit (defense-in-depth before bearer token
+    // resolution). The `burnBarHermesGateway` limit (120/min per IP) caps abuse
+    // of the public HTTP surface for ALL routes, including those that only have
+    // bearer auth (no per-uid limiter). OPTIONS preflight is exempt above.
+    try {
+      await checkPublicHttpEndpointRateLimit("burnBarHermesGateway", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        sendJSON(res, 429, { error: "too_many_requests" });
+        return;
+      }
+      throw err;
+    }
     const handled = await routeGatewayRequest(gatewayPath(req), req, res);
     if (!handled) sendJSON(res, 404, { error: "not_found" });
   } catch (err) {
