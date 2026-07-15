@@ -84,6 +84,29 @@ the strict ledger on the exact candidate and collect the installed GNOME
 X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
 update/rollback, and physical-device receipts listed below.
 
+### Continuation checkpoint - 2026-07-15
+
+The exact integration branch now includes three additional source slices:
+
+- `702f59146e`: chat attachment MIME canonicalization and preflight rejection
+  for unsupported PDF before durable append/upload, preserving the draft and
+  staged attachment.
+- `d7cffc79d6`: Linux Tauri provider workspace hydration from both
+  `daemon.config.get` and canonical `daemon.catalog`, with an explicit
+  config-only degraded state when catalog lookup fails.
+- `3b652f9b9e`: bounded pointer/mouse drag and Arrow/Home keyboard movement for
+  the Wayland-safe contained pet fallback, including focus metadata and live
+  announcements while keeping native overlay/click-through fail-closed.
+
+The shared Hermes insight transport also has an explicit
+`AsyncThrowingStream<HermesInsightChunk, Error>` initializer in `702f59146e`,
+which fixes the Windows Foundation overlay inference failure in the PR gate;
+the local macOS Swift target builds. Focused chat tests are 60/60, pet tests
+are 27/27, provider tests are 26 Vitest plus 2 Rust, and the app typecheck and
+production bundle pass. These changes improve source parity only. The strict
+promotion ledger remains **0/40 product** and **0/7 environment** until the
+current-head signed candidate and installed/runtime receipts are complete.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:
