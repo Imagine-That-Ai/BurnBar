@@ -354,6 +354,21 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         case uninspectable(String)
     }
 
+    /// Production construction uses the platform command runners. Keep the
+    /// dependency-injection initializer below internal so its test seams do
+    /// not become part of the daemon's public API or expose private helpers in
+    /// public default arguments.
+    public init() {
+        self.init(
+            environment: { ProcessInfo.processInfo.environment[$0] },
+            resolveExecutable: Self.which,
+            runCommand: Self.runProcess,
+            runPortalProbe: nil,
+            portalProbeTimeoutMillis: Self.defaultPortalProbeTimeoutMillis,
+            portalSessionTimeoutMillis: Self.defaultPortalSessionTimeoutMillis
+        )
+    }
+
     init(
         environment: @escaping EnvironmentReader = { ProcessInfo.processInfo.environment[$0] },
         resolveExecutable: @escaping ExecutableResolver = LinuxComputerUseInputAdapter.which,
