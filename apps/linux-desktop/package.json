@@ -12,7 +12,8 @@
     "tauri:dev": "tauri dev",
     "pretauri:build": "node ../../scripts/linux-port/prepare-linux-package-payload.mjs",
     "tauri:build": "tauri build",
-    "perf:budget": "node ../../scripts/linux-port/run-perf-budget.mjs"
+    "perf:budget": "node ../../scripts/linux-port/run-perf-budget.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@openburnbar/design-tokens": "file:../../packages/design-tokens",

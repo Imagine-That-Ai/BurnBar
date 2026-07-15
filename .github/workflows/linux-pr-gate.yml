@@ -122,6 +122,13 @@ jobs:
       - name: Install Linux desktop dependencies
         run: npm ci --prefix apps/linux-desktop
 
+      # Observing-first (Rule 8): typecheck gate starts non-required.
+      # Promote to required after first green PR; update
+      # governance/branch-protection.main.json required_status_checks.
+      - name: Linux desktop TypeScript typecheck
+        run: npm run typecheck --prefix apps/linux-desktop
+        continue-on-error: true
+
       - name: Linux desktop unit tests
         run: npm test --prefix apps/linux-desktop
 
