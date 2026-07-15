@@ -104,12 +104,12 @@ check "$repo_root/SECURITY.md" '.*repo metadata \(`([^`]+)`.*' "SECURITY.md supp
 # the requested Windows release version when supplied, otherwise the macOS marketing version.
 # Like the Homebrew cask, it is DEFERRED (pass with a notice)
 # until the Windows channel actually ships — the Windows app needs the W0 Authenticode cert +
-# a Windows build host first — and becomes REQUIRED at tag time or when
+# a Windows build host first — and becomes REQUIRED for windows-v* tags or when
 # OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION=1.
 windows_manifest="$repo_root/windows/app/OpenBurnBar.App/app.manifest"
 require_current_windows="${OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION:-0}"
 windows_expected_version="${requested_windows_version:-$expected_version}"
-if [[ "${GITHUB_REF_TYPE:-}" == "tag" || "${GITHUB_REF:-}" =~ refs/tags/ ]]; then
+if [[ "$tag_name" == windows-v* ]]; then
   require_current_windows=1
 fi
 if [[ ! -f "$windows_manifest" ]]; then

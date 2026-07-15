@@ -25,6 +25,8 @@ for (const include of ['--include="*.mjs"', '--include="*.js"', '--include="*.sh
 }
 
 const versionConsistency = read("scripts/verify-version-consistency.sh");
+const projectVersion = read("project.yml").match(/^\s+MARKETING_VERSION:\s*["']?([^\s"']+)/m)?.[1];
+assert.ok(projectVersion, "project.yml must expose a MARKETING_VERSION");
 assert.ok(
   versionConsistency.includes("OPENBURNBAR_REQUIRE_CURRENT_HOMEBREW_CASK"),
   "version consistency must expose an explicit Homebrew enforcement mode",
@@ -67,6 +69,27 @@ const mismatchedWindowsGate = spawnSync("bash", ["scripts/verify-version-consist
 });
 assert.notEqual(mismatchedWindowsGate.status, 0, "a mismatched Windows release version must fail closed");
 assert.match(mismatchedWindowsGate.stderr, /Windows app manifest.*expected/);
+const nonWindowsTagGate = spawnSync("bash", ["scripts/verify-version-consistency.sh"], {
+  encoding: "utf8",
+  env: {
+    ...process.env,
+    GITHUB_REF: `refs/tags/v${projectVersion}`,
+    GITHUB_REF_NAME: `v${projectVersion}`,
+    GITHUB_REF_TYPE: "tag",
+    OPENBURNBAR_EXPECTED_WINDOWS_VERSION: "",
+    OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: "0",
+  },
+});
+assert.match(
+  nonWindowsTagGate.stdout,
+  /Windows app manifest deferred/,
+  "ordinary v* tags must not require the independently versioned Windows manifest",
+);
+assert.doesNotMatch(
+  nonWindowsTagGate.stderr,
+  /Windows app manifest.*expected/,
+  "ordinary v* tags may fail their macOS release gates, but not the independent Windows version gate",
+);
 
 const windowsReleaseWorkflow = read(".github/workflows/openburnbar-release-windows.yml");
 assert.match(
@@ -78,6 +101,16 @@ assert.match(
   windowsReleaseWorkflow,
   /OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: \$\{\{ github\.event_name == 'workflow_dispatch' && github\.event\.inputs\.allow_unsigned == 'true' && '0' \|\| '1' \}\}/,
   "only an explicit unsigned Windows rehearsal may defer the Windows manifest version",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /Mandatory Windows release package is missing/,
+  "final checksums must fail closed when a mandatory Windows package is missing",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /CODESIGN_ENABLED[\s\S]*Signed release certification manifest is missing/,
+  "signed final checksums must require both physical-certification manifests",
 );
 assert.match(
   windowsReleaseWorkflow,

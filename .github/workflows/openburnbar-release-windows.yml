@@ -589,6 +589,8 @@ jobs:
           done
 
       - name: Finalize checksums after signing
+        env:
+          CODESIGN_ENABLED: ${{ steps.config.outputs.codesign }}
         run: |
           set -euo pipefail
           checksum_file="checksums-windows-v${VERSION}.txt"
@@ -597,12 +599,22 @@ jobs:
             "OpenBurnBar-${VERSION}-win-x64.zip" \
             "OpenBurnBar-${VERSION}-win-arm64.zip" \
             "OpenBurnBar-${VERSION}-x64.msix" \
-            "OpenBurnBar-${VERSION}-arm64.msix" \
-            "signed-artifact-x64.json" \
-            "signed-artifact-arm64.json"; do
-            [[ -f "artifacts/$file" ]] || continue
+            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            if [[ ! -f "artifacts/$file" ]]; then
+              echo "::error::Mandatory Windows release package is missing: artifacts/$file"
+              exit 1
+            fi
             ( cd artifacts && sha256sum "$file" >> "$checksum_file" )
           done
+          if [[ "$CODESIGN_ENABLED" == "true" ]]; then
+            for file in "signed-artifact-x64.json" "signed-artifact-arm64.json"; do
+              if [[ ! -f "artifacts/$file" ]]; then
+                echo "::error::Signed release certification manifest is missing: artifacts/$file"
+                exit 1
+              fi
+              ( cd artifacts && sha256sum "$file" >> "$checksum_file" )
+            done
+          fi
           echo "Checksums:"
           cat "artifacts/${checksum_file}"
 
