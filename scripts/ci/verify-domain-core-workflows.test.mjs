@@ -38,6 +38,7 @@ test("deterministic workflow implements every exact policy job and a fail-closed
   assert.match(core, /toJSON\(needs\)/u);
   assert.match(core, /all\(\.value\.result == "success"\)/u);
   assert.match(core, /domain-core-proof-fragment\.mjs aggregate/u);
+  assert.match(core, /swift and xcframework provenance verified/u);
   assert.match(core, /create-domain-core-deterministic-candidate-bundle\.mjs/u);
   assert.match(
     core,
