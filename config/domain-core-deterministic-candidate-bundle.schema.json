@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.com/schemas/domain-core-deterministic-candidate-bundle-v1.json",
+  "title": "OpenBurnBar unsigned deterministic domain-core candidate bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "bundleKind",
+    "status",
+    "proofComplete",
+    "eligibleForAttestation",
+    "promotionAuthorized",
+    "trust",
+    "generatedAt",
+    "candidate",
+    "policySha256",
+    "workflow",
+    "suites",
+    "coverage",
+    "artifacts",
+    "benchmarks",
+    "rollback"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "bundleKind": { "const": "unsigned-domain-core-candidate" },
+    "status": { "const": "eligible_for_attestation" },
+    "proofComplete": { "const": true },
+    "eligibleForAttestation": { "const": true },
+    "promotionAuthorized": { "const": false },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "attestationRequired",
+        "requiredSigner",
+        "verificationSteps"
+      ],
+      "properties": {
+        "authority": { "const": "none" },
+        "attestationRequired": { "const": true },
+        "requiredSigner": { "const": "protected-domain-core-signer" },
+        "verificationSteps": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "query-github-api",
+              "download-exact-run-artifacts",
+              "revalidate-with-trusted-main",
+              "sign-protected-attestation"
+            ]
+          }
+        }
+      }
+    },
+    "generatedAt": { "$ref": "#/$defs/timestamp" },
+    "candidate": { "$ref": "#/$defs/candidate" },
+    "policySha256": { "$ref": "#/$defs/sha256" },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "workflowPath",
+        "workflowName",
+        "runId",
+        "runAttempt",
+        "event",
+        "ref",
+        "headSha",
+        "jobs"
+      ],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "workflowPath": { "type": "string", "minLength": 1 },
+        "workflowName": { "type": "string", "minLength": 1 },
+        "runId": { "type": "integer", "minimum": 1 },
+        "runAttempt": { "type": "integer", "minimum": 1 },
+        "event": { "const": "push" },
+        "ref": { "type": "string", "minLength": 1 },
+        "headSha": { "$ref": "#/$defs/gitSha" },
+        "jobs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "status", "conclusion"],
+            "properties": {
+              "id": { "$ref": "#/$defs/identifier" },
+              "status": { "const": "completed" },
+              "conclusion": { "const": "success" }
+            }
+          }
+        }
+      }
+    },
+    "suites": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "jobId",
+          "runId",
+          "runAttempt",
+          "reportSha256",
+          "candidate"
+        ],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "jobId": { "$ref": "#/$defs/identifier" },
+          "runId": { "type": "integer", "minimum": 1 },
+          "runAttempt": { "type": "integer", "minimum": 1 },
+          "reportSha256": { "$ref": "#/$defs/sha256" },
+          "candidate": { "$ref": "#/$defs/candidate" }
+        }
+      }
+    },
+    "coverage": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "domain",
+          "slice",
+          "consumer",
+          "suiteId",
+          "reportSha256"
+        ],
+        "properties": {
+          "domain": { "$ref": "#/$defs/identifier" },
+          "slice": { "$ref": "#/$defs/identifier" },
+          "consumer": { "$ref": "#/$defs/identifier" },
+          "suiteId": { "$ref": "#/$defs/identifier" },
+          "reportSha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "consumer",
+          "jobId",
+          "runId",
+          "runAttempt",
+          "artifactSha256",
+          "loadedIdentity",
+          "loadSuiteIds"
+        ],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "consumer": { "$ref": "#/$defs/identifier" },
+          "jobId": { "$ref": "#/$defs/identifier" },
+          "runId": { "type": "integer", "minimum": 1 },
+          "runAttempt": { "type": "integer", "minimum": 1 },
+          "artifactSha256": { "$ref": "#/$defs/sha256" },
+          "loadedIdentity": { "$ref": "#/$defs/candidate" },
+          "loadSuiteIds": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/identifier" }
+          }
+        }
+      }
+    },
+    "benchmarks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "jobId",
+          "runId",
+          "runAttempt",
+          "reportSha256",
+          "baselineNanos",
+          "candidateNanos",
+          "pairedRegressionBasisPoints"
+        ],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "jobId": { "$ref": "#/$defs/identifier" },
+          "runId": { "type": "integer", "minimum": 1 },
+          "runAttempt": { "type": "integer", "minimum": 1 },
+          "reportSha256": { "$ref": "#/$defs/sha256" },
+          "baselineNanos": { "type": "integer", "minimum": 1 },
+          "candidateNanos": { "type": "integer", "minimum": 1 },
+          "pairedRegressionBasisPoints": { "type": "integer" }
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "jobId",
+        "suiteId",
+        "runId",
+        "runAttempt",
+        "reportSha256",
+        "fromCandidateCommit",
+        "restoredArtifactSha256",
+        "restoredMode"
+      ],
+      "properties": {
+        "jobId": { "$ref": "#/$defs/identifier" },
+        "suiteId": { "$ref": "#/$defs/identifier" },
+        "runId": { "type": "integer", "minimum": 1 },
+        "runAttempt": { "type": "integer", "minimum": 1 },
+        "reportSha256": { "$ref": "#/$defs/sha256" },
+        "fromCandidateCommit": { "$ref": "#/$defs/gitSha" },
+        "restoredArtifactSha256": { "$ref": "#/$defs/sha256" },
+        "restoredMode": { "const": "legacy" }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{0,63}$"
+    },
+    "gitSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateCommit", "coreVersion", "abiVersion", "sourceSha256"],
+      "properties": {
+        "candidateCommit": { "$ref": "#/$defs/gitSha" },
+        "coreVersion": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+        },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "sourceSha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}
