@@ -47,6 +47,16 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
   assert.ok(schema.$defs.rollbackArtifact.required.includes("candidate"));
   assert.ok(schema.$defs.rollbackArtifact.required.includes("sha256"));
   assert.equal(schema.oneOf.length, 5);
+  const android = schema.oneOf.find(
+    (entry) => entry.properties.consumer.const === "android",
+  );
+  assert.ok(android.required.includes("androidUniversal"));
+  assert.deepEqual(
+    schema.$defs.androidUniversal.properties.abis.prefixItems.map(
+      (entry) => entry.properties.abi.const,
+    ),
+    ["arm64-v8a", "x86_64"],
+  );
 });
 
 test("deployment receipt v2 carries the same proof chain and deployed bytes", () => {

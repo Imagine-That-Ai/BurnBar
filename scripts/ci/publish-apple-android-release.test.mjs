@@ -28,6 +28,31 @@ function sha(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function androidUniversal() {
+  return {
+    manifestSha256: "1".repeat(64),
+    schemaVersion: 1,
+    target: "android-universal",
+    library: "libopenburnbar_domain_ffi.so",
+    candidateAar: {
+      fileName: "openburnbar-domain-core.aar",
+      sha256: "2".repeat(64),
+    },
+    abis: [
+      {
+        abi: "arm64-v8a",
+        path: "base/lib/arm64-v8a/libopenburnbar_domain_ffi.so",
+        sha256: "3".repeat(64),
+      },
+      {
+        abi: "x86_64",
+        path: "base/lib/x86_64/libopenburnbar_domain_ffi.so",
+        sha256: "4".repeat(64),
+      },
+    ],
+  };
+}
+
 function predicate(consumer, domain, artifact, version) {
   const contract = {
     apple: ["macos-dmg", "macos-arm64"],
@@ -41,6 +66,7 @@ function predicate(consumer, domain, artifact, version) {
     domain,
     artifactKind: contract[0],
     target: contract[1],
+    ...(consumer === "android" ? { androidUniversal: androidUniversal() } : {}),
     candidate: CANDIDATE,
     sourceRun: {
       repository: "Imagine-That-Ai/BurnBar",
@@ -261,6 +287,31 @@ function mutations(client) {
       new Set(["create", "upload", "edit", "delete"]).has(args[1]),
   );
 }
+
+test("Android publication rejects missing or malformed universal ABI identity", () => {
+  const files = fixture();
+  try {
+    const predicatePath = files.raw.android.bundles[0].predicatePath;
+    const missing = structuredClone(files.androidPredicate);
+    delete missing.androidUniversal;
+    writeFileSync(predicatePath, JSON.stringify(missing));
+    assert.throws(
+      () => validateAppleAndroidPublication(files.raw),
+      /must contain exactly.*androidUniversal/u,
+    );
+
+    const tampered = structuredClone(files.androidPredicate);
+    tampered.androidUniversal.abis[1].path =
+      "base/lib/x86/libopenburnbar_domain_ffi.so";
+    writeFileSync(predicatePath, JSON.stringify(tampered));
+    assert.throws(
+      () => validateAppleAndroidPublication(files.raw),
+      /invalid x86_64 identity/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
 
 function seedExact(client, publication) {
   for (const asset of publication.assets) {

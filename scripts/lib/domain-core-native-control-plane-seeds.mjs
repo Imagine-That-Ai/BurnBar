@@ -32,6 +32,7 @@ export const NATIVE_RELEASE_CONTROL_PLANE_SEEDS = Object.freeze([
   "scripts/ci/verify-apple-appcheck-release-artifact.sh",
   "scripts/ci/verify-apple-release-firebase-config.sh",
   "scripts/ci/verify-corresponding-source-archive.sh",
+  "scripts/ci/verify-domain-core-android-universal-artifact.mjs",
   "scripts/ci/verify-domain-core-apple-signing-identity.mjs",
   "scripts/ci/verify-domain-core-build-profile-artifact.mjs",
   "scripts/ci/verify-domain-core-native-event-commit.mjs",

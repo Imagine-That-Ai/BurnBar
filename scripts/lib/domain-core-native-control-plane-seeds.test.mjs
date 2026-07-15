@@ -73,6 +73,7 @@ test("native observer source and immutable signer pins cannot fall out of the se
     "scripts/ci/hydrate-apple-android-release-evidence.mjs",
     "scripts/ci/publish-apple-android-release.mjs",
     "scripts/ci/verify-domain-core-native-release-artifact.sh",
+    "scripts/ci/verify-domain-core-android-universal-artifact.mjs",
     "scripts/ci/verify-domain-core-observed-identity.mjs",
     "windows/tests/quota/DomainCoreQuotaBridgeTests.cs",
   ]) {

@@ -9,10 +9,12 @@ profile_name="${4:-}"
 candidate_commit="${5:-}"
 selected_profile="${6:-}"
 observed_identity="${7:-}"
+candidate_bundle="${8:-}"
+android_abi_manifest="${9:-}"
 apple_signing_policy="$repo_root/config/apple-release-signing-policy.json"
 
 if [[ "$consumer" != "apple" && "$consumer" != "android" ]]; then
-  echo "usage: $0 <apple|android> <artifact> <version> <profile> <candidate-commit> <selected-profile.json> <observed-identity.json>" >&2
+  echo "usage: $0 <apple|android> <artifact> <version> <profile> <candidate-commit> <selected-profile.json> <observed-identity.json> [candidate-bundle.json android-abi-manifest.json]" >&2
   exit 2
 fi
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?(\+[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
@@ -39,6 +41,16 @@ if [[ "$consumer" == "android" && ( -z "$observed_identity" || ! -f "$observed_i
   echo "observed Rust identity must be a nonempty regular non-symlink file: $observed_identity" >&2
   exit 1
 fi
+if [[ "$consumer" == "android" ]]; then
+  if [[ -z "$candidate_bundle" || ! -f "$candidate_bundle" || -L "$candidate_bundle" || ! -s "$candidate_bundle" ]]; then
+    echo "protected candidate bundle must be a nonempty regular non-symlink file: $candidate_bundle" >&2
+    exit 1
+  fi
+  if [[ "$android_abi_manifest" != /* || -e "$android_abi_manifest" || -L "$android_abi_manifest" ]]; then
+    echo "Android universal ABI manifest output must be an absent absolute non-symlink path: $android_abi_manifest" >&2
+    exit 1
+  fi
+fi
 if [[ "$consumer" == "apple" ]]; then
   if [[ "$observed_identity" != /* || -e "$observed_identity" || -L "$observed_identity" ]]; then
     echo "Apple observed Rust identity output must be an absent absolute non-symlink path: $observed_identity" >&2
@@ -53,6 +65,9 @@ fi
 artifact="$(cd "$(dirname "$artifact")" && pwd)/$(basename "$artifact")"
 selected_profile="$(cd "$(dirname "$selected_profile")" && pwd)/$(basename "$selected_profile")"
 observed_identity="$(cd "$(dirname "$observed_identity")" && pwd)/$(basename "$observed_identity")"
+if [[ "$consumer" == "android" ]]; then
+  candidate_bundle="$(cd "$(dirname "$candidate_bundle")" && pwd)/$(basename "$candidate_bundle")"
+fi
 apple_mount_point=""
 bundletool_directory=""
 cleanup_apple_mount() {
@@ -211,13 +226,12 @@ verify_android() {
     --expected-candidate-commit "$candidate_commit" \
     --android-aab "$artifact"
 
-  local abi
-  for abi in arm64-v8a x86_64; do
-    if ! grep -Fqx "base/lib/$abi/libopenburnbar_domain_ffi.so" <<<"$signature_listing"; then
-      echo "Android release bundle is missing domain-core native ABI: $abi" >&2
-      exit 1
-    fi
-  done
+  node "$repo_root/scripts/ci/verify-domain-core-android-universal-artifact.mjs" \
+    --aab "$artifact" \
+    --candidate-aar "$repo_root/Vendor/openburnbar-domain-core.aar" \
+    --candidate-bundle "$candidate_bundle" \
+    --output "$android_abi_manifest"
+
   local packaged_library="$bundletool_directory/libopenburnbar_domain_ffi.so"
   unzip -p "$artifact" base/lib/arm64-v8a/libopenburnbar_domain_ffi.so > "$packaged_library"
   if [[ ! -s "$packaged_library" || -L "$packaged_library" ]]; then
