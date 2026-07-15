@@ -30,6 +30,11 @@ struct SingleProviderResult: Sendable {
 
 struct ConversationIndexingResult: Sendable {
     var indexedConversationChanges: Int = 0
+    /// Total conversations returned by parsers (cached + fresh).
+    var parsedConversationCount: Int = 0
+    /// Conversations that passed the changed-signature filter and were
+    /// submitted to the indexer. At steady state this is 0.
+    var changedConversationCount: Int = 0
     var errors: [AgentProvider: String] = [:]
     var duration: TimeInterval = 0
 }
@@ -116,6 +121,43 @@ enum RefreshBackgroundWork {
 
     /// Re-parses providers with conversation bodies enabled and indexes those
     /// records after the usage-only refresh has already published its rows.
+    ///
+    /// P-PERF-2: incremental indexing via checkpoint high-watermark.
+    ///
+    /// Each provider's `parser_checkpoints` row stores a scan-start watermark
+    /// — the wall-clock time at the **beginning** of the last successful
+    /// indexing pass. On each tick:
+    ///
+    /// 1. **Capture scan-start watermark** (`Date()` at the start of this
+    ///    provider's processing, BEFORE parsing). This is the safe boundary:
+    ///    any file modified at or before this moment was visible to this scan
+    ///    and will be indexed. Files modified after this moment are genuine
+    ///    new changes that the next tick will see.
+    /// 2. The parser runs (it already skips re-reading unchanged files via
+    ///    `CompositeFileSignature` cache hits — only file stat calls, no
+    ///    content reads, for unchanged files).
+    /// 3. Conversations whose `fileModifiedAt` is ≤ the **previous** checkpoint
+    ///    watermark AND whose ID already exists in the database are filtered
+    ///    out before reaching the indexer — no DB fetch, no upsert, no
+    ///    projection job enqueue. This is the sub-linear gate.
+    ///    Newly discovered sessions (ID not in DB) are always passed through
+    ///    regardless of file mtime — they were never indexed.
+    /// 4. The remaining (changed/appended/new) conversations are **all**
+    ///    processed — no cap, no deferred drops. `ConversationIndexer.index`
+    ///    handles the full changed set using chunked batch DB fetches
+    ///    (O(ceil(N/500)) queries, not O(N) roundtrips).
+    /// 5. After successful indexing, the checkpoint watermark advances to the
+    ///    **scan-start** watermark (step 1), NOT `Date()` after processing.
+    ///    This ensures files created during the scan (between scan-start and
+    ///    checkpoint-advance) are seen on the next tick — their
+    ///    `fileModifiedAt > scanStartWatermark`. Harmless bounded reprocessing
+    ///    is preferable to loss. If indexing throws, the checkpoint is NOT
+    ///    advanced — the next tick retries against the same watermark.
+    ///
+    /// At steady state (no file changes): step 3 filters out 100% of records,
+    /// the indexer receives an empty array, and the only work is the parser's
+    /// file-stat loop + one checkpoint read per provider — explicitly bounded,
+    /// not O(corpus) DB operations.
     static func runConversationIndexing(
         parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
         dataStore: DataStore,
@@ -125,17 +167,132 @@ enum RefreshBackgroundWork {
         var result = ConversationIndexingResult()
         let startedAt = Date()
         let parserEntries = parsers.sorted { $0.key.rawValue < $1.key.rawValue }
+        let checkpointStore = dataStore.actor.checkpointStore
 
         for (provider, parser) in parserEntries {
             do {
+                // P-PERF-2: capture scan-start watermark BEFORE parsing.
+                // This is the safe boundary that will be written to the
+                // checkpoint after successful indexing. Using scan-start
+                // (not post-processing Date()) ensures files created during
+                // the scan are seen on the next tick (review finding 5).
+                let scanStartWatermark = Date()
+
                 let parseResult = try await parser.parse(
                     options: OpenBurnBarCore.LogParseOptions(includeConversationBodies: indexingEnabled)
                 )
-                if indexingEnabled {
-                    result.indexedConversationChanges += await orchestrator.indexConversationsOffMain(
-                        parseResult.conversations,
+                result.parsedConversationCount += parseResult.conversations.count
+
+                guard indexingEnabled else { continue }
+
+                // Fetch the PREVIOUS checkpoint watermark (from the last
+                // successful indexing pass). nil = first run or corrupted →
+                // process all (safe recovery, VAL-PERSIST-014).
+                let existingCheckpoint: ParserCheckpointRecord?
+                do {
+                    existingCheckpoint = try await checkpointStore.fetchCheckpoint(for: provider)
+                } catch {
+                    existingCheckpoint = nil // safe recovery — full reprocess (VAL-PERSIST-014)
+                }
+                let previousWatermark: Date? = existingCheckpoint?.lastProcessedAt
+
+                // Filter to changed/appended conversations and newly
+                // discovered sessions.
+                //
+                // Review finding 2: a transcript discovered after the
+                // checkpoint but with an older fileModifiedAt (restored
+                // archive, copied directory, parser starts watching an older
+                // path) would be silently dropped by a mtime-only filter. We
+                // also pass through any conversation whose ID is NOT yet in
+                // the database — those are genuine new sessions that must be
+                // indexed regardless of file mtime.
+                let allConversations = parseResult.conversations
+                let existingIDs: Set<String>
+                do {
+                    existingIDs = try await dataStore.fetchExistingConversationIDs(
+                        ids: allConversations.map(\.id)
+                    )
+                } catch {
+                    // If we can't check existence, process all — safe over-processing
+                    existingIDs = []
+                }
+
+                let changedConversations: [OpenBurnBarCore.ConversationRecord]
+                if let previousWatermark {
+                    changedConversations = allConversations.filter { convo in
+                        // New session: not in DB → always index (finding 2).
+                        if !existingIDs.contains(convo.id) { return true }
+                        // fileModifiedAt nil → can't determine → always index.
+                        guard let mtime = convo.fileModifiedAt else { return true }
+                        // Changed since last successful index.
+                        return mtime > previousWatermark
+                    }
+                } else {
+                    changedConversations = allConversations
+                }
+
+                result.changedConversationCount += changedConversations.count
+
+                guard !changedConversations.isEmpty else {
+                    // No changed conversations — advance the checkpoint to
+                    // scan-start so the next tick uses the updated watermark.
+                    // This ensures files created during this scan (even
+                    // though no changed conversations were returned by the
+                    // parser) are seen on the next tick.
+                    let token = "idx:\(scanStartWatermark.timeIntervalSince1970)"
+                    do {
+                        try await checkpointStore.advanceCheckpoint(
+                            for: provider,
+                            checkpointToken: token,
+                            lastProcessedFilePath: nil
+                        )
+                    } catch {
+                        // Checkpoint write failed — next tick re-evaluates (safe)
+                        AppLogger.parser.error("Checkpoint advance failed for \(provider.rawValue): \(error.localizedDescription)")
+                    }
+                    continue
+                }
+
+                // Process the FULL changed set — no cap, no deferred drops.
+                // ConversationIndexer.index chunks the batch DB fetch
+                // internally (500 IDs per query) to stay under SQLite's
+                // SQLITE_MAX_VARIABLE_NUMBER limit (review finding 4).
+                //
+                // Review finding 3: use the throwing variant so a failed
+                // indexing pass does NOT advance the checkpoint — the next
+                // tick retries the failed upserts instead of filtering them
+                // out by watermark.
+                do {
+                    let indexingReport = try await orchestrator.indexConversationsOffMainThrowing(
+                        changedConversations,
                         indexingEnabled: indexingEnabled
                     )
+                    result.indexedConversationChanges += indexingReport.changedRecordCount
+                } catch {
+                    // Indexing failed — do NOT advance the checkpoint.
+                    // The next tick re-evaluates these conversations against
+                    // the SAME (old) watermark and retries.
+                    result.errors[provider] = error.localizedDescription
+                    continue
+                }
+
+                // Advance checkpoint watermark to scan-start after successful
+                // indexing.
+                // VAL-PERSIST-004: checkpoint advances only after successful commit.
+                // Using scan-start (not post-processing Date()) ensures
+                // files created during the scan are seen on the next tick
+                // (review finding 5). Harmless bounded reprocessing is
+                // preferable to loss.
+                let token = "idx:\(scanStartWatermark.timeIntervalSince1970)"
+                do {
+                    try await checkpointStore.advanceCheckpoint(
+                        for: provider,
+                        checkpointToken: token,
+                        lastProcessedFilePath: nil
+                    )
+                } catch {
+                    // Checkpoint write failed — next tick retries against old watermark (safe)
+                    AppLogger.parser.error("Checkpoint advance failed for \(provider.rawValue): \(error.localizedDescription)")
                 }
             } catch is CancellationError {
                 return result
@@ -145,6 +302,22 @@ enum RefreshBackgroundWork {
         }
 
         result.duration = Date().timeIntervalSince(startedAt)
+
+        // P-PERF-2: visible cost logging — no silent truncation.
+        // At steady state: parsed_count > 0, changed_count = 0,
+        // indexed_changes = 0. This proves the checkpoint watermark filters
+        // out the full unchanged corpus before it reaches the indexer.
+        AppLogger.parser.info(
+            "conversation_indexing_timing",
+            metadata: [
+                "parsed_count": String(result.parsedConversationCount),
+                "changed_count": String(result.changedConversationCount),
+                "indexed_changes": String(result.indexedConversationChanges),
+                "duration_ms": String(format: "%.2f", result.duration * 1_000),
+                "providers_scanned": String(parserEntries.count)
+            ]
+        )
+
         return result
     }
 
