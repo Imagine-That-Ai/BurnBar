@@ -28,7 +28,12 @@
     "icon": ["icons/icon.png"],
     "linux": {
       "deb": {
-        "depends": ["libsecret-tools"],
+        "depends": [
+          "libsecret-tools",
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-pipewire"
+        ],
         "recommends": ["gnome-keyring | libkf5wallet-bin | libkf6wallet-bin"],
         "files": {
           "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
@@ -50,7 +55,12 @@
         }
       },
       "rpm": {
-        "depends": ["libsecret"],
+        "depends": [
+          "libsecret",
+          "gstreamer1-plugins-base",
+          "gstreamer1-plugins-good",
+          "gstreamer1-plugin-pipewire"
+        ],
         "files": {
           "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
           "/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources": "target/openburnbar-package-payload/OpenBurnBarCore_OpenBurnBarCore.resources",

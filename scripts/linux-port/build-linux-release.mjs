@@ -228,7 +228,10 @@ if (daemonReady && cliReady && irohNativeReady) {
   const prepareCommands = [
     ['npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir, env: packageBuildEnv }],
     ['npm', ['run', 'build'], { cwd: appDir, env: packageBuildEnv }],
-    ['npm', ['run', 'tauri:build', '--', '--no-bundle'], {
+    // Release artifacts must contain the real Mercury viewer. Development
+    // builds intentionally keep the feature optional so a generic checkout
+    // can still run with the explicit stub capability.
+    ['npm', ['run', 'tauri:build', '--', '--no-bundle', '--features', 'media-gst'], {
       cwd: appDir,
       env: packageBuildEnv
     }],

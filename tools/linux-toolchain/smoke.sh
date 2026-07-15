@@ -100,6 +100,14 @@ pkg-config --modversion libsecret-1
 dpkg-query -W -f='libpam0g-dev=${Version}\n' libpam0g-dev
 test -f "$(cc -print-file-name=libpam.so)"
 pkg-config --modversion libpipewire-0.3
+pkg-config --modversion gstreamer-1.0
+pkg-config --modversion gstreamer-app-1.0
+pkg-config --modversion gstreamer-video-1.0
+gst-inspect-1.0 --version
+gst-inspect-1.0 vp9dec >/dev/null
+gst-inspect-1.0 autovideosink >/dev/null
+gst-inspect-1.0 pipewiresrc >/dev/null
+gst-inspect-1.0 pipewiresink >/dev/null
 pkg-config --modversion dbus-1
 dpkg-query -W -f='xdg-desktop-portal=${Version}\n' xdg-desktop-portal
 /usr/libexec/xdg-desktop-portal --version
@@ -172,6 +180,12 @@ dpkg-query -W -f='${binary:Package}=${Version}\n' \
   xdg-desktop-portal-gtk \
   pipewire \
   libpipewire-0.3-dev \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good \
+  gstreamer1.0-pipewire \
+  gstreamer1.0-tools \
+  libgstreamer1.0-dev \
+  libgstreamer-plugins-base1.0-dev \
   libei-dev \
   libatspi2.0-dev \
   libx11-dev \

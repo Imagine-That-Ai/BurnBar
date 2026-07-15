@@ -58,6 +58,15 @@
     "readinessProbe": "/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe",
     "promotionStatus": "blocked-until-preprovisioned-runtime-and-installed-matrix-evidence-pass"
   },
+  "mediaRuntime": {
+    "viewerFeature": "media-gst",
+    "renderer": "gstreamer",
+    "requiredFactories": ["vp9dec", "autovideosink", "pipewiresrc", "pipewiresink"],
+    "debianDepends": ["gstreamer1.0-plugins-base", "gstreamer1.0-plugins-good", "gstreamer1.0-pipewire"],
+    "rpmDepends": ["gstreamer1-plugins-base", "gstreamer1-plugins-good", "gstreamer1-plugin-pipewire"],
+    "archDepends": ["gstreamer", "gst-plugins-base", "gst-plugins-good", "gst-plugin-pipewire"],
+    "promotionStatus": "blocked-until-two-device-screen-share-and-installed-factory-receipts-pass"
+  },
   "credentialStorage": {
     "requiredCommand": "secret-tool",
     "primaryBackend": "org.freedesktop.secrets",

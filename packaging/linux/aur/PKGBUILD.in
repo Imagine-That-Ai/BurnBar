@@ -6,7 +6,7 @@ pkgdesc="Local-first AI agent cost and control dashboard"
 arch=("x86_64" "aarch64")
 url="https://github.com/Imagine-That-Ai/BurnBar"
 license=("AGPL-3.0-only")
-depends=("webkit2gtk-4.1" "gtk3" "libayatana-appindicator" "libsecret" "nodejs" "npm" "polkit")
+depends=("webkit2gtk-4.1" "gtk3" "libayatana-appindicator" "libsecret" "nodejs" "npm" "polkit" "gstreamer" "gst-plugins-base" "gst-plugins-good" "gst-plugin-pipewire")
 optdepends=("kwallet: KDE Wallet credential backend")
 
 source=(
