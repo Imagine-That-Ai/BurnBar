@@ -8,10 +8,11 @@ import test from "node:test";
 import { run as createIdentity } from "./create-domain-core-deployment-identity.mjs";
 import { run } from "./verify-domain-core-console-deploy-evidence.mjs";
 
-const COMMIT = "a".repeat(40);
+const CANDIDATE_COMMIT = "a".repeat(40);
+const COMMIT = "d".repeat(40);
 const TAG = "v1.2.3";
 const CANDIDATE = {
-  candidateCommit: COMMIT,
+  candidateCommit: CANDIDATE_COMMIT,
   coreVersion: "0.3.0",
   abiVersion: 3,
   sourceSha256: "b".repeat(64),
@@ -57,6 +58,11 @@ function fixture(profileName = "public-production") {
     schemaVersion: 2,
     verificationKind: "domain-core-release-gate",
     candidate: CANDIDATE,
+    activation: {
+      ...CANDIDATE,
+      activationCommit: COMMIT,
+      changedPathsSha256: "f".repeat(64),
+    },
     sourceRun: {
       repository: "Imagine-That-Ai/BurnBar",
       workflowPath: ".github/workflows/domain-core.yml",
@@ -64,7 +70,7 @@ function fixture(profileName = "public-production") {
       runAttempt: 2,
       event: "push",
       ref: "refs/heads/main",
-      headSha: COMMIT,
+      headSha: CANDIDATE_COMMIT,
     },
     promotionProof: {
       signerWorkflow: ".github/workflows/domain-core-promotion-proof.yml",
@@ -80,6 +86,11 @@ function fixture(profileName = "public-production") {
       fileName: "domain-core-public-production-rollback.json",
       sha256: "e".repeat(64),
       candidate: CANDIDATE,
+      activation: {
+        ...CANDIDATE,
+        activationCommit: COMMIT,
+        changedPathsSha256: "f".repeat(64),
+      },
     },
   };
   writeFileSync(paths.profile, `${JSON.stringify(profile, null, 2)}\n`);

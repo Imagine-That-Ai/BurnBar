@@ -13,6 +13,9 @@ on:
       - "AgentLens/Resources/OpenBurnBar-Info.plist"
       - "OpenBurnBarMobile/Info.plist"
       - ".github/workflows/release.yml"
+      - ".github/workflows/linux-release.yml"
+      - ".github/workflows/domain-core-ios-release-evidence.yml"
+      - ".github/workflows/domain-core-deletion-guard.yml"
       - ".github/workflows/openburnbar-release-windows.yml"
       - ".github/workflows/deploy-hosting.yml"
       - ".github/workflows/domain-core-console-release-evidence.yml"
@@ -137,7 +140,10 @@ on:
       - "config/domain-core-promotion-provenance/**"
       - "config/domain-core-release-provenance/**"
       - "scripts/ci/verify-domain-core-legacy-deletion.py"
+      - "scripts/ci/verify-domain-core-legacy-absence.py"
       - "scripts/ops/create-domain-core-promotion-receipt.py"
+      - "scripts/ops/create-domain-core-stable-receipt.py"
+      - "scripts/ops/create-domain-core-rollback-receipt.py"
       - "scripts/ops/create-domain-core-deletion-plan.py"
       - "tests/test_domain_core_legacy_deletion*.py"
       - "docs/runbooks/shared-rust-legacy-deletion.md"
@@ -158,6 +164,7 @@ on:
       - "tests/test_domain_core_union_gate.py"
       - "tests/test_domain_core_functions_release_workflow.py"
       - "tests/test_domain_core_console_release_evidence_workflow.py"
+      - "tests/test_domain_core_lifecycle_receipt_writers.py"
       - ".github/workflows/domain-core.yml"
       - ".github/workflows/domain-core-promotion-proof.yml"
   pull_request:
@@ -168,6 +175,9 @@ on:
       - "AgentLens/Resources/OpenBurnBar-Info.plist"
       - "OpenBurnBarMobile/Info.plist"
       - ".github/workflows/release.yml"
+      - ".github/workflows/linux-release.yml"
+      - ".github/workflows/domain-core-ios-release-evidence.yml"
+      - ".github/workflows/domain-core-deletion-guard.yml"
       - ".github/workflows/openburnbar-release-windows.yml"
       - ".github/workflows/deploy-hosting.yml"
       - ".github/workflows/domain-core-console-release-evidence.yml"
@@ -292,7 +302,10 @@ on:
       - "config/domain-core-promotion-provenance/**"
       - "config/domain-core-release-provenance/**"
       - "scripts/ci/verify-domain-core-legacy-deletion.py"
+      - "scripts/ci/verify-domain-core-legacy-absence.py"
       - "scripts/ops/create-domain-core-promotion-receipt.py"
+      - "scripts/ops/create-domain-core-stable-receipt.py"
+      - "scripts/ops/create-domain-core-rollback-receipt.py"
       - "scripts/ops/create-domain-core-deletion-plan.py"
       - "tests/test_domain_core_legacy_deletion*.py"
       - "docs/runbooks/shared-rust-legacy-deletion.md"
@@ -313,6 +326,7 @@ on:
       - "tests/test_domain_core_union_gate.py"
       - "tests/test_domain_core_functions_release_workflow.py"
       - "tests/test_domain_core_console_release_evidence_workflow.py"
+      - "tests/test_domain_core_lifecycle_receipt_writers.py"
       - ".github/workflows/domain-core.yml"
       - ".github/workflows/domain-core-promotion-proof.yml"
   workflow_dispatch:
@@ -333,6 +347,14 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Check out trusted default-branch evaluator
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: .domain-core-trusted-evaluator
+          persist-credentials: false
+          fetch-depth: 0
+
       - name: Test fail-closed promotion evidence evaluation
         run: |
           set -o pipefail
@@ -344,6 +366,7 @@ jobs:
             scripts/ci/verify-domain-core-control-plane.test.mjs \
             scripts/ci/verify-domain-core-protected-attestation.test.mjs \
             scripts/ci/verify-domain-core-workflows.test.mjs \
+            scripts/ci/verify-domain-core-default-branch-controls.test.mjs \
             scripts/ci/create-domain-core-functions-deploy-proof.test.mjs \
             scripts/ci/create-domain-core-functions-deployment-evidence.test.mjs \
             scripts/ci/create-domain-core-functions-provider-coordinates.test.mjs \
@@ -366,6 +389,8 @@ jobs:
             scripts/lib/domain-core-shadow-enrollment.test.mjs \
             | tee "$RUNNER_TEMP/promotion-contracts.log"
           python3 tests/test_domain_core_console_release_evidence_workflow.py
+          python3 tests/test_domain_core_legacy_absence.py
+          python3 tests/test_domain_core_lifecycle_receipt_writers.py
           bash scripts/ci/hosting-smoke-domain-core.test.sh
 
       - name: Test Functions release workflow and live identity gate
@@ -387,9 +412,14 @@ jobs:
           if [[ ! "$DOMAIN_CORE_BASE_REF" =~ ^[0-9a-f]{40}$ || "$DOMAIN_CORE_BASE_REF" == "0000000000000000000000000000000000000000" ]]; then
             DOMAIN_CORE_BASE_REF="$(git rev-parse HEAD^)"
           fi
-          python3 scripts/ci/verify-domain-core-legacy-deletion.py \
-            --base-ref "$DOMAIN_CORE_BASE_REF" \
-            --verify-signed-evidence
+          evaluator=".domain-core-trusted-evaluator/scripts/ci/verify-domain-core-legacy-deletion.py"
+          test -f "$evaluator"
+          args=(--repo-root "$GITHUB_WORKSPACE" --base-ref "$DOMAIN_CORE_BASE_REF" --verify-signed-evidence)
+          if [[ "${{ github.event_name }}" == "pull_request" ]] && grep -q -- '--deletion-pull-request' "$evaluator"; then
+            args+=(--deletion-pull-request "${{ github.event.pull_request.number }}" --deletion-head "${{ github.event.pull_request.head.sha }}")
+          fi
+          python3 "$evaluator" \
+            "${args[@]}"
 
       - name: Emit promotion-contracts proof fragment
         run: >-
@@ -1434,3 +1464,80 @@ jobs:
           path: ${{ runner.temp }}/domain-core-candidate-bundle.json
           if-no-files-found: error
           retention-days: 90
+
+  domain-core-pr-gate:
+    name: Domain Core PR Gate
+    if: always()
+    needs:
+      - promotion-contracts
+      - rust-and-csharp
+      - windows-native
+      - linux-arm64-native
+      - wasm
+      - functions-pricing
+      - android
+      - apple
+      - apple-native-smoke
+      - swift-consumer-contracts
+      - console-consumer-contracts
+      - rollback-drill
+      - candidate-bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require every meaningful Domain Core job
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$NEEDS_JSON" > "$RUNNER_TEMP/domain-core-final-results.json"
+          jq -e 'to_entries | length == 13 and all(.value.result == "success")' \
+            "$RUNNER_TEMP/domain-core-final-results.json" >/dev/null
+
+      - name: Check out deletion candidate
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check out trusted default-branch absence evaluator
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: .domain-core-trusted-evaluator
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Download exact-attempt proof fragments
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: domain-core-proof-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-proof-fragments
+          merge-multiple: true
+
+      - name: Download exact-attempt staged final binaries
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: domain-core-attestation-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-final-binaries
+          merge-multiple: false
+
+      - name: Prove deleted legacy source, build inputs, and final binaries are absent
+        run: |
+          set -euo pipefail
+          evaluator=".domain-core-trusted-evaluator/scripts/ci/verify-domain-core-legacy-absence.py"
+          if [[ -f "$evaluator" ]]; then
+            python3 "$evaluator" \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --fragments "$RUNNER_TEMP/domain-core-proof-fragments" \
+              --artifacts "$RUNNER_TEMP/domain-core-final-binaries" \
+              --output "$RUNNER_TEMP/domain-core-legacy-absence.json"
+          else
+            # One-time bootstrap: the base evaluator predates final-binary proof.
+            # It still proves this landing contains no deletion; later PRs must use
+            # the trusted default-branch absence evaluator above.
+            jq -e 'all(.rows[]; .state != "legacy_deleted")' config/domain-core-legacy-deletion.json >/dev/null
+            python3 .domain-core-trusted-evaluator/scripts/ci/verify-domain-core-legacy-deletion.py \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --base-ref "${{ github.event.pull_request.base.sha || github.event.before }}"
+          fi

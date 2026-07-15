@@ -15,6 +15,7 @@ import {
   parseDomainCoreBuildProfileResolverArgs,
   resolveDomainCoreCandidateIdentity,
 } from "../lib/domain-core-candidate-receipt.mjs";
+import { validateDomainCoreActivation } from "../lib/domain-core-activation.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const args = parseDomainCoreBuildProfileResolverArgs(process.argv.slice(2));
@@ -22,6 +23,7 @@ const profileName = args.get("--profile");
 const format = args.get("--format") ?? "json";
 const output = args.get("--output");
 const expectedCandidateCommit = args.get("--expected-candidate-commit");
+const expectedReleaseCommit = args.get("--expected-release-commit");
 
 const catalog = loadDomainCoreBuildProfiles(
   resolve(repoRoot, "config/domain-core-build-profiles.json"),
@@ -29,20 +31,56 @@ const catalog = loadDomainCoreBuildProfiles(
 const catalogProfile = catalog.profiles[profileName];
 if (!catalogProfile)
   throw new Error(`unknown domain-core build profile: ${profileName}`);
-const candidateIdentity =
-  catalogProfile.artifactAuthority === "signed"
-    ? resolveDomainCoreCandidateIdentity({
+let candidateIdentity;
+if (catalogProfile.artifactAuthority === "signed") {
+  if (expectedReleaseCommit !== undefined) {
+    if (expectedCandidateCommit === undefined) {
+      throw new Error(
+        "--expected-release-commit requires --expected-candidate-commit",
+      );
+    }
+    const hasActiveRust = Object.values(catalogProfile.modes).includes("rust");
+    if (!hasActiveRust && expectedCandidateCommit === expectedReleaseCommit) {
+      candidateIdentity = resolveDomainCoreCandidateIdentity({
         repoRoot,
         expectedCandidateCommit,
         requireClean: true,
-      })
-    : undefined;
+      });
+    } else {
+      const activation = validateDomainCoreActivation({
+        repoRoot,
+        candidateCommit: expectedCandidateCommit,
+        activationCommit: expectedReleaseCommit,
+      });
+      candidateIdentity = {
+        candidateCommit: activation.candidateCommit,
+        coreVersion: activation.coreVersion,
+        abiVersion: activation.abiVersion,
+        sourceSha256: activation.sourceSha256,
+      };
+    }
+  } else {
+    candidateIdentity = resolveDomainCoreCandidateIdentity({
+      repoRoot,
+      expectedCandidateCommit,
+      requireClean: true,
+    });
+  }
+}
 if (
   catalogProfile.artifactAuthority === "development" &&
   expectedCandidateCommit !== undefined
 ) {
   throw new Error(
     "--expected-candidate-commit is only valid for signed profiles",
+  );
+}
+if (
+  catalogProfile.artifactAuthority === "development" &&
+  expectedReleaseCommit !== undefined
+) {
+  throw new Error(
+    "--expected-release-commit is only valid for signed profiles",
   );
 }
 const profile = resolveDomainCoreBuildProfile(

@@ -42,14 +42,17 @@ class FakeVerifier:
     def verify_candidate_bundle(self, artifact: Path, bundle: Path, **kwargs) -> None:
         self.candidate_call = (artifact, bundle, kwargs)
 
-    def verify_release(self, item: dict, bundle: Path, digest: str) -> None:
-        self.release_call = (item, bundle, digest)
+    def verify_release(self, item: dict, bundle: Path, digest: str, domain: str) -> None:
+        self.release_call = (item, bundle, digest, domain)
 
     def verify_rollback_artifact(self, item: dict, bundle: Path, digest: str) -> None:
         self.rollback_call = (item, bundle, digest)
 
-    def verify_deletion_review(self, review: dict, bound_files: dict[str, str] | None = None) -> None:
-        self.review_call = (review, bound_files)
+    def verify_deletion_review(self, review: dict, bound_files: dict[str, str] | None = None, **kwargs) -> None:
+        self.review_call = (review, bound_files, kwargs)
+
+    def verify_deletion_head(self, **kwargs) -> None:
+        self.deletion_head_call = kwargs
 
 
 class FakeDownloadResponse:
@@ -68,14 +71,54 @@ class FakeDownloadResponse:
         return self.url
 
     def read(self, size: int) -> bytes:
-        chunk = self.contents[self.offset:self.offset + size]
+        chunk = self.contents[self.offset : self.offset + size]
         self.offset += len(chunk)
         return chunk
 
 
 class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
+    def test_signed_evidence_cache_reuses_digest_addressed_immutable_bytes(
+        self,
+    ) -> None:
+        contents = b"cached release bytes"
+        digest = hashlib.sha256(contents).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            verifier = GATE.SignedEvidenceVerifier(Path(directory))
+            response = FakeDownloadResponse(contents, "https://objects.githubusercontent.com/release.zip")
+            with mock.patch.object(GATE, "urlopen", return_value=response) as download:
+                first = verifier._cached_artifact(
+                    "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.2.3/release.zip",
+                    digest,
+                    "release artifact",
+                )
+                second = verifier._cached_artifact(
+                    "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.2.3/release.zip",
+                    digest,
+                    "release artifact",
+                )
+            self.assertEqual(first, second)
+            self.assertEqual(first.read_bytes(), contents)
+            download.assert_called_once()
+
     def test_current_rollout_ledger_passes(self) -> None:
         GATE.run_gate(ROOT, ROOT / "config/domain-core-legacy-deletion.json")
+
+    def test_ios_release_consumers_match_mobile_runtime_ownership(self) -> None:
+        ios_rows = {
+            row_id
+            for row_id, consumers in GATE.ROW_RELEASE_CONSUMERS.items()
+            if "ios" in consumers
+        }
+        self.assertEqual(
+            ios_rows,
+            {
+                "cloudvault.portable_primitives",
+                "cloudvault.document_rewrap",
+                "cloudvault.search",
+                "hermes.relay_crypto",
+                "hermes.ratchet_transforms",
+            },
+        )
 
     def test_inventory_and_lifecycle_are_exact(self) -> None:
         ledger = json.loads((ROOT / "config/domain-core-legacy-deletion.json").read_text())
@@ -180,6 +223,96 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         ):
             GATE.validate_build_profile_catalog(weakened)
 
+    def test_two_commit_activation_is_non_circular_and_path_restricted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory).resolve()
+            (repo / "crates/openburnbar-domain-core").mkdir(parents=True)
+            (repo / "config").mkdir()
+            (repo / "crates/openburnbar-domain-core/union-abi-manifest.json").write_text(
+                json.dumps({"coreVersion": "0.3.0", "abiVersion": 3, "sourceSha256": "2" * 64})
+            )
+            (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text('[workspace]\n[workspace.package]\nversion = "0.3.0"\n')
+            profiles = json.loads((ROOT / GATE.BUILD_PROFILE_PATH).read_text())
+            (repo / GATE.BUILD_PROFILE_PATH).write_text(json.dumps(profiles))
+            (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"rollout"}\n')
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "test@openburnbar.invalid"],
+                cwd=repo,
+                check=True,
+            )
+            subprocess.run(["git", "config", "user.name", "OpenBurnBar Test"], cwd=repo, check=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "commit", "-qm", "candidate C remains legacy"],
+                cwd=repo,
+                check=True,
+            )
+            candidate = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            profiles["profiles"]["public-production"]["modes"] = {domain: "rust" for domain in profiles["domains"]}
+            (repo / GATE.BUILD_PROFILE_PATH).write_text(json.dumps(profiles))
+            (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"promotion_approved"}\n')
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "commit", "-qm", "activation P adds receipts and Rust profile"],
+                cwd=repo,
+                check=True,
+            )
+            activation = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            proof = GATE.validate_activation_closure(repo, candidate, activation)
+            self.assertEqual(proof["candidateCommit"], candidate)
+            self.assertEqual(proof["activationCommit"], activation)
+
+            (repo / "crates/openburnbar-domain-core/src.rs").write_text("fn drift() {}\n")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-qm", "forbidden drift"], cwd=repo, check=True)
+            drift = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+            with self.assertRaisesRegex(GATE.GateError, "only profile"):
+                GATE.validate_activation_closure(repo, candidate, drift)
+
+    def test_actual_deletion_head_requires_official_main_and_exact_approval(
+        self,
+    ) -> None:
+        verifier = GATE.SignedEvidenceVerifier()
+        head = "a" * 40
+        pull = {
+            "draft": False,
+            "merged": False,
+            "state": "open",
+            "user": {"login": "deletion-author"},
+            "head": {"sha": head, "repo": {"full_name": verifier.repository}},
+            "base": {"ref": "main", "repo": {"full_name": verifier.repository}},
+        }
+        reviews = [
+            {
+                "id": 7,
+                "commit_id": head,
+                "state": "APPROVED",
+                "submitted_at": "2026-07-15T01:00:00Z",
+                "user": {"login": "qualified-reviewer"},
+            }
+        ]
+        with (
+            mock.patch.object(verifier, "_github_json", return_value=pull),
+            mock.patch.object(verifier, "_github_list", return_value=reviews),
+        ):
+            verifier.verify_deletion_head(
+                pull_number=123,
+                deletion_head=head,
+                reviewer="@qualified-reviewer",
+            )
+        fork = copy.deepcopy(pull)
+        fork["head"]["repo"]["full_name"] = "attacker/fork"
+        with (
+            mock.patch.object(verifier, "_github_json", return_value=fork),
+            self.assertRaisesRegex(GATE.GateError, "same-repository"),
+        ):
+            verifier.verify_deletion_head(
+                pull_number=123,
+                deletion_head=head,
+                reviewer="@qualified-reviewer",
+            )
+
     def test_unsigned_bundle_must_disclaim_authority_and_bind_exact_tuple(self) -> None:
         identity = {
             "candidateCommit": "1" * 40,
@@ -224,8 +357,18 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         provenance = ROOT / "config/domain-core-deterministic-candidate-bundle.schema.json"
         responses = [
             subprocess.CompletedProcess([], 0, '[{"verificationResult":{}}]', ""),
-            subprocess.CompletedProcess([], 0, json.dumps(self.run_json(candidate, "push", 2, GATE.SOURCE_WORKFLOW)), ""),
-            subprocess.CompletedProcess([], 0, json.dumps(self.run_json(trusted, "workflow_dispatch", 3, GATE.PROMOTION_SIGNER_WORKFLOW)), ""),
+            subprocess.CompletedProcess(
+                [],
+                0,
+                json.dumps(self.run_json(candidate, "push", 2, GATE.SOURCE_WORKFLOW)),
+                "",
+            ),
+            subprocess.CompletedProcess(
+                [],
+                0,
+                json.dumps(self.run_json(trusted, "workflow_dispatch", 3, GATE.PROMOTION_SIGNER_WORKFLOW)),
+                "",
+            ),
         ]
         with mock.patch.object(GATE.subprocess, "run", side_effect=responses) as run:
             verifier.verify_candidate_bundle(
@@ -274,7 +417,9 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 candidate_commit=candidate,
             )
 
-    def test_promotion_creator_binds_exact_identity_and_official_provenance(self) -> None:
+    def test_promotion_creator_binds_exact_identity_and_official_provenance(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repo, commit = self.make_candidate_repo(Path(directory))
             identity = GATE.candidate_identity_at_commit(repo, commit)
@@ -303,9 +448,18 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             )
             self.assertEqual(attestation["candidate"], identity)
             self.assertEqual(attestation["status"], "attested")
-            self.assertEqual(attestation["unsignedBundle"]["sha256"], hashlib.sha256(bundle_bytes).hexdigest())
-            self.assertEqual(attestation["provenance"]["sha256"], hashlib.sha256(provenance_bytes).hexdigest())
-            self.assertEqual(attestation["provenance"]["signerWorkflow"], GATE.PROMOTION_SIGNER_WORKFLOW)
+            self.assertEqual(
+                attestation["unsignedBundle"]["sha256"],
+                hashlib.sha256(bundle_bytes).hexdigest(),
+            )
+            self.assertEqual(
+                attestation["provenance"]["sha256"],
+                hashlib.sha256(provenance_bytes).hexdigest(),
+            )
+            self.assertEqual(
+                attestation["provenance"]["signerWorkflow"],
+                GATE.PROMOTION_SIGNER_WORKFLOW,
+            )
             self.assertEqual(receipt["commit"], commit)
             self.assertNotIn("report", json.dumps(attestation).lower())
             self.assertTrue(hasattr(verifier, "candidate_call"))
@@ -327,22 +481,45 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             "abiVersion": 3,
             "sourceSha256": "2" * 64,
         }
+        activation = {
+            "candidateCommit": identity["candidateCommit"],
+            "activationCommit": "4" * 40,
+            "coreVersion": identity["coreVersion"],
+            "abiVersion": identity["abiVersion"],
+            "sourceSha256": identity["sourceSha256"],
+            "changedPathsSha256": "5" * 64,
+        }
         item = {
             "consumer": "windows",
             "artifactKind": "windows-release-bundle",
             "target": "windows-x64-arm64",
             "artifactUri": "https://github.com/Imagine-That-Ai/BurnBar/releases/download/windows-v1.2.3/OpenBurnBar-1.2.3-windows-release.zip",
-            "commit": identity["candidateCommit"],
+            "commit": activation["activationCommit"],
             "tag": "windows-v1.2.3",
             "version": "1.2.3",
             "publicProfileSha256": "3" * 64,
             "candidate": identity,
+            "activation": activation,
         }
         predicate = {
             "schemaVersion": 2,
+            "predicateType": GATE.RELEASE_PREDICATE_TYPES["windows"],
             "consumer": "windows",
+            "domain": "quota",
             "artifactKind": item["artifactKind"],
             "target": item["target"],
+            "candidate": identity,
+            "activation": activation,
+            "sourceRun": {
+                "repository": GATE.SignedEvidenceVerifier.repository,
+                "workflowPath": GATE.SOURCE_WORKFLOW,
+                "headSha": identity["candidateCommit"],
+            },
+            "promotionProof": {
+                "signerWorkflow": GATE.PROMOTION_SIGNER_WORKFLOW,
+                "predicateType": "https://slsa.dev/provenance/v1",
+            },
+            "rollbackArtifact": {"candidate": identity, "activation": activation},
             "artifact": {
                 "fileName": "OpenBurnBar-1.2.3-windows-release.zip",
                 "sha256": hashlib.sha256(contents).hexdigest(),
@@ -350,9 +527,8 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             "release": {
                 "version": "1.2.3",
                 "tag": "windows-v1.2.3",
-                "commit": identity["candidateCommit"],
+                "commit": activation["activationCommit"],
                 "publicProfileSha256": "3" * 64,
-                "candidate": identity,
             },
         }
         response = FakeDownloadResponse(contents, "https://objects.githubusercontent.com/release.zip")
@@ -361,22 +537,28 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             mock.patch.object(GATE, "urlopen", return_value=response),
             mock.patch.object(verifier, "_verify_bundle", return_value=result) as verify,
         ):
-            verifier.verify_release(item, ROOT / "README.md", hashlib.sha256(contents).hexdigest())
-        self.assertEqual(verify.call_args.kwargs["predicate_type"], GATE.RELEASE_PREDICATE_TYPES["windows"])
+            verifier.verify_release(item, ROOT / "README.md", hashlib.sha256(contents).hexdigest(), "quota")
+        self.assertEqual(
+            verify.call_args.kwargs["predicate_type"],
+            GATE.RELEASE_PREDICATE_TYPES["windows"],
+        )
         wrong = copy.deepcopy(result)
-        wrong[0]["verificationResult"]["statement"]["predicate"]["release"]["candidate"]["abiVersion"] = 4
+        wrong[0]["verificationResult"]["statement"]["predicate"]["candidate"]["abiVersion"] = 4
         response = FakeDownloadResponse(contents, "https://objects.githubusercontent.com/release.zip")
         with (
             mock.patch.object(GATE, "urlopen", return_value=response),
             mock.patch.object(verifier, "_verify_bundle", return_value=wrong),
             self.assertRaisesRegex(GATE.GateError, "signed predicate does not bind"),
         ):
-            verifier.verify_release(item, ROOT / "README.md", hashlib.sha256(contents).hexdigest())
+            verifier.verify_release(item, ROOT / "README.md", hashlib.sha256(contents).hexdigest(), "quota")
 
-    def test_stable_release_requires_exact_candidate_and_retained_signed_rollback(self) -> None:
+    def test_stable_release_requires_exact_candidate_and_retained_signed_rollback(
+        self,
+    ) -> None:
         source = (ROOT / "scripts/ci/verify-domain-core-legacy-deletion.py").read_text()
         for marker in (
-            "stable release must tag the exact attested candidate commit",
+            "stable release must tag the exact activation commit",
+            "activation changed the attested core version, ABI, or source fingerprint",
             "stable release requires the dedicated cross-consumer rollback artifact",
             "retain_until_legacy_deletion_complete",
             "verify_rollback_artifact",
@@ -393,14 +575,23 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             "abiVersion": 3,
             "sourceSha256": "2" * 64,
         }
+        activation = {
+            "candidateCommit": identity["candidateCommit"],
+            "activationCommit": "4" * 40,
+            "coreVersion": identity["coreVersion"],
+            "abiVersion": identity["abiVersion"],
+            "sourceSha256": identity["sourceSha256"],
+            "changedPathsSha256": "5" * 64,
+        }
         item = {
             "artifactKind": "legacy-rollback-bundle",
             "target": "all-supported-consumers",
             "artifactUri": "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.2.3/OpenBurnBar-1.2.3-legacy-rollback.zip",
-            "commit": identity["candidateCommit"],
+            "commit": activation["activationCommit"],
             "tag": "v1.2.3",
             "version": "1.2.3",
             "candidate": identity,
+            "activation": activation,
             "retentionPolicy": "retain_until_legacy_deletion_complete",
         }
         predicate = {
@@ -414,8 +605,9 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             "release": {
                 "version": "1.2.3",
                 "tag": "v1.2.3",
-                "commit": identity["candidateCommit"],
+                "commit": activation["activationCommit"],
                 "candidate": identity,
+                "activation": activation,
                 "retentionPolicy": "retain_until_legacy_deletion_complete",
             },
         }
@@ -462,7 +654,10 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                         "schemaVersion": 1,
                         "reviewers": [
                             {"handle": "@reviewer", "reviewClasses": ["domain_owner"]},
-                            {"handle": "@Reviewer", "reviewClasses": ["security_crypto"]},
+                            {
+                                "handle": "@Reviewer",
+                                "reviewClasses": ["security_crypto"],
+                            },
                         ],
                     }
                 )
@@ -473,9 +668,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 json.dumps(
                     {
                         "schemaVersion": 1,
-                        "reviewers": [
-                            {"handle": "@reviewer", "reviewClasses": ["unqualified"]}
-                        ],
+                        "reviewers": [{"handle": "@reviewer", "reviewClasses": ["unqualified"]}],
                     }
                 )
             )
@@ -505,7 +698,12 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 "authority": "none",
                 "attestationRequired": True,
                 "requiredSigner": GATE.PROMOTION_SIGNER_WORKFLOW,
-                "verificationSteps": ["query-github-api", "download-exact-run-artifacts", "revalidate-with-trusted-main", "sign-protected-attestation"],
+                "verificationSteps": [
+                    "query-github-api",
+                    "download-exact-run-artifacts",
+                    "revalidate-with-trusted-main",
+                    "sign-protected-attestation",
+                ],
             },
             "generatedAt": "2026-07-15T00:00:00Z",
             "candidate": identity,
@@ -567,13 +765,15 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             )
             + "\n"
         )
-        (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text(
-            '[workspace]\n[workspace.package]\nversion = "0.3.0"\n'
-        )
+        (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text('[workspace]\n[workspace.package]\nversion = "0.3.0"\n')
         (repo / GATE.PROMOTION_POLICY_PATH).write_text((ROOT / GATE.PROMOTION_POLICY_PATH).read_text())
         (repo / GATE.PROMOTION_EVALUATOR_PATH).write_text((ROOT / GATE.PROMOTION_EVALUATOR_PATH).read_text())
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-        subprocess.run(["git", "config", "user.email", "test@openburnbar.invalid"], cwd=repo, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@openburnbar.invalid"],
+            cwd=repo,
+            check=True,
+        )
         subprocess.run(["git", "config", "user.name", "OpenBurnBar Test"], cwd=repo, check=True)
         subprocess.run(["git", "add", "."], cwd=repo, check=True)
         subprocess.run(["git", "commit", "-qm", "candidate"], cwd=repo, check=True)

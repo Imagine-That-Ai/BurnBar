@@ -13,6 +13,14 @@ const CANDIDATE = Object.freeze({
   abiVersion: 3,
   sourceSha256: "b".repeat(64),
 });
+const ACTIVATION = Object.freeze({
+  candidateCommit: CANDIDATE.candidateCommit,
+  activationCommit: "d".repeat(40),
+  coreVersion: CANDIDATE.coreVersion,
+  abiVersion: CANDIDATE.abiVersion,
+  sourceSha256: CANDIDATE.sourceSha256,
+  changedPathsSha256: "e".repeat(64),
+});
 
 function sha(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -66,6 +74,8 @@ function fixture() {
     rollbackArtifact,
     "--candidate-commit",
     CANDIDATE.candidateCommit,
+    "--release-commit",
+    ACTIVATION.activationCommit,
     "--core-version",
     CANDIDATE.coreVersion,
     "--abi-version",
@@ -110,6 +120,7 @@ test("emits an exact pre-release gate for the candidate source signer and rollba
         verifierInput = value;
         return [];
       },
+      activationVerifier: () => ACTIVATION,
     });
     assert.deepEqual(receipt.candidate, CANDIDATE);
     assert.equal(receipt.sourceRun.runId, 101);
@@ -145,6 +156,7 @@ test("rejects candidate tuple source run and rollback substitutions", () => {
         () =>
           run(replaceArgument(files.args, flag, value), {
             promotionVerifier: () => [],
+            activationVerifier: () => ACTIVATION,
           }),
         pattern,
       );
@@ -157,11 +169,23 @@ test("rejects candidate tuple source run and rollback substitutions", () => {
 test("is byte-idempotent and refuses a different existing gate receipt", () => {
   const files = fixture();
   try {
-    run(files.args, { promotionVerifier: () => [] });
-    assert.doesNotThrow(() => run(files.args, { promotionVerifier: () => [] }));
+    run(files.args, {
+      promotionVerifier: () => [],
+      activationVerifier: () => ACTIVATION,
+    });
+    assert.doesNotThrow(() =>
+      run(files.args, {
+        promotionVerifier: () => [],
+        activationVerifier: () => ACTIVATION,
+      }),
+    );
     writeFileSync(files.output, "different");
     assert.throws(
-      () => run(files.args, { promotionVerifier: () => [] }),
+      () =>
+        run(files.args, {
+          promotionVerifier: () => [],
+          activationVerifier: () => ACTIVATION,
+        }),
       /refusing to replace non-identical release gate receipt/u,
     );
   } finally {

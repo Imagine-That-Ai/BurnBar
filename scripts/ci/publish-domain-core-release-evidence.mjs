@@ -68,6 +68,35 @@ function digest(value, label) {
   return value;
 }
 
+function validateActivationBinding(value, candidate, releaseCommit, label) {
+  const activation = exactObject(
+    value,
+    [
+      "candidateCommit",
+      "activationCommit",
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+      "changedPathsSha256",
+    ],
+    label,
+  );
+  if (
+    activation.candidateCommit !== candidate.candidateCommit ||
+    activation.activationCommit !== releaseCommit ||
+    activation.coreVersion !== candidate.coreVersion ||
+    activation.abiVersion !== candidate.abiVersion ||
+    activation.sourceSha256 !== candidate.sourceSha256 ||
+    !FULL_SHA.test(activation.activationCommit)
+  ) {
+    throw new Error(
+      `${label} does not bind candidate C to release activation P`,
+    );
+  }
+  digest(activation.changedPathsSha256, `${label} changed paths`);
+  return activation;
+}
+
 function validatePredicate(
   predicate,
   manifest,
@@ -98,6 +127,12 @@ function validatePredicate(
     `predicate for ${domain}`,
   );
   const candidate = validateDomainCoreCandidateIdentity(value.candidate);
+  const activation = validateActivationBinding(
+    value.activation,
+    candidate,
+    manifest.commit,
+    `predicate activation for ${domain}`,
+  );
   if (
     value.schemaVersion !== 2 ||
     value.predicateType !== DOMAIN_CORE_RELEASE_PREDICATE_TYPE ||
@@ -147,7 +182,7 @@ function validatePredicate(
     release.commit !== manifest.commit
   ) {
     throw new Error(
-      `predicate for ${domain} does not bind the exact candidate tag commit`,
+      `predicate for ${domain} does not bind the exact activation tag commit`,
     );
   }
   validateReleaseActivation(value.activation, {
@@ -247,13 +282,22 @@ function validatePredicate(
   );
   const rollbackArtifact = exactObject(
     value.rollbackArtifact,
-    ["fileName", "sha256", "candidate"],
+    ["fileName", "sha256", "candidate", "activation"],
     `predicate rollback artifact for ${domain}`,
   );
   if (
     !isDeepStrictEqual(
       validateDomainCoreCandidateIdentity(rollbackArtifact.candidate),
       candidate,
+    ) ||
+    !isDeepStrictEqual(
+      validateActivationBinding(
+        rollbackArtifact.activation,
+        candidate,
+        manifest.commit,
+        `predicate rollback activation for ${domain}`,
+      ),
+      activation,
     )
   ) {
     throw new Error(

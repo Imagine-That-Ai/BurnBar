@@ -11,6 +11,7 @@
     "artifactKind",
     "target",
     "candidate",
+    "activation",
     "sourceRun",
     "promotionProof",
     "rollbackArtifact",
@@ -63,6 +64,9 @@
     },
     "candidate": {
       "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/candidate"
+    },
+    "activation": {
+      "$ref": "domain-core-release-predicate.schema.json#/$defs/activation"
     },
     "sourceRun": {
       "$ref": "https://openburnbar.dev/schemas/domain-core-release-predicate-v2.json#/$defs/sourceRun"

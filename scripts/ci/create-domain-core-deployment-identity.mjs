@@ -65,7 +65,7 @@ function sameCandidate(actual, expected, label) {
   return candidate;
 }
 
-function validateProfileReceipt(raw, commit) {
+function validateProfileReceipt(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("profile receipt must be an object");
   }
@@ -88,11 +88,6 @@ function validateProfileReceipt(raw, commit) {
     );
   }
   const candidate = validateDomainCoreCandidateIdentity(raw.candidateIdentity);
-  if (candidate.candidateCommit !== commit) {
-    throw new Error(
-      "profile candidate commit does not match the deployment commit",
-    );
-  }
   if (
     raw.name === "public-production-rollback" &&
     Object.values(raw.modes).some((mode) => mode !== "legacy")
@@ -102,7 +97,7 @@ function validateProfileReceipt(raw, commit) {
   return { profile: raw, candidate };
 }
 
-function validateReleaseGate(raw, candidate) {
+function validateReleaseGate(raw, candidate, commit) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("release gate must be an object");
   }
@@ -118,6 +113,20 @@ function validateReleaseGate(raw, candidate) {
     candidate,
     "release gate rollback candidate",
   );
+  if (
+    raw.activation?.candidateCommit !== candidate.candidateCommit ||
+    raw.activation?.activationCommit !== commit ||
+    raw.activation?.coreVersion !== candidate.coreVersion ||
+    raw.activation?.abiVersion !== candidate.abiVersion ||
+    raw.activation?.sourceSha256 !== candidate.sourceSha256 ||
+    !/^[0-9a-f]{64}$/u.test(raw.activation?.changedPathsSha256 ?? "") ||
+    canonicalJson(raw.rollbackArtifact?.activation) !==
+      canonicalJson(raw.activation)
+  ) {
+    throw new Error(
+      "release gate does not bind candidate C to deployment activation P",
+    );
+  }
   if (
     raw.sourceRun?.headSha !== candidate.candidateCommit ||
     raw.sourceRun?.workflowPath !== ".github/workflows/domain-core.yml" ||
@@ -149,10 +158,13 @@ export function buildDeploymentIdentity({
   const profilePath = resolve(profileReceiptPath);
   const { profile, candidate } = validateProfileReceipt(
     readJson(profilePath, "profile receipt"),
-    commit,
   );
   const gate = releaseGatePath
-    ? validateReleaseGate(readJson(releaseGatePath, "release gate"), candidate)
+    ? validateReleaseGate(
+        readJson(releaseGatePath, "release gate"),
+        candidate,
+        commit,
+      )
     : null;
   const requiresGate =
     tag !== null ||
@@ -161,6 +173,11 @@ export function buildDeploymentIdentity({
   if (requiresGate && gate === null) {
     throw new Error(
       "tagged, rollback, and Rust-authoritative Console deploys require a protected release gate",
+    );
+  }
+  if (gate === null && candidate.candidateCommit !== commit) {
+    throw new Error(
+      "ungated legacy deployment candidate must equal the deployment commit",
     );
   }
   return {

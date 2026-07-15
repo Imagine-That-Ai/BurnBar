@@ -98,7 +98,7 @@ test("Linux Tauri remains display-only while the Linux daemon stays under Swift 
   );
   assert.match(
     inventory,
-    /\| Tauri\/Linux UI \| Displays daemon-produced values \| No separate implementation/u,
+    /\| Tauri\/Linux UI\s*\| Displays daemon-produced values\s*\| No separate implementation/u,
   );
   assert.deepEqual(
     policy.requiredArtifacts
@@ -106,6 +106,38 @@ test("Linux Tauri remains display-only while the Linux daemon stays under Swift 
       .map(({ consumer }) => consumer)
       .sort(),
     ["browser-wasm", "node-wasm"],
+  );
+});
+
+test("iOS deletion scope matches real mobile calls and a signed archive producer", () => {
+  assert.deepEqual(RELEASE_CONSUMERS.ios.domains, [
+    "cloudVault",
+    "cloudVaultRewrap",
+    "cloudVaultSearch",
+    "hermes",
+  ]);
+  assert.match(
+    inventory,
+    /\| Swift \(iOS\)\s*\| No local provider quota parsing/u,
+  );
+  assert.match(release, /aarch64-apple-ios/u);
+  assert.match(release, /xcodebuild archive[\s\S]*-scheme OpenBurnBarMobile/u);
+  assert.match(release, /xcodebuild -exportArchive/u);
+  assert.match(release, /OpenBurnBar-\$\{VERSION\}-iOS\.xcarchive\.zip/u);
+  assert.match(release, /^  domain-core-ios-release-evidence:$/mu);
+  assert.match(release, /^      - domain-core-ios-release-evidence$/mu);
+  assert.match(
+    release,
+    /publish-domain-core-release-evidence\.mjs --manifest/u,
+  );
+  assert.match(release, /! -name 'domain-core-ios-\*'/u);
+  assert.match(iosEvidence, /codesign --verify --deep --strict/u);
+  assert.match(iosEvidence, /verify-domain-core-build-profile-artifact\.mjs/u);
+  assert.match(artifactVerifier, /join\(candidate, "Info\.plist"\)/u);
+  assert.match(iosEvidence, /\.domain == "cloudVault"/u);
+  assert.doesNotMatch(
+    RELEASE_CONSUMERS.ios.domains.join(" "),
+    /quota|pricing/u,
   );
 });
 

@@ -1,6 +1,6 @@
 # Shared Rust legacy deletion
 
-Legacy implementations are removed row by row only after deterministic promotion, an exact-candidate stable release, retained rollback, and independent review. Shadow telemetry is diagnostic. It never authorizes promotion or deletion.
+Legacy implementations are removed row by row only after deterministic promotion, a path-restricted activation commit, a candidate-bound stable release, retained rollback, and independent review. Shadow telemetry is diagnostic. It never authorizes promotion or deletion.
 
 ## Governed inventory
 
@@ -67,11 +67,17 @@ The creator verifies GitHub provenance and writes append-only artifacts under:
 
 ## Stable release and rollback
 
-Deletion requires one stable public release of the exact attested candidate, not a descendant with similar Rust sources. Every applicable consumer release predicate must bind the same four-field candidate identity and exact public Rust profile.
+Promotion uses two commits so the authority chain is not circular:
+
+1. Candidate `C` contains the complete Rust source with the public profile still on legacy. A successful `domain-core.yml` push run and the protected signer attest `C`.
+2. Activation `P` is a descendant of `C`. It adds the promotion receipts and switches the public profile to Rust. The `C..P` diff may contain only the build-profile catalog, deletion ledger, append-only promotion authority artifacts, and these shared-Rust runbooks. It must not change the core version, ABI, source fingerprint, Rust source, or consumer code.
+3. Stable artifacts are built and tagged at `P`, embed the candidate identity from `C`, and include the SHA-256 of the restricted `C..P` path set.
+
+Every applicable consumer release predicate must bind the same candidate `C`, activation `P`, exact Rust closure, and exact public Rust profile. Apple, Linux, Android, Windows, Console, and Functions are covered where the governed row applies. iOS is additionally required for the five mobile runtime rows: CloudVault portable primitives, document rewrap, encrypted search, Hermes relay crypto, and Hermes ratchet transforms; it is not a quota-parser or pricing-arithmetic consumer.
 
 The stable-release receipt must also bind a dedicated `legacy-rollback-bundle`:
 
-- built and tagged from the exact candidate commit;
+- built and tagged from activation `P` while binding candidate `C`;
 - separately hashed and covered by official release-workflow provenance;
 - targeted to all supported consumers;
 - retained under `retain_until_legacy_deletion_complete`;
@@ -80,6 +86,13 @@ The stable-release receipt must also bind a dedicated `legacy-rollback-bundle`:
 This is different from the deterministic rollback drill. The drill proves the selector and retained legacy artifact work before promotion. The stable-release artifact preserves the actual rollback payload after release.
 
 An operational rollback creates `rollback.json`, restores the public profile to legacy, and closes that authority generation. It never reuses the old promotion proof.
+
+Use the append-only writers rather than hand-authoring lifecycle receipts:
+
+```bash
+python3 scripts/ops/create-domain-core-stable-receipt.py --help
+python3 scripts/ops/create-domain-core-rollback-receipt.py --help
+```
 
 ## Deletion review
 
@@ -104,7 +117,9 @@ receipt dependency:
    append-only deletion-review receipt and move the row to
    `deletion_approved`.
 3. In a separate deletion PR, remove only the approved targets, move the row to
-   `legacy_deleted`, and pass the source-absence and Rust-only compile gates.
+   `legacy_deleted`, and pass its current PR number and exact head SHA to the
+   trusted deletion gate. The same qualified reviewer must approve that exact
+   current deletion head.
 
 The gate requires the reviewed plan commit to be an ancestor of the receipt
 commit and the review PR to retain that exact reviewed head.
@@ -119,18 +134,21 @@ python3 tests/test_domain_core_legacy_deletion_workflow.py
 python3 scripts/ci/verify-domain-core-legacy-deletion.py
 ```
 
-CI additionally supplies the trusted base SHA and `--verify-signed-evidence`. The gate fails closed on:
+The `pull_request_target`-based `Domain Core Trusted Deletion Guard` comes from the default branch, checks out candidate bytes as data only, and runs only the default branch's committed evaluator. CI also supplies the trusted base SHA, `--verify-signed-evidence`, and actual deletion PR/head coordinates. The final always-running `Domain Core PR Gate` requires every meaningful matrix and proof job to succeed. Both checks must be required on official `main`. The gate fails closed on:
 
 - changed or removed append-only generations, receipts, bundles, or provenance;
 - missing or unexpected rows and targets;
 - non-atomic public-profile transitions;
 - invalid promotion provenance or candidate identity;
-- a release not tagged at the exact candidate;
+- a release not tagged at activation `P`, or a `C..P` diff outside the restricted authority paths;
 - missing consumer evidence or retained signed rollback artifact;
 - an unqualified, stale, self-authored, or mismatched deletion review;
-- target absence before `legacy_deleted` or target presence afterward.
+- target absence before `legacy_deleted` or target presence afterward;
+- a deletion PR that is a fork, targets a branch other than official `main`, or lacks qualified approval on its exact current head.
 
-The normal domain-core jobs then compile and load the Rust core across Apple, Android, Windows, browser, Functions, and native test surfaces. Once a row reaches `legacy_deleted`, the source-absence gate plus those required jobs form the Rust-only compile gate.
+The source-absence gate scans the whole declared source root for deleted symbols and literals, rejects deleted paths still referenced by tracked build graphs, and verifies exact identity receipts against the final XCFramework, AAR, native Windows and Linux binaries, browser WASM, Node WASM, and C# native artifact. Symbol-only absence is not sufficient.
+
+The protected signer audits the live default-branch protection settings without mutating them. Official `main` must require strict `Domain Core PR Gate` and `Domain Core Trusted Deletion Guard` checks, admin enforcement, stale-approval dismissal, and disabled force-pushes/deletions.
 
 ## Recovery
 

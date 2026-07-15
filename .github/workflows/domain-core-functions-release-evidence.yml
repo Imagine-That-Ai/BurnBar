@@ -144,7 +144,8 @@ jobs:
           const gate = JSON.parse(fs.readFileSync(path.join(directory, "domain-core-release-gate.json")));
           if (proof.profile.value.name !== expectedProfile) throw new Error("deploy proof profile does not match dispatch input");
           const candidate = proof.profile.value.candidateIdentity;
-          if (candidate?.candidateCommit !== process.env.GITHUB_SHA) throw new Error("deploy proof candidate does not match stable tag commit");
+          if (gate.activation?.candidateCommit !== candidate?.candidateCommit) throw new Error("deploy proof candidate does not match release activation");
+          if (gate.activation?.activationCommit !== process.env.GITHUB_SHA) throw new Error("deploy proof activation does not match stable tag commit");
           const signer = gate.promotionProof.signerRun;
           fs.appendFileSync(envPath, [
             `CANDIDATE_COMMIT=${candidate.candidateCommit}`,
@@ -172,6 +173,7 @@ jobs:
             --promotion-attestation "$proof_dir/domain-core-promotion.sigstore.jsonl" \
             --rollback-artifact "$proof_dir/domain-core-public-production-rollback.json" \
             --candidate-commit "$CANDIDATE_COMMIT" \
+            --release-commit "$GITHUB_SHA" \
             --core-version "$CORE_VERSION" \
             --abi-version "$ABI_VERSION" \
             --source-sha256 "$SOURCE_SHA256" \

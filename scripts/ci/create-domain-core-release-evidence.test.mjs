@@ -90,7 +90,7 @@ function baseOptions(files, artifactPath) {
     consumer: "apple",
     domain: "quota",
     artifactKind: "macos-dmg",
-    target: "macos-arm64",
+    target: "macos-universal",
     version: "1.2.3",
     tag: "v1.2.3",
     commit: ACTIVATION_COMMIT,
@@ -103,6 +103,7 @@ function baseOptions(files, artifactPath) {
     publicProfileSha256: PROFILE_SHA,
     activation: ACTIVATION,
     promotionVerifier: () => [],
+    activationVerifier: () => ACTIVATION,
   };
 }
 
@@ -429,7 +430,7 @@ test("writes a deployment receipt and predicate with both artifact digests", () 
         "--deployment",
         deployment,
       ],
-      { promotionVerifier: () => [] },
+      { promotionVerifier: () => [], activationVerifier: () => ACTIVATION },
     );
     const receipt = JSON.parse(readFileSync(artifact, "utf8"));
     const writtenPredicate = JSON.parse(readFileSync(predicate, "utf8"));
@@ -517,7 +518,7 @@ test("refuses to rewrite an immutable predicate with different bytes", () => {
             "--artifact-kind",
             "macos-dmg",
             "--target",
-            "macos-arm64",
+            "macos-universal",
             "--version",
             "1.2.3",
             "--tag",
@@ -543,7 +544,7 @@ test("refuses to rewrite an immutable predicate with different bytes", () => {
             "--rollback-artifact",
             files.rollbackArtifact,
           ],
-          { promotionVerifier: () => [] },
+          { promotionVerifier: () => [], activationVerifier: () => ACTIVATION },
         ),
       /refusing to replace non-identical immutable output/u,
     );

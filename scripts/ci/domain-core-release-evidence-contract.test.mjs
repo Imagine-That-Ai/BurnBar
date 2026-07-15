@@ -33,6 +33,7 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
       "artifactKind",
       "target",
       "candidate",
+      "activation",
       "sourceRun",
       "promotionProof",
       "rollbackArtifact",
@@ -53,6 +54,7 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
   assert.equal(schema.$defs.sourceRun.properties.event.const, "push");
   assert.equal(schema.$defs.sourceRun.properties.ref.const, "refs/heads/main");
   assert.ok(schema.$defs.rollbackArtifact.required.includes("candidate"));
+  assert.ok(schema.$defs.rollbackArtifact.required.includes("activation"));
   assert.ok(schema.$defs.rollbackArtifact.required.includes("sha256"));
   assert.equal(schema.oneOf.length, 5);
   assert.deepEqual(schema.$defs.publicProfile.required, [
@@ -172,6 +174,7 @@ test("deployment receipt v2 carries the same proof chain and deployed bytes", ()
   assert.equal(schema.properties.schemaVersion.const, 2);
   for (const field of [
     "candidate",
+    "activation",
     "sourceRun",
     "promotionProof",
     "rollbackArtifact",
@@ -229,6 +232,7 @@ test("pre-release gate verifies immutable candidate source signer and rollback i
   );
   for (const flag of [
     "--candidate-commit",
+    "--release-commit",
     "--core-version",
     "--abi-version",
     "--source-sha256",

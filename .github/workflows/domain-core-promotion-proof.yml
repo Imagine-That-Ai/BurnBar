@@ -58,6 +58,11 @@ jobs:
             '([.branch_policies[] | select(.type == "branch")] | length) == 1 and (.branch_policies | length) == 1 and any(.branch_policies[]; .type == "branch" and .name == "main")' \
             "$branches_json" >/dev/null
 
+      - name: Require live protected default-branch controls
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/verify-domain-core-default-branch-controls.mjs
+
       - name: Validate candidate and locate exact successful push run
         id: source
         env:

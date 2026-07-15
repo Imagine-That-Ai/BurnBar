@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -96,9 +96,12 @@ if (args.has("--receipt")) {
   verifyAndroidRuntimeProfile(dexBuffers, expected);
 } else if (args.has("--apple-app")) {
   const candidate = resolve(args.get("--apple-app"));
-  const plist = statSync(candidate).isDirectory()
-    ? join(candidate, "Contents/Info.plist")
-    : candidate;
+  let plist = candidate;
+  if (statSync(candidate).isDirectory()) {
+    const macOSPlist = join(candidate, "Contents/Info.plist");
+    const iOSPlist = join(candidate, "Info.plist");
+    plist = existsSync(macOSPlist) ? macOSPlist : iOSPlist;
+  }
   const read = (key) =>
     execFileSync("plutil", ["-extract", key, "raw", "-o", "-", plist], {
       encoding: "utf8",

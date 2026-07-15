@@ -50,8 +50,9 @@ function fixture() {
     consumer: "apple",
     domain: "quota",
     artifactKind: "macos-dmg",
-    target: "macos-arm64",
+    target: "macos-universal",
     candidate: CANDIDATE,
+    activation: ACTIVATION,
     sourceRun: {
       repository: "Imagine-That-Ai/BurnBar",
       workflowPath: ".github/workflows/domain-core.yml",
@@ -75,6 +76,7 @@ function fixture() {
       fileName: "domain-core-legacy-rollback.json",
       sha256: "e".repeat(64),
       candidate: CANDIDATE,
+      activation: ACTIVATION,
     },
     activation: ACTIVATION,
     publicProfile: {

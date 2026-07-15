@@ -970,6 +970,7 @@ jobs:
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
           OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 }}
           FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
@@ -981,6 +982,7 @@ jobs:
             APPLE_CERTIFICATE_P12 \
             APPLE_CERTIFICATE_PASSWORD \
             APPLE_NOTARY_KEY_ID \
+            APPLE_NOTARY_ISSUER_ID \
             APPLE_NOTARY_API_KEY_P8 \
             OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 \
             FIREBASE_PLIST_BASE64; do
@@ -996,6 +998,25 @@ jobs:
           node scripts/ci/verify-domain-core-apple-signing-identity.mjs \
             --policy config/apple-release-signing-policy.json --environment
 
+      - name: Write Apple API key
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          export NOTARY_KEY_PATH
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          payload = "".join(os.environ["APPLE_NOTARY_API_KEY_P8"].split())
+          Path(os.environ["NOTARY_KEY_PATH"]).write_bytes(base64.b64decode(payload, validate=True))
+          PY
+          chmod 600 "$NOTARY_KEY_PATH"
+          echo "notary_key_path=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
+
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -1010,6 +1031,8 @@ jobs:
           path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Resolve signed public domain-core profile
+        env:
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
         run: |
           node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --format github-env >> "$GITHUB_ENV"
           node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --format github-env-apple >> "$GITHUB_ENV"
@@ -1097,21 +1120,136 @@ jobs:
       - name: Prepare Signal FFI XCFramework for release app
         env:
           SIGNAL_FFI_BUILD_PROFILE: release
-          # The direct-download macOS release packages only the Mac app here.
-          # iOS/TestFlight artifacts are cut through the mobile lane, and the
-          # mobile test script prepares iOS slices when that gate is enabled.
-          SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"
+          # The protected release lane packages both the direct-download Mac app
+          # and the App Store iOS archive from one source-coherent FFI build.
+          SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios"
           CARGO_BUILD_JOBS: "2"
         run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
 
       - name: Prepare shared domain core XCFramework for release app
         env:
           DOMAIN_CORE_BUILD_PROFILE: release
-          DOMAIN_CORE_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"
         run: bash scripts/build-domain-core-xcframework.sh
 
       - name: Verify shared domain core release artifact
         run: test -d Vendor/OpenBurnBarDomainCore.xcframework
+
+      - name: Archive and export signed iOS app
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        id: ios-archive
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/OpenBurnBarMobile.xcarchive"
+          export_dir="$RUNNER_TEMP/ios-app-store-export"
+          bundle_dir="$RUNNER_TEMP/ios-release-bundle"
+          archive_zip="$RUNNER_TEMP/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
+          export_options="$RUNNER_TEMP/OpenBurnBarMobile-ExportOptions.plist"
+          build_number="$GITHUB_RUN_NUMBER"
+          apple_version="${VERSION%%+*}"
+          rm -rf "$archive" "$export_dir" "$bundle_dir" "$archive_zip"
+          mkdir -p "$export_dir" "$bundle_dir"
+
+          cat > "$export_options" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>destination</key><string>export</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>method</key><string>app-store-connect</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+
+          auth_args=(
+            -allowProvisioningUpdates
+            -authenticationKeyPath "$notary_key_path"
+            -authenticationKeyID "$APPLE_NOTARY_KEY_ID"
+            -authenticationKeyIssuerID "$APPLE_NOTARY_ISSUER_ID"
+          )
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme OpenBurnBarMobile \
+            -configuration "$CONFIG" \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive" \
+            -clonedSourcePackagesDirPath "$CACHE_DIR" \
+            -derivedDataPath "$DERIVED_DATA-ios" \
+            "${auth_args[@]}" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            MARKETING_VERSION="$apple_version" \
+            CURRENT_PROJECT_VERSION="$build_number" \
+            DOMAIN_CORE_BUILD_PROFILE="$DOMAIN_CORE_BUILD_PROFILE" \
+            DOMAIN_CORE_BUILD_AUTHORITY="$DOMAIN_CORE_BUILD_AUTHORITY" \
+            DOMAIN_CORE_DISTRIBUTION="$DOMAIN_CORE_DISTRIBUTION" \
+            DOMAIN_CORE_ROLLOUT_CHANNEL="$DOMAIN_CORE_ROLLOUT_CHANNEL" \
+            DOMAIN_CORE_EVIDENCE_ENABLED="$DOMAIN_CORE_EVIDENCE_ENABLED" \
+            DOMAIN_CORE_CANDIDATE_COMMIT="$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            DOMAIN_CORE_EXPECTED_VERSION="$DOMAIN_CORE_EXPECTED_VERSION" \
+            DOMAIN_CORE_EXPECTED_ABI_VERSION="$DOMAIN_CORE_EXPECTED_ABI_VERSION" \
+            DOMAIN_CORE_EXPECTED_SOURCE_SHA256="$DOMAIN_CORE_EXPECTED_SOURCE_SHA256" \
+            DOMAIN_CORE_QUOTA_MODE="$DOMAIN_CORE_QUOTA_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_MODE="$DOMAIN_CORE_CLOUDVAULT_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE="$DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE="$DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" \
+            DOMAIN_CORE_HERMES_MODE="$DOMAIN_CORE_HERMES_MODE" \
+            DOMAIN_CORE_PRICING_MODE="$DOMAIN_CORE_PRICING_MODE"
+
+          xcodebuild -exportArchive \
+            -archivePath "$archive" \
+            -exportPath "$export_dir" \
+            -exportOptionsPlist "$export_options" \
+            "${auth_args[@]}"
+
+          ipa="$(find "$export_dir" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          test -n "$ipa"
+          test -s "$ipa"
+          ipa_unpacked="$RUNNER_TEMP/ios-app-store-ipa"
+          rm -rf "$ipa_unpacked"
+          mkdir -p "$ipa_unpacked"
+          unzip -q "$ipa" -d "$ipa_unpacked"
+          exported_app="$ipa_unpacked/Payload/OpenBurnBarMobile.app"
+          test -d "$exported_app"
+          test -s "$exported_app/embedded.mobileprovision"
+          codesign --verify --deep --strict --verbose=2 "$exported_app"
+          app="$archive/Products/Applications/OpenBurnBarMobile.app"
+          test -d "$app"
+          test -s "$app/embedded.mobileprovision"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+            --profile public-production \
+            --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            --apple-app "$app"
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+            --profile public-production \
+            --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            --apple-app "$exported_app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$archive/Info.plist")" = "$apple_version"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+
+          cp -R "$archive" "$bundle_dir/OpenBurnBarMobile.xcarchive"
+          cp "$ipa" "$bundle_dir/OpenBurnBarMobile.ipa"
+          ditto -c -k --sequesterRsrc "$bundle_dir" "$archive_zip"
+          test -s "$archive_zip"
+          echo "archive_path=$archive_zip" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=OpenBurnBar-${VERSION}-iOS-archive" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed iOS archive artifact
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: ${{ steps.ios-archive.outputs.artifact_name }}
+          path: ${{ steps.ios-archive.outputs.archive_path }}
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
@@ -1651,24 +1789,6 @@ jobs:
         run: |
           codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG_PATH"
           codesign --verify --verbose=2 "$DMG_PATH"
-
-      - name: Write notary API key
-        env:
-          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-          APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
-        run: |
-          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
-          python3 - <<'PY'
-          import base64
-          import os
-          from pathlib import Path
-
-          key_id = os.environ["APPLE_NOTARY_KEY_ID"]
-          payload = os.environ["APPLE_NOTARY_API_KEY_P8"]
-          Path(os.environ["RUNNER_TEMP"], f"AuthKey_{key_id}.p8").write_bytes(base64.b64decode(payload))
-          PY
-          chmod 600 "$NOTARY_KEY_PATH"
-          echo "notary_key_path=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Notarize and staple DMG
         env:
@@ -2264,6 +2384,19 @@ jobs:
           fi
           rm -f "$RUNNER_TEMP/certificate.p12"
 
+  domain-core-ios-release-evidence:
+    name: Domain Core iOS release evidence
+    needs:
+      - release-preflight
+      - build-and-release
+    uses: ./.github/workflows/domain-core-ios-release-evidence.yml
+    with:
+      enabled: ${{ needs.release-preflight.outputs.is_prerelease == 'false' }}
+      version: ${{ needs.release-preflight.outputs.version }}
+      release_commit: ${{ needs.release-preflight.outputs.release_commit }}
+      archive_artifact_name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS-archive
+    secrets: inherit
+
   smoke-test:
     needs: build-and-release
     runs-on: macos-15
@@ -2359,6 +2492,7 @@ jobs:
       - release-extension-gate
       - release-supply-chain-gate
       - build-and-release
+      - domain-core-ios-release-evidence
       - smoke-test
       - apple-native-prepublication
     runs-on: macos-15
@@ -2404,7 +2538,7 @@ jobs:
           PROVENANCE_PATHS=()
           while IFS= read -r provenance_path; do
             [[ -n "$provenance_path" ]] && PROVENANCE_PATHS+=("$provenance_path")
-          done < <(find "$RUNNER_TEMP" -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) -print 2>/dev/null | sort)
+          done < <(find "$RUNNER_TEMP" -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) ! -name 'domain-core-ios-*' -print 2>/dev/null | sort)
 
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           VERSION_TAG="${VERSION#v}"
