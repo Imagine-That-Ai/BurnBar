@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at `408487b9e8`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, chat attachment preflight, canonical provider catalog hydration, the Wayland-safe pet fallback, and the Windows-portable Hermes stream initializer are linked below. Accepted candidate run `29401347808` passed both release architectures and installed-package runtime checks before these later source commits; a replacement exact-head candidate will be dispatched from this final documentation head. |
+| Remediation evidence | `codex/linux-parity-integration-final` at `8dd319a5e3`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, chat attachment preflight, canonical provider catalog hydration, the Wayland-safe pet fallback, and the Windows-portable Hermes stream transport are linked below. Accepted candidate run `29401347808` passed both release architectures and installed-package runtime checks before these later source commits; a replacement exact-head candidate will be dispatched from this final documentation head. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -89,8 +89,11 @@ percentage. The active remediation stack now contains these reviewable slices:
   transport: the Windows Foundation overlay selected the zero-argument
   `AsyncThrowingStream` unfolding initializer instead of the continuation
   builder. `dd864a90be` selects the continuation initializer explicitly with a
-  buffering-policy label and typed continuation; the macOS package build
-  passes and fresh Windows checks are running from this head.
+  buffering-policy label and typed continuation. The same Windows
+  FoundationNetworking surface lacks `URLSession.bytes(for:)`, so
+  `8dd319a5e3` routes Linux and Windows through buffered `data(for:)` SSE
+  parsing; the macOS package build passes and fresh Windows checks are
+  required from the final documentation head.
 - **Current candidate and nightly runs:** the replacement exact-head Linux
   release candidate and nightly matrix will be dispatched after this
   documentation checkpoint is frozen. Prior runs from `dd864a90be` were
