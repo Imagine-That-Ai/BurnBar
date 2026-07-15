@@ -133,6 +133,11 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("      - name: Deploy Cloud Functions", "      - name: Bad post-auth functions build\n        run: npm run build --prefix functions\n\n      - name: Deploy Cloud Functions", 1)'
 expect_fail "post-auth functions build fails" run_gate "$fixture"
 
+fixture="$TMP_ROOT/post-auth-python-helper"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("      - name: Deploy Cloud Functions", "      - name: Bad post-auth Python helper\n        run: python3 scripts/ci/check_burnbar_release_preflight.py\n\n      - name: Deploy Cloud Functions", 1)'
+expect_fail "post-auth Python repository helper fails" run_gate "$fixture"
+
 fixture="$TMP_ROOT/post-auth-firestore-npm-ci"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-firestore.yml" 'text = text.replace("      - name: Deploy Firestore rules, indexes, and Storage rules", "      - name: Bad post-auth npm ci\n        run: npm ci --prefix functions\n\n      - name: Deploy Firestore rules, indexes, and Storage rules", 1)'
@@ -195,7 +200,7 @@ expect_fail "hosting missing REST token format fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/hosting-missing-rest-token-env"
 copy_base_fixture "$fixture"
-mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("          FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}\n", "", 1)'
+mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("          FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}\n", "")'
 expect_fail "hosting missing REST token env fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/hosting-config-outside-artifact-root"

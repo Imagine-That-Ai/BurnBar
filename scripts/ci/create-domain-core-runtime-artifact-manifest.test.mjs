@@ -36,6 +36,10 @@ function fixture(consumer) {
       join(root, "_next/static/chunks/core.js"),
       'fetch("core.wasm");domainCoreSourceFingerprint();',
     );
+    writeFileSync(
+      join(root, "_next/static/chunks/caller.js"),
+      'export const pricingMode = "rust";',
+    );
   } else {
     for (const path of ["lib/generated", "vendor/openburnbar/domain-core-wasm"])
       mkdirSync(join(root, path), { recursive: true });
@@ -44,6 +48,8 @@ function fixture(consumer) {
       "lib/health.js",
       "lib/index.js",
       "lib/domainCorePricing.js",
+      "lib/pricing.js",
+      "lib/rollupCompute.js",
       "lib/generated/domainCoreCandidateReceipt.js",
       "vendor/openburnbar/domain-core-wasm/openburnbar-domain-core-source.sha256",
       "vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.js",
@@ -122,4 +128,47 @@ test("rejects missing loader, duplicate WASM, and symlink substitutions", () => 
       }),
     /regular non-symlink/u,
   );
+});
+
+test("binds unreferenced Console callers and every compiled Functions caller", () => {
+  const consoleFixture = fixture("console");
+  const consoleBefore = createRuntimeArtifactManifest({
+    consumer: "console",
+    root: consoleFixture.root,
+    profileReceipt: consoleFixture.profile,
+  });
+  const consoleCaller = join(
+    consoleFixture.root,
+    "_next/static/chunks/caller.js",
+  );
+  assert.ok(
+    consoleBefore.files.some((file) => file.path.endsWith("/caller.js")),
+  );
+  writeFileSync(consoleCaller, 'export const pricingMode = "legacy";');
+  const consoleAfter = createRuntimeArtifactManifest({
+    consumer: "console",
+    root: consoleFixture.root,
+    profileReceipt: consoleFixture.profile,
+  });
+  assert.notDeepEqual(consoleAfter, consoleBefore);
+
+  const functionsFixture = fixture("functions");
+  const functionsBefore = createRuntimeArtifactManifest({
+    consumer: "functions",
+    root: functionsFixture.root,
+    profileReceipt: functionsFixture.profile,
+  });
+  for (const relativePath of ["lib/pricing.js", "lib/rollupCompute.js"]) {
+    assert.ok(
+      functionsBefore.files.some((file) => file.path === relativePath),
+      relativePath,
+    );
+    writeFileSync(join(functionsFixture.root, relativePath), "legacy();");
+  }
+  const functionsAfter = createRuntimeArtifactManifest({
+    consumer: "functions",
+    root: functionsFixture.root,
+    profileReceipt: functionsFixture.profile,
+  });
+  assert.notDeepEqual(functionsAfter, functionsBefore);
 });

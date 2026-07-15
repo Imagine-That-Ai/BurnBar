@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { deriveDomainCoreFunctionsTargets } from "./verify-domain-core-functions-target-inventory.mjs";
+
 const core = readFileSync(
   new URL("../../.github/workflows/domain-core.yml", import.meta.url),
   "utf8",
@@ -45,17 +47,6 @@ const functionsTargets = JSON.parse(
 const functionsIndex = readFileSync(
   new URL("../../functions/src/index.ts", import.meta.url),
   "utf8",
-);
-const functionsPricing = [
-  "health.ts",
-  "insightsHostedAnswer.ts",
-  "rollupCounters.ts",
-  "rollups.ts",
-  "triggers.ts",
-  "scheduled.ts",
-  "callables/misc.ts",
-].map((path) =>
-  readFileSync(new URL(`../../functions/src/${path}`, import.meta.url), "utf8"),
 );
 
 test("deterministic workflow implements every exact policy job and a fail-closed final bundle", () => {
@@ -179,6 +170,11 @@ test("stable tag replay is byte-and-provider-identical before any production mut
     functionsDeploy,
     /already live but its immutable Functions deployment receipt is missing/u,
   );
+  assert.match(functionsDeploy, /gh attestation verify/u);
+  assert.match(
+    functionsDeploy,
+    /domain-core-functions-release-evidence\.yml/u,
+  );
 
   const hostingReplay = hostingDeploy.indexOf(
     "Refuse non-identical stable-tag redeploy",
@@ -202,29 +198,29 @@ test("stable tag replay is byte-and-provider-identical before any production mut
     hostingDeploy,
     /already live but its immutable Console deployment receipt is missing/u,
   );
+  assert.match(hostingDeploy, /gh attestation verify/u);
+  assert.match(hostingDeploy, /domain-core-console-release-evidence\.yml/u);
+  const stagedManifestCreator = hostingDeploy.indexOf(
+    'cp scripts/ci/create-domain-core-runtime-artifact-manifest.mjs "$ARTIFACT_ROOT/scripts/ci/"',
+  );
+  const usedManifestCreator = hostingDeploy.indexOf(
+    'node "$ARTIFACT_ROOT/scripts/ci/create-domain-core-runtime-artifact-manifest.mjs"',
+  );
+  assert.ok(stagedManifestCreator > 0);
+  assert.ok(usedManifestCreator > stagedManifestCreator);
 });
 
 test("protected Functions inventory covers every pricing execution entry and both runtime observers", () => {
-  assert.deepEqual(functionsTargets, {
-    schemaVersion: 1,
-    targets: [
-      "healthCheck",
-      "healthLive",
-      "healthReady",
-      "insightsHostedAnswer",
-      "onUsageWritten",
-      "rebuildRollups",
-      "rollupUserRebuild",
-      "rebuildUsageRollups",
-    ],
-  });
+  assert.equal(functionsTargets.schemaVersion, 1);
+  assert.deepEqual(
+    functionsTargets.targets,
+    deriveDomainCoreFunctionsTargets(new URL("../..", import.meta.url).pathname),
+  );
   for (const target of functionsTargets.targets) {
     assert.match(functionsIndex, new RegExp(`\\b${target}\\b`, "u"), target);
   }
-  const combined = functionsPricing.join("\n");
-  assert.match(combined, /loadedDomainCorePricingIdentity/u);
-  assert.match(combined, /from "\.\/pricing\.js"/u);
-  assert.match(combined, /from "\.\/domainCorePricing\.js"/u);
-  assert.match(combined, /from "\.\/rollups\.js"/u);
-  assert.match(combined, /from "\.\.\/rollups\.js"/u);
+  assert.match(
+    functionsDeploy,
+    /verify-domain-core-functions-target-inventory\.mjs/u,
+  );
 });

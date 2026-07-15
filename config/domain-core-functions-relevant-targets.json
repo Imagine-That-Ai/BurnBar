@@ -1,13 +1,17 @@
 {
   "schemaVersion": 1,
   "targets": [
+    "anchorAuditLogHeads",
     "healthCheck",
     "healthLive",
     "healthReady",
     "insightsHostedAnswer",
     "onUsageWritten",
     "rebuildRollups",
+    "rebuildUsageRollups",
+    "refreshAllProviderQuotas",
+    "refreshModelLandscapeBenchmarks",
     "rollupUserRebuild",
-    "rebuildUsageRollups"
+    "seedAndroidDemoAccount"
   ]
 }
