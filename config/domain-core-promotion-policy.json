@@ -22,6 +22,7 @@
       "swift-consumer-contracts",
       "console-consumer-contracts",
       "python-mcp-cloudvault-contracts",
+      "python-hermes-contracts",
       "rollback-drill"
     ]
   },
@@ -46,6 +47,7 @@
     { "id": "swift-consumer-contracts", "jobId": "swift-consumer-contracts" },
     { "id": "console-consumer-contracts", "jobId": "console-consumer-contracts" },
     { "id": "python-mcp-cloudvault-contracts", "jobId": "python-mcp-cloudvault-contracts" },
+    { "id": "python-hermes-contracts", "jobId": "python-hermes-contracts" },
     { "id": "rollback-drill", "jobId": "rollback-drill" }
   ],
   "requiredArtifacts": [
@@ -102,6 +104,12 @@
       "consumer": "python",
       "jobId": "python-mcp-cloudvault-contracts",
       "requiredLoadSuiteIds": ["python-mcp-cloudvault-contracts"]
+    },
+    {
+      "id": "python-hermes-native",
+      "consumer": "python",
+      "jobId": "python-hermes-contracts",
+      "requiredLoadSuiteIds": ["python-hermes-contracts"]
     }
   ],
   "requiredBenchmarks": [
@@ -169,7 +177,8 @@
         { "slice": "hpke-info", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
         { "slice": "hpke-info", "consumer": "android", "suiteId": "android-consumer-contracts" },
         { "slice": "ratchet", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
-        { "slice": "ratchet", "consumer": "android", "suiteId": "android-consumer-contracts" }
+        { "slice": "ratchet", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "ratchet", "consumer": "hermes-python", "suiteId": "python-hermes-contracts" }
       ]
     },
     "pricing": {

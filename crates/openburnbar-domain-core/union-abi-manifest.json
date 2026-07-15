@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "coreVersion": "0.1.0",
   "abiVersion": 3,
-  "sourceSha256": "60196ca3b3eb589a790c423fe68ff02ca8871650bf4b425cc327525c01ed86b0",
+  "sourceSha256": "2d853a60805ee1734b27d025fad86850b08efda0bc6525022a13846f2391a07d",
   "sourceRoots": [
     "Cargo.toml",
     "Cargo.lock",
@@ -44,6 +44,7 @@
     "hermes_sha256",
     "hermes_hmac_sha256",
     "hermes_ratchet_envelope_aad",
+    "hermes_ratchet_prekey_shared_secret",
     "hermes_gateway_relay_safety_code",
     "hermes_seal_base64",
     "cloud_vault_aes_gcm_seal_detached",
@@ -208,19 +209,24 @@
     },
     "hermes": {
       "rust": [
-        "hermes_relay_aad"
+        "hermes_relay_aad",
+        "hermes_ratchet_prekey_shared_secret"
       ],
       "cHeader": [
-        "uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad"
+        "uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad",
+        "uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_prekey_shared_secret"
       ],
       "swift": [
-        "hermesRelayAad"
+        "hermesRelayAad",
+        "hermesRatchetPrekeySharedSecret"
       ],
       "kotlin": [
-        "hermesRelayAad"
+        "hermesRelayAad",
+        "hermesRatchetPrekeySharedSecret"
       ],
       "csharp": [
-        "HermesRelayAad"
+        "HermesRelayAad",
+        "HermesRatchetPrekeySharedSecret"
       ]
     },
     "pricing": {

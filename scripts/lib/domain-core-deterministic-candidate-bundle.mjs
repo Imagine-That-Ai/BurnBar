@@ -159,6 +159,7 @@ export const DOMAIN_CORE_REQUIRED_JOB_IDS = Object.freeze([
   "swift-consumer-contracts",
   "console-consumer-contracts",
   "python-mcp-cloudvault-contracts",
+  "python-hermes-contracts",
   "rollback-drill",
 ]);
 
@@ -186,6 +187,7 @@ export const DOMAIN_CORE_REQUIRED_SUITES = Object.freeze([
     id: "python-mcp-cloudvault-contracts",
     jobId: "python-mcp-cloudvault-contracts",
   }),
+  Object.freeze({ id: "python-hermes-contracts", jobId: "python-hermes-contracts" }),
   Object.freeze({ id: "rollback-drill", jobId: "rollback-drill" }),
 ]);
 
@@ -254,6 +256,12 @@ export const DOMAIN_CORE_REQUIRED_ARTIFACTS = Object.freeze([
     jobId: "python-mcp-cloudvault-contracts",
     requiredLoadSuiteIds: Object.freeze(["python-mcp-cloudvault-contracts"]),
   }),
+  Object.freeze({
+    id: "python-hermes-native",
+    consumer: "python",
+    jobId: "python-hermes-contracts",
+    requiredLoadSuiteIds: Object.freeze(["python-hermes-contracts"]),
+  }),
 ]);
 
 const CANONICAL_BENCHMARKS = Object.freeze([
@@ -272,6 +280,7 @@ const COVERAGE_SUITE_BY_CONSUMER = Object.freeze({
   functions: "functions-pricing-contracts",
   "remote-mcp": "remote-mcp-cloudvault-contracts",
   "local-mcp": "python-mcp-cloudvault-contracts",
+  "hermes-python": "python-hermes-contracts",
 });
 
 function isRecord(value) {

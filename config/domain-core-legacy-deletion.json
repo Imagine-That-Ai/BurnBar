@@ -3,13 +3,18 @@
   "sourceRoots": {
     "swift-quota": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota",
     "swift-cloudvault": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels",
+    "swift-vector": "OpenBurnBarCore/Sources/OpenBurnBarVectorKit",
     "swift-pricing": "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser",
     "windows-quota": "windows/app/OpenBurnBar.App.Presentation/Quota",
     "windows-cloudvault": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto",
+    "windows-cloudsync": "windows/app/OpenBurnBar.App.CloudSync",
     "android-cloudvault": "android/app/src/main/java/com/openburnbar/data/cloud",
     "android-hermes": "android/app/src/main/java/com/openburnbar/data/hermes/relay",
     "android-build": "android/app",
     "console-cloudvault": "apps/console/lib",
+    "local-mcp": "tools/openburnbar-mcp",
+    "remote-mcp": "tools/openburnbar-mcp-remote/src",
+    "hermes-plugin": "tools/hermes-platform-burnbar",
     "functions-pricing": "functions/src"
   },
   "rows": [
@@ -87,7 +92,14 @@
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacyCloudVaultAADContext" },
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacyKeyedHmacHex" },
         { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacySplitEscrowWire" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/domainCoreCloudVault.ts", "symbol": "configuredMode" }
+        { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/domainCoreCloudVault.ts", "symbol": "configuredMode" },
+        { "kind": "path", "role": "legacy_implementation", "root": "swift-vector", "path": "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/Legacy/PensieveVectorLegacy.swift" },
+        { "kind": "path", "role": "legacy_implementation", "root": "windows-cloudsync", "path": "windows/app/OpenBurnBar.App.CloudSync/Legacy/PensieveVectorLegacy.cs" },
+        { "kind": "path", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/legacy/pensieveVectorLegacy.ts" },
+        { "kind": "path", "role": "legacy_implementation", "root": "local-mcp", "path": "tools/openburnbar-mcp/cloudvault_primitives_legacy.py" },
+        { "kind": "path", "role": "legacy_implementation", "root": "remote-mcp", "path": "tools/openburnbar-mcp-remote/src/legacy/cloudVaultPrimitivesLegacy.ts" },
+        { "kind": "path", "role": "legacy_implementation", "root": "remote-mcp", "path": "tools/openburnbar-mcp-remote/src/legacy/pensieveVectorLegacy.ts" },
+        { "kind": "mode_literal", "role": "rollback_control", "root": "remote-mcp", "path": "tools/openburnbar-mcp-remote/src/domainCoreOpaqueIdentifiers.ts", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE" }
       ]
     },
     {
@@ -114,7 +126,9 @@
         { "kind": "mode_literal", "role": "rollback_control", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultSearchDomainCoreAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" },
         { "kind": "path", "role": "legacy_implementation", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacySearch.kt" },
         { "kind": "mode_literal", "role": "rollback_control", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultSearchDomainCore.kt", "literal": "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "android-build", "path": "android/app/build.gradle.kts", "literal": "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE" }
+        { "kind": "mode_literal", "role": "rollback_control", "root": "android-build", "path": "android/app/build.gradle.kts", "literal": "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE" },
+        { "kind": "path", "role": "legacy_implementation", "root": "local-mcp", "path": "tools/openburnbar-mcp/cloudvault_search_legacy.py" },
+        { "kind": "path", "role": "legacy_implementation", "root": "remote-mcp", "path": "tools/openburnbar-mcp-remote/src/legacy/cloudVaultSearchLegacy.ts" }
       ]
     },
     {
@@ -136,7 +150,9 @@
       "receipts": {},
       "targets": [
         { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRatchetLegacyCrypto.swift" },
-        { "kind": "path", "role": "legacy_implementation", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetLegacyCrypto.kt" }
+        { "kind": "path", "role": "legacy_implementation", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetLegacyCrypto.kt" },
+        { "kind": "path", "role": "legacy_implementation", "root": "hermes-plugin", "path": "tools/hermes-platform-burnbar/legacy/hermes_ratchet_legacy.py" },
+        { "kind": "mode_literal", "role": "rollback_control", "root": "hermes-plugin", "path": "tools/hermes-platform-burnbar/domain_core_hermes.py", "literal": "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE" }
       ]
     },
     {
@@ -186,6 +202,14 @@
     {
       "rowIds": ["hermes.relay_crypto", "hermes.ratchet_transforms"],
       "target": { "kind": "mode_literal", "role": "rollback_control", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesDomainCoreAdapter.kt", "literal": "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE" }
+    },
+    {
+      "rowIds": ["cloudvault.portable_primitives", "cloudvault.search"],
+      "target": { "kind": "mode_literal", "role": "rollback_control", "root": "local-mcp", "path": "tools/openburnbar-mcp/domain_core_cloudvault.py", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE" }
+    },
+    {
+      "rowIds": ["cloudvault.portable_primitives", "cloudvault.search"],
+      "target": { "kind": "mode_literal", "role": "rollback_control", "root": "remote-mcp", "path": "tools/openburnbar-mcp-remote/src/domainCoreCloudVault.ts", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE" }
     },
     {
       "rowIds": ["pricing.token_cost", "pricing.kimi_historical"],

@@ -25,7 +25,7 @@ consumer, contract, deletion target, or rollout state changes.
 | Cloud Functions TypeScript | Separate Cursor dashboard mechanism only | Encrypted-record coordination only | Envelope validation/coordination only | Yes | Persistence/query coordination only | No production owner |
 | Remote MCP TypeScript | No | AAD v2, AES sealed text, and Pensieve opaque hashes | No | No | Token and semantic query hashes | Cloak and deterministic embed |
 | Local MCP Python | No | Rust plus named Python rollback during rollout | No | No | Rust plus named Python rollback during rollout | No production owner |
-| Hermes plugin Python | No | No | Relay crypto delegates to Hermes `gateway.crypto`; ratchet prekey transcript/HKDF remains a required consumer | No | No | No production owner |
+| Hermes plugin Python | No | No | Rust plus named Python rollback for the ratchet prekey transcript/HKDF; relay crypto otherwise delegates to Hermes `gateway.crypto` | No | No | No production owner |
 | Tauri/Linux UI | Displays daemon-produced values | No separate implementation | No separate implementation | No separate implementation | No separate implementation | No separate implementation |
 
 Provider log parsers remain in `OpenBurnBarCore`. macOS, iOS, and the Linux
@@ -84,8 +84,8 @@ the stable-release gate has been satisfied.
 `tools/openburnbar-mcp/server.py` is a real CloudVault consumer, not a waiver or
 an excluded platform. Its executable transforms now route through
 `tools/openburnbar-mcp/domain_core_cloudvault.py`; the named rollback code lives
-only in `cloudvault_legacy.py`. The production adapter covers the operations it
-actually executes:
+only in `cloudvault_primitives_legacy.py` and `cloudvault_search_legacy.py`. The
+production adapter covers the operations it actually executes:
 
 - project-memory opaque document IDs at `_cloud_vault_project_memory_doc_id`;
 - CloudVault AAD v2 serialization and validation at
@@ -167,7 +167,7 @@ legacy deletion.
 | Request/response/control/media AAD                | Rust plus Swift/Kotlin during rollout | `tests/fixtures/domain-core/hermes/v1`; delete serializers after crypto promotion evidence                       |
 | AES payload seal/open and v1/v2 key-wrap KDF/info | Rust plus Swift/Kotlin during rollout | Rust owns framing/KDF; CryptoKit/JCA retain P-256 ECDH and secure nonce generation                               |
 | Authenticated HPKE v3 info                        | Rust plus Swift/Kotlin during rollout | Pinned sender authentication and platform private-key custody remain unchanged; no auth fallback                 |
-| Ratchet KDF, envelope AAD, and payload AEAD       | Rust plus Swift/Kotlin during rollout | Platform code retains atomic state transitions, skipped-key maps, replay policy, P-256 ratchets, and persistence |
+| Ratchet KDF, envelope AAD, and payload AEAD       | Rust plus Swift/Kotlin/Hermes Python during rollout | Platform code retains atomic state transitions, skipped-key maps, replay policy, P-256 ratchets, and persistence |
 
 Functions validate schemas and proof-of-possession but do not decrypt relay
 payloads, so they are not a native relay-crypto implementation. Hermes
@@ -183,13 +183,15 @@ Hermes `gateway.crypto.relay_e2ee` module. P-256 private-key loading, ECDH,
 Keychain custody, signatures, randomness, ratchet state transitions, replay
 policy, and persistence are platform-owned.
 
-One portable transform is still local: `_ratchet_prekey_shared_secret` builds
-the versioned prekey transcript and executes HKDF-SHA256 over three ECDH
-outputs. It is therefore a real required Hermes Python consumer, not an
-exclusion. Migrating it requires shipping the candidate-bound Python native
-package with the external Hermes plugin instead of merely copying `adapter.py`.
-Until that separate packaging lane lands, C2 cannot claim all consumers or
-delete the Python ratchet prekey transform.
+The portable `_ratchet_prekey_shared_secret` transcript/HKDF transform is now
+one composite Rust call. The plugin ships its own candidate-bound generated
+binding, host-native library, source fingerprint, and digest receipt; it does
+not borrow the local MCP artifact or evidence. Production selects
+`legacy|shadow|rust`, Rust authority fails closed, and shadow emits only safe
+operation/category/version diagnostics. The exact rollback deletion targets
+are `tools/hermes-platform-burnbar/legacy/hermes_ratchet_legacy.py` and the
+legacy branch in `domain_core_hermes.py`; they remain until the protected C2
+promotion and stable-release rollback gates authorize the separate deletion.
 
 ## P1 pricing operations
 
@@ -216,7 +218,7 @@ The generated surfaces are a single source-coherent set:
 | Swift binding/XCFramework   | `artifact-provenance/swift.sha256` plus fingerprint embedded at the XCFramework root                               |
 | Kotlin binding/four-ABI AAR | `artifact-provenance/kotlin.sha256` plus source and Rust/NDK toolchain provenance under `META-INF/` inside the AAR |
 | C# binding/native DLL       | `artifact-provenance/csharp.sha256` plus generated binding drift/native load checks                                |
-| Python binding/host native library | `artifact-provenance/python.sha256` plus package receipt, host tuple, binding/native SHA-256 checks, and candidate-bundle native-load proof |
+| Python binding/host native library | `artifact-provenance/python.sha256` plus separate local-MCP and Hermes-plugin package receipts, host tuples, binding/native SHA-256 checks, and candidate-bundle native-load proofs |
 | Browser and Node Wasm       | `openburnbar-domain-core-source.sha256` inside each vendored package plus exact tree comparison                    |
 
 `scripts/ci/domain-core-union-gate.py` validates all eight converged domains,

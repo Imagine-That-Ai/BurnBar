@@ -21,7 +21,7 @@ export const DOMAIN_CORE_REQUIRED_COVERAGE = Object.freeze({
     aad: Object.freeze(["apple", "android"]),
     "payload-keywrap": Object.freeze(["apple", "android"]),
     "hpke-info": Object.freeze(["apple", "android"]),
-    ratchet: Object.freeze(["apple", "android"]),
+    ratchet: Object.freeze(["apple", "android", "hermes-python"]),
   }),
   pricing: Object.freeze({
     "token-cost": Object.freeze(["apple", "functions"]),

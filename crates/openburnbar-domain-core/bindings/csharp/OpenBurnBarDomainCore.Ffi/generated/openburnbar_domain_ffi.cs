@@ -855,6 +855,8 @@ static class _UniFFILib {
 
 
 
+
+
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
@@ -1039,6 +1041,10 @@ static class _UniFFILib {
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_envelope_aad(RustBuffer @associatedData,RustBuffer @algorithm,RustBuffer @sessionId,RustBuffer @senderDeviceId,RustBuffer @receiverDeviceId,RustBuffer @ratchetPublicKeyBase64,ulong @version,ulong @previousChainLength,ulong @messageNumber,ulong @epoch,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_prekey_shared_secret(RustBuffer @request,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1498,6 +1504,10 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_prekey_shared_secret(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad(
     );
 
@@ -1831,6 +1841,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad();
             if (checksum != 11546) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad` checksum `11546`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_prekey_shared_secret();
+            if (checksum != 50844) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_prekey_shared_secret` checksum `50844`, library returned `{checksum}`");
             }
         }
         {
@@ -2666,6 +2682,72 @@ class FfiConverterTypeCloudVaultSearchResult: FfiConverterRustBuffer<CloudVaultS
     public override void Write(CloudVaultSearchResult value, BigEndianStream stream) {
             FfiConverterTypeCloudVaultSearchOperation.INSTANCE.Write(value.@operation, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.@hashes, stream);
+    }
+}
+
+
+
+public record HermesRatchetPrekeyRequest (
+    byte[] @dh1,
+    byte[] @dh2,
+    byte[] @dh3,
+    string @uid,
+    string @clientId,
+    string @initiatorRole,
+    string @initiatorIdentityPublicKeyBase64,
+    string @responderIdentityPublicKeyBase64,
+    string @initiatorSignedPrekeyPublicKeyBase64,
+    string @responderSignedPrekeyPublicKeyBase64,
+    string @initiatorInitialRatchetPublicKeyBase64
+) {
+}
+
+class FfiConverterTypeHermesRatchetPrekeyRequest: FfiConverterRustBuffer<HermesRatchetPrekeyRequest> {
+    public static FfiConverterTypeHermesRatchetPrekeyRequest INSTANCE = new FfiConverterTypeHermesRatchetPrekeyRequest();
+
+    public override HermesRatchetPrekeyRequest Read(BigEndianStream stream) {
+        return new HermesRatchetPrekeyRequest(
+            @dh1: FfiConverterByteArray.INSTANCE.Read(stream),
+            @dh2: FfiConverterByteArray.INSTANCE.Read(stream),
+            @dh3: FfiConverterByteArray.INSTANCE.Read(stream),
+            @uid: FfiConverterString.INSTANCE.Read(stream),
+            @clientId: FfiConverterString.INSTANCE.Read(stream),
+            @initiatorRole: FfiConverterString.INSTANCE.Read(stream),
+            @initiatorIdentityPublicKeyBase64: FfiConverterString.INSTANCE.Read(stream),
+            @responderIdentityPublicKeyBase64: FfiConverterString.INSTANCE.Read(stream),
+            @initiatorSignedPrekeyPublicKeyBase64: FfiConverterString.INSTANCE.Read(stream),
+            @responderSignedPrekeyPublicKeyBase64: FfiConverterString.INSTANCE.Read(stream),
+            @initiatorInitialRatchetPublicKeyBase64: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(HermesRatchetPrekeyRequest value) {
+        return 0
+            + FfiConverterByteArray.INSTANCE.AllocationSize(value.@dh1)
+            + FfiConverterByteArray.INSTANCE.AllocationSize(value.@dh2)
+            + FfiConverterByteArray.INSTANCE.AllocationSize(value.@dh3)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@uid)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@clientId)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@initiatorRole)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@initiatorIdentityPublicKeyBase64)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@responderIdentityPublicKeyBase64)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@initiatorSignedPrekeyPublicKeyBase64)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@responderSignedPrekeyPublicKeyBase64)
+            + FfiConverterString.INSTANCE.AllocationSize(value.@initiatorInitialRatchetPublicKeyBase64);
+    }
+
+    public override void Write(HermesRatchetPrekeyRequest value, BigEndianStream stream) {
+            FfiConverterByteArray.INSTANCE.Write(value.@dh1, stream);
+            FfiConverterByteArray.INSTANCE.Write(value.@dh2, stream);
+            FfiConverterByteArray.INSTANCE.Write(value.@dh3, stream);
+            FfiConverterString.INSTANCE.Write(value.@uid, stream);
+            FfiConverterString.INSTANCE.Write(value.@clientId, stream);
+            FfiConverterString.INSTANCE.Write(value.@initiatorRole, stream);
+            FfiConverterString.INSTANCE.Write(value.@initiatorIdentityPublicKeyBase64, stream);
+            FfiConverterString.INSTANCE.Write(value.@responderIdentityPublicKeyBase64, stream);
+            FfiConverterString.INSTANCE.Write(value.@initiatorSignedPrekeyPublicKeyBase64, stream);
+            FfiConverterString.INSTANCE.Write(value.@responderSignedPrekeyPublicKeyBase64, stream);
+            FfiConverterString.INSTANCE.Write(value.@initiatorInitialRatchetPublicKeyBase64, stream);
     }
 }
 
@@ -3563,6 +3645,11 @@ public class HermesFfiException: UniffiException {
     }
 
 
+    public class InvalidRatchetSharedSecretLength : HermesFfiException {
+        public InvalidRatchetSharedSecretLength() : base() {}
+    }
+
+
 
 
 }
@@ -3593,6 +3680,8 @@ class FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiException
                 return new HermesFfiException.InputTooLarge();
             case 10:
                 return new HermesFfiException.InvalidP256PublicKey();
+            case 11:
+                return new HermesFfiException.InvalidRatchetSharedSecretLength();
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeHermesFfiError.Read()", value));
         }
@@ -3630,6 +3719,9 @@ class FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiException
 
             case HermesFfiException.InvalidP256PublicKey variant_value:
                 return 4;
+
+            case HermesFfiException.InvalidRatchetSharedSecretLength variant_value:
+                return 4;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeHermesFfiError.AllocationSize()", value));
         }
@@ -3666,6 +3758,9 @@ class FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiException
                 break;
             case HermesFfiException.InvalidP256PublicKey variant_value:
                 stream.WriteInt(10);
+                break;
+            case HermesFfiException.InvalidRatchetSharedSecretLength variant_value:
+                stream.WriteInt(11);
                 break;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeHermesFfiError.Write()", value));
@@ -4860,6 +4955,15 @@ public static class OpenburnbarDomainFfiMethods {
         return FfiConverterByteArray.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeHermesFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_envelope_aad(FfiConverterByteArray.INSTANCE.Lower(@associatedData), FfiConverterString.INSTANCE.Lower(@algorithm), FfiConverterString.INSTANCE.Lower(@sessionId), FfiConverterString.INSTANCE.Lower(@senderDeviceId), FfiConverterString.INSTANCE.Lower(@receiverDeviceId), FfiConverterString.INSTANCE.Lower(@ratchetPublicKeyBase64), FfiConverterUInt64.INSTANCE.Lower(@version), FfiConverterUInt64.INSTANCE.Lower(@previousChainLength), FfiConverterUInt64.INSTANCE.Lower(@messageNumber), FfiConverterUInt64.INSTANCE.Lower(@epoch), ref _status)
+));
+    }
+
+
+    /// <exception cref="HermesFfiException"></exception>
+    public static byte[] HermesRatchetPrekeySharedSecret(HermesRatchetPrekeyRequest @request) {
+        return FfiConverterByteArray.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeHermesFfiError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_prekey_shared_secret(FfiConverterTypeHermesRatchetPrekeyRequest.INSTANCE.Lower(@request), ref _status)
 ));
     }
 

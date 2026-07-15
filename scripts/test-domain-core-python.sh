@@ -11,3 +11,4 @@ if [[ ! -x "${PYTHON}" ]]; then
   PYTHON="$(command -v python3)"
 fi
 "${PYTHON}" -m pytest "${MCP_DIR}/tests/test_domain_core_cloudvault.py" "$@"
+"${PYTHON}" -m pytest "${ROOT_DIR}/tests/test_domain_core_python_hermes.py" "$@"

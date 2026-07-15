@@ -1686,6 +1686,144 @@ public func FfiConverterTypeCloudVaultSearchResult_lower(_ value: CloudVaultSear
 }
 
 
+public struct HermesRatchetPrekeyRequest {
+    public var dh1: Data
+    public var dh2: Data
+    public var dh3: Data
+    public var uid: String
+    public var clientId: String
+    public var initiatorRole: String
+    public var initiatorIdentityPublicKeyBase64: String
+    public var responderIdentityPublicKeyBase64: String
+    public var initiatorSignedPrekeyPublicKeyBase64: String
+    public var responderSignedPrekeyPublicKeyBase64: String
+    public var initiatorInitialRatchetPublicKeyBase64: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(dh1: Data, dh2: Data, dh3: Data, uid: String, clientId: String, initiatorRole: String, initiatorIdentityPublicKeyBase64: String, responderIdentityPublicKeyBase64: String, initiatorSignedPrekeyPublicKeyBase64: String, responderSignedPrekeyPublicKeyBase64: String, initiatorInitialRatchetPublicKeyBase64: String) {
+        self.dh1 = dh1
+        self.dh2 = dh2
+        self.dh3 = dh3
+        self.uid = uid
+        self.clientId = clientId
+        self.initiatorRole = initiatorRole
+        self.initiatorIdentityPublicKeyBase64 = initiatorIdentityPublicKeyBase64
+        self.responderIdentityPublicKeyBase64 = responderIdentityPublicKeyBase64
+        self.initiatorSignedPrekeyPublicKeyBase64 = initiatorSignedPrekeyPublicKeyBase64
+        self.responderSignedPrekeyPublicKeyBase64 = responderSignedPrekeyPublicKeyBase64
+        self.initiatorInitialRatchetPublicKeyBase64 = initiatorInitialRatchetPublicKeyBase64
+    }
+}
+
+
+
+extension HermesRatchetPrekeyRequest: Equatable, Hashable {
+    public static func ==(lhs: HermesRatchetPrekeyRequest, rhs: HermesRatchetPrekeyRequest) -> Bool {
+        if lhs.dh1 != rhs.dh1 {
+            return false
+        }
+        if lhs.dh2 != rhs.dh2 {
+            return false
+        }
+        if lhs.dh3 != rhs.dh3 {
+            return false
+        }
+        if lhs.uid != rhs.uid {
+            return false
+        }
+        if lhs.clientId != rhs.clientId {
+            return false
+        }
+        if lhs.initiatorRole != rhs.initiatorRole {
+            return false
+        }
+        if lhs.initiatorIdentityPublicKeyBase64 != rhs.initiatorIdentityPublicKeyBase64 {
+            return false
+        }
+        if lhs.responderIdentityPublicKeyBase64 != rhs.responderIdentityPublicKeyBase64 {
+            return false
+        }
+        if lhs.initiatorSignedPrekeyPublicKeyBase64 != rhs.initiatorSignedPrekeyPublicKeyBase64 {
+            return false
+        }
+        if lhs.responderSignedPrekeyPublicKeyBase64 != rhs.responderSignedPrekeyPublicKeyBase64 {
+            return false
+        }
+        if lhs.initiatorInitialRatchetPublicKeyBase64 != rhs.initiatorInitialRatchetPublicKeyBase64 {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(dh1)
+        hasher.combine(dh2)
+        hasher.combine(dh3)
+        hasher.combine(uid)
+        hasher.combine(clientId)
+        hasher.combine(initiatorRole)
+        hasher.combine(initiatorIdentityPublicKeyBase64)
+        hasher.combine(responderIdentityPublicKeyBase64)
+        hasher.combine(initiatorSignedPrekeyPublicKeyBase64)
+        hasher.combine(responderSignedPrekeyPublicKeyBase64)
+        hasher.combine(initiatorInitialRatchetPublicKeyBase64)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHermesRatchetPrekeyRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HermesRatchetPrekeyRequest {
+        return
+            try HermesRatchetPrekeyRequest(
+                dh1: FfiConverterData.read(from: &buf),
+                dh2: FfiConverterData.read(from: &buf),
+                dh3: FfiConverterData.read(from: &buf),
+                uid: FfiConverterString.read(from: &buf),
+                clientId: FfiConverterString.read(from: &buf),
+                initiatorRole: FfiConverterString.read(from: &buf),
+                initiatorIdentityPublicKeyBase64: FfiConverterString.read(from: &buf),
+                responderIdentityPublicKeyBase64: FfiConverterString.read(from: &buf),
+                initiatorSignedPrekeyPublicKeyBase64: FfiConverterString.read(from: &buf),
+                responderSignedPrekeyPublicKeyBase64: FfiConverterString.read(from: &buf),
+                initiatorInitialRatchetPublicKeyBase64: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HermesRatchetPrekeyRequest, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.dh1, into: &buf)
+        FfiConverterData.write(value.dh2, into: &buf)
+        FfiConverterData.write(value.dh3, into: &buf)
+        FfiConverterString.write(value.uid, into: &buf)
+        FfiConverterString.write(value.clientId, into: &buf)
+        FfiConverterString.write(value.initiatorRole, into: &buf)
+        FfiConverterString.write(value.initiatorIdentityPublicKeyBase64, into: &buf)
+        FfiConverterString.write(value.responderIdentityPublicKeyBase64, into: &buf)
+        FfiConverterString.write(value.initiatorSignedPrekeyPublicKeyBase64, into: &buf)
+        FfiConverterString.write(value.responderSignedPrekeyPublicKeyBase64, into: &buf)
+        FfiConverterString.write(value.initiatorInitialRatchetPublicKeyBase64, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHermesRatchetPrekeyRequest_lift(_ buf: RustBuffer) throws -> HermesRatchetPrekeyRequest {
+    return try FfiConverterTypeHermesRatchetPrekeyRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHermesRatchetPrekeyRequest_lower(_ value: HermesRatchetPrekeyRequest) -> RustBuffer {
+    return FfiConverterTypeHermesRatchetPrekeyRequest.lower(value)
+}
+
+
 public struct LegacyKimiPricingResult {
     public var model: String
     public var totalTokens: UInt64
@@ -2884,6 +3022,7 @@ public enum HermesFfiError {
     case InvalidAadComponent
     case InputTooLarge
     case InvalidP256PublicKey
+    case InvalidRatchetSharedSecretLength
 }
 
 
@@ -2910,6 +3049,7 @@ public struct FfiConverterTypeHermesFfiError: FfiConverterRustBuffer {
         case 8: return .InvalidAadComponent
         case 9: return .InputTooLarge
         case 10: return .InvalidP256PublicKey
+        case 11: return .InvalidRatchetSharedSecretLength
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2960,6 +3100,10 @@ public struct FfiConverterTypeHermesFfiError: FfiConverterRustBuffer {
 
         case .InvalidP256PublicKey:
             writeInt(&buf, Int32(10))
+
+
+        case .InvalidRatchetSharedSecretLength:
+            writeInt(&buf, Int32(11))
 
         }
     }
@@ -4205,6 +4349,13 @@ public func hermesRatchetEnvelopeAad(associatedData: Data, algorithm: String, se
     )
 })
 }
+public func hermesRatchetPrekeySharedSecret(request: HermesRatchetPrekeyRequest)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_prekey_shared_secret(
+        FfiConverterTypeHermesRatchetPrekeyRequest.lower(request),$0
+    )
+})
+}
 public func hermesRelayAad(kind: HermesAadKind, arguments: [String])throws  -> Data {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad(
@@ -4465,6 +4616,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad() != 11546) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_prekey_shared_secret() != 50844) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad() != 34735) {
