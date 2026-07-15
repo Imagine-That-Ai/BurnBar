@@ -5,6 +5,8 @@ set -euo pipefail
 
 RETRIES="${HOSTING_SMOKE_RETRIES:-8}"
 SLEEP_SEC="${HOSTING_SMOKE_SLEEP_SEC:-10}"
+DEPLOYMENT_IDENTITY_FILE=""
+trap '[[ -z "$DEPLOYMENT_IDENTITY_FILE" ]] || rm -f "$DEPLOYMENT_IDENTITY_FILE"' EXIT
 
 check_target() {
   local label="$1"
@@ -40,8 +42,61 @@ check_target() {
   return 1
 }
 
+check_console_deployment_identity() {
+  local url="$1"
+  local expected_commit="$2"
+  local expected_tag="$3"
+  local profile_receipt="$4"
+  local release_gate="$5"
+  local attempt=1
+  local body_file http_code
+  local -a args
+  body_file="$(mktemp)"
+  trap 'rm -f "$body_file"' RETURN
+
+  while [[ "$attempt" -le "$RETRIES" ]]; do
+    : > "$body_file"
+    # Do not follow redirects: another origin cannot satisfy production proof.
+    http_code="$(curl -sS -o "$body_file" -w "%{http_code}" "$url" 2>/dev/null || echo "000")"
+    args=(
+      --consumer console
+      --commit "$expected_commit"
+      --profile-receipt "$profile_receipt"
+    )
+    [[ -z "$expected_tag" ]] || args+=(--tag "$expected_tag")
+    [[ -z "$release_gate" ]] || args+=(--release-gate "$release_gate")
+    if [[ "$http_code" == "200" ]] && node scripts/ci/create-domain-core-deployment-identity.mjs \
+      "${args[@]}" --verify "$body_file" >/dev/null 2>&1; then
+      DEPLOYMENT_IDENTITY_FILE="$(mktemp)"
+      cp "$body_file" "$DEPLOYMENT_IDENTITY_FILE"
+      echo "OK console deployment identity: ${url}"
+      return 0
+    fi
+    echo "waiting for console deployment identity ${url} (HTTP ${http_code}, attempt ${attempt}/${RETRIES})..." >&2
+    sleep "$SLEEP_SEC"
+    attempt=$((attempt + 1))
+  done
+
+  echo "FAIL: console deployment identity does not match exact commit, tag, profile, and protected proof" >&2
+  head -c 400 "$body_file" >&2 || true
+  echo >&2
+  return 1
+}
+
 check_target "marketing" "${OPENBURNBAR_MARKETING_URL:-https://burnbar.ai/}" "${OPENBURNBAR_MARKETING_MARKER:-BurnBar}"
 check_target "console" "${OPENBURNBAR_CONSOLE_URL:-https://app.burnbar.ai/}" "${OPENBURNBAR_CONSOLE_MARKER:-BurnBar}"
+if [[ -n "${HOSTING_SMOKE_EXPECTED_COMMIT:-}" ]]; then
+  if [[ -z "${HOSTING_SMOKE_PROFILE_RECEIPT:-}" ]]; then
+    echo "FAIL: exact Console identity verification requires HOSTING_SMOKE_PROFILE_RECEIPT" >&2
+    exit 1
+  fi
+  check_console_deployment_identity \
+    "${OPENBURNBAR_CONSOLE_IDENTITY_URL:-https://app.burnbar.ai/domain-core-deployment-identity.json}" \
+    "$HOSTING_SMOKE_EXPECTED_COMMIT" \
+    "${HOSTING_SMOKE_EXPECTED_TAG:-}" \
+    "$HOSTING_SMOKE_PROFILE_RECEIPT" \
+    "${HOSTING_SMOKE_RELEASE_GATE:-}"
+fi
 
 # Feed enforcement knob (OPENBURNBAR_REQUIRE_DOWNLOAD_FEED):
 #   warn (default) — a 404 (no published release/asset yet) emits a GitHub
@@ -115,6 +170,36 @@ appcast_file="$(printf "%s\n" "$download_values" | sed -n "4p")"
 if [[ -n "$update_base_url" ]]; then
   check_download_artifact "mac latest feed" "$update_base_url/$latest_file" '"sparkleEdSignature"[[:space:]]*:[[:space:]]*"[A-Za-z0-9+/=]+'
   check_download_artifact "mac appcast" "$update_base_url/$appcast_file" 'sparkle:edSignature="'
+fi
+
+if [[ -n "${CONSOLE_DEPLOY_HEALTH_JSON:-}" ]]; then
+  if [[ -z "${HOSTING_SMOKE_EXPECTED_TAG:-}" || -z "$DEPLOYMENT_IDENTITY_FILE" ]]; then
+    echo "FAIL: Console release health evidence requires an exact stable tag and verified live identity" >&2
+    exit 1
+  fi
+  node - "$DEPLOYMENT_IDENTITY_FILE" "$CONSOLE_DEPLOY_HEALTH_JSON" <<'NODE'
+const crypto = require("crypto");
+const fs = require("fs");
+const [identityPath, outputPath] = process.argv.slice(2);
+const bytes = fs.readFileSync(identityPath);
+const evidence = {
+  provider: "firebase-hosting",
+  project: "burnbar",
+  environment: "production",
+  status: "healthy",
+  healthChecks: [
+    "marketing-http-200-csp",
+    "console-http-200-csp",
+    "console-deployment-identity-no-redirect",
+  ],
+  deployedArtifact: {
+    fileName: "domain-core-deployment-identity.json",
+    sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+  },
+};
+fs.writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+NODE
+  echo "Wrote ${CONSOLE_DEPLOY_HEALTH_JSON}"
 fi
 
 echo "PASS: hosting smoke"
