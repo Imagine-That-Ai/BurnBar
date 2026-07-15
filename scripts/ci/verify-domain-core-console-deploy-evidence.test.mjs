@@ -176,8 +176,10 @@ test("accepts only the exact successful tag deploy and live identity digest", ()
   try {
     const receipt = run(files.args);
     assert.equal(receipt.deployRun.runId, 303);
-    assert.equal(receipt.profile.name, "public-production");
-    assert.equal(receipt.releaseGate.promotionProof.signerRun.runAttempt, 3);
+    assert.equal(receipt.deployRun.runAttempt, 4);
+    assert.equal(receipt.deployRun.ref, "refs/tags/v1.2.3");
+    assert.match(receipt.deployRun.jobSetSha256, /^[0-9a-f]{64}$/u);
+    assert.match(receipt.healthArtifactSha256, /^[0-9a-f]{64}$/u);
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
   }

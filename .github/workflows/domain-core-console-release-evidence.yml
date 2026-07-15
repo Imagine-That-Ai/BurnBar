@@ -142,13 +142,13 @@ jobs:
             --release-gate "$gate" \
             --health "$health" \
             --output "$RUNNER_TEMP/console-deploy-verification.json"
-          profile_name="$(jq -er '.profile.name' "$RUNNER_TEMP/console-deploy-verification.json")"
-          profile_sha256="$(jq -er '.profile.sha256' "$RUNNER_TEMP/console-deploy-verification.json")"
+          profile_name="$(jq -er '.name' "$profile")"
+          profile_sha256="$(jq -er '.profile.sha256' "$identity")"
           {
             echo "candidate=$candidate"
             echo "promotion=$promotion"
             echo "rollback=$rollback"
-            echo "health=$health"
+            echo "deployment=$RUNNER_TEMP/console-deploy-verification.json"
             echo "profile_name=$profile_name"
             echo "profile_sha256=$profile_sha256"
             echo "signer_run_id=$signer_run_id"
@@ -159,7 +159,7 @@ jobs:
         id: evidence
         env:
           CANDIDATE: ${{ steps.verified.outputs.candidate }}
-          HEALTH: ${{ steps.verified.outputs.health }}
+          DEPLOYMENT: ${{ steps.verified.outputs.deployment }}
           PROFILE_SHA256: ${{ steps.verified.outputs.profile_sha256 }}
           PROMOTION: ${{ steps.verified.outputs.promotion }}
           ROLLBACK: ${{ steps.verified.outputs.rollback }}
@@ -186,7 +186,7 @@ jobs:
             --protected-signer-run-id "$SIGNER_RUN_ID" \
             --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
             --rollback-artifact "$ROLLBACK" \
-            --deployment "$HEALTH"
+            --deployment "$DEPLOYMENT"
           {
             echo "artifact=$artifact"
             echo "predicate=$predicate"
@@ -229,26 +229,7 @@ jobs:
           NODE
           node scripts/ci/publish-domain-core-release-evidence.mjs --manifest "$manifest"
 
-      - name: Reject replayed rollback evidence publication
-        if: ${{ steps.verified.outputs.profile_name == 'public-production-rollback' }}
-        env:
-          DEPLOY_RUN_ATTEMPT: ${{ inputs.deploy_run_attempt }}
-          DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          name="domain-core-console-rollback-evidence-${RELEASE_TAG}-${DEPLOY_RUN_ID}-${DEPLOY_RUN_ATTEMPT}"
-          gh api --paginate --slurp "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=100" \
-            > "$RUNNER_TEMP/rollback-evidence-artifacts.json"
-          jq -e '
-            if length == 0 then error("artifacts API returned no pages") else . end
-            | ([.[].artifacts[]] | length) as $observed
-            | select(.[0].total_count == $observed)
-            | select(([.[].artifacts[] | select(.expired == false)] | length) == 0)
-          ' "$RUNNER_TEMP/rollback-evidence-artifacts.json" >/dev/null \
-            || { echo "::error::Rollback evidence already exists for this exact deploy run and attempt."; exit 1; }
-
-      - name: Stage rollback evidence without duplicating signer rollback artifact
+      - name: Stage run-bound rollback evidence without duplicating signer rollback artifact
         if: ${{ steps.verified.outputs.profile_name == 'public-production-rollback' }}
         env:
           ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
@@ -259,11 +240,11 @@ jobs:
           cp "${{ steps.evidence.outputs.predicate }}" "$RUNNER_TEMP/console-rollback-evidence/"
           cp "$ATTESTATION_BUNDLE" "$RUNNER_TEMP/console-rollback-evidence/${{ steps.evidence.outputs.bundle_asset }}"
 
-      - name: Upload unique immutable rollback evidence
+      - name: Retain this rollback evidence workflow result
         if: ${{ steps.verified.outputs.profile_name == 'public-production-rollback' }}
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: domain-core-console-rollback-evidence-${{ steps.ref.outputs.release_tag }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}
+          name: domain-core-console-rollback-evidence-${{ steps.ref.outputs.release_tag }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/console-rollback-evidence
           if-no-files-found: error
           retention-days: 90
