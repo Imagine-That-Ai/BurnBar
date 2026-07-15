@@ -11,11 +11,9 @@ internal object HermesRelayLegacyCrypto {
     private const val KEY_WRAP_SHARED_INFO_PREFIX = "OpenBurnBar-HermesRelay-KeyWrap-v1|"
     private const val KEY_WRAP_SHARED_INFO_PREFIX_V2 = "OpenBurnBar-HermesRelay-KeyWrap-v2|"
 
-    fun aad(parts: List<String>): ByteArray =
-        ("$AAD_PREFIX|" + parts.joinToString("|")).toByteArray(Charsets.UTF_8)
+    fun aad(parts: List<String>): ByteArray = ("$AAD_PREFIX|" + parts.joinToString("|")).toByteArray(Charsets.UTF_8)
 
-    fun keyWrapInfoV1(aad: ByteArray): ByteArray =
-        KEY_WRAP_SHARED_INFO_PREFIX.toByteArray(Charsets.UTF_8) + aad
+    fun keyWrapInfoV1(aad: ByteArray): ByteArray = KEY_WRAP_SHARED_INFO_PREFIX.toByteArray(Charsets.UTF_8) + aad
 
     fun keyWrapInfoV2(aad: ByteArray, enc: ByteArray, pkR: ByteArray, pkS: ByteArray): ByteArray =
         KEY_WRAP_SHARED_INFO_PREFIX_V2.toByteArray(Charsets.UTF_8) + aad + enc + pkR + pkS
