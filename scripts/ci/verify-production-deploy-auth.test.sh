@@ -175,8 +175,38 @@ expect_fail "functions missing tag ancestry guard fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/functions-dispatch-ref-source-commit"
 copy_base_fixture "$fixture"
-mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("OPENBURNBAR_SOURCE_COMMIT: ${{ steps.tag.outputs.commit }}", "OPENBURNBAR_SOURCE_COMMIT: ${{ github.sha }}", 1)'
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("OPENBURNBAR_SOURCE_COMMIT: ${{ needs.prepare-functions-deploy.outputs.commit }}", "OPENBURNBAR_SOURCE_COMMIT: ${{ github.sha }}", 1)'
 expect_fail "functions source commit from dispatch ref fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/functions-prepare-oidc"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'needle = "      statuses: write\n"; text = text.replace(needle, needle + "      id-token: write\n", 1)'
+expect_fail "functions prepare job OIDC fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/functions-prepare-production-environment"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'needle = "    timeout-minutes: 60\n"; text = text.replace(needle, needle + "    environment: production\n", 1)'
+expect_fail "functions prepare production environment fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/functions-deploy-checkout"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("      - name: Download immutable prepared deploy artifact", "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n\n      - name: Download immutable prepared deploy artifact", 1)'
+expect_fail "functions credentialed checkout fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/functions-missing-artifact-checksum"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("sha256sum --check --strict SHA256SUMS", "echo checksum-skipped", 1)'
+expect_fail "functions missing immutable artifact checksum fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/functions-missing-event-sha-guard"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("            if [[ -n \"${GITHUB_SHA:-}\" && \"$commit\" != \"$GITHUB_SHA\" ]]; then", "            if false; then", 1)'
+expect_fail "functions missing workflow event SHA guard fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/functions-broken-rollback-routing"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("|| needs.authorize-domain-core-rollback.result == '"'"'success'"'"'", "|| true", 1)'
+expect_fail "functions unprotected rollback routing fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/legacy-secrets"
 copy_base_fixture "$fixture"

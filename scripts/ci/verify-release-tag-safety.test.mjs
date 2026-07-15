@@ -128,8 +128,14 @@ expect(
           /          if \[\[ "\$IS_DRY_RUN" == "true" \]\]; then[\s\S]*?          else\n/,
           "          ",
         )
-        .replace(/            commit="\$INPUT_CANDIDATE_SHA"\n          else\n[\s\S]*?          fi\n\n/, "")
-        .replace('echo "dry_run=$IS_DRY_RUN"', 'echo "dry_run=$([[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]] && echo true || echo false)"'),
+        .replace(
+          /            commit="\$INPUT_CANDIDATE_SHA"\n          else\n[\s\S]*?          fi\n\n/,
+          "",
+        )
+        .replace(
+          'echo "dry_run=$IS_DRY_RUN"',
+          'echo "dry_run=$([[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]] && echo true || echo false)"',
+        ),
     ),
   1,
 );
@@ -267,7 +273,7 @@ expect(
     mutate(root, PROD, (text) =>
       text.replace(
         '  push:\n    tags:\n      - "v*"\n  workflow_dispatch:',
-        '  workflow_dispatch:',
+        "  workflow_dispatch:",
       ),
     ),
   1,
@@ -279,7 +285,7 @@ expect(
     mutate(root, CLOUD, (text) =>
       text.replace(
         '  push:\n    tags:\n      - "v*"\n  workflow_dispatch:',
-        '  workflow_dispatch:',
+        "  workflow_dispatch:",
       ),
     ),
   1,
@@ -352,10 +358,7 @@ expect(
   "cloud-run: removing publish attestation step fails",
   (root) =>
     mutate(root, CLOUD, (text) =>
-      text.replace(
-        "      - name: Publish dry-run attestation\n",
-        "",
-      ),
+      text.replace("      - name: Publish dry-run attestation\n", ""),
     ),
   1,
 );
@@ -384,20 +387,18 @@ expect(
 expect(
   "production: removing statuses:write permission fails",
   (root) =>
-    mutate(root, PROD, (text) =>
-      text.replace("      statuses: write\n", ""),
-    ),
+    mutate(root, PROD, (text) => text.replace("      statuses: write\n", "")),
   1,
 );
 
-/* ── Sentry gating mutation ── */
+/* ── Production deploy-job dry_run gate removal fails ── */
 expect(
-  "production: Sentry without dry_run gate fails",
+  "production: credentialed deploy job without dry_run gate fails",
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        "        if: env.HAS_SENTRY_AUTH_TOKEN == 'true' && steps.tag.outputs.dry_run != 'true'",
-        "        if: env.HAS_SENTRY_AUTH_TOKEN == 'true'",
+        "          && needs.prepare-functions-deploy.outputs.dry_run != 'true' }}",
+        "          && true }}",
       ),
     ),
   1,
@@ -429,7 +430,9 @@ expect(
 );
 
 if (failed > 0) {
-  console.error(`\nFAIL: ${failed} release-tag-safety self-test case(s) failed.`);
+  console.error(
+    `\nFAIL: ${failed} release-tag-safety self-test case(s) failed.`,
+  );
   process.exit(1);
 }
 

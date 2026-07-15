@@ -384,6 +384,7 @@ jobs:
             scripts/ci/verify-domain-core-control-plane.test.mjs \
             scripts/ci/verify-domain-core-protected-attestation.test.mjs \
             scripts/ci/verify-domain-core-workflows.test.mjs \
+            scripts/ci/write-firebase-hosting-ci-config.test.mjs \
             scripts/ci/verify-domain-core-default-branch-controls.test.mjs \
             scripts/ci/create-domain-core-functions-deploy-proof.test.mjs \
             scripts/ci/create-domain-core-functions-deployment-evidence.test.mjs \

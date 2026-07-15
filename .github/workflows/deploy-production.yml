@@ -53,7 +53,7 @@ jobs:
           [[ "${{ inputs.domain_core_profile }}" == "public-production-rollback" ]]
           echo "Protected reviewers authorized the candidate-bound Functions rollback profile."
 
-  deploy-functions:
+  prepare-functions-deploy:
     needs: authorize-domain-core-rollback
     if: >-
       ${{ always()
@@ -63,12 +63,10 @@ jobs:
               || needs.authorize-domain-core-rollback.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: production
     permissions:
       actions: read
       attestations: read
       contents: read
-      id-token: write
       statuses: write
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
@@ -89,12 +87,7 @@ jobs:
       signer_run_id: ${{ steps.domain-core-gate.outputs.signer_run_id }}
       signer_run_attempt: ${{ steps.domain-core-gate.outputs.signer_run_attempt }}
       proof_artifact: ${{ steps.domain-core-proof.outputs.artifact_name }}
-      reused_existing_evidence: ${{ steps.stable-replay.outputs.reused }}
-    env:
-      HAS_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
-      # WIF-only: long-lived service account keys and token fallbacks are
-      # removed (codex-gpt-5 FINDING-007). The google-github-actions/auth step
-      # below uses OIDC workload identity federation; no JSON keys are accepted.
+      prepared_artifact: ${{ steps.prepared-artifact.outputs.artifact_name }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -488,10 +481,6 @@ jobs:
           bash scripts/ci/verify-resilience-wiring.sh
           node scripts/ci/check-callable-validation.mjs
           bash scripts/ci/verify-production-deploy-auth.sh
-          node scripts/ci/write-firebase-hosting-ci-config.mjs \
-            --mode functions \
-            --output "$RUNNER_TEMP/firebase-functions.ci.json" \
-            --check
           bash scripts/ci/prepare-firebase-tools.sh
 
       - name: Create immutable Functions deploy proof
@@ -526,8 +515,16 @@ jobs:
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 
       - name: Prepare pinned Sentry CLI
-        if: env.HAS_SENTRY_AUTH_TOKEN == 'true'
-        run: npm install --global @sentry/cli@2.42.2
+        if: steps.tag.outputs.dry_run != 'true'
+        run: |
+          set -euo pipefail
+          sentry_root="$RUNNER_TEMP/sentry-cli"
+          npm install \
+            --prefix "$sentry_root" \
+            --no-package-lock \
+            --no-save \
+            @sentry/cli@2.42.2
+          test -x "$sentry_root/node_modules/.bin/sentry-cli"
 
       - name: BurnBar source provenance preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
@@ -543,8 +540,158 @@ jobs:
           ATTEST_TAG: ${{ steps.tag.outputs.tag }}
         run: node scripts/ci/release-dry-run-attestation.mjs verify --sha "$ATTEST_SHA" --tag "$ATTEST_TAG"
 
-      - name: Authenticate to Google Cloud (WIF/OIDC only)
+      - name: Stage immutable prepared deploy artifact
         if: steps.tag.outputs.dry_run != 'true'
+        id: prepared-artifact
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/domain-core-functions-prepared-deploy"
+          rm -rf "$stage"
+          mkdir -p \
+            "$stage/functions" \
+            "$stage/config" \
+            "$stage/scripts/ci" \
+            "$stage/scripts/lib"
+          rsync -aL --delete \
+            --exclude 'node_modules/.bin/' \
+            --exclude '.env*' \
+            functions/ "$stage/functions/"
+          mkdir -p "$stage/sentry-cli"
+          rsync -aL --delete \
+            --exclude 'node_modules/.bin/' \
+            "$RUNNER_TEMP/sentry-cli/" "$stage/sentry-cli/"
+          install -m 0600 functions/.env.burnbar.production "$stage/functions-production.env"
+          install -m 0600 "$RUNNER_TEMP/domain-core-functions.env" "$stage/domain-core-functions.env"
+          node scripts/ci/write-firebase-hosting-ci-config.mjs \
+            --mode functions \
+            --output "$stage/firebase-functions.ci.json" \
+            --portable-functions-source \
+            --check
+          cp -a "$RUNNER_TEMP/domain-core-functions-deploy-proof" "$stage/domain-core-functions-deploy-proof"
+          install -m 0600 config/domain-core-functions-relevant-targets.json "$stage/config/domain-core-functions-relevant-targets.json"
+          install -m 0600 firestore.rules "$stage/firestore.rules"
+          install -m 0600 firestore.indexes.json "$stage/firestore.indexes.json"
+          install -m 0600 storage.rules "$stage/storage.rules"
+          install -m 0700 scripts/ci/check-firestore-deploy-drift.mjs "$stage/scripts/ci/check-firestore-deploy-drift.mjs"
+          install -m 0600 scripts/ci/firebase-rules-source.mjs "$stage/scripts/ci/firebase-rules-source.mjs"
+          install -m 0700 scripts/ci/create-domain-core-functions-provider-coordinates.mjs "$stage/scripts/ci/create-domain-core-functions-provider-coordinates.mjs"
+          install -m 0700 scripts/ci/verify-existing-domain-core-deployment.mjs "$stage/scripts/ci/verify-existing-domain-core-deployment.mjs"
+          install -m 0600 scripts/lib/atomic-regular-file.mjs "$stage/scripts/lib/atomic-regular-file.mjs"
+          if find "$stage" -type l -o \( ! -type d ! -type f \) | grep -q .; then
+            echo "::error::Prepared deploy artifact contains a symlink or special file."
+            exit 1
+          fi
+          if find "$stage" -type f -links +1 | grep -q .; then
+            echo "::error::Prepared deploy artifact contains a hard-linked file."
+            exit 1
+          fi
+          (
+            cd "$stage"
+            find . -type f ! -name SHA256SUMS -print0 \
+              | sort -z \
+              | xargs -0 sha256sum > "$RUNNER_TEMP/prepared-functions-SHA256SUMS"
+          )
+          mv "$RUNNER_TEMP/prepared-functions-SHA256SUMS" "$stage/SHA256SUMS"
+          artifact_name="domain-core-functions-prepared-${{ steps.tag.outputs.tag }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload immutable prepared deploy artifact
+        if: steps.tag.outputs.dry_run != 'true'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: ${{ steps.prepared-artifact.outputs.artifact_name }}
+          path: ${{ runner.temp }}/domain-core-functions-prepared-deploy
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+      - name: Dry-run skip deploy
+        if: steps.tag.outputs.dry_run == 'true'
+        run: echo "dry_run=true - skipping production deploy"
+
+      - name: Publish dry-run attestation
+        if: steps.tag.outputs.dry_run == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ATTEST_SHA: ${{ steps.tag.outputs.commit }}
+          ATTEST_TAG: ${{ steps.tag.outputs.tag }}
+        run: node scripts/ci/release-dry-run-attestation.mjs publish --sha "$ATTEST_SHA" --tag "$ATTEST_TAG" --plane deploy-production
+
+  deploy-functions:
+    needs: prepare-functions-deploy
+    if: >-
+      ${{ needs.prepare-functions-deploy.result == 'success'
+          && needs.prepare-functions-deploy.outputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+      id-token: write
+    outputs:
+      tag: ${{ needs.prepare-functions-deploy.outputs.tag }}
+      commit: ${{ needs.prepare-functions-deploy.outputs.commit }}
+      dry_run: ${{ needs.prepare-functions-deploy.outputs.dry_run }}
+      stable_release: ${{ needs.prepare-functions-deploy.outputs.stable_release }}
+      domain_core_profile: ${{ needs.prepare-functions-deploy.outputs.domain_core_profile }}
+      core_version: ${{ needs.prepare-functions-deploy.outputs.core_version }}
+      abi_version: ${{ needs.prepare-functions-deploy.outputs.abi_version }}
+      source_sha256: ${{ needs.prepare-functions-deploy.outputs.source_sha256 }}
+      pricing_mode: ${{ needs.prepare-functions-deploy.outputs.pricing_mode }}
+      profile_sha256: ${{ needs.prepare-functions-deploy.outputs.profile_sha256 }}
+      receipt_sha256: ${{ needs.prepare-functions-deploy.outputs.receipt_sha256 }}
+      runtime_manifest_sha256: ${{ needs.prepare-functions-deploy.outputs.runtime_manifest_sha256 }}
+      wasm_sha256: ${{ needs.prepare-functions-deploy.outputs.wasm_sha256 }}
+      source_run_id: ${{ needs.prepare-functions-deploy.outputs.source_run_id }}
+      source_run_attempt: ${{ needs.prepare-functions-deploy.outputs.source_run_attempt }}
+      signer_run_id: ${{ needs.prepare-functions-deploy.outputs.signer_run_id }}
+      signer_run_attempt: ${{ needs.prepare-functions-deploy.outputs.signer_run_attempt }}
+      proof_artifact: ${{ needs.prepare-functions-deploy.outputs.proof_artifact }}
+      reused_existing_evidence: ${{ steps.stable-replay.outputs.reused }}
+    env:
+      HAS_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
+    steps:
+      - name: Download immutable prepared deploy artifact
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.prepare-functions-deploy.outputs.prepared_artifact }}
+          path: ${{ runner.temp }}/domain-core-functions-prepared-deploy
+
+      - name: Verify immutable prepared deploy artifact
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/domain-core-functions-prepared-deploy"
+          test -s "$stage/SHA256SUMS"
+          if find "$stage" -type l -o \( ! -type d ! -type f \) | grep -q .; then
+            echo "::error::Prepared deploy artifact contains a symlink or special file."
+            exit 1
+          fi
+          if find "$stage" -type f -links +1 | grep -q .; then
+            echo "::error::Prepared deploy artifact contains a hard-linked file."
+            exit 1
+          fi
+          (cd "$stage" && sha256sum --check --strict SHA256SUMS)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Select verified deploy tools
+        working-directory: ${{ runner.temp }}/domain-core-functions-prepared-deploy
+        run: |
+          set -euo pipefail
+          test -f functions/node_modules/firebase-tools/lib/bin/firebase.js
+          test -f sentry-cli/node_modules/@sentry/cli/bin/sentry-cli
+          # upload-artifact restores regular files as 0644. Restore execute
+          # permission only after the artifact content checksum has passed.
+          chmod 0700 sentry-cli/node_modules/@sentry/cli/bin/sentry-cli
+          test -x sentry-cli/node_modules/@sentry/cli/bin/sentry-cli
+          echo "FIREBASE_TOOLS_BIN=$PWD/functions/node_modules/firebase-tools/lib/bin/firebase.js" >> "$GITHUB_ENV"
+          echo "SENTRY_CLI_BIN=$PWD/sentry-cli/node_modules/@sentry/cli/bin/sentry-cli" >> "$GITHUB_ENV"
+
+      - name: Authenticate to Google Cloud (WIF/OIDC only)
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -553,16 +700,16 @@ jobs:
           access_token_lifetime: 900s
 
       - name: Set up gcloud for immutable provider readback
-        if: steps.tag.outputs.dry_run != 'true'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1 (node24-native)
 
       - name: Refuse non-identical stable-tag redeploy
-        if: ${{ steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.domain_core_profile == 'public-production' }}
+        if: ${{ needs.prepare-functions-deploy.outputs.domain_core_profile == 'public-production' }}
         id: stable-replay
+        working-directory: ${{ runner.temp }}/domain-core-functions-prepared-deploy
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
-          RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+          RELEASE_TAG: ${{ needs.prepare-functions-deploy.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare-functions-deploy.outputs.commit }}
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"
@@ -633,7 +780,7 @@ jobs:
             --descriptions "$RUNNER_TEMP/existing-functions-descriptions.json" \
             --tag "$RELEASE_TAG" \
             --commit "$RELEASE_COMMIT" \
-            --artifact-sha256 "${{ steps.domain-core-build.outputs.runtime_manifest_sha256 }}" \
+            --artifact-sha256 "${{ needs.prepare-functions-deploy.outputs.runtime_manifest_sha256 }}" \
             --output "$RUNNER_TEMP/existing-functions-provider-coordinates.json"
           node scripts/ci/verify-existing-domain-core-deployment.mjs \
             --consumer functions \
@@ -668,19 +815,20 @@ jobs:
           REQUIRE_HIGH_RISK_NONCE: ${{ secrets.REQUIRE_HIGH_RISK_NONCE }}
 
       - name: Sentry release (Functions)
-        if: env.HAS_SENTRY_AUTH_TOKEN == 'true' && steps.tag.outputs.dry_run != 'true' && steps.stable-replay.outputs.reused != 'true'
+        if: env.HAS_SENTRY_AUTH_TOKEN == 'true' && steps.stable-replay.outputs.reused != 'true'
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT_FUNCTIONS: openburnbar-functions
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.prepare-functions-deploy.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare-functions-deploy.outputs.commit }}
         run: |
           set -euo pipefail
           RELEASE_NAME="openburnbar-functions@${TAG}"
-          sentry-cli releases new --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" || true
-          sentry-cli releases set-commits --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" --auto || true
-          sentry-cli releases finalize --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" || true
-          sentry-cli releases deploys "$RELEASE_NAME" new \
+          "$SENTRY_CLI_BIN" releases new --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" || true
+          "$SENTRY_CLI_BIN" releases set-commits --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" --commit "$GITHUB_REPOSITORY@$RELEASE_COMMIT" || true
+          "$SENTRY_CLI_BIN" releases finalize --org "$SENTRY_ORG" --project "$SENTRY_PROJECT_FUNCTIONS" "$RELEASE_NAME" || true
+          "$SENTRY_CLI_BIN" releases deploys "$RELEASE_NAME" new \
             --org "$SENTRY_ORG" \
             --project "$SENTRY_PROJECT_FUNCTIONS" \
             --env production \
@@ -688,19 +836,21 @@ jobs:
           echo "Sentry release ${RELEASE_NAME} created."
 
       - name: Require matching rules before Functions deploy
-        if: steps.tag.outputs.dry_run != 'true' && steps.stable-replay.outputs.reused != 'true'
+        if: steps.stable-replay.outputs.reused != 'true'
+        working-directory: ${{ runner.temp }}/domain-core-functions-prepared-deploy
         env:
           FIREBASE_PROJECT: burnbar
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
 
       - name: Deploy Cloud Functions
         id: deploy
-        if: steps.tag.outputs.dry_run != 'true' && steps.stable-replay.outputs.reused != 'true'
+        if: steps.stable-replay.outputs.reused != 'true'
+        working-directory: ${{ runner.temp }}/domain-core-functions-prepared-deploy
         env:
-          FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}
-          OPENBURNBAR_SOURCE_COMMIT: ${{ steps.tag.outputs.commit }}
+          FUNCTION_VERSION: ${{ needs.prepare-functions-deploy.outputs.tag }}
+          OPENBURNBAR_SOURCE_COMMIT: ${{ needs.prepare-functions-deploy.outputs.commit }}
           OPENBURNBAR_CORRESPONDING_SOURCE_URL: https://burnbar.ai/legal/source
-          FIREBASE_FUNCTIONS_CI_CONFIG: ${{ runner.temp }}/firebase-functions.ci.json
+          FIREBASE_FUNCTIONS_CI_CONFIG: ${{ runner.temp }}/domain-core-functions-prepared-deploy/firebase-functions.ci.json
           # H13: Sentry ingest DSN for the functions project. DSNs are
           # low-sensitivity (write-only ingest endpoints, not credentials), but
           # are not public product IDs, so the value lives in an Actions secret
@@ -708,9 +858,9 @@ jobs:
           # is the committed static "production" value from the prod config.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN_FUNCTIONS }}
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
+          TAG="${{ needs.prepare-functions-deploy.outputs.tag }}"
           ENV_FILE="functions/.env.burnbar"
-          PROD_CONFIG="functions/.env.burnbar.production"
+          PROD_CONFIG="functions-production.env"
 
           # H14: production runtime config is the committed, reviewed
           # functions/.env.burnbar.production (non-secret public IDs/URLs).
@@ -737,10 +887,10 @@ jobs:
           {
             cat "$PROD_CONFIG"
             echo ""
-            cat "$RUNNER_TEMP/domain-core-functions.env"
+            cat domain-core-functions.env
             echo "FUNCTION_VERSION=${TAG}"
             echo "OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT}"
-            echo "OPENBURNBAR_DOMAIN_CORE_RUNTIME_MANIFEST_SHA256=${{ steps.domain-core-build.outputs.runtime_manifest_sha256 }}"
+            echo "OPENBURNBAR_DOMAIN_CORE_RUNTIME_MANIFEST_SHA256=${{ needs.prepare-functions-deploy.outputs.runtime_manifest_sha256 }}"
             echo "SENTRY_DSN=${SENTRY_DSN}"
             echo "SENTRY_ENVIRONMENT=production"
           } > "$ENV_FILE"
@@ -750,8 +900,8 @@ jobs:
             echo "::error::No Google application credentials from WIF/OIDC auth. Production deploy requires workload identity federation."
             exit 1
           fi
-          if [[ -z "${FIREBASE_TOOLS_BIN:-}" || ! -x "$FIREBASE_TOOLS_BIN" ]]; then
-            echo "::error::Pinned Firebase CLI path is missing or not executable."
+          if [[ -z "${FIREBASE_TOOLS_BIN:-}" || ! -f "$FIREBASE_TOOLS_BIN" ]]; then
+            echo "::error::Pinned Firebase CLI path is missing."
             exit 1
           fi
           if grep -q '"predeploy"' "$FIREBASE_FUNCTIONS_CI_CONFIG"; then
@@ -759,18 +909,7 @@ jobs:
             exit 1
           fi
 
-          recomputed_manifest="$RUNNER_TEMP/domain-core-functions-runtime-manifest-recomputed.json"
-          node scripts/ci/create-domain-core-runtime-artifact-manifest.mjs \
-            --consumer functions \
-            --root functions \
-            --profile-receipt "${{ steps.domain-core-profile.outputs.profile_path }}" \
-            --output "$recomputed_manifest"
-          if ! cmp -s functions/lib/domain-core-runtime-artifact-manifest.json "$recomputed_manifest"; then
-            echo "::error::Functions runtime bytes changed after the immutable manifest was created."
-            exit 1
-          fi
-
-          "$FIREBASE_TOOLS_BIN" deploy \
+          node "$FIREBASE_TOOLS_BIN" deploy \
             --only functions \
             --project burnbar \
             --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
@@ -791,41 +930,29 @@ jobs:
             --inventory config/domain-core-functions-relevant-targets.json \
             --descriptions "$RUNNER_TEMP/domain-core-functions-descriptions.json" \
             --tag "$TAG" \
-            --commit "${{ steps.tag.outputs.commit }}" \
-            --artifact-sha256 "${{ steps.domain-core-build.outputs.runtime_manifest_sha256 }}" \
-            --output "$RUNNER_TEMP/domain-core-functions-deploy-proof/domain-core-functions-provider-coordinates.json"
+            --commit "${{ needs.prepare-functions-deploy.outputs.commit }}" \
+            --artifact-sha256 "${{ needs.prepare-functions-deploy.outputs.runtime_manifest_sha256 }}" \
+            --output "domain-core-functions-deploy-proof/domain-core-functions-provider-coordinates.json"
 
       - name: Upload exact deployed Functions proof inputs
-        if: steps.tag.outputs.dry_run != 'true' && steps.stable-replay.outputs.reused != 'true'
+        if: steps.stable-replay.outputs.reused != 'true'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: ${{ steps.domain-core-proof.outputs.artifact_name }}
-          path: ${{ runner.temp }}/domain-core-functions-deploy-proof
+          name: ${{ needs.prepare-functions-deploy.outputs.proof_artifact }}
+          path: ${{ runner.temp }}/domain-core-functions-prepared-deploy/domain-core-functions-deploy-proof
           if-no-files-found: error
           retention-days: 90
-
-      - name: Dry-run skip deploy
-        if: steps.tag.outputs.dry_run == 'true'
-        run: echo "dry_run=true — skipping production deploy"
-
-      - name: Publish dry-run attestation
-        if: steps.tag.outputs.dry_run == 'true'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          ATTEST_SHA: ${{ steps.tag.outputs.commit }}
-          ATTEST_TAG: ${{ steps.tag.outputs.tag }}
-        run: node scripts/ci/release-dry-run-attestation.mjs publish --sha "$ATTEST_SHA" --tag "$ATTEST_TAG" --plane deploy-production
 
       - name: Deployment summary
         if: always()
         run: |
           {
             echo "## Production Functions deploy"
-            echo "- Tag: ${{ steps.tag.outputs.tag }}"
-            echo "- Dry run: ${{ steps.tag.outputs.dry_run }}"
-            echo "- FUNCTION_VERSION: ${{ steps.tag.outputs.tag }}"
-            echo "- Domain core profile: ${{ steps.tag.outputs.domain_core_profile }}"
-            echo "- Protected signer: run ${{ steps.domain-core-gate.outputs.signer_run_id }}, attempt ${{ steps.domain-core-gate.outputs.signer_run_attempt }}"
+            echo "- Tag: ${{ needs.prepare-functions-deploy.outputs.tag }}"
+            echo "- Dry run: ${{ needs.prepare-functions-deploy.outputs.dry_run }}"
+            echo "- FUNCTION_VERSION: ${{ needs.prepare-functions-deploy.outputs.tag }}"
+            echo "- Domain core profile: ${{ needs.prepare-functions-deploy.outputs.domain_core_profile }}"
+            echo "- Protected signer: run ${{ needs.prepare-functions-deploy.outputs.signer_run_id }}, attempt ${{ needs.prepare-functions-deploy.outputs.signer_run_attempt }}"
             echo "- Project: burnbar"
             echo "- Health: functions-health-gate job"
             echo ""
