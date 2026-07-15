@@ -25,7 +25,10 @@ import {
   validateCandidateBundle,
 } from "../lib/domain-core-release-evidence.mjs";
 
-const VERSION = /^\d+\.\d+\.\d+(?:\+[0-9A-Za-z.-]+)?$/u;
+const STABLE_VERSION =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
+const APPLE_ANDROID_VERSION =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 
 function readJson(path, label) {
@@ -117,7 +120,10 @@ export function run(argv, { promotionVerifier } = {}) {
     throw new Error(`unsupported native release consumer: ${String(consumer)}`);
   }
   const version = args.get("--version");
-  if (!VERSION.test(version))
+  const versionPattern = new Set(["apple", "android"]).has(consumer)
+    ? APPLE_ANDROID_VERSION
+    : STABLE_VERSION;
+  if (!versionPattern.test(version))
     throw new Error("native release version is invalid");
   const tag = args.get("--tag");
   const expectedTag =

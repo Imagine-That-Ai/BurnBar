@@ -18,7 +18,10 @@ export const DOMAIN_CORE_RELEASE_PREDICATE_TYPE =
 
 const SHA256 = /^[0-9a-f]{64}$/u;
 const FULL_SHA = /^[0-9a-f]{40}$/u;
-const STABLE_VERSION = /^\d+\.\d+\.\d+(?:\+[0-9A-Za-z.-]+)?$/u;
+const STABLE_VERSION =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
+const NATIVE_VERSION =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const SAFE_NAME = /^[0-9A-Za-z][0-9A-Za-z._+-]{0,254}$/u;
 
 export const RELEASE_CONSUMERS = Object.freeze({
@@ -239,9 +242,12 @@ export function validateReleaseCoordinates({
       `${consumer} artifact kind and target do not match the release contract`,
     );
   }
-  if (typeof version !== "string" || !STABLE_VERSION.test(version)) {
+  const allowedVersion = new Set(["apple", "android"]).has(consumer)
+    ? NATIVE_VERSION
+    : STABLE_VERSION;
+  if (typeof version !== "string" || !allowedVersion.test(version)) {
     throw new Error(
-      "release version must be stable X.Y.Z with optional build metadata",
+      "release version does not match its consumer release train",
     );
   }
   const expectedTag =

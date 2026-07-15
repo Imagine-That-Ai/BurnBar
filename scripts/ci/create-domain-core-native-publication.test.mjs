@@ -43,7 +43,7 @@ test("builds a publication manifest from exact regular files", () => {
   const manifest = buildPublicationManifest(plan, bundleDirectory);
   assert.equal(manifest.schemaVersion, 2);
   assert.equal(manifest.consumer, "apple");
-  assert.equal(manifest.releaseState, "published");
+  assert.equal(manifest.releaseState, "draft-then-publish");
   assert.equal(manifest.nativeArtifactOnly, false);
   assert.equal(manifest.bundles[0].domain, "quota");
   assert.equal(manifest.bundles[0].assetName, plan.domains[0].bundleAssetName);

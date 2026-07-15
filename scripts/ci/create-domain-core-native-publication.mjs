@@ -93,8 +93,9 @@ export function buildPublicationManifest(plan, bundleDirectory) {
     commit: plan.commit,
     consumer: plan.consumer,
     signerWorkflow: plan.signerWorkflow,
-    releaseState:
-      plan.consumer === "windows" ? "draft-then-publish" : "published",
+    releaseState: new Set(["apple", "android", "windows"]).has(plan.consumer)
+      ? "draft-then-publish"
+      : "published",
     nativeArtifactOnly: bundles.length === 0,
     artifactPath: regularFile(
       resolve(plan.artifactPath),

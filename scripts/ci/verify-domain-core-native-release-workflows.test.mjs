@@ -21,11 +21,15 @@ const artifactVerifier = readFileSync(
   new URL("./verify-domain-core-native-release-artifact.sh", import.meta.url),
   "utf8",
 );
-const appleProbe = readFileSync(
+const appleReporter = readFileSync(
   new URL(
-    "../../OpenBurnBarCore/Sources/OpenBurnBarDomainCoreIdentityProbe/main.swift",
+    "../../OpenBurnBarCore/Sources/OpenBurnBarCore/DomainCoreReleaseIdentityReporter.swift",
     import.meta.url,
   ),
+  "utf8",
+);
+const appleApp = readFileSync(
+  new URL("../../AgentLens/App/AgentLensApp.swift", import.meta.url),
   "utf8",
 );
 
@@ -74,7 +78,7 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
   assert.match(build, /resolve-domain-core-build-profile\.mjs/u);
   assert.match(build, /domain-core-android-observed-identity\.json/u);
   assert.match(build, /verify-domain-core-observed-identity\.mjs/u);
-  assert.match(build, /OpenBurnBarDomainCoreIdentityProbe/u);
+  assert.doesNotMatch(build, /OpenBurnBarDomainCoreIdentityProbe/u);
   assert.match(
     build,
     /--policy config\/apple-release-signing-policy\.json --environment/u,
@@ -87,15 +91,15 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
   );
 });
 
-test("Apple DMG is fully verified and uploaded create-only before public exposure", () => {
+test("Apple DMG is fully verified before any release mutation", () => {
   const prepublication = job(
     appleAndroid,
     "apple-native-prepublication",
-    "publish",
+    "prepare-release-publication",
   );
-  const publish = job(
+  const preparation = job(
     appleAndroid,
-    "publish",
+    "prepare-release-publication",
     "domain-core-native-release-evidence",
   );
   assert.match(prepublication, /needs:[\s\S]*- smoke-test/u);
@@ -104,95 +108,76 @@ test("Apple DMG is fully verified and uploaded create-only before public exposur
     prepublication,
     /verify-domain-core-native-release-artifact\.sh[\s\S]*apple "\$DMG_PATH"/u,
   );
-  assert.match(prepublication, /ensure-apple-domain-core-release\.mjs/u);
-  assert.match(prepublication, /--phase preflight/u);
-  assert.match(prepublication, /--phase publish/u);
-  assert.match(prepublication, /expected-prerelease "\$PRERELEASE"/u);
-  assert.doesNotMatch(prepublication, /--clobber/u);
-  assert.match(publish, /- apple-native-prepublication/u);
-  assert.doesNotMatch(publish, /gh release create/u);
-
-  const verifyIndex = prepublication.indexOf(
-    "verify-domain-core-native-release-artifact.sh",
-  );
-  const createIndex = prepublication.indexOf(
-    "ensure-apple-domain-core-release.mjs",
-  );
-  const uploadIndex = prepublication.lastIndexOf("--phase publish");
-  assert.ok(verifyIndex >= 0 && verifyIndex < createIndex);
-  assert.ok(createIndex < uploadIndex);
-
-  const uploadOtherAssetsIndex = publish.indexOf("gh release upload");
-  const exposeIndex = publish.indexOf("gh release edit");
-  assert.ok(
-    uploadOtherAssetsIndex >= 0 && uploadOtherAssetsIndex < exposeIndex,
-  );
+  assert.doesNotMatch(prepublication, /gh release|--clobber/u);
+  assert.match(preparation, /- apple-native-prepublication/u);
+  assert.match(preparation, /release-publication-inputs/u);
+  assert.match(preparation, /Retain exact general publication inputs/u);
+  assert.doesNotMatch(preparation, /gh release|--clobber/u);
 });
 
-test("Apple verifier accepts prerelease SemVer while Android remains stable-only", () => {
+test("Apple and Android verifiers accept the same prerelease SemVer", () => {
+  assert.match(artifactVerifier, /\(-\[0-9A-Za-z\]/u);
+  assert.match(artifactVerifier, /invalid native release version/u);
+  assert.doesNotMatch(artifactVerifier, /stable Android release version/u);
+});
+
+test("mounted shipped app executable itself emits the loaded Rust identity", () => {
   assert.match(
     artifactVerifier,
-    /consumer" == "apple"[\s\S]*\(-\[0-9A-Za-z\]/u,
+    /"\$executable" --domain-core-release-identity-report "\$observed_identity"/u,
   );
-  assert.match(artifactVerifier, /invalid stable Android release version/u);
-  assert.doesNotMatch(
-    artifactVerifier,
-    /android"[\s\S]{0,300}invalid Apple release version/u,
-  );
-});
-
-test("mounted Apple probe exercises Rust but binds identity to the shipped app executable", () => {
-  assert.match(artifactVerifier, /DOMAIN_CORE_SHIPPED_BINARY="\$executable"/u);
   assert.match(artifactVerifier, /verify_selected_identity "\$executable"/u);
   assert.match(artifactVerifier, /codesign -d --verbose=4 "\$artifact"/u);
   assert.match(artifactVerifier, /codesign -d --verbose=4 "\$app"/u);
-  assert.match(artifactVerifier, /codesign -d --verbose=4 "\$identity_probe"/u);
-  assert.match(appleProbe, /DOMAIN_CORE_SHIPPED_BINARY/u);
-  assert.match(appleProbe, /domainCoreVersion\(\)/u);
-  assert.match(appleProbe, /domainCoreAbiVersion\(\)/u);
-  assert.match(appleProbe, /domainCoreSourceFingerprint\(\)/u);
-  assert.doesNotMatch(appleProbe, /CommandLine\.arguments\[0\]/u);
+  assert.doesNotMatch(
+    artifactVerifier,
+    /identity_probe|DOMAIN_CORE_SHIPPED_BINARY/u,
+  );
+  assert.match(appleApp, /runDomainCoreReleaseIdentityModeIfRequested\(\)/u);
+  assert.match(appleApp, /Bundle\.main\.executableURL/u);
+  assert.match(appleReporter, /domainCoreVersion\(\)/u);
+  assert.match(appleReporter, /domainCoreAbiVersion\(\)/u);
+  assert.match(appleReporter, /domainCoreSourceFingerprint\(\)/u);
+  assert.match(appleReporter, /SHA256\.hash\(data: executableData\)/u);
 });
 
-test("stable Apple and Android evidence is v2, create-only, and byte-observed", () => {
+test("all Apple and Android assets and v2 evidence publish through one draft state machine", () => {
   const evidence = job(
     appleAndroid,
     "domain-core-native-release-evidence",
     "verify-live-update-feed",
   );
-  assert.match(evidence, /needs:[\s\S]*- publish/u);
-  assert.match(evidence, /is_prerelease == 'false'/u);
+  assert.match(evidence, /needs:[\s\S]*- prepare-release-publication/u);
+  assert.doesNotMatch(evidence, /^    if: .*is_prerelease == 'false'/mu);
   assert.match(evidence, /verify-domain-core-native-release-artifact\.sh/u);
   assert.match(evidence, /create-domain-core-native-release-evidence\.mjs/gmu);
   assert.match(
     evidence,
     /predicate-type: https:\/\/openburnbar\.dev\/attestations\/domain-core-release-artifact\/v2/u,
   );
-  assert.match(evidence, /publish-domain-core-release-evidence\.mjs/u);
-  assert.match(evidence, /apple-stable-reverify-identity\.json/u);
+  assert.match(evidence, /hydrate-apple-android-release-evidence\.mjs/u);
+  assert.match(evidence, /create-apple-android-release-publication\.mjs/u);
+  assert.match(evidence, /publish-apple-android-release\.mjs/u);
+  assert.match(evidence, /apple-final-reverify-identity\.json/u);
   assert.match(evidence, /domain-core-apple-prepublication-identity/u);
   assert.match(
     evidence,
     /mkdir -p "\$RUNNER_TEMP\/domain-core-native-evidence"/u,
   );
-  assert.doesNotMatch(
-    evidence,
-    /Publish create-only (?:Apple|Android) evidence\n\s+if:/u,
-  );
+  assert.match(evidence, /release_published != 'true'/u);
+  assert.match(evidence, /--asset "\$asset"/u);
+  assert.match(evidence, /environment: release/u);
   assert.doesNotMatch(evidence, /--clobber|14[- ]day|10,?000/iu);
+  assert.doesNotMatch(evidence, /gh release (?:upload|create|edit|delete)/u);
 });
 
-test("general macOS publisher never clobbers the canonical DMG", () => {
-  const publish = job(
+test("release workflow has no replacement-capable asset mutation", () => {
+  assert.doesNotMatch(appleAndroid, /--clobber/u);
+  assert.doesNotMatch(
     appleAndroid,
-    "publish",
-    "domain-core-native-release-evidence",
+    /gh release (?:upload|create|edit|delete)/u,
   );
-  assert.doesNotMatch(publish, /ASSETS=\("\$DMG_PATH"/u);
-  assert.match(publish, /publish-create-only-release-asset\.mjs/u);
-  assert.match(publish, /--phase preflight/u);
-  assert.doesNotMatch(publish, /--phase publish/u);
-  assert.doesNotMatch(publish, /gh release create/u);
+  assert.match(appleAndroid, /publish-apple-android-release\.mjs/u);
 });
 
 test("Windows signing and canonical evidence consume the exact gate", () => {

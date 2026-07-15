@@ -97,7 +97,7 @@
     "gitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "version": {
       "type": "string",
-      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
     },
     "consumer": {
       "enum": ["apple", "android", "windows", "console", "functions"]
@@ -239,7 +239,7 @@
         "version": { "$ref": "#/$defs/version" },
         "tag": {
           "type": "string",
-          "pattern": "^(?:windows-)?v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
+          "pattern": "^(?:windows-)?v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
         },
         "commit": { "$ref": "#/$defs/gitSha" },
         "publicProfileSha256": { "$ref": "#/$defs/sha256" }
