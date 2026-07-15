@@ -13,7 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, TypeVar, cast
 
-import cloudvault_legacy as legacy
+import cloudvault_primitives_legacy as legacy
+import cloudvault_search_legacy as search_legacy
 
 OPENBURNBAR_CLOUD_VAULT_BLOB_AAD_CONTEXT = legacy.OPENBURNBAR_CLOUD_VAULT_BLOB_AAD_CONTEXT
 _MODE_ENV = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"
@@ -214,15 +215,15 @@ class CloudVaultDomainAdapter:
     def normalized_tokens(self, text: str) -> list[str]:
         return self._route(
             "search-analyze",
-            lambda: legacy._cloud_normalized_tokens(text),
+            lambda: search_legacy._cloud_normalized_tokens(text),
             lambda core: list(core.cloud_vault_search_analyze(text).normalized_tokens),
         )
 
     def token_hashes(self, text: str, vault_key: bytes, limit: int = 10) -> list[str]:
-        return self._search("token-search", "TOKEN", text, vault_key, limit, lambda: legacy._cloud_token_hashes(text, vault_key, limit))
+        return self._search("token-search", "TOKEN", text, vault_key, limit, lambda: search_legacy._cloud_token_hashes(text, vault_key, limit))
 
     def semantic_hashes(self, text: str, vault_key: bytes, limit: int = 12) -> list[str]:
-        return self._search("semantic-search", "SEMANTIC", text, vault_key, limit, lambda: legacy._cloud_semantic_hashes(text, vault_key, limit))
+        return self._search("semantic-search", "SEMANTIC", text, vault_key, limit, lambda: search_legacy._cloud_semantic_hashes(text, vault_key, limit))
 
     def _search(self, operation: str, enum_name: str, text: str, vault_key: bytes, limit: int, old: Callable[[], list[str]]) -> list[str]:
         def rust(core: Any) -> list[str]:
