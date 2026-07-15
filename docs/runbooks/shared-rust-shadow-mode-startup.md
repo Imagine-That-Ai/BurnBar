@@ -6,8 +6,13 @@ Windows). Shadow mode is the first phase of the promotion evidence pipeline
 documented in [`shared-rust-promotion-evidence.md`](shared-rust-promotion-evidence.md).
 
 **No committed config file activates shadow mode.** Both consumers read
-environment variables at runtime. Setting them in the signed build environment
-starts the 14-day evidence clock required by
+environment variables from the **app process launch environment** — not
+variables that were present during build/signing. Setting them in the
+signed build environment alone does NOT start shadow mode; the variables
+must be present in the app's launch environment at runtime. This runbook
+documents the exact launch-time carriers for each platform.
+
+Setting both variables starts the 14-day evidence clock required by
 [`config/domain-core-promotion-policy.json`](../../config/domain-core-promotion-policy.json).
 
 ## What shadow mode does
@@ -31,7 +36,8 @@ rollback state. Shadow mode never changes the user-visible result.
 
 ### Mode
 
-The Swift quota adapter resolves the mode from the process environment:
+The Swift quota adapter resolves the mode from the process launch
+environment:
 
 ```swift
 // ClaudeQuotaDomainCoreAdapter.swift
@@ -44,23 +50,40 @@ static func resolve(environment: [String: String]) -> Self {
 ```
 
 `ProviderQuotaService` defaults `environment` to
-`ProcessInfo.processInfo.environment`.
+`ProcessInfo.processInfo.environment`, which reads the app process's launch
+environment — not the build-time environment.
 
-**To start shadow mode, set in the signed build environment:**
+**To start shadow mode, set the variable in the app's launch environment:**
 
+The repo already uses `LSEnvironment` in `Info.plist`
+(`AgentLens/Resources/OpenBurnBar-Info.plist`) to inject launch-time
+environment variables into the macOS app process. Add the quota mode key
+there for signed internal/beta builds:
+
+```xml
+<!-- In AgentLens/Resources/OpenBurnBar-Info.plist, inside the existing LSEnvironment dict: -->
+<key>OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE</key>
+<string>shadow</string>
 ```
-OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE=shadow
-```
 
-For an Xcode signed build, set this as a preprocessor define or user-defined
-build setting that propagates to `ProcessInfo.processInfo.environment`. For
-CI/export, pass it via `xcodebuild -configuration … OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE=shadow`
-or set it in the scheme's run-time arguments environment.
+`LSEnvironment` is read by LaunchServices at app launch time and propagated
+to `ProcessInfo.processInfo.environment`. This is the same mechanism already
+used for `SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE`.
+
+For development/testing, you can also use:
+
+```bash
+# Per-boot, for GUI apps launched via Finder/Dock:
+launchctl setenv OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE shadow
+
+# Or launch from a shell that exports it:
+OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE=shadow open -a OpenBurnBar
+```
 
 ### Channel (telemetry enablement)
 
-The Apple telemetry recorder resolves the channel from the environment, with an
-Info.plist fallback:
+The Apple telemetry recorder resolves the channel from the launch
+environment, with an Info.plist fallback:
 
 ```swift
 // DomainCoreShadowEvidenceSpool.swift — MacDomainCoreShadowEvidenceRecorder.init
@@ -71,12 +94,23 @@ self.channel = configured == "internal" || configured == "beta" ? configured : n
 
 **To enable telemetry spooling, set one of:**
 
-- Environment variable: `OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL=internal`
-  (or `beta`)
-- Info.plist key: `OpenBurnBarDomainCoreRolloutChannel` = `internal` (or `beta`)
+- `LSEnvironment` in Info.plist (launch-time, recommended for signed builds):
+  ```xml
+  <key>OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL</key>
+  <string>internal</string>
+  ```
+- Info.plist custom key (read at runtime, not launch-time env):
+  ```xml
+  <key>OpenBurnBarDomainCoreRolloutChannel</key>
+  <string>internal</string>
+  ```
+- Environment variable for development/testing:
+  ```bash
+  launchctl setenv OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL internal
+  ```
 
-An absent, unknown, or `production` value disables collection — no samples are
-spooled or uploaded.
+Use `internal` or `beta`. An absent, unknown, or `production` value
+disables collection — no samples are spooled or uploaded.
 
 ### Spool location
 
@@ -88,7 +122,7 @@ Apple spools bounded JSONL batches under
 
 ### Mode
 
-The C# quota bridge resolves the mode from the process environment:
+The C# quota bridge resolves the mode from the process launch environment:
 
 ```csharp
 // DomainCoreQuotaBridge.cs
@@ -109,18 +143,34 @@ internal static DomainCoreQuotaMigrationMode ResolveMode(string? raw)
 }
 ```
 
-**To start shadow mode, set in the signed build environment:**
+`Environment.GetEnvironmentVariable` reads from the process environment
+block, which is inherited from the parent process or set via system/user
+environment variables. Build-time variables do NOT propagate to installed
+apps.
 
-```
-OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE=shadow
+**To start shadow mode, set the variable in the app's launch environment:**
+
+For a signed Windows release, set a persistent user environment variable
+before the app launches:
+
+```powershell
+# Set for the current user (persists across reboots):
+[Environment]::SetEnvironmentVariable(
+    "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE", "shadow",
+    [EnvironmentVariableTarget]::User)
+
+# Or set for the current process only (e.g., in a launch script):
+$env:OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE = "shadow"
 ```
 
-For an MSBuild signed build, set this as a system/user environment variable
-before launching the app, or inject it via the build's environment block.
+For a service-based deployment, set the variable in the service's
+environment block (e.g., via the Windows Service `EnvironmentVariables`
+registry key or the process launch configuration).
 
 ### Channel (telemetry enablement)
 
-The Windows telemetry recorder reads the channel from the environment:
+The Windows telemetry recorder reads the channel from the process
+environment:
 
 ```csharp
 // DomainCoreQuotaShadowEvidence.cs — PersistComparison
@@ -134,11 +184,14 @@ if (channel is not ("internal" or "beta") || …)
 
 **To enable telemetry spooling, set:**
 
-```
-OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL=internal
+```powershell
+[Environment]::SetEnvironmentVariable(
+    "OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL", "internal",
+    [EnvironmentVariableTarget]::User)
 ```
 
-(or `beta`). An absent, unknown, or `production` value disables collection.
+Use `internal` or `beta`. An absent, unknown, or `production` value
+disables collection.
 
 ### Spool location
 
@@ -171,25 +224,43 @@ flowing within 24 hours:
    Ready files (`ready-*.jsonl`) or an `active.jsonl` with content confirm
    samples are being recorded.
 
-2. **Check Firestore** (read-only, operator with `gcloud` access):
+2. **Check Firestore** (read-only, operator with Application Default
+   Credentials). The repo's export script queries `domain_core_shadow_samples`
+   via `firebase-admin` — use it with a narrow time window to confirm
+   samples arrived without extracting full evidence:
+
    ```bash
-   gcloud firestore documents list \
-     --collection-group=domain_core_shadow_samples \
-     --limit=10 \
-     --project=burnbar
+   node scripts/ops/export-domain-core-promotion-evidence.mjs \
+     --project burnbar \
+     --start 2026-07-15T00:00:00Z \
+     --end 2026-07-16T00:00:00Z \
+     --channel internal \
+     --core-version 0.3.0 \
+     --source-uri https://console.cloud.google.com/firestore/databases/-default-/data/panel/domain_core_shadow_samples \
+     --output /tmp/shadow-telemetry-quick-check.json
    ```
-   Documents should appear with `consumer=apple` and `consumer=windows`,
-   `channel=internal|beta`, and recent `observedAt` timestamps.
+
+   The output JSON should show non-zero `sampleCount` for both `apple` and
+   `windows` consumers. If either consumer has zero samples, telemetry is
+   not flowing for that platform — check the env vars and Firebase Auth
+   custom claim.
+
+   Alternatively, use the Firebase console:
+   https://console.cloud.google.com/firestore/databases/-default-/data/panel/domain_core_shadow_samples
 
 3. **Verify the Firestore TTL policy** is active (required before beta
    evidence collection):
+
    ```bash
    gcloud firestore fields ttls update expireAt \
      --collection-group=domain_core_shadow_samples \
      --enable-ttl \
      --project=burnbar
-   node scripts/ci/verify-firestore-ttl-state.mjs --project burnbar
+   node scripts/ci/verify-firestore-ttl-state.mjs burnbar
    ```
+
+   Note: `verify-firestore-ttl-state.mjs` takes the project ID as a
+   positional argument (`process.argv[2]`), not via `--project`.
 
 ## Evidence export and promotion gate
 
@@ -216,7 +287,13 @@ at day 14, the fix is more soak time or more beta devices.
 
 ## Rollback
 
-To roll back from shadow to legacy, unset or change the mode env var:
+To roll back from shadow to legacy, unset or change the mode env var in the
+app's launch environment:
+
+- Apple: remove `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE` from `LSEnvironment` in
+  Info.plist, or set it to `legacy`.
+- Windows: set `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE` to `legacy` (or remove
+  it) in the user environment variables.
 
 ```
 OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE=legacy
