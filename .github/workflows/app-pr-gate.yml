@@ -80,6 +80,13 @@ jobs:
           fi
           protoc --version
 
+      - name: macOS idle/occluded CPU regression gate (P-PERF-3)
+        # Behavioral rAF pause tripwire: loads the real kernel-backdrop.js
+        # bundle in a mock DOM+rAF harness and proves occlusion cancels the
+        # animation loop. Observing-first (non-required until promoted).
+        continue-on-error: true
+        run: node --test scripts/ci/macos-idle-occlusion-gate.test.mjs
+
       - name: Validate app test classifier
         run: bash scripts/test-openburnbar-app-classifier.sh
 

@@ -2,6 +2,22 @@ import OpenBurnBarCore
 import SwiftUI
 import WebKit
 
+/// Pure occlusion visibility policy — the decision of whether the backdrop
+/// render loop should be active, extracted from the Coordinator so it can be
+/// unit-tested without a real `NSWindow` or source-string matching.
+///
+/// The policy is: the backdrop is active only when the host window exists AND
+/// its occlusion state contains `.visible`. A nil window (detached), or a
+/// window that is fully occluded/minimized/app-hidden, yields `inactive`.
+enum OcclusionVisibilityPolicy {
+    /// Returns `true` (active) when the window is visible, `false` (inactive)
+    /// when occluded or detached.
+    static func shouldBackdropBeActive(window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        return window.occlusionState.contains(.visible)
+    }
+}
+
 /// One selectable WebGL2 backdrop "kernel" from the self-contained bundle that
 /// ships at `Resources/KernelBackdrop/`. Mirrors the `KERNEL_META` registry in
 /// `apps/console/lib/gl/engine/registry.ts` so the native picker can be built
@@ -166,7 +182,7 @@ struct KernelBackdropView: NSViewRepresentable {
 
         private func syncOcclusionState() {
             guard let webView = observedWebView else { return }
-            let visible = webView.window?.occlusionState.contains(.visible) ?? false
+            let visible = OcclusionVisibilityPolicy.shouldBackdropBeActive(window: webView.window)
             pushBackdropActive(visible, to: webView)
         }
 
