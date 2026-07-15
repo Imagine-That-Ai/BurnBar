@@ -163,6 +163,7 @@ jobs:
         env:
           DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
           DEPLOY_RUN_ATTEMPT: ${{ inputs.deploy_run_attempt }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           proof_dir="$RUNNER_TEMP/functions-deploy-proof"
@@ -202,6 +203,8 @@ jobs:
 
       - name: Create candidate-bound v2 Functions receipt and predicate
         id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           artifact="$RUNNER_TEMP/OpenBurnBar-${RELEASE_VERSION}-functions-deployment.json"

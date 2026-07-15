@@ -144,6 +144,36 @@ class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
             self.assertIn(value, source)
         self.assertLess(source.index("OK Sentry enabled on live healthReady"), source.index("A deploy-health artifact is evidence"))
 
+    def test_every_gh_backed_step_exports_GH_TOKEN(self) -> None:
+        """Every evidence-job step that invokes gh (directly or through a Node
+        script that calls ``gh attestation verify``) must export ``GH_TOKEN`` so
+        release-evidence runs authenticate for private/internal attestations."""
+        import yaml
+
+        source = EVIDENCE.read_text(encoding="utf-8")
+        workflow = yaml.safe_load(source)
+        # Scripts whose implementation calls ``gh attestation verify`` via
+        # verifyProtectedPromotionAttestation or createGhClient.
+        gh_attestation_scripts = frozenset((
+            "verify-domain-core-release-gate.mjs",
+            "create-domain-core-release-evidence.mjs",
+            "publish-domain-core-release-evidence.mjs",
+        ))
+        steps = workflow["jobs"]["publish"]["steps"]
+        missing: list[str] = []
+        for step in steps:
+            run_text = step.get("run", "")
+            if not run_text:
+                continue
+            invokes_gh = "gh api" in run_text or "gh workflow" in run_text
+            invokes_gh |= any(script in run_text for script in gh_attestation_scripts)
+            if not invokes_gh:
+                continue
+            env = step.get("env", {})
+            if env.get("GH_TOKEN") != "${{ github.token }}":
+                missing.append(step["name"])
+        self.assertEqual(missing, [], f"gh-backed steps missing GH_TOKEN: {missing}")
+
 
 if __name__ == "__main__":
     unittest.main()
