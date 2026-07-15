@@ -14,7 +14,7 @@ REPO_ROOT = MCP_DIR.parents[1]
 if str(MCP_DIR) not in sys.path:
     sys.path.insert(0, str(MCP_DIR))
 
-import cloudvault_legacy as legacy
+import cloudvault_primitives_legacy as legacy
 from domain_core_cloudvault import CloudVaultDomainAdapter, DomainCoreIdentityError
 
 PACKAGE_DIR = MCP_DIR / "vendor" / "openburnbar-domain-core-python"

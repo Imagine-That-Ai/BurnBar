@@ -24,6 +24,7 @@ Run the production-package contracts with:
 ```
 
 The path-addressable rollback implementation remains in
-`cloudvault_legacy.py` until the crypto promotion and stable-release deletion
+`cloudvault_primitives_legacy.py` and `cloudvault_search_legacy.py` until the
+crypto promotion and stable-release deletion
 gates pass. The exact migration/deletion ledger is
 `docs/contracts/domain-core-python-consumer-manifest.json`.

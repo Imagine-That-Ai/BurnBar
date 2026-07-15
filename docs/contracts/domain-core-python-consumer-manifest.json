@@ -3,7 +3,10 @@
   "consumer": "local-mcp-python",
   "entrypoint": "tools/openburnbar-mcp/server.py",
   "adapter": "tools/openburnbar-mcp/domain_core_cloudvault.py",
-  "legacyModule": "tools/openburnbar-mcp/cloudvault_legacy.py",
+  "legacyModules": {
+    "cloudvault.portable_primitives": "tools/openburnbar-mcp/cloudvault_primitives_legacy.py",
+    "cloudvault.search": "tools/openburnbar-mcp/cloudvault_search_legacy.py"
+  },
   "modeEnvironment": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE",
   "defaultMode": "legacy",
   "identity": {
@@ -47,7 +50,10 @@
   ],
   "legacyDeletion": {
     "state": "blocked-by-promotion-gate",
-    "target": "tools/openburnbar-mcp/cloudvault_legacy.py",
+    "targets": [
+      "tools/openburnbar-mcp/cloudvault_primitives_legacy.py",
+      "tools/openburnbar-mcp/cloudvault_search_legacy.py"
+    ],
     "requiredBeforeDeletion": [
       "protected-candidate-attestation",
       "crypto-security-review",
