@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarLogParsers
 
 /// Windows-port Phase-2 parser path-remap (`LogPathPlatform`). Proves the macOS
 /// `~/…` logical provider log directories resolve to the correct Windows roots
