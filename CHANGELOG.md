@@ -199,7 +199,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Recount reparses, removes stale same-device Firestore usage docs, and reports
   the full cloud-sync batch total to analytics.
 
-### Added - Windows 1.0.30 parity release
+### Added - Windows 1.0.31 parity release
 
 - **Windows parity release line** - advances the Windows x64 and ARM64
   direct-download candidates to the completed F1 product ledger and applicable
@@ -214,6 +214,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   performance receipts to their raw hardware attestation and exact signed
   artifact manifest hashes, rejecting virtual, stale, mismatched, or
   substituted evidence.
+- **Windows artifact-profile validation** - accepts the UTF-8 BOM emitted by
+  MSBuild's `WriteLinesToFile` task while continuing to reject malformed or
+  mismatched signed domain-core profile receipts.
 
 ## [1.0.29] - 2026-07-05
 
