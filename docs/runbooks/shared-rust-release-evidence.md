@@ -106,15 +106,15 @@ signer's retained rollback artifact and never uploads a duplicate copy.
 
 ## Native release wiring
 
-The stable native release lanes resolve the same protected chain before any
-platform signing starts:
+The native release lanes resolve the same protected chain before any platform
+signing starts:
 
 - [`.github/workflows/release.yml`](../../.github/workflows/release.yml) covers
   the notarized Apple DMG and signed Android AAB;
 - [`.github/workflows/openburnbar-release-windows.yml`](../../.github/workflows/openburnbar-release-windows.yml)
   covers the Authenticode-signed x64 and ARM64 Windows packages; and
-- tag-triggered releases always select `public-production`. A tag cannot request
-  the rollback profile.
+- stable and prerelease tag-triggered releases always select
+  `public-production`. A tag cannot request the rollback profile.
 
 An emergency manual release may select `public-production-rollback`. That path
 must pass the protected `domain-core-promotion` environment before signing and
@@ -155,14 +155,14 @@ Native release predicates are generated after platform-native verification:
 - Apple verifies notarization and the committed signing pins in
   [`config/apple-release-signing-policy.json`](../../config/apple-release-signing-policy.json).
   `APPLE_TEAM_ID`, `APPLE_SIGNING_IDENTITY`, and the `codesign` output for the
-  outer DMG, mounted app, and embedded probe must all match Team ID
-  `4Y367DF25B` and the exact Developer ID leaf authority. The arm64-only signed
-  probe executes directly from the mounted DMG and calls the loaded Rust
-  identity exports. Its report hashes the mounted app's shipped
-  `Contents/MacOS/OpenBurnBar` executable, and the verifier checks that digest
-  against those exact executable bytes. This keeps Rust execution proof and
-  shipped-artifact identity in one report without substituting the helper for
-  the released app binary.
+  outer DMG and mounted app must all match Team ID `4Y367DF25B` and the exact
+  Developer ID leaf authority. The mounted app's shipped
+  `Contents/MacOS/OpenBurnBar` executable runs its internal
+  `--domain-core-release-identity-report` mode before normal app startup. That
+  mode calls the loaded Rust identity exports directly and hashes its own
+  executable bytes. The verifier checks the reported digest against the same
+  mounted executable, so no helper executable can substitute for the binary
+  users receive.
 - Android verifies the approved upload-certificate fingerprint, JAR signature,
   bundletool structure, both supported 64-bit native ABIs, the embedded build-profile
   receipt, and the Rust identity observed on an arm64 emulator. The loaded
@@ -178,31 +178,31 @@ all-legacy rollback event remains auditable.
 
 ## Publish immutable assets
 
-Pass the artifact and all domain attestation bundles to
-`publish-domain-core-release-evidence.mjs` in a version 2 publication manifest.
-The publisher:
+Apple and Android use one combined publication manifest and one state machine:
 
-1. validates every predicate and verifies every local attestation bundle;
-2. requires the exact release tag and candidate commit; Apple uses an exact
-   draft or published release, Android uses the published stable release, and
-   Windows uses an exact private draft;
-3. downloads and verifies every existing name collision before any upload;
-4. uploads attestation bundles first with create-only GitHub release operations;
-5. uploads the artifact last; and
-6. freshly downloads and verifies every final asset; and
-7. publishes the Windows draft only after every final verification succeeds.
+1. retain the exact general release assets, release notes, notarized DMG, signed
+   AAB, observed identities, protected gate, and rollback chain as Actions
+   artifacts without mutating a GitHub release;
+2. mount and reverify the final DMG, reverify the final AAB, and generate v2
+   predicates against those exact local artifact bytes;
+3. look up the exact tag and release state, then hydrate any evidence already
+   present on a retry. Existing evidence is reused only after cryptographic
+   verification against its exact predicate and artifact;
+4. attest only missing evidence while the release is absent or draft;
+5. create the release as a draft when absent, then upload every general asset,
+   the DMG, the AAB, and every evidence bundle with create-only operations;
+6. recheck the tag, target commit, metadata, draft state, and current asset-name
+   subset before each mutation;
+7. freshly download the complete asset set, compare every ordinary asset
+   byte-for-byte, and cryptographically verify every evidence bundle; and
+8. recheck the final tag, target, metadata, state, and exact asset-name set,
+   then perform one explicit `--draft=false` edit with explicit prerelease and
+   latest state.
 
-It never deletes a release and never uses `--clobber`. The only edit it may
-perform is the final draft-to-published transition for a completely verified
-Windows release. An all-legacy native profile still publishes the canonical
-artifact through the same create-only path, with an explicitly empty evidence
-bundle set.
-Artifact retries and concurrent winners must be byte-identical. Existing or
-concurrently published Sigstore bundles may use a different valid encoding,
-but they are reused only after verification against the exact artifact,
-predicate, signer workflow, repository, tag, and commit. A substituted bundle,
-non-identical artifact collision, or semantic final-state mutation fails the
-run.
+Stable and prerelease releases use the same state machine. Prereleases are
+always non-latest; only an explicitly promoted stable release may become latest.
+No partial release is published, and no attestation is generated against bytes
+other than the DMG or AAB that will be published.
 
 ## Functions release lane
 
@@ -257,16 +257,20 @@ not overwrite those stable assets: it retains a uniquely named Actions artifact
 containing the receipt, predicate, official provenance bundle, deploy proof, and
 health evidence keyed by tag, deploy run, and attempt.
 
-The Apple prepublication job applies to both stable and prerelease tags. It
-mounts the final notarized DMG, executes the embedded Rust identity probe,
-verifies the committed signer pins, creates or reuses only the exact GitHub
-release (creating it as a draft when absent), and uploads the DMG create-only
-with a final byte-for-byte download check. Only then may the general publisher
-upload the remaining assets and change the draft's public, prerelease, or latest
-state. The general publisher never includes the DMG in a clobber upload and
-preflights the already published same-name bytes before any release edit.
-Stable evidence runs after publication and independently mounts and reverifies
-the DMG again before generating public predicates.
+Published retries are strictly read-only. They succeed only when the complete
+asset-name set is exact, every ordinary asset is byte-identical, every evidence
+bundle verifies, and release metadata remains unchanged through the final
+audit. A published release with a missing DMG, AAB, general asset, or evidence
+bundle fails without mutation. Draft retries may fill only missing assets.
+Concurrent exact uploads and a concurrent final publication are accepted after
+fresh verification; substituted collisions, unexpected assets, moved tags,
+state changes, or byte tampering fail closed and leave the release draft.
+
+The publisher never deletes a release, never replaces an asset, and never uses
+`--clobber`. Windows retains its separate draft-then-publish state machine, with
+the same create-only collision checks and final verification. An all-legacy
+native profile still publishes the canonical artifact through the appropriate
+state machine with an explicitly empty evidence bundle set.
 
 ## Ownership boundary
 
@@ -283,5 +287,9 @@ otherwise a candidate commit could change its own verifier. Native workflow
 changes and signer-manifest changes therefore land as one reviewed integration.
 The pre-integration seed list lives in
 [`scripts/lib/domain-core-native-control-plane-seeds.mjs`](../../scripts/lib/domain-core-native-control-plane-seeds.mjs);
-after the release-workflow rebase, import it into the protected control-plane
+its tests require every directly executed native workflow helper and the full
+recursive relative JavaScript import closure, so an imported verifier cannot
+fall outside the protected set. The list also binds the shipped Apple reporter
+source, Android native observer, signing policies, and native test observers.
+After the release-workflow rebase, import it into the protected control-plane
 verifier and regenerate the committed manifest from that exact tree.

@@ -124,6 +124,12 @@ function argumentsFor(paths, profileName = "public-production") {
   ];
 }
 
+function replaceArgument(args, flag, value) {
+  const index = args.indexOf(flag);
+  assert.notEqual(index, -1, flag);
+  args[index + 1] = value;
+}
+
 test("creates v2 predicates only for Rust-authoritative public domains", () => {
   const paths = fixture({ rust: ["quota", "pricing"] });
   try {
@@ -198,5 +204,54 @@ test("rejects profile, candidate, and artifact substitution", () => {
     );
   } finally {
     rmSync(paths.directory, { recursive: true, force: true });
+  }
+});
+
+test("accepts Apple and Android prereleases but keeps Windows stable-only", () => {
+  for (const consumer of ["apple", "android"]) {
+    const paths = fixture({
+      rust: [consumer === "apple" ? "quota" : "cloudVault"],
+    });
+    try {
+      const version = "1.2.3-rc.1";
+      const artifact = join(
+        paths.directory,
+        consumer === "apple"
+          ? `OpenBurnBar-${version}-macOS.dmg`
+          : `OpenBurnBar-${version}-Android.aab`,
+      );
+      writeFileSync(artifact, `${consumer} prerelease artifact`);
+      const args = argumentsFor(paths);
+      replaceArgument(args, "--consumer", consumer);
+      replaceArgument(args, "--artifact", artifact);
+      replaceArgument(args, "--version", version);
+      replaceArgument(args, "--tag", `v${version}`);
+      const plan = run(args, { promotionVerifier: () => [] });
+      assert.equal(plan.consumer, consumer);
+      assert.equal(plan.tag, `v${version}`);
+    } finally {
+      rmSync(paths.directory, { recursive: true, force: true });
+    }
+  }
+
+  const windows = fixture();
+  try {
+    const version = "1.2.3-rc.1";
+    const artifact = join(
+      windows.directory,
+      `OpenBurnBar-${version}-windows-release.zip`,
+    );
+    writeFileSync(artifact, "windows prerelease artifact");
+    const args = argumentsFor(windows);
+    replaceArgument(args, "--consumer", "windows");
+    replaceArgument(args, "--artifact", artifact);
+    replaceArgument(args, "--version", version);
+    replaceArgument(args, "--tag", `windows-v${version}`);
+    assert.throws(
+      () => run(args, { promotionVerifier: () => [] }),
+      /native release version is invalid/u,
+    );
+  } finally {
+    rmSync(windows.directory, { recursive: true, force: true });
   }
 });
