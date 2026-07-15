@@ -205,6 +205,24 @@ receipt was produced. The next implementation unit must thread the shared
 allowlist through the RPM rebuild path and then rerun both architecture shards
 before installation or ledger promotion.
 
+Candidate `29440745769` advanced through RPM and installed-manifest generation
+on both architectures and reached Arch preparation, then failed in
+`build-signed-arch-package` with `The path argument must be of type string.
+Received undefined`. The source cause was a missing `AUTOSTART_DESKTOP` to
+`openburnbar-autostart.desktop` entry in `commonNames`. No artifact or
+certifying receipt was produced. The next implementation unit must add that
+mapping plus a source-input regression test, then rerun both architecture
+shards before installation or ledger promotion.
+
+Candidate `29442734074` produced and verified signed native artifacts for both
+architectures, then failed during live package-ownership smoke for DEB/RPM:
+the installed verifier still rejected the canonical
+`/etc/xdg/autostart/openburnbar.desktop` as a non-`/usr` path. No shard artifact
+or certifying receipt was retained. The next implementation unit must extend
+the live installed-ownership verifier to the shared exact allowlist and add
+focused regression coverage, then rerun both architecture shards before
+installation or ledger promotion.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:

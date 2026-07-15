@@ -114,6 +114,20 @@ percentage. The active remediation stack now contains these reviewable slices:
   allowlist, producing `native package archive member is outside /usr: etc`.
   No artifact or certifying receipt was produced. The next fix must wire the
   shared allowlist through the RPM rebuild path and rerun both architectures.
+- **Release candidate `29440745769`:** both architecture shards cleared RPM
+  and installed-manifest generation and reached Arch preparation, then failed
+  in `build-signed-arch-package` with `The path argument must be of type string.
+  Received undefined`. The root cause was a missing `AUTOSTART_DESKTOP` to
+  `openburnbar-autostart.desktop` mapping in `commonNames`. No artifact or
+  certifying receipt was produced. The next fix adds that mapping and a source-
+  input regression test before rerunning both architectures.
+- **Release candidate `29442734074`:** both architecture shards produced and
+  verified signed native artifacts, then failed during live package-ownership
+  smoke for DEB/RPM because the verifier still rejected the canonical
+  `/etc/xdg/autostart/openburnbar.desktop` as a non-`/usr` path. No shard
+  artifact or certifying receipt was retained. The next fix must extend the
+  live installed-ownership verifier to the shared exact allowlist and add
+  focused coverage before rerunning both architectures.
 
 - **Onboarding hardening:** `238ee56975` validates every daemon snapshot before
   renderer/cache mutation, preserves the last valid state on malformed or

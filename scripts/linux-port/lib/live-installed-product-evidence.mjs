@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { INSTALLED_MANIFEST_NON_USR_PATH_ALLOWLIST } from './linux-installed-manifest.mjs';
 
 export const LIVE_INSTALLED_MANIFEST_PATH = '/usr/share/openburnbar/attestation/installed-manifest.json';
 export const LIVE_INSTALLED_SIGNATURE_PATH = `${LIVE_INSTALLED_MANIFEST_PATH}.sig`;
@@ -21,9 +22,21 @@ function normalizedMode(stat) {
   return (stat.mode & 0o7777).toString(8).padStart(4, '0');
 }
 
+function isAllowedNonUsrPath(absolutePath) {
+  return INSTALLED_MANIFEST_NON_USR_PATH_ALLOWLIST.some((allowedPath) => (
+    allowedPath === absolutePath
+    || allowedPath.startsWith(`${absolutePath}/`)
+    || absolutePath.startsWith(`${allowedPath}/`)
+  ));
+}
+
+function isAllowedInstalledPath(absolutePath) {
+  return absolutePath.startsWith('/usr/') || isAllowedNonUsrPath(absolutePath);
+}
+
 function mappedPath(installedRoot, absolutePath, label) {
-  if (!path.posix.isAbsolute(absolutePath) || !absolutePath.startsWith('/usr/')) {
-    throw new Error(`${label} must be an absolute /usr path`);
+  if (!path.posix.isAbsolute(absolutePath) || !isAllowedInstalledPath(absolutePath)) {
+    throw new Error(`${label} must be an absolute packaged path`);
   }
   const root = path.resolve(installedRoot);
   const candidate = path.resolve(root, absolutePath.slice(1));
@@ -186,7 +199,7 @@ function listPackageOwnedPaths(installedManifest, installedRoot, runner) {
     }
     const stat = fs.lstatSync(candidate);
     if (stat.isDirectory()) continue;
-    if (!installedPath.startsWith('/usr/')) {
+    if (!isAllowedInstalledPath(installedPath)) {
       throw new Error(`package manager returned a non-directory owned path outside /usr: ${installedPath}`);
     }
     if (seen.has(installedPath)) throw new Error(`package manager repeated owned path: ${installedPath}`);

@@ -42,12 +42,16 @@ function writeInstalled(root, absolutePath, contents, mode = 0o755) {
   return target;
 }
 
-function createFixture() {
+function createFixture({ includeAutostart = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-live-install-'));
   const daemonBytes = Buffer.from('daemon-binary\n');
   const desktopBytes = Buffer.from('desktop-binary\n');
+  const autostartBytes = Buffer.from('[Desktop Entry]\nExec=openburnbar-linux-desktop --background\n');
   writeInstalled(root, '/usr/bin/openburnbar-daemon', daemonBytes);
   writeInstalled(root, '/usr/bin/openburnbar-linux-desktop', desktopBytes);
+  if (includeAutostart) {
+    writeInstalled(root, '/etc/xdg/autostart/openburnbar.desktop', autostartBytes, 0o644);
+  }
   const linkPath = path.join(root, 'usr/bin/openburnbar');
   fs.symlinkSync('openburnbar-linux-desktop', linkPath);
   const files = [
@@ -76,7 +80,16 @@ function createFixture() {
       mode: '0755',
       uid: 0,
       gid: 0
-    }
+    },
+    ...(includeAutostart ? [{
+      path: '/etc/xdg/autostart/openburnbar.desktop',
+      type: 'file',
+      sha256: sha256(autostartBytes),
+      size: autostartBytes.length,
+      mode: '0644',
+      uid: 0,
+      gid: 0
+    }] : [])
   ].sort((left, right) => Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)));
   const manifest = {
     schemaVersion: 1,
@@ -161,6 +174,33 @@ test('live package ownership is queried from the native manager and rejects an e
     }
   }), /extra=\/usr\/bin\/openburnbar-extra/u);
   assert.deepEqual(calls, [{ command: 'dpkg-query', args: ['-L', 'open-burn-bar'] }]);
+});
+
+test('live package ownership accepts only the canonical XDG autostart file outside /usr', (t) => {
+  const fixture = createFixture({ includeAutostart: true });
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  verifyLiveInstalledProduct({
+    installedManifest: fixture.manifest,
+    expectedManifestBytes: fixture.manifestBytes,
+    expectedSignatureBytes: fixture.signatureBytes,
+    installedRoot: fixture.root,
+    ownership: { uid: 0, gid: 0 },
+    packageListRunner: () => ({ status: 0, stdout: `${ownedPaths(fixture).join('\n')}\n`, stderr: '' })
+  });
+
+  writeInstalled(fixture.root, '/etc/xdg/autostart/other.desktop', '[Desktop Entry]\n', 0o644);
+  assert.throws(() => verifyLiveInstalledProduct({
+    installedManifest: fixture.manifest,
+    expectedManifestBytes: fixture.manifestBytes,
+    expectedSignatureBytes: fixture.signatureBytes,
+    installedRoot: fixture.root,
+    ownership: { uid: 0, gid: 0 },
+    packageListRunner: () => ({
+      status: 0,
+      stdout: `${ownedPaths(fixture, ['/etc/xdg/autostart/other.desktop']).join('\n')}\n`,
+      stderr: ''
+    })
+  }), /outside \/usr/u);
 });
 
 test('Arch ownership proof queries the exact pacman package path set', (t) => {
