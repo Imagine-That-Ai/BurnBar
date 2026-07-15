@@ -781,6 +781,240 @@ check "app verdict uses line-level evidence" \
 check "app scope excludes conditional-compilation directives from denominator" \
   "2" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
 
+# --- fixture 13: TRUE whole-file `git mv` with a repointed import must charge
+# ONLY the changed line, not the relocated body (R-GH0; directly guards change 1
+# of the rename fix). This is the canonical god-module decomposition edit: a file
+# is `git mv`'d to a new module path and a single `import` line is added, staying
+# similar enough that git reports it as a rename (R). The moved body lines are
+# provided as MEASURED-and-UNHIT so any regression that charges them is visible as
+# a real coverage failure, not masked by the unmeasured-skip. Pre-fix, the gated
+# re-diff passed only the NEW path to `git diff --find-renames`, which cannot pair
+# the rename, so the ENTIRE relocated body read as brand-new-and-uncovered and the
+# gate FAILED (verified: pre-fix charges every body line; post-fix charges zero).
+# Full-pathspec --find-renames pairs the rename so only the added import (a
+# structural, non-executable line) remains, and the gate passes with nothing to
+# charge. This fixture FAILS on the pre-fix script and passes only with change 1.
+repo_mv="$tmp_root/repo-whole-file-mv"
+mkdir -p "$repo_mv/OpenBurnBarCore/Sources/DemoKit"
+git -C "$repo_mv" init -q -b main
+git -C "$repo_mv" config user.email selftest@openburnbar.invalid
+git -C "$repo_mv" config user.name "Diff Coverage Self-Test"
+{
+  echo "import Foundation"
+  echo "public enum RelocatedMod {"
+  for i in 1 2 3 4 5 6 7 8; do
+    echo "    public static func f$i(_ a: Int) -> Int {"
+    echo "        let r$i = a + $i"
+    echo "        return r$i"
+    echo "    }"
+  done
+  echo "}"
+} > "$repo_mv/OpenBurnBarCore/Sources/DemoKit/OldName.swift"
+git -C "$repo_mv" add -A
+git -C "$repo_mv" commit -qm base
+base_mv="$(git -C "$repo_mv" rev-parse HEAD)"
+# git mv to the new module home, then add exactly one repointed import line. The
+# file stays >50% similar, so git records this as a rename (R), the exact case
+# the pre-fix gated re-diff could not pair.
+git -C "$repo_mv" mv OpenBurnBarCore/Sources/DemoKit/OldName.swift \
+  OpenBurnBarCore/Sources/DemoKit/NewName.swift
+python3 - "$repo_mv/OpenBurnBarCore/Sources/DemoKit/NewName.swift" <<'PY'
+import sys
+p = sys.argv[1]
+with open(p, encoding="utf-8") as fh:
+    src = fh.read()
+with open(p, "w", encoding="utf-8") as fh:
+    fh.write(src.replace("import Foundation", "import Foundation\nimport Combine", 1))
+PY
+git -C "$repo_mv" add -A
+git -C "$repo_mv" commit -qm "git mv OldName -> NewName + repointed import"
+check "the whole-file relocation is recorded by git as a rename (R)" "R" \
+  "$(git -C "$repo_mv" diff --name-status --find-renames "$base_mv" HEAD \
+      -- '*.swift' | head -1 | cut -c1)"
+# Provide MEASURED-and-UNHIT evidence for every executable body line (3..35) so a
+# regression that re-charges the relocated body surfaces as an uncovered failure.
+mv_das=()
+for ln in $(seq 3 35); do mv_das+=("DA:$ln,0"); done
+lcov_mv="$tmp_root/fixture-whole-file-mv.lcov"
+write_swift_lcov "$lcov_mv" "$repo_mv" "OpenBurnBarCore/Sources/DemoKit/NewName.swift" \
+  "${mv_das[@]}"
+pkg_mv="$tmp_root/pkg-whole-file-mv.json"
+extract_pkg "$lcov_mv" "$repo_mv" "$pkg_mv"
+verdict="$tmp_root/verdict-whole-file-mv.json"
+rc="$(run_gate "$repo_mv" "$base_mv" packages 80 "$pkg_mv" "$verdict" "$tmp_root/err-whole-file-mv.log")"
+check "whole-file git-mv charges nothing but the repointed import (passes)" "0" "$rc"
+check "whole-file git-mv leaves the relocated body OUT of the denominator" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "whole-file git-mv reports zero gated files (import is structural)" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedFiles"]')"
+
+# --- fixture 14: move-then-edit SPLIT ACROSS TWO COMMITS in the range (R-GH0).
+# Commit 1 relocates a block Big.swift -> Helpers.swift byte-identically; commit 2
+# edits ONE relocated line at its new home (`* 9` -> `* 99`). The gate diffs the
+# NET base..HEAD, so the edited line's net text differs from its removed twin and
+# stays gated while the untouched relocated lines are credited. Proven both ways:
+# uncovered edited line fails; covered edited line passes. This guards that the
+# rename/move crediting reasons over the whole commit range, not a single commit.
+repo_me="$tmp_root/repo-move-then-edit"
+mkdir -p "$repo_me/OpenBurnBarCore/Sources/DemoKit"
+git -C "$repo_me" init -q -b main
+git -C "$repo_me" config user.email selftest@openburnbar.invalid
+git -C "$repo_me" config user.name "Diff Coverage Self-Test"
+cat > "$repo_me/OpenBurnBarCore/Sources/DemoKit/Big.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+
+public enum Mover {
+    public static func go(_ a: Int) -> Int {
+        let p = a + 3
+        let q = p * 9
+        return q
+    }
+}
+EOF
+cat > "$repo_me/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+EOF
+git -C "$repo_me" add -A
+git -C "$repo_me" commit -qm base
+base_me="$(git -C "$repo_me" rev-parse HEAD)"
+cat > "$repo_me/OpenBurnBarCore/Sources/DemoKit/Big.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+cat > "$repo_me/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+
+public enum Mover {
+    public static func go(_ a: Int) -> Int {
+        let p = a + 3
+        let q = p * 9
+        return q
+    }
+}
+EOF
+git -C "$repo_me" add -A
+git -C "$repo_me" commit -qm "commit1: byte-identical relocation"
+cat > "$repo_me/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+
+public enum Mover {
+    public static func go(_ a: Int) -> Int {
+        let p = a + 3
+        let q = p * 99
+        return q
+    }
+}
+EOF
+git -C "$repo_me" add -A
+git -C "$repo_me" commit -qm "commit2: edit one relocated line"
+# Line 10 is the edited `let q = p * 99`; leave it UNHIT to prove it stays gated.
+lcov_me="$tmp_root/fixture-move-then-edit.lcov"
+write_swift_lcov "$lcov_me" "$repo_me" "OpenBurnBarCore/Sources/DemoKit/Helpers.swift" \
+  "DA:9,1" "DA:10,0" "DA:11,1"
+pkg_me="$tmp_root/pkg-move-then-edit.json"
+extract_pkg "$lcov_me" "$repo_me" "$pkg_me"
+verdict="$tmp_root/verdict-move-then-edit.json"
+rc="$(run_gate "$repo_me" "$base_me" packages 80 "$pkg_me" "$verdict" "$tmp_root/err-move-then-edit.log")"
+check "move-then-edit across two commits gates only the edited line" "1" "$rc"
+check "move-then-edit gates exactly one line (the net-edited literal)" \
+  "1" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "move-then-edit credits the untouched relocated lines (6 lines)" \
+  "6" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
+# Same range, but the edited line is now covered: the gate must pass.
+lcov_me_ok="$tmp_root/fixture-move-then-edit-ok.lcov"
+write_swift_lcov "$lcov_me_ok" "$repo_me" "OpenBurnBarCore/Sources/DemoKit/Helpers.swift" \
+  "DA:9,1" "DA:10,1" "DA:11,1"
+pkg_me_ok="$tmp_root/pkg-move-then-edit-ok.json"
+extract_pkg "$lcov_me_ok" "$repo_me" "$pkg_me_ok"
+verdict="$tmp_root/verdict-move-then-edit-ok.json"
+rc="$(run_gate "$repo_me" "$base_me" packages 80 "$pkg_me_ok" "$verdict" "$tmp_root/err-move-then-edit-ok.log")"
+check "move-then-edit passes when the single edited line is covered" "0" "$rc"
+
+# --- fixture 15: cross-PARTITION move crediting (R-GH0). A block relocates from
+# an app-partition file (AgentLens/, out of scope for the packages lane) INTO a
+# package-partition file (gated). The move pool draws from the FULL pathspec
+# across BOTH partitions, so the relocated block in the gated package file is
+# credited even though its removed twin lives in an out-of-scope source. This is
+# the god-module decomposition case (relocations cross module/lane boundaries);
+# it fails on the pre-fix bare `-U0` pool, which hid renamed/relocated content.
+repo_xp="$tmp_root/repo-cross-partition"
+mkdir -p "$repo_xp/OpenBurnBarCore/Sources/DemoKit" "$repo_xp/AgentLens/Services/Demo"
+git -C "$repo_xp" init -q -b main
+git -C "$repo_xp" config user.email selftest@openburnbar.invalid
+git -C "$repo_xp" config user.name "Diff Coverage Self-Test"
+cat > "$repo_xp/AgentLens/Services/Demo/AppSide.swift" <<'EOF'
+enum AppSide {
+    static func helper(_ a: Int) -> Int {
+        let m = a + 11
+        let n = m * 4
+        return n
+    }
+}
+EOF
+cat > "$repo_xp/OpenBurnBarCore/Sources/DemoKit/PkgSide.swift" <<'EOF'
+public enum PkgSide {
+    public static func existing() -> Int {
+        return 0
+    }
+}
+EOF
+git -C "$repo_xp" add -A
+git -C "$repo_xp" commit -qm base
+base_xp="$(git -C "$repo_xp" rev-parse HEAD)"
+cat > "$repo_xp/AgentLens/Services/Demo/AppSide.swift" <<'EOF'
+enum AppSide {
+}
+EOF
+cat > "$repo_xp/OpenBurnBarCore/Sources/DemoKit/PkgSide.swift" <<'EOF'
+public enum PkgSide {
+    public static func existing() -> Int {
+        return 0
+    }
+    static func helper(_ a: Int) -> Int {
+        let m = a + 11
+        let n = m * 4
+        return n
+    }
+}
+EOF
+git -C "$repo_xp" add -A
+git -C "$repo_xp" commit -qm "cross-partition relocation app -> package"
+# Evidence names only the pre-existing PkgSide.existing line; the relocated helper
+# body ships with zero new package tests and must still pass via the safe-harbor.
+lcov_xp="$tmp_root/fixture-cross-partition.lcov"
+write_swift_lcov "$lcov_xp" "$repo_xp" "OpenBurnBarCore/Sources/DemoKit/PkgSide.swift" "DA:3,1"
+pkg_xp="$tmp_root/pkg-cross-partition.json"
+extract_pkg "$lcov_xp" "$repo_xp" "$pkg_xp"
+verdict="$tmp_root/verdict-cross-partition.json"
+rc="$(run_gate "$repo_xp" "$base_xp" packages 80 "$pkg_xp" "$verdict" "$tmp_root/err-cross-partition.log")"
+check "cross-partition move (app -> package) is credited and passes with no new tests" "0" "$rc"
+check "cross-partition move credits the relocated body (5 lines)" \
+  "5" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
+check "cross-partition move leaves nothing in the coverage denominator" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "cross-partition source file is reported out of scope, never silently dropped" \
+  "AgentLens/Services/Demo/AppSide.swift" \
+  "$(json_get "$verdict" 'v["outOfScope"][0]["file"]')"
+
 # -----------------------------------------------------------------------------
 
 if [[ "$failures" -gt 0 ]]; then
