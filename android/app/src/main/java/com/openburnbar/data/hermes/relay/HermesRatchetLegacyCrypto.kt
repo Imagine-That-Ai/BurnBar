@@ -12,20 +12,19 @@ internal object HermesRatchetLegacyCrypto {
     private const val AAD_DOMAIN = "OpenBurnBar-HermesRatchet-v1-AAD"
     private const val BYTE_MASK = 0xffL
 
-    fun envelopeAAD(header: HermesRatchetHeader, associatedData: ByteArray): ByteArray =
-        ByteArrayOutputStream().apply {
-            write(AAD_DOMAIN.toByteArray(Charsets.UTF_8))
-            appendPart(associatedData)
-            appendPart(header.algorithm.toByteArray(Charsets.UTF_8))
-            appendPart(header.sessionID.toByteArray(Charsets.UTF_8))
-            appendPart(header.senderDeviceID.toByteArray(Charsets.UTF_8))
-            appendPart(header.receiverDeviceID.toByteArray(Charsets.UTF_8))
-            appendPart(header.ratchetPublicKeyBase64.toByteArray(Charsets.UTF_8))
-            appendUInt64(header.version)
-            appendUInt64(header.previousChainLength)
-            appendUInt64(header.messageNumber)
-            appendUInt64(header.epoch)
-        }.toByteArray()
+    fun envelopeAAD(header: HermesRatchetHeader, associatedData: ByteArray): ByteArray = ByteArrayOutputStream().apply {
+        write(AAD_DOMAIN.toByteArray(Charsets.UTF_8))
+        appendPart(associatedData)
+        appendPart(header.algorithm.toByteArray(Charsets.UTF_8))
+        appendPart(header.sessionID.toByteArray(Charsets.UTF_8))
+        appendPart(header.senderDeviceID.toByteArray(Charsets.UTF_8))
+        appendPart(header.receiverDeviceID.toByteArray(Charsets.UTF_8))
+        appendPart(header.ratchetPublicKeyBase64.toByteArray(Charsets.UTF_8))
+        appendUInt64(header.version)
+        appendUInt64(header.previousChainLength)
+        appendUInt64(header.messageNumber)
+        appendUInt64(header.epoch)
+    }.toByteArray()
 
     fun rootKDF(rootKey: ByteArray, dhOutput: ByteArray, outputBytes: Int): ByteArray {
         val info = ROOT_INFO.toByteArray(Charsets.UTF_8)
@@ -33,17 +32,14 @@ internal object HermesRatchetLegacyCrypto {
         return HermesRelayCryptoHkdf.hkdfExpand(prk = prk, info = info, length = outputBytes)
     }
 
-    fun nextChainKey(chainKey: ByteArray): ByteArray =
-        hmacSha256(chainKey, CHAIN_LABEL.toByteArray(Charsets.UTF_8))
+    fun nextChainKey(chainKey: ByteArray): ByteArray = hmacSha256(chainKey, CHAIN_LABEL.toByteArray(Charsets.UTF_8))
 
-    fun messageKey(chainKey: ByteArray): ByteArray =
-        hmacSha256(chainKey, MESSAGE_LABEL.toByteArray(Charsets.UTF_8))
+    fun messageKey(chainKey: ByteArray): ByteArray = hmacSha256(chainKey, MESSAGE_LABEL.toByteArray(Charsets.UTF_8))
 
     fun seal(plaintext: ByteArray, keyData: ByteArray, aad: ByteArray, nonce: ByteArray): ByteArray =
         HermesRelayLegacyCrypto.sealCombined(plaintext, keyData, aad, nonce)
 
-    fun open(combined: ByteArray, keyData: ByteArray, aad: ByteArray): ByteArray =
-        HermesRelayLegacyCrypto.openCombined(combined, keyData, aad)
+    fun open(combined: ByteArray, keyData: ByteArray, aad: ByteArray): ByteArray = HermesRelayLegacyCrypto.openCombined(combined, keyData, aad)
 
     private fun hmacSha256(key: ByteArray, data: ByteArray): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
