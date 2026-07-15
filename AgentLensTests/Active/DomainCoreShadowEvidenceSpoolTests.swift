@@ -206,6 +206,35 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertNil(try spool.nextBatch())
     }
 
+    func testNextBatchDropsStaleChannelAndContinuesToActiveChannel() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory, maxSamplesPerFile: 1)
+        try spool.append(try XCTUnwrap(makeSample(channel: "internal")))
+        try spool.append(try XCTUnwrap(makeSample(channel: "beta")))
+
+        let batch = try XCTUnwrap(spool.nextBatch(sealActive: true, matchingChannel: "beta"))
+
+        XCTAssertEqual(batch.samples.map(\.channel), ["beta"])
+        XCTAssertEqual(try spool.pendingSampleCount(), 1)
+        try spool.acknowledge(batch.token)
+        XCTAssertEqual(try spool.pendingSampleCount(), 0)
+    }
+
+    func testDiscardAllRemovesSealedAndActiveEvidence() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory, maxSamplesPerFile: 1)
+        try spool.append(try XCTUnwrap(makeSample(channel: "internal")))
+        try spool.append(try XCTUnwrap(makeSample(channel: "beta")))
+        XCTAssertEqual(try spool.pendingSampleCount(), 2)
+
+        try spool.discardAll()
+
+        XCTAssertEqual(try spool.pendingSampleCount(), 0)
+        XCTAssertNil(try spool.nextBatch())
+    }
+
     func testRapidSamplesCoalesceIntoOneBoundedDelayedUpload() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
