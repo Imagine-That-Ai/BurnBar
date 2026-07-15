@@ -417,20 +417,15 @@ function verifyBundle(client, manifest, bundle, artifactPath, bundlePath) {
   }
 }
 
-function verifyIdenticalBundle(
+function verifyPublishedBundle(
   client,
   manifest,
   bundle,
   artifactPath,
-  expectedBundlePath,
   actualBundlePath,
 ) {
+  // Sigstore bundle encoding is nondeterministic; the verified statement is not.
   verifyBundle(client, manifest, bundle, artifactPath, actualBundlePath);
-  if (!identical(expectedBundlePath, actualBundlePath)) {
-    throw new Error(
-      `refusing non-identical attestation bundle ${bundle.assetName}`,
-    );
-  }
 }
 
 function requirePublishedRelease(client, manifest) {
@@ -560,12 +555,11 @@ export function publishManifest(manifest, { client = createGhClient() } = {}) {
     }
     for (const bundle of manifest.bundles) {
       if (assets.has(bundle.assetName)) {
-        verifyIdenticalBundle(
+        verifyPublishedBundle(
           client,
           manifest,
           bundle,
           artifact,
-          stagedBundles.get(bundle.assetName),
           downloadAsset(client, manifest, bundle.assetName, preflight),
         );
       }
@@ -582,12 +576,11 @@ export function publishManifest(manifest, { client = createGhClient() } = {}) {
       if (result.status === 0) {
         uploaded.push(bundle.assetName);
       } else {
-        verifyIdenticalBundle(
+        verifyPublishedBundle(
           client,
           manifest,
           bundle,
           artifact,
-          stagedBundles.get(bundle.assetName),
           downloadAsset(client, manifest, bundle.assetName, preflight),
         );
       }
@@ -624,12 +617,11 @@ export function publishManifest(manifest, { client = createGhClient() } = {}) {
       );
     }
     for (const bundle of manifest.bundles) {
-      verifyIdenticalBundle(
+      verifyPublishedBundle(
         client,
         manifest,
         bundle,
         finalArtifact,
-        stagedBundles.get(bundle.assetName),
         downloadAsset(client, manifest, bundle.assetName, final),
       );
     }
