@@ -140,6 +140,19 @@ test('inventory allows only the canonical XDG autostart file outside /usr', (t) 
   );
 });
 
+test('canonical manifest schema keeps autostart as a regular-file-only exception', () => {
+  const schema = JSON.parse(fs.readFileSync(
+    path.resolve('packaging/linux/attestation/openburnbar-installed-manifest.schema.json'),
+    'utf8'
+  ));
+  assert.match(
+    schema.$defs.absolutePath.pattern,
+    /\/etc\/xdg\/autostart\/openburnbar\\\.desktop/u
+  );
+  assert.equal(schema.$defs.symlinkPath.pattern, '^/usr/[^\\u0000]+$');
+  assert.equal(schema.$defs.symlink.properties.path.$ref, '#/$defs/symlinkPath');
+});
+
 for (const [name, mutate, pattern] of [
   ['file bytes', (value) => write(value.root, '/usr/bin/openburnbar-daemon', 'changed\n', 0o755), /inventory differs/u],
   ['extra file', (value) => write(value.root, '/usr/bin/openburnbar-extra', 'extra\n', 0o755), /inventory differs/u],

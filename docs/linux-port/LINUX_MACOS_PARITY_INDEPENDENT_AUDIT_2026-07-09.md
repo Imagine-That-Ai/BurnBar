@@ -128,6 +128,15 @@ percentage. The active remediation stack now contains these reviewable slices:
   artifact or certifying receipt was retained. The next fix must extend the
   live installed-ownership verifier to the shared exact allowlist and add
   focused coverage before rerunning both architectures.
+- **Release candidate `29445148032`:** both architecture shards fully passed
+  signed package installation, live ownership, update/rollback, and desktop-
+  route sessions and uploaded their evidence. Aggregate finalization then
+  rejected the manifests because the canonical JSON schema still required
+  every file path to start under `/usr`; the exact
+  `/etc/xdg/autostart/openburnbar.desktop` record failed that check. No
+  certifying receipt was produced. The next fix must add an exact regular-file
+  exception to the schema while keeping symlink paths `/usr`-only, then rerun
+  aggregate validation.
 
 - **Onboarding hardening:** `238ee56975` validates every daemon snapshot before
   renderer/cache mutation, preserves the last valid state on malformed or

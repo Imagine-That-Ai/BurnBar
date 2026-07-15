@@ -223,6 +223,15 @@ the live installed-ownership verifier to the shared exact allowlist and add
 focused regression coverage, then rerun both architecture shards before
 installation or ledger promotion.
 
+Candidate `29445148032` then passed signed package installation, live ownership,
+update/rollback, desktop-route sessions, and evidence upload on both
+architecture shards. Aggregate finalization failed because the canonical JSON
+schema still required every file path under `/usr`; the exact regular file
+`/etc/xdg/autostart/openburnbar.desktop` was rejected. No certifying receipt was
+produced. The next implementation unit must add the exact regular-file
+exception to the schema while retaining `/usr`-only symlink paths, then rerun
+aggregate validation before ledger promotion.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:

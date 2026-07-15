@@ -68,6 +68,11 @@
   "$defs": {
     "absolutePath": {
       "type": "string",
+      "pattern": "^(?:/usr/[^\\u0000]+|/etc/xdg/autostart/openburnbar\\.desktop)$",
+      "maxLength": 4096
+    },
+    "symlinkPath": {
+      "type": "string",
       "pattern": "^/usr/[^\\u0000]+$",
       "maxLength": 4096
     },
@@ -105,7 +110,7 @@
       "additionalProperties": false,
       "required": ["path", "type", "target", "mode", "uid", "gid"],
       "properties": {
-        "path": { "$ref": "#/$defs/absolutePath" },
+        "path": { "$ref": "#/$defs/symlinkPath" },
         "type": { "const": "symlink" },
         "target": { "type": "string", "minLength": 1, "maxLength": 4096 },
         "mode": { "$ref": "#/$defs/mode" },
