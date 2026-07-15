@@ -36,7 +36,7 @@
     "android/gradle/wrapper/gradle-wrapper.properties": "032a71c92fc7f3c1cadf8880f0554b71aa6beb411f97ac253aa93932cb3784d5",
     "android/gradlew": "5d47795f22f148a8ce482cd5758d37049c84c3fe5c0c6f35561eb6bcac171bbc",
     "android/openburnbar-domain-core/build.gradle.kts": "2ed62ec214c9dcf64575f780a8f1ef8bb721b43a6db1cc429d7ed36e1218253b",
-    "android/openburnbar-domain-core/src/androidTest/java/com/openburnbar/domaincore/DomainCoreNativeLoadTest.kt": "b319a9682732a3e10c711bcd46d5637b2aa3aa6135d05edbd39372ac6cc345fd",
+    "android/openburnbar-domain-core/src/androidTest/java/com/openburnbar/domaincore/DomainCoreNativeLoadTest.kt": "acf8a90e6a97c43778c28f65a2d90c6e196ac76af84717e9d5cbe6eeb03f5bc9",
     "android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi/openburnbar_domain_ffi.kt": "c8d15756cf61124f9f1e1a7d15f53f1c7a82be0fcb3660f088d4c4f22c12ace9",
     "android/settings.gradle.kts": "b499ea82e56d478a5b31cd4d9cdac18774d9f86954fbbeed64e846506d40a45a",
     "apps/console/eslint.config.mjs": "6cdfbe241b25b5e84087fcdbde98ebec7e27a1eaee6e5cb6e48e71d36de0fc45",
