@@ -894,9 +894,11 @@ public enum CloudVaultCrypto {
     /// `[a-z0-9_-]` filter unchanged. Mirrors the `tokenHashes`/`searchKey`
     /// HKDF<SHA256> → HMAC<SHA256> → hex recipe.
     public static func projectMemoryDocID(forSlug slug: String, keyData: Data) throws -> String {
-        let key = try projectMemoryDocIDKey(from: keyData)
-        let mac = try PlatformCrypto.hmacSHA256(Data(slug.utf8), keyData: PlatformCrypto.symmetricKeyData(key))
-        return "pm_" + mac.prefix(16).map { String(format: "%02x", $0) }.joined()
+        try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.projectMemoryDocID(slug: slug, keyData: keyData) {
+                try CloudVaultOpaqueIdentifierLegacy.projectMemoryDocID(forSlug: slug, keyData: keyData)
+            }
+        }
     }
 
     /// Vault-keyed dedup hash for a Pensieve knowledge chunk's plaintext.
@@ -908,11 +910,11 @@ public enum CloudVaultCrypto {
     /// matching `requireHexDigest`. Derivation parity:
     /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:content") → HMAC<SHA256>(plaintext)`.
     public static func pensieveDedupHash(_ plaintext: String, keyData: Data) throws -> String {
-        let key = try pensieveDedupKey(from: keyData, label: "content")
-        return try PlatformCrypto.hmacSHA256Hex(
-            Data(plaintext.utf8),
-            keyData: PlatformCrypto.symmetricKeyData(key)
-        )
+        try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.pensieveDedupHash(plaintext: plaintext, keyData: keyData) {
+                try CloudVaultOpaqueIdentifierLegacy.pensieveDedupHash(plaintext, keyData: keyData)
+            }
+        }
     }
 
     /// Vault-keyed HMAC of a Pensieve source slug — the opaque filter column that
@@ -920,11 +922,11 @@ public enum CloudVaultCrypto {
     /// Derivation parity:
     /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:slug") → HMAC<SHA256>(slug)`.
     public static func pensieveSlugHmac(_ slug: String, keyData: Data) throws -> String {
-        let key = try pensieveDedupKey(from: keyData, label: "slug")
-        return try PlatformCrypto.hmacSHA256Hex(
-            Data(slug.utf8),
-            keyData: PlatformCrypto.symmetricKeyData(key)
-        )
+        try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.pensieveSlugHmac(slug: slug, keyData: keyData) {
+                try CloudVaultOpaqueIdentifierLegacy.pensieveSlugHmac(slug, keyData: keyData)
+            }
+        }
     }
 
     /// Deterministic, opaque Firestore document id for a subscription topic.
@@ -939,12 +941,19 @@ public enum CloudVaultCrypto {
     /// unchanged. Mirrors `pensieveSlugHmac`/`projectMemoryDocID`:
     /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "subscription-topic") → HMAC<SHA256>("agentURI:topicID")`.
     public static func subscriptionDocID(agentURI: String, topicID: String, keyData: Data) throws -> String {
-        let key = try subscriptionDocIDKey(from: keyData)
-        let mac = try PlatformCrypto.hmacSHA256(
-            Data("\(agentURI):\(topicID)".utf8),
-            keyData: PlatformCrypto.symmetricKeyData(key)
-        )
-        return "sub_" + mac.prefix(16).map { String(format: "%02x", $0) }.joined()
+        try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.subscriptionDocID(
+                agentURI: agentURI,
+                topicID: topicID,
+                keyData: keyData
+            ) {
+                try CloudVaultOpaqueIdentifierLegacy.subscriptionDocID(
+                    agentURI: agentURI,
+                    topicID: topicID,
+                    keyData: keyData
+                )
+            }
+        }
     }
 
     private static func tokenHashes(forTerms terms: [String], key: PlatformSymmetricKey, limit: Int) -> [String] {
@@ -1465,44 +1474,6 @@ public enum CloudVaultCrypto {
             inputKeyMaterial: data,
             salt: Data("OpenBurnBar-CloudSearch-Semantic-Salt-v1".utf8),
             info: Data("OpenBurnBar-CloudSearch-SemanticHash-v1".utf8),
-            outputByteCount: 32
-        )
-    }
-
-    private static func projectMemoryDocIDKey(from data: Data) throws -> PlatformSymmetricKey {
-        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: data,
-            salt: Data("OpenBurnBar-DocID-Salt-v1".utf8),
-            info: Data("OpenBurnBar-ProjectMemory-DocID-v1".utf8),
-            outputByteCount: 32
-        )
-    }
-
-    /// Per-user Pensieve dedup subkey. Mirrors the TS device derivation the server
-    /// test pins (`knowledgeMemoryDedupHash.test.ts`): empty HKDF salt, info
-    /// `"pensieve-dedup:<label>"` where `label` is `content` or `slug`.
-    private static func pensieveDedupKey(from data: Data, label: String) throws -> PlatformSymmetricKey {
-        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: data,
-            salt: Data(),
-            info: Data("pensieve-dedup:\(label)".utf8),
-            outputByteCount: 32
-        )
-    }
-
-    /// Per-user subscription-graph doc-id subkey. Empty HKDF salt, info
-    /// `"subscription-topic"` — the byte-for-byte derivation the Kotlin mirror
-    /// (`AgentSubscriptionTopicStore.documentID`) must reproduce so the same
-    /// `(agentURI, topicID, vaultKey)` yields an identical opaque doc id on iOS
-    /// and Android.
-    private static func subscriptionDocIDKey(from data: Data) throws -> PlatformSymmetricKey {
-        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: data,
-            salt: Data(),
-            info: Data("subscription-topic".utf8),
             outputByteCount: 32
         )
     }

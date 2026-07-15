@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "vaultKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "projectMemory": {
+    "slug": "la-hormiga-dormida",
+    "documentID": "pm_445f38c87b0e3c474c2be6339b8cd8d8"
+  },
+  "pensieve": {
+    "plaintext": "deploy the daemon before midnight",
+    "dedupHash": "e55f699579cba539fb8f3a87c77bd768a95e331859c9fca9c89d21dac0c6d433",
+    "slug": "burnbar-docs-secret-runbook",
+    "slugHmac": "f77ecba2eaa6012fb4a6846d8fd218b61a04094cad346683f029e1636da7a96d",
+    "provenanceValue": "source:burnbar",
+    "provenanceHash": "4f069319dcb12b868983bc04992c7871f3682c4b107a9e0bbfb8348fcbd8fc4e"
+  },
+  "subscription": {
+    "agentURI": "agent://burnbar/research-scout",
+    "topicID": "agent-updates",
+    "documentID": "sub_4b6aff30300ab361ad751d8d7c6b2bb0"
+  },
+  "unicode": {
+    "projectSlug": "東京/mañana",
+    "projectDocumentID": "pm_88501325b3da7571389316bece57f13c",
+    "pensievePlaintext": "café 🚀",
+    "pensieveDedupHash": "197e20ae7d29f64fc898bed2c3ec72c3178f7234ae76b3be7390452eb138be93"
+  }
+}

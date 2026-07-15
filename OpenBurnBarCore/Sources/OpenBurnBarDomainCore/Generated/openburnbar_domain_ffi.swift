@@ -3893,6 +3893,30 @@ public func cloudVaultNormalizeRecoveryKey(recoveryKey: String)throws  -> String
     )
 })
 }
+public func cloudVaultPensieveDedupHash(plaintext: String, key: Data)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_dedup_hash(
+        FfiConverterString.lower(plaintext),
+        FfiConverterData.lower(key),$0
+    )
+})
+}
+public func cloudVaultPensieveSlugHmac(slug: String, key: Data)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_slug_hmac(
+        FfiConverterString.lower(slug),
+        FfiConverterData.lower(key),$0
+    )
+})
+}
+public func cloudVaultProjectMemoryDocId(slug: String, key: Data)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_project_memory_doc_id(
+        FfiConverterString.lower(slug),
+        FfiConverterData.lower(key),$0
+    )
+})
+}
 public func cloudVaultRecoveryOpenVaultKey(combined: Data, recoveryKey: String)throws  -> Data {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_open_vault_key(
@@ -3961,6 +3985,15 @@ public func cloudVaultSha256Hex(data: Data)throws  -> String {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(
         FfiConverterData.lower(data),$0
+    )
+})
+}
+public func cloudVaultSubscriptionDocId(agentUri: String, topicId: String, key: Data)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_subscription_doc_id(
+        FfiConverterString.lower(agentUri),
+        FfiConverterString.lower(topicId),
+        FfiConverterData.lower(key),$0
     )
 })
 }
@@ -4227,6 +4260,15 @@ private var initializationResult: InitializationResult = {
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_normalize_recovery_key() != 12469) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_dedup_hash() != 17475) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_slug_hmac() != 5859) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_project_memory_doc_id() != 38367) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_open_vault_key() != 36431) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4252,6 +4294,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex() != 36487) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_subscription_doc_id() != 46478) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key() != 27873) {

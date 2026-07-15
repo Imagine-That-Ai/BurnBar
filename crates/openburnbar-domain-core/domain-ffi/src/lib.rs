@@ -474,6 +474,52 @@ pub fn cloud_vault_expected_session_body_hash(
 }
 
 #[uniffi::export]
+pub fn cloud_vault_project_memory_doc_id(
+    mut slug: String,
+    mut key: Vec<u8>,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::project_memory_doc_id(&slug, &key).map_err(Into::into);
+    slug.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_pensieve_dedup_hash(
+    mut plaintext: String,
+    mut key: Vec<u8>,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::pensieve_dedup_hash(&plaintext, &key).map_err(Into::into);
+    plaintext.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_pensieve_slug_hmac(
+    mut slug: String,
+    mut key: Vec<u8>,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::pensieve_slug_hmac(&slug, &key).map_err(Into::into);
+    slug.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_subscription_doc_id(
+    mut agent_uri: String,
+    mut topic_id: String,
+    mut key: Vec<u8>,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::subscription_doc_id(&agent_uri, &topic_id, &key).map_err(Into::into);
+    agent_uri.zeroize();
+    topic_id.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
 pub fn hermes_relay_aad(
     kind: HermesAadKind,
     arguments: Vec<String>,
@@ -1686,6 +1732,67 @@ mod tests {
         assert!(matches!(
             hermes_open_combined(tampered_hermes, key, aad),
             Err(HermesFfiError::AuthenticationFailed)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn opaque_identifier_ffi_matches_wire_vectors() -> Result<(), Box<dyn std::error::Error>> {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/domain-core/cloudvault/v1/opaque-identifiers-kat.json"
+        ))?;
+        let key = decode_hex(
+            fixture["vaultKeyHex"]
+                .as_str()
+                .ok_or_else(|| std::io::Error::other("fixture key must be a string"))?,
+        );
+        assert_eq!(
+            cloud_vault_project_memory_doc_id(
+                fixture["projectMemory"]["slug"]
+                    .as_str()
+                    .ok_or_else(|| std::io::Error::other("fixture slug must be a string"))?
+                    .to_owned(),
+                key.clone(),
+            )?,
+            fixture["projectMemory"]["documentID"]
+        );
+        assert_eq!(
+            cloud_vault_pensieve_dedup_hash(
+                fixture["pensieve"]["plaintext"]
+                    .as_str()
+                    .ok_or_else(|| std::io::Error::other("fixture plaintext must be a string"))?
+                    .to_owned(),
+                key.clone(),
+            )?,
+            fixture["pensieve"]["dedupHash"]
+        );
+        assert_eq!(
+            cloud_vault_pensieve_slug_hmac(
+                fixture["pensieve"]["slug"]
+                    .as_str()
+                    .ok_or_else(|| std::io::Error::other("fixture slug must be a string"))?
+                    .to_owned(),
+                key.clone(),
+            )?,
+            fixture["pensieve"]["slugHmac"]
+        );
+        assert_eq!(
+            cloud_vault_subscription_doc_id(
+                fixture["subscription"]["agentURI"]
+                    .as_str()
+                    .ok_or_else(|| std::io::Error::other("fixture agentURI must be a string"))?
+                    .to_owned(),
+                fixture["subscription"]["topicID"]
+                    .as_str()
+                    .ok_or_else(|| std::io::Error::other("fixture topicID must be a string"))?
+                    .to_owned(),
+                key,
+            )?,
+            fixture["subscription"]["documentID"]
+        );
+        assert!(matches!(
+            cloud_vault_project_memory_doc_id("slug".to_owned(), vec![0; 31]),
+            Err(CloudVaultFfiError::InvalidKeyLength)
         ));
         Ok(())
     }

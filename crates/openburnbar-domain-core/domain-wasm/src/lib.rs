@@ -310,6 +310,51 @@ pub fn cloud_vault_expected_session_body_hash(
     result
 }
 
+#[wasm_bindgen(js_name = cloudVaultProjectMemoryDocId)]
+pub fn cloud_vault_project_memory_doc_id(slug: &str, mut key: Vec<u8>) -> Result<String, JsError> {
+    let result = cloudvault::project_memory_doc_id(slug, &key).map_err(js_error);
+    key.zeroize();
+    result
+}
+
+#[wasm_bindgen(js_name = cloudVaultPensieveDedupHash)]
+pub fn cloud_vault_pensieve_dedup_hash(
+    plaintext: &str,
+    mut key: Vec<u8>,
+) -> Result<String, JsError> {
+    let result = cloudvault::pensieve_dedup_hash(plaintext, &key).map_err(js_error);
+    key.zeroize();
+    result
+}
+
+#[wasm_bindgen(js_name = cloudVaultPensieveSlugHmac)]
+pub fn cloud_vault_pensieve_slug_hmac(slug: &str, mut key: Vec<u8>) -> Result<String, JsError> {
+    let result = cloudvault::pensieve_slug_hmac(slug, &key).map_err(js_error);
+    key.zeroize();
+    result
+}
+
+#[wasm_bindgen(js_name = cloudVaultPensieveProvenanceHash)]
+pub fn cloud_vault_pensieve_provenance_hash(
+    value: &str,
+    mut key: Vec<u8>,
+) -> Result<String, JsError> {
+    let result = cloudvault::pensieve_provenance_hash(value, &key).map_err(js_error);
+    key.zeroize();
+    result
+}
+
+#[wasm_bindgen(js_name = cloudVaultSubscriptionDocId)]
+pub fn cloud_vault_subscription_doc_id(
+    agent_uri: &str,
+    topic_id: &str,
+    mut key: Vec<u8>,
+) -> Result<String, JsError> {
+    let result = cloudvault::subscription_doc_id(agent_uri, topic_id, &key).map_err(js_error);
+    key.zeroize();
+    result
+}
+
 #[wasm_bindgen(js_name = cloudVaultAesGcmSealCombined)]
 pub fn cloud_vault_aes_gcm_seal_combined(
     mut plaintext: Vec<u8>,
@@ -599,11 +644,43 @@ fn search_js_error(error: CloudVaultSearchError) -> JsError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn wasm_surface_uses_shared_domain_core_abi_authority() {
         assert_eq!(
             super::domain_core_abi_version(),
             openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION
         );
+    }
+
+    #[test]
+    fn wasm_opaque_identifier_surface_matches_cross_language_vectors() -> Result<(), JsError> {
+        let key: Vec<u8> = (0_u8..32).collect();
+        assert_eq!(
+            cloud_vault_project_memory_doc_id("la-hormiga-dormida", key.clone())?,
+            "pm_445f38c87b0e3c474c2be6339b8cd8d8"
+        );
+        assert_eq!(
+            cloud_vault_pensieve_dedup_hash("deploy the daemon before midnight", key.clone())?,
+            "e55f699579cba539fb8f3a87c77bd768a95e331859c9fca9c89d21dac0c6d433"
+        );
+        assert_eq!(
+            cloud_vault_pensieve_slug_hmac("burnbar-docs-secret-runbook", key.clone())?,
+            "f77ecba2eaa6012fb4a6846d8fd218b61a04094cad346683f029e1636da7a96d"
+        );
+        assert_eq!(
+            cloud_vault_pensieve_provenance_hash("source:burnbar", key.clone())?,
+            "4f069319dcb12b868983bc04992c7871f3682c4b107a9e0bbfb8348fcbd8fc4e"
+        );
+        assert_eq!(
+            cloud_vault_subscription_doc_id(
+                "agent://burnbar/research-scout",
+                "agent-updates",
+                key,
+            )?,
+            "sub_4b6aff30300ab361ad751d8d7c6b2bb0"
+        );
+        Ok(())
     }
 }

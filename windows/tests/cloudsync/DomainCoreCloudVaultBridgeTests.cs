@@ -119,6 +119,26 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
         }
 
         [Fact]
+        public void RustMode_ConsumesOpaqueIdentifierKatWithoutLegacyFallback()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "rust");
+            using var document = JsonDocument.Parse(File.ReadAllText(
+                Path.Combine(AppContext.BaseDirectory, "Fixtures", "opaque-identifiers-kat.json")));
+            var root = document.RootElement;
+            var key = Convert.FromHexString(root.GetProperty("vaultKeyHex").GetString()!);
+
+            var pensieve = root.GetProperty("pensieve");
+            Assert.Equal(
+                pensieve.GetProperty("dedupHash").GetString(),
+                CloudVaultCrypto.PensieveDedupHash(pensieve.GetProperty("plaintext").GetString()!, key));
+
+            Assert.Equal(
+                pensieve.GetProperty("slugHmac").GetString(),
+                CloudVaultCrypto.PensieveSlugHmac(pensieve.GetProperty("slug").GetString()!, key));
+        }
+
+        [Fact]
         public void ShadowMode_ReturnsLegacyResult()
         {
             if (!NativeRequired()) return;
