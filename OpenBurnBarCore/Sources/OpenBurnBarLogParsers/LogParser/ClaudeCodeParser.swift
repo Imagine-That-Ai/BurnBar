@@ -91,10 +91,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
                             conversations: &conversations
                         )
                     }
-                    continue
-                }
-
-                if let signature,
+                } else if let signature,
                    let cached = parseCache.fileEntries[cacheKey],
                    cached.signature == signature {
                     let cached = updateCacheEntry(
