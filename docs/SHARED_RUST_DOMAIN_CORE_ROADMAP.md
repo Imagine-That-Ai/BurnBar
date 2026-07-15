@@ -103,6 +103,11 @@ CloudVault C1 is split by security boundary:
   consumer now has a generated native package, strict identity adapter,
   canonical contracts, and deterministic candidate-proof cell. Other required
   consumers and the promotion/deletion gates remain open.
+- **Pensieve vectors:** bounded deterministic hashing embeddings and the
+  vault-key-derived Householder cloak. Swift, Windows, Console, and remote MCP
+  cross the FFI/Wasm boundary once per complete vector or text. Android and the
+  local MCP Python server have no equivalent implementation and are not claimed
+  as consumers.
 
 Android selects `legacy`, legacy-authoritative `shadow`, or fail-closed `rust`
 for C1d with `OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE`; missing or

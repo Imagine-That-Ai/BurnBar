@@ -2975,6 +2975,81 @@ extension HermesFfiError: Foundation.LocalizedError {
 }
 
 
+public enum PensieveVectorFfiError {
+
+
+
+    case InvalidKeyLength
+    case InvalidVector
+    case InvalidModelVersion
+    case TextTooLarge
+    case DerivationFailure
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePensieveVectorFfiError: FfiConverterRustBuffer {
+    typealias SwiftType = PensieveVectorFfiError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PensieveVectorFfiError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+
+
+
+        case 1: return .InvalidKeyLength
+        case 2: return .InvalidVector
+        case 3: return .InvalidModelVersion
+        case 4: return .TextTooLarge
+        case 5: return .DerivationFailure
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PensieveVectorFfiError, into buf: inout [UInt8]) {
+        switch value {
+
+
+
+
+
+        case .InvalidKeyLength:
+            writeInt(&buf, Int32(1))
+
+
+        case .InvalidVector:
+            writeInt(&buf, Int32(2))
+
+
+        case .InvalidModelVersion:
+            writeInt(&buf, Int32(3))
+
+
+        case .TextTooLarge:
+            writeInt(&buf, Int32(4))
+
+
+        case .DerivationFailure:
+            writeInt(&buf, Int32(5))
+
+        }
+    }
+}
+
+
+extension PensieveVectorFfiError: Equatable, Hashable {}
+
+extension PensieveVectorFfiError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+
+
 public enum PricingFfiError {
 
 
@@ -3574,6 +3649,31 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         case 1: return try FfiConverterString.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceDouble: FfiConverterRustBuffer {
+    typealias SwiftType = [Double]
+
+    public static func write(_ value: [Double], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterDouble.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Double] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Double]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterDouble.read(from: &buf))
+        }
+        return seq
     }
 }
 
@@ -4180,6 +4280,35 @@ public func parseCursorUsageQuota(payload: Data, userEmail: String?) -> QuotaPar
     )
 })
 }
+public func pensieveDeterministicEmbed(text: String, dimensions: UInt32, isQuery: Bool)throws  -> [Double] {
+    return try  FfiConverterSequenceDouble.lift(try rustCallWithError(FfiConverterTypePensieveVectorFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed(
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(dimensions),
+        FfiConverterBool.lower(isQuery),$0
+    )
+})
+}
+public func pensieveDeterministicEmbedAndCloak(text: String, dimensions: UInt32, isQuery: Bool, vaultKey: Data, modelVersion: String)throws  -> [Double] {
+    return try  FfiConverterSequenceDouble.lift(try rustCallWithError(FfiConverterTypePensieveVectorFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(dimensions),
+        FfiConverterBool.lower(isQuery),
+        FfiConverterData.lower(vaultKey),
+        FfiConverterString.lower(modelVersion),$0
+    )
+})
+}
+public func pensieveVectorCloak(vector: [Double], vaultKey: Data, modelVersion: String)throws  -> [Double] {
+    return try  FfiConverterSequenceDouble.lift(try rustCallWithError(FfiConverterTypePensieveVectorFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak(
+        FfiConverterSequenceDouble.lower(vector),
+        FfiConverterData.lower(vaultKey),
+        FfiConverterString.lower(modelVersion),$0
+    )
+})
+}
 public func priceLegacyKimiWireEvent(buckets: TokenPricingBuckets)throws  -> LegacyKimiPricingResult {
     return try  FfiConverterTypeLegacyKimiPricingResult.lift(try rustCallWithError(FfiConverterTypePricingFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_price_legacy_kimi_wire_event(
@@ -4363,6 +4492,15 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota() != 39634) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed() != 45890) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak() != 19070) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak() != 60626) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event() != 28560) {

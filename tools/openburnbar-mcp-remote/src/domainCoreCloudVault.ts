@@ -39,6 +39,15 @@ export interface DomainCoreCloudVaultModule {
     vaultKey: Uint8Array,
     limit: number,
   ): DomainCoreCloudVaultSearchResult;
+  pensieveVectorCloak(vector: Float64Array, vaultKey: Uint8Array, modelVersion: string): Float64Array;
+  pensieveDeterministicEmbed(text: string, dimensions: number, isQuery: boolean): Float64Array;
+  pensieveDeterministicEmbedAndCloak(
+    text: string,
+    dimensions: number,
+    isQuery: boolean,
+    vaultKey: Uint8Array,
+    modelVersion: string,
+  ): Float64Array;
   domainCoreAbiVersion(): number;
   domainCoreSourceFingerprint(): string;
   domainCoreVersion(): string;
@@ -89,6 +98,26 @@ export interface DomainCoreCloudVaultAdapter {
     limit: number,
     legacy: () => string[],
   ): string[];
+  vectorCloak(
+    vector: ArrayLike<number>,
+    vaultKey: Uint8Array,
+    modelVersion: string,
+    legacy: () => Float64Array,
+  ): Float64Array;
+  deterministicEmbed(
+    text: string,
+    dimensions: number,
+    isQuery: boolean,
+    legacy: () => number[],
+  ): number[];
+  deterministicEmbedAndCloak(
+    text: string,
+    dimensions: number,
+    isQuery: boolean,
+    vaultKey: Uint8Array,
+    modelVersion: string,
+    legacy: () => number[],
+  ): number[];
 }
 
 const DOMAIN_CORE_ABI_VERSION = 3;
@@ -131,6 +160,9 @@ function validateModule(candidate: Partial<DomainCoreCloudVaultModule>): DomainC
     typeof candidate.cloudVaultAesGcmOpenCombined !== "function" ||
     typeof candidate.cloudVaultAesGcmSealCombined !== "function" ||
     typeof candidate.cloudVaultSearch !== "function" ||
+    typeof candidate.pensieveVectorCloak !== "function" ||
+    typeof candidate.pensieveDeterministicEmbed !== "function" ||
+    typeof candidate.pensieveDeterministicEmbedAndCloak !== "function" ||
     typeof candidate.domainCoreAbiVersion !== "function" ||
     typeof candidate.domainCoreSourceFingerprint !== "function" ||
     typeof candidate.domainCoreVersion !== "function"
@@ -261,6 +293,34 @@ function createAdapter(
       },
       stringsEqual,
     ),
+    vectorCloak: (vector, vaultKey, modelVersion, legacy) => select(
+      "pensieve_vector_cloak",
+      legacy,
+      (core) => core.pensieveVectorCloak(Float64Array.from(vector), vaultKey, modelVersion),
+      (left, right) => left.length === right.length && left.every(
+        (value, index) => Math.abs(value - right[index]) < 1e-12,
+      ),
+    ),
+    deterministicEmbed: (text, dimensions, isQuery, legacy) => select(
+      "pensieve_deterministic_embed",
+      legacy,
+      (core) => Array.from(core.pensieveDeterministicEmbed(text, dimensions, isQuery)),
+      (left, right) => left.length === right.length && left.every((value, index) => value === right[index]),
+    ),
+    deterministicEmbedAndCloak: (text, dimensions, isQuery, vaultKey, modelVersion, legacy) => select(
+      "pensieve_deterministic_embed_and_cloak",
+      legacy,
+      (core) => Array.from(core.pensieveDeterministicEmbedAndCloak(
+        text,
+        dimensions,
+        isQuery,
+        vaultKey,
+        modelVersion,
+      )),
+      (left, right) => left.length === right.length && left.every(
+        (value, index) => Math.abs(value - right[index]) < 1e-12,
+      ),
+    ),
   };
 }
 
@@ -309,6 +369,37 @@ export function domainCoreCloudVaultSearch(
   legacy: () => string[],
 ): string[] {
   return productionAdapter.search(operation, text, vaultKey, limit, legacy);
+}
+
+export function domainCorePensieveVectorCloak(
+  vector: ArrayLike<number>,
+  vaultKey: Uint8Array,
+  modelVersion: string,
+  legacy: () => Float64Array,
+): Float64Array {
+  return productionAdapter.vectorCloak(vector, vaultKey, modelVersion, legacy);
+}
+
+export function domainCorePensieveDeterministicEmbed(
+  text: string,
+  dimensions: number,
+  isQuery: boolean,
+  legacy: () => number[],
+): number[] {
+  return productionAdapter.deterministicEmbed(text, dimensions, isQuery, legacy);
+}
+
+export function domainCorePensieveDeterministicEmbedAndCloak(
+  text: string,
+  dimensions: number,
+  isQuery: boolean,
+  vaultKey: Uint8Array,
+  modelVersion: string,
+  legacy: () => number[],
+): number[] {
+  return productionAdapter.deterministicEmbedAndCloak(
+    text, dimensions, isQuery, vaultKey, modelVersion, legacy,
+  );
 }
 
 export function createDomainCoreCloudVaultAdapterForTest(

@@ -1,6 +1,6 @@
 use openburnbar_domain_core::quota as core;
 use openburnbar_domain_core::{
-    cloudvault, cloudvault_rewrap, cloudvault_search, hermes, pricing, quota,
+    cloudvault, cloudvault_rewrap, cloudvault_search, hermes, pensieve_vectors, pricing, quota,
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -227,6 +227,20 @@ pub enum CloudVaultFfiError {
     RewrapIntegrityMismatch,
     #[error("rewrap requires distinct old and new vault keys when any envelope changes")]
     InvalidRewrapKeyRotation,
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum PensieveVectorFfiError {
+    #[error("Pensieve vault keys must be exactly 32 bytes")]
+    InvalidKeyLength,
+    #[error("Pensieve vectors must contain between 1 and 4096 finite coordinates")]
+    InvalidVector,
+    #[error("Pensieve model versions must be non-empty bounded printable strings")]
+    InvalidModelVersion,
+    #[error("Pensieve embedding text must not exceed 1048576 UTF-8 bytes")]
+    TextTooLarge,
+    #[error("Pensieve vector key derivation failed")]
+    DerivationFailure,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -518,6 +532,55 @@ pub fn cloud_vault_subscription_doc_id(
     agent_uri.zeroize();
     topic_id.zeroize();
     key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn pensieve_vector_cloak(
+    mut vector: Vec<f64>,
+    mut vault_key: Vec<u8>,
+    model_version: String,
+) -> Result<Vec<f64>, PensieveVectorFfiError> {
+    let result = pensieve_vectors::cloak(&vector, &vault_key, &model_version).map_err(Into::into);
+    vector.zeroize();
+    vault_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn pensieve_deterministic_embed(
+    mut text: String,
+    dimensions: u32,
+    is_query: bool,
+) -> Result<Vec<f64>, PensieveVectorFfiError> {
+    let dimensions =
+        usize::try_from(dimensions).map_err(|_| PensieveVectorFfiError::InvalidVector)?;
+    let result =
+        pensieve_vectors::deterministic_embed(&text, dimensions, is_query).map_err(Into::into);
+    text.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn pensieve_deterministic_embed_and_cloak(
+    mut text: String,
+    dimensions: u32,
+    is_query: bool,
+    mut vault_key: Vec<u8>,
+    model_version: String,
+) -> Result<Vec<f64>, PensieveVectorFfiError> {
+    let dimensions =
+        usize::try_from(dimensions).map_err(|_| PensieveVectorFfiError::InvalidVector)?;
+    let result = pensieve_vectors::deterministic_embed_and_cloak(
+        &text,
+        dimensions,
+        is_query,
+        &vault_key,
+        &model_version,
+    )
+    .map_err(Into::into);
+    text.zeroize();
+    vault_key.zeroize();
     result
 }
 
@@ -1010,6 +1073,18 @@ impl From<pricing::PricingError> for PricingFfiError {
     fn from(value: pricing::PricingError) -> Self {
         match value {
             pricing::PricingError::ArithmeticOverflow => Self::ArithmeticOverflow,
+        }
+    }
+}
+
+impl From<pensieve_vectors::PensieveVectorError> for PensieveVectorFfiError {
+    fn from(value: pensieve_vectors::PensieveVectorError) -> Self {
+        match value {
+            pensieve_vectors::PensieveVectorError::InvalidKeyLength => Self::InvalidKeyLength,
+            pensieve_vectors::PensieveVectorError::InvalidVector => Self::InvalidVector,
+            pensieve_vectors::PensieveVectorError::InvalidModelVersion => Self::InvalidModelVersion,
+            pensieve_vectors::PensieveVectorError::TextTooLarge => Self::TextTooLarge,
+            pensieve_vectors::PensieveVectorError::DerivationFailure => Self::DerivationFailure,
         }
     }
 }

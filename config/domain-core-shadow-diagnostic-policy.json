@@ -53,7 +53,11 @@
         { "slice": "search", "consumer": "remote-mcp" },
         { "slice": "opaque-identifiers", "consumer": "remote-mcp" },
         { "slice": "search", "consumer": "local-mcp" },
-        { "slice": "opaque-identifiers", "consumer": "local-mcp" }
+        { "slice": "opaque-identifiers", "consumer": "local-mcp" },
+        { "slice": "pensieve-vectors", "consumer": "apple" },
+        { "slice": "pensieve-vectors", "consumer": "windows" },
+        { "slice": "pensieve-vectors", "consumer": "console" },
+        { "slice": "pensieve-vectors", "consumer": "remote-mcp" }
       ],
       "allowedChannels": ["internal", "beta"],
       "mismatchAlertCategories": [

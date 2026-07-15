@@ -444,7 +444,8 @@ namespace OpenBurnBar.CloudSync.Crypto
             long rustMicros)
         {
             if (ComparisonSink is null) return;
-            string slice = operation.Contains("escrow", StringComparison.Ordinal) ? "escrow"
+            string slice = operation.StartsWith("pensieve_", StringComparison.Ordinal) ? "pensieve-vectors"
+                : operation.Contains("escrow", StringComparison.Ordinal) ? "escrow"
                 : operation.Contains("recovery", StringComparison.Ordinal) ? "recovery"
                 : operation.Contains("aes", StringComparison.Ordinal)
                     || operation.Contains("seal", StringComparison.Ordinal)

@@ -38,6 +38,7 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/DomainCoreBuildProfile.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
       - "AgentLens/Services/ProviderQuota/DomainCoreShadowEvidenceSpool.swift"
       - "AgentLens/Services/ProviderQuota/ProviderQuotaMacBridge.swift"
@@ -49,6 +50,8 @@ on:
       - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
       - "windows/app/OpenBurnBar.App.CloudSync/DomainCoreShadowEvidenceUploader.cs"
       - "windows/app/OpenBurnBar.App.CloudSync/WinAppCloudSyncHost.cs"
+      - "windows/app/OpenBurnBar.App.CloudSync/Pensieve/**"
+      - "windows/app/OpenBurnBar.App.CloudSync/Legacy/PensieveVectorLegacy.cs"
       - "windows/tests/quota/**"
       - "windows/Directory.Build.*"
       - "windows/app/OpenBurnBar.App.Configuration/DomainCoreBuildProfileResolver.cs"
@@ -57,6 +60,7 @@ on:
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVault*Tests.swift"
       - "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/**"
       - "windows/tests/cloudsync/**"
+      - "windows/tests/cloudsync-app/PensieveVectorCloakTests.cs"
       - "android/openburnbar-domain-core/**"
       - "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto*.kt"
       - "android/app/src/test/java/com/openburnbar/data/cloud/CloudVault*Test.kt"
@@ -68,11 +72,17 @@ on:
       - "android/settings.gradle.kts"
       - "apps/console/lib/escrow.ts"
       - "apps/console/lib/domainCoreCloudVault.ts"
+      - "apps/console/lib/recall.ts"
+      - "apps/console/lib/legacy/pensieveVectorLegacy.ts"
       - "apps/console/lib/domainCoreBuildProfile.ts"
       - "apps/console/test/domainCoreBuildProfile.test.ts"
       - "apps/console/test/escrow.test.ts"
       - "apps/console/test/domainCoreCloudVault*.test.ts"
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
+      - "tools/openburnbar-mcp-remote/src/embed.ts"
+      - "tools/openburnbar-mcp-remote/src/domainCoreCloudVault.ts"
+      - "tools/openburnbar-mcp-remote/src/legacy/pensieveVectorLegacy.ts"
+      - "tools/openburnbar-mcp-remote/vendor/openburnbar-domain-core-wasm/**"
       - "functions/src/domainCorePricing.ts"
       - "functions/src/domainCoreBuildProfile.ts"
       - "functions/src/health.ts"
@@ -555,6 +565,9 @@ jobs:
           set -o pipefail
           dotnet test windows/tests/cloudsync/OpenBurnBar.CloudSync.Crypto.Tests.csproj --nologo \
             2>&1 | tee "$RUNNER_TEMP/csharp-cloudvault-native.log"
+          dotnet test windows/tests/cloudsync-app/OpenBurnBar.App.CloudSync.Tests.csproj --nologo \
+            --filter PensieveVectorCloakTests \
+            2>&1 | tee -a "$RUNNER_TEMP/csharp-cloudvault-native.log"
 
       - name: Run C# signed profile contracts
         run: dotnet test windows/tests/configuration/OpenBurnBar.App.Configuration.Tests.csproj --nologo

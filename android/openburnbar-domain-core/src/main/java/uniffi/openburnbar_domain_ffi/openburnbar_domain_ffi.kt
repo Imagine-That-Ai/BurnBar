@@ -819,6 +819,12 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -941,6 +947,12 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_fn_func_parse_codex_usage_quota(`payload`: RustBuffer.ByValue,`nowUnix`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(`payload`: RustBuffer.ByValue,`userEmail`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed(`text`: RustBuffer.ByValue,`dimensions`: Int,`isQuery`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(`text`: RustBuffer.ByValue,`dimensions`: Int,`isQuery`: Byte,`vaultKey`: RustBuffer.ByValue,`modelVersion`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak(`vector`: RustBuffer.ByValue,`vaultKey`: RustBuffer.ByValue,`modelVersion`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_price_legacy_kimi_wire_event(`buckets`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -1164,6 +1176,12 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event(
     ): Short
     fun ffi_openburnbar_domain_ffi_uniffi_contract_version(
@@ -1342,6 +1360,15 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota() != 39634.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed() != 45890.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak() != 19070.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak() != 60626.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event() != 28560.toShort()) {
@@ -3237,6 +3264,119 @@ public object FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiE
 
 
 
+sealed class PensieveVectorFfiException: kotlin.Exception() {
+
+    class InvalidKeyLength(
+        ) : PensieveVectorFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidVector(
+        ) : PensieveVectorFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidModelVersion(
+        ) : PensieveVectorFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class TextTooLarge(
+        ) : PensieveVectorFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class DerivationFailure(
+        ) : PensieveVectorFfiException() {
+        override val message
+            get() = ""
+    }
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<PensieveVectorFfiException> {
+        override fun lift(error_buf: RustBuffer.ByValue): PensieveVectorFfiException = FfiConverterTypePensieveVectorFfiError.lift(error_buf)
+    }
+
+
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePensieveVectorFfiError : FfiConverterRustBuffer<PensieveVectorFfiException> {
+    override fun read(buf: ByteBuffer): PensieveVectorFfiException {
+
+
+        return when(buf.getInt()) {
+            1 -> PensieveVectorFfiException.InvalidKeyLength()
+            2 -> PensieveVectorFfiException.InvalidVector()
+            3 -> PensieveVectorFfiException.InvalidModelVersion()
+            4 -> PensieveVectorFfiException.TextTooLarge()
+            5 -> PensieveVectorFfiException.DerivationFailure()
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: PensieveVectorFfiException): ULong {
+        return when(value) {
+            is PensieveVectorFfiException.InvalidKeyLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is PensieveVectorFfiException.InvalidVector -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is PensieveVectorFfiException.InvalidModelVersion -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is PensieveVectorFfiException.TextTooLarge -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is PensieveVectorFfiException.DerivationFailure -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: PensieveVectorFfiException, buf: ByteBuffer) {
+        when(value) {
+            is PensieveVectorFfiException.InvalidKeyLength -> {
+                buf.putInt(1)
+                Unit
+            }
+            is PensieveVectorFfiException.InvalidVector -> {
+                buf.putInt(2)
+                Unit
+            }
+            is PensieveVectorFfiException.InvalidModelVersion -> {
+                buf.putInt(3)
+                Unit
+            }
+            is PensieveVectorFfiException.TextTooLarge -> {
+                buf.putInt(4)
+                Unit
+            }
+            is PensieveVectorFfiException.DerivationFailure -> {
+                buf.putInt(5)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+
+
+
+
+
 sealed class PricingFfiException: kotlin.Exception() {
 
     class ArithmeticOverflow(
@@ -3608,6 +3748,34 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
         } else {
             buf.put(1)
             FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceDouble: FfiConverterRustBuffer<List<kotlin.Double>> {
+    override fun read(buf: ByteBuffer): List<kotlin.Double> {
+        val len = buf.getInt()
+        return List<kotlin.Double>(len) {
+            FfiConverterDouble.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.Double>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterDouble.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.Double>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterDouble.write(it, buf)
         }
     }
 }
@@ -4305,6 +4473,36 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(
         FfiConverterByteArray.lower(`payload`),FfiConverterOptionalString.lower(`userEmail`),_status)
+}
+    )
+    }
+
+
+    @Throws(PensieveVectorFfiException::class) fun `pensieveDeterministicEmbed`(`text`: kotlin.String, `dimensions`: kotlin.UInt, `isQuery`: kotlin.Boolean): List<kotlin.Double> {
+            return FfiConverterSequenceDouble.lift(
+    uniffiRustCallWithError(PensieveVectorFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed(
+        FfiConverterString.lower(`text`),FfiConverterUInt.lower(`dimensions`),FfiConverterBoolean.lower(`isQuery`),_status)
+}
+    )
+    }
+
+
+    @Throws(PensieveVectorFfiException::class) fun `pensieveDeterministicEmbedAndCloak`(`text`: kotlin.String, `dimensions`: kotlin.UInt, `isQuery`: kotlin.Boolean, `vaultKey`: kotlin.ByteArray, `modelVersion`: kotlin.String): List<kotlin.Double> {
+            return FfiConverterSequenceDouble.lift(
+    uniffiRustCallWithError(PensieveVectorFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(
+        FfiConverterString.lower(`text`),FfiConverterUInt.lower(`dimensions`),FfiConverterBoolean.lower(`isQuery`),FfiConverterByteArray.lower(`vaultKey`),FfiConverterString.lower(`modelVersion`),_status)
+}
+    )
+    }
+
+
+    @Throws(PensieveVectorFfiException::class) fun `pensieveVectorCloak`(`vector`: List<kotlin.Double>, `vaultKey`: kotlin.ByteArray, `modelVersion`: kotlin.String): List<kotlin.Double> {
+            return FfiConverterSequenceDouble.lift(
+    uniffiRustCallWithError(PensieveVectorFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak(
+        FfiConverterSequenceDouble.lower(`vector`),FfiConverterByteArray.lower(`vaultKey`),FfiConverterString.lower(`modelVersion`),_status)
 }
     )
     }

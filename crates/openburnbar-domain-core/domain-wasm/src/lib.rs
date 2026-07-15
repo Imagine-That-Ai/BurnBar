@@ -8,6 +8,7 @@ use openburnbar_domain_core::cloudvault_rewrap::{
 use openburnbar_domain_core::cloudvault_search::{
     self, CloudVaultSearchError, CloudVaultSearchOperation as CoreSearchOperation,
 };
+use openburnbar_domain_core::pensieve_vectors;
 use openburnbar_domain_core::pricing::{self, TokenBuckets, TokenRates};
 use wasm_bindgen::prelude::*;
 use zeroize::{Zeroize, Zeroizing};
@@ -294,6 +295,52 @@ pub fn cloud_vault_keyed_hash_hex(
     let result = cloudvault::keyed_hash_hex(&data, &key, purpose.into()).map_err(js_error);
     data.zeroize();
     key.zeroize();
+    result
+}
+
+#[wasm_bindgen(js_name = pensieveVectorCloak)]
+pub fn pensieve_vector_cloak(
+    mut vector: Vec<f64>,
+    mut vault_key: Vec<u8>,
+    model_version: String,
+) -> Result<Vec<f64>, JsError> {
+    let result = pensieve_vectors::cloak(&vector, &vault_key, &model_version)
+        .map_err(|error| JsError::new(&error.to_string()));
+    vector.zeroize();
+    vault_key.zeroize();
+    result
+}
+
+#[wasm_bindgen(js_name = pensieveDeterministicEmbed)]
+pub fn pensieve_deterministic_embed(
+    mut text: String,
+    dimensions: u32,
+    is_query: bool,
+) -> Result<Vec<f64>, JsError> {
+    let result = pensieve_vectors::deterministic_embed(&text, dimensions as usize, is_query)
+        .map_err(|error| JsError::new(&error.to_string()));
+    text.zeroize();
+    result
+}
+
+#[wasm_bindgen(js_name = pensieveDeterministicEmbedAndCloak)]
+pub fn pensieve_deterministic_embed_and_cloak(
+    mut text: String,
+    dimensions: u32,
+    is_query: bool,
+    mut vault_key: Vec<u8>,
+    model_version: String,
+) -> Result<Vec<f64>, JsError> {
+    let result = pensieve_vectors::deterministic_embed_and_cloak(
+        &text,
+        dimensions as usize,
+        is_query,
+        &vault_key,
+        &model_version,
+    )
+    .map_err(|error| JsError::new(&error.to_string()));
+    text.zeroize();
+    vault_key.zeroize();
     result
 }
 

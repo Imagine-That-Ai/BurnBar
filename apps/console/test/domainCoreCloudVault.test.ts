@@ -18,6 +18,7 @@ import {
   configureCloudVaultShadowCollector,
   initializeCloudVaultDomainCoreForTests,
 } from "../lib/domainCoreCloudVault";
+import { embedAndCloakQuery } from "../lib/recall";
 
 interface DeterministicKat {
   aad: Array<{
@@ -79,6 +80,17 @@ afterEach(() => {
 });
 
 describe("CloudVault domain-core browser adapter", () => {
+  it("runs the Pensieve query embedding and cloak as one Rust call", async () => {
+    configureCloudVaultDomainCoreForTests("rust", true);
+    const result = await embedAndCloakQuery(
+      "hosted minimax encrypted session search",
+      new Uint8Array(32).fill(0x42),
+    );
+    expect(result.embeddingModelVersion).toBe("hashing-bow-v1");
+    expect(result.queryVector).toHaveLength(384);
+    expect(result.queryVector.every(Number.isFinite)).toBe(true);
+  });
+
   it("uses the canonical AAD KAT in rust mode", () => {
     configureCloudVaultDomainCoreForTests("rust", true);
     for (const vector of fixture.aad) {
