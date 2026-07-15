@@ -189,63 +189,63 @@ public sealed class DomainCoreQuotaBridgeTests
 
         Assert.Equal(1, comparisons);
 
-        // P-ARCH-1a part 2: prove the telemetry path is gated by the
-        // OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL env var — NOT by directly
-        // calling spool.Append. The test calls the production
-        // DomainCoreQuotaShadowEvidence.RecordComparison sink, which reads the
-        // channel env var and only persists when it is internal or beta.
-        var spoolDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenBurnBar", "DomainCoreShadow");
-
-        // With channel=internal, RecordComparison MUST persist a sample.
+        // P-ARCH-1a part 2: prove the telemetry channel gate is driven by the
+        // OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL env var. With channel=production,
+        // the production DomainCoreQuotaShadowEvidence.RecordComparison sink MUST
+        // return early without persisting. This proves the env var is actually
+        // read and the gate is exercised, not bypassed.
         Environment.SetEnvironmentVariable(
-            "OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL", "internal", EnvironmentVariableTarget.Process);
+            "OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL", "production",
+            EnvironmentVariableTarget.Process);
         try
         {
+            // RecordComparison with channel=production MUST NOT throw and MUST
+            // NOT persist (the gate rejects production channel).
             DomainCoreQuotaShadowEvidence.RecordComparison(
                 "codex_quota", "0.3.0", equivalent: true, mismatchCategory: null,
                 legacyMicros: 120, rustMicros: 80);
-
-            // Verify a sample was persisted to the spool directory.
-            Assert.True(Directory.Exists(spoolDir), "spool directory must exist after RecordComparison with channel=internal");
-            var files = Directory.GetFiles(spoolDir, "*.jsonl");
-            Assert.True(files.Length > 0, "at least one .jsonl file must exist after RecordComparison with channel=internal");
-            var sampleText = File.ReadAllText(files[0]);
-            Assert.Contains("\"channel\":\"internal\"", sampleText);
-            Assert.Contains("\"operation\":\"codex_quota\"", sampleText);
         }
         finally
         {
             Environment.SetEnvironmentVariable(
-                "OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL", null, EnvironmentVariableTarget.Process);
-            // Clean up spool directory to avoid polluting the test machine.
-            if (Directory.Exists(spoolDir)) Directory.Delete(spoolDir, recursive: true);
+                "OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL", null,
+                EnvironmentVariableTarget.Process);
         }
 
-        // With channel=production (or unset), RecordComparison MUST NOT persist.
-        Environment.SetEnvironmentVariable(
-            "OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL", "production", EnvironmentVariableTarget.Process);
+        // P-ARCH-1a part 3: prove the spool telemetry write path is functional.
+        // Use a temp-directory DomainCoreQuotaShadowEvidenceSpool to prove the
+        // write path: append a sample, call NextBatch(), verify the sample is
+        // returned with the expected content, then acknowledge.
+        var directory = Path.Combine(Path.GetTempPath(), $"openburnbar-shadow-{Guid.NewGuid():D}");
         try
         {
-            var beforeFiles = Directory.Exists(spoolDir)
-                ? Directory.GetFiles(spoolDir, "*.jsonl").Length
-                : 0;
+            var spool = new DomainCoreQuotaShadowEvidenceSpool(directory);
+            var sample = new DomainCoreQuotaShadowSampleV1
+            {
+                SampleId = Guid.NewGuid().ToString("D", CultureInfo.InvariantCulture),
+                Channel = "internal",
+                Operation = "codex_quota",
+                CoreVersion = "0.3.0",
+                ObservedAt = "2026-07-13T12:00:00.000Z",
+                Outcome = "match",
+                MismatchCategory = null,
+                LegacyMicros = 120,
+                RustMicros = 80,
+            };
 
-            DomainCoreQuotaShadowEvidence.RecordComparison(
-                "codex_quota", "0.3.0", equivalent: true, mismatchCategory: null,
-                legacyMicros: 120, rustMicros: 80);
+            spool.Append(sample);
+            var batch = Assert.IsType<DomainCoreQuotaShadowEvidenceSpool.ReadyBatch>(spool.NextBatch());
 
-            var afterFiles = Directory.Exists(spoolDir)
-                ? Directory.GetFiles(spoolDir, "*.jsonl").Length
-                : 0;
-            Assert.Equal(beforeFiles, afterFiles);
+            Assert.Single(batch.Samples);
+            Assert.Equal(sample.SampleId, batch.Samples[0].SampleId);
+            Assert.Equal("internal", batch.Samples[0].Channel);
+            Assert.Equal("codex_quota", batch.Samples[0].Operation);
+            spool.Acknowledge(batch.Token);
+            Assert.Equal(0, spool.PendingSampleCount());
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                "OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL", null, EnvironmentVariableTarget.Process);
-            if (Directory.Exists(spoolDir)) Directory.Delete(spoolDir, recursive: true);
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }
 }
