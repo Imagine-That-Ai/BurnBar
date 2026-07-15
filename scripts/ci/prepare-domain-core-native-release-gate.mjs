@@ -368,6 +368,16 @@ export function run(argv, { command = createCommandRunner() } = {}) {
     resolvedSource.candidate,
   );
   validateResolvedProfile(profile, profileName, resolvedSource.candidate);
+  const activationProfile = resolveDomainCoreBuildProfile(
+    catalog,
+    DOMAIN_CORE_PUBLIC_PROFILE,
+    resolvedSource.candidate,
+  );
+  validateResolvedProfile(
+    activationProfile,
+    DOMAIN_CORE_PUBLIC_PROFILE,
+    resolvedSource.candidate,
+  );
   const activationPath = exactFile(
     resolve(args.get("--activation")),
     "canonical release activation",
@@ -380,8 +390,8 @@ export function run(argv, { command = createCommandRunner() } = {}) {
     {
       candidate: resolvedSource.candidate,
       releaseCommit,
-      profile,
-      profileName,
+      profile: activationProfile,
+      profileName: DOMAIN_CORE_PUBLIC_PROFILE,
     },
   );
   const profileSha256 = publicProfileSha256(
