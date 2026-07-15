@@ -8,7 +8,7 @@ import {
   DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE,
   DOMAIN_CORE_SHADOW_RETENTION_MS,
   type DomainCoreShadowSampleV3,
-  buildDomainCoreShadowSampleV2,
+  buildDomainCoreShadowSampleV3,
   enforceDomainCoreShadowChannelClaim,
   parseDomainCoreShadowSampleRequest,
   persistDomainCoreShadowSamples,
@@ -20,7 +20,7 @@ type DomainCoreShadowStore = Parameters<typeof persistDomainCoreShadowSamples>[0
 
 type DomainCoreShadowSample = ReturnType<typeof parseDomainCoreShadowSampleRequest>[number];
 type DomainCoreShadowSampleV1 = Extract<DomainCoreShadowSample, { schemaVersion: 1 }>;
-type DomainCoreShadowSampleV2 = ReturnType<typeof buildDomainCoreShadowSampleV2>;
+type DomainCoreShadowSampleV2 = Extract<DomainCoreShadowSample, { schemaVersion: 2 }>;
 
 const NOW = Date.parse("2026-07-13T12:00:00.000Z");
 const CANDIDATE_COMMIT = "a".repeat(40);
@@ -150,6 +150,34 @@ describe("domain-core shadow evidence contract", () => {
     ]);
   });
 
+  it("builds a strict candidate-bound V3 producer sample", () => {
+    const { schemaVersion: _schemaVersion, sampleId: _sampleId, observedAt: _observedAt, ...comparison } = v3Sample();
+    const built = buildDomainCoreShadowSampleV3(comparison, {
+      nowMillis: NOW,
+      sampleId: "00000000-0000-4000-8000-000000000099",
+    });
+
+    expect(built).toEqual({
+      ...v3Sample(),
+      sampleId: "00000000-0000-4000-8000-000000000099",
+      observedAt: new Date(NOW).toISOString(),
+    });
+    expect(built).not.toHaveProperty("coreVersion");
+  });
+
+  it("fails the V3 producer closed for partial or falsely classified loaded identity", () => {
+    const { schemaVersion: _schemaVersion, sampleId: _sampleId, observedAt: _observedAt, ...comparison } = v3Sample();
+
+    expect(() => buildDomainCoreShadowSampleV3({ ...comparison, loadedCoreAbiVersion: null })).toThrow();
+    expect(() =>
+      buildDomainCoreShadowSampleV3({
+        ...comparison,
+        outcome: "mismatch",
+        mismatchCategory: "loaded_identity_mismatch",
+      }),
+    ).toThrow();
+  });
+
   it("accepts every operation/domain/slice/consumer branch in the authoritative V3 schema", () => {
     const branches = v3OperationContractBranches();
     expect(branches.length).toBeGreaterThan(10);
@@ -212,30 +240,6 @@ describe("domain-core shadow evidence contract", () => {
   });
 
   it.each([
-    ["quota", "claude", "apple", "claude_quota"],
-    ["cloudvault", "foundation", "console", "cloudvault_aad_v2"],
-    ["hermes", "ratchet", "android", "ratchet_kdf"],
-    ["pricing", "token-cost", "functions", "calculate_token_cost"],
-  ] as const)("builds a validated generic V2 %s collector sample", (domain, slice, consumer, operation) => {
-    const built = buildDomainCoreShadowSampleV2(
-      {
-        domain,
-        slice,
-        consumer,
-        channel: "internal",
-        operation,
-        coreVersion: "0.3.0",
-        outcome: "match",
-        mismatchCategory: null,
-        legacyMicros: 10,
-        rustMicros: 8,
-      },
-      { nowMillis: NOW, sampleId: "00000000-0000-4000-8000-000000000099" },
-    );
-    expect(built).toMatchObject({ schemaVersion: 2, domain, slice, consumer, operation });
-  });
-
-  it.each([
     ["extra request field", { samples: [sample()], uid: "must-not-be-accepted" }],
     ["extra sample field", { samples: [{ ...sample(), payload: "secret" }] }],
     ["production channel", { samples: [{ ...sample(), channel: "production" }] }],
@@ -268,6 +272,20 @@ describe("domain-core shadow evidence contract", () => {
             loadedCoreSourceSha256: null,
             outcome: "mismatch",
             mismatchCategory: "result_mismatch",
+          }),
+        ],
+      },
+    ],
+    [
+      "missing loaded native-error identity",
+      {
+        samples: [
+          v3Sample({
+            loadedCoreVersion: null,
+            loadedCoreAbiVersion: null,
+            loadedCoreSourceSha256: null,
+            outcome: "mismatch",
+            mismatchCategory: "native_error",
           }),
         ],
       },
@@ -323,6 +341,26 @@ describe("domain-core shadow evidence contract", () => {
     });
 
     expect(parseDomainCoreShadowSampleRequest({ samples: [unavailable] }, NOW)).toEqual([unavailable]);
+  });
+
+  it("pins the V3 schema to require a loaded tuple for native errors", () => {
+    const schema = JSON.parse(
+      readFileSync(resolve(__dirname, "../../../docs/contracts/domain-core-shadow-sample-v3.schema.json"), "utf8"),
+    ) as {
+      allOf: Array<{
+        if?: { properties?: { mismatchCategory?: { enum?: string[] } } };
+        then?: { properties?: Record<string, { type?: string }> };
+      }>;
+    };
+    const identityRequired = schema.allOf.find((condition) =>
+      condition.if?.properties?.mismatchCategory?.enum?.includes("native_error"),
+    );
+
+    expect(identityRequired?.then?.properties).toMatchObject({
+      loadedCoreVersion: { type: "string" },
+      loadedCoreAbiVersion: { type: "integer" },
+      loadedCoreSourceSha256: { type: "string" },
+    });
   });
 
   it("records a wrong loaded binary as explicit non-success telemetry", () => {

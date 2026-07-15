@@ -164,7 +164,7 @@ export interface DomainCoreShadowSampleV3 extends DomainCoreShadowSampleCommon {
 
 type DomainCoreShadowSample = DomainCoreShadowSampleV1 | DomainCoreShadowSampleV2 | DomainCoreShadowSampleV3;
 
-type DomainCoreShadowComparisonV2 = Omit<DomainCoreShadowSampleV2, "schemaVersion" | "sampleId" | "observedAt">;
+export type DomainCoreShadowComparisonV3 = Omit<DomainCoreShadowSampleV3, "schemaVersion" | "sampleId" | "observedAt">;
 
 function exactKeys(record: Record<string, unknown>, expected: readonly string[], label: string): void {
   const actual = Object.keys(record).sort();
@@ -321,15 +321,13 @@ function parseV3Identity(
   const requiresLoadedIdentity =
     outcome.outcome === "match" ||
     outcome.mismatchCategory === "result_mismatch" ||
-    outcome.mismatchCategory === "invalid_result";
+    outcome.mismatchCategory === "invalid_result" ||
+    outcome.mismatchCategory === "native_error";
   if (requiresLoadedIdentity && !loadedMatchesExpected) {
     throw new HttpsError("invalid-argument", `samples[${index}] comparison did not load its expected core identity.`);
   }
   if (outcome.mismatchCategory === "native_unavailable" && loadedCoreVersion !== null) {
     throw new HttpsError("invalid-argument", `samples[${index}] native-unavailable evidence has a loaded identity.`);
-  }
-  if (outcome.mismatchCategory === "native_error" && loadedCoreVersion !== null && !loadedMatchesExpected) {
-    throw new HttpsError("invalid-argument", `samples[${index}] native-error evidence loaded an unexpected core.`);
   }
   if (
     outcome.mismatchCategory === "loaded_identity_mismatch" &&
@@ -451,14 +449,14 @@ function parseSample(raw: unknown, nowMillis: number, index: number): DomainCore
   };
 }
 
-export function buildDomainCoreShadowSampleV2(
-  comparison: DomainCoreShadowComparisonV2,
+export function buildDomainCoreShadowSampleV3(
+  comparison: DomainCoreShadowComparisonV3,
   options: { nowMillis?: number; sampleId?: string } = {},
-): DomainCoreShadowSampleV2 {
+): DomainCoreShadowSampleV3 {
   const nowMillis = options.nowMillis ?? Date.now();
   const parsed = parseSample(
     {
-      schemaVersion: 2,
+      schemaVersion: 3,
       sampleId: options.sampleId ?? randomUUID(),
       observedAt: new Date(nowMillis).toISOString(),
       ...comparison,
@@ -466,7 +464,9 @@ export function buildDomainCoreShadowSampleV2(
     nowMillis,
     0,
   );
-  if (parsed.schemaVersion !== 2) throw new Error("V2 shadow sample builder returned an unexpected schema.");
+  if (parsed.schemaVersion !== 3) {
+    throw new Error("V3 shadow sample builder returned an unexpected schema.");
+  }
   return parsed;
 }
 
