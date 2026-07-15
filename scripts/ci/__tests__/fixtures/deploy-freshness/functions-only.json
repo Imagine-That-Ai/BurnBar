@@ -3,7 +3,8 @@
   "cloudFunctions": [
     {
       "name": "projects/burnbar/locations/us-central1/functions/healthLive",
-      "updateTime": "2026-07-12T10:30:00.000Z"
+      "updateTime": "2026-07-12T10:30:00.000Z",
+      "state": "ACTIVE"
     }
   ]
 }
