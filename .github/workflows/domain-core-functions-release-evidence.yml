@@ -69,7 +69,24 @@ jobs:
           run_json="$RUNNER_TEMP/deploy-run.json"
           pages_json="$RUNNER_TEMP/deploy-job-pages.json"
           jobs_json="$RUNNER_TEMP/deploy-jobs.json"
-          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOY_RUN_ID" > "$run_json"
+          completed=false
+          for poll in $(seq 1 120); do
+            gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOY_RUN_ID" > "$run_json"
+            if ! jq -e --argjson attempt "$DEPLOY_RUN_ATTEMPT" '.run_attempt == $attempt' "$run_json" >/dev/null; then
+              echo "::error::Deploy run attempt changed before evidence verification completed."
+              exit 1
+            fi
+            if [[ "$(jq -r '.status' "$run_json")" == "completed" ]]; then
+              completed=true
+              break
+            fi
+            echo "Waiting for deploy run $DEPLOY_RUN_ID attempt $DEPLOY_RUN_ATTEMPT to complete ($poll/120)..."
+            sleep 5
+          done
+          if [[ "$completed" != "true" ]]; then
+            echo "::error::Deploy run did not complete within 10 minutes."
+            exit 1
+          fi
           gh api --paginate --slurp \
             "/repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOY_RUN_ID/attempts/$DEPLOY_RUN_ATTEMPT/jobs?per_page=100" \
             > "$pages_json"
@@ -78,39 +95,15 @@ jobs:
             | {total_count: .[0].total_count, jobs: [.[].jobs[]]}
             | select(.total_count == (.jobs | length))
           ' "$pages_json" > "$jobs_json"
-          python3 - "$run_json" "$jobs_json" "$GITHUB_SHA" "$release_tag" "$DEPLOY_RUN_ATTEMPT" "$DOMAIN_CORE_PROFILE" <<'PY'
-          import json
-          import sys
-
-          run_path, jobs_path, commit, tag, attempt, profile = sys.argv[1:]
-          with open(run_path, encoding="utf-8") as handle:
-              run = json.load(handle)
-          with open(jobs_path, encoding="utf-8") as handle:
-              jobs_document = json.load(handle)
-          if (
-              run.get("path") != ".github/workflows/deploy-production.yml"
-              or run.get("head_sha") != commit
-              or run.get("head_branch") != tag
-              or run.get("event") not in {"push", "workflow_dispatch"}
-              or run.get("run_attempt") != int(attempt)
-          ):
-              raise SystemExit("deploy run does not bind the exact production workflow, tag, commit, and attempt")
-          jobs = jobs_document.get("jobs", [])
-          names = [job.get("name") for job in jobs]
-          if len(names) != len(set(names)):
-              raise SystemExit("deploy attempt contains duplicate job names")
-          conclusions = {job.get("name"): job.get("conclusion") for job in jobs}
-          for required in ("deploy-functions", "functions-health-gate"):
-              if conclusions.get(required) != "success":
-                  raise SystemExit(f"required deploy job {required} did not succeed")
-          if profile == "public-production-rollback":
-              if run.get("event") != "workflow_dispatch":
-                  raise SystemExit("rollback evidence requires a manual deployment run")
-              if conclusions.get("authorize-domain-core-rollback") != "success":
-                  raise SystemExit("rollback deployment lacks protected domain-core-promotion authorization")
-          elif profile != "public-production":
-              raise SystemExit("unexpected Functions domain-core profile")
-          PY
+          node scripts/ci/verify-domain-core-functions-deploy-run.mjs \
+            --run "$run_json" \
+            --jobs "$jobs_json" \
+            --tag "$release_tag" \
+            --commit "$GITHUB_SHA" \
+            --deploy-run-id "$DEPLOY_RUN_ID" \
+            --deploy-run-attempt "$DEPLOY_RUN_ATTEMPT" \
+            --profile "$DOMAIN_CORE_PROFILE" \
+            --output "$RUNNER_TEMP/functions-deploy-run-verification.json"
           {
             echo "RELEASE_TAG=$release_tag"
             echo "RELEASE_VERSION=${release_tag#v}"
@@ -204,6 +197,7 @@ jobs:
           node scripts/ci/create-domain-core-functions-deployment-evidence.mjs \
             --deploy-proof "$RUNNER_TEMP/functions-deploy-proof/domain-core-functions-deploy-proof.json" \
             --health-artifact "$RUNNER_TEMP/functions-deploy-health/deploy-health.json" \
+            --deploy-run-verification "$RUNNER_TEMP/functions-deploy-run-verification.json" \
             --output "$RUNNER_TEMP/functions-deployment-evidence.json"
 
       - name: Create candidate-bound v2 Functions receipt and predicate
@@ -310,6 +304,7 @@ jobs:
             ${{ steps.evidence.outputs.artifact }}
             ${{ steps.evidence.outputs.predicate }}
             ${{ runner.temp }}/${{ steps.evidence.outputs.bundle_asset }}
+            ${{ runner.temp }}/functions-deploy-run-verification.json
             ${{ runner.temp }}/functions-deploy-proof
             ${{ runner.temp }}/functions-deploy-health/deploy-health.json
           if-no-files-found: error

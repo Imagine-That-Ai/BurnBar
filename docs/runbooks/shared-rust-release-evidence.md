@@ -120,9 +120,14 @@ the Functions-specific consumer boundary:
 After that gate succeeds, the deploy workflow dispatches
 [`domain-core-functions-release-evidence.yml`](../../.github/workflows/domain-core-functions-release-evidence.yml)
 with the exact deploy run and attempt. The evidence workflow downloads only
-those uniquely named artifacts, recreates the deploy proof byte-for-byte,
-reverifies the protected promotion attestation, creates the v2 Functions
-deployment receipt and predicate, and emits an official GitHub attestation.
+those uniquely named artifacts, waits for that attempt to finish successfully,
+requires the exact normal or protected-rollback job matrix, recreates the deploy
+proof byte-for-byte, reverifies the protected promotion attestation, creates the
+v2 Functions deployment receipt and predicate, and emits an official GitHub
+attestation. The durable receipt retains the deploy workflow, run ID, attempt,
+event, tag ref, head commit, canonical job-set digest, and deploy-health artifact
+digest so the stable asset remains auditable after temporary Actions artifacts
+expire.
 
 Normal `public-production` evidence is published through the create-only v2
 release publisher after the exact stable GitHub release exists. A rollback does
