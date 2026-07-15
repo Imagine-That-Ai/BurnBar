@@ -163,6 +163,15 @@ source/checksum generator includes the canonical file, and the focused release
 suite is **36/36** with one root-toolchain skip. A replacement candidate must
 pass both architectures and the aggregate attestation before installation.
 
+Candidate `29432186379` then failed closed before signing. Its x86_64 shard
+exposed that archive preflight must accept the parent directories of the one
+allowed XDG autostart leaf, while its aarch64 shard hit an independent
+`ports.ubuntu.com` package-fetch outage during toolchain-image construction.
+The verifier now accepts only that exact leaf plus its parents and retains
+sibling/path-traversal rejection coverage; the focused release suite remains
+**36/36** with one root-toolchain skip. No artifact or receipt from this run is
+certifying; rerun from the new exact head.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:

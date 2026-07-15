@@ -95,8 +95,13 @@ export function assertSafeArchiveMemberNames(listing, {
       seen.add(normalized);
       continue;
     }
+    // Archive listings include parent directory entries before the allowed
+    // leaf. Accept only those parents (or descendants of the exact leaf),
+    // never a sibling under the same top-level directory.
     const isAllowedPath = allowedPaths.some((allowedPath) => (
-      allowedPath === stripped || allowedPath.startsWith(`${stripped}/`)
+      allowedPath === stripped
+      || allowedPath.startsWith(`${stripped}/`)
+      || stripped.startsWith(`${allowedPath}/`)
     ));
     if (segments[0] !== 'usr' && !isAllowedPath) {
       throw new Error(`native package archive member is outside /usr: ${raw}`);

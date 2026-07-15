@@ -78,6 +78,15 @@ percentage. The active remediation stack now contains these reviewable slices:
   slot through the AUR metadata generator. The focused release suite is
   **36/36** (one root-toolchain skip); a fresh exact-head candidate is still
   required.
+- **Release candidate `29432186379`:** the x86_64 shard reached package
+  preparation and correctly rejected the archive's `etc` parent directory
+  entries because the first allowlist repair accepted only the leaf; the
+  aarch64 shard independently failed earlier while Ubuntu could not fetch
+  toolchain packages from `ports.ubuntu.com`. The source fix now permits only
+  the exact autostart path and its required parent directories, with the
+  sibling/path-traversal rejection tests still green. This run produced no
+  candidate artifact and remains non-certifying; a fresh exact-head run is
+  required.
 
 - **Onboarding hardening:** `238ee56975` validates every daemon snapshot before
   renderer/cache mutation, preserves the last valid state on malformed or
