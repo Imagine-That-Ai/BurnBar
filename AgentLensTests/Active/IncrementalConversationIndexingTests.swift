@@ -149,7 +149,7 @@ final class IncrementalConversationIndexingTests: XCTestCase {
                 id: "Factory:checkpoint-change-1",
                 indexedAt: oldMtime,
                 fileModifiedAt: oldMtime // unchanged
-            ),
+            )
         ]
         let changedParser = StubParser(provider: .factory, conversations: changedConversations)
 

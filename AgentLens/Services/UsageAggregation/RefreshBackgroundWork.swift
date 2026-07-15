@@ -188,7 +188,12 @@ enum RefreshBackgroundWork {
                 // Fetch the PREVIOUS checkpoint watermark (from the last
                 // successful indexing pass). nil = first run or corrupted →
                 // process all (safe recovery, VAL-PERSIST-014).
-                let existingCheckpoint = try? await checkpointStore.fetchCheckpoint(for: provider)
+                let existingCheckpoint: ParserCheckpointRecord?
+                do {
+                    existingCheckpoint = try await checkpointStore.fetchCheckpoint(for: provider)
+                } catch {
+                    existingCheckpoint = nil // safe recovery — full reprocess (VAL-PERSIST-014)
+                }
                 let previousWatermark: Date? = existingCheckpoint?.lastProcessedAt
 
                 // Filter to changed/appended conversations and newly
@@ -202,9 +207,15 @@ enum RefreshBackgroundWork {
                 // the database — those are genuine new sessions that must be
                 // indexed regardless of file mtime.
                 let allConversations = parseResult.conversations
-                let existingIDs: Set<String> = (try? await dataStore.fetchExistingConversationIDs(
-                    ids: allConversations.map(\.id)
-                )) ?? []
+                let existingIDs: Set<String>
+                do {
+                    existingIDs = try await dataStore.fetchExistingConversationIDs(
+                        ids: allConversations.map(\.id)
+                    )
+                } catch {
+                    // If we can't check existence, process all — safe over-processing
+                    existingIDs = []
+                }
 
                 let changedConversations: [OpenBurnBarCore.ConversationRecord]
                 if let previousWatermark {
@@ -229,11 +240,15 @@ enum RefreshBackgroundWork {
                     // though no changed conversations were returned by the
                     // parser) are seen on the next tick.
                     let token = "idx:\(scanStartWatermark.timeIntervalSince1970)"
-                    try? await checkpointStore.advanceCheckpoint(
-                        for: provider,
-                        checkpointToken: token,
-                        lastProcessedFilePath: nil
-                    )
+                    do {
+                        try await checkpointStore.advanceCheckpoint(
+                            for: provider,
+                            checkpointToken: token,
+                            lastProcessedFilePath: nil
+                        )
+                    } catch {
+                        // Checkpoint write failed — next tick re-evaluates (safe)
+                    }
                     continue
                 }
 
@@ -268,11 +283,15 @@ enum RefreshBackgroundWork {
                 // (review finding 5). Harmless bounded reprocessing is
                 // preferable to loss.
                 let token = "idx:\(scanStartWatermark.timeIntervalSince1970)"
-                try? await checkpointStore.advanceCheckpoint(
-                    for: provider,
-                    checkpointToken: token,
-                    lastProcessedFilePath: nil
-                )
+                do {
+                    try await checkpointStore.advanceCheckpoint(
+                        for: provider,
+                        checkpointToken: token,
+                        lastProcessedFilePath: nil
+                    )
+                } catch {
+                    // Checkpoint write failed — next tick retries against old watermark (safe)
+                }
             } catch is CancellationError {
                 return result
             } catch {

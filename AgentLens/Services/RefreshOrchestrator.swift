@@ -70,7 +70,6 @@ actor RefreshOrchestrator {
         }
     }
 
-
     /// Throwing variant of `indexConversationsOffMain` that propagates
     /// indexing failures instead of swallowing them into `return 0`.
     ///
