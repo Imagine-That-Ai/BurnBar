@@ -34,7 +34,6 @@ import {
   resolveDomainCorePricingMode,
 } from "../domainCorePricing.js";
 import { isRecord } from "../guards.js";
-import type { DomainCoreBuildReceipt } from "../domainCoreBuildProfile.js";
 
 // Core-decomposition: catalog.json moved from the Core monolith's Resources into
 // OpenBurnBarKernel/Resources (git mv). Repointed after the train ← main merge.
@@ -53,7 +52,7 @@ type CatalogModel = {
 };
 type Catalog = { providers: { id: string; models: CatalogModel[] }[] };
 
-const LOADED_CORE_SOURCE_SHA256 = "f435ea8e6b615ced64059c1f8ceaa9629247200479dc668abdd42afa2b02f600";
+const LOADED_CORE_SOURCE_SHA256 = loadedDomainCorePricingIdentity().sourceSha256;
 
 // Mirrors BurnBarModelMatcher.matches in OpenBurnBarCatalog.swift.
 function matches(matcher: Matcher, normalized: string): boolean {
@@ -196,7 +195,7 @@ function loadPricingFixture(): PricingFixture {
 
 describe("shared domain-core pricing", () => {
   const fixture = loadPricingFixture();
-  const signedInternalReceipt = (): DomainCoreBuildReceipt => ({
+  const signedInternalReceipt = () => ({
     schemaVersion: 1,
     name: "internal",
     artifactAuthority: "signed",

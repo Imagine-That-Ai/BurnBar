@@ -8,7 +8,6 @@ import contextlib
 import hashlib
 import io
 import json
-import os
 import plistlib
 import platform
 import subprocess
@@ -102,7 +101,7 @@ def scan(
                     if isinstance(entity, dict) and entity.get("mount-point")
                 ]
                 if len(mount_points) != 1:
-                    raise ValueError("DMG scan requires exactly one mounted product volume")
+                    raise ValueError("DMG scan requires exactly one mounted product volume") from None
                 extracted_root = Path(mount_points[0])
                 stack.callback(
                     subprocess.run,
@@ -115,7 +114,9 @@ def scan(
                 subprocess.run(["tar", "--zstd", "-xf", str(artifact), "-C", str(temporary)], check=True)
                 extracted_root = temporary
             elif extracted_root is None:
-                raise ValueError("non-ZIP final artifacts require --extracted-root from the verified package/deploy step")
+                raise ValueError(
+                    "non-ZIP final artifacts require --extracted-root from the verified package/deploy step"
+                ) from None
         if extracted_root is not None:
             _scan_extracted_root(extracted_root, needles, members)
 

@@ -39,6 +39,10 @@ An enrolled Firebase account has exactly six domain-core custom claims:
 | `domainCoreShadowCoreAbiVersion`   | Expected positive uint32 ABI        |
 | `domainCoreShadowCoreSourceSha256` | Expected Rust source fingerprint    |
 
+The canonical consumer allowlist is `apple`, `windows`, `android`, `console`,
+`functions`, `local-mcp`, and `remote-mcp`. The enrollment helper rejects every
+other value and canonicalizes the stored list before claims are issued.
+
 Preview, apply, and independently verify the complete enrollment:
 
 ```bash

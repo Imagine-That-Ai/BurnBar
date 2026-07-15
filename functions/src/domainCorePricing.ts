@@ -68,7 +68,7 @@ let unavailableLogged = false;
 let domainCore: DomainCorePricingModule | undefined;
 let rustVersion = "unknown";
 let rustLegacyKimiModel = "";
-export interface LoadedDomainCoreIdentity {
+interface LoadedDomainCoreIdentity {
   version: string;
   abiVersion: number;
   sourceSha256: string;

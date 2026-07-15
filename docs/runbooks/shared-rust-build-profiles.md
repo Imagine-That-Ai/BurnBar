@@ -59,7 +59,8 @@ Windows configuration assembly.
 
 Evidence uploads require server-issued `domainCoreShadowChannel` and
 `domainCoreShadowConsumers` Firebase claims. The command is dry-run by default
-and preserves unrelated claims:
+and preserves unrelated claims. Supported consumers are `apple`, `windows`,
+`android`, `console`, `functions`, `local-mcp`, and `remote-mcp`:
 
 ```bash
 node scripts/ops/manage-domain-core-shadow-enrollment.mjs \

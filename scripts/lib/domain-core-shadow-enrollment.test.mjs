@@ -53,6 +53,17 @@ test("normalizes a candidate-bound enrollment and exact Rust identity", () => {
   );
 });
 
+test("normalizes every supported MCP evidence consumer", () => {
+  const expected = enrollment({
+    consumers: [" Remote-MCP ", "local-mcp", "remote-mcp"],
+  });
+
+  assert.deepEqual(expected.consumers, ["local-mcp", "remote-mcp"]);
+  const claims = mergeDomainCoreShadowClaims({ paid: true }, expected);
+  assert.deepEqual(readDomainCoreShadowEnrollmentClaims(claims), expected);
+  assert.equal(enrollmentMatches(claims, expected), true);
+});
+
 test("merge, read, and clear preserve unrelated custom claims", () => {
   const expected = enrollment({ channel: "beta", consumers: ["apple"] });
   const merged = mergeDomainCoreShadowClaims({ paid: true }, expected);
@@ -244,6 +255,8 @@ test("operator CLI help documents the full candidate-bound enrollment", () => {
   ]) {
     assert.match(result.stdout, new RegExp(option));
   }
+  assert.match(result.stdout, /local-mcp/);
+  assert.match(result.stdout, /remote-mcp/);
 });
 
 test("operator CLI rejects partial enrollment and ambiguous revocation before Firebase access", () => {

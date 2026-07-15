@@ -5,6 +5,8 @@ export const DOMAIN_CORE_SHADOW_CONSUMERS = new Set([
   "android",
   "console",
   "functions",
+  "local-mcp",
+  "remote-mcp",
 ]);
 
 export const DOMAIN_CORE_SHADOW_CLAIMS = Object.freeze({

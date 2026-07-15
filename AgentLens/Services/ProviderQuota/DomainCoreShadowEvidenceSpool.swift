@@ -28,13 +28,15 @@ struct DomainCoreEvidenceLoadedIdentity: Codable, Equatable, Sendable {
 
     static func current() -> Self? {
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard let abiVersion = try? SafeQuotaFFI.domainCoreAbiVersion(),
-              let coreVersion = try? SafeQuotaFFI.domainCoreVersion() else { return nil }
-        return Self(
-            coreVersion: coreVersion,
-            abiVersion: abiVersion,
-            sourceSha256: OpenBurnBarDomainCoreFFI.domainCoreSourceFingerprint()
-        )
+        do {
+            return Self(
+                coreVersion: try SafeQuotaFFI.domainCoreVersion(),
+                abiVersion: try SafeQuotaFFI.domainCoreAbiVersion(),
+                sourceSha256: OpenBurnBarDomainCoreFFI.domainCoreSourceFingerprint()
+            )
+        } catch {
+            return nil
+        }
         #else
         return nil
         #endif
@@ -43,7 +45,7 @@ struct DomainCoreEvidenceLoadedIdentity: Codable, Equatable, Sendable {
 
 struct DomainCoreShadowSampleV3: Codable, Equatable, Sendable {
     static let schemaVersion = 3
-    static let storedKeys = Set(CodingKeys.allCases.map(\.stringValue))
+    static let storedKeys = Set(CodingKeys.allCases.map(\.rawValue))
     static let allowedOperations: [String: [String: Set<String>]] = [
         "quota": [
             "claude": ["claude_quota"], "codex": ["codex_quota"],
@@ -79,7 +81,11 @@ struct DomainCoreShadowSampleV3: Codable, Equatable, Sendable {
                 "cloudvault_escrow_split_wire", "cloudvault_escrow_seal", "cloudvault_escrow_open"
             ],
             "document-rewrap": ["document_rewrap"],
-            "search": ["token", "index", "query", "semantic"]
+            "search": ["token", "index", "query", "semantic"],
+            "pensieve-vectors": [
+                "pensieve_l2_normalize", "pensieve_vector_cloak",
+                "pensieve_deterministic_embed", "pensieve_deterministic_embed_and_cloak"
+            ]
         ],
         "hermes": [
             "aad": ["aad"],
@@ -331,9 +337,13 @@ struct DomainCoreShadowSampleV3: Codable, Equatable, Sendable {
 
     private static func matches(_ value: String, pattern: String) -> Bool {
         let range = NSRange(value.startIndex..<value.endIndex, in: value)
-        guard let expression = try? NSRegularExpression(pattern: pattern),
-              let match = expression.firstMatch(in: value, range: range) else { return false }
-        return match.range == range
+        do {
+            guard let match = try NSRegularExpression(pattern: pattern)
+                .firstMatch(in: value, range: range) else { return false }
+            return match.range == range
+        } catch {
+            return false
+        }
     }
 
     private static func isAcceptedTimestamp(_ value: String, now: Date) -> Bool {
@@ -361,13 +371,15 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
     private let maxFileBytes: Int
     private let maxReadyFiles: Int
     private let maxSamplesPerFile: Int
+    private let readyBatchReader: @Sendable (URL) throws -> Data
     private let fileAccess = OSAllocatedUnfairLock(initialState: ())
 
     init(
         directory: URL,
         maxFileBytes: Int = 256 * 1_024,
         maxReadyFiles: Int = 8,
-        maxSamplesPerFile: Int = 100
+        maxSamplesPerFile: Int = 100,
+        readyBatchReader: @escaping @Sendable (URL) throws -> Data = { try Data(contentsOf: $0) }
     ) throws {
         precondition(maxFileBytes > 0 && maxReadyFiles > 0 && maxSamplesPerFile > 0)
         self.directory = directory
@@ -375,6 +387,7 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
         self.maxFileBytes = maxFileBytes
         self.maxReadyFiles = maxReadyFiles
         self.maxSamplesPerFile = maxSamplesPerFile
+        self.readyBatchReader = readyBatchReader
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
     }
@@ -425,24 +438,29 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
             while let url = try readyFilesLocked().first {
                 // A read failure can be transient. Keep the unacknowledged file for retry;
                 // only successfully-read bytes may be classified as corrupt and discarded.
-                let data = try Data(contentsOf: url)
+                let data = try readyBatchReader(url)
                 let lines = data.split(separator: 0x0A)
                 guard !lines.isEmpty, lines.count <= maxSamplesPerFile else {
                     try FileManager.default.removeItem(at: url)
                     continue
                 }
                 let decoder = JSONDecoder()
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
                 let samples = lines.compactMap { line -> DomainCoreShadowSampleV3? in
                     let lineData = Data(line)
-                    guard let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                          Set(object.keys) == DomainCoreShadowSampleV3.storedKeys,
-                          let sample = try? decoder.decode(DomainCoreShadowSampleV3.self, from: lineData),
-                          sample.isValidStored(
+                    do {
+                        let sample = try decoder.decode(DomainCoreShadowSampleV3.self, from: lineData)
+                        guard try encoder.encode(sample) == lineData,
+                              sample.isValidStored(
                               matchingChannel: matchingChannel,
                               matchingCandidate: matchingCandidate,
                               now: now
-                          ) else { return nil }
-                    return sample
+                              ) else { return nil }
+                        return sample
+                    } catch {
+                        return nil
+                    }
                 }
                 if samples.isEmpty {
                     try FileManager.default.removeItem(at: url)

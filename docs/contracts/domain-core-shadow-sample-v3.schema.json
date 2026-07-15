@@ -354,6 +354,35 @@
         },
         {
           "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "pensieve-vectors" },
+            "consumer": { "const": "apple" },
+            "operation": {
+              "enum": [
+                "pensieve_l2_normalize",
+                "pensieve_vector_cloak",
+                "pensieve_deterministic_embed",
+                "pensieve_deterministic_embed_and_cloak"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "pensieve-vectors" },
+            "consumer": { "enum": ["windows", "console", "remote-mcp"] },
+            "operation": {
+              "enum": [
+                "pensieve_vector_cloak",
+                "pensieve_deterministic_embed",
+                "pensieve_deterministic_embed_and_cloak"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
             "domain": { "const": "hermes" },
             "slice": { "const": "aad" },
             "consumer": { "enum": ["apple", "android"] },

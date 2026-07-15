@@ -1,22 +1,16 @@
 import { DOMAIN_CORE_CANDIDATE_RECEIPT } from "./generated/domainCoreCandidateReceipt.js";
 
-export type DomainCoreRuntimeMode = "legacy" | "shadow" | "rust";
-export type DomainCoreRuntimeDomain =
-  | "quota"
-  | "cloudVault"
-  | "cloudVaultRewrap"
-  | "cloudVaultSearch"
-  | "hermes"
-  | "pricing";
+type DomainCoreRuntimeMode = "legacy" | "shadow" | "rust";
+type DomainCoreRuntimeDomain = "quota" | "cloudVault" | "cloudVaultRewrap" | "cloudVaultSearch" | "hermes" | "pricing";
 
-export interface DomainCoreCandidateIdentity {
+interface DomainCoreCandidateIdentity {
   candidateCommit: string;
   coreVersion: string;
   abiVersion: number;
   sourceSha256: string;
 }
 
-export interface DomainCoreBuildReceipt {
+interface DomainCoreBuildReceipt {
   schemaVersion: number;
   name: string;
   artifactAuthority: string;
@@ -56,7 +50,7 @@ interface ResolvedDomainCoreProfile {
   evidenceChannel?: "internal" | "beta";
 }
 
-export interface DomainCoreDeploymentIdentity {
+interface DomainCoreDeploymentIdentity {
   profile: string;
   candidateIdentity: DomainCoreCandidateIdentity | null;
   pricingMode: DomainCoreRuntimeMode;

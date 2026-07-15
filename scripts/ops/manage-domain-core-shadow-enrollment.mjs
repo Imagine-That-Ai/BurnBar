@@ -22,6 +22,8 @@ const USAGE = `Usage:
 
   manage-domain-core-shadow-enrollment.mjs --uid UID [--project PROJECT] --clear [--apply]
 
+Consumers: apple, windows, android, console, functions, local-mcp, remote-mcp.
+
 The command is a dry run unless --apply is supplied. Enrollment binds uploads to
 one exact app commit and loaded Rust version/ABI/source tuple. --clear revokes all
 domain-core shadow claims even when an existing enrollment is partial or invalid.`;

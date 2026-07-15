@@ -46,6 +46,14 @@ def _vector() -> tuple[dict[str, object], dict[str, object]]:
     return vector, request
 
 
+def _shared_secret(vector: dict[str, object]) -> bytes:
+    chunks = vector["sharedSecretHexChunks"]
+    assert isinstance(chunks, list)
+    assert len(chunks) == 2
+    assert all(isinstance(chunk, str) and len(chunk) == 32 for chunk in chunks)
+    return bytes.fromhex("".join(chunks))
+
+
 def test_expected_identity_matches_canonical_manifest() -> None:
     manifest = json.loads(
         (REPO_ROOT / "crates" / "openburnbar-domain-core" / "union-abi-manifest.json").read_text()
@@ -59,7 +67,7 @@ def test_expected_identity_matches_canonical_manifest() -> None:
 
 def test_production_native_matches_frozen_prekey_vector_and_legacy() -> None:
     vector, request = _vector()
-    expected = bytes.fromhex(str(vector["sharedSecretHex"]))
+    expected = _shared_secret(vector)
     assert legacy.ratchet_prekey_shared_secret(**request) == expected
     assert HermesDomainAdapter("rust").ratchet_prekey_shared_secret(**request) == expected
 
@@ -73,9 +81,9 @@ def test_production_binding_ignores_another_consumers_global_module(
         "openburnbar_domain_ffi",
         SimpleNamespace(__file__="/untrusted/other-consumer/openburnbar_domain_ffi.py"),
     )
-    assert HermesDomainAdapter("rust").ratchet_prekey_shared_secret(**request) == bytes.fromhex(
-        str(vector["sharedSecretHex"])
-    )
+    assert HermesDomainAdapter("rust").ratchet_prekey_shared_secret(
+        **request
+    ) == _shared_secret(vector)
 
 
 def test_rust_mode_calls_one_composite_ffi_operation() -> None:
@@ -124,7 +132,7 @@ def test_shadow_returns_legacy_and_emits_only_safe_metadata() -> None:
         HermesRatchetPrekeyRequest=lambda **values: values,
         hermes_ratchet_prekey_shared_secret=lambda _value: b"mismatch",
     )
-    expected = bytes.fromhex(str(vector["sharedSecretHex"]))
+    expected = _shared_secret(vector)
     actual = HermesDomainAdapter("shadow", core=fake, diagnostic=diagnostics.append).ratchet_prekey_shared_secret(
         **request
     )
@@ -202,7 +210,7 @@ def test_legacy_mode_does_not_require_native_package(tmp_path: Path) -> None:
     vector, request = _vector()
     assert HermesDomainAdapter("legacy", package_dir=tmp_path / "missing").ratchet_prekey_shared_secret(
         **request
-    ) == bytes.fromhex(str(vector["sharedSecretHex"]))
+    ) == _shared_secret(vector)
 
 
 def test_external_plugin_copy_loads_without_burnbar_source_tree(tmp_path: Path) -> None:
@@ -239,4 +247,4 @@ print(HermesDomainAdapter("rust").ratchet_prekey_shared_secret(**request).hex())
         capture_output=True,
         text=True,
     )
-    assert completed.stdout.strip() == vector["sharedSecretHex"]
+    assert completed.stdout.strip() == _shared_secret(vector).hex()

@@ -12,6 +12,25 @@ final class PensieveVectorDomainCoreTests: XCTestCase {
         }
     }
 
+    func test_rustAuthority_l2NormalizationPreservesUnboundedAndNonFiniteLegacyInputs() {
+        withCloudVaultMode("rust") {
+            let dimensions = 4_097
+            let normalized = PensieveVectorCloak.l2normalize(
+                [Double](repeating: 1, count: dimensions)
+            )
+            let expected = 1 / Double(dimensions).squareRoot()
+            XCTAssertEqual(normalized.count, dimensions)
+            XCTAssertTrue(normalized.allSatisfy { $0 == expected })
+
+            let nanResult = PensieveVectorCloak.l2normalize([.nan, 1])
+            XCTAssertTrue(nanResult[0].isNaN)
+            XCTAssertEqual(nanResult[1], 1)
+
+            let infiniteResult = PensieveVectorCloak.l2normalize([.infinity])
+            XCTAssertTrue(infiniteResult[0].isNaN)
+        }
+    }
+
     func test_nonLegacySourcesDoNotCallDeletedL2Implementation() throws {
         let vectorKitSources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

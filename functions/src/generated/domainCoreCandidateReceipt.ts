@@ -1,5 +1,3 @@
-import type { DomainCoreBuildReceipt } from "../domainCoreBuildProfile.js";
-
 /**
  * Build-bundled domain-core authority. Signed pipelines replace the compiled
  * counterpart before artifact verification; source builds default to development.
@@ -20,4 +18,4 @@ export const DOMAIN_CORE_CANDIDATE_RECEIPT = Object.freeze({
     hermes: "legacy",
     pricing: "legacy",
   }),
-}) satisfies DomainCoreBuildReceipt;
+});

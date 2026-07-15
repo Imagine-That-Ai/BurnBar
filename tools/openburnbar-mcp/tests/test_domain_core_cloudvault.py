@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import importlib
 import json
 import shutil
 import sys
@@ -14,8 +15,10 @@ REPO_ROOT = MCP_DIR.parents[1]
 if str(MCP_DIR) not in sys.path:
     sys.path.insert(0, str(MCP_DIR))
 
-import cloudvault_primitives_legacy as legacy
-from domain_core_cloudvault import CloudVaultDomainAdapter, DomainCoreIdentityError
+legacy = importlib.import_module("cloudvault_primitives_legacy")
+domain_core_cloudvault = importlib.import_module("domain_core_cloudvault")
+CloudVaultDomainAdapter = domain_core_cloudvault.CloudVaultDomainAdapter
+DomainCoreIdentityError = domain_core_cloudvault.DomainCoreIdentityError
 
 PACKAGE_DIR = MCP_DIR / "vendor" / "openburnbar-domain-core-python"
 FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures" / "domain-core" / "cloudvault" / "v1"
@@ -122,9 +125,10 @@ def test_sealed_text_and_blob_cross_open_canonical_aes_fixture() -> None:
     sealed = adapter.seal_blob(plaintext, key, key_version=7, aad_context=aad)
     assert sealed["keyVersion"] == 7
     assert adapter.open_blob(sealed, key, aad) == plaintext
+    cloudvault_error = adapter._core().CloudVaultFfiError
 
     wrong_key = bytes([key[0] ^ 1]) + key[1:]
-    with pytest.raises(Exception):
+    with pytest.raises(cloudvault_error):
         adapter.open_blob(sealed, wrong_key, aad)
     with pytest.raises(ValueError, match="AAD context mismatch"):
         adapter.open_blob(sealed, key, aad.replace("|body|", "|title|"))
@@ -132,7 +136,7 @@ def test_sealed_text_and_blob_cross_open_canonical_aes_fixture() -> None:
     combined = bytearray(base64.b64decode(tampered["sealedBoxBase64"]))
     combined[-1] ^= 1
     tampered["sealedBoxBase64"] = base64.b64encode(combined).decode()
-    with pytest.raises(Exception):
+    with pytest.raises(cloudvault_error):
         adapter.open_blob(tampered, key, aad)
 
 
@@ -145,8 +149,9 @@ def test_rust_mode_fails_closed_without_invoking_legacy(monkeypatch: pytest.Monk
         raise AssertionError("legacy must not run")
 
     monkeypatch.setattr(legacy, "_cloud_vault_project_memory_doc_id", forbidden)
-    with pytest.raises(Exception):
-        _rust().project_memory_doc_id("slug", b"short")
+    adapter = _rust()
+    with pytest.raises(adapter._core().CloudVaultFfiError):
+        adapter.project_memory_doc_id("slug", b"short")
     assert called is False
 
 

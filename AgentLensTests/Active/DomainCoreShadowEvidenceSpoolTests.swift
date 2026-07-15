@@ -212,7 +212,51 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         }
     }
 
-    func testGenericCollectorRejectsInvalidCoverageOutcomeAndTiming() {
+    func testPensieveVectorOperationsBuildAndSpoolValidatedV3Samples() throws {
+        let operations = [
+            "pensieve_l2_normalize",
+            "pensieve_vector_cloak",
+            "pensieve_deterministic_embed",
+            "pensieve_deterministic_embed_and_cloak"
+        ]
+        let candidate = try XCTUnwrap(signedCandidate())
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+
+        for operation in operations {
+            let sample = try XCTUnwrap(DomainCoreShadowSampleV3(
+                comparison: .init(
+                    domain: "cloudvault",
+                    slice: "pensieve-vectors",
+                    operation: operation,
+                    coreVersion: "0.3.0",
+                    outcome: "match",
+                    mismatchCategory: nil,
+                    legacyMicros: 10,
+                    rustMicros: 8
+                ),
+                channel: "internal",
+                candidate: candidate,
+                loadedIdentity: loadedIdentity
+            ))
+            XCTAssertTrue(sample.isValidStored(
+                matchingChannel: "internal",
+                matchingCandidate: candidate,
+                now: Date()
+            ))
+            try spool.append(sample)
+        }
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            matchingChannel: "internal",
+            matchingCandidate: candidate
+        ))
+        XCTAssertEqual(batch.samples.map(\.operation), operations)
+    }
+
+    func testGenericCollectorRejectsInvalidCoverageOutcomeAndTiming() throws {
+        let candidate = try XCTUnwrap(signedCandidate())
         let valid = DomainCoreShadowComparison(
             domain: "cloudvault",
             slice: "search",
@@ -224,48 +268,65 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             rustMicros: 8
         )
 
-        XCTAssertNil(DomainCoreShadowSampleV2(comparison: valid, channel: "production"))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
+            comparison: valid,
+            channel: "production",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
+        ))
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "unknown", operation: "query", coreVersion: "0.3.0",
                 outcome: "match", mismatchCategory: nil, legacyMicros: 10, rustMicros: 8
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "search", operation: "", coreVersion: "0.3.0",
                 outcome: "match", mismatchCategory: nil, legacyMicros: 10, rustMicros: 8
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
                 outcome: "match", mismatchCategory: "result_mismatch", legacyMicros: 10, rustMicros: 8
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
                 outcome: "mismatch", mismatchCategory: nil, legacyMicros: 10, rustMicros: 8
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
                 outcome: "match", mismatchCategory: nil, legacyMicros: 600_000_001, rustMicros: 8
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
-        XCTAssertNil(DomainCoreShadowSampleV2(
+        XCTAssertNil(DomainCoreShadowSampleV3(
             comparison: .init(
                 domain: "cloudvault", slice: "search", operation: "query", coreVersion: "0.3.0",
                 outcome: "match", mismatchCategory: nil, legacyMicros: 10, rustMicros: 600_000_001
             ),
-            channel: "internal"
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
         ))
     }
 
@@ -527,17 +588,19 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
     func testReadyBatchReadFailurePreservesEvidenceForRetry() throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let seedSpool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try seedSpool.append(try XCTUnwrap(makeSample(micros: 42)))
+        let failingSpool = try DomainCoreShadowEvidenceSpool(
+            directory: directory,
+            readyBatchReader: { _ in throw CocoaError(.fileReadUnknown) }
+        )
         let url = readyURL(in: directory, ordinal: 0)
-        try encodedLine(try XCTUnwrap(makeSample(micros: 42))).write(to: url)
-        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
-        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path) }
 
-        XCTAssertThrowsError(try spool.nextBatch(sealActive: false))
+        XCTAssertThrowsError(try failingSpool.nextBatch())
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
 
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-        let batch = try XCTUnwrap(spool.nextBatch(sealActive: false))
+        let retrySpool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let batch = try XCTUnwrap(retrySpool.nextBatch(sealActive: false))
         XCTAssertEqual(batch.samples.single?.legacyMicros, 42)
     }
 

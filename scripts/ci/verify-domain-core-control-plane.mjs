@@ -208,14 +208,24 @@ export function discoverDomainCoreControlPlane(root = SCRIPT_ROOT) {
 
 export function createDomainCoreControlPlaneManifest(root = SCRIPT_ROOT) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     files: Object.fromEntries(
       discoverDomainCoreControlPlane(root).map((path) => [
         path,
-        sha256(root, path),
+        sha256(root, path).match(/.{1,16}/gu),
       ]),
     ),
   };
+}
+
+function serializeDomainCoreControlPlaneManifest(manifest) {
+  const files = Object.entries(manifest.files)
+    .map(
+      ([path, chunks]) =>
+        `    ${JSON.stringify(path)}: ${JSON.stringify(chunks)}`,
+    )
+    .join(",\n");
+  return `{\n  "schemaVersion": ${manifest.schemaVersion},\n  "files": {\n${files}\n  }\n}\n`;
 }
 
 export function verifyDomainCoreControlPlane({
@@ -224,15 +234,28 @@ export function verifyDomainCoreControlPlane({
   manifest,
 }) {
   if (
-    manifest?.schemaVersion !== 1 ||
+    manifest?.schemaVersion !== 2 ||
     !manifest.files ||
     typeof manifest.files !== "object" ||
     Array.isArray(manifest.files)
   ) {
-    fail("control-plane manifest must be schemaVersion 1 with a files object");
+    fail("control-plane manifest must be schemaVersion 2 with a files object");
+  }
+  const manifestEntries = new Map();
+  for (const [path, chunks] of Object.entries(manifest.files)) {
+    if (
+      !Array.isArray(chunks) ||
+      chunks.length !== 4 ||
+      chunks.some(
+        (chunk) => typeof chunk !== "string" || !/^[0-9a-f]{16}$/u.test(chunk),
+      )
+    ) {
+      fail("control-plane manifest contains an invalid file digest");
+    }
+    manifestEntries.set(path, chunks.join(""));
   }
   const expectedPaths = discoverDomainCoreControlPlane(trustedRoot);
-  const manifestPaths = Object.keys(manifest.files).sort();
+  const manifestPaths = [...manifestEntries.keys()].sort();
   if (JSON.stringify(manifestPaths) !== JSON.stringify(expectedPaths)) {
     fail(
       "control-plane manifest paths do not exactly cover trusted workflow executables and imports",
@@ -242,14 +265,14 @@ export function verifyDomainCoreControlPlane({
     regularRepoFile(trustedRoot, path, "trusted control-plane file");
     regularRepoFile(candidateRoot, path, "candidate control-plane file");
     const trustedDigest = sha256(trustedRoot, path);
-    if (manifest.files[path] !== trustedDigest) {
+    if (manifestEntries.get(path) !== trustedDigest) {
       fail(`trusted control-plane digest does not match manifest: ${path}`);
     }
     if (sha256(candidateRoot, path) !== trustedDigest) {
       fail(`candidate control-plane file differs from trusted main: ${path}`);
     }
   }
-  return { schemaVersion: 1, verifiedFileCount: expectedPaths.length };
+  return { schemaVersion: 2, verifiedFileCount: expectedPaths.length };
 }
 
 function argument(argv, flag, fallback) {
@@ -269,7 +292,9 @@ export function run(argv) {
   if (argv.includes("--write")) {
     writeFileSync(
       manifestPath,
-      `${JSON.stringify(createDomainCoreControlPlaneManifest(trustedRoot), null, 2)}\n`,
+      serializeDomainCoreControlPlaneManifest(
+        createDomainCoreControlPlaneManifest(trustedRoot),
+      ),
     );
     return;
   }

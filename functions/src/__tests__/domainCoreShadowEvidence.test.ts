@@ -5,10 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   DOMAIN_CORE_SHADOW_OPERATION_SLICES,
-  DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE,
   DOMAIN_CORE_SHADOW_RETENTION_MS,
-  type DomainCoreShadowSampleV3,
   buildDomainCoreShadowSampleV3,
+  domainCoreShadowOperationConsumers,
   enforceDomainCoreShadowChannelClaim,
   parseDomainCoreShadowSampleRequest,
   persistDomainCoreShadowSamples,
@@ -21,6 +20,7 @@ type DomainCoreShadowStore = Parameters<typeof persistDomainCoreShadowSamples>[0
 type DomainCoreShadowSample = ReturnType<typeof parseDomainCoreShadowSampleRequest>[number];
 type DomainCoreShadowSampleV1 = Extract<DomainCoreShadowSample, { schemaVersion: 1 }>;
 type DomainCoreShadowSampleV2 = Extract<DomainCoreShadowSample, { schemaVersion: 2 }>;
+type DomainCoreShadowSampleV3 = ReturnType<typeof buildDomainCoreShadowSampleV3>;
 
 const NOW = Date.parse("2026-07-13T12:00:00.000Z");
 const CANDIDATE_COMMIT = "a".repeat(40);
@@ -215,7 +215,7 @@ describe("domain-core shadow evidence contract", () => {
     const serverContracts = new Set(
       Object.entries(DOMAIN_CORE_SHADOW_OPERATION_SLICES).flatMap(([domain, operationSlices]) =>
         Object.entries(operationSlices).flatMap(([operation, slice]) =>
-          (DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE[domain]?.[slice] ?? []).map(
+          domainCoreShadowOperationConsumers(domain, slice, operation).map(
             (consumer) => `${domain}/${slice}/${consumer}/${operation}`,
           ),
         ),

@@ -4,7 +4,6 @@ import {
   resolveDomainCoreCandidateIdentity,
   resolveDomainCoreEvidenceChannel,
   resolveDomainCoreRuntimeMode,
-  type DomainCoreBuildReceipt,
 } from "../domainCoreBuildProfile.js";
 import { DOMAIN_CORE_CANDIDATE_RECEIPT } from "../generated/domainCoreCandidateReceipt.js";
 
@@ -24,7 +23,7 @@ function candidateIdentity() {
 function signedReceipt(
   name: "public-production" | "public-production-rollback" | "internal" | "beta",
   mode: "legacy" | "shadow" | "rust",
-): DomainCoreBuildReceipt {
+) {
   return {
     schemaVersion: 1,
     name,
@@ -37,7 +36,7 @@ function signedReceipt(
   };
 }
 
-function developerReceipt(): DomainCoreBuildReceipt {
+function developerReceipt() {
   return {
     schemaVersion: 1,
     name: "developer",

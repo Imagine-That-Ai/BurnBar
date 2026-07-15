@@ -455,6 +455,7 @@ jobs:
           materials="$RUNNER_TEMP/domain-core-release-materials"
           stage="$RUNNER_TEMP/domain-core-functions-deploy-proof"
           mkdir -p "$stage"
+          cp -a functions/lib "$stage/functions-lib"
           node scripts/ci/create-domain-core-functions-deploy-proof.mjs \
             --profile "${{ steps.domain-core-profile.outputs.profile_path }}" \
             --compiled-receipt functions/lib/generated/domainCoreCandidateReceipt.js \

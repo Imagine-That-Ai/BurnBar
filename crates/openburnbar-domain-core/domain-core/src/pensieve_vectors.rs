@@ -28,14 +28,13 @@ pub fn l2_normalize(vector: &[f64]) -> Result<Vec<f64>, PensieveVectorError> {
     if vector.is_empty() {
         return Ok(Vec::new());
     }
-    validate_vector(vector)?;
 
     let norm = vector
         .iter()
         .map(|coordinate| coordinate * coordinate)
         .sum::<f64>()
         .sqrt();
-    if norm == 0.0 {
+    if norm <= 0.0 || norm.is_nan() {
         return Ok(vector.to_vec());
     }
 
@@ -239,15 +238,22 @@ mod tests {
     }
 
     #[test]
-    fn l2_normalize_rejects_unbounded_or_non_finite_vectors() {
-        assert_eq!(
-            l2_normalize(&[f64::NAN]),
-            Err(PensieveVectorError::InvalidVector)
-        );
-        assert_eq!(
-            l2_normalize(&vec![1.0; MAX_VECTOR_DIMENSIONS + 1]),
-            Err(PensieveVectorError::InvalidVector)
-        );
+    fn l2_normalize_preserves_the_legacy_unbounded_and_non_finite_contract(
+    ) -> Result<(), PensieveVectorError> {
+        let dimensions = MAX_VECTOR_DIMENSIONS + 1;
+        let normalized = l2_normalize(&vec![1.0; dimensions])?;
+        let expected = 1.0 / (dimensions as f64).sqrt();
+        assert_eq!(normalized.len(), dimensions);
+        assert!(normalized.iter().all(|coordinate| *coordinate == expected));
+
+        let nan_input = [f64::NAN, 1.0];
+        let nan_result = l2_normalize(&nan_input)?;
+        assert!(nan_result[0].is_nan());
+        assert_eq!(nan_result[1], 1.0);
+
+        let infinite_result = l2_normalize(&[f64::INFINITY])?;
+        assert!(infinite_result[0].is_nan());
+        Ok(())
     }
 
     #[test]

@@ -570,7 +570,7 @@ class SignedEvidenceVerifier:
                     os.link(temporary, destination)
                 except FileExistsError:
                     if sha256_path(destination) != expected_sha256:
-                        raise GateError(f"{label}: cache collision for immutable artifact")
+                        raise GateError(f"{label}: cache collision for immutable artifact") from None
                 finally:
                     temporary.unlink(missing_ok=True)
         except (OSError, ValueError) as error:
@@ -2694,12 +2694,6 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
     new_roots = set(current_roots) - set(base_roots)
     if new_roots != (added_target_roots - set(base_roots)):
         raise GateError("new source roots must be introduced exactly by newly added targets")
-
-
-def canonical_json_sha256(value: Any) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
-    return hashlib.sha256(encoded).hexdigest()
-
 
 def source_fingerprint(repo_root: Path) -> str:
     relative = "crates/openburnbar-domain-core/union-abi-manifest.json"

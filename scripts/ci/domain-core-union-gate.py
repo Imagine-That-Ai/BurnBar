@@ -111,7 +111,7 @@ def source_files(crate_root: pathlib.Path, manifest: dict[str, object]) -> list[
                         raise GateError(f"source root traverses a symlink: {raw_path}")
             mode = candidate.lstat().st_mode
         except FileNotFoundError:
-            raise GateError(f"source root is missing: {raw_path}")
+            raise GateError(f"source root is missing: {raw_path}") from None
         if stat.S_ISLNK(mode):
             raise GateError(f"source root cannot be a symlink: {raw_path}")
         if stat.S_ISREG(mode):

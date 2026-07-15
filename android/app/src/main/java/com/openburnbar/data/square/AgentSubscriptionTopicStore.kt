@@ -363,10 +363,11 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
          * `HKDF<SHA256>(vaultKey, salt = ∅, info = "subscription-topic") →
          * HMAC<SHA256>("agentURI:topicID")`, then `"sub_"` + first 16 bytes as hex.
          */
-        fun documentID(agentURI: String, topicID: String, vaultKey: ByteArray): String =
-            CloudVaultDomainCore.subscriptionDocId(agentURI, topicID, vaultKey) {
+        fun documentID(agentURI: String, topicID: String, vaultKey: ByteArray): String {
+            return CloudVaultDomainCore.subscriptionDocId(agentURI, topicID, vaultKey) {
                 AgentSubscriptionTopicDocumentIDLegacy.documentID(agentURI, topicID, vaultKey)
             }
+        }
 
         fun legacyCleartextDocumentIDs(agentURI: String, topicID: String): Set<String> {
             val raw = "$agentURI:$topicID"

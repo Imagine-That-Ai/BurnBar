@@ -2,7 +2,16 @@ import { randomUUID } from "node:crypto";
 import { HttpsError } from "firebase-functions/v2/https";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 
+import {
+  DOMAIN_CORE_SHADOW_OPERATION_SLICES,
+  domainCoreShadowOperationConsumers,
+} from "./domainCoreShadowContracts.js";
 import { isRecord } from "./guards.js";
+
+export {
+  DOMAIN_CORE_SHADOW_OPERATION_SLICES,
+  domainCoreShadowOperationConsumers,
+} from "./domainCoreShadowContracts.js";
 
 const DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION = 3;
 const DOMAIN_CORE_SHADOW_SAMPLE_DRAIN_SCHEMA_VERSION = 2;
@@ -12,7 +21,15 @@ export const DOMAIN_CORE_SHADOW_RETENTION_MS = 60 * 24 * 60 * 60 * 1000;
 const DOMAIN_CORE_SHADOW_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1000;
 const DOMAIN_CORE_SHADOW_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const DOMAIN_CORE_SHADOW_COLLECTION = "domain_core_shadow_samples";
-const DOMAIN_CORE_SHADOW_CLAIM_CONSUMERS = new Set(["apple", "windows", "android", "console", "functions"]);
+const DOMAIN_CORE_SHADOW_CLAIM_CONSUMERS = new Set([
+  "apple",
+  "windows",
+  "android",
+  "console",
+  "functions",
+  "local-mcp",
+  "remote-mcp",
+]);
 
 const SAMPLE_V1_KEYS =
   "channel consumer coreVersion domain legacyMicros mismatchCategory observedAt operation outcome rustMicros sampleId schemaVersion".split(
@@ -24,71 +41,6 @@ const SAMPLE_V3_KEYS =
     " ",
   );
 const REQUEST_KEYS = ["samples"] as const;
-function operationSlices(groups: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
-  return Object.fromEntries(
-    Object.entries(groups).flatMap(([slice, operations]) =>
-      operations.split(" ").map((operation) => [operation, slice] as const),
-    ),
-  );
-}
-
-export const DOMAIN_CORE_SHADOW_OPERATION_SLICES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  quota: operationSlices({
-    claude: "claude_quota",
-    codex: "codex_quota",
-    cursor: "cursor_quota",
-    anthropic: "anthropic_quota",
-  }),
-  cloudvault: operationSlices({
-    foundation:
-      "aad_v1 aad_v2 resolve_aad sha256 sha256_hex vault_key_id blob_integrity session_body session_chunk project_memory_content blob_integrity_hash session_body_hash session_chunk_hash project_memory_content_hash keyed_hash_blob_integrity expected_session_body_hash expected_session_body_hash_v0 expected_session_body_hash_v1 expected_session_body_hash_v2 base64_encode base64_decode base64_decode_strict p256_validate_public_key initialize cloudvault_aad_v1 cloudvault_aad_v2 cloudvault_resolve_aad cloudvault_sha256 cloudvault_key_id cloudvault_keyed_hash cloudvault_base64_encode cloudvault_base64_decode cloudvault_validate_p256_public_key",
-    aes: "aes_gcm_seal_detached aes_gcm_seal_combined aes_gcm_open_detached aes_gcm_open_text_detached aes_gcm_open_combined aes_seal_detached aes_seal_combined aes_open_detached aes_open_text aes_open_combined cloudvault_aes_seal_detached cloudvault_aes_seal_combined cloudvault_aes_open_detached cloudvault_aes_open_text cloudvault_aes_open_combined",
-    recovery:
-      "recovery_normalize recovery_wrapping_key recovery_verification_hash recovery_wrap_vault_key recovery_open_vault_key cloudvault_recovery_wrapping_key cloudvault_recovery_verification_hash cloudvault_recovery_wrap_vault_key cloudvault_recovery_open_vault_key",
-    escrow:
-      "escrow_wrapping_key escrow_assemble_wire escrow_split_wire escrow_seal escrow_open cloudvault_escrow_split_wire cloudvault_escrow_seal cloudvault_escrow_open",
-    "document-rewrap": "document_rewrap",
-    search: "token index query semantic",
-  }),
-  hermes: operationSlices({
-    aad: "aad",
-    "payload-keywrap": "key_wrap_info_v1 key_wrap_info_v2 seal open safety_code hkdf",
-    "hpke-info": "hpke_v3_info",
-    ratchet: "ratchet_aad ratchet_root_kdf ratchet_chain_kdf ratchet_message_kdf ratchet_seal ratchet_open",
-  }),
-  pricing: operationSlices({
-    "token-cost": "calculate_token_cost",
-    "legacy-kimi": "price_legacy_kimi",
-  }),
-};
-export const DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE: Readonly<
-  Record<string, Readonly<Record<string, readonly string[]>>>
-> = {
-  quota: {
-    claude: ["apple", "windows"],
-    codex: ["apple", "windows"],
-    cursor: ["apple", "windows"],
-    anthropic: ["apple", "windows"],
-  },
-  cloudvault: {
-    foundation: ["apple", "android", "windows", "console"],
-    aes: ["apple", "android", "windows", "console"],
-    recovery: ["apple", "android", "windows"],
-    escrow: ["apple", "android", "windows", "console"],
-    "document-rewrap": ["apple", "android"],
-    search: ["apple", "android"],
-  },
-  hermes: {
-    aad: ["apple", "android"],
-    "payload-keywrap": ["apple", "android"],
-    "hpke-info": ["apple", "android"],
-    ratchet: ["apple", "android"],
-  },
-  pricing: {
-    "token-cost": ["apple", "functions"],
-    "legacy-kimi": ["functions"],
-  },
-};
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const CORE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const CANONICAL_CORE_VERSION =
@@ -98,7 +50,14 @@ const SHA256 = /^[0-9a-f]{64}$/u;
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 
 type DomainCoreShadowConsumer = "apple" | "windows";
-type DomainCoreShadowConsumerV2 = "apple" | "android" | "windows" | "console" | "functions";
+type DomainCoreShadowConsumerV2 =
+  | "apple"
+  | "android"
+  | "windows"
+  | "console"
+  | "functions"
+  | "local-mcp"
+  | "remote-mcp";
 type DomainCoreShadowChannel = "internal" | "beta";
 type DomainCoreShadowOperation = "claude_quota" | "codex_quota" | "cursor_quota" | "anthropic_quota";
 type DomainCoreShadowOutcome = "match" | "mismatch";
@@ -146,7 +105,7 @@ interface DomainCoreShadowSampleV2 extends DomainCoreShadowSampleCommon {
   mismatchCategory: DomainCoreShadowMismatchCategory | null;
 }
 
-export interface DomainCoreShadowSampleV3 extends DomainCoreShadowSampleCommon {
+interface DomainCoreShadowSampleV3 extends DomainCoreShadowSampleCommon {
   schemaVersion: 3;
   domain: DomainCoreShadowSampleV2["domain"];
   slice: string;
@@ -164,7 +123,7 @@ export interface DomainCoreShadowSampleV3 extends DomainCoreShadowSampleCommon {
 
 type DomainCoreShadowSample = DomainCoreShadowSampleV1 | DomainCoreShadowSampleV2 | DomainCoreShadowSampleV3;
 
-export type DomainCoreShadowComparisonV3 = Omit<DomainCoreShadowSampleV3, "schemaVersion" | "sampleId" | "observedAt">;
+type DomainCoreShadowComparisonV3 = Omit<DomainCoreShadowSampleV3, "schemaVersion" | "sampleId" | "observedAt">;
 
 function exactKeys(record: Record<string, unknown>, expected: readonly string[], label: string): void {
   const actual = Object.keys(record).sort();
@@ -355,7 +314,7 @@ function parseCoveredIdentity(
     typeof raw.slice !== "string" ||
     !isV2Consumer(raw.consumer) ||
     typeof raw.operation !== "string" ||
-    DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE[raw.domain]?.[raw.slice]?.includes(raw.consumer) !== true
+    !domainCoreShadowOperationConsumers(raw.domain, raw.slice, raw.operation as string).includes(raw.consumer)
   ) {
     throw new HttpsError("invalid-argument", `samples[${index}] has an invalid domain, slice, or consumer.`);
   }

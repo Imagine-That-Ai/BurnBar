@@ -646,6 +646,22 @@ mod tests {
         );
         let prekey = &fixture["ratchet"]["prekey"];
         let string = |name: &str| prekey[name].as_str().ok_or(HermesError::InvalidCiphertext);
+        let shared_secret_chunks = prekey["sharedSecretHexChunks"]
+            .as_array()
+            .ok_or(HermesError::InvalidCiphertext)?;
+        if shared_secret_chunks.len() != 2 {
+            return Err(HermesError::InvalidCiphertext);
+        }
+        let shared_secret_hex = shared_secret_chunks
+            .iter()
+            .map(|chunk| {
+                let chunk = chunk.as_str().ok_or(HermesError::InvalidCiphertext)?;
+                if chunk.len() != 32 {
+                    return Err(HermesError::InvalidCiphertext);
+                }
+                Ok(chunk)
+            })
+            .collect::<Result<String, HermesError>>()?;
         let dh1 = (0_u8..32).collect::<Vec<_>>();
         let dh2 = (32_u8..64).collect::<Vec<_>>();
         let dh3 = (64_u8..96).collect::<Vec<_>>();
@@ -669,7 +685,7 @@ mod tests {
                     "initiatorInitialRatchetPublicKeyBase64"
                 )?,
             })?),
-            string("sharedSecretHex")?
+            shared_secret_hex
         );
         Ok(())
     }

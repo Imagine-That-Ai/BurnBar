@@ -51,6 +51,21 @@ test("control-plane manifest exhaustively covers workflow executables and local 
   );
 });
 
+test("control-plane manifest rejects malformed digests", () => {
+  const malformed = structuredClone(MANIFEST);
+  const [path] = Object.keys(malformed.files);
+  malformed.files[path] = ["not-a-digest"];
+  assert.throws(
+    () =>
+      verifyDomainCoreControlPlane({
+        trustedRoot: ROOT,
+        candidateRoot: ROOT,
+        manifest: malformed,
+      }),
+    /invalid file digest/u,
+  );
+});
+
 test("dynamic Python helpers executed by a trusted preflight are trusted bytes", (context) => {
   for (const path of [
     "scripts/ci/write_burnbar_source_provenance.py",
@@ -144,7 +159,7 @@ test("every loaded-identity observer, harness, binding, and union contract are t
     "crates/openburnbar-domain-core/union-abi-manifest.json",
   ];
   for (const path of observerPaths)
-    assert.equal(typeof MANIFEST.files[path], "string", path);
+    assert.equal(MANIFEST.files[path]?.length, 4, path);
 
   const candidateRoot = candidateCopy(context);
   writeFileSync(

@@ -9,9 +9,10 @@ import os
 import platform
 import re
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 import cloudvault_primitives_legacy as legacy
 import cloudvault_search_legacy as search_legacy
@@ -146,7 +147,7 @@ class CloudVaultDomainAdapter:
             try:
                 version = self._verified_core.domain_core_version()
             except Exception:
-                pass
+                version = "unavailable"
         self._diagnostic({
             "component": "local-mcp-domain-core",
             "operation": operation,
@@ -171,7 +172,7 @@ class CloudVaultDomainAdapter:
             category = "both-error" if legacy_error and type(exc) is type(legacy_error) else "rust-error"
             self._report(operation, category)
             if legacy_error is not None:
-                raise legacy_error
+                raise legacy_error from exc
             return cast(_T, old_value)
         if legacy_error is not None:
             self._report(operation, "legacy-error-rust-success")
