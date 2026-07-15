@@ -18,6 +18,7 @@ import {
 } from './lib/linux-installed-manifest.mjs';
 import {
   ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST,
+  NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST,
   archDependencyPackagesForInstall,
   archPackageRemovalCandidates,
   assertSafeArchiveMemberNames,
@@ -37,7 +38,7 @@ const checksumSlots = [
   'APPIMAGE_X86_64', 'DAEMON_X86_64', 'INSTALLED_MANIFEST_X86_64',
   'INSTALLED_MANIFEST_SIGNATURE_X86_64', 'APPIMAGE_AARCH64', 'DAEMON_AARCH64',
   'INSTALLED_MANIFEST_AARCH64', 'INSTALLED_MANIFEST_SIGNATURE_AARCH64',
-  'DESKTOP', 'SAFE_MODE_DESKTOP', 'SERVICE', 'LAUNCH',
+  'DESKTOP', 'SAFE_MODE_DESKTOP', 'AUTOSTART_DESKTOP', 'SERVICE', 'LAUNCH',
   'DESKTOP_LAUNCHER', 'ICON',
   'COMPUTER_USE_POLKIT_POLICY', 'PLAYWRIGHT_BRIDGE', 'BROWSER_RUNTIME_PROBE',
   'BROWSER_RUNTIME_REQUIREMENTS', 'RELEASE_PUBLIC_KEY'
@@ -202,25 +203,74 @@ test('Arch prerequisite installation rejects malformed dependency names', () => 
   );
 });
 
-test('Arch extraction preflight permits only known package metadata beside /usr', () => {
+test('Arch extraction preflight permits only known metadata and canonical autostart beside /usr', () => {
   assert.deepEqual(
-    [...assertSafeArchiveMemberNames('.PKGINFO\n.BUILDINFO\n.MTREE\nusr/bin/openburnbar\n', {
-      allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST
+    [...assertSafeArchiveMemberNames('.PKGINFO\n.BUILDINFO\n.MTREE\netc\netc/xdg\netc/xdg/autostart\netc/xdg/autostart/openburnbar.desktop\nusr/bin/openburnbar\n', {
+      allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST,
+      allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST
     })],
-    ['.PKGINFO', '.BUILDINFO', '.MTREE', 'usr/bin/openburnbar']
+    [
+      '.PKGINFO',
+      '.BUILDINFO',
+      '.MTREE',
+      'etc',
+      'etc/xdg',
+      'etc/xdg/autostart',
+      'etc/xdg/autostart/openburnbar.desktop',
+      'usr/bin/openburnbar'
+    ]
   );
   assert.throws(
     () => assertSafeArchiveMemberNames('.PKGINFO\netc/pacman.conf\n', {
-      allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST
+      allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST,
+      allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST
     }),
     /outside \/usr/u
   );
   assert.throws(
     () => assertSafeArchiveMemberNames('.PKGINFO\n.INSTALL\nusr/bin/openburnbar\n', {
-      allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST
+      allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST,
+      allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST
     }),
     /outside \/usr/u
   );
+  assert.throws(
+    () => assertSafeArchiveMemberNames('etc/xdg/autostart/other.desktop\n', {
+      allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST
+    }),
+    /outside \/usr/u
+  );
+});
+
+test('Arch extraction includes only the canonical autostart exception beside /usr', {
+  skip: commandAvailable('bsdtar') ? false : 'requires bsdtar'
+}, (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-arch-autostart-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const payload = path.join(root, 'payload');
+  fs.mkdirSync(path.join(payload, 'usr/bin'), { recursive: true });
+  fs.mkdirSync(path.join(payload, 'etc/xdg/autostart'), { recursive: true });
+  fs.writeFileSync(path.join(payload, '.PKGINFO'), 'pkgname = openburnbar\n');
+  fs.writeFileSync(path.join(payload, 'usr/bin/openburnbar'), 'binary\n');
+  fs.writeFileSync(
+    path.join(payload, 'etc/xdg/autostart/openburnbar.desktop'),
+    '[Desktop Entry]\nType=Application\nExec=openburnbar-linux-desktop --background\n'
+  );
+  const archive = path.join(root, 'autostart.pkg.tar');
+  const packed = spawnSync('bsdtar', ['-cf', archive, '-C', payload, '.'], { encoding: 'utf8' });
+  assert.equal(packed.status, 0, packed.stderr);
+  const destination = path.join(root, 'out');
+  extractPreflightedArchiveBytes(fs.readFileSync(archive), destination, {
+    allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST,
+    allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST,
+    extractUsrOnly: true
+  });
+  assert.equal(fs.readFileSync(path.join(destination, 'usr/bin/openburnbar'), 'utf8'), 'binary\n');
+  assert.match(
+    fs.readFileSync(path.join(destination, 'etc/xdg/autostart/openburnbar.desktop'), 'utf8'),
+    /--background/u
+  );
+  assert.equal(fs.existsSync(path.join(destination, '.PKGINFO')), false);
 });
 
 test('production Arch extraction rejects a real archive containing .INSTALL', {
@@ -239,6 +289,7 @@ test('production Arch extraction rejects a real archive containing .INSTALL', {
   assert.throws(
     () => extractPreflightedArchiveBytes(fs.readFileSync(archive), path.join(root, 'out'), {
       allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST,
+      allowedPaths: NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST,
       extractUsrOnly: true
     }),
     /outside \/usr/u
@@ -357,7 +408,7 @@ test('release assembly renders a two-architecture PKGBUILD from published assets
     status: 'operator-required',
     note: 'Release assets are consumable directly; publishing to the AUR requires a separate operator action.'
   });
-  assert.equal(metadata.sources.length, 19);
+  assert.equal(metadata.sources.length, 20);
 });
 
 function record(installedPath, value, mode) {

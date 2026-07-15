@@ -5,6 +5,7 @@ import path from 'node:path';
 export const archPkgbuildCommonSources = Object.freeze([
   ['DESKTOP', 'packaging/linux/aur/openburnbar.desktop'],
   ['SAFE_MODE_DESKTOP', 'packaging/linux/aur/openburnbar-safe-mode.desktop'],
+  ['AUTOSTART_DESKTOP', 'packaging/linux/autostart/openburnbar.desktop'],
   ['SERVICE', 'packaging/linux/aur/openburnbar-daemon.service'],
   ['LAUNCH', 'packaging/linux/aur/openburnbar-daemon-launch'],
   ['DESKTOP_LAUNCHER', 'packaging/linux/aur/openburnbar-linux-desktop'],

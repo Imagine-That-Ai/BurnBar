@@ -14,6 +14,13 @@ export const ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST = Object.freeze([
   '.PKGINFO'
 ]);
 
+// The package payload is rooted under /usr except for this single, declarative
+// XDG autostart entry. Keep the exception exact so an archive cannot smuggle
+// arbitrary /etc configuration into the extraction or attestation path.
+export const NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST = Object.freeze([
+  'etc/xdg/autostart/openburnbar.desktop'
+]);
+
 export const ARCH_PACKAGE_PRIVATE_DIRECTORIES = Object.freeze([
   '/usr/lib/openburnbar',
   '/usr/share/openburnbar'
@@ -61,7 +68,10 @@ function normalizedArchitecture(value) {
   }
 }
 
-export function assertSafeArchiveMemberNames(listing, { allowedRootMetadata = [] } = {}) {
+export function assertSafeArchiveMemberNames(listing, {
+  allowedRootMetadata = [],
+  allowedPaths = []
+} = {}) {
   if (typeof listing !== 'string' || listing.length === 0 || listing.includes('\0')) {
     throw new Error('native package archive member listing is empty or malformed');
   }
@@ -85,7 +95,10 @@ export function assertSafeArchiveMemberNames(listing, { allowedRootMetadata = []
       seen.add(normalized);
       continue;
     }
-    if (segments[0] !== 'usr') {
+    const isAllowedPath = allowedPaths.some((allowedPath) => (
+      allowedPath === stripped || allowedPath.startsWith(`${stripped}/`)
+    ));
+    if (segments[0] !== 'usr' && !isAllowedPath) {
       throw new Error(`native package archive member is outside /usr: ${raw}`);
     }
     const normalized = segments.join('/');
@@ -99,11 +112,12 @@ export function assertSafeArchiveMemberNames(listing, { allowedRootMetadata = []
 export function extractPreflightedArchiveBytes(archive, destination, {
   env = process.env,
   allowedRootMetadata = [],
+  allowedPaths = [],
   extractUsrOnly = false
 } = {}) {
   if (!Buffer.isBuffer(archive) || archive.length === 0) throw new Error('native package archive is empty');
   const listing = runBinary('bsdtar', ['-tf', '-'], { input: archive, env }).toString('utf8');
-  const members = assertSafeArchiveMemberNames(listing, { allowedRootMetadata });
+  const members = assertSafeArchiveMemberNames(listing, { allowedRootMetadata, allowedPaths });
   const verbose = runBinary('bsdtar', ['-tvf', '-'], { input: archive, env }).toString('utf8');
   const types = verbose.split('\n').filter(Boolean).map((line) => line[0]);
   if (types.length < members.size || types.some((type) => !['-', 'd', 'l'].includes(type))) {
@@ -112,7 +126,7 @@ export function extractPreflightedArchiveBytes(archive, destination, {
   fs.rmSync(destination, { recursive: true, force: true });
   fs.mkdirSync(destination, { recursive: true });
   const extractArgs = ['-xmf', '-', '-C', destination];
-  if (extractUsrOnly) extractArgs.push('usr');
+  if (extractUsrOnly) extractArgs.push('usr', ...allowedPaths);
   runBinary('bsdtar', extractArgs, { input: archive, env });
   return destination;
 }
@@ -188,6 +202,7 @@ export function extractNativePackage(format, artifact, destination, { env = proc
   extractPreflightedArchiveBytes(archive, destination, {
     env,
     allowedRootMetadata: format === 'arch' ? ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST : [],
+    allowedPaths: format === 'arch' ? NATIVE_PACKAGE_NON_USR_PATH_ALLOWLIST : [],
     extractUsrOnly: format === 'arch'
   });
 }
