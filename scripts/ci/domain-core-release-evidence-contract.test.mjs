@@ -36,6 +36,7 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
       "sourceRun",
       "promotionProof",
       "rollbackArtifact",
+      "activation",
       "publicProfile",
       "artifact",
       "release",
@@ -61,6 +62,14 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
     "sha256",
   ]);
   assert.equal(schema.$defs.publicProfile.properties.mode.const, "rust");
+  assert.deepEqual(schema.$defs.activation.required, [
+    "candidateCommit",
+    "activationCommit",
+    "coreVersion",
+    "abiVersion",
+    "sourceSha256",
+    "changedPathsSha256",
+  ]);
 });
 
 test("schema and runtime share consumer-specific release version vectors", () => {
@@ -97,6 +106,11 @@ test("schema and runtime share consumer-specific release version vectors", () =>
     abiVersion: 3,
     sourceSha256: "b".repeat(64),
   };
+  const activation = {
+    ...candidate,
+    activationCommit: "c".repeat(40),
+    changedPathsSha256: "d".repeat(64),
+  };
   for (const [consumer, [domain, artifactKind, target]] of Object.entries(
     contracts,
   )) {
@@ -107,11 +121,24 @@ test("schema and runtime share consumer-specific release version vectors", () =>
         ? NATIVE_RELEASE_VERSION
         : STABLE_RELEASE_VERSION;
       const schemaPattern = native ? nativeSchema : stableSchema;
-      const tag = consumer === "windows" ? `windows-v${version}` : `v${version}`;
+      const tag =
+        consumer === "windows" ? `windows-v${version}` : `v${version}`;
       const tagPattern = native ? nativeTagSchema : stableTagSchema;
-      assert.equal(runtimePattern.test(version), accepted, `${consumer} ${version}`);
-      assert.equal(schemaPattern.test(version), accepted, `${consumer} schema ${version}`);
-      assert.equal(tagPattern.test(tag), accepted, `${consumer} tag ${version}`);
+      assert.equal(
+        runtimePattern.test(version),
+        accepted,
+        `${consumer} ${version}`,
+      );
+      assert.equal(
+        schemaPattern.test(version),
+        accepted,
+        `${consumer} schema ${version}`,
+      );
+      assert.equal(
+        tagPattern.test(tag),
+        accepted,
+        `${consumer} tag ${version}`,
+      );
       const call = () =>
         validateReleaseCoordinates({
           consumer,
@@ -120,8 +147,9 @@ test("schema and runtime share consumer-specific release version vectors", () =>
           target,
           version,
           tag,
-          commit: candidate.candidateCommit,
+          commit: activation.activationCommit,
           candidate,
+          activation,
         });
       if (accepted) assert.doesNotThrow(call);
       else assert.throws(call);
@@ -137,6 +165,8 @@ test("deployment receipt v2 carries the same proof chain and deployed bytes", ()
     "sourceRun",
     "promotionProof",
     "rollbackArtifact",
+    "activation",
+    "publicProfile",
     "release",
     "deployment",
   ]) {

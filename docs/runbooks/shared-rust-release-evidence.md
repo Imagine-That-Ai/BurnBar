@@ -20,11 +20,25 @@ Every release predicate and deployment receipt uses schema version 2 and binds:
 - the SHA-256 digest of the protected Sigstore attestation bundle and its exact
   `domain-core-candidate-bundle.json` subject;
 - a candidate-matched legacy rollback artifact and its SHA-256 digest;
-- the exact release tag and commit; and
+- the exact release tag and activation commit;
+- the canonical `C..P` changed-path-set digest and each active domain's
+  `public-production` profile digest; and
 - the released native artifact or deployment receipt bytes.
 
-The release commit must equal `candidateCommit`. A later commit is rejected even
-when its core version, ABI version, and source fingerprint are unchanged.
+The Rust candidate commit `C` and release activation commit `P` are deliberately
+distinct. `C` is the protected deterministic build and provenance subject. `P`
+is the later commit that changes only the allowlisted activation control plane
+and points the release tag at the activated profile. The canonical selector is:
+
+```bash
+node scripts/ci/resolve-domain-core-activation.mjs \
+  --release-commit "$RELEASE_COMMIT" --format json
+```
+
+The selector resolves `C` from committed promotion receipts at exact `P`,
+requires `C` to be an ancestor of `P`, proves the Rust tuple is unchanged, and
+hashes the complete sorted allowlisted `C..P` path set. Release evidence binds
+both commits; it never infers `C` from the union manifest at `P`.
 
 ## Pre-release gate
 
@@ -122,7 +136,8 @@ must resolve the candidate-bound, all-legacy rollback profile. It is an explicit
 release of legacy behavior, not an exception to candidate, signing, or evidence
 verification.
 
-The native gate downloads artifacts by exact candidate commit, deterministic
+At the exact release checkout `P`, the native gate runs the canonical activation
+selector, then downloads artifacts by its exact candidate commit `C`, deterministic
 source run ID, and source run attempt. It then downloads GitHub Attestations for
 the candidate bundle, verifies the protected signer identity, and binds the
 signer's exact run ID and attempt. The ordinary protected-verification workflow

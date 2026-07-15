@@ -230,6 +230,7 @@ export function validateReleaseCoordinates({
   tag,
   commit,
   candidate,
+  activation,
 }) {
   const contract = RELEASE_CONSUMERS[consumer];
   if (!contract)
@@ -257,12 +258,61 @@ export function validateReleaseCoordinates({
   if (typeof commit !== "string" || !FULL_SHA.test(commit)) {
     throw new Error("release commit must be a full lowercase Git SHA-1");
   }
-  if (commit !== candidate.candidateCommit) {
+  return {
+    ...contract,
+    activation: validateReleaseActivation(activation, {
+      candidate,
+      releaseCommit: commit,
+    }),
+  };
+}
+
+export function validateReleaseActivation(value, { candidate, releaseCommit }) {
+  const activation = exactObject(
+    value,
+    [
+      "candidateCommit",
+      "activationCommit",
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+      "changedPathsSha256",
+    ],
+    "domain-core release activation",
+  );
+  const activationCandidate = validateDomainCoreCandidateIdentity({
+    candidateCommit: activation.candidateCommit,
+    coreVersion: activation.coreVersion,
+    abiVersion: activation.abiVersion,
+    sourceSha256: activation.sourceSha256,
+  });
+  const expectedCandidate = validateDomainCoreCandidateIdentity(candidate);
+  if (canonicalJson(activationCandidate) !== canonicalJson(expectedCandidate)) {
     throw new Error(
-      "release commit must equal the exact protected candidate commit",
+      "release activation does not match the protected candidate",
     );
   }
-  return contract;
+  if (
+    typeof activation.activationCommit !== "string" ||
+    !FULL_SHA.test(activation.activationCommit) ||
+    activation.activationCommit !== releaseCommit
+  ) {
+    throw new Error(
+      "release activation commit does not match the release commit",
+    );
+  }
+  if (activation.activationCommit === activation.candidateCommit) {
+    throw new Error(
+      "Rust release activation must be distinct from its candidate",
+    );
+  }
+  if (
+    typeof activation.changedPathsSha256 !== "string" ||
+    !SHA256.test(activation.changedPathsSha256)
+  ) {
+    throw new Error("release activation path set must have a SHA-256 digest");
+  }
+  return structuredClone(activation);
 }
 
 export function buildPromotionBinding({

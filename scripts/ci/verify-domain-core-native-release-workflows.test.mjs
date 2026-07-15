@@ -98,6 +98,38 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
   );
 });
 
+test("native release keeps protected candidate C distinct from activation P", () => {
+  const gate = job(
+    appleAndroid,
+    "domain-core-native-release-gate",
+    "build-and-release",
+  );
+  const build = job(appleAndroid, "build-and-release", "smoke-test");
+  const evidence = job(
+    appleAndroid,
+    "domain-core-native-release-evidence",
+    "verify-live-update-feed",
+  );
+  assert.match(
+    gate,
+    /resolve-domain-core-activation\.mjs[\s\S]*--release-commit "\$RELEASE_COMMIT"/u,
+  );
+  assert.match(gate, /CANDIDATE_COMMIT="\$\(jq -er '\.candidateCommit'/u);
+  assert.match(
+    gate,
+    /--candidate-commit "\$CANDIDATE_COMMIT"[\s\S]*--release-commit "\$RELEASE_COMMIT"[\s\S]*--activation "\$activation"/u,
+  );
+  assert.doesNotMatch(gate, /--candidate-commit "\$RELEASE_COMMIT"/u);
+  assert.match(
+    build,
+    /--expected-candidate-commit "\$\{\{ needs\.domain-core-native-release-gate\.outputs\.candidate_commit \}\}"/u,
+  );
+  assert.match(
+    evidence,
+    /COMMIT: \$\{\{ needs\.release-preflight\.outputs\.release_commit \}\}[\s\S]*--activation "\$RUNNER_TEMP\/domain-core-native-release-gate\/domain-core-activation\.json"/u,
+  );
+});
+
 test("Apple DMG is fully verified before any release mutation", () => {
   const prepublication = job(
     appleAndroid,
@@ -179,7 +211,13 @@ test("failed-job reruns consume exact producer artifact names from attempt one",
     "apple-native-prepublication.outputs.identity_artifact_name",
     "prepare-release-publication.outputs.publication_inputs_artifact_name",
   ]) {
-    assert.match(evidence, new RegExp(`name: \\$\\{\\{ needs\\.${binding.replaceAll(".", "\\.")} \\}\\}`, "u"));
+    assert.match(
+      evidence,
+      new RegExp(
+        `name: \\$\\{\\{ needs\\.${binding.replaceAll(".", "\\.")} \\}\\}`,
+        "u",
+      ),
+    );
   }
   assert.doesNotMatch(
     evidence.slice(0, evidence.indexOf("Retain exact native release evidence")),

@@ -15,6 +15,7 @@
     "sourceRun",
     "promotionProof",
     "rollbackArtifact",
+    "activation",
     "publicProfile",
     "artifact",
     "release"
@@ -118,6 +119,7 @@
     "sourceRun": { "$ref": "#/$defs/sourceRun" },
     "promotionProof": { "$ref": "#/$defs/promotionProof" },
     "rollbackArtifact": { "$ref": "#/$defs/rollbackArtifact" },
+    "activation": { "$ref": "#/$defs/activation" },
     "publicProfile": { "$ref": "#/$defs/publicProfile" },
     "artifact": { "$ref": "#/$defs/artifact" },
     "release": { "$ref": "#/$defs/release" }
@@ -273,6 +275,34 @@
         "domain": { "$ref": "#/$defs/domain" },
         "mode": { "const": "rust" },
         "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCommit",
+        "activationCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256",
+        "changedPathsSha256"
+      ],
+      "properties": {
+        "candidateCommit": { "$ref": "#/$defs/gitSha" },
+        "activationCommit": { "$ref": "#/$defs/gitSha" },
+        "coreVersion": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+        },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
+        "changedPathsSha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "artifact": {
