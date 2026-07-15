@@ -82,31 +82,34 @@ class ConsoleReleaseWorkflowTests(unittest.TestCase):
             "verify-domain-core-release-gate.mjs",
             "cmp \"$gate\" \"$RUNNER_TEMP/reverified-release-gate.json\"",
             "verify-domain-core-console-deploy-evidence.mjs",
+            'echo "deployment=$RUNNER_TEMP/console-deploy-verification.json"',
             "create-domain-core-release-evidence.mjs",
             "--artifact-kind console-deployment-receipt",
             "--target firebase-hosting-production",
+            '--deployment "$DEPLOYMENT"',
             "predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2",
         )
         for value in required:
             self.assertIn(value, source)
 
-    def test_normal_publication_is_create_only_and_rollback_replay_fails(self) -> None:
+    def test_normal_publication_is_create_only_and_rollback_results_are_run_bound(self) -> None:
         source = EVIDENCE.read_text(encoding="utf-8")
         required = (
             "publish-domain-core-release-evidence.mjs",
             "schemaVersion: 2",
             'signerWorkflow: ".github/workflows/domain-core-console-release-evidence.yml"',
-            "Reject replayed rollback evidence publication",
-            "Rollback evidence already exists for this exact deploy run and attempt",
-            "domain-core-console-rollback-evidence-${{ steps.ref.outputs.release_tag }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}",
-            "Stage rollback evidence without duplicating signer rollback artifact",
+            "domain-core-console-rollback-evidence-${{ steps.ref.outputs.release_tag }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}-${{ github.run_id }}-${{ github.run_attempt }}",
+            "Stage run-bound rollback evidence without duplicating signer rollback artifact",
+            "Retain this rollback evidence workflow result",
         )
         for value in required:
             self.assertIn(value, source)
         self.assertNotIn("--clobber", source)
         self.assertNotIn("gh release create", source)
         self.assertNotIn("gh release edit", source)
-        rollback_stage = source[source.index("Stage rollback evidence without duplicating") :]
+        self.assertNotIn("Reject replayed rollback evidence publication", source)
+        self.assertNotIn("Rollback evidence already exists", source)
+        rollback_stage = source[source.index("Stage run-bound rollback evidence without duplicating") :]
         self.assertNotIn("domain-core-public-production-rollback.json", rollback_stage)
 
 
