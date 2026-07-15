@@ -621,5 +621,201 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         }
         XCTAssertEqual(Set(all.map { $0.rawValue }), Set(["off", "shadow", "enforce"]))
     }
+
+    // MARK: - P-ARCH-2: resolveTrustedDecision call-site seam tests
+
+    /// In enforce mode, a daemon-stricter verdict (daemon denies where GUI
+    /// would allow) must return .deny — the mission is stopped before claim.
+    @MainActor
+    func testResolveTrustedDecisionEnforceDenyStopsBeforeClaim() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .enforce
+            // GUI would allow (approved, no pause) but daemon is unreachable.
+            // Fail-closed: deny even though GUI allows.
+            let manager = OpenBurnBarDaemonManager()
+            manager.status = .unhealthy("daemon down")
+            let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(approvalStatus: "approved"),
+                isTerminalDenial: false, personaScopeMalformed: false,
+                willPauseForApproval: false, manager: manager
+            )
+            if case .deny = outcome {
+                // expected
+            } else {
+                XCTFail("enforce mode must return .deny when daemon is unreachable, got \(outcome)")
+            }
+        }
+    }
+
+    /// In enforce mode, daemon unreachable must deny regardless of GUI decision.
+    @MainActor
+    func testResolveTrustedDecisionEnforceFailClosedOnUnreachable() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .enforce
+            let manager = OpenBurnBarDaemonManager()
+            manager.status = .unhealthy("daemon down")
+            let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(approvalStatus: "approved"),
+                isTerminalDenial: false, personaScopeMalformed: false,
+                willPauseForApproval: false, manager: manager
+            )
+            if case .deny = outcome {
+                // expected
+            } else {
+                XCTFail("enforce mode must fail-closed to deny, got \(outcome)")
+            }
+        }
+    }
+
+    /// In enforce mode, persona-malformed + unreachable daemon must still deny.
+    @MainActor
+    func testResolveTrustedDecisionEnforcePersonaMalformedStillDenies() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .enforce
+            let manager = OpenBurnBarDaemonManager()
+            manager.status = .unhealthy("daemon down")
+            let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(approvalStatus: "approved"),
+                isTerminalDenial: false, personaScopeMalformed: true,
+                willPauseForApproval: false, manager: manager
+            )
+            if case .deny = outcome {
+                // expected
+            } else {
+                XCTFail("enforce mode must deny even when GUI also denies, got \(outcome)")
+            }
+        }
+    }
+
+    /// In enforce mode with a healthy daemon but socket failure, must deny
+    /// (fail-closed on socket error, not just unhealthy status).
+    @MainActor
+    func testResolveTrustedDecisionEnforceFailClosedOnSocketFailure() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .enforce
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("MissionShadowTests-\(UUID().uuidString)", isDirectory: true)
+            let paths = OpenBurnBarDaemonRuntimePaths(
+                supportDirectory: root,
+                daemonDirectory: root.appendingPathComponent("daemon", isDirectory: true),
+                frameworksDirectory: root.appendingPathComponent("Frameworks", isDirectory: true),
+                installedBinaryURL: root.appendingPathComponent("daemon/OpenBurnBarDaemon"),
+                socketURL: root.appendingPathComponent("missing.sock"),
+                logURL: root.appendingPathComponent("daemon.log"),
+                launchAgentPlistURL: root.appendingPathComponent("launch-agent.plist")
+            )
+            let manager = OpenBurnBarDaemonManager(paths: paths, dependencies: .live())
+            let health = BurnBarHealthResponse(
+                ok: true, daemonVersion: "test",
+                protocolVersion: BurnBarProtocolVersion.current,
+                socketPath: paths.socketURL.path
+            )
+            manager.status = .healthy(OpenBurnBarDaemonHealthSnapshot(response: health))
+            let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(approvalStatus: "approved"),
+                isTerminalDenial: false, personaScopeMalformed: false,
+                willPauseForApproval: false, manager: manager
+            )
+            if case .deny = outcome {
+                // expected: fail-closed on socket error
+            } else {
+                XCTFail("enforce mode must fail-closed to deny on socket failure, got \(outcome)")
+            }
+        }
+    }
+
+    /// In off mode, resolveTrustedDecision must return .proceed (GUI governs).
+    @MainActor
+    func testResolveTrustedDecisionOffModeProceeds() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .off
+            let manager = OpenBurnBarDaemonManager()
+            manager.status = .unhealthy("daemon down")
+            let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(approvalStatus: "approved"),
+                isTerminalDenial: false, personaScopeMalformed: false,
+                willPauseForApproval: false, manager: manager
+            )
+            XCTAssertEqual(outcome, .proceed, "off mode must proceed (GUI governs)")
+        }
+    }
+
+    /// In shadow mode with GUI pause, must return .pauseForApproval (GUI governs).
+    @MainActor
+    func testResolveTrustedDecisionShadowModePauseForApproval() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .shadow
+            let manager = OpenBurnBarDaemonManager()
+            manager.status = .unhealthy("daemon down")
+            let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(approvalStatus: "pending"),
+                isTerminalDenial: false, personaScopeMalformed: false,
+                willPauseForApproval: true, manager: manager
+            )
+            XCTAssertEqual(outcome, .pauseForApproval,
+                           "shadow mode must return .pauseForApproval (GUI decision governs)")
+        }
+    }
+
+    /// In shadow mode with persona malformed, must return .deny (GUI governs).
+    @MainActor
+    func testResolveTrustedDecisionShadowModePersonaMalformedDenies() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .shadow
+            let manager = OpenBurnBarDaemonManager()
+            manager.status = .unhealthy("daemon down")
+            let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(approvalStatus: "approved"),
+                isTerminalDenial: false, personaScopeMalformed: true,
+                willPauseForApproval: false, manager: manager
+            )
+            if case .deny = outcome {
+                // expected: GUI denies on malformed persona
+            } else {
+                XCTFail("shadow mode must deny on malformed persona (GUI governs), got \(outcome)")
+            }
+        }
+    }
+
+    /// In shadow mode with no pause and no persona issue, must return .proceed.
+    @MainActor
+    func testResolveTrustedDecisionShadowModeProceeds() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .shadow
+            let manager = OpenBurnBarDaemonManager()
+            manager.status = .unhealthy("daemon down")
+            let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(approvalStatus: "approved"),
+                isTerminalDenial: false, personaScopeMalformed: false,
+                willPauseForApproval: false, manager: manager
+            )
+            XCTAssertEqual(outcome, .proceed, "shadow mode must proceed when GUI allows")
+        }
+    }
+
+    /// In enforce mode, GUI pause does NOT cause .pauseForApproval — the daemon
+    /// verdict governs. With an unreachable daemon, this is .deny (fail-closed),
+    /// NOT .pauseForApproval. This proves guiStricter-loosen: the GUI's stricter
+    /// decision (pause) is overridden by the daemon's authority.
+    @MainActor
+    func testResolveTrustedDecisionEnforceOverridesGUIPause() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .enforce
+            let manager = OpenBurnBarDaemonManager()
+            manager.status = .unhealthy("daemon down")
+            let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(approvalStatus: "pending"),
+                isTerminalDenial: false, personaScopeMalformed: false,
+                willPauseForApproval: true, manager: manager
+            )
+            // In enforce mode, GUI pause is NOT returned — daemon verdict governs.
+            // Unreachable daemon = fail-closed deny, NOT pauseForApproval.
+            if case .deny = outcome {
+                // expected: fail-closed, not GUI pause
+            } else {
+                XCTFail("enforce mode must not return .pauseForApproval (daemon governs), got \(outcome)")
+            }
+        }
+    }
 }
 

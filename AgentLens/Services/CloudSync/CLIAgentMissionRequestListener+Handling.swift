@@ -358,14 +358,14 @@ extension CLIAgentMissionRequestListener {
         let isTerminalDenial = willPauseForApproval && CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend) && !settingsManager.cliAssistantAllowed
         let ctx = shadowCtx(document.documentID, prompt, missionGroupContext?.siblingCount ?? 1)
         let personaMalformed: Bool = ctx.personaScopeJSON != nil && { if case .refused = CLIAgentMissionPersonaScopeResolution.resolve(from: data) { return true }; return false }()
-        MissionRemoteAuthorizationShadow.observeTrustedDecision(ctx: ctx, isTerminalDenial: isTerminalDenial, personaScopeMalformed: personaMalformed, willPauseForApproval: willPauseForApproval)
+        let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+            ctx: ctx, isTerminalDenial: isTerminalDenial,
+            personaScopeMalformed: personaMalformed, willPauseForApproval: willPauseForApproval)
         // cov:ignore-end
-        if willPauseForApproval {
-            return
-        }
-        if personaMalformed {
-            await fail(document: document, message: "The persona scope attached to this mission could not be read, so it was rejected instead of running with broader permissions. Re-send the mission from your device.")
-            return
+        switch outcome {
+        case .proceed: break
+        case .pauseForApproval: return
+        case .deny(let message): await fail(document: document, message: message); return
         }
 
         if cancellationTracker.isCancelled {
