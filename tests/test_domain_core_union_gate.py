@@ -146,8 +146,27 @@ class DomainCoreUnionGateTests(unittest.TestCase):
 
     def test_repository_manifest_matches_source_with_canonical_sha256(self) -> None:
         _, manifest = GATE.load_manifest(ROOT)
+        GATE.verify_build_identity(ROOT, manifest)
         fingerprint = GATE.verified_source_fingerprint(ROOT, manifest)
         self.assertRegex(fingerprint, re.compile(r"\A[0-9a-f]{64}\Z"))
+
+    def test_manifest_build_identity_must_match_canonical_rust_source(self) -> None:
+        _, manifest = GATE.load_manifest(ROOT)
+        with self.assertRaisesRegex(GATE.GateError, "coreVersion drifted"):
+            GATE.verify_build_identity(ROOT, {**manifest, "coreVersion": "9.9.9"})
+        with self.assertRaisesRegex(GATE.GateError, "abiVersion drifted"):
+            GATE.verify_build_identity(ROOT, {**manifest, "abiVersion": manifest["abiVersion"] + 1})
+
+    def test_manifest_build_identity_rejects_malformed_values(self) -> None:
+        _, manifest = GATE.load_manifest(ROOT)
+        for core_version in (None, "01.0.0", "1.0", "1.0.0-"):
+            with self.subTest(core_version=core_version):
+                with self.assertRaisesRegex(GATE.GateError, "coreVersion must be a canonical SemVer"):
+                    GATE.verify_build_identity(ROOT, {**manifest, "coreVersion": core_version})
+        for abi_version in (None, True, 0, -1, 0x1_0000_0000):
+            with self.subTest(abi_version=abi_version):
+                with self.assertRaisesRegex(GATE.GateError, "abiVersion must be an unsigned 32-bit integer"):
+                    GATE.verify_build_identity(ROOT, {**manifest, "abiVersion": abi_version})
 
     def test_native_binding_provenance_sidecars_match_canonical_source(self) -> None:
         _, manifest = GATE.load_manifest(ROOT)

@@ -7,6 +7,10 @@
     <DomainCoreDistribution Condition="'$(DomainCoreDistribution)' == ''">development</DomainCoreDistribution>
     <DomainCoreRolloutChannel Condition="'$(DomainCoreRolloutChannel)' == ''"></DomainCoreRolloutChannel>
     <DomainCoreEvidenceEnabled Condition="'$(DomainCoreEvidenceEnabled)' == ''">false</DomainCoreEvidenceEnabled>
+    <DomainCoreCandidateCommit Condition="'$(DomainCoreCandidateCommit)' == ''"></DomainCoreCandidateCommit>
+    <DomainCoreExpectedVersion Condition="'$(DomainCoreExpectedVersion)' == ''"></DomainCoreExpectedVersion>
+    <DomainCoreExpectedAbiVersion Condition="'$(DomainCoreExpectedAbiVersion)' == ''"></DomainCoreExpectedAbiVersion>
+    <DomainCoreExpectedSourceSha256 Condition="'$(DomainCoreExpectedSourceSha256)' == ''"></DomainCoreExpectedSourceSha256>
     <DomainCoreQuotaMode Condition="'$(DomainCoreQuotaMode)' == ''">legacy</DomainCoreQuotaMode>
     <DomainCoreCloudVaultMode Condition="'$(DomainCoreCloudVaultMode)' == ''">legacy</DomainCoreCloudVaultMode>
     <DomainCoreCloudVaultRewrapMode Condition="'$(DomainCoreCloudVaultRewrapMode)' == ''">legacy</DomainCoreCloudVaultRewrapMode>
@@ -20,6 +24,10 @@
     <AssemblyMetadata Include="OpenBurnBar.DomainCore.Distribution" Value="$(DomainCoreDistribution)" />
     <AssemblyMetadata Include="OpenBurnBar.DomainCore.RolloutChannel" Value="$(DomainCoreRolloutChannel)" />
     <AssemblyMetadata Include="OpenBurnBar.DomainCore.EvidenceEnabled" Value="$(DomainCoreEvidenceEnabled)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.CandidateCommit" Value="$(DomainCoreCandidateCommit)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.ExpectedVersion" Value="$(DomainCoreExpectedVersion)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.ExpectedAbiVersion" Value="$(DomainCoreExpectedAbiVersion)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.ExpectedSourceSha256" Value="$(DomainCoreExpectedSourceSha256)" />
     <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.quota" Value="$(DomainCoreQuotaMode)" />
     <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.cloudVault" Value="$(DomainCoreCloudVaultMode)" />
     <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.cloudVaultRewrap" Value="$(DomainCoreCloudVaultRewrapMode)" />
