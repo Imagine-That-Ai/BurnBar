@@ -276,12 +276,15 @@ than weakening the workflow.
    exact candidate-bound `public-production-rollback` artifact, whose signed
    modes are permanently all-legacy; do not delete the old implementation in
    this PR.
-4. Observe one stable signed release with Rust authoritative and rollback still
-   available. Any mismatch, performance regression, loaded-identity failure,
-   rollback, or new candidate commit requires a new exact deterministic proof.
-5. Open a separate legacy-deletion PR only after the stable-release gate. Its
-   proof must bind to the same attested candidate/core tuple and prove that the
-   stable release published and retained the exact rollback artifact hash.
+4. Ship one stable signed release of the exact attested candidate with Rust
+   authoritative. Retain a dedicated signed legacy rollback artifact until
+   deletion completes. Any mismatch, performance regression, loaded-identity
+   failure, rollback, or new candidate commit requires a new exact
+   deterministic proof.
+5. Open a separate legacy-deletion PR only after the stable-release gate. Bind
+   its proof to the same attested candidate/core tuple, official GitHub
+   provenance bundle, and exact retained rollback artifact hash. Neither the
+   unsigned bundle nor `protected-verification.json` is authority.
 6. Run source-absence and compile gates proving the named legacy transforms,
    selectors, and fallback calls are gone while Rust-only builds still pass.
 7. Clear candidate enrollment when collection is no longer authorized. Retain

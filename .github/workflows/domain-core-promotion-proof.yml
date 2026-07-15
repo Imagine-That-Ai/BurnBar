@@ -160,14 +160,17 @@ jobs:
             --run "$RUNNER_TEMP/domain-core-run.json"
 
       - name: Attest independently verified candidate bundle
+        id: attest
         uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
         with:
           subject-path: ${{ runner.temp }}/candidate-bundle/domain-core-candidate-bundle.json
 
-      - name: Upload protected verification receipt
+      - name: Upload official provenance bundle and diagnostic verification receipt
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: domain-core-protected-verification-${{ inputs.candidate_commit }}
-          path: ${{ runner.temp }}/candidate-bundle/protected-verification.json
+          name: domain-core-protected-attestation-${{ inputs.candidate_commit }}-${{ steps.source.outputs.run_id }}-${{ steps.source.outputs.run_attempt }}
+          path: |
+            ${{ steps.attest.outputs.bundle-path }}
+            ${{ runner.temp }}/candidate-bundle/protected-verification.json
           if-no-files-found: error
           retention-days: 90

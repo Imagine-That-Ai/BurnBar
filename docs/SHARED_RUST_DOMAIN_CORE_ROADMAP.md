@@ -178,8 +178,9 @@ Quota promotion requires all of the following:
    queries GitHub, downloads the exact run bundle, and revalidates it with the
    trusted `main` policy and evaluator. The unsigned bundle and uploaded
    verification receipt are not authority by themselves.
-6. One stable signed release observed with Rust authoritative and the explicit
-   legacy rollback mode still available.
+6. One stable signed release of the exact attested candidate with Rust
+   authoritative, plus a dedicated signed legacy rollback artifact retained
+   until deletion completes.
 
 Shadow telemetry is optional diagnostic input. V3 preserves exact candidate and
 loaded-module identity and can reveal mismatches in real deployments, but no
@@ -190,7 +191,9 @@ deterministic attestation.
 Only after all six gates pass may a separate deletion PR remove the legacy
 quota implementations and rollback setting. Its proof must retain the exact
 attested candidate/core tuple, then pass named source-absence and Rust-only
-compile gates. A mismatch, artifact/ABI/source failure, rollback, new candidate
+compile gates. The deletion receipt chain verifies the official GitHub
+provenance bundle; an unsigned bundle or `protected-verification.json` is not
+authority. A mismatch, artifact/ABI/source failure, rollback, new candidate
 commit, or performance regression before deletion rolls the affected consumer
 explicitly back to `legacy`, preserves the diagnostic evidence, fixes the cause,
 and requires a new exact candidate attestation.

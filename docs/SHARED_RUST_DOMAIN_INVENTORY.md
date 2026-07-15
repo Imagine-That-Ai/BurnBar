@@ -99,8 +99,9 @@ Current status snapshot (2026-07-13):
 | Encrypted search | Contract [#1620](https://github.com/Imagine-That-Ai/BurnBar/pull/1620) merged into a feature branch; core [#1632](https://github.com/Imagine-That-Ai/BurnBar/pull/1632) open | Kotlin [#1635](https://github.com/Imagine-That-Ai/BurnBar/pull/1635) and Swift [#1640](https://github.com/Imagine-That-Ai/BurnBar/pull/1640) open |
 
 “Merged” in this table means merged into the named feature branch, not `main`.
-No CloudVault slice has completed security review, production promotion, stable
-release observation, and legacy deletion.
+No CloudVault slice has completed security review, protected deterministic
+promotion, an exact-candidate stable release with retained signed rollback, and
+legacy deletion.
 
 ## C2 Hermes operations
 
