@@ -3,6 +3,21 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint")
 }
 
+val domainCoreAar =
+    rootProject.layout.projectDirectory.dir("..").asFile
+        .resolve("Vendor/openburnbar-domain-core.aar")
+val generatedDomainCoreAndroidTestAssetsDir =
+    layout.buildDirectory.dir("generated/domainCoreIdentityAndroidTest/assets")
+val stageDomainCoreIdentityForAndroidTest =
+    tasks.register<Sync>("stageDomainCoreIdentityForAndroidTest") {
+        from(zipTree(domainCoreAar)) {
+            include("META-INF/openburnbar-domain-core-source.sha256")
+            eachFile { path = name }
+            includeEmptyDirs = false
+        }
+        into(generatedDomainCoreAndroidTestAssetsDir)
+    }
+
 android {
     namespace = "com.openburnbar.domaincore"
     compileSdk = 35
@@ -22,6 +37,12 @@ android {
         buildConfig = false
     }
 
+    sourceSets {
+        getByName("androidTest").assets.directories.add(
+            generatedDomainCoreAndroidTestAssetsDir.get().asFile.absolutePath,
+        )
+    }
+
     lint {
         lintConfig = file("lint.xml")
     }
@@ -36,12 +57,13 @@ dependencies {
     // The production app attaches the native-only AAR directly. Attach it to
     // the test APK as well so the instrumentation smoke exercises Android ELF,
     // not a host substitute.
-    val domainCoreAar =
-        rootProject.layout.projectDirectory.dir("..").asFile
-            .resolve("Vendor/openburnbar-domain-core.aar")
     if (domainCoreAar.exists()) {
         androidTestImplementation(files(domainCoreAar))
     }
+}
+
+tasks.matching { it.name == "mergeDebugAndroidTestAssets" }.configureEach {
+    dependsOn(stageDomainCoreIdentityForAndroidTest)
 }
 
 apply(from = rootProject.file("gradle/ktlint-android-sources.gradle.kts"))

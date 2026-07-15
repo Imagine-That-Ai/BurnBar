@@ -809,6 +809,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -884,6 +886,8 @@ internal interface UniffiLib : Library {
     ): Unit
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version(uniffi_out_err: UniffiRustCallStatus,
     ): Int
+    fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint(uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_version(uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_hermes_gateway_relay_safety_code(`agentPublicKey`: RustBuffer.ByValue,`phonePublicKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -1096,6 +1100,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_gateway_relay_safety_code(
@@ -1240,6 +1246,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version() != 60924.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint() != 44982.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version() != 28819.toShort()) {
@@ -4026,6 +4035,15 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
             return FfiConverterUInt.lift(
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version(
+        _status)
+}
+    )
+    }
+
+ fun `domainCoreSourceFingerprint`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint(
         _status)
 }
     )

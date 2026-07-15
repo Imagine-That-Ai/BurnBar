@@ -2,6 +2,5 @@
 mod source_fingerprint;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("cargo:rerun-if-changed=src/lib.rs");
     source_fingerprint::emit_verified_source_fingerprint()
 }

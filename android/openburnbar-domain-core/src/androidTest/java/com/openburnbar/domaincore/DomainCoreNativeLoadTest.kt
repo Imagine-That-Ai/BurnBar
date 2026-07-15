@@ -2,6 +2,7 @@ package com.openburnbar.domaincore
 
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -26,6 +27,7 @@ import uniffi.openburnbar_domain_ffi.cloudVaultSearch
 import uniffi.openburnbar_domain_ffi.cloudVaultSearchAnalyze
 import uniffi.openburnbar_domain_ffi.cloudVaultValidateP256X963PublicKey
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
+import uniffi.openburnbar_domain_ffi.domainCoreSourceFingerprint
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
 import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
 
@@ -35,6 +37,15 @@ class DomainCoreNativeLoadTest {
     fun generatedBindingLoadsAbiVersionThreeNativeLibrary() {
         assertEquals(3u, domainCoreAbiVersion())
         assertTrue(domainCoreVersion().isNotBlank())
+        val sourceFingerprint = domainCoreSourceFingerprint()
+        assertTrue(sourceFingerprint.matches(Regex("[0-9a-f]{64}")))
+        val expectedSourceFingerprint =
+            InstrumentationRegistry.getInstrumentation().context.assets
+                .open("openburnbar-domain-core-source.sha256")
+                .bufferedReader()
+                .use { it.readText().trim() }
+        assertTrue(expectedSourceFingerprint.matches(Regex("[0-9a-f]{64}")))
+        assertEquals(expectedSourceFingerprint, sourceFingerprint)
         assertEquals(
             "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7",
             hermesGatewayRelaySafetyCode(
