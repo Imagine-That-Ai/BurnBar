@@ -8,6 +8,14 @@ evidence disabled when embedded metadata is incomplete or inconsistent.
 Only a missing or explicit `development` authority enables development overrides;
 unknown, misspelled, or unexpanded authority markers fail closed.
 
+Every signed profile also carries one immutable `candidateIdentity` with exactly
+the full lowercase Git commit, canonical domain-core SemVer, positive uint32 ABI
+version, and reviewed lowercase source SHA-256. The resolver accepts the commit
+only from the clean checkout and uses `--expected-candidate-commit` solely as an
+equality assertion. It verifies the other three values against the union
+manifest, Cargo workspace version, Rust ABI constant, and current source tree.
+It never relabels an artifact with an operator-supplied commit.
+
 | Profile | Distribution | Evidence channel | Required behavior |
 | --- | --- | --- | --- |
 | `developer` | local development and tests | none | Legacy by default; validated overrides allowed; uploads disabled |
@@ -18,13 +26,22 @@ unknown, misspelled, or unexpanded authority markers fail closed.
 Resolve values instead of hand-copying them:
 
 ```bash
-node scripts/ci/resolve-domain-core-build-profile.mjs --profile internal --format github-env
+candidate_commit="$(git rev-parse HEAD)"
+node scripts/ci/resolve-domain-core-build-profile.mjs \
+  --profile internal \
+  --expected-candidate-commit "$candidate_commit" \
+  --format github-env
 ```
 
 Apple embeds the profile in `Info.plist`, Android embeds
 `domain-core-build-profile.json` in AAB assets, Windows writes the same receipt
 beside the published app, and Console publishes it at
-`/domain-core-build-profile.json`. Release lanes verify the built receipt.
+`/domain-core-build-profile.json`. Functions replaces the compiled
+`lib/generated/domainCoreCandidateReceipt.js` with the deep-frozen signed
+receipt after TypeScript compilation; mutable runtime environment cannot replace
+that authority. Release lanes compare the receipt with the authorized checkout
+and also require the tuple in the real Console JavaScript, Android DEX, and
+Windows configuration assembly.
 
 ## Account enrollment
 
@@ -63,11 +80,17 @@ retrying them under the new profile.
 
 ```bash
 node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-  --profile public-production --apple-app /path/to/OpenBurnBar.app
+  --profile public-production --expected-candidate-commit "$candidate_commit" \
+  --apple-app /path/to/OpenBurnBar.app
 node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-  --profile public-production --android-aab /path/to/app-release.aab
+  --profile public-production --expected-candidate-commit "$candidate_commit" \
+  --android-aab /path/to/app-release.aab
 node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-  --profile public-production --windows-dir /path/to/publish/win-x64
+  --profile public-production --expected-candidate-commit "$candidate_commit" \
+  --windows-dir /path/to/publish/win-x64
+node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+  --profile public-production --expected-candidate-commit "$candidate_commit" \
+  --functions-dir functions/lib
 ```
 
 Windows production App Check/attestation verification remains a separate

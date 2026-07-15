@@ -51,6 +51,14 @@
 	<string>$(DOMAIN_CORE_ROLLOUT_CHANNEL)</string>
 	<key>OpenBurnBarDomainCoreEvidenceEnabled</key>
 	<string>$(DOMAIN_CORE_EVIDENCE_ENABLED)</string>
+	<key>OpenBurnBarDomainCoreCandidateCommit</key>
+	<string>$(DOMAIN_CORE_CANDIDATE_COMMIT)</string>
+	<key>OpenBurnBarDomainCoreExpectedVersion</key>
+	<string>$(DOMAIN_CORE_EXPECTED_VERSION)</string>
+	<key>OpenBurnBarDomainCoreExpectedABIVersion</key>
+	<string>$(DOMAIN_CORE_EXPECTED_ABI_VERSION)</string>
+	<key>OpenBurnBarDomainCoreExpectedSourceSHA256</key>
+	<string>$(DOMAIN_CORE_EXPECTED_SOURCE_SHA256)</string>
 	<key>OpenBurnBarDomainCoreModeQuota</key>
 	<string>$(DOMAIN_CORE_QUOTA_MODE)</string>
 	<key>OpenBurnBarDomainCoreModeCloudVault</key>
