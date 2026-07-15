@@ -950,12 +950,12 @@ let firstPartyTargetsBase: [Target] = [
     ]
 
 #if os(Linux)
-// Placeholder-only targets are not tests. Keeping them in the Linux SwiftPM
-// graph lets `swift test` report success while exercising no supported code.
+// Remaining placeholder-only targets are not tests. Keeping them out of the
+// Linux SwiftPM graph avoids reporting a green suite that exercises no
+// supported code; media has a real platform-neutral contract suite below.
 let linuxPlaceholderTestTargetNames: Set<String> = [
     "OpenBurnBarAnalyticsTests",
     "OpenBurnBarIrohRelayTests",
-    "OpenBurnBarMediaTests",
     "BurnBarRemoteEngineTests",
     "OpenBurnBarSignalCoreTests",
     "OpenBurnBarSignalSessionTransportTests"
