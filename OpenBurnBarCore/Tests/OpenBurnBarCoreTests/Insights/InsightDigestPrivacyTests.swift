@@ -211,7 +211,7 @@ final class InsightDigestPrivacyTests: XCTestCase {
                             projectName: "/Users/me/bar", deviceID: "d1", deviceName: "Mac",
                             startTime: now, endTime: now, inputTokens: 200, outputTokens: 100,
                             reasoningTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
-                            totalTokens: 300, costUSD: 0.02),
+                            totalTokens: 300, costUSD: 0.02)
         ]
         let builder = InsightDigestBuilder()
         let digest = try builder.build(from: snapshot, filter: InsightFilter(window: .last24h))

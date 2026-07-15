@@ -231,11 +231,10 @@ object InsightDigestBuilder {
         return snapshot.copy(id = token, displayName = token)
     }
 
-    private fun remapModelProjects(snapshot: InsightDigest.ModelSnapshot, tokenMap: Map<String, String>): InsightDigest.ModelSnapshot =
-        snapshot.copy(
-            topInferredTaskTitles = emptyList(),
-            topProjects = snapshot.topProjects.map { tokenMap[it] ?: it },
-        )
+    private fun remapModelProjects(snapshot: InsightDigest.ModelSnapshot, tokenMap: Map<String, String>): InsightDigest.ModelSnapshot = snapshot.copy(
+        topInferredTaskTitles = emptyList(),
+        topProjects = snapshot.topProjects.map { tokenMap[it] ?: it },
+    )
 
     private fun hashProviderSnapshot(snapshot: InsightDigest.ProviderSnapshot): InsightDigest.ProviderSnapshot =
         snapshot.copy(topInferredTaskTitles = emptyList())
