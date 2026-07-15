@@ -1,4 +1,4 @@
-name: Ops failure issue (per-lane, comment + auto-close)
+name: Ops failure issue (per-lane, comment + auto-close, P0 paging)
 description: >-
   Shared standing-failure issue manager for the scheduled/deploy alerting lanes.
   Replaces the copy-pasted title-prefix dedupe that masked outages (tech-debt
@@ -7,7 +7,9 @@ description: >-
   label instead of silently skipping. On a green run it COMMENTS and CLOSES the
   same lane's open issue, re-arming the alarm. Per-lane dedupe keys (a
   `lane:<name>` label) guarantee a standing red in one lane can never suppress a
-  new red in a different lane.
+  new red in a different lane. On a genuine P0 open (issue creation only) it
+  pages out-of-band via an optional Slack/PagerDuty webhook; the lane-label
+  dedupe prevents page-storms on recurring/flapping failures.
 
 inputs:
   mode:
@@ -45,6 +47,16 @@ inputs:
     description: Token with issues:write.
     required: false
     default: ${{ github.token }}
+  paging-webhook:
+    description: >-
+      Optional Slack webhook URL (or PagerDuty Events API endpoint) for
+      out-of-band paging on a genuine P0 open. If unset, paging is silently
+      skipped — issue creation/closure behavior is unaffected. This is a
+      dedicated ops-paging secret (NOT SLACK_SECURITY_WEBHOOK, which is the
+      security-review lane's alert channel and is not monitored for ops
+      failures). Alberto must configure this as a repo secret (A6).
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -58,13 +70,16 @@ runs:
         OPS_SUMMARY: ${{ inputs.summary }}
         OPS_DETAILS: ${{ inputs.details }}
         OPS_LABELS: ${{ inputs.labels }}
+        OPS_PAGING_WEBHOOK: ${{ inputs.paging-webhook }}
       with:
         github-token: ${{ inputs.github-token }}
         script: |
           const {
             BLOCKER_LABEL,
             ESCALATED_LABEL,
+            PAGED_LABEL,
             evaluateP0Escalation,
+            shouldPageP0,
           } = require(`${process.env.GITHUB_WORKSPACE || require('node:process').cwd()}/.github/actions/ops-failure-issue/escalation.cjs`);
           const mode = process.env.OPS_MODE;
           const rawLane = process.env.OPS_LANE;
@@ -163,6 +178,7 @@ runs:
             ['area: infra', 'CI/CD, build, deployment infrastructure.'],
             [BLOCKER_LABEL, 'Named owner or external blocker exempts a known red from automatic age escalation.'],
             [ESCALATED_LABEL, 'P0 remained open beyond the 72-hour recovery SLO and was escalated.'],
+            [PAGED_LABEL, 'P0 ops failure was paged out-of-band (Slack/PagerDuty). Prevents page-storm on recurring failures.'],
           ]);
           const labelColor = (name) => {
             if (name.startsWith('lane:')) return 'd0e0ff';
@@ -172,6 +188,7 @@ runs:
             if (name === 'P2 - Medium') return 'f4c430';
             if (name === 'P3 - Low') return '0075ca';
             if (name === ESCALATED_LABEL) return 'd73a4a';
+            if (name === PAGED_LABEL) return 'd73a4a';
             if (name === BLOCKER_LABEL) return '5319e7';
             if (name.startsWith('area:')) return 'd0e0ff';
             return 'ededed';
@@ -230,7 +247,7 @@ runs:
             `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
             `/actions/runs/${context.runId}`;
 
-          await ensureIssueLabels([laneLabel, BLOCKER_LABEL, ESCALATED_LABEL]);
+          await ensureIssueLabels([laneLabel, BLOCKER_LABEL, ESCALATED_LABEL, PAGED_LABEL]);
 
           // Find this lane's open issue by the per-lane label ONLY, paginating
           // fully so a backlog of other-lane issues can never hide it.
@@ -314,7 +331,44 @@ runs:
               body,
               labels: [...allLabels, `${COUNT_PREFIX}1`],
             });
-            core.notice(`Lane '${lane}': opened issue #${created.data.number}.`);
+            const issueNumber = created.data.number;
+            core.notice(`Lane '${lane}': opened issue #${issueNumber}.`);
+            // P-OPS-4: page out-of-band on a genuine P0 open (creation only).
+            // The lane label dedupe means a standing-red recurrence hits the
+            // comment+bump path above and never pages. Close mode never pages.
+            const paging = shouldPageP0({ mode, isCreate: true, labels: allLabels });
+            if (paging.shouldPage) {
+              const webhook = process.env.OPS_PAGING_WEBHOOK;
+              if (webhook) {
+                const pageText = `🚨 *P0 ops failure* — ${oneLine(context.repo.owner + '/' + context.repo.repo, 'repo')} lane \`${lane}\`: ${summary}\nIssue: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/issues/${issueNumber}\nRun: ${runUrl}`;
+                try {
+                  const pageResponse = await fetch(webhook, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: pageText }),
+                  });
+                  if (!pageResponse.ok) {
+                    core.warning(`Lane '${lane}': paging webhook returned HTTP ${pageResponse.status} for issue #${issueNumber}.`);
+                  } else {
+                    await ensureIssueLabels([PAGED_LABEL]);
+                    await github.rest.issues.addLabels({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issueNumber,
+                      labels: [PAGED_LABEL],
+                    });
+                    core.notice(`Lane '${lane}': paged P0 issue #${issueNumber} out-of-band.`);
+                  }
+                } catch (pageError) {
+                  core.warning(`Lane '${lane}': paging webhook POST failed for issue #${issueNumber}: ${oneLine(pageError.message, 'error')}.`);
+                }
+              } else {
+                // A6 blocker: paging secret not yet configured. Report
+                // exactly — issue creation is NOT blocked (preserve create
+                // behavior). Alberto must set the repo secret to enable paging.
+                core.warning(`Lane '${lane}': P0 issue #${issueNumber} opened but paging webhook is not configured (A6 blocker). Issue creation unaffected.`);
+              }
+            }
             return;
           }
 
