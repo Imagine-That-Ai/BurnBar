@@ -45,6 +45,14 @@ extension DataStore {
         try await actor.conversationStore.fetchConversations(ids: ids)
     }
 
+    /// Returns the set of IDs (from `ids`) that already exist in the
+    /// conversations table. Used by incremental indexing to preserve
+    /// newly discovered sessions whose file mtime may predate the
+    /// checkpoint watermark.
+    func fetchExistingConversationIDs(ids: [String]) async throws -> Set<String> {
+        try await actor.conversationStore.fetchExistingConversationIDs(ids: ids)
+    }
+
     func updateConversationSummary(
         id: String,
         title: String?,
