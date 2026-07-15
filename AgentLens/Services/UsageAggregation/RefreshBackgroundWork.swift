@@ -248,6 +248,7 @@ enum RefreshBackgroundWork {
                         )
                     } catch {
                         // Checkpoint write failed — next tick re-evaluates (safe)
+                        AppLogger.parser.error("Checkpoint advance failed for \(provider.rawValue): \(error.localizedDescription)")
                     }
                     continue
                 }
@@ -291,6 +292,7 @@ enum RefreshBackgroundWork {
                     )
                 } catch {
                     // Checkpoint write failed — next tick retries against old watermark (safe)
+                    AppLogger.parser.error("Checkpoint advance failed for \(provider.rawValue): \(error.localizedDescription)")
                 }
             } catch is CancellationError {
                 return result
