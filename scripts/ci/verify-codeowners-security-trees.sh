@@ -59,6 +59,8 @@ REQUIRED_RULES = [
     "firestore.rules",
     "firestore.indexes.json",
     "project.yml",
+    ".gitleaks.toml",
+    ".gitleaksignore",
 ]
 
 EXPECTED_FINAL_RULES = {
@@ -86,6 +88,8 @@ EXPECTED_FINAL_RULES = {
     "functions/package-lock.json": "functions/package-lock.json",
     "firestore.rules": "firestore.rules",
     "project.yml": "project.yml",
+    ".gitleaks.toml": ".gitleaks.toml",
+    ".gitleaksignore": ".gitleaksignore",
     "AgentLens/Services/DataStore/DatabaseEncryptionService.swift": "AgentLens/Services/DataStore/DatabaseEncryptionService.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedSocketTrust.swift": "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/",
     "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonLocalAuthProofVerifier.swift": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonLocalAuthProofVerifier.swift",
