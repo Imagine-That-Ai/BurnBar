@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -11,7 +12,12 @@ import {
 } from "../lib/domain-core-release-evidence.mjs";
 
 function parseArguments(argv) {
-  const required = new Set(["--deploy-proof", "--health-artifact", "--output"]);
+  const required = new Set([
+    "--deploy-proof",
+    "--health-artifact",
+    "--deploy-run-verification",
+    "--output",
+  ]);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
@@ -59,6 +65,54 @@ function requireHealthDocument(document, expectedStatus, proof, label) {
   }
 }
 
+function requireDeployRunVerification(raw, proof) {
+  const verification = exactObject(
+    raw,
+    ["schemaVersion", "verificationKind", "deployRun"],
+    "Functions deploy-run verification",
+  );
+  if (
+    verification.schemaVersion !== 1 ||
+    verification.verificationKind !== "domain-core-functions-deploy-run"
+  ) {
+    throw new Error("Functions deploy-run verification identity is invalid");
+  }
+  const deployRun = exactObject(
+    verification.deployRun,
+    [
+      "repository",
+      "workflowPath",
+      "runId",
+      "runAttempt",
+      "event",
+      "ref",
+      "headSha",
+      "jobSetSha256",
+    ],
+    "Functions deploy run",
+  );
+  const expectedEvent =
+    proof.profile.value.name === "public-production-rollback"
+      ? "workflow_dispatch"
+      : undefined;
+  if (
+    deployRun.repository !== proof.repository ||
+    deployRun.workflowPath !== proof.workflowPath ||
+    deployRun.runId !== proof.deployRun.runId ||
+    deployRun.runAttempt !== proof.deployRun.runAttempt ||
+    !new Set(["push", "workflow_dispatch"]).has(deployRun.event) ||
+    (expectedEvent !== undefined && deployRun.event !== expectedEvent) ||
+    deployRun.ref !== `refs/tags/${proof.release.tag}` ||
+    deployRun.headSha !== proof.release.commit ||
+    !/^[0-9a-f]{64}$/u.test(deployRun.jobSetSha256)
+  ) {
+    throw new Error(
+      "Functions deploy-run verification does not match the exact deploy proof",
+    );
+  }
+  return structuredClone(deployRun);
+}
+
 function writeCreateOnly(path, contents) {
   const output = resolve(path);
   mkdirSync(dirname(output), { recursive: true });
@@ -84,7 +138,12 @@ function writeCreateOnly(path, contents) {
   return output;
 }
 
-export function createFunctionsDeploymentEvidence(proof, health) {
+export function createFunctionsDeploymentEvidence(
+  proof,
+  health,
+  runVerification,
+  healthArtifactBytes,
+) {
   exactObject(
     proof,
     [
@@ -108,6 +167,7 @@ export function createFunctionsDeploymentEvidence(proof, health) {
   ) {
     throw new Error("Functions deploy proof identity is invalid");
   }
+  const deployRun = requireDeployRunVerification(runVerification, proof);
   if (health?.project !== "burnbar" || health?.tag !== proof.release.tag) {
     throw new Error(
       "health artifact does not match the Functions project and release tag",
@@ -138,17 +198,27 @@ export function createFunctionsDeploymentEvidence(proof, health) {
       "domainCoreProfile",
     ],
     deployedArtifact: structuredClone(proof.compiledReceipt),
+    deployRun,
+    healthArtifactSha256: createHash("sha256")
+      .update(healthArtifactBytes)
+      .digest("hex"),
   };
 }
 
 export function run(argv) {
   const args = parseArguments(argv);
+  const healthArtifactPath = regularFile(
+    resolve(args.get("--health-artifact")),
+    "Functions health artifact",
+  );
   const evidence = createFunctionsDeploymentEvidence(
     readJson(resolve(args.get("--deploy-proof")), "Functions deploy proof"),
+    readJson(healthArtifactPath, "Functions health artifact"),
     readJson(
-      resolve(args.get("--health-artifact")),
-      "Functions health artifact",
+      resolve(args.get("--deploy-run-verification")),
+      "Functions deploy-run verification",
     ),
+    readFileSync(healthArtifactPath),
   );
   const output = writeCreateOnly(
     args.get("--output"),
