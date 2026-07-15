@@ -558,6 +558,30 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     }
 
+    func testShadowClockStartableWithChannelEnvVarSpoolsOneSample() async throws {
+        // P-ARCH-1a: prove the Apple telemetry shadow clock is truly startable
+        // via the OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL env var. When channel=
+        // internal, MacDomainCoreShadowEvidenceRecorder MUST persist a
+        // DomainCoreQuotaShadowComparison and the submitter MUST eventually
+        // receive exactly one batch of size 1.
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let submitter = RecordingDomainCoreShadowSubmitter()
+        let recorder = MacDomainCoreShadowEvidenceRecorder(
+            environment: ["OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL": "internal"],
+            directory: directory,
+            submitter: submitter,
+            debounceNanoseconds: 1_000_000
+        )
+
+        recorder.record(makeComparison())
+
+        try await eventually {
+            await submitter.batchSizes() == [1]
+        }
+        withExtendedLifetime(recorder) {}
+    }
+
     private func makeSample(
         channel: String = "internal",
         operation: String = "claude_quota",

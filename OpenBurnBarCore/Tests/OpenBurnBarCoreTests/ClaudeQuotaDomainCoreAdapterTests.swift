@@ -135,6 +135,37 @@ final class ClaudeQuotaDomainCoreAdapterTests: XCTestCase {
         )
     }
 
+    func testShadowClockStartableWithModeAndChannelEnvVars() throws {
+        // P-ARCH-1a: prove the Apple shadow clock is truly startable via the
+        // OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE env var, not just type construction.
+        // When mode=shadow, the adapter MUST run both legacy + Rust probes,
+        // record exactly one shadow comparison via the quota logger, and
+        // return the legacy buckets unchanged.
+        let input = try Data(contentsOf: fixtureURL("claude-statusline-input.json"))
+        let rateLimits = ClaudeRateLimits(from: input)
+        let expected = ClaudeQuotaDomainCoreAdapter.legacyBuckets(from: rateLimits)
+        let logger = RecordingQuotaLogger()
+
+        let actual = ClaudeQuotaDomainCoreAdapter.buckets(
+            from: rateLimits,
+            environment: ["OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE": "shadow"],
+            quotaLogger: logger
+        )
+
+        // Shadow mode must return the legacy buckets — never the Rust result.
+        XCTAssertEqual(actual, expected)
+        // Exactly one comparison receipt is recorded, proving the shadow clock
+        // actually ran (not just that the type was constructed).
+        XCTAssertEqual(logger.comparisons.count, 1)
+        XCTAssertEqual(logger.comparisons.first?.operation, "claude_quota")
+        // The comparison receipt carries a valid core version (non-empty).
+        XCTAssertFalse(logger.comparisons.first?.coreVersion.isEmpty ?? true)
+        // Micros are non-negative (timing measurements).
+        XCTAssertNotNil(logger.comparisons.first)
+        XCTAssertTrue(logger.comparisons.first!.legacyMicros >= 0)
+        XCTAssertTrue(logger.comparisons.first!.rustMicros >= 0)
+    }
+
     private func fixtureURL(_ name: String) -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
