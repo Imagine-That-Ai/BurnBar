@@ -199,6 +199,7 @@ function sourceInputs({ version, architecture, manifestBytes, signatureBytes }) 
   const commonNames = new Map([
     ['DESKTOP', 'openburnbar.desktop'],
     ['SAFE_MODE_DESKTOP', 'openburnbar-safe-mode.desktop'],
+    ['AUTOSTART_DESKTOP', 'openburnbar-autostart.desktop'],
     ['SERVICE', 'openburnbar-daemon.service'],
     ['LAUNCH', 'openburnbar-daemon-launch'],
     ['DESKTOP_LAUNCHER', 'openburnbar-linux-desktop'],

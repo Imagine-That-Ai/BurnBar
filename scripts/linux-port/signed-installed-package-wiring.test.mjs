@@ -130,6 +130,11 @@ test('Arch preparation embeds the native payload before makepkg without unsigned
   assert.match(source, /embedLinuxAppImagePayload\(/u);
 });
 
+test('Arch preparation maps every common PKGBUILD source slot to a filename', () => {
+  const source = read('scripts/linux-port/build-signed-arch-package.mjs');
+  assert.match(source, /\['AUTOSTART_DESKTOP', 'openburnbar-autostart\.desktop'\]/u);
+});
+
 test('signed AppImage finalization reuses the attested prepare artifact', () => {
   const source = read('scripts/linux-port/bundle-signed-linux-packages.mjs');
   const finalizeStart = source.indexOf('function finalizeSignedPackages()');
