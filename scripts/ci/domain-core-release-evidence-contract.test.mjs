@@ -71,7 +71,7 @@ test("deployment receipt v2 carries the same proof chain and deployed bytes", ()
   }
   assert.equal(
     schema.properties.deployment.properties.deployedArtifact.$ref,
-    "domain-core-release-predicate.schema.json#/$defs/artifact",
+    "domain-core-release-predicate-v2.json#/$defs/artifact",
   );
   assert.deepEqual(
     new Set(schema.properties.deployment.properties.deployRun.required),
@@ -92,6 +92,81 @@ test("deployment receipt v2 carries the same proof chain and deployed bytes", ()
     "Imagine-That-Ai/BurnBar",
   );
   assert.equal(schema.oneOf.length, 2);
+});
+
+test("deployment receipt refs resolve to the v2 predicate schema, not the unversioned URL", () => {
+  const schema = json("config/domain-core-deployment-receipt.schema.json");
+  const predicateSchema = json(
+    "config/domain-core-release-predicate.schema.json",
+  );
+  const expectedBase = predicateSchema.$id.replace(
+    /^https:\/\/openburnbar\.dev\/schemas\//u,
+    "",
+  );
+  const refPaths = [];
+  function collectRefs(node) {
+    if (node === null || typeof node !== "object") return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "$ref" && typeof value === "string") refPaths.push(value);
+      else if (typeof value === "object") collectRefs(value);
+    }
+  }
+  collectRefs(schema);
+  assert.ok(refPaths.length > 0, "schema should contain at least one $ref");
+  for (const ref of refPaths) {
+    assert.ok(
+      ref.startsWith(`${expectedBase}#/`),
+      `ref ${ref} must resolve to the v2 predicate schema ${expectedBase}`,
+    );
+    assert.ok(
+      !ref.startsWith("domain-core-release-predicate.schema.json"),
+      `ref ${ref} must not point at the unversioned predicate URL`,
+    );
+  }
+});
+
+test("deployment receipt oneOf ties each deploy workflow to its specific deployment consumer", () => {
+  const schema = json("config/domain-core-deployment-receipt.schema.json");
+  const branches = schema.oneOf;
+  assert.equal(branches.length, 2);
+  for (const branch of branches) {
+    const consumer = branch.properties.consumer.const;
+    const expectedWorkflow =
+      consumer === "console"
+        ? ".github/workflows/deploy-hosting.yml"
+        : ".github/workflows/deploy-production.yml";
+    const actualWorkflow =
+      branch.properties.deployment.properties.deployRun.properties.workflowPath
+        .const;
+    assert.equal(
+      actualWorkflow,
+      expectedWorkflow,
+      `${consumer} receipt must pin ${expectedWorkflow}`,
+    );
+  }
+  // A console receipt with the functions deploy workflow must not match any oneOf branch.
+  const consoleBranch = branches.find(
+    (b) => b.properties.consumer.const === "console",
+  );
+  const functionsWorkflow =
+    ".github/workflows/deploy-production.yml";
+  assert.notEqual(
+    consoleBranch.properties.deployment.properties.deployRun.properties
+      .workflowPath.const,
+    functionsWorkflow,
+    "console branch must not accept the functions deploy workflow",
+  );
+  // A functions receipt with the console deploy workflow must not match any oneOf branch.
+  const functionsBranch = branches.find(
+    (b) => b.properties.consumer.const === "functions",
+  );
+  const consoleWorkflow = ".github/workflows/deploy-hosting.yml";
+  assert.notEqual(
+    functionsBranch.properties.deployment.properties.deployRun.properties
+      .workflowPath.const,
+    consoleWorkflow,
+    "functions branch must not accept the console deploy workflow",
+  );
 });
 
 test("pre-release gate verifies immutable candidate source signer and rollback identities", () => {
