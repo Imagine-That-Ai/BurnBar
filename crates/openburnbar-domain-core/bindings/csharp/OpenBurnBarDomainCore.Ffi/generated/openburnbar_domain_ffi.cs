@@ -839,6 +839,8 @@ static class _UniFFILib {
 
 
 
+
+
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
@@ -963,6 +965,10 @@ static class _UniFFILib {
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern uint uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version(ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint(ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1390,6 +1396,10 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version(
     );
 
@@ -1661,6 +1671,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version();
             if (checksum != 60924) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version` checksum `60924`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint();
+            if (checksum != 44982) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint` checksum `44982`, library returned `{checksum}`");
             }
         }
         {
@@ -4452,6 +4468,14 @@ public static class OpenburnbarDomainFfiMethods {
         return FfiConverterUInt32.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version( ref _status)
+));
+    }
+
+
+    public static string DomainCoreSourceFingerprint() {
+        return FfiConverterString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint( ref _status)
 ));
     }
 

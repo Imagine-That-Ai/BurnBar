@@ -3976,6 +3976,12 @@ public func domainCoreAbiVersion() -> UInt32 {
     )
 })
 }
+public func domainCoreSourceFingerprint() -> String {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint($0
+    )
+})
+}
 public func domainCoreVersion() -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_openburnbar_domain_ffi_fn_func_domain_core_version($0
@@ -4252,6 +4258,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version() != 60924) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint() != 44982) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version() != 28819) {

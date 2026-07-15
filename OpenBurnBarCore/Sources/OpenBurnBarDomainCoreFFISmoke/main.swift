@@ -30,6 +30,30 @@ func data(hex: String) -> Data {
 
 require(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3, "unexpected ABI version")
 require(!OpenBurnBarDomainCoreFFI.domainCoreVersion().isEmpty, "empty crate version")
+let sourceFingerprint = OpenBurnBarDomainCoreFFI.domainCoreSourceFingerprint()
+require(
+    sourceFingerprint.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil,
+    "invalid source fingerprint"
+)
+let expectedSourceFingerprintURL = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent()
+    .appendingPathComponent("../../../Vendor/OpenBurnBarDomainCore.xcframework/openburnbar-domain-core-source.sha256")
+    .standardizedFileURL
+let expectedSourceFingerprint: String
+do {
+    expectedSourceFingerprint = try String(contentsOf: expectedSourceFingerprintURL, encoding: .utf8)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+} catch {
+    FileHandle.standardError.write(
+        Data("domain-core smoke failed: cannot read XCFramework source fingerprint: \(error)\n".utf8)
+    )
+    exit(1)
+}
+require(
+    expectedSourceFingerprint.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil,
+    "invalid XCFramework source fingerprint"
+)
+require(sourceFingerprint == expectedSourceFingerprint, "loaded XCFramework source fingerprint mismatch")
 
 let safetyCode = try OpenBurnBarDomainCoreFFI.hermesGatewayRelaySafetyCode(
     agentPublicKey: Data(base64Encoded: "BGsX0fLhLEJH+Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT+NC4v4af5uO5+tKfA+eFivOM1drMV7Oy7ZAaDe/UfU=")!,

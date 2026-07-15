@@ -4,8 +4,6 @@ use openburnbar_domain_core::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
-pub const DOMAIN_CORE_ABI_VERSION: u32 = 3;
-
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
 pub enum CloudVaultHashPurpose {
     BlobIntegrity,
@@ -357,12 +355,17 @@ pub struct QuotaParseResult {
 
 #[uniffi::export]
 pub fn domain_core_abi_version() -> u32 {
-    DOMAIN_CORE_ABI_VERSION
+    openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION
 }
 
 #[uniffi::export]
 pub fn domain_core_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
+}
+
+#[uniffi::export]
+pub fn domain_core_source_fingerprint() -> String {
+    env!("OPENBURNBAR_DOMAIN_CORE_SOURCE_FINGERPRINT").to_owned()
 }
 
 #[uniffi::export]
@@ -1499,8 +1502,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ffi_surface_reports_reviewed_source_fingerprint() -> Result<(), serde_json::Error> {
+        let manifest: serde_json::Value =
+            serde_json::from_str(include_str!("../../union-abi-manifest.json"))?;
+
+        let loaded = domain_core_source_fingerprint();
+        assert_eq!(loaded.len(), 64);
+        assert_eq!(
+            Some(loaded.as_str()),
+            manifest
+                .get("sourceSha256")
+                .and_then(serde_json::Value::as_str)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ffi_surface_uses_shared_domain_core_abi_authority() {
+        assert_eq!(
+            domain_core_abi_version(),
+            openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION
+        );
+    }
+
+    #[test]
     fn ffi_surface_reports_version_and_parses_without_throwing() -> Result<(), CloudVaultFfiError> {
-        assert_eq!(domain_core_abi_version(), 3);
         assert_eq!(domain_core_version(), "0.1.0");
         let result =
             parse_claude_statusline_quota(br#"{"five_hour":{"used_percentage":42}}"#.to_vec());
