@@ -134,6 +134,30 @@ def run_build_identity_helper(
         check=False,
     )
 
+def _cargo_offline_available() -> bool:
+    """Check whether cargo can resolve build-dependencies in --offline mode.
+
+    The compile-time identity helper tests create temporary Cargo projects
+    that depend on serde_json and sha2.  These crates must already be in the
+    local registry cache (the domain-core CI workflow pre-populates them).
+    Other workflows (e.g. license-posture) run the full ``tests/`` suite
+    without a Rust toolchain, so these tests are skipped there rather than
+    weakening the contract.
+    """
+    cargo = shutil.which("cargo")
+    if cargo is None:
+        return False
+    probe = subprocess.run(
+        ["cargo", "metadata", "--quiet", "--offline", "--format-version", "1"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return probe.returncode == 0
+
+
+CARGO_OFFLINE_AVAILABLE = _cargo_offline_available()
 
 class DomainCoreUnionGateTests(unittest.TestCase):
     def test_workflow_routes_canonical_android_toolchain_changes(self) -> None:
@@ -207,6 +231,7 @@ class DomainCoreUnionGateTests(unittest.TestCase):
                     with self.assertRaisesRegex(GATE.GateError, "sourceSha256"):
                         GATE.verified_source_fingerprint(root, mutated)
 
+    @unittest.skipUnless(CARGO_OFFLINE_AVAILABLE, "cargo --offline with serde_json/sha2 not available")
     def test_compile_time_identity_helper_rejects_missing_or_malformed_fingerprint(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
@@ -238,6 +263,7 @@ class DomainCoreUnionGateTests(unittest.TestCase):
                         self.assertNotEqual(0, result.returncode)
                         self.assertIn("sourceSha256", result.stderr)
 
+    @unittest.skipUnless(CARGO_OFFLINE_AVAILABLE, "cargo --offline with serde_json/sha2 not available")
     def test_compile_time_identity_helpers_emit_verified_fingerprint(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
@@ -264,6 +290,7 @@ class DomainCoreUnionGateTests(unittest.TestCase):
                     )
                     self.assertEqual(0, result.returncode, result.stderr)
 
+    @unittest.skipUnless(CARGO_OFFLINE_AVAILABLE, "cargo --offline with serde_json/sha2 not available")
     def test_compile_time_identity_helpers_reject_valid_but_stale_source(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
@@ -292,6 +319,7 @@ class DomainCoreUnionGateTests(unittest.TestCase):
                     self.assertNotEqual(0, result.returncode)
                     self.assertIn("source fingerprint drifted", result.stderr)
 
+    @unittest.skipUnless(CARGO_OFFLINE_AVAILABLE, "cargo --offline with serde_json/sha2 not available")
     def test_compile_time_identity_helpers_reject_invalid_json(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
