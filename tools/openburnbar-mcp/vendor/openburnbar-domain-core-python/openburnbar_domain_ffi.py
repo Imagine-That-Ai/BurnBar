@@ -528,6 +528,8 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     if lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version() != 60924:
         raise InternalError("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    if lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_candidate_commit() != 33892:
+        raise InternalError("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     if lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint() != 44982:
         raise InternalError("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     if lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version() != 28819:
@@ -902,6 +904,10 @@ _UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version.argtype
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version.restype = ctypes.c_uint32
+_UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit.argtypes = (
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit.restype = _UniffiRustBuffer
 _UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint.argtypes = (
     ctypes.POINTER(_UniffiRustCallStatus),
 )
@@ -1441,6 +1447,9 @@ _UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256
 _UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version.argtypes = (
 )
 _UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version.restype = ctypes.c_uint16
+_UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_candidate_commit.argtypes = (
+)
+_UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_candidate_commit.restype = ctypes.c_uint16
 _UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint.argtypes = (
 )
 _UniffiLib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint.restype = ctypes.c_uint16
@@ -4883,6 +4892,10 @@ def domain_core_abi_version() -> "int":
     return _UniffiConverterUInt32.lift(_uniffi_rust_call(_UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version,))
 
 
+def domain_core_candidate_commit() -> "str":
+    return _UniffiConverterString.lift(_uniffi_rust_call(_UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit,))
+
+
 def domain_core_source_fingerprint() -> "str":
     return _UniffiConverterString.lift(_uniffi_rust_call(_UniffiLib.uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint,))
 
@@ -5252,6 +5265,7 @@ __all__ = [
     "cloud_vault_subscription_doc_id",
     "cloud_vault_validate_p256_x963_public_key",
     "domain_core_abi_version",
+    "domain_core_candidate_commit",
     "domain_core_source_fingerprint",
     "domain_core_version",
     "hermes_gateway_relay_safety_code",

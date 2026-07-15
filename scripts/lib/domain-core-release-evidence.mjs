@@ -210,17 +210,63 @@ export function validateCandidateBundle(bundle) {
       "candidate bundle workflow does not bind the exact main push candidate",
     );
   }
+  const rollbackProof = bundle.rollback;
+  if (
+    !rollbackProof ||
+    typeof rollbackProof !== "object" ||
+    Array.isArray(rollbackProof)
+  ) {
+    throw new Error(
+      "candidate bundle must contain a rollback proof binding the exercised artifact",
+    );
+  }
+  const restoredArtifactSha256 = digest(
+    rollbackProof.restoredArtifactSha256,
+    "candidate bundle rollback restored artifact SHA-256",
+  );
+  const rollbackRunId = positiveInteger(
+    rollbackProof.runId,
+    "candidate bundle rollback run ID",
+  );
+  const rollbackRunAttempt = positiveInteger(
+    rollbackProof.runAttempt,
+    "candidate bundle rollback run attempt",
+  );
+  const sourceRunId = positiveInteger(workflow.runId, "source run ID");
+  const sourceRunAttempt = positiveInteger(
+    workflow.runAttempt,
+    "source run attempt",
+  );
+  if (
+    rollbackRunId !== sourceRunId ||
+    rollbackRunAttempt !== sourceRunAttempt
+  ) {
+    throw new Error(
+      "candidate bundle rollback proof does not bind the exact source run and attempt",
+    );
+  }
+  const rollbackFromCommit = rollbackProof.fromCandidateCommit;
+  if (
+    typeof rollbackFromCommit !== "string" ||
+    !FULL_SHA.test(rollbackFromCommit) ||
+    rollbackFromCommit !== candidate.candidateCommit
+  ) {
+    throw new Error(
+      "candidate bundle rollback proof does not bind the exact candidate commit",
+    );
+  }
   return {
     candidate,
     sourceRun: {
       repository: workflow.repository,
       workflowPath: workflow.workflowPath,
-      runId: positiveInteger(workflow.runId, "source run ID"),
-      runAttempt: positiveInteger(workflow.runAttempt, "source run attempt"),
+      runId: sourceRunId,
+      runAttempt: sourceRunAttempt,
       event: "push",
       ref: "refs/heads/main",
       headSha: candidate.candidateCommit,
     },
+    restoredArtifactSha256,
   };
 }
 
@@ -492,7 +538,8 @@ export function verifyDomainCoreReleaseGate({
   const candidateBundle = JSON.parse(
     readFileSync(regularFile(candidateBundlePath, "candidate bundle"), "utf8"),
   );
-  const { candidate, sourceRun } = validateCandidateBundle(candidateBundle);
+  const { candidate, sourceRun, restoredArtifactSha256 } =
+    validateCandidateBundle(candidateBundle);
   const expectedIdentity =
     validateDomainCoreCandidateIdentity(expectedCandidate);
   if (canonicalJson(candidate) !== canonicalJson(expectedIdentity)) {
@@ -533,6 +580,11 @@ export function verifyDomainCoreReleaseGate({
     candidate,
   );
   const rollbackSha256 = sha256File(rollbackPath);
+  if (rollbackSha256 !== restoredArtifactSha256) {
+    throw new Error(
+      "release gate rollback artifact digest does not match the protected candidate bundle rollback proof",
+    );
+  }
   if (
     rollbackSha256 !==
     digest(expectedRollbackSha256, "expected rollback artifact SHA-256")

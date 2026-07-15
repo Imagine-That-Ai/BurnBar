@@ -17,6 +17,20 @@ const windows = readFileSync(
   ),
   "utf8",
 );
+const windowsEngine = readFileSync(
+  new URL(
+    "../../.github/workflows/openburnbar-engine-windows.yml",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const iosEvidence = readFileSync(
+  new URL(
+    "../../.github/workflows/domain-core-ios-release-evidence.yml",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const androidBuild = readFileSync(
   new URL("../../android/app/build.gradle.kts", import.meta.url),
   "utf8",
@@ -99,6 +113,24 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
   assert.match(build, /run-domain-core-android-native-load\.sh/u);
   assert.doesNotMatch(build, /run-as com\.openburnbar\.domaincore\.test/u);
   assert.match(build, /--candidate-aar Vendor\/openburnbar-domain-core\.aar/u);
+  const checkedInAar = build.indexOf(
+    "Rebuild and byte-compare checked-in Android AAR",
+  );
+  const candidateAar = build.indexOf(
+    "Build candidate-bound four-ABI Android AAR",
+  );
+  const signedBundle = build.indexOf("Build signed Android release bundle");
+  assert.ok(checkedInAar >= 0);
+  assert.ok(checkedInAar < candidateAar);
+  assert.ok(candidateAar < signedBundle);
+  assert.match(
+    build,
+    /Rebuild and byte-compare checked-in Android AAR[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: 0{40}[\s\S]*build-domain-core-android-aar\.sh --check-artifact/u,
+  );
+  assert.match(
+    build,
+    /Build candidate-bound four-ABI Android AAR[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ needs\.domain-core-native-release-gate\.outputs\.candidate_commit \}\}[\s\S]*build-domain-core-android-aar\.sh/u,
+  );
   assert.match(build, /runs-on: macos-26[\s\S]*arch: arm64-v8a/u);
   assert.match(
     androidBuild,
@@ -107,7 +139,11 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
 });
 
 test("deterministic native smoke resolves candidate C and extracts Android identity before uninstall", () => {
-  const appleSmoke = job(domainCore, "apple-native-smoke", "swift-consumer-contracts");
+  const appleSmoke = job(
+    domainCore,
+    "apple-native-smoke",
+    "swift-consumer-contracts",
+  );
   const android = job(domainCore, "android", "apple");
   assert.match(appleSmoke, /candidate_commit="\$\(git rev-parse HEAD\)"/u);
   assert.match(
@@ -333,10 +369,45 @@ test("release workflow has no replacement-capable asset mutation", () => {
 
 test("Windows signing and canonical evidence consume the exact gate", () => {
   const gate = job(windows, "domain-core-native-release-gate", "build-sign");
+  const nativeEngine = job(
+    windows,
+    "native-engine",
+    "authorize-domain-core-rollback",
+  );
   const build = job(windows, "build-sign", "supply-chain");
   const evidence = job(windows, "domain-core-windows-release-evidence");
-  assert.match(gate, /prepare-domain-core-native-release-gate\.mjs/u);
+  assert.match(
+    gate,
+    /resolve-domain-core-activation\.mjs[\s\S]*--release-commit "\$RELEASE_COMMIT"/u,
+  );
+  assert.match(gate, /CANDIDATE_COMMIT="\$\(jq -er '\.candidateCommit'/u);
+  assert.match(
+    gate,
+    /prepare-domain-core-native-release-gate\.mjs[\s\S]*--candidate-commit "\$CANDIDATE_COMMIT"[\s\S]*--release-commit "\$RELEASE_COMMIT"[\s\S]*--activation "\$activation"/u,
+  );
+  assert.doesNotMatch(gate, /--candidate-commit "\$RELEASE_COMMIT"/u);
+  assert.match(
+    gate,
+    /candidate_commit: \$\{\{ steps\.gate\.outputs\.candidate_commit \}\}/u,
+  );
+  assert.match(nativeEngine, /needs: domain-core-native-release-gate/u);
+  assert.match(
+    nativeEngine,
+    /candidate_commit: \$\{\{ needs\.domain-core-native-release-gate\.outputs\.candidate_commit \}\}/u,
+  );
   assert.match(build, /- domain-core-native-release-gate/u);
+  assert.match(
+    build,
+    /--expected-candidate-commit "\$\{\{ needs\.domain-core-native-release-gate\.outputs\.candidate_commit \}\}"/u,
+  );
+  assert.match(
+    build,
+    /DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ needs\.domain-core-native-release-gate\.outputs\.candidate_commit \}\}/u,
+  );
+  assert.doesNotMatch(
+    build,
+    /(?:--expected-candidate-commit|DOMAIN_CORE_CANDIDATE_COMMIT:) [^\n]*needs\.resolve-release\.outputs\.release_commit/u,
+  );
   assert.match(build, /Loaded_native_identity_is_observed_for_attestation/u);
   assert.match(build, /DOMAIN_CORE_NATIVE_LIBRARY_PATH/u);
   assert.match(build, /OpenBurnBar-\$\{env:VERSION\}-win-x64\.zip/u);
@@ -344,6 +415,18 @@ test("Windows signing and canonical evidence consume the exact gate", () => {
   assert.match(evidence, /create-windows-domain-core-release-bundle\.py/u);
   assert.match(evidence, /verify-domain-core-observed-identity\.mjs/u);
   assert.match(evidence, /create-domain-core-native-release-evidence\.mjs/u);
+  assert.match(
+    evidence,
+    /--expected-candidate-commit "\$\{\{ needs\.domain-core-native-release-gate\.outputs\.candidate_commit \}\}"/u,
+  );
+  assert.doesNotMatch(
+    evidence,
+    /--expected-candidate-commit "\$RELEASE_COMMIT"/u,
+  );
+  assert.match(
+    evidence,
+    /create-domain-core-native-release-evidence\.mjs[\s\S]*--commit "\$RELEASE_COMMIT"[\s\S]*--activation "\$RUNNER_TEMP\/domain-core-native-release-gate\/domain-core-activation\.json"/u,
+  );
   assert.match(evidence, /actions\/attest@[0-9a-f]{40}/u);
   assert.match(evidence, /publish-domain-core-release-evidence\.mjs/u);
   assert.match(evidence, /--phase prepare/u);
@@ -353,4 +436,55 @@ test("Windows signing and canonical evidence consume the exact gate", () => {
     /(?:Stage deterministic attestation bundle names|Prepare exact stable Windows GitHub release|Publish create-only Windows evidence)\n\s+if:/u,
   );
   assert.doesNotMatch(evidence, /--clobber|14[- ]day|10,?000/iu);
+});
+
+test("Windows production engine builds embed their exact candidate commit", () => {
+  const x64 = job(windowsEngine, "build", "build-arm64");
+  const arm64 = job(windowsEngine, "build-arm64");
+  for (const build of [x64, arm64]) {
+    assert.match(
+      build,
+      /Build and stage production C ABI engine(?: \(ARM64\))?[\s\S]*env:[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ inputs\.candidate_commit \|\| github\.sha \}\}[\s\S]*cargo build --manifest-path crates\/openburnbar-domain-core\/Cargo\.toml -p openburnbar-domain-ffi --release/u,
+    );
+  }
+  assert.equal(
+    windowsEngine.match(
+      /OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ inputs\.candidate_commit \|\| github\.sha \}\}/gu,
+    )?.length,
+    2,
+  );
+});
+
+test("native evidence binds restored rollback profile bytes across raw and packaged workflows", () => {
+  const appleAndroidEvidence = job(
+    appleAndroid,
+    "domain-core-native-release-evidence",
+    "verify-live-update-feed",
+  );
+  const ios = job(iosEvidence, "attest-ios-domain-core");
+  const windowsSupplyChain = job(
+    windows,
+    "supply-chain",
+    "domain-core-windows-release-evidence",
+  );
+  const windowsEvidence = job(windows, "domain-core-windows-release-evidence");
+
+  for (const rawProfileWorkflow of [appleAndroidEvidence, windowsEvidence]) {
+    assert.match(
+      rawProfileWorkflow,
+      /--rollback-artifact "\$RUNNER_TEMP\/domain-core-native-release-gate\/source\/domain-core-public-production-rollback\.json"/u,
+    );
+    assert.doesNotMatch(rawProfileWorkflow, /--rollback-profile/u);
+  }
+
+  for (const packagedWorkflow of [ios, windowsSupplyChain]) {
+    assert.match(
+      packagedWorkflow,
+      /rollback_profile=.*domain-core-public-production-rollback\.json/u,
+    );
+    assert.match(
+      packagedWorkflow,
+      /--rollback-artifact "\$rollback"[\s\S]*--rollback-profile "\$rollback_profile"/u,
+    );
+  }
 });

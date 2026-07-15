@@ -93,11 +93,14 @@ require(
 require(sourceFingerprint == expectedSourceFingerprint, "loaded XCFramework source fingerprint mismatch")
 
 if let reportPath = ProcessInfo.processInfo.environment["DOMAIN_CORE_OBSERVED_IDENTITY_REPORT"] {
-    let candidateCommit = ProcessInfo.processInfo.environment["DOMAIN_CORE_CANDIDATE_COMMIT"] ?? ""
+    let expectedCandidateCommit = ProcessInfo.processInfo.environment["DOMAIN_CORE_CANDIDATE_COMMIT"] ?? ""
+    let candidateCommit = OpenBurnBarDomainCoreFFI.domainCoreCandidateCommit()
     require(
         candidateCommit.range(of: #"^[0-9a-f]{40}$"#, options: .regularExpression) != nil,
-        "missing exact candidate commit for observed identity report"
+        "loaded Rust candidate commit is invalid"
     )
+    require(candidateCommit != String(repeating: "0", count: 40), "loaded Rust candidate commit is unbound")
+    require(candidateCommit == expectedCandidateCommit, "loaded Rust candidate commit mismatch")
     let identity = ObservedIdentity(
         candidateCommit: candidateCommit,
         coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),

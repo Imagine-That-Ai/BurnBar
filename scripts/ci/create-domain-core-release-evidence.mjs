@@ -375,7 +375,8 @@ export function buildReleaseEvidence({
   activationVerifier = validateDomainCoreActivation,
 }) {
   const candidateBundle = readJson(candidateBundlePath, "candidate bundle");
-  const { candidate, sourceRun } = validateCandidateBundle(candidateBundle);
+  const { candidate, sourceRun, restoredArtifactSha256 } =
+    validateCandidateBundle(candidateBundle);
   const absenceAuthority = JSON.parse(
     execFileSync(
       "python3",
@@ -439,8 +440,12 @@ export function buildReleaseEvidence({
     signerRunAttempt: protectedSignerRunAttempt,
   });
   const rollbackPath = regularFile(rollbackArtifactPath, "rollback artifact");
+  const restoredRollbackPath = regularFile(
+    rollbackProfilePath ?? rollbackPath,
+    "restored rollback artifact",
+  );
   validateRollbackArtifact(
-    readJson(rollbackProfilePath ?? rollbackPath, "rollback profile"),
+    readJson(restoredRollbackPath, "rollback profile"),
     candidate,
   );
   const rollbackArtifact = {
@@ -449,6 +454,11 @@ export function buildReleaseEvidence({
     candidate,
     activation,
   };
+  if (sha256File(restoredRollbackPath) !== restoredArtifactSha256) {
+    throw new Error(
+      "release evidence restored rollback artifact digest does not match the protected candidate bundle rollback proof",
+    );
+  }
   const release = {
     version,
     tag,
@@ -518,6 +528,7 @@ export function buildReleaseEvidence({
     const expectedSymbols = [
       "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
       "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+      "uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit",
       "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
       "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
     ];

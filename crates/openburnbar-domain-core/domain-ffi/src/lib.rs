@@ -396,6 +396,16 @@ pub fn domain_core_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
 }
 
+#[cfg(not(any(target_vendor = "apple", target_os = "windows")))]
+static DOMAIN_CORE_IDENTITY_WIRE: &str = env!("OPENBURNBAR_DOMAIN_CORE_IDENTITY_WIRE");
+
+#[uniffi::export]
+pub fn domain_core_candidate_commit() -> String {
+    #[cfg(not(any(target_vendor = "apple", target_os = "windows")))]
+    std::hint::black_box(DOMAIN_CORE_IDENTITY_WIRE);
+    env!("OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT").to_owned()
+}
+
 #[uniffi::export]
 pub fn domain_core_source_fingerprint() -> String {
     env!("OPENBURNBAR_DOMAIN_CORE_SOURCE_FINGERPRINT").to_owned()

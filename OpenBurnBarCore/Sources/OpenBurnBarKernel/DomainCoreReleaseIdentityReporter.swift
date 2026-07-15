@@ -22,6 +22,7 @@ public struct DomainCoreReleaseIdentity: Codable, Equatable, Sendable {
 
 public enum DomainCoreReleaseIdentityError: Error, LocalizedError {
     case invalidCandidateCommit
+    case candidateCommitMismatch
     case unavailableNativeCore
     case invalidSourceFingerprint
     case unsafeExecutable
@@ -31,6 +32,8 @@ public enum DomainCoreReleaseIdentityError: Error, LocalizedError {
         switch self {
         case .invalidCandidateCommit:
             "candidate commit must be a lowercase 40-character Git SHA"
+        case .candidateCommitMismatch:
+            "the loaded shared Rust candidate commit does not match the expected candidate"
         case .unavailableNativeCore:
             "the shared Rust domain core is unavailable"
         case .invalidSourceFingerprint:
@@ -76,6 +79,17 @@ public enum DomainCoreReleaseIdentityReporter {
         }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
+        let loadedCandidateCommit = OpenBurnBarDomainCoreFFI.domainCoreCandidateCommit()
+        guard loadedCandidateCommit.range(
+            of: #"^[0-9a-f]{40}$"#,
+            options: .regularExpression
+        ) != nil,
+        loadedCandidateCommit != String(repeating: "0", count: 40) else {
+            throw DomainCoreReleaseIdentityError.invalidCandidateCommit
+        }
+        guard loadedCandidateCommit == candidateCommit else {
+            throw DomainCoreReleaseIdentityError.candidateCommitMismatch
+        }
         let sourceSha256 = OpenBurnBarDomainCoreFFI.domainCoreSourceFingerprint()
         guard sourceSha256.range(
             of: #"^[0-9a-f]{64}$"#,
@@ -85,7 +99,7 @@ public enum DomainCoreReleaseIdentityReporter {
         }
         let executableData = try Data(contentsOf: executable, options: .mappedIfSafe)
         let identity = DomainCoreReleaseIdentity(
-            candidateCommit: candidateCommit,
+            candidateCommit: loadedCandidateCommit,
             coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
             abiVersion: OpenBurnBarDomainCoreFFI.domainCoreAbiVersion(),
             sourceSha256: sourceSha256,

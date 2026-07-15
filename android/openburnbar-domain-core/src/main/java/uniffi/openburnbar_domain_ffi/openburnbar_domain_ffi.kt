@@ -829,6 +829,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -912,6 +914,8 @@ internal interface UniffiLib : Library {
     ): Unit
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version(uniffi_out_err: UniffiRustCallStatus,
     ): Int
+    fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit(uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint(uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_version(uniffi_out_err: UniffiRustCallStatus,
@@ -1144,6 +1148,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_candidate_commit(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version(
@@ -1312,6 +1318,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version() != 60924.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_candidate_commit() != 33892.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint() != 44982.toShort()) {
@@ -4380,6 +4389,15 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
             return FfiConverterUInt.lift(
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version(
+        _status)
+}
+    )
+    }
+
+ fun `domainCoreCandidateCommit`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit(
         _status)
 }
     )

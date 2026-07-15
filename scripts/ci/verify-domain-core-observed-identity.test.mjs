@@ -29,7 +29,20 @@ const PROFILE = {
 
 const workspace = mkdtempSync(join(tmpdir(), "domain-core-identity-test-"));
 const binaryPath = join(workspace, "domain-core-native-library");
-const binaryContents = Buffer.from("exact shipped Rust binary\n", "utf8");
+function embeddedIdentity(candidate = CANDIDATE) {
+  return (
+    "openburnbar-domain-core-identity-v1" +
+    `|candidateCommit=${candidate.candidateCommit}` +
+    `|coreVersion=${candidate.coreVersion}` +
+    `|abiVersion=${candidate.abiVersion}` +
+    `|sourceSha256=${candidate.sourceSha256}`
+  );
+}
+
+const binaryContents = Buffer.from(
+  `exact shipped Rust binary\n${embeddedIdentity()}\0`,
+  "utf8",
+);
 const binarySha256 = createHash("sha256").update(binaryContents).digest("hex");
 writeFileSync(binaryPath, binaryContents);
 
@@ -44,7 +57,7 @@ test("accepts the exact loaded Rust identity", () => {
   });
 });
 
-test("rejects every candidate tuple substitution", () => {
+test("rejects every reported candidate tuple substitution", () => {
   for (const [key, value] of [
     ["candidateCommit", "c".repeat(40)],
     ["coreVersion", "0.3.1"],
@@ -58,7 +71,7 @@ test("rejects every candidate tuple substitution", () => {
           { ...OBSERVED, [key]: value },
           binaryPath,
         ),
-      /does not match selected signed profile/,
+      /reported Rust identity does not match selected signed profile/,
     );
   }
 });
@@ -91,11 +104,54 @@ test("rejects missing, extra, and malformed binary digests", () => {
 
 test("rejects a substituted shipped binary", () => {
   const substituted = join(workspace, "substituted-library");
-  writeFileSync(substituted, "different native binary\n");
+  const substitutedContents = Buffer.from(
+    `different native binary\n${embeddedIdentity()}\0`,
+    "utf8",
+  );
+  writeFileSync(substituted, substitutedContents);
   assert.throws(
     () => verifyObservedIdentity(PROFILE, OBSERVED, substituted),
     /binary digest does not match observed identity/,
   );
+});
+
+test("rejects a missing, wrong, zero, or ambiguous embedded identity", () => {
+  const cases = [
+    [
+      "missing",
+      "no embedded identity\n",
+      /exactly one canonical embedded identity; found 0/,
+    ],
+    [
+      "wrong",
+      `${embeddedIdentity({ ...CANDIDATE, candidateCommit: "c".repeat(40) })}\0`,
+      /embedded Rust identity does not match selected signed profile/,
+    ],
+    [
+      "zero",
+      `${embeddedIdentity({ ...CANDIDATE, candidateCommit: "0".repeat(40) })}\0`,
+      /embedded Rust identity does not match selected signed profile/,
+    ],
+    [
+      "ambiguous",
+      `${embeddedIdentity()}\0${embeddedIdentity()}\0`,
+      /exactly one canonical embedded identity; found 2/,
+    ],
+  ];
+  for (const [name, contents, expectedError] of cases) {
+    const path = join(workspace, `${name}-identity-library`);
+    const bytes = Buffer.from(contents, "utf8");
+    writeFileSync(path, bytes);
+    const observed = {
+      ...OBSERVED,
+      binarySha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+    assert.throws(
+      () => verifyObservedIdentity(PROFILE, observed, path),
+      expectedError,
+      name,
+    );
+  }
 });
 
 test("rejects symlinks and non-regular binary paths", () => {

@@ -115,6 +115,9 @@ jobs:
           source_run_attempt="$(jq -er '.sourceRun.runAttempt' "$gate")"
           signer_run_id="$(jq -er '.promotionProof.signerRun.runId' "$gate")"
           signer_run_attempt="$(jq -er '.promotionProof.signerRun.runAttempt' "$gate")"
+          activation="$RUNNER_TEMP/domain-core-console-release-activation.json"
+          jq -e '.activation | {candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
+            "$gate" > "$activation"
           node scripts/ci/verify-domain-core-release-gate.mjs \
             --candidate-bundle "$candidate" \
             --promotion-attestation "$promotion" \
@@ -147,6 +150,7 @@ jobs:
           profile_name="$(jq -er '.name' "$profile")"
           profile_sha256="$(jq -er '.profile.sha256' "$identity")"
           {
+            echo "activation=$activation"
             echo "candidate=$candidate"
             echo "promotion=$promotion"
             echo "rollback=$rollback"
@@ -160,6 +164,7 @@ jobs:
       - name: Create deterministic v2 Console release evidence
         id: evidence
         env:
+          ACTIVATION: ${{ steps.verified.outputs.activation }}
           CANDIDATE: ${{ steps.verified.outputs.candidate }}
           DEPLOYMENT: ${{ steps.verified.outputs.deployment }}
           PROFILE_SHA256: ${{ steps.verified.outputs.profile_sha256 }}
@@ -183,6 +188,7 @@ jobs:
             --artifact "$artifact" \
             --predicate "$predicate" \
             --public-profile-sha256 "$PROFILE_SHA256" \
+            --activation "$ACTIVATION" \
             --candidate-bundle "$CANDIDATE" \
             --promotion-attestation "$PROMOTION" \
             --protected-signer-run-id "$SIGNER_RUN_ID" \

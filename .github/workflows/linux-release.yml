@@ -350,6 +350,9 @@ jobs:
           inputs="$RUNNER_TEMP/domain-core-linux-release"
           mkdir -p "$inputs"
           activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
+          activation_path="$inputs/domain-core-release-activation.json"
+          jq '{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
+            <<<"$activation" > "$activation_path"
           rollback="$inputs/domain-core-public-production-rollback.json"
           node scripts/ci/resolve-domain-core-build-profile.mjs \
             --profile public-production-rollback \
@@ -375,6 +378,7 @@ jobs:
               --artifact "$closure" \
               --predicate "$predicate" \
               --public-profile-sha256 "$(jq -r '.publicProfileSha256' <<<"$encoded")" \
+              --activation "$activation_path" \
               --candidate-bundle "$bundle" \
               --promotion-attestation "$provenance" \
               --protected-signer-run-id "$(jq -r '.signerRunId' <<<"$encoded")" \
