@@ -107,6 +107,13 @@ production bundle pass. These changes improve source parity only. The strict
 promotion ledger remains **0/40 product** and **0/7 environment** until the
 current-head signed candidate and installed/runtime receipts are complete.
 
+The first candidate after this checkpoint (`29417386163`) failed both native
+architecture shards on the public/default-initializer visibility boundary in
+the Linux Computer Use adapter. `4b1126bfdf` adds the public production
+no-argument initializer and keeps dependency injection internal; the corrected
+candidate must pass both architecture shards before any release evidence is
+considered current.
+
 ### Follow-on source checkpoint — 2026-07-14
 
 The integration branch now includes the next bounded source slices:

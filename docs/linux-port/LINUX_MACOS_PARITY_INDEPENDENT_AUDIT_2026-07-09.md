@@ -78,6 +78,12 @@ percentage. The active remediation stack now contains these reviewable slices:
   Arrow/Home keyboard movement, focus metadata, and live status announcements
   to the contained fallback without claiming desktop overlay or click-through.
   Native compositor/window-manager receipts remain open.
+- **Linux candidate compile repair:** exact-head candidate run
+  `29417386163` failed both architecture shards because the public
+  `LinuxComputerUseInputSessionManager` default referenced an internal adapter
+  initializer. `4b1126bfdf` adds a public production no-argument initializer
+  while retaining the injected test initializer as internal; the replacement
+  exact-head candidate is required before release evidence can be counted.
 - **Certification boundary:** despite these source slices, the canonical
   ledger remains **0/40 product requirements** and **0/7 environment receipts**
   with `productParityClaim=false`. A source test count is not a product or
