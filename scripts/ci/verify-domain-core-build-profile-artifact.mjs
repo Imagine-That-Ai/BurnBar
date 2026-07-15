@@ -42,11 +42,14 @@ const expected = resolveDomainCoreBuildProfile(
   candidateIdentity,
 );
 
+const parseJsonArtifact = (content) =>
+  JSON.parse(content.charCodeAt(0) === 0xfeff ? content.slice(1) : content);
+
 let actual;
 if (args.has("--receipt")) {
-  actual = JSON.parse(readFileSync(resolve(args.get("--receipt")), "utf8"));
+  actual = parseJsonArtifact(readFileSync(resolve(args.get("--receipt")), "utf8"));
 } else if (args.has("--windows-dir")) {
-  actual = JSON.parse(
+  actual = parseJsonArtifact(
     readFileSync(
       join(
         resolve(args.get("--windows-dir")),
@@ -57,7 +60,7 @@ if (args.has("--receipt")) {
   );
   verifyWindowsRuntimeProfile(resolve(args.get("--windows-dir")), expected);
 } else if (args.has("--console-dir")) {
-  actual = JSON.parse(
+  actual = parseJsonArtifact(
     readFileSync(
       join(
         resolve(args.get("--console-dir")),
@@ -82,7 +85,7 @@ if (args.has("--receipt")) {
       encoding: "utf8",
     },
   );
-  actual = JSON.parse(content);
+  actual = parseJsonArtifact(content);
   const dexEntries = execFileSync("unzip", ["-Z1", androidAab], {
     encoding: "utf8",
   })

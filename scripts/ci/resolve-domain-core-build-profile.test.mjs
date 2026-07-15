@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import {
   parseDomainCoreFunctionsJavaScript,
@@ -281,4 +283,85 @@ test("Functions artifact module embeds the validated signed receipt without runt
       ),
     /requires a signed profile/,
   );
+});
+
+test("artifact verifier accepts MSBuild UTF-8 BOM receipts and still rejects malformed JSON", () => {
+  const temporaryRoot = mkdtempSync(join(tmpdir(), "openburnbar-domain-core-profile-"));
+  const windowsDirectory = join(temporaryRoot, "publish");
+  const artifactPath = join(windowsDirectory, "domain-core-build-profile.json");
+  const verifier = resolve("scripts/ci/verify-domain-core-build-profile-artifact.mjs");
+  const manifest = JSON.parse(
+    readFileSync(
+      resolve("crates/openburnbar-domain-core/union-abi-manifest.json"),
+      "utf8",
+    ),
+  );
+  const candidateCommit = spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  const expected = resolveDomainCoreBuildProfile(catalog, "public-production", {
+    candidateCommit,
+    coreVersion: manifest.coreVersion,
+    abiVersion: manifest.abiVersion,
+    sourceSha256: manifest.sourceSha256,
+  });
+  mkdirSync(windowsDirectory, { recursive: true });
+  writeFileSync(
+    join(windowsDirectory, "OpenBurnBar.App.Configuration.dll"),
+    [
+      "OpenBurnBar.DomainCore.BuildProfile",
+      "OpenBurnBar.DomainCore.BuildAuthority",
+      "OpenBurnBar.DomainCore.CandidateCommit",
+      "OpenBurnBar.DomainCore.ExpectedVersion",
+      "OpenBurnBar.DomainCore.ExpectedAbiVersion",
+      "OpenBurnBar.DomainCore.ExpectedSourceSha256",
+      expected.name,
+      expected.artifactAuthority,
+      expected.distribution,
+      expected.candidateIdentity.candidateCommit,
+      expected.candidateIdentity.coreVersion,
+      String(expected.candidateIdentity.abiVersion),
+      expected.candidateIdentity.sourceSha256,
+      ...Object.values(expected.modes),
+    ].join("\0"),
+    "utf8",
+  );
+
+  try {
+    writeFileSync(artifactPath, `\uFEFF${JSON.stringify(expected)}\n`, "utf8");
+    const valid = spawnSync(
+      process.execPath,
+      [
+        verifier,
+        "--profile",
+        "public-production",
+        "--expected-candidate-commit",
+        candidateCommit,
+        "--windows-dir",
+        windowsDirectory,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(valid.status, 0, valid.stderr || valid.stdout);
+    assert.match(valid.stdout, /domain-core artifact profile verified: public-production/);
+
+    writeFileSync(artifactPath, "\uFEFF{not-json}\n", "utf8");
+    const malformed = spawnSync(
+      process.execPath,
+      [
+        verifier,
+        "--profile",
+        "public-production",
+        "--expected-candidate-commit",
+        candidateCommit,
+        "--windows-dir",
+        windowsDirectory,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(malformed.status, 0, "malformed BOM-prefixed receipts must still fail closed");
+    assert.match(malformed.stderr, /SyntaxError/);
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
 });
