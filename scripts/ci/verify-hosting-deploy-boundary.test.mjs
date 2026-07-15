@@ -26,6 +26,7 @@ permissions:
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -38,16 +39,35 @@ jobs:
       - name: Verify hosting deploy ref
         env:
           EVENT_NAME: \${{ github.event_name }}
+          REQUESTED_PROFILE: \${{ inputs.domain_core_profile || 'public-production' }}
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "::error::Manual hosting deploys must run from refs/heads/main."
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+          release_tag=""
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            commit="$GITHUB_SHA"
+          elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            release_tag="\${GITHUB_REF#refs/tags/}"
+            git fetch --force --tags origin "+$GITHUB_REF:$GITHUB_REF"
+            commit="$(git rev-parse "$GITHUB_REF^{commit}")"
+            [[ "$GITHUB_SHA" == "$commit" ]] || { echo "::error::Release tag moved away from workflow commit."; exit 1; }
+          else
+            echo "::error::Hosting deploys require main or an exact stable v* tag."
             exit 1
           fi
-          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
             echo "::error::Hosting deploy commit is not reachable from origin/main."
             exit 1
+          fi
+          profile="public-production"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            profile="$REQUESTED_PROFILE"
+          fi
+          if [[ "$profile" == "public-production-rollback" ]]; then
+            if [[ "$EVENT_NAME" != "workflow_dispatch" || -z "$release_tag" ]]; then
+              echo "::error::Rollback is manual-only and must target an exact stable release tag."
+              exit 1
+            fi
           fi
       - name: Build immutable hosting outputs
         run: npm run build --prefix website
@@ -125,34 +145,31 @@ console.log("Self-test: verify-hosting-deploy-boundary.mjs\n");
 
 expect("current hardened hosting workflow passes", GOOD, 0);
 expect(
-  "missing manual main-ref guard fails",
+  "missing stable tag trigger fails",
+  GOOD.replace('    tags: ["v*"]\n', ""),
+  1,
+);
+expect(
+  "nonstable tag selector fails",
   GOOD.replace(
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then',
+    "^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(\\+[0-9A-Za-z.-]+)?$",
+    "^refs/tags/v.*$",
   ),
   1,
 );
 expect(
-  "comment-only manual main-ref guard fails",
+  "moved release tag guard missing fails",
   GOOD.replace(
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-    '# if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-  ),
-  1,
-);
-expect(
-  "manual guard without exit fails",
-  GOOD.replace(
-    '            exit 1\n          fi\n          git fetch',
-    '            echo "::warning::continuing"\n          fi\n          git fetch',
+    '            [[ "$GITHUB_SHA" == "$commit" ]] || { echo "::error::Release tag moved away from workflow commit."; exit 1; }',
+    '            echo "::warning::tag movement ignored"',
   ),
   1,
 );
 expect(
   "missing origin-main reachability check fails",
   GOOD.replace(
-    'if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then',
-    'if [[ -n "$GITHUB_SHA" ]]; then',
+    'if ! git merge-base --is-ancestor "$commit" origin/main; then',
+    'if [[ -n "$commit" ]]; then',
   ),
   1,
 );
@@ -160,7 +177,7 @@ expect(
   "ref guard after artifact upload fails",
   GOOD.replace(
     /      - name: Verify hosting deploy ref[\s\S]*?      - name: Build immutable hosting outputs/u,
-    '      - name: Build immutable hosting outputs',
+    "      - name: Build immutable hosting outputs",
   ).replace(
     "      - name: Upload immutable hosting artifact",
     `      - name: Upload immutable hosting artifact
@@ -251,4 +268,6 @@ if (failed > 0) {
   process.exit(1);
 }
 
-console.log(`\nPASS: ${passed} hosting deploy boundary self-test case(s) passed.`);
+console.log(
+  `\nPASS: ${passed} hosting deploy boundary self-test case(s) passed.`,
+);

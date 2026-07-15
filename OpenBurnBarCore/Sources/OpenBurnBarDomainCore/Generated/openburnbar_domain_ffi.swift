@@ -1686,6 +1686,144 @@ public func FfiConverterTypeCloudVaultSearchResult_lower(_ value: CloudVaultSear
 }
 
 
+public struct HermesRatchetPrekeyRequest {
+    public var dh1: Data
+    public var dh2: Data
+    public var dh3: Data
+    public var uid: String
+    public var clientId: String
+    public var initiatorRole: String
+    public var initiatorIdentityPublicKeyBase64: String
+    public var responderIdentityPublicKeyBase64: String
+    public var initiatorSignedPrekeyPublicKeyBase64: String
+    public var responderSignedPrekeyPublicKeyBase64: String
+    public var initiatorInitialRatchetPublicKeyBase64: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(dh1: Data, dh2: Data, dh3: Data, uid: String, clientId: String, initiatorRole: String, initiatorIdentityPublicKeyBase64: String, responderIdentityPublicKeyBase64: String, initiatorSignedPrekeyPublicKeyBase64: String, responderSignedPrekeyPublicKeyBase64: String, initiatorInitialRatchetPublicKeyBase64: String) {
+        self.dh1 = dh1
+        self.dh2 = dh2
+        self.dh3 = dh3
+        self.uid = uid
+        self.clientId = clientId
+        self.initiatorRole = initiatorRole
+        self.initiatorIdentityPublicKeyBase64 = initiatorIdentityPublicKeyBase64
+        self.responderIdentityPublicKeyBase64 = responderIdentityPublicKeyBase64
+        self.initiatorSignedPrekeyPublicKeyBase64 = initiatorSignedPrekeyPublicKeyBase64
+        self.responderSignedPrekeyPublicKeyBase64 = responderSignedPrekeyPublicKeyBase64
+        self.initiatorInitialRatchetPublicKeyBase64 = initiatorInitialRatchetPublicKeyBase64
+    }
+}
+
+
+
+extension HermesRatchetPrekeyRequest: Equatable, Hashable {
+    public static func ==(lhs: HermesRatchetPrekeyRequest, rhs: HermesRatchetPrekeyRequest) -> Bool {
+        if lhs.dh1 != rhs.dh1 {
+            return false
+        }
+        if lhs.dh2 != rhs.dh2 {
+            return false
+        }
+        if lhs.dh3 != rhs.dh3 {
+            return false
+        }
+        if lhs.uid != rhs.uid {
+            return false
+        }
+        if lhs.clientId != rhs.clientId {
+            return false
+        }
+        if lhs.initiatorRole != rhs.initiatorRole {
+            return false
+        }
+        if lhs.initiatorIdentityPublicKeyBase64 != rhs.initiatorIdentityPublicKeyBase64 {
+            return false
+        }
+        if lhs.responderIdentityPublicKeyBase64 != rhs.responderIdentityPublicKeyBase64 {
+            return false
+        }
+        if lhs.initiatorSignedPrekeyPublicKeyBase64 != rhs.initiatorSignedPrekeyPublicKeyBase64 {
+            return false
+        }
+        if lhs.responderSignedPrekeyPublicKeyBase64 != rhs.responderSignedPrekeyPublicKeyBase64 {
+            return false
+        }
+        if lhs.initiatorInitialRatchetPublicKeyBase64 != rhs.initiatorInitialRatchetPublicKeyBase64 {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(dh1)
+        hasher.combine(dh2)
+        hasher.combine(dh3)
+        hasher.combine(uid)
+        hasher.combine(clientId)
+        hasher.combine(initiatorRole)
+        hasher.combine(initiatorIdentityPublicKeyBase64)
+        hasher.combine(responderIdentityPublicKeyBase64)
+        hasher.combine(initiatorSignedPrekeyPublicKeyBase64)
+        hasher.combine(responderSignedPrekeyPublicKeyBase64)
+        hasher.combine(initiatorInitialRatchetPublicKeyBase64)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHermesRatchetPrekeyRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HermesRatchetPrekeyRequest {
+        return
+            try HermesRatchetPrekeyRequest(
+                dh1: FfiConverterData.read(from: &buf),
+                dh2: FfiConverterData.read(from: &buf),
+                dh3: FfiConverterData.read(from: &buf),
+                uid: FfiConverterString.read(from: &buf),
+                clientId: FfiConverterString.read(from: &buf),
+                initiatorRole: FfiConverterString.read(from: &buf),
+                initiatorIdentityPublicKeyBase64: FfiConverterString.read(from: &buf),
+                responderIdentityPublicKeyBase64: FfiConverterString.read(from: &buf),
+                initiatorSignedPrekeyPublicKeyBase64: FfiConverterString.read(from: &buf),
+                responderSignedPrekeyPublicKeyBase64: FfiConverterString.read(from: &buf),
+                initiatorInitialRatchetPublicKeyBase64: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HermesRatchetPrekeyRequest, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.dh1, into: &buf)
+        FfiConverterData.write(value.dh2, into: &buf)
+        FfiConverterData.write(value.dh3, into: &buf)
+        FfiConverterString.write(value.uid, into: &buf)
+        FfiConverterString.write(value.clientId, into: &buf)
+        FfiConverterString.write(value.initiatorRole, into: &buf)
+        FfiConverterString.write(value.initiatorIdentityPublicKeyBase64, into: &buf)
+        FfiConverterString.write(value.responderIdentityPublicKeyBase64, into: &buf)
+        FfiConverterString.write(value.initiatorSignedPrekeyPublicKeyBase64, into: &buf)
+        FfiConverterString.write(value.responderSignedPrekeyPublicKeyBase64, into: &buf)
+        FfiConverterString.write(value.initiatorInitialRatchetPublicKeyBase64, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHermesRatchetPrekeyRequest_lift(_ buf: RustBuffer) throws -> HermesRatchetPrekeyRequest {
+    return try FfiConverterTypeHermesRatchetPrekeyRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHermesRatchetPrekeyRequest_lower(_ value: HermesRatchetPrekeyRequest) -> RustBuffer {
+    return FfiConverterTypeHermesRatchetPrekeyRequest.lower(value)
+}
+
+
 public struct LegacyKimiPricingResult {
     public var model: String
     public var totalTokens: UInt64
@@ -2884,6 +3022,7 @@ public enum HermesFfiError {
     case InvalidAadComponent
     case InputTooLarge
     case InvalidP256PublicKey
+    case InvalidRatchetSharedSecretLength
 }
 
 
@@ -2910,6 +3049,7 @@ public struct FfiConverterTypeHermesFfiError: FfiConverterRustBuffer {
         case 8: return .InvalidAadComponent
         case 9: return .InputTooLarge
         case 10: return .InvalidP256PublicKey
+        case 11: return .InvalidRatchetSharedSecretLength
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2961,6 +3101,10 @@ public struct FfiConverterTypeHermesFfiError: FfiConverterRustBuffer {
         case .InvalidP256PublicKey:
             writeInt(&buf, Int32(10))
 
+
+        case .InvalidRatchetSharedSecretLength:
+            writeInt(&buf, Int32(11))
+
         }
     }
 }
@@ -2969,6 +3113,81 @@ public struct FfiConverterTypeHermesFfiError: FfiConverterRustBuffer {
 extension HermesFfiError: Equatable, Hashable {}
 
 extension HermesFfiError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+
+
+public enum PensieveVectorFfiError {
+
+
+
+    case InvalidKeyLength
+    case InvalidVector
+    case InvalidModelVersion
+    case TextTooLarge
+    case DerivationFailure
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePensieveVectorFfiError: FfiConverterRustBuffer {
+    typealias SwiftType = PensieveVectorFfiError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PensieveVectorFfiError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+
+
+
+        case 1: return .InvalidKeyLength
+        case 2: return .InvalidVector
+        case 3: return .InvalidModelVersion
+        case 4: return .TextTooLarge
+        case 5: return .DerivationFailure
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PensieveVectorFfiError, into buf: inout [UInt8]) {
+        switch value {
+
+
+
+
+
+        case .InvalidKeyLength:
+            writeInt(&buf, Int32(1))
+
+
+        case .InvalidVector:
+            writeInt(&buf, Int32(2))
+
+
+        case .InvalidModelVersion:
+            writeInt(&buf, Int32(3))
+
+
+        case .TextTooLarge:
+            writeInt(&buf, Int32(4))
+
+
+        case .DerivationFailure:
+            writeInt(&buf, Int32(5))
+
+        }
+    }
+}
+
+
+extension PensieveVectorFfiError: Equatable, Hashable {}
+
+extension PensieveVectorFfiError: Foundation.LocalizedError {
     public var errorDescription: String? {
         String(reflecting: self)
     }
@@ -3580,6 +3799,31 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceDouble: FfiConverterRustBuffer {
+    typealias SwiftType = [Double]
+
+    public static func write(_ value: [Double], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterDouble.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Double] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Double]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterDouble.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -3893,6 +4137,30 @@ public func cloudVaultNormalizeRecoveryKey(recoveryKey: String)throws  -> String
     )
 })
 }
+public func cloudVaultPensieveDedupHash(plaintext: String, key: Data)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_dedup_hash(
+        FfiConverterString.lower(plaintext),
+        FfiConverterData.lower(key),$0
+    )
+})
+}
+public func cloudVaultPensieveSlugHmac(slug: String, key: Data)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_slug_hmac(
+        FfiConverterString.lower(slug),
+        FfiConverterData.lower(key),$0
+    )
+})
+}
+public func cloudVaultProjectMemoryDocId(slug: String, key: Data)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_project_memory_doc_id(
+        FfiConverterString.lower(slug),
+        FfiConverterData.lower(key),$0
+    )
+})
+}
 public func cloudVaultRecoveryOpenVaultKey(combined: Data, recoveryKey: String)throws  -> Data {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_open_vault_key(
@@ -3961,6 +4229,15 @@ public func cloudVaultSha256Hex(data: Data)throws  -> String {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(
         FfiConverterData.lower(data),$0
+    )
+})
+}
+public func cloudVaultSubscriptionDocId(agentUri: String, topicId: String, key: Data)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCloudVaultFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_subscription_doc_id(
+        FfiConverterString.lower(agentUri),
+        FfiConverterString.lower(topicId),
+        FfiConverterData.lower(key),$0
     )
 })
 }
@@ -4072,6 +4349,13 @@ public func hermesRatchetEnvelopeAad(associatedData: Data, algorithm: String, se
     )
 })
 }
+public func hermesRatchetPrekeySharedSecret(request: HermesRatchetPrekeyRequest)throws  -> Data {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_prekey_shared_secret(
+        FfiConverterTypeHermesRatchetPrekeyRequest.lower(request),$0
+    )
+})
+}
 public func hermesRelayAad(kind: HermesAadKind, arguments: [String])throws  -> Data {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeHermesFfiError.lift) {
     uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad(
@@ -4144,6 +4428,42 @@ public func parseCursorUsageQuota(payload: Data, userEmail: String?) -> QuotaPar
     uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(
         FfiConverterData.lower(payload),
         FfiConverterOptionString.lower(userEmail),$0
+    )
+})
+}
+public func pensieveDeterministicEmbed(text: String, dimensions: UInt32, isQuery: Bool)throws  -> [Double] {
+    return try  FfiConverterSequenceDouble.lift(try rustCallWithError(FfiConverterTypePensieveVectorFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed(
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(dimensions),
+        FfiConverterBool.lower(isQuery),$0
+    )
+})
+}
+public func pensieveDeterministicEmbedAndCloak(text: String, dimensions: UInt32, isQuery: Bool, vaultKey: Data, modelVersion: String)throws  -> [Double] {
+    return try  FfiConverterSequenceDouble.lift(try rustCallWithError(FfiConverterTypePensieveVectorFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(dimensions),
+        FfiConverterBool.lower(isQuery),
+        FfiConverterData.lower(vaultKey),
+        FfiConverterString.lower(modelVersion),$0
+    )
+})
+}
+public func pensieveL2Normalize(vector: [Double])throws  -> [Double] {
+    return try  FfiConverterSequenceDouble.lift(try rustCallWithError(FfiConverterTypePensieveVectorFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize(
+        FfiConverterSequenceDouble.lower(vector),$0
+    )
+})
+}
+public func pensieveVectorCloak(vector: [Double], vaultKey: Data, modelVersion: String)throws  -> [Double] {
+    return try  FfiConverterSequenceDouble.lift(try rustCallWithError(FfiConverterTypePensieveVectorFfiError.lift) {
+    uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak(
+        FfiConverterSequenceDouble.lower(vector),
+        FfiConverterData.lower(vaultKey),
+        FfiConverterString.lower(modelVersion),$0
     )
 })
 }
@@ -4227,6 +4547,15 @@ private var initializationResult: InitializationResult = {
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_normalize_recovery_key() != 12469) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_dedup_hash() != 17475) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_slug_hmac() != 5859) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_project_memory_doc_id() != 38367) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_open_vault_key() != 36431) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4252,6 +4581,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex() != 36487) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_subscription_doc_id() != 46478) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key() != 27873) {
@@ -4293,6 +4625,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad() != 11546) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_prekey_shared_secret() != 50844) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad() != 34735) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4318,6 +4653,18 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota() != 39634) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed() != 45890) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak() != 19070) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize() != 26005) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak() != 60626) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event() != 28560) {

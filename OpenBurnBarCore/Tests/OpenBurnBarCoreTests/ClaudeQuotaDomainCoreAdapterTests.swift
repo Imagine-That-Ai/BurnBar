@@ -89,7 +89,7 @@ final class ClaudeQuotaDomainCoreAdapterTests: XCTestCase {
         enum SyntheticError: Error { case failed }
         let input = try Data(contentsOf: fixtureURL("claude-statusline-input.json"))
         let rateLimits = ClaudeRateLimits(from: input)
-        let expected = ClaudeQuotaDomainCoreAdapter.legacyBuckets(from: rateLimits)
+        let expected = ClaudeQuotaLegacy.buckets(from: rateLimits)
         let logger = RecordingQuotaLogger()
         var order: [String] = []
 

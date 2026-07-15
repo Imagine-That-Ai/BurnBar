@@ -87,9 +87,10 @@ function setupGitRepo() {
  */
 function extractResolveScript(workflowFile) {
   const source = readFileSync(workflowFile, "utf8");
-  // Find the run block in the resolve step
-  const runMatch = source.match(
-    /run: \|\n((?:          .*\n|\n)*)/,
+  const resolveStep = source.indexOf("      - name: Resolve release tag\n");
+  if (resolveStep === -1) throw new Error("Could not find resolve step");
+  const runMatch = source.slice(resolveStep).match(
+    /        run: \|\n((?:          .*\n|\n)*)/,
   );
   if (!runMatch) throw new Error("Could not extract run script");
   return runMatch[1].replace(/^          /gm, "");

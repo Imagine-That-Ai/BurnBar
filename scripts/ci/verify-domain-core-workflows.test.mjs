@@ -1,0 +1,301 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+import { RELEASE_CONSUMERS } from "../lib/domain-core-release-evidence.mjs";
+import { deriveDomainCoreFunctionsTargets } from "./verify-domain-core-functions-target-inventory.mjs";
+
+const core = readFileSync(
+  new URL("../../.github/workflows/domain-core.yml", import.meta.url),
+  "utf8",
+);
+const androidNativeLoad = readFileSync(
+  new URL("./run-domain-core-android-native-load.sh", import.meta.url),
+  "utf8",
+);
+const signer = readFileSync(
+  new URL(
+    "../../.github/workflows/domain-core-promotion-proof.yml",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const policy = JSON.parse(
+  readFileSync(
+    new URL("../../config/domain-core-promotion-policy.json", import.meta.url),
+  ),
+);
+const linuxCargo = readFileSync(
+  new URL("../../apps/linux-desktop/src-tauri/Cargo.toml", import.meta.url),
+  "utf8",
+);
+const inventory = readFileSync(
+  new URL("../../docs/SHARED_RUST_DOMAIN_INVENTORY.md", import.meta.url),
+  "utf8",
+);
+const release = readFileSync(
+  new URL("../../.github/workflows/release.yml", import.meta.url),
+  "utf8",
+);
+const iosEvidence = readFileSync(
+  new URL(
+    "../../.github/workflows/domain-core-ios-release-evidence.yml",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const artifactVerifier = readFileSync(
+  new URL(
+    "../../scripts/ci/verify-domain-core-build-profile-artifact.mjs",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const functionsDeploy = readFileSync(
+  new URL("../../.github/workflows/deploy-production.yml", import.meta.url),
+  "utf8",
+);
+const hostingDeploy = readFileSync(
+  new URL("../../.github/workflows/deploy-hosting.yml", import.meta.url),
+  "utf8",
+);
+const functionsTargets = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../config/domain-core-functions-relevant-targets.json",
+      import.meta.url,
+    ),
+  ),
+);
+const functionsIndex = readFileSync(
+  new URL("../../functions/src/index.ts", import.meta.url),
+  "utf8",
+);
+
+test("deterministic workflow implements every exact policy job and a fail-closed final bundle", () => {
+  for (const id of policy.workflow.requiredJobIds) {
+    assert.match(core, new RegExp(`^  ${id}:$`, "mu"), id);
+  }
+  assert.match(
+    core,
+    /^  candidate-bundle:\n    name: candidate-bundle\n    if: always\(\)/mu,
+  );
+  assert.match(core, /toJSON\(needs\)/u);
+  assert.match(core, /all\(\.value\.result == "success"\)/u);
+  assert.match(core, /domain-core-proof-fragment\.mjs aggregate/u);
+  assert.match(core, /swift and xcframework provenance verified/u);
+  assert.match(core, /create-domain-core-deterministic-candidate-bundle\.mjs/u);
+  assert.match(
+    core,
+    /domain-core-candidate-bundle-\$\{\{ github\.sha \}\}-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u,
+  );
+});
+
+test("native consumer jobs keep their measured execution margin and emulator shell context", () => {
+  assert.match(
+    core,
+    /^  swift-consumer-contracts:\n(?:.*\n){0,4}    timeout-minutes: 90$/mu,
+  );
+  assert.match(
+    core,
+    /^          script: bash scripts\/ci\/run-domain-core-android-native-load\.sh android\/openburnbar-domain-core\/build\/outputs\/apk\/androidTest\/debug\/openburnbar-domain-core-debug-androidTest\.apk "\$GITHUB_SHA" "\$RUNNER_TEMP\/android-observed-identity\.json"$/mu,
+  );
+  assert.match(
+    androidNativeLoad,
+    /^if ! "\$adb_bin" exec-out run-as "\$instrumentation_package" \\$/mu,
+  );
+  assert.match(
+    androidNativeLoad,
+    /^identity_path="\$data_path\/files\/domain-core-observed-identity\.json"$/mu,
+  );
+});
+
+test("Linux Tauri remains display-only while the Linux daemon stays under Swift ownership", () => {
+  assert.doesNotMatch(
+    linuxCargo,
+    /openburnbar-domain-core|openburnbar_domain_core/u,
+  );
+  assert.match(
+    inventory,
+    /\| Tauri\/Linux UI\s*\| Displays daemon-produced values\s*\| No separate implementation/u,
+  );
+  assert.deepEqual(
+    policy.requiredArtifacts
+      .filter(({ id }) => id.includes("wasm"))
+      .map(({ consumer }) => consumer)
+      .sort(),
+    ["browser-wasm", "node-wasm"],
+  );
+});
+
+test("iOS deletion scope matches real mobile calls and a signed archive producer", () => {
+  assert.deepEqual(RELEASE_CONSUMERS.ios.domains, [
+    "cloudVault",
+    "cloudVaultRewrap",
+    "cloudVaultSearch",
+    "hermes",
+  ]);
+  assert.match(
+    inventory,
+    /\| Swift \(iOS\)\s*\| No local provider quota parsing/u,
+  );
+  assert.match(release, /aarch64-apple-ios/u);
+  assert.match(release, /xcodebuild archive[\s\S]*-scheme OpenBurnBarMobile/u);
+  assert.match(release, /xcodebuild -exportArchive/u);
+  assert.match(release, /OpenBurnBar-\$\{VERSION\}-iOS\.xcarchive\.zip/u);
+  assert.match(release, /^  domain-core-ios-release-evidence:$/mu);
+  assert.match(release, /^      - domain-core-ios-release-evidence$/mu);
+  assert.match(
+    release,
+    /publish-domain-core-release-evidence\.mjs --manifest/u,
+  );
+  assert.match(release, /! -name 'domain-core-ios-\*'/u);
+  assert.match(iosEvidence, /codesign --verify --deep --strict/u);
+  assert.match(iosEvidence, /verify-domain-core-build-profile-artifact\.mjs/u);
+  assert.match(artifactVerifier, /join\(candidate, "Info\.plist"\)/u);
+  assert.match(iosEvidence, /\.domain == "cloudVault"/u);
+  assert.doesNotMatch(
+    RELEASE_CONSUMERS.ios.domains.join(" "),
+    /quota|pricing/u,
+  );
+});
+
+test("protected signer has no user-supplied evidence surface and revalidates trusted API data", () => {
+  assert.match(signer, /^    environment: domain-core-promotion$/mu);
+  assert.match(signer, /^  actions: read$/mu);
+  assert.match(signer, /^  attestations: write$/mu);
+  assert.match(signer, /^  id-token: write$/mu);
+  assert.match(
+    signer,
+    /actions\/workflows\/domain-core\.yml\/runs\?event=push/u,
+  );
+  assert.match(signer, /git merge-base --is-ancestor/u);
+  assert.match(signer, /environments\/domain-core-promotion/u);
+  assert.match(signer, /required_reviewers/u);
+  assert.match(signer, /deployment-branch-policies/u);
+  assert.match(signer, /verify-domain-core-protected-attestation\.mjs/u);
+  assert.match(signer, /gh api --paginate --slurp/u);
+  assert.match(signer, /\.total_count == \(\.branch_policies \| length\)/u);
+  assert.match(signer, /\.total_count == \(\.workflow_runs \| length\)/u);
+  assert.match(signer, /\.total_count == \(\.jobs \| length\)/u);
+  assert.match(signer, /verify-domain-core-control-plane\.mjs/u);
+  assert.match(signer, /ref: \$\{\{ github\.sha \}\}/u);
+  assert.match(signer, /\[\[ "\$GITHUB_REF" == "refs\/heads\/main" \]\]/u);
+  assert.match(signer, /git rev-parse HEAD/u);
+  assert.match(signer, /--expected-evaluator-commit "\$GITHUB_SHA"/u);
+  assert.doesNotMatch(signer, /^\s+ref: main$/mu);
+  assert.match(signer, /actions\/attest-build-provenance@[0-9a-f]{40}/u);
+  assert.doesNotMatch(
+    signer,
+    /jobs_json|bundle_json|run_json|eligible_for_attestation.*==/iu,
+  );
+  assert.deepEqual(policy.workflow.allowedEvents, ["push"]);
+  assert.equal(policy.promotionAuthority, false);
+  assert.equal(policy.protectedAttestationRequired, true);
+});
+
+test("rollback proof publishes the dedicated signed legacy artifact and stable release retains it", () => {
+  assert.match(core, /verify-domain-core-rollback\.mjs/u);
+  assert.match(core, /--profile public-production-rollback/u);
+  assert.match(core, /domain-core-public-production-rollback\.json/u);
+  assert.match(core, /Exercise the actual Console signed rollback selector/u);
+  assert.match(core, /retention-days: 90/u);
+  assert.equal(policy.rollbackRequired, true);
+  assert.equal(policy.oneStableReleaseBeforeDeletion, true);
+  assert.equal(policy.stableReleaseRollbackArtifactRequired, true);
+});
+
+test("stable tag replay is byte-and-provider-identical before any production mutation", () => {
+  const functionsReplay = functionsDeploy.indexOf(
+    "Refuse non-identical stable-tag redeploy",
+  );
+  assert.ok(functionsReplay > 0);
+  assert.ok(
+    functionsReplay < functionsDeploy.indexOf("Sentry release (Functions)"),
+  );
+  assert.ok(
+    functionsReplay < functionsDeploy.indexOf("Deploy Cloud Functions"),
+  );
+  assert.match(functionsDeploy, /gcloud functions describe "\$target"/u);
+  assert.match(
+    functionsDeploy,
+    /--provider-coordinates "\$RUNNER_TEMP\/existing-functions-provider-coordinates\.json"/u,
+  );
+  assert.match(
+    functionsDeploy,
+    /--inventory config\/domain-core-functions-relevant-targets\.json/u,
+  );
+  assert.match(
+    functionsDeploy,
+    /already live but its immutable Functions deployment receipt is missing/u,
+  );
+  assert.match(functionsDeploy, /gh attestation verify/u);
+  assert.match(
+    functionsDeploy,
+    /domain-core-functions-release-evidence\.yml/u,
+  );
+
+  const hostingReplay = hostingDeploy.indexOf(
+    "Refuse non-identical stable-tag redeploy",
+  );
+  assert.ok(
+    hostingReplay > hostingDeploy.indexOf("Authenticate to Google Cloud"),
+  );
+  assert.ok(
+    hostingReplay <
+      hostingDeploy.indexOf("Deploy Hosting (marketing + console)"),
+  );
+  assert.match(
+    hostingDeploy,
+    /firebasehosting\.googleapis\.com\/v1beta1\/sites\/\$\{site\}\/channels\/live\/releases\?pageSize=1/u,
+  );
+  assert.match(
+    hostingDeploy,
+    /--provider-coordinates "\$RUNNER_TEMP\/existing-hosting-provider-coordinates\.json"/u,
+  );
+  assert.match(
+    hostingDeploy,
+    /already live but its immutable Console deployment receipt is missing/u,
+  );
+  assert.match(hostingDeploy, /gh attestation verify/u);
+  assert.match(hostingDeploy, /domain-core-console-release-evidence\.yml/u);
+  const stagedManifestCreator = hostingDeploy.indexOf(
+    'cp scripts/ci/create-domain-core-runtime-artifact-manifest.mjs "$ARTIFACT_ROOT/scripts/ci/"',
+  );
+  const usedManifestCreator = hostingDeploy.indexOf(
+    'node "$ARTIFACT_ROOT/scripts/ci/create-domain-core-runtime-artifact-manifest.mjs"',
+  );
+  const stagedBearerHelper = hostingDeploy.indexOf(
+    'cp scripts/lib/curl-bearer.sh "$ARTIFACT_ROOT/scripts/lib/"',
+  );
+  const sourcedBearerHelper = hostingDeploy.indexOf(
+    'source "$ARTIFACT_ROOT/scripts/lib/curl-bearer.sh"',
+  );
+  assert.ok(stagedManifestCreator > 0);
+  assert.ok(usedManifestCreator > stagedManifestCreator);
+  assert.ok(stagedBearerHelper > 0);
+  assert.ok(sourcedBearerHelper > stagedBearerHelper);
+  assert.match(
+    hostingDeploy,
+    /obb_curl_with_bearer "\$FIREBASE_HOSTING_REST_ACCESS_TOKEN"/u,
+  );
+  assert.doesNotMatch(
+    hostingDeploy,
+    /-H "Authorization: Bearer \$\{FIREBASE_HOSTING_REST_ACCESS_TOKEN\}"/u,
+  );
+});
+
+test("protected Functions inventory covers every pricing execution entry and both runtime observers", () => {
+  assert.equal(functionsTargets.schemaVersion, 1);
+  assert.deepEqual(
+    functionsTargets.targets,
+    deriveDomainCoreFunctionsTargets(new URL("../..", import.meta.url).pathname),
+  );
+  for (const target of functionsTargets.targets) {
+    assert.match(functionsIndex, new RegExp(`\\b${target}\\b`, "u"), target);
+  }
+  assert.match(
+    functionsDeploy,
+    /verify-domain-core-functions-target-inventory\.mjs/u,
+  );
+});

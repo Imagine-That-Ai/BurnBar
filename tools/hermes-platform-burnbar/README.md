@@ -51,6 +51,11 @@ Optional:
 
 - `HERMES_BURNBAR_AGENT_VERSION` — overrides the reported agent version.
 - `HERMES_BURNBAR_CURSOR_FILE` — overrides the event-cursor cache path.
+- `OPENBURNBAR_DOMAIN_CORE_HERMES_MODE` — selects `legacy`, `shadow`, or
+  `rust` authority for the ratchet prekey transcript/HKDF transform. Release
+  packaging must copy `domain_core_hermes.py`, `legacy/`, and the complete
+  `vendor/openburnbar-domain-core-python/` package with `adapter.py`; Rust mode
+  rejects a missing, wrong-host, wrong-source, or digest-substituted package.
 
 ## Setup
 

@@ -1,8 +1,13 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  DOMAIN_CORE_SHADOW_OPERATION_SLICES,
   DOMAIN_CORE_SHADOW_RETENTION_MS,
-  buildDomainCoreShadowSampleV2,
+  buildDomainCoreShadowSampleV3,
+  domainCoreShadowOperationConsumers,
   enforceDomainCoreShadowChannelClaim,
   parseDomainCoreShadowSampleRequest,
   persistDomainCoreShadowSamples,
@@ -14,9 +19,30 @@ type DomainCoreShadowStore = Parameters<typeof persistDomainCoreShadowSamples>[0
 
 type DomainCoreShadowSample = ReturnType<typeof parseDomainCoreShadowSampleRequest>[number];
 type DomainCoreShadowSampleV1 = Extract<DomainCoreShadowSample, { schemaVersion: 1 }>;
-type DomainCoreShadowSampleV2 = ReturnType<typeof buildDomainCoreShadowSampleV2>;
+type DomainCoreShadowSampleV2 = Extract<DomainCoreShadowSample, { schemaVersion: 2 }>;
+type DomainCoreShadowSampleV3 = ReturnType<typeof buildDomainCoreShadowSampleV3>;
 
 const NOW = Date.parse("2026-07-13T12:00:00.000Z");
+const CANDIDATE_COMMIT = "a".repeat(40);
+const CORE_SOURCE_SHA256 = "b".repeat(64);
+
+interface OperationContractBranch {
+  properties: {
+    domain: { const: string };
+    slice: { const: string };
+    consumer: { const?: string; enum?: string[] };
+    operation: { const?: string; enum?: string[] };
+  };
+}
+
+function v3OperationContractBranches(): OperationContractBranch[] {
+  const schema = JSON.parse(
+    readFileSync(resolve(__dirname, "../../../docs/contracts/domain-core-shadow-sample-v3.schema.json"), "utf8"),
+  ) as { allOf: Array<{ oneOf?: OperationContractBranch[] }> };
+  return schema.allOf
+    .flatMap((condition) => condition.oneOf ?? [])
+    .filter((branch) => branch.properties?.domain?.const !== undefined && branch.properties?.operation !== undefined);
+}
 
 function sample(overrides: Partial<DomainCoreShadowSampleV2> = {}): DomainCoreShadowSampleV2 {
   return {
@@ -33,6 +59,43 @@ function sample(overrides: Partial<DomainCoreShadowSampleV2> = {}): DomainCoreSh
     mismatchCategory: null,
     legacyMicros: 120,
     rustMicros: 80,
+    ...overrides,
+  };
+}
+
+function v3Sample(overrides: Partial<DomainCoreShadowSampleV3> = {}): DomainCoreShadowSampleV3 {
+  return {
+    schemaVersion: 3,
+    sampleId: "00000000-0000-4000-8000-000000000003",
+    domain: "quota",
+    slice: "claude",
+    consumer: "apple",
+    channel: "internal",
+    operation: "claude_quota",
+    candidateCommit: CANDIDATE_COMMIT,
+    expectedCoreVersion: "0.3.0",
+    expectedCoreAbiVersion: 3,
+    expectedCoreSourceSha256: CORE_SOURCE_SHA256,
+    loadedCoreVersion: "0.3.0",
+    loadedCoreAbiVersion: 3,
+    loadedCoreSourceSha256: CORE_SOURCE_SHA256,
+    observedAt: "2026-07-13T11:59:59.000Z",
+    outcome: "match",
+    mismatchCategory: null,
+    legacyMicros: 120,
+    rustMicros: 80,
+    ...overrides,
+  };
+}
+
+function v3Claims(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    domainCoreShadowChannel: "internal",
+    domainCoreShadowConsumers: ["apple"],
+    domainCoreShadowCandidateCommit: CANDIDATE_COMMIT,
+    domainCoreShadowCoreVersion: "0.3.0",
+    domainCoreShadowCoreAbiVersion: 3,
+    domainCoreShadowCoreSourceSha256: CORE_SOURCE_SHA256,
     ...overrides,
   };
 }
@@ -59,6 +122,108 @@ describe("domain-core shadow evidence contract", () => {
     ]);
   });
 
+  it("accepts the exact candidate-bound V3 schema without a legacy coreVersion alias", () => {
+    const parsed = parseDomainCoreShadowSampleRequest({ samples: [v3Sample()] }, NOW);
+
+    expect(parsed).toEqual([v3Sample()]);
+    expect(parsed[0]).not.toHaveProperty("coreVersion");
+    expect(Object.keys(parsed[0] ?? {}).sort()).toEqual([
+      "candidateCommit",
+      "channel",
+      "consumer",
+      "domain",
+      "expectedCoreAbiVersion",
+      "expectedCoreSourceSha256",
+      "expectedCoreVersion",
+      "legacyMicros",
+      "loadedCoreAbiVersion",
+      "loadedCoreSourceSha256",
+      "loadedCoreVersion",
+      "mismatchCategory",
+      "observedAt",
+      "operation",
+      "outcome",
+      "rustMicros",
+      "sampleId",
+      "schemaVersion",
+      "slice",
+    ]);
+  });
+
+  it("builds a strict candidate-bound V3 producer sample", () => {
+    const { schemaVersion: _schemaVersion, sampleId: _sampleId, observedAt: _observedAt, ...comparison } = v3Sample();
+    const built = buildDomainCoreShadowSampleV3(comparison, {
+      nowMillis: NOW,
+      sampleId: "00000000-0000-4000-8000-000000000099",
+    });
+
+    expect(built).toEqual({
+      ...v3Sample(),
+      sampleId: "00000000-0000-4000-8000-000000000099",
+      observedAt: new Date(NOW).toISOString(),
+    });
+    expect(built).not.toHaveProperty("coreVersion");
+  });
+
+  it("fails the V3 producer closed for partial or falsely classified loaded identity", () => {
+    const { schemaVersion: _schemaVersion, sampleId: _sampleId, observedAt: _observedAt, ...comparison } = v3Sample();
+
+    expect(() => buildDomainCoreShadowSampleV3({ ...comparison, loadedCoreAbiVersion: null })).toThrow();
+    expect(() =>
+      buildDomainCoreShadowSampleV3({
+        ...comparison,
+        outcome: "mismatch",
+        mismatchCategory: "loaded_identity_mismatch",
+      }),
+    ).toThrow();
+  });
+
+  it("accepts every operation/domain/slice/consumer branch in the authoritative V3 schema", () => {
+    const branches = v3OperationContractBranches();
+    expect(branches.length).toBeGreaterThan(10);
+    const schemaContracts = new Set<string>();
+
+    for (const branch of branches) {
+      const operations = branch.properties.operation.enum ?? [branch.properties.operation.const];
+      const consumers = branch.properties.consumer.enum ?? [branch.properties.consumer.const];
+      for (const operation of operations) {
+        for (const consumer of consumers) {
+          schemaContracts.add(
+            `${branch.properties.domain.const}/${branch.properties.slice.const}/${consumer}/${operation}`,
+          );
+          expect(operation).toBeDefined();
+          expect(consumer).toBeDefined();
+          expect(() =>
+            parseDomainCoreShadowSampleRequest(
+              {
+                samples: [
+                  {
+                    ...v3Sample(),
+                    domain: branch.properties.domain.const,
+                    slice: branch.properties.slice.const,
+                    consumer,
+                    operation,
+                  },
+                ],
+              },
+              NOW,
+            ),
+          ).not.toThrow();
+        }
+      }
+    }
+    const serverContracts = new Set(
+      Object.entries(DOMAIN_CORE_SHADOW_OPERATION_SLICES).flatMap(([domain, operationSlices]) =>
+        Object.entries(operationSlices).flatMap(([operation, slice]) =>
+          domainCoreShadowOperationConsumers(domain, slice, operation).map(
+            (consumer) => `${domain}/${slice}/${consumer}/${operation}`,
+          ),
+        ),
+      ),
+    );
+    expect(serverContracts).toEqual(schemaContracts);
+  });
+
   it("keeps V1 quota samples readable without converting them into V2 coverage", () => {
     const { slice: _slice, ...legacyBase } = sample();
     const legacy: DomainCoreShadowSampleV1 = {
@@ -75,30 +240,6 @@ describe("domain-core shadow evidence contract", () => {
   });
 
   it.each([
-    ["quota", "claude", "apple", "claude_quota"],
-    ["cloudvault", "foundation", "console", "cloudvault_aad_v2"],
-    ["hermes", "ratchet", "android", "ratchet_kdf"],
-    ["pricing", "token-cost", "functions", "calculate_token_cost"],
-  ] as const)("builds a validated generic V2 %s collector sample", (domain, slice, consumer, operation) => {
-    const built = buildDomainCoreShadowSampleV2(
-      {
-        domain,
-        slice,
-        consumer,
-        channel: "internal",
-        operation,
-        coreVersion: "0.3.0",
-        outcome: "match",
-        mismatchCategory: null,
-        legacyMicros: 10,
-        rustMicros: 8,
-      },
-      { nowMillis: NOW, sampleId: "00000000-0000-4000-8000-000000000099" },
-    );
-    expect(built).toMatchObject({ schemaVersion: 2, domain, slice, consumer, operation });
-  });
-
-  it.each([
     ["extra request field", { samples: [sample()], uid: "must-not-be-accepted" }],
     ["extra sample field", { samples: [{ ...sample(), payload: "secret" }] }],
     ["production channel", { samples: [{ ...sample(), channel: "production" }] }],
@@ -109,8 +250,129 @@ describe("domain-core shadow evidence contract", () => {
     ["invented domain", { samples: [sample({ domain: "logs" as "quota" })] }],
     ["invalid slice consumer", { samples: [sample({ domain: "pricing", slice: "legacy-kimi", consumer: "apple" })] }],
     ["quota slice mismatch", { samples: [sample({ slice: "codex" })] }],
+    ["uppercase candidate commit", { samples: [v3Sample({ candidateCommit: "A".repeat(40) })] }],
+    ["short candidate commit", { samples: [v3Sample({ candidateCommit: "a".repeat(39) })] }],
+    ["uppercase source fingerprint", { samples: [v3Sample({ expectedCoreSourceSha256: "B".repeat(64) })] }],
+    ["noncanonical core version", { samples: [v3Sample({ expectedCoreVersion: "01.2.3" })] }],
+    ["noncanonical numeric prerelease", { samples: [v3Sample({ expectedCoreVersion: "1.2.3-01" })] }],
+    ["partial loaded identity", { samples: [v3Sample({ loadedCoreAbiVersion: null })] }],
+    [
+      "missing loaded match identity",
+      {
+        samples: [v3Sample({ loadedCoreVersion: null, loadedCoreAbiVersion: null, loadedCoreSourceSha256: null })],
+      },
+    ],
+    [
+      "missing loaded result-mismatch identity",
+      {
+        samples: [
+          v3Sample({
+            loadedCoreVersion: null,
+            loadedCoreAbiVersion: null,
+            loadedCoreSourceSha256: null,
+            outcome: "mismatch",
+            mismatchCategory: "result_mismatch",
+          }),
+        ],
+      },
+    ],
+    [
+      "missing loaded native-error identity",
+      {
+        samples: [
+          v3Sample({
+            loadedCoreVersion: null,
+            loadedCoreAbiVersion: null,
+            loadedCoreSourceSha256: null,
+            outcome: "mismatch",
+            mismatchCategory: "native_error",
+          }),
+        ],
+      },
+    ],
+    [
+      "loaded native-unavailable identity",
+      {
+        samples: [v3Sample({ outcome: "mismatch", mismatchCategory: "native_unavailable" })],
+      },
+    ],
+    ["mismatched loaded version", { samples: [v3Sample({ loadedCoreVersion: "0.3.1" })] }],
+    ["mismatched loaded ABI", { samples: [v3Sample({ loadedCoreAbiVersion: 4 })] }],
+    ["mismatched loaded source", { samples: [v3Sample({ loadedCoreSourceSha256: "c".repeat(64) })] }],
+    [
+      "false loaded-identity mismatch",
+      {
+        samples: [v3Sample({ outcome: "mismatch", mismatchCategory: "loaded_identity_mismatch" })],
+      },
+    ],
+    [
+      "missing loaded-identity mismatch tuple",
+      {
+        samples: [
+          v3Sample({
+            loadedCoreVersion: null,
+            loadedCoreAbiVersion: null,
+            loadedCoreSourceSha256: null,
+            outcome: "mismatch",
+            mismatchCategory: "loaded_identity_mismatch",
+          }),
+        ],
+      },
+    ],
+    ["invented V3 operation", { samples: [v3Sample({ operation: "claude_quota_other" })] }],
+    [
+      "cross-slice V3 operation",
+      {
+        samples: [v3Sample({ domain: "cloudvault", slice: "foundation", operation: "aes_gcm_open_combined" })],
+      },
+    ],
   ])("rejects %s", (_label, request) => {
     expect(() => parseDomainCoreShadowSampleRequest(request, NOW)).toThrow();
+  });
+
+  it("accepts unavailable V3 evidence with no loaded identity but never as a match", () => {
+    const unavailable = v3Sample({
+      loadedCoreVersion: null,
+      loadedCoreAbiVersion: null,
+      loadedCoreSourceSha256: null,
+      outcome: "mismatch",
+      mismatchCategory: "native_unavailable",
+      rustMicros: 0,
+    });
+
+    expect(parseDomainCoreShadowSampleRequest({ samples: [unavailable] }, NOW)).toEqual([unavailable]);
+  });
+
+  it("pins the V3 schema to require a loaded tuple for native errors", () => {
+    const schema = JSON.parse(
+      readFileSync(resolve(__dirname, "../../../docs/contracts/domain-core-shadow-sample-v3.schema.json"), "utf8"),
+    ) as {
+      allOf: Array<{
+        if?: { properties?: { mismatchCategory?: { enum?: string[] } } };
+        then?: { properties?: Record<string, { type?: string }> };
+      }>;
+    };
+    const identityRequired = schema.allOf.find((condition) =>
+      condition.if?.properties?.mismatchCategory?.enum?.includes("native_error"),
+    );
+
+    expect(identityRequired?.then?.properties).toMatchObject({
+      loadedCoreVersion: { type: "string" },
+      loadedCoreAbiVersion: { type: "integer" },
+      loadedCoreSourceSha256: { type: "string" },
+    });
+  });
+
+  it("records a wrong loaded binary as explicit non-success telemetry", () => {
+    const identityMismatch = v3Sample({
+      loadedCoreVersion: "0.3.1",
+      loadedCoreAbiVersion: 4,
+      loadedCoreSourceSha256: "c".repeat(64),
+      outcome: "mismatch",
+      mismatchCategory: "loaded_identity_mismatch",
+    });
+
+    expect(parseDomainCoreShadowSampleRequest({ samples: [identityMismatch] }, NOW)).toEqual([identityMismatch]);
   });
 
   it("rejects duplicate IDs inside one batch", () => {
@@ -140,6 +402,25 @@ describe("domain-core shadow evidence contract", () => {
     ).toThrow("not enrolled");
   });
 
+  it("binds V3 candidate and expected Rust identity to server-issued claims", () => {
+    expect(() => enforceDomainCoreShadowChannelClaim(v3Claims(), [v3Sample()])).not.toThrow();
+    expect(() =>
+      enforceDomainCoreShadowChannelClaim(v3Claims({ domainCoreShadowCandidateCommit: "c".repeat(40) }), [v3Sample()]),
+    ).toThrow("not enrolled for the submitted domain-core candidate");
+    expect(() =>
+      enforceDomainCoreShadowChannelClaim(v3Claims({ domainCoreShadowCoreVersion: "0.3.1" }), [v3Sample()]),
+    ).toThrow("not enrolled for the submitted domain-core candidate");
+    expect(() =>
+      enforceDomainCoreShadowChannelClaim(v3Claims({ domainCoreShadowCoreVersion: "01.2.3" }), [v3Sample()]),
+    ).toThrow("not enrolled for the submitted domain-core candidate");
+    expect(() =>
+      enforceDomainCoreShadowChannelClaim(v3Claims({ domainCoreShadowCoreAbiVersion: 4 }), [v3Sample()]),
+    ).toThrow("not enrolled for the submitted domain-core candidate");
+    expect(() =>
+      enforceDomainCoreShadowChannelClaim(v3Claims({ domainCoreShadowCoreSourceSha256: "c".repeat(64) }), [v3Sample()]),
+    ).toThrow("not enrolled for the submitted domain-core candidate");
+  });
+
   it("stores no uid or raw parser material and stamps the declared TTL", () => {
     const stored = storedDomainCoreShadowSample(sample(), NOW);
     const keys = Object.keys(stored);
@@ -150,6 +431,11 @@ describe("domain-core shadow evidence contract", () => {
     expect(keys).not.toContain("deviceId");
     expect(stored.receivedAt.toMillis()).toBe(NOW);
     expect(stored.expireAt.toMillis()).toBe(NOW + DOMAIN_CORE_SHADOW_RETENTION_MS);
+  });
+
+  it("marks V1/V2 drain records non-promotable and only candidate-bound V3 promotable", () => {
+    expect(storedDomainCoreShadowSample(sample(), NOW).promotionEligible).toBe(false);
+    expect(storedDomainCoreShadowSample(v3Sample(), NOW).promotionEligible).toBe(true);
   });
 
   it("creates new IDs immutably and treats existing IDs as idempotent duplicates", async () => {
@@ -196,6 +482,27 @@ describe("domain-core shadow evidence contract", () => {
     };
 
     await expect(persistDomainCoreShadowSamples(firestore, [sample()], NOW)).rejects.toThrow(
+      "conflicts with immutable stored evidence",
+    );
+  });
+
+  it("treats an exact V3 candidate replay as idempotent and rejects identity mutation", async () => {
+    const original = v3Sample();
+    const exactStore: DomainCoreShadowStore = {
+      doc: (path: string) => ({ path }),
+      runTransaction: async (body) =>
+        body({
+          get: async () => ({ exists: true, data: () => storedDomainCoreShadowSample(original, NOW) }),
+          create: () => undefined,
+        }),
+    };
+    await expect(persistDomainCoreShadowSamples(exactStore, [original], NOW)).resolves.toEqual({
+      accepted: 0,
+      duplicates: 1,
+    });
+
+    const mutated = v3Sample({ candidateCommit: "c".repeat(40) });
+    await expect(persistDomainCoreShadowSamples(exactStore, [mutated], NOW)).rejects.toThrow(
       "conflicts with immutable stored evidence",
     );
   });

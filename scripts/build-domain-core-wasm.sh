@@ -13,6 +13,7 @@ TARGET_DIR="${CARGO_TARGET_DIR:-${WORKSPACE_DIR}/target}"
 PACKAGE_DIR="${WORKSPACE_DIR}/domain-wasm"
 VENDOR_DIR="${ROOT_DIR}/apps/console/vendor/openburnbar-domain-core-wasm"
 FUNCTIONS_VENDOR_DIR="${ROOT_DIR}/functions/vendor/openburnbar/domain-core-wasm"
+MCP_REMOTE_VENDOR_DIR="${ROOT_DIR}/tools/openburnbar-mcp-remote/vendor/openburnbar-domain-core-wasm"
 TARGET="wasm32-unknown-unknown"
 WASM_BINDGEN_VERSION="0.2.105"
 TOOL_ROOT="${ROOT_DIR}/build/domain-core-wasm-tools/wasm-bindgen-${WASM_BINDGEN_VERSION}"
@@ -129,6 +130,26 @@ log "generating Node bindings"
   "${TARGET_DIR}/${TARGET}/release/openburnbar_domain_wasm.wasm"
 cp "${PACKAGE_DIR}/package.node.json" "${NODE_STAGING_DIR}/package.json"
 printf '%s\n' "${SOURCE_FINGERPRINT}" > "${NODE_STAGING_DIR}/${FINGERPRINT_NAME}"
+python3 - \
+  "${WORKSPACE_DIR}/union-abi-manifest.json" \
+  "${NODE_STAGING_DIR}/openburnbar_domain_core_bg.wasm" \
+  "${NODE_STAGING_DIR}/openburnbar-domain-core-package-receipt.json" <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+manifest = json.loads(Path(sys.argv[1]).read_text())
+wasm = Path(sys.argv[2]).read_bytes()
+receipt = {
+    "schemaVersion": 1,
+    "coreVersion": manifest["coreVersion"],
+    "abiVersion": manifest["abiVersion"],
+    "sourceSha256": manifest["sourceSha256"],
+    "wasmSha256": hashlib.sha256(wasm).hexdigest(),
+}
+Path(sys.argv[3]).write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+PY
 
 # wasm-bindgen emits blanket linter suppressions in declarations. The generated
 # declarations are clean under the repo rules, so remove them instead of
@@ -163,6 +184,7 @@ if [[ "${MODE}" == "--check" ]]; then
     "${FUNCTIONS_VENDOR_DIR}" "${NODE_STAGING_DIR}"
   compare_trees_exactly "browser Wasm" "${VENDOR_DIR}" "${STAGING_DIR}"
   compare_trees_exactly "Node Wasm" "${FUNCTIONS_VENDOR_DIR}" "${NODE_STAGING_DIR}"
+  compare_trees_exactly "MCP remote Node Wasm" "${MCP_REMOTE_VENDOR_DIR}" "${NODE_STAGING_DIR}"
   log "checked-in browser and Node packages are API-, behavior-, and byte-equivalent"
   exit 0
 fi
@@ -173,4 +195,7 @@ cp -R "${STAGING_DIR}" "${VENDOR_DIR}"
 rm -rf "${FUNCTIONS_VENDOR_DIR}"
 mkdir -p "$(dirname "${FUNCTIONS_VENDOR_DIR}")"
 cp -R "${NODE_STAGING_DIR}" "${FUNCTIONS_VENDOR_DIR}"
-log "wrote ${VENDOR_DIR} and ${FUNCTIONS_VENDOR_DIR}"
+rm -rf "${MCP_REMOTE_VENDOR_DIR}"
+mkdir -p "$(dirname "${MCP_REMOTE_VENDOR_DIR}")"
+cp -R "${NODE_STAGING_DIR}" "${MCP_REMOTE_VENDOR_DIR}"
+log "wrote ${VENDOR_DIR}, ${FUNCTIONS_VENDOR_DIR}, and ${MCP_REMOTE_VENDOR_DIR}"
