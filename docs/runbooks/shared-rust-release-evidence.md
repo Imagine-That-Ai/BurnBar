@@ -86,11 +86,14 @@ identity separately retains the complete resolved profile receipt digest.
 After a healthy stable deployment,
 [`domain-core-console-release-evidence.yml`](../../.github/workflows/domain-core-console-release-evidence.yml)
 revalidates the exact deploy run and attempt, reruns the protected release gate,
-creates the v2 Console receipt and predicate, and signs them. Normal evidence is
-published through the create-only shared GitHub release publisher. Rollback
-evidence is retained as a unique Actions artifact named with the deploy run and
-attempt; a replay fails closed. The workflow references the signer's retained
-rollback artifact and never uploads a duplicate copy.
+creates the v2 Console receipt and predicate, and signs them. The signed
+deployment document retains the exact deploy run and attempt alongside the live
+health proof. Normal evidence is published through the create-only shared
+GitHub release publisher. Each rollback evidence workflow result is retained as
+an Actions artifact named with both deploy and evidence workflow coordinates.
+Reruns are independently verifiable records of the same deployment, not a
+permanent replay lock based on an expiring artifact. The workflow references the
+signer's retained rollback artifact and never uploads a duplicate copy.
 
 ## Generate release evidence
 

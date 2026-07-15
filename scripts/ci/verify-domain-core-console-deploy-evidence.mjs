@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { buildDeploymentIdentity } from "./create-domain-core-deployment-identity.mjs";
 import {
+  canonicalSha256,
   exactObject,
   sha256File,
 } from "../lib/domain-core-release-evidence.mjs";
@@ -104,6 +105,17 @@ function validateJobs(raw, profileName, runId, commit) {
       `rollback authorization must be ${expectedAuthorization} for ${profileName}`,
     );
   }
+  return canonicalSha256(
+    jobs
+      .map((job) => ({
+        name: job.name,
+        runId: job.run_id,
+        headSha: job.head_sha,
+        status: job.status,
+        conclusion: job.conclusion,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  );
 }
 
 function validateHealth(raw, identityPath) {
@@ -211,25 +223,35 @@ export function run(argv) {
       "deploy run does not bind the exact workflow, attempt, tag, and commit",
     );
   }
-  validateJobs(
+  const jobSetSha256 = validateJobs(
     readJson(args.get("--deploy-jobs"), "deploy jobs"),
     expectedIdentity.profile.name,
     runId,
     commit,
   );
+  const healthPath = resolve(args.get("--health"));
   const health = validateHealth(
-    readJson(args.get("--health"), "health evidence"),
+    readJson(healthPath, "health evidence"),
     identityPath,
   );
   const receipt = {
-    schemaVersion: 2,
-    verificationKind: "console-domain-core-deploy",
-    deployRun: { runId, runAttempt },
-    commit,
-    tag,
-    profile: expectedIdentity.profile,
-    releaseGate: expectedIdentity.releaseGate,
-    health,
+    provider: health.provider,
+    project: health.project,
+    environment: health.environment,
+    status: health.status,
+    healthChecks: health.healthChecks,
+    deployedArtifact: health.deployedArtifact,
+    deployRun: {
+      repository: "Imagine-That-Ai/BurnBar",
+      workflowPath: ".github/workflows/deploy-hosting.yml",
+      runId,
+      runAttempt,
+      event: deployRun.event,
+      ref: `refs/tags/${tag}`,
+      headSha: commit,
+      jobSetSha256,
+    },
+    healthArtifactSha256: sha256File(healthPath),
   };
   writeCreateOnly(
     args.get("--output"),
