@@ -771,6 +771,7 @@ jobs:
             The hosted MCP Cloud Run deploy, health check, or post-deploy
             readback failed. Production traffic should be verified against the
             rollback revision before release continues.
+          paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
 
       - name: Close resolved Cloud Run deploy failure issue
         if: ${{ needs.deploy-hosted-mcp.result == 'success' }}

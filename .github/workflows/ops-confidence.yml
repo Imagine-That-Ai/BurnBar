@@ -119,6 +119,7 @@ jobs:
             ```json
             ${{ toJSON(needs) }}
             ```
+          paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
 
   deploy-freshness-open:
     runs-on: ubuntu-latest

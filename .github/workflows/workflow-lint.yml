@@ -172,8 +172,8 @@ jobs:
       - name: Self-test duplicate-code report verifier
         run: node scripts/ci/verify-jscpd-report.test.mjs
 
-      - name: Self-test overdue P0 escalation policy
-        run: node --test .github/actions/ops-failure-issue/escalation.test.cjs
+      - name: Self-test ops failure issue (escalation + paging)
+        run: node --test .github/actions/ops-failure-issue/escalation.test.cjs .github/actions/ops-failure-issue/paging-wiring.test.cjs .github/actions/ops-failure-issue/paging-payload.test.cjs
 
       - name: Self-test release attestation verifier
         run: bash scripts/ci/verify-release-attestations.test.sh
