@@ -1,8 +1,9 @@
 import Foundation
+import OpenBurnBarCore
+import OpenBurnBarLinuxSecurity
 #if canImport(LocalAuthentication)
 import LocalAuthentication
 #endif
-import OpenBurnBarCore
 #if canImport(Security)
 import Security
 #endif
@@ -38,9 +39,14 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
     private static let telegramBotTokenAccount = "mission-control.telegram.bot-token"
 
     private let service: String
+    private let linuxSecretCustodian: LinuxSecretCustodian
 
-    public init(service: String = Self.defaultService) {
+    public init(
+        service: String = Self.defaultService,
+        linuxSecretCustodian: LinuxSecretCustodian = LinuxSecretStoreFactory.production()
+    ) {
         self.service = service
+        self.linuxSecretCustodian = linuxSecretCustodian
     }
 
     public func telegramBotToken() throws -> String? {
@@ -73,6 +79,16 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
         let decoded = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return decoded?.isEmpty == false ? decoded : nil
+#elseif os(Linux)
+        do {
+            let secret = try linuxSecretCustodian.requireHighValueSecret(
+                id: linuxSecretID,
+                secretClass: .connectorCredential
+            ).secret.trimmingCharacters(in: .whitespacesAndNewlines)
+            return secret.isEmpty ? nil : secret
+        } catch LinuxSecretStoreError.missingSecret(_) {
+            return nil
+        }
 #else
         return nil
 #endif
@@ -121,6 +137,20 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
         guard addStatus == errSecSuccess else {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(addStatus))
         }
+#elseif os(Linux)
+        if let normalized = token?.trimmingCharacters(in: .whitespacesAndNewlines),
+           normalized.isEmpty == false {
+            _ = try linuxSecretCustodian.storeHighValueSecret(
+                normalized,
+                id: linuxSecretID,
+                secretClass: .connectorCredential
+            )
+        } else {
+            try linuxSecretCustodian.deleteHighValueSecret(
+                id: linuxSecretID,
+                secretClass: .connectorCredential
+            )
+        }
 #else
         throw NSError(
             domain: "BurnBarNotificationKeychainSecretStore",
@@ -128,5 +158,9 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
             userInfo: [NSLocalizedDescriptionKey: "Notification keychain secrets are unavailable on this platform."]
         )
 #endif
+    }
+
+    private var linuxSecretID: String {
+        "\(service):\(Self.telegramBotTokenAccount)"
     }
 }
