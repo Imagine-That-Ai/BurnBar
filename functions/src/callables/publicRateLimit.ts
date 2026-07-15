@@ -149,37 +149,65 @@ export function clientIpFromHttpRequest(req: {
   return "unknown";
 }
 
+type RateLimitIncrement = {
+  docId: string;
+  action: string;
+  limit: { windowSeconds: number; maxAttempts: number };
+};
+
+async function incrementRateLimitsAtomically(increments: readonly RateLimitIncrement[]): Promise<void> {
+  const targets = increments.map((increment) => ({
+    ...increment,
+    ref: db.doc(`public_rate_limits/${increment.docId}`),
+  }));
+  await db.runTransaction(async (tx) => {
+    const snapshots = await Promise.all(targets.map(({ ref }) => tx.get(ref)));
+    const now = Date.now();
+    const writes = targets.map((target, index) => {
+      const data = snapshots[index]?.data();
+      let count = typeof data?.count === "number" ? data.count : 0;
+      let windowStartMillis = typeof data?.windowStartMillis === "number" ? data.windowStartMillis : 0;
+      if (now - windowStartMillis > target.limit.windowSeconds * 1000) {
+        count = 0;
+        windowStartMillis = now;
+      }
+      if (count >= target.limit.maxAttempts) {
+        throw new HttpsError("resource-exhausted", "Too many requests. Try again later.");
+      }
+      return {
+        ref: target.ref,
+        data: {
+          action: target.action,
+          count: count + 1,
+          windowStartMillis,
+          updatedAt: Timestamp.now(),
+          schemaVersion: 1,
+        },
+      };
+    });
+    for (const { ref, data } of writes) tx.set(ref, data, { merge: true });
+  });
+}
+
 async function incrementRateLimit(
   docId: string,
   action: string,
   limit: { windowSeconds: number; maxAttempts: number },
 ): Promise<void> {
-  const ref = db.doc(`public_rate_limits/${docId}`);
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const now = Date.now();
-    const data = snap.data();
-    let count = typeof data?.count === "number" ? data.count : 0;
-    let windowStartMillis = typeof data?.windowStartMillis === "number" ? data.windowStartMillis : 0;
-    if (now - windowStartMillis > limit.windowSeconds * 1000) {
-      count = 0;
-      windowStartMillis = now;
-    }
-    if (count >= limit.maxAttempts) {
-      throw new HttpsError("resource-exhausted", "Too many requests. Try again later.");
-    }
-    tx.set(
-      ref,
-      {
-        action,
-        count: count + 1,
-        windowStartMillis,
-        updatedAt: Timestamp.now(),
-        schemaVersion: 1,
-      },
-      { merge: true },
-    );
-  });
+  await incrementRateLimitsAtomically([{ docId, action, limit }]);
+}
+
+async function incrementCallableRateLimitsAtomically(
+  uid: string,
+  actions: readonly [CallableRateLimitAction, CallableRateLimitAction],
+): Promise<void> {
+  await incrementRateLimitsAtomically(
+    actions.map((action) => ({
+      docId: rateLimitDocId(uid, action),
+      action,
+      limit: CALLABLE_RATE_LIMITS[action],
+    })),
+  );
 }
 
 export async function checkPublicHttpRateLimit(keyMaterial: string, action: PublicHttpRateLimitAction): Promise<void> {
@@ -213,16 +241,7 @@ export async function checkHostedInsightsAnswerRateLimit(uid: string): Promise<v
  * `resource-exhausted` when either bound is hit.
  */
 export async function checkVoIPCallRateLimit(uid: string): Promise<void> {
-  await incrementRateLimit(
-    rateLimitDocId(uid, "voip_call_burst"),
-    "voip_call_burst",
-    CALLABLE_RATE_LIMITS.voip_call_burst,
-  );
-  await incrementRateLimit(
-    rateLimitDocId(uid, "voip_call_daily"),
-    "voip_call_daily",
-    CALLABLE_RATE_LIMITS.voip_call_daily,
-  );
+  await incrementCallableRateLimitsAtomically(uid, ["voip_call_burst", "voip_call_daily"]);
 }
 
 /**
@@ -232,16 +251,7 @@ export async function checkVoIPCallRateLimit(uid: string): Promise<void> {
  * `resource-exhausted` when either bound is hit.
  */
 export async function checkKnowledgeSearchRateLimit(uid: string): Promise<void> {
-  await incrementRateLimit(
-    rateLimitDocId(uid, "knowledge_search_burst"),
-    "knowledge_search_burst",
-    CALLABLE_RATE_LIMITS.knowledge_search_burst,
-  );
-  await incrementRateLimit(
-    rateLimitDocId(uid, "knowledge_search_daily"),
-    "knowledge_search_daily",
-    CALLABLE_RATE_LIMITS.knowledge_search_daily,
-  );
+  await incrementCallableRateLimitsAtomically(uid, ["knowledge_search_burst", "knowledge_search_daily"]);
 }
 
 /**
@@ -251,16 +261,10 @@ export async function checkKnowledgeSearchRateLimit(uid: string): Promise<void> 
  * `resource-exhausted` when either bound is hit.
  */
 export async function checkAgentNotificationReplyRateLimit(uid: string): Promise<void> {
-  await incrementRateLimit(
-    rateLimitDocId(uid, "agent_notification_reply_burst"),
+  await incrementCallableRateLimitsAtomically(uid, [
     "agent_notification_reply_burst",
-    CALLABLE_RATE_LIMITS.agent_notification_reply_burst,
-  );
-  await incrementRateLimit(
-    rateLimitDocId(uid, "agent_notification_reply_daily"),
     "agent_notification_reply_daily",
-    CALLABLE_RATE_LIMITS.agent_notification_reply_daily,
-  );
+  ]);
 }
 
 export async function checkHermesGatewayBearerRateLimit(
