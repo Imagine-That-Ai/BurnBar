@@ -10,6 +10,14 @@ const DEFAULT_MANIFEST = "config/domain-core-control-plane-manifest.json";
 const SEED_PATHS = Object.freeze([
   ".github/workflows/domain-core.yml",
   ".github/workflows/domain-core-promotion-proof.yml",
+  // npm proof jobs trust their exact install, test-runner, typecheck, lint, and
+  // local hook configuration so candidate bytes cannot weaken the checks.
+  "apps/console/eslint.config.mjs",
+  "apps/console/package-lock.json",
+  "apps/console/package.json",
+  "apps/console/scripts/sync-domains.mjs",
+  "apps/console/tsconfig.json",
+  "apps/console/vitest.config.ts",
   "OpenBurnBarCore/Package.swift",
   "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift",
   "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift",
@@ -25,8 +33,28 @@ const SEED_PATHS = Object.freeze([
   "config/domain-core-build-profiles.json",
   "config/domain-core-deterministic-candidate-bundle.schema.json",
   "config/domain-core-promotion-policy.json",
+  "config/domain-core-shadow-diagnostic-policy.json",
   "crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs",
   "crates/openburnbar-domain-core/union-abi-manifest.json",
+  "functions/eslint.config.mjs",
+  "functions/package-lock.json",
+  "functions/package.json",
+  "functions/scripts/copy-certs.mjs",
+  "functions/scripts/postinstall-sync-local-packages.mjs",
+  "functions/scripts/sync-local-packages.mjs",
+  "functions/tsconfig.json",
+  "functions/vitest.config.ts",
+  // npm install hooks invoked by the Functions proof job use these local
+  // package builders and their build-command/dependency configuration.
+  "packages/entitlements/package-lock.json",
+  "packages/entitlements/package.json",
+  "packages/entitlements/tsconfig.json",
+  "packages/signal-envelope-contracts/package-lock.json",
+  "packages/signal-envelope-contracts/package.json",
+  "packages/signal-envelope-contracts/tsconfig.json",
+  "scripts/build-entitlements.sh",
+  "scripts/build-signal-envelope-contracts.sh",
+  "scripts/ci/stage-domain-core-attestation-artifact.test.mjs",
   "scripts/ci/verify-domain-core-control-plane.mjs",
   "scripts/ci/verify-domain-core-protected-attestation.mjs",
   "windows/Directory.Build.props",
@@ -64,6 +92,7 @@ const SEED_PATHS = Object.freeze([
   // Console vitest contract files executed by the console-consumer-contracts proof job
   "apps/console/test/domainCoreBuildProfile.test.ts",
   "apps/console/test/domainCoreCloudVault.test.ts",
+  "apps/console/test/domainCoreCloudVaultInitialization.test.ts",
   "apps/console/test/domainCoreShadowEvidence.test.ts",
   "apps/console/test/escrow.test.ts",
   // Android gradle consumer contract test files executed by the android proof job

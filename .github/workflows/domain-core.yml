@@ -1170,7 +1170,7 @@ jobs:
           npx vitest run \
             test/domainCoreBuildProfile.test.ts \
             test/domainCoreCloudVault.test.ts \
-            test/domainCoreCloudVaultArtifact.test.ts \
+            test/domainCoreCloudVaultInitialization.test.ts \
             test/domainCoreShadowEvidence.test.ts \
             test/escrow.test.ts \
             2>&1 | tee "$RUNNER_TEMP/console-consumer-contracts.log"
