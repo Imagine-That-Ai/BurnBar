@@ -67,7 +67,7 @@ final class PensieveVectorDomainCoreTests: XCTestCase {
                 0.01970170194431331,
                 -0.01876288243402278,
                 0.050834395709711204,
-                0.8367944634995997,
+                0.8367944634995997
             ]
             for (actual, expected) in zip(result, expected) {
                 XCTAssertEqual(actual, expected, accuracy: 1e-12)

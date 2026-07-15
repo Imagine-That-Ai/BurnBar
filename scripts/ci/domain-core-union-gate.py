@@ -52,10 +52,14 @@ def load_manifest(root: pathlib.Path) -> tuple[pathlib.Path, dict[str, object]]:
 def verify_build_identity(root: pathlib.Path, manifest: dict[str, object]) -> None:
     core_version = manifest.get("coreVersion")
     abi_version = manifest.get("abiVersion")
-    if not isinstance(core_version, str) or re.fullmatch(
-        r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*)|(?:\d*[A-Za-z-][0-9A-Za-z-]*))(?:\.(?:(?:0|[1-9]\d*)|(?:\d*[A-Za-z-][0-9A-Za-z-]*)))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
-        core_version,
-    ) is None:
+    if (
+        not isinstance(core_version, str)
+        or re.fullmatch(
+            r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*)|(?:\d*[A-Za-z-][0-9A-Za-z-]*))(?:\.(?:(?:0|[1-9]\d*)|(?:\d*[A-Za-z-][0-9A-Za-z-]*)))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
+            core_version,
+        )
+        is None
+    ):
         raise GateError("coreVersion must be a canonical SemVer string")
     if not isinstance(abi_version, int) or isinstance(abi_version, bool) or not 1 <= abi_version <= 0xFFFFFFFF:
         raise GateError("abiVersion must be an unsigned 32-bit integer greater than zero")
@@ -125,13 +129,11 @@ def source_files(crate_root: pathlib.Path, manifest: dict[str, object]) -> list[
                     child_mode = child.lstat().st_mode
                     if stat.S_ISLNK(child_mode):
                         raise GateError(
-                            "sourceRoots cannot contain symlink directories: "
-                            f"{child.relative_to(crate_root)}"
+                            f"sourceRoots cannot contain symlink directories: {child.relative_to(crate_root)}"
                         )
                     if not stat.S_ISDIR(child_mode):
                         raise GateError(
-                            "sourceRoots contain a special directory entry: "
-                            f"{child.relative_to(crate_root)}"
+                            f"sourceRoots contain a special directory entry: {child.relative_to(crate_root)}"
                         )
                     if name != "target":
                         retained_names.append(name)

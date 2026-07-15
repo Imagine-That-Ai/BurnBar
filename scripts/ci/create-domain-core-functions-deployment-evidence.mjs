@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import {
   exactObject,
   regularFile,
 } from "../lib/domain-core-release-evidence.mjs";
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
 
 function parseArguments(argv) {
   const required = new Set([
@@ -39,7 +40,12 @@ function parseArguments(argv) {
 
 function readJson(path, label) {
   try {
-    return JSON.parse(readFileSync(regularFile(path, label), "utf8"));
+    return JSON.parse(
+      readRegularFileSync(regularFile(path, label), {
+        encoding: "utf8",
+        label,
+      }),
+    );
   } catch (error) {
     throw new Error(`unable to read ${label}: ${error.message}`);
   }
@@ -148,12 +154,16 @@ function writeCreateOnly(path, contents) {
     });
   } catch (error) {
     if (error?.code !== "EEXIST") throw error;
-    const stat = lstatSync(output);
-    if (
-      !stat.isFile() ||
-      stat.isSymbolicLink() ||
-      readFileSync(output, "utf8") !== contents
-    ) {
+    let existing;
+    try {
+      existing = readRegularFileSync(output, {
+        encoding: "utf8",
+        label: "Functions deployment evidence",
+      });
+    } catch {
+      existing = undefined;
+    }
+    if (existing !== contents) {
       throw new Error(
         `refusing to replace non-identical Functions deployment evidence: ${output}`,
       );
@@ -284,7 +294,9 @@ export function run(argv) {
       resolve(args.get("--deploy-run-verification")),
       "Functions deploy-run verification",
     ),
-    readFileSync(healthArtifactPath),
+    readRegularFileSync(healthArtifactPath, {
+      label: "Functions health artifact",
+    }),
     readJson(
       resolve(args.get("--provider-coordinates")),
       "Functions provider coordinates",

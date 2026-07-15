@@ -164,10 +164,13 @@ internal object DomainCoreBuildProfile {
 
     private fun resolveCandidateIdentity(wireValue: String): AndroidDomainCoreCandidateIdentity? {
         val parts = wireValue.split('|')
-        if (parts.size != 4) return null
-        val (candidateCommit, coreVersion, abiVersionRaw, sourceSha256) = parts
+        if (parts.size != CANDIDATE_IDENTITY_PART_COUNT) return null
+        val candidateCommit = parts[0]
+        val coreVersion = parts[1]
+        val abiVersionRaw = parts[2]
+        val sourceSha256 = parts.last()
         if (!gitCommitPattern.matches(candidateCommit)) return null
-        if (coreVersion.toByteArray().size > 64 ||
+        if (coreVersion.toByteArray().size > MAX_CORE_VERSION_BYTES ||
             !canonicalSemVerPattern.matches(coreVersion)
         ) {
             return null
@@ -184,5 +187,7 @@ internal object DomainCoreBuildProfile {
         )
     }
 
+    private const val CANDIDATE_IDENTITY_PART_COUNT = 4
+    private const val MAX_CORE_VERSION_BYTES = 64
     private const val UINT32_MAX = 4_294_967_295L
 }

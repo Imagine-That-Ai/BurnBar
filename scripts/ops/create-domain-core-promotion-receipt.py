@@ -61,9 +61,7 @@ def superseded_authority_pointer(
                 "path": relative,
                 "sha256": GATE.sha256_path(path),
             }
-    raise GATE.GateError(
-        "authority generation after the first must supersede the previous stable or rollback receipt"
-    )
+    raise GATE.GateError("authority generation after the first must supersede the previous stable or rollback receipt")
 
 
 def create_artifacts(
@@ -224,9 +222,15 @@ def main(argv: list[str] | None = None) -> int:
         scope = GATE.PROMOTION_SCOPES[GATE.profile_domain_for_row(args.row_id)]
         outputs = (
             (repo_root / GATE.PROMOTION_BUNDLE_ROOT / scope / f"{args.authority_generation}.json", bundle_bytes),
-            (repo_root / GATE.PROMOTION_PROVENANCE_ROOT / scope / f"{args.authority_generation}.json", provenance_bytes),
+            (
+                repo_root / GATE.PROMOTION_PROVENANCE_ROOT / scope / f"{args.authority_generation}.json",
+                provenance_bytes,
+            ),
             (repo_root / GATE.ATTESTATION_ROOT / scope / f"{args.authority_generation}.json", serialized(attestation)),
-            (repo_root / GATE.RECEIPT_ROOT / args.row_id / str(args.authority_generation) / "promotion.json", serialized(receipt)),
+            (
+                repo_root / GATE.RECEIPT_ROOT / args.row_id / str(args.authority_generation) / "promotion.json",
+                serialized(receipt),
+            ),
         )
         for path, contents in outputs:
             append_only(path, contents)

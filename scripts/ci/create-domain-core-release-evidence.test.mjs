@@ -32,6 +32,13 @@ function sha(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function commandOption(command, option) {
+  const index = command.indexOf(option);
+  assert.notEqual(index, -1, `missing ${option}`);
+  assert.ok(index + 1 < command.length, `${option} has no value`);
+  return command[index + 1];
+}
+
 function workspace() {
   const directory = mkdtempSync(join(tmpdir(), "domain-core-release-test-"));
   const candidateBundle = join(directory, "domain-core-candidate-bundle.json");
@@ -304,7 +311,12 @@ test("cryptographically verifies the exact protected signer and candidate subjec
     );
     assert.ok(command.includes("refs/heads/main"));
     assert.ok(command.includes("--deny-self-hosted-runners"));
-    assert.ok(command.includes("https://slsa.dev/provenance/v1"));
+    const predicateType = new URL(commandOption(command, "--predicate-type"));
+    assert.equal(predicateType.href, "https://slsa.dev/provenance/v1");
+    assert.equal(predicateType.origin, "https://slsa.dev");
+    assert.equal(predicateType.pathname, "/provenance/v1");
+    assert.equal(predicateType.search, "");
+    assert.equal(predicateType.hash, "");
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
   }

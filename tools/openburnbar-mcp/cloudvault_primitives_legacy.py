@@ -51,15 +51,17 @@ def _cloud_vault_aad_context(
     if schema_version < 2:
         raise ValueError("invalid CloudVault AAD schema version")
     purpose_value = purpose or field
-    return "|".join([
-        OPENBURNBAR_CLOUD_VAULT_AAD_PREFIX,
-        _cloud_vault_aad_part(uid, "uid"),
-        _cloud_vault_aad_part(collection, "collection"),
-        _cloud_vault_aad_part(doc_id, "docID"),
-        _cloud_vault_aad_part(field, "field"),
-        str(schema_version),
-        _cloud_vault_aad_part(purpose_value, "purpose"),
-    ])
+    return "|".join(
+        [
+            OPENBURNBAR_CLOUD_VAULT_AAD_PREFIX,
+            _cloud_vault_aad_part(uid, "uid"),
+            _cloud_vault_aad_part(collection, "collection"),
+            _cloud_vault_aad_part(doc_id, "docID"),
+            _cloud_vault_aad_part(field, "field"),
+            str(schema_version),
+            _cloud_vault_aad_part(purpose_value, "purpose"),
+        ]
+    )
 
 
 def _validate_cloud_vault_aad(value: str) -> str:
@@ -87,9 +89,7 @@ def _cloud_vault_hmac_hex(data: bytes, vault_key: bytes, purpose: str) -> str:
 
 
 def _cloud_vault_project_memory_doc_id(project_slug: str, vault_key: bytes) -> str:
-    doc_id_key = _hkdf_sha256(
-        vault_key, OPENBURNBAR_DOC_ID_SALT, OPENBURNBAR_PROJECT_MEMORY_DOC_ID_INFO, 32
-    )
+    doc_id_key = _hkdf_sha256(vault_key, OPENBURNBAR_DOC_ID_SALT, OPENBURNBAR_PROJECT_MEMORY_DOC_ID_INFO, 32)
     digest = hmac.new(doc_id_key, project_slug.encode("utf-8"), hashlib.sha256).digest()
     return "pm_" + digest[:16].hex()
 

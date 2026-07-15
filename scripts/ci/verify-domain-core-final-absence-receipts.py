@@ -73,11 +73,7 @@ def run(
         if not artifact.is_file() or artifact.is_symlink():
             raise GATE.GateError(f"{consumer}: exact final artifact is missing")
         artifact_digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
-        domains = sorted(
-            domain
-            for domain in GATE.PROFILE_DOMAIN_ROWS
-            if expected_rows(consumer, domain)
-        )
+        domains = sorted(domain for domain in GATE.PROFILE_DOMAIN_ROWS if expected_rows(consumer, domain))
         scan_report: dict[str, Any] | None = None
         allowed_files = {"artifact"}
         if consumer == "ios":
@@ -89,9 +85,11 @@ def run(
             if not bundle.is_file() or bundle.is_symlink():
                 raise GATE.GateError(f"{consumer}/{domain}: signed predicate bundle is missing")
             expected_tag = (
-                f"windows-v{release_version}" if consumer == "windows" else
-                f"linux-v{release_version}" if consumer == "linux" else
-                f"v{release_version}"
+                f"windows-v{release_version}"
+                if consumer == "windows"
+                else f"linux-v{release_version}"
+                if consumer == "linux"
+                else f"v{release_version}"
             )
             results = verifier._verify_bundle(
                 artifact,
@@ -111,8 +109,7 @@ def run(
                 if isinstance(value, dict):
                     signed.append(value)
             candidates = [
-                value for value in signed
-                if value.get("consumer") == consumer and value.get("domain") == domain
+                value for value in signed if value.get("consumer") == consumer and value.get("domain") == domain
             ]
             if len(candidates) != 1:
                 raise GATE.GateError(f"{consumer}/{domain}: bundle must contain one exact release predicate")
@@ -131,7 +128,8 @@ def run(
                 or release.get("version") != release_version
                 or release.get("commit") != release_commit
                 or release.get("tag") != expected_tag
-                or absence != {
+                or absence
+                != {
                     "schemaVersion": 1,
                     "predicateType": ABSENCE_TYPE,
                     "releaseCommit": release.get("commit"),
@@ -142,18 +140,26 @@ def run(
                 }
                 or not GATE.DIGEST_RE.fullmatch(absence.get("deletionInventorySha256", ""))
                 or activation.get("activationCommit") == release.get("commit")
-                or any(activation.get(key) != candidate.get(key) for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256"))
+                or any(
+                    activation.get(key) != candidate.get(key)
+                    for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256")
+                )
             ):
                 raise GATE.GateError(f"{consumer}/{domain}: signed final absence predicate identity is invalid")
             scan_binding = GATE.require_object(absence.get("artifactScan"), f"{consumer}/{domain} artifactScan")
             signed_report = GATE.require_object(scan_binding.get("report"), f"{consumer}/{domain} scan report")
-            if scan_binding != {
-                "reportSha256": GATE.canonical_json_sha256(signed_report),
-                "artifactSha256": artifact_digest,
-                "ruleSetSha256": signed_report.get("ruleSetSha256"),
-                "inspectedMemberCount": len(signed_report.get("inspectedMembers", [])),
-                "report": signed_report,
-            } or signed_report.get("result") != "absent" or signed_report.get("matches") != []:
+            if (
+                scan_binding
+                != {
+                    "reportSha256": GATE.canonical_json_sha256(signed_report),
+                    "artifactSha256": artifact_digest,
+                    "ruleSetSha256": signed_report.get("ruleSetSha256"),
+                    "inspectedMemberCount": len(signed_report.get("inspectedMembers", [])),
+                    "report": signed_report,
+                }
+                or signed_report.get("result") != "absent"
+                or signed_report.get("matches") != []
+            ):
                 raise GATE.GateError(f"{consumer}/{domain}: signed scan report does not bind exact clean bytes")
             if scan_report is None:
                 scan_report = signed_report

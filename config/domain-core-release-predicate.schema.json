@@ -268,7 +268,7 @@
           "additionalProperties": false,
           "required": ["version", "tag", "commit"],
           "properties": {
-            "version": { "$ref": "#/$defs/version" },
+            "version": { "$ref": "#/$defs/stableVersion" },
             "tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$" },
             "commit": { "$ref": "#/$defs/gitSha" }
           }
@@ -283,7 +283,7 @@
             "schemaVersion": { "const": 1 },
             "verificationKind": { "const": "ios-loaded-rust-slice-identity" },
             "bundleId": { "type": "string", "minLength": 1 },
-            "version": { "$ref": "#/$defs/version" },
+            "version": { "$ref": "#/$defs/stableVersion" },
             "buildNumber": { "type": "string", "minLength": 1 },
             "executable": { "const": "OpenBurnBarMobile" },
             "architectures": { "const": ["arm64"] },
@@ -294,7 +294,7 @@
               "required": ["candidateCommit", "coreVersion", "abiVersion", "sourceSha256"],
               "properties": {
                 "candidateCommit": { "$ref": "#/$defs/gitSha" },
-                "coreVersion": { "$ref": "#/$defs/version" },
+                "coreVersion": { "$ref": "#/$defs/nativeVersion" },
                 "abiVersion": { "type": "integer", "minimum": 1 },
                 "sourceSha256": { "$ref": "#/$defs/sha256" }
               }
@@ -351,7 +351,7 @@
       "properties": {
         "candidateCommit": { "$ref": "#/$defs/gitSha" },
         "activationCommit": { "$ref": "#/$defs/gitSha" },
-        "coreVersion": { "$ref": "#/$defs/version" },
+        "coreVersion": { "$ref": "#/$defs/nativeVersion" },
         "abiVersion": {
           "type": "integer",
           "minimum": 1,

@@ -311,14 +311,22 @@ function requireProductReleasePreflight(
     !allowOwnerEmergencyApproval &&
     hasShellFlag(executableRunBlock, "--allow-owner-emergency-approval")
   ) {
-    fail(file, `${message}: owner-emergency approval is not allowed in this workflow`);
+    fail(
+      file,
+      `${message}: owner-emergency approval is not allowed in this workflow`,
+    );
   }
   if (
     allowOwnerEmergencyApproval &&
     hasShellFlag(executableRunBlock, "--allow-owner-emergency-approval") &&
-    !/--expected-release-tag\s+["']?\$\{\{\s*steps\.version\.outputs\.tag_name\s*\}\}["']?/u.test(executableRunBlock)
+    !/--expected-release-tag\s+["']?\$\{\{\s*steps\.version\.outputs\.tag_name\s*\}\}["']?/u.test(
+      executableRunBlock,
+    )
   ) {
-    fail(file, `${message}: owner-emergency approval must be bound to the resolved release tag`);
+    fail(
+      file,
+      `${message}: owner-emergency approval must be bound to the resolved release tag`,
+    );
   }
   if (hasShellFlag(executableRunBlock, "--source-provenance-only")) {
     fail(file, `${message}: product preflight must not be source-only`);
@@ -491,11 +499,17 @@ function verifyReleaseWorkflow() {
     "Generate direct-download update feeds",
     "release update-feed generation step",
   );
-  const releasePublishRun = namedStepRunBlock(
+  const releasePublicationStageRun = namedStepRunBlock(
     file,
     source,
-    "Publish release assets",
-    "release publish step",
+    "Stage the complete general release asset set",
+    "release publication staging step",
+  );
+  const atomicReleasePublishRun = namedStepRunBlock(
+    file,
+    source,
+    "Publish the complete verified release set from one draft state machine",
+    "atomic release publish step",
   );
   const mobileBypassStep = conditionalNamedStepBlock(
     file,
@@ -832,8 +846,10 @@ function verifyReleaseWorkflow() {
 
   // Parallel-lane shape invariants: the resolve/scan/preflight steps live in
   // the release-preflight job, packaging consumes its outputs through `needs`,
-  // and publish gates on every validation lane. These keep the split job
-  // graph from silently dropping a gate or resolving the tag twice.
+  // and publication preparation gates on every validation lane. Atomic
+  // publication then consumes that prepared set plus the native evidence
+  // chain. These keep the split job graph from silently dropping a gate or
+  // resolving the tag twice.
   const releasePreflightJob = workflowJobBlock(source, "release-preflight");
   if (!releasePreflightJob) {
     fail(file, "release workflow must define the release-preflight job");
@@ -853,12 +869,15 @@ function verifyReleaseWorkflow() {
   }
 
   const packagingJob = workflowJobBlock(source, "build-and-release");
-  requireIncludes(
-    file,
-    packagingJob,
-    "needs: release-preflight",
-    "packaging job must consume the resolved release tag from release-preflight",
-  );
+  if (
+    !packagingJob.includes("needs: release-preflight") &&
+    !/^ {8}(?:- )?release-preflight,?\s*$/mu.test(packagingJob)
+  ) {
+    fail(
+      file,
+      "packaging job must consume the resolved release tag from release-preflight",
+    );
+  }
   requireStepFailClosedMode(
     file,
     source,
@@ -873,9 +892,12 @@ function verifyReleaseWorkflow() {
     "release packaging checkout must prove HEAD equals the resolved release commit",
   );
 
-  const publishJob = workflowJobBlock(source, "publish");
-  if (!publishJob) {
-    fail(file, "release workflow must define the publish job");
+  const publicationPreparationJob = workflowJobBlock(
+    source,
+    "prepare-release-publication",
+  );
+  if (!publicationPreparationJob) {
+    fail(file, "release workflow must define the publication preparation job");
   }
   for (const requiredNeed of [
     "release-preflight",
@@ -888,22 +910,58 @@ function verifyReleaseWorkflow() {
     "release-extension-gate",
     "release-supply-chain-gate",
     "build-and-release",
+    "domain-core-ios-release-evidence",
     "smoke-test",
+    "apple-native-prepublication",
   ]) {
     requirePattern(
       file,
-      publishJob,
+      publicationPreparationJob,
       new RegExp(`^      - ${requiredNeed}$`, "mu"),
-      `publish must gate on ${requiredNeed} via needs`,
+      `publication preparation must gate on ${requiredNeed} via needs`,
     );
   }
   // Job-level `if:` sits at 4-space indent; step-level cleanup ifs (8-space)
   // such as `if: always()` on config cleanup are fine.
   requireNoPattern(
     file,
-    publishJob,
+    publicationPreparationJob,
     /^    if\s*:.*always\(\)/mu,
-    "publish must not use always() to bypass failed release lanes",
+    "publication preparation must not use always() to bypass failed release lanes",
+  );
+
+  const atomicPublicationJob = workflowJobBlock(
+    source,
+    "domain-core-native-release-evidence",
+  );
+  if (!atomicPublicationJob) {
+    fail(file, "release workflow must define the atomic publication job");
+  }
+  for (const requiredNeed of [
+    "release-preflight",
+    "domain-core-native-release-gate",
+    "build-and-release",
+    "apple-native-prepublication",
+    "prepare-release-publication",
+  ]) {
+    requirePattern(
+      file,
+      atomicPublicationJob,
+      new RegExp(`^      - ${requiredNeed}$`, "mu"),
+      `atomic publication must gate on ${requiredNeed} via needs`,
+    );
+  }
+  requireIncludes(
+    file,
+    atomicPublicationJob,
+    "needs.prepare-release-publication.result == 'success' && needs.apple-native-prepublication.result == 'success'",
+    "atomic publication must require successful preparation and Apple prepublication",
+  );
+  requireNoPattern(
+    file,
+    atomicPublicationJob,
+    /^    if\s*:.*always\(\)/mu,
+    "atomic publication must not use always() to bypass failed release lanes",
   );
   requireIncludes(
     file,
@@ -938,21 +996,51 @@ function verifyReleaseWorkflow() {
   );
   requireIncludes(
     file,
-    releasePublishRun,
+    releasePublicationStageRun,
     "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
-    "publish job must fail closed when provenance bundles are missing",
+    "publication preparation must fail closed when provenance bundles are missing",
   );
   requireNoPattern(
     file,
-    releasePublishRun,
+    releasePublicationStageRun,
     /\b(?:mapfile|readarray)\b/u,
-    "publish job must stay compatible with the macOS runner's Bash 3.2 shell",
+    "publication preparation must stay compatible with the macOS runner's Bash 3.2 shell",
   );
   requireShellIfExits(
     file,
-    releasePublishRun,
+    releasePublicationStageRun,
     "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
-    "publish missing provenance bundle guard",
+    "publication preparation missing provenance bundle guard",
+  );
+  requireStepFailClosedMode(
+    file,
+    source,
+    "Stage the complete general release asset set",
+    "release publication staging step",
+  );
+  requireStepFailClosedMode(
+    file,
+    source,
+    "Publish the complete verified release set from one draft state machine",
+    "atomic release publish step",
+  );
+  requireIncludes(
+    file,
+    atomicReleasePublishRun,
+    "if ((${#asset_args[@]} == 0)); then",
+    "atomic publication must fail closed when the retained release set is empty",
+  );
+  requireShellIfExits(
+    file,
+    atomicReleasePublishRun,
+    "if ((${#asset_args[@]} == 0)); then",
+    "atomic publication missing retained release-set guard",
+  );
+  requireIncludes(
+    file,
+    atomicReleasePublishRun,
+    'node scripts/ci/publish-apple-android-release.mjs --manifest "$manifest"',
+    "atomic publication must publish the verified Apple and Android manifest",
   );
 }
 

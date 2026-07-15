@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { lstatSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
+import {
+  firebaseHostingApiUrl,
+  firebaseHostingReleaseName,
+  firebaseHostingUploadUrl,
+  firebaseHostingVersionName,
+} from "../lib/firebase-hosting-rest-url.mjs";
+
 const args = process.argv.slice(2);
-const apiOrigin = "https://firebasehosting.googleapis.com/v1beta1";
-const allowedUploadHosts = new Set(["upload-firebasehosting.googleapis.com"]);
 
 let project = "burnbar";
 let configPath = "";
@@ -65,7 +71,12 @@ if (!dryRun && !accessToken) {
 
 function readJson(path) {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(
+      readRegularFileSync(path, {
+        encoding: "utf8",
+        label: "Hosting configuration",
+      }),
+    );
   } catch (error) {
     throw new Error(`Failed to parse ${path}: ${error.message}`);
   }
@@ -249,28 +260,16 @@ function fileRecord(publicDir, path) {
   if (!relativePath || relativePath.startsWith("../")) {
     throw new Error(`Invalid file path outside public dir: ${path}`);
   }
-  const gzipped = gzipSync(readFileSync(path), { level: 9 });
+  const gzipped = gzipSync(
+    readRegularFileSync(path, { label: "Hosting artifact" }),
+    { level: 9 },
+  );
   const hash = createHash("sha256").update(gzipped).digest("hex");
   return {
     hash,
     path: `/${relativePath}`,
     gzipped,
   };
-}
-
-function urlFor(path) {
-  if (/^https?:\/\//u.test(path)) {
-    const url = new URL(path);
-    if (url.protocol !== "https:" || !allowedUploadHosts.has(url.hostname)) {
-      throw new Error(
-        `Refusing non-Firebase Hosting upload URL: ${url.origin}`,
-      );
-    }
-    return url;
-  }
-  return new URL(
-    `${apiOrigin.replace(/\/$/u, "")}/${path.replace(/^\//u, "")}`,
-  );
 }
 
 async function request(method, path, body) {
@@ -282,7 +281,7 @@ async function request(method, path, body) {
     headers["Content-Type"] = "application/json";
     requestBody = JSON.stringify(body);
   }
-  const url = urlFor(path);
+  const url = firebaseHostingApiUrl(method, path);
   const response = await fetch(url, {
     method,
     headers,
@@ -298,8 +297,8 @@ async function request(method, path, body) {
   return response.json();
 }
 
-async function uploadHash(uploadUrl, hash, gzipped) {
-  const url = urlFor(`${uploadUrl.replace(/\/$/u, "")}/${hash}`);
+async function uploadHash(uploadUrl, site, hash, gzipped) {
+  const url = firebaseHostingUploadUrl(uploadUrl, site, hash);
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -377,16 +376,7 @@ async function deployOne(entry, firebaserc) {
   const created = await request("POST", `/projects/-/sites/${site}/versions`, {
     status: "CREATED",
   });
-  const versionName = created.name;
-  if (
-    typeof versionName !== "string" ||
-    !versionName.startsWith(`sites/${site}/versions/`) ||
-    versionName.split("/").at(-1)?.length === 0
-  ) {
-    throw new Error(
-      `Hosting API did not return a version name for site ${site}`,
-    );
-  }
+  const versionName = firebaseHostingVersionName(created.name, site);
 
   let uploadUrl = "";
   const uploadHashes = new Set();
@@ -414,7 +404,7 @@ async function deployOne(entry, firebaserc) {
   await runConcurrent(
     uploads,
     Number(process.env.FIREBASE_HOSTING_UPLOAD_CONCURRENCY ?? 20),
-    (record) => uploadHash(uploadUrl, record.hash, record.gzipped),
+    (record) => uploadHash(uploadUrl, site, record.hash, record.gzipped),
   );
 
   const versionId = versionName.split("/").at(-1);
@@ -432,16 +422,7 @@ async function deployOne(entry, firebaserc) {
     `/projects/-/sites/${site}/channels/live/releases?versionName=${encodeURIComponent(versionName)}`,
     message ? { message } : {},
   );
-  const releaseName = release.name;
-  if (
-    typeof releaseName !== "string" ||
-    !releaseName.startsWith(`sites/${site}/channels/live/releases/`) ||
-    releaseName.split("/").at(-1)?.length === 0
-  ) {
-    throw new Error(
-      `Hosting API did not return an immutable live release name for site ${site}`,
-    );
-  }
+  const releaseName = firebaseHostingReleaseName(release.name, site);
 
   console.log(
     `hosting[${site}] released ${versionName} uploads=${uploads.length}`,

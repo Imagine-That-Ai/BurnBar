@@ -1,13 +1,10 @@
 #!/usr/bin/env node
 
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readdirSync,
-} from "node:fs";
+import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const OBSERVER_TARGETS = Object.freeze([
@@ -25,7 +22,8 @@ function sourceFiles(root) {
     for (const name of readdirSync(directory).sort()) {
       const path = resolve(directory, name);
       const stat = lstatSync(path);
-      if (stat.isSymbolicLink()) throw new Error(`source graph contains symlink: ${path}`);
+      if (stat.isSymbolicLink())
+        throw new Error(`source graph contains symlink: ${path}`);
       if (stat.isDirectory()) {
         if (name !== "__tests__") visit(path);
       } else if (
@@ -50,7 +48,8 @@ function resolveModule(importer, specifier) {
     resolve(raw, "index.ts"),
   ];
   const match = candidates.find((path) => existsSync(path));
-  if (!match) throw new Error(`${importer} references missing local module ${specifier}`);
+  if (!match)
+    throw new Error(`${importer} references missing local module ${specifier}`);
   const stat = lstatSync(match);
   if (!stat.isFile() || stat.isSymbolicLink())
     throw new Error(`source graph module must be a regular file: ${match}`);
@@ -72,11 +71,15 @@ function parseReexports(path, source) {
       const value = item.trim();
       if (!value) continue;
       const parts = value.split(/\s+as\s+/u).map((part) => part.trim());
-      if (parts.length > 2 || parts.some((part) => !/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(part)))
+      if (
+        parts.length > 2 ||
+        parts.some((part) => !/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(part))
+      )
         throw new Error(`unsupported named re-export in ${path}: ${value}`);
       const imported = parts[0];
       const exported = parts[1] ?? imported;
-      if (values.has(exported)) throw new Error(`duplicate export ${exported} in ${path}`);
+      if (values.has(exported))
+        throw new Error(`duplicate export ${exported} in ${path}`);
       values.set(exported, { imported, target });
     }
   }
@@ -105,7 +108,9 @@ function exportOrigin(modules, modulePath, name, seen = new Set()) {
     "u",
   );
   if (!module || !declaration.test(module.source))
-    throw new Error(`cannot resolve exported Function target ${name} from ${modulePath}`);
+    throw new Error(
+      `cannot resolve exported Function target ${name} from ${modulePath}`,
+    );
   return modulePath;
 }
 
@@ -117,25 +122,34 @@ export function deriveDomainCoreFunctionsTargets(
   const modules = new Map();
   const graph = new Map();
   for (const path of paths) {
-    const source = readFileSync(path, "utf8");
+    const source = readRegularFileSync(path, {
+      encoding: "utf8",
+      label: "Functions source module",
+    });
     const syntax = withoutComments(source);
     const imports = new Set();
     for (const match of syntax.matchAll(STATIC_IMPORT))
       imports.add(resolveModule(path, match[2]));
-    modules.set(path, { source: syntax, reexports: parseReexports(path, syntax) });
+    modules.set(path, {
+      source: syntax,
+      reexports: parseReexports(path, syntax),
+    });
     graph.set(path, imports);
   }
   const indexPath = resolve(sourceRoot, "index.ts");
   const pricingPath = resolve(sourceRoot, "domainCorePricing.ts");
   const index = modules.get(indexPath);
   if (!index || !modules.has(pricingPath))
-    throw new Error("Functions source graph lacks index.ts or domainCorePricing.ts");
+    throw new Error(
+      "Functions source graph lacks index.ts or domainCorePricing.ts",
+    );
   const targets = new Set(OBSERVER_TARGETS);
   for (const name of index.reexports.keys()) {
     const origin = exportOrigin(modules, indexPath, name);
     if (reaches(graph, origin, pricingPath)) targets.add(name);
   }
-  for (const observer of OBSERVER_TARGETS) exportOrigin(modules, indexPath, observer);
+  for (const observer of OBSERVER_TARGETS)
+    exportOrigin(modules, indexPath, observer);
   return [...targets].sort();
 }
 
@@ -148,7 +162,9 @@ export function verifyDomainCoreFunctionsTargetInventory({
     !Array.isArray(inventory.targets) ||
     inventory.targets.some((target) => typeof target !== "string")
   ) {
-    throw new Error("Functions target inventory must be schemaVersion 1 with string targets");
+    throw new Error(
+      "Functions target inventory must be schemaVersion 1 with string targets",
+    );
   }
   const expected = deriveDomainCoreFunctionsTargets(repoRoot);
   const actual = [...inventory.targets].sort();
@@ -162,13 +178,17 @@ export function verifyDomainCoreFunctionsTargetInventory({
 
 function run(argv) {
   if (argv.length !== 2 || argv[0] !== "--inventory")
-    throw new Error("usage: verify-domain-core-functions-target-inventory.mjs --inventory PATH");
+    throw new Error(
+      "usage: verify-domain-core-functions-target-inventory.mjs --inventory PATH",
+    );
   const inventoryPath = resolve(argv[1]);
-  const stat = lstatSync(inventoryPath);
-  if (!stat.isFile() || stat.isSymbolicLink())
-    throw new Error("Functions target inventory must be a regular file");
   const result = verifyDomainCoreFunctionsTargetInventory({
-    inventory: JSON.parse(readFileSync(inventoryPath, "utf8")),
+    inventory: JSON.parse(
+      readRegularFileSync(inventoryPath, {
+        encoding: "utf8",
+        label: "Functions target inventory",
+      }),
+    ),
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
