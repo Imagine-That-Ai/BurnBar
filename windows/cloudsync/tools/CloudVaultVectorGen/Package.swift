@@ -5,7 +5,7 @@ import PackageDescription
 //
 // This executable depends ONLY on Apple's CryptoKit system framework — the SAME
 // primitive stack the production macOS/iOS app uses through
-// OpenBurnBarCore/Sources/OpenBurnBarKernel/Platform/PlatformSupport.swift
+// OpenBurnBarCore/Sources/OpenBurnBarPlatformSupport/PlatformSupport.swift
 // (P256.KeyAgreement, HKDF<SHA256>, AES.GCM, HMAC<SHA256>, SHA256). It faithfully
 // transcribes the recipe in OpenBurnBarCore/.../SharedModels/CloudVaultCrypto.swift
 // with PINNED nonces / ephemeral scalars so the sealed bytes are reproducible, and
