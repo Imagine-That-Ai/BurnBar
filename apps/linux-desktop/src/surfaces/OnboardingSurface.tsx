@@ -3,6 +3,7 @@ import { Banner } from '../components/Banner.js';
 import { ONBOARDING_STEPS } from '../onboardingSteps.js';
 import {
   cacheOnboarding,
+  decodeLinuxOnboardingSnapshot,
   readOnboarding,
   type LinuxOnboardingActionRequest,
   type LinuxOnboardingPrivacyChoices,
@@ -147,9 +148,13 @@ export function OnboardingSurface() {
     void bridge.onboardingSnapshot()
       .then((next) => {
         if (cancelled) return;
-        cacheOnboarding(next);
-        setSnapshot(next);
-        setPrivacyChoices(next.privacyChoices ?? { telemetryEnabled: false, cloudSyncEnabled: false });
+        // Keep the renderer fail-closed even when a non-Tauri bridge (or a
+        // future protocol version) bypasses the typed bridge decoder. Cache
+        // validation alone is advisory and intentionally swallows failures.
+        const authoritative = decodeLinuxOnboardingSnapshot(next);
+        cacheOnboarding(authoritative);
+        setSnapshot(authoritative);
+        setPrivacyChoices(authoritative.privacyChoices ?? { telemetryEnabled: false, cloudSyncEnabled: false });
         setAuthorityReady(true);
       })
       .catch((loadError: unknown) => {
@@ -186,9 +191,13 @@ export function OnboardingSurface() {
   }, [bridge, snapshot.currentStepID]);
 
   const commit = (next: LinuxOnboardingSnapshot) => {
-    cacheOnboarding(next);
-    setSnapshot(next);
-    if (next.privacyChoices) setPrivacyChoices(next.privacyChoices);
+    // Decode action responses before mutating local state. This prevents a
+    // malformed response from replacing the last known-good snapshot after a
+    // cache write is rejected.
+    const authoritative = decodeLinuxOnboardingSnapshot(next);
+    cacheOnboarding(authoritative);
+    setSnapshot(authoritative);
+    if (authoritative.privacyChoices) setPrivacyChoices(authoritative.privacyChoices);
     setAuthorityReady(true);
     setError(null);
   };
@@ -331,7 +340,7 @@ export function OnboardingSurface() {
 
   return (
     <div className="onboarding-stage">
-      <section className="onboarding-wizard" aria-labelledby="onboarding-step-title">
+      <section className="onboarding-wizard" aria-labelledby="onboarding-step-title" aria-busy={busy}>
         <header className="onboarding-wizard-header">
           <div className="onboarding-wizard-brand">
             <span className="onboarding-wizard-mark" aria-hidden="true">

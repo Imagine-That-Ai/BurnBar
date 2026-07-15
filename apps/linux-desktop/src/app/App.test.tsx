@@ -178,6 +178,28 @@ describe('App shell', () => {
     expect(await screen.findByText('Step 2 of 8')).toBeTruthy();
   });
 
+  it('keeps the last valid onboarding state when an action returns a forged snapshot', async () => {
+    const initial = defaultLinuxOnboardingSnapshot();
+    const onboardingSnapshot = vi.fn().mockResolvedValue(initial);
+    const onboardingAction = vi.fn().mockResolvedValue({ ...initial, completed: true });
+    useShellStore.setState({
+      bridge: { onboardingSnapshot, onboardingAction, onboardingReset: vi.fn() } as unknown as LinuxShellBridge,
+      bridgeReady: true
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByText('Step 1 of 8')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Verify and continue' }));
+
+    await waitFor(() => {
+      expect(onboardingAction).toHaveBeenCalledWith({ stepID: 'daemon', action: 'verify' });
+      expect(screen.getByRole('alert').textContent).toContain('onboarding_completion_invariant_mismatch');
+    });
+    expect(screen.getByText('Step 1 of 8')).toBeTruthy();
+    expect(document.querySelector('.onboarding-wizard')?.getAttribute('aria-busy')).toBe('false');
+    expect(localStorage.getItem('openburnbar.linux.onboarding.cache.v2') ?? '').not.toContain('"completed":true');
+  });
+
   it('routes optional integration checks through the daemon and keeps skip explicit', async () => {
     const base = defaultLinuxOnboardingSnapshot();
     const initial = {
@@ -233,6 +255,7 @@ describe('App shell', () => {
     const initial = {
       ...defaultLinuxOnboardingSnapshot(),
       currentStepID: 'provider_paths' as const,
+      privacyChoices: { telemetryEnabled: false, cloudSyncEnabled: false },
       steps: defaultLinuxOnboardingSnapshot().steps.map((step) =>
         step.id === 'provider_paths' ? { ...step, state: 'pending' as const } : { ...step, state: 'verified' as const }
       )
@@ -269,6 +292,7 @@ describe('App shell', () => {
     const initial = {
       ...defaultLinuxOnboardingSnapshot(),
       currentStepID: 'provider_paths' as const,
+      privacyChoices: { telemetryEnabled: false, cloudSyncEnabled: false },
       steps: defaultLinuxOnboardingSnapshot().steps.map((step) =>
         step.id === 'provider_paths' ? { ...step, state: 'pending' as const } : { ...step, state: 'verified' as const }
       )
