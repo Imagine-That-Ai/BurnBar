@@ -3,9 +3,9 @@
 **Scope:** every open `P0 - Critical` / `area: infra` issue as of 2026-07-15,
 excluding #1091 (owned by P-OPS-1 — prove the production deploy plane).
 
-**Goal (from `docs/OPERATION_9_PLAN.md` §P-OPS-3):** close the alert→action
-loop — zero stale (>30-day) open P0 infra issues without an evidence-backed
-disposition.
+**Goal (Operation 9, P-OPS-3 — alert→action loop):** close the
+alert→action loop — zero stale (>30-day) open P0 infra issues without an
+evidence-backed disposition.
 
 **Method:** for each issue, pull the original failure run, check the
 lane's current `main` run history, and assign one of three dispositions:
@@ -24,7 +24,7 @@ issue; closes used the `completed` state reason.
 | [#308](https://github.com/Imagine-That-Ai/BurnBar/issues/308) | Nightly E2E launch gate failed (27347248377) | `nightly-e2e.yml` | [run 27347248377](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/27347248377) 2026-06-11 `failure` | **Superseded by #327** — standing tracker covers this lane | **Closed (completed)** | #308 is a one-off (no `lane:nightly-e2e` label, zero recurrence comments). #327 is the standing `lane:nightly-e2e` tracker (21 recurrences, `escalated:72h`). The lane itself remains red — see #327. |
 | [#317](https://github.com/Imagine-That-Ai/BurnBar/issues/317) | Firestore deploy gate failed (27396018979) | `deploy-firestore.yml` | [run 27396018979](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/27396018979) 2026-06-12 `failure` | **Fixed-by-PR** (#1572, #1588, #1687) — lane green on `main` | **Closed (completed)** | 4 consecutive `success` runs on `main`: [29372431102](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29372431102) (07-14), [29256285212](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29256285212) (07-13), [29256028236](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29256028236) (07-13), [29255982406](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29255982406) (07-13). Fixing PRs: #1572 (Firestore rules via firebase-tools + size tripwire), #1588 (repair rules release after 409), #1687 (consolidate rules under backend limit). Issue predated per-lane labeling. |
 | [#327](https://github.com/Imagine-That-Ai/BurnBar/issues/327) | Nightly E2E launch gate failed (27414873775) | `nightly-e2e.yml` | 21 recurrences since 2026-06-12 | **Still-failing** — leave open | **Open** | Latest `main` run [29327976769](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29327976769) (07-14) `failure`; all 5 recent `main` runs red. Failing jobs: `nightly-tests` + `android-e2e` (emulator infra rot). **Owner:** @albertonunez via P-QA-1. **Blocker:** nightly-tests must pass or be split into a required aggregate; android-e2e emulator must boot. |
-| [#565](https://github.com/Imagine-That-Ai/BurnBar/issues/565) | Nightly DAST sandbox advisory failed (27763586886) | `nightly-dast-sandbox.yml` | 27 recurrences since 2026-06-18 | **Still-failing** — leave open | **Open** | Latest `main` run [29329821467](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29329821467) (07-14) `failure`; all 5 recent `main` runs red. Failing jobs: `privileged-socket-redteam` + `dast-functions`. **Owner:** @albertonunez via P-QA-1. **Blocker:** red-team + dast-functions sandbox jobs must be triaged into the required-vs-informational split and root-caused. |
+| [#565](https://github.com/Imagine-That-Ai/BurnBar/issues/565) | Nightly DAST sandbox advisory failed (27763586886) | `nightly-dast-sandbox.yml` (lane key: `nightly-sandbox`) | 27 recurrences since 2026-06-18 | **Still-failing** — leave open | **Open** | Latest `main` run [29329821467](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29329821467) (07-14) `failure`; all 5 recent `main` runs red. Failing jobs: `privileged-socket-redteam` + `dast-functions`. **Owner:** @albertonunez via P-QA-1. **Blocker:** red-team + dast-functions sandbox jobs must be triaged into the required-vs-informational split and root-caused. |
 | [#1393](https://github.com/Imagine-That-Ai/BurnBar/issues/1393) | Linux nightly matrix failed (28914776532) | `linux-nightly.yml` | 9 recurrences since 2026-07-08 | **Still-failing** — leave open | **Open** | Latest `main` run [29329918180](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29329918180) (07-14) `failure`; all `main` runs red. Failing job: `linux-matched-performance` (30-min soak); `linux-surface` skipped as downstream. **Owner:** @albertonunez (Linux port parity; related to P-CQ-1). **Blocker:** `linux-matched-performance` soak must pass on `ubuntu-24.04-arm`. |
 
 ---
@@ -66,11 +66,14 @@ handles each lane.
 | Lane | Standing issue | Owner packet | Blocker |
 |------|---------------|-------------|---------|
 | nightly-e2e | #327 | P-QA-1 (Full Harness triage) | nightly-tests + android-e2e emulator infra rot |
-| nightly-dast-sandbox | #565 | P-QA-1 (Full Harness triage) | privileged-socket-redteam + dast-functions sandbox |
+| nightly-sandbox | #565 | P-QA-1 (Full Harness triage) | privileged-socket-redteam + dast-functions sandbox |
 | linux-nightly | #1393 | Linux port parity (related to P-CQ-1) | linux-matched-performance soak on ubuntu-24.04-arm |
 
-These three issues remain open with a named owner and blocker. The lane
-auto-close will fire when the first green run lands.
+These three issues remain open with a named owner and blocker. The
+`nightly-e2e` and `nightly-sandbox` lanes have `ops-failure-issue` `mode: close`
+jobs that will auto-close their standing issues when the first green run lands.
+The `linux-nightly` lane has only `mode: open` (no close job), so #1393 must be
+closed manually once the `linux-matched-performance` soak passes.
 
 ## Out of scope
 
