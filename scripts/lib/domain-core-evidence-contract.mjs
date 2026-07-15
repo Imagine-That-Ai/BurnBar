@@ -8,12 +8,13 @@ export const DOMAIN_CORE_REQUIRED_COVERAGE = Object.freeze({
     anthropic: Object.freeze(["apple", "windows"]),
   }),
   cloudvault: Object.freeze({
-    foundation: Object.freeze(["apple", "android", "windows", "console"]),
-    aes: Object.freeze(["apple", "android", "windows", "console"]),
+    foundation: Object.freeze(["apple", "android", "windows", "console", "remote-mcp"]),
+    aes: Object.freeze(["apple", "android", "windows", "console", "remote-mcp"]),
     recovery: Object.freeze(["apple", "android", "windows"]),
     escrow: Object.freeze(["apple", "android", "windows", "console"]),
     "document-rewrap": Object.freeze(["apple", "android"]),
-    search: Object.freeze(["apple", "android"]),
+    search: Object.freeze(["apple", "android", "remote-mcp"]),
+    "opaque-identifiers": Object.freeze(["remote-mcp"]),
   }),
   hermes: Object.freeze({
     aad: Object.freeze(["apple", "android"]),

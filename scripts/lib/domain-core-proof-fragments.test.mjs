@@ -101,10 +101,10 @@ test("strict fragments aggregate every policy suite, artifact, benchmark, and co
     policy: POLICY,
   });
   assert.equal(evidence.jobs.length, 12);
-  assert.equal(evidence.suites.length, 19);
+  assert.equal(evidence.suites.length, 20);
   assert.equal(evidence.artifacts.length, 8);
   assert.equal(evidence.benchmarks[0].pairedRegressionBasisPoints, 490);
-  assert.equal(evidence.coverage.length, 38);
+  assert.equal(evidence.coverage.length, 42);
   assert.equal(evidence.rollback.restoredMode, "legacy");
 });
 

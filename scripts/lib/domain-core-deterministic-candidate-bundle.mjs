@@ -173,6 +173,7 @@ export const DOMAIN_CORE_REQUIRED_SUITES = Object.freeze([
   Object.freeze({ id: "linux-arm64-native", jobId: "linux-arm64-native" }),
   Object.freeze({ id: "wasm-browser-kat", jobId: "wasm" }),
   Object.freeze({ id: "wasm-node-kat", jobId: "wasm" }),
+  Object.freeze({ id: "remote-mcp-cloudvault-contracts", jobId: "wasm" }),
   Object.freeze({ id: "functions-pricing-contracts", jobId: "functions-pricing" }),
   Object.freeze({ id: "android-native-load", jobId: "android" }),
   Object.freeze({ id: "android-consumer-contracts", jobId: "android" }),
@@ -221,6 +222,7 @@ export const DOMAIN_CORE_REQUIRED_ARTIFACTS = Object.freeze([
     requiredLoadSuiteIds: Object.freeze([
       "wasm-node-kat",
       "functions-pricing-contracts",
+      "remote-mcp-cloudvault-contracts",
     ]),
   }),
   Object.freeze({
@@ -257,6 +259,7 @@ const COVERAGE_SUITE_BY_CONSUMER = Object.freeze({
   windows: null,
   console: "console-consumer-contracts",
   functions: "functions-pricing-contracts",
+  "remote-mcp": "remote-mcp-cloudvault-contracts",
 });
 
 function isRecord(value) {

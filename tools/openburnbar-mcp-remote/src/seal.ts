@@ -9,9 +9,11 @@
  * Plaintext never leaves the device.
  */
 
-import { createCipheriv, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { cloudVaultAADContext, type SealedEnvelope } from "./decrypt.js";
+import { domainCoreAesGcmSealCombined } from "./domainCoreCloudVault.js";
 import { loadVaultKeyBytes } from "./embed.js";
+import { legacyAesGcmSealCombined } from "./legacy/cloudVaultLegacy.js";
 
 export const SEAL_KEY_VERSION = 1;
 
@@ -26,16 +28,27 @@ export interface SealTextContext {
 export function sealText(plaintext: string, key: Buffer, context?: SealTextContext): SealedEnvelope {
   if (key.length !== 32) {throw new Error("Vault key must be 32 bytes for AES-256-GCM.");}
   const nonce = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, nonce);
   const aad = context ? cloudVaultAADContext(context.uid, context.collection, context.docID, context.field) : undefined;
-  if (aad) {cipher.setAAD(Buffer.from(aad, "utf8"));}
-  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const plaintextBytes = Buffer.from(plaintext, "utf8");
+  const aadBytes = aad ? Buffer.from(aad, "utf8") : Buffer.alloc(0);
+  const combined = Buffer.from(domainCoreAesGcmSealCombined(
+    plaintextBytes,
+    key,
+    nonce,
+    aadBytes,
+    () => legacyAesGcmSealCombined(plaintextBytes, key, nonce, aadBytes),
+  ));
+  if (combined.length < 28 || !combined.subarray(0, 12).equals(nonce)) {
+    throw new Error("Invalid CloudVault AES-256-GCM combined framing.");
+  }
+  const ciphertext = combined.subarray(12, -16);
+  const tag = combined.subarray(-16);
   const envelope: SealedEnvelope = {
     algorithm: "AES-256-GCM",
     keyVersion: SEAL_KEY_VERSION,
     nonce: nonce.toString("base64"),
     ciphertext: ciphertext.toString("base64"),
-    tag: cipher.getAuthTag().toString("base64"),
+    tag: tag.toString("base64"),
   };
   if (aad) {
     envelope.schemaVersion = 2;

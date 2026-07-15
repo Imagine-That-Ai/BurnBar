@@ -91,7 +91,8 @@ CloudVault C1 is split by security boundary:
   timestamps, orchestration, and secure nonce generation remain platform-owned.
 - **Search:** complete v1 token analysis and ordered keyed hashes. Storage,
   query orchestration, and browser non-extractable key handles stay outside
-  Rust.
+  Rust. Swift, Kotlin, remote MCP TypeScript, and local MCP Python route one
+  complete text/query per call; the Python consumer remains required pending.
 - **Opaque identifiers:** closed purpose-specific project-memory, Pensieve,
   provenance, and subscription HKDF/HMAC operations. The local MCP Python
   consumer is `REQUIRED_CONSUMER_PENDING` and blocks C1 completion and legacy
@@ -164,6 +165,12 @@ input, or a UniFFI error never invokes legacy code in `rust` mode. Diagnostics
 contain only the operation, mismatch/error category, and core version; search
 text, hashes, and key material are never logged.
 
+Remote MCP uses the same CloudVault mode for its Node Wasm AAD v2, AES sealed
+text, opaque identifier, and token/semantic query-hash operations. It verifies
+the package version, ABI 3, embedded source fingerprint, source receipt, and
+exact Wasm digest before the first Rust call. Its secure nonce generation,
+vault-key storage, network calls, and result rendering remain TypeScript-owned.
+
 ## Rollout and deletion gates
 
 Quota promotion requires all of the following:
@@ -174,7 +181,7 @@ Quota promotion requires all of the following:
 2. One exact candidate commit and Rust version/ABI/source tuple, proven by the
    artifacts actually loaded by Swift, Kotlin, C#, browser Wasm, and Node Wasm.
 3. A successful `push` run of `.github/workflows/domain-core.yml` on `main` with
-   every exact policy job and all 38 real `(domain, slice, consumer)` coverage
+   every exact policy job and all 42 real `(domain, slice, consumer)` coverage
    cells. Failed, skipped, missing, duplicate, extra, PR, dispatch, mixed-run, or
    mixed-candidate evidence fails closed.
 4. The paired complete-payload FFI benchmark no more than **5 percent** slower
