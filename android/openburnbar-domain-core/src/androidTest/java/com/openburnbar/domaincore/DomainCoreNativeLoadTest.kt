@@ -54,7 +54,7 @@ class DomainCoreNativeLoadTest {
         assertEquals(expectedSourceFingerprint, sourceFingerprint)
         val candidateCommit = InstrumentationRegistry.getArguments().getString("candidateCommit").orEmpty()
         assertTrue(candidateCommit.matches(Regex("[0-9a-f]{40}")))
-        File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "domain-core-observed-identity.json")
+        File(InstrumentationRegistry.getInstrumentation().context.filesDir, "domain-core-observed-identity.json")
             .writeText(
                 JSONObject()
                     .put("candidateCommit", candidateCommit)

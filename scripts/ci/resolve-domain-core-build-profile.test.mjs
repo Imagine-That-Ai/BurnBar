@@ -147,26 +147,25 @@ test("web build environment exposes only statically embeddable public names", ()
 
 test("artifact verifier accepts MSBuild UTF-8 BOM receipts and still rejects malformed JSON", () => {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "openburnbar-domain-core-profile-"));
-  const windowsDirectory = join(temporaryRoot, "publish");
-  const artifactPath = join(windowsDirectory, "domain-core-build-profile.json");
+  const receiptPath = join(temporaryRoot, "domain-core-build-profile.json");
   const verifier = resolve("scripts/ci/verify-domain-core-build-profile-artifact.mjs");
-  const expected = resolveDomainCoreBuildProfile(catalog, "public-production");
-  mkdirSync(windowsDirectory, { recursive: true });
+  const expected = resolveDomainCoreBuildProfile(catalog, "developer");
+  mkdirSync(temporaryRoot, { recursive: true });
 
   try {
-    writeFileSync(artifactPath, `\uFEFF${JSON.stringify(expected)}\n`, "utf8");
+    writeFileSync(receiptPath, `\uFEFF${JSON.stringify(expected)}\n`, "utf8");
     const valid = spawnSync(
       process.execPath,
-      [verifier, "--profile", "public-production", "--windows-dir", windowsDirectory],
+      [verifier, "--profile", "developer", "--receipt", receiptPath],
       { encoding: "utf8" },
     );
     assert.equal(valid.status, 0, valid.stderr || valid.stdout);
-    assert.match(valid.stdout, /domain-core artifact profile verified: public-production/);
+    assert.match(valid.stdout, /domain-core artifact profile verified: developer/);
 
-    writeFileSync(artifactPath, "\uFEFF{not-json}\n", "utf8");
+    writeFileSync(receiptPath, "\uFEFF{not-json}\n", "utf8");
     const malformed = spawnSync(
       process.execPath,
-      [verifier, "--profile", "public-production", "--windows-dir", windowsDirectory],
+      [verifier, "--profile", "developer", "--receipt", receiptPath],
       { encoding: "utf8" },
     );
     assert.notEqual(malformed.status, 0, "malformed BOM-prefixed receipts must still fail closed");
@@ -174,6 +173,8 @@ test("artifact verifier accepts MSBuild UTF-8 BOM receipts and still rejects mal
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
   }
+});
+
 test("signed profiles require one complete immutable candidate identity", () => {
   assert.throws(
     () => resolveDomainCoreBuildProfile(catalog, "public-production"),
