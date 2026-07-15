@@ -30,6 +30,7 @@ import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryVerificationHash
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrapVaultKey
 import uniffi.openburnbar_domain_ffi.cloudVaultRecoveryWrappingKey
 import uniffi.openburnbar_domain_ffi.cloudVaultSha256Hex
+import uniffi.openburnbar_domain_ffi.cloudVaultSubscriptionDocId
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
 
@@ -144,6 +145,15 @@ internal object CloudVaultDomainCore {
             operation = purpose.wireValue.replace('-', '_'),
             legacy = { CloudVaultLegacyCrypto.keyedHashHex(data, key, purpose) },
             rust = { cloudVaultKeyedHashHex(data, key, purpose.ffiValue) },
+        )
+    }
+
+    fun subscriptionDocId(agentURI: String, topicID: String, key: ByteArray, legacy: () -> String): String {
+        CloudVaultLegacyCrypto.requireVaultKey(key)
+        return dispatch(
+            operation = "subscription_doc_id",
+            legacy = legacy,
+            rust = { cloudVaultSubscriptionDocId(agentURI, topicID, key) },
         )
     }
 

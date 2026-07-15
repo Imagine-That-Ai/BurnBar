@@ -811,6 +811,14 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -864,6 +872,12 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_normalize_recovery_key(`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_dedup_hash(`plaintext`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_slug_hmac(`slug`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_project_memory_doc_id(`slug`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_open_vault_key(`combined`: RustBuffer.ByValue,`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_verification_hash(`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -881,6 +895,8 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search_analyze(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_subscription_doc_id(`agentUri`: RustBuffer.ByValue,`topicId`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_validate_p256_x963_public_key(`publicKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
@@ -1078,6 +1094,12 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_normalize_recovery_key(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_dedup_hash(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_slug_hmac(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_project_memory_doc_id(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_open_vault_key(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_verification_hash(
@@ -1095,6 +1117,8 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_search_analyze(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_subscription_doc_id(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key(
     ): Short
@@ -1215,6 +1239,15 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_normalize_recovery_key() != 12469.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_dedup_hash() != 17475.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_slug_hmac() != 5859.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_project_memory_doc_id() != 38367.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_open_vault_key() != 36431.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1240,6 +1273,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex() != 36487.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_subscription_doc_id() != 46478.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key() != 27873.toShort()) {
@@ -3933,6 +3969,36 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     }
 
 
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultPensieveDedupHash`(`plaintext`: kotlin.String, `key`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_dedup_hash(
+        FfiConverterString.lower(`plaintext`),FfiConverterByteArray.lower(`key`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultPensieveSlugHmac`(`slug`: kotlin.String, `key`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_slug_hmac(
+        FfiConverterString.lower(`slug`),FfiConverterByteArray.lower(`key`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultProjectMemoryDocId`(`slug`: kotlin.String, `key`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_project_memory_doc_id(
+        FfiConverterString.lower(`slug`),FfiConverterByteArray.lower(`key`),_status)
+}
+    )
+    }
+
+
     @Throws(CloudVaultFfiException::class) fun `cloudVaultRecoveryOpenVaultKey`(`combined`: kotlin.ByteArray, `recoveryKey`: kotlin.String): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     uniffiRustCallWithError(CloudVaultFfiException) { _status ->
@@ -4018,6 +4084,16 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     uniffiRustCallWithError(CloudVaultFfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(
         FfiConverterByteArray.lower(`data`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultSubscriptionDocId`(`agentUri`: kotlin.String, `topicId`: kotlin.String, `key`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_subscription_doc_id(
+        FfiConverterString.lower(`agentUri`),FfiConverterString.lower(`topicId`),FfiConverterByteArray.lower(`key`),_status)
 }
     )
     }

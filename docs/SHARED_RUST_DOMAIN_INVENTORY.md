@@ -22,6 +22,8 @@ consumer, contract, deletion target, or rollout state changes.
 | Kotlin (Android) | No local provider quota parsing | Yes | Yes | No canonical catalog calculator | Yes |
 | Browser TypeScript (Console) | No | Yes, with non-extractable WebCrypto keys | No | No | Consumes encrypted search data; no duplicate native analyzer |
 | Cloud Functions TypeScript | Separate Cursor dashboard mechanism only | Encrypted-record coordination only | Envelope validation/coordination only | Yes | Persistence/query coordination only |
+| Remote MCP TypeScript | No | Pensieve content/slug/provenance opaque hashes | No | No | No |
+| Local MCP Python | No | Yes; required consumer pending | No | No | Yes; required consumer pending |
 | Tauri/Linux UI | Displays daemon-produced values | No separate implementation | No separate implementation | No separate implementation | No separate implementation |
 
 Provider log parsers remain in `OpenBurnBarCore`. macOS, iOS, and the Linux
@@ -64,6 +66,30 @@ the stable-release gate has been satisfied.
 | Recovery-key wrap and P-256 escrow wrap | Swift, Kotlin, C#, Console subsets | Rust owns portable normalization/KDF/framing. Platform key stores retain private-key custody and ECDH; no private scalar or browser `CryptoKey` export crosses the boundary. |
 | Whole-document envelope rewrap | Swift and Kotlin implementations; Rust transform staged | Swift/Kotlin classify dynamic Firestore maps into typed envelopes, then call Rust once per document. Rust owns bounded validation, authentication, deterministic transform, and update intents. Delete platform transform logic only after ABI 3 consumers and crypto promotion gates pass. |
 | Search tokens and semantic hashes | Swift and Kotlin | Rust owns complete analysis and ordered keyed hashes once per text/query. Persistence and query orchestration remain platform-owned. Delete analyzers only after both consumers pass shadow/promotion gates. |
+| Opaque project-memory, Pensieve, provenance, and subscription identifiers | Swift, Kotlin subscription, C# Pensieve, remote MCP TypeScript, and local MCP Python subsets | Rust owns only closed, purpose-specific HKDF/HMAC operations. The Python consumer is `REQUIRED_CONSUMER_PENDING`; no opaque-identifier legacy deletion or completion claim is allowed until it is wired and validated. |
+
+### Required local MCP Python consumer
+
+`tools/openburnbar-mcp/server.py` is a real CloudVault consumer, not a waiver or
+an excluded platform. Its migration is `REQUIRED_CONSUMER_PENDING` and blocks
+CloudVault completion and legacy deletion. The dedicated Python lane must cover
+the operations it actually executes:
+
+- project-memory opaque document IDs at `_cloud_vault_project_memory_doc_id`;
+- CloudVault AAD v2 serialization and validation at
+  `_cloud_vault_aad_context` / `_validate_cloud_vault_aad`;
+- fixed-purpose keyed hashes for blob integrity, session body, and
+  project-memory content at `_cloud_vault_hmac_hex`;
+- encrypted-search token analysis/hashes and semantic analysis/hashes at
+  `_cloud_token_hashes` / `_cloud_semantic_hashes`; and
+- AES-GCM sealed-text and blob open/seal framing at
+  `_open_cloud_sealed_text`, `_open_cloud_blob_envelope`, and
+  `_seal_cloud_blob_envelope`.
+
+The Python adapter must use the same `legacy|shadow|rust` authority semantics,
+verify the complete version/ABI/source identity of its packaged core, fail
+closed in Rust mode, retain named legacy functions until the deletion gate, and
+run the canonical CloudVault fixtures through the production package.
 
 ### Typed document-envelope boundary
 
@@ -157,7 +183,7 @@ artifact diamonds.
 
 A row leaves this ledger only after:
 
-1. Rust is authoritative in every real consumer and Rust mode fails closed.
+1. No operation is marked `REQUIRED_CONSUMER_PENDING`; Rust is authoritative in every real consumer and Rust mode fails closed.
 2. Packaged artifacts load on every supported architecture and provenance proves
    they came from the same reviewed source tree.
 3. Fixture, quantitative rollout, performance, and applicable crypto security

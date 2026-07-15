@@ -18,6 +18,10 @@ export const cloudVaultExpectedSessionBodyHash: (a: number, b: number, c: number
 export const cloudVaultKeyId: (a: number, b: number, c: number) => void;
 export const cloudVaultKeyedHashHex: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
 export const cloudVaultNormalizeRecoveryKey: (a: number, b: number, c: number) => void;
+export const cloudVaultPensieveDedupHash: (a: number, b: number, c: number, d: number, e: number) => void;
+export const cloudVaultPensieveProvenanceHash: (a: number, b: number, c: number, d: number, e: number) => void;
+export const cloudVaultPensieveSlugHmac: (a: number, b: number, c: number, d: number, e: number) => void;
+export const cloudVaultProjectMemoryDocId: (a: number, b: number, c: number, d: number, e: number) => void;
 export const cloudVaultRecoveryOpenVaultKey: (a: number, b: number, c: number, d: number, e: number) => void;
 export const cloudVaultRecoveryVerificationHash: (a: number, b: number, c: number) => void;
 export const cloudVaultRecoveryWrapVaultKey: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
@@ -26,6 +30,7 @@ export const cloudVaultRewrapDocumentJson: (a: number, b: number, c: number, d: 
 export const cloudVaultSearch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
 export const cloudVaultSearchAnalyze: (a: number, b: number, c: number) => void;
 export const cloudVaultSha256Hex: (a: number, b: number, c: number) => void;
+export const cloudVaultSubscriptionDocId: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
 export const cloudVaultValidateP256X963PublicKey: (a: number, b: number, c: number) => void;
 export const cloudvaultescrowwireparts_aesGcmCombined: (a: number, b: number) => void;
 export const cloudvaultescrowwireparts_ephemeralPublicKey: (a: number, b: number) => void;
@@ -48,6 +53,6 @@ export const priceLegacyKimiWireEvent: (a: number, b: bigint, c: bigint, d: bigi
 export const __wbg_cloudvaultrecoverywrappedvaultkey_free: (a: number, b: number) => void;
 export const cloudvaultrecoverywrappedvaultkey_combined: (a: number, b: number) => void;
 export const __wbindgen_add_to_stack_pointer: (a: number) => number;
-export const __wbindgen_export: (a: number, b: number, c: number) => void;
-export const __wbindgen_export2: (a: number, b: number) => number;
-export const __wbindgen_export3: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_export: (a: number, b: number) => number;
+export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_export3: (a: number, b: number, c: number) => void;

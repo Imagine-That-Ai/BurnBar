@@ -368,24 +368,38 @@ namespace OpenBurnBar.CloudSync.Crypto
         /// the device-side TypeScript memory hook.
         /// </summary>
         public static string PensieveDedupHash(string plaintext, byte[] keyData) =>
-            PensieveKeyedHmacHex(Encoding.UTF8.GetBytes(plaintext), keyData, "content");
+            DomainCoreCloudVaultBridge.PensieveDedupHash(
+                plaintext,
+                keyData,
+                () => LegacyPensieveKeyedHmacHex(Encoding.UTF8.GetBytes(plaintext), keyData, "content"));
 
         /// <summary>
         /// Vault-keyed HMAC for Pensieve/memory opaque doc ids — parity with Swift
         /// <c>pensieveSlugHmac</c> (HKDF info <c>pensieve-dedup:slug</c>).
         /// </summary>
         public static string PensieveSlugHmac(string slug, byte[] keyData) =>
-            PensieveKeyedHmacHex(Encoding.UTF8.GetBytes(slug), keyData, "slug");
+            DomainCoreCloudVaultBridge.PensieveSlugHmac(
+                slug,
+                keyData,
+                () => LegacyPensieveKeyedHmacHex(Encoding.UTF8.GetBytes(slug), keyData, "slug"));
 
-        private static string PensieveKeyedHmacHex(byte[] data, byte[] keyData, string label)
+        private static string LegacyPensieveKeyedHmacHex(byte[] data, byte[] keyData, string label)
         {
             RequireVaultKey(keyData);
             var subKey = HkdfDerive(
                 keyData,
                 Array.Empty<byte>(),
                 Encoding.UTF8.GetBytes($"pensieve-dedup:{label}"));
-            return HexString(HMACSHA256.HashData(subKey, data));
+            try
+            {
+                return HexString(HMACSHA256.HashData(subKey, data));
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(subKey);
+            }
         }
+
         private static string KeyedHmacHex(byte[] data, byte[] keyData, string purpose)
         {
             RequireVaultKey(keyData);

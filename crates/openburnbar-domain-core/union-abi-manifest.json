@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "coreVersion": "0.1.0",
   "abiVersion": 3,
-  "sourceSha256": "f435ea8e6b615ced64059c1f8ceaa9629247200479dc668abdd42afa2b02f600",
+  "sourceSha256": "11e77f76f191fe05a6170b76976270b974e3dccf442e31204a35f87f86628087",
   "sourceRoots": [
     "Cargo.toml",
     "Cargo.lock",
@@ -32,6 +32,10 @@
     "cloud_vault_key_id",
     "cloud_vault_keyed_hash_hex",
     "cloud_vault_expected_session_body_hash",
+    "cloud_vault_project_memory_doc_id",
+    "cloud_vault_pensieve_dedup_hash",
+    "cloud_vault_pensieve_slug_hmac",
+    "cloud_vault_subscription_doc_id",
     "hermes_relay_aad",
     "hermes_key_wrap_info_v1",
     "hermes_key_wrap_info_v2",
@@ -91,22 +95,47 @@
     },
     "cloudVaultC1a": {
       "rust": [
-        "cloud_vault_aad_v2"
+        "cloud_vault_aad_v2",
+        "cloud_vault_project_memory_doc_id",
+        "cloud_vault_pensieve_dedup_hash",
+        "cloud_vault_pensieve_slug_hmac",
+        "cloud_vault_subscription_doc_id"
       ],
       "cHeader": [
-        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2"
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2",
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_project_memory_doc_id",
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_dedup_hash",
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_slug_hmac",
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_subscription_doc_id"
       ],
       "swift": [
-        "cloudVaultAadV2"
+        "cloudVaultAadV2",
+        "cloudVaultProjectMemoryDocId",
+        "cloudVaultPensieveDedupHash",
+        "cloudVaultPensieveSlugHmac",
+        "cloudVaultSubscriptionDocId"
       ],
       "kotlin": [
-        "cloudVaultAadV2"
+        "cloudVaultAadV2",
+        "cloudVaultProjectMemoryDocId",
+        "cloudVaultPensieveDedupHash",
+        "cloudVaultPensieveSlugHmac",
+        "cloudVaultSubscriptionDocId"
       ],
       "csharp": [
-        "CloudVaultAadV2"
+        "CloudVaultAadV2",
+        "CloudVaultProjectMemoryDocId",
+        "CloudVaultPensieveDedupHash",
+        "CloudVaultPensieveSlugHmac",
+        "CloudVaultSubscriptionDocId"
       ],
       "wasm": [
-        "cloudVaultAadV2"
+        "cloudVaultAadV2",
+        "cloudVaultProjectMemoryDocId",
+        "cloudVaultPensieveDedupHash",
+        "cloudVaultPensieveSlugHmac",
+        "cloudVaultSubscriptionDocId",
+        "cloudVaultPensieveProvenanceHash"
       ]
     },
     "cloudVaultC1b": {
@@ -380,6 +409,19 @@
         "documentRewrap",
         "pricing",
         "encryptedSearch"
+      ]
+    },
+    {
+      "name": "generated-mcp-remote-node-wasm",
+      "kind": "wasm",
+      "path": "tools/openburnbar-mcp-remote/vendor/openburnbar-domain-core-wasm/openburnbar_domain_core.d.ts",
+      "requiredSymbols": [
+        "domainCoreAbiVersion",
+        "domainCoreVersion",
+        "domainCoreSourceFingerprint"
+      ],
+      "requiredDomains": [
+        "cloudVaultC1a"
       ]
     }
   ]

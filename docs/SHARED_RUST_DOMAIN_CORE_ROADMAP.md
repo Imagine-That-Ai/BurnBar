@@ -68,7 +68,7 @@ promotion; it is input to the promotion gate.
 |---|---|---|---|
 | Q1 | Claude statusline quota | Swift + C# | Rust enforced on Apple/Windows; quota rollout gate passes; named legacy transforms deleted |
 | Q2 | Codex, Cursor, Anthropic quota | Swift + C# | Four quota mechanisms use Rust as authority; quota rollout gate passes; named legacy transforms deleted |
-| C1 | CloudVault primitives, encrypted search, and document envelopes | Swift + Kotlin + C# + browser TypeScript, with different subsets | KAT/cross-open/tamper/fuzz/security gates pass for each applicable consumer; duplicated portable crypto and transform copies deleted without exporting browser private keys |
+| C1 | CloudVault primitives, encrypted search, opaque identifiers, and document envelopes | Swift + Kotlin + C# + browser/remote TypeScript + local MCP Python, with different subsets | No `REQUIRED_CONSUMER_PENDING` owner remains; KAT/cross-open/tamper/fuzz/security gates pass for each applicable consumer; duplicated portable crypto and transform copies are deleted without exporting browser private keys |
 | C2 | Hermes relay crypto and ratchet byte transforms | Swift + Kotlin | Existing wire vectors pass through Rust; P-256 custody and ratchet state mutation remain platform-owned; legacy byte transforms deleted after crypto promotion |
 | P1 | Model pricing and cost arithmetic | Swift + Cloud Functions TypeScript | Checked nano-USD Rust/Wasm path enforced; parity and rollout evidence pass; duplicate calculators deleted |
 
@@ -92,6 +92,11 @@ CloudVault C1 is split by security boundary:
 - **Search:** complete v1 token analysis and ordered keyed hashes. Storage,
   query orchestration, and browser non-extractable key handles stay outside
   Rust.
+- **Opaque identifiers:** closed purpose-specific project-memory, Pensieve,
+  provenance, and subscription HKDF/HMAC operations. The local MCP Python
+  consumer is `REQUIRED_CONSUMER_PENDING` and blocks C1 completion and legacy
+  deletion until its production package, identity checks, adapter, and fixture
+  tests land.
 
 Android selects `legacy`, legacy-authoritative `shadow`, or fail-closed `rust`
 for C1d with `OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE`; missing or

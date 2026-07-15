@@ -119,6 +119,20 @@ namespace OpenBurnBar.CloudSync.Crypto
                 legacy,
                 StringComparer.Ordinal.Equals);
 
+        internal static string PensieveDedupHash(string plaintext, byte[] key, Func<string> legacy) =>
+            Apply(
+                "cloudvault_pensieve_dedup_hash",
+                () => DomainCore.CloudVaultPensieveDedupHash(plaintext, key),
+                legacy,
+                StringComparer.Ordinal.Equals);
+
+        internal static string PensieveSlugHmac(string slug, byte[] key, Func<string> legacy) =>
+            Apply(
+                "cloudvault_pensieve_slug_hmac",
+                () => DomainCore.CloudVaultPensieveSlugHmac(slug, key),
+                legacy,
+                StringComparer.Ordinal.Equals);
+
         internal static (byte[] Nonce, byte[] Ciphertext, byte[] Tag, byte[] Combined) SealDetached(
             byte[] plaintext,
             byte[] key,

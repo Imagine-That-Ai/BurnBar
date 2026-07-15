@@ -26,6 +26,11 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { cloakVector, loadDefaultEmbedder, loadVaultKeyBytes, type Embedder } from "./embed.js";
+import {
+  pensieveDedupHash,
+  pensieveProvenanceHash,
+  pensieveSlugHmac,
+} from "./domainCoreOpaqueIdentifiers.js";
 import { sealText } from "./seal.js";
 import type { SealedEnvelope } from "./decrypt.js";
 
@@ -110,9 +115,25 @@ function sha256(text: string): string {
  * test fixture (functions/.../knowledgeMemoryDedupHash.test.ts):
  *   HKDF(vaultKey, salt=∅, info="pensieve-dedup:content"|"…:slug") → HMAC(value).
  */
-function vaultKeyedHmac(vaultKey: Buffer, label: "content" | "slug" | "provenance", value: string): string {
+function legacyVaultKeyedHmac(vaultKey: Buffer, label: "content" | "slug" | "provenance", value: string): string {
   const dedupKey = Buffer.from(hkdfSync("sha256", vaultKey, Buffer.alloc(0), `pensieve-dedup:${label}`, 32));
-  return createHmac("sha256", dedupKey).update(value, "utf8").digest("hex");
+  try {
+    return createHmac("sha256", dedupKey).update(value, "utf8").digest("hex");
+  } finally {
+    dedupKey.fill(0);
+  }
+}
+
+function vaultKeyedHmac(vaultKey: Buffer, label: "content" | "slug" | "provenance", value: string): string {
+  const legacy = (): string => legacyVaultKeyedHmac(vaultKey, label, value);
+  switch (label) {
+    case "content":
+      return pensieveDedupHash(value, vaultKey, legacy);
+    case "slug":
+      return pensieveSlugHmac(value, vaultKey, legacy);
+    case "provenance":
+      return pensieveProvenanceHash(value, vaultKey, legacy);
+  }
 }
 
 // -- secret redaction ---------------------------------------------------------
