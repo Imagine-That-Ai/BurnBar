@@ -169,6 +169,10 @@ export function verifyLinuxWorkflowWiring(input) {
   if (/matched performance[\s\S]{0,300}continue-on-error:\s*true/i.test(input.pr + input.nightly)) {
     failures.push('matched performance gates may not continue on error.');
   }
+  requireText(input.pr, 'npm run typecheck --prefix apps/linux-desktop', 'PR TypeScript typecheck gate');
+  if (/TypeScript typecheck[\s\S]{0,200}continue-on-error:\s*true/i.test(input.pr)) {
+    failures.push('TypeScript typecheck gate may not continue on error.');
+  }
   if (/\#\[tauri::command\][\s\S]{0,120}fn\s+gateway_auth_token/.test(input.rustBridge)) {
     failures.push('a Tauri command may not return the gateway bearer token to the renderer.');
   }

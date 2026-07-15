@@ -653,26 +653,6 @@ export interface LinuxShellBridge {
     source?: ComputerUsePanicSource;
   }): Promise<ComputerUsePanicHaltResult>;
   integrationsStatus(): Promise<IntegrationsStatus>;
-  /** Wire: approval.respond */
-  toolApprovalRespond?(
-    approvalId: string,
-    decision: 'approve' | 'reject' | 'cancel',
-    note?: string
-  ): Promise<void>;
-  /**
-   * Wire: approve → daemon.memory.remember, reject → daemon.memory.forget,
-   * audit → daemon.memory.audit_trail.
-   */
-  memorySetStatus?(
-    action: 'approve' | 'reject' | 'audit' | 'remember' | 'forget',
-    payload: Record<string, unknown>
-  ): Promise<unknown>;
-  computerUseSessionStart?(params: Record<string, unknown>): Promise<unknown>;
-  computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
-  computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
-  computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
-  computerUsePanicHalt?(params?: Record<string, unknown>): Promise<unknown>;
-  computerUseAuditExport?(params?: Record<string, unknown>): Promise<unknown>;
 }
 
 // ──────────────────── Raw-daemon → typed-shape mappers ────────────────────
