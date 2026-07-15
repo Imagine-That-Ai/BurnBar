@@ -813,6 +813,111 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
     }
 }
 
+final class LinuxComputerUseInputSessionManagerTests: XCTestCase {
+    func testWaylandPortalGrantIsReusedForActionsAndClosedWithSession() async throws {
+        let sessionHandle = "/org/freedesktop/portal/desktop/session/obb_session_manager"
+        let script = PortalCommandScript(results: [
+            // Capability probe.
+            .init(exitCode: 0, stdout: "org.freedesktop.portal.RemoteDesktop"),
+            // CreateSession request + response.
+            .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/create',)"),
+            .init(exitCode: 0, stdout: "signal member=Response\n uint32 0\n session_handle: objectpath '\(sessionHandle)'"),
+            // SelectDevices request + response.
+            .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/select',)"),
+            .init(exitCode: 0, stdout: "signal member=Response\n uint32 0"),
+            // Start request + response.
+            .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/start',)"),
+            .init(exitCode: 0, stdout: "signal member=Response\n uint32 0"),
+            // Click: absolute motion + button press + button release.
+            .init(exitCode: 0),
+            .init(exitCode: 0),
+            .init(exitCode: 0),
+            // Second action: one absolute motion event.
+            .init(exitCode: 0),
+            // Session close.
+            .init(exitCode: 0)
+        ])
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in
+                [
+                    "XDG_SESSION_TYPE": "wayland",
+                    "WAYLAND_DISPLAY": "wayland-0",
+                    "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"
+                ][name]
+            },
+            resolveExecutable: { name in
+                name == "gdbus" ? "/usr/bin/gdbus" : nil
+            },
+            runPortalProbe: { executable, arguments, timeoutMillis in
+                script.record(executable: executable, arguments: arguments, timeoutMillis: timeoutMillis)
+                return script.nextResult()
+            }
+        )
+        let manager = LinuxComputerUseInputSessionManager(adapter: adapter)
+        let sessionID = ComputerUseSessionID("linux-wayland-session")
+
+        let click = try await manager.dispatch(
+            sessionID: sessionID,
+            action: MacInputAction(kind: .click, displayX: 220, displayY: 160)
+        )
+        let pointerMove = try await manager.dispatch(
+            sessionID: sessionID,
+            action: MacInputAction(kind: .pointerMove, displayX: 240, displayY: 180)
+        )
+
+        guard case .object(let clickObject) = click,
+              case .object(let moveObject) = pointerMove else {
+            XCTFail("portal dispatches must return structured results")
+            return
+        }
+        XCTAssertEqual(clickObject.stringValue(forKey: "executor"), "portal_notify")
+        XCTAssertEqual(moveObject.stringValue(forKey: "executor"), "portal_notify")
+        let activeCount = await manager.activeWaylandSessionCount()
+        XCTAssertEqual(activeCount, 1)
+
+        await manager.stop(sessionID: sessionID)
+
+        let stoppedCount = await manager.activeWaylandSessionCount()
+        XCTAssertEqual(stoppedCount, 0)
+        XCTAssertEqual(script.callCount, 12)
+        XCTAssertEqual(script.timeouts.first, 1_500)
+        XCTAssertTrue(script.calls.dropFirst(7).allSatisfy { call in
+            call.executable == "/usr/bin/gdbus"
+                && !call.arguments.contains("sh")
+                && !call.arguments.contains("-c")
+        })
+    }
+
+    func testX11FallbackRemainsStatelessWhenPortalIsNotReady() async throws {
+        let recorder = CommandRecorder()
+        let adapter = LinuxComputerUseInputAdapter(
+            environment: { name in ["DISPLAY": ":99"][name] },
+            resolveExecutable: { name in
+                name == "xdotool" ? "/usr/bin/xdotool" : nil
+            },
+            runCommand: { executable, arguments in
+                recorder.record(executable: executable, arguments: arguments)
+                return .init(exitCode: 0)
+            }
+        )
+        let manager = LinuxComputerUseInputSessionManager(adapter: adapter)
+
+        let result = try await manager.dispatch(
+            sessionID: ComputerUseSessionID("linux-x11-session"),
+            action: MacInputAction(kind: .click, displayX: 10, displayY: 20)
+        )
+
+        guard case .object(let object) = result else {
+            XCTFail("X11 dispatch must return a structured result")
+            return
+        }
+        XCTAssertEqual(object.stringValue(forKey: "adapter"), "x11-xtest")
+        XCTAssertEqual(recorder.lastExecutable, "/usr/bin/xdotool")
+        let activeCount = await manager.activeWaylandSessionCount()
+        XCTAssertEqual(activeCount, 0)
+    }
+}
+
 final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
     func testSystemSessionApprovesAndDispatchesThroughInjectedLinuxInput() async throws {
         let auditDirectory = FileManager.default.temporaryDirectory

@@ -91,6 +91,9 @@ public actor ComputerUseService {
     private let requiresManagedBrowserRunAuthority: Bool
     private let approvalPublisher: ApprovalPublisher?
     private let sessionEndedObserver: SessionEndedObserver?
+#if os(Linux)
+    private let linuxInputSessionManager: LinuxComputerUseInputSessionManager
+#endif
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
     private var pendingEndedSessions: [ComputerUseSessionEndRecord] = []
     private var sessionStartReserved = false
@@ -205,14 +208,22 @@ public actor ComputerUseService {
         let defaultPrivilegedInputKillSwitchActivator: @Sendable (String) -> Void
         #if os(Linux)
         let linuxInputAdapter = LinuxComputerUseInputAdapter()
-        defaultSystemInputDispatcher = { _, action in
-            try await linuxInputAdapter.dispatch(action)
+        let linuxInputSessionManager = LinuxComputerUseInputSessionManager(adapter: linuxInputAdapter)
+        self.linuxInputSessionManager = linuxInputSessionManager
+        defaultSystemInputDispatcher = { sessionID, action in
+            try await linuxInputSessionManager.dispatch(sessionID: sessionID, action: action)
         }
         defaultSystemInspectDispatcher = { _, action in
             try await linuxInputAdapter.inspectAccessibility(action)
         }
         defaultSystemAccessibilityTrusted = { mode in
-            mode == .system && linuxInputAdapter.isAvailableForSystemInput()
+            guard mode == .system else { return false }
+            // X11/AT-SPI can be trusted immediately.  Wayland requires a
+            // portal consent flow, but a probe-ready portal is still a valid
+            // Linux system-input capability; the session manager obtains the
+            // grant only after the normal Computer Use approval.
+            return linuxInputAdapter.isAvailableForSystemInput()
+                || linuxInputAdapter.waylandPortalCapability().isProbeReady
         }
         defaultSystemAccessibilityDeny = { action in
             linuxInputAdapter.accessibilityDenyReason(for: action)
@@ -525,6 +536,9 @@ public actor ComputerUseService {
         }
         await approvalBridge.cancel(sessionId: sessionID.rawValue)
         let ended = await coordinator.panicHalt(sessionId: sessionID, source: source)
+#if os(Linux)
+        await linuxInputSessionManager.stop(sessionID: sessionID)
+#endif
         let directory = auditBaseDirectory.appendingPathComponent(sessionID.rawValue, isDirectory: true)
         finalizeAuditHeadIfPossible(sessionDirectory: directory, closedAt: ended?.endedAt ?? closedAt)
         manifests.removeValue(forKey: sessionID)
@@ -944,6 +958,9 @@ public actor ComputerUseService {
         let manifestedSessionIDs = Set(manifests.keys)
         revokingSessionIDs.formUnion(manifestedSessionIDs)
         await authorizationRegistry.revokeAll()
+#if os(Linux)
+        await linuxInputSessionManager.stopAll()
+#endif
         if let sessionEndedObserver {
             for sessionID in manifestedSessionIDs {
                 await sessionEndedObserver(sessionID.rawValue)
