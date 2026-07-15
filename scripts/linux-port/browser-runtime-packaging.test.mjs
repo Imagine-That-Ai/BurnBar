@@ -183,6 +183,10 @@ test('release metadata and launcher bind the immutable bridge without claiming b
   assert.doesNotMatch(launcher, /command -v openburnbar-daemon/);
   assert.match(launcher, /export NODE_PATH="\/usr\/lib\/node_modules"/);
   assert.match(launcher, /export PLAYWRIGHT_BROWSERS_PATH="\/usr\/lib\/openburnbar\/playwright-browsers"/);
+  assert.ok(
+    launcher.indexOf('/usr/bin/openburnbar-daemon') < launcher.indexOf('/usr/local/bin/openburnbar-daemon'),
+    'packaged launcher must prefer the package-owned daemon over stale local binaries'
+  );
   assert.match(lifecycle, /OPENBURNBAR_PACKAGED_PLAYWRIGHT_RUNTIME/);
   assert.match(lifecycle, /"--probe-runtime"/);
   assert.doesNotMatch(daemonService, /EnvironmentFile=/);

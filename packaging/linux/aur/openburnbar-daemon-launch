@@ -187,9 +187,9 @@ if [[ -n "${APPIMAGE_ROOT}" ]]; then
   daemon_candidates+=("${APPIMAGE_ROOT}/usr/bin/openburnbar-daemon")
 fi
 daemon_candidates+=( \
+  /usr/bin/openburnbar-daemon \
   /usr/local/bin/openburnbar-daemon \
   /opt/openburnbar/bin/openburnbar-daemon \
-  /usr/bin/openburnbar-daemon \
 )
 DAEMON_BIN=""
 for candidate in "${daemon_candidates[@]}"; do
