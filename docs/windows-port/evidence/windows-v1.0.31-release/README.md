@@ -33,6 +33,8 @@ and hosted-lifecycle evidence, not physical Windows certification.
 
 The machine-readable record is
 [`exact-signed-artifacts-9a280a7d36.json`](exact-signed-artifacts-9a280a7d36.json).
+The exact physical Intel handoff is
+[`PHYSICAL_X64_RUNBOOK.md`](PHYSICAL_X64_RUNBOOK.md).
 
 ## Certification boundary
 
