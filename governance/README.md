@@ -12,41 +12,19 @@ Related: [`docs/GOVERNANCE.md`](../docs/GOVERNANCE.md),
 
 ## Current Contract
 
-BurnBar is intentionally solo-maintainer automation friendly. The hard merge gates are:
+BurnBar's `main` branch requires:
 
-- required status checks;
+- every required status check to pass against the current base (`strict: true`);
+- one approving CODEOWNER review, with stale approvals dismissed after new pushes;
 - required conversation resolution;
-- no force pushes;
-- no branch deletion;
-- exact-head merge discipline in the automation lane.
+- admin enforcement;
+- no force pushes, branch deletion, or review bypass actors.
 
-The following were disabled for the solo-maintainer merge drain and must not be
-reintroduced as permanent blockers for the daily maintainer lane unless the owner
-intentionally changes the contract again:
+`require_last_push_approval` remains disabled. Requiring it in addition to stale-review dismissal would make a qualified reviewer re-approve the exact head after every push; the CODEOWNER approval and exact-head status checks already provide that gate without creating an unmergeable solo-maintainer cycle.
 
-- required approving reviews;
-- required CODEOWNER reviews;
-- required last-push approval;
-- stale-review dismissal as a merge blocker.
+**Operation 9 A2 (2026-07-16):** Alberto intentionally changed the live contract from the earlier solo-maintainer drain settings. `required_status_checks.strict` prevents stale-base greens. One CODEOWNER approval protects scanner, security-rule, budget, governance, and domain-core deletion changes through the ownership rules in [`.github/CODEOWNERS`](../.github/CODEOWNERS). `dismiss_stale_reviews` prevents an approval on an older head from authorizing later bytes.
 
-**Exception (Operation 9 P-QA-3, 2026-07-15):** `required_status_checks.strict` is
-now `true` by owner decision. The QA lane finding §M-1 showed stale-base greens
-landing breakage because PRs merged against an out-of-date base whose checks
-passed against an earlier commit. Strict up-to-date checks prevent this: GitHub
-requires the PR head to be tested against the current base ref before merge.
-Strict was chosen over a merge queue because it does not require every required
-context (60 today) to also fire on the `merge_group` event — 11 of the 60 required
-contexts (5 weekly cron, 2 GitHub-native analyzers, 2 third-party bots, 1
-push-triggered, 1 QA) have no `merge_group` trigger and would leave PRs pending
-forever under a merge queue. The drift checker already verifies
-`strictRequiredStatusChecks` (see Drift Check below), so any live drift from this
-setting fails closed. This is an A2 operator action: Alberto must apply `strict:
-true` to the live ruleset/classic branch protection in the same change as this
-file, then `scripts/ops/check-branch-protection-drift.mjs` must show match.
-
-The `required_pull_request_reviews` object's count/booleans remain
-non-blocking. Keeping the review object present makes drift explicit without
-making self-approval a required gate.
+Strict checks were chosen over a merge queue because not every required context reports on `merge_group`; enabling a queue first would leave changes pending forever. The drift checker verifies the exact current contract, so any live or committed downgrade fails closed.
 
 ## Live Surface
 
