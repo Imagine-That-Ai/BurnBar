@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarLogParsers
 
 /// Process-wide memory watchdog — the last line of defense behind the
 /// per-pass `ParserResourceGovernor` ceilings.
