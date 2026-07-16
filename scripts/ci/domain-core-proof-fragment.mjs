@@ -79,12 +79,16 @@ function candidate(values) {
   });
 }
 
-function githubRun() {
+function githubRun(candidateCommit) {
   if (process.env.GITHUB_ACTIONS !== "true") throw new Error("proof fragments require GitHub Actions");
+  const headSha =
+    process.env.GITHUB_EVENT_NAME === "pull_request"
+      ? candidateCommit
+      : process.env.GITHUB_SHA;
   return {
     runId: process.env.GITHUB_RUN_ID,
     runAttempt: process.env.GITHUB_RUN_ATTEMPT,
-    headSha: process.env.GITHUB_SHA,
+    headSha,
   };
 }
 
@@ -110,7 +114,7 @@ export function run(argv) {
   }
   const activePolicy = policy(values);
   const identity = candidate(values);
-  const workflow = githubRun();
+  const workflow = githubRun(identity.candidateCommit);
   if (command === "emit") {
     const rollback = one(values, "--rollback", false);
     const fragment = createDomainCoreProofFragment({

@@ -479,3 +479,27 @@ test("promotion-contracts cleanup removes trusted evaluator after final use and 
   assert.doesNotMatch(job, /rm -rf -- \.domain-core-trusted-evaluator[^_\n]/, "cleanup must not target similar but wrong paths");
   assert.doesNotMatch(job, /rm -rf -- \.domain-core-trusted-evaluator[^\/\s]/, "cleanup must not target partial paths");
 });
+
+test("swift-consumer-contracts builds the host domain-core XCFramework in release mode", () => {
+  // Regression: the swift-consumer-contracts job must build the domain-core
+  // XCFramework with DOMAIN_CORE_BUILD_PROFILE=release. A debug build links
+  // the domain-core staticlib in debug, which collides with the debug
+  // libsignal FFI staticlib and produces duplicate-symbol link failures in
+  // the consumer contract tests. Release mode keeps the two artifacts in
+  // distinct link units, so the Swift consumer contract lane stays green.
+  const job = workflowJob(core, "swift-consumer-contracts");
+  const buildStep = job.indexOf("Build host domain-core XCFramework");
+  assert.notEqual(buildStep, -1, "Build host domain-core XCFramework step must exist");
+  const stepBlock = job.slice(buildStep);
+  // The env block for the build step must set release, not debug.
+  assert.match(
+    stepBlock,
+    /env:\n\s*DOMAIN_CORE_BUILD_PROFILE: release\n/,
+    "swift-consumer-contracts must build the XCFramework with DOMAIN_CORE_BUILD_PROFILE: release",
+  );
+  assert.doesNotMatch(
+    stepBlock,
+    /DOMAIN_CORE_BUILD_PROFILE: debug/,
+    "swift-consumer-contracts must not build the XCFramework in debug mode",
+  );
+});

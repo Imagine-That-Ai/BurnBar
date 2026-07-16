@@ -74,6 +74,7 @@ function execute(paths, environment = {}) {
       env: {
         ...process.env,
         GITHUB_ACTIONS: "true",
+        GITHUB_EVENT_NAME: "push",
         GITHUB_RUN_ID: "123",
         GITHUB_RUN_ATTEMPT: "2",
         GITHUB_SHA: paths.commit,
@@ -110,4 +111,54 @@ test("emit CLI fails closed outside Actions, for wrong SHA, and for an empty rep
     assert.equal(result.status, 1);
     assert.equal(existsSync(paths.output), false);
   }
+});
+
+test("emit CLI binds headSha to the validated candidate checkout when GITHUB_SHA is a synthetic merge SHA", (context) => {
+  // Regression: on pull_request events GitHub sets GITHUB_SHA to the synthetic
+  // merge commit it creates, not the PR head. The proof fragment's headSha
+  // must record the validated candidate checkout (the SHA the tests actually
+  // ran against), not GITHUB_SHA. The current code passes GITHUB_SHA as
+  // headSha unconditionally, then requires it to equal the candidate commit,
+  // so a synthetic merge SHA causes a spurious "fragment head SHA must equal
+  // candidate commit" failure on PR runs.
+  //
+  // The fix is event-aware: on pull_request events, headSha must be the
+  // validated candidate checkout (identity.candidateCommit), not GITHUB_SHA.
+  // On push events GITHUB_SHA IS the checkout, so the existing wrong-SHA
+  // fail-closed contract (the mutation below sets GITHUB_SHA to a wrong SHA
+  // on a push event) must still hold — a wrong GITHUB_SHA on push must fail.
+  const paths = fixture(context);
+  const syntheticMergeSha = "e".repeat(40);
+  // Sanity: the synthetic merge SHA must differ from the checkout commit,
+  // otherwise the test would not exercise the divergence.
+  assert.notEqual(syntheticMergeSha, paths.commit);
+  rmSync(paths.output, { force: true });
+  const result = execute(paths, {
+    GITHUB_EVENT_NAME: "pull_request",
+    GITHUB_SHA: syntheticMergeSha,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const fragment = JSON.parse(readFileSync(paths.output, "utf8"));
+  // headSha must be the validated candidate checkout, not the synthetic merge SHA.
+  assert.equal(fragment.headSha, paths.commit, "headSha must be the validated candidate checkout");
+  assert.notEqual(fragment.headSha, syntheticMergeSha, "headSha must not be the synthetic merge SHA");
+  assert.equal(fragment.candidate.candidateCommit, paths.commit);
+});
+
+test("emit CLI fails closed for a wrong GITHUB_SHA on a push event (headSha is GITHUB_SHA, not candidate checkout)", (context) => {
+  // Counterpart: on push events GITHUB_SHA is the real checkout SHA, so headSha
+  // must be GITHUB_SHA and must equal the candidate commit. A wrong GITHUB_SHA
+  // on push must fail-closed — the event-aware fix must NOT relax the push-event
+  // guard. This prevents the PR-event fix from accidentally accepting a wrong
+  // SHA on push.
+  const paths = fixture(context);
+  const wrongSha = "f".repeat(40);
+  assert.notEqual(wrongSha, paths.commit);
+  rmSync(paths.output, { force: true });
+  const result = execute(paths, {
+    GITHUB_EVENT_NAME: "push",
+    GITHUB_SHA: wrongSha,
+  });
+  assert.equal(result.status, 1);
+  assert.equal(existsSync(paths.output), false);
 });

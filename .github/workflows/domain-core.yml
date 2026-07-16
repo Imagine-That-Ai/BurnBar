@@ -1305,7 +1305,7 @@ jobs:
 
       - name: Build host domain-core XCFramework
         env:
-          DOMAIN_CORE_BUILD_PROFILE: debug
+          DOMAIN_CORE_BUILD_PROFILE: release
         run: |
           if [[ "$(uname -m)" == "arm64" ]]; then
             export DOMAIN_CORE_BUILD_TARGETS="aarch64-apple-darwin"
