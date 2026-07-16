@@ -8,6 +8,7 @@ import { DAEMON_FIXTURE_AVAILABLE } from '../../daemonFixture.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { SystemStatusSection } from '../SystemStatusSection.js';
 import { DiagnosticsExportCard } from './DiagnosticsExportCard.js';
+import { DiagnosticsStatusSummary } from './DiagnosticsStatusSummary.js';
 import { VersionGrid } from './VersionGrid.js';
 import { MediaSection } from '../media/MediaSection.js';
 import './support.css';
@@ -72,7 +73,8 @@ export function SupportSurface() {
 
   return (
     <>
-      <SystemStatusSection showRawDiagnostic />
+      <SystemStatusSection />
+      <DiagnosticsStatusSummary />
       {versionBlock}
       <DiagnosticsExportCard />
       <MediaSection />
@@ -98,9 +100,18 @@ export function SupportSurface() {
       </table>
       {trayDegraded ? <p className="muted">Tray degraded: use window reopen from launcher.</p> : null}
       {DAEMON_FIXTURE_AVAILABLE ? (
-        <div className="actions">
-          <button type="button" className="ghost" onClick={() => setFixtureMode(!fixtureMode)}>
-            {fixtureMode ? 'Disable daemon fixture' : 'Enable daemon fixture (host smoke)'}
+        <div className="p09-fixture-controls" role="group" aria-label="Diagnostic data source">
+          <p className="muted">
+            Fixture data is synthetic and intended only for host smoke tests. It never represents a packaged
+            daemon or writes a native export bundle.
+          </p>
+          <button
+            type="button"
+            className="ghost"
+            aria-pressed={fixtureMode}
+            onClick={() => setFixtureMode(!fixtureMode)}
+          >
+            {fixtureMode ? 'Disable fixture data' : 'Enable fixture data (host smoke only)'}
           </button>
         </div>
       ) : null}

@@ -109,6 +109,103 @@
   border-radius: var(--radius-sm);
 }
 
+.p09-diagnostic-summary {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-mercury-wash) 72%, transparent);
+}
+
+.p09-diagnostic-summary__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.p09-diagnostic-summary h3 {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--color-text-bright);
+}
+
+.p09-diagnostic-summary__header p {
+  margin: 0;
+  max-width: 48rem;
+}
+
+.p09-diagnostic-summary__state {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-mute);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.p09-diagnostic-summary__state--ok { color: var(--color-tier-end-to-end); }
+.p09-diagnostic-summary__state--warn { color: var(--color-tier-server-readable); }
+.p09-diagnostic-summary__state--err { color: var(--color-danger); }
+
+.p09-diagnostic-summary__facts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-4) 0 0;
+}
+
+.p09-diagnostic-summary__fact {
+  min-width: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-glass-line);
+}
+
+.p09-diagnostic-summary__fact dt {
+  color: var(--color-text-mute);
+  font-size: 0.75rem;
+}
+
+.p09-diagnostic-summary__fact dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-base);
+}
+
+.p09-export-provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-tier-end-to-end);
+  background: var(--color-mercury-wash);
+}
+
+.p09-export-provenance--fixture {
+  border-left-color: var(--color-tier-server-readable);
+}
+
+.p09-export-provenance span {
+  color: var(--color-text-mute);
+}
+
+.p09-fixture-controls {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-glass-line);
+}
+
+.p09-fixture-controls p {
+  margin: 0;
+  max-width: 48rem;
+}
+
 .p09-manifest-list {
   margin: var(--space-2) 0 var(--space-4);
   padding-left: var(--space-5);
@@ -165,6 +262,15 @@
 
 .p09-perf-table td:last-child {
   vertical-align: middle;
+}
+
+@media (max-width: 900px) {
+  .p09-diagnostic-summary__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .p09-diagnostic-summary__header { flex-direction: column; }
+  .p09-diagnostic-summary__facts { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

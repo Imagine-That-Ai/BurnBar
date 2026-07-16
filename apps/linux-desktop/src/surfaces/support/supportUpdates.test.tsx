@@ -397,16 +397,17 @@ describe('P09 updates and support', () => {
     expect(screen.getByText('Native diagnostics export returned unsafe preview metadata.')).toBeTruthy();
   });
 
-  it('shows export failure with raw error from bridge', async () => {
+  it('redacts export failures instead of echoing native error text', async () => {
     const bridge = mockBridge({
-      exportDiagnostics: vi.fn().mockRejectedValue(new Error('dialog cancelled by user'))
+      exportDiagnostics: vi.fn().mockRejectedValue(new Error('dialog cancelled by user; apiKey=sk-live-should-not-render'))
     });
     useShellStore.setState({ bridge });
     render(<SupportSurface />);
     await act(async () => {
       await useSupportStore.getState().exportDiagnostics();
     });
-    expect(screen.getByText('dialog cancelled by user')).toBeTruthy();
+    expect(screen.getByText('Export cancelled. No diagnostics file was written.')).toBeTruthy();
+    expect(screen.queryByText(/sk-live-should-not-render/)).toBeNull();
   });
 
   it('fixture export succeeds without bridge', async () => {
@@ -418,7 +419,7 @@ describe('P09 updates and support', () => {
     expect(screen.getByText('/tmp/openburnbar-diagnostics-fixture.json')).toBeTruthy();
   });
 
-  it('keeps fixture toggle, perf table, raw diagnostic, and tray note', async () => {
+  it('keeps fixture toggle, perf table, structured diagnostic summary, and tray note', async () => {
     recordPerfSample('overview.route', 12.5, 'test');
     recordPerfSample('overview.route', 14.2, 'test');
     useShellStore.setState({
@@ -432,13 +433,86 @@ describe('P09 updates and support', () => {
       await useSupportStore.getState().loadVersion();
     });
     expect(screen.getByText('Tray degraded: use window reopen from launcher.')).toBeTruthy();
-    expect(container.querySelector('.diagnostic-detail')).not.toBeNull();
+    expect(container.querySelector('.p09-diagnostic-summary')).not.toBeNull();
+    expect(container.querySelector('.diagnostic-detail')).toBeNull();
+    expect(screen.getByText('Daemon diagnostics summary')).toBeTruthy();
+    expect(screen.queryByText('connection refused')).toBeNull();
     const table = container.querySelector('.p09-perf-table tbody');
     expect(table).not.toBeNull();
     expect(within(table as HTMLElement).getByText('overview.route')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Enable daemon fixture (host smoke)' }));
+    const fixtureToggle = screen.getByRole('button', { name: 'Enable fixture data (host smoke only)' });
+    expect(fixtureToggle.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(fixtureToggle);
     expect(useShellStore.getState().fixtureMode).toBe(true);
+    expect(screen.getByRole('button', { name: 'Disable fixture data' }).getAttribute('aria-pressed')).toBe('true');
     expect(localStorage.getItem('openburnbar.linux.daemonFixture')).toBe('1');
+  });
+
+  it('shows fixture provenance and disables copying metadata-only output', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+    });
+    expect(screen.getByText('Fixture preview')).toBeTruthy();
+    expect(screen.getByText('Fixture output is metadata only; no file was written.')).toBeTruthy();
+    const copy = screen.getByRole('button', { name: 'Copy diagnostics path unavailable for fixture preview' }) as HTMLButtonElement;
+    expect(copy.disabled).toBe(true);
+    fireEvent.click(copy);
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it('exposes an accessible loading state and prevents duplicate exports', () => {
+    useShellStore.setState({ bridge: mockBridge(), fixtureMode: false });
+    useSupportStore.setState({ exportState: 'exporting' });
+    render(<SupportSurface />);
+    const exportButton = screen.getByRole('button', { name: 'Exporting…' }) as HTMLButtonElement;
+    expect(exportButton.disabled).toBe(true);
+    expect(screen.getByText('Export in progress…')).toBeTruthy();
+    expect(document.querySelector('.p09-export-status[aria-live="polite"]')).not.toBeNull();
+  });
+
+  it('renders a redacted health summary without secret-bearing daemon diagnostics', () => {
+    useShellStore.setState({
+      bridge: mockBridge(),
+      bridgeReady: true,
+      health: { ok: false, protocolVersion: 1 },
+      healthError: 'permission denied; authToken=sk-live-should-not-render'
+    });
+    const { container } = render(<SupportSurface />);
+    const summary = container.querySelector('.p09-diagnostic-summary');
+    expect(summary).not.toBeNull();
+    expect(summary?.getAttribute('data-provenance')).toBe('packaged');
+    expect(screen.getByText('Daemon unavailable')).toBeTruthy();
+    expect(screen.getByText('Protocol')).toBeTruthy();
+    expect(screen.queryByText(/sk-live-should-not-render/)).toBeNull();
+    expect(container.querySelector('.diagnostic-detail')).toBeNull();
+  });
+
+  it('redacts arbitrary native preview labels while preserving privacy metadata facts', async () => {
+    const bridge = mockBridge({
+      exportDiagnostics: vi.fn().mockResolvedValue({
+        path: '/home/user/diagnostics-1720512345.json',
+        preview: {
+          schemaVersion: 1,
+          byteCount: 512,
+          fileMode: '0600',
+          included: ['apiKey=sk-live-should-not-render'],
+          excluded: ['opaque-session-secret=never-render']
+        }
+      })
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+    });
+    expect(screen.getByText('Diagnostic metadata (redacted)')).toBeTruthy();
+    expect(screen.getByText('Sensitive fields (redacted)')).toBeTruthy();
+    expect(screen.queryByText(/sk-live-should-not-render|never-render/)).toBeNull();
+    expect(screen.getByText('Native export metadata')).toBeTruthy();
   });
 
   it('mounts Mercury media below diagnostics without treating staged media as performance proof', async () => {
