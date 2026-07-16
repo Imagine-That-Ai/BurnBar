@@ -2648,19 +2648,29 @@ def _sensitive_target_paths(repo_root: Path, revision: str) -> set[str]:
         load_json_bytes(git_file(repo_root, revision, relative, "base legacy deletion ledger"), relative),
         relative,
     )
-    for raw_row in require_array(manifest.get("rows"), "base manifest rows"):
+    raw_rows = require_array(manifest.get("rows"), "base manifest rows")
+    seen_row_ids: set[str] = set()
+    for raw_row in raw_rows:
         row = require_object(raw_row, "base manifest row")
-        for raw_target in require_array(row.get("targets"), "base manifest targets"):
+        row_id = row.get("id")
+        if not isinstance(row_id, str) or row_id not in ROW_IDS:
+            raise GateError(f"base manifest row: invalid stable row id: {row_id!r}")
+        if row_id in seen_row_ids:
+            raise GateError(f"base manifest row: duplicate stable row id: {row_id}")
+        seen_row_ids.add(row_id)
+        raw_targets = require_array(row.get("targets"), f"base manifest row {row_id} targets")
+        if not raw_targets:
+            raise GateError(f"base manifest row {row_id} targets must not be empty")
+        for raw_target in raw_targets:
             target = require_object(raw_target, "base manifest target")
-            path = target.get("path")
-            if isinstance(path, str) and path:
-                paths.add(path)
+            paths.add(repository_path(target.get("path"), "base manifest target.path"))
+    if seen_row_ids != set(ROW_IDS) or len(raw_rows) != len(ROW_IDS):
+        missing = sorted(set(ROW_IDS) - seen_row_ids)
+        raise GateError(f"base manifest rows must contain the stable row set; missing={missing}")
     for raw_shared in require_array(manifest.get("sharedTargets"), "base manifest sharedTargets"):
         shared = require_object(raw_shared, "base manifest sharedTarget")
         target = require_object(shared.get("target"), "base manifest sharedTarget.target")
-        path = target.get("path")
-        if isinstance(path, str) and path:
-            paths.add(path)
+        paths.add(repository_path(target.get("path"), "base manifest sharedTarget.target.path"))
     return paths
 
 

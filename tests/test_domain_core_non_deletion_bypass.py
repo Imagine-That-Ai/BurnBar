@@ -235,8 +235,12 @@ class TestNonDeletionBehindBaseBypass:
         GATE.run_gate(repository, LEDGER_PATH, base_ref=base)
 
 
-def test_malformed_trusted_base_ledger_fails_closed(tmp_path: Path) -> None:
-    """Invalid trusted inventory must not erase sensitive targets from classification."""
+def _assert_malformed_trusted_base_fails_closed(
+    tmp_path: Path,
+    ledger: dict[str, Any],
+    *,
+    message: str,
+) -> None:
     repository = _repository(tmp_path)
 
     _git(repository, "checkout", "-b", "feature")
@@ -248,14 +252,56 @@ def test_malformed_trusted_base_ledger_fails_closed(tmp_path: Path) -> None:
     _write(
         repository,
         LEDGER_PATH,
-        json.dumps({"schemaVersion": 2, "rows": "invalid", "sharedTargets": []}),
+        json.dumps(ledger),
     )
     current_base = _commit(repository, "malformed trusted deletion inventory")
     _git(repository, "checkout", branch_head)
 
     assert not _is_ancestor(repository, current_base, branch_head)
-    with pytest.raises(GATE.GateError, match="base manifest rows"):
+    with pytest.raises(GATE.GateError, match=message):
         GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
+def test_malformed_trusted_base_ledger_fails_closed(tmp_path: Path) -> None:
+    """Invalid trusted inventory must not erase sensitive targets from classification."""
+    _assert_malformed_trusted_base_fails_closed(
+        tmp_path,
+        {"schemaVersion": 2, "rows": "invalid", "sharedTargets": []},
+        message="base manifest rows",
+    )
+
+
+@pytest.mark.parametrize("invalid_rows", [[], None])
+def test_incomplete_trusted_row_set_fails_closed(tmp_path: Path, invalid_rows: Any) -> None:
+    ledger = _bootstrap_ledger()
+    ledger["rows"] = invalid_rows
+    _assert_malformed_trusted_base_fails_closed(
+        tmp_path,
+        ledger,
+        message="base manifest rows",
+    )
+
+
+@pytest.mark.parametrize("invalid_path", [None, "", 7, "../outside"])
+def test_malformed_trusted_target_path_fails_closed(tmp_path: Path, invalid_path: Any) -> None:
+    ledger = _bootstrap_ledger()
+    ledger["rows"][0]["targets"][0]["path"] = invalid_path
+    _assert_malformed_trusted_base_fails_closed(
+        tmp_path,
+        ledger,
+        message="base manifest target.path",
+    )
+
+
+@pytest.mark.parametrize("invalid_path", [None, "", 7, "../outside"])
+def test_malformed_trusted_shared_target_path_fails_closed(tmp_path: Path, invalid_path: Any) -> None:
+    ledger = _bootstrap_ledger()
+    ledger["sharedTargets"][0]["target"]["path"] = invalid_path
+    _assert_malformed_trusted_base_fails_closed(
+        tmp_path,
+        ledger,
+        message="base manifest sharedTarget.target.path",
+    )
 
 
 # ---------------------------------------------------------------------------
