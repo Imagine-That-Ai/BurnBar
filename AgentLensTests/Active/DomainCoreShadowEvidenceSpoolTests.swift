@@ -221,6 +221,29 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertEqual(try spool.pendingSampleCount(), 0)
     }
 
+    func testSpoolInstancesSharingDirectorySerializeEnumerationAndAcknowledgement() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let producer = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let observer = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try producer.append(try XCTUnwrap(makeSample()))
+        let batch = try XCTUnwrap(producer.nextBatch())
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 0..<100 {
+                group.addTask {
+                    _ = try observer.pendingSampleCount()
+                }
+                group.addTask {
+                    try producer.acknowledge(batch.token)
+                }
+            }
+            try await group.waitForAll()
+        }
+
+        XCTAssertEqual(try observer.pendingSampleCount(), 0)
+    }
+
     func testDiscardAllRemovesSealedAndActiveEvidence() throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

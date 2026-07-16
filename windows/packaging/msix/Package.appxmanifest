@@ -39,9 +39,9 @@
     Identity — the stable package identity.
       • Name       : reverse-DNS-free unique id (Publisher.Product convention).
       • Publisher  : The direct-download signing subject. MUST match the Authenticode /
-                     Azure Artifact Signing certificate Subject exactly at sign time. For
-                     a Microsoft Store submission the Store assigns its own reserved
-                     Name + Publisher (CN=<StorePublisherId>) — swap both then.
+                     Azure Artifact Signing certificate Subject exactly at sign time.
+                     New-MsixPackage.ps1 stamps the separate Partner Center Name,
+                     Publisher, and PublisherDisplayName for Microsoft Store output.
       • Version    : Major.Minor.Build.Revision. Seeded at the Windows-port pre-release
                      0.1.0.0 (macOS MARKETING_VERSION is 1.0.28); the release pipeline
                      stamps the shipping version. Revision is reserved 0 for Store.
