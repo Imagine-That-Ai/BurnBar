@@ -3348,9 +3348,7 @@ def run_gate(
         ):
             raise GateError("candidate cannot remove the legacy deletion ledger")
         if deletion_sensitive:
-            raise GateError(
-                "deletion-sensitive candidate has no legacy deletion ledger to anchor validation"
-            )
+            raise GateError("deletion-sensitive candidate has no legacy deletion ledger to anchor validation")
         return
     if not manifest_path.is_file():
         raise GateError("manifest: expected regular file")
