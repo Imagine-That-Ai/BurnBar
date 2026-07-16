@@ -2,11 +2,11 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-15 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-16 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at the source checkpoint `646270227e`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, and the Windows-portable Hermes stream transport are linked below. Accepted candidate run `29421777733` passed both release architectures and installed-package runtime checks before this source checkpoint; candidate `29429549029` correctly failed closed on the new `/etc` archive member before packaging, and a replacement exact-head candidate will be dispatched from the final documentation head. |
+| Remediation evidence | `codex/linux-parity-integration-final` at current source head `a8fb43090f1afd1cb18b1338c7f6e99e96d36ff8`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, and the Windows-portable Hermes stream transport are linked below. Exact-head candidate run `29475397312` passed both release architectures and installed-package runtime checks; the current UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -45,6 +45,35 @@ percentage. The active remediation stack now contains these reviewable slices:
   validator receipts must be generated and promoted on a clean current HEAD;
   the other six P-40 environments and the remaining requirement rows still
   lack installed evidence.
+
+### Latest verification delta - 2026-07-16
+
+- **Exact-head release candidate:** run `29475397312` completed successfully
+  at `a8fb43090f1afd1cb18b1338c7f6e99e96d36ff8`. The immutable aggregate
+  `linux-release-evidence` digest is
+  `sha256:33df8b7d9fdbe85e1db9c36003e3681f10d78506d24f71113b95fdab1fcace6e`;
+  both signed architecture shards passed the native build, package,
+  installed-runtime, accessibility, tray, and route sessions.
+- **Current UTM P-40 proof:** Ubuntu 24.04 GNOME/X11 aarch64 installed the
+  exact arm64 Debian package (`sha256:
+  1c8e187ccf7f264954cde7b7aec4e64ce186d16c26ddb2cef149a9c61715cce9`). The
+  installed manifest is bound to `a8fb43090f1afd1cb18b1338c7f6e99e96d36ff8`
+  with SHA-256
+  `0410282de4169eb2d6fe9266f17b87172595fe26f762bfc3259907e48f056f45`.
+  The real installed daemon producer passed inventory, scoped deletion,
+  encrypted export, retention, malformed-store fail-closed, and idempotency
+  checks; the redacted session report SHA-256 is
+  `fef96b38e8a96b0b86161a559e8e9de9d1486994ec402b862fdc2d97c88920a2`.
+- **Physical iPad attempt:** the iPad was available and paired, but the
+  canonical approval selector exited 66 before `xcodebuild` because
+  `Vendor/OpenBurnBarSignalFfiIOS.xcframework` is absent. No app test or
+  infrastructure crash is counted; the attempt is a non-certifying blocker.
+- **Certification boundary:** the exact-head candidate and one live P-40
+  environment are now current, but the strict ledger remains **0/40 product**
+  and **0/7 environment**. Six Linux environments, current-head validator
+  receipts for all 40 rows, production callable deployment, browser/approval
+  execution, Mercury/SmartHub/IME/accessibility breadth, and update/recovery
+  evidence are still required.
 
 ### Latest source deltas - 2026-07-15 continuation
 
