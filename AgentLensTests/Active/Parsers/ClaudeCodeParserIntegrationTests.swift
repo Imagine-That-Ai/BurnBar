@@ -102,8 +102,11 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
         XCTAssertFalse(try cache(cacheURL, containsRawString: privateAssistant),
                        "raw assistant content must never be persisted to the parser cache")
 
-        // Simulate a legacy (pre-privacy-fix) cache that still carries a
-        // persisted conversation body. A usage-only parse must scrub it in
+        // Simulate a REAL legacy (pre-privacy-fix, schemaVersion-2) cache
+        // that still carries a persisted conversation body. The reworked
+        // parser (schemaVersion 3, conversation-free entries by construction)
+        // must drop the stale-schema cache wholesale on the next parse and
+        // re-persist a body-free v3 cache — an in-place upgrade scrub.
         try injectLegacyCachedConversation(
             cacheURL: cacheURL,
             sessionFile: sessionFile,
@@ -128,6 +131,19 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
                        "scrubbed cache must not contain the private assistant reply")
         XCTAssertFalse(try cache(cacheURL, containsRawString: privateSummary),
                        "scrubbed cache must not retain conversation-only summary metadata")
+
+        // And the rewritten cache is the upgraded, conversation-free shape.
+        let upgradedRoot = try XCTUnwrap(
+            PropertyListSerialization.propertyList(
+                from: Data(contentsOf: cacheURL), options: [], format: nil
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(upgradedRoot["schemaVersion"] as? Int, 3)
+        let upgradedEntries = try XCTUnwrap(upgradedRoot["fileEntries"] as? [String: Any])
+        for (key, value) in upgradedEntries {
+            let entry = try XCTUnwrap(value as? [String: Any], key)
+            XCTAssertNil(entry["conversation"], "upgraded cache entries must not hold conversations (\(key))")
+        }
     }
 
     private func cache(_ url: URL, containsRawString string: String) throws -> Bool {
@@ -135,13 +151,13 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
         return try Data(contentsOf: url).range(of: Data(string.utf8)) != nil
     }
 
-    /// Simulates a legacy (pre-privacy-fix) Claude parser cache that still
-    /// carries a persisted conversation body. Uses schema-agnostic plist
-    /// surgery — `ClaudeCodeCacheEntry` is parser-private — to inject a
-    /// conversation carrying unique private prompt/assistant strings into the
-    /// already-warmed entry (the body-enabled parse above persisted a valid
-    /// signature + usage with `conversation: nil`), so the subsequent
-    /// usage-only parse hits the cache-hit path and exercises the scrub helper.
+    /// Simulates a REAL legacy (pre-2026-07-16, schemaVersion-2) Claude
+    /// parser cache: v2 entries carried an optional `conversation` body.
+    /// The reworked parser is at schemaVersion 3 (whose entry type cannot
+    /// represent a conversation), so `ParserDiskCacheStore.load()` drops a
+    /// v2 cache wholesale, re-scans, and re-persists a body-free v3 cache —
+    /// that upgrade path is what the caller asserts. Uses schema-agnostic
+    /// plist surgery because `ClaudeCodeCacheEntry` is parser-private.
     private func injectLegacyCachedConversation(
         cacheURL: URL,
         sessionFile: URL,
@@ -194,6 +210,9 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
         entry["conversation"] = legacyConversation
         entries[cacheKey] = entry
         root["fileEntries"] = entries
+        // Stamp the pre-fix schema version: this is what real legacy caches
+        // on disk look like, and what forces the wholesale drop + rewrite.
+        root["schemaVersion"] = 2
         let rewritten = try PropertyListSerialization.data(fromPropertyList: root, format: .binary, options: 0)
         try rewritten.write(to: cacheURL, options: .atomic)
     }

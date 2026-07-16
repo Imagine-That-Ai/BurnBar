@@ -18,15 +18,21 @@ public struct LogParseOptions: Sendable {
     /// When set, parsers may return cached older rows but should not parse
     /// uncached files whose modification date is before this boundary.
     public var minimumFileModificationDate: Date?
+    /// Shared per-pass resource accounting: byte budget for new file content
+    /// and a process memory ceiling. `nil` leaves the pass ungoverned.
+    /// Governed parsers throw `ParserResourceExceeded` on the hard ceiling.
+    public var resourceGovernor: ParserResourceGovernor?
 
     public static let `default` = LogParseOptions(includeConversationBodies: true)
 
     public init(
         includeConversationBodies: Bool,
-        minimumFileModificationDate: Date? = nil
+        minimumFileModificationDate: Date? = nil,
+        resourceGovernor: ParserResourceGovernor? = nil
     ) {
         self.includeConversationBodies = includeConversationBodies
         self.minimumFileModificationDate = minimumFileModificationDate
+        self.resourceGovernor = resourceGovernor
     }
 }
 
