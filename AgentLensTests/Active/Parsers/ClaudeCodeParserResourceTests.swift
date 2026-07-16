@@ -45,7 +45,11 @@ final class ClaudeCodeParserResourceTests: XCTestCase {
         model: String = "claude-sonnet-4-20250514",
         text: String = "Done."
     ) -> String {
-        #"{"type":"assistant","requestId":"\#(requestId)","timestamp":"\#(timestamp)","message":{"role":"assistant","id":"\#(messageId)","model":"\#(model)","content":[{"type":"text","text":"\#(text)"}],"usage":{"input_tokens":\#(input),"output_tokens":\#(output),"cache_creation_input_tokens":\#(cacheCreation),"cache_read_input_tokens":\#(cacheRead)}}}"#
+        #"{"type":"assistant","requestId":"\#(requestId)","timestamp":"\#(timestamp)","# +
+            #""message":{"role":"assistant","id":"\#(messageId)","model":"\#(model)","# +
+            #""content":[{"type":"text","text":"\#(text)"}],"usage":{"input_tokens":\#(input),"# +
+            #""output_tokens":\#(output),"cache_creation_input_tokens":\#(cacheCreation),"# +
+            #""cache_read_input_tokens":\#(cacheRead)}}}"#
     }
 
     private func userLine(text: String, timestamp: String = "2026-05-04T08:00:00Z") -> String {
@@ -324,8 +328,8 @@ final class ClaudeCodeParserResourceTests: XCTestCase {
 
         // …but the persisted cache carries usage + scan state only.
         let rawCache = try Data(contentsOf: cacheURL)
-        XCTAssertFalse(rawCache.range(of: Data(privatePrompt.utf8)) != nil, "prompt text must never reach the parser cache")
-        XCTAssertFalse(rawCache.range(of: Data(privateReply.utf8)) != nil, "assistant text must never reach the parser cache")
+        XCTAssertNil(rawCache.range(of: Data(privatePrompt.utf8)), "prompt text must never reach the parser cache")
+        XCTAssertNil(rawCache.range(of: Data(privateReply.utf8)), "assistant text must never reach the parser cache")
 
         let root = try XCTUnwrap(
             PropertyListSerialization.propertyList(from: rawCache, options: [], format: nil) as? [String: Any]
