@@ -27,6 +27,7 @@ import {
 } from "./legacy/pensieveVectorLegacy.js";
 
 const MODE = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
+const SEARCH_MODE = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE";
 const SOURCE_A = "a".repeat(64);
 const SOURCE_B = "b".repeat(64);
 const WASM_SHA = "c".repeat(64);
@@ -84,6 +85,24 @@ function withMode<T>(value: string | undefined, operation: () => T): T {
   }
 }
 
+function withSearchMode<T>(value: string | undefined, operation: () => T): T {
+  const previous = process.env[SEARCH_MODE];
+  if (value === undefined) {
+    delete process.env[SEARCH_MODE];
+  } else {
+    process.env[SEARCH_MODE] = value;
+  }
+  try {
+    return operation();
+  } finally {
+    if (previous === undefined) {
+      delete process.env[SEARCH_MODE];
+    } else {
+      process.env[SEARCH_MODE] = previous;
+    }
+  }
+}
+
 test("Rust CloudVault adapter matches canonical AAD, AES, and search vectors", () => {
   withMode("rust", () => {
     const aad = domainCoreCloudVaultAADContext(
@@ -114,10 +133,12 @@ test("Rust CloudVault adapter matches canonical AAD, AES, and search vectors", (
       "OpenBurnBar",
     );
 
-    assert.deepEqual(
-      domainCoreCloudVaultSearch(0, "The QUICK, quick fox and X.", Buffer.from(Array.from({ length: 32 }, (_, index) => index)), 250, () => []),
-      ["e9110d7f0c79afdae6316235800dc41b", "66e59fa04825dc74f5ef7cb57884d4ed"],
-    );
+    withSearchMode("rust", () => {
+      assert.deepEqual(
+        domainCoreCloudVaultSearch(0, "The QUICK, quick fox and X.", Buffer.from(Array.from({ length: 32 }, (_, index) => index)), 250, () => []),
+        ["e9110d7f0c79afdae6316235800dc41b", "66e59fa04825dc74f5ef7cb57884d4ed"],
+      );
+    });
   });
 });
 
@@ -218,4 +239,119 @@ test("Rust authority fails closed on AES authentication failure", () => {
     }));
     assert.equal(legacyCalled, false);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Negative-control tests: search-specific mode overrides aggregate mode.
+//
+// Before the fix, search operations read the aggregate MODE env var, so
+// setting SEARCH_MODE had no effect.  After the fix, search operations read
+// SEARCH_MODE independently.  Each assertion below uses the Rust golden
+// vectors (or legacy sentinel) so the test FAILS before the fix (wrong routing)
+// and PASSES after (correct routing).
+// ---------------------------------------------------------------------------
+
+test("search-specific mode: SEARCH_MODE=rust routes search to Rust even when MODE=legacy", () => {
+  withMode("legacy", () => {
+    withSearchMode("rust", () => {
+      // Before fix: MODE=legacy → search calls legacy callback → returns ["legacy-fallback"]
+      // After fix:  SEARCH_MODE=rust → search calls Rust core → returns golden vectors
+      let legacyCalled = false;
+      const result = domainCoreCloudVaultSearch(
+        0,
+        "The QUICK, quick fox and X.",
+        Buffer.from(Array.from({ length: 32 }, (_, index) => index)),
+        250,
+        () => {
+          legacyCalled = true;
+          return ["legacy-fallback"];
+        },
+      );
+      assert.deepEqual(result, ["e9110d7f0c79afdae6316235800dc41b", "66e59fa04825dc74f5ef7cb57884d4ed"]);
+      assert.equal(legacyCalled, false, "legacy callback must not run when SEARCH_MODE=rust");
+    });
+  });
+});
+
+test("search-specific mode: SEARCH_MODE=legacy routes search to legacy even when MODE=rust", () => {
+  withMode("rust", () => {
+    withSearchMode("legacy", () => {
+      // Before fix: MODE=rust → search calls Rust core → returns golden vectors
+      // After fix:  SEARCH_MODE=legacy → search calls legacy callback → returns ["legacy-sentinel"]
+      let legacyCalled = false;
+      const result = domainCoreCloudVaultSearch(
+        0,
+        "The QUICK, quick fox and X.",
+        Buffer.from(Array.from({ length: 32 }, (_, index) => index)),
+        250,
+        () => {
+          legacyCalled = true;
+          return ["legacy-sentinel"];
+        },
+      );
+      assert.deepEqual(result, ["legacy-sentinel"]);
+      assert.equal(legacyCalled, true, "legacy callback must run when SEARCH_MODE=legacy");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Independence proofs: non-search operations ignore SEARCH_MODE.
+//
+// These use the test-adapter API with an explicit searchMode parameter.
+// Before the fix, createDomainCoreCloudVaultAdapterForTest does not accept
+// searchMode, so the test file does not compile (TypeScript error) → fails.
+// After the fix, the param exists and the assertions prove that AAD, AES,
+// and Pensieve vector operations route on the aggregate mode, not searchMode.
+// ---------------------------------------------------------------------------
+
+test("independence: AAD routes on aggregate mode, not search mode", () => {
+  const adapter = createDomainCoreCloudVaultAdapterForTest("rust", {
+    module: testModule({ cloudVaultAadV2: () => "rust-aad" }),
+    receipt,
+    sourceFingerprint: SOURCE_A,
+    wasmSha256: WASM_SHA,
+  }, () => undefined, "legacy");
+  // searchMode=legacy must not steer AAD away from the aggregate rust mode
+  assert.equal(
+    adapter.aadV2("private-user", "collection", "doc", "field", 2, "field", () => "legacy-aad"),
+    "rust-aad",
+  );
+});
+
+test("independence: AES seal/open routes on aggregate mode, not search mode", () => {
+  const adapter = createDomainCoreCloudVaultAdapterForTest("rust", {
+    module: testModule({
+      cloudVaultAesGcmSealCombined: () => Buffer.from("rust-seal"),
+      cloudVaultAesGcmOpenCombined: () => Buffer.from("rust-open"),
+    }),
+    receipt,
+    sourceFingerprint: SOURCE_A,
+    wasmSha256: WASM_SHA,
+  }, () => undefined, "legacy");
+  // searchMode=legacy must not steer AES away from the aggregate rust mode
+  const sealed = adapter.aesGcmSealCombined(
+    Buffer.from("secret"),
+    KEY,
+    NONCE,
+    AAD,
+    () => Buffer.from("legacy-seal"),
+  );
+  assert.equal(Buffer.from(sealed).toString(), "rust-seal");
+  const opened = adapter.aesGcmOpenCombined(sealed, KEY, AAD, () => Buffer.from("legacy-open"));
+  assert.equal(Buffer.from(opened).toString(), "rust-open");
+});
+
+test("independence: Pensieve vector cloak routes on aggregate mode, not search mode", () => {
+  const basis = new Float64Array(384);
+  basis[5] = 1;
+  const adapter = createDomainCoreCloudVaultAdapterForTest("rust", {
+    module: testModule({ pensieveVectorCloak: (vector) => Float64Array.from(vector).map((v) => v * 2) }),
+    receipt,
+    sourceFingerprint: SOURCE_A,
+    wasmSha256: WASM_SHA,
+  }, () => undefined, "legacy");
+  // searchMode=legacy must not steer vector cloak away from the aggregate rust mode
+  const cloaked = adapter.vectorCloak(basis, KEY, "hashing-bow-v1", () => legacyCloakVector(basis, KEY, "hashing-bow-v1"));
+  assert.equal(cloaked[5], 2, "rust cloak must double the basis value, not use legacy");
 });

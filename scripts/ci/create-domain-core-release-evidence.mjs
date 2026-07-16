@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { linkSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
@@ -19,7 +19,6 @@ import {
   expectedArtifactName,
   exactObject,
   regularFile,
-  sha256File,
   validateCandidateBundle,
   validatePublicProfileSha256,
   validateReleaseCoordinates,
@@ -41,6 +40,12 @@ function readJson(path, label) {
   } catch (error) {
     throw new Error(`unable to read ${label}: ${error.message}`);
   }
+}
+
+function sha256RegularFile(path, label) {
+  return createHash("sha256")
+    .update(readRegularFileSync(resolve(path), { label }))
+    .digest("hex");
 }
 
 function parseArguments(argv) {
@@ -450,11 +455,11 @@ export function buildReleaseEvidence({
   );
   const rollbackArtifact = {
     fileName: basename(rollbackPath),
-    sha256: sha256File(rollbackPath),
+    sha256: sha256RegularFile(rollbackPath, "rollback artifact"),
     candidate,
     activation,
   };
-  if (sha256File(restoredRollbackPath) !== restoredArtifactSha256) {
+  if (sha256RegularFile(restoredRollbackPath, "restored rollback artifact") !== restoredArtifactSha256) {
     throw new Error(
       "release evidence restored rollback artifact digest does not match the protected candidate bundle rollback proof",
     );
@@ -545,7 +550,7 @@ export function buildReleaseEvidence({
       ].includes(receipt.processedStatus) ||
       typeof receipt.deliveryId !== "string" ||
       receipt.deliveryId.length === 0 ||
-      receipt.archiveSha256 !== sha256File(artifactPath) ||
+      receipt.archiveSha256 !== sha256RegularFile(artifactPath, "iOS release archive") ||
       !SHA256.test(receipt.ipaSha256) ||
       !SHA256.test(receipt.uploadResponseSha256) ||
       !SHA256.test(receipt.statusResponseSha256) ||
@@ -668,18 +673,26 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
     deployment,
     androidAbiManifest,
     androidAbiManifestSha256: androidAbiManifestPath
-      ? sha256File(
-          regularFile(androidAbiManifestPath, "Android universal ABI manifest"),
+      ? sha256RegularFile(
+          androidAbiManifestPath,
+          "Android universal ABI manifest",
         )
       : undefined,
     promotionVerifier,
     activationVerifier,
   });
   if (deploymentReceipt) {
-    atomicWrite(
-      artifactPath,
-      `${JSON.stringify(deploymentReceipt, null, 2)}\n`,
-    );
+    const receiptBytes = `${JSON.stringify(deploymentReceipt, null, 2)}\n`;
+    atomicWrite(artifactPath, receiptBytes);
+    const writtenBytes = readRegularFileSync(artifactPath, {
+      encoding: "utf8",
+      label: "deployment receipt",
+    });
+    if (writtenBytes !== receiptBytes) {
+      throw new Error(
+        "deployment receipt was altered after writing; refusing to bind modified bytes",
+      );
+    }
   }
   const artifact = regularFile(artifactPath, "release evidence subject");
   const scanPath = args["--legacy-absence-scan"]
@@ -728,7 +741,7 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
       report.matches.length !== 0 ||
       !Array.isArray(report.inspectedMembers) ||
       report.inspectedMembers.length === 0 ||
-      report.artifact?.sha256 !== sha256File(artifact) ||
+      report.artifact?.sha256 !== sha256RegularFile(artifact, "final-artifact legacy-absence scan subject") ||
       !SHA256.test(report.ruleSetSha256)
     ) {
       throw new Error(
@@ -748,7 +761,7 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
   const predicate = {
     ...common,
     predicateType: DOMAIN_CORE_RELEASE_PREDICATE_TYPE,
-    artifact: { fileName: basename(artifact), sha256: sha256File(artifact) },
+    artifact: { fileName: basename(artifact), sha256: sha256RegularFile(artifact, "release evidence subject") },
   };
   atomicWrite(args["--predicate"], `${JSON.stringify(predicate, null, 2)}\n`);
   process.stdout.write(

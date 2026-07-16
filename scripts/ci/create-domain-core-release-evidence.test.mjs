@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -775,6 +775,607 @@ test("rejects a copied rollback artifact whose file digest does not match the bu
     assert.throws(
       () => buildReleaseEvidence(baseOptions(files, artifact)),
       /restored rollback artifact digest does not match the protected candidate bundle rollback proof/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Adversarial release-evidence tests: staged artifacts, dirty workspace
+// isolation, digest mismatch, filesystem replacement/race, and exact
+// provenance URL/host validation.
+// ---------------------------------------------------------------------------
+
+test("predicate binds the exact staged artifact digest for the legitimate release path", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    const predicate = join(files.directory, "apple.predicate.json");
+    writeFileSync(artifact, "signed-native-bytes");
+    run(
+      [
+        "--consumer",
+        "apple",
+        "--domain",
+        "quota",
+        "--artifact-kind",
+        "macos-dmg",
+        "--target",
+        "macos-arm64",
+        "--version",
+        "1.2.3",
+        "--tag",
+        "v1.2.3",
+        "--commit",
+        ACTIVATION_COMMIT,
+        "--artifact",
+        artifact,
+        "--predicate",
+        predicate,
+        "--public-profile-sha256",
+        PROFILE_SHA,
+        "--activation",
+        files.activation,
+        "--candidate-bundle",
+        files.candidateBundle,
+        "--promotion-attestation",
+        files.promotionAttestation,
+        "--protected-signer-run-id",
+        "202",
+        "--protected-signer-run-attempt",
+        "3",
+        "--rollback-artifact",
+        files.rollbackArtifact,
+      ],
+      { promotionVerifier: () => [], activationVerifier: () => ACTIVATION },
+    );
+    const written = JSON.parse(readFileSync(predicate, "utf8"));
+    assert.equal(
+      written.artifact.fileName,
+      "OpenBurnBar-1.2.3-macOS.dmg",
+    );
+    assert.equal(
+      written.artifact.sha256,
+      sha(readFileSync(artifact)),
+    );
+    assert.equal(
+      written.artifact.sha256,
+      sha("signed-native-bytes"),
+    );
+    assert.notEqual(
+      written.artifact.sha256,
+      sha("tampered-native-bytes"),
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("unrelated dirty workspace files do not alter the release evidence", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+
+    // Scatter unrelated dirty files across the workspace.
+    writeFileSync(join(files.directory, "stray.log"), "noise");
+    writeFileSync(join(files.directory, "unrelated.txt"), "garbage");
+    writeFileSync(
+      join(files.directory, "leftover.tmp"),
+      "temporary junk that should not affect evidence",
+    );
+    mkdirSync(join(files.directory, "nested", "dir"), { recursive: true });
+    writeFileSync(
+      join(files.directory, "nested", "dir", "extra.json"),
+      '{"unrelated": true}',
+    );
+
+    const result = buildReleaseEvidence(baseOptions(files, artifact));
+    assert.deepEqual(result.common.candidate, CANDIDATE);
+    assert.equal(result.common.sourceRun.runId, 101);
+    assert.equal(result.common.sourceRun.runAttempt, 2);
+    assert.equal(
+      result.common.rollbackArtifact.sha256,
+      sha(readFileSync(files.rollbackArtifact)),
+    );
+    assert.equal(result.deploymentReceipt, undefined);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a staged artifact whose digest was swapped after evidence construction", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    const predicate = join(files.directory, "apple.predicate.json");
+    writeFileSync(artifact, "signed-native-bytes");
+    run(
+      [
+        "--consumer",
+        "apple",
+        "--domain",
+        "quota",
+        "--artifact-kind",
+        "macos-dmg",
+        "--target",
+        "macos-arm64",
+        "--version",
+        "1.2.3",
+        "--tag",
+        "v1.2.3",
+        "--commit",
+        ACTIVATION_COMMIT,
+        "--artifact",
+        artifact,
+        "--predicate",
+        predicate,
+        "--public-profile-sha256",
+        PROFILE_SHA,
+        "--activation",
+        files.activation,
+        "--candidate-bundle",
+        files.candidateBundle,
+        "--promotion-attestation",
+        files.promotionAttestation,
+        "--protected-signer-run-id",
+        "202",
+        "--protected-signer-run-attempt",
+        "3",
+        "--rollback-artifact",
+        files.rollbackArtifact,
+      ],
+      { promotionVerifier: () => [], activationVerifier: () => ACTIVATION },
+    );
+    const original = JSON.parse(readFileSync(predicate, "utf8"));
+
+    // Swap the artifact bytes after the immutable predicate was written.
+    writeFileSync(artifact, "tampered-native-bytes");
+
+    // The on-disk predicate is immutable: its digest no longer matches the
+    // swapped artifact file, proving the predicate failed closed.
+    assert.notEqual(
+      original.artifact.sha256,
+      sha(readFileSync(artifact)),
+    );
+
+    // Re-running must fail closed because the predicate now exists with
+    // different bytes (artifact digest changed).
+    assert.throws(
+      () =>
+        run(
+          [
+            "--consumer",
+            "apple",
+            "--domain",
+            "quota",
+            "--artifact-kind",
+            "macos-dmg",
+            "--target",
+            "macos-arm64",
+            "--version",
+            "1.2.3",
+            "--tag",
+            "v1.2.3",
+            "--commit",
+            ACTIVATION_COMMIT,
+            "--artifact",
+            artifact,
+            "--predicate",
+            predicate,
+            "--public-profile-sha256",
+            PROFILE_SHA,
+            "--activation",
+            files.activation,
+            "--candidate-bundle",
+            files.candidateBundle,
+            "--promotion-attestation",
+            files.promotionAttestation,
+            "--protected-signer-run-id",
+            "202",
+            "--protected-signer-run-attempt",
+            "3",
+            "--rollback-artifact",
+            files.rollbackArtifact,
+          ],
+          {
+            promotionVerifier: () => [],
+            activationVerifier: () => ACTIVATION,
+          },
+        ),
+      /refusing to replace non-identical immutable output/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a candidate bundle replaced by a symlink after staging", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+
+    // Replace the staged candidate bundle with a symlink pointing to a
+    // tampered bundle file. The O_NOFOLLOW reader must reject it.
+    const tamperedBundle = join(files.directory, "tampered-bundle.json");
+    writeFileSync(tamperedBundle, `${JSON.stringify({ swapped: true })}\n`);
+    rmSync(files.candidateBundle);
+    symlinkSync(tamperedBundle, files.candidateBundle);
+
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /must be a .*regular file/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback artifact replaced by a symlink pointing elsewhere", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+
+    const decoy = join(files.directory, "decoy-rollback.json");
+    writeFileSync(
+      decoy,
+      `${JSON.stringify({
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+      })}\n`,
+    );
+    rmSync(files.rollbackArtifact);
+    symlinkSync(decoy, files.rollbackArtifact);
+
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /must be a .*regular file/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a promotion attestation replaced by a symlink", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+
+    const decoy = join(files.directory, "decoy-attestation.json");
+    writeFileSync(decoy, '{"fake": true}\n');
+    rmSync(files.promotionAttestation);
+    symlinkSync(decoy, files.promotionAttestation);
+
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /must be a .*regular file/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("attestation verifier rejects a provenance URL with a wrong host despite correct substring", () => {
+  const files = workspace();
+  try {
+    const runner = () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          verificationResult: {
+            signature: {
+              certificate: {
+                // Contains the correct path substring but wrong host.
+                runInvocationURI:
+                  "https://gitlab.com/Imagine-That-Ai/BurnBar/actions/runs/202/attempts/3",
+              },
+            },
+            statement: {
+              subject: [
+                {
+                  name: "domain-core-candidate-bundle.json",
+                  digest: {
+                    sha256: sha(readFileSync(files.candidateBundle)),
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ]),
+      stderr: "",
+    });
+    assert.throws(
+      () =>
+        verifyProtectedPromotionAttestation({
+          candidateBundlePath: files.candidateBundle,
+          promotionAttestationPath: files.promotionAttestation,
+          signerRunId: 202,
+          signerRunAttempt: 3,
+          runner,
+        }),
+      /does not bind the exact candidate bundle subject and signer run/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("attestation verifier rejects a provenance URL with extra path components despite correct prefix", () => {
+  const files = workspace();
+  try {
+    const runner = () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          verificationResult: {
+            signature: {
+              certificate: {
+                // Correct host and prefix, but injected with an extra
+                // path component before the runs segment.
+                runInvocationURI:
+                  "https://github.com/Imagine-That-Ai/BurnBar/extra/actions/runs/202/attempts/3",
+              },
+            },
+            statement: {
+              subject: [
+                {
+                  name: "domain-core-candidate-bundle.json",
+                  digest: {
+                    sha256: sha(readFileSync(files.candidateBundle)),
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ]),
+      stderr: "",
+    });
+    assert.throws(
+      () =>
+        verifyProtectedPromotionAttestation({
+          candidateBundlePath: files.candidateBundle,
+          promotionAttestationPath: files.promotionAttestation,
+          signerRunId: 202,
+          signerRunAttempt: 3,
+          runner,
+        }),
+      /does not bind the exact candidate bundle subject and signer run/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("attestation verifier rejects a provenance URL with a trailing slash despite correct substring", () => {
+  const files = workspace();
+  try {
+    const runner = () => ({
+      status: 0,
+      stdout: JSON.stringify([
+        {
+          verificationResult: {
+            signature: {
+              certificate: {
+                // Correct except for a trailing slash that changes the
+                // exact string comparison.
+                runInvocationURI:
+                  "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/202/attempts/3/",
+              },
+            },
+            statement: {
+              subject: [
+                {
+                  name: "domain-core-candidate-bundle.json",
+                  digest: {
+                    sha256: sha(readFileSync(files.candidateBundle)),
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ]),
+      stderr: "",
+    });
+    assert.throws(
+      () =>
+        verifyProtectedPromotionAttestation({
+          candidateBundlePath: files.candidateBundle,
+          promotionAttestationPath: files.promotionAttestation,
+          signerRunId: 202,
+          signerRunAttempt: 3,
+          runner,
+        }),
+      /does not bind the exact candidate bundle subject and signer run/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("deployment receipt predicate binds the exact staged deployment artifact digest", () => {
+  const files = workspace();
+  try {
+    const artifact = join(
+      files.directory,
+      "OpenBurnBar-1.2.3-console-deployment.json",
+    );
+    const predicate = join(files.directory, "console.predicate.json");
+    const deployment = join(files.directory, "deployment.json");
+    writeFileSync(deployment, `${JSON.stringify(consoleDeployment())}\n`);
+    run(
+      [
+        "--consumer",
+        "console",
+        "--domain",
+        "cloudVault",
+        "--artifact-kind",
+        "console-deployment-receipt",
+        "--target",
+        "firebase-hosting-production",
+        "--version",
+        "1.2.3",
+        "--tag",
+        "v1.2.3",
+        "--commit",
+        ACTIVATION_COMMIT,
+        "--artifact",
+        artifact,
+        "--predicate",
+        predicate,
+        "--public-profile-sha256",
+        PROFILE_SHA,
+        "--activation",
+        files.activation,
+        "--candidate-bundle",
+        files.candidateBundle,
+        "--promotion-attestation",
+        files.promotionAttestation,
+        "--protected-signer-run-id",
+        "202",
+        "--protected-signer-run-attempt",
+        "3",
+        "--rollback-artifact",
+        files.rollbackArtifact,
+        "--deployment",
+        deployment,
+      ],
+      { promotionVerifier: () => [], activationVerifier: () => ACTIVATION },
+    );
+    const receipt = JSON.parse(readFileSync(artifact, "utf8"));
+    const writtenPredicate = JSON.parse(readFileSync(predicate, "utf8"));
+    // The predicate artifact digest must bind the exact staged receipt bytes.
+    assert.equal(
+      writtenPredicate.artifact.sha256,
+      sha(readFileSync(artifact)),
+    );
+    assert.equal(
+      writtenPredicate.artifact.fileName,
+      "OpenBurnBar-1.2.3-console-deployment.json",
+    );
+    // The receipt and predicate share the same immutable common fields.
+    assert.equal(receipt.schemaVersion, 2);
+    assert.deepEqual(receipt.candidate, writtenPredicate.candidate);
+    assert.deepEqual(receipt.activation, writtenPredicate.activation);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("deployment receipt fails closed when the deployment artifact is replaced after write", () => {
+  const files = workspace();
+  try {
+    const artifact = join(
+      files.directory,
+      "OpenBurnBar-1.2.3-console-deployment.json",
+    );
+    const predicate = join(files.directory, "console.predicate.json");
+    const deployment = join(files.directory, "deployment.json");
+    writeFileSync(deployment, `${JSON.stringify(consoleDeployment())}\n`);
+    run(
+      [
+        "--consumer",
+        "console",
+        "--domain",
+        "cloudVault",
+        "--artifact-kind",
+        "console-deployment-receipt",
+        "--target",
+        "firebase-hosting-production",
+        "--version",
+        "1.2.3",
+        "--tag",
+        "v1.2.3",
+        "--commit",
+        ACTIVATION_COMMIT,
+        "--artifact",
+        artifact,
+        "--predicate",
+        predicate,
+        "--public-profile-sha256",
+        PROFILE_SHA,
+        "--activation",
+        files.activation,
+        "--candidate-bundle",
+        files.candidateBundle,
+        "--promotion-attestation",
+        files.promotionAttestation,
+        "--protected-signer-run-id",
+        "202",
+        "--protected-signer-run-attempt",
+        "3",
+        "--rollback-artifact",
+        files.rollbackArtifact,
+        "--deployment",
+        deployment,
+      ],
+      { promotionVerifier: () => [], activationVerifier: () => ACTIVATION },
+    );
+    const originalPredicate = JSON.parse(readFileSync(predicate, "utf8"));
+
+    // Swap the deployment artifact after the predicate was written.
+    writeFileSync(artifact, '{"tampered": true}\n');
+
+    // The predicate is immutable and its digest no longer matches the
+    // swapped artifact — the system fails closed.
+    assert.notEqual(
+      originalPredicate.artifact.sha256,
+      sha(readFileSync(artifact)),
+    );
+
+    // Re-running with the swapped artifact must fail because the predicate
+    // exists and the new digest differs.
+    assert.throws(
+      () =>
+        run(
+          [
+            "--consumer",
+            "console",
+            "--domain",
+            "cloudVault",
+            "--artifact-kind",
+            "console-deployment-receipt",
+            "--target",
+            "firebase-hosting-production",
+            "--version",
+            "1.2.3",
+            "--tag",
+            "v1.2.3",
+            "--commit",
+            ACTIVATION_COMMIT,
+            "--artifact",
+            artifact,
+            "--predicate",
+            predicate,
+            "--public-profile-sha256",
+            PROFILE_SHA,
+            "--activation",
+            files.activation,
+            "--candidate-bundle",
+            files.candidateBundle,
+            "--promotion-attestation",
+            files.promotionAttestation,
+            "--protected-signer-run-id",
+            "202",
+            "--protected-signer-run-attempt",
+            "3",
+            "--rollback-artifact",
+            files.rollbackArtifact,
+            "--deployment",
+            deployment,
+          ],
+          {
+            promotionVerifier: () => [],
+            activationVerifier: () => ACTIVATION,
+          },
+        ),
+      /refusing to replace non-identical immutable output/u,
     );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });

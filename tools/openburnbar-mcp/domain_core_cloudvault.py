@@ -19,6 +19,7 @@ import cloudvault_search_legacy as search_legacy
 
 OPENBURNBAR_CLOUD_VAULT_BLOB_AAD_CONTEXT = legacy.OPENBURNBAR_CLOUD_VAULT_BLOB_AAD_CONTEXT
 _MODE_ENV = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"
+_SEARCH_MODE_ENV = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE"
 _PACKAGE_DIR = Path(__file__).resolve().parent / "vendor" / "openburnbar-domain-core-python"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _MANIFEST_PATH = _REPO_ROOT / "crates" / "openburnbar-domain-core" / "union-abi-manifest.json"
@@ -72,11 +73,17 @@ def _mode_from_environment() -> str:
     return value if value in {"legacy", "shadow", "rust"} else "legacy"
 
 
+def _search_mode_from_environment() -> str:
+    value = os.environ.get(_SEARCH_MODE_ENV, "legacy").strip().lower()
+    return value if value in {"legacy", "shadow", "rust"} else "legacy"
+
+
 class CloudVaultDomainAdapter:
     def __init__(
         self,
         mode: str,
         *,
+        search_mode: str | None = None,
         package_dir: Path = _PACKAGE_DIR,
         core: Any | None = None,
         diagnostic: Callable[[dict[str, Any]], None] | None = None,
@@ -84,6 +91,10 @@ class CloudVaultDomainAdapter:
         if mode not in {"legacy", "shadow", "rust"}:
             raise ValueError("invalid CloudVault domain-core mode")
         self.mode = mode
+        resolved_search_mode = mode if search_mode is None else search_mode
+        if resolved_search_mode not in {"legacy", "shadow", "rust"}:
+            raise ValueError("invalid CloudVault domain-core search mode")
+        self._search_mode = resolved_search_mode
         self.package_dir = package_dir
         self._injected_core = core
         self._verified_core: Any | None = None
@@ -160,10 +171,13 @@ class CloudVaultDomainAdapter:
             }
         )
 
-    def _route(self, operation: str, old: Callable[[], _T], rust: Callable[[Any], _T]) -> _T:
-        if self.mode == "legacy":
+    def _route(
+        self, operation: str, old: Callable[[], _T], rust: Callable[[Any], _T], *, mode: str | None = None
+    ) -> _T:
+        active_mode = self.mode if mode is None else mode
+        if active_mode == "legacy":
             return old()
-        if self.mode == "rust":
+        if active_mode == "rust":
             return rust(self._core())
         legacy_error: Exception | None = None
         old_value: object = _MISSING
@@ -244,6 +258,7 @@ class CloudVaultDomainAdapter:
             "search-analyze",
             lambda: search_legacy._cloud_normalized_tokens(text),
             lambda core: list(core.cloud_vault_search_analyze(text).normalized_tokens),
+            mode=self._search_mode,
         )
 
     def token_hashes(self, text: str, vault_key: bytes, limit: int = 10) -> list[str]:
@@ -278,7 +293,7 @@ class CloudVaultDomainAdapter:
             )
             return list(core.cloud_vault_search(request).hashes)
 
-        return self._route(operation, old, rust)
+        return self._route(operation, old, rust, mode=self._search_mode)
 
     def open_sealed_text(self, envelope: dict[str, Any], vault_key: bytes, expected_aad: str | None = None) -> str:
         def rust(core: Any) -> str:
@@ -364,7 +379,7 @@ class CloudVaultDomainAdapter:
         return self._route("blob-seal", old, rust)
 
 
-_PRODUCTION = CloudVaultDomainAdapter(_mode_from_environment())
+_PRODUCTION = CloudVaultDomainAdapter(_mode_from_environment(), search_mode=_search_mode_from_environment())
 
 
 def _cloud_vault_aad_context(
