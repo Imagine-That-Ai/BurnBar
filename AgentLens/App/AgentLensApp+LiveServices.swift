@@ -173,6 +173,9 @@ extension OpenBurnBarApp {
             context.aggregator = aggregator
             context.operatingLayer.aggregator = aggregator
             context.operatingLayer.chatController = context.chatController
+            StartupProfiler.interval("memory_watchdog_start") {
+                MemoryFootprintWatchdog.shared.start(aggregator: aggregator)
+            }
             StartupProfiler.interval("daemon_attach") {
                 context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
             }
