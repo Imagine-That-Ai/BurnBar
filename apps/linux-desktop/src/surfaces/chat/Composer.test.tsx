@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configureTextExpansionConsentStorage, writeTextExpansionConsent } from '../../textExpansionConsent.js';
 import { configureTextExpansionStorage, upsertSnippet } from '../../textExpansionStore.js';
 import { MAX_CHAT_ATTACHMENT_BYTES, Composer } from './Composer.js';
+import { CHAT_COMPOSER_FOCUS_EVENT, isChatComposerFocusDetail } from './chatComposerEvents.js';
 
 function renderComposer(secureField = false) {
   return render(
@@ -32,6 +33,18 @@ function enableInAppExpansion() {
 }
 
 describe('chat composer attachments', () => {
+  it('focuses only for a bounded native notification reply handoff', () => {
+    renderComposer();
+    const composer = screen.getByLabelText('Message composer');
+    window.dispatchEvent(new CustomEvent(CHAT_COMPOSER_FOCUS_EVENT, {
+      detail: { notificationId: 'notification-1' }
+    }));
+    expect(document.activeElement).toBe(composer);
+    expect(isChatComposerFocusDetail({ notificationId: '' })).toBe(false);
+    expect(isChatComposerFocusDetail({ notificationId: 'notification/1' })).toBe(false);
+    expect(isChatComposerFocusDetail({ notificationId: 'notification-1' })).toBe(true);
+  });
+
   it('shows accepted file metadata, keeps send available, and removes it cleanly', () => {
     renderComposer();
     const composer = screen.getByLabelText('Message composer');

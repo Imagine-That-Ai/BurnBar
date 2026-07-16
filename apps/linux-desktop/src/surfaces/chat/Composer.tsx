@@ -1,8 +1,9 @@
-import { useId, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { readTextExpansionConsent } from '../../textExpansionConsent.js';
 import { expandInAppBuffer } from '../../textExpansionStore.js';
 import { composerPlaceholder, type ChatBackendId } from './chatTypes.js';
 import { CHAT_ATTACHMENT_METADATA_MIME_TYPES } from './chatAttachment.js';
+import { CHAT_COMPOSER_FOCUS_EVENT, isChatComposerFocusDetail } from './chatComposerEvents.js';
 
 export const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const CHAT_ATTACHMENT_ACCEPT = [
@@ -61,6 +62,7 @@ export function Composer({
   const areaId = useId();
   const fileInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<PendingChatAttachment | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -68,6 +70,16 @@ export function Composer({
   const placeholder = composerPlaceholder(backend);
   const sendDisabled =
     disabled || streaming || busy || uploadingAttachment || draft.trim().length === 0;
+
+  useEffect(() => {
+    const onFocusRequest = (event: Event) => {
+      if (!isChatComposerFocusDetail((event as CustomEvent<unknown>).detail)) return;
+      if (disabled) return;
+      composerRef.current?.focus({ preventScroll: true });
+    };
+    window.addEventListener(CHAT_COMPOSER_FOCUS_EVENT, onFocusRequest);
+    return () => window.removeEventListener(CHAT_COMPOSER_FOCUS_EVENT, onFocusRequest);
+  }, [disabled]);
 
   const inspectAttachment = (file: File): PendingChatAttachment | null => {
     if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
@@ -157,6 +169,7 @@ export function Composer({
             Message composer
           </label>
           <textarea
+            ref={composerRef}
             id={areaId}
             className="chat-composer-field"
             disabled={disabled}
