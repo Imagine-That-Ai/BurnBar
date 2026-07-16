@@ -105,6 +105,40 @@ final class UsageAggregatorTests: XCTestCase {
         XCTAssertNil(aggregator.lastRefresh)
     }
 
+    func test_memoryFootprintWatchdog_startIsIdempotentAndStopCancelsMonitor() async throws {
+        let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
+        let watchdog = MemoryFootprintWatchdog()
+
+        watchdog.start(aggregator: aggregator)
+        watchdog.start(aggregator: aggregator)
+        try await Task.sleep(for: .milliseconds(50))
+        watchdog.stop()
+        try await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertFalse(
+            aggregator.memoryPressureSheddingActive,
+            "A normal-footprint sample followed by cancellation must not shed background work"
+        )
+    }
+
+    func test_memoryFootprintWatchdog_unexpectedSleepFailureStopsWithoutShedding() async throws {
+        struct UnexpectedSleepFailure: Error {}
+
+        let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
+        let watchdog = MemoryFootprintWatchdog(sleep: { _ in
+            throw UnexpectedSleepFailure()
+        })
+
+        watchdog.start(aggregator: aggregator)
+        try await Task.sleep(for: .milliseconds(50))
+        watchdog.stop()
+
+        XCTAssertFalse(
+            aggregator.memoryPressureSheddingActive,
+            "A scheduler failure must stop monitoring without inventing a memory-pressure event"
+        )
+    }
+
     func test_init_projectionBacklogStartsDrainingWithoutRefresh() async throws {
         let dataStore = try makeTestDataStore()
         let jobCount = ProjectionWorkerPolicy.maxJobsPerPass + 3

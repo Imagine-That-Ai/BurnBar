@@ -564,6 +564,43 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: missingPath))
     }
 
+    func testOrphanSweep_toleratesDirectoryEnumerationFailure() throws {
+        let directoryPlaceholder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-orphan-scan-file-\(UUID().uuidString)")
+        try Data("not a directory".utf8).write(to: directoryPlaceholder)
+        defer { try? FileManager.default.removeItem(at: directoryPlaceholder) }
+
+        let databasePath = directoryPlaceholder
+            .appendingPathComponent("openburnbar.sqlite")
+            .path
+
+        DatabaseEncryptionService.removeOrphanedMigrationArtifacts(forDatabaseAt: databasePath)
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: directoryPlaceholder.path),
+            "A failed best-effort scan must not alter the path that could not be enumerated"
+        )
+    }
+
+    func testOrphanSweep_removesArtifactWhenSizeLookupFails() throws {
+        let directory = try makeOrphanSweepDirectory()
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let dbPath = (directory as NSString).appendingPathComponent("openburnbar.sqlite")
+        let orphanPath = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        try Data("orphan".utf8).write(to: URL(fileURLWithPath: orphanPath))
+
+        let fileManager = AttributeFaultFileManager(faultingPath: orphanPath)
+        DatabaseEncryptionService.removeOrphanedMigrationArtifacts(
+            forDatabaseAt: dbPath,
+            fileManager: fileManager
+        )
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: orphanPath),
+            "Size telemetry is best-effort; cleanup must continue when attributes cannot be read"
+        )
+    }
+
     /// Entering the migration check must reclaim orphans even when no migration
     /// runs (here: the primary database file does not exist yet).
     func testMigratePlaintextDatabaseIfNeeded_sweepsOrphansAtEntry() throws {
@@ -590,5 +627,21 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
             .appendingPathComponent("obb-orphan-sweep-\(UUID().uuidString)")
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         return directory
+    }
+}
+
+private final class AttributeFaultFileManager: FileManager {
+    private let faultingPath: String
+
+    init(faultingPath: String) {
+        self.faultingPath = faultingPath
+        super.init()
+    }
+
+    override func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any] {
+        if path == faultingPath {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return try super.attributesOfItem(atPath: path)
     }
 }
