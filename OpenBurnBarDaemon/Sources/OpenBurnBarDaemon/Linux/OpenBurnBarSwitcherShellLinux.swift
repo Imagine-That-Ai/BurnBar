@@ -224,6 +224,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         "BURNBAR_GATEWAY_AUTH_TOKEN"
     ]
     private static let deniedPrefixes = ["OPENBURNBAR_DAEMON_", "BURNBAR_DAEMON_", "OPENBURNBAR_GATEWAY_", "BURNBAR_GATEWAY_"]
+    private static let terminalDetailByteCap = 2_000
 
     public init(
         profileStore: any BurnBarSwitcherProfileStoreProviding,
@@ -247,6 +248,12 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
                 .compactMap({ BurnBarSwitcherSQLiteProfileStore.resolveExecutable($0, pathDirs: pathDirectories) })
                 .first {
                 let result = try await runProcess(executable: binary, arguments: request.forwardedArguments, workingDirectory: nil)
+                if result.status != 0 {
+                    throw BurnBarSwitcherShellError.terminalExited(
+                        result.status,
+                        detail: Self.boundedTerminalDetail(result.output)
+                    )
+                }
                 return BurnBarCLIShellExecutionResult(
                     exitCode: result.status,
                     launchedProfileID: "linux-path-\(request.cliType.rawValue)",
@@ -274,6 +281,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         var attempted: [String] = []
         var lastStatus: Int32 = EXIT_FAILURE
         var lastDetail: String?
+        var didRunProcess = false
 
         for profile in candidates {
             attempted.append(profile.id)
@@ -284,6 +292,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             else { continue }
             let cwd = profile.cliMetadata?.workingDirectory
             let extraArgs = profile.cliMetadata?.additionalArgs ?? []
+            didRunProcess = true
             let result = try await runProcess(
                 executable: binary,
                 arguments: extraArgs + request.forwardedArguments,
@@ -302,8 +311,11 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             }
         }
 
-        if let lastDetail, !lastDetail.isEmpty {
-            throw BurnBarSwitcherShellError.terminalExited(lastStatus, detail: String(lastDetail.prefix(2_000)))
+        if didRunProcess, lastStatus != 0 {
+            throw BurnBarSwitcherShellError.terminalExited(
+                lastStatus,
+                detail: Self.boundedTerminalDetail(lastDetail ?? "")
+            )
         }
         return BurnBarCLIShellExecutionResult(
             exitCode: lastStatus,
@@ -346,6 +358,25 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             }
             return true
         }
+    }
+
+    /// Keep terminal diagnostics bounded in bytes, not characters.  A
+    /// character-count prefix can exceed the contract for non-ASCII output.
+    private static func boundedTerminalDetail(_ output: String) -> String? {
+        guard !output.isEmpty else { return nil }
+
+        var end = output.startIndex
+        var byteCount = 0
+        while end < output.endIndex {
+            let next = output.index(after: end)
+            let characterByteCount = output[end..<next].utf8.count
+            guard byteCount + characterByteCount <= terminalDetailByteCap else { break }
+            byteCount += characterByteCount
+            end = next
+        }
+
+        guard end > output.startIndex else { return nil }
+        return String(output[..<end])
     }
 }
 
