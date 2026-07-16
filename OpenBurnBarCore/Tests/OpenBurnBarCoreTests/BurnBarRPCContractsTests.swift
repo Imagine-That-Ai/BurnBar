@@ -19,6 +19,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .linuxAuthCancel: "daemon.auth.cancel",
         .linuxAuthRotateIdentity: "daemon.auth.rotate_identity",
         .linuxAuthSignOut: "daemon.auth.sign_out",
+        .linuxAccountCloudDataDelete: "daemon.account.cloud_data.delete",
         .health: "daemon.health",
         .catalog: "daemon.catalog",
         .linuxOnboardingSnapshot: "daemon.onboarding.snapshot",

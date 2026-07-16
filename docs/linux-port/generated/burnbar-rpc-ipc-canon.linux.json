@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 151,
+  "methodCount": 152,
   "methods": [
     {
       "id": "approval.respond",
@@ -50,6 +50,16 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarClientDetachRequest",
       "result": "BurnBarClientArbitrationSnapshot",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.account.cloud_data.delete",
+      "caseName": "linuxAccountCloudDataDelete",
+      "domain": "auth",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarLinuxAccountCloudDataDeletionRequest",
+      "result": "BurnBarLinuxAccountCloudDataDeletionResponse",
       "error": "BurnBarRPCError"
     },
     {

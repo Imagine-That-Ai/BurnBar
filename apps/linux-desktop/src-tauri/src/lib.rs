@@ -4008,6 +4008,33 @@ fn account_status() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.auth.status", None)
 }
 
+/// Daemon-owned cloud account erasure. The shell forwards only the exact
+/// confirmation phrase; the daemon owns trusted-device approval and all cloud
+/// credentials. Error text is intentionally returned only from the daemon's
+/// redacted RPC mapping.
+#[tauri::command]
+fn account_delete_cloud_data(confirmation: String) -> Result<serde_json::Value, String> {
+    let confirmation = confirmation.trim();
+    if confirmation != "DELETE MY ACCOUNT" {
+        return Err("account_erasure_confirmation_invalid".to_string());
+    }
+    call_daemon_method(
+        "daemon.account.cloud_data.delete",
+        Some(serde_json::json!({ "confirmation": confirmation })),
+    )
+    .map_err(|error| match error.as_str() {
+        "Account erasure confirmation is invalid."
+        | "An account erasure request is already in progress."
+        | "Account erasure needs a connected trusted-device approval bridge."
+        | "Account erasure is unavailable until Linux cloud authentication is configured."
+        | "Sign in again before deleting cloud data."
+        | "Unlock Linux secure credential storage, then retry account erasure."
+        | "Trusted-device authorization was not approved; retry from an approved device."
+        | "Account erasure did not complete; retry." => error,
+        _ => "account_erasure_rpc_unavailable".to_string(),
+    })
+}
+
 fn finish_account_browser_launch<Launch, Cancel, Status>(
     mut result: serde_json::Value,
     launch: Launch,
@@ -6847,6 +6874,7 @@ pub fn run() {
             database_recovery_bundle_export,
             database_recovery_bundle_import,
             account_status,
+            account_delete_cloud_data,
             account_begin_sign_in,
             account_cancel_sign_in,
             account_rotate_identity,

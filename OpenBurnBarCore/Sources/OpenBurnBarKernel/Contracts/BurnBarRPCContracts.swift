@@ -16,6 +16,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case linuxAuthCancel = "daemon.auth.cancel"
     case linuxAuthRotateIdentity = "daemon.auth.rotate_identity"
     case linuxAuthSignOut = "daemon.auth.sign_out"
+    case linuxAccountCloudDataDelete = "daemon.account.cloud_data.delete"
     case health = "daemon.health"
     case catalog = "daemon.catalog"
     case linuxOnboardingSnapshot = "daemon.onboarding.snapshot"
@@ -295,6 +296,56 @@ public struct BurnBarLinuxAuthMutationResponse: Codable, Hashable, Sendable {
     public init(ok: Bool, status: BurnBarLinuxAuthStatusResponse) {
         self.ok = ok
         self.status = status
+    }
+}
+
+/// Daemon-owned account erasure request. The renderer sends only the exact
+/// confirmation phrase; trusted-device proof and cloud credentials stay inside
+/// the Linux daemon authority.
+public struct BurnBarLinuxAccountCloudDataDeletionRequest: Codable, Hashable, Sendable {
+    public let confirmation: String
+
+    public init(confirmation: String) {
+        self.confirmation = confirmation
+    }
+}
+
+/// Redacted, bounded summary returned after the canonical cloud callable has
+/// completed. No UID, token, nonce, proof, or provider data crosses the RPC.
+public struct BurnBarLinuxAccountCloudDataDeletionResponse: Codable, Hashable, Sendable {
+    public let ok: Bool
+    public let cloudDataDeleted: Bool
+    public let retryRequired: Bool
+    public let deletedDocuments: Int
+    public let destroyedSecrets: Int
+    public let failedSecretDestroys: Int
+    public let deletedStoragePrefixes: Int
+    public let failedStorageDeletes: Int
+    public let deletedAuthUser: Bool
+    public let authUserAlreadyMissing: Bool
+
+    public init(
+        ok: Bool,
+        cloudDataDeleted: Bool,
+        retryRequired: Bool,
+        deletedDocuments: Int = 0,
+        destroyedSecrets: Int = 0,
+        failedSecretDestroys: Int = 0,
+        deletedStoragePrefixes: Int = 0,
+        failedStorageDeletes: Int = 0,
+        deletedAuthUser: Bool = false,
+        authUserAlreadyMissing: Bool = false
+    ) {
+        self.ok = ok
+        self.cloudDataDeleted = cloudDataDeleted
+        self.retryRequired = retryRequired
+        self.deletedDocuments = deletedDocuments
+        self.destroyedSecrets = destroyedSecrets
+        self.failedSecretDestroys = failedSecretDestroys
+        self.deletedStoragePrefixes = deletedStoragePrefixes
+        self.failedStorageDeletes = failedStorageDeletes
+        self.deletedAuthUser = deletedAuthUser
+        self.authUserAlreadyMissing = authUserAlreadyMissing
     }
 }
 

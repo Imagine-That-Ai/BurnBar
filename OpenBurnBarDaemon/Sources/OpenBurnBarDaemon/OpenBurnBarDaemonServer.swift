@@ -804,6 +804,33 @@ public actor BurnBarDaemonServer {
         try await linuxCloudCredentialAuthority.rotateInstallationIdentity()
         return await linuxCloudCredentialAuthority.status()
     }
+
+    /// Execute the canonical server-owned account erasure through the Linux
+    /// credential authority. The renderer supplies only the confirmation
+    /// phrase; trusted-device authorization, Firebase credentials, and the
+    /// callable request remain daemon-owned.
+    public func deleteLinuxAccountCloudData(
+        confirmation: String
+    ) async throws -> BurnBarLinuxAccountCloudDataDeletionResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        let result = try await linuxCloudCredentialAuthority.requestCloudDataDeletion(
+            confirmationToken: confirmation
+        )
+        return BurnBarLinuxAccountCloudDataDeletionResponse(
+            ok: result.success,
+            cloudDataDeleted: result.cloudDataDeleted,
+            retryRequired: result.retryRequired,
+            deletedDocuments: result.deletedDocuments,
+            destroyedSecrets: result.destroyedSecrets,
+            failedSecretDestroys: result.failedSecretDestroys,
+            deletedStoragePrefixes: result.deletedStoragePrefixes,
+            failedStorageDeletes: result.failedStorageDeletes,
+            deletedAuthUser: result.deletedAuthUser,
+            authUserAlreadyMissing: result.authUserAlreadyMissing
+        )
+    }
     #endif
 
     func ingestComputerUsePanic(
@@ -1247,7 +1274,8 @@ public actor BurnBarDaemonServer {
 
             switch method {
             case .linuxAuthStatus, .linuxAuthBegin, .linuxAuthCancel,
-                 .linuxAuthRotateIdentity, .linuxAuthSignOut:
+                 .linuxAuthRotateIdentity, .linuxAuthSignOut,
+                 .linuxAccountCloudDataDelete:
                 return try await handleLinuxAuthRPC(
                     method: method,
                     decoder: decoder,

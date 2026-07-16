@@ -43,6 +43,25 @@ final class BurnBarDaemonLinuxAuthSocketTests: XCTestCase {
         XCTAssertFalse(initialStatus.result?.signedIn ?? true)
         XCTAssertNil(initialStatus.result?.identityLabel)
 
+        let deletionRequest = BurnBarRPCRequestEnvelopeWithParams(
+            id: "account-erasure-unavailable",
+            method: BurnBarRPCMethod.linuxAccountCloudDataDelete,
+            authToken: authToken,
+            params: BurnBarLinuxAccountCloudDataDeletionRequest(confirmation: "DELETE MY ACCOUNT")
+        )
+        let deletionData = try roundTrip(try JSONEncoder().encode(deletionRequest), socketPath: socketPath)
+        responsePayloads.append(deletionData)
+        let deletion = try decode(
+            BurnBarRPCResponseEnvelope<BurnBarEmptyResult>.self,
+            from: deletionData
+        )
+        XCTAssertNil(deletion.result)
+        XCTAssertEqual(deletion.error?.code, BurnBarRPCErrorCode.unavailable)
+        XCTAssertEqual(
+            deletion.error?.message,
+            "Account erasure needs a connected trusted-device approval bridge."
+        )
+
         let beginData = try roundTrip(
             try encodeEnvelope(id: "auth-begin", method: .linuxAuthBegin),
             socketPath: socketPath
@@ -172,7 +191,16 @@ final class BurnBarDaemonLinuxAuthSocketTests: XCTestCase {
                 .linuxAuthRotateIdentity,
                 try encodeEnvelope(id: "denied-rotate", method: .linuxAuthRotateIdentity)
             ),
-            (.linuxAuthSignOut, try encodeEnvelope(id: "denied-sign-out", method: .linuxAuthSignOut))
+            (.linuxAuthSignOut, try encodeEnvelope(id: "denied-sign-out", method: .linuxAuthSignOut)),
+            (
+                .linuxAccountCloudDataDelete,
+                try JSONEncoder().encode(BurnBarRPCRequestEnvelopeWithParams(
+                    id: "denied-account-erasure",
+                    method: BurnBarRPCMethod.linuxAccountCloudDataDelete,
+                    authToken: authToken,
+                    params: BurnBarLinuxAccountCloudDataDeletionRequest(confirmation: "DELETE MY ACCOUNT")
+                ))
+            )
         ]
 
         for (method, requestData) in mutationRequests {

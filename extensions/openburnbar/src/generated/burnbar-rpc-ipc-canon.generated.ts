@@ -62,6 +62,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.account.cloud_data.delete",
+    "caseName": "linuxAccountCloudDataDelete",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxAccountCloudDataDeletionRequest",
+    "result": "BurnBarLinuxAccountCloudDataDeletionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.auth.begin",
     "caseName": "linuxAuthBegin",
     "domain": "auth",

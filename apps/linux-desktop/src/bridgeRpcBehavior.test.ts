@@ -633,6 +633,32 @@ describe('VAL-RPC-002 bridge behavior', () => {
     });
   });
 
+  it('forwards account erasure confirmation only through the daemon-owned RPC and maps a redacted summary', async () => {
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      cloudDataDeleted: true,
+      retryRequired: false,
+      deletedDocuments: 4,
+      destroyedSecrets: 1,
+      failedSecretDestroys: 0,
+      deletedStoragePrefixes: 2,
+      failedStorageDeletes: 0,
+      deletedAuthUser: true,
+      authUserAlreadyMissing: false
+    });
+    const b = await bridge();
+
+    const result = await b.accountDeleteCloudData?.('DELETE MY ACCOUNT');
+    expect(result).toMatchObject({
+      ok: true,
+      cloudDataDeleted: true,
+      deletedDocuments: 4,
+      deletedStoragePrefixes: 2
+    });
+    expect(invoke).toHaveBeenCalledWith('account_delete_cloud_data', { confirmation: 'DELETE MY ACCOUNT' });
+    expect(JSON.stringify(result)).not.toMatch(/nonce|proof|token|uid/i);
+  });
+
   it.each(['authorizing', 'signed_out'])(
     'does not trust a stale signedIn bit during %s',
     async (phase) => {

@@ -106,6 +106,7 @@ function domainName(name) {
 }
 
 const explicitTypes = {
+  "daemon.account.cloud_data.delete": ["BurnBarLinuxAccountCloudDataDeletionRequest", "BurnBarLinuxAccountCloudDataDeletionResponse"],
   "daemon.auth.status": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAuthStatusResponse"],
   "daemon.auth.begin": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAuthBeginResponse"],
   "daemon.auth.cancel": ["BurnBarLinuxAuthCancelRequest", "BurnBarLinuxAuthMutationResponse"],

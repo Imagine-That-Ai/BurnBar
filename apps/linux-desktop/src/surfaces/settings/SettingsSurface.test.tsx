@@ -162,6 +162,34 @@ describe('SettingsSurface', () => {
     expect(screen.getByText(/No destructive deletion RPC is exposed/i)).toBeTruthy();
   });
 
+  it('requires the exact account-erasure phrase and exposes a retryable daemon result', async () => {
+    const accountDeleteCloudData = vi.fn(async () => ({
+      ok: true,
+      cloudDataDeleted: true,
+      retryRequired: false,
+      deletedDocuments: 4,
+      destroyedSecrets: 1,
+      failedSecretDestroys: 0,
+      deletedStoragePrefixes: 2,
+      failedStorageDeletes: 0,
+      deletedAuthUser: true,
+      authUserAlreadyMissing: false
+    }));
+    useShellStore.setState({ bridge: bridge({ accountDeleteCloudData }), fixtureMode: false });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Data & Privacy/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete cloud account data' }));
+    const confirmation = screen.getByRole('textbox', { name: 'Account erasure confirmation' });
+    expect((screen.getByRole('button', { name: 'Confirm account erasure' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(confirmation, { target: { value: 'DELETE MY ACCOUNT' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm account erasure' }));
+
+    await waitFor(() => expect(accountDeleteCloudData).toHaveBeenCalledWith('DELETE MY ACCOUNT'));
+    await waitFor(() => expect(screen.getByText(/Cloud account data was deleted/i)).toBeTruthy());
+  });
+
   it('clears only the daemon-owned local proxy route log after explicit confirmation', async () => {
     let routeRows = [{
       id: 'route-1',

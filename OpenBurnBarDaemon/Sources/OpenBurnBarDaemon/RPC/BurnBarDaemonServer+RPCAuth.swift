@@ -77,6 +77,33 @@ extension BurnBarDaemonServer {
                     message: "Linux sign-out did not complete."
                 )
             }
+        case .linuxAccountCloudDataDelete:
+            let request = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarLinuxAccountCloudDataDeletionRequest>.self,
+                from: requestData
+            )
+            guard request.params.confirmation == LinuxCloudDataDeletionRequest.confirmationToken else {
+                return encodeErrorResponse(
+                    id: request.id,
+                    code: BurnBarRPCErrorCode.invalidParams,
+                    message: "Account erasure confirmation is invalid."
+                )
+            }
+            do {
+                let result = try await deleteLinuxAccountCloudData(
+                    confirmation: request.params.confirmation
+                )
+                return encode(BurnBarRPCResponseEnvelope(id: request.id, result: result))
+            } catch let error as LinuxCloudAuthAuthorityError {
+                let mapped = accountCloudDataDeletionRPCError(error)
+                return encodeErrorResponse(id: request.id, code: mapped.code, message: mapped.message)
+            } catch {
+                return encodeErrorResponse(
+                    id: request.id,
+                    code: BurnBarRPCErrorCode.unavailable,
+                    message: "Account erasure did not complete; retry."
+                )
+            }
         default:
             preconditionFailure("Unhandled Linux auth RPC method: \(method.rawValue)")
         }
@@ -87,6 +114,34 @@ extension BurnBarDaemonServer {
             code: BurnBarRPCErrorCode.methodNotFound,
             message: "Linux authentication is unavailable on this platform."
         )
-        #endif
+    #endif
+}
+
+#if os(Linux)
+private func accountCloudDataDeletionRPCError(
+    _ error: LinuxCloudAuthAuthorityError
+) -> (code: Int, message: String) {
+    switch error {
+    case .operationMismatch:
+        return (BurnBarRPCErrorCode.invalidParams, "Account erasure confirmation is invalid.")
+    case .dataControlInProgress:
+        return (BurnBarRPCErrorCode.conflict, "An account erasure request is already in progress.")
+    case .trustedDeviceBridgeUnavailable:
+        return (BurnBarRPCErrorCode.unavailable, "Account erasure needs a connected trusted-device approval bridge.")
+    case .configurationRequired:
+        return (BurnBarRPCErrorCode.unavailable, "Account erasure is unavailable until Linux cloud authentication is configured.")
+    case .notSignedIn, .reauthorizationRequired:
+        return (BurnBarRPCErrorCode.unauthorized, "Sign in again before deleting cloud data.")
+    case .secureStoreUnavailable:
+        return (BurnBarRPCErrorCode.unavailable, "Unlock Linux secure credential storage, then retry account erasure.")
+    case .deviceApprovalRequired, .deviceRejected, .trustedDeviceAuthorizationRejected,
+         .dataControlAuthorizationInvalid:
+        return (BurnBarRPCErrorCode.unauthorized, "Trusted-device authorization was not approved; retry from an approved device.")
+    case .cloudUnavailable, .cloudResponseInvalid, .sessionChanged,
+         .authorizationInProgress, .authorizationFailed, .appCheckConfigurationRejected,
+         .installationIdentityUnavailable:
+        return (BurnBarRPCErrorCode.unavailable, "Account erasure did not complete; retry.")
     }
+}
+#endif
 }

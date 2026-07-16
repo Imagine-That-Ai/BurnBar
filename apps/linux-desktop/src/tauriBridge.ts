@@ -700,6 +700,20 @@ export type AccountSignInOperation = {
   expiresAt: string;
 };
 
+export const ACCOUNT_CLOUD_DATA_DELETION_CONFIRMATION = 'DELETE MY ACCOUNT';
+export type AccountCloudDataDeletionResult = {
+  ok: boolean;
+  cloudDataDeleted: boolean;
+  retryRequired: boolean;
+  deletedDocuments: number;
+  destroyedSecrets: number;
+  failedSecretDestroys: number;
+  deletedStoragePrefixes: number;
+  failedStorageDeletes: number;
+  deletedAuthUser: boolean;
+  authUserAlreadyMissing: boolean;
+};
+
 // ─────────────────────────── P10: membership ──────────────────────────────
 
 export type MembershipTier = 'free' | 'pro';
@@ -1540,6 +1554,8 @@ export interface LinuxShellBridge {
   accountCancelSignIn(operationID: string): Promise<AccountStatus>;
   accountRotateIdentity(): Promise<AccountStatus>;
   accountSignOut(): Promise<AccountStatus>;
+  /** Optional on older packaged shells; daemon-owned and fail-closed. */
+  accountDeleteCloudData?(confirmation: string): Promise<AccountCloudDataDeletionResult>;
   membershipStatus?(): Promise<MembershipStatus>;
   membershipCheckoutUrl?(): Promise<string>;
   openExternalUrl?(url: string): Promise<void>;
@@ -3386,6 +3402,42 @@ function mapAccountStatus(raw: RawJsonValue): AccountStatus {
   };
 }
 
+function mapAccountCloudDataDeletionResult(raw: RawJsonValue): AccountCloudDataDeletionResult {
+  const value = obj(pick(raw, 'result') ?? raw);
+  const count = (key: string): number => {
+    const result = Math.trunc(num(pick(value, key)));
+    if (result < 0 || result > 100_000_000) {
+      throw new Error('Native account erasure returned an invalid count.');
+    }
+    return result;
+  };
+  const result: AccountCloudDataDeletionResult = {
+    ok: requireBoolean(pick(value, 'ok'), 'account erasure.ok'),
+    cloudDataDeleted: requireBoolean(
+      pick(value, 'cloudDataDeleted', 'cloud_data_deleted'),
+      'account erasure.cloudDataDeleted'
+    ),
+    retryRequired: requireBoolean(
+      pick(value, 'retryRequired', 'retry_required'),
+      'account erasure.retryRequired'
+    ),
+    deletedDocuments: count('deletedDocuments'),
+    destroyedSecrets: count('destroyedSecrets'),
+    failedSecretDestroys: count('failedSecretDestroys'),
+    deletedStoragePrefixes: count('deletedStoragePrefixes'),
+    failedStorageDeletes: count('failedStorageDeletes'),
+    deletedAuthUser: requireBoolean(pick(value, 'deletedAuthUser'), 'account erasure.deletedAuthUser'),
+    authUserAlreadyMissing: requireBoolean(
+      pick(value, 'authUserAlreadyMissing'),
+      'account erasure.authUserAlreadyMissing'
+    )
+  };
+  if (!result.ok || !result.cloudDataDeleted) {
+    throw new Error('Native account erasure did not complete.');
+  }
+  return result;
+}
+
 function mapAccountSignInOperation(raw: RawJsonValue): AccountSignInOperation {
   const operationID = str(pick(raw, 'operationID', 'operationId'));
   const expiresAt = str(pick(raw, 'expiresAt'));
@@ -5174,6 +5226,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     accountStatus: async () => {
       const raw = await invoke<RawJsonValue>('account_status');
       return mapAccountStatus(raw);
+    },
+    accountDeleteCloudData: async (confirmation) => {
+      const raw = await invoke<RawJsonValue>('account_delete_cloud_data', { confirmation });
+      return mapAccountCloudDataDeletionResult(raw);
     },
     accountBeginSignIn: async () => {
       const raw = await invoke<RawJsonValue>('account_begin_sign_in');

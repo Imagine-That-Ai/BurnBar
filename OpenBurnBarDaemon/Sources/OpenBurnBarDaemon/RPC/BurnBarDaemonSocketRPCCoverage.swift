@@ -9,7 +9,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         .linuxAuthBegin,
         .linuxAuthCancel,
         .linuxAuthRotateIdentity,
-        .linuxAuthSignOut
+        .linuxAuthSignOut,
+        .linuxAccountCloudDataDelete
     ]
 
     static let lifecycle: Set<BurnBarRPCMethod> = [

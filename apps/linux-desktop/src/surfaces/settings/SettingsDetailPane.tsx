@@ -3,12 +3,14 @@ import { useEffect, useMemo, useState } from 'react';
 import type {
   AccountStatus,
   ConfigSnapshot,
+  AccountCloudDataDeletionResult,
   LinuxPrivacyStoreID,
   LinuxShellBridge,
   LinuxPrivacyRetentionRule,
   NotificationConfig,
   ProviderSettings
 } from '../../tauriBridge.js';
+import { ACCOUNT_CLOUD_DATA_DELETION_CONFIRMATION } from '../../tauriBridge.js';
 import type { DaemonStatusCopy } from '../../daemonStatusCopy.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
@@ -568,6 +570,118 @@ function PrivacyRetentionControl({ fixtureMode }: { fixtureMode: boolean }) {
       </div>
       {retention.status === 'success' ? <Banner tone="ok" role="status">{retention.message}</Banner> : null}
       {retention.status === 'error' ? <Banner tone="degraded" role="alert">{retention.message}</Banner> : null}
+    </>
+  );
+}
+
+function AccountCloudDataDeletionControl({ fixtureMode }: { fixtureMode: boolean }) {
+  const bridge = useShellStore((state) => state.bridge);
+  const busy = useSettingsWiringStore((state) => state.busy);
+  const [phase, setPhase] = useState<'idle' | 'confirming' | 'deleting' | 'success' | 'error'>('idle');
+  const [confirmation, setConfirmation] = useState('');
+  const [result, setResult] = useState<AccountCloudDataDeletionResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const supported = !fixtureMode && typeof bridge?.accountDeleteCloudData === 'function';
+
+  if (!supported) {
+    return (
+      <SettingRow
+        iconGlyph="◎"
+        label="Account erasure"
+        description="Delete cloud account data through the daemon-owned audited erasure callable."
+        control={<span className="muted" role="status">Unavailable</span>}
+        readOnlyNote="The packaged daemon must expose the authenticated account-erasure RPC; nothing is deleted from this pane."
+      />
+    );
+  }
+
+  const deleting = phase === 'deleting';
+  const confirming = phase === 'confirming' || deleting;
+  const disabled = Boolean(busy) || deleting;
+  const begin = () => {
+    setPhase('confirming');
+    setConfirmation('');
+    setResult(null);
+    setError(null);
+  };
+  const cancel = () => {
+    if (deleting) return;
+    setPhase('idle');
+    setConfirmation('');
+    setError(null);
+  };
+  const execute = async () => {
+    if (confirmation !== ACCOUNT_CLOUD_DATA_DELETION_CONFIRMATION || !bridge?.accountDeleteCloudData || deleting) return;
+    setPhase('deleting');
+    setError(null);
+    try {
+      const next = await bridge.accountDeleteCloudData(ACCOUNT_CLOUD_DATA_DELETION_CONFIRMATION);
+      setResult(next);
+      setConfirmation('');
+      setPhase('success');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Account erasure did not complete; retry.');
+      setPhase('error');
+    }
+  };
+
+  return (
+    <>
+      <SettingRow
+        iconGlyph="◎"
+        label="Account erasure"
+        description="Delete cloud account data through the daemon-owned audited callable. Local data and credentials are not silently removed."
+        control={
+          <button
+            type="button"
+            className="danger"
+            disabled={disabled}
+            onClick={begin}
+          >
+            {deleting ? 'Deleting…' : phase === 'error' ? 'Retry account erasure' : 'Delete cloud account data'}
+          </button>
+        }
+      />
+      {confirming ? (
+        <div className="actions">
+          <p className="muted" role="status">
+            This is irreversible. Type {ACCOUNT_CLOUD_DATA_DELETION_CONFIRMATION} to request trusted-device approval.
+          </p>
+          <label className="setting-field">
+            <span>Account erasure confirmation</span>
+            <input
+              type="text"
+              value={confirmation}
+              aria-label="Account erasure confirmation"
+              autoComplete="off"
+              disabled={deleting}
+              onChange={(event) => setConfirmation(event.currentTarget.value)}
+            />
+          </label>
+          <span className="settings-verification-value">
+            <button
+              type="button"
+              className="danger"
+              disabled={deleting || confirmation !== ACCOUNT_CLOUD_DATA_DELETION_CONFIRMATION}
+              aria-busy={deleting}
+              onClick={() => void execute()}
+            >
+              {deleting ? 'Deleting…' : 'Confirm account erasure'}
+            </button>
+            <button type="button" className="ghost" disabled={deleting} onClick={cancel}>Cancel</button>
+          </span>
+        </div>
+      ) : null}
+      {phase === 'success' && result ? (
+        <Banner tone="ok" role="status">
+          Cloud account data was deleted. {result.deletedDocuments} document(s), {result.destroyedSecrets} secret(s), and {result.deletedStoragePrefixes} storage prefix(es) removed.
+        </Banner>
+      ) : null}
+      {phase === 'error' ? (
+        <Banner tone="degraded" role="alert">
+          {error ?? 'Account erasure did not complete; retry.'}
+        </Banner>
+      ) : null}
     </>
   );
 }
@@ -1712,13 +1826,7 @@ export function SettingsDetailPane({
               <PrivacyDeletionControl fixtureMode={fixtureMode} />
               <ProxyRouteRetentionControl fixtureMode={fixtureMode} />
               <PrivacyRetentionControl fixtureMode={fixtureMode} />
-              <SettingRow
-                iconGlyph="◎"
-                label="Account erasure"
-                description="Account-level deletion and cloud propagation are not implemented in the Linux desktop contract."
-                control={<span className="muted" role="status">Unavailable</span>}
-                readOnlyNote="Use an audited account workflow when the service exposes one; this shell cannot claim erasure."
-              />
+              <AccountCloudDataDeletionControl fixtureMode={fixtureMode} />
               <RecoveryAndRestoreControl
                 fixtureMode={fixtureMode}
                 onOpenDatabase={onOpenDatabase}

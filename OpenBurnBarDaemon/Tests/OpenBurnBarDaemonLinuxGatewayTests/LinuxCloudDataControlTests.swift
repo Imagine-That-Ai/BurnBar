@@ -234,6 +234,25 @@ final class LinuxCloudDataControlTests: XCTestCase {
         XCTAssertEqual(result.deletedDocuments, 4)
         XCTAssertTrue(result.deletedAuthUser)
     }
+
+    func testAccountErasureRPCSummaryDoesNotExposeAuthorizationMaterial() throws {
+        let response = BurnBarLinuxAccountCloudDataDeletionResponse(
+            ok: true,
+            cloudDataDeleted: true,
+            retryRequired: false,
+            deletedDocuments: 4,
+            destroyedSecrets: 1,
+            deletedStoragePrefixes: 2,
+            deletedAuthUser: true
+        )
+        let data = try JSONEncoder().encode(response)
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(text.contains("nonce"))
+        XCTAssertFalse(text.contains("proof"))
+        XCTAssertFalse(text.contains("token"))
+        XCTAssertFalse(text.contains("uid"))
+        XCTAssertEqual(try JSONDecoder().decode(BurnBarLinuxAccountCloudDataDeletionResponse.self, from: data), response)
+    }
 }
 
 private actor DataControlTransportCounter {
