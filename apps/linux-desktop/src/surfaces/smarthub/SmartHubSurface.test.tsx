@@ -72,6 +72,31 @@ describe('P28 SmartHub surface', () => {
     expect(screen.getByText('Discovery')).toBeTruthy();
   });
 
+  it('renders a bounded Avahi timeout as an actionable discovery outcome', async () => {
+    const command = vi.fn(async (operation: SmartHubOperation): Promise<SmartHubCommandResult> => {
+      if (operation === 'discover') {
+        return {
+          operation,
+          payload: [{
+            adapter: 'smart_hub_bridge',
+            serviceType: '_openburnbar-peer._tcp',
+            instances: [],
+            rawTranscript: '<avahi-timeout>',
+            status: 'timeout',
+            blocker: 'Avahi discovery exceeded the timeout.'
+          }]
+        };
+      }
+      return statusResult(operation);
+    });
+    useShellStore.setState({ bridge: bridgeWithCommand(command) });
+    render(<SmartHubSurface />);
+    await waitFor(() => expect(command).toHaveBeenCalledWith('status', expect.anything()));
+    fireEvent.change(screen.getByLabelText('Operation'), { target: { value: 'discover' } });
+    await waitFor(() => expect(screen.getByText('timeout')).toBeTruthy());
+    expect(screen.getByText('Avahi discovery exceeded the timeout.')).toBeTruthy();
+  });
+
   it('uses the existing integrations status method for older shells on parity only', async () => {
     const integrationsStatus = vi.fn(async () => ({ integrations: [] }));
     useShellStore.setState({ bridge: { integrationsStatus } as unknown as LinuxShellBridge });

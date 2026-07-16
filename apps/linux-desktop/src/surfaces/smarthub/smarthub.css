@@ -54,6 +54,10 @@
   color: var(--color-text-secondary);
 }
 
+.smarthub-discovery-outcome {
+  margin-top: var(--space-3);
+}
+
 .smarthub-detail-list {
   display: grid;
   gap: var(--space-2);

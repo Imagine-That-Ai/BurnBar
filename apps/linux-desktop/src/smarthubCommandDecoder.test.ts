@@ -22,9 +22,30 @@ describe('P28 SmartHub command decoder', () => {
           adapter: 'smart_hub_bridge',
           serviceType: '_openburnbar-peer._tcp',
           instances: [],
-          rawTranscript: ''
+          rawTranscript: '',
+          status: undefined,
+          blocker: undefined
         }
       ]
+    });
+  });
+
+  it('preserves bounded Avahi timeout outcomes for actionable renderer copy', () => {
+    expect(
+      decodeSmartHubCommandResponse({
+        operation: 'discover',
+        payload: [{
+          adapter: 'smart_hub_bridge',
+          serviceType: '_openburnbar-peer._tcp',
+          instances: [],
+          rawTranscript: '<avahi-timeout>',
+          status: 'timeout',
+          blocker: 'Avahi discovery exceeded the timeout.'
+        }]
+      })
+    ).toMatchObject({
+      operation: 'discover',
+      payload: [{ status: 'timeout', blocker: 'Avahi discovery exceeded the timeout.' }]
     });
   });
 

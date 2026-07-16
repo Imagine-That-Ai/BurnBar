@@ -32,7 +32,9 @@ function fixtureCommand(operation: SmartHubOperation): SmartHubCommandResult {
           adapter: 'smart_hub_bridge',
           serviceType: '_openburnbar-peer._tcp',
           instances: ['OpenBurnBar-fixture'],
-          rawTranscript: 'fixture transcript; no live network access'
+          rawTranscript: 'fixture transcript; no live network access',
+          status: 'fixture',
+          blocker: 'Fixture mode does not perform live Avahi discovery.'
         }
       ]
     };
@@ -230,6 +232,17 @@ export function SmartHubSurface() {
                   )}
                 </ul>
               )}
+              {result.payload.map((row) => (
+                <div key={`${row.adapter}-${row.serviceType}-outcome`} className="smarthub-discovery-outcome">
+                  {row.status && row.status !== 'ok' ? (
+                    <p className="smarthub-status-heading">
+                      <strong>Discovery outcome</strong>
+                      <span aria-label={`Discovery status: ${row.status}`}>{row.status}</span>
+                    </p>
+                  ) : null}
+                  {row.blocker ? <p className="smarthub-blocker">{row.blocker}</p> : null}
+                </div>
+              ))}
               <p className="smarthub-muted">Service: {result.payload[0]?.serviceType ?? 'unknown'}</p>
             </div>
           ) : result.operation === 'parity' ? (

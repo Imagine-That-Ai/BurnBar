@@ -1197,6 +1197,9 @@ export type SmartHubDiscoveryResult = {
   serviceType: string;
   instances: string[];
   rawTranscript: string;
+  /** `ok` is a completed scan; other values explain a bounded failure. */
+  status?: string;
+  blocker?: string;
 };
 export type SmartHubStatusResult = {
   adapter: string;
@@ -3832,7 +3835,13 @@ function mapSmartHubCommand(raw: RawJsonValue): SmartHubCommandResult {
         adapter: boundedSmartHubText(row.adapter, `SmartHub discovery result ${index} adapter`),
         serviceType: boundedSmartHubText(row.serviceType, `SmartHub discovery result ${index} serviceType`, 256),
         instances,
-        rawTranscript: boundedSmartHubText(row.rawTranscript, `SmartHub discovery result ${index} rawTranscript`, SMART_HUB_MAX_RAW_TRANSCRIPT_CHARS, true)
+        rawTranscript: boundedSmartHubText(row.rawTranscript, `SmartHub discovery result ${index} rawTranscript`, SMART_HUB_MAX_RAW_TRANSCRIPT_CHARS, true),
+        status: row.status === undefined
+          ? undefined
+          : boundedSmartHubText(row.status, `SmartHub discovery result ${index} status`, 64),
+        blocker: row.blocker === undefined || row.blocker === null
+          ? undefined
+          : boundedSmartHubText(row.blocker, `SmartHub discovery result ${index} blocker`, SMART_HUB_MAX_TEXT_CHARS, true) || undefined
       };
     });
     return { operation, payload: rows };

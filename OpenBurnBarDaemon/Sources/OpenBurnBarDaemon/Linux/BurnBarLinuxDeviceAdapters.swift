@@ -1,5 +1,6 @@
 #if os(Linux)
 import Foundation
+import Glibc
 
 /// Linux discovery/control adapters for PixelClock, Cast, SmartHub bridge, and Home Assistant.
 public enum BurnBarLinuxDeviceAdapters {
@@ -24,6 +25,11 @@ public enum BurnBarLinuxDeviceAdapters {
         public var serviceType: String
         public var instances: [String]
         public var rawTranscript: String
+        /// `ok` means the bounded Avahi command completed normally. Other
+        /// states are intentionally explicit so an empty result is not
+        /// mistaken for a successful no-device scan.
+        public var status: String = "ok"
+        public var blocker: String?
     }
 
     private struct ServiceEndpoint: Sendable, Equatable {
@@ -37,6 +43,48 @@ public enum BurnBarLinuxDeviceAdapters {
             "http://\(address):\(port)"
         }
     }
+
+    private struct AvahiBrowseCapture: Sendable {
+        var transcript: String
+        var timedOut: Bool
+        var outputTruncated: Bool
+        var error: String?
+    }
+
+    /// `DispatchQueue` reads the pipe while the child is running. Without a
+    /// concurrent reader, a noisy Avahi process can fill the POSIX pipe and
+    /// make `waitUntilExit()` hang forever before the timeout is reached.
+    private final class AvahiOutputBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = Data()
+        private var didTruncate = false
+
+        func store(_ data: Data, truncated: Bool) {
+            lock.lock()
+            value = data
+            didTruncate = truncated
+            lock.unlock()
+        }
+
+        func snapshot() -> (data: Data, truncated: Bool) {
+            lock.lock()
+            defer { lock.unlock() }
+            return (value, didTruncate)
+        }
+    }
+
+    private final class AvahiPipeBox: @unchecked Sendable {
+        let pipe: Pipe
+
+        init(_ pipe: Pipe) {
+            self.pipe = pipe
+        }
+    }
+
+    private static let defaultAvahiBrowseTimeoutSeconds: TimeInterval = 4
+    /// Keep this below the renderer's 32 KiB SmartHub transcript limit. The
+    /// extra headroom leaves room for a bounded outcome marker.
+    private static let maxAvahiTranscriptBytes = 24 * 1024
 
     public enum AdapterError: Error, LocalizedError {
         case invalidUsage(String)
@@ -68,7 +116,8 @@ public enum BurnBarLinuxDeviceAdapters {
     }
 
     private static func handleDiscover(arguments: [String], json: Bool) throws -> String {
-        let filter = arguments.first ?? "all"
+        let filter = discoverFilter(arguments) ?? "all"
+        let timeout = boundedAvahiTimeout(arguments)
         let adapters: [AdapterID]
         switch filter {
         case "all":
@@ -91,7 +140,7 @@ public enum BurnBarLinuxDeviceAdapters {
 
         var results: [DiscoveryResult] = []
         for adapter in adapters {
-            results.append(try discover(adapter: adapter))
+            results.append(try discover(adapter: adapter, timeoutSeconds: timeout))
         }
         if json {
             let data = try JSONEncoder().encode(results)
@@ -202,7 +251,10 @@ public enum BurnBarLinuxDeviceAdapters {
         return payload.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: "\n")
     }
 
-    private static func discover(adapter: AdapterID) throws -> DiscoveryResult {
+    private static func discover(
+        adapter: AdapterID,
+        timeoutSeconds: TimeInterval = defaultAvahiBrowseTimeoutSeconds
+    ) throws -> DiscoveryResult {
         let serviceType: String
         switch adapter {
         case .pixelClock, .awtrixHTTP:
@@ -220,29 +272,34 @@ public enum BurnBarLinuxDeviceAdapters {
                 adapter: adapter.rawValue,
                 serviceType: serviceType,
                 instances: [],
-                rawTranscript: "avahi-browse unavailable"
+                rawTranscript: "avahi-browse unavailable",
+                status: "unavailable",
+                blocker: "Install avahi-utils (avahi-browse) for Linux mDNS discovery."
             )
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: browsePath)
-        process.arguments = ["-rtp", serviceType]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        let transcript = readPipe(pipe)
-        let instances = parseInstances(from: transcript, adapter: adapter)
+        let capture = runAvahiBrowse(
+            executablePath: browsePath,
+            serviceType: serviceType,
+            timeoutSeconds: timeoutSeconds,
+            maxBytes: maxAvahiTranscriptBytes
+        )
+        let instances = parseInstances(from: capture.transcript, adapter: adapter)
+        let outcome = discoveryOutcome(capture)
         return DiscoveryResult(
             adapter: adapter.rawValue,
             serviceType: serviceType,
             instances: instances,
-            rawTranscript: transcript
+            rawTranscript: capture.transcript,
+            status: outcome.status,
+            blocker: outcome.blocker
         )
     }
 
-    private static func discoverEndpoints(adapter: AdapterID) throws -> [ServiceEndpoint] {
+    private static func discoverEndpoints(
+        adapter: AdapterID,
+        timeoutSeconds: TimeInterval = defaultAvahiBrowseTimeoutSeconds
+    ) throws -> [ServiceEndpoint] {
         let serviceType: String
         switch adapter {
         case .pixelClock, .awtrixHTTP:
@@ -259,16 +316,173 @@ public enum BurnBarLinuxDeviceAdapters {
             return []
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: browsePath)
-        process.arguments = ["-rtp", serviceType]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        try process.run()
-        process.waitUntilExit()
-        return parseEndpoints(from: readPipe(pipe), adapter: adapter)
+        let capture = runAvahiBrowse(
+            executablePath: browsePath,
+            serviceType: serviceType,
+            timeoutSeconds: timeoutSeconds,
+            maxBytes: maxAvahiTranscriptBytes
+        )
+        return parseEndpoints(from: capture.transcript, adapter: adapter)
     }
+
+    private static func boundedAvahiTimeout(_ arguments: [String]) -> TimeInterval {
+        let requested = Double(discoverOptionValue("--timeout", in: arguments) ?? "")
+            ?? defaultAvahiBrowseTimeoutSeconds
+        return min(max(requested, 0.1), 10)
+    }
+
+    private static func discoverFilter(_ arguments: [String]) -> String? {
+        var skipValue = false
+        for argument in arguments {
+            if skipValue {
+                skipValue = false
+                continue
+            }
+            if argument == "--timeout" {
+                skipValue = true
+                continue
+            }
+            if argument.hasPrefix("--") == false {
+                return argument
+            }
+        }
+        return nil
+    }
+
+    private static func discoverOptionValue(_ option: String, in arguments: [String]) -> String? {
+        guard let index = arguments.firstIndex(of: option), arguments.index(after: index) < arguments.endIndex else {
+            return nil
+        }
+        let value = arguments[arguments.index(after: index)]
+        return value.hasPrefix("--") ? nil : value
+    }
+
+    private static func runAvahiBrowse(
+        executablePath: String,
+        serviceType: String,
+        timeoutSeconds: TimeInterval,
+        maxBytes: Int
+    ) -> AvahiBrowseCapture {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = ["-rtp", serviceType]
+        let outputPipe = Pipe()
+        let outputPipeBox = AvahiPipeBox(outputPipe)
+        process.standardOutput = outputPipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            return AvahiBrowseCapture(
+                transcript: "",
+                timedOut: false,
+                outputTruncated: false,
+                error: "launch_failed"
+            )
+        }
+
+        let outputBox = AvahiOutputBox()
+        let readerDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            let handle = outputPipeBox.pipe.fileHandleForReading
+            var data = Data()
+            var truncated = false
+            while data.count <= maxBytes {
+                let remaining = maxBytes + 1 - data.count
+                let chunk = handle.readData(ofLength: min(16 * 1024, remaining))
+                if chunk.isEmpty { break }
+                data.append(chunk)
+                if data.count > maxBytes {
+                    truncated = true
+                    break
+                }
+            }
+            outputBox.store(data, truncated: truncated)
+            try? handle.close()
+            readerDone.signal()
+        }
+
+        let deadline = Date().addingTimeInterval(max(timeoutSeconds, 0.1))
+        while process.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+
+        var timedOut = false
+        if process.isRunning {
+            timedOut = true
+            process.terminate()
+            Thread.sleep(forTimeInterval: 0.15)
+            if process.isRunning {
+                _ = kill(process.processIdentifier, SIGKILL)
+            }
+        }
+        process.waitUntilExit()
+        _ = readerDone.wait(timeout: .now() + 1)
+
+        let snapshot = outputBox.snapshot()
+        var transcript = String(decoding: snapshot.data.prefix(maxBytes), as: UTF8.self)
+        if snapshot.truncated {
+            transcript += "\n<avahi-output-truncated>"
+        }
+        if timedOut {
+            transcript += transcript.isEmpty ? "<avahi-timeout>" : "\n<avahi-timeout>"
+        }
+        let error: String?
+        if timedOut {
+            error = nil
+        } else if process.terminationStatus == 0 {
+            error = nil
+        } else {
+            error = "exit_status_\(process.terminationStatus)"
+        }
+        return AvahiBrowseCapture(
+            transcript: transcript,
+            timedOut: timedOut,
+            outputTruncated: snapshot.truncated,
+            error: error
+        )
+    }
+
+    private static func discoveryOutcome(
+        _ capture: AvahiBrowseCapture
+    ) -> (status: String, blocker: String?) {
+        if capture.timedOut {
+            return (
+                "timeout",
+                "Avahi discovery exceeded the timeout; check avahi-daemon and the active network interface."
+            )
+        }
+        if capture.outputTruncated {
+            return (
+                "output_truncated",
+                "Avahi returned more data than the bounded discovery transcript can safely display."
+            )
+        }
+        if let error = capture.error {
+            return ("command_failed", "avahi-browse failed (\(error)); check avahi-daemon and avahi-utils.")
+        }
+        return ("ok", nil)
+    }
+
+    #if DEBUG
+    /// Narrow test seam for the process-safety contract. Production callers
+    /// still reach this runner only through the fixed adapter allowlist.
+    static func testingRunAvahiBrowse(
+        executablePath: String,
+        serviceType: String = BurnBarLinuxLocalPeerDiscovery.serviceType,
+        timeoutSeconds: TimeInterval,
+        maxBytes: Int
+    ) -> (transcript: String, timedOut: Bool, outputTruncated: Bool, error: String?) {
+        let capture = runAvahiBrowse(
+            executablePath: executablePath,
+            serviceType: serviceType,
+            timeoutSeconds: timeoutSeconds,
+            maxBytes: maxBytes
+        )
+        return (capture.transcript, capture.timedOut, capture.outputTruncated, capture.error)
+    }
+    #endif
 
     private static func parseInstances(from transcript: String, adapter: AdapterID) -> [String] {
         var names: [String] = []
