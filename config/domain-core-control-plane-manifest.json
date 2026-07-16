@@ -1,1613 +1,273 @@
 {
   "schemaVersion": 2,
   "files": {
-    ".firebaserc": [
-      "f37cd50ee6664116",
-      "5689e7440ae609ce",
-      "3452c9887b13fb11",
-      "791e49744a60b649"
-    ],
-    ".github/workflows/deploy-hosting.yml": [
-      "d16573e701bbdaaa",
-      "9f9836e47180fa79",
-      "26843e0a441ccc74",
-      "5c7d5e584acbed31"
-    ],
-    ".github/workflows/deploy-production.yml": [
-      "6f51df6b565ebc51",
-      "1f8a0a58b43c0a29",
-      "46a30bccc9891a78",
-      "9ececa2b9a0b3a7a"
-    ],
-    ".github/workflows/domain-core-console-release-evidence.yml": [
-      "30a73fcd4eda5674",
-      "cfccfa99706777d6",
-      "cd27b2331c5ae4de",
-      "359417766434a8d4"
-    ],
-    ".github/workflows/domain-core-deletion-guard.yml": [
-      "90748d58b77cee8f",
-      "78df2d34a16b7089",
-      "313a868ed2fcc25a",
-      "ebd95b3ce45e46fc"
-    ],
-    ".github/workflows/domain-core-functions-release-evidence.yml": [
-      "03f3cb9d3c933ee6",
-      "2fbd66010c11b703",
-      "d4f41f8d3f889c40",
-      "1d4b860cc0448501"
-    ],
-    ".github/workflows/domain-core-ios-release-evidence.yml": [
-      "549bd6aebcb6b422",
-      "57fdb34c965dadf6",
-      "44800da5a4f9fed7",
-      "d8e53f1fc4e69806"
-    ],
-    ".github/workflows/domain-core-post-deletion-completion.yml": [
-      "26801b413588f523",
-      "318f9769381ff711",
-      "a1ade6e20fbc7f54",
-      "e0c3cd840d9a0139"
-    ],
-    ".github/workflows/domain-core-promotion-proof.yml": [
-      "9477a0e6d1e48713",
-      "431b405282a5441e",
-      "4eb73321891628dc",
-      "a5bcf02ab4c1e475"
-    ],
-    ".github/workflows/domain-core.yml": [
-      "cd46d03d557879a5",
-      "2d702e2b3cf9173d",
-      "fdb86636af23111d",
-      "8b1a6c112cca676f"
-    ],
-    ".github/workflows/linux-release.yml": [
-      "cd464fa8c252b9e9",
-      "527c6e73f7abf71a",
-      "7b6746f544b03919",
-      "5e55759d86af380d"
-    ],
-    ".github/workflows/openburnbar-release-windows.yml": [
-      "643b1386fc1ff907",
-      "9d49168f37695fd8",
-      "1dc07d5dfa4ee295",
-      "f78026256dfc406c"
-    ],
-    ".github/workflows/release.yml": [
-      "e21b3caba2c3e72b",
-      "413fc7d1e4818257",
-      "49f4529e52a76025",
-      "fd1b23698130b935"
-    ],
-    "OpenBurnBarCore/Package.swift": [
-      "c2cfedd812000cca",
-      "525f3f2526db4f92",
-      "98c5caad053cc8c9",
-      "67535a6c85ffc0a8"
-    ],
-    "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift": [
-      "1791459f936e0cff",
-      "25ef90eff252d1a5",
-      "f9aee34bafd4cf16",
-      "c1831a2d1a5ba04e"
-    ],
-    "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift": [
-      "f03ca7157e414ed0",
-      "907eaa78dde972de",
-      "fe14d622f9d9bcb0",
-      "0019366765a362df"
-    ],
-    "android/build.gradle.kts": [
-      "b6e86cb10a676093",
-      "ce490ce865d79ae2",
-      "db641000b0077d0a",
-      "45b14b51715fb819"
-    ],
-    "android/gradle/ktlint-android-sources.gradle.kts": [
-      "411afa35cfe75275",
-      "6c1a3444ed41813e",
-      "80c15c12cca3b34b",
-      "fef6f485b2b61444"
-    ],
-    "android/gradle/wrapper/gradle-wrapper.jar": [
-      "498495120a03b9a6",
-      "ab5d155f5de3c8f0",
-      "d986a449153702fb",
-      "80fc80e134484f17"
-    ],
-    "android/gradle/wrapper/gradle-wrapper.properties": [
-      "032a71c92fc7f3c1",
-      "cadf8880f0554b71",
-      "aa6beb411f97ac25",
-      "3aa93932cb3784d5"
-    ],
-    "android/gradlew": [
-      "5d47795f22f148a8",
-      "ce482cd5758d3704",
-      "9c84c3fe5c0c6f35",
-      "561eb6bcac171bbc"
-    ],
-    "android/openburnbar-domain-core/build.gradle.kts": [
-      "2ed62ec214c9dcf6",
-      "4575f780a8f1ef8b",
-      "b721b43a6db1cc42",
-      "9d7ed36e1218253b"
-    ],
-    "android/openburnbar-domain-core/src/androidTest/java/com/openburnbar/domaincore/DomainCoreNativeLoadTest.kt": [
-      "c4c32c0117964982",
-      "35006020396a0062",
-      "64510cc0f381ba82",
-      "63108a095b10b717"
-    ],
-    "android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi/openburnbar_domain_ffi.kt": [
-      "a5707fd59adb8c5a",
-      "885ff2d1f7ea68d2",
-      "60c397c9d04d4232",
-      "900249b5cce3e512"
-    ],
-    "android/settings.gradle.kts": [
-      "b499ea82e56d478a",
-      "5b31cd4d9cdac187",
-      "74d9f86954fbbeed",
-      "64e846506d40a45a"
-    ],
-    "apps/console/package-lock.json": [
-      "6beaa4b420388aec",
-      "44fdb8dffffe88d7",
-      "84dbef7a3d77b71a",
-      "61c8f7a2050672c0"
-    ],
-    "apps/console/package.json": [
-      "ecf011868d8ca576",
-      "e507072076d895a2",
-      "90e5abc51a135c07",
-      "66904fec3f333db7"
-    ],
-    "config/domain-core-build-profiles.json": [
-      "6de1031373a3a9a1",
-      "aa5844e9f5ae3117",
-      "688f8d1371467d4d",
-      "08890752d95860e9"
-    ],
-    "config/domain-core-deployment-receipt.schema.json": [
-      "ee37f63d7b19be98",
-      "8dbfc655278abc4b",
-      "7ca540c48cab3d8d",
-      "b72cea7b48a86329"
-    ],
-    "config/domain-core-deterministic-candidate-bundle.schema.json": [
-      "3e88823cc8d5de40",
-      "75431190dc400a5b",
-      "652d95103caec849",
-      "4e7f7614e3232ce1"
-    ],
-    "config/domain-core-functions-relevant-targets.json": [
-      "a929dd4baf33142c",
-      "517f824960c5e849",
-      "d0f6c69d742ca3b3",
-      "9b220ce6a15df877"
-    ],
-    "config/domain-core-promotion-policy.json": [
-      "997041f912a2fc73",
-      "710576c2f55e76ad",
-      "c6a4e04b0c955001",
-      "daaf9354a443c167"
-    ],
-    "config/domain-core-release-predicate.schema.json": [
-      "4966ad8329b4ec96",
-      "fea2a39f4ca9b21b",
-      "a8b2529db0920fce",
-      "fdf2f58fd4d0297a"
-    ],
-    "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/OpenBurnBarDomainCore.Ffi.csproj": [
-      "a5edbdcba46b16ac",
-      "35ef64ea7dcf10ba",
-      "9d07f4058f3067f3",
-      "714efd202684f684"
-    ],
-    "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs": [
-      "158031de1fe842f3",
-      "f5c338d5aad990e8",
-      "72233b3af0f94902",
-      "ac58399f6b3cd2c6"
-    ],
-    "crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs": [
-      "e39b66bbbcf1cb45",
-      "1500ae1c46599f69",
-      "226cb1ddcf13e5b5",
-      "4a2d9aa7ef05d0c4"
-    ],
-    "crates/openburnbar-domain-core/union-abi-manifest.json": [
-      "dc8432ac0306800d",
-      "a4c3884a5887997d",
-      "e0e015b8c8637f6b",
-      "9444eb27c8103509"
-    ],
-    "functions/src/__tests__/pricing.test.ts": [
-      "eae593b02a6f4c02",
-      "1b1f0f15cd953fb4",
-      "469e396bdebb85b7",
-      "525e141f60321c07"
-    ],
-    "functions/src/domainCoreBuildProfile.ts": [
-      "347deeb959da35cc",
-      "f600f6b7951ee1af",
-      "76e255627b439f77",
-      "5ed3d5e06acf95f4"
-    ],
-    "functions/src/domainCorePricing.ts": [
-      "bf40005c046bd32b",
-      "0a2c5cdcede3709a",
-      "ee5d1b2f38514724",
-      "6523f50461885f63"
-    ],
-    "functions/src/generated/domainCoreCandidateReceipt.ts": [
-      "dfaa210eda0507aa",
-      "f9a2f90f45ad4238",
-      "1e3a28477786ff1d",
-      "36841b84ee8149da"
-    ],
-    "functions/src/health.ts": [
-      "51bbfe8cb40d0a93",
-      "63a33aff52869d21",
-      "3152e52acd0c3e6d",
-      "62580763bc1e750d"
-    ],
-    "functions/vendor/openburnbar/domain-core-wasm/openburnbar-domain-core-source.sha256": [
-      "3161b18e71a485c2",
-      "cbda3f6fce1dbae9",
-      "950cf323cbd9b4b1",
-      "7e7afca3f7d980d9"
-    ],
-    "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.js": [
-      "4818f2e6f57933c2",
-      "cedb569c22032fb2",
-      "f614f2923ef83f2a",
-      "d3102b75d337bdd5"
-    ],
-    "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm": [
-      "0651157adfa350fc",
-      "9b1b0799dfce5144",
-      "1ac1dbd481d5e477",
-      "28cce723c2ec1cf2"
-    ],
-    "functions/vendor/openburnbar/domain-core-wasm/package.json": [
-      "80ef14a211db1c24",
-      "d2299c739c5e4d4c",
-      "f4a0001f1ef20825",
-      "4ab102a89739a966"
-    ],
-    "scripts/build-domain-core-android-aar.sh": [
-      "86f81c77867597ac",
-      "3686a837cf7f4849",
-      "0c7e821d831f7a2a",
-      "4f0252c2b425fb23"
-    ],
-    "scripts/build-domain-core-python.sh": [
-      "c754e97e3db79524",
-      "9c43640783c337b2",
-      "59caeb3a4242a324",
-      "b5ab8a96a61b4ba0"
-    ],
-    "scripts/build-domain-core-wasm.sh": [
-      "b56722d24572873c",
-      "d41d44ac731929cd",
-      "50b304534341ee0a",
-      "8612d60f0d1935cd"
-    ],
-    "scripts/build-domain-core-xcframework.sh": [
-      "6573fdca02a4b519",
-      "663cb51a1f9a2c49",
-      "904ff767036d100e",
-      "daa88ea4f6d8f094"
-    ],
-    "scripts/check-openburnbar-app-swiftpm-lock.sh": [
-      "c4095aff04ef1040",
-      "cb251e919d6e1ac3",
-      "7bb70c5fb2a1eba5",
-      "fa385407d39f802e"
-    ],
-    "scripts/ci/build-corresponding-source-archive.sh": [
-      "5230387c630b59bd",
-      "ff0f62c93074d3eb",
-      "87dfed46bdd81309",
-      "cd4812a7f9820cb2"
-    ],
-    "scripts/ci/check-callable-validation.mjs": [
-      "434fcc65681182ce",
-      "c4bf0a2f3df62a29",
-      "d5f7f8d518edf9cc",
-      "f512f0a431936671"
-    ],
-    "scripts/ci/check-firestore-deploy-drift.mjs": [
-      "d87646cccd5336d5",
-      "93f7ec508d646e33",
-      "751945545afac878",
-      "044f7759df4222f7"
-    ],
-    "scripts/ci/check-firestore-ttl-declared.sh": [
-      "153504222c6e65e1",
-      "73518479636768b4",
-      "ffcfadb7821d76d9",
-      "08460062baa8c6dc"
-    ],
-    "scripts/ci/check_agpl_legal_release_review.py": [
-      "501939c5a585bcfb",
-      "1a4e8c1c66be1401",
-      "d37b624ed32dea7d",
-      "9a4720fb52d03c37"
-    ],
-    "scripts/ci/check_burnbar_license_posture.py": [
-      "1613c60bc05c99ef",
-      "1d48a7fdb48506aa",
-      "74e63048027020eb",
-      "e42b3630d9f0125c"
-    ],
-    "scripts/ci/check_burnbar_release_preflight.py": [
-      "72e7994c42394ee1",
-      "b30c535312e5fea1",
-      "b3053820ed10c853",
-      "8f28dbb055a178d7"
-    ],
-    "scripts/ci/check_cloudvault_at_rest_runtime.py": [
-      "8d6803291144867a",
-      "e78a7b79c054aab3",
-      "2fc74e613f4d6b89",
-      "b0d919e7061ce575"
-    ],
-    "scripts/ci/check_functions_cloudvault_runtime.js": [
-      "e9266ebab5f1cba2",
-      "1f37024d12709a4d",
-      "b77069795a0f5093",
-      "51a085b138c1f922"
-    ],
-    "scripts/ci/check_hermes_gateway_migration_drain.py": [
-      "c5b03139b7659ec1",
-      "56c72187a56ffee0",
-      "d0b8154ba7f3a94e",
-      "479366432fa4d017"
-    ],
-    "scripts/ci/check_libsignal_runtime_readiness.py": [
-      "1ba98518d2c2c021",
-      "3753197c5e2366af",
-      "6cc096d15e5a7b80",
-      "f24caae3e2128f03"
-    ],
-    "scripts/ci/check_native_signal_runtime_evidence.py": [
-      "73dba00d4238f599",
-      "2a55236b025ca30a",
-      "f8d7196b420e1866",
-      "098880a9e80135cd"
-    ],
-    "scripts/ci/cleanup-firebase-config.sh": [
-      "9a25b214f06cae90",
-      "39ecb7e061f5aacc",
-      "42524659a1ff0a6f",
-      "c23145b946531391"
-    ],
-    "scripts/ci/create-apple-android-release-publication.mjs": [
-      "509bdaf71ddbdd35",
-      "d218bb2993596212",
-      "c7a2c47396ab863d",
-      "507992de520c8e0d"
-    ],
-    "scripts/ci/create-domain-core-deployment-identity.mjs": [
-      "1ebf5367ff5b10f6",
-      "65789b585af78b20",
-      "6c7ee15611be7efc",
-      "aee190b25b9f5b76"
-    ],
-    "scripts/ci/create-domain-core-deployment-identity.test.mjs": [
-      "7316ed8901d2f929",
-      "c2041f56ca7a89e8",
-      "41573eb5a2588573",
-      "1e092d2341ac84fb"
-    ],
-    "scripts/ci/create-domain-core-deterministic-candidate-bundle.mjs": [
-      "cefe7bd81e45ed99",
-      "86a9c7e04bcf90ca",
-      "09c9fef485243388",
-      "41e757c550ab404a"
-    ],
-    "scripts/ci/create-domain-core-deterministic-candidate-bundle.test.mjs": [
-      "e5364b5fe092d8f6",
-      "4b40f2d46a3b3522",
-      "3a4ca61c41fec12e",
-      "778bb94fd71aa0e7"
-    ],
-    "scripts/ci/create-domain-core-functions-deploy-proof.mjs": [
-      "5e5dd40f7312558c",
-      "d454fd4cfd5c6a9c",
-      "266b2709e72de566",
-      "893364192342b86f"
-    ],
-    "scripts/ci/create-domain-core-functions-deploy-proof.test.mjs": [
-      "147e4118a351b2c9",
-      "6b092763e817d0fc",
-      "1531a1cbe1b8538e",
-      "fd69bd08cb4cdde6"
-    ],
-    "scripts/ci/create-domain-core-functions-deployment-evidence.mjs": [
-      "dcae43128f3f2008",
-      "46416f6a52c1396f",
-      "64f9970b8709af3b",
-      "baa65135ca872183"
-    ],
-    "scripts/ci/create-domain-core-functions-deployment-evidence.test.mjs": [
-      "3b289d8e035e50b5",
-      "d9a8adf8ce680c60",
-      "46a7c5af754a35ec",
-      "9ccf70cb90b06f32"
-    ],
-    "scripts/ci/create-domain-core-functions-provider-coordinates.mjs": [
-      "1abad1b94c98fd32",
-      "4f79e4747d6660d3",
-      "b3b17bd626465f9a",
-      "116bf5b1575d16e3"
-    ],
-    "scripts/ci/create-domain-core-functions-provider-coordinates.test.mjs": [
-      "46d6836e7bf0ed9b",
-      "5a6cc38926311fb4",
-      "b5c2423fbd542951",
-      "e86399b17fd0610c"
-    ],
-    "scripts/ci/create-domain-core-native-publication.mjs": [
-      "28d9232124f3ae46",
-      "51a18f12ea394294",
-      "4488d912e97de9e3",
-      "20837adbf771d377"
-    ],
-    "scripts/ci/create-domain-core-native-release-evidence.mjs": [
-      "086942b88d461526",
-      "2f63ee0ac236800a",
-      "1838af8a48e1a6cd",
-      "12a8ee35a828cbad"
-    ],
-    "scripts/ci/create-domain-core-release-evidence.mjs": [
-      "20c083c054a50c8a",
-      "9acf720ddaae1cd8",
-      "a03f64361997e372",
-      "45101585ea5a7a4e"
-    ],
-    "scripts/ci/create-domain-core-release-evidence.test.mjs": [
-      "39db8084b44629fa",
-      "efa047b909944b54",
-      "647121751869cbef",
-      "a27a4b6b3b607ded"
-    ],
-    "scripts/ci/create-domain-core-rollback-bundle.py": [
-      "dcc61ca782a4b44c",
-      "8180495b61f1013a",
-      "c49f87449e575674",
-      "0841fdee6df1b040"
-    ],
-    "scripts/ci/create-domain-core-runtime-artifact-manifest.mjs": [
-      "14f8216d8386b4a5",
-      "985a1b66663ed9cd",
-      "21470581c6bd917c",
-      "14d725189ce21616"
-    ],
-    "scripts/ci/create-domain-core-runtime-artifact-manifest.test.mjs": [
-      "fc20e3e2fa60cf59",
-      "3049366afc90d0b8",
-      "faa5a19047ba8d5a",
-      "170c2e59af251058"
-    ],
-    "scripts/ci/create-windows-domain-core-release-bundle.py": [
-      "0f4e00439fa898f3",
-      "13c28484047e9809",
-      "4f3ee941bf8311fd",
-      "cbd1097da2ca52b4"
-    ],
-    "scripts/ci/deploy-firebase-hosting-rest.mjs": [
-      "bbec2adff61f58d3",
-      "74d3d278824f4e3e",
-      "df7e5899cd2cff9c",
-      "620613f08a4a93ae"
-    ],
-    "scripts/ci/domain-core-proof-fragment.mjs": [
-      "f9a3bd8f5d18c2e3",
-      "4dad97205b034055",
-      "eedfbf8fb98b14e4",
-      "043a7e28b495f41f"
-    ],
-    "scripts/ci/domain-core-proof-fragment.test.mjs": [
-      "5c427dfb879b04fb",
-      "6e6effa96feaac62",
-      "2e8d4ac58251777a",
-      "f60e0dc47058d693"
-    ],
-    "scripts/ci/domain-core-release-evidence-contract.test.mjs": [
-      "9d7b95496d1a0350",
-      "895b2212fe623ca5",
-      "9d81f3e13603eb8e",
-      "fbf728cd1b4ee311"
-    ],
-    "scripts/ci/domain-core-union-gate.py": [
-      "3e2f1335c0b937d4",
-      "f5e7c4d6bb315e3f",
-      "804d0529608c6543",
-      "7e167ba3c3c1909e"
-    ],
-    "scripts/ci/drain_hermes_gateway_legacy_records.js": [
-      "40e7685723208ab9",
-      "98db795dfb6a0815",
-      "993b302fc05e99c5",
-      "afca10c233d268c9"
-    ],
-    "scripts/ci/ensure-windows-domain-core-release.mjs": [
-      "bca104741fa2f354",
-      "a6991d7158a6c10e",
-      "c37a512692498415",
-      "40d922e5f4fb998f"
-    ],
-    "scripts/ci/evaluate-domain-core-promotion.mjs": [
-      "39017658ca3474a0",
-      "040fb6d7de709849",
-      "f7a5dc67616c3a63",
-      "db79eb0c7b0063b8"
-    ],
-    "scripts/ci/evaluate-domain-core-promotion.test.mjs": [
-      "3feab716c3a942de",
-      "40d8f63460753383",
-      "9169aaf1839fa4be",
-      "41dac97d565c6672"
-    ],
-    "scripts/ci/firebase-rules-source.mjs": [
-      "2d4fb0bd26506356",
-      "6767485415600ef3",
-      "8a86d70fd22696af",
-      "f6026bba6d34e5a7"
-    ],
-    "scripts/ci/generate-cryptokit-interop-vector.mjs": [
-      "d31efdf9fc0ae674",
-      "69c320b11d48b22f",
-      "45d784a39ff55bb4",
-      "5c4a0c7f043022c5"
-    ],
-    "scripts/ci/hosting-smoke-domain-core.test.sh": [
-      "e97e298d42074c14",
-      "f518400f79bc1ec1",
-      "5815b07ff943ec76",
-      "1f2e135ffc5594fa"
-    ],
-    "scripts/ci/hosting-smoke.sh": [
-      "ff67a5fb0c89bbc4",
-      "d7e7040f859d27ae",
-      "80d408cc12830ce6",
-      "07d707b47e5fff89"
-    ],
-    "scripts/ci/hydrate-apple-android-release-evidence.mjs": [
-      "18bb3b0b57d218fa",
-      "5d2394de2f54184a",
-      "bc4b90e533600b15",
-      "80d5c85675be9a1e"
-    ],
-    "scripts/ci/inject-android-keystore.sh": [
-      "c5ac65e9867800d9",
-      "7073738490e72f67",
-      "44cf947831c2f4f0",
-      "b7c0b9c7a11fbbe6"
-    ],
-    "scripts/ci/inject-firebase-config-android.sh": [
-      "807194e60f8fe6dc",
-      "97fe3474d971107c",
-      "5f26169c3d442f2c",
-      "b4b846174b362fef"
-    ],
-    "scripts/ci/inject-firebase-config.sh": [
-      "41ae7cec276190ce",
-      "fbe933b9c02dcc95",
-      "59154f2b7f6a9d06",
-      "5b729ba8d2422e34"
-    ],
-    "scripts/ci/inject-sentry-config-android.sh": [
-      "7ffd547d83fbc0ab",
-      "2e634169f8645de4",
-      "1ab7f3aa29969b75",
-      "123b8cb21a9f5bf5"
-    ],
-    "scripts/ci/inject-sentry-config-extension.sh": [
-      "0ab6bd137d92ebe6",
-      "639736daa1b6bc36",
-      "0323c3e77d786890",
-      "776e744e3f0241e1"
-    ],
-    "scripts/ci/inject-sentry-config-ios.sh": [
-      "b4154913df61ec09",
-      "0ec2752bfe1b3042",
-      "7516ead3b769cd75",
-      "b5b5105747a55969"
-    ],
-    "scripts/ci/post-deploy-health-gate.sh": [
-      "4169a04fcd931db5",
-      "a3e6daf364a5e60d",
-      "edc5fed67386e1a6",
-      "bdd51ccf516becec"
-    ],
-    "scripts/ci/post-deploy-health-gate.test.sh": [
-      "422d3d774ee0b0aa",
-      "9bfae0653610091d",
-      "7a4c6474749fc8b8",
-      "2b52d296678f0cc9"
-    ],
-    "scripts/ci/prepare-domain-core-native-release-gate.mjs": [
-      "2a5b8eaf99ea85b8",
-      "f66ad337e63a5b6b",
-      "31f9ef50c5dacb29",
-      "6190350a9ed39aac"
-    ],
-    "scripts/ci/prepare-firebase-tools.sh": [
-      "cdc22dab3d0fd21f",
-      "21f3797abc0e7625",
-      "84f78959a7776b04",
-      "570625bb4558222b"
-    ],
-    "scripts/ci/publish-apple-android-release.mjs": [
-      "347e957ad0542b62",
-      "1b51bc1fc3743140",
-      "dc7fd636ed11e99f",
-      "5b2bbecdd03b3284"
-    ],
-    "scripts/ci/publish-domain-core-release-evidence.mjs": [
-      "ee5c4ab796defa64",
-      "d868a45406bcd5bd",
-      "811e3e43b20ef67d",
-      "1215690da206f321"
-    ],
-    "scripts/ci/publish-domain-core-release-evidence.test.mjs": [
-      "90ca9b39686b9494",
-      "204bea78c28412a6",
-      "293407fc31c402d1",
-      "a46f0b9bfc700209"
-    ],
-    "scripts/ci/release-command-watchdog.py": [
-      "a38e875d20624fa4",
-      "197eae4534c8213b",
-      "bb0f2882e139e7a3",
-      "d8911a68bdc8cc4e"
-    ],
-    "scripts/ci/release-dry-run-attestation.mjs": [
-      "6fff2e94522ea2d0",
-      "62a56433b4e00acb",
-      "a7a3db366cf8d8ae",
-      "66bc080d804414e1"
-    ],
-    "scripts/ci/resolve-domain-core-activation.mjs": [
-      "cacbd0887e2d0a5c",
-      "2ad7cd11cadcaf0d",
-      "0aa2ffbc20cad282",
-      "0b5fef2a6e8a5656"
-    ],
-    "scripts/ci/resolve-domain-core-build-profile.mjs": [
-      "3a66e093683d9173",
-      "df416655b5e77375",
-      "9e4b89a3599e534a",
-      "01ff11d32ec30659"
-    ],
-    "scripts/ci/resolve-domain-core-build-profile.test.mjs": [
-      "b404e0d5b9adc7fc",
-      "b63e5653c6162309",
-      "29dc1d66e5aed99f",
-      "2f9e66ed21faedbe"
-    ],
-    "scripts/ci/rollout_hermes_gateway_signal_required.js": [
-      "71af21bc37b01ba3",
-      "98811e0ab156fdfc",
-      "598282860266ef7f",
-      "f489581e2cff505b"
-    ],
-    "scripts/ci/run-domain-core-android-native-load.sh": [
-      "90bd76436afd3e71",
-      "32928619b1220419",
-      "a75b5431e695445d",
-      "6c52c0b214e817de"
-    ],
-    "scripts/ci/scan-domain-core-final-artifact-legacy.py": [
-      "020c793f2a353534",
-      "aaac76d2b6391d86",
-      "7590200b20735751",
-      "facdea7c29855108"
-    ],
-    "scripts/ci/sentry_dsn.py": [
-      "4b4038771521bd91",
-      "e6d3068e785664db",
-      "4554334b948ea44d",
-      "7a1672f895d8a3cd"
-    ],
-    "scripts/ci/smoke-openburnbar-release-dmg.sh": [
-      "f0acf16cfbb3545f",
-      "844439751a756f44",
-      "fa5def6da44e19c1",
-      "039444c56200291a"
-    ],
-    "scripts/ci/stage-domain-core-attestation-artifact.mjs": [
-      "110c456bcd0495dc",
-      "138751c3c6ecb1c0",
-      "735e48be4b230b20",
-      "153175103c1b592d"
-    ],
-    "scripts/ci/stage-domain-core-attestation-artifact.test.mjs": [
-      "0f830e07c4c40be8",
-      "f728afc2a9ab899e",
-      "cb5f4293bc426731",
-      "edf11a99e6d1f5b6"
-    ],
-    "scripts/ci/test-storage-rules.sh": [
-      "6bc991e27a244a8d",
-      "03b5baeca098665e",
-      "ab2630911c802496",
-      "b702c9b943d49841"
-    ],
-    "scripts/ci/update-submodules-with-retry.sh": [
-      "08917b27074b6b60",
-      "95918e4a0c246427",
-      "b701c1d25eb375b8",
-      "ca9c1611452ba3d3"
-    ],
-    "scripts/ci/verify-android-firebase-release-config.mjs": [
-      "27ecacf2033b2723",
-      "8653434a62549d32",
-      "7d20a62ccdd8f8a7",
-      "99a0e525df0defa3"
-    ],
-    "scripts/ci/verify-apple-appcheck-release-artifact.sh": [
-      "06a7f5c677ff6a2b",
-      "176d5353f015106b",
-      "1adb4460632c4030",
-      "2359c1312083381c"
-    ],
-    "scripts/ci/verify-apple-appcheck-release-env.sh": [
-      "f9b951d668c4697d",
-      "751d32dbacf2d691",
-      "ef3dd0665a667390",
-      "b3e0c475174f87ae"
-    ],
-    "scripts/ci/verify-apple-release-firebase-config.sh": [
-      "c6f62caaa58c0f4f",
-      "b69f54eeeef84cc5",
-      "7d1252410e7370a9",
-      "08ae87bef13ae1bd"
-    ],
-    "scripts/ci/verify-callable-logging.sh": [
-      "2099c0564d639684",
-      "0262b44fc69c9367",
-      "a15501b89ac340ce",
-      "85470321c8a6507f"
-    ],
-    "scripts/ci/verify-corresponding-source-archive.sh": [
-      "e6ce612576b01874",
-      "05b1d09dcf8a629b",
-      "a076a169830046ba",
-      "75228a1410eb9e08"
-    ],
-    "scripts/ci/verify-domain-core-android-universal-artifact.mjs": [
-      "2bd014977aff00e9",
-      "8aa2664674df4a65",
-      "cdd7313ee81df3a9",
-      "7d5219fcd30c8c40"
-    ],
-    "scripts/ci/verify-domain-core-app-store-connect-status.py": [
-      "54cd86b90f7480f5",
-      "a92a48811482db44",
-      "5bf9a0d0d5944951",
-      "7a660747b32d4b6e"
-    ],
-    "scripts/ci/verify-domain-core-apple-signing-identity.mjs": [
-      "60b98b52f6247283",
-      "2ec68032a2a03d29",
-      "84dbad1b9c7e5b60",
-      "42cb8778d4c5d2e0"
-    ],
-    "scripts/ci/verify-domain-core-build-profile-artifact.mjs": [
-      "e8b73ce71f765925",
-      "16ff117a057e4a34",
-      "a7f34d8ed9a3b1e9",
-      "87d5bbf84fd0c222"
-    ],
-    "scripts/ci/verify-domain-core-console-deploy-evidence.mjs": [
-      "98f68b37505fa7fa",
-      "0fdec7509ae8dfac",
-      "a597943ed8020ef5",
-      "5e55d5bf883e6491"
-    ],
-    "scripts/ci/verify-domain-core-console-deploy-evidence.test.mjs": [
-      "46170b8e25466a53",
-      "08b2aa6873dd8572",
-      "1e280c42f537cb3d",
-      "f45bd04d49298a5c"
-    ],
-    "scripts/ci/verify-domain-core-control-plane.mjs": [
-      "8a9707367b8c8333",
-      "09e240d151b1af4b",
-      "c2a753c272b19a11",
-      "ff01cb7cd79b2c2a"
-    ],
-    "scripts/ci/verify-domain-core-control-plane.test.mjs": [
-      "692fd6e1626c2e09",
-      "772b033835c38c63",
-      "021e77c368bcc6f0",
-      "e43e69aa128b41a7"
-    ],
-    "scripts/ci/verify-domain-core-default-branch-controls.mjs": [
-      "4256af6fcd9120e1",
-      "eed0ca474a12d656",
-      "634b6bdf2e97d39c",
-      "81add7ec7a548a5c"
-    ],
-    "scripts/ci/verify-domain-core-default-branch-controls.test.mjs": [
-      "aecb39b05cb7ecb7",
-      "a33947e42a28bfed",
-      "693fb879345632b3",
-      "41163ead4621b94e"
-    ],
-    "scripts/ci/verify-domain-core-final-absence-receipts.py": [
-      "4838a4019c1ff879",
-      "61a221fea46a47f2",
-      "eea85ae9dec8eaa9",
-      "0bb39058bdbbb555"
-    ],
-    "scripts/ci/verify-domain-core-functions-deploy-run.mjs": [
-      "3b0b65ca4de6a09d",
-      "4ea2590f5f1f28f6",
-      "45ae3abdd2015b3b",
-      "4a4f83d78fa59c39"
-    ],
-    "scripts/ci/verify-domain-core-functions-deploy-run.test.mjs": [
-      "b3b8cab260e682d2",
-      "b56dfe373e0d8baa",
-      "4029668fb3f9766b",
-      "db511e33d0dfa75e"
-    ],
-    "scripts/ci/verify-domain-core-functions-target-inventory.mjs": [
-      "da024bb29e8ee8cc",
-      "f324c17bc60c434f",
-      "86cc2782d23329a5",
-      "69abed8cf1ed39b1"
-    ],
-    "scripts/ci/verify-domain-core-functions-target-inventory.test.mjs": [
-      "4457747e8b9dbb01",
-      "a40b7514e50905c6",
-      "0c89992431ec1b1a",
-      "a7374a9dfd2dcf8c"
-    ],
-    "scripts/ci/verify-domain-core-ios-binary-identity.py": [
-      "afafe13e33a5598d",
-      "49911e8adee21912",
-      "ad858d83520c7f08",
-      "a498d88a4fe0c967"
-    ],
-    "scripts/ci/verify-domain-core-legacy-absence.py": [
-      "da64af0878cd7ddf",
-      "bd6bc924ba5d1ff9",
-      "80adbc154013d0e1",
-      "b3e4e692358daa48"
-    ],
-    "scripts/ci/verify-domain-core-legacy-deletion.py": [
-      "babfe8ad0cc7812d",
-      "4e6911d476ee797f",
-      "0c5c9a539f9963eb",
-      "1101b7ae4f1d1356"
-    ],
-    "scripts/ci/verify-domain-core-native-event-commit.mjs": [
-      "6d2f52e99e5a9634",
-      "4b0118ac894adac3",
-      "6cd5501b02cf5648",
-      "088f8104e401dcc7"
-    ],
-    "scripts/ci/verify-domain-core-native-release-artifact.sh": [
-      "6997a97093a2919e",
-      "c61a31910a99dd29",
-      "018c2c733e7ed185",
-      "df5c3984f5b46051"
-    ],
-    "scripts/ci/verify-domain-core-observed-identity.mjs": [
-      "c112104124b8a885",
-      "bbfbfc45a1fb581c",
-      "de3e3984c4b30f53",
-      "8ca951a41f399f8a"
-    ],
-    "scripts/ci/verify-domain-core-protected-attestation.mjs": [
-      "6d04ab588744b069",
-      "bbc2bd8954800813",
-      "6b1698da8daf5d8b",
-      "8582b09ebdb6e1da"
-    ],
-    "scripts/ci/verify-domain-core-protected-attestation.test.mjs": [
-      "4b68f71f44294b7f",
-      "a779c1ca152c3c8c",
-      "2252b427aae63efb",
-      "04bd1fbb566536ac"
-    ],
-    "scripts/ci/verify-domain-core-release-gate.mjs": [
-      "10e2f1d451b6eadb",
-      "58454c00d9759b16",
-      "b1a6c55e7390436c",
-      "0ea2549b4471bada"
-    ],
-    "scripts/ci/verify-domain-core-release-gate.test.mjs": [
-      "8075b11893410457",
-      "3d9450388cf5fb88",
-      "b186b05a1fdea6fe",
-      "9d8d09e3a10c5246"
-    ],
-    "scripts/ci/verify-domain-core-rollback.mjs": [
-      "0237d4b9e26ed82f",
-      "db65feb701f8f71b",
-      "9e8f963422f76c9f",
-      "27bbacddeb1bbed2"
-    ],
-    "scripts/ci/verify-domain-core-workflows.test.mjs": [
-      "7323a4336c017d86",
-      "d896f68826eb09ad",
-      "3cbd6529c341225b",
-      "e829a0617ec83fe6"
-    ],
-    "scripts/ci/verify-existing-domain-core-deployment.mjs": [
-      "addacdce1c763579",
-      "033a76f1d76d71d3",
-      "2550c180b0be45fe",
-      "bbcb6d7902a6433a"
-    ],
-    "scripts/ci/verify-existing-domain-core-deployment.test.mjs": [
-      "1c257b805745fa3f",
-      "d82b641e798f23a0",
-      "1c63d96a6c235238",
-      "bb76a8e6652de934"
-    ],
-    "scripts/ci/verify-firestore-ttl-state.mjs": [
-      "9d29723665555bf2",
-      "cd2c4978144abb06",
-      "a9ce3dad94ebea9f",
-      "c2f0d3001bb17921"
-    ],
-    "scripts/ci/verify-libsignal-pin.sh": [
-      "d76c28b7ac846112",
-      "8de9b8338c2a4331",
-      "d0dcc1122a94d5d2",
-      "976bfafbe9a75121"
-    ],
-    "scripts/ci/verify-libsignal-runtime-readiness.sh": [
-      "d933d12034238e45",
-      "c6a9d1516f6d9031",
-      "8751643d68c88f77",
-      "886572460dd98f16"
-    ],
-    "scripts/ci/verify-libsignal-submodule-delta.sh": [
-      "627c3348dd111bfc",
-      "67e2d7b1e9e3e1d3",
-      "4e3dee9489b76b6c",
-      "1d41e128ee76f5ca"
-    ],
-    "scripts/ci/verify-production-deploy-auth.sh": [
-      "e63b03d1ce26bbf2",
-      "4d1db737a92aabd4",
-      "51ac1c9c584ba2e7",
-      "b0c3a8bbec5ae59f"
-    ],
-    "scripts/ci/verify-resilience-wiring.sh": [
-      "30017d65ad4dc315",
-      "c08bc56eb78d918c",
-      "344a7bc33c448d5a",
-      "de647a463238cc3e"
-    ],
-    "scripts/ci/verify-sqlcipher-codec.sh": [
-      "fc18cda44ef55e1c",
-      "4acb1d9213d9b87f",
-      "4ed8c7fdf67e14ab",
-      "578928f09fc6e4a0"
-    ],
-    "scripts/ci/verify-vendored-agent-source.sh": [
-      "48ff000aa91c1c44",
-      "ba388cf6fa1a5f4f",
-      "8ca3239c3779963c",
-      "b6b9032d2a9961f6"
-    ],
-    "scripts/ci/verify-windows-release-signing-preflight.sh": [
-      "a61366e7cf919b8a",
-      "18d8a5b1c57f0999",
-      "8073c9f66d2fb40d",
-      "8d70b2fddab066df"
-    ],
-    "scripts/ci/write-firebase-hosting-ci-config.mjs": [
-      "feaf5098d2fa6c39",
-      "738bfb3ceff5cd03",
-      "0fa81bb258c5d30e",
-      "9b58b21e6bf666d2"
-    ],
-    "scripts/ci/write-firebase-hosting-ci-config.test.mjs": [
-      "1fac013e11ac5124",
-      "1842d3a8410bc1c6",
-      "41696eda79981065",
-      "7da24ca093803790"
-    ],
-    "scripts/ci/write_burnbar_source_provenance.py": [
-      "58c17feac8c0cdec",
-      "79f0a5da8d349483",
-      "b0cf1bb4f36a0ceb",
-      "35271150afd53c21"
-    ],
-    "scripts/ci/write_hermes_gateway_migration_drain_evidence.js": [
-      "bc94fc90bff055eb",
-      "62f1120666d2d64e",
-      "6142f98942687b5d",
-      "ae12b1dc488291d9"
-    ],
-    "scripts/create-corresponding-source.sh": [
-      "1b136c51684fa9c7",
-      "a316b1d0da9f0862",
-      "3cf0473eb4c9ebc1",
-      "879001159bf386ab"
-    ],
-    "scripts/deploy-hosted-mcp.sh": [
-      "33669729ad8bed29",
-      "cc6095800033f95e",
-      "c7dfbfd4cc048237",
-      "16b59212c81ee9b6"
-    ],
-    "scripts/generate-macos-appcast.mjs": [
-      "723942761d0f97b8",
-      "6e004219c76b3416",
-      "f6735a70e28c4c85",
-      "6ac3943c51811ddd"
-    ],
-    "scripts/generate-sbom.py": [
-      "3c6f3dab78d13ff7",
-      "83bc2e03a1da7dbe",
-      "5e635fc26c378069",
-      "eee4898792c6d6f2"
-    ],
-    "scripts/lib/atomic-regular-file.mjs": [
-      "d8e2a4bc8d331da9",
-      "ef5ed02c8e534ea7",
-      "2d600d4bc9f8630d",
-      "750cdb1250d33ca2"
-    ],
-    "scripts/lib/curl-bearer.sh": [
-      "8f75dd66be14129b",
-      "5c2d39ca21231f2f",
-      "8448cc892af799a9",
-      "bdba5b39b1307230"
-    ],
-    "scripts/lib/domain-core-activation.mjs": [
-      "0e57e1943b8cb9af",
-      "95dbb89321964def",
-      "762663a832373ecf",
-      "405afa247435e015"
-    ],
-    "scripts/lib/domain-core-artifact-profile.mjs": [
-      "5bf898f306494855",
-      "c9e8256218b49702",
-      "a3cd83b23dcdd2e2",
-      "d47a2b8db8b530cc"
-    ],
-    "scripts/lib/domain-core-artifact-profile.test.mjs": [
-      "e894020c9dfbd76c",
-      "87c12999fef62dac",
-      "a6c28f0daf56655c",
-      "ec0a3909d2a7e72f"
-    ],
-    "scripts/lib/domain-core-build-profile.mjs": [
-      "dc1f999e240c7900",
-      "610e5e327d43fe49",
-      "127c7e67d50ca89a",
-      "ef20ac1ecf79da5e"
-    ],
-    "scripts/lib/domain-core-candidate-receipt.mjs": [
-      "e3dbbfcdf2794aff",
-      "6fefa4bb2a121271",
-      "0e38153cd006e934",
-      "161edae4725eed20"
-    ],
-    "scripts/lib/domain-core-candidate-receipt.test.mjs": [
-      "91d6a8fdffae91a2",
-      "b043f65706163b32",
-      "8fbdba92a50d34e8",
-      "9b8a4d68dbb9a726"
-    ],
-    "scripts/lib/domain-core-deterministic-candidate-bundle.mjs": [
-      "609ad9b3ee25d4b6",
-      "60c221d80d7e68b6",
-      "562830904484f7b8",
-      "e684a4d83f8b8dec"
-    ],
-    "scripts/lib/domain-core-deterministic-candidate-bundle.test.mjs": [
-      "7bb51359ab5f3dd9",
-      "f8c4c6abe9d76852",
-      "a02e86c6b8505a83",
-      "a8a1bc3d4d167d70"
-    ],
-    "scripts/lib/domain-core-evidence-contract.mjs": [
-      "5b4215b9ecd0a526",
-      "44bbcfd5f1efbb38",
-      "1d796738ad59db65",
-      "784c34fdf1be99f7"
-    ],
-    "scripts/lib/domain-core-native-release.mjs": [
-      "3ac43828b3f29d4d",
-      "dddef01dba535466",
-      "10044b500c33b7b9",
-      "36dd406bdb8c5dfb"
-    ],
-    "scripts/lib/domain-core-promotion-evidence.mjs": [
-      "1dc5321e56fd0cb1",
-      "3fbc1d2a6835de4d",
-      "d1949ed28bc23a6d",
-      "0cc88667400f5fb4"
-    ],
-    "scripts/lib/domain-core-proof-fragments.mjs": [
-      "caa1b88f9b5650a4",
-      "10ec5f4bcd261fa4",
-      "e182ce7df127e3dd",
-      "cd92a2ccc946b5b3"
-    ],
-    "scripts/lib/domain-core-proof-fragments.test.mjs": [
-      "db06bd8004b7ecd4",
-      "4910a19c49a14bca",
-      "9dda45577bdfafa8",
-      "a5dc1cfeaca7c7e0"
-    ],
-    "scripts/lib/domain-core-release-evidence.mjs": [
-      "fd5ef362d32c4835",
-      "03b31af3f1da6ccb",
-      "5831277878dcdc05",
-      "6007aeb5b261c7f0"
-    ],
-    "scripts/lib/domain-core-shadow-enrollment.mjs": [
-      "82c7d43040522fe8",
-      "c7cb947fda0ce1ca",
-      "f7ccab0721c21062",
-      "fa411bc29205a0ec"
-    ],
-    "scripts/lib/domain-core-shadow-enrollment.test.mjs": [
-      "bf21fedc744437d2",
-      "1f4ad320980dd327",
-      "6fb6f6e17fe2f43c",
-      "fca2d4799bdf9cb4"
-    ],
-    "scripts/lib/export-domain-core-promotion-evidence.mjs": [
-      "c6d4165b9a1012ec",
-      "dc2414b07c119354",
-      "02289a01ad8380c7",
-      "2f594d64efcc1ea6"
-    ],
-    "scripts/lib/export-domain-core-promotion-evidence.test.mjs": [
-      "a6e4dfdc3f0483c0",
-      "b393a3042f539e00",
-      "2439cc713c15ee1c",
-      "05290821a6aac515"
-    ],
-    "scripts/lib/firebase-hosting-rest-url.mjs": [
-      "fd9379519391ed1b",
-      "88962200ff0835e3",
-      "bb4144b0de380fd2",
-      "9c669261c073c992"
-    ],
-    "scripts/lib/openburnbar-release-app-test-filters.sh": [
-      "ad45a822e6378582",
-      "1197a246c14da6f4",
-      "88b0aa2e53b852b8",
-      "acc9545b376af9eb"
-    ],
-    "scripts/lib/openburnbar-release-mobile-test-filters.sh": [
-      "609a8c076ee55fc5",
-      "9d947f70adae952c",
-      "07bf64fbe917ffcd",
-      "d959a36040b5a4bc"
-    ],
-    "scripts/lib/prepare-signal-ffi-xcframework.sh": [
-      "bc320a99ea3efd1d",
-      "7ba799ef0506caec",
-      "e3eede62bd5dc661",
-      "e412483b6bf896d6"
-    ],
-    "scripts/linux-port/assemble-linux-release.mjs": [
-      "f56cac8b15471520",
-      "a2b8bccfc9458497",
-      "b6290019933b96b6",
-      "efbd74185878b7f3"
-    ],
-    "scripts/linux-port/build-linux-release.mjs": [
-      "56c13ce48513a7e7",
-      "f6f64dc7af6184fc",
-      "03d1fa5ed9a3fb86",
-      "cc94648b9c020367"
-    ],
-    "scripts/linux-port/check-linux-update-feed.mjs": [
-      "8baa57b16f278517",
-      "c6972a7b69f34e6a",
-      "69ccb3682d353246",
-      "0e3c2367ee6e7f78"
-    ],
-    "scripts/linux-port/finalize-linux-architecture-session.mjs": [
-      "aef8c3506a2d45c1",
-      "19772f28172fcae4",
-      "6f499350cb65b88b",
-      "8bf48198d112ebca"
-    ],
-    "scripts/linux-port/lib/appimage-filesystem.mjs": [
-      "7df8f02d98b3e0e6",
-      "55bcaa43ce02e873",
-      "fe1420c01109c750",
-      "3e9c4bf24beeade3"
-    ],
-    "scripts/linux-port/lib/linux-package-session.mjs": [
-      "9cd13fd448e7641e",
-      "209014bfa393af04",
-      "7af377af5a783a1d",
-      "d278f8bbaf9f0633"
-    ],
-    "scripts/linux-port/lib/linux-release-common.mjs": [
-      "70ecf347c56117c4",
-      "53782b98a6723a80",
-      "7339f73e0a1dcc4c",
-      "3efbd82aa20033de"
-    ],
-    "scripts/linux-port/lib/linux-release-shards.mjs": [
-      "85057eb601507fe9",
-      "6531ef9e330cebaf",
-      "3fd992a11a1559ce",
-      "8c9f7c5644e6c3a6"
-    ],
-    "scripts/linux-port/lib/linux-release-verify.mjs": [
-      "0709854342254fb4",
-      "20ee3f4620a4d577",
-      "6349c73ce5fc42f7",
-      "718dc06279da3b4f"
-    ],
-    "scripts/linux-port/lib/linux-update-feed.mjs": [
-      "33e23ddc46ad31cc",
-      "69414dfb41eef45c",
-      "d569fcbd578c16e1",
-      "7e05e771a71bce70"
-    ],
-    "scripts/linux-port/lib/parity-ledger-validate.mjs": [
-      "a61132a2f8c01e48",
-      "24d039e74168e281",
-      "745f6aa8fb903c97",
-      "471857ea001eefd0"
-    ],
-    "scripts/linux-port/linux-desktop-session.sh": [
-      "ea1f5f0c695bd8e8",
-      "5f93fdfc1f9572fd",
-      "89d5d234acbd5232",
-      "0f633c08e311e2e0"
-    ],
-    "scripts/linux-port/render-parity-ledger.mjs": [
-      "370e1867a25126be",
-      "a7eadf050821dff0",
-      "9305026dc0871d85",
-      "1dc1e82eaa7ffa6b"
-    ],
-    "scripts/linux-port/resolve-linux-release-version.mjs": [
-      "53e35f04c1541ec6",
-      "c8e5952d39a70080",
-      "ef6641ba519a8b33",
-      "7527afb12b4264bf"
-    ],
-    "scripts/linux-port/smoke-linux-packages.mjs": [
-      "f512e96c6e404c2d",
-      "4b0365ea7abf2b1c",
-      "004478c453fbbb1f",
-      "2d2a9a62977401b9"
-    ],
-    "scripts/linux-port/validate-parity-ledger.mjs": [
-      "e0b252955a61cd90",
-      "001d68af2e96e940",
-      "6c4fae66a10acfbf",
-      "feb4b7df52c2fdd2"
-    ],
-    "scripts/linux-port/verify-linux-package-update-rollback.sh": [
-      "1ce751cbb6746e65",
-      "0938db237fa8e874",
-      "558deaab69fd0c11",
-      "4d2232def367c4e9"
-    ],
-    "scripts/linux-port/verify-linux-release.mjs": [
-      "7f87db870691c979",
-      "5eddfc80afbd0c70",
-      "111fbdb6fc7f10ee",
-      "8829e1b23f46c28e"
-    ],
-    "scripts/ops/create-domain-core-deletion-plan.py": [
-      "b5c0743f4b71fb9f",
-      "3dd3ca2624399bf4",
-      "d0f1787e34d64aac",
-      "f64e3737eaf26bb0"
-    ],
-    "scripts/ops/create-domain-core-promotion-receipt.py": [
-      "f202dd4f67586916",
-      "9013233375e0d308",
-      "12c481cb17bb7d05",
-      "ecdb4529d8046c39"
-    ],
-    "scripts/ops/create-domain-core-rollback-receipt.py": [
-      "88063a769b79abeb",
-      "f352f1d995d5aef7",
-      "d353b8311a9f488b",
-      "bb8be8edb896d5b9"
-    ],
-    "scripts/ops/create-domain-core-stable-receipt.py": [
-      "8e5ff24f06810932",
-      "2f9b95b08baab52f",
-      "291f54e9d8ce26a6",
-      "a9134606b0f12ac7"
-    ],
-    "scripts/ops/export-domain-core-promotion-evidence.mjs": [
-      "1d36d98cb876bb19",
-      "d5b1f382f32d9c2f",
-      "976e2f5742db6a29",
-      "3216ffda7d3ae14d"
-    ],
-    "scripts/ops/manage-domain-core-shadow-enrollment.mjs": [
-      "ec35f9d52dc52c8c",
-      "c869b6c69d198eb1",
-      "e9b806adffa0eb1a",
-      "7ecedce3e3494753"
-    ],
-    "scripts/ops/rollback-revision.sh": [
-      "a6f9247de1dc70fa",
-      "3c6adb4c773c5fa3",
-      "abba987ebfc7c650",
-      "6a6b41336a4ae261"
-    ],
-    "scripts/rollback.sh": [
-      "8981fd39bc8b3291",
-      "e521f08e65e8214d",
-      "5c960c3783d13040",
-      "7790504a8c73e6ee"
-    ],
-    "scripts/security/scan-publishable-tree.sh": [
-      "ffe0ef14adaf66d4",
-      "68ef9f10c0ca8923",
-      "ac3941f57d4170da",
-      "be54cb4084a4f0af"
-    ],
-    "scripts/security/verify-deployed-ttl.sh": [
-      "1cbc8d39487bdeb9",
-      "581f121dccebb1c6",
-      "7304e951b8be956d",
-      "504666494cc8092b"
-    ],
-    "scripts/setup-macos-downloads-r2.sh": [
-      "dd3d73ba1d472bc9",
-      "a2a80af2fa6c66a1",
-      "7b8b1886840b6e88",
-      "f6fe1d5f7f75ee19"
-    ],
-    "scripts/supply-chain-audit.sh": [
-      "f99ff7ce38e69bc6",
-      "349a311c5300a678",
-      "3b13ee3a897846a2",
-      "040517a41f11e458"
-    ],
-    "scripts/supply-chain/generate-vex.py": [
-      "4b35614b63a8ad23",
-      "2a1fed2268ad4f4d",
-      "5caafb1a5946c5c3",
-      "1564fcb2bd8f2145"
-    ],
-    "scripts/supply-chain/run-ecosystem-deny-checks.sh": [
-      "5c95a456c45c7224",
-      "1f90c56052f6e1c1",
-      "7f27729809cc09c9",
-      "5f281a48feaac538"
-    ],
-    "scripts/test-domain-core-python.sh": [
-      "de86f90949f4e899",
-      "6a74d1b09555d21c",
-      "d52ad5c8f0c6caf9",
-      "e155243a554402bf"
-    ],
-    "scripts/test-openburnbar-android.sh": [
-      "2409ce3f3040bab6",
-      "97b99fd05a810cd0",
-      "ef4b8dcf2cf1c6b4",
-      "1309a8c426108737"
-    ],
-    "scripts/test-openburnbar-app.sh": [
-      "7de5ae7b50be294f",
-      "a3f927b4bffa18e8",
-      "f41dcdf66908716a",
-      "02b21b093a3997de"
-    ],
-    "scripts/test-openburnbar-extension-host.sh": [
-      "55881dc4191880bc",
-      "57ba986049baa342",
-      "ae5f3c24ce793c66",
-      "81cd103a6cf2cd6e"
-    ],
-    "scripts/test-openburnbar-mobile.sh": [
-      "0af497557466e6bc",
-      "2db709edb62605e5",
-      "383df50d52e13ab4",
-      "f3ad252bdd246a20"
-    ],
-    "scripts/test-openburnbar-replay-evals.sh": [
-      "3b22eb8a2b7b4593",
-      "8e37c6eef5714aa5",
-      "966fdb5771009db3",
-      "fe968b5cade68ce9"
-    ],
-    "scripts/test-openburnbar-retrieval-evals.sh": [
-      "950a9e5117dc6573",
-      "bc5a47d3e7119598",
-      "ab3f0a381129b187",
-      "927a67d19926d572"
-    ],
-    "scripts/test-openburnbar-swift.sh": [
-      "cdb7137cef348c0f",
-      "7ba90101c0e7de7f",
-      "d3788d37b6461b74",
-      "2bf3144e9cebc78f"
-    ],
-    "scripts/test-openburnbar-ts.sh": [
-      "b991331e7ed2bd10",
-      "f7e5e126487cff98",
-      "e2a3fb3b90239646",
-      "e54badf466a2aa4f"
-    ],
-    "scripts/update-homebrew.sh": [
-      "c76f17b8c7722706",
-      "8af958070dc20535",
-      "c6019d0faee60080",
-      "8c6d7ea9ab234286"
-    ],
-    "scripts/upload-linux-downloads-r2.sh": [
-      "b20feb967a80e545",
-      "c774950bb805b00b",
-      "ee12b0a404124c59",
-      "020f6abda8e31fdd"
-    ],
-    "scripts/verify-version-consistency.sh": [
-      "c142b8a68ea1689a",
-      "763e9f25f867cf1f",
-      "d3fff876ec079d1a",
-      "ad3db27f35f28b95"
-    ],
-    "scripts/verify_burnbar_mit_pr_clean.py": [
-      "dbed7cde1c04b751",
-      "5853f40780edeafc",
-      "eec29e69301f870f",
-      "26fa4e2d9be9e319"
-    ],
-    "scripts/windows-port/check-csharp-binding-drift.sh": [
-      "f5e40680141f2f62",
-      "bb31b14d822f0449",
-      "a6454915af3bfae5",
-      "5b210f8edc01da2d"
-    ],
-    "scripts/windows-port/refresh-native-engine-manifest.mjs": [
-      "0f32c5a110f35e86",
-      "eba1bf9b28f9c9cc",
-      "c2ef14d52c837dc6",
-      "a598974647bea939"
-    ],
-    "scripts/windows-port/validate-native-engine-layout.mjs": [
-      "5d29cc8a012fca38",
-      "77d4db85dc1b7d37",
-      "58a733d10747668b",
-      "6bbc9242f5473d5a"
-    ],
-    "scripts/windows-port/write-signed-artifact-manifest.mjs": [
-      "d6fdc6c1104a880b",
-      "cd7a71f951270fb3",
-      "b1f67d3e0939ec21",
-      "ee5e56d0c81a7a0c"
-    ],
-    "tests/fixtures/domain-core/hermes/v1/hermes-crypto-kat.json": [
-      "2bdf89986e02105e",
-      "a9e5780cacfe3bd2",
-      "c380dd05a2614b4d",
-      "77daf987d32260f5"
-    ],
-    "tests/test_domain_core_console_release_evidence_workflow.py": [
-      "67a84bfba30bf445",
-      "22a76f5214980eac",
-      "7e5111a127752dad",
-      "25e35059ebf19854"
-    ],
-    "tests/test_domain_core_functions_release_workflow.py": [
-      "7237a811f6a5bc2c",
-      "c281329bc1b72bbd",
-      "d85e1723fabededf",
-      "bbd39acb4be75e66"
-    ],
-    "tests/test_domain_core_python_hermes.py": [
-      "2d4b8632c2bece6d",
-      "fa8f1bd4cdd07c8c",
-      "8019d7d1f5e5893e",
-      "656a399131212ae7"
-    ],
-    "tests/test_domain_core_union_gate.py": [
-      "131fcd7f6dcb107b",
-      "82fa9171687bd066",
-      "314b7134bf55e7b1",
-      "af6c421990619845"
-    ],
-    "tools/hermes-platform-burnbar/adapter.py": [
-      "d78b216524094c3a",
-      "ae5da5db1dd617b8",
-      "4706e37686da1361",
-      "c76ac2c5609b5d61"
-    ],
-    "tools/hermes-platform-burnbar/domain_core_hermes.py": [
-      "15c4f769e0d71e58",
-      "f23edd6b98fc28d4",
-      "56b90a38d90d2d1f",
-      "d55f6c6e3c8ee95b"
-    ],
-    "tools/hermes-platform-burnbar/legacy/__init__.py": [
-      "34ba142381379559",
-      "d7388ad2febec384",
-      "ff32d1b8429e0477",
-      "874a74be09766520"
-    ],
-    "tools/hermes-platform-burnbar/legacy/hermes_ratchet_legacy.py": [
-      "900e178434f15f49",
-      "fd99441a44759b6d",
-      "8d14dbeb9be49c04",
-      "79ab5b0f239a9aab"
-    ],
-    "tools/hermes-platform-burnbar/smoke_local.py": [
-      "3a90b1da37dc3748",
-      "2e4559d79a28ef18",
-      "20a7830d89e6efdb",
-      "bf23e8e3bbf49a7d"
-    ],
-    "tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar-domain-core-source.sha256": [
-      "3161b18e71a485c2",
-      "cbda3f6fce1dbae9",
-      "950cf323cbd9b4b1",
-      "7e7afca3f7d980d9"
-    ],
-    "tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar_domain_ffi.py": [
-      "efbdabbc699a288a",
-      "766f78754f074ab2",
-      "67d92c0d000aca12",
-      "4aa9bd63eb2b1577"
-    ],
-    "windows/Directory.Build.props": [
-      "58d4371cd16d99e5",
-      "8559519679b054fd",
-      "06054726f4ae74b2",
-      "a0dc25c061d669e3"
-    ],
-    "windows/Directory.Build.targets": [
-      "830ea80e1a0f1123",
-      "572e0c1472ced5b7",
-      "9105623ed5c56aad",
-      "32c7766d4923c002"
-    ],
-    "windows/app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj": [
-      "161a894d2fb61a9f",
-      "67fe3a8a7dd85aa0",
-      "ff1949eadf531f39",
-      "3e6f67c8714fd5c4"
-    ],
-    "windows/app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj": [
-      "ed9d5e8fa3c9a3be",
-      "9070a6283450906a",
-      "14b5d4125de506f1",
-      "9cbc7a11bfcf24b4"
-    ],
-    "windows/storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj": [
-      "6d0f53b972983f85",
-      "ddc68bc029b1ed1b",
-      "a87a680be221da59",
-      "a2140d11ae02983e"
-    ],
-    "windows/tests/quota/DomainCoreQuotaBridgeTests.cs": [
-      "e9dbca353da98f39",
-      "7fa21fa7495dae7d",
-      "1ef4def5656da36d",
-      "d433c788e2a3955c"
-    ],
-    "windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj": [
-      "0c5669981909a795",
-      "8ac6197cf7b41a9d",
-      "d95622d7262fc1a9",
-      "3030f13f7fafe2e3"
-    ]
+    ".firebaserc": ["f37cd50ee6664116","5689e7440ae609ce","3452c9887b13fb11","791e49744a60b649"],
+    ".github/workflows/deploy-hosting.yml": ["d16573e701bbdaaa","9f9836e47180fa79","26843e0a441ccc74","5c7d5e584acbed31"],
+    ".github/workflows/deploy-production.yml": ["6f51df6b565ebc51","1f8a0a58b43c0a29","46a30bccc9891a78","9ececa2b9a0b3a7a"],
+    ".github/workflows/domain-core-console-release-evidence.yml": ["30a73fcd4eda5674","cfccfa99706777d6","cd27b2331c5ae4de","359417766434a8d4"],
+    ".github/workflows/domain-core-deletion-guard.yml": ["352192c8210f105d","f4c8dccacf8496d3","c0f1b487905155d1","b0a10a0aa290012b"],
+    ".github/workflows/domain-core-functions-release-evidence.yml": ["03f3cb9d3c933ee6","2fbd66010c11b703","d4f41f8d3f889c40","1d4b860cc0448501"],
+    ".github/workflows/domain-core-ios-release-evidence.yml": ["549bd6aebcb6b422","57fdb34c965dadf6","44800da5a4f9fed7","d8e53f1fc4e69806"],
+    ".github/workflows/domain-core-post-deletion-completion.yml": ["26801b413588f523","318f9769381ff711","a1ade6e20fbc7f54","e0c3cd840d9a0139"],
+    ".github/workflows/domain-core-promotion-proof.yml": ["9477a0e6d1e48713","431b405282a5441e","4eb73321891628dc","a5bcf02ab4c1e475"],
+    ".github/workflows/domain-core.yml": ["3eea21dedf3959c8","a58698f2056301f2","38c8b0f279c09a27","539b4c8c2509c181"],
+    ".github/workflows/linux-release.yml": ["cd464fa8c252b9e9","527c6e73f7abf71a","7b6746f544b03919","5e55759d86af380d"],
+    ".github/workflows/openburnbar-release-windows.yml": ["0cf587032038c76b","baafa1e324000e1f","adaab70be39bca62","5add213a0a9e5406"],
+    ".github/workflows/release.yml": ["8a13bef784a03593","81915f14b54d56cc","b62d200d2ecfa0f1","eba4c38c3990458b"],
+    "OpenBurnBarCore/Package.swift": ["c2cfedd812000cca","525f3f2526db4f92","98c5caad053cc8c9","67535a6c85ffc0a8"],
+    "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift": ["1791459f936e0cff","25ef90eff252d1a5","f9aee34bafd4cf16","c1831a2d1a5ba04e"],
+    "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift": ["f03ca7157e414ed0","907eaa78dde972de","fe14d622f9d9bcb0","0019366765a362df"],
+    "android/build.gradle.kts": ["b6e86cb10a676093","ce490ce865d79ae2","db641000b0077d0a","45b14b51715fb819"],
+    "android/gradle/ktlint-android-sources.gradle.kts": ["411afa35cfe75275","6c1a3444ed41813e","80c15c12cca3b34b","fef6f485b2b61444"],
+    "android/gradle/wrapper/gradle-wrapper.jar": ["498495120a03b9a6","ab5d155f5de3c8f0","d986a449153702fb","80fc80e134484f17"],
+    "android/gradle/wrapper/gradle-wrapper.properties": ["032a71c92fc7f3c1","cadf8880f0554b71","aa6beb411f97ac25","3aa93932cb3784d5"],
+    "android/gradlew": ["5d47795f22f148a8","ce482cd5758d3704","9c84c3fe5c0c6f35","561eb6bcac171bbc"],
+    "android/openburnbar-domain-core/build.gradle.kts": ["2ed62ec214c9dcf6","4575f780a8f1ef8b","b721b43a6db1cc42","9d7ed36e1218253b"],
+    "android/openburnbar-domain-core/src/androidTest/java/com/openburnbar/domaincore/DomainCoreNativeLoadTest.kt": ["c4c32c0117964982","35006020396a0062","64510cc0f381ba82","63108a095b10b717"],
+    "android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi/openburnbar_domain_ffi.kt": ["a5707fd59adb8c5a","885ff2d1f7ea68d2","60c397c9d04d4232","900249b5cce3e512"],
+    "android/settings.gradle.kts": ["b499ea82e56d478a","5b31cd4d9cdac187","74d9f86954fbbeed","64e846506d40a45a"],
+    "apps/console/package-lock.json": ["345b678b0acd790f","9e971cb08578f430","e74c2a813ab57ebb","fc50559a12cdf9ed"],
+    "apps/console/package.json": ["ecf011868d8ca576","e507072076d895a2","90e5abc51a135c07","66904fec3f333db7"],
+    "config/domain-core-build-profiles.json": ["6de1031373a3a9a1","aa5844e9f5ae3117","688f8d1371467d4d","08890752d95860e9"],
+    "config/domain-core-deployment-receipt.schema.json": ["ee37f63d7b19be98","8dbfc655278abc4b","7ca540c48cab3d8d","b72cea7b48a86329"],
+    "config/domain-core-deterministic-candidate-bundle.schema.json": ["3e88823cc8d5de40","75431190dc400a5b","652d95103caec849","4e7f7614e3232ce1"],
+    "config/domain-core-functions-relevant-targets.json": ["a929dd4baf33142c","517f824960c5e849","d0f6c69d742ca3b3","9b220ce6a15df877"],
+    "config/domain-core-promotion-policy.json": ["997041f912a2fc73","710576c2f55e76ad","c6a4e04b0c955001","daaf9354a443c167"],
+    "config/domain-core-release-predicate.schema.json": ["4966ad8329b4ec96","fea2a39f4ca9b21b","a8b2529db0920fce","fdf2f58fd4d0297a"],
+    "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/OpenBurnBarDomainCore.Ffi.csproj": ["a5edbdcba46b16ac","35ef64ea7dcf10ba","9d07f4058f3067f3","714efd202684f684"],
+    "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs": ["158031de1fe842f3","f5c338d5aad990e8","72233b3af0f94902","ac58399f6b3cd2c6"],
+    "crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs": ["e39b66bbbcf1cb45","1500ae1c46599f69","226cb1ddcf13e5b5","4a2d9aa7ef05d0c4"],
+    "crates/openburnbar-domain-core/union-abi-manifest.json": ["dc8432ac0306800d","a4c3884a5887997d","e0e015b8c8637f6b","9444eb27c8103509"],
+    "functions/src/__tests__/pricing.test.ts": ["eae593b02a6f4c02","1b1f0f15cd953fb4","469e396bdebb85b7","525e141f60321c07"],
+    "functions/src/domainCoreBuildProfile.ts": ["347deeb959da35cc","f600f6b7951ee1af","76e255627b439f77","5ed3d5e06acf95f4"],
+    "functions/src/domainCorePricing.ts": ["bf40005c046bd32b","0a2c5cdcede3709a","ee5d1b2f38514724","6523f50461885f63"],
+    "functions/src/generated/domainCoreCandidateReceipt.ts": ["dfaa210eda0507aa","f9a2f90f45ad4238","1e3a28477786ff1d","36841b84ee8149da"],
+    "functions/src/health.ts": ["f4f5ec5dbfead068","04ed20ab14730653","8a60503812475af6","7e18347157bf6477"],
+    "functions/vendor/openburnbar/domain-core-wasm/openburnbar-domain-core-source.sha256": ["3161b18e71a485c2","cbda3f6fce1dbae9","950cf323cbd9b4b1","7e7afca3f7d980d9"],
+    "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core.js": ["4818f2e6f57933c2","cedb569c22032fb2","f614f2923ef83f2a","d3102b75d337bdd5"],
+    "functions/vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm": ["0651157adfa350fc","9b1b0799dfce5144","1ac1dbd481d5e477","28cce723c2ec1cf2"],
+    "functions/vendor/openburnbar/domain-core-wasm/package.json": ["80ef14a211db1c24","d2299c739c5e4d4c","f4a0001f1ef20825","4ab102a89739a966"],
+    "scripts/build-domain-core-android-aar.sh": ["86f81c77867597ac","3686a837cf7f4849","0c7e821d831f7a2a","4f0252c2b425fb23"],
+    "scripts/build-domain-core-python.sh": ["c754e97e3db79524","9c43640783c337b2","59caeb3a4242a324","b5ab8a96a61b4ba0"],
+    "scripts/build-domain-core-wasm.sh": ["b56722d24572873c","d41d44ac731929cd","50b304534341ee0a","8612d60f0d1935cd"],
+    "scripts/build-domain-core-xcframework.sh": ["6573fdca02a4b519","663cb51a1f9a2c49","904ff767036d100e","daa88ea4f6d8f094"],
+    "scripts/check-openburnbar-app-swiftpm-lock.sh": ["c4095aff04ef1040","cb251e919d6e1ac3","7bb70c5fb2a1eba5","fa385407d39f802e"],
+    "scripts/ci/build-corresponding-source-archive.sh": ["5230387c630b59bd","ff0f62c93074d3eb","87dfed46bdd81309","cd4812a7f9820cb2"],
+    "scripts/ci/check-callable-validation.mjs": ["434fcc65681182ce","c4bf0a2f3df62a29","d5f7f8d518edf9cc","f512f0a431936671"],
+    "scripts/ci/check-firestore-deploy-drift.mjs": ["d87646cccd5336d5","93f7ec508d646e33","751945545afac878","044f7759df4222f7"],
+    "scripts/ci/check-firestore-ttl-declared.sh": ["153504222c6e65e1","73518479636768b4","ffcfadb7821d76d9","08460062baa8c6dc"],
+    "scripts/ci/check_agpl_legal_release_review.py": ["501939c5a585bcfb","1a4e8c1c66be1401","d37b624ed32dea7d","9a4720fb52d03c37"],
+    "scripts/ci/check_burnbar_license_posture.py": ["1613c60bc05c99ef","1d48a7fdb48506aa","74e63048027020eb","e42b3630d9f0125c"],
+    "scripts/ci/check_burnbar_release_preflight.py": ["72e7994c42394ee1","b30c535312e5fea1","b3053820ed10c853","8f28dbb055a178d7"],
+    "scripts/ci/check_cloudvault_at_rest_runtime.py": ["8d6803291144867a","e78a7b79c054aab3","2fc74e613f4d6b89","b0d919e7061ce575"],
+    "scripts/ci/check_functions_cloudvault_runtime.js": ["e9266ebab5f1cba2","1f37024d12709a4d","b77069795a0f5093","51a085b138c1f922"],
+    "scripts/ci/check_hermes_gateway_migration_drain.py": ["c5b03139b7659ec1","56c72187a56ffee0","d0b8154ba7f3a94e","479366432fa4d017"],
+    "scripts/ci/check_libsignal_runtime_readiness.py": ["1ba98518d2c2c021","3753197c5e2366af","6cc096d15e5a7b80","f24caae3e2128f03"],
+    "scripts/ci/check_native_signal_runtime_evidence.py": ["73dba00d4238f599","2a55236b025ca30a","f8d7196b420e1866","098880a9e80135cd"],
+    "scripts/ci/cleanup-firebase-config.sh": ["9a25b214f06cae90","39ecb7e061f5aacc","42524659a1ff0a6f","c23145b946531391"],
+    "scripts/ci/create-apple-android-release-publication.mjs": ["509bdaf71ddbdd35","d218bb2993596212","c7a2c47396ab863d","507992de520c8e0d"],
+    "scripts/ci/create-domain-core-deployment-identity.mjs": ["1ebf5367ff5b10f6","65789b585af78b20","6c7ee15611be7efc","aee190b25b9f5b76"],
+    "scripts/ci/create-domain-core-deployment-identity.test.mjs": ["7316ed8901d2f929","c2041f56ca7a89e8","41573eb5a2588573","1e092d2341ac84fb"],
+    "scripts/ci/create-domain-core-deterministic-candidate-bundle.mjs": ["cefe7bd81e45ed99","86a9c7e04bcf90ca","09c9fef485243388","41e757c550ab404a"],
+    "scripts/ci/create-domain-core-deterministic-candidate-bundle.test.mjs": ["e5364b5fe092d8f6","4b40f2d46a3b3522","3a4ca61c41fec12e","778bb94fd71aa0e7"],
+    "scripts/ci/create-domain-core-functions-deploy-proof.mjs": ["47e5ad692306be19","8016728f794b2c90","d7511224d181042b","a43713d6acfb2a11"],
+    "scripts/ci/create-domain-core-functions-deploy-proof.test.mjs": ["c98b1f8feb76600d","c598f5ef080ea87c","bfb6750e46fec7e9","03da48c444ae062b"],
+    "scripts/ci/create-domain-core-functions-deployment-evidence.mjs": ["dcae43128f3f2008","46416f6a52c1396f","64f9970b8709af3b","baa65135ca872183"],
+    "scripts/ci/create-domain-core-functions-deployment-evidence.test.mjs": ["3b289d8e035e50b5","d9a8adf8ce680c60","46a7c5af754a35ec","9ccf70cb90b06f32"],
+    "scripts/ci/create-domain-core-functions-provider-coordinates.mjs": ["1abad1b94c98fd32","4f79e4747d6660d3","b3b17bd626465f9a","116bf5b1575d16e3"],
+    "scripts/ci/create-domain-core-functions-provider-coordinates.test.mjs": ["46d6836e7bf0ed9b","5a6cc38926311fb4","b5c2423fbd542951","e86399b17fd0610c"],
+    "scripts/ci/create-domain-core-native-publication.mjs": ["28d9232124f3ae46","51a18f12ea394294","4488d912e97de9e3","20837adbf771d377"],
+    "scripts/ci/create-domain-core-native-release-evidence.mjs": ["086942b88d461526","2f63ee0ac236800a","1838af8a48e1a6cd","12a8ee35a828cbad"],
+    "scripts/ci/create-domain-core-release-evidence.mjs": ["7c2819408b6c2e52","565f205efd78f244","494069d80ec604d3","9991d3cf51978748"],
+    "scripts/ci/create-domain-core-release-evidence.test.mjs": ["77893c5006e434a6","0e434efdd93de695","e91df6f09ec276eb","38ab60b6890ce075"],
+    "scripts/ci/create-domain-core-rollback-bundle.py": ["dcc61ca782a4b44c","8180495b61f1013a","c49f87449e575674","0841fdee6df1b040"],
+    "scripts/ci/create-domain-core-runtime-artifact-manifest.mjs": ["14f8216d8386b4a5","985a1b66663ed9cd","21470581c6bd917c","14d725189ce21616"],
+    "scripts/ci/create-domain-core-runtime-artifact-manifest.test.mjs": ["fc20e3e2fa60cf59","3049366afc90d0b8","faa5a19047ba8d5a","170c2e59af251058"],
+    "scripts/ci/create-windows-domain-core-release-bundle.py": ["0f4e00439fa898f3","13c28484047e9809","4f3ee941bf8311fd","cbd1097da2ca52b4"],
+    "scripts/ci/deploy-firebase-hosting-rest.mjs": ["bbec2adff61f58d3","74d3d278824f4e3e","df7e5899cd2cff9c","620613f08a4a93ae"],
+    "scripts/ci/domain-core-proof-fragment.mjs": ["f9a3bd8f5d18c2e3","4dad97205b034055","eedfbf8fb98b14e4","043a7e28b495f41f"],
+    "scripts/ci/domain-core-proof-fragment.test.mjs": ["5c427dfb879b04fb","6e6effa96feaac62","2e8d4ac58251777a","f60e0dc47058d693"],
+    "scripts/ci/domain-core-release-evidence-contract.test.mjs": ["9d7b95496d1a0350","895b2212fe623ca5","9d81f3e13603eb8e","fbf728cd1b4ee311"],
+    "scripts/ci/domain-core-union-gate.py": ["3e2f1335c0b937d4","f5e7c4d6bb315e3f","804d0529608c6543","7e167ba3c3c1909e"],
+    "scripts/ci/drain_hermes_gateway_legacy_records.js": ["40e7685723208ab9","98db795dfb6a0815","993b302fc05e99c5","afca10c233d268c9"],
+    "scripts/ci/ensure-windows-domain-core-release.mjs": ["bca104741fa2f354","a6991d7158a6c10e","c37a512692498415","40d922e5f4fb998f"],
+    "scripts/ci/evaluate-domain-core-promotion.mjs": ["39017658ca3474a0","040fb6d7de709849","f7a5dc67616c3a63","db79eb0c7b0063b8"],
+    "scripts/ci/evaluate-domain-core-promotion.test.mjs": ["3feab716c3a942de","40d8f63460753383","9169aaf1839fa4be","41dac97d565c6672"],
+    "scripts/ci/firebase-rules-source.mjs": ["2d4fb0bd26506356","6767485415600ef3","8a86d70fd22696af","f6026bba6d34e5a7"],
+    "scripts/ci/generate-cryptokit-interop-vector.mjs": ["d31efdf9fc0ae674","69c320b11d48b22f","45d784a39ff55bb4","5c4a0c7f043022c5"],
+    "scripts/ci/hosting-smoke-domain-core.test.sh": ["e97e298d42074c14","f518400f79bc1ec1","5815b07ff943ec76","1f2e135ffc5594fa"],
+    "scripts/ci/hosting-smoke.sh": ["ff67a5fb0c89bbc4","d7e7040f859d27ae","80d408cc12830ce6","07d707b47e5fff89"],
+    "scripts/ci/hydrate-apple-android-release-evidence.mjs": ["18bb3b0b57d218fa","5d2394de2f54184a","bc4b90e533600b15","80d5c85675be9a1e"],
+    "scripts/ci/inject-android-keystore.sh": ["c5ac65e9867800d9","7073738490e72f67","44cf947831c2f4f0","b7c0b9c7a11fbbe6"],
+    "scripts/ci/inject-firebase-config-android.sh": ["807194e60f8fe6dc","97fe3474d971107c","5f26169c3d442f2c","b4b846174b362fef"],
+    "scripts/ci/inject-firebase-config.sh": ["41ae7cec276190ce","fbe933b9c02dcc95","59154f2b7f6a9d06","5b729ba8d2422e34"],
+    "scripts/ci/inject-sentry-config-android.sh": ["7ffd547d83fbc0ab","2e634169f8645de4","1ab7f3aa29969b75","123b8cb21a9f5bf5"],
+    "scripts/ci/inject-sentry-config-extension.sh": ["0ab6bd137d92ebe6","639736daa1b6bc36","0323c3e77d786890","776e744e3f0241e1"],
+    "scripts/ci/inject-sentry-config-ios.sh": ["b4154913df61ec09","0ec2752bfe1b3042","7516ead3b769cd75","b5b5105747a55969"],
+    "scripts/ci/post-deploy-health-gate.sh": ["4169a04fcd931db5","a3e6daf364a5e60d","edc5fed67386e1a6","bdd51ccf516becec"],
+    "scripts/ci/post-deploy-health-gate.test.sh": ["422d3d774ee0b0aa","9bfae0653610091d","7a4c6474749fc8b8","2b52d296678f0cc9"],
+    "scripts/ci/prepare-domain-core-native-release-gate.mjs": ["2a5b8eaf99ea85b8","f66ad337e63a5b6b","31f9ef50c5dacb29","6190350a9ed39aac"],
+    "scripts/ci/prepare-firebase-tools.sh": ["cdc22dab3d0fd21f","21f3797abc0e7625","84f78959a7776b04","570625bb4558222b"],
+    "scripts/ci/publish-apple-android-release.mjs": ["347e957ad0542b62","1b51bc1fc3743140","dc7fd636ed11e99f","5b2bbecdd03b3284"],
+    "scripts/ci/publish-domain-core-release-evidence.mjs": ["ee5c4ab796defa64","d868a45406bcd5bd","811e3e43b20ef67d","1215690da206f321"],
+    "scripts/ci/publish-domain-core-release-evidence.test.mjs": ["90ca9b39686b9494","204bea78c28412a6","293407fc31c402d1","a46f0b9bfc700209"],
+    "scripts/ci/release-command-watchdog.py": ["a38e875d20624fa4","197eae4534c8213b","bb0f2882e139e7a3","d8911a68bdc8cc4e"],
+    "scripts/ci/release-dry-run-attestation.mjs": ["6fff2e94522ea2d0","62a56433b4e00acb","a7a3db366cf8d8ae","66bc080d804414e1"],
+    "scripts/ci/resolve-domain-core-activation.mjs": ["cacbd0887e2d0a5c","2ad7cd11cadcaf0d","0aa2ffbc20cad282","0b5fef2a6e8a5656"],
+    "scripts/ci/resolve-domain-core-build-profile.mjs": ["3a66e093683d9173","df416655b5e77375","9e4b89a3599e534a","01ff11d32ec30659"],
+    "scripts/ci/resolve-domain-core-build-profile.test.mjs": ["b404e0d5b9adc7fc","b63e5653c6162309","29dc1d66e5aed99f","2f9e66ed21faedbe"],
+    "scripts/ci/rollout_hermes_gateway_signal_required.js": ["71af21bc37b01ba3","98811e0ab156fdfc","598282860266ef7f","f489581e2cff505b"],
+    "scripts/ci/run-domain-core-android-native-load.sh": ["90bd76436afd3e71","32928619b1220419","a75b5431e695445d","6c52c0b214e817de"],
+    "scripts/ci/scan-domain-core-final-artifact-legacy.py": ["020c793f2a353534","aaac76d2b6391d86","7590200b20735751","facdea7c29855108"],
+    "scripts/ci/sentry_dsn.py": ["4b4038771521bd91","e6d3068e785664db","4554334b948ea44d","7a1672f895d8a3cd"],
+    "scripts/ci/smoke-openburnbar-release-dmg.sh": ["f0acf16cfbb3545f","844439751a756f44","fa5def6da44e19c1","039444c56200291a"],
+    "scripts/ci/stage-domain-core-attestation-artifact.mjs": ["110c456bcd0495dc","138751c3c6ecb1c0","735e48be4b230b20","153175103c1b592d"],
+    "scripts/ci/stage-domain-core-attestation-artifact.test.mjs": ["0f830e07c4c40be8","f728afc2a9ab899e","cb5f4293bc426731","edf11a99e6d1f5b6"],
+    "scripts/ci/test-storage-rules.sh": ["6bc991e27a244a8d","03b5baeca098665e","ab2630911c802496","b702c9b943d49841"],
+    "scripts/ci/update-submodules-with-retry.sh": ["08917b27074b6b60","95918e4a0c246427","b701c1d25eb375b8","ca9c1611452ba3d3"],
+    "scripts/ci/verify-android-firebase-release-config.mjs": ["27ecacf2033b2723","8653434a62549d32","7d20a62ccdd8f8a7","99a0e525df0defa3"],
+    "scripts/ci/verify-apple-appcheck-release-artifact.sh": ["06a7f5c677ff6a2b","176d5353f015106b","1adb4460632c4030","2359c1312083381c"],
+    "scripts/ci/verify-apple-appcheck-release-env.sh": ["f9b951d668c4697d","751d32dbacf2d691","ef3dd0665a667390","b3e0c475174f87ae"],
+    "scripts/ci/verify-apple-release-firebase-config.sh": ["c6f62caaa58c0f4f","b69f54eeeef84cc5","7d1252410e7370a9","08ae87bef13ae1bd"],
+    "scripts/ci/verify-callable-logging.sh": ["2099c0564d639684","0262b44fc69c9367","a15501b89ac340ce","85470321c8a6507f"],
+    "scripts/ci/verify-corresponding-source-archive.sh": ["e6ce612576b01874","05b1d09dcf8a629b","a076a169830046ba","75228a1410eb9e08"],
+    "scripts/ci/verify-domain-core-android-universal-artifact.mjs": ["2bd014977aff00e9","8aa2664674df4a65","cdd7313ee81df3a9","7d5219fcd30c8c40"],
+    "scripts/ci/verify-domain-core-app-store-connect-status.py": ["54cd86b90f7480f5","a92a48811482db44","5bf9a0d0d5944951","7a660747b32d4b6e"],
+    "scripts/ci/verify-domain-core-apple-signing-identity.mjs": ["60b98b52f6247283","2ec68032a2a03d29","84dbad1b9c7e5b60","42cb8778d4c5d2e0"],
+    "scripts/ci/verify-domain-core-build-profile-artifact.mjs": ["e8b73ce71f765925","16ff117a057e4a34","a7f34d8ed9a3b1e9","87d5bbf84fd0c222"],
+    "scripts/ci/verify-domain-core-console-deploy-evidence.mjs": ["98f68b37505fa7fa","0fdec7509ae8dfac","a597943ed8020ef5","5e55d5bf883e6491"],
+    "scripts/ci/verify-domain-core-console-deploy-evidence.test.mjs": ["46170b8e25466a53","08b2aa6873dd8572","1e280c42f537cb3d","f45bd04d49298a5c"],
+    "scripts/ci/verify-domain-core-control-plane.mjs": ["8a9707367b8c8333","09e240d151b1af4b","c2a753c272b19a11","ff01cb7cd79b2c2a"],
+    "scripts/ci/verify-domain-core-control-plane.test.mjs": ["692fd6e1626c2e09","772b033835c38c63","021e77c368bcc6f0","e43e69aa128b41a7"],
+    "scripts/ci/verify-domain-core-default-branch-controls.mjs": ["4256af6fcd9120e1","eed0ca474a12d656","634b6bdf2e97d39c","81add7ec7a548a5c"],
+    "scripts/ci/verify-domain-core-default-branch-controls.test.mjs": ["aecb39b05cb7ecb7","a33947e42a28bfed","693fb879345632b3","41163ead4621b94e"],
+    "scripts/ci/verify-domain-core-final-absence-receipts.py": ["4838a4019c1ff879","61a221fea46a47f2","eea85ae9dec8eaa9","0bb39058bdbbb555"],
+    "scripts/ci/verify-domain-core-functions-deploy-run.mjs": ["3b0b65ca4de6a09d","4ea2590f5f1f28f6","45ae3abdd2015b3b","4a4f83d78fa59c39"],
+    "scripts/ci/verify-domain-core-functions-deploy-run.test.mjs": ["b3b8cab260e682d2","b56dfe373e0d8baa","4029668fb3f9766b","db511e33d0dfa75e"],
+    "scripts/ci/verify-domain-core-functions-target-inventory.mjs": ["da024bb29e8ee8cc","f324c17bc60c434f","86cc2782d23329a5","69abed8cf1ed39b1"],
+    "scripts/ci/verify-domain-core-functions-target-inventory.test.mjs": ["4457747e8b9dbb01","a40b7514e50905c6","0c89992431ec1b1a","a7374a9dfd2dcf8c"],
+    "scripts/ci/verify-domain-core-ios-binary-identity.py": ["afafe13e33a5598d","49911e8adee21912","ad858d83520c7f08","a498d88a4fe0c967"],
+    "scripts/ci/verify-domain-core-legacy-absence.py": ["da64af0878cd7ddf","bd6bc924ba5d1ff9","80adbc154013d0e1","b3e4e692358daa48"],
+    "scripts/ci/verify-domain-core-legacy-deletion.py": ["f13b541b0c7946d7","6d4d83d376cfc65f","9e83a20ca995469e","2ccf179e5b2116e4"],
+    "scripts/ci/verify-domain-core-native-event-commit.mjs": ["6d2f52e99e5a9634","4b0118ac894adac3","6cd5501b02cf5648","088f8104e401dcc7"],
+    "scripts/ci/verify-domain-core-native-release-artifact.sh": ["6997a97093a2919e","c61a31910a99dd29","018c2c733e7ed185","df5c3984f5b46051"],
+    "scripts/ci/verify-domain-core-observed-identity.mjs": ["c112104124b8a885","bbfbfc45a1fb581c","de3e3984c4b30f53","8ca951a41f399f8a"],
+    "scripts/ci/verify-domain-core-protected-attestation.mjs": ["6d04ab588744b069","bbc2bd8954800813","6b1698da8daf5d8b","8582b09ebdb6e1da"],
+    "scripts/ci/verify-domain-core-protected-attestation.test.mjs": ["4b68f71f44294b7f","a779c1ca152c3c8c","2252b427aae63efb","04bd1fbb566536ac"],
+    "scripts/ci/verify-domain-core-release-gate.mjs": ["10e2f1d451b6eadb","58454c00d9759b16","b1a6c55e7390436c","0ea2549b4471bada"],
+    "scripts/ci/verify-domain-core-release-gate.test.mjs": ["8075b11893410457","3d9450388cf5fb88","b186b05a1fdea6fe","9d8d09e3a10c5246"],
+    "scripts/ci/verify-domain-core-rollback.mjs": ["0237d4b9e26ed82f","db65feb701f8f71b","9e8f963422f76c9f","27bbacddeb1bbed2"],
+    "scripts/ci/verify-domain-core-workflows.test.mjs": ["7323a4336c017d86","d896f68826eb09ad","3cbd6529c341225b","e829a0617ec83fe6"],
+    "scripts/ci/verify-existing-domain-core-deployment.mjs": ["addacdce1c763579","033a76f1d76d71d3","2550c180b0be45fe","bbcb6d7902a6433a"],
+    "scripts/ci/verify-existing-domain-core-deployment.test.mjs": ["1c257b805745fa3f","d82b641e798f23a0","1c63d96a6c235238","bb76a8e6652de934"],
+    "scripts/ci/verify-firestore-ttl-state.mjs": ["9d29723665555bf2","cd2c4978144abb06","a9ce3dad94ebea9f","c2f0d3001bb17921"],
+    "scripts/ci/verify-libsignal-pin.sh": ["d76c28b7ac846112","8de9b8338c2a4331","d0dcc1122a94d5d2","976bfafbe9a75121"],
+    "scripts/ci/verify-libsignal-runtime-readiness.sh": ["d933d12034238e45","c6a9d1516f6d9031","8751643d68c88f77","886572460dd98f16"],
+    "scripts/ci/verify-libsignal-submodule-delta.sh": ["627c3348dd111bfc","67e2d7b1e9e3e1d3","4e3dee9489b76b6c","1d41e128ee76f5ca"],
+    "scripts/ci/verify-production-deploy-auth.sh": ["e63b03d1ce26bbf2","4d1db737a92aabd4","51ac1c9c584ba2e7","b0c3a8bbec5ae59f"],
+    "scripts/ci/verify-resilience-wiring.sh": ["30017d65ad4dc315","c08bc56eb78d918c","344a7bc33c448d5a","de647a463238cc3e"],
+    "scripts/ci/verify-sqlcipher-codec.sh": ["fc18cda44ef55e1c","4acb1d9213d9b87f","4ed8c7fdf67e14ab","578928f09fc6e4a0"],
+    "scripts/ci/verify-vendored-agent-source.sh": ["48ff000aa91c1c44","ba388cf6fa1a5f4f","8ca3239c3779963c","b6b9032d2a9961f6"],
+    "scripts/ci/verify-windows-release-signing-preflight.sh": ["a61366e7cf919b8a","18d8a5b1c57f0999","8073c9f66d2fb40d","8d70b2fddab066df"],
+    "scripts/ci/write-firebase-hosting-ci-config.mjs": ["feaf5098d2fa6c39","738bfb3ceff5cd03","0fa81bb258c5d30e","9b58b21e6bf666d2"],
+    "scripts/ci/write-firebase-hosting-ci-config.test.mjs": ["1fac013e11ac5124","1842d3a8410bc1c6","41696eda79981065","7da24ca093803790"],
+    "scripts/ci/write_burnbar_source_provenance.py": ["58c17feac8c0cdec","79f0a5da8d349483","b0cf1bb4f36a0ceb","35271150afd53c21"],
+    "scripts/ci/write_hermes_gateway_migration_drain_evidence.js": ["bc94fc90bff055eb","62f1120666d2d64e","6142f98942687b5d","ae12b1dc488291d9"],
+    "scripts/create-corresponding-source.sh": ["1b136c51684fa9c7","a316b1d0da9f0862","3cf0473eb4c9ebc1","879001159bf386ab"],
+    "scripts/deploy-hosted-mcp.sh": ["33669729ad8bed29","cc6095800033f95e","c7dfbfd4cc048237","16b59212c81ee9b6"],
+    "scripts/generate-macos-appcast.mjs": ["723942761d0f97b8","6e004219c76b3416","f6735a70e28c4c85","6ac3943c51811ddd"],
+    "scripts/generate-sbom.py": ["3c6f3dab78d13ff7","83bc2e03a1da7dbe","5e635fc26c378069","eee4898792c6d6f2"],
+    "scripts/lib/atomic-regular-file.mjs": ["d8e2a4bc8d331da9","ef5ed02c8e534ea7","2d600d4bc9f8630d","750cdb1250d33ca2"],
+    "scripts/lib/curl-bearer.sh": ["8f75dd66be14129b","5c2d39ca21231f2f","8448cc892af799a9","bdba5b39b1307230"],
+    "scripts/lib/domain-core-activation.mjs": ["0e57e1943b8cb9af","95dbb89321964def","762663a832373ecf","405afa247435e015"],
+    "scripts/lib/domain-core-artifact-profile.mjs": ["5bf898f306494855","c9e8256218b49702","a3cd83b23dcdd2e2","d47a2b8db8b530cc"],
+    "scripts/lib/domain-core-artifact-profile.test.mjs": ["e894020c9dfbd76c","87c12999fef62dac","a6c28f0daf56655c","ec0a3909d2a7e72f"],
+    "scripts/lib/domain-core-build-profile.mjs": ["dc1f999e240c7900","610e5e327d43fe49","127c7e67d50ca89a","ef20ac1ecf79da5e"],
+    "scripts/lib/domain-core-candidate-receipt.mjs": ["e3dbbfcdf2794aff","6fefa4bb2a121271","0e38153cd006e934","161edae4725eed20"],
+    "scripts/lib/domain-core-candidate-receipt.test.mjs": ["91d6a8fdffae91a2","b043f65706163b32","8fbdba92a50d34e8","9b8a4d68dbb9a726"],
+    "scripts/lib/domain-core-deterministic-candidate-bundle.mjs": ["609ad9b3ee25d4b6","60c221d80d7e68b6","562830904484f7b8","e684a4d83f8b8dec"],
+    "scripts/lib/domain-core-deterministic-candidate-bundle.test.mjs": ["7bb51359ab5f3dd9","f8c4c6abe9d76852","a02e86c6b8505a83","a8a1bc3d4d167d70"],
+    "scripts/lib/domain-core-evidence-contract.mjs": ["5b4215b9ecd0a526","44bbcfd5f1efbb38","1d796738ad59db65","784c34fdf1be99f7"],
+    "scripts/lib/domain-core-native-release.mjs": ["3ac43828b3f29d4d","dddef01dba535466","10044b500c33b7b9","36dd406bdb8c5dfb"],
+    "scripts/lib/domain-core-promotion-evidence.mjs": ["1dc5321e56fd0cb1","3fbc1d2a6835de4d","d1949ed28bc23a6d","0cc88667400f5fb4"],
+    "scripts/lib/domain-core-proof-fragments.mjs": ["caa1b88f9b5650a4","10ec5f4bcd261fa4","e182ce7df127e3dd","cd92a2ccc946b5b3"],
+    "scripts/lib/domain-core-proof-fragments.test.mjs": ["db06bd8004b7ecd4","4910a19c49a14bca","9dda45577bdfafa8","a5dc1cfeaca7c7e0"],
+    "scripts/lib/domain-core-release-evidence.mjs": ["fd5ef362d32c4835","03b31af3f1da6ccb","5831277878dcdc05","6007aeb5b261c7f0"],
+    "scripts/lib/domain-core-shadow-enrollment.mjs": ["82c7d43040522fe8","c7cb947fda0ce1ca","f7ccab0721c21062","fa411bc29205a0ec"],
+    "scripts/lib/domain-core-shadow-enrollment.test.mjs": ["bf21fedc744437d2","1f4ad320980dd327","6fb6f6e17fe2f43c","fca2d4799bdf9cb4"],
+    "scripts/lib/export-domain-core-promotion-evidence.mjs": ["c6d4165b9a1012ec","dc2414b07c119354","02289a01ad8380c7","2f594d64efcc1ea6"],
+    "scripts/lib/export-domain-core-promotion-evidence.test.mjs": ["a6e4dfdc3f0483c0","b393a3042f539e00","2439cc713c15ee1c","05290821a6aac515"],
+    "scripts/lib/firebase-hosting-rest-url.mjs": ["fd9379519391ed1b","88962200ff0835e3","bb4144b0de380fd2","9c669261c073c992"],
+    "scripts/lib/openburnbar-release-app-test-filters.sh": ["ad45a822e6378582","1197a246c14da6f4","88b0aa2e53b852b8","acc9545b376af9eb"],
+    "scripts/lib/openburnbar-release-mobile-test-filters.sh": ["609a8c076ee55fc5","9d947f70adae952c","07bf64fbe917ffcd","d959a36040b5a4bc"],
+    "scripts/lib/prepare-signal-ffi-xcframework.sh": ["bc320a99ea3efd1d","7ba799ef0506caec","e3eede62bd5dc661","e412483b6bf896d6"],
+    "scripts/linux-port/assemble-linux-release.mjs": ["f56cac8b15471520","a2b8bccfc9458497","b6290019933b96b6","efbd74185878b7f3"],
+    "scripts/linux-port/build-linux-release.mjs": ["56c13ce48513a7e7","f6f64dc7af6184fc","03d1fa5ed9a3fb86","cc94648b9c020367"],
+    "scripts/linux-port/check-linux-update-feed.mjs": ["8baa57b16f278517","c6972a7b69f34e6a","69ccb3682d353246","0e3c2367ee6e7f78"],
+    "scripts/linux-port/finalize-linux-architecture-session.mjs": ["aef8c3506a2d45c1","19772f28172fcae4","6f499350cb65b88b","8bf48198d112ebca"],
+    "scripts/linux-port/lib/appimage-filesystem.mjs": ["7df8f02d98b3e0e6","55bcaa43ce02e873","fe1420c01109c750","3e9c4bf24beeade3"],
+    "scripts/linux-port/lib/linux-package-session.mjs": ["9cd13fd448e7641e","209014bfa393af04","7af377af5a783a1d","d278f8bbaf9f0633"],
+    "scripts/linux-port/lib/linux-release-common.mjs": ["70ecf347c56117c4","53782b98a6723a80","7339f73e0a1dcc4c","3efbd82aa20033de"],
+    "scripts/linux-port/lib/linux-release-shards.mjs": ["85057eb601507fe9","6531ef9e330cebaf","3fd992a11a1559ce","8c9f7c5644e6c3a6"],
+    "scripts/linux-port/lib/linux-release-verify.mjs": ["0709854342254fb4","20ee3f4620a4d577","6349c73ce5fc42f7","718dc06279da3b4f"],
+    "scripts/linux-port/lib/linux-update-feed.mjs": ["33e23ddc46ad31cc","69414dfb41eef45c","d569fcbd578c16e1","7e05e771a71bce70"],
+    "scripts/linux-port/lib/parity-ledger-validate.mjs": ["a61132a2f8c01e48","24d039e74168e281","745f6aa8fb903c97","471857ea001eefd0"],
+    "scripts/linux-port/linux-desktop-session.sh": ["ea1f5f0c695bd8e8","5f93fdfc1f9572fd","89d5d234acbd5232","0f633c08e311e2e0"],
+    "scripts/linux-port/render-parity-ledger.mjs": ["370e1867a25126be","a7eadf050821dff0","9305026dc0871d85","1dc1e82eaa7ffa6b"],
+    "scripts/linux-port/resolve-linux-release-version.mjs": ["53e35f04c1541ec6","c8e5952d39a70080","ef6641ba519a8b33","7527afb12b4264bf"],
+    "scripts/linux-port/smoke-linux-packages.mjs": ["f512e96c6e404c2d","4b0365ea7abf2b1c","004478c453fbbb1f","2d2a9a62977401b9"],
+    "scripts/linux-port/validate-parity-ledger.mjs": ["e0b252955a61cd90","001d68af2e96e940","6c4fae66a10acfbf","feb4b7df52c2fdd2"],
+    "scripts/linux-port/verify-linux-package-update-rollback.sh": ["1ce751cbb6746e65","0938db237fa8e874","558deaab69fd0c11","4d2232def367c4e9"],
+    "scripts/linux-port/verify-linux-release.mjs": ["7f87db870691c979","5eddfc80afbd0c70","111fbdb6fc7f10ee","8829e1b23f46c28e"],
+    "scripts/ops/create-domain-core-deletion-plan.py": ["b5c0743f4b71fb9f","3dd3ca2624399bf4","d0f1787e34d64aac","f64e3737eaf26bb0"],
+    "scripts/ops/create-domain-core-promotion-receipt.py": ["f202dd4f67586916","9013233375e0d308","12c481cb17bb7d05","ecdb4529d8046c39"],
+    "scripts/ops/create-domain-core-rollback-receipt.py": ["88063a769b79abeb","f352f1d995d5aef7","d353b8311a9f488b","bb8be8edb896d5b9"],
+    "scripts/ops/create-domain-core-stable-receipt.py": ["8e5ff24f06810932","2f9b95b08baab52f","291f54e9d8ce26a6","a9134606b0f12ac7"],
+    "scripts/ops/export-domain-core-promotion-evidence.mjs": ["1d36d98cb876bb19","d5b1f382f32d9c2f","976e2f5742db6a29","3216ffda7d3ae14d"],
+    "scripts/ops/manage-domain-core-shadow-enrollment.mjs": ["ec35f9d52dc52c8c","c869b6c69d198eb1","e9b806adffa0eb1a","7ecedce3e3494753"],
+    "scripts/ops/rollback-revision.sh": ["a6f9247de1dc70fa","3c6adb4c773c5fa3","abba987ebfc7c650","6a6b41336a4ae261"],
+    "scripts/rollback.sh": ["8981fd39bc8b3291","e521f08e65e8214d","5c960c3783d13040","7790504a8c73e6ee"],
+    "scripts/security/scan-publishable-tree.sh": ["ffe0ef14adaf66d4","68ef9f10c0ca8923","ac3941f57d4170da","be54cb4084a4f0af"],
+    "scripts/security/verify-deployed-ttl.sh": ["1cbc8d39487bdeb9","581f121dccebb1c6","7304e951b8be956d","504666494cc8092b"],
+    "scripts/setup-macos-downloads-r2.sh": ["dd3d73ba1d472bc9","a2a80af2fa6c66a1","7b8b1886840b6e88","f6fe1d5f7f75ee19"],
+    "scripts/supply-chain-audit.sh": ["f99ff7ce38e69bc6","349a311c5300a678","3b13ee3a897846a2","040517a41f11e458"],
+    "scripts/supply-chain/generate-vex.py": ["4b35614b63a8ad23","2a1fed2268ad4f4d","5caafb1a5946c5c3","1564fcb2bd8f2145"],
+    "scripts/supply-chain/run-ecosystem-deny-checks.sh": ["5c95a456c45c7224","1f90c56052f6e1c1","7f27729809cc09c9","5f281a48feaac538"],
+    "scripts/test-domain-core-python.sh": ["de86f90949f4e899","6a74d1b09555d21c","d52ad5c8f0c6caf9","e155243a554402bf"],
+    "scripts/test-openburnbar-android.sh": ["2409ce3f3040bab6","97b99fd05a810cd0","ef4b8dcf2cf1c6b4","1309a8c426108737"],
+    "scripts/test-openburnbar-app.sh": ["7de5ae7b50be294f","a3f927b4bffa18e8","f41dcdf66908716a","02b21b093a3997de"],
+    "scripts/test-openburnbar-extension-host.sh": ["55881dc4191880bc","57ba986049baa342","ae5f3c24ce793c66","81cd103a6cf2cd6e"],
+    "scripts/test-openburnbar-mobile.sh": ["0af497557466e6bc","2db709edb62605e5","383df50d52e13ab4","f3ad252bdd246a20"],
+    "scripts/test-openburnbar-replay-evals.sh": ["3b22eb8a2b7b4593","8e37c6eef5714aa5","966fdb5771009db3","fe968b5cade68ce9"],
+    "scripts/test-openburnbar-retrieval-evals.sh": ["950a9e5117dc6573","bc5a47d3e7119598","ab3f0a381129b187","927a67d19926d572"],
+    "scripts/test-openburnbar-swift.sh": ["cdb7137cef348c0f","7ba90101c0e7de7f","d3788d37b6461b74","2bf3144e9cebc78f"],
+    "scripts/test-openburnbar-ts.sh": ["b991331e7ed2bd10","f7e5e126487cff98","e2a3fb3b90239646","e54badf466a2aa4f"],
+    "scripts/update-homebrew.sh": ["c76f17b8c7722706","8af958070dc20535","c6019d0faee60080","8c6d7ea9ab234286"],
+    "scripts/upload-linux-downloads-r2.sh": ["b20feb967a80e545","c774950bb805b00b","ee12b0a404124c59","020f6abda8e31fdd"],
+    "scripts/verify-version-consistency.sh": ["c142b8a68ea1689a","763e9f25f867cf1f","d3fff876ec079d1a","ad3db27f35f28b95"],
+    "scripts/verify_burnbar_mit_pr_clean.py": ["dbed7cde1c04b751","5853f40780edeafc","eec29e69301f870f","26fa4e2d9be9e319"],
+    "scripts/windows-port/check-csharp-binding-drift.sh": ["f5e40680141f2f62","bb31b14d822f0449","a6454915af3bfae5","5b210f8edc01da2d"],
+    "scripts/windows-port/refresh-native-engine-manifest.mjs": ["0f32c5a110f35e86","eba1bf9b28f9c9cc","c2ef14d52c837dc6","a598974647bea939"],
+    "scripts/windows-port/validate-native-engine-layout.mjs": ["5d29cc8a012fca38","77d4db85dc1b7d37","58a733d10747668b","6bbc9242f5473d5a"],
+    "scripts/windows-port/write-signed-artifact-manifest.mjs": ["d6fdc6c1104a880b","cd7a71f951270fb3","b1f67d3e0939ec21","ee5e56d0c81a7a0c"],
+    "tests/fixtures/domain-core/hermes/v1/hermes-crypto-kat.json": ["2bdf89986e02105e","a9e5780cacfe3bd2","c380dd05a2614b4d","77daf987d32260f5"],
+    "tests/test_domain_core_console_release_evidence_workflow.py": ["67a84bfba30bf445","22a76f5214980eac","7e5111a127752dad","25e35059ebf19854"],
+    "tests/test_domain_core_functions_release_workflow.py": ["7237a811f6a5bc2c","c281329bc1b72bbd","d85e1723fabededf","bbd39acb4be75e66"],
+    "tests/test_domain_core_python_hermes.py": ["2d4b8632c2bece6d","fa8f1bd4cdd07c8c","8019d7d1f5e5893e","656a399131212ae7"],
+    "tests/test_domain_core_union_gate.py": ["131fcd7f6dcb107b","82fa9171687bd066","314b7134bf55e7b1","af6c421990619845"],
+    "tools/hermes-platform-burnbar/adapter.py": ["d78b216524094c3a","ae5da5db1dd617b8","4706e37686da1361","c76ac2c5609b5d61"],
+    "tools/hermes-platform-burnbar/domain_core_hermes.py": ["f1c419cb1f3c2406","8ce29b669afcc6c3","529828f8f0285a11","05ebfcc78e8ae9fe"],
+    "tools/hermes-platform-burnbar/legacy/__init__.py": ["34ba142381379559","d7388ad2febec384","ff32d1b8429e0477","874a74be09766520"],
+    "tools/hermes-platform-burnbar/legacy/hermes_ratchet_legacy.py": ["900e178434f15f49","fd99441a44759b6d","8d14dbeb9be49c04","79ab5b0f239a9aab"],
+    "tools/hermes-platform-burnbar/smoke_local.py": ["3a90b1da37dc3748","2e4559d79a28ef18","20a7830d89e6efdb","bf23e8e3bbf49a7d"],
+    "tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar-domain-core-source.sha256": ["3161b18e71a485c2","cbda3f6fce1dbae9","950cf323cbd9b4b1","7e7afca3f7d980d9"],
+    "tools/hermes-platform-burnbar/vendor/openburnbar-domain-core-python/openburnbar_domain_ffi.py": ["efbdabbc699a288a","766f78754f074ab2","67d92c0d000aca12","4aa9bd63eb2b1577"],
+    "windows/Directory.Build.props": ["58d4371cd16d99e5","8559519679b054fd","06054726f4ae74b2","a0dc25c061d669e3"],
+    "windows/Directory.Build.targets": ["830ea80e1a0f1123","572e0c1472ced5b7","9105623ed5c56aad","32c7766d4923c002"],
+    "windows/app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj": ["161a894d2fb61a9f","67fe3a8a7dd85aa0","ff1949eadf531f39","3e6f67c8714fd5c4"],
+    "windows/app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj": ["ed9d5e8fa3c9a3be","9070a6283450906a","14b5d4125de506f1","9cbc7a11bfcf24b4"],
+    "windows/storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj": ["6d0f53b972983f85","ddc68bc029b1ed1b","a87a680be221da59","a2140d11ae02983e"],
+    "windows/tests/quota/DomainCoreQuotaBridgeTests.cs": ["e9dbca353da98f39","7fa21fa7495dae7d","1ef4def5656da36d","d433c788e2a3955c"],
+    "windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj": ["0c5669981909a795","8ac6197cf7b41a9d","d95622d7262fc1a9","3030f13f7fafe2e3"]
   }
 }
