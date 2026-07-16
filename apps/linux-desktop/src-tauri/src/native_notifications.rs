@@ -311,13 +311,32 @@ fn native_notification_id(id: &str) -> u32 {
     stable_notification_id(id, "")
 }
 
-fn should_route_response(response: &linux::NativeNotificationResponse) -> bool {
+/// Return the action that should be emitted for a response from the server.
+///
+/// A default click has no action identifier, so it resolves to the one action
+/// attached to the notification.  Explicit responses must match that action;
+/// accepting a different identifier would make the renderer act on an action
+/// the user did not select (or that this notification never exposed).
+fn routed_response_action(
+    response: &linux::NativeNotificationResponse,
+    attached_action: NativeNotificationAction,
+) -> Option<&'static str> {
     match response {
-        linux::NativeNotificationResponse::Default => true,
-        linux::NativeNotificationResponse::Action(action) => {
-            matches!(action.as_str(), "open" | "reply")
+        linux::NativeNotificationResponse::Default => Some(attached_action.as_str()),
+        linux::NativeNotificationResponse::Action(action) if action == attached_action.as_str() => {
+            Some(attached_action.as_str())
         }
-        linux::NativeNotificationResponse::Closed => false,
+        linux::NativeNotificationResponse::Action(_)
+        | linux::NativeNotificationResponse::Closed => None,
+    }
+}
+
+fn degraded_delivery_result(notification_id: String, reason: String) -> NativeNotificationResult {
+    NativeNotificationResult {
+        notification_id,
+        delivered: false,
+        actions_attached: false,
+        degraded_reason: Some(reason),
     }
 }
 
@@ -345,26 +364,35 @@ pub fn native_notification_show(
     #[cfg(target_os = "linux")]
     {
         let actions_attached = capabilities.actions;
-        let notification = linux::show(
+        let notification = match linux::show(
             &request.title,
             &request.body,
             native_notification_id(&request.id),
             request.urgency,
             actions_attached,
             request.action,
-        )?;
+        ) {
+            Ok(notification) => notification,
+            Err(error) => {
+                // The capability probe and delivery are separate D-Bus calls.
+                // If the server disappears between them, keep the command
+                // contract truthful and let a later invocation recover via a
+                // fresh capability probe instead of throwing an opaque error.
+                return Ok(degraded_delivery_result(request.id, error));
+            }
+        };
         if actions_attached {
             let app_for_response = app.clone();
             let route = request.route.as_str().to_string();
-            let action = request.action.as_str().to_string();
+            let attached_action = request.action;
             let notification_id = request.id.clone();
             linux::wait_for_response(notification, move |response| {
-                if !should_route_response(&response) {
+                let Some(action) = routed_response_action(&response, attached_action) else {
                     return;
-                }
+                };
                 let app_for_route = app_for_response.clone();
                 let route = route.clone();
-                let action = action.clone();
+                let action = action.to_string();
                 let notification_id = notification_id.clone();
                 let app_for_emit = app_for_route.clone();
                 let _ = app_for_route.run_on_main_thread(move || {
@@ -452,20 +480,62 @@ mod tests {
 
     #[test]
     fn notification_response_mapping_routes_open_and_reply_actions() {
-        assert!(should_route_response(
-            &linux::NativeNotificationResponse::Default
-        ));
-        assert!(should_route_response(
-            &linux::NativeNotificationResponse::Action("open".into())
-        ));
-        assert!(should_route_response(
-            &linux::NativeNotificationResponse::Action("reply".into())
-        ));
-        assert!(!should_route_response(
-            &linux::NativeNotificationResponse::Action("dismiss".into())
-        ));
-        assert!(!should_route_response(
-            &linux::NativeNotificationResponse::Closed
-        ));
+        assert_eq!(
+            routed_response_action(
+                &linux::NativeNotificationResponse::Default,
+                NativeNotificationAction::Open,
+            ),
+            Some("open")
+        );
+        assert_eq!(
+            routed_response_action(
+                &linux::NativeNotificationResponse::Action("open".into()),
+                NativeNotificationAction::Open
+            ),
+            Some("open")
+        );
+        assert_eq!(
+            routed_response_action(
+                &linux::NativeNotificationResponse::Action("reply".into()),
+                NativeNotificationAction::Reply
+            ),
+            Some("reply")
+        );
+        assert_eq!(
+            routed_response_action(
+                &linux::NativeNotificationResponse::Action("dismiss".into()),
+                NativeNotificationAction::Open
+            ),
+            None
+        );
+        assert_eq!(
+            routed_response_action(
+                &linux::NativeNotificationResponse::Action("reply".into()),
+                NativeNotificationAction::Open
+            ),
+            None
+        );
+        assert_eq!(
+            routed_response_action(
+                &linux::NativeNotificationResponse::Closed,
+                NativeNotificationAction::Open
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn delivery_failure_result_never_claims_notification_was_shown() {
+        let result = degraded_delivery_result(
+            "agent-reply-1".to_string(),
+            "native_notification_show_failed:server disappeared".to_string(),
+        );
+        assert_eq!(result.notification_id, "agent-reply-1");
+        assert!(!result.delivered);
+        assert!(!result.actions_attached);
+        assert_eq!(
+            result.degraded_reason.as_deref(),
+            Some("native_notification_show_failed:server disappeared")
+        );
     }
 }
