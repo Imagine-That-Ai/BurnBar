@@ -198,13 +198,23 @@ assert.ok(
 );
 assert.match(
   windowsReleaseWorkflow,
-  /OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"[\s\S]*publish\/win-x64\/OpenBurnBarCoreCAbi\.dll[\s\S]*NativeUsageEngineIntegrationTests/,
+  /OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"[\s\S]*publish\/win-x64[\s\S]*RUNNER_TEMP[\s\S]*Copy-Item[\s\S]*OpenBurnBarCoreCAbi\.dll[\s\S]*--output \$smokeRoot[\s\S]*NativeUsageEngineIntegrationTests/,
   "the published-layout parser smoke must be mandatory and load the published engine",
 );
 assert.equal(
   (windowsEngineWorkflow.match(/OPENBURNBAR_CORE_CABI_PATH=\$stagedEngine/g) ?? []).length,
   2,
   "both native architectures must run their usage scan from the staged engine layout",
+);
+assert.equal(
+  (windowsEngineWorkflow.match(/Copy-Item -Path \(Join-Path \$env:OPENBURNBAR_NATIVE_ENGINE_STAGE "\*"\)/g) ?? []).length,
+  2,
+  "both native architectures must mirror the staged bundle into the parser smoke host layout",
+);
+assert.equal(
+  (windowsEngineWorkflow.match(/--output \$smokeRoot/g) ?? []).length,
+  2,
+  "both native parser smoke hosts must execute beside the staged Swift resource bundles",
 );
 const portableSignatureIndex = windowsReleaseWorkflow.indexOf("Verify portable Authenticode signatures");
 const signedManifestRefreshIndex = windowsReleaseWorkflow.indexOf("Refresh and validate signed native-engine layouts");

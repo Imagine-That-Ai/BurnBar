@@ -319,12 +319,18 @@ jobs:
       - name: Run managed-to-Swift usage scan integration
         env:
           OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
-        run: >-
-          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj
-          -c Release
-          --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
-          --blame-hang
-          --blame-hang-timeout 5m
+        run: |
+          $smokeRoot = Join-Path $env:RUNNER_TEMP "openburnbar-staged-x64-parser-smoke"
+          Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
+          Copy-Item -Path (Join-Path $env:OPENBURNBAR_NATIVE_ENGINE_STAGE "*") -Destination $smokeRoot -Recurse -Force
+          $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $smokeRoot "OpenBurnBarCoreCAbi.dll"
+          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj `
+            -c Release `
+            --output $smokeRoot `
+            --filter FullyQualifiedName~NativeUsageEngineIntegrationTests `
+            --blame-hang `
+            --blame-hang-timeout 5m
 
       - name: Load staged release domain core and run quota contract
         env:
@@ -579,12 +585,18 @@ jobs:
       - name: Run managed-to-Swift usage scan integration (ARM64)
         env:
           OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
-        run: >-
-          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj
-          -c Release
-          --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
-          --blame-hang
-          --blame-hang-timeout 5m
+        run: |
+          $smokeRoot = Join-Path $env:RUNNER_TEMP "openburnbar-staged-arm64-parser-smoke"
+          Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
+          Copy-Item -Path (Join-Path $env:OPENBURNBAR_NATIVE_ENGINE_STAGE "*") -Destination $smokeRoot -Recurse -Force
+          $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $smokeRoot "OpenBurnBarCoreCAbi.dll"
+          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj `
+            -c Release `
+            --output $smokeRoot `
+            --filter FullyQualifiedName~NativeUsageEngineIntegrationTests `
+            --blame-hang `
+            --blame-hang-timeout 5m
 
       - name: Load staged release domain core and run quota contract (ARM64)
         env:
