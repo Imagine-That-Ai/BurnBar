@@ -108,8 +108,12 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         XCTAssertTrue(result.conversations.isEmpty)
     }
 
+    /// 2026-07-16 resource/privacy fix: Codex conversation bodies are now
+    /// privacy-transient — a body-enabled parse returns them in memory but
+    /// they are NEVER written to the on-disk parser cache (previously they
+    /// were persisted and scrubbed by the next usage-only pass).
     @MainActor
-    func testCodexParserDoesNotCacheConversationBodiesWhenIndexingDisabled() async throws {
+    func testCodexParserNeverCachesConversationBodies() async throws {
         let harness = try ParserIntegrationTestHarness(name: "codex-cache-privacy-\(UUID().uuidString.prefix(8))")
         defer { harness.cleanup() }
 
@@ -151,28 +155,36 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         XCTAssertFalse(redactedCache.containsRawString(privatePrompt))
         XCTAssertFalse(redactedCache.containsRawString(privateAnswer))
 
+        // Body-enabled parsing is transient: the conversation is returned in
+        // memory, but the cache written by the same pass must not carry it.
         let indexed = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         XCTAssertEqual(indexed.conversations.count, 1)
         XCTAssertEqual(indexed.conversations.first?.fullText.contains(privatePrompt), true)
         let warmedCache = try Data(contentsOf: cacheURL)
-        XCTAssertTrue(warmedCache.containsRawString(privatePrompt))
-        XCTAssertTrue(warmedCache.containsRawString(privateAnswer))
+        XCTAssertFalse(warmedCache.containsRawString(privatePrompt),
+                       "body-enabled parse must never persist prompt text to the parser cache")
+        XCTAssertFalse(warmedCache.containsRawString(privateAnswer),
+                       "body-enabled parse must never persist assistant text to the parser cache")
 
+        // A vanished rollout file drops its cache entry but keeps the
+        // heuristic usage row; the cache still carries no private text.
         try harness.fileManager.removeItem(at: rolloutURL)
-        let missingFileScrubbed = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
-        XCTAssertEqual(missingFileScrubbed.usages.count, 1)
-        XCTAssertTrue(missingFileScrubbed.conversations.isEmpty)
-        let missingFileScrubbedCache = try Data(contentsOf: cacheURL)
-        XCTAssertFalse(missingFileScrubbedCache.containsRawString(privatePrompt))
-        XCTAssertFalse(missingFileScrubbedCache.containsRawString(privateAnswer))
+        let missingFile = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(missingFile.usages.count, 1)
+        XCTAssertTrue(missingFile.conversations.isEmpty)
+        let missingFileCache = try Data(contentsOf: cacheURL)
+        XCTAssertFalse(missingFileCache.containsRawString(privatePrompt))
+        XCTAssertFalse(missingFileCache.containsRawString(privateAnswer))
 
+        // Re-created file + another body-enabled pass followed by a
+        // usage-only pass: no phase of the cycle ever puts bodies on disk.
         try session.write(to: rolloutURL, atomically: true, encoding: .utf8)
         _ = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
-        let scrubbed = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
-        XCTAssertTrue(scrubbed.conversations.isEmpty)
-        let scrubbedCache = try Data(contentsOf: cacheURL)
-        XCTAssertFalse(scrubbedCache.containsRawString(privatePrompt))
-        XCTAssertFalse(scrubbedCache.containsRawString(privateAnswer))
+        let usageOnly = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertTrue(usageOnly.conversations.isEmpty)
+        let finalCache = try Data(contentsOf: cacheURL)
+        XCTAssertFalse(finalCache.containsRawString(privatePrompt))
+        XCTAssertFalse(finalCache.containsRawString(privateAnswer))
     }
 
     @MainActor
@@ -195,6 +207,19 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         """
         try session.write(to: oldRollout, atomically: true, encoding: .utf8)
         try session.write(to: recentRollout, atomically: true, encoding: .utf8)
+
+        // 2026-07-16 fix: `minimumFileModificationDate` now defers by file
+        // modification date (the LogParseOptions contract) instead of by the
+        // thread's SQL created_at, so the fixture must stamp real mtimes on
+        // either side of the boundary.
+        try harness.fileManager.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_782_156_360)],
+            ofItemAtPath: oldRollout.path
+        )
+        try harness.fileManager.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_783_915_260)],
+            ofItemAtPath: recentRollout.path
+        )
 
         _ = try harness.createCodexThreadDatabase(threads: [
             (
