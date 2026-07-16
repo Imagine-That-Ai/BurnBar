@@ -52,7 +52,7 @@
       "packagePath": "OpenBurnBarDaemon",
       "target": "OpenBurnBarDaemonLinuxGatewayTests",
       "filter": "OpenBurnBarDaemonLinuxGatewayTests",
-      "minimumExecutedTests": 24,
+      "minimumExecutedTests": 26,
       "scratchPath": "OpenBurnBarDaemon/.build"
     }
   ]

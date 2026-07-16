@@ -120,4 +120,25 @@ final class BurnBarDatabaseRecoveryBundleCryptoTests: XCTestCase {
         let decoded = try JSONDecoder().decode(BurnBarDatabaseRecoveryStatusResponse.self, from: encoded)
         XCTAssertEqual(decoded, status)
     }
+
+    #if os(Linux)
+    func testRecoveryStatusAllowsStagingBundleWhenCipherUnavailableAndDatabaseMissing() throws {
+        try XCTSkipIf(
+            BurnBarDaemonDatabaseCipher.isCipherAvailable(),
+            "stock SQLite staging posture only; SQLCipher builds verify the database directly"
+        )
+        let path = NSTemporaryDirectory() + "obb-recovery-missing-" + UUID().uuidString + ".sqlite"
+        let service = BurnBarDatabaseRecoveryBundleService(databasePath: path)
+
+        let status = service.status()
+
+        XCTAssertEqual(status.phase, .cipherUnavailable)
+        XCTAssertEqual(status.code, "sqlcipher_unavailable")
+        XCTAssertFalse(status.databasePresent)
+        XCTAssertFalse(status.canExport)
+        XCTAssertTrue(status.canImport)
+        XCTAssertEqual(status.recommendedAction, .importRecoveryBundle)
+        XCTAssertFalse(status.databaseIntegrityVerified)
+    }
+    #endif
 }

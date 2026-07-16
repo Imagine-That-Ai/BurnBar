@@ -73,20 +73,22 @@ final class BurnBarDatabaseRecoveryBundleService: Sendable {
         #if !os(Linux)
         return .unavailable(message: "Database recovery status requires the packaged Linux daemon.")
         #else
+        let databasePresent = FileManager.default.fileExists(atPath: databasePath)
         guard BurnBarDaemonDatabaseCipher.isCipherAvailable() else {
             return BurnBarDatabaseRecoveryStatusResponse(
                 phase: .cipherUnavailable,
                 code: "sqlcipher_unavailable",
-                message: "SQLCipher is not available in this daemon build. Install a packaged Linux build with SQLCipher before attempting recovery.",
-                recommendedAction: .none,
+                message: databasePresent
+                    ? "SQLCipher is not available in this daemon build. Install a packaged Linux build with SQLCipher before attempting recovery."
+                    : "SQLCipher is not available in this daemon build, but a recovery bundle may be staged while the database is absent. Install a packaged Linux build with SQLCipher before restoring and verifying the encrypted snapshot.",
+                recommendedAction: databasePresent ? .none : .importRecoveryBundle,
                 canExport: false,
-                canImport: false,
-                databasePresent: FileManager.default.fileExists(atPath: databasePath),
+                canImport: !databasePresent,
+                databasePresent: databasePresent,
                 databaseIntegrityVerified: false
             )
         }
 
-        let databasePresent = FileManager.default.fileExists(atPath: databasePath)
         guard databasePresent else {
             return BurnBarDatabaseRecoveryStatusResponse(
                 phase: .databaseMissing,
