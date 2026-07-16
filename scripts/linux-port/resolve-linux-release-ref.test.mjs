@@ -81,6 +81,7 @@ test('candidate and promotion workflows preserve one commit and separate provena
   const promotion = fs.readFileSync(path.join(root, '.github/workflows/linux-release-promote.yml'), 'utf8');
   const postResolverWorkflow = workflow.slice(workflow.indexOf('build-architecture:'));
   assert.match(workflow, /tags:\s*\n\s*- "linux-v\*"/u);
+  assert.match(workflow, /version:\s*\n\s+description: Linux release version, without leading v \(defaults to apps\/linux-desktop\/package\.json\)\s*\n\s+required: false\s*\n\s+type: string/u);
   assert.match(workflow, /INPUT_VERSION:\s*\$\{\{ inputs\.version \}\}/u);
   assert.equal((workflow.match(/\$\{\{ inputs\.version \}\}/gu) ?? []).length, 1);
   assert.doesNotMatch(postResolverWorkflow, /\$\{\{ inputs\.version \}\}/u);

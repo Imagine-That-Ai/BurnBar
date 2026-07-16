@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Linux release version, without leading v
-        required: true
+        description: Linux release version, without leading v (defaults to apps/linux-desktop/package.json)
+        required: false
         type: string
       channel:
         description: Signed update channel

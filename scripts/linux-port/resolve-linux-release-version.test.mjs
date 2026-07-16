@@ -25,6 +25,40 @@ test('manual version resolves but a branch dispatch cannot publish', () => {
   assert.equal(result.publishAllowed, false);
 });
 
+test('manual dispatch defaults to the checked-in package version', () => {
+  const result = resolveLinuxReleaseVersion({
+    eventName: 'workflow_dispatch',
+    ref: 'refs/heads/main',
+    ...versions
+  });
+  assert.equal(result.passed, true);
+  assert.equal(result.version, '1.2.3');
+  assert.equal(result.tag, 'linux-v1.2.3');
+  assert.equal(result.publishAllowed, false);
+});
+
+test('tagged manual dispatch can use the package default and publish', () => {
+  const result = resolveLinuxReleaseVersion({
+    eventName: 'workflow_dispatch',
+    ref: 'refs/tags/linux-v1.2.3',
+    ...versions
+  });
+  assert.equal(result.passed, true);
+  assert.equal(result.version, '1.2.3');
+  assert.equal(result.publishAllowed, true);
+});
+
+test('manual dispatch without input or package version fails closed', () => {
+  const result = resolveLinuxReleaseVersion({
+    eventName: 'workflow_dispatch',
+    ref: 'refs/heads/main',
+    tauriVersion: '1.2.3'
+  });
+  assert.equal(result.passed, false);
+  assert.equal(result.version, null);
+  assert.ok(result.failures.some((failure) => /package\.json version is unavailable/u.test(failure)));
+});
+
 test('legacy v tag is rejected', () => {
   const result = resolveLinuxReleaseVersion({ eventName: 'push', ref: 'refs/tags/v1.2.3', ...versions });
   assert.equal(result.passed, false);
