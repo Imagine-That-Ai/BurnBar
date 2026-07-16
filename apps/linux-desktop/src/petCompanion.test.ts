@@ -38,6 +38,8 @@ describe('probePetCapability', () => {
     expect(probe.tier).toBe('overlay-pass-through');
     expect(probe.actions.overlay.supported).toBe(true);
     expect(probe.actions['click-through'].supported).toBe(true);
+    expect(probe.actions.summon.supported).toBe(true);
+    expect(probe.actions.summon.reason).toContain('Ctrl+Alt+Super+P');
   });
 
   it('uses the contained fallback for a degraded Wayland capability', () => {
@@ -54,6 +56,7 @@ describe('probePetCapability', () => {
     expect(probe.tier).toBe('draggable-contained');
     expect(probe.actions.overlay.supported).toBe(false);
     expect(probe.actions['click-through'].supported).toBe(false);
+    expect(probe.actions.summon.supported).toBe(false);
     expect(probe.substitute).toContain('contained draggable');
     expect(probe.compositor).toBe('GNOME/wayland');
   });

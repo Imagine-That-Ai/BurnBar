@@ -10,7 +10,12 @@ import { ROUTES, type ShellRoute } from '../routes.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
 import { useShellStore } from '../state/shellStore.js';
 import { isChatPopoutWindow } from '../surfaces/chat/chatWindow.js';
-import { isPetCompanionWindow } from '../petCompanionWindow.js';
+import {
+  isNativePetSummonPayload,
+  isPetCompanionWindow,
+  openPetCompanionWindow,
+  PET_SUMMON_EVENT
+} from '../petCompanionWindow.js';
 
 function isComputerUsePanicHotkey(event: KeyboardEvent): boolean {
   const isPeriod = event.key === '.' || event.code === 'Period';
@@ -75,6 +80,35 @@ export function App() {
       unlisten?.();
     };
   }, [bridge, setRoute]);
+
+  // The Linux native shell registers this event only for a successful X11
+  // global binding. Validate its fixed payload before routing or opening the
+  // companion; Wayland and unknown sessions never emit it.
+  useEffect(() => {
+    if (petCompanion) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void import('@tauri-apps/api/event')
+      .then(async ({ listen }) => {
+        const stop = await listen<unknown>(PET_SUMMON_EVENT, (event) => {
+          if (cancelled || !isNativePetSummonPayload(event.payload)) return;
+          setRoute('pet');
+          void openPetCompanionWindow().catch(() => {
+            // The route remains available as the contained fallback if the
+            // native child cannot be created after registration.
+          });
+        });
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => {
+        // Browser preview has no Tauri event bus.
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [petCompanion, setRoute]);
 
   // Native freedesktop actions carry a closed route/action pair. Decode again
   // at the renderer boundary so a malformed or stale host event cannot steer

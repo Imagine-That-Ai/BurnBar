@@ -62,6 +62,17 @@ describe('pet companion native window contract', () => {
     delete (window as unknown as { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__;
   });
 
+  it('accepts only the native shell summon marker', async () => {
+    const {
+      isNativePetSummonPayload,
+      NATIVE_PET_SUMMON_PAYLOAD
+    } = await import('./petCompanionWindow.js');
+    expect(isNativePetSummonPayload(NATIVE_PET_SUMMON_PAYLOAD)).toBe(true);
+    expect(isNativePetSummonPayload('renderer')).toBe(false);
+    expect(isNativePetSummonPayload({ source: 'native-shortcut' })).toBe(false);
+    expect(isNativePetSummonPayload(undefined)).toBe(false);
+  });
+
   it('creates, shows, and focuses a constrained X11 child with pointer input enabled', async () => {
     const { openPetCompanionWindow } = await import('./petCompanionWindow.js');
     const state = await openPetCompanionWindow();

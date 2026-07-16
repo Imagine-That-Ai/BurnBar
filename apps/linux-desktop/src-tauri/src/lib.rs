@@ -2597,14 +2597,17 @@ fn quit_app(app: AppHandle) {
 static TRAY_INIT_FAILED: AtomicBool = AtomicBool::new(false);
 const COMPUTER_USE_PANIC_SHORTCUTS: [&str; 2] = ["Ctrl+Alt+Super+Period", "Ctrl+Alt+Shift+Period"];
 const OPEN_DASHBOARD_SHORTCUT: &str = "Ctrl+Alt+Super+O";
+const SUMMON_PET_SHORTCUT: &str = "Ctrl+Alt+Super+P";
+const PET_SUMMON_EVENT_PAYLOAD: &str = "native-shortcut";
 
-const NATIVE_SHORTCUT_BINDINGS: [(&str, &str); 3] = [
+const NATIVE_SHORTCUT_BINDINGS: [(&str, &str); 4] = [
     ("computer-use-panic", COMPUTER_USE_PANIC_SHORTCUTS[0]),
     (
         "computer-use-panic-fallback",
         COMPUTER_USE_PANIC_SHORTCUTS[1],
     ),
     ("open-dashboard", OPEN_DASHBOARD_SHORTCUT),
+    ("summon-pet", SUMMON_PET_SHORTCUT),
 ];
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -2655,6 +2658,7 @@ fn native_shortcut_status_store() -> &'static Mutex<NativeShortcutStatus> {
                 COMPUTER_USE_PANIC_SHORTCUTS[0].to_string(),
                 COMPUTER_USE_PANIC_SHORTCUTS[1].to_string(),
                 OPEN_DASHBOARD_SHORTCUT.to_string(),
+                SUMMON_PET_SHORTCUT.to_string(),
             ],
             bindings: native_shortcut_bindings(
                 NativeShortcutBindingState::Unavailable,
@@ -2840,6 +2844,12 @@ fn handle_native_shortcut(app: &AppHandle<Wry>, shortcut: &Shortcut, event: Shor
     let shift_chord = base | Modifiers::SHIFT;
     if shortcut.matches(meta_chord, Code::KeyO) {
         emit_tray_route(app, "overview");
+    } else if shortcut.matches(meta_chord, Code::KeyP) {
+        // The event payload is deliberately fixed. The renderer accepts only
+        // this native-origin marker and never treats arbitrary event data as a
+        // summon request, keeping the desktop shortcut boundary fail closed.
+        emit_tray_route(app, "pet");
+        let _ = app.emit("pet-summon", PET_SUMMON_EVENT_PAYLOAD);
     } else if shortcut.matches(meta_chord, Code::Period)
         || shortcut.matches(shift_chord, Code::Period)
     {
@@ -7965,6 +7975,9 @@ mod tests {
         assert!(tauri_plugin_global_shortcut::Builder::<tauri::Wry>::new()
             .with_shortcut(OPEN_DASHBOARD_SHORTCUT)
             .is_ok());
+        assert!(tauri_plugin_global_shortcut::Builder::<tauri::Wry>::new()
+            .with_shortcut(SUMMON_PET_SHORTCUT)
+            .is_ok());
     }
 
     #[test]
@@ -7996,6 +8009,8 @@ mod tests {
         assert_eq!(bindings.len(), NATIVE_SHORTCUT_BINDINGS.len());
         assert_eq!(bindings[0].id, "computer-use-panic");
         assert_eq!(bindings[2].shortcut, OPEN_DASHBOARD_SHORTCUT);
+        assert_eq!(bindings[3].id, "summon-pet");
+        assert_eq!(bindings[3].shortcut, SUMMON_PET_SHORTCUT);
         assert!(bindings
             .iter()
             .all(|binding| binding.state == NativeShortcutBindingState::Unavailable));

@@ -6,6 +6,17 @@ import {
 } from './tauriBridge.js';
 
 export const PET_COMPANION_LABEL = 'openburnbar-pet-companion';
+export const PET_SUMMON_EVENT = 'pet-summon';
+export const NATIVE_PET_SUMMON_PAYLOAD = 'native-shortcut' as const;
+
+/**
+ * Native shortcut events are emitted by the packaged shell, not by the
+ * renderer. Keep the payload closed so an arbitrary Tauri event cannot open a
+ * companion window or change the current route.
+ */
+export function isNativePetSummonPayload(value: unknown): value is typeof NATIVE_PET_SUMMON_PAYLOAD {
+  return value === NATIVE_PET_SUMMON_PAYLOAD;
+}
 
 export type PetCompanionWindowState = {
   status: PetCompanionStatus;

@@ -155,6 +155,21 @@ function overlayActions(
   };
 }
 
+function summonAction(
+  entry: RuntimeCapabilityEntry,
+  nativeContract: PetNativeContract
+): PetActionCapability {
+  const supported = entry.state === 'available' && nativeContract.overlay;
+  return {
+    supported,
+    state: supported ? 'available' : 'unavailable',
+    reason: supported
+      ? 'The X11 native shell registers Ctrl+Alt+Super+P to summon and focus the companion window.'
+      : UNSUPPORTED_ACTIONS.summon.reason,
+    source: supported ? 'tauri-x11-companion-window' : UNSUPPORTED_ACTIONS.summon.source
+  };
+}
+
 /**
  * Resolve the pet UI from the same native capability manifest that gates the
  * route. Environment variables are intentionally not used here: they are
@@ -201,7 +216,8 @@ export function probePetCapability(
     previewOnly: false,
     actions: {
       ...actions,
-      ...UNSUPPORTED_ACTIONS
+      summon: summonAction(entry, nativeContract),
+      selection: UNSUPPORTED_ACTIONS.selection
     },
     containedActions: containedActions()
   };
