@@ -279,6 +279,9 @@ struct LinuxCloudAuthHTTPClient: Sendable {
         guard appCheckToken.boundedToken != nil else {
             throw LinuxCloudAuthHTTPError.invalidRequest
         }
+        guard Self.validDataDomainSelection(request.domains) else {
+            throw LinuxCloudAuthHTTPError.invalidRequest
+        }
         let data = try await postJSONData(
             functionsBaseURL.appendingPathComponent("exportUserData", isDirectory: false),
             value: CallableRequest(data: request),
@@ -519,6 +522,22 @@ struct LinuxCloudAuthHTTPClient: Sendable {
             if let redacted = domain["redactedFields"] as? [Any], redacted.count > 256 { return false }
             if let refs = domain["sealedRefs"] as? [[String: Any]], refs.count > 2_000 { return false }
             return true
+        }
+    }
+
+    /// Mirror the server's bounded domain selector before sending a request.
+    /// Unknown IDs remain a server concern because the canonical registry is
+    /// owned by the functions package; this guard only prevents malformed or
+    /// oversized input from crossing the Linux network boundary.
+    private static func validDataDomainSelection(_ domains: [String]?) -> Bool {
+        guard let domains else { return true }
+        guard domains.count <= 24 else { return false }
+        return domains.allSatisfy { domain in
+            let trimmed = domain.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed == domain
+                && trimmed.isEmpty == false
+                && domain.utf8.count <= 64
+                && domain.unicodeScalars.allSatisfy { CharacterSet.controlCharacters.contains($0) == false }
         }
     }
 

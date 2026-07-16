@@ -96,6 +96,46 @@ final class LinuxCloudDataControlTests: XCTestCase {
         }
     }
 
+    func testExportRejectsOversizedDomainSelectionBeforeTransport() async throws {
+        let transportCalls = DataControlTransportCounter()
+        let endpoint = baseURL
+        let data = try JSONSerialization.data(withJSONObject: ["result": ["ok": true]])
+        let client = LinuxCloudAuthHTTPClient(
+            allowedHosts: [endpoint.host!],
+            transport: { _, _ in
+                await transportCalls.increment()
+                return (
+                    data,
+                    HTTPURLResponse(
+                        url: endpoint,
+                        statusCode: 200,
+                        httpVersion: "HTTP/2",
+                        headerFields: nil
+                    )!
+                )
+            },
+            now: { Date(timeIntervalSince1970: 2_000_000_000) }
+        )
+        let request = LinuxCloudDataExportRequest(
+            domains: (0..<25).map { "domain_\($0)" },
+            nonce: "nonce-1",
+            trustedDeviceId: "phone-device",
+            actionProof: proof()
+        )
+        do {
+            _ = try await client.exportUserData(
+                functionsBaseURL: baseURL,
+                idToken: "id-token",
+                appCheckToken: "app-check",
+                request: request
+            )
+            XCTFail("oversized domain selections must fail before transport")
+        } catch let error as LinuxCloudAuthHTTPError {
+            XCTAssertEqual(error, .invalidRequest)
+        }
+        XCTAssertEqual(await transportCalls.value(), 0)
+    }
+
     func testExportRejectsExpiredJWTBeforeTransport() async throws {
         let client = try client(response: ["result": ["ok": true]])
         let header = Data(#"{"alg":"none","typ":"JWT"}"#.utf8).base64URLEncodedString()
@@ -194,6 +234,13 @@ final class LinuxCloudDataControlTests: XCTestCase {
         XCTAssertEqual(result.deletedDocuments, 4)
         XCTAssertTrue(result.deletedAuthUser)
     }
+}
+
+private actor DataControlTransportCounter {
+    private var count = 0
+
+    func increment() { count += 1 }
+    func value() -> Int { count }
 }
 
 private extension Data {
