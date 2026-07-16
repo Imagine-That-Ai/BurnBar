@@ -503,3 +503,45 @@ test("swift-consumer-contracts builds the host domain-core XCFramework in releas
     "swift-consumer-contracts must not build the XCFramework in debug mode",
   );
 });
+test("swift-consumer-contracts gates libsignal out to prevent duplicate Rust runtime symbols", () => {
+  // Regression: two Rust staticlibs (domain-core xcframework + locally-built
+  // libsignal_ffi) both embed Rust runtime objects. When linked into the same
+  // SwiftPM test binary, the linker fails with `duplicate symbol '_rust_eh_personality'`.
+  // The fix gates the local LibSignalClient Swift package out of the package graph
+  // for the focused domain-core consumer job so only the domain-core Rust staticlib
+  // is present. Full-app CI gates still exercise real libsignal with both archives.
+  const job = workflowJob(core, "swift-consumer-contracts");
+  const consumerStep = job.indexOf("Run Swift domain-core consumer contracts");
+  assert.notEqual(consumerStep, -1, "Run Swift domain-core consumer contracts step must exist");
+  const stepBlock = job.slice(consumerStep);
+  assert.match(
+    stepBlock,
+    /OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE:\s*"1"/,
+    "swift-consumer-contracts must set OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE=1 to prevent duplicate _rust_eh_personality",
+  );
+  // The test script must also export the gate when OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE is set.
+  const swiftTestScript = readFileSync(
+    new URL("../../scripts/test-openburnbar-swift.sh", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    swiftTestScript,
+    /OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE.*OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE=1/s,
+    "test-openburnbar-swift.sh must export OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE=1 when OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE is set",
+  );
+  // Package.swift must honor the env var to prune the local LibSignalClient package.
+  const packageSwift = readFileSync(
+    new URL("../../OpenBurnBarCore/Package.swift", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    packageSwift,
+    /disableLibSignalSwiftPackage/,
+    "Package.swift must declare the disableLibSignalSwiftPackage env gate",
+  );
+  assert.match(
+    packageSwift,
+    /hasLibSignalSwiftPackage\s*=\s*!disableLibSignalSwiftPackage/,
+    "Package.swift must gate hasLibSignalSwiftPackage on !disableLibSignalSwiftPackage",
+  );
+});

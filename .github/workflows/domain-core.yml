@@ -1319,6 +1319,11 @@ jobs:
           OPENBURNBAR_CORE_SWIFT_FILTER: DomainCore
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
           OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS: "1"
+          # Prevent two Rust staticlibs (domain-core xcframework + locally-built
+          # libsignal_ffi) from colliding on _rust_eh_personality at link time.
+          # test-openburnbar-swift.sh also exports this from
+          # OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE; set it here for explicitness.
+          OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE: "1"
         run: |
           set -o pipefail
           ./scripts/test-openburnbar-swift.sh \

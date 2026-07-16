@@ -4,8 +4,16 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
-prepare_libsignal_ffi() {
-  local libsignal_dir="${repo_root}/Vendor/libsignal"
+# When the focused domain-core consumer job requires the native Rust domain-core
+# artifact but does NOT need libsignal, skip building libsignal-ffi entirely and
+# gate the local LibSignalClient Swift package out of the package graph. This
+# prevents two Rust staticlibs (domain-core + libsignal) from colliding on
+# `_rust_eh_personality` at link time. Full-app CI gates still exercise libsignal.
+if [[ "${OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE:-}" == "1" ]]; then
+  export OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE=1
+fi
+
+ prepare_libsignal_ffi() {
   local macos_xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfiMac.xcframework"
   local legacy_xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework"
   local build_script="${libsignal_dir}/swift/build_ffi.sh"
@@ -64,9 +72,12 @@ if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
   coverage_flags+=(--enable-code-coverage)
 fi
 
-prepare_libsignal_ffi
+if [[ "${OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE:-}" != "1" ]]; then
+  prepare_libsignal_ffi
+fi
 libsignal_linker_flags=()
-if [[ ! -d "${repo_root}/Vendor/OpenBurnBarSignalFfiMac.xcframework" && ! -d "${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
+if [[ "${OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE:-}" != "1" ]] \
+  && [[ ! -d "${repo_root}/Vendor/OpenBurnBarSignalFfiMac.xcframework" && ! -d "${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
   libsignal_linker_flags=(-Xlinker "-L${repo_root}/Vendor/libsignal/target/debug")
 fi
 

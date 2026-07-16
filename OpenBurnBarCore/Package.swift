@@ -10,6 +10,18 @@ let buildLinuxSecurityOnly = ProcessInfo.processInfo.environment["OPENBURNBAR_LI
 let disableBurnBarRemoteXCFramework = ProcessInfo.processInfo.environment[
     "OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK"
 ] == "1"
+// Domain-core consumer linkage: when the focused domain-core test job links the
+// pre-built OpenBurnBarDomainCore.xcframework (a Rust staticlib) alongside the
+// locally-built libsignal-ffi (also a Rust staticlib), both archives embed Rust
+// runtime objects whose `_rust_eh_personality` collides at link time. Setting
+// OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE=1 makes `hasLibSignalSwiftPackage`
+// false — mirroring `disableBurnBarRemoteXCFramework` — so the local LibSignalClient
+// Swift package and its libsignal_ffi.a are pruned from the package graph. The
+// SignalCore/SignalSessionTransport targets compile with their existing
+// unavailable stubs and the full-app CI gates still exercise real libsignal.
+let disableLibSignalSwiftPackage = ProcessInfo.processInfo.environment[
+    "OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE"
+] == "1"
 #if os(Windows)
 let buildOnWindows = true
 #else
@@ -77,7 +89,7 @@ let hasLegacySignalFfiXCFramework = FileManager.default.fileExists(
         .standardizedFileURL
         .path
 )
-let hasLibSignalSwiftPackage = FileManager.default.fileExists(
+let hasLibSignalSwiftPackage = !disableLibSignalSwiftPackage && FileManager.default.fileExists(
     atPath: packageRoot
         .appendingPathComponent("../Vendor/libsignal/swift/Package.swift")
         .standardizedFileURL
@@ -431,6 +443,14 @@ let signalCoreTestFallbackExcludes: [String] = hasLibSignalSwiftPackage ? [] : [
 
 let signalSessionTransportTestFallbackExcludes: [String] = hasLibSignalSwiftPackage ? [] : [
     "OBBSignalSessionOverIrohTests.swift"
+]
+
+// LinuxCoreFoundationTests calls `OpenBurnBarSignalAtRest.sealPayload`/`openPayload`
+// which exist only in the full LibSignalClient-backed implementation, not in the
+// unavailable fallback stub. Exclude that file when libsignal is pruned so the
+// remaining Linux-foundation tests still compile.
+let linuxCoreFoundationSignalTestExcludes: [String] = hasLibSignalSwiftPackage ? [] : [
+    "LinuxCoreFoundationTests.swift"
 ]
 
 let signalBinaryTargets: [Target] = {
@@ -1207,6 +1227,7 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarSignalSessionTransport",
                 swiftCryptoDependency
             ] + swiftTestingAppleDependencies,
+            exclude: linuxCoreFoundationSignalTestExcludes,
             resources: [
                 .process("Fixtures")
             ],
