@@ -100,4 +100,84 @@ describe('TextExpansionSurface P14', () => {
     expect(screen.getByRole('checkbox', { name: /in-app expansion only/i })).toHaveProperty('disabled', true);
     expect(screen.queryByRole('button', { name: 'Add snippet' })).toBeNull();
   });
+
+  it('shows input-method recovery state and retries a failed status probe', async () => {
+    let failProbe = true;
+    const status = {
+      state: 'not_running',
+      registration: 'registered',
+      supportsExternalExpansion: true,
+      detail: 'ready',
+      checkedAt: new Date(0).toISOString()
+    };
+    useShellStore.setState({
+      fixtureMode: false,
+      bridgeReady: true,
+      bridge: {
+        textExpansionList: vi.fn().mockResolvedValue({
+          schemaVersion: 1,
+          exportedAt: new Date(0).toISOString(),
+          snippets: [],
+          consent: { inAppOnly: true, declinedGlobalCapture: true, acknowledgedAt: new Date(0).toISOString() }
+        }),
+        textExpansionUpsert: vi.fn(),
+        textExpansionDelete: vi.fn(),
+        textExpansionConsentUpdate: vi.fn().mockResolvedValue({
+          inAppOnly: true,
+          declinedGlobalCapture: true,
+          acknowledgedAt: new Date(0).toISOString()
+        }),
+        textExpansionEngineStatus: vi.fn().mockImplementation(async () => {
+          if (failProbe) throw new Error('IBus control socket unavailable');
+          return status;
+        }),
+        textExpansionEngineStart: vi.fn().mockResolvedValue({ ...status, state: 'running' }),
+        textExpansionEngineStop: vi.fn().mockResolvedValue(status)
+      } as never
+    });
+    render(<TextExpansionSurface />);
+    await waitFor(() => expect(screen.getByText(/status unavailable: IBus control socket unavailable/i)).toBeTruthy());
+    failProbe = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry status' }));
+    await waitFor(() => expect(screen.getByText(/Engine not_running — ready/i)).toBeTruthy());
+  });
+
+  it('keeps in-app controls available when an optional engine transition fails', async () => {
+    useShellStore.setState({
+      fixtureMode: false,
+      bridgeReady: true,
+      bridge: {
+        textExpansionList: vi.fn().mockResolvedValue({
+          schemaVersion: 1,
+          exportedAt: new Date(0).toISOString(),
+          snippets: [],
+          consent: { inAppOnly: true, declinedGlobalCapture: true, acknowledgedAt: new Date(0).toISOString() }
+        }),
+        textExpansionUpsert: vi.fn(),
+        textExpansionDelete: vi.fn(),
+        textExpansionConsentUpdate: vi.fn(),
+        textExpansionEngineStatus: vi.fn().mockResolvedValue({
+          state: 'not_running',
+          registration: 'registered',
+          supportsExternalExpansion: true,
+          detail: 'ready',
+          checkedAt: new Date(0).toISOString()
+        }),
+        textExpansionEngineStart: vi.fn().mockRejectedValue(new Error('engine binary exited')),
+        textExpansionEngineStop: vi.fn().mockResolvedValue({
+          state: 'not_running',
+          registration: 'registered',
+          supportsExternalExpansion: true,
+          detail: 'stopped',
+          checkedAt: new Date(0).toISOString()
+        })
+      } as never
+    });
+    render(<TextExpansionSurface />);
+    await waitFor(() => expect(screen.getByText(/Engine not_running — ready/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Start input-method engine' }));
+    await waitFor(() => expect(screen.getByText(/engine binary exited/i)).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Add snippet' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start input-method engine' })).toBeTruthy();
+  });
 });

@@ -6,7 +6,7 @@ import {
   hydrateTextExpansionConsentStorage,
   readTextExpansionConsent,
   textExpansionConsentError,
-  writeTextExpansionConsent
+  writeTextExpansionConsentPersisted
 } from '../textExpansionConsent.js';
 import {
   expandInAppBuffer,
@@ -16,6 +16,11 @@ import {
   configureTextExpansionStorageWithPolicy,
   textExpansionNativeStatus,
   textExpansionStorageError,
+  hydrateTextExpansionEngineStatus,
+  textExpansionEngineError,
+  textExpansionEngineStatus,
+  startTextExpansionEngine,
+  stopTextExpansionEngine,
   upsertSnippetPersisted,
   deleteSnippetPersisted
 } from '../textExpansionStore.js';
@@ -35,6 +40,9 @@ export function TextExpansionSurface() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [triggerDraft, setTriggerDraft] = useState('');
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [engineBusy, setEngineBusy] = useState(false);
+  const [engineActionError, setEngineActionError] = useState<string | null>(null);
+  const [consentBusy, setConsentBusy] = useState(false);
   const bridge = useShellStore((state) => state.bridge);
   const bridgeReady = useShellStore((state) => state.bridgeReady);
   const fixtureMode = useShellStore((state) => state.fixtureMode);
@@ -43,8 +51,15 @@ export function TextExpansionSurface() {
   const textExpansionUpsert = bridge?.textExpansionUpsert;
   const textExpansionDelete = bridge?.textExpansionDelete;
   const textExpansionConsentUpdate = bridge?.textExpansionConsentUpdate;
+  const textExpansionEngineStatusMethod = bridge?.textExpansionEngineStatus;
+  const textExpansionEngineStart = bridge?.textExpansionEngineStart;
+  const textExpansionEngineStop = bridge?.textExpansionEngineStop;
+  const textExpansionEngineExpand = bridge?.textExpansionEngineExpand;
   const nativeStorageAvailable = Boolean(
     textExpansionList && textExpansionUpsert && textExpansionDelete && textExpansionConsentUpdate
+  );
+  const nativeEngineAvailable = Boolean(
+    textExpansionEngineStatusMethod && textExpansionEngineStart && textExpansionEngineStop
   );
   const nativeUnavailable = bridgeReady && !fixtureMode && !nativeStorageAvailable;
   const consent = readTextExpansionConsent();
@@ -57,7 +72,11 @@ export function TextExpansionSurface() {
           textExpansionList: textExpansionList.bind(bridge),
           textExpansionUpsert: textExpansionUpsert.bind(bridge),
           textExpansionDelete: textExpansionDelete.bind(bridge),
-          textExpansionConsentUpdate: textExpansionConsentUpdate.bind(bridge)
+          textExpansionConsentUpdate: textExpansionConsentUpdate.bind(bridge),
+          ...(textExpansionEngineStatusMethod ? { textExpansionEngineStatus: textExpansionEngineStatusMethod.bind(bridge) } : {}),
+          ...(textExpansionEngineStart ? { textExpansionEngineStart: textExpansionEngineStart.bind(bridge) } : {}),
+          ...(textExpansionEngineStop ? { textExpansionEngineStop: textExpansionEngineStop.bind(bridge) } : {}),
+          ...(textExpansionEngineExpand ? { textExpansionEngineExpand: textExpansionEngineExpand.bind(bridge) } : {})
         }
       : null;
     // Fixture mode keeps its in-memory fixtures across the hydration effect,
@@ -72,10 +91,12 @@ export function TextExpansionSurface() {
     void Promise.all([
       hydrateTextExpansionStorage(storage),
       hydrateTextExpansionConsentStorage(storage)
-    ]).then(() => {
+    ]).then(async () => {
+      if (storage && nativeEngineAvailable) await hydrateTextExpansionEngineStatus(storage);
       if (!cancelled) {
         const error = textExpansionStorageError() ?? textExpansionConsentError();
         setStorageError(error);
+        setEngineActionError(null);
         setStorageReady(fixtureMode || error == null);
         setVersion((value) => value + 1);
       }
@@ -83,7 +104,20 @@ export function TextExpansionSurface() {
     return () => {
       cancelled = true;
     };
-  }, [bridge, bridgeReady, fixtureMode, textExpansionList, textExpansionUpsert, textExpansionDelete, textExpansionConsentUpdate]);
+  }, [
+    bridge,
+    bridgeReady,
+    fixtureMode,
+    nativeEngineAvailable,
+    textExpansionList,
+    textExpansionUpsert,
+    textExpansionDelete,
+    textExpansionConsentUpdate,
+    textExpansionEngineStatusMethod,
+    textExpansionEngineStart,
+    textExpansionEngineStop,
+    textExpansionEngineExpand
+  ]);
   useEffect(() => {
     setTriggerDraft(editing?.trigger ?? '');
   }, [editing?.id, editing?.trigger]);
@@ -96,9 +130,30 @@ export function TextExpansionSurface() {
   );
   const prefixConflict = Boolean(conflict && !exactDuplicate);
 
-  const acknowledge = () => {
-    writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
+  const acknowledge = (inAppOnly: boolean) => {
+    setConsentBusy(true);
     setVersion((v) => v + 1);
+    const persist = async () => {
+      if (!inAppOnly && nativeEngineAvailable && textExpansionEngineStop) {
+        try {
+          await stopTextExpansionEngine({ timeoutMillis: 500 });
+        } catch (error) {
+          // Revocation still proceeds: a failed stop must not leave the
+          // renderer believing consent is active or permit a retry loop.
+          setStorageError(error instanceof Error ? error.message : 'Could not stop the input-method engine.');
+        }
+      }
+      try {
+        await writeTextExpansionConsentPersisted({ inAppOnly, declinedGlobalCapture: true });
+        setStorageError(null);
+      } catch (error) {
+        setStorageError(error instanceof Error ? error.message : textExpansionConsentError() ?? 'Could not save text expansion consent.');
+      } finally {
+        setConsentBusy(false);
+        setVersion((v) => v + 1);
+      }
+    };
+    void persist();
   };
 
   const persistenceBlocked = Boolean(
@@ -115,9 +170,9 @@ export function TextExpansionSurface() {
       <input
         type="checkbox"
         checked={Boolean(consent?.inAppOnly)}
-        disabled={persistenceBlocked}
+        disabled={persistenceBlocked || consentBusy}
         onChange={(e) => {
-          if (e.currentTarget.checked) acknowledge();
+          acknowledge(e.currentTarget.checked);
         }}
       />
       {' In-app expansion only (v1). No global key capture on Linux.'}
@@ -171,6 +226,64 @@ export function TextExpansionSurface() {
             ? `${nativeStatus.backend} detected for ${nativeStatus.sessionType}; external expansion is ${nativeStatus.supportsExternalExpansion ? 'enabled' : 'not registered'}.`
             : 'No supported Linux input method was detected; in-app expansion remains available.'}
           {' '}{nativeStatus.detail}
+        </p>
+      ) : null}
+      {!fixtureMode && nativeEngineAvailable ? (
+        <section aria-labelledby="te-engine-title">
+          <h3 id="te-engine-title">Input-method engine</h3>
+          {(engineActionError ?? textExpansionEngineError()) ? (
+            <Banner tone="degraded" role="alert">
+              <span>{`Input-method status unavailable: ${engineActionError ?? textExpansionEngineError()}`}</span>{' '}
+              <button
+                type="button"
+                className="ghost"
+                disabled={engineBusy || persistenceBlocked}
+                onClick={() => {
+                  setEngineActionError(null);
+                  setEngineBusy(true);
+                  void hydrateTextExpansionEngineStatus().finally(() => {
+                    setEngineBusy(false);
+                    setVersion((v) => v + 1);
+                  });
+                }}
+              >
+                Retry status
+              </button>
+            </Banner>
+          ) : null}
+          {textExpansionEngineStatus() ? (
+            <p className="muted" role="status">
+              {`Engine ${textExpansionEngineStatus()?.state ?? 'unknown'} — ${textExpansionEngineStatus()?.detail ?? 'No status detail.'}`}
+            </p>
+          ) : !engineActionError && !textExpansionEngineError() ? (
+            <p className="muted" role="status">Checking input-method engine status.</p>
+          ) : null}
+          <button
+            type="button"
+            className="ghost"
+            disabled={engineBusy || persistenceBlocked || consentBusy}
+            onClick={() => {
+              const running = ['running', 'starting', 'stopping'].includes(textExpansionEngineStatus()?.state ?? '');
+              setEngineActionError(null);
+              setEngineBusy(true);
+              void (running ? stopTextExpansionEngine({ timeoutMillis: 500 }) : startTextExpansionEngine({ timeoutMillis: 1_000 }))
+                .catch((error) => {
+                  setEngineActionError(error instanceof Error ? error.message : 'Input-method engine transition failed.');
+                })
+                .finally(() => {
+                  setEngineBusy(false);
+                  setVersion((v) => v + 1);
+                });
+            }}
+          >
+            {['running', 'starting', 'stopping'].includes(textExpansionEngineStatus()?.state ?? '')
+              ? 'Stop input-method engine'
+              : 'Start input-method engine'}
+          </button>
+        </section>
+      ) : !fixtureMode && nativeStorageAvailable ? (
+        <p className="muted" role="status">
+          Input-method engine controls are unavailable in this packaged shell. In-app expansion remains available.
         </p>
       ) : null}
       {consentRow}

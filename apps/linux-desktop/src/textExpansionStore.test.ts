@@ -6,20 +6,28 @@ import {
   deleteSnippet,
   deleteSnippetPersisted,
   expandInAppBuffer,
+  expandTextExpansionEngine,
   exportSnippets,
   findTriggerConflict,
+  hydrateTextExpansionEngineStatus,
   hydrateTextExpansionStorage,
   importSnippets,
   listSnippets,
+  startTextExpansionEngine,
+  stopTextExpansionEngine,
+  textExpansionEngineError,
+  textExpansionEngineStatus,
   upsertSnippetPersisted,
   upsertSnippet
 } from './textExpansionStore.js';
+import { configureTextExpansionConsentStorage, writeTextExpansionConsent } from './textExpansionConsent.js';
 import type { TextExpansionSnapshot, TextExpansionWireSnippet } from './tauriBridge.js';
 import type { TextExpansionStorageBackend } from './textExpansionStore.js';
 
 beforeEach(() => {
   localStorage.clear();
   configureTextExpansionStorage(null);
+  configureTextExpansionConsentStorage(null, true);
 });
 
 describe('text expansion v1', () => {
@@ -241,5 +249,93 @@ describe('native snapshot storage boundary', () => {
     expect(listSnippets()).toEqual([
       expect.objectContaining({ id: 'keep', body: 'new' })
     ]);
+  });
+});
+
+describe('native input-method engine boundary', () => {
+  function engineBackend() {
+    const snapshot: TextExpansionSnapshot = {
+      schemaVersion: 1,
+      exportedAt: new Date(0).toISOString(),
+      snippets: []
+    };
+    let status: NonNullable<ReturnType<typeof textExpansionEngineStatus>> = {
+      state: 'not_running',
+      engineID: null,
+      executablePath: null,
+      registration: 'registered',
+      supportsExternalExpansion: true,
+      detail: 'ready',
+      checkedAt: new Date(0).toISOString()
+    };
+    const calls: string[] = [];
+    const backend: TextExpansionStorageBackend = {
+      textExpansionList: async () => snapshot,
+      textExpansionUpsert: async (snippet) => snippet,
+      textExpansionDelete: async () => snapshot,
+      textExpansionEngineStatus: async () => status,
+      textExpansionEngineStart: async (request) => {
+        calls.push(`start:${request.consentAcknowledged}:${request.timeoutMillis}`);
+        status = { ...status, state: 'running', detail: 'active' };
+        return status;
+      },
+      textExpansionEngineStop: async (request) => {
+        calls.push(`stop:${request?.timeoutMillis}`);
+        status = { ...status, state: 'not_running', detail: 'stopped' };
+        return status;
+      },
+      textExpansionEngineExpand: async () => ({ expanded: true, replacement: 'expanded' })
+    };
+    return { backend, calls };
+  }
+
+  it('hydrates and serializes consent-gated engine lifecycle transitions', async () => {
+    writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
+    const fake = engineBackend();
+    await hydrateTextExpansionStorage(fake.backend);
+    await hydrateTextExpansionEngineStatus(fake.backend);
+
+    expect(textExpansionEngineStatus()?.state).toBe('not_running');
+    await expect(startTextExpansionEngine({ timeoutMillis: 250 })).resolves.toMatchObject({ state: 'running' });
+    await expect(stopTextExpansionEngine({ timeoutMillis: 300 })).resolves.toMatchObject({ state: 'not_running' });
+    expect(fake.calls).toEqual(['start:true:250', 'stop:300']);
+    expect(textExpansionEngineError()).toBeNull();
+  });
+
+  it('fails closed without consent and before calling an uninspectable context', async () => {
+    const fake = engineBackend();
+    await hydrateTextExpansionStorage(fake.backend);
+    await expect(startTextExpansionEngine()).rejects.toThrow(/explicit consent/i);
+    await expect(expandTextExpansionEngine({
+      trigger: 'reply',
+      context: { inspectable: true, isSecureField: false }
+    })).rejects.toThrow(/explicit consent/i);
+    expect(fake.calls).toEqual([]);
+    writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
+    await expect(expandTextExpansionEngine({
+      trigger: 'reply',
+      context: { inspectable: false, isSecureField: false }
+    })).resolves.toBeNull();
+    expect(fake.calls).toEqual([]);
+  });
+
+  it('ignores a late status response from a replaced native bridge', async () => {
+    let release!: (status: NonNullable<ReturnType<typeof textExpansionEngineStatus>>) => void;
+    const fake = engineBackend();
+    fake.backend.textExpansionEngineStatus = () => new Promise((resolve) => { release = resolve; });
+    await hydrateTextExpansionStorage(fake.backend);
+    const pending = hydrateTextExpansionEngineStatus(fake.backend);
+    await Promise.resolve();
+    configureTextExpansionStorage(null);
+    release({
+      state: 'running',
+      registration: 'registered',
+      supportsExternalExpansion: true,
+      detail: 'stale',
+      checkedAt: new Date(1).toISOString()
+    });
+    await pending;
+    expect(textExpansionEngineStatus()).toBeNull();
+    expect(textExpansionEngineError()).toBeNull();
   });
 });
