@@ -4,6 +4,7 @@ package com.openburnbar.wallpaper.livingthemes
 
 import android.app.ActivityManager
 import android.app.WallpaperManager
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -133,9 +134,29 @@ class LivingThemesActivity : ComponentActivity() {
             }
         try {
             startActivity(intent)
-        } catch (_: Exception) {
-            startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER))
+        } catch (_: ActivityNotFoundException) {
+            openWallpaperChooser()
+        } catch (_: SecurityException) {
+            openWallpaperChooser()
         }
+    }
+
+    private fun openWallpaperChooser() {
+        try {
+            startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER))
+        } catch (_: ActivityNotFoundException) {
+            showWallpaperPickerUnavailable()
+        } catch (_: SecurityException) {
+            showWallpaperPickerUnavailable()
+        }
+    }
+
+    private fun showWallpaperPickerUnavailable() {
+        Toast.makeText(
+            this,
+            "This device does not provide a live wallpaper picker.",
+            Toast.LENGTH_LONG,
+        ).show()
     }
 }
 
@@ -228,8 +249,9 @@ private fun LivingThemeHero(theme: LiveTheme, maxFps: Int, onSetWallpaper: () ->
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0.35f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.88f),
+                        0f to Color.Black.copy(alpha = 0.06f),
+                        0.42f to Color.Black.copy(alpha = 0.58f),
+                        1f to Color.Black.copy(alpha = 0.94f),
                     ),
                 ),
         )
@@ -240,7 +262,7 @@ private fun LivingThemeHero(theme: LiveTheme, maxFps: Int, onSetWallpaper: () ->
             Text(theme.title, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
             Text(
                 theme.backdropKernel.blurb,
-                color = Color.White.copy(alpha = 0.74f),
+                color = Color.White.copy(alpha = 0.9f),
                 fontSize = 13.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

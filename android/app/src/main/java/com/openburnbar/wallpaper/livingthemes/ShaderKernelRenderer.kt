@@ -11,8 +11,10 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import java.io.FileNotFoundException
+import java.io.IOException
 import kotlin.math.max
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 
 /**
@@ -128,7 +130,8 @@ class ShaderKernelRenderer(
         requestedTheme = theme
         handler?.post {
             if (!initialized || released) return@post
-            val nextProgram = buildProgramOrFallback(loadFragSource(theme), theme.id)
+            val nextProgram =
+                ShaderProgramFactory.buildOrFallback(loadFragSource(theme), theme.id)
             if (nextProgram == 0) return@post
             if (program != 0) GLES30.glDeleteProgram(program)
             program = nextProgram
@@ -186,72 +189,15 @@ class ShaderKernelRenderer(
     }
 
     private fun initGl(): Boolean {
-        eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
-        if (eglDisplay == EGL14.EGL_NO_DISPLAY) return failEgl("eglGetDisplay")
-
-        val versions = IntArray(2)
-        if (!EGL14.eglInitialize(eglDisplay, versions, 0, versions, 1)) {
-            return failEgl("eglInitialize")
-        }
-
-        val attribList =
-            intArrayOf(
-                EGL14.EGL_SURFACE_TYPE,
-                EGL14.EGL_WINDOW_BIT,
-                EGL14.EGL_RED_SIZE,
-                8,
-                EGL14.EGL_GREEN_SIZE,
-                8,
-                EGL14.EGL_BLUE_SIZE,
-                8,
-                EGL14.EGL_ALPHA_SIZE,
-                8,
-                EGL14.EGL_RENDERABLE_TYPE,
-                EGL_OPENGL_ES3_BIT_KHR,
-                EGL14.EGL_NONE,
+        val session = EglSession.create(nativeWindow) ?: return false
+        eglDisplay = session.display
+        eglContext = session.context
+        eglSurface = session.surface
+        program =
+            ShaderProgramFactory.buildOrFallback(
+                loadFragSource(requestedTheme),
+                requestedTheme.id,
             )
-        val configs = arrayOfNulls<EGLConfig>(1)
-        val count = IntArray(1)
-        if (!EGL14.eglChooseConfig(
-                eglDisplay,
-                attribList,
-                0,
-                configs,
-                0,
-                configs.size,
-                count,
-                0,
-            ) ||
-            count[0] == 0
-        ) {
-            return failEgl("eglChooseConfig")
-        }
-        val config = configs[0] ?: return failEgl("eglChooseConfig(null)")
-
-        eglContext =
-            EGL14.eglCreateContext(
-                eglDisplay,
-                config,
-                EGL14.EGL_NO_CONTEXT,
-                intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 3, EGL14.EGL_NONE),
-                0,
-            )
-        if (eglContext == EGL14.EGL_NO_CONTEXT) return failEgl("eglCreateContext")
-
-        eglSurface =
-            EGL14.eglCreateWindowSurface(
-                eglDisplay,
-                config,
-                nativeWindow,
-                intArrayOf(EGL14.EGL_NONE),
-                0,
-            )
-        if (eglSurface == EGL14.EGL_NO_SURFACE) return failEgl("eglCreateWindowSurface")
-        if (!EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-            return failEgl("eglMakeCurrent")
-        }
-
-        program = buildProgramOrFallback(loadFragSource(requestedTheme), requestedTheme.id)
         if (program == 0) {
             destroyGl()
             return false
@@ -260,12 +206,6 @@ class ShaderKernelRenderer(
         parameterDefaults = loadParameterDefaults(requestedTheme)
         GLES30.glViewport(0, 0, width, height)
         return true
-    }
-
-    private fun failEgl(operation: String): Boolean {
-        Log.e(TAG, "$operation failed: 0x${Integer.toHexString(EGL14.eglGetError())}")
-        destroyGl()
-        return false
     }
 
     private fun destroyGl() {
@@ -404,18 +344,22 @@ class ShaderKernelRenderer(
             val params = root.optJSONArray("params") ?: return emptyList()
             buildList {
                 for (index in 0 until params.length()) {
-                    val param = params.optJSONObject(index) ?: continue
-                    val name = param.optString("name")
-                    if (name.isBlank()) continue
-                    val values = param.optJSONArray("default")?.toFloatList()
-                        ?: listOf(param.optDouble("default", 0.0).toFloat())
-                    val location = GLES30.glGetUniformLocation(program, name)
-                    add(UniformDefault(location, values.toFloatArray()))
+                    val param = params.optJSONObject(index)
+                    val name = param?.optString("name").orEmpty()
+                    if (param != null && name.isNotBlank()) {
+                        val values = param.optJSONArray("default")?.toFloatList()
+                            ?: listOf(param.optDouble("default", 0.0).toFloat())
+                        val location = GLES30.glGetUniformLocation(program, name)
+                        add(UniformDefault(location, values.toFloatArray()))
+                    }
                 }
             }
         } catch (_: FileNotFoundException) {
             emptyList()
-        } catch (error: Exception) {
+        } catch (error: IOException) {
+            Log.w(TAG, "Could not read parameter manifest for ${theme.id}", error)
+            emptyList()
+        } catch (error: JSONException) {
             Log.w(TAG, "No parameter manifest for ${theme.id}", error)
             emptyList()
         }
@@ -431,7 +375,7 @@ class ShaderKernelRenderer(
             try {
                 val source = context.assets.open(path).bufferedReader().use { it.readText() }
                 if (source.isNotBlank()) return source
-            } catch (_: Exception) {
+            } catch (_: IOException) {
                 // Try the next generated filename before falling back.
             }
         }
@@ -439,14 +383,96 @@ class ShaderKernelRenderer(
         return FALLBACK_DISPLAY
     }
 
-    private fun buildProgramOrFallback(fragmentSource: String, label: String): Int {
-        val requested = buildProgram(fragmentSource, label)
+    companion object {
+        private const val TAG = "BurnBarLivingThemes"
+    }
+}
+
+private data class EglSession(
+    val display: EGLDisplay,
+    val context: EGLContext,
+    val surface: EGLSurface,
+) {
+    companion object {
+        fun create(nativeWindow: Any): EglSession? {
+            val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+            if (display == EGL14.EGL_NO_DISPLAY) return fail("eglGetDisplay")
+
+            val versions = IntArray(2)
+            if (!EGL14.eglInitialize(display, versions, 0, versions, 1)) {
+                return fail("eglInitialize", display)
+            }
+            val config = chooseConfig(display) ?: return fail("eglChooseConfig", display)
+            val context =
+                EGL14.eglCreateContext(
+                    display,
+                    config,
+                    EGL14.EGL_NO_CONTEXT,
+                    intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 3, EGL14.EGL_NONE),
+                    0,
+                )
+            if (context == EGL14.EGL_NO_CONTEXT) {
+                return fail("eglCreateContext", display)
+            }
+            val surface =
+                EGL14.eglCreateWindowSurface(
+                    display,
+                    config,
+                    nativeWindow,
+                    intArrayOf(EGL14.EGL_NONE),
+                    0,
+                )
+            if (surface == EGL14.EGL_NO_SURFACE) {
+                EGL14.eglDestroyContext(display, context)
+                return fail("eglCreateWindowSurface", display)
+            }
+            if (!EGL14.eglMakeCurrent(display, surface, surface, context)) {
+                EGL14.eglDestroySurface(display, surface)
+                EGL14.eglDestroyContext(display, context)
+                return fail("eglMakeCurrent", display)
+            }
+            return EglSession(display, context, surface)
+        }
+
+        private fun chooseConfig(display: EGLDisplay): EGLConfig? {
+            val configs = arrayOfNulls<EGLConfig>(1)
+            val count = IntArray(1)
+            val chosen =
+                EGL14.eglChooseConfig(
+                    display,
+                    EGL_ATTRIBUTES,
+                    0,
+                    configs,
+                    0,
+                    configs.size,
+                    count,
+                    0,
+                )
+            return configs[0].takeIf { chosen && count[0] > 0 }
+        }
+
+        private fun fail(operation: String, display: EGLDisplay? = null): EglSession? {
+            Log.e(
+                RENDERER_TAG,
+                "$operation failed: 0x${Integer.toHexString(EGL14.eglGetError())}",
+            )
+            if (display != null && display != EGL14.EGL_NO_DISPLAY) {
+                EGL14.eglTerminate(display)
+            }
+            return null
+        }
+    }
+}
+
+private object ShaderProgramFactory {
+    fun buildOrFallback(fragmentSource: String, label: String): Int {
+        val requested = build(fragmentSource, label)
         if (requested != 0) return requested
-        Log.e(TAG, "Falling back after shader failure: $label")
-        return buildProgram(FALLBACK_DISPLAY, "fallback")
+        Log.e(RENDERER_TAG, "Falling back after shader failure: $label")
+        return build(FALLBACK_DISPLAY, "fallback")
     }
 
-    private fun buildProgram(fragmentSource: String, label: String): Int {
+    private fun build(fragmentSource: String, label: String): Int {
         val vertexShader = compile(GLES30.GL_VERTEX_SHADER, VERTEX_SHADER, "$label:vertex")
         if (vertexShader == 0) return 0
         val fragmentShader =
@@ -466,11 +492,14 @@ class ShaderKernelRenderer(
         val status = IntArray(1)
         GLES30.glGetProgramiv(linkedProgram, GLES30.GL_LINK_STATUS, status, 0)
         if (status[0] == GLES30.GL_TRUE) {
-            Log.i(TAG, "Shader program ready: $label")
+            Log.i(RENDERER_TAG, "Shader program ready: $label")
             return linkedProgram
         }
 
-        Log.e(TAG, "Program link failed ($label): ${GLES30.glGetProgramInfoLog(linkedProgram)}")
+        Log.e(
+            RENDERER_TAG,
+            "Program link failed ($label): ${GLES30.glGetProgramInfoLog(linkedProgram)}",
+        )
         GLES30.glDeleteProgram(linkedProgram)
         return 0
     }
@@ -483,42 +512,57 @@ class ShaderKernelRenderer(
         GLES30.glGetShaderiv(shader, GLES30.GL_COMPILE_STATUS, status, 0)
         if (status[0] == GLES30.GL_TRUE) return shader
 
-        Log.e(TAG, "Shader compile failed ($label): ${GLES30.glGetShaderInfoLog(shader)}")
+        Log.e(RENDERER_TAG, "Shader compile failed ($label): ${GLES30.glGetShaderInfoLog(shader)}")
         GLES30.glDeleteShader(shader)
         return 0
-    }
-
-    companion object {
-        private const val TAG = "BurnBarLivingThemes"
-        private const val EGL_OPENGL_ES3_BIT_KHR = 0x0040
-
-        private val VERTEX_SHADER =
-            """
-            #version 300 es
-            void main() {
-              vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
-              gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
-            }
-            """.trimIndent()
-
-        private val FALLBACK_DISPLAY =
-            """
-            #version 300 es
-            precision highp float;
-            out vec4 fragColor;
-            uniform vec2 uResolution;
-            uniform float uTime;
-            void main() {
-              vec2 uv = gl_FragCoord.xy / max(uResolution, vec2(1.0));
-              vec2 p = uv * 2.0 - 1.0;
-              float n = sin(p.x * 3.0 + uTime * 0.15) * cos(p.y * 2.5 - uTime * 0.1);
-              vec3 c = mix(vec3(0.05, 0.06, 0.12), vec3(0.35, 0.55, 1.0), 0.5 + 0.5 * n);
-              fragColor = vec4(c, 1.0);
-            }
-            """.trimIndent()
     }
 }
 
 private fun JSONArray.toFloatList(): List<Float> = buildList {
     for (index in 0 until length()) add(optDouble(index, 0.0).toFloat())
 }
+
+private const val RENDERER_TAG = "BurnBarLivingThemes"
+private const val EGL_OPENGL_ES3_BIT_KHR = 0x0040
+
+private val EGL_ATTRIBUTES =
+    intArrayOf(
+        EGL14.EGL_SURFACE_TYPE,
+        EGL14.EGL_WINDOW_BIT,
+        EGL14.EGL_RED_SIZE,
+        8,
+        EGL14.EGL_GREEN_SIZE,
+        8,
+        EGL14.EGL_BLUE_SIZE,
+        8,
+        EGL14.EGL_ALPHA_SIZE,
+        8,
+        EGL14.EGL_RENDERABLE_TYPE,
+        EGL_OPENGL_ES3_BIT_KHR,
+        EGL14.EGL_NONE,
+    )
+
+private val VERTEX_SHADER =
+    """
+    #version 300 es
+    void main() {
+      vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+      gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+    }
+    """.trimIndent()
+
+private val FALLBACK_DISPLAY =
+    """
+    #version 300 es
+    precision highp float;
+    out vec4 fragColor;
+    uniform vec2 uResolution;
+    uniform float uTime;
+    void main() {
+      vec2 uv = gl_FragCoord.xy / max(uResolution, vec2(1.0));
+      vec2 p = uv * 2.0 - 1.0;
+      float n = sin(p.x * 3.0 + uTime * 0.15) * cos(p.y * 2.5 - uTime * 0.1);
+      vec3 c = mix(vec3(0.05, 0.06, 0.12), vec3(0.35, 0.55, 1.0), 0.5 + 0.5 * n);
+      fragColor = vec4(c, 1.0);
+    }
+    """.trimIndent()
