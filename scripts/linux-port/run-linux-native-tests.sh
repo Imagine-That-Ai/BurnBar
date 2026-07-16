@@ -200,6 +200,7 @@ daemon_linux_tests=(
     LinuxCloudDataControlTests/testDeleteDecodesAuthoritativeSummaryAfterConfirmation
     LinuxCloudDataControlTests/testDeleteRequiresExactConfirmationToken
     LinuxCloudDataControlTests/testExportForwardsProofHeadersAndReturnsOnlyCallablePayload
+    LinuxCloudDataControlTests/testExportRejectsOversizedDomainSelectionBeforeTransport
     LinuxCloudDataControlTests/testExportRejectsExpiredJWTBeforeTransport
     LinuxCloudDataControlTests/testExportRejectsMalformedCallableResponse
     LinuxCloudDataControlTests/testExportRejectsSignedOutTokenBeforeTransport
@@ -435,6 +436,8 @@ daemon_linux_tests=(
     MercuryLinuxMediaTests/testRPCDecodeAndDispatchForMediaMethods
     MercuryLinuxMediaTests/testRouteEndPreservesNoControlRouteWhileOutboundPublishIsCancelled
     MercuryLinuxMediaTests/testRouteEndTerminatesCapturePendingDecisionsAndExactRouteTransfers
+    MercuryLinuxMediaTests/testInboundPlaintextFrameIsDroppedAfterSealNegotiation
+    MercuryLinuxMediaTests/testInboundSealedFrameOpensAfterSealNegotiation
     MercuryLinuxMediaTests/testSessionForwardsCapturedFramesSealed
     MercuryLinuxMediaTests/testSessionPhaseTransitionsAndAckEmission
     OpenBurnBarHTTPGatewayServerLinuxTests/testMidStreamUpstreamDropClosesWithoutSecondHTTPResponse
