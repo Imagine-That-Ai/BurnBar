@@ -38,9 +38,10 @@ export type PetCapabilityProbe = {
 };
 
 /**
- * Native window/input hooks required before a compositor capability can turn
- * into a real ambient companion. The current Linux shell has no such
- * companion-window contract, so the production default is all false.
+ * Native window/input hooks are required before a compositor capability can
+ * turn into a real ambient companion. Linux currently supplies that contract
+ * only for the constrained X11 child; Wayland and unknown sessions remain
+ * explicitly unavailable.
  */
 export type PetNativeContract = {
   overlay: boolean;

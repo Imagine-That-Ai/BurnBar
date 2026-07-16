@@ -375,7 +375,12 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
           {containedPetSelected ? 'Pet selected' : 'Select contained pet'}
         </button>
         {capability.actions.overlay.supported ? (
-          <button type="button" className="pet-action-button" onClick={() => void summonNativePet()}>
+          <button
+            type="button"
+            className="pet-action-button"
+            aria-keyshortcuts="Ctrl+Alt+Super+P"
+            onClick={() => void summonNativePet()}
+          >
             Open native companion
           </button>
         ) : null}
