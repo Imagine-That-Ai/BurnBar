@@ -6,6 +6,8 @@
 #   SIGNAL_FFI_SKIP_BUILD=1 ./scripts/build-signal-ffi-xcframework.sh
 #   SIGNAL_FFI_BUILD_TARGETS="aarch64-apple-darwin x86_64-apple-darwin" ./scripts/build-signal-ffi-xcframework.sh
 #   SIGNAL_FFI_RUST_TOOLCHAIN=1.94.0 ./scripts/build-signal-ffi-xcframework.sh
+#   SIGNAL_FFI_BUILD_ROOT=/absolute/scratch/ffi-build ./scripts/build-signal-ffi-xcframework.sh
+#   SIGNAL_FFI_CARGO_TARGET_ROOT=/absolute/scratch/ffi-target ./scripts/build-signal-ffi-xcframework.sh
 #
 # Output:
 #   Vendor/OpenBurnBarSignalFfiIOS.xcframework/
@@ -25,6 +27,69 @@ LEGACY_XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfi.xcframework"
 IOS_XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfiIOS.xcframework"
 MACOS_XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarSignalFfiMac.xcframework"
 BUILD_DIR="${ROOT_DIR}/build/signal-ffi-xcframework"
+
+log() { printf '[signal-ffi-xcframework] %s\n' "$*"; }
+
+abort() {
+  echo "[signal-ffi-xcframework] FATAL: $*" >&2
+  exit 1
+}
+
+# The build and cargo target roots are intentionally independent: the former
+# contains small XCFramework staging helpers, while the latter can contain
+# several gigabytes of Rust intermediates.  Keeping both configurable lets a
+# physical-device XCTest run put all transient state under its caller-owned
+# scratch directory without changing the historical defaults.
+if [[ "${SIGNAL_FFI_BUILD_ROOT+x}" == "x" ]]; then
+  [[ -n "${SIGNAL_FFI_BUILD_ROOT}" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: SIGNAL_FFI_BUILD_ROOT cannot be empty" >&2
+    exit 64
+  }
+  BUILD_DIR="${SIGNAL_FFI_BUILD_ROOT}"
+elif [[ "${OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT+x}" == "x" ]]; then
+  [[ -n "${OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT}" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT cannot be empty" >&2
+    exit 64
+  }
+  BUILD_DIR="${OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT}"
+fi
+if [[ "${SIGNAL_FFI_CARGO_TARGET_ROOT+x}" == "x" ]]; then
+  [[ -n "${SIGNAL_FFI_CARGO_TARGET_ROOT}" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: SIGNAL_FFI_CARGO_TARGET_ROOT cannot be empty" >&2
+    exit 64
+  }
+  CARGO_TARGET_DIR="${SIGNAL_FFI_CARGO_TARGET_ROOT}"
+elif [[ "${OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT+x}" == "x" ]]; then
+  [[ -n "${OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT}" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT cannot be empty" >&2
+    exit 64
+  }
+  CARGO_TARGET_DIR="${OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT}"
+else
+  CARGO_TARGET_DIR="${LIBSIGNAL_DIR}/target"
+fi
+
+validate_absolute_root() {
+  local label="$1"
+  local path="$2"
+  [[ "${path}" == /* ]] || abort "${label} must be an absolute path: ${path}"
+  # Resolve existing symlink components before any child is created. This
+  # prevents a caller-provided scratch path from silently redirecting build
+  # intermediates outside the path they asked us to own.
+  local canonical
+  canonical="$(python3 - "${path}" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+  [[ "${canonical}" == /* ]] || abort "${label} resolved to a non-absolute path"
+  printf '%s\n' "${canonical}"
+}
+
+BUILD_DIR="$(validate_absolute_root SIGNAL_FFI_BUILD_ROOT "${BUILD_DIR}")"
+CARGO_TARGET_DIR="$(validate_absolute_root SIGNAL_FFI_CARGO_TARGET_ROOT "${CARGO_TARGET_DIR}")"
 ARCHS_DIR="${BUILD_DIR}/archs"
 HEADERS_DIR="${BUILD_DIR}/Headers"
 EXPORTS_FILE="${BUILD_DIR}/signal_ffi.exports"
@@ -61,13 +126,6 @@ if [[ -n "${SIGNAL_FFI_BUILD_TARGETS:-}" ]]; then
 else
   TARGETS=("${DEFAULT_TARGETS[@]}")
 fi
-
-log() { printf '[signal-ffi-xcframework] %s\n' "$*"; }
-
-abort() {
-  echo "[signal-ffi-xcframework] FATAL: $*" >&2
-  exit 1
-}
 
 write_build_metadata() {
   local xcframework="$1"
@@ -265,6 +323,7 @@ build_target() {
   (
     cd "${LIBSIGNAL_DIR}"
     CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
+    CARGO_TARGET_DIR="${CARGO_TARGET_DIR}" \
     MACOSX_DEPLOYMENT_TARGET=14.0 \
     IPHONEOS_DEPLOYMENT_TARGET=17.0 \
     IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
@@ -282,7 +341,7 @@ build_target() {
 
 latest_target_dylib() {
   local target="$1"
-  local dir="${LIBSIGNAL_DIR}/target/${target}/${PROFILE_DIR}/deps"
+  local dir="${CARGO_TARGET_DIR}/${target}/${PROFILE_DIR}/deps"
   [[ -d "${dir}" ]] || abort "missing build output dir ${dir}"
   local dylib
   dylib="$(
@@ -297,7 +356,7 @@ latest_target_dylib() {
 
 latest_target_staticlib() {
   local target="$1"
-  local lib="${LIBSIGNAL_DIR}/target/${target}/${PROFILE_DIR}/libsignal_ffi.a"
+  local lib="${CARGO_TARGET_DIR}/${target}/${PROFILE_DIR}/libsignal_ffi.a"
   [[ -f "${lib}" ]] || abort "missing libsignal_ffi static library for ${target}"
   printf '%s\n' "${lib}"
 }

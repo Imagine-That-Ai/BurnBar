@@ -24,6 +24,21 @@
 #   OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1
 #                                           Skip Signal FFI prep when the caller
 #                                           already prepared the Signal FFI XCFramework artifacts.
+#   OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT=<absolute path>
+#                                           Keep all transient mobile-test
+#                                           roots below this caller-owned path.
+#   OPENBURNBAR_MOBILE_SWIFTPM_CACHE_ROOT=<path>
+#                                           Override cloned SwiftPM package cache.
+#   OPENBURNBAR_MOBILE_TEST_ARTIFACT_ROOT=<path>
+#                                           Override telemetry/coverage root.
+#   OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_ROOT=<path>
+#                                           Override Signal FFI staging root.
+#   OPENBURNBAR_MOBILE_SIGNAL_FFI_CARGO_TARGET_ROOT=<path>
+#                                           Override Signal FFI Cargo target root.
+#   OPENBURNBAR_MOBILE_CLEANUP_SIGNAL_FFI_ROOT=0
+#                                           Keep redirected Signal FFI
+#                                           intermediates for post-run forensics
+#                                           (default: clean when scratch-rooted).
 #   OPENBURNBAR_MOBILE_ALLOW_PROVISIONING_UPDATES=0
 #                                           Disable Xcode automatic profile/device updates on physical-device runs.
 #
@@ -48,9 +63,146 @@ export FIREBASE_SOURCE_FIRESTORE="${FIREBASE_SOURCE_FIRESTORE:-1}"
 # shellcheck source=scripts/lib/openburnbar-app-test-classifier.sh
 source "$repo_root/scripts/lib/openburnbar-app-test-classifier.sh"
 
-cache_dir="$repo_root/.spm-cache-new"
-artifact_root="$repo_root/.derived-data"
-derived_data_root="${OPENBURNBAR_MOBILE_TEST_DERIVED_DATA_ROOT:-${TMPDIR:-/tmp}/openburnbar-mobile-tests}"
+dry_run_requested="${OPENBURNBAR_MOBILE_DRY_RUN:-}"
+mobile_scratch_root=""
+
+validate_path_within_root() {
+    local root="$1"
+    local candidate="$2"
+    local label="$3"
+    local resolve_symlinks="$4"
+    python3 - "$root" "$candidate" "$label" "$resolve_symlinks" <<'PY'
+import os
+import sys
+
+root, candidate, label, resolve_symlinks = sys.argv[1:]
+root = os.path.abspath(root)
+candidate = os.path.abspath(candidate)
+
+def is_within(parent, child):
+    try:
+        return os.path.commonpath([parent, child]) == parent
+    except ValueError:
+        return False
+
+if not is_within(root, candidate):
+    print(f"ERROR: {label} must remain under OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT: {candidate}", file=sys.stderr)
+    raise SystemExit(64)
+
+if resolve_symlinks == "1":
+    real_root = os.path.realpath(root)
+    real_candidate = os.path.realpath(candidate)
+    if not is_within(real_root, real_candidate):
+        print(f"ERROR: {label} resolves outside OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT: {candidate}", file=sys.stderr)
+        raise SystemExit(64)
+PY
+}
+
+if [[ "${OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT+x}" == "x" ]]; then
+    if [[ -z "${OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT}" ]]; then
+        echo "ERROR: OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT cannot be empty." >&2
+        exit 64
+    fi
+    if [[ "${OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT}" != /* ]]; then
+        echo "ERROR: OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT must be an absolute path." >&2
+        exit 64
+    fi
+    mobile_scratch_root="$(python3 - "${OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT}" <<'PY'
+import os
+import sys
+
+print(os.path.abspath(sys.argv[1]))
+PY
+)"
+    if [[ "$dry_run_requested" != "1" ]]; then
+        mkdir -p "$mobile_scratch_root"
+        mobile_scratch_root="$(python3 - "$mobile_scratch_root" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+    fi
+fi
+
+resolve_mobile_root() {
+    local label="$1"
+    local override_name="$2"
+    local default_path="$3"
+    local raw_path
+
+    if [[ "${!override_name+x}" == "x" ]]; then
+        raw_path="${!override_name}"
+        if [[ -z "$raw_path" ]]; then
+            echo "ERROR: ${override_name} cannot be empty." >&2
+            return 64
+        fi
+    else
+        raw_path="$default_path"
+    fi
+
+    if [[ -n "$mobile_scratch_root" ]]; then
+        if [[ "$raw_path" != /* ]]; then
+            echo "ERROR: ${label} must be absolute when OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT is set." >&2
+            return 64
+        fi
+        local resolve_symlinks=1
+        if [[ "$dry_run_requested" == "1" && ! -d "$mobile_scratch_root" ]]; then
+            resolve_symlinks=0
+        fi
+        validate_path_within_root "$mobile_scratch_root" "$raw_path" "$label" "$resolve_symlinks" || return $?
+        if [[ "$dry_run_requested" != "1" ]]; then
+            mkdir -p "$raw_path"
+            validate_path_within_root "$mobile_scratch_root" "$raw_path" "$label" 1 || return $?
+            raw_path="$(python3 - "$raw_path" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+        fi
+    fi
+
+    printf '%s\n' "$raw_path"
+}
+
+cache_default="${mobile_scratch_root:+$mobile_scratch_root/swiftpm-cache}"
+[[ -n "$cache_default" ]] || cache_default="$repo_root/.spm-cache-new"
+cache_dir="$(resolve_mobile_root "SwiftPM cache" OPENBURNBAR_MOBILE_SWIFTPM_CACHE_ROOT "$cache_default")" || exit $?
+
+artifact_default="${mobile_scratch_root:+$mobile_scratch_root/artifacts}"
+[[ -n "$artifact_default" ]] || artifact_default="$repo_root/.derived-data"
+artifact_root="$(resolve_mobile_root "mobile test artifact root" OPENBURNBAR_MOBILE_TEST_ARTIFACT_ROOT "$artifact_default")" || exit $?
+
+derived_data_default="${mobile_scratch_root:+$mobile_scratch_root/derived-data}"
+[[ -n "$derived_data_default" ]] || derived_data_default="${TMPDIR:-/tmp}/openburnbar-mobile-tests"
+derived_data_root="$(resolve_mobile_root "derived-data root" OPENBURNBAR_MOBILE_TEST_DERIVED_DATA_ROOT "$derived_data_default")" || exit $?
+
+# Accept the lower-level Signal FFI names when the caller invokes this wrapper
+# directly. They are folded into the mobile-scoped names so scratch-root
+# containment is applied before the prep script sees them.
+if [[ "${OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_ROOT+x}" != "x" ]]; then
+    if [[ "${SIGNAL_FFI_BUILD_ROOT+x}" == "x" ]]; then
+        OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_ROOT="$SIGNAL_FFI_BUILD_ROOT"
+    elif [[ "${OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT+x}" == "x" ]]; then
+        OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_ROOT="$OPENBURNBAR_SIGNAL_FFI_BUILD_ROOT"
+    fi
+fi
+if [[ "${OPENBURNBAR_MOBILE_SIGNAL_FFI_CARGO_TARGET_ROOT+x}" != "x" ]]; then
+    if [[ "${SIGNAL_FFI_CARGO_TARGET_ROOT+x}" == "x" ]]; then
+        OPENBURNBAR_MOBILE_SIGNAL_FFI_CARGO_TARGET_ROOT="$SIGNAL_FFI_CARGO_TARGET_ROOT"
+    elif [[ "${OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT+x}" == "x" ]]; then
+        OPENBURNBAR_MOBILE_SIGNAL_FFI_CARGO_TARGET_ROOT="$OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT"
+    fi
+fi
+
+signal_ffi_build_default="${mobile_scratch_root:+$mobile_scratch_root/signal-ffi-build}"
+signal_ffi_target_default="${mobile_scratch_root:+$mobile_scratch_root/signal-ffi-cargo-target}"
+signal_ffi_build_root="$(resolve_mobile_root "Signal FFI build root" OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_ROOT "$signal_ffi_build_default")" || exit $?
+signal_ffi_cargo_target_root="$(resolve_mobile_root "Signal FFI Cargo target root" OPENBURNBAR_MOBILE_SIGNAL_FFI_CARGO_TARGET_ROOT "$signal_ffi_target_default")" || exit $?
+
 attempt_log_path="$artifact_root/test-openburnbar-mobile-attempts.jsonl"
 
 default_test_execution_allowance="${OPENBURNBAR_MOBILE_TEST_DEFAULT_ALLOWANCE:-900}"
@@ -280,6 +432,14 @@ fi
 if [[ "${OPENBURNBAR_MOBILE_DRY_RUN:-}" == "1" ]]; then
     echo ">>> Dry run: would test OpenBurnBarMobile at destination:"
     echo "$ios_destination"
+    if [[ -n "$mobile_scratch_root" ]]; then
+        echo ">>> Mobile scratch root: $mobile_scratch_root"
+        echo ">>> SwiftPM cache root: $cache_dir"
+        echo ">>> Mobile artifact root: $artifact_root"
+        echo ">>> Derived-data root: $derived_data_root"
+        echo ">>> Signal FFI build root: ${signal_ffi_build_root:-<unset>}"
+        echo ">>> Signal FFI Cargo target root: ${signal_ffi_cargo_target_root:-<unset>}"
+    fi
     print_test_filters
     exit 0
 fi
@@ -353,11 +513,27 @@ cleanup_derived_data() {
     rm -rf "$dd" 2>/dev/null || true
 }
 
+cleanup_signal_ffi_intermediates() {
+    local cleanup_requested="${OPENBURNBAR_MOBILE_CLEANUP_SIGNAL_FFI_ROOT:-0}"
+    if [[ -z "${OPENBURNBAR_MOBILE_CLEANUP_SIGNAL_FFI_ROOT+x}" && -n "$mobile_scratch_root" ]]; then
+        cleanup_requested=1
+    fi
+    [[ "$cleanup_requested" == "1" ]] || return 0
+    [[ -n "$mobile_scratch_root" ]] || return 0
+    local root
+    for root in "$signal_ffi_build_root" "$signal_ffi_cargo_target_root"; do
+        [[ -n "$root" && "$root" != "$mobile_scratch_root" ]] || continue
+        validate_path_within_root "$mobile_scratch_root" "$root" "Signal FFI cleanup root" 1 || continue
+        rm -rf "$root" 2>/dev/null || true
+    done
+}
+
 cleanup() {
     if [ -n "$xcodebuild_log" ]; then
         rm -f "$xcodebuild_log" 2>/dev/null || true
     fi
     cleanup_derived_data "$derived_data_dir"
+    cleanup_signal_ffi_intermediates
 }
 
 ensure_simulator_booted() {
@@ -496,7 +672,18 @@ if [[ "${OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP:-}" == "1" ]]; then
     fi
     echo ">>> Reusing prebuilt Signal FFI XCFramework."
 else
-    "$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
+    signal_ffi_prepare_environment=()
+    if [[ -n "$signal_ffi_build_root" ]]; then
+        signal_ffi_prepare_environment+=("SIGNAL_FFI_BUILD_ROOT=$signal_ffi_build_root")
+    fi
+    if [[ -n "$signal_ffi_cargo_target_root" ]]; then
+        signal_ffi_prepare_environment+=("SIGNAL_FFI_CARGO_TARGET_ROOT=$signal_ffi_cargo_target_root")
+    fi
+    if [[ "${#signal_ffi_prepare_environment[@]}" -gt 0 ]]; then
+        env "${signal_ffi_prepare_environment[@]}" "$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
+    else
+        "$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
+    fi
 fi
 
 openburnbar_app_test_hang_substrings+=(
