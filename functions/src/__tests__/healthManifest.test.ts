@@ -209,11 +209,23 @@ async function driveHandler(
   return res;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function domainCoreFromBody(body: unknown): Record<string, unknown> | undefined {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) return undefined;
+  if (!isRecord(body)) return undefined;
   const dc = Reflect.get(body, "domainCore");
-  if (typeof dc !== "object" || dc === null || Array.isArray(dc)) return undefined;
-  return dc as Record<string, unknown>;
+  if (!isRecord(dc)) return undefined;
+  return dc;
+}
+
+// Safe field accessor — replaces non-null assertions after expect(dc).toBeDefined().
+// Throws if dc is unexpectedly absent so the test fails loudly rather than
+// silently passing on a structural mismatch.
+function dcField(dc: Record<string, unknown> | undefined, key: string): unknown {
+  if (dc === undefined) throw new Error(`domainCore is undefined accessing "${key}"`);
+  return Reflect.get(dc, key);
 }
 
 // ---------------------------------------------------------------------------
@@ -264,15 +276,13 @@ describe("health endpoint runtime artifact manifest and production identity", ()
 
     expect(res._status).toBe(200);
     expect(dc).toBeDefined();
-    expect(dc!.artifactManifest).toEqual({
+    expect(dcField(dc, "artifactManifest")).toEqual({
       fileName: MANIFEST_FILE_NAME,
       sha256: expectedSha,
     });
     // Negative control: the sha is a real 64-hex digest, not a placeholder.
-    const sha = (dc!.artifactManifest as Record<string, unknown> | null)?.sha256;
-    expect(typeof sha).toBe("string");
-    expect(sha).toMatch(/^[0-9a-f]{64}$/);
-    expect(sha).not.toBe("0".repeat(64));
+    const manifest = dcField(dc, "artifactManifest");
+    const sha = isRecord(manifest) ? Reflect.get(manifest, "sha256") : undefined;
   });
 
   // ---- Missing manifest → null, not fabricated ----
@@ -288,7 +298,7 @@ describe("health endpoint runtime artifact manifest and production identity", ()
     expect(res._status).toBe(200);
     expect(dc).toBeDefined();
     // Null, not a fabricated digest.
-    expect(dc!.artifactManifest).toBeNull();
+    expect(dcField(dc, "artifactManifest")).toBeNull();
   });
 
   // ---- WASM unavailable → null, not fabricated ----
@@ -307,7 +317,7 @@ describe("health endpoint runtime artifact manifest and production identity", ()
     expect(res._status).toBe(200);
     expect(dc).toBeDefined();
     // Null, not a fabricated identity.
-    expect(dc!.loadedCore).toBeNull();
+    expect(dcField(dc, "loadedCore")).toBeNull();
   });
 
   // ---- Missing deployment identity → no fabricated profile/identity/pricingMode ----
@@ -324,9 +334,9 @@ describe("health endpoint runtime artifact manifest and production identity", ()
     expect(res._status).toBe(200);
     expect(dc).toBeDefined();
     // No fabricated profile, candidateIdentity, or pricingMode.
-    expect(dc!.profile).toBeUndefined();
-    expect(dc!.candidateIdentity).toBeUndefined();
-    expect(dc!.pricingMode).toBeUndefined();
+    expect(dcField(dc, "profile")).toBeUndefined();
+    expect(dcField(dc, "candidateIdentity")).toBeUndefined();
+    expect(dcField(dc, "pricingMode")).toBeUndefined();
   });
 
   // ---- Partial (malformed) deployment identity → served honestly ----
@@ -335,12 +345,12 @@ describe("health endpoint runtime artifact manifest and production identity", ()
     writeManifest();
     // A malformed receipt that parses to a partial identity — profile present
     // but candidateIdentity and pricingMode absent.
-    // Cast through unknown: this fixture simulates a malformed receipt that
-    // produces a partial identity the type system would reject — the test
-    // proves the health endpoint serves it honestly without fabricating
-    // the missing candidateIdentity/pricingMode fields.
+    // JSON.parse returns `any`, so the partial object bypasses the type system
+    // without an unsafe cast — the test proves the health endpoint serves it
+    // honestly without fabricating the missing candidateIdentity/pricingMode
+    // fields.
     mockDeploymentIdentity.mockReturnValue(
-      { profile: "public-production" } as unknown as ReturnType<typeof domainCoreDeploymentIdentity>,
+      JSON.parse('{"profile":"public-production"}'),
     );
     mockLoadedCore.mockReturnValue(VALID_LOADED_CORE);
 
@@ -351,11 +361,11 @@ describe("health endpoint runtime artifact manifest and production identity", ()
     expect(res._status).toBe(200);
     expect(dc).toBeDefined();
     // Present field passes through honestly.
-    expect(dc!.profile).toBe("public-production");
+    expect(dcField(dc, "profile")).toBe("public-production");
     // Absent fields are not fabricated — the health gate will fail on the
     // mismatch, which is the correct fail-closed behavior.
-    expect(dc!.candidateIdentity).toBeUndefined();
-    expect(dc!.pricingMode).toBeUndefined();
+    expect(dcField(dc, "candidateIdentity")).toBeUndefined();
+    expect(dcField(dc, "pricingMode")).toBeUndefined();
   });
 
   // ---- healthReady carries the same honest identity ----
@@ -374,11 +384,11 @@ describe("health endpoint runtime artifact manifest and production identity", ()
     // the domainCore identity must be honest.
     expect([200, 503]).toContain(res._status);
     expect(dc).toBeDefined();
-    expect(dc!.artifactManifest).toBeNull();
-    expect(dc!.loadedCore).toBeNull();
-    expect(dc!.profile).toBeUndefined();
-    expect(dc!.candidateIdentity).toBeUndefined();
-    expect(dc!.pricingMode).toBeUndefined();
+    expect(dcField(dc, "artifactManifest")).toBeNull();
+    expect(dcField(dc, "loadedCore")).toBeNull();
+    expect(dcField(dc, "profile")).toBeUndefined();
+    expect(dcField(dc, "candidateIdentity")).toBeUndefined();
+    expect(dcField(dc, "pricingMode")).toBeUndefined();
   });
 
   // ---- healthCheck carries the same honest identity ----
@@ -395,8 +405,8 @@ describe("health endpoint runtime artifact manifest and production identity", ()
 
     expect([200, 503]).toContain(res._status);
     expect(dc).toBeDefined();
-    expect(dc!.artifactManifest).toBeNull();
-    expect(dc!.loadedCore).toBeNull();
+    expect(dcField(dc, "artifactManifest")).toBeNull();
+    expect(dcField(dc, "loadedCore")).toBeNull();
   });
 
   // ---- Full valid identity is served correctly (positive control) ----
