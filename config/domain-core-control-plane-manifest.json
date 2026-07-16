@@ -12,7 +12,7 @@
     ".github/workflows/domain-core-promotion-proof.yml": ["9477a0e6d1e48713","431b405282a5441e","4eb73321891628dc","a5bcf02ab4c1e475"],
     ".github/workflows/domain-core.yml": ["c17afb0d45480b7a","a8b87a0997764dec","addb4fcef40778ac","c7734eedbe3a1682"],
     ".github/workflows/linux-release.yml": ["cd464fa8c252b9e9","527c6e73f7abf71a","7b6746f544b03919","5e55759d86af380d"],
-    ".github/workflows/openburnbar-release-windows.yml": ["0e90ab4af5b51ab6","4ce30bf063edec9a","19e2252acf7d6497","cbda7c0231321ed8"],
+    ".github/workflows/openburnbar-release-windows.yml": ["9c66b1394a9f9d68","e44a6ba73d88d4c2","11de7a69bb8b91c2","6974c14971833b7e"],
     ".github/workflows/release.yml": ["48e8f17424504d58","e5e609f026a2d18f","2451ab0c98ba7a90","569f6b7b9b1a5f67"],
     "OpenBurnBarCore/Package.swift": ["d6ca5667bd8f7770","3a8f2a3f51fd2842","e18c41b9861b9a62","4217320528fa09e4"],
     "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift": ["1791459f936e0cff","25ef90eff252d1a5","f9aee34bafd4cf16","c1831a2d1a5ba04e"],
