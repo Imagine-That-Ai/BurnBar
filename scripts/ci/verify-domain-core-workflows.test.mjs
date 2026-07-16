@@ -551,4 +551,19 @@ test("swift-consumer-contracts gates libsignal out to prevent duplicate Rust run
     /prepare_libsignal_ffi\(\)\s*\{\n\s*local libsignal_dir=/,
     "test-openburnbar-swift.sh prepare_libsignal_ffi must declare local libsignal_dir as its first local (set -u safety for the default path)",
   );
+  // The LinuxCoreFoundationTests.swift exclude must key off the explicit
+  // disableLibSignalSwiftPackage env var, NOT hasLibSignalSwiftPackage (which
+  // is always false on Linux). On Linux, the file compiles against the
+  // unavailable fallback stub (which provides sealPayload/openPayload) and
+  // MUST run as part of the Linux core-foundation test floor.
+  assert.match(
+    packageSwift,
+    /linuxCoreFoundationSignalTestExcludes:\s*\[String\]\s*=\s*disableLibSignalSwiftPackage\s*\?/,
+    "Package.swift must scope linuxCoreFoundationSignalTestExcludes to disableLibSignalSwiftPackage, not hasLibSignalSwiftPackage (Linux regression)",
+  );
+  assert.doesNotMatch(
+    packageSwift,
+    /linuxCoreFoundationSignalTestExcludes.*hasLibSignalSwiftPackage/,
+    "Package.swift must NOT key linuxCoreFoundationSignalTestExcludes off hasLibSignalSwiftPackage (would exclude the file on Linux where hasLibSignalSwiftPackage is always false)",
+  );
 });

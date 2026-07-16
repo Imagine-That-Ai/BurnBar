@@ -447,11 +447,14 @@ let signalSessionTransportTestFallbackExcludes: [String] = hasLibSignalSwiftPack
 
 // LinuxCoreFoundationTests calls `OpenBurnBarSignalAtRest.sealPayload`/`openPayload`
 // which exist only in the full LibSignalClient-backed implementation, not in the
-// unavailable fallback stub. Exclude that file when libsignal is pruned so the
-// remaining Linux-foundation tests still compile.
-let linuxCoreFoundationSignalTestExcludes: [String] = hasLibSignalSwiftPackage ? [] : [
+// unavailable fallback stub. Exclude that file ONLY when libsignal is explicitly
+// pruned via OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE=1 (the focused macOS
+// domain-core consumer mode). On Linux/Windows, where `hasLibSignalSwiftPackage`
+// is always false, the file compiles against the fallback stub and MUST run —
+// it is part of the Linux core-foundation test floor.
+let linuxCoreFoundationSignalTestExcludes: [String] = disableLibSignalSwiftPackage ? [
     "LinuxCoreFoundationTests.swift"
-]
+] : []
 
 let signalBinaryTargets: [Target] = {
     var targets: [Target] = []
