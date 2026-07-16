@@ -58,6 +58,20 @@ test('release build uses isolated signing phases and emits closure records', () 
   assert.doesNotMatch(source, /tauri:build[\s\S]{0,80}--bundles/u);
 });
 
+test('Linux Swift daemon builds receive the native iroh library environment', () => {
+  const source = read('scripts/linux-port/build-linux-release.mjs');
+  assert.match(source, /OPENBURNBAR_LINUX_IROH_LIBRARY_DIR:\s*irohNativeLibraryDirectory/u);
+  const swiftBuilds = [...source.matchAll(/runStep\('swift',[\s\S]*?--allow-shlib-undefined'[\s\S]*?\}\)\);/gu)];
+  assert.equal(swiftBuilds.length, 2, 'release must build both daemon and CLI Swift products');
+  for (const [index, match] of swiftBuilds.entries()) {
+    assert.match(
+      match[0],
+      /\],\s*\{\s*env:\s*packageBuildEnv\s*\}\)\);/u,
+      `Swift product ${index + 1} must receive packageBuildEnv so SwiftPM enables Linux iroh FFI`
+    );
+  }
+});
+
 test('package preparation and finalization never receive the private key', () => {
   const source = read('scripts/linux-port/bundle-signed-linux-packages.mjs');
   for (const marker of [
