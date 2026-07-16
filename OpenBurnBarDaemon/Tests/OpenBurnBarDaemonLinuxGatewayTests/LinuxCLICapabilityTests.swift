@@ -15,6 +15,7 @@ final class LinuxCLICapabilityTests: XCTestCase {
             .questionsList,
             .followupsList,
             .missionsList,
+            .missionHealth,
             .missionApprove,
             .simulatorList,
             .simulatorReplay,

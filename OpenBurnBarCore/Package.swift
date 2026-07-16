@@ -403,7 +403,12 @@ let swiftTestingAppleDependency: Target.Dependency = .product(
 )
 #if os(Linux)
 let swiftTestingAppleDependencies: [Target.Dependency] = []
-let swiftTestingPackageDependencies: [Package.Dependency] = []
+// Linux contract tests use swift-testing as well as XCTest. Keep the package
+// in the graph on every platform so native release builds do not depend on a
+// test-only manifest rewrite.
+let swiftTestingPackageDependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
+]
 #else
 let swiftTestingAppleDependencies: [Target.Dependency] = [swiftTestingAppleDependency]
 let swiftTestingPackageDependencies: [Package.Dependency] = [

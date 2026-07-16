@@ -134,6 +134,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
             .questionsList,
             .followupsList,
             .missionsList,
+            .missionHealth,
             .missionApprove,
             .simulatorList,
             .simulatorReplay,
