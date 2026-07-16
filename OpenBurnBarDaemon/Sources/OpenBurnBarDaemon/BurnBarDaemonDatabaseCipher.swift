@@ -235,6 +235,7 @@ enum BurnBarDaemonDatabaseCipher {
         logger: BurnBarDaemonLogger,
         key explicitKey: String? = nil
     ) throws -> Bool {
+        removeOrphanedMigrationArtifacts(forDatabaseAt: path, logger: logger)
         guard isCipherAvailable() else { return false }
         guard let key = explicitKey ?? resolveKey() else { return false }
         try validateKey(key)
@@ -310,6 +311,44 @@ enum BurnBarDaemonDatabaseCipher {
             metadata: ["path": path]
         )
         return true
+    }
+
+    /// Deletes orphaned `<dbFileName>.sqlcipher-migrating-<UUID>` temp databases
+    /// (and their `-wal`/`-shm`/`-journal` sidecars, which share that prefix)
+    /// from the database's parent directory. The temp file is only valid DURING a
+    /// live `migratePlaintextDatabaseIfNeeded` call; when the process dies
+    /// mid-export (SIGKILL, force quit, shutdown) the catch-path cleanup never
+    /// runs and a multi-gigabyte orphan is stranded forever — a real machine
+    /// accumulated 9.4 GB of them. Anything matching the prefix at entry is
+    /// therefore dead and safe to remove; the live database and its own
+    /// `-wal`/`-shm` never match. Best-effort by design: failures are logged and
+    /// never interrupt startup or migration. Mirrors
+    /// `DatabaseEncryptionService.removeOrphanedMigrationArtifacts`.
+    static func removeOrphanedMigrationArtifacts(forDatabaseAt path: String, logger: BurnBarDaemonLogger) {
+        let fileManager = FileManager.default
+        let databaseURL = URL(fileURLWithPath: path)
+        let databaseFileName = databaseURL.lastPathComponent
+        guard databaseFileName.isEmpty == false else { return }
+        let orphanPrefix = databaseFileName + ".sqlcipher-migrating-"
+        let directoryURL = databaseURL.deletingLastPathComponent()
+        guard let entries = try? fileManager.contentsOfDirectory(atPath: directoryURL.path) else { return }
+        for entry in entries where entry.hasPrefix(orphanPrefix) {
+            let orphanPath = directoryURL.appendingPathComponent(entry).path
+            let attributes = try? fileManager.attributesOfItem(atPath: orphanPath)
+            let orphanBytes = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+            do {
+                try fileManager.removeItem(atPath: orphanPath)
+                logger.notice(
+                    "daemon_database_migration_orphan_removed",
+                    metadata: ["path": orphanPath, "reclaimedBytes": "\(orphanBytes)"]
+                )
+            } catch {
+                logger.error(
+                    "daemon_database_migration_orphan_cleanup_failed",
+                    metadata: ["path": orphanPath, "error": "\(error)"]
+                )
+            }
+        }
     }
 
     // MARK: - Raw SQLite Helpers
