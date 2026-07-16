@@ -25,6 +25,9 @@ internal sealed record WindowsUpdateStatus(
     bool HostConfigured,
     bool NativeHostAvailable,
     bool ProductionPinInjected,
+    bool AutomaticChecksAvailable,
+    bool CheckActionAvailable,
+    bool ManagedByStore,
     string Message);
 
 internal sealed record WindowsStartupStatus(
@@ -38,6 +41,7 @@ internal static class WindowsUpdateService
     private const string LastBackgroundCheckKey = "updates.lastBackgroundCheckUtc";
     private const string AppcastEnv = "OPENBURNBAR_WINDOWS_APPCAST_URL";
     private const string PinEnv = "OPENBURNBAR_WINDOWS_UPDATE_PIN";
+    private const string StoreUpdatesUri = "ms-windows-store://downloadsandupdates";
 
     private static readonly object Gate = new();
     private static WinSparkleUpdaterHost? _host;
@@ -61,6 +65,11 @@ internal static class WindowsUpdateService
 
     public static void SetAutomaticChecks(WindowsSettingsPersistence persistence, bool enabled)
     {
+        if (GetDistributionMetadata().Kind == DistributionKind.MicrosoftStore)
+        {
+            persistence.Write(AutomaticChecksKey, false);
+            return;
+        }
         persistence.Write(AutomaticChecksKey, enabled);
         lock (Gate)
         {
@@ -78,6 +87,11 @@ internal static class WindowsUpdateService
             host = _host;
         }
 
+        if (status.ManagedByStore)
+        {
+            using Process _ = ChildProcessLaunchPolicy.StartDefaultBrowser(new Uri(status.AppcastUrl));
+            return "Microsoft Store update settings opened.";
+        }
         if (!status.HostConfigured || host is null)
         {
             return status.Message;
@@ -107,6 +121,10 @@ internal static class WindowsUpdateService
 
     public static async Task RunAutomaticCheckIfDueAsync(WindowsSettingsPersistence persistence, CancellationToken cancellationToken = default)
     {
+        if (GetDistributionMetadata().Kind == DistributionKind.MicrosoftStore)
+        {
+            return;
+        }
         if (!persistence.Read(AutomaticChecksKey, false))
         {
             return;
@@ -160,11 +178,47 @@ internal static class WindowsUpdateService
 
     private static WindowsUpdateStatus ConfigureLocked(WindowsSettingsPersistence persistence, bool configureNativeHost)
     {
+        DistributionMetadata distribution = GetDistributionMetadata();
+        string version = CurrentVersion();
+        if (distribution.Kind == DistributionKind.MicrosoftStore)
+        {
+            _host = null;
+            return _lastStatus = new WindowsUpdateStatus(
+                version,
+                "Microsoft Store",
+                StoreUpdatesUri,
+                $"https://apps.microsoft.com/detail/{distribution.ProductId}",
+                AutomaticChecksEnabled: false,
+                HostConfigured: false,
+                NativeHostAvailable: false,
+                ProductionPinInjected: false,
+                AutomaticChecksAvailable: false,
+                CheckActionAvailable: true,
+                ManagedByStore: true,
+                Message: "Microsoft Store manages signing, installation, and automatic updates for this app.");
+        }
+        if (distribution.Kind == DistributionKind.Invalid)
+        {
+            _host = null;
+            return _lastStatus = new WindowsUpdateStatus(
+                version,
+                "unknown packaged channel",
+                string.Empty,
+                "https://github.com/Imagine-That-Ai/BurnBar/releases",
+                AutomaticChecksEnabled: false,
+                HostConfigured: false,
+                NativeHostAvailable: false,
+                ProductionPinInjected: false,
+                AutomaticChecksAvailable: false,
+                CheckActionAvailable: false,
+                ManagedByStore: false,
+                Message: "Updater disabled: packaged distribution metadata is malformed.");
+        }
+
         FeedMetadata feed = GetFeedMetadata();
         string pin = Environment.GetEnvironmentVariable(PinEnv) ?? feed.PinnedKey;
         bool productionPinInjected = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(PinEnv));
         bool automatic = persistence.Read(AutomaticChecksKey, false);
-        string version = CurrentVersion();
         string channel = productionPinInjected ? "direct-download" : "direct-download dev pin";
 
         PinnedUpdateKey? key = PinnedUpdateKey.TryLoad(pin);
@@ -179,6 +233,9 @@ internal static class WindowsUpdateService
                 HostConfigured: false,
                 NativeHostAvailable: false,
                 ProductionPinInjected: productionPinInjected,
+                AutomaticChecksAvailable: true,
+                CheckActionAvailable: false,
+                ManagedByStore: false,
                 Message: "Updater disabled: pinned Ed25519 update key is missing or malformed.");
         }
 
@@ -193,6 +250,9 @@ internal static class WindowsUpdateService
                 HostConfigured: false,
                 NativeHostAvailable: false,
                 ProductionPinInjected: productionPinInjected,
+                AutomaticChecksAvailable: true,
+                CheckActionAvailable: false,
+                ManagedByStore: false,
                 Message: "Updater host is Windows-only.");
         }
 
@@ -207,6 +267,9 @@ internal static class WindowsUpdateService
                 HostConfigured: false,
                 NativeHostAvailable: true,
                 ProductionPinInjected: productionPinInjected,
+                AutomaticChecksAvailable: true,
+                CheckActionAvailable: false,
+                ManagedByStore: false,
                 Message: "Updater configuration is valid.");
         }
 
@@ -236,6 +299,9 @@ internal static class WindowsUpdateService
                 HostConfigured: true,
                 NativeHostAvailable: true,
                 ProductionPinInjected: productionPinInjected,
+                AutomaticChecksAvailable: true,
+                CheckActionAvailable: true,
+                ManagedByStore: false,
                 Message: productionPinInjected
                     ? "WinSparkle updater configured with production feed pin."
                     : "WinSparkle updater configured with the committed development feed pin.");
@@ -252,7 +318,52 @@ internal static class WindowsUpdateService
                 HostConfigured: false,
                 NativeHostAvailable: false,
                 ProductionPinInjected: productionPinInjected,
+                AutomaticChecksAvailable: true,
+                CheckActionAvailable: false,
+                ManagedByStore: false,
                 Message: NativeFailureMessage(ex));
+        }
+    }
+
+    private static DistributionMetadata GetDistributionMetadata()
+    {
+        string path = Path.Combine(
+            AppContext.BaseDirectory,
+            "Resources",
+            "Updates",
+            "distribution-channel.json");
+        if (!File.Exists(path))
+        {
+            return new DistributionMetadata(DistributionKind.DirectDownload, string.Empty);
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            JsonElement root = document.RootElement;
+            int schemaVersion = root.TryGetProperty("schemaVersion", out JsonElement schema)
+                && schema.TryGetInt32(out int parsedSchema)
+                    ? parsedSchema
+                    : 0;
+            string channel = ReadString(root, "channel") ?? string.Empty;
+            string productId = ReadString(root, "productId") ?? string.Empty;
+            return schemaVersion == 1
+                && string.Equals(channel, "microsoft-store", StringComparison.Ordinal)
+                && !string.IsNullOrWhiteSpace(productId)
+                    ? new DistributionMetadata(DistributionKind.MicrosoftStore, productId)
+                    : new DistributionMetadata(DistributionKind.Invalid, string.Empty);
+        }
+        catch (JsonException)
+        {
+            return new DistributionMetadata(DistributionKind.Invalid, string.Empty);
+        }
+        catch (IOException)
+        {
+            return new DistributionMetadata(DistributionKind.Invalid, string.Empty);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new DistributionMetadata(DistributionKind.Invalid, string.Empty);
         }
     }
 
@@ -307,6 +418,14 @@ internal static class WindowsUpdateService
             : "Updater unavailable: " + ex.Message;
 
     private sealed record FeedMetadata(string AppcastUrl, string ReleaseNotesUrl, string PinnedKey);
+    private sealed record DistributionMetadata(DistributionKind Kind, string ProductId);
+
+    private enum DistributionKind
+    {
+        DirectDownload,
+        MicrosoftStore,
+        Invalid,
+    }
 }
 
 internal static class WindowsStartupService

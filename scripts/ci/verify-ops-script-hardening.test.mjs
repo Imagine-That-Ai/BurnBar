@@ -130,6 +130,31 @@ assert.match(
 );
 assert.match(
   windowsReleaseWorkflow,
+  /Build Microsoft Store MSIX packages[\s\S]*store-identity\.json[\s\S]*-DistributionChannel MicrosoftStore[\s\S]*artifacts\/store/,
+  "Windows release workflow must build a distinct Store-identity package set",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /Authenticode sign the direct-download MSIX[\s\S]*files-folder-recurse: false[\s\S]*Verify Microsoft Store MSIX identity and unsigned state[\s\S]*-SignatureExpectation Unsigned/,
+  "Microsoft Store packages must stay outside direct Artifact Signing and be rechecked as unsigned afterward",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /store\/OpenBurnBar-\$\{VERSION\}-store-x64\.msix[\s\S]*store\/OpenBurnBar-\$\{VERSION\}-store-arm64\.msix[\s\S]*store-submission-v\$\{VERSION\}\.json/,
+  "final checksums must bind both Store packages and their submission manifest",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /archives=\(artifacts\/\*\.zip artifacts\/\*\.msix artifacts\/store\/\*\.msix\)/,
+  "the Windows SBOM must inventory both direct and Store package contents",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /find artifacts -type f -print0/,
+  "Sigstore provenance must recurse into the Store artifact directory",
+);
+assert.match(
+  windowsReleaseWorkflow,
   /OpenBurnBar\.ComputerUse\.Watchdog\.csproj[\s\S]*dotnet publish "\$watchdog"[\s\S]*cp -R "\$watchdog_out\/\." "publish\/\$rid\/ComputerUseWatchdog\/"/,
   "Windows release workflow must publish and stage the independent privileged-input watchdog",
 );
@@ -234,6 +259,29 @@ assert.match(
 );
 assert.match(
   windowsMsixPackager,
+  /MicrosoftStore packaging requires a complete Partner Center identity[\s\S]*StoreProductId[\s\S]*distribution-channel\.json[\s\S]*SetAttribute\("Name", \$PackageName\)[\s\S]*SetAttribute\("Publisher", \$Publisher\)[\s\S]*PackageDisplayName[\s\S]*PublisherDisplayName/,
+  "MSIX staging must fail closed on partial Store identity and stamp every Partner Center field",
+);
+const windowsMsixIdentityVerifier = read(
+  "windows/packaging/msix/Test-MsixPackageIdentity.ps1",
+);
+assert.match(
+  windowsMsixIdentityVerifier,
+  /MakeAppxPath unpack[\s\S]*ExpectedName[\s\S]*ExpectedPublisher[\s\S]*ExpectedDisplayName[\s\S]*ExpectedPublisherDisplayName[\s\S]*ExpectedVersion[\s\S]*ExpectedArchitecture/,
+  "Store package verification must inspect every required identity field from the packed MSIX",
+);
+assert.match(
+  windowsMsixIdentityVerifier,
+  /SignatureExpectation[\s\S]*AppxSignature\.p7x[\s\S]*Microsoft Store submission package must not contain AppxSignature\.p7x/,
+  "Store package verification must fail closed if a submission package becomes signed",
+);
+assert.match(
+  windowsMsixIdentityVerifier,
+  /MicrosoftStore package contains forbidden direct-update metadata[\s\S]*distribution-channel\.json[\s\S]*Sideload package is missing required direct-update metadata/,
+  "package verification must prove direct and Store update ownership cannot cross channels",
+);
+assert.match(
+  windowsMsixPackager,
   /\$executableAttribute\.Value/,
   "MSIX staging must validate the executable attribute value, not its serialized XML form",
 );
@@ -309,6 +357,16 @@ assert.match(
 assert.ok(
   windowsDistPrWorkflow.includes("node scripts/ci/verify-ops-script-hardening.test.mjs"),
   "Windows distribution PR verification must execute the release wiring regressions",
+);
+assert.match(
+  windowsDistPrWorkflow,
+  /msix-package-smoke:[\s\S]*runs-on: windows-latest[\s\S]*dotnet publish windows\/app\/OpenBurnBar\.App\/OpenBurnBar\.App\.csproj[\s\S]*New-MsixPackage\.ps1[\s\S]*-DistributionChannel Sideload[\s\S]*-DistributionChannel MicrosoftStore[\s\S]*Test-MsixPackageIdentity\.ps1/,
+  "Windows distribution PR verification must execute MakePri/MakeAppx over real WinUI output for both package channels",
+);
+assert.match(
+  windowsDistPrWorkflow,
+  /MSIX_SMOKE_RESULT[\s\S]*The Windows MSIX package smoke failed/,
+  "the required Windows distribution aggregate must fail when the real MSIX smoke fails",
 );
 
 const foundationUiaCollector = read(
