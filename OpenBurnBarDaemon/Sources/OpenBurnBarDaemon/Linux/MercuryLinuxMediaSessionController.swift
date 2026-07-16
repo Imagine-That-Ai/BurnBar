@@ -1045,9 +1045,12 @@ public actor MercuryLinuxMediaSessionController {
         }
 
         let packetData: Data
-        if let position = media.sealedFramePosition,
-           MediaFrameAEAD.isSealedEnvelope(encodedData) {
-            guard let mediaFrameSealKey else {
+        if let mediaFrameSealKey {
+            // Once the mirror handshake establishes a media-frame key, the
+            // negotiated lane is sealed-only. Do not silently downgrade a
+            // malformed, unmarked, or legacy plaintext frame to the decoder.
+            guard MediaFrameAEAD.isSealedEnvelope(encodedData),
+                  let position = media.sealedFramePosition else {
                 return
             }
             do {
@@ -1063,6 +1066,11 @@ public actor MercuryLinuxMediaSessionController {
                 return
             }
         } else {
+            // A sealed envelope without a negotiated key cannot be opened;
+            // dropping it is safer than handing opaque bytes to the codec.
+            guard MediaFrameAEAD.isSealedEnvelope(encodedData) == false else {
+                return
+            }
             packetData = encodedData
         }
 

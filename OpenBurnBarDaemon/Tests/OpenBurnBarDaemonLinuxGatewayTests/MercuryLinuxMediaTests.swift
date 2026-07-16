@@ -284,6 +284,94 @@ final class MercuryLinuxMediaTests: XCTestCase {
         await controller.stop()
     }
 
+    func testInboundPlaintextFrameIsDroppedAfterSealNegotiation() async throws {
+        let channel = try MercuryLinuxMediaChannel(
+            socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
+            maxQueuedFrames: 4
+        )
+        let sealKey = PlatformSymmetricKey(size: .bits256)
+        let controller = MercuryLinuxMediaSessionController(
+            channel: channel,
+            captureAdapter: RecordingCaptureAdapter(),
+            sealKeyOpener: StaticSealKeyOpener(key: sealKey)
+        )
+        try await controller.start()
+        defer { channel.stop() }
+
+        await controller.ingestMercuryFrame(mirrorRequestFrame(), remotePeerNodeID: "phone-node")
+        let accept = await controller.accept(
+            DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-inbound-plaintext")
+        )
+        XCTAssertTrue(accept.accepted)
+
+        let plaintext = try MediaPacketCodec().encode(MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 1,
+            frameIndex: 0,
+            presentationTimestampMillis: 1_000,
+            payload: Data([0x01, 0x02, 0x03])
+        ))
+        await controller.ingestMercuryFrame(inboundStreamFrame(encoded: plaintext))
+
+        let snapshot = await controller.sessionSnapshot()
+        XCTAssertEqual(snapshot.phase, .streaming)
+        XCTAssertEqual(snapshot.queuedFrameCount, 0)
+    }
+
+    func testInboundSealedFrameOpensAfterSealNegotiation() async throws {
+        let channel = try MercuryLinuxMediaChannel(
+            socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
+            maxQueuedFrames: 4
+        )
+        let sealKey = PlatformSymmetricKey(size: .bits256)
+        let controller = MercuryLinuxMediaSessionController(
+            channel: channel,
+            captureAdapter: RecordingCaptureAdapter(),
+            sealKeyOpener: StaticSealKeyOpener(key: sealKey)
+        )
+        try await controller.start()
+        defer { channel.stop() }
+
+        await controller.ingestMercuryFrame(mirrorRequestFrame(), remotePeerNodeID: "phone-node")
+        let accept = await controller.accept(
+            DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-inbound-sealed")
+        )
+        XCTAssertTrue(accept.accepted)
+
+        let frame = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 2,
+            frameIndex: 7,
+            presentationTimestampMillis: 2_000,
+            payload: Data([0x0A, 0x0B, 0x0C])
+        )
+        let plaintext = try MediaPacketCodec().encode(frame)
+        let envelope = try MediaFrameAEAD().seal(
+            plaintext: plaintext,
+            key: sealKey,
+            streamClass: MediaStreamClass.screenVideo.rawValue,
+            kind: frame.kind.rawValue,
+            gopID: frame.gopID,
+            frameIndex: frame.frameIndex
+        )
+        await controller.ingestMercuryFrame(
+            inboundStreamFrame(
+                encoded: envelope,
+                sealedPosition: HermesRealtimeRelaySealedMediaFramePosition(
+                    kind: frame.kind.rawValue,
+                    gopId: frame.gopID,
+                    frameIndex: frame.frameIndex
+                )
+            )
+        )
+
+        let snapshot = await controller.sessionSnapshot()
+        XCTAssertEqual(snapshot.phase, .streaming)
+        XCTAssertEqual(snapshot.queuedFrameCount, 1)
+    }
+
     func testAcceptWithoutSealKeyFailsClosedBeforeCaptureStarts() async throws {
         let channel = try MercuryLinuxMediaChannel(
             socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
@@ -793,6 +881,22 @@ final class MercuryLinuxMediaTests: XCTestCase {
                     requesterDisplayName: "Alberto iPhone",
                     streamClass: "media.screen.video"
                 )
+            )
+        )
+    }
+
+    private func inboundStreamFrame(
+        encoded: Data,
+        sealedPosition: HermesRealtimeRelaySealedMediaFramePosition? = nil
+    ) -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .mediaStreamFrame,
+            uid: "uid-1",
+            connectionId: "conn-1",
+            media: HermesRealtimeRelayMediaPayload(
+                streamClass: MediaStreamClass.screenVideo.rawValue,
+                encodedFrameBase64: encoded.base64EncodedString(),
+                sealedFramePosition: sealedPosition
             )
         )
     }
