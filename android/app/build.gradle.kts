@@ -118,6 +118,7 @@ require(canonicalDomainCoreModes.values.all { it in setOf("legacy", "shadow", "r
 val canonicalDomainCoreIdentity = mapOf(
     "developer" to ("development" to "development"),
     "public-production" to ("signed" to "public"),
+    "public-production-rollback" to ("signed" to "public"),
     "internal" to ("signed" to "internal"),
     "beta" to ("signed" to "beta")
 )[domainCoreProfileName] ?: error("Unknown domain-core profile identity")

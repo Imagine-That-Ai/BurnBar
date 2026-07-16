@@ -1034,8 +1034,8 @@ jobs:
         env:
           RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
         run: |
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --format github-env >> "$GITHUB_ENV"
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --format github-env-apple >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --expected-release-commit "$RELEASE_COMMIT" --format github-env >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --expected-release-commit "$RELEASE_COMMIT" --format github-env-apple >> "$GITHUB_ENV"
 
       - name: Install Sparkle signing tools
         run: |
@@ -1225,11 +1225,11 @@ jobs:
           test -s "$app/embedded.mobileprovision"
           codesign --verify --deep --strict --verbose=2 "$app"
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-            --profile public-production \
+            --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" \
             --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
             --apple-app "$app"
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-            --profile public-production \
+            --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" \
             --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
             --apple-app "$exported_app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$archive/Info.plist")" = "$apple_version"
@@ -2442,7 +2442,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload observed Android Rust identity
-        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-android-observed-identity.json
@@ -2563,7 +2563,7 @@ jobs:
             "$OBSERVED_IDENTITY"
 
       - name: Retain prepublication Apple observed identity
-        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: domain-core-apple-prepublication-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-apple-prepublication-observed-identity.json
@@ -2703,7 +2703,7 @@ jobs:
           fi
 
       - name: Retain exact general publication inputs
-        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: release-publication-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-publication-inputs/
@@ -3067,7 +3067,7 @@ jobs:
           done
 
       - name: Retain exact native release evidence and rollback chain
-        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: domain-core-native-release-evidence-${{ needs.domain-core-native-release-gate.outputs.profile_name }}-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
