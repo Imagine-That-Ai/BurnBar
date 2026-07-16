@@ -129,7 +129,7 @@ public final class BufferedLineReader {
             // NSData per chunk for the whole scan — footprint equal to total
             // bytes read). Copy the raw bytes explicitly so no NSData
             // representation ever outlives this pool.
-            let readCount = autoreleasepool { () -> Int in
+            let readCount = withParserAutoreleasePool { () -> Int in
                 let chunk = fileHandle.readData(ofLength: chunkSize)
                 chunk.withUnsafeBytes { raw in
                     guard let base = raw.baseAddress, !raw.isEmpty else { return }

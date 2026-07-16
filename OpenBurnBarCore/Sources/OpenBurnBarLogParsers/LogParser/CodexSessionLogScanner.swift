@@ -184,7 +184,7 @@ public enum CodexSessionLogScanner {
             }
 
             if line.isTerminated {
-                autoreleasepool {
+                withParserAutoreleasePool {
                     Self.reduceTokenLine(line.text, into: &accumulator)
                 }
                 persistedOffset = line.endOffset
@@ -193,7 +193,7 @@ public enum CodexSessionLogScanner {
                 // totals but never toward persisted state — a live writer may
                 // still be appending it, and the next scan must re-read it.
                 var tail = accumulator
-                autoreleasepool {
+                withParserAutoreleasePool {
                     Self.reduceTokenLine(line.text, into: &tail)
                 }
                 tailAccumulator = tail
@@ -301,7 +301,7 @@ public enum CodexSessionLogScanner {
             if scannedLines % checkpointLineInterval == 0 {
                 try governor?.checkpoint()
             }
-            autoreleasepool {
+            withParserAutoreleasePool {
                 guard let data = line.text.data(using: .utf8),
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
                     return
