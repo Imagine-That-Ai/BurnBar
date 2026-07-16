@@ -42,10 +42,9 @@ jobs:
     name: App build + test (AgentLens)
     runs-on: macos-26
     # Cold cache + libsignal FFI + full xcodebuild of the app target on a hosted
-    # runner needs headroom; the app suite is heavier than the daemon package
-    # and can exceed 75 minutes on macos-26 when daemon lifecycle tests hit their
-    # health-check waits.
-    timeout-minutes: 120
+    # runner needs headroom; observed cold macos-26 runs can approach 120
+    # minutes before the 1,920-test suite and coverage upload finish.
+    timeout-minutes: 150
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
       - name: Check out repository

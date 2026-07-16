@@ -73,7 +73,6 @@ public final class ParserResourceGovernor: Sendable {
         var softLimitReported = false
         var checkpointCounter: UInt64 = 0
     }
-
     private let state = Locked(State())
 
     /// - Parameters:
