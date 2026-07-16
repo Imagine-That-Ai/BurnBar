@@ -224,34 +224,41 @@ function runDaemonStartupProbe(daemon, swiftDir, nativeDir, env) {
   }
 }
 
-function runRuntimeProbe(daemon, swiftDir, nativeDir, env) {
+function probeRuntimeBinary(binary, label, swiftDir, nativeDir, env) {
   const libraryPath = [swiftDir, nativeDir, env.LD_LIBRARY_PATH]
     .filter(Boolean)
     .join(':');
   const probeEnv = { ...env, LD_LIBRARY_PATH: libraryPath };
-  const ldd = spawnSync('ldd', [daemon], {
+  const ldd = spawnSync('ldd', [binary], {
     encoding: 'utf8',
     env: probeEnv,
     maxBuffer: 8 * 1024 * 1024
   });
   const lddOutput = `${ldd.stdout ?? ''}\n${ldd.stderr ?? ''}`;
   if ((ldd.status ?? 1) !== 0 || /not found/i.test(lddOutput)) {
-    throw new Error(`staged daemon has unresolved shared libraries:\n${lddOutput}`);
+    throw new Error(`staged ${label} has unresolved shared libraries:\n${lddOutput}`);
   }
 
-  const help = spawnSync(daemon, ['--help'], {
+  const help = spawnSync(binary, ['--help'], {
     encoding: 'utf8',
     env: probeEnv,
     maxBuffer: 8 * 1024 * 1024
   });
   const helpOutput = `${help.stdout ?? ''}\n${help.stderr ?? ''}`;
-  if ((help.status ?? 1) !== 0 || !helpOutput.includes('socket-path')) {
-    throw new Error(`staged daemon runtime help probe failed:\n${helpOutput}`);
+  if ((help.status ?? 1) !== 0 || (label === 'daemon' && !helpOutput.includes('socket-path'))) {
+    throw new Error(`staged ${label} runtime help probe failed:\n${helpOutput}`);
   }
+  return { ldd: lddOutput.trim(), help: helpOutput.trim() };
+}
+
+function runRuntimeProbe(daemon, cli, swiftDir, nativeDir, env) {
+  const daemonProbe = probeRuntimeBinary(daemon, 'daemon', swiftDir, nativeDir, env);
   const startup = runDaemonStartupProbe(daemon, swiftDir, nativeDir, env);
+  const cliProbe = cli ? probeRuntimeBinary(cli, 'CLI', swiftDir, nativeDir, env) : null;
   return {
-    ldd: lddOutput.trim(),
-    help: helpOutput.trim(),
+    ldd: daemonProbe.ldd,
+    help: daemonProbe.help,
+    ...(cliProbe ? { cliLdd: cliProbe.ldd, cliHelp: cliProbe.help } : {}),
     ...startup
   };
 }
@@ -357,7 +364,13 @@ export function stageLinuxPackagePayload({
     installedManifestSignatureDestination
   ]) fs.chmodSync(file, 0o644);
   const runtimeProbe = probe
-    ? runRuntimeProbe(daemonDestination, swiftDestination, nativeDestination, env)
+    ? runRuntimeProbe(
+      daemonDestination,
+      cliSource ? cliDestination : null,
+      swiftDestination,
+      nativeDestination,
+      env
+    )
     : null;
 
   return {

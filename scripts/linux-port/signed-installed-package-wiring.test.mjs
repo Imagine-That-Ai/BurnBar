@@ -72,6 +72,23 @@ test('Linux Swift daemon builds receive the native iroh library environment', ()
   }
 });
 
+test('Linux daemon and trusted CLI carry relocatable runtime paths and both are probed', () => {
+  const packageSwift = read('OpenBurnBarDaemon/Package.swift');
+  assert.ok(packageSwift.includes('$ORIGIN/../lib/openburnbar/swift'));
+  assert.ok(packageSwift.includes('$ORIGIN/../lib/openburnbar/native'));
+  assert.match(
+    packageSwift,
+    /name: "OpenBurnBarDaemonExecutable"[\s\S]*?linkerSettings: linuxExecutableLinkerSettings/u
+  );
+  assert.match(
+    packageSwift,
+    /name: "OpenBurnBarCLI"[\s\S]*?linkerSettings: linuxExecutableLinkerSettings/u
+  );
+  const payload = read('scripts/linux-port/lib/linux-package-payload.mjs');
+  assert.match(payload, /probeRuntimeBinary\(cli, 'CLI'/u);
+  assert.match(payload, /cliLdd: cliProbe\.ldd/u);
+});
+
 test('package preparation and finalization never receive the private key', () => {
   const source = read('scripts/linux-port/bundle-signed-linux-packages.mjs');
   for (const marker of [

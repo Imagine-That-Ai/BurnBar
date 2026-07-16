@@ -19,6 +19,7 @@ var daemonTargetDependencies: [Target.Dependency] = [
 var daemonLinkerSettings: [LinkerSetting] = []
 var daemonSwiftSettings: [SwiftSetting] = []
 var daemonExecutableDependencies: [Target.Dependency] = ["OpenBurnBarDaemon"]
+var linuxExecutableLinkerSettings: [LinkerSetting] = []
 var daemonExcludes: [String] = []
 var linuxSupportTargets: [Target] = []
 
@@ -90,6 +91,18 @@ if !buildForLinuxBoundary {
 #endif
 
 #if os(Linux)
+// The packaged daemon launcher supplies these paths for the daemon, but the
+// trusted CLI is also launched directly by the desktop shell and extensions.
+// Keep both executables relocatable for deb/rpm and AppImage payloads so a
+// normal desktop environment does not need to export LD_LIBRARY_PATH.
+linuxExecutableLinkerSettings = [
+    .unsafeFlags([
+        "-Xlinker", "-rpath", "-Xlinker", "$ORIGIN/../lib/openburnbar/swift"
+    ]),
+    .unsafeFlags([
+        "-Xlinker", "-rpath", "-Xlinker", "$ORIGIN/../lib/openburnbar/native"
+    ])
+]
 packageDependencies.append(.package(path: "../Vendor/GRDB-SQLCipher"))
 daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
 daemonTargetDependencies.append("COpenBurnBarMediaCapture")
@@ -195,11 +208,13 @@ var packageTargets: [Target] = [
     ),
     .executableTarget(
         name: "OpenBurnBarDaemonExecutable",
-        dependencies: daemonExecutableDependencies
+        dependencies: daemonExecutableDependencies,
+        linkerSettings: linuxExecutableLinkerSettings
     ),
     .executableTarget(
         name: "OpenBurnBarCLI",
-        dependencies: ["OpenBurnBarDaemon"]
+        dependencies: ["OpenBurnBarDaemon"],
+        linkerSettings: linuxExecutableLinkerSettings
     ),
     .testTarget(
         name: "OpenBurnBarDaemonLinuxGatewayTests",
