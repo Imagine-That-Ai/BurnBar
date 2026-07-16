@@ -216,8 +216,6 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
                 value = try credentialReader(path)
             } catch LinuxHeadlessCredentialReadError.missing {
                 return nil
-            } catch let error as LinuxSecretStoreError {
-                throw error
             } catch {
                 // Do not expose credential paths or OS error details through
                 // daemon RPC/diagnostics. A caller can retry after repairing
