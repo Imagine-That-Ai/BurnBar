@@ -9,6 +9,7 @@ import {
   captureP38SourceRecords,
   mutationSuiteSummary,
   removeStaleP38Proof,
+  runP38MutationSuite,
   validateP38ReleaseAutomationProof
 } from './lib/p38-release-automation-proof.mjs';
 import { loadLinuxWorkflowWiringInput, verifyLinuxWorkflowWiring } from './verify-linux-workflow-wiring.mjs';
@@ -59,11 +60,7 @@ export function captureP38ReleaseAutomation({
   }
   const execution = runMutationSuite
     ? runMutationSuite()
-    : spawnSync(process.execPath, ['--test', 'scripts/linux-port/verify-linux-workflow-wiring.test.mjs'], {
-        cwd: repository,
-        encoding: 'utf8',
-        maxBuffer: 16 * 1024 * 1024
-      });
+    : runP38MutationSuite(repository);
   const mutationSuite = mutationSuiteSummary({
     exitCode: execution.status ?? execution.exitCode ?? 1,
     stdout: execution.stdout ?? '',
@@ -91,7 +88,8 @@ export function captureP38ReleaseAutomation({
     targetHead,
     environmentId,
     candidateRunId,
-    candidateArtifactDigest
+    candidateArtifactDigest,
+    mutationRunner: () => execution
   });
   return { output, document };
 }

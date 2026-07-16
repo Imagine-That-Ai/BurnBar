@@ -8,11 +8,13 @@ import { finalizeProductProofClosure } from './finalize-product-proof-closure.mj
 import { finalizeProductFeatureProofClosure } from './lib/product-feature-proof.mjs';
 import { finalizeLinuxPromotionClosure } from './finalize-linux-promotion-closure.mjs';
 import { prepareProductRequirementInput } from './prepare-product-requirement-input.mjs';
+import { captureP39Differential } from './capture-p39-differential.mjs';
 import { validateProductRequirement as validateP01 } from './product-validators/P-01.mjs';
 import { validateProductRequirement as validateP03 } from './product-validators/P-03.mjs';
 import { validateProductRequirement as validateP04 } from './product-validators/P-04.mjs';
 import { validateProductRequirement as validateP37 } from './product-validators/P-37.mjs';
 import { validateProductRequirement as validateP38 } from './product-validators/P-38.mjs';
+import { validateProductRequirement as validateP39 } from './product-validators/P-39.mjs';
 import {
   archPkgbuildCommonSources,
   materializeArchReleaseMetadata
@@ -283,14 +285,40 @@ function stageP38WorkflowProof(fixture, inputRoot, environmentId = ENVIRONMENT) 
       command: 'node --test scripts/linux-port/verify-linux-workflow-wiring.test.mjs',
       testPath: 'scripts/linux-port/verify-linux-workflow-wiring.test.mjs',
       exitCode: 0,
-      testCount: 18,
-      passCount: 18,
+      testCount: 21,
+      passCount: 21,
       failCount: 0,
       outputSha256: '8'.repeat(64),
       passed: true
     },
     sources: captureP38SourceRecords(fixture.root),
     status: 'passed'
+  });
+}
+
+function stageP39DifferentialProof(fixture, inputRoot, environmentId = ENVIRONMENT) {
+  const envelope = (generatedAt) => ({
+    schemaVersion: 1,
+    id: 'openburnbar-platform-evidence-v1',
+    targetHead: HEAD,
+    version: VERSION,
+    candidate: { runId: CANDIDATE_RUN_ID, artifactDigest: CANDIDATE_ARTIFACT_DIGEST },
+    payload: { generatedAt, rows: ['openai'] }
+  });
+  const macos = writeJson(path.join(inputRoot, 'macos-platform-evidence.json'), envelope('macOS'));
+  const linux = writeJson(path.join(inputRoot, 'linux-platform-evidence.json'), envelope('Linux'));
+  return captureP39Differential({
+    repoRoot: fixture.root,
+    inputRoot,
+    macos,
+    linux,
+    environmentId,
+    targetHead: HEAD,
+    version: VERSION,
+    candidateRunId: CANDIDATE_RUN_ID,
+    candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    ignoredPaths: ['$.payload.generatedAt'],
+    resolveHead: () => HEAD
   });
 }
 
@@ -684,11 +712,13 @@ test('release-owned validators enforce their distinct release/runtime contracts'
     ['P-03', 'p-03.installed-runtime', validateP03],
     ['P-04', 'p-04.architecture-reach', validateP04],
     ['P-37', 'p-37.linux-matrix', validateP37],
-    ['P-38', 'p-38.ci-and-release-automation', validateP38]
+    ['P-38', 'p-38.ci-and-release-automation', validateP38],
+    ['P-39', 'p-39.cross-platform-differential-proof', validateP39]
   ];
   for (const [requirementId, checkId, validator] of cases) {
     const inputRoot = stageAggregate(fixture, requirementId);
     if (requirementId === 'P-38') stageP38WorkflowProof(fixture, inputRoot);
+    if (requirementId === 'P-39') stageP39DifferentialProof(fixture, inputRoot);
     const { closure } = prepareProductRequirementInput({
       requirementId, environmentId: ENVIRONMENT, inputRoot, targetHead: HEAD,
       candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,

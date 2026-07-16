@@ -15,6 +15,11 @@ import {
   P38_WORKFLOW_PROOF_FILENAME,
   validateP38ReleaseAutomationProof
 } from './lib/p38-release-automation-proof.mjs';
+import {
+  P39_PROOF_FILENAME,
+  P39_PROOF_ROLE,
+  validateP39DifferentialProof
+} from './lib/p39-differential-proof.mjs';
 
 const DEFAULT_REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const RELEASE_PROOF_ROLES = Object.freeze({
@@ -28,7 +33,8 @@ export const RELEASE_PROOF_ROLES = Object.freeze({
   'P-37': new Set(['architecture-smoke']),
   'P-38': new Set([
     'architecture-sessions', 'package-signature', 'package-sigstore', 'package-smoke', 'provenance'
-  ])
+  ]),
+  'P-39': new Set([P39_PROOF_ROLE])
 });
 
 function parseJson(snapshot, label) {
@@ -191,6 +197,31 @@ export function prepareProductRequirementInput({
       path: relative(destination),
       sha256: workflowSnapshot.sha256,
       size: workflowSnapshot.size
+    });
+  }
+  if (requirementId === 'P-39') {
+    const differentialSnapshot = readRegularSnapshot(root, P39_PROOF_FILENAME, 'P-39 differential proof');
+    validateP39DifferentialProof({
+      repoRoot: repository,
+      snapshot: differentialSnapshot,
+      targetHead,
+      environmentId,
+      version: aggregate.version,
+      candidateRunId,
+      candidateArtifactDigest
+    });
+    const destination = path.join(subjectsDir, safeName(
+      proofIndex,
+      P39_PROOF_ROLE,
+      differentialSnapshot.path
+    ));
+    proofIndex += 1;
+    copySnapshot(differentialSnapshot, destination);
+    proofRecords.push({
+      role: P39_PROOF_ROLE,
+      path: relative(destination),
+      sha256: differentialSnapshot.sha256,
+      size: differentialSnapshot.size
     });
   }
   let featureProofClosure = null;

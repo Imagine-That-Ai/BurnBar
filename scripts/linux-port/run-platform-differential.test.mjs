@@ -8,7 +8,8 @@ import {
   compareArtifacts,
   normalizeArtifact,
   parseArgs,
-  run
+  run,
+  validateIgnorePaths
 } from './run-platform-differential.mjs';
 
 function tempArtifacts(macos, linux) {
@@ -50,6 +51,12 @@ test('ignored volatile paths are replaced on both sides', () => {
   assert.deepEqual(report.ignoredPaths, ['$.metadata.generatedAt']);
 });
 
+test('ignore paths fail closed instead of allowing a root or wildcard bypass', () => {
+  assert.throws(() => validateIgnorePaths(['$']), /not canonical/u);
+  assert.throws(() => validateIgnorePaths(['$.payload.*']), /not canonical/u);
+  assert.throws(() => compareArtifacts({ value: 1 }, { value: 2 }, { ignore: ['$'] }), /not canonical/u);
+});
+
 test('nested mismatch reports a stable path without dumping secrets', () => {
   const report = compareArtifacts(
     { providers: [{ id: 'openai', models: ['a'] }], secret: 'mac-secret' },
@@ -85,5 +92,5 @@ test('CLI returns explicit exit codes and writes machine-readable output', () =>
   assert.equal(stderr, '');
   assert.equal(JSON.parse(stdout).status, 'differences');
   assert.equal(JSON.parse(fs.readFileSync(outputPath, 'utf8')).status, 'differences');
-  assert.deepEqual(parseArgs(['--macos', 'm.json', '--linux', 'l.json', '--ignore=generatedAt']).ignore, ['generatedAt']);
+  assert.deepEqual(parseArgs(['--macos', 'm.json', '--linux', 'l.json', '--ignore=$.generatedAt']).ignore, ['$.generatedAt']);
 });

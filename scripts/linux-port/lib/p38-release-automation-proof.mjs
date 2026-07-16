@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -23,6 +24,7 @@ export const P38_WORKFLOW_SOURCE_PATHS = Object.freeze([
   ...Object.values(LINUX_WORKFLOW_WIRING_SOURCE_PATHS),
   ...Object.values(LINUX_WORKFLOW_WIRING_COMPOSITE_SOURCE_PATHS).flat(),
   'scripts/linux-port/verify-linux-workflow-wiring.mjs',
+  'scripts/linux-port/lib/linux-release-common.mjs',
   P38_MUTATION_TEST_PATH
 ].sort());
 
@@ -56,8 +58,9 @@ export function captureP38SourceRecords(repoRoot) {
   });
 }
 
-export function mutationSuiteSummary({ exitCode, stdout, stderr }) {
+export function mutationSuiteSummary({ exitCode, status, stdout, stderr }) {
   const combined = `${stdout ?? ''}\n${stderr ?? ''}`;
+  const resolvedExitCode = exitCode ?? status ?? 1;
   const number = (label) => {
     const match = combined.match(new RegExp(`^# ${label} (\\d+)$`, 'mu'));
     return match ? Number(match[1]) : null;
@@ -65,13 +68,26 @@ export function mutationSuiteSummary({ exitCode, stdout, stderr }) {
   return {
     command: P38_MUTATION_TEST_COMMAND,
     testPath: P38_MUTATION_TEST_PATH,
-    exitCode,
+    exitCode: resolvedExitCode,
     testCount: number('tests'),
     passCount: number('pass'),
     failCount: number('fail'),
     outputSha256: sha256(Buffer.from(combined, 'utf8')),
-    passed: exitCode === 0 && number('tests') > 0 && number('tests') === number('pass') && number('fail') === 0
+    passed: resolvedExitCode === 0 && number('tests') > 0 && number('tests') === number('pass') && number('fail') === 0
   };
+}
+
+export function runP38MutationSuite(repoRoot) {
+  const env = { ...process.env };
+  // Node's test runner sets NODE_TEST_CONTEXT; forwarding it makes nested
+  // verification runs self-skip instead of executing their test files.
+  delete env.NODE_TEST_CONTEXT;
+  return spawnSync(process.execPath, ['--test', P38_MUTATION_TEST_PATH], {
+    cwd: repoRoot,
+    env,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024
+  });
 }
 
 export function validateP38ReleaseAutomationProof({
@@ -80,7 +96,8 @@ export function validateP38ReleaseAutomationProof({
   targetHead,
   environmentId,
   candidateRunId,
-  candidateArtifactDigest
+  candidateArtifactDigest,
+  mutationRunner = null
 }) {
   const document = parseJson(snapshot, 'P-38 release automation proof');
   exactKeys(document, [
@@ -113,6 +130,20 @@ export function validateP38ReleaseAutomationProof({
       || suite.testCount <= 0 || suite.passCount !== suite.testCount || suite.failCount !== 0
       || !SHA256.test(suite.outputSha256 ?? '')) {
     throw new Error('P-38 workflow mutation suite did not pass completely');
+  }
+  const rerun = mutationSuiteSummary(mutationRunner
+    ? mutationRunner()
+    : runP38MutationSuite(repoRoot));
+  if (!rerun.passed
+      || rerun.testCount !== suite.testCount
+      || rerun.passCount !== suite.passCount
+      || rerun.failCount !== suite.failCount) {
+    throw new Error(
+      `P-38 workflow mutation suite could not be independently reproduced `
+      + `(exit=${rerun.exitCode}, tests=${rerun.testCount ?? 'missing'}, `
+      + `passes=${rerun.passCount ?? 'missing'}, fails=${rerun.failCount ?? 'missing'}, `
+      + `claimedTests=${suite.testCount}, outputSha256=${rerun.outputSha256})`
+    );
   }
   if (!Array.isArray(document.sources) || document.sources.length !== P38_WORKFLOW_SOURCE_PATHS.length) {
     throw new Error('P-38 workflow proof does not contain the exact source set');

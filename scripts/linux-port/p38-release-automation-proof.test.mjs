@@ -6,8 +6,10 @@ import test from 'node:test';
 import { captureP38ReleaseAutomation } from './capture-p38-release-automation.mjs';
 import {
   P38_WORKFLOW_PROOF_FILENAME,
-  P38_WORKFLOW_SOURCE_PATHS
+  P38_WORKFLOW_SOURCE_PATHS,
+  validateP38ReleaseAutomationProof
 } from './lib/p38-release-automation-proof.mjs';
+import { readRegularSnapshot } from './lib/product-proof-closure.mjs';
 
 const HEAD = 'a'.repeat(40);
 const ENVIRONMENT = 'ubuntu-24.04-gnome-x11-x86_64';
@@ -85,6 +87,47 @@ test('P-38 capture rejects a requested HEAD or workflow source substitution', ()
       fs.readFileSync(releaseWorkflow, 'utf8').replaceAll('finalize-product-proof-closure.mjs', 'removed-product-proof-finalizer')
     );
     assert.throws(() => capture(subject), /workflow verification failed/u);
+  } finally {
+    fs.rmSync(subject.root, { recursive: true, force: true });
+  }
+});
+
+test('P-38 validation independently reproduces the mutation suite', () => {
+  const subject = fixture();
+  try {
+    const result = capture(subject);
+    const repository = fs.realpathSync(subject.root);
+    const proof = readRegularSnapshot(
+      repository,
+      path.relative(repository, fs.realpathSync(result.output)),
+      'P-38 release automation proof'
+    );
+    assert.throws(() => validateP38ReleaseAutomationProof({
+      repoRoot: subject.root,
+      snapshot: proof,
+      targetHead: HEAD,
+      environmentId: ENVIRONMENT,
+      candidateRunId: CANDIDATE_RUN_ID,
+      candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+      mutationRunner: () => ({
+        status: 1,
+        stdout: '# tests 18\n# pass 17\n# fail 1\n',
+        stderr: 'mutated workflow test failed'
+      })
+    }), /independently reproduced/u);
+    assert.throws(() => validateP38ReleaseAutomationProof({
+      repoRoot: subject.root,
+      snapshot: proof,
+      targetHead: HEAD,
+      environmentId: ENVIRONMENT,
+      candidateRunId: CANDIDATE_RUN_ID,
+      candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+      mutationRunner: () => ({
+        status: 0,
+        stdout: '# tests 19\n# pass 19\n# fail 0\n',
+        stderr: ''
+      })
+    }), /independently reproduced/u);
   } finally {
     fs.rmSync(subject.root, { recursive: true, force: true });
   }

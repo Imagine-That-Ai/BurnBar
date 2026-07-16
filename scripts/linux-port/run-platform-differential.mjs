@@ -14,8 +14,21 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const REDACTED = '[REDACTED]';
 const IGNORED = '[IGNORED]';
+const IGNORE_PATH = /^\$(?:\.[A-Za-z0-9_$:-]+|\[(?:0|[1-9][0-9]*)\])+$/u;
 
 export class DifferentialUsageError extends Error {}
+
+export function validateIgnorePaths(paths) {
+  if (!Array.isArray(paths)) throw new DifferentialUsageError('ignore paths must be an array');
+  const normalized = [...new Set(paths)];
+  if (normalized.length !== paths.length) throw new DifferentialUsageError('ignore paths must not contain duplicates');
+  for (const value of normalized) {
+    if (typeof value !== 'string' || !IGNORE_PATH.test(value) || value === '$') {
+      throw new DifferentialUsageError(`ignore path is not canonical: ${String(value)}`);
+    }
+  }
+  return normalized.sort();
+}
 
 function usage() {
   return [
@@ -48,7 +61,7 @@ export function parseArgs(argv) {
   if (!result.macos || !result.linux) {
     throw new DifferentialUsageError(`Both --macos and --linux are required.\n\n${usage()}`);
   }
-  result.ignore = [...new Set(result.ignore.map((entry) => entry.trim()).filter(Boolean))];
+  result.ignore = validateIgnorePaths([...new Set(result.ignore.map((entry) => entry.trim()).filter(Boolean))]);
   return result;
 }
 
@@ -76,7 +89,7 @@ function shouldIgnore(currentPath, ignored) {
 
 /** Normalize keys recursively so object order and credential values are stable. */
 export function normalizeArtifact(value, options = {}) {
-  const ignored = new Set(options.ignore ?? []);
+  const ignored = new Set(validateIgnorePaths(options.ignore ?? []));
   function normalize(current, currentPath) {
     if (shouldIgnore(currentPath, ignored)) return IGNORED;
     if (Array.isArray(current)) {
@@ -144,14 +157,15 @@ function diffValues(expected, actual, currentPath, differences) {
 }
 
 export function compareArtifacts(macos, linux, options = {}) {
-  const normalizedMacos = normalizeArtifact(macos, options);
-  const normalizedLinux = normalizeArtifact(linux, options);
+  const ignoredPaths = validateIgnorePaths(options.ignore ?? []);
+  const normalizedMacos = normalizeArtifact(macos, { ...options, ignore: ignoredPaths });
+  const normalizedLinux = normalizeArtifact(linux, { ...options, ignore: ignoredPaths });
   const differences = [];
   diffValues(normalizedMacos, normalizedLinux, '$', differences);
   return {
     schemaVersion: 1,
     status: differences.length === 0 ? 'exact_match' : 'differences',
-    ignoredPaths: [...new Set(options.ignore ?? [])].sort(),
+    ignoredPaths,
     // Keep reports reviewable without copying whole transcripts or project
     // payloads into the evidence bundle. Differences are path-scoped below.
     macos: { sha256: sha256(normalizedMacos) },
