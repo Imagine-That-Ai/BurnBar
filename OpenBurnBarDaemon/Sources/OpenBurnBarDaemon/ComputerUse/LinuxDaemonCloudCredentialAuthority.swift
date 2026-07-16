@@ -313,6 +313,10 @@ public enum LinuxCloudAuthAuthorityError: Error, Equatable, Sendable, CustomStri
     case installationIdentityUnavailable
     case sessionChanged
     case cloudUnavailable
+    case trustedDeviceBridgeUnavailable
+    case dataControlInProgress
+    case trustedDeviceAuthorizationRejected
+    case dataControlAuthorizationInvalid
 
     public var description: String {
         switch self {
@@ -330,6 +334,10 @@ public enum LinuxCloudAuthAuthorityError: Error, Equatable, Sendable, CustomStri
         case .installationIdentityUnavailable: "The Linux installation identity is unavailable or corrupt."
         case .sessionChanged: "The account session changed while credentials were refreshing."
         case .cloudUnavailable: "The OpenBurnBar cloud authentication service is unavailable."
+        case .trustedDeviceBridgeUnavailable: "A trusted-device approval bridge is not connected on this Linux installation."
+        case .dataControlInProgress: "Another cloud data-control request is already waiting for approval."
+        case .trustedDeviceAuthorizationRejected: "The trusted device rejected or could not complete this cloud data-control request."
+        case .dataControlAuthorizationInvalid: "The trusted-device authorization was malformed or expired."
         }
     }
 }
@@ -369,6 +377,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
     private let http: LinuxCloudAuthHTTPClient
     private let now: @Sendable () -> Date
     private let approvalRetrySleeper: @Sendable (UInt64) async -> Void
+    private let trustedDeviceAuthorizer: (any LinuxCloudTrustedDeviceActionAuthorizing)?
     private let hostname: String
     private let eventContinuation: AsyncStream<LinuxCloudAuthSessionEvent>.Continuation
     private var currentStatus: LinuxCloudAuthStatus
@@ -386,6 +395,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
     private var hasStoredSession: Bool
     private var storedIdentityUID: String?
     private var identityLabel: String?
+    private var cloudDataControlStatus = LinuxCloudDataControlStatus.trustedDeviceBridgeUnavailable
 
     init(
         configuration: LinuxCloudAuthConfiguration?,
@@ -395,7 +405,8 @@ public actor LinuxDaemonCloudCredentialAuthority {
         approvalRetrySleeper: @escaping @Sendable (UInt64) async -> Void = { delay in
             try? await Task.sleep(nanoseconds: delay)
         },
-        hostname: String = ProcessInfo.processInfo.hostName
+        hostname: String = ProcessInfo.processInfo.hostName,
+        trustedDeviceAuthorizer: (any LinuxCloudTrustedDeviceActionAuthorizing)? = nil
     ) {
         var continuation: AsyncStream<LinuxCloudAuthSessionEvent>.Continuation!
         sessionEvents = AsyncStream { continuation = $0 }
@@ -410,6 +421,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
         http = LinuxCloudAuthHTTPClient(allowedHosts: hosts, transport: httpTransport, now: now)
         self.now = now
         self.approvalRetrySleeper = approvalRetrySleeper
+        self.trustedDeviceAuthorizer = trustedDeviceAuthorizer
         self.hostname = String(hostname.prefix(80))
         let restoredSession = try? Self.restoreStoredSession(using: authTokenStore)
         hasStoredSession = restoredSession != nil
@@ -749,6 +761,202 @@ public actor LinuxDaemonCloudCredentialAuthority {
         } catch let error as LinuxCloudAuthHTTPError {
             throw Self.map(error)
         }
+    }
+
+    /// Return redacted state for the daemon/UI status surface. Proof material,
+    /// nonce values, and account identifiers are intentionally absent.
+    public func cloudDataControlStatus() -> LinuxCloudDataControlStatus {
+        cloudDataControlStatus
+    }
+
+    /// Start a daemon-owned export request. The trusted-device authorizer is
+    /// the only component allowed to supply nonce-bound proof material; when it
+    /// is not installed this method fails closed before touching credentials or
+    /// the network.
+    public func requestCloudDataExport(domains: [String]? = nil) async throws -> Data {
+        guard let trustedDeviceAuthorizer else {
+            cloudDataControlStatus = .trustedDeviceBridgeUnavailable
+            throw LinuxCloudAuthAuthorityError.trustedDeviceBridgeUnavailable
+        }
+        let request = try beginCloudDataControl(
+            operation: .export,
+            actionKind: "data_export",
+            subjectID: "all",
+            domains: domains,
+            requiresExplicitConfirmation: false
+        )
+        do {
+            let authorization = try await trustedDeviceAuthorizer.authorize(request)
+            try validateCloudDataControlAuthorization(authorization)
+            cloudDataControlStatus = cloudDataControlStatusFor(
+                request,
+                phase: .executing,
+                detail: "executing"
+            )
+            let context = try await credentialContext()
+            guard let configuration else { throw LinuxCloudAuthAuthorityError.configurationRequired }
+            let output = try await http.exportUserData(
+                functionsBaseURL: configuration.functionsBaseURL,
+                idToken: context.idToken,
+                appCheckToken: context.appCheckToken,
+                request: LinuxCloudDataExportRequest(
+                    domains: domains,
+                    nonce: authorization.nonce,
+                    trustedDeviceId: authorization.trustedDeviceID,
+                    actionProof: authorization.actionProof
+                )
+            )
+            cloudDataControlStatus = cloudDataControlStatusFor(
+                request,
+                phase: .completed,
+                detail: "completed"
+            )
+            return output
+        } catch let error as LinuxCloudAuthAuthorityError {
+            markCloudDataControlFailure(request, error: error)
+            throw error
+        } catch let error as LinuxCloudAuthHTTPError {
+            let mapped = Self.map(error)
+            markCloudDataControlFailure(request, error: mapped)
+            throw mapped
+        } catch is LinuxCloudTrustedDeviceActionAuthorizationError {
+            let mapped = LinuxCloudAuthAuthorityError.trustedDeviceAuthorizationRejected
+            markCloudDataControlFailure(request, error: mapped)
+            throw mapped
+        } catch {
+            let mapped = LinuxCloudAuthAuthorityError.trustedDeviceAuthorizationRejected
+            markCloudDataControlFailure(request, error: mapped)
+            throw mapped
+        }
+    }
+
+    /// Start a daemon-owned account-erasure request. The exact confirmation is
+    /// checked before asking a trusted device for approval. This method does
+    /// not persist the proof or perform local account deletion; the canonical
+    /// callable remains authoritative for cloud cleanup and its retry summary.
+    public func requestCloudDataDeletion(confirmationToken: String) async throws -> LinuxCloudDataDeletionResponse {
+        guard confirmationToken == LinuxCloudDataDeletionRequest.confirmationToken else {
+            throw LinuxCloudAuthAuthorityError.operationMismatch
+        }
+        guard let trustedDeviceAuthorizer else {
+            cloudDataControlStatus = .trustedDeviceBridgeUnavailable
+            throw LinuxCloudAuthAuthorityError.trustedDeviceBridgeUnavailable
+        }
+        let context = try await credentialContext()
+        let request = try beginCloudDataControl(
+            operation: .delete,
+            actionKind: "user_cloud_data_delete",
+            subjectID: context.uid,
+            domains: nil,
+            requiresExplicitConfirmation: true
+        )
+        do {
+            let authorization = try await trustedDeviceAuthorizer.authorize(request)
+            try validateCloudDataControlAuthorization(authorization)
+            cloudDataControlStatus = cloudDataControlStatusFor(
+                request,
+                phase: .executing,
+                detail: "executing"
+            )
+            guard let configuration else { throw LinuxCloudAuthAuthorityError.configurationRequired }
+            let response = try await http.deleteUserCloudData(
+                functionsBaseURL: configuration.functionsBaseURL,
+                idToken: context.idToken,
+                appCheckToken: context.appCheckToken,
+                request: LinuxCloudDataDeletionRequest(
+                    confirmation: confirmationToken,
+                    nonce: authorization.nonce,
+                    trustedDeviceId: authorization.trustedDeviceID,
+                    actionProof: authorization.actionProof
+                )
+            )
+            cloudDataControlStatus = cloudDataControlStatusFor(
+                request,
+                phase: .completed,
+                detail: "completed"
+            )
+            return response
+        } catch let error as LinuxCloudAuthAuthorityError {
+            markCloudDataControlFailure(request, error: error)
+            throw error
+        } catch let error as LinuxCloudAuthHTTPError {
+            let mapped = Self.map(error)
+            markCloudDataControlFailure(request, error: mapped)
+            throw mapped
+        } catch is LinuxCloudTrustedDeviceActionAuthorizationError {
+            let mapped = LinuxCloudAuthAuthorityError.trustedDeviceAuthorizationRejected
+            markCloudDataControlFailure(request, error: mapped)
+            throw mapped
+        } catch {
+            let mapped = LinuxCloudAuthAuthorityError.trustedDeviceAuthorizationRejected
+            markCloudDataControlFailure(request, error: mapped)
+            throw mapped
+        }
+    }
+
+    private func beginCloudDataControl(
+        operation: LinuxCloudDataControlOperation,
+        actionKind: String,
+        subjectID: String,
+        domains: [String]?,
+        requiresExplicitConfirmation: Bool
+    ) throws -> LinuxCloudDataControlAuthorizationRequest {
+        guard cloudDataControlStatus.phase != .awaitingTrustedDevice,
+              cloudDataControlStatus.phase != .executing else {
+            throw LinuxCloudAuthAuthorityError.dataControlInProgress
+        }
+        let requestedAt = now()
+        let expiresAt = requestedAt.addingTimeInterval(5 * 60)
+        let request = LinuxCloudDataControlAuthorizationRequest(
+            requestID: UUID().uuidString.lowercased(),
+            operation: operation,
+            actionKind: actionKind,
+            subjectID: subjectID,
+            domains: domains,
+            requiresExplicitConfirmation: requiresExplicitConfirmation,
+            requestedAt: requestedAt,
+            expiresAt: expiresAt
+        )
+        cloudDataControlStatus = cloudDataControlStatusFor(
+            request,
+            phase: .awaitingTrustedDevice,
+            detail: "awaiting_trusted_device_approval"
+        )
+        return request
+    }
+
+    private func validateCloudDataControlAuthorization(
+        _ authorization: LinuxCloudTrustedDeviceAuthorization
+    ) throws {
+        guard authorization.isWellFormed(now: now()) else {
+            throw LinuxCloudAuthAuthorityError.dataControlAuthorizationInvalid
+        }
+    }
+
+    private func cloudDataControlStatusFor(
+        _ request: LinuxCloudDataControlAuthorizationRequest,
+        phase: LinuxCloudDataControlPhase,
+        detail: String
+    ) -> LinuxCloudDataControlStatus {
+        LinuxCloudDataControlStatus(
+            phase: phase,
+            operation: request.operation,
+            requestID: request.requestID,
+            requestedAt: Self.iso8601(request.requestedAt),
+            expiresAt: Self.iso8601(request.expiresAt),
+            detail: detail
+        )
+    }
+
+    private func markCloudDataControlFailure(
+        _ request: LinuxCloudDataControlAuthorizationRequest,
+        error: LinuxCloudAuthAuthorityError
+    ) {
+        cloudDataControlStatus = cloudDataControlStatusFor(
+            request,
+            phase: .failed,
+            detail: Self.reasonCode(error)
+        )
     }
 
     private func installationVerificationDescriptor() -> InstallationVerificationDescriptor? {
@@ -1268,6 +1476,10 @@ public actor LinuxDaemonCloudCredentialAuthority {
         case .installationIdentityUnavailable: "installation_identity_unavailable"
         case .sessionChanged: "session_changed"
         case .cloudUnavailable: "cloud_unavailable"
+        case .trustedDeviceBridgeUnavailable: "trusted_device_bridge_unavailable"
+        case .dataControlInProgress: "data_control_in_progress"
+        case .trustedDeviceAuthorizationRejected: "trusted_device_authorization_rejected"
+        case .dataControlAuthorizationInvalid: "data_control_authorization_invalid"
         }
     }
 }

@@ -194,6 +194,9 @@ linux_security_tests=(
 )
 
 daemon_linux_tests=(
+    LinuxCloudDataControlBridgeTests/testDeletionConfirmationIsCheckedBeforeTrustedDevicePrompt
+    LinuxCloudDataControlBridgeTests/testMalformedTrustedDeviceAuthorizationNeverReachesCloud
+    LinuxCloudDataControlBridgeTests/testMissingTrustedDeviceBridgeFailsClosedWithRedactedUnavailableStatus
     LinuxCloudDataControlTests/testDeleteDecodesAuthoritativeSummaryAfterConfirmation
     LinuxCloudDataControlTests/testDeleteRequiresExactConfirmationToken
     LinuxCloudDataControlTests/testExportForwardsProofHeadersAndReturnsOnlyCallablePayload
