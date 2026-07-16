@@ -63,6 +63,7 @@ function accountErasureRetryMessage(result: AccountCloudDataDeletionResult): str
   if (result.failedStorageDeletes > 0) reasons.push(`${result.failedStorageDeletes} storage deletion(s) failed`);
   if (!result.deletedAuthUser && !result.authUserAlreadyMissing) reasons.push('the cloud account remains');
   if (result.retryRequired && reasons.length === 0) reasons.push('the server requested another attempt');
+  if (!result.ok && reasons.length === 0) reasons.push('the server did not confirm completion');
   return `Account erasure is incomplete; retry required. ${reasons.join('; ')}.`;
 }
 
