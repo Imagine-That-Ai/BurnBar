@@ -2644,26 +2644,33 @@ def _sensitive_target_paths(repo_root: Path, revision: str) -> set[str]:
     relative = "config/domain-core-legacy-deletion.json"
     if not git_file_exists(repo_root, revision, relative, "base legacy deletion ledger"):
         return paths
-    try:
-        manifest = require_object(
-            load_json_bytes(git_file(repo_root, revision, relative, "base legacy deletion ledger"), relative),
-            relative,
-        )
-        for raw_row in require_array(manifest.get("rows"), "base manifest rows"):
-            row = require_object(raw_row, "base manifest row")
-            for raw_target in require_array(row.get("targets"), "base manifest targets"):
-                target = require_object(raw_target, "base manifest target")
-                path = target.get("path")
-                if isinstance(path, str) and path:
-                    paths.add(path)
-        for raw_shared in require_array(manifest.get("sharedTargets"), "base manifest sharedTargets"):
-            shared = require_object(raw_shared, "base manifest sharedTarget")
-            target = require_object(shared.get("target"), "base manifest sharedTarget.target")
-            path = target.get("path")
-            if isinstance(path, str) and path:
-                paths.add(path)
-    except GateError:
-        pass
+    manifest = require_object(
+        load_json_bytes(git_file(repo_root, revision, relative, "base legacy deletion ledger"), relative),
+        relative,
+    )
+    raw_rows = require_array(manifest.get("rows"), "base manifest rows")
+    seen_row_ids: set[str] = set()
+    for raw_row in raw_rows:
+        row = require_object(raw_row, "base manifest row")
+        row_id = row.get("id")
+        if not isinstance(row_id, str) or row_id not in ROW_IDS:
+            raise GateError(f"base manifest row: invalid stable row id: {row_id!r}")
+        if row_id in seen_row_ids:
+            raise GateError(f"base manifest row: duplicate stable row id: {row_id}")
+        seen_row_ids.add(row_id)
+        raw_targets = require_array(row.get("targets"), f"base manifest row {row_id} targets")
+        if not raw_targets:
+            raise GateError(f"base manifest row {row_id} targets must not be empty")
+        for raw_target in raw_targets:
+            target = require_object(raw_target, "base manifest target")
+            paths.add(repository_path(target.get("path"), "base manifest target.path"))
+    if seen_row_ids != set(ROW_IDS) or len(raw_rows) != len(ROW_IDS):
+        missing = sorted(set(ROW_IDS) - seen_row_ids)
+        raise GateError(f"base manifest rows must contain the stable row set; missing={missing}")
+    for raw_shared in require_array(manifest.get("sharedTargets"), "base manifest sharedTargets"):
+        shared = require_object(raw_shared, "base manifest sharedTarget")
+        target = require_object(shared.get("target"), "base manifest sharedTarget.target")
+        paths.add(repository_path(target.get("path"), "base manifest sharedTarget.target.path"))
     return paths
 
 
@@ -2771,7 +2778,10 @@ def classify_deletion_sensitivity(repo_root: Path, base_ref: str) -> bool:
         ).splitlines()
         if line
     ]
-    target_paths = _sensitive_target_paths(repo_root, base_ref) | _post_deletion_primitive_paths()
+    static_target_paths = _post_deletion_primitive_paths()
+    if any(_is_sensitive_path(path, static_target_paths) for path in changed):
+        return True
+    target_paths = _sensitive_target_paths(repo_root, base_ref) | static_target_paths
     return any(_is_sensitive_path(path, target_paths) for path in changed)
 
 
