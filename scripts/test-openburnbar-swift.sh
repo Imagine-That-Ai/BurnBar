@@ -13,7 +13,8 @@ if [[ "${OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE:-}" == "1" ]]; then
   export OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE=1
 fi
 
- prepare_libsignal_ffi() {
+prepare_libsignal_ffi() {
+  local libsignal_dir="${repo_root}/Vendor/libsignal"
   local macos_xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfiMac.xcframework"
   local legacy_xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework"
   local build_script="${libsignal_dir}/swift/build_ffi.sh"

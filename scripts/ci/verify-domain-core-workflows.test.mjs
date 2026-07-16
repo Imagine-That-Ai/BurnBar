@@ -544,4 +544,11 @@ test("swift-consumer-contracts gates libsignal out to prevent duplicate Rust run
     /hasLibSignalSwiftPackage\s*=\s*!disableLibSignalSwiftPackage/,
     "Package.swift must gate hasLibSignalSwiftPackage on !disableLibSignalSwiftPackage",
   );
+  // The default path (without the gate) must still declare libsignal_dir so
+  // prepare_libsignal_ffi works under `set -u` when the gate is not set.
+  assert.match(
+    swiftTestScript,
+    /prepare_libsignal_ffi\(\)\s*\{\n\s*local libsignal_dir=/,
+    "test-openburnbar-swift.sh prepare_libsignal_ffi must declare local libsignal_dir as its first local (set -u safety for the default path)",
+  );
 });
