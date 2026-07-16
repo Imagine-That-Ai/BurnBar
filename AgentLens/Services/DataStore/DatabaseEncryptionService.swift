@@ -621,11 +621,30 @@ extension DatabaseEncryptionService {
         guard databaseFileName.isEmpty == false else { return }
         let orphanPrefix = databaseFileName + ".sqlcipher-migrating-"
         let directoryURL = databaseURL.deletingLastPathComponent()
-        guard let entries = try? fileManager.contentsOfDirectory(atPath: directoryURL.path) else { return }
+        guard fileManager.fileExists(atPath: directoryURL.path) else { return }
+        let entries: [String]
+        do {
+            entries = try fileManager.contentsOfDirectory(atPath: directoryURL.path)
+        } catch {
+            AppLogger.dataStore.error(
+                "database_migration_orphan_scan_failed",
+                metadata: ["path": directoryURL.path, "error": String(describing: error)]
+            )
+            return
+        }
         for entry in entries where entry.hasPrefix(orphanPrefix) {
             let orphanPath = directoryURL.appendingPathComponent(entry).path
-            let attributes = try? fileManager.attributesOfItem(atPath: orphanPath)
-            let orphanBytes = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+            let orphanBytes: Int64
+            do {
+                let attributes = try fileManager.attributesOfItem(atPath: orphanPath)
+                orphanBytes = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            } catch {
+                AppLogger.dataStore.notice(
+                    "database_migration_orphan_size_unavailable",
+                    metadata: ["path": orphanPath, "error": String(describing: error)]
+                )
+                orphanBytes = 0
+            }
             do {
                 try fileManager.removeItem(atPath: orphanPath)
                 AppLogger.dataStore.notice(
