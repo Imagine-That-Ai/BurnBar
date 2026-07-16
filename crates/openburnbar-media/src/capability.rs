@@ -58,7 +58,8 @@ pub fn viewer_probe() -> MediaViewerCapabilities {
     MediaViewerCapabilities {
         backend_available: true,
         vp9_decoder_available: has_factory("vp9dec") != 0,
-        video_sink_available: has_factory("autovideosink") != 0,
+        video_sink_available: has_factory("autovideosink") != 0
+            && can_create_element("autovideosink"),
     }
 }
 
@@ -70,6 +71,15 @@ pub fn viewer_probe() -> MediaViewerCapabilities {
 #[cfg(feature = "gstreamer")]
 fn has_factory(name: &str) -> u8 {
     gst::ElementFactory::find(name).is_some() as u8
+}
+
+#[cfg(feature = "gstreamer")]
+fn can_create_element(name: &str) -> bool {
+    // Factory registration alone is not enough: a broken or partially
+    // installed plugin can still be listed while refusing instantiation.
+    // Parsing without changing state is side-effect free and does not open a
+    // native window, while exercising the same construction path as decode.
+    gst::parse::launch(name).is_ok()
 }
 
 #[cfg(not(feature = "gstreamer"))]
