@@ -169,6 +169,7 @@ struct OpenBurnBarApp: App {
     @State var periodicRefreshTask: Task<Void, Never>?
     @State var navigationCoordinator = NavigationCoordinator()
     @State var didOpenUITestDashboard = false
+    let memoryFootprintWatchdog = MemoryFootprintWatchdog()
 
     init() {
         Self.runDomainCoreReleaseIdentityModeIfRequested()

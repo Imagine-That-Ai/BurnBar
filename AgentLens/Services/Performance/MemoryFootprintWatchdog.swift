@@ -21,7 +21,6 @@ import OpenBurnBarCore
 /// the condition loud is the safe reaction; exiting would lose user state.
 @MainActor
 final class MemoryFootprintWatchdog {
-    static let shared = MemoryFootprintWatchdog()
 
     /// Footprint that logs a single warning per crossing.
     static let softLimitBytes = ParserResourcePolicy.memorySoftLimitBytes
@@ -39,7 +38,7 @@ final class MemoryFootprintWatchdog {
     private var criticalTripped = false
     private weak var aggregator: UsageAggregator?
 
-    private init() {}
+    init() {}
 
     func start(aggregator: UsageAggregator) {
         self.aggregator = aggregator
@@ -48,7 +47,17 @@ final class MemoryFootprintWatchdog {
         monitorTask = Task(priority: .utility) { [weak self] in
             while !Task.isCancelled {
                 await self?.sample(trigger: "timer")
-                try? await Task.sleep(for: Self.sampleInterval)
+                do {
+                    try await Task.sleep(for: Self.sampleInterval)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    AppLogger.metrics.error(
+                        "memory_watchdog_sleep_failed",
+                        metadata: ["error": "\(error)"]
+                    )
+                    return
+                }
             }
         }
 
