@@ -20,7 +20,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Knip dead-code budget (`budgets/knip-baseline.json`, functions) | 0 | 0 | 0 |
 | Schema `knownDrift` tokens (`tools/schema-sync/manifest.json`) | 0 | 0 | 0 |
 | `@unchecked Sendable` ratchet (assert-zero gate; 66 documented allowlist exceptions) | 0 | 0 | 0 |
-| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3990 | ≤ 5000 | ≤ 3500 |
+| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 3989 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 8 | stable (re-export) | — |
 | `functions/src/types/legacy.ts` LOC | 19 | shrinking (TypeSpec migration) | — |
 | `functions/src/index.ts` LOC | 212 | modularize | — |
@@ -33,7 +33,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 
 | File | LOC |
 |------|-----|
-| `AgentLens/Services/CloudSyncService.swift` | 242 |
+| `AgentLens/Services/CloudSyncService.swift` | 241 |
 | `AgentLens/Services/Search/` (SearchService + extensions) | 1452 |
 | `AgentLens/Services/UsageAggregator.swift` | 685 |
 | `AgentLens/Services/ProjectionPipeline/` | 1611 |

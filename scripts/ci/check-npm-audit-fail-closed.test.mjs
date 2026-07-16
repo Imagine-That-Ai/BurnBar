@@ -3,7 +3,7 @@
  * Self-test for scripts/ci/check-npm-audit-fail-closed.mjs.
  */
 
-import { classifyAuditResult } from "./check-npm-audit-fail-closed.mjs";
+import { AUDIT_DIRS, classifyAuditResult } from "./check-npm-audit-fail-closed.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -26,6 +26,37 @@ function expect(label, input, wantOk, wantMessagePattern = null) {
 }
 
 console.log("Self-test: check-npm-audit-fail-closed.mjs\n");
+const EXPECTED_AUDIT_DIRS = [
+  "apps/console",
+  "functions",
+  "extensions/openburnbar",
+  "firestore-rules-tests",
+  "services/hermes-realtime-relay",
+  "services/hosted-mcp",
+  "tools/openburnbar-mcp-remote",
+  "packages/libsignal-bridge",
+  "packages/libsignal-protocol",
+  "packages/signal-envelope-contracts",
+  "website",
+];
+
+{
+  const label = "AUDIT_DIRS covers every package-lock root exactly";
+  const sameLength = AUDIT_DIRS.length === EXPECTED_AUDIT_DIRS.length;
+  const sameMembers =
+    sameLength &&
+    EXPECTED_AUDIT_DIRS.every((dir, index) => AUDIT_DIRS[index] === dir);
+  if (sameMembers) {
+    console.log(`  ✓ ${label}`);
+    passed += 1;
+  } else {
+    console.error(
+      `  ✗ ${label}: got ${JSON.stringify(AUDIT_DIRS)}`,
+    );
+    failed += 1;
+  }
+}
+
 
 expect(
   "clean report passes",

@@ -13,7 +13,7 @@
  */
 
 import { onRequest } from "firebase-functions/v2/https";
-import { getFirestore } from "firebase-admin/firestore";
+import { existsSync, readFileSync } from "node:fs";
 import { logInfo, logError } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import { sourceMetadata } from "./sourceMetadata.js";
