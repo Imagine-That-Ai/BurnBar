@@ -2787,11 +2787,28 @@ def classify_deletion_sensitivity(repo_root: Path, base_ref: str) -> bool:
 
 
 def verify_append_only_artifacts(repo_root: Path, base_ref: str | None) -> None:
+    """Verify immutable artifacts at the PR fork point are unchanged in the candidate.
+
+    The append-only baseline is the fork point ``merge-base(base_ref, HEAD)`` — the
+    commit the candidate actually branched from — rather than ``base_ref`` itself.
+    When the default branch has advanced past the PR branch point, ``base_ref`` is no
+    longer an ancestor of ``HEAD`` and ``require_commit`` would false-fail before any
+    artifact comparison runs. The fork point is always an ancestor of ``HEAD`` and
+    isolates the PR author's own changes from main's independent advance, so comparing
+    the fork point's immutable artifact tree against the candidate working tree enforces
+    the same append-only invariant without the false ancestry gate.
+    """
     if base_ref is None:
         return
     if not COMMIT_RE.fullmatch(base_ref):
         raise GateError("base ref must be a full lowercase Git SHA")
-    require_commit(repo_root, base_ref, "base ref")
+    fork_point = git_output(
+        repo_root,
+        ["merge-base", base_ref, "HEAD"],
+        "append-only artifact fork point",
+    ).strip()
+    if not COMMIT_RE.fullmatch(fork_point):
+        raise GateError("append-only artifact baseline: cannot determine fork point")
     roots = (
         RECEIPT_ROOT,
         ATTESTATION_ROOT,
@@ -2802,7 +2819,7 @@ def verify_append_only_artifacts(repo_root: Path, base_ref: str | None) -> None:
     )
     raw = git_output(
         repo_root,
-        ["ls-tree", "-r", "-z", base_ref, "--", *roots],
+        ["ls-tree", "-r", "-z", fork_point, "--", *roots],
         "base artifact inventory",
     )
     for entry in raw.split("\0"):
@@ -2821,7 +2838,7 @@ def verify_append_only_artifacts(repo_root: Path, base_ref: str | None) -> None:
             raise GateError(f"immutable artifact {relative}: expected regular file")
         if current.stat().st_mode & 0o111:
             raise GateError(f"immutable artifact {relative}: executable mode cannot change")
-        if current.read_bytes() != git_file(repo_root, base_ref, relative, f"immutable artifact {relative}"):
+        if current.read_bytes() != git_file(repo_root, fork_point, relative, f"immutable artifact {relative}"):
             raise GateError(f"immutable artifact {relative}: committed history cannot be rewritten")
 
 
@@ -3309,9 +3326,11 @@ def run_gate(
     if not repo_root.is_dir():
         raise GateError(f"repository root is missing: {repo_root}")
     repo_root = repo_root.resolve(strict=True)
+    deletion_sensitive = False
     if base_ref is not None:
         _ensure_base_ref_available(repo_root, base_ref, trusted_root)
-        if not classify_deletion_sensitivity(repo_root, base_ref):
+        deletion_sensitive = classify_deletion_sensitivity(repo_root, base_ref)
+        if not deletion_sensitive:
             return
     verify_append_only_artifacts(repo_root, base_ref)
     manifest_path = manifest_path if manifest_path.is_absolute() else repo_root / manifest_path
@@ -3328,6 +3347,10 @@ def run_gate(
             "base legacy deletion ledger",
         ):
             raise GateError("candidate cannot remove the legacy deletion ledger")
+        if deletion_sensitive:
+            raise GateError(
+                "deletion-sensitive candidate has no legacy deletion ledger to anchor validation"
+            )
         return
     if not manifest_path.is_file():
         raise GateError("manifest: expected regular file")

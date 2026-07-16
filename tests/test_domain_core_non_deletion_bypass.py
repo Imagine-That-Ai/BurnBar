@@ -543,3 +543,83 @@ def test_rename_immutable_artifact_to_ordinary_name_stays_fail_closed(tmp_path: 
 
     with pytest.raises(GATE.GateError):
         GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
+# ---------------------------------------------------------------------------
+# Regression for run 29470881643 / job 87533675580 (PR #1820):
+# ``verify_append_only_artifacts`` must use the fork point, not an ancestry gate.
+# ---------------------------------------------------------------------------
+
+
+def test_append_only_uses_fork_point_not_ancestry_gate(tmp_path: Path) -> None:
+    """The append-only artifact baseline is merge-base(base_ref, HEAD), not base_ref.
+
+    Reproduces the exact topology of PR #1820: the PR is rebased onto a newer main so
+    base.sha is NOT an ancestor of head. Before the fix,
+    ``verify_append_only_artifacts`` called ``require_commit(repo_root, base_ref)``
+    which ran ``git merge-base --is-ancestor base_ref HEAD`` and raised
+    ``base ref: commit must exist and be an ancestor of HEAD`` before any artifact
+    comparison — a false failure on a legitimate rebased deletion PR. After the fix,
+    the function computes ``merge-base(base_ref, HEAD)`` (the fork point, always an
+    ancestor of HEAD) and uses it as the append-only baseline.
+    """
+    repository, _older_main, branch_head, current_base = _behind_base_topology(
+        tmp_path, branch_commit="deletion-sensitive PR"
+    )
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    # Must not raise: the fork point (merge-base) is always an ancestor of HEAD, so the
+    # append-only baseline is valid even when base_ref itself is not an ancestor.
+    GATE.verify_append_only_artifacts(repository, base_ref=current_base)
+
+
+def test_append_only_fork_point_detects_rewritten_immutable_artifact(tmp_path: Path) -> None:
+    """The fork-point baseline still catches a candidate that rewrites an immutable artifact.
+
+    Seeds an immutable receipt at the fork point, then the candidate rewrites it. The
+    append-only check must fail closed — the fork-point fix does not weaken coverage.
+    """
+    repository = _repository(tmp_path)
+    immutable_artifact = IMMUTABLE_ROOTS[0] / "quota.claude_statusline" / "0" / "promotion.json"
+    _write(repository, immutable_artifact, json.dumps({"immutable": True}))
+    older_main = _commit(repository, "seed immutable artifact")
+
+    _git(repository, "checkout", "-b", "feature")
+    _write(repository, immutable_artifact, json.dumps({"immutable": False}))
+    _commit(repository, "candidate rewrites immutable artifact")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "main")
+    _write(repository, Path("main-advance.txt"), "default branch advanced\n")
+    _commit(repository, "default branch advanced")
+    current_base = _git(repository, "rev-parse", "HEAD")
+    _git(repository, "checkout", branch_head)
+
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    with pytest.raises(GATE.GateError, match="committed history cannot be rewritten"):
+        GATE.verify_append_only_artifacts(repository, base_ref=current_base)
+
+
+def test_behind_base_deletion_sensitive_without_ledger_fails_closed(tmp_path: Path) -> None:
+    """A rebased deletion-sensitive PR with no ledger cannot silently pass.
+
+    Locks the fail-closed contract added alongside the fork-point fix: when
+    ``classify_deletion_sensitivity`` returns True but no legacy deletion ledger
+    exists in the candidate (and none at base), the gate must fail closed rather
+    than silently returning — a deletion-sensitive change with no ledger anchor is
+    unverifiable.
+    """
+    repository, _older_main, branch_head, current_base = _behind_base_topology(
+        tmp_path, branch_commit="ordinary change"
+    )
+    # Touch the verifier script — always sensitive via SENSITIVE_EXACT_PATHS, so the
+    # classifier marks the PR deletion-sensitive regardless of any manifest at base.
+    _write(repository, VERIFIER_SCRIPT, "# weakened verifier\n")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "--amend", "--no-edit")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    with pytest.raises(GATE.GateError, match="no legacy deletion ledger to anchor validation"):
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
