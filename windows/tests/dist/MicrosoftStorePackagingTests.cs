@@ -132,6 +132,7 @@ public sealed class MicrosoftStorePackagingTests
         Assert.Contains("distribution.productId -cne $StoreProductId", verifier, StringComparison.Ordinal);
         Assert.Contains("DistributionKind.MicrosoftStore", updateService, StringComparison.Ordinal);
         Assert.Contains("ms-windows-store://downloadsandupdates", updateService, StringComparison.Ordinal);
+        Assert.Contains("ms-windows-store://pdp/?productid=", updateService, StringComparison.Ordinal);
         Assert.Contains("Microsoft Store manages signing, installation, and automatic updates", updateService, StringComparison.Ordinal);
         Assert.Contains("Updater disabled: packaged distribution metadata is malformed.", updateService, StringComparison.Ordinal);
     }

@@ -172,7 +172,11 @@ internal static class WindowsUpdateService
 
     public static void OpenReleaseNotes()
     {
-        Uri uri = new(GetFeedMetadata().ReleaseNotesUrl);
+        DistributionMetadata distribution = GetDistributionMetadata();
+        string target = distribution.Kind == DistributionKind.MicrosoftStore
+            ? $"ms-windows-store://pdp/?productid={distribution.ProductId}"
+            : GetFeedMetadata().ReleaseNotesUrl;
+        Uri uri = new(target);
         using Process _ = ChildProcessLaunchPolicy.StartDefaultBrowser(uri);
     }
 
@@ -187,7 +191,7 @@ internal static class WindowsUpdateService
                 version,
                 "Microsoft Store",
                 StoreUpdatesUri,
-                $"https://apps.microsoft.com/detail/{distribution.ProductId}",
+                $"ms-windows-store://pdp/?productid={distribution.ProductId}",
                 AutomaticChecksEnabled: false,
                 HostConfigured: false,
                 NativeHostAvailable: false,
