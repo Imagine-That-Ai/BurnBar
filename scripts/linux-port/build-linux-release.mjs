@@ -143,6 +143,9 @@ if (phase === 'prepare' && !args.has('--skip-daemon') && daemonSteps.every((step
   // Swift 6.1 Linux libswiftObservation.so references swift::threading::fatal which
   // is missing from the shared libswiftCore.so (present only in the static archive).
   // --allow-shlib-undefined lets the link complete; runtime uses matching 6.1 libs.
+  // SwiftPM evaluates OpenBurnBarCore/Package.swift in the child process, so the
+  // sanitized release environment must reach both products or the manifest will
+  // omit OpenBurnBarIrohFFI even though the native runtime is staged.
   daemonSteps.push(runStep('swift', [
     'build',
     '--disable-automatic-resolution',
@@ -156,7 +159,7 @@ if (phase === 'prepare' && !args.has('--skip-daemon') && daemonSteps.every((step
     'OpenBurnBarDaemon',
     '-Xlinker',
     '--allow-shlib-undefined'
-  ]));
+  ], { env: packageBuildEnv }));
   if (daemonSteps.every((step) => step.exitCode === 0)) {
     daemonSteps.push(runStep('swift', [
       'build',
@@ -171,7 +174,7 @@ if (phase === 'prepare' && !args.has('--skip-daemon') && daemonSteps.every((step
       'OpenBurnBarCLI',
       '-Xlinker',
       '--allow-shlib-undefined'
-    ]));
+    ], { env: packageBuildEnv }));
   }
 }
 writeLog('daemon-build.log', daemonSteps);
