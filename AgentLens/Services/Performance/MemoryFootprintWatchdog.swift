@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarLogParsers
 
 /// Process-wide memory watchdog — the last line of defense behind the
 /// per-pass `ParserResourceGovernor` ceilings.
@@ -46,7 +46,7 @@ final class MemoryFootprintWatchdog {
         monitorTask = Task(priority: .utility) { [weak self] in
             while !Task.isCancelled {
                 await self?.sample(trigger: "timer")
-                try? await Task.sleep(for: Self.sampleInterval)
+                try? await Task.sleep(for: Self.sampleInterval) // try?-ok(cancellation only)
             }
         }
 
