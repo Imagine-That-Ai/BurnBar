@@ -131,6 +131,124 @@ final class BurnBarDaemonDatabaseCipherTests: XCTestCase {
         )
     }
 
+    // MARK: - Orphaned Migration Artifact Sweep
+
+    /// A migration process that dies mid-export (SIGKILL, force quit, shutdown)
+    /// strands its `<db>.sqlcipher-migrating-<UUID>` temp database (plus
+    /// `-wal`/`-shm`/`-journal` sidecars) forever — one real machine accumulated
+    /// 9.4 GB of them. The sweep must delete every artifact matching the prefix.
+    func test_orphanSweep_deletesOrphanTempDatabasesAndSidecars() throws {
+        let directory = try makeOrphanSweepDirectory()
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let dbPath = directory + "/openburnbar.sqlite"
+
+        let orphanA = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        let orphanB = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        let orphanPaths = [orphanA, orphanA + "-journal", orphanA + "-wal", orphanA + "-shm", orphanB]
+        for orphanPath in orphanPaths {
+            try Data("orphaned migration payload".utf8).write(to: URL(fileURLWithPath: orphanPath))
+        }
+
+        BurnBarDaemonDatabaseCipher.removeOrphanedMigrationArtifacts(
+            forDatabaseAt: dbPath,
+            logger: BurnBarDaemonLogger(category: "cipher-test")
+        )
+
+        for orphanPath in orphanPaths {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: orphanPath),
+                "Sweep must delete orphaned migration artifact at \(orphanPath)"
+            )
+        }
+    }
+
+    /// The sweep must be strictly name-scoped: the live database, its own
+    /// `-wal`/`-shm` sidecars, another database's migration temp files, and
+    /// near-miss names must all survive untouched.
+    func test_orphanSweep_leavesLiveDatabaseAndUnrelatedFilesUntouched() throws {
+        let directory = try makeOrphanSweepDirectory()
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let dbPath = directory + "/openburnbar.sqlite"
+
+        let liveDatabaseContent = Data("live database bytes".utf8)
+        try liveDatabaseContent.write(to: URL(fileURLWithPath: dbPath))
+        let keeperPaths = [
+            dbPath + "-wal",
+            dbPath + "-shm",
+            // Another database's orphan: prefix must match THIS db's file name only.
+            directory + "/other.sqlite.sqlcipher-migrating-\(UUID().uuidString)",
+            // Near-misses: wrong leading character / missing trailing dash.
+            directory + "/xopenburnbar.sqlite.sqlcipher-migrating-\(UUID().uuidString)",
+            dbPath + ".sqlcipher-migratingNOT",
+            dbPath + ".backup"
+        ]
+        for keeperPath in keeperPaths {
+            try Data("keep me".utf8).write(to: URL(fileURLWithPath: keeperPath))
+        }
+        let orphanPath = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        try Data("orphaned migration payload".utf8).write(to: URL(fileURLWithPath: orphanPath))
+
+        BurnBarDaemonDatabaseCipher.removeOrphanedMigrationArtifacts(
+            forDatabaseAt: dbPath,
+            logger: BurnBarDaemonLogger(category: "cipher-test")
+        )
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphanPath), "Sweep must delete the orphan")
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: dbPath)),
+            liveDatabaseContent,
+            "Sweep must never touch the live database"
+        )
+        for keeperPath in keeperPaths {
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: keeperPath),
+                "Sweep must not delete unrelated file at \(keeperPath)"
+            )
+        }
+    }
+
+    /// A database path whose parent directory does not exist (fresh install
+    /// before the shared app-support directory is provisioned) must be a
+    /// silent no-op.
+    func test_orphanSweep_toleratesMissingDirectory() {
+        let missingPath = NSTemporaryDirectory() + "obb-sweep-missing-\(UUID().uuidString)/nested/openburnbar.sqlite"
+        BurnBarDaemonDatabaseCipher.removeOrphanedMigrationArtifacts(
+            forDatabaseAt: missingPath,
+            logger: BurnBarDaemonLogger(category: "cipher-test")
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missingPath))
+    }
+
+    /// Entering the migration check must reclaim orphans even when no migration
+    /// runs (here: the primary database file does not exist yet). Holds on both
+    /// stock-SQLite and codec-present builds.
+    func test_migratePlaintextDatabaseIfNeeded_sweepsOrphansAtEntry() throws {
+        let directory = try makeOrphanSweepDirectory()
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let dbPath = directory + "/openburnbar.sqlite"
+        let orphanPath = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        try Data("orphaned migration payload".utf8).write(to: URL(fileURLWithPath: orphanPath))
+
+        let logger = BurnBarDaemonLogger(category: "cipher-test")
+        let migrated = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
+            at: dbPath,
+            logger: logger,
+            key: Self.testEncryptionKey
+        )
+
+        XCTAssertFalse(migrated, "No primary database file exists, so no migration should run")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: orphanPath),
+            "Checking migration must sweep orphaned temp databases from prior crashed migrations"
+        )
+    }
+
+    private func makeOrphanSweepDirectory() throws -> String {
+        let directory = NSTemporaryDirectory() + "obb-orphan-sweep-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
     // MARK: - Helpers
 
     private func makePlaintextDatabase(rows: [String]) throws -> String {

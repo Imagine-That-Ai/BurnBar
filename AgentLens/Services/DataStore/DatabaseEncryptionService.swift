@@ -519,6 +519,7 @@ extension DatabaseEncryptionService {
     /// unless the encrypted replacement is complete.
     @discardableResult
     static func migratePlaintextDatabaseIfNeeded(at path: String, encryptionKey: String) throws -> Bool {
+        removeOrphanedMigrationArtifacts(forDatabaseAt: path)
         guard FileManager.default.fileExists(atPath: path) else { return false }
         guard isEncryptedDatabaseFile(at: path) == false else { return false }
         guard isCipherAvailable() else { throw DatabaseEncryptionError.cipherUnavailable }
@@ -600,6 +601,43 @@ extension DatabaseEncryptionService {
         } catch {
             removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
             throw DatabaseEncryptionError.plaintextMigrationFailed(path: path, detail: "\(error)")
+        }
+    }
+
+    /// Deletes orphaned `<dbFileName>.sqlcipher-migrating-<UUID>` temp databases
+    /// (and their `-wal`/`-shm`/`-journal` sidecars, which share that prefix)
+    /// from the database's parent directory. The temp file is only valid DURING a
+    /// live `migratePlaintextDatabaseIfNeeded` call; when the process dies
+    /// mid-export (SIGKILL, force quit, shutdown) the catch-path cleanup never
+    /// runs and a multi-gigabyte orphan is stranded forever — a real machine
+    /// accumulated 9.4 GB of them. Anything matching the prefix at entry is
+    /// therefore dead and safe to remove; the live database and its own
+    /// `-wal`/`-shm` never match. Best-effort by design: failures are logged and
+    /// never interrupt startup or migration.
+    static func removeOrphanedMigrationArtifacts(forDatabaseAt path: String) {
+        let fileManager = FileManager.default
+        let databaseURL = URL(fileURLWithPath: path)
+        let databaseFileName = databaseURL.lastPathComponent
+        guard databaseFileName.isEmpty == false else { return }
+        let orphanPrefix = databaseFileName + ".sqlcipher-migrating-"
+        let directoryURL = databaseURL.deletingLastPathComponent()
+        guard let entries = try? fileManager.contentsOfDirectory(atPath: directoryURL.path) else { return }
+        for entry in entries where entry.hasPrefix(orphanPrefix) {
+            let orphanPath = directoryURL.appendingPathComponent(entry).path
+            let attributes = try? fileManager.attributesOfItem(atPath: orphanPath)
+            let orphanBytes = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+            do {
+                try fileManager.removeItem(atPath: orphanPath)
+                AppLogger.dataStore.notice(
+                    "database_migration_orphan_removed",
+                    metadata: ["path": orphanPath, "reclaimedBytes": "\(orphanBytes)"]
+                )
+            } catch {
+                AppLogger.dataStore.error(
+                    "database_migration_orphan_cleanup_failed",
+                    metadata: ["path": orphanPath, "error": "\(error)"]
+                )
+            }
         }
     }
 
